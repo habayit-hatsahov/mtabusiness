@@ -384,8 +384,8 @@ home.html
 | `index.html` | Hero, 4 features, טופס הרשמה מלא, 2 נתיבי אימות, בני משפחה, success state |
 | `admin.html` | לוח בקרה ראשי — תאריך, 2 כרטיסי ניווט (חברים/עסקים) עם נרשמו+ממתינים, ניווט ל-admin-members / admin-businesses |
 | `admin-members.html` | ניהול חברים — stats, פילטר (הכל/ממתינים/מאושרים/נדחו), חיפוש, כרטיסים קומפקטיים עם מנוי/לא מנוי inline, modal אישור עם WA+מייל, ביטול אישור |
-| `admin-businesses.html` | ניהול עסקים — stats, פילטר, חיפוש, כרטיסים קומפקטיים עם מנוי/לא מנוי inline, modal אישור עם WA+מייל |
-| `business.html` | 6 סקציות, קטגוריות pill, toggle הטבה, upload תמונות עם preview, אימות אוהד |
+| `admin-businesses.html` | ניהול עסקים — stats, פילטר, חיפוש, כרטיסים קומפקטיים עם מנוי/לא מנוי inline, modal אישור עם WA+מייל, **modal עריכת עסק 5 שלבים עם stepper**: (1) בעל העסק (2) פרטי העסק (3) קטגוריה pill-grid ראשית+משנית + הטבה (4) שעות וקישורים (5) תמונות ומדיה — לוגו, גלריה (כל תמונה עם שם/תיאור), סרטונים (URL + תיאור). כפתור **📷 מדיה** על כל כרטיס פותח ישירות לשלב 5. קישורי וידאו נשמרים ל-Firestore; תמונות בפועל ידרשו Firebase Storage |
+| `business.html` | **Stepper 3 שלבים:** (1) פרטי בעל העסק + אימות אוהד (2) סוג עסק (פיזי/אונליין/מקצוע, עד 2 בחירות) + פרטים + כתובת/אזורי פעילות/אתר לפי סוג + יצירת קשר (3) קטגוריה ראשית+משנית + הטבה (דיפולט=כן, "איפה לממש" מוסתר לבעל מקצוע) + שעות + נוכחות דיגיטלית + שליחה. מחובר Netlify Forms. |
 | `card.html` | כרטיס אשראי, לוגו, שם, #חבר, תאריך, שער, שמירה לגלריה |
 | `home.html` | Top nav, category grid 2 שורות, 5 סקציות scroll, business cards עם הנחה, bottom sheet, analytics clicks, location banner |
 | `business-page.html` | עמוד מלא לשיתוף, hero, פרטים, הטבה, social, bottom CTA |
@@ -453,24 +453,24 @@ home.html
 
 | עדיפות | משימה |
 |--------|--------|
-| 1 | **שדרוג business.html** — דף הרשמת עסקים |
-| 2 | **שדרוג business-page.html / bottom sheet** — עיצוב hero חדש + תוכן מורחב (גלריה, שעות, תפריט, מפה) |
-| 3 | **סבב עיצוב** — חידוד כל הדפים ביחד |
-| 4 | **Firebase Firestore** — הרשמות, חברים, עסקים |
-| 5 | **Firebase Auth** — login, session, הגנה על דפים |
-| 6 | **EmailJS** — מייל אוטומטי בעת אישור |
-| 7 | **Firebase Storage** — תמונות, גלריות, תפריטים |
-| 8 | **PWA + Hosting + דומיין** |
-| 9 | **רקע בלומפילד** בתעודת החבר (`stadium.jpg`) |
-| 10 | **Apple/Google Wallet** |
+| 1 | **שדרוג business-page.html / bottom sheet** — עיצוב hero חדש + תוכן מורחב (גלריה, שעות, תפריט, מפה) |
+| 2 | **סבב עיצוב** — חידוד כל הדפים ביחד |
+| 3 | **Firebase Firestore** — הרשמות, חברים, עסקים (יחליף Netlify Forms) |
+| 4 | **Firebase Auth** — login, session, הגנה על דפים |
+| 5 | **EmailJS** — מייל אוטומטי בעת אישור |
+| 6 | **Firebase Storage** — תמונות, גלריות, תפריטים |
+| 7 | **PWA + דומיין** |
+| 8 | **רקע בלומפילד** בתעודת החבר (`stadium.jpg`) |
+| 9 | **Apple/Google Wallet** |
 
 ---
 
 ## 15. מצב נוכחי
 
-**שלב: UI מלא, ללא Backend**
+**שלב: UI מלא + business.html באוויר**
 
 - כל 7 הדפים בנויים — UX/UI מוכנים
 - נתונים hardcoded (9 עסקים, חבר "ישראל ישראלי #00142")
 - **דשבורד ניהול שודרג** — פוצל ל-3 קבצים: admin.html (hub), admin-members.html, admin-businesses.html
-- **הצעד הבא:** שדרוג דף הרשמת עסקים (`business.html`)
+- **business.html עלה לאוויר** ב-Netlify (mtabusiness.netlify.app) — הגשות נשמרות ב-Netlify Forms
+- **הצעד הבא:** שדרוג business-page.html / bottom sheet

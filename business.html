@@ -554,11 +554,7 @@
     </div>
     <div class="step-item" id="si-3">
       <div class="step-circle">3</div>
-      <div class="step-label">קטגוריה<br/>והטבה</div>
-    </div>
-    <div class="step-item" id="si-4">
-      <div class="step-circle">4</div>
-      <div class="step-label">תמונות<br/>ושליחה</div>
+      <div class="step-label">קטגוריה<br/>ושליחה</div>
     </div>
   </div>
 </div>
@@ -853,7 +849,7 @@
           <div class="field-error" id="err-discountText">נא לפרט את ההטבה</div>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" id="wrap-discountType">
           <label for="discountType">איפה ניתן לממש? <span class="req">*</span></label>
           <select id="discountType" onchange="handleDiscountType(this.value)">
             <option value="">בחר...</option>
@@ -896,44 +892,10 @@
         <div style="font-size:11px;color:var(--gray);margin-top:6px;">כתוב בחופשיות — הנוסח שנוח לך</div>
       </div>
 
-      <div class="btn-row">
-        <button type="button" class="btn-back" onclick="goBack(3)">→ חזור</button>
-        <button type="button" class="btn-next" onclick="goNext(3)">המשך ← תמונות</button>
-      </div>
-    </div>
-
-    <!-- ══════════════════════════════════════ -->
-    <!-- STEP 4 — תמונות + רשתות + שליחה      -->
-    <!-- ══════════════════════════════════════ -->
-    <div class="step-panel" id="step4">
-
-      <div class="section-title">📷 תמונות ורשתות</div>
-
-      <div class="form-group">
-        <label>לוגו העסק <span class="opt">(אופציונלי)</span></label>
-        <div class="upload-zone" id="logoZone">
-          <input type="file" id="logoFile" accept="image/*" onchange="previewImages('logoFile','logoPreview',1)" />
-          <div class="upload-icon">🖼️</div>
-          <div class="upload-text">לחץ להעלאת לוגו</div>
-          <div class="upload-sub">PNG, JPG · עד 5MB</div>
-        </div>
-        <div class="upload-preview" id="logoPreview"></div>
-      </div>
-
-      <div class="form-group">
-        <label>תמונות נוספות <span class="opt">(עד 5 — מוצרים, תפריט, המקום)</span></label>
-        <div class="upload-zone" id="photosZone">
-          <input type="file" id="photosFiles" accept="image/*" multiple onchange="previewImages('photosFiles','photosPreview',5)" />
-          <div class="upload-icon">📸</div>
-          <div class="upload-text">לחץ לבחירת תמונות</div>
-          <div class="upload-sub">ניתן לבחור מספר תמונות במקביל</div>
-        </div>
-        <div class="upload-preview" id="photosPreview"></div>
-      </div>
-
       <div class="divider"></div>
 
-      <div class="section-title" style="border:none;padding:0;margin-bottom:16px;">🔗 נוכחות דיגיטלית <span style="font-weight:400;color:#aaa;font-size:12px">(אופציונלי)</span></div>
+      <!-- נוכחות דיגיטלית -->
+      <div class="section-subtitle">🔗 נוכחות דיגיטלית <span style="font-weight:400;color:#aaa;font-size:12px">(אופציונלי)</span></div>
 
       <div class="form-group">
         <label>אתר אינטרנט</label>
@@ -961,7 +923,7 @@
       </div>
 
       <div class="btn-row">
-        <button type="button" class="btn-back" onclick="goBack(4)">→ חזור</button>
+        <button type="button" class="btn-back" onclick="goBack(3)">→ חזור</button>
         <button type="button" class="btn-submit" id="submitBtn" onclick="handleSubmit()">
           שלח בקשת הצטרפות לאינדקס
         </button>
@@ -994,7 +956,7 @@
   let currentStep = 1;
 
   function updateStepper(step) {
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 3; i++) {
       const si = document.getElementById('si-' + i);
       si.classList.remove('active', 'done');
       const circle = si.querySelector('.step-circle');
@@ -1199,6 +1161,12 @@
     document.getElementById('wrap-bizWebsiteStep2').style.display = hasOnline ? 'block' : 'none';
     document.getElementById('wrap-bizRegions').style.display = hasPro ? 'block' : 'none';
 
+    // מסתיר "איפה לממש" אם רק בעל מקצוע נבחר
+    const wrapDiscountType = document.getElementById('wrap-discountType');
+    if (wrapDiscountType) {
+      wrapDiscountType.style.display = (hasPro && !hasPhysical && !hasOnline) ? 'none' : 'block';
+    }
+
     const err = document.getElementById('err-bizType');
     if (err && selectedBizTypes.size > 0) err.style.display = 'none';
   }
@@ -1211,29 +1179,30 @@
       err.style.display = 'none';
   }
 
-  // ── CATEGORIES (primary → secondary → off) ──
+  // ── CATEGORIES ──
   function toggleCat(el) {
-    const pills = document.querySelectorAll('#categoryGrid .cat-pill');
     const primaryCount   = document.querySelectorAll('#categoryGrid .cat-pill.primary').length;
     const secondaryCount = document.querySelectorAll('#categoryGrid .cat-pill.secondary').length;
 
-    if (!el.classList.contains('primary') && !el.classList.contains('secondary')) {
-      // off → primary (only if no primary yet)
+    if (el.classList.contains('primary')) {
+      // מוריד ראשית — מקדם את המשנית הראשונה לראשית אם יש
+      el.classList.remove('primary');
+      const firstSecondary = document.querySelector('#categoryGrid .cat-pill.secondary');
+      if (firstSecondary) {
+        firstSecondary.classList.remove('secondary');
+        firstSecondary.classList.add('primary');
+      }
+    } else if (el.classList.contains('secondary')) {
+      el.classList.remove('secondary');
+    } else {
+      // לא נבחר — הוסף לפי מה שחסר
       if (primaryCount === 0) {
         el.classList.add('primary');
       } else if (secondaryCount < 2) {
-        // off → secondary
         el.classList.add('secondary');
       }
-    } else if (el.classList.contains('primary')) {
-      // primary → off
-      el.classList.remove('primary');
-    } else if (el.classList.contains('secondary')) {
-      // secondary → off
-      el.classList.remove('secondary');
     }
 
-    // clear category error if primary exists
     if (document.querySelector('#categoryGrid .cat-pill.primary')) {
       const err = document.getElementById('err-category');
       if (err) err.style.display = 'none';
