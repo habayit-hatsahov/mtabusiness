@@ -327,6 +327,25 @@
       white-space: pre-wrap;
     }
 
+    textarea.msg-edit {
+      width: 100%;
+      background: #f8fafc;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-family: 'Heebo', sans-serif;
+      font-size: 13px;
+      line-height: 1.75;
+      color: #374151;
+      resize: vertical;
+      min-height: 120px;
+      outline: none;
+      transition: border-color .15s;
+      direction: rtl;
+    }
+
+    textarea.msg-edit:focus { border-color: var(--blue); }
+
     .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
 
     /* ── EDIT MODAL ── */
@@ -918,13 +937,15 @@
   <div class="modal">
     <h3>✅ אישור עסק</h3>
     <div class="modal-sub" id="modalSub"></div>
-    <div class="modal-label">הודעת WhatsApp</div>
-    <div class="msg-preview" id="waPreview"></div>
-    <div class="modal-label">תוכן המייל</div>
-    <div class="msg-preview" id="mailPreview"></div>
-    <div class="modal-actions">
-      <button class="btn btn-approve" id="confirmBtn" style="flex:2">שלח ואשר ✓</button>
-      <button class="btn btn-reject" onclick="closeModal()" style="flex:1">ביטול</button>
+    <div class="modal-label">📲 הודעת WhatsApp <span style="font-weight:400;color:#aaa;font-size:11px">(ניתן לערוך)</span></div>
+    <textarea class="msg-edit" id="waPreview" rows="5"></textarea>
+    <div class="modal-label">✉️ תוכן המייל <span style="font-weight:400;color:#aaa;font-size:11px">(ניתן לערוך)</span></div>
+    <textarea class="msg-edit" id="mailPreview" rows="5"></textarea>
+    <div class="modal-actions" style="flex-wrap:wrap;gap:10px">
+      <button class="btn btn-approve" id="confirmBtn" style="flex:1 1 100%">✅ אשר עסק</button>
+      <button class="btn btn-wa"   id="modalWaBtn"   style="flex:1" onclick="modalSendWA()">📲 WhatsApp</button>
+      <button class="btn btn-mail" id="modalMailBtn"  style="flex:1" onclick="modalSendMail()">✉️ מייל</button>
+      <button class="btn btn-reject" onclick="closeModal()" style="flex:1 1 100%">סגור</button>
     </div>
   </div>
 </div>
@@ -1131,9 +1152,21 @@ window.openModal = function(id) {
   pendingId = id;
   const b = businesses.find(x => x.id === id);
   const ownerName = `${b.ownerFirst || ''} ${b.ownerLast || ''}`.trim();
-  document.getElementById('modalSub').textContent   = `${b.name} · ${ownerName}`;
-  document.getElementById('waPreview').textContent   = buildWA(b);
-  document.getElementById('mailPreview').textContent = buildMail(b);
+  document.getElementById('modalSub').textContent = `${b.name} · ${ownerName}`;
+  document.getElementById('waPreview').value       = buildWA(b);
+  document.getElementById('mailPreview').value     = buildMail(b);
+  const confirmBtn = document.getElementById('confirmBtn');
+  confirmBtn.textContent = '✅ אשר עסק';
+  confirmBtn.disabled = false;
+  confirmBtn.style.opacity = '1';
+  const waBtn = document.getElementById('modalWaBtn');
+  waBtn.textContent = '📲 WhatsApp';
+  waBtn.style.opacity = '1';
+  waBtn.style.pointerEvents = 'auto';
+  const mailBtn = document.getElementById('modalMailBtn');
+  mailBtn.textContent = '✉️ מייל';
+  mailBtn.style.opacity = '1';
+  mailBtn.style.pointerEvents = 'auto';
   document.getElementById('approveModal').classList.add('open');
 };
 
@@ -1148,10 +1181,36 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
     status: 'approved',
     approvedAt: serverTimestamp()
   });
-  closeModal();
-  sendWA(pendingId);
+  document.getElementById('confirmBtn').textContent = '✓ אושר!';
+  document.getElementById('confirmBtn').disabled = true;
+  document.getElementById('confirmBtn').style.opacity = '.5';
   showToast(`✅ "${b.name}" אושר!`);
 });
+
+window.modalSendWA = function() {
+  const b  = businesses.find(x => x.id === pendingId);
+  const waText = document.getElementById('waPreview').value;
+  const ph = (b.ownerPhone || b.phone || '').replace(/\D/g,'');
+  const waPhone = ph.startsWith('0') ? '972' + ph.slice(1) : ph;
+  window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(waText)}`, '_blank');
+  const btn = document.getElementById('modalWaBtn');
+  btn.textContent = '✓ נשלח WhatsApp';
+  btn.style.opacity = '.5';
+  btn.style.pointerEvents = 'none';
+};
+
+window.modalSendMail = function() {
+  const b = businesses.find(x => x.id === pendingId);
+  const mailText = document.getElementById('mailPreview').value;
+  const email = b.ownerEmail || b.email || '';
+  const subject = 'העסק שלך אושר לאינדקס הבית הצהוב 💛';
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailText)}`;
+  window.open(gmailUrl, '_blank');
+  const btn = document.getElementById('modalMailBtn');
+  btn.textContent = '✓ מייל נפתח';
+  btn.style.opacity = '.5';
+  btn.style.pointerEvents = 'none';
+};
 
 window.rejectBiz = async function(id) {
   const b = businesses.find(x => x.id === id);
@@ -1174,7 +1233,9 @@ window.sendWA = function(id) {
 
 window.sendMail = function(id) {
   const b = businesses.find(x => x.id === id);
-  window.open(`mailto:${b.ownerEmail || b.email}?subject=${encodeURIComponent('העסק שלך אושר לאינדקס הבית הצהוב 💛')}&body=${encodeURIComponent(buildMail(b))}`, '_blank');
+  const subject = 'העסק שלך אושר לאינדקס הבית הצהוב 💛';
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(b.ownerEmail || b.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMail(b))}`;
+  window.open(gmailUrl, '_blank');
 };
 
 // ── edit modal ────────────────────────────────────────────────────────────────
