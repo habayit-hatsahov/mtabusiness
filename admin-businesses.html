@@ -1071,7 +1071,8 @@ function render() {
 
     // כותרת הכרטיס — meta
     const typeStr  = types.map(t => BIZ_TYPE_LABELS[t]).filter(Boolean).join(' · ');
-    const metaStr  = [typeStr, b.city].filter(Boolean).join(' · ') || (isOnline ? 'אונליין' : '—');
+    const firstBranch = (b.branches || [])[0];
+    const metaStr  = [typeStr, firstBranch?.city].filter(Boolean).join(' · ') || (isOnline ? 'אונליין' : '—');
 
     const subPill  = b.isSubscriber === 'yes'
       ? `<span class="pill sub">מנוי</span>`
@@ -1172,9 +1173,11 @@ function render() {
             <div class="detail-item full"><div class="lbl">סוג עסק</div><div class="val">${typeTagsHtml}</div></div>
             <div class="detail-item full"><div class="lbl">שם העסק</div><div class="val">${m(b.name)}</div></div>
             <div class="detail-item full"><div class="lbl">תיאור</div><div class="val desc">${m(b.desc)}</div></div>
-            ${isPhysical ? `
-            <div class="detail-item"><div class="lbl">עיר</div><div class="val">${mDash(b.city)}</div></div>
-            <div class="detail-item"><div class="lbl">כתובת</div><div class="val">${mDash(b.address)}</div></div>` : ''}
+            ${isPhysical ? (b.branches && b.branches.length > 0 ? b.branches.map((br, i) => `
+            <div class="detail-item"><div class="lbl">${b.branches.length > 1 ? `סניף ${i+1} — עיר` : 'עיר'}</div><div class="val">${mDash(br.city)}</div></div>
+            <div class="detail-item"><div class="lbl">${b.branches.length > 1 ? `סניף ${i+1} — כתובת` : 'כתובת'}</div><div class="val">${mDash(br.address)}</div></div>`).join('') : `
+            <div class="detail-item"><div class="lbl">עיר</div><div class="val"><span class="missing">לא מולא</span></div></div>
+            <div class="detail-item"><div class="lbl">כתובת</div><div class="val"><span class="missing">לא מולא</span></div></div>`) : ''}
             ${isOnline ? `
             <div class="detail-item full"><div class="lbl">אתר אונליין</div><div class="val">${b.websiteOnline ? `<a href="${b.websiteOnline}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.websiteOnline}</a>` : '<span class="missing">לא מולא</span>'}</div></div>` : ''}
             ${isPro ? `
@@ -1373,8 +1376,8 @@ window.openEditModal = function(id) {
   // פרטי עסק
   document.getElementById('editName').value         = b.name         || '';
   document.getElementById('editDesc').value         = b.desc         || '';
-  document.getElementById('editCity').value         = b.city         || '';
-  document.getElementById('editAddress').value      = b.address      || '';
+  document.getElementById('editCity').value         = (b.branches?.[0]?.city)    || b.city    || '';
+  document.getElementById('editAddress').value      = (b.branches?.[0]?.address) || b.address || '';
   document.getElementById('editPhone').value        = b.phone        || '';
   document.getElementById('editWhatsapp').value     = b.whatsapp     || '';
   document.getElementById('editServiceEmail').value = b.serviceEmail || '';
@@ -1557,6 +1560,7 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
     // פרטי עסק
     name:               document.getElementById('editName').value.trim(),
     desc:               document.getElementById('editDesc').value.trim(),
+    branches:           [{ city: document.getElementById('editCity').value.trim(), address: document.getElementById('editAddress').value.trim() }],
     city:               document.getElementById('editCity').value.trim(),
     address:            document.getElementById('editAddress').value.trim(),
     phone:              document.getElementById('editPhone').value.trim(),
