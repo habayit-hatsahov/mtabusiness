@@ -495,8 +495,37 @@
     .success-state p  { color: var(--gray); font-size: 14px; line-height: 1.7; margin-top: 10px; }
 
     /* ── ERRORS ── */
-    .field-error { color: #d97706; font-size: 12px; margin-top: 5px; display: none; }
-    input.error, select.error, textarea.error { border-color: #d97706; }
+    .field-error {
+      color: #d97706; font-size: 13px; font-weight: 600;
+      margin-top: 6px; display: none;
+      padding: 6px 10px;
+      background: #FFF7ED;
+      border-radius: 8px;
+      border: 1px solid #FDBA74;
+      animation: shakeX .4s;
+    }
+    input.error, select.error, textarea.error {
+      border-color: #d97706;
+      background: #FFFBF5;
+      box-shadow: 0 0 0 3px rgba(217,119,6,.12);
+    }
+    .biz-type-grid.error-highlight,
+    .region-grid.error-highlight,
+    .category-grid.error-highlight,
+    .discount-type-grid.error-highlight {
+      border: 2px solid #d97706;
+      border-radius: 12px;
+      padding: 8px;
+      background: #FFFBF5;
+      animation: shakeX .4s;
+    }
+    @keyframes shakeX {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-4px); }
+      40% { transform: translateX(4px); }
+      60% { transform: translateX(-3px); }
+      80% { transform: translateX(2px); }
+    }
 
     .spinner {
       display: inline-block; width: 18px; height: 18px;
@@ -1163,12 +1192,15 @@
     let ok = true;
 
     // סוג עסק — חובה
+    const bizTypeGrid = document.getElementById('bizTypeGrid');
     const bizTypeErr = document.getElementById('err-bizType');
     if (selectedBizTypes.size === 0) {
       if (bizTypeErr) bizTypeErr.style.display = 'block';
+      bizTypeGrid.classList.add('error-highlight');
       ok = false;
     } else {
       if (bizTypeErr) bizTypeErr.style.display = 'none';
+      bizTypeGrid.classList.remove('error-highlight');
     }
 
     ok = vf('bizName',    name.length >= 2)    && ok;
@@ -1179,6 +1211,11 @@
       const branchesOk = branches.length > 0 && branches.every(b => b.city.length >= 2 && b.address.length >= 5);
       const errEl = document.getElementById('err-branches');
       errEl.style.display = branchesOk ? 'none' : 'block';
+      if (!branchesOk) {
+        document.querySelectorAll('#branchesList .branch-city, #branchesList .branch-address').forEach(inp => {
+          if (inp.value.trim().length < 2) inp.classList.add('error');
+        });
+      }
       ok = branchesOk && ok;
     }
 
@@ -1188,13 +1225,16 @@
     }
 
     if (selectedBizTypes.has('pro')) {
+      const regionGrid = document.getElementById('regionGrid');
       const regionCount = document.querySelectorAll('#regionGrid .region-chip.selected').length;
       const regionErr = document.getElementById('err-bizRegions');
       if (regionCount === 0) {
         if (regionErr) regionErr.style.display = 'block';
+        regionGrid.classList.add('error-highlight');
         ok = false;
       } else {
         if (regionErr) regionErr.style.display = 'none';
+        regionGrid.classList.remove('error-highlight');
       }
     }
 
@@ -1203,19 +1243,41 @@
 
   function validateStep3() {
     const primaryCat = document.querySelector('#categoryGrid .cat-pill.primary');
+    const catGrid = document.getElementById('categoryGrid');
+    const catErr = document.getElementById('err-category');
     let ok = true;
-    ok = vf('category', !!primaryCat) && ok;
+
+    if (!primaryCat) {
+      if (catErr) catErr.style.display = 'block';
+      catGrid.classList.add('error-highlight');
+      ok = false;
+    } else {
+      if (catErr) catErr.style.display = 'none';
+      catGrid.classList.remove('error-highlight');
+    }
 
     const disc     = document.getElementById('hasDiscount').checked;
     const discText = document.getElementById('discountText').value.trim();
-    const discType = document.getElementById('discountType').value;
 
     if (disc) {
       ok = vf('discountText', discText.length >= 3) && ok;
-      ok = vf('discountType', selectedDiscountTypes.size > 0) && ok;
+      const wrapDT = document.getElementById('wrap-discountType');
+      const dtVisible = wrapDT && wrapDT.style.display !== 'none';
+      if (dtVisible) {
+        const dtGrid = document.getElementById('discountTypeGrid');
+        const dtErr = document.getElementById('err-discountType');
+        if (selectedDiscountTypes.size === 0) {
+          if (dtErr) dtErr.style.display = 'block';
+          dtGrid.classList.add('error-highlight');
+          ok = false;
+        } else {
+          if (dtErr) dtErr.style.display = 'none';
+          dtGrid.classList.remove('error-highlight');
+        }
+      }
       if (selectedDiscountTypes.has('online')) {
         const code = document.getElementById('discountCode').value.trim();
-        ok = vf('discountCode', code.length >= 2)    && ok;
+        ok = vf('discountCode', code.length >= 2) && ok;
       }
     }
     return ok;
@@ -1343,15 +1405,21 @@
     }
 
     const err = document.getElementById('err-bizType');
-    if (err && selectedBizTypes.size > 0) err.style.display = 'none';
+    if (err && selectedBizTypes.size > 0) {
+      err.style.display = 'none';
+      document.getElementById('bizTypeGrid').classList.remove('error-highlight');
+    }
   }
 
   // ── REGION CHIPS ──
   function toggleRegion(el) {
     el.classList.toggle('selected');
     const err = document.getElementById('err-bizRegions');
-    if (document.querySelectorAll('#regionGrid .region-chip.selected').length > 0)
+    const grid = document.getElementById('regionGrid');
+    if (document.querySelectorAll('#regionGrid .region-chip.selected').length > 0) {
       err.style.display = 'none';
+      grid.classList.remove('error-highlight');
+    }
   }
 
   // ── CATEGORIES ──
@@ -1381,6 +1449,7 @@
     if (document.querySelector('#categoryGrid .cat-pill.primary')) {
       const err = document.getElementById('err-category');
       if (err) err.style.display = 'none';
+      document.getElementById('categoryGrid').classList.remove('error-highlight');
     }
   }
 
@@ -1552,7 +1621,10 @@
       if (e) e.style.display = 'none';
     }
     const err = document.getElementById('err-discountType');
-    if (selectedDiscountTypes.size > 0 && err) err.style.display = 'none';
+    if (selectedDiscountTypes.size > 0 && err) {
+      err.style.display = 'none';
+      document.getElementById('discountTypeGrid').classList.remove('error-highlight');
+    }
   }
 
   // ── HOURS ──
