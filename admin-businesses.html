@@ -451,8 +451,30 @@
 
     .toggle.on::after { transform: translateX(-20px); }
 
-    .btn-edit  { background: #EEF3FF; color: var(--blue); font-size: 12px; flex: none; min-width: auto; padding: 8px 12px; }
-    .btn-media { background: #F0FDF4; color: #15803d;    font-size: 12px; flex: none; min-width: auto; padding: 8px 12px; }
+    .btn-edit   { background: #EEF3FF; color: var(--blue); font-size: 12px; flex: none; min-width: auto; padding: 8px 12px; }
+    .btn-media  { background: #F0FDF4; color: #15803d;    font-size: 12px; flex: none; min-width: auto; padding: 8px 12px; }
+    .btn-delete { background: #fef2f2; color: #b45309;    font-size: 12px; flex: none; min-width: auto; padding: 8px 12px; }
+
+    /* ── CARD SECTIONS ── */
+    .card-section {
+      padding: 10px 0 4px;
+      border-top: 1px solid #f1f5f9;
+      margin-top: 4px;
+    }
+    .card-section:first-child { border-top: none; padding-top: 4px; }
+    .card-section-title {
+      font-size: 10px; font-weight: 800; letter-spacing: .8px;
+      text-transform: uppercase; color: var(--gray);
+      margin-bottom: 8px; display: flex; align-items: center; gap: 5px;
+    }
+    .val.missing, span.missing { color: #CBD5E1; font-style: italic; font-weight: 400; font-size: 12px; }
+    .field-tag {
+      display: inline-block; font-size: 11px; font-weight: 600;
+      padding: 2px 8px; border-radius: 6px; margin: 1px 2px 1px 0;
+    }
+    .field-tag.cat    { background: #EEF3FF; color: var(--blue); }
+    .field-tag.type   { background: #f0fdf4; color: #15803d; }
+    .field-tag.region { background: #fef9c3; color: #854d0e; }
 
     /* ── EDIT STEPPER ── */
     .edit-modal-header {
@@ -955,12 +977,15 @@
 <script type="module">
 import { db } from './firebase-config.js';
 import {
-  collection, onSnapshot, doc, updateDoc, serverTimestamp
+  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 let businesses   = [];
 let activeFilter = 'all';
 let pendingId    = null;
+
+const BIZ_TYPE_LABELS = { physical: '🏪 חנות פיזית', online: '🌐 אונליין', pro: '🔧 בעל מקצוע' };
+const CAT_LABELS_MAP  = { food:'🍕 אוכל ושתייה', fashion:'👕 ביגוד ואופנה', pro:'🔧 בעלי מקצוע', health:'💊 בריאות ויופי', finance:'📊 פיננסים', sport:'⚽ ספורט ופנאי', tech:'💻 טכנולוגיה', legal:'⚖️ משפטים', other:'📦 אחר' };
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function nowStr() {
@@ -1038,23 +1063,67 @@ function render() {
   }
 
   list.innerHTML = filtered.map(b => {
-    const ownerName = `${b.ownerFirst || ''} ${b.ownerLast || ''}`.trim();
-    const cats = b.categoryPrimary ? [b.categoryPrimary, ...(b.categorySecondary || [])] : [];
-    const catTags = cats.map(c => `<span class="cat-tag">${c}</span>`).join('') || '—';
+    const ownerName  = `${b.ownerFirst || ''} ${b.ownerLast || ''}`.trim();
+    const types      = b.bizTypes || [];
+    const isPhysical = types.includes('physical');
+    const isOnline   = types.includes('online');
+    const isPro      = types.includes('pro');
 
-    const subPill = b.isSubscriber === 'yes'
+    // כותרת הכרטיס — meta
+    const typeStr  = types.map(t => BIZ_TYPE_LABELS[t]).filter(Boolean).join(' · ');
+    const metaStr  = [typeStr, b.city].filter(Boolean).join(' · ') || (isOnline ? 'אונליין' : '—');
+
+    const subPill  = b.isSubscriber === 'yes'
       ? `<span class="pill sub">מנוי</span>`
       : `<span class="pill nosub">לא מנוי</span>`;
 
+    // helpers
+    const m = v => v ? v : '<span class="missing">לא מולא</span>';
+    const mDash = v => v ? v : '<span class="missing">—</span>';
+
+    // אימות
+    const verHtml = b.isSubscriber === 'yes'
+      ? `<span class="ver-tag subscriber">מנוי · שער ${b.gate || '—'} · מס׳ ${b.subNum || '—'}</span>`
+      : b.isSubscriber === 'no'
+      ? `<span class="ver-tag photo">לא מנוי · ${b.fbUrl ? `<a href="${b.fbUrl}" target="_blank" style="color:inherit">פייסבוק ↗</a>` : 'ללא קישור פייסבוק'}</span>`
+      : '<span class="missing">לא נענה</span>';
+
+    // קטגוריה
+    const primCat = b.categoryPrimary || b.cat || '';
+    const secCats = b.categorySecondary || [];
+    const catHtml = primCat
+      ? `<span class="field-tag cat">⭐ ${CAT_LABELS_MAP[primCat] || primCat}</span>` +
+        secCats.map(c => `<span class="field-tag cat">${CAT_LABELS_MAP[c] || c}</span>`).join('')
+      : '<span class="missing">לא נבחר</span>';
+
+    // סוג עסק
+    const typeTagsHtml = types.length
+      ? types.map(t => `<span class="field-tag type">${BIZ_TYPE_LABELS[t] || t}</span>`).join('')
+      : '<span class="missing">לא נבחר</span>';
+
+    // אזורי פעילות
+    const regions    = b.regions || [];
+    const regHtml    = regions.length
+      ? regions.map(r => `<span class="field-tag region">${r}</span>`).join('')
+      : '<span class="missing">לא נבחר</span>';
+
+    // הטבה
+    const discHtml = b.hasDiscount
+      ? `<span class="discount-tag">💛 ${b.discountText || '—'}</span>` +
+        (b.discountType ? ` · ${b.discountType === 'online' ? 'אונליין' : 'פיזי'}` : '') +
+        (b.discountCode ? ` · קוד: <strong style="letter-spacing:1px">${b.discountCode}</strong>` : '')
+      : '<span class="missing">אין הטבה</span>';
+
     const editBtns = `
-        <button class="btn btn-edit"  onclick="openEditModal('${b.id}');event.stopPropagation()">✏️ ערוך</button>
-        <button class="btn btn-media" onclick="openMediaModal('${b.id}');event.stopPropagation()">📷 מדיה</button>`;
+      <button class="btn btn-edit"  onclick="openEditModal('${b.id}');event.stopPropagation()">✏️ ערוך</button>
+      <button class="btn btn-media" onclick="openMediaModal('${b.id}');event.stopPropagation()">📷 מדיה</button>`;
 
     const actions = b.status === 'pending' ? `
       <div class="card-actions">
         <button class="btn btn-approve" onclick="openModal('${b.id}')">✅ אשר עסק</button>
         ${editBtns}
         <button class="btn btn-reject"  onclick="rejectBiz('${b.id}')">✗ דחה</button>
+        <button class="btn btn-delete"  onclick="deleteBiz('${b.id}')">🗑️ מחק</button>
       </div>`
     : b.status === 'approved' ? `
       <div class="card-actions">
@@ -1062,10 +1131,12 @@ function render() {
         <button class="btn btn-mail" onclick="sendMail('${b.id}')">✉️ מייל</button>
         ${editBtns}
         <button class="btn btn-undo" onclick="rejectBiz('${b.id}')">↩ בטל</button>
+        <button class="btn btn-delete" onclick="deleteBiz('${b.id}')">🗑️ מחק</button>
       </div>`
     : `<div class="card-actions">
         <button class="btn btn-approve" onclick="openModal('${b.id}')">↩ אשר בכל זאת</button>
         ${editBtns}
+        <button class="btn btn-delete" onclick="deleteBiz('${b.id}')">🗑️ מחק</button>
       </div>`;
 
     return `
@@ -1074,51 +1145,66 @@ function render() {
         <div class="biz-avatar">🏪</div>
         <div class="card-info">
           <div class="card-name">${b.name || '—'}</div>
-          <div class="card-meta">${b.city || b.address || 'אונליין'}</div>
+          <div class="card-meta">${metaStr}</div>
         </div>
         ${subPill}
         ${statusChip(b)}
         <span class="chevron" id="chev-${b.id}">›</span>
       </div>
       <div class="card-body" id="body-${b.id}">
-        <div class="detail-grid">
-          <div class="detail-item">
-            <div class="lbl">בעלים</div>
-            <div class="val">${ownerName || '—'}</div>
+
+        <!-- שלב 1 — בעל העסק -->
+        <div class="card-section">
+          <div class="card-section-title">👤 שלב 1 — בעל העסק</div>
+          <div class="detail-grid">
+            <div class="detail-item"><div class="lbl">שם</div><div class="val">${m(ownerName)}</div></div>
+            <div class="detail-item"><div class="lbl">טלפון</div><div class="val">${mDash(b.ownerPhone)}</div></div>
+            <div class="detail-item full"><div class="lbl">אימייל</div><div class="val">${mDash(b.ownerEmail)}</div></div>
+            <div class="detail-item full"><div class="lbl">אימות אוהד</div><div class="val">${verHtml}</div></div>
+            ${b.note ? `<div class="detail-item full"><div class="lbl">✉️ הערה מבעל העסק</div><div class="val desc" style="background:#FFFBEA;border:1.5px solid #E6C200;border-radius:8px;padding:8px 12px;color:#78590a;">${b.note}</div></div>` : ''}
           </div>
-          <div class="detail-item">
-            <div class="lbl">טלפון</div>
-            <div class="val">${b.ownerPhone || b.phone || '—'}</div>
-          </div>
-          <div class="detail-item">
-            <div class="lbl">אימייל</div>
-            <div class="val">${b.ownerEmail || b.email || '—'}</div>
-          </div>
-          <div class="detail-item">
-            <div class="lbl">עיר</div>
-            <div class="val">${b.city || '—'}</div>
-          </div>
-          <div class="detail-item full">
-            <div class="lbl">תיאור</div>
-            <div class="val desc">${b.desc || '—'}</div>
-          </div>
-          <div class="detail-item">
-            <div class="lbl">קטגוריה</div>
-            <div class="val">${catTags}</div>
-          </div>
-          <div class="detail-item">
-            <div class="lbl">הטבה</div>
-            <div class="val">${b.hasDiscount ? `<span class="discount-tag">💛 ${b.discountText}</span>` : '—'}</div>
-          </div>
-          <div class="detail-item full">
-            <div class="lbl">אימות אוהד</div>
-            <div class="val">${verTag(b)}</div>
-          </div>
-          ${b.note ? `<div class="detail-item full">
-            <div class="lbl">✉️ הערה מבעל העסק</div>
-            <div class="val desc" style="background:#FFFBEA;border:1.5px solid #E6C200;border-radius:8px;padding:8px 12px;color:#78590a;">${b.note}</div>
-          </div>` : ''}
         </div>
+
+        <!-- שלב 2 — פרטי העסק -->
+        <div class="card-section">
+          <div class="card-section-title">🏪 שלב 2 — פרטי העסק</div>
+          <div class="detail-grid">
+            <div class="detail-item full"><div class="lbl">סוג עסק</div><div class="val">${typeTagsHtml}</div></div>
+            <div class="detail-item full"><div class="lbl">שם העסק</div><div class="val">${m(b.name)}</div></div>
+            <div class="detail-item full"><div class="lbl">תיאור</div><div class="val desc">${m(b.desc)}</div></div>
+            ${isPhysical ? `
+            <div class="detail-item"><div class="lbl">עיר</div><div class="val">${mDash(b.city)}</div></div>
+            <div class="detail-item"><div class="lbl">כתובת</div><div class="val">${mDash(b.address)}</div></div>` : ''}
+            ${isOnline ? `
+            <div class="detail-item full"><div class="lbl">אתר אונליין</div><div class="val">${b.websiteOnline ? `<a href="${b.websiteOnline}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.websiteOnline}</a>` : '<span class="missing">לא מולא</span>'}</div></div>` : ''}
+            ${isPro ? `
+            <div class="detail-item full"><div class="lbl">אזורי פעילות</div><div class="val">${regHtml}</div></div>` : ''}
+            <div class="detail-item"><div class="lbl">טלפון עסק</div><div class="val">${mDash(b.phone)}</div></div>
+            <div class="detail-item"><div class="lbl">WhatsApp</div><div class="val">${mDash(b.whatsapp)}</div></div>
+            <div class="detail-item full"><div class="lbl">מייל שירות לקוחות</div><div class="val">${mDash(b.serviceEmail)}</div></div>
+          </div>
+        </div>
+
+        <!-- שלב 3 — קטגוריה והטבה -->
+        <div class="card-section">
+          <div class="card-section-title">📋 שלב 3 — קטגוריה והטבה</div>
+          <div class="detail-grid">
+            <div class="detail-item full"><div class="lbl">קטגוריה</div><div class="val">${catHtml}</div></div>
+            <div class="detail-item full"><div class="lbl">הטבה</div><div class="val">${discHtml}</div></div>
+            <div class="detail-item full"><div class="lbl">שעות פעילות</div><div class="val">${mDash(b.hours)}</div></div>
+          </div>
+        </div>
+
+        <!-- שלב 4 — קישורים -->
+        <div class="card-section">
+          <div class="card-section-title">🔗 שלב 4 — קישורים דיגיטליים</div>
+          <div class="detail-grid">
+            <div class="detail-item full"><div class="lbl">אתר</div><div class="val">${b.website ? `<a href="${b.website.startsWith('http') ? b.website : 'https://'+b.website}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.website}</a>` : '<span class="missing">—</span>'}</div></div>
+            <div class="detail-item"><div class="lbl">אינסטגרם</div><div class="val">${b.instagram ? `@${b.instagram}` : '<span class="missing">—</span>'}</div></div>
+            <div class="detail-item"><div class="lbl">פייסבוק</div><div class="val">${b.facebook ? `fb/${b.facebook}` : '<span class="missing">—</span>'}</div></div>
+          </div>
+        </div>
+
         ${actions}
       </div>
     </div>`;
@@ -1223,6 +1309,13 @@ window.rejectBiz = async function(id) {
     await updateDoc(doc(db, 'businesses', id), { status: 'rejected', rejectedAt: serverTimestamp() });
     showToast('העסק נדחה');
   }
+};
+
+window.deleteBiz = async function(id) {
+  const b = businesses.find(x => x.id === id);
+  if (!confirm(`למחוק לצמיתות את "${b?.name || id}"?\nפעולה זו אינה ניתנת לביטול.`)) return;
+  await deleteDoc(doc(db, 'businesses', id));
+  showToast(`🗑️ "${b?.name || id}" נמחק`);
 };
 
 window.sendWA = function(id) {

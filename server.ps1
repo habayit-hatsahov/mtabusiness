@@ -23,7 +23,7 @@ while ($listener.IsListening) {
         $ctx.Response.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate")
         $ctx.Response.Headers.Add("Pragma", "no-cache")
         $ctx.Response.ContentLength64 = $bytes.LongLength
-        $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+        $ctx.Response.OutputStream.Write($bytes, 0, [int]$bytes.LongLength)
     } else {
         $ctx.Response.StatusCode = 404
         $ctx.Response.ContentLength64 = 0
