@@ -348,6 +348,68 @@
 
     .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
 
+    /* ── VIEW SHEET ── */
+    .view-sheet-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.5);
+      z-index: 250;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .view-sheet-overlay.open { display: flex; }
+    .view-sheet {
+      background: var(--white);
+      border-radius: 24px 24px 0 0;
+      width: 100%;
+      max-width: 640px;
+      max-height: 92dvh;
+      overflow-y: auto;
+      animation: slideUp .3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    .view-sheet-header {
+      position: sticky;
+      top: 0;
+      background: var(--white);
+      z-index: 10;
+      padding: 20px 20px 14px;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .view-sheet-header .biz-avatar { font-size: 28px; flex-shrink: 0; }
+    .view-sheet-title { font-size: 18px; font-weight: 800; color: var(--blue); }
+    .view-sheet-meta  { font-size: 12px; color: var(--gray); margin-top: 2px; }
+    .view-sheet-close {
+      margin-right: auto;
+      background: #f1f5f9;
+      border: none;
+      border-radius: 50%;
+      width: 34px;
+      height: 34px;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .view-sheet-body { padding: 0 20px 32px; }
+    .view-sheet-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 14px 20px;
+      border-top: 1px solid #f1f5f9;
+      position: sticky;
+      bottom: 0;
+      background: var(--white);
+    }
+
     /* ── EDIT MODAL ── */
     .edit-modal-overlay {
       display: none;
@@ -730,6 +792,22 @@
 
 </div>
 
+<!-- VIEW SHEET -->
+<div class="view-sheet-overlay" id="viewSheet" onclick="if(event.target===this)closeViewSheet()">
+  <div class="view-sheet">
+    <div class="view-sheet-header">
+      <div class="biz-avatar">🏪</div>
+      <div>
+        <div class="view-sheet-title" id="vsTitle"></div>
+        <div class="view-sheet-meta"  id="vsMeta"></div>
+      </div>
+      <button class="view-sheet-close" onclick="closeViewSheet()">✕</button>
+    </div>
+    <div class="view-sheet-body" id="vsBody"></div>
+    <div class="view-sheet-actions" id="vsActions"></div>
+  </div>
+</div>
+
 <!-- EDIT MODAL -->
 <div class="edit-modal-overlay" id="editModal" onclick="if(event.target===this)closeEditModal()">
   <div class="edit-modal">
@@ -1028,13 +1106,121 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-function toggleCard(id) {
-  const body = document.getElementById('body-' + id);
-  const chev = document.getElementById('chev-' + id);
-  const open = body.classList.toggle('open');
-  chev.style.transform = open ? 'rotate(90deg)' : '';
-}
-window.toggleCard = toggleCard;
+window.openBizSheet = function(id) {
+  const b = businesses.find(x => x.id === id);
+  if (!b) return;
+
+  const ownerName  = `${b.ownerFirst || ''} ${b.ownerLast || ''}`.trim();
+  const types      = b.bizTypes || [];
+  const isPhysical = types.includes('physical');
+  const isOnline   = types.includes('online');
+  const isPro      = types.includes('pro');
+  const firstBranch = (b.branches || [])[0];
+  const typeStr    = types.map(t => BIZ_TYPE_LABELS[t]).filter(Boolean).join(' · ');
+  const metaStr    = [typeStr, firstBranch?.city].filter(Boolean).join(' · ') || (isOnline ? 'אונליין' : '—');
+
+  const m     = v => v ? v : '<span class="missing">לא מולא</span>';
+  const mDash = v => v ? v : '<span class="missing">—</span>';
+
+  const verHtml = b.isSubscriber === 'yes'
+    ? `<span class="ver-tag subscriber">מנוי · שער ${b.gate || '—'} · מס׳ ${b.subNum || '—'}</span>`
+    : b.isSubscriber === 'no'
+    ? `<span class="ver-tag photo">לא מנוי · ${b.fbUrl ? `<a href="${b.fbUrl}" target="_blank" style="color:inherit">פייסבוק ↗</a>` : 'ללא קישור פייסבוק'}</span>`
+    : '<span class="missing">לא נענה</span>';
+
+  const primCat = b.categoryPrimary || b.cat || '';
+  const secCats = b.categorySecondary || [];
+  const catHtml = primCat
+    ? `<span class="field-tag cat">⭐ ${CAT_LABELS_MAP[primCat] || primCat}</span>` +
+      secCats.map(c => `<span class="field-tag cat">${CAT_LABELS_MAP[c] || c}</span>`).join('')
+    : '<span class="missing">לא נבחר</span>';
+
+  const typeTagsHtml = types.length
+    ? types.map(t => `<span class="field-tag type">${BIZ_TYPE_LABELS[t] || t}</span>`).join('')
+    : '<span class="missing">לא נבחר</span>';
+
+  const regions = b.regions || [];
+  const regHtml = regions.length
+    ? regions.map(r => `<span class="field-tag region">${r}</span>`).join('')
+    : '<span class="missing">לא נבחר</span>';
+
+  const discHtml = b.hasDiscount
+    ? `<span class="discount-tag">💛 ${b.discountText || '—'}</span>` +
+      (b.discountType ? ` · ${b.discountType === 'online' ? 'אונליין' : 'פיזי'}` : '') +
+      (b.discountCode ? ` · קוד: <strong style="letter-spacing:1px">${b.discountCode}</strong>` : '')
+    : '<span class="missing">אין הטבה</span>';
+
+  document.getElementById('vsTitle').textContent = b.name || '—';
+  document.getElementById('vsMeta').innerHTML    = metaStr;
+
+  document.getElementById('vsBody').innerHTML = `
+    <div class="card-section">
+      <div class="card-section-title">👤 שלב 1 — בעל העסק</div>
+      <div class="detail-grid">
+        <div class="detail-item"><div class="lbl">שם</div><div class="val">${m(ownerName)}</div></div>
+        <div class="detail-item"><div class="lbl">טלפון</div><div class="val">${mDash(b.ownerPhone)}</div></div>
+        <div class="detail-item full"><div class="lbl">אימייל</div><div class="val">${mDash(b.ownerEmail)}</div></div>
+        <div class="detail-item full"><div class="lbl">אימות אוהד</div><div class="val">${verHtml}</div></div>
+        ${b.note ? `<div class="detail-item full"><div class="lbl">✉️ הערה מבעל העסק</div><div class="val desc" style="background:#FFFBEA;border:1.5px solid #E6C200;border-radius:8px;padding:8px 12px;color:#78590a;">${b.note}</div></div>` : ''}
+      </div>
+    </div>
+    <div class="card-section">
+      <div class="card-section-title">🏪 שלב 2 — פרטי העסק</div>
+      <div class="detail-grid">
+        <div class="detail-item full"><div class="lbl">סוג עסק</div><div class="val">${typeTagsHtml}</div></div>
+        <div class="detail-item full"><div class="lbl">שם העסק</div><div class="val">${m(b.name)}</div></div>
+        <div class="detail-item full"><div class="lbl">תיאור</div><div class="val desc">${m(b.desc)}</div></div>
+        ${isPhysical ? (b.branches && b.branches.length > 0 ? b.branches.map((br, i) => `
+        <div class="detail-item"><div class="lbl">${b.branches.length > 1 ? `סניף ${i+1} — עיר` : 'עיר'}</div><div class="val">${mDash(br.city)}</div></div>
+        <div class="detail-item"><div class="lbl">${b.branches.length > 1 ? `סניף ${i+1} — כתובת` : 'כתובת'}</div><div class="val">${mDash(br.address)}</div></div>`).join('') : `
+        <div class="detail-item"><div class="lbl">עיר</div><div class="val"><span class="missing">לא מולא</span></div></div>
+        <div class="detail-item"><div class="lbl">כתובת</div><div class="val"><span class="missing">לא מולא</span></div></div>`) : ''}
+        ${isOnline ? `<div class="detail-item full"><div class="lbl">אתר אונליין</div><div class="val">${b.websiteOnline ? `<a href="${b.websiteOnline.startsWith('http') ? b.websiteOnline : 'https://'+b.websiteOnline}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.websiteOnline}</a>` : '<span class="missing">לא מולא</span>'}</div></div>` : ''}
+        ${isPro ? `<div class="detail-item full"><div class="lbl">אזורי פעילות</div><div class="val">${regHtml}</div></div>` : ''}
+        <div class="detail-item"><div class="lbl">טלפון עסק</div><div class="val">${mDash(b.phone)}</div></div>
+        <div class="detail-item"><div class="lbl">WhatsApp</div><div class="val">${mDash(b.whatsapp)}</div></div>
+        <div class="detail-item full"><div class="lbl">מייל שירות לקוחות</div><div class="val">${mDash(b.serviceEmail)}</div></div>
+      </div>
+    </div>
+    <div class="card-section">
+      <div class="card-section-title">📋 שלב 3 — קטגוריה והטבה</div>
+      <div class="detail-grid">
+        <div class="detail-item full"><div class="lbl">קטגוריה</div><div class="val">${catHtml}</div></div>
+        <div class="detail-item full"><div class="lbl">הטבה</div><div class="val">${discHtml}</div></div>
+        <div class="detail-item full"><div class="lbl">שעות פעילות</div><div class="val">${mDash(b.hours)}</div></div>
+      </div>
+    </div>
+    <div class="card-section">
+      <div class="card-section-title">🔗 שלב 4 — קישורים דיגיטליים</div>
+      <div class="detail-grid">
+        <div class="detail-item full"><div class="lbl">אתר</div><div class="val">${b.website ? `<a href="${b.website.startsWith('http') ? b.website : 'https://'+b.website}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.website}</a>` : '<span class="missing">—</span>'}</div></div>
+        <div class="detail-item"><div class="lbl">אינסטגרם</div><div class="val">${b.instagram ? `<a href="https://instagram.com/${b.instagram.replace(/^@/,'')}" target="_blank" style="color:var(--blue);text-decoration:underline">@${b.instagram.replace(/^@/,'')}</a>` : '<span class="missing">—</span>'}</div></div>
+        <div class="detail-item"><div class="lbl">פייסבוק</div><div class="val">${b.facebook ? `<a href="https://facebook.com/${b.facebook}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.facebook}</a>` : '<span class="missing">—</span>'}</div></div>
+      </div>
+    </div>`;
+
+  // כפתורי פעולה
+  const editBtns = `
+    <button class="btn btn-edit"  onclick="closeViewSheet();openEditModal('${id}')">✏️ ערוך</button>
+    <button class="btn btn-media" onclick="closeViewSheet();openMediaModal('${id}')">📷 מדיה</button>`;
+  let actionsHtml = '';
+  if (b.status === 'pending') {
+    actionsHtml = `<button class="btn btn-approve" onclick="closeViewSheet();openModal('${id}')">✅ אשר עסק</button>${editBtns}<button class="btn btn-reject" onclick="closeViewSheet();rejectBiz('${id}')">✗ דחה</button><button class="btn btn-delete" onclick="closeViewSheet();deleteBiz('${id}')">🗑️ מחק</button>`;
+  } else if (b.status === 'approved') {
+    actionsHtml = `<button class="btn btn-wa" onclick="closeViewSheet();sendWA('${id}')">📲 WhatsApp</button><button class="btn btn-mail" onclick="closeViewSheet();sendMail('${id}')">✉️ מייל</button>${editBtns}<button class="btn btn-undo" onclick="closeViewSheet();rejectBiz('${id}')">↩ בטל</button><button class="btn btn-delete" onclick="closeViewSheet();deleteBiz('${id}')">🗑️ מחק</button>`;
+  } else {
+    actionsHtml = `<button class="btn btn-approve" onclick="closeViewSheet();openModal('${id}')">↩ אשר בכל זאת</button>${editBtns}<button class="btn btn-delete" onclick="closeViewSheet();deleteBiz('${id}')">🗑️ מחק</button>`;
+  }
+  document.getElementById('vsActions').innerHTML = actionsHtml;
+
+  document.getElementById('viewSheet').classList.add('open');
+  document.body.style.overflow = 'hidden';
+};
+
+window.closeViewSheet = function() {
+  document.getElementById('viewSheet').classList.remove('open');
+  document.body.style.overflow = '';
+};
 
 // ── stats ─────────────────────────────────────────────────────────────────────
 function updateStats() {
@@ -1078,71 +1264,10 @@ function render() {
       ? `<span class="pill sub">מנוי</span>`
       : `<span class="pill nosub">לא מנוי</span>`;
 
-    // helpers
-    const m = v => v ? v : '<span class="missing">לא מולא</span>';
-    const mDash = v => v ? v : '<span class="missing">—</span>';
-
-    // אימות
-    const verHtml = b.isSubscriber === 'yes'
-      ? `<span class="ver-tag subscriber">מנוי · שער ${b.gate || '—'} · מס׳ ${b.subNum || '—'}</span>`
-      : b.isSubscriber === 'no'
-      ? `<span class="ver-tag photo">לא מנוי · ${b.fbUrl ? `<a href="${b.fbUrl}" target="_blank" style="color:inherit">פייסבוק ↗</a>` : 'ללא קישור פייסבוק'}</span>`
-      : '<span class="missing">לא נענה</span>';
-
-    // קטגוריה
-    const primCat = b.categoryPrimary || b.cat || '';
-    const secCats = b.categorySecondary || [];
-    const catHtml = primCat
-      ? `<span class="field-tag cat">⭐ ${CAT_LABELS_MAP[primCat] || primCat}</span>` +
-        secCats.map(c => `<span class="field-tag cat">${CAT_LABELS_MAP[c] || c}</span>`).join('')
-      : '<span class="missing">לא נבחר</span>';
-
-    // סוג עסק
-    const typeTagsHtml = types.length
-      ? types.map(t => `<span class="field-tag type">${BIZ_TYPE_LABELS[t] || t}</span>`).join('')
-      : '<span class="missing">לא נבחר</span>';
-
-    // אזורי פעילות
-    const regions    = b.regions || [];
-    const regHtml    = regions.length
-      ? regions.map(r => `<span class="field-tag region">${r}</span>`).join('')
-      : '<span class="missing">לא נבחר</span>';
-
-    // הטבה
-    const discHtml = b.hasDiscount
-      ? `<span class="discount-tag">💛 ${b.discountText || '—'}</span>` +
-        (b.discountType ? ` · ${b.discountType === 'online' ? 'אונליין' : 'פיזי'}` : '') +
-        (b.discountCode ? ` · קוד: <strong style="letter-spacing:1px">${b.discountCode}</strong>` : '')
-      : '<span class="missing">אין הטבה</span>';
-
-    const editBtns = `
-      <button class="btn btn-edit"  onclick="openEditModal('${b.id}');event.stopPropagation()">✏️ ערוך</button>
-      <button class="btn btn-media" onclick="openMediaModal('${b.id}');event.stopPropagation()">📷 מדיה</button>`;
-
-    const actions = b.status === 'pending' ? `
-      <div class="card-actions">
-        <button class="btn btn-approve" onclick="openModal('${b.id}')">✅ אשר עסק</button>
-        ${editBtns}
-        <button class="btn btn-reject"  onclick="rejectBiz('${b.id}')">✗ דחה</button>
-        <button class="btn btn-delete"  onclick="deleteBiz('${b.id}')">🗑️ מחק</button>
-      </div>`
-    : b.status === 'approved' ? `
-      <div class="card-actions">
-        <button class="btn btn-wa"   onclick="sendWA('${b.id}')">📲 WhatsApp</button>
-        <button class="btn btn-mail" onclick="sendMail('${b.id}')">✉️ מייל</button>
-        ${editBtns}
-        <button class="btn btn-undo" onclick="rejectBiz('${b.id}')">↩ בטל</button>
-        <button class="btn btn-delete" onclick="deleteBiz('${b.id}')">🗑️ מחק</button>
-      </div>`
-    : `<div class="card-actions">
-        <button class="btn btn-approve" onclick="openModal('${b.id}')">↩ אשר בכל זאת</button>
-        ${editBtns}
-        <button class="btn btn-delete" onclick="deleteBiz('${b.id}')">🗑️ מחק</button>
-      </div>`;
 
     return `
-    <div class="biz-card ${b.status}">
-      <div class="card-header" onclick="toggleCard('${b.id}')">
+    <div class="biz-card ${b.status}" onclick="openBizSheet('${b.id}')" style="cursor:pointer;">
+      <div class="card-header">
         <div class="biz-avatar">🏪</div>
         <div class="card-info">
           <div class="card-name">${b.name || '—'}</div>
@@ -1150,65 +1275,7 @@ function render() {
         </div>
         ${subPill}
         ${statusChip(b)}
-        <span class="chevron" id="chev-${b.id}">›</span>
-      </div>
-      <div class="card-body" id="body-${b.id}">
-
-        <!-- שלב 1 — בעל העסק -->
-        <div class="card-section">
-          <div class="card-section-title">👤 שלב 1 — בעל העסק</div>
-          <div class="detail-grid">
-            <div class="detail-item"><div class="lbl">שם</div><div class="val">${m(ownerName)}</div></div>
-            <div class="detail-item"><div class="lbl">טלפון</div><div class="val">${mDash(b.ownerPhone)}</div></div>
-            <div class="detail-item full"><div class="lbl">אימייל</div><div class="val">${mDash(b.ownerEmail)}</div></div>
-            <div class="detail-item full"><div class="lbl">אימות אוהד</div><div class="val">${verHtml}</div></div>
-            ${b.note ? `<div class="detail-item full"><div class="lbl">✉️ הערה מבעל העסק</div><div class="val desc" style="background:#FFFBEA;border:1.5px solid #E6C200;border-radius:8px;padding:8px 12px;color:#78590a;">${b.note}</div></div>` : ''}
-          </div>
-        </div>
-
-        <!-- שלב 2 — פרטי העסק -->
-        <div class="card-section">
-          <div class="card-section-title">🏪 שלב 2 — פרטי העסק</div>
-          <div class="detail-grid">
-            <div class="detail-item full"><div class="lbl">סוג עסק</div><div class="val">${typeTagsHtml}</div></div>
-            <div class="detail-item full"><div class="lbl">שם העסק</div><div class="val">${m(b.name)}</div></div>
-            <div class="detail-item full"><div class="lbl">תיאור</div><div class="val desc">${m(b.desc)}</div></div>
-            ${isPhysical ? (b.branches && b.branches.length > 0 ? b.branches.map((br, i) => `
-            <div class="detail-item"><div class="lbl">${b.branches.length > 1 ? `סניף ${i+1} — עיר` : 'עיר'}</div><div class="val">${mDash(br.city)}</div></div>
-            <div class="detail-item"><div class="lbl">${b.branches.length > 1 ? `סניף ${i+1} — כתובת` : 'כתובת'}</div><div class="val">${mDash(br.address)}</div></div>`).join('') : `
-            <div class="detail-item"><div class="lbl">עיר</div><div class="val"><span class="missing">לא מולא</span></div></div>
-            <div class="detail-item"><div class="lbl">כתובת</div><div class="val"><span class="missing">לא מולא</span></div></div>`) : ''}
-            ${isOnline ? `
-            <div class="detail-item full"><div class="lbl">אתר אונליין</div><div class="val">${b.websiteOnline ? `<a href="${b.websiteOnline.startsWith('http') ? b.websiteOnline : 'https://'+b.websiteOnline}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.websiteOnline}</a>` : '<span class="missing">לא מולא</span>'}</div></div>` : ''}
-            ${isPro ? `
-            <div class="detail-item full"><div class="lbl">אזורי פעילות</div><div class="val">${regHtml}</div></div>` : ''}
-            <div class="detail-item"><div class="lbl">טלפון עסק</div><div class="val">${mDash(b.phone)}</div></div>
-            <div class="detail-item"><div class="lbl">WhatsApp</div><div class="val">${mDash(b.whatsapp)}</div></div>
-            <div class="detail-item full"><div class="lbl">מייל שירות לקוחות</div><div class="val">${mDash(b.serviceEmail)}</div></div>
-          </div>
-        </div>
-
-        <!-- שלב 3 — קטגוריה והטבה -->
-        <div class="card-section">
-          <div class="card-section-title">📋 שלב 3 — קטגוריה והטבה</div>
-          <div class="detail-grid">
-            <div class="detail-item full"><div class="lbl">קטגוריה</div><div class="val">${catHtml}</div></div>
-            <div class="detail-item full"><div class="lbl">הטבה</div><div class="val">${discHtml}</div></div>
-            <div class="detail-item full"><div class="lbl">שעות פעילות</div><div class="val">${mDash(b.hours)}</div></div>
-          </div>
-        </div>
-
-        <!-- שלב 4 — קישורים -->
-        <div class="card-section">
-          <div class="card-section-title">🔗 שלב 4 — קישורים דיגיטליים</div>
-          <div class="detail-grid">
-            <div class="detail-item full"><div class="lbl">אתר</div><div class="val">${b.website ? `<a href="${b.website.startsWith('http') ? b.website : 'https://'+b.website}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.website}</a>` : '<span class="missing">—</span>'}</div></div>
-            <div class="detail-item"><div class="lbl">אינסטגרם</div><div class="val">${b.instagram ? `<a href="https://instagram.com/${b.instagram.replace(/^@/,'')}" target="_blank" style="color:var(--blue);text-decoration:underline">@${b.instagram.replace(/^@/,'')}</a>` : '<span class="missing">—</span>'}</div></div>
-            <div class="detail-item"><div class="lbl">פייסבוק</div><div class="val">${b.facebook ? `<a href="https://facebook.com/${b.facebook}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.facebook}</a>` : '<span class="missing">—</span>'}</div></div>
-          </div>
-        </div>
-
-        ${actions}
+        <span class="chevron">›</span>
       </div>
     </div>`;
   }).join('');
