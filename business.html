@@ -1161,6 +1161,16 @@
     const desc    = document.getElementById('bizDesc').value.trim();
 
     let ok = true;
+
+    // סוג עסק — חובה
+    const bizTypeErr = document.getElementById('err-bizType');
+    if (selectedBizTypes.size === 0) {
+      if (bizTypeErr) bizTypeErr.style.display = 'block';
+      ok = false;
+    } else {
+      if (bizTypeErr) bizTypeErr.style.display = 'none';
+    }
+
     ok = vf('bizName',    name.length >= 2)    && ok;
     ok = vf('bizDesc',    desc.length >= 10)   && ok;
 
@@ -1171,6 +1181,23 @@
       errEl.style.display = branchesOk ? 'none' : 'block';
       ok = branchesOk && ok;
     }
+
+    if (selectedBizTypes.has('online')) {
+      const ws = document.getElementById('bizWebsiteStep2').value.trim();
+      ok = vf('bizWebsiteStep2', ws.length >= 5) && ok;
+    }
+
+    if (selectedBizTypes.has('pro')) {
+      const regionCount = document.querySelectorAll('#regionGrid .region-chip.selected').length;
+      const regionErr = document.getElementById('err-bizRegions');
+      if (regionCount === 0) {
+        if (regionErr) regionErr.style.display = 'block';
+        ok = false;
+      } else {
+        if (regionErr) regionErr.style.display = 'none';
+      }
+    }
+
     return ok;
   }
 
@@ -1195,12 +1222,24 @@
   }
 
   function goNext(fromStep) {
+    let valid = true;
+    if (fromStep === 1) valid = validateStep1();
+    if (fromStep === 2) valid = validateStep2();
+    if (fromStep === 3) valid = validateStep3();
+    if (!valid) {
+      const firstErr = document.querySelector('#step' + fromStep + ' .error, #step' + fromStep + ' .field-error[style*="block"]');
+      if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     if (fromStep === 3) buildSummary();
     showStep(fromStep + 1);
   }
 
   // ── SUBMIT ──
   async function handleSubmit() {
+    if (!validateStep1() || !validateStep2() || !validateStep3()) {
+      return;
+    }
     const btn = document.getElementById('submitBtn');
     btn.disabled = true;
     btn.innerHTML = 'שולח... <span class="spinner"></span>';
@@ -1564,6 +1603,15 @@
     document.getElementById('bizSubscriberFields').style.display = val === 'yes' ? 'block' : 'none';
     document.getElementById('bizNonSubFields').style.display     = val === 'no'  ? 'block' : 'none';
   }
+
+  // ── CLEAR ERRORS ON INPUT ──
+  document.querySelectorAll('input, select, textarea').forEach(el => {
+    el.addEventListener('input', () => {
+      el.classList.remove('error');
+      const err = document.getElementById('err-' + el.id);
+      if (err) err.style.display = 'none';
+    });
+  });
 
   // ── IMAGE PREVIEW ──
   function previewImages(inputId, previewId, maxCount) {
