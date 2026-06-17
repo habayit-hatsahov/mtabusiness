@@ -405,11 +405,11 @@
   <div class="stats-row">
     <div class="stat-card">
       <div class="num" id="statTotal">0</div>
-      <div class="lbl">אוהדים נרשמו</div>
+      <div class="lbl">סה"כ נרשמו<br/><span style="font-size:10px;color:#aaa" id="statPrimLbl"></span></div>
     </div>
     <div class="stat-card family">
       <div class="num" id="statFamily">0</div>
-      <div class="lbl">בני משפחה</div>
+      <div class="lbl">מתוכם בני משפחה</div>
     </div>
     <div class="stat-card pending">
       <div class="num" id="statPending">0</div>
@@ -682,10 +682,13 @@ function buildFamilyMail(f, primaryName) {
 
 // ── stats ─────────────────────────────────────────────────────────────────────
 function updateStats() {
-  const totalFam = members.reduce((s,m) => s + (m.familyMembers?.length || 0), 0);
-  document.getElementById('statTotal').textContent    = members.length;
+  const totalFam  = members.reduce((s,m) => s + (m.familyMembers?.length || 0), 0);
+  const totalAll  = members.length + totalFam;
+  const pendingFam = members.filter(m => m.status === 'pending').reduce((s,m) => s + (m.familyMembers?.length||0), 0);
+  document.getElementById('statTotal').textContent    = totalAll;
+  document.getElementById('statPrimLbl').textContent  = `${members.length} אוהדים + ${totalFam} בני משפחה`;
   document.getElementById('statFamily').textContent   = totalFam;
-  document.getElementById('statPending').textContent  = members.filter(m => m.status === 'pending').length;
+  document.getElementById('statPending').textContent  = members.filter(m => m.status === 'pending').length + pendingFam;
   document.getElementById('statApproved').textContent = members.filter(m => m.status === 'approved').length;
 }
 
@@ -773,13 +776,18 @@ document.querySelector('.filter-bar').addEventListener('click', e => {
   if (btn.dataset.val !== undefined) {
     activeFilter = btn.dataset.val;
     document.querySelectorAll('[data-val]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
   } else {
     const newSub = btn.dataset.sub;
-    if (activeSub === newSub) { activeSub = 'all'; btn.classList.remove('active'); render(); return; }
-    activeSub = newSub;
-    document.querySelectorAll('[data-sub]').forEach(b => b.classList.remove('active'));
+    if (activeSub === newSub) {
+      activeSub = 'all';
+      btn.classList.remove('active');
+    } else {
+      activeSub = newSub;
+      document.querySelectorAll('[data-sub]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
   }
-  btn.classList.add('active');
   render();
 });
 document.getElementById('searchInput').addEventListener('input', render);
@@ -869,10 +877,9 @@ window.openMemberSheet = function(id) {
     <div class="card-section">
       <div class="card-section-title">👤 פרטים אישיים</div>
       <div class="detail-grid">
-        <div class="detail-item"><div class="lbl">תאריך הרשמה</div><div class="val">${fmtDate(m.submittedAt)||'—'}</div></div>
-        ${m.status==='approved' ? `<div class="detail-item"><div class="lbl">תאריך אישור</div><div class="val">${fmtDate(m.approvedAt)||'—'}</div></div>` : '<div class="detail-item"></div>'}
         <div class="detail-item"><div class="lbl">טלפון</div><div class="val">${ms(m.phone)}</div></div>
-        <div class="detail-item"><div class="lbl">אימייל</div><div class="val">${ms(m.email)}</div></div>
+        <div class="detail-item"><div class="lbl">אימייל · ${fmtDate(m.submittedAt)||'—'}</div><div class="val">${ms(m.email)}</div></div>
+        ${m.status==='approved' ? `<div class="detail-item full"><div class="lbl">תאריך אישור</div><div class="val">${fmtDate(m.approvedAt)||'—'}</div></div>` : ''}
         <div class="detail-item full"><div class="lbl">בעל עסק?</div><div class="val">${bizOwnerVal}</div></div>
       </div>
     </div>
