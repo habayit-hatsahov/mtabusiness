@@ -401,47 +401,54 @@
 
 <div class="toast" id="toast"></div>
 
-<script>
-const now = new Date();
-const h   = n => new Date(now - n * 3600000).toISOString().slice(0,16).replace('T',' ');
+<script type="module">
+import { db } from './firebase-config.js';
+import {
+  collection, onSnapshot, doc, updateDoc, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
-let members = [
-  { id:1, status:'pending',  firstName:'יוסי',  lastName:'כהן',    phone:'052-1234567', email:'yossi@gmail.com',  isSubscriber:'yes', subscriberSection:'8',  subscriberNumber:'4521', registeredAt:h(2)  },
-  { id:2, status:'pending',  firstName:'מיכל',  lastName:'לוי',    phone:'054-9876543', email:'michal@gmail.com', isSubscriber:'no',  wasSubscriber:'yes', facebook:'https://facebook.com/michal.levi', registeredAt:h(18) },
-  { id:3, status:'approved', firstName:'דני',   lastName:'אברהם',  phone:'050-3334444', email:'danny@walla.com',  isSubscriber:'yes', subscriberSection:'11', subscriberNumber:'7890', registeredAt:h(50), approvedAt:h(48) },
-  { id:4, status:'pending',  firstName:'רון',   lastName:'שפירא',  phone:'058-5556666', email:'ron@gmail.com',    isSubscriber:'no',  wasSubscriber:'no',  facebook:'https://facebook.com/ron.shapira', registeredAt:h(36) }
-];
+let members      = [];
+let activeFilter = 'all';
+let pendingId    = null;
 
-let activeFilter  = 'all';
-let pendingId     = null;
-
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 function nowStr() {
   return new Date().toLocaleDateString('he-IL') + ' ' +
          new Date().toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' });
 }
 
-function timeAgo(s) {
-  const m = Math.floor((Date.now() - new Date(s.replace(' ','T'))) / 60000);
+function toDate(v) {
+  if (!v) return new Date(0);
+  return v.toDate ? v.toDate() : new Date(v);
+}
+
+function timeAgo(v) {
+  const m = Math.floor((Date.now() - toDate(v)) / 60000);
   if (m < 60)   return m + ' דק\'';
   if (m < 1440) return Math.floor(m/60) + ' שע\'';
   return Math.floor(m/1440) + ' ימים';
 }
 
-function waitingChip(s) {
-  const h = (Date.now() - new Date(s.replace(' ','T'))) / 3600000;
+function waitingChip(v) {
+  const h = (Date.now() - toDate(v)) / 3600000;
   const [cls, icon] = h < 6 ? ['fresh','🟢'] : h < 24 ? ['medium','🟠'] : ['long','🔴'];
-  return `<span class="chip ${cls}">${icon} ממתין ${timeAgo(s)}</span>`;
+  return `<span class="chip ${cls}">${icon} ממתין ${timeAgo(v)}</span>`;
+}
+
+function fmtDate(v) {
+  if (!v) return '';
+  return toDate(v).toLocaleDateString('he-IL') + ' ' +
+         toDate(v).toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' });
 }
 
 function statusChip(m) {
-  if (m.status === 'approved') return `<span class="chip approved">✓ אושר ב־${m.approvedAt}</span>`;
-  if (m.status === 'rejected') return `<span class="chip rejected">✗ נדחה${m.rejectedAt ? ' ב־' + m.rejectedAt : ''}</span>`;
-  return waitingChip(m.registeredAt);
+  if (m.status === 'approved') return `<span class="chip approved">✓ אושר ב־${fmtDate(m.approvedAt)}</span>`;
+  if (m.status === 'rejected') return `<span class="chip rejected">✗ נדחה${m.rejectedAt ? ' ב־' + fmtDate(m.rejectedAt) : ''}</span>`;
+  return waitingChip(m.submittedAt);
 }
 
 function verTag(m) {
-  if (m.isSubscriber === 'yes')
+  if (m.isSubscriber)
     return `<span class="ver-tag subscriber">מנוי שער ${m.subscriberSection} · #${m.subscriberNumber}</span>`;
   if (m.wasSubscriber === 'yes')
     return `<span class="ver-tag past">מנוי לשעבר · יש תמונה</span>`;
@@ -449,7 +456,7 @@ function verTag(m) {
 }
 
 function verInline(m) {
-  return m.isSubscriber === 'yes'
+  return m.isSubscriber
     ? `<span class="ver-pill sub">מנוי</span>`
     : `<span class="ver-pill photo">לא מנוי</span>`;
 }
@@ -461,16 +468,16 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-function toggleCard(id) {
+window.toggleCard = function(id) {
   const body = document.getElementById('body-' + id);
   const chev = document.getElementById('chev-' + id);
   const open = body.classList.toggle('open');
   chev.style.transform = open ? 'rotate(90deg)' : '';
-}
+};
 
 // ── stats ─────────────────────────────────────────────────────────────────────
 function updateStats() {
-  document.getElementById('statTotal').textContent   = members.length;
+  document.getElementById('statTotal').textContent    = members.length;
   document.getElementById('statPending').textContent  = members.filter(m => m.status === 'pending').length;
   document.getElementById('statApproved').textContent = members.filter(m => m.status === 'approved').length;
 }
@@ -482,7 +489,7 @@ function render() {
     const matchF = activeFilter === 'all' || m.status === activeFilter;
     const matchS = !search ||
       (m.firstName + ' ' + m.lastName).toLowerCase().includes(search) ||
-      m.phone.includes(search);
+      (m.phone || '').includes(search);
     return matchF && matchS;
   });
 
@@ -495,33 +502,31 @@ function render() {
     return;
   }
 
-  const statusLabel = { pending:'ממתין', approved:'מאושר ✓', rejected:'נדחה' };
-
   list.innerHTML = filtered.map(m => {
-    const initials = m.firstName[0] + m.lastName[0];
+    const initials = (m.firstName?.[0] || '') + (m.lastName?.[0] || '');
 
     const actions = m.status === 'pending' ? `
       <div class="card-actions">
-        <button class="btn btn-approve" onclick="openModal(${m.id})">✅ אשר חבר</button>
-        <button class="btn btn-reject"  onclick="rejectMember(${m.id})">✗ דחה</button>
+        <button class="btn btn-approve" onclick="openModal('${m.id}')">✅ אשר חבר</button>
+        <button class="btn btn-reject"  onclick="rejectMember('${m.id}')">✗ דחה</button>
       </div>`
     : m.status === 'approved' ? `
       <div class="card-actions">
-        <button class="btn btn-wa"   onclick="sendWA(${m.id})">📲 WhatsApp</button>
-        <button class="btn btn-mail" onclick="sendMail(${m.id})">✉️ מייל</button>
-        <button class="btn btn-undo" onclick="rejectMember(${m.id})">↩ בטל אישור</button>
+        <button class="btn btn-wa"   onclick="sendWA('${m.id}')">📲 WhatsApp</button>
+        <button class="btn btn-mail" onclick="sendMail('${m.id}')">✉️ מייל</button>
+        <button class="btn btn-undo" onclick="rejectMember('${m.id}')">↩ בטל אישור</button>
       </div>`
     : `<div class="card-actions">
-        <button class="btn btn-approve" onclick="openModal(${m.id})">↩ אשר בכל זאת</button>
+        <button class="btn btn-approve" onclick="openModal('${m.id}')">↩ אשר בכל זאת</button>
       </div>`;
 
     return `
     <div class="member-card ${m.status}">
-      <div class="card-header" onclick="toggleCard(${m.id})">
+      <div class="card-header" onclick="toggleCard('${m.id}')">
         <div class="avatar">${initials}</div>
         <div class="card-info">
           <div class="card-name">${m.firstName} ${m.lastName}</div>
-          <div class="card-meta">${m.phone} · ${m.email}</div>
+          <div class="card-meta">${m.phone || ''} · ${m.email || ''}</div>
         </div>
         ${verInline(m)}
         ${statusChip(m)}
@@ -531,20 +536,30 @@ function render() {
         <div class="detail-grid">
           <div class="detail-item">
             <div class="lbl">טלפון</div>
-            <div class="val">${m.phone}</div>
+            <div class="val">${m.phone || '—'}</div>
           </div>
           <div class="detail-item">
             <div class="lbl">אימייל</div>
-            <div class="val">${m.email}</div>
+            <div class="val">${m.email || '—'}</div>
           </div>
           <div class="detail-item full">
             <div class="lbl">אימות אוהד</div>
             <div class="val">${verTag(m)}</div>
           </div>
-          ${m.facebook ? `
+          ${m.facebookUrl ? `
           <div class="detail-item full">
             <div class="lbl">פייסבוק</div>
-            <div class="val"><a href="${m.facebook}" target="_blank" style="color:var(--blue)">${m.facebook}</a></div>
+            <div class="val"><a href="${m.facebookUrl}" target="_blank" style="color:var(--blue)">${m.facebookUrl}</a></div>
+          </div>` : ''}
+          ${m.isBusinessOwner ? `
+          <div class="detail-item full">
+            <div class="lbl">בעל עסק</div>
+            <div class="val">✅ מעוניין לרשום עסק</div>
+          </div>` : ''}
+          ${m.familyMembers?.length ? `
+          <div class="detail-item full">
+            <div class="lbl">בני משפחה (${m.familyMembers.length})</div>
+            <div class="val">${m.familyMembers.map(f => `${f.name} (${f.relation})`).join(' · ')}</div>
           </div>` : ''}
         </div>
         ${actions}
@@ -574,61 +589,68 @@ function buildMail(m) {
   return `שלום ${m.firstName},\n\nשמחים לבשר שהצטרפותך לבית הצהוב אושרה!\n\nמצורפים:\n• לינק כניסה אישי לאתר\n• לינק לקהילת הווטסאפ\n• תעודת חבר דיגיטלית\n\nבאהבה,\nצוות הבית הצהוב 💛`;
 }
 
-function openModal(id) {
+window.openModal = function(id) {
   pendingId = id;
   const m = members.find(x => x.id === id);
-  document.getElementById('modalSub').textContent   = `${m.firstName} ${m.lastName} · ${m.phone}`;
+  document.getElementById('modalSub').textContent    = `${m.firstName} ${m.lastName} · ${m.phone}`;
   document.getElementById('waPreview').textContent   = buildWA(m);
   document.getElementById('mailPreview').textContent = buildMail(m);
   document.getElementById('approveModal').classList.add('open');
-}
+};
 
-function closeModal() {
+window.closeModal = function() {
   document.getElementById('approveModal').classList.remove('open');
   pendingId = null;
-}
+};
 
-document.getElementById('confirmBtn').addEventListener('click', () => {
-  const m      = members.find(x => x.id === pendingId);
-  m.status     = 'approved';
-  m.approvedAt = nowStr();
-  delete m.rejectedAt;
-  closeModal();
-  sendWA(m.id);
-  showToast(`✅ ${m.firstName} ${m.lastName} אושר/ה!`);
-  render();
+document.getElementById('confirmBtn').addEventListener('click', async () => {
+  const m = members.find(x => x.id === pendingId);
+  try {
+    await updateDoc(doc(db, 'members', pendingId), {
+      status: 'approved',
+      approvedAt: serverTimestamp(),
+      rejectedAt: null,
+    });
+    closeModal();
+    window.sendWA(pendingId);
+    showToast(`✅ ${m.firstName} ${m.lastName} אושר/ה!`);
+  } catch(e) {
+    console.error(e);
+    showToast('שגיאה בעדכון');
+  }
 });
 
-function rejectMember(id) {
+window.rejectMember = async function(id) {
   const m    = members.find(x => x.id === id);
   const name = `${m.firstName} ${m.lastName}`;
   if (m.status === 'approved') {
     if (!confirm(`לבטל אישור של ${name}?`)) return;
-    m.status = 'pending';
-    delete m.approvedAt;
+    await updateDoc(doc(db, 'members', id), { status: 'pending', approvedAt: null });
     showToast(`↩ אישור בוטל — ${name} חזר/ה להמתנה`);
   } else {
     if (!confirm(`לדחות את ${name}?`)) return;
-    m.status     = 'rejected';
-    m.rejectedAt = nowStr();
+    await updateDoc(doc(db, 'members', id), { status: 'rejected', rejectedAt: serverTimestamp() });
     showToast('הבקשה נדחתה');
   }
-  render();
-}
+};
 
-function sendWA(id) {
+window.sendWA = function(id) {
   const m  = members.find(x => x.id === id);
-  const ph = m.phone.replace(/\D/g,'');
+  const ph = (m.phone || '').replace(/\D/g,'');
   window.open(`https://wa.me/${ph.startsWith('0') ? '972'+ph.slice(1) : ph}?text=${encodeURIComponent(buildWA(m))}`, '_blank');
-}
+};
 
-function sendMail(id) {
+window.sendMail = function(id) {
   const m = members.find(x => x.id === id);
   window.open(`mailto:${m.email}?subject=${encodeURIComponent('ברוך הבא לבית הצהוב 💛')}&body=${encodeURIComponent(buildMail(m))}`, '_blank');
-}
+};
 
-// ── init ──────────────────────────────────────────────────────────────────────
-render();
+// ── Firestore listener ────────────────────────────────────────────────────────
+onSnapshot(collection(db, 'members'), snap => {
+  members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  members.sort((a, b) => toDate(b.submittedAt) - toDate(a.submittedAt));
+  render();
+});
 </script>
 
 <!-- DEV ONLY -->
