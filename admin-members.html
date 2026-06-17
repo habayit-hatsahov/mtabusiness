@@ -114,6 +114,23 @@
 
     .chevron { color: #cbd5e1; font-size: 16px; flex-shrink: 0; }
 
+    /* ── CARD QUICK ACTIONS ── */
+    .card-quick-actions {
+      display: flex; gap: 6px; padding: 0 14px 10px; flex-wrap: wrap;
+    }
+    .cqa-btn {
+      padding: 5px 12px; border-radius: 8px; border: none; cursor: pointer;
+      font-family: 'Heebo', sans-serif; font-size: 12px; font-weight: 700;
+      transition: transform .12s; flex-shrink: 0;
+    }
+    .cqa-btn:active { transform: scale(.95); }
+    .cqa-approve { background: linear-gradient(135deg, #16a34a, #15803d); color: #fff; }
+    .cqa-reject  { background: var(--slate-bg); color: var(--slate); }
+    .cqa-undo    { background: var(--slate-bg); color: var(--slate); }
+    .cqa-delete  { background: #fef2f2; color: #b45309; }
+    .cqa-wa      { background: linear-gradient(135deg, #25D366, #128C7E); color: #fff; }
+    .cqa-mail    { background: linear-gradient(135deg, var(--blue), var(--blue-mid)); color: #fff; }
+
     /* ── FAMILY BAR (within card) ── */
     .family-bar { padding: 0 14px 10px; display: flex; flex-direction: column; gap: 4px; }
     .family-sub {
@@ -409,6 +426,8 @@
     <button class="filter-btn" data-val="pending">ממתינים</button>
     <button class="filter-btn" data-val="approved">מאושרים</button>
     <button class="filter-btn" data-val="rejected">נדחו</button>
+    <button class="filter-btn" data-sub="sub">מנוי</button>
+    <button class="filter-btn" data-sub="nosub">לא מנוי</button>
     <input class="search-box" type="search" id="searchInput" placeholder="🔍  חיפוש שם / טלפון..." />
   </div>
 
@@ -607,6 +626,7 @@ import {
 
 let members      = [];
 let activeFilter = 'all';
+let activeSub    = 'all'; // 'all' | 'sub' | 'nosub'
 let approvingId  = null;
 
 const REL_LABELS = { spouse:'בן/בת זוג', child:'ילד/ה', parent:'הורה', sibling:'אח/אחות', other:'אחר' };
@@ -674,10 +694,11 @@ function render() {
   const search   = document.getElementById('searchInput').value.trim().toLowerCase();
   const filtered = members.filter(m => {
     const matchF = activeFilter === 'all' || m.status === activeFilter;
+    const matchSub = activeSub === 'all' || (activeSub === 'sub' ? m.isSubscriber === true : m.isSubscriber !== true);
     const fullName = `${m.firstName||''} ${m.lastName||''}`.toLowerCase();
     const famNames = (m.familyMembers||[]).map(f => (f.name||'').toLowerCase()).join(' ');
     const matchS = !search || fullName.includes(search) || (m.phone||'').includes(search) || famNames.includes(search);
-    return matchF && matchS;
+    return matchF && matchSub && matchS;
   });
 
   updateStats();
@@ -706,6 +727,27 @@ function render() {
         }).join('')}
       </div>` : '';
 
+    let quickActions = '';
+    if (m.status === 'pending') {
+      quickActions = `<div class="card-quick-actions">
+        <button class="cqa-btn cqa-approve" onclick="event.stopPropagation();openApproveModal('${m.id}')">✅ אשר</button>
+        <button class="cqa-btn cqa-reject"  onclick="event.stopPropagation();rejectMember('${m.id}')">✗ דחה</button>
+        <button class="cqa-btn cqa-delete"  onclick="event.stopPropagation();deleteMember('${m.id}')">🗑️</button>
+      </div>`;
+    } else if (m.status === 'approved') {
+      quickActions = `<div class="card-quick-actions">
+        <button class="cqa-btn cqa-wa"   onclick="event.stopPropagation();sendWA('${m.id}')">📲 WA</button>
+        <button class="cqa-btn cqa-mail" onclick="event.stopPropagation();sendMail('${m.id}')">✉️ מייל</button>
+        <button class="cqa-btn cqa-undo" onclick="event.stopPropagation();rejectMember('${m.id}')">↩ בטל</button>
+        <button class="cqa-btn cqa-delete" onclick="event.stopPropagation();deleteMember('${m.id}')">🗑️</button>
+      </div>`;
+    } else {
+      quickActions = `<div class="card-quick-actions">
+        <button class="cqa-btn cqa-approve" onclick="event.stopPropagation();openApproveModal('${m.id}')">↩ אשר</button>
+        <button class="cqa-btn cqa-delete"  onclick="event.stopPropagation();deleteMember('${m.id}')">🗑️</button>
+      </div>`;
+    }
+
     return `
     <div class="member-card ${m.status}" onclick="openMemberSheet('${m.id}')">
       <div class="card-header">
@@ -719,16 +761,24 @@ function render() {
         <span class="chevron">›</span>
       </div>
       ${famBar}
+      ${quickActions}
     </div>`;
   }).join('');
 }
 
 // ── filter + search ───────────────────────────────────────────────────────────
 document.querySelector('.filter-bar').addEventListener('click', e => {
-  const btn = e.target.closest('[data-val]');
+  const btn = e.target.closest('[data-val],[data-sub]');
   if (!btn) return;
-  activeFilter = btn.dataset.val;
-  document.querySelectorAll('[data-val]').forEach(b => b.classList.remove('active'));
+  if (btn.dataset.val !== undefined) {
+    activeFilter = btn.dataset.val;
+    document.querySelectorAll('[data-val]').forEach(b => b.classList.remove('active'));
+  } else {
+    const newSub = btn.dataset.sub;
+    if (activeSub === newSub) { activeSub = 'all'; btn.classList.remove('active'); render(); return; }
+    activeSub = newSub;
+    document.querySelectorAll('[data-sub]').forEach(b => b.classList.remove('active'));
+  }
   btn.classList.add('active');
   render();
 });
@@ -801,37 +851,34 @@ window.openMemberSheet = function(id) {
     ? '✅ כן, מעוניין לרשום עסק'
     : m.isBusinessOwner === false ? 'לא' : '<span class="missing">לא צוין</span>';
 
+  // build auth line — single compact row
+  let authLine = '';
+  if (m.isSubscriber === true) {
+    authLine = `<span class="ver-tag subscriber">✓ מנוי פעיל</span>
+      <span style="font-size:13px;font-weight:600;color:#374151;margin-right:8px;">שער ${m.subscriberSection||'—'} · מס׳ ${m.subscriberNumber||'—'}</span>`;
+  } else if (m.isSubscriber === false) {
+    const extra = m.wasSubscriber === 'yes' ? ' · מנוי לשעבר' : m.wasSubscriber === 'no' ? ' · לא מנוי לשעבר' : '';
+    authLine = `<span class="ver-tag photo">לא מנוי${extra}</span>`;
+    if (m.facebookUrl) authLine += ` <a href="${m.facebookUrl}" target="_blank" style="font-size:12px;color:var(--blue);margin-right:6px;">פייסבוק ↗</a>`;
+    if (m.photoProofUrl) authLine += ` <a href="${m.photoProofUrl}" target="_blank" style="font-size:12px;color:var(--blue);">תמונה ↗</a>`;
+  } else {
+    authLine = `<span class="missing">לא צוין</span>`;
+  }
+
   document.getElementById('vsBody').innerHTML = `
     <div class="card-section">
       <div class="card-section-title">👤 פרטים אישיים</div>
       <div class="detail-grid">
-        <div class="detail-item"><div class="lbl">שם פרטי</div><div class="val">${ms(m.firstName)}</div></div>
-        <div class="detail-item"><div class="lbl">שם משפחה</div><div class="val">${ms(m.lastName)}</div></div>
+        <div class="detail-item"><div class="lbl">תאריך הרשמה</div><div class="val">${fmtDate(m.submittedAt)||'—'}</div></div>
+        ${m.status==='approved' ? `<div class="detail-item"><div class="lbl">תאריך אישור</div><div class="val">${fmtDate(m.approvedAt)||'—'}</div></div>` : '<div class="detail-item"></div>'}
         <div class="detail-item"><div class="lbl">טלפון</div><div class="val">${ms(m.phone)}</div></div>
         <div class="detail-item"><div class="lbl">אימייל</div><div class="val">${ms(m.email)}</div></div>
         <div class="detail-item full"><div class="lbl">בעל עסק?</div><div class="val">${bizOwnerVal}</div></div>
-        <div class="detail-item"><div class="lbl">תאריך הרשמה</div><div class="val">${fmtDate(m.submittedAt)||'—'}</div></div>
-        ${m.status==='approved' ? `<div class="detail-item"><div class="lbl">תאריך אישור</div><div class="val">${fmtDate(m.approvedAt)||'—'}</div></div>` : '<div class="detail-item"></div>'}
       </div>
     </div>
     <div class="card-section">
       <div class="card-section-title">🛡️ אימות אוהד</div>
-      <div class="detail-grid">
-        <div class="detail-item full"><div class="lbl">סטטוס</div><div class="val">${verHtml}</div></div>
-        ${m.isSubscriber===true ? `
-          <div class="detail-item"><div class="lbl">שער</div><div class="val">${ms(m.subscriberSection)}</div></div>
-          <div class="detail-item"><div class="lbl">מספר מנוי</div><div class="val">${ms(m.subscriberNumber)}</div></div>
-        ` : ''}
-        ${m.isSubscriber===false && m.wasSubscriber ? `
-          <div class="detail-item"><div class="lbl">מנוי לשעבר?</div><div class="val">${m.wasSubscriber==='yes'?'כן':'לא'}</div></div>
-        ` : ''}
-        ${m.facebookUrl ? `
-          <div class="detail-item full"><div class="lbl">פייסבוק</div><div class="val"><a href="${m.facebookUrl}" target="_blank" style="color:var(--blue)">${m.facebookUrl}</a></div></div>
-        ` : ''}
-        ${m.photoProofUrl ? `
-          <div class="detail-item full"><div class="lbl">תמונת הוכחה</div><div class="val"><a href="${m.photoProofUrl}" target="_blank" style="color:var(--blue)">הצג תמונה ↗</a></div></div>
-        ` : ''}
-      </div>
+      <div style="padding:4px 0 10px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">${authLine}</div>
     </div>
     <div class="card-section">
       <div class="card-section-title">👨‍👩‍👧 בני משפחה (${famMembers.length})</div>
