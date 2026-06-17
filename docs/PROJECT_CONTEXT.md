@@ -25,7 +25,7 @@
 | Frontend | Pure HTML / CSS / JavaScript — PWA | ✅ פעיל |
 | פונט | Heebo (Google Fonts) | ✅ פעיל |
 | כיוון | RTL (`dir="rtl"`, `lang="he"`) | ✅ פעיל |
-| Backend / DB | Firebase Firestore — הרשמות עסקים נשמרות, דשבורד קורא בזמן אמת | ✅ מחובר |
+| Backend / DB | Firebase Firestore — הרשמות עסקים + אוהדים נשמרות, דשבורד קורא בזמן אמת | ✅ מחובר |
 | Hosting | GitHub Pages — `habayit-hatsahov.github.io/mtabusiness/` | ✅ פעיל |
 | Storage | Firebase Storage — תמונות עסקים, לוגואים, תפריטים | ⏳ לא חובר |
 | Auth | Firebase Auth — login, session, הגנה על דפים | ⏳ לא חובר |
@@ -33,8 +33,8 @@
 | שרת פיתוח | server.ps1 — PowerShell local | ✅ פעיל |
 | שמירת כרטיס | html2canvas (scale=3) | ✅ פעיל |
 
-> **business.html שומר ישירות ל-Firestore. admin-businesses.html קורא בזמן אמת עם onSnapshot.**
-> **שאר הדפים (home, index, profile) עדיין עם נתונים hardcoded.**
+> **business.html שומר ישירות ל-Firestore (collection `businesses`). fan-register.html שומר ל-Firestore (collection `members`). admin-businesses.html קורא בזמן אמת עם onSnapshot.**
+> **שאר הדפים (home, profile) עדיין עם נתונים hardcoded.**
 > **GitHub repo:** `habayit-hatsahov/mtabusiness` · **GitHub Pages URL:** `habayit-hatsahov.github.io/mtabusiness/`
 
 ---
@@ -427,7 +427,7 @@ home.html
 
 | דף | מה קיים |
 |----|---------|
-| `index.html` | Hero, 4 features, טופס הרשמה מלא, 2 נתיבי אימות, בני משפחה, success state |
+| `fan-register.html` | Hero עם סלוגן "קונים כחול צהוב", 4 feature cards, טופס הרשמה מלא, 2 נתיבי אימות, בני משפחה (כל שדות חובה), בעל עסק, קופסת מיקום — **מחובר Firebase Firestore** (collection `members`, status: `pending`) |
 | `admin.html` | לוח בקרה ראשי — תאריך, 2 כרטיסי ניווט (חברים/עסקים) עם נרשמו+ממתינים, ניווט ל-admin-members / admin-businesses |
 | `admin-members.html` | ניהול חברים — stats, פילטר (הכל/ממתינים/מאושרים/נדחו), חיפוש, כרטיסים קומפקטיים עם מנוי/לא מנוי inline, modal אישור עם WA+מייל, ביטול אישור |
 | `admin-businesses.html` | ניהול עסקים — stats, פילטר, חיפוש, כרטיסים קומפקטיים עם מנוי/לא מנוי inline, **modal אישור עם 3 כפתורים נפרדים**: (1) אשר עסק (2) שלח WhatsApp (3) שלח מייל Gmail — הודעות ניתנות לעריכה ב-textarea לפני שליחה, אינדיקציה ויזואלית לאחר שליחה. **modal עריכת עסק 5 שלבים עם stepper**: (1) בעל העסק (2) פרטי העסק (3) קטגוריה pill-grid ראשית+משנית + הטבה (4) שעות וקישורים (5) תמונות ומדיה — לוגו, גלריה (כל תמונה עם שם/תיאור), סרטונים (URL + תיאור). כפתור **📷 מדיה** על כל כרטיס פותח ישירות לשלב 5. קישורי וידאו נשמרים ל-Firestore; תמונות בפועל ידרשו Firebase Storage |
@@ -514,10 +514,11 @@ home.html
 
 ## 15. מצב נוכחי
 
-**שלב: UI מלא + business.html באוויר עם Firebase + דשבורד ניהול עם שליחת הודעות**
+**שלב: UI מלא + business.html + fan-register.html באוויר עם Firebase + דשבורד ניהול**
 
 - כל הדפים בנויים — UX/UI מוכנים
-- **business.html מחובר ל-Firebase Firestore** — הגשות נשמרות ישירות ב-collection `businesses`
+- **business.html מחובר ל-Firebase Firestore** — הגשות נשמרות ב-collection `businesses`
+- **fan-register.html מחובר ל-Firebase Firestore** — הגשות נשמרות ב-collection `members` עם `status: 'pending'`
 - **admin-businesses.html קורא מ-Firestore בזמן אמת** (onSnapshot)
 - **ולידציה חוסמת** — לא ניתן לדלג על שלבים ב-business.html בלי למלא שדות חובה
 - **אירוח ב-GitHub Pages** — `habayit-hatsahov.github.io/mtabusiness/`
