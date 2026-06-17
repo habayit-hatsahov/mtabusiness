@@ -428,6 +428,7 @@
     <button class="filter-btn" data-val="rejected">נדחו</button>
     <button class="filter-btn" data-sub="sub">מנוי</button>
     <button class="filter-btn" data-sub="nosub">לא מנוי</button>
+    <button class="filter-btn" data-sub="biz">בעל עסק</button>
     <input class="search-box" type="search" id="searchInput" placeholder="🔍  חיפוש שם / טלפון..." />
   </div>
 
@@ -697,7 +698,10 @@ function render() {
   const search   = document.getElementById('searchInput').value.trim().toLowerCase();
   const filtered = members.filter(m => {
     const matchF = activeFilter === 'all' || m.status === activeFilter;
-    const matchSub = activeSub === 'all' || (activeSub === 'sub' ? m.isSubscriber === true : m.isSubscriber !== true);
+    const matchSub = activeSub === 'all'
+      || (activeSub === 'sub'   ? m.isSubscriber === true   : false)
+      || (activeSub === 'nosub' ? m.isSubscriber !== true   : false)
+      || (activeSub === 'biz'   ? m.isBusinessOwner === true : false);
     const fullName = `${m.firstName||''} ${m.lastName||''}`.toLowerCase();
     const famNames = (m.familyMembers||[]).map(f => (f.name||'').toLowerCase()).join(' ');
     const matchS = !search || fullName.includes(search) || (m.phone||'').includes(search) || famNames.includes(search);
@@ -717,15 +721,20 @@ function render() {
 
     const famBar = famMembers.length ? `
       <div class="family-bar">
-        ${famMembers.map(f => {
+        ${famMembers.map((f, famIdx) => {
           const isRevoked = !!f.revoked;
           const st = m.status === 'approved' ? (isRevoked ? 'revoked' : 'ok') : 'pending';
           const stLabel = m.status === 'approved' ? (isRevoked ? 'בוטל' : 'מאושר') : 'ממתין';
+          const toggleQuick = m.status === 'pending'
+            ? (isRevoked
+                ? `<button class="fam-status ok" style="border:none;cursor:pointer;background:var(--green-bg);color:var(--green);" onclick="event.stopPropagation();toggleFamilyRevoke('${m.id}',${famIdx},false)">+ יאושר</button>`
+                : `<button class="fam-status pending" style="border:none;cursor:pointer;" onclick="event.stopPropagation();toggleFamilyRevoke('${m.id}',${famIdx},true)">✕ לא לאשר</button>`)
+            : `<span class="fam-status ${st}">${stLabel}</span>`;
           return `<div class="family-sub">
             <span class="fam-icon">👨‍👩‍👧</span>
             <span class="fam-name">${f.name||'—'}</span>
             <span class="fam-rel">${REL_LABELS[f.relation]||f.relation||''}</span>
-            <span class="fam-status ${st}">${stLabel}</span>
+            ${toggleQuick}
           </div>`;
         }).join('')}
       </div>` : '';
@@ -878,9 +887,15 @@ window.openMemberSheet = function(id) {
       <div class="card-section-title">👤 פרטים אישיים</div>
       <div class="detail-grid">
         <div class="detail-item"><div class="lbl">טלפון</div><div class="val">${ms(m.phone)}</div></div>
-        <div class="detail-item"><div class="lbl">אימייל · ${fmtDate(m.submittedAt)||'—'}</div><div class="val">${ms(m.email)}</div></div>
-        ${m.status==='approved' ? `<div class="detail-item full"><div class="lbl">תאריך אישור</div><div class="val">${fmtDate(m.approvedAt)||'—'}</div></div>` : ''}
-        <div class="detail-item full"><div class="lbl">בעל עסק?</div><div class="val">${bizOwnerVal}</div></div>
+        <div class="detail-item"><div class="lbl">בעל עסק?</div><div class="val">${bizOwnerVal}</div></div>
+        <div class="detail-item"><div class="lbl">אימייל</div>
+          <div class="val">${ms(m.email)}
+            ${m.phone ? `<a href="https://wa.me/${waPhone(m.phone)}?text=${encodeURIComponent(buildWA(m))}" target="_blank" style="margin-right:8px;font-size:11px;font-weight:700;color:#128C7E;text-decoration:none;">📲 WA</a>` : ''}
+            ${m.email ? `<a href="https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(m.email)}&su=${encodeURIComponent('ברוך הבא לבית הצהוב 💛')}&body=${encodeURIComponent(buildMail(m))}" target="_blank" style="font-size:11px;font-weight:700;color:var(--blue);text-decoration:none;">✉️ מייל</a>` : ''}
+          </div>
+        </div>
+        <div class="detail-item"><div class="lbl">נרשם</div><div class="val">${fmtDate(m.submittedAt)||'—'}</div></div>
+        ${m.status==='approved' ? `<div class="detail-item"><div class="lbl">אושר</div><div class="val">${fmtDate(m.approvedAt)||'—'}</div></div>` : ''}
       </div>
     </div>
     <div class="card-section">
@@ -985,11 +1000,16 @@ window.openApproveModal = function(id) {
         ניתן לשלוח להם הודעה ידנית:
       </div>
       ${famMembers.map((f, i) => `
-        <div class="fam-modal-row">
-          <div class="fam-modal-info">
-            <div class="fam-modal-name">${f.name||'—'} · ${REL_LABELS[f.relation]||f.relation||''}</div>
-            <div class="fam-modal-contact">${[f.phone, f.email].filter(Boolean).join(' · ')}</div>
-          </div>
+        <div class="fam-modal-row" id="famModalRow-${i}" style="${f.revoked?'opacity:.5':''}">
+          <label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;">
+            <input type="checkbox" id="famApproveCheck-${i}" ${f.revoked?'':'checked'}
+              onchange="toggleFamModalCheck(${i})"
+              style="width:16px;height:16px;accent-color:var(--blue);cursor:pointer;flex-shrink:0;" />
+            <div class="fam-modal-info">
+              <div class="fam-modal-name">${f.name||'—'} · ${REL_LABELS[f.relation]||f.relation||''}</div>
+              <div class="fam-modal-contact">${[f.phone, f.email].filter(Boolean).join(' · ')}</div>
+            </div>
+          </label>
           <div class="fam-modal-btns">
             ${f.phone ? `<button class="fam-btn fam-btn-wa"   id="famWaBtn-${i}"   onclick="modalSendFamilyWA('${id}',${i})">📲</button>` : ''}
             ${f.email ? `<button class="fam-btn fam-btn-mail" id="famMailBtn-${i}" onclick="modalSendFamilyMail('${id}',${i})">✉️</button>` : ''}
@@ -1007,10 +1027,20 @@ window.closeApproveModal = function() {
   approvingId = null;
 };
 
+window.toggleFamModalCheck = function(i) {
+  const checked = document.getElementById('famApproveCheck-' + i)?.checked;
+  const row = document.getElementById('famModalRow-' + i);
+  if (row) row.style.opacity = checked ? '1' : '.45';
+};
+
 document.getElementById('confirmApproveBtn').addEventListener('click', async () => {
   const m = members.find(x => x.id === approvingId);
   if (!m) return;
-  const updatedFam = (m.familyMembers||[]).map(f => ({...f, revoked: false}));
+  const updatedFam = (m.familyMembers||[]).map((f, i) => {
+    const cb = document.getElementById('famApproveCheck-' + i);
+    const approve = cb ? cb.checked : true;
+    return {...f, revoked: !approve};
+  });
   await updateDoc(doc(db, 'members', approvingId), {
     status: 'approved',
     approvedAt: serverTimestamp(),
