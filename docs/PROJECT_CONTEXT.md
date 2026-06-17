@@ -348,24 +348,33 @@ home.html
 }
 ```
 
-### אובייקט חבר (Member)
+### אובייקט חבר (Member) — Firestore collection `members`
 
 ```js
 {
-  // קיים (hardcoded mock: "ישראל ישראלי #00142 שער 8")
   firstName, lastName,
-  memberId,           // #00142 — ממוספר אוטומטי
-  joinedDate,
-  gate,               // שם שער | null
-  isSubscriber,
-
-  // מתוכנן (Firebase)
   phone, email,
-  status,             // 'pending' | 'approved' | 'rejected'
-  approvedAt,
-  isBusinessOwner,
-  familyMembers: [{ name, relation, phone, email }],
-  savedBusinesses,    // id[]
+  isSubscriber,            // boolean
+  subscriberSection,       // שם שער | null (רק אם isSubscriber=true)
+  subscriberNumber,        // מספר מנוי | null
+  wasSubscriber,           // 'yes'/'no'/null (רק אם isSubscriber=false)
+  facebookUrl,             // URL | null (רק אם isSubscriber=false)
+  photoProofUrl,           // URL תמונת הוכחה | null
+  isBusinessOwner,         // boolean
+  status,                  // 'pending' | 'approved' | 'rejected'
+  submittedAt,             // serverTimestamp
+  approvedAt,              // serverTimestamp | null
+  rejectedAt,              // serverTimestamp | null
+  familyApproved,          // boolean — true לאחר אישור ראשי
+  familyMembers: [         // עד 2 רשומות
+    { name, relation, phone, email, revoked }
+    // relation: 'spouse'|'child'|'parent'|'sibling'|'other'
+    // revoked: boolean — ביטול אישור ספציפי לבן משפחה
+  ],
+  // hardcoded mock בלבד (לא מ-Firebase):
+  memberId,                // #00142 — ממוספר אוטומטי
+  joinedDate,
+  savedBusinesses,         // id[]
   locationAllowed,
 }
 ```
@@ -429,7 +438,7 @@ home.html
 |----|---------|
 | `fan-register.html` | Hero עם סלוגן "קונים כחול צהוב", 4 feature cards, טופס הרשמה מלא, 2 נתיבי אימות, בני משפחה (כל שדות חובה), בעל עסק, קופסת מיקום — **מחובר Firebase Firestore** (collection `members`, status: `pending`) |
 | `admin.html` | לוח בקרה ראשי — תאריך, 2 כרטיסי ניווט (חברים/עסקים) עם נרשמו+ממתינים, ניווט ל-admin-members / admin-businesses |
-| `admin-members.html` | ניהול חברים — stats, פילטר (הכל/ממתינים/מאושרים/נדחו), חיפוש, כרטיסים קומפקטיים עם מנוי/לא מנוי inline, modal אישור עם WA+מייל, ביטול אישור — **מחובר Firebase Firestore** (onSnapshot בזמן אמת, אישור/דחייה כותבים ל-DB) |
+| `admin-members.html` | ניהול חברים — **נוסח מחודש מלא:** 4 stats (נרשמו / בני משפחה / ממתינים / מאושרים), פילטר + חיפוש, כרטיסים קומפקטיים עם family-bar לבני משפחה. **לחיצה על כרטיס פותחת view-sheet** (bottom-sheet כמו admin-businesses) עם 3 סקציות: פרטים אישיים + אימות אוהד + בני משפחה. **כפתורי פעולה:** אשר / ערוך / מדיה / דחה / מחק (ממתין) · WA / מייל / ערוך / מדיה / בטל / מחק (מאושר) · אשר בכל זאת / ערוך / מחק (נדחה). **modal אישור:** textarea WA + textarea מייל + אשר / 📲 / ✉️ + סקציית בני משפחה עם WA/מייל לכל אחד + אישור ראשי = אישור אוטומטי לכל בני המשפחה (`familyMembers[i].revoked=false`). **modal עריכה 4 שלבים:** פרטים אישיים / אימות אוהד / בני משפחה (עד 2) / מסמכים ומדיה (URL + upload placeholder). **ביטול אישור בן משפחה:** שדה `revoked: boolean` ב-Firestore, עדכון אופטימיסטי + showToast. **מחיקה:** deleteDoc עם confirm. **מחובר Firebase Firestore** (onSnapshot, updateDoc, deleteDoc, serverTimestamp) |
 | `admin-businesses.html` | ניהול עסקים — stats, פילטר, חיפוש, כרטיסים קומפקטיים עם מנוי/לא מנוי inline, **modal אישור עם 3 כפתורים נפרדים**: (1) אשר עסק (2) שלח WhatsApp (3) שלח מייל Gmail — הודעות ניתנות לעריכה ב-textarea לפני שליחה, אינדיקציה ויזואלית לאחר שליחה. **modal עריכת עסק 5 שלבים עם stepper**: (1) בעל העסק (2) פרטי העסק (3) קטגוריה pill-grid ראשית+משנית + הטבה (4) שעות וקישורים (5) תמונות ומדיה — לוגו, גלריה (כל תמונה עם שם/תיאור), סרטונים (URL + תיאור). כפתור **📷 מדיה** על כל כרטיס פותח ישירות לשלב 5. קישורי וידאו נשמרים ל-Firestore; תמונות בפועל ידרשו Firebase Storage |
 | `business.html` | **Stepper 4 שלבים עם ולידציה:** (1) פרטי בעל העסק + הערה "אפשר לרשום עסק של בן משפחה" + שדה קרבה לבעל המנוי + אימות אוהד (2) סוג עסק (פיזי/אונליין/מקצוע, עד 2 בחירות) + פרטים + **סניפים** (עד 5, עיר+כתובת לכל סניף) / אזורי פעילות / אתר לפי סוג + יצירת קשר (3) קטגוריות והטבות — קטגוריה ראשית+משנית + הטבה (דיפולט=כן, **מימוש: chips גם פיזי וגם אונליין**) + שעות + נוכחות דיגיטלית + הערה חופשית (4) **סיכום ושליחה** — תצוגת כל הפרטים שמולאו + אפשרות חזרה לעריכה + כפתור שליחה. **מחובר Firebase Firestore** — שומר ישירות ל-collection `businesses`. **ולידציה חוסמת** — לא ניתן לעבור שלב בלי למלא שדות חובה. |
 | `card.html` | כרטיס אשראי, לוגו, שם, #חבר, תאריך, שער, שמירה לגלריה |
