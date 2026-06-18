@@ -374,6 +374,34 @@
     .edit-upload-text { font-size: 13px; font-weight: 600; color: var(--blue); margin-top: 4px; }
     .edit-upload-sub  { font-size: 11px; color: var(--gray); margin-top: 2px; }
 
+    /* ── BULK SELECT ── */
+    .bulk-bar {
+      display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 150;
+      background: var(--blue-dark); color: var(--white);
+      padding: 14px 20px; gap: 10px; align-items: center;
+      box-shadow: 0 -4px 20px rgba(0,0,0,.25);
+    }
+    .bulk-bar.visible { display: flex; }
+    .bulk-count { flex: 1; font-size: 14px; font-weight: 700; }
+    .bulk-btn {
+      padding: 9px 18px; border-radius: 10px; border: none; cursor: pointer;
+      font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 700; transition: transform .12s;
+    }
+    .bulk-btn:active { transform: scale(.96); }
+    .bulk-approve { background: linear-gradient(135deg, #16a34a, #15803d); color: #fff; }
+    .bulk-reject  { background: var(--orange-bg); color: var(--orange); }
+    .bulk-cancel  { background: rgba(255,255,255,.15); color: var(--white); }
+
+    .card-cb-wrap {
+      display: none; align-items: center; justify-content: center;
+      width: 34px; height: 34px; flex-shrink: 0;
+    }
+    .select-mode .card-cb-wrap { display: flex; }
+    .select-mode .avatar { display: none; }
+    .card-cb {
+      width: 20px; height: 20px; cursor: pointer; accent-color: var(--blue);
+    }
+
     /* ── TOAST ── */
     .toast {
       position: fixed; bottom: 24px; left: 50%;
@@ -430,9 +458,18 @@
     <button class="filter-btn" data-sub="nosub">לא מנוי</button>
     <button class="filter-btn" data-sub="biz">בעל עסק</button>
     <input class="search-box" type="search" id="searchInput" placeholder="🔍  חיפוש שם / טלפון..." />
+    <button class="filter-btn" id="selectModeBtn" onclick="toggleSelectMode()">☑️ בחר</button>
   </div>
 
   <div id="memberList"></div>
+</div>
+
+<!-- ══════════════════════ BULK BAR ══════════════════════ -->
+<div class="bulk-bar" id="bulkBar">
+  <div class="bulk-count" id="bulkCount">0 נבחרו</div>
+  <button class="bulk-btn bulk-approve" onclick="bulkApprove()">✅ אשר נבחרים</button>
+  <button class="bulk-btn bulk-reject"  onclick="bulkReject()">✗ דחה נבחרים</button>
+  <button class="bulk-btn bulk-cancel"  onclick="toggleSelectMode()">ביטול</button>
 </div>
 
 <!-- ══════════════════════ VIEW SHEET ══════════════════════ -->
@@ -629,6 +666,8 @@ let members      = [];
 let activeFilter = 'all';
 let activeSub    = 'all'; // 'all' | 'sub' | 'nosub'
 let approvingId  = null;
+let selectMode   = false;
+let selectedIds  = new Set();
 
 const REL_LABELS = { spouse:'בן/בת זוג', child:'ילד/ה', parent:'הורה', sibling:'אח/אחות', other:'אחר' };
 
@@ -762,9 +801,12 @@ function render() {
       </div>`;
     }
 
+    const cbChecked = selectedIds.has(m.id) ? 'checked' : '';
+
     return `
-    <div class="member-card ${m.status}" onclick="openMemberSheet('${m.id}')">
+    <div class="member-card ${m.status}" onclick="handleCardClick(event,'${m.id}')">
       <div class="card-header">
+        <div class="card-cb-wrap"><input type="checkbox" class="card-cb" ${cbChecked} onclick="event.stopPropagation();toggleSelect('${m.id}',this)" /></div>
         <div class="avatar">${initials}</div>
         <div class="card-info">
           <div class="card-name">${m.firstName||''} ${m.lastName||''}</div>
@@ -1281,6 +1323,63 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
   closeEditModal();
   showToast('✅ הפרטים עודכנו');
 });
+
+// ── bulk select ───────────────────────────────────────────────────────────────
+window.toggleSelectMode = function() {
+  selectMode = !selectMode;
+  selectedIds.clear();
+  const btn = document.getElementById('selectModeBtn');
+  btn.classList.toggle('active', selectMode);
+  document.getElementById('bulkBar').classList.toggle('visible', false);
+  document.getElementById('memberList').classList.toggle('select-mode', selectMode);
+  render();
+};
+
+window.handleCardClick = function(e, id) {
+  if (selectMode) { toggleSelect(id); return; }
+  openMemberSheet(id);
+};
+
+window.toggleSelect = function(id, cb) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  const isSelected = selectedIds.has(id);
+  // sync checkbox (when card clicked, cb may not be passed)
+  const checkbox = cb || document.querySelector(`.member-card[onclick*="'${id}'"] .card-cb`);
+  if (checkbox) checkbox.checked = isSelected;
+  const bar = document.getElementById('bulkBar');
+  const count = selectedIds.size;
+  bar.classList.toggle('visible', count > 0);
+  document.getElementById('bulkCount').textContent = `${count} נבחרו`;
+};
+
+window.bulkApprove = async function() {
+  const ids = [...selectedIds];
+  if (!ids.length) return;
+  const pending = ids.filter(id => members.find(m => m.id === id)?.status === 'pending');
+  if (!pending.length) { showToast('אין ממתינים בבחירה'); return; }
+  if (!confirm(`לאשר ${pending.length} חברים?`)) return;
+  await Promise.all(pending.map(id => updateDoc(doc(db, 'members', id), {
+    status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null, familyApproved: true
+  })));
+  showToast(`✅ ${pending.length} חברים אושרו`);
+  selectedIds.clear();
+  document.getElementById('bulkBar').classList.remove('visible');
+};
+
+window.bulkReject = async function() {
+  const ids = [...selectedIds];
+  if (!ids.length) return;
+  const pending = ids.filter(id => members.find(m => m.id === id)?.status === 'pending');
+  if (!pending.length) { showToast('אין ממתינים בבחירה'); return; }
+  if (!confirm(`לדחות ${pending.length} חברים?`)) return;
+  await Promise.all(pending.map(id => updateDoc(doc(db, 'members', id), {
+    status: 'rejected', rejectedAt: serverTimestamp()
+  })));
+  showToast(`✗ ${pending.length} חברים נדחו`);
+  selectedIds.clear();
+  document.getElementById('bulkBar').classList.remove('visible');
+};
 
 // ── Firestore ─────────────────────────────────────────────────────────────────
 document.getElementById('memberList').innerHTML = `<div class="empty-state"><div class="icon">⏳</div><p>טוען נתונים...</p></div>`;

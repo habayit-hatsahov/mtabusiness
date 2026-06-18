@@ -733,6 +733,103 @@
       background: #F8FAFF; border-radius: 8px; padding: 8px 10px;
     }
 
+    /* ── BULK SELECT ── */
+    .select-all-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .select-all-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 14px;
+      border-radius: 20px;
+      border: 2px solid #e2e8f0;
+      background: var(--white);
+      font-family: 'Heebo', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--gray);
+      cursor: pointer;
+      transition: all .15s;
+    }
+
+    .select-all-btn.active { background: var(--blue); border-color: var(--blue); color: var(--white); }
+
+    .sel-count {
+      font-size: 13px;
+      color: var(--gray);
+      font-weight: 600;
+    }
+
+    .biz-card-checkbox {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      border: 2px solid #cbd5e1;
+      background: var(--white);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all .15s;
+      cursor: pointer;
+      font-size: 13px;
+      color: transparent;
+    }
+
+    .biz-card.selected .biz-card-checkbox {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: var(--white);
+    }
+
+    .biz-card.selected {
+      outline: 2px solid var(--blue);
+      outline-offset: -1px;
+      background: #F5F8FF;
+    }
+
+    /* ── BULK BAR ── */
+    .bulk-bar {
+      position: fixed;
+      bottom: -80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 32px);
+      max-width: 600px;
+      background: var(--blue-dark);
+      border-radius: 18px 18px 0 0;
+      padding: 14px 20px 22px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 500;
+      box-shadow: 0 -4px 24px rgba(0,0,0,.25);
+      transition: bottom .3s cubic-bezier(.17,.67,.46,1.2);
+    }
+
+    .bulk-bar.show { bottom: 0; }
+
+    .bulk-bar-label {
+      color: rgba(255,255,255,.75);
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .bulk-bar-label strong { color: var(--yellow); }
+
+    .bulk-bar .btn { flex: 1; min-width: 80px; padding: 10px 12px; font-size: 13px; }
+
+    .btn-bulk-approve { background: linear-gradient(135deg, #16a34a, #15803d); color: var(--white); box-shadow: 0 4px 12px rgba(22,163,74,.35); }
+    .btn-bulk-reject  { background: rgba(255,255,255,.12); color: var(--white); border: 1.5px solid rgba(255,255,255,.2); }
+    .btn-bulk-cancel  { background: transparent; color: rgba(255,255,255,.5); border: 1.5px solid rgba(255,255,255,.15); flex: none; min-width: auto; padding: 10px 14px; font-size: 12px; }
+
     /* ── TOAST ── */
     .toast {
       position: fixed;
@@ -789,8 +886,21 @@
     <input class="search-box" type="search" id="searchInput" placeholder="🔍  חיפוש שם עסק / בעלים..." />
   </div>
 
+  <div class="select-all-row" id="selectAllRow" style="display:none">
+    <button class="select-all-btn" id="selectAllBtn" onclick="toggleSelectAll()">☐ בחר הכל</button>
+    <span class="sel-count" id="selCount"></span>
+  </div>
+
   <div id="bizList"></div>
 
+</div>
+
+<!-- BULK ACTION BAR -->
+<div class="bulk-bar" id="bulkBar">
+  <div class="bulk-bar-label">נבחרו <strong id="bulkCount">0</strong></div>
+  <button class="btn btn-bulk-approve" onclick="bulkApprove()">✅ אשר נבחרים</button>
+  <button class="btn btn-bulk-reject"  onclick="bulkReject()">✗ דחה נבחרים</button>
+  <button class="btn btn-bulk-cancel"  onclick="clearSelection()">ביטול</button>
 </div>
 
 <!-- VIEW SHEET -->
@@ -1062,6 +1172,7 @@ import {
 let businesses   = [];
 let activeFilter = 'all';
 let pendingId    = null;
+let selectedIds  = new Set();
 
 const BIZ_TYPE_LABELS = { physical: '🏪 חנות פיזית', online: '🌐 אונליין', pro: '🔧 בעל מקצוע' };
 const CAT_LABELS_MAP  = { food:'🍕 אוכל ושתייה', fashion:'👕 ביגוד ואופנה', pro:'🔧 בעלי מקצוע', health:'💊 בריאות ויופי', finance:'📊 פיננסים', sport:'⚽ ספורט ופנאי', tech:'💻 טכנולוגיה', legal:'⚖️ משפטים', other:'📦 אחר' };
@@ -1249,14 +1360,15 @@ function render() {
     return;
   }
 
+  // הצג/הסתר שורת "בחר הכל"
+  document.getElementById('selectAllRow').style.display = filtered.length ? 'flex' : 'none';
+  updateBulkBar();
+
   list.innerHTML = filtered.map(b => {
     const ownerName  = `${b.ownerFirst || ''} ${b.ownerLast || ''}`.trim();
     const types      = b.bizTypes || [];
-    const isPhysical = types.includes('physical');
     const isOnline   = types.includes('online');
-    const isPro      = types.includes('pro');
 
-    // כותרת הכרטיס — meta
     const typeStr  = types.map(t => BIZ_TYPE_LABELS[t]).filter(Boolean).join(' · ');
     const firstBranch = (b.branches || [])[0];
     const metaStr  = [typeStr, firstBranch?.city].filter(Boolean).join(' · ') || (isOnline ? 'אונליין' : '—');
@@ -1265,10 +1377,12 @@ function render() {
       ? `<span class="pill sub">מנוי</span>`
       : `<span class="pill nosub">לא מנוי</span>`;
 
+    const isSelected = selectedIds.has(b.id);
 
     return `
-    <div class="biz-card ${b.status}" onclick="openBizSheet('${b.id}')" style="cursor:pointer;">
-      <div class="card-header">
+    <div class="biz-card ${b.status}${isSelected ? ' selected' : ''}" id="card-${b.id}">
+      <div class="card-header" onclick="openBizSheet('${b.id}')" style="cursor:pointer;">
+        <div class="biz-card-checkbox" onclick="event.stopPropagation();toggleSelect('${b.id}')">${isSelected ? '✓' : ''}</div>
         <div class="biz-avatar">🏪</div>
         <div class="card-info">
           <div class="card-name">${b.name || '—'}</div>
@@ -1282,6 +1396,96 @@ function render() {
   }).join('');
 }
 
+// ── bulk select ──────────────────────────────────────────────────────────────
+function getFilteredIds() {
+  const search = document.getElementById('searchInput').value.trim().toLowerCase();
+  return businesses.filter(b => {
+    const matchF = activeFilter === 'all' || b.status === activeFilter;
+    const matchS = !search ||
+      (b.name || '').toLowerCase().includes(search) ||
+      (b.ownerFirst + ' ' + b.ownerLast).toLowerCase().includes(search);
+    return matchF && matchS;
+  }).map(b => b.id);
+}
+
+function updateBulkBar() {
+  const count = selectedIds.size;
+  const bar   = document.getElementById('bulkBar');
+  document.getElementById('bulkCount').textContent = count;
+  bar.classList.toggle('show', count > 0);
+
+  // עדכן כפתור "בחר הכל"
+  const allIds = getFilteredIds();
+  const allSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));
+  const btn = document.getElementById('selectAllBtn');
+  btn.textContent = allSelected ? '☑ בטל בחירת הכל' : '☐ בחר הכל';
+  btn.classList.toggle('active', allSelected);
+
+  const selCount = document.getElementById('selCount');
+  selCount.textContent = count > 0 ? `${count} נבחרו` : '';
+}
+
+window.toggleSelect = function(id) {
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+  } else {
+    selectedIds.add(id);
+  }
+  // עדכן כרטיס בלי re-render מלא
+  const card = document.getElementById('card-' + id);
+  if (card) {
+    const isSel = selectedIds.has(id);
+    card.classList.toggle('selected', isSel);
+    const cb = card.querySelector('.biz-card-checkbox');
+    if (cb) cb.textContent = isSel ? '✓' : '';
+  }
+  updateBulkBar();
+};
+
+window.toggleSelectAll = function() {
+  const allIds = getFilteredIds();
+  const allSelected = allIds.every(id => selectedIds.has(id));
+  if (allSelected) {
+    allIds.forEach(id => selectedIds.delete(id));
+  } else {
+    allIds.forEach(id => selectedIds.add(id));
+  }
+  render();
+};
+
+window.clearSelection = function() {
+  selectedIds.clear();
+  render();
+};
+
+window.bulkApprove = async function() {
+  const ids = [...selectedIds].filter(id => {
+    const b = businesses.find(x => x.id === id);
+    return b && b.status === 'pending';
+  });
+  if (!ids.length) { showToast('אין עסקים ממתינים בבחירה'); return; }
+  if (!confirm(`לאשר ${ids.length} עסקים?`)) return;
+  await Promise.all(ids.map(id =>
+    updateDoc(doc(db, 'businesses', id), { status: 'approved', approvedAt: serverTimestamp() })
+  ));
+  selectedIds.clear();
+  showToast(`✅ ${ids.length} עסקים אושרו`);
+};
+
+window.bulkReject = async function() {
+  const ids = [...selectedIds].filter(id => {
+    const b = businesses.find(x => x.id === id);
+    return b && b.status === 'pending';
+  });
+  if (!ids.length) { showToast('אין עסקים ממתינים בבחירה'); return; }
+  if (!confirm(`לדחות ${ids.length} עסקים?`)) return;
+  await Promise.all(ids.map(id =>
+    updateDoc(doc(db, 'businesses', id), { status: 'rejected', rejectedAt: serverTimestamp() })
+  ));
+  selectedIds.clear();
+  showToast(`✗ ${ids.length} עסקים נדחו`);
+};
+
 // ── filter + search ───────────────────────────────────────────────────────────
 document.querySelector('.filter-bar').addEventListener('click', e => {
   const btn = e.target.closest('[data-val]');
@@ -1294,16 +1498,24 @@ document.querySelector('.filter-bar').addEventListener('click', e => {
 
 document.getElementById('searchInput').addEventListener('input', render);
 
-// ── modal ─────────────────────────────────────────────────────────────────────
-function buildWA(b) {
-  const name = `${b.ownerFirst || ''} ${b.ownerLast || ''}`.trim();
-  return `היי ${name} 👋\nברוך הבא לבית הצהוב! 💛\n\nהעסק שלך "${b.name}" אושר לאינדקס.\n\n🔗 קישור לאתר: [יוכנס בקרוב]\n\nביחד ננצח 🏆`;
+// ── message templates ────────────────────────────────────────────────────────
+const DEFAULT_TPL_WA      = 'היי {name} 👋\nברוך הבא לבית הצהוב! 💛\n\nהעסק שלך "{business}" אושר לאינדקס.\n\n🔗 קישור לאתר: [יוכנס בקרוב]\n\nביחד ננצח 🏆';
+const DEFAULT_TPL_MAIL    = 'שלום {name},\n\nשמחים לבשר שהעסק "{business}" אושר לאינדקס הבלעדי שלנו!\n\nפרטי העסק יופיעו בקרוב באתר.\n\nבאהבה,\nצוות הבית הצהוב 💛';
+const DEFAULT_TPL_SUBJECT = 'העסק שלך אושר לאינדקס הבית הצהוב 💛';
+
+function getTpl(key, fallback) {
+  return localStorage.getItem('_hb_tpl_' + key) || fallback;
 }
 
-function buildMail(b) {
+function applyTpl(tpl, b) {
   const name = `${b.ownerFirst || ''} ${b.ownerLast || ''}`.trim();
-  return `שלום ${name},\n\nשמחים לבשר שהעסק "${b.name}" אושר לאינדקס הבלעדי שלנו!\n\nפרטי העסק יופיעו בקרוב באתר.\n\nבאהבה,\nצוות הבית הצהוב 💛`;
+  return tpl.replace(/\{name\}/g, name).replace(/\{business\}/g, b.name || '');
 }
+
+function buildWA(b)   { return applyTpl(getTpl('wa', DEFAULT_TPL_WA), b); }
+function buildMail(b) { return applyTpl(getTpl('mail', DEFAULT_TPL_MAIL), b); }
+function getMailSubject(b) { return applyTpl(getTpl('mailSubject', DEFAULT_TPL_SUBJECT), b); }
+
 
 window.openModal = function(id) {
   pendingId = id;
@@ -1360,7 +1572,7 @@ window.modalSendMail = function() {
   const b = businesses.find(x => x.id === pendingId);
   const mailText = document.getElementById('mailPreview').value;
   const email = b.ownerEmail || b.email || '';
-  const subject = 'העסק שלך אושר לאינדקס הבית הצהוב 💛';
+  const subject = getMailSubject(b);
   const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailText)}`;
   window.open(gmailUrl, '_blank');
   const btn = document.getElementById('modalMailBtn');
@@ -1397,7 +1609,7 @@ window.sendWA = function(id) {
 
 window.sendMail = function(id) {
   const b = businesses.find(x => x.id === id);
-  const subject = 'העסק שלך אושר לאינדקס הבית הצהוב 💛';
+  const subject = getMailSubject(b);
   const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(b.ownerEmail || b.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMail(b))}`;
   window.open(gmailUrl, '_blank');
 };
