@@ -1103,10 +1103,10 @@
       <h3>הבקשה התקבלה!</h3>
       <p>
         תודה! הפרטים של העסק שלך הועברו לצוות. 💛<br/><br/>
-        במהלך תהליך האישור נשלח אליך <strong>מייל עם טופס</strong><br/>
-        להעלאת תמונות ולוגו של העסק — כדי שהעמוד שלך ייראה מושלם.<br/><br/>
-        לאחר בדיקה ואישור — העסק שלך יופיע<br/>
-        באינדקס הבלעדי של הבית הצהוב!
+        לאחר בדיקה ואישור — תקבל/י <strong>קישור אישי לדשבורד</strong><br/>
+        שבו תוכל/י לנהל את דף העסק שלך, לעדכן פרטים,<br/>
+        להעלות תמונות ולוגו ולצפות בסטטיסטיקות.<br/><br/>
+        העסק שלך יופיע באינדקס הבלעדי של הבית הצהוב!
       </p>
     </div>
 
@@ -1373,8 +1373,28 @@
       submittedAt:      serverTimestamp(),
     };
 
+    const accessToken = crypto.randomUUID();
+    data.accessToken    = accessToken;
+    data.pendingChanges = null;
+
     try {
       await addDoc(collection(db, 'businesses'), data);
+
+      // רישום אוטומטי גם כחבר (אוהד)
+      await addDoc(collection(db, 'members'), {
+        firstName:         data.ownerFirst,
+        lastName:          data.ownerLast,
+        phone:             data.ownerPhone,
+        email:             data.ownerEmail,
+        isSubscriber:      data.isSubscriber === 'yes',
+        subscriberSection: data.isSubscriber === 'yes' ? data.gate   : null,
+        subscriberNumber:  data.isSubscriber === 'yes' ? data.subNum : null,
+        facebookUrl:       data.fbUrl || null,
+        isBusinessOwner:   true,
+        status:            'pending',
+        submittedAt:       serverTimestamp(),
+        familyMembers:     [],
+      });
     } catch(e) {
       console.error('Firebase error:', e);
     }

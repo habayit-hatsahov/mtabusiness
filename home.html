@@ -630,75 +630,15 @@
 
 
 <script>
-// ── DATA ──────────────────────────────────────────────────────────────────────
-const businesses = [
-  {
-    id:1, name:'מאפיית הצהוב', cat:'food', city:'תל אביב',
-    icon:'🥐', discount:'10% על כל קנייה', discountType:'physical',
-    isNew:true, newUntil: daysFromNow(14),
-    popular:true, clicks:342, online:false,
-    lat:32.07, lng:34.78
-  },
-  {
-    id:2, name:'Studio D – עיצוב גרפי', cat:'tech', city:'רמת גן',
-    icon:'🎨', discount:'20% על פרויקט ראשון', discountType:'online',
-    coupon:'MACCABI20',
-    isNew:true, newUntil: daysFromNow(7),
-    popular:true, clicks:218, online:true,
-    lat:32.08, lng:34.81
-  },
-  {
-    id:3, name:'שיפוצים ובנייה – משה', cat:'pro', city:'פתח תקווה',
-    icon:'🔨', discount:'ייעוץ ראשוני חינם', discountType:'physical',
-    isNew:false,
-    popular:true, clicks:189, online:false,
-    lat:32.09, lng:34.89
-  },
-  {
-    id:4, name:'פארם פלוס', cat:'health', city:'תל אביב',
-    icon:'💊', discount:'15% על תוספי תזונה', discountType:'physical',
-    isNew:true, newUntil: daysFromNow(21),
-    popular:false, clicks:97, online:false,
-    lat:32.06, lng:34.77
-  },
-  {
-    id:5, name:'חנות הצהוב – מרצ\'נדייז', cat:'fashion', city:'אונליין',
-    icon:'👕', discount:'קנה 2 קבל 1', discountType:'online',
-    coupon:'BUY2GET1',
-    isNew:false,
-    popular:true, clicks:276, online:true,
-    lat:null, lng:null
-  },
-  {
-    id:6, name:'יוסי ביטוח', cat:'finance', city:'חולון',
-    icon:'🛡️', discount:'פגישת ייעוץ חינם', discountType:'physical',
-    isNew:true, newUntil: daysFromNow(10),
-    popular:false, clicks:54, online:false,
-    lat:32.01, lng:34.78
-  },
-  {
-    id:7, name:'עו"ד גיל לוי', cat:'legal', city:'תל אביב',
-    icon:'⚖️', discount:'שעת ייעוץ ראשונה ב-50%', discountType:'physical',
-    isNew:false,
-    popular:false, clicks:41, online:false,
-    lat:32.07, lng:34.79
-  },
-  {
-    id:8, name:'קפה הבית – מכבי', cat:'food', city:'גבעתיים',
-    icon:'☕', discount:'קפה שני ב-1 ₪', discountType:'physical',
-    isNew:false,
-    popular:true, clicks:401, online:false,
-    lat:32.07, lng:34.81
-  },
-  {
-    id:9, name:'TechFix – תיקון מכשירים', cat:'tech', city:'אונליין',
-    icon:'📱', discount:'10% על כל תיקון', discountType:'online',
-    coupon:'TECHFIX10',
-    isNew:false,
-    popular:false, clicks:113, online:true,
-    lat:null, lng:null
-  }
-];
+// ── DATA — נטען מ-Firebase, מתחיל ריק ──────────────────────────────────────
+let businesses = [];
+
+window.loadFirebaseData = function(data) {
+  businesses = data;
+  renderSections();
+  initLocation();
+  document.getElementById('loadingOverlay')?.remove();
+};
 
 function daysFromNow(n) {
   const d = new Date(); d.setDate(d.getDate() + n); return d;
@@ -954,6 +894,14 @@ function openBiz(id) {
     document.getElementById('sheetCta').style.display = 'none';
   }
 
+  // dashboard btn (for business owners)
+  const dashArea = document.getElementById('sheetDashBtn');
+  if (dashArea) {
+    dashArea.innerHTML = b.accessToken
+      ? `<a href="business-dashboard.html?token=${b.accessToken}" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;padding:12px;background:#f0f4ff;border:1.5px solid #003DA5;border-radius:12px;color:#003DA5;font-family:'Heebo',sans-serif;font-size:14px;font-weight:800;text-decoration:none;">🔑 כניסה לדשבורד בעל העסק</a>`
+      : '';
+  }
+
   // open
   document.getElementById('bizOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -1066,9 +1014,8 @@ function requestLocation() {
   allowLocation();
 }
 
-// ── INIT ──────────────────────────────────────────────────────────────────────
-renderSections();
-initLocation();
+// ── INIT — ממתין לנתוני Firebase ─────────────────────────────────────────────
+// loadFirebaseData() נקרא מה-module script למטה
 </script>
 <!-- ══ BIZ MODAL ══ -->
 <div class="biz-overlay" id="bizOverlay" onclick="if(event.target===this)closeBizSheet()">
@@ -1094,9 +1041,54 @@ initLocation();
         <button class="sheet-call" id="sheetCallBtn">📞 התקשר</button>
         <button class="sheet-wa"   id="sheetWaBtn">💬 WhatsApp</button>
       </div>
+      <div id="sheetDashBtn"></div>
     </div>
   </div>
 </div>
+
+<!-- ══ LOADING OVERLAY ══ -->
+<div id="loadingOverlay" style="position:fixed;inset:0;z-index:9000;background:#F5F6FA;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;">
+  <div style="font-size:36px;">💛</div>
+  <div style="font-family:'Heebo',sans-serif;font-size:14px;color:#888;">טוען עסקים...</div>
+</div>
+
+<!-- ══ FIREBASE LOADER ══ -->
+<script type="module">
+import { db } from './firebase-config.js';
+import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+try {
+  const snap = await getDocs(query(collection(db, 'businesses'), where('status', '==', 'approved')));
+
+  const data = snap.docs.map(doc => {
+    const b = doc.data();
+    const types = b.discountTypes || [];
+    const bizTypes = b.bizTypes || [];
+    return {
+      id:           doc.id,
+      name:         b.name || '',
+      cat:          b.categoryPrimary || 'other',
+      city:         b.city || '',
+      discount:     b.discountText || '',
+      discountType: types.includes('online') ? 'online' : 'physical',
+      coupon:       b.discountCode || '',
+      isNew:        false,
+      popular:      false,
+      clicks:       b.clicks || 0,
+      online:       bizTypes.includes('online'),
+      lat:          null, lng: null,
+      accessToken:  b.accessToken || null,
+      phone:        b.ownerPhone || '',
+      description:  b.description || b.desc || '',
+    };
+  });
+
+  window.loadFirebaseData(data);
+} catch(e) {
+  console.error('Firebase load error:', e);
+  document.getElementById('loadingOverlay')?.remove();
+}
+</script>
 
 <!-- DEV ONLY – למחיקה לפני העלאה -->
 <div id="_devBar" style="position:fixed;top:70px;left:8px;z-index:9999;display:flex;flex-direction:column;gap:6px;">

@@ -116,6 +116,16 @@
     }
 
     .filter-btn.active { background: var(--blue); border-color: var(--blue); color: var(--white); }
+    .filter-changes { border-color: #FDE68A; color: #92400E; background: #FFFBEA; }
+    .filter-changes.active { background: #92400E; border-color: #92400E; color: #fff; }
+    .changes-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: #d97706; color: #fff;
+      font-size: 11px; font-weight: 800;
+      min-width: 18px; height: 18px; border-radius: 9px;
+      padding: 0 4px; margin-right: 2px;
+    }
+    .filter-changes.active .changes-badge { background: #fff; color: #92400E; }
 
     .search-box {
       flex: 1;
@@ -186,8 +196,26 @@
     .chip.fresh    { background: #dcfce7; color: #15803d; }
     .chip.medium   { background: var(--orange-bg); color: var(--orange); }
     .chip.long     { background: #fee2e2; color: #b45309; }
-    .chip.approved { background: var(--green-bg); color: var(--green); }
-    .chip.rejected { background: var(--slate-bg); color: var(--slate); }
+    .chip.approved      { background: var(--green-bg); color: var(--green); }
+    .chip.rejected      { background: var(--slate-bg); color: var(--slate); }
+    .chip.pending-edit  { background: #FEF9C3; color: #92400E; border: 1px solid #FDE68A; }
+
+    .pending-section { background: #FFFBEA; border: 2px solid #FDE68A; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+    .pending-title { font-size: 13px; font-weight: 800; color: #92400E; margin-bottom: 10px; }
+    .pending-row { display: grid; grid-template-columns: 100px 1fr auto 1fr; align-items: center; gap: 6px; font-size: 12px; padding: 5px 0; border-bottom: 1px solid #FDE68A; }
+    .pending-row:last-of-type { border-bottom: none; }
+    .pending-field { font-weight: 700; color: #92400E; }
+    .pending-old { color: #aaa; text-decoration: line-through; }
+    .pending-arrow { color: #92400E; font-weight: 700; }
+    .pending-new { color: #15803d; font-weight: 700; }
+    .pending-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .btn-pending-approve { flex: 1; background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 8px; font-family: 'Heebo',sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .btn-pending-reject  { flex: 1; background: #fff; color: #92400E; border: 1.5px solid #FDE68A; border-radius: 8px; padding: 8px; font-family: 'Heebo',sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+    .dashboard-link-box { background: #F0F9FF; border: 1.5px solid #BAE6FD; border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+    .dashboard-link-label { font-size: 12px; font-weight: 700; color: var(--blue); margin-bottom: 6px; }
+    .dashboard-link-url { font-size: 11px; color: #555; word-break: break-all; margin-bottom: 8px; }
+    .btn-copy-link { background: var(--blue); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-family: 'Heebo',sans-serif; font-size: 12px; font-weight: 700; cursor: pointer; width: 100%; }
 
     .pill {
       display: inline-flex;
@@ -883,6 +911,7 @@
     <button class="filter-btn" data-val="pending">ממתינים</button>
     <button class="filter-btn" data-val="approved">מאושרים</button>
     <button class="filter-btn" data-val="rejected">נדחו</button>
+    <button class="filter-btn filter-changes" data-val="changes" id="filterChangesBtn">✏️ שינויים <span class="changes-badge" id="changesBadge">0</span></button>
     <input class="search-box" type="search" id="searchInput" placeholder="🔍  חיפוש שם עסק / בעלים..." />
   </div>
 
@@ -1166,7 +1195,8 @@
 <script type="module">
 import { db } from './firebase-config.js';
 import {
-  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp
+  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp,
+  addDoc, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 let businesses   = [];
@@ -1265,7 +1295,36 @@ window.openBizSheet = function(id) {
   document.getElementById('vsTitle').textContent = b.name || '—';
   document.getElementById('vsMeta').innerHTML    = metaStr;
 
-  document.getElementById('vsBody').innerHTML = `
+  // סקציית שינויים ממתינים (מעל הכל)
+  const pendingHtml = b.pendingChanges ? (() => {
+    const rows = Object.entries(b.pendingChanges)
+      .map(([k, v]) => {
+        const label = PENDING_LABELS[k] || k;
+        const oldVal = b[k];
+        const display = typeof v === 'boolean' ? (v ? 'כן' : 'לא') : (v || '—');
+        const oldDisplay = typeof oldVal === 'boolean' ? (oldVal ? 'כן' : 'לא') : (oldVal || '—');
+        return `<div class="pending-row"><span class="pending-field">${label}</span><span class="pending-old">${oldDisplay}</span><span class="pending-arrow">→</span><span class="pending-new">${display}</span></div>`;
+      }).join('');
+    return `<div class="pending-section">
+      <div class="pending-title">✏️ שינויים ממתינים לאישורך</div>
+      ${rows}
+      <div class="pending-actions">
+        <button class="btn-pending-approve" onclick="approvePendingChanges('${id}')">✅ אשר שינויים</button>
+        <button class="btn-pending-reject" onclick="rejectPendingChanges('${id}')">✗ דחה שינויים</button>
+      </div>
+    </div>`;
+  })() : '';
+
+  const dashLinkHtml = b.accessToken ? (() => {
+    const dashUrl = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}business-dashboard.html?token=${b.accessToken}`;
+    return `<div class="dashboard-link-box" style="margin-bottom:14px">
+      <div class="dashboard-link-label">🔗 קישור דשבורד לבעל העסק</div>
+      <div class="dashboard-link-url" id="vsDashUrl">${dashUrl}</div>
+      <button class="btn-copy-link" onclick="navigator.clipboard.writeText(document.getElementById('vsDashUrl').textContent).then(()=>showToast('✅ הקישור הועתק!'))">📋 העתק קישור</button>
+    </div>`;
+  })() : '';
+
+  document.getElementById('vsBody').innerHTML = pendingHtml + dashLinkHtml + `
     <div class="card-section">
       <div class="card-section-title">👤 שלב 1 — בעל העסק</div>
       <div class="detail-grid">
@@ -1339,13 +1398,20 @@ function updateStats() {
   document.getElementById('statTotal').textContent    = businesses.length;
   document.getElementById('statPending').textContent  = businesses.filter(b => b.status === 'pending').length;
   document.getElementById('statApproved').textContent = businesses.filter(b => b.status === 'approved').length;
+
+  const changesCount = businesses.filter(b => b.pendingChanges).length;
+  document.getElementById('changesBadge').textContent = changesCount;
 }
 
 // ── render ────────────────────────────────────────────────────────────────────
 function render() {
   const search   = document.getElementById('searchInput').value.trim().toLowerCase();
   const filtered = businesses.filter(b => {
-    const matchF = activeFilter === 'all' || b.status === activeFilter;
+    const matchF = activeFilter === 'all'
+      ? true
+      : activeFilter === 'changes'
+        ? !!b.pendingChanges
+        : b.status === activeFilter;
     const matchS = !search ||
       (b.name || '').toLowerCase().includes(search) ||
       (b.ownerFirst + ' ' + b.ownerLast).toLowerCase().includes(search);
@@ -1379,13 +1445,17 @@ function render() {
 
     const isSelected = selectedIds.has(b.id);
 
+    const pendingBadge = b.pendingChanges
+      ? `<span class="chip pending-edit" title="בעל העסק שלח שינויים לאישור">✏️ שינויים</span>`
+      : '';
+
     return `
     <div class="biz-card ${b.status}${isSelected ? ' selected' : ''}" id="card-${b.id}">
       <div class="card-header" onclick="openBizSheet('${b.id}')" style="cursor:pointer;">
         <div class="biz-card-checkbox" onclick="event.stopPropagation();toggleSelect('${b.id}')">${isSelected ? '✓' : ''}</div>
         <div class="biz-avatar">🏪</div>
         <div class="card-info">
-          <div class="card-name">${b.name || '—'}</div>
+          <div class="card-name">${b.name || '—'} ${pendingBadge}</div>
           <div class="card-meta">${metaStr}</div>
         </div>
         ${subPill}
@@ -1550,6 +1620,11 @@ window.openModal = function(id) {
   document.getElementById('approveModal').classList.add('open');
 };
 
+window.copyDashboardLink = function() {
+  const url = document.getElementById('modalDashboardLink').dataset.url;
+  navigator.clipboard.writeText(url).then(() => showToast('✅ הקישור הועתק!'));
+};
+
 window.closeModal = function() {
   document.getElementById('approveModal').classList.remove('open');
   pendingId = null;
@@ -1590,6 +1665,30 @@ window.modalSendMail = function() {
   btn.textContent = '✓ מייל נפתח';
   btn.style.opacity = '.5';
   btn.style.pointerEvents = 'none';
+};
+
+const PENDING_LABELS = {
+  name: 'שם העסק', desc: 'תיאור', phone: 'טלפון עסק',
+  whatsapp: 'WhatsApp', serviceEmail: 'מייל שירות', city: 'עיר', address: 'כתובת',
+  hours: 'שעות פעילות', website: 'אתר', instagram: 'אינסטגרם', facebook: 'פייסבוק',
+  discountText: 'פרטי הטבה', discountCode: 'קוד קופון', discountType: 'סוג מימוש',
+  hasDiscount: 'הטבה פעילה', categoryPrimary: 'קטגוריה ראשית',
+};
+
+window.approvePendingChanges = async function(id) {
+  const b = businesses.find(x => x.id === id);
+  if (!b?.pendingChanges) return;
+  const updates = { ...b.pendingChanges, pendingChanges: null, pendingChangesAt: null };
+  await updateDoc(doc(db, 'businesses', id), updates);
+  showToast('✅ שינויים אושרו ועודכנו!');
+  closeViewSheet();
+};
+
+window.rejectPendingChanges = async function(id) {
+  if (!confirm('לדחות את השינויים שבעל העסק שלח?')) return;
+  await updateDoc(doc(db, 'businesses', id), { pendingChanges: null, pendingChangesAt: null });
+  showToast('✗ שינויים נדחו');
+  closeViewSheet();
 };
 
 window.rejectBiz = async function(id) {
@@ -1891,6 +1990,37 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
   closeEditModal();
   showToast('✅ הפרטים עודכנו');
 });
+
+// ── מיגרציה: הוספת בעלי עסקים לרשימת האוהדים ──────────────────────────────
+window.migrateBusinessesToMembers = async function() {
+  const toMigrate = businesses.filter(b => b.ownerEmail);
+  if (!toMigrate.length) { showToast('אין עסקים להסנכרן'); return; }
+  if (!confirm(`לסנכרן ${toMigrate.length} בעלי עסקים לרשימת האוהדים?\n(עסקים שכבר קיים להם רשומת אוהד יידלגו אוטומטית)`)) return;
+
+  let added = 0, skipped = 0;
+  for (const b of toMigrate) {
+    const email = b.ownerEmail.trim().toLowerCase();
+    const existing = await getDocs(query(collection(db, 'members'), where('email', '==', email)));
+    if (!existing.empty) { skipped++; continue; }
+
+    await addDoc(collection(db, 'members'), {
+      firstName:         b.ownerFirst  || '',
+      lastName:          b.ownerLast   || '',
+      phone:             b.ownerPhone  || '',
+      email:             email,
+      isSubscriber:      b.isSubscriber === 'yes',
+      subscriberSection: b.isSubscriber === 'yes' ? (b.gate   || null) : null,
+      subscriberNumber:  b.isSubscriber === 'yes' ? (b.subNum || null) : null,
+      facebookUrl:       b.fbUrl || null,
+      isBusinessOwner:   true,
+      status:            b.status === 'approved' ? 'approved' : 'pending',
+      submittedAt:       serverTimestamp(),
+      familyMembers:     [],
+    });
+    added++;
+  }
+  showToast(`✅ נוספו ${added} רשומות · ${skipped} כבר קיימות`);
+};
 
 // ── Firestore listener ────────────────────────────────────────────────────────
 const list = document.getElementById('bizList');
