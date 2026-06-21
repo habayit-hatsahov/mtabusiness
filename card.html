@@ -376,58 +376,60 @@
 
   <p class="card-footer-note">הצג תעודה זו בחנויות המשתתפות לקבלת הטבות</p>
 
-  <script>
-    // ── לדוגמה: נתוני חבר (בהמשך יגיעו מ-Firebase) ──
-    const member = {
-      firstName:  'ישראל',
-      lastName:   'ישראלי',
-      memberId:   142,
-      joinedDate: new Date('2025-06-01'),
-      gate:       '8',
-      isSubscriber: true
-    };
+  <script type="module">
+    import { auth, db } from './firebase-config.js';
+    import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
+    import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
 
-    function pad(n){ return String(n).padStart(5,'0'); }
+    // auth guard — מושבת זמנית
+    const memberId = sessionStorage.getItem('hb_memberId') || 'dev-bypass';
 
-    // מלא נתונים
-    document.getElementById('cardName').textContent    = member.firstName + ' ' + member.lastName;
-    document.getElementById('cardNumber').textContent  = '#' + pad(member.memberId);
-    document.getElementById('cardDate').textContent    =
-      String(member.joinedDate.getMonth()+1).padStart(2,'0') + '/' +
-      String(member.joinedDate.getFullYear()).slice(2);
-    document.getElementById('infoDate').textContent    =
-      member.joinedDate.toLocaleDateString('he-IL',{day:'numeric',month:'long',year:'numeric'});
+    // load member
+    const snap = await getDoc(doc(db, 'members', memberId));
+    if (!snap.exists()) { location.href = 'login.html'; }
+    const data = snap.data();
 
-    if (member.isSubscriber && member.gate) {
-      document.getElementById('cardGate').textContent = member.gate;
-      document.getElementById('gateField').style.display = 'block';
-      document.querySelector('.info-box .family-tag').textContent = 'מנוי שער ' + member.gate;
+    function pad(n) { return String(n).padStart(5,'0'); }
+
+    const fullName   = (data.firstName || '') + ' ' + (data.lastName || '');
+    const memberNum  = data.memberNumber || (parseInt(memberId.slice(0,6), 16) % 99999 + 1);
+    const approvedAt = data.approvedAt?.toDate() || new Date();
+    const isSubscriber = data.isSubscriber === true || data.isSubscriber === 'yes';
+    const gate = data.subscriberSection || null;
+
+    document.getElementById('cardName').textContent   = fullName;
+    document.getElementById('cardNumber').textContent = '#' + pad(memberNum);
+    document.getElementById('cardDate').textContent   =
+      String(approvedAt.getMonth()+1).padStart(2,'0') + '/' + String(approvedAt.getFullYear()).slice(2);
+
+    const gateField = document.getElementById('gateField');
+    if (isSubscriber && gate) {
+      document.getElementById('cardGate').textContent = gate;
+      if (gateField) gateField.style.display = 'block';
     } else {
-      document.getElementById('gateField').style.display = 'none';
-      document.querySelector('.info-box .family-tag').textContent = 'אוהד';
+      if (gateField) gateField.style.display = 'none';
     }
 
-    // ── שמירה לגלריה ──
-    async function saveCard() {
-      try {
-        const card = document.getElementById('memberCard');
+    // info-box (optional — exists in some versions)
+    const infoDate = document.getElementById('infoDate');
+    if (infoDate) infoDate.textContent = approvedAt.toLocaleDateString('he-IL',{day:'numeric',month:'long',year:'numeric'});
+    const familyTag = document.querySelector('.info-box .family-tag');
+    if (familyTag) familyTag.textContent = (isSubscriber && gate) ? 'מנוי שער ' + gate : 'אוהד';
 
-        // נסה html2canvas אם זמין, אחרת הודעה
-        if (typeof html2canvas !== 'undefined') {
-          const canvas = await html2canvas(card, { scale: 3, backgroundColor: null });
-          const link = document.createElement('a');
-          link.download = 'תעודת-חבר-הבית-הצהוב.png';
-          link.href = canvas.toDataURL('image/png');
-          link.click();
-        } else {
-          alert('לשמירה לגלריה — לחץ לחיצה ארוכה על התעודה ובחר "שמור תמונה"');
-        }
-      } catch(e) {
+    // save to gallery
+    window.saveCard = async function() {
+      const card = document.getElementById('memberCard');
+      if (typeof html2canvas !== 'undefined') {
+        const canvas = await html2canvas(card, { scale: 3, backgroundColor: null });
+        const link = document.createElement('a');
+        link.download = 'תעודת-חבר-הבית-הצהוב.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      } else {
         alert('לשמירה לגלריה — לחץ לחיצה ארוכה על התעודה ובחר "שמור תמונה"');
       }
-    }
+    };
 
-    // ── טעינת html2canvas לשמירת תמונה ──
     const s = document.createElement('script');
     s.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
     document.head.appendChild(s);

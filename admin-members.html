@@ -640,10 +640,10 @@
         <img id="editPhotoPreviewImg" src="" alt="תמונת הוכחה" style="max-width:100%;border-radius:10px;border:2px solid #E8EDF5;" />
       </div>
       <div class="edit-upload-zone">
-        <input type="file" accept="image/*" onchange="editProofUploadNote()" />
+        <input type="file" accept="image/*" id="editProofFile" onchange="editProofFileChanged(this)" />
         <div class="edit-upload-icon">📷</div>
-        <div class="edit-upload-text">העלאת תמונה</div>
-        <div class="edit-upload-sub">תדרוש Firebase Storage — בקרוב</div>
+        <div class="edit-upload-text" id="editProofUploadText">לחץ להעלאת תמונה</div>
+        <div class="edit-upload-sub">JPG, PNG · עד 5MB</div>
       </div>
       <div class="edit-btn-row">
         <button class="btn btn-reject" onclick="editGoBack(4)" style="flex:none;padding:10px 18px">→ חזור</button>
@@ -657,10 +657,20 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { db } from './firebase-config.js';
+import { db, auth, storage } from './firebase-config.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 import {
-  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp
+  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+
+async function uploadFile(file, path) {
+  const storageRef = ref(storage, path);
+  const snap = await uploadBytes(storageRef, file);
+  return await getDownloadURL(snap.ref);
+}
+
+// admin guard — מושבת זמנית
 
 let members      = [];
 let activeFilter = 'all';
@@ -1322,10 +1332,22 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
     photoProofUrl:     document.getElementById('editPhotoProofUrl').value.trim() || null,
   };
 
+  // העלאת תמונת הוכחה אם נבחרה
+  const proofFile = document.getElementById('editProofFile')?.files[0];
+  if (proofFile) {
+    showToast('מעלה תמונה...');
+    updates.photoProofUrl = await uploadFile(proofFile, `members/proofs/${id}_${Date.now()}`);
+  }
+
   await updateDoc(doc(db, 'members', id), updates);
   closeEditModal();
   showToast('✅ הפרטים עודכנו');
 });
+
+window.editProofFileChanged = function(input) {
+  const name = input.files[0]?.name || '';
+  document.getElementById('editProofUploadText').textContent = name || 'לחץ להעלאת תמונה';
+};
 
 // ── bulk select ───────────────────────────────────────────────────────────────
 window.toggleSelectMode = function() {

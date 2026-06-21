@@ -26,10 +26,12 @@
     /* ── TOP BAR ── */
     .topbar {
       background: linear-gradient(135deg, var(--blue-dk), var(--blue));
-      padding: 14px 20px;
+      padding: 0 16px;
+      height: 58px;
       display: flex; align-items: center; gap: 12px;
-      box-shadow: none;
+      box-shadow: 0 2px 12px rgba(0,0,0,.2);
     }
+    .topbar-logo-link { display: flex; align-items: center; text-decoration: none; flex-shrink: 0; }
     .back-btn {
       background: rgba(255,255,255,.12);
       border: 1px solid rgba(255,255,255,.2);
@@ -158,12 +160,12 @@
 
     /* ── DETAILS ── */
     .detail-row {
-      display: flex; justify-content: space-between;
-      align-items: center; padding: 12px 0;
+      display: flex; flex-direction: column;
+      padding: 8px 0; gap: 3px;
       border-bottom: 1px solid #F0F3FA;
     }
     .detail-row:last-child { border-bottom: none; padding-bottom: 0; }
-    .detail-label { font-size: 13px; color: var(--gray); flex-shrink: 0; }
+    .detail-label { font-size: 11px; color: var(--gray); }
     .detail-value-wrap { display: flex; align-items: center; gap: 8px; }
     .detail-value { font-size: 14px; font-weight: 700; color: #1a1a1a; }
     .edit-btn {
@@ -269,8 +271,18 @@
 
 <!-- TOPBAR -->
 <header class="topbar">
-  <a href="/home.html" class="back-btn">← חזרה</a>
-  <div class="topbar-title">הפרופיל שלי</div>
+  <a href="home.html" class="topbar-logo-link" title="חזרה לאינדקס">
+    <svg width="24" height="24" viewBox="0 0 100 100" fill="none">
+      <circle cx="50" cy="50" r="48" stroke="#FFD700" stroke-width="4"/>
+      <polygon points="50,20 61,42 85,45 67,62 72,86 50,74 28,86 33,62 15,45 39,42" fill="#FFD700"/>
+    </svg>
+    <span style="color:#fff;font-size:15px;font-weight:800;">הבית <em style="color:var(--yellow);font-style:normal;">הצהוב</em></span>
+  </a>
+  <div class="topbar-title"></div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <a href="home.html" class="back-btn">← חזרה לאינדקס</a>
+    <button onclick="signOutUser()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);border-radius:20px;padding:5px 12px;font-family:'Heebo',sans-serif;font-size:12px;font-weight:700;cursor:pointer;" title="יציאה">יציאה</button>
+  </div>
 </header>
 
 <!-- HERO -->
@@ -401,19 +413,52 @@
 <!-- DEV ONLY – למחיקה לפני העלאה -->
 <a href="nav.html" style="position:fixed;top:12px;left:8px;z-index:9999;background:#002a75;color:#FFD700;border:1.5px solid #FFD700;border-radius:20px;padding:6px 12px;font-family:'Heebo',sans-serif;font-size:11px;font-weight:700;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.3);white-space:nowrap;">← תפריט</a>
 
-<script>
-  // ── MEMBER DATA (יגיע מ-Firebase בהמשך) ─────────────────────────────────
-  const member = {
-    firstName: 'ישראל', lastName: 'ישראלי',
-    memberId: 142,
-    approvedDate: new Date('2025-10-01'),
-    isSubscriber: true,
-    phone: '050-0000000',
-    email: 'israel@gmail.com',
-    familyMembers: [
-      { name: 'שרה ישראלי', relation: 'spouse', phone: '052-1111111', email: 'sarah@gmail.com' },
-    ]
+<script type="module">
+import { auth, db } from './firebase-config.js';
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+// ── AUTH GUARD — מושבת זמנית ─────────────────────────────────────────────
+const memberId = sessionStorage.getItem('hb_memberId');
+
+// ── LOAD MEMBER ───────────────────────────────────────────────────────────
+let member;
+if (memberId) {
+  const memberSnap = await getDoc(doc(db, 'members', memberId));
+  const data = memberSnap.exists() ? memberSnap.data() : {};
+  member = {
+    firstName:    data.firstName || '',
+    lastName:     data.lastName  || '',
+    memberId:     data.memberNumber || parseInt(memberId.slice(0,5), 16) % 99999 + 1,
+    approvedDate: data.approvedAt?.toDate() || new Date(),
+    isSubscriber: data.isSubscriber === true || data.isSubscriber === 'yes',
+    subscriberSection: data.subscriberSection || null,
+    phone:        data.phone  || '',
+    email:        data.email  || '',
+    familyMembers: data.familyMembers || [],
   };
+} else {
+  // dev fallback
+  member = {
+    firstName: 'ישראל', lastName: 'ישראלי',
+    memberId: 142, approvedDate: new Date('2025-10-01'),
+    isSubscriber: true, subscriberSection: '8',
+    phone: '050-0000000', email: 'israel@gmail.com',
+    familyMembers: [],
+  };
+}
+
+// ── SIGN OUT ──────────────────────────────────────────────────────────────
+window.signOutUser = async function() {
+  await signOut(auth);
+  sessionStorage.clear();
+  location.href = 'login.html';
+};
+
+// ── UPDATE TO FIRESTORE ───────────────────────────────────────────────────
+async function saveMemberField(updates) {
+  await updateDoc(doc(db, 'members', memberId), updates);
+}
 
   const RELATION_LABELS = {
     spouse: 'בן/בת זוג', child: 'ילד/ה', parent: 'הורה', sibling: 'אח/ות', other: 'אחר'
@@ -459,8 +504,8 @@
     const val     = input.value.trim();
     if (!val) return;
 
-    if (isPhone) member.phone = val;
-    else          member.email = val;
+    if (isPhone) { member.phone = val; saveMemberField({ phone: val }); }
+    else          { member.email = val; saveMemberField({ email: val }); }
 
     const rowId  = isPhone ? 'phoneRow'    : 'emailRow';
     const dispId = isPhone ? 'phoneDisplay' : 'emailDisplay';
@@ -524,6 +569,7 @@
     member.familyMembers[i].email = email;
 
     renderFamily();
+    saveMemberField({ familyMembers: member.familyMembers });
     showToast('פרטי בן/בת המשפחה עודכנו ✓');
   }
 

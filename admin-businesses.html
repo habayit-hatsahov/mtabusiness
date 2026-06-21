@@ -1193,11 +1193,23 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { db } from './firebase-config.js';
+import { db, auth, storage } from './firebase-config.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 import {
   collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp,
-  addDoc, query, where, getDocs
+  addDoc, query, where, getDocs, getDoc
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import {
+  ref, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+
+async function uploadFile(file, path) {
+  const storageRef = ref(storage, path);
+  const snap = await uploadBytes(storageRef, file);
+  return await getDownloadURL(snap.ref);
+}
+
+// admin guard — מושבת זמנית
 
 let businesses   = [];
 let activeFilter = 'all';
@@ -1970,14 +1982,9 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
     website:            document.getElementById('editWebsite').value.trim(),
     instagram:          document.getElementById('editInstagram').value.trim(),
     facebook:           document.getElementById('editFacebook').value.trim(),
-    // מדיה — URL בלבד (תמונות בפועל ידרשו Firebase Storage)
-    logo:               document.getElementById('editLogoImg').src.startsWith('data:') ? '' : (document.getElementById('editLogoImg').src || ''),
-    photos:             [...document.querySelectorAll('[id^="editPhoto-"]')].map(row => {
-      const idx   = row.id.replace('editPhoto-', '');
-      const url   = document.getElementById('editPhotoUrl-'   + idx)?.value.trim() || '';
-      const name  = document.getElementById('editPhotoName-'  + idx)?.value.trim() || '';
-      return url || name ? { url, name } : null;
-    }).filter(Boolean),
+    // מדיה — יועלה ל-Storage למטה
+    logo:               '',
+    photos:             [],
     videos:             [...document.querySelectorAll('[id^="editVideo-"]')].map(row => {
       const idx   = row.id.replace('editVideo-', '');
       const url   = document.getElementById('editVideoUrl-'   + idx)?.value.trim() || '';
@@ -1985,6 +1992,34 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
       return url ? { url, label } : null;
     }).filter(Boolean),
   };
+
+  // ── העלאת לוגו ל-Storage אם נבחר קובץ חדש ─────────────────────────
+  const logoFile = document.getElementById('editLogoFile').files[0];
+  if (logoFile) {
+    showToast('מעלה לוגו...');
+    updates.logo = await uploadFile(logoFile, `businesses/${id}/logo_${Date.now()}`);
+  } else {
+    const existingSrc = document.getElementById('editLogoImg').src;
+    updates.logo = existingSrc.startsWith('http') ? existingSrc : '';
+  }
+
+  // ── העלאת תמונות גלריה ─────────────────────────────────────────────
+  const photoRows = [...document.querySelectorAll('[id^="editPhoto-"]')];
+  const photosResult = [];
+  for (const row of photoRows) {
+    const idx      = row.id.replace('editPhoto-', '');
+    const fileInput = row.querySelector('input[type="file"]');
+    const urlInput  = document.getElementById('editPhotoUrl-' + idx);
+    const nameInput = document.getElementById('editPhotoName-' + idx);
+    const name      = nameInput?.value.trim() || '';
+    let   url       = urlInput?.value.trim() || '';
+    if (fileInput?.files[0]) {
+      url = await uploadFile(fileInput.files[0], `businesses/${id}/gallery_${Date.now()}_${idx}`);
+      if (urlInput) urlInput.value = url;
+    }
+    if (url || name) photosResult.push({ url, name });
+  }
+  updates.photos = photosResult;
 
   await updateDoc(doc(db, 'businesses', id), updates);
   closeEditModal();

@@ -28,7 +28,7 @@
 | Backend / DB | Firebase Firestore — הרשמות עסקים + אוהדים נשמרות, דשבורד קורא בזמן אמת | ✅ מחובר |
 | Hosting | GitHub Pages — `habayit-hatsahov.github.io/mtabusiness/` | ✅ פעיל |
 | Storage | Firebase Storage — תמונות עסקים, לוגואים, תפריטים | ⏳ לא חובר |
-| Auth | Firebase Auth — login, session, הגנה על דפים | ⏳ לא חובר |
+| Auth | Firebase Auth — Phone OTP, session, הגנה על דפים | ✅ מחובר |
 | מיילים | EmailJS — אוטומטי בעת אישור חבר (חינמי עד 200/חודש) | ⏳ לא חובר (נשמר כמשימה) |
 | שרת פיתוח | server.ps1 — PowerShell local | ✅ פעיל |
 | שמירת כרטיס | html2canvas (scale=3) | ✅ פעיל |
@@ -442,17 +442,18 @@ home.html
 | `admin-businesses.html` | ניהול עסקים — stats, פילטר, חיפוש, כרטיסים קומפקטיים עם מנוי/לא מנוי inline, **modal אישור עם 3 כפתורים נפרדים**: (1) אשר עסק (2) שלח WhatsApp (3) שלח מייל Gmail — הודעות ניתנות לעריכה ב-textarea לפני שליחה, אינדיקציה ויזואלית לאחר שליחה. **modal עריכת עסק 5 שלבים עם stepper**: (1) בעל העסק (2) פרטי העסק (3) קטגוריה pill-grid ראשית+משנית + הטבה (4) שעות וקישורים (5) תמונות ומדיה — לוגו, גלריה (כל תמונה עם שם/תיאור), סרטונים (URL + תיאור). כפתור **📷 מדיה** על כל כרטיס פותח ישירות לשלב 5. קישורי וידאו נשמרים ל-Firestore; תמונות בפועל ידרשו Firebase Storage. **badge "✏️ שינויים" על כרטיס עסק שיש לו pendingChanges. modal האישור מציג לינק דשבורד לשליחה לבעל העסק. view sheet מציג diff שינויים ממתינים + כפתורי אשר/דחה שינויים.** |
 | `business.html` | **Stepper 4 שלבים עם ולידציה:** (1) פרטי בעל העסק + הערה "אפשר לרשום עסק של בן משפחה" + שדה קרבה לבעל המנוי + אימות אוהד (2) סוג עסק (פיזי/אונליין/מקצוע, עד 2 בחירות) + פרטים + **סניפים** (עד 5, עיר+כתובת לכל סניף) / אזורי פעילות / אתר לפי סוג + יצירת קשר (3) קטגוריות והטבות — קטגוריה ראשית+משנית + הטבה (דיפולט=כן, **מימוש: chips גם פיזי וגם אונליין**) + שעות + נוכחות דיגיטלית + הערה חופשית (4) **סיכום ושליחה** — תצוגת כל הפרטים שמולאו + אפשרות חזרה לעריכה + כפתור שליחה. **מחובר Firebase Firestore** — שומר ישירות ל-collection `businesses` **וגם ל-`members`** (isBusinessOwner: true, status: pending). **יוצר `accessToken` ייחודי (UUID) לכל עסק.** **ולידציה חוסמת** — לא ניתן לעבור שלב בלי למלא שדות חובה. |
 | `business-dashboard.html` | **דשבורד לבעל עסק — גישה דרך `?token=UUID`** (query Firestore לפי `accessToken`). **Modal תנאי שימוש בכניסה ראשונה** — חייב לסמן checkbox לפני כניסה, נשמר כ-`termsAccepted: true` ב-Firestore. **3 tabs:** (1) "הדף שלי" — כל פרטי העסק + banner "שינויים ממתינים" כשיש `pendingChanges` + כפתור "בקש עדכון" (מושבת בזמן pending); (2) "הפרופיל שלי" — שם, סטטוס, stats (clicks); (3) "תנאי שימוש" — תמיד נגיש. **עריכה:** bottom sheet עם כל השדות → submit שומר ב-`pendingChanges` ב-Firestore → admin רואה badge + diff ומאשר/דוחה. |
-| `card.html` | כרטיס אשראי, לוגו, שם, #חבר, תאריך, שער, שמירה לגלריה |
-| `home.html` | Top nav, category grid 2 שורות, 5 סקציות scroll, business cards עם הנחה, bottom sheet, analytics clicks, location banner |
+| `login.html` | Phone OTP auth (Firebase Phone Auth), בדיקת status=approved ב-members, הודעות שגיאה לפי מצב |
+| `card.html` | כרטיס אשראי, לוגו, שם, #חבר, תאריך, שער, שמירה לגלריה — **מחובר Firebase (auth guard + נתוני חבר אמיתיים)** |
+| `home.html` | Top nav, category grid 2 שורות, 5 סקציות scroll, business cards עם הנחה, bottom sheet, analytics clicks, location banner — **auth guard** |
 | `business-page.html` | עמוד מלא לשיתוף, hero, פרטים, הטבה, social, bottom CTA |
-| `profile.html` | Avatar, hero, תעודה מוטמעת, פרטים, הגדרות |
+| `profile.html` | Avatar, hero, תעודה מוטמעת, פרטים, הגדרות — **מחובר Firebase (auth guard + נתוני חבר אמיתיים + שמירת עריכות + כפתור יציאה)** |
 
 ### ⏳ לא בנוי
 
 | פיצ'ר | סטטוס |
 |-------|--------|
-| Firebase Auth | לא חובר — אין הגנה על דפים |
-| Firebase Storage | לא חובר — uploads לא נשמרים |
+| Firebase Auth | ✅ חובר — Phone OTP, guard על כל הדפים המוגנים |
+| Firebase Storage | ✅ מחובר — לוגו עסק, גלריה, תמונת הוכחה אוהד |
 | EmailJS — אוטומטי | **משימה שמורה** |
 | שדרוגי דף עסק (סעיף 6.5.1) | **מתוכנן — הצעד הבא** |
 | רקע בלומפילד בתעודה | **משימה שמורה** (`stadium.jpg`) |
@@ -524,7 +525,7 @@ home.html
 
 ## 15. מצב נוכחי
 
-**שלב: UI מלא + business.html + fan-register.html + admin-members.html + business-dashboard.html מחוברים Firebase**
+**שלב: Auth + אינדקס מחוברים — הפלטפורמה עובדת end-to-end**
 
 - כל הדפים בנויים — UX/UI מוכנים
 - **business.html מחובר ל-Firebase Firestore** — הגשות נשמרות ב-collection `businesses`
@@ -539,4 +540,11 @@ home.html
 - **business.html** — בהרשמה נוצר `accessToken` (UUID) + שמירה כפולה: `businesses` + `members` (isBusinessOwner: true)
 - **business-dashboard.html** — דשבורד בעל עסק דרך token, תנאי שימוש בכניסה ראשונה, עריכה עם pendingChanges
 - **admin-businesses.html** — badge שינויים ממתינים, diff + אשר/דחה, לינק דשבורד במודל האישור
-- **הצעד הבא:** חיבור אישור עסק לאינדקס (עסק מאושר יופיע ב-home.html)
+- **Firebase Phone Auth** — `login.html` עם OTP, guard על home/profile/card/admin-*
+- **`home.html`** מקבל עסקים אמיתיים מ-Firestore (status=approved)
+- **`profile.html`** ו-**`card.html`** טוענים נתוני חבר אמיתיים מ-Firestore
+- **admin guard** — בודק `isAdmin: true` על הדוק ב-members
+- **Firebase Storage** — מחובר ב-admin-businesses (לוגו + גלריה), admin-members (הוכחה), business.html (הוכחת אוהד)
+- **קטגוריות sport/other** — נוספו ל-home.html (גריד + לייבלים + צבעים)
+- **⚠️ Auth guard מושבת זמנית** על כל הדפים — להפעיל לפני העלאה לפרודקשן
+- **הצעד הבא:** EmailJS — צריך ליצור חשבון + 2 תבניות (member_approved, business_approved) ואז לחבר בקוד

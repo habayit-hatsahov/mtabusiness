@@ -547,6 +547,14 @@
       <div class="cat-circle">⚖️</div>
       <div class="cat-label">משפטים</div>
     </div>
+    <div class="cat-item" onclick="filterCat('sport',this)">
+      <div class="cat-circle">⚽</div>
+      <div class="cat-label">ספורט ופנאי</div>
+    </div>
+    <div class="cat-item" onclick="filterCat('other',this)">
+      <div class="cat-circle">📦</div>
+      <div class="cat-label">אחר</div>
+    </div>
   </div>
 </div>
 
@@ -657,6 +665,8 @@ const catColors = {
   finance: ['#0284C7','#0369A1'],
   tech:    ['#0891B2','#0E7490'],
   legal:   ['#64748B','#475569'],
+  sport:   ['#16a34a','#15803d'],
+  other:   ['#9333ea','#7e22ce'],
 };
 
 function bizInitials(name) {
@@ -702,11 +712,13 @@ function buildCard(biz, showRank) {
 
 function catLabel(cat) {
   return {food:'אוכל ושתייה',pro:'בעלי מקצוע',fashion:'ביגוד ואופנה',
-          health:'בריאות ויופי',finance:'פיננסים',tech:'טכנולוגיה',legal:'משפטים'}[cat] || cat;
+          health:'בריאות ויופי',finance:'פיננסים',tech:'טכנולוגיה',
+          legal:'משפטים',sport:'ספורט ופנאי',other:'אחר'}[cat] || cat;
 }
 
 function catIcon(cat) {
-  return {food:'🍕',pro:'🔧',fashion:'👕',health:'💊',finance:'📊',tech:'💻',legal:'⚖️',all:'🏠'}[cat] || '📦';
+  return {food:'🍕',pro:'🔧',fashion:'👕',health:'💊',finance:'📊',
+          tech:'💻',legal:'⚖️',sport:'⚽',other:'📦',all:'🏠'}[cat] || '📦';
 }
 
 // ── RENDER SECTIONS ───────────────────────────────────────────────────────────
@@ -1052,10 +1064,21 @@ function requestLocation() {
   <div style="font-family:'Heebo',sans-serif;font-size:14px;color:#888;">טוען עסקים...</div>
 </div>
 
-<!-- ══ FIREBASE LOADER ══ -->
+<!-- ══ FIREBASE LOADER + AUTH GUARD ══ -->
 <script type="module">
-import { db } from './firebase-config.js';
+import { db, auth } from './firebase-config.js';
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+// auth guard — מושבת זמנית
+// await new Promise(resolve => {
+//   const unsub = onAuthStateChanged(auth, user => {
+//     unsub();
+//     if (!user || !sessionStorage.getItem('hb_memberId')) {
+//       location.href = 'login.html?next=home.html';
+//     } else { resolve(); }
+//   });
+// });
 
 try {
   const snap = await getDocs(query(collection(db, 'businesses'), where('status', '==', 'approved')));
@@ -1068,7 +1091,7 @@ try {
       id:           doc.id,
       name:         b.name || '',
       cat:          b.categoryPrimary || 'other',
-      city:         b.city || '',
+      city:         (b.branches && b.branches[0]?.city) || (bizTypes.includes('online') ? 'אונליין' : ''),
       discount:     b.discountText || '',
       discountType: types.includes('online') ? 'online' : 'physical',
       coupon:       b.discountCode || '',
@@ -1078,8 +1101,8 @@ try {
       online:       bizTypes.includes('online'),
       lat:          null, lng: null,
       accessToken:  b.accessToken || null,
-      phone:        b.ownerPhone || '',
-      description:  b.description || b.desc || '',
+      phone:        b.ownerPhone || b.bizPhone || '',
+      desc:         b.desc || b.description || '',
     };
   });
 

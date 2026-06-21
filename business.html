@@ -873,9 +873,10 @@
         <div class="field-error" id="err-bizRegions">נא לבחור אזור אחד לפחות</div>
       </div>
 
-      <div class="form-group">
-        <label for="bizPhone">טלפון העסק <span class="opt">(אופציונלי)</span></label>
+      <div class="form-group" id="wrap-bizPhone">
+        <label for="bizPhone" id="label-bizPhone">טלפון העסק <span class="opt" id="bizPhone-opt">(אופציונלי)</span><span class="req" id="bizPhone-req" style="display:none;">*</span></label>
         <input type="tel" id="bizPhone" placeholder="03-0000000" inputmode="tel" />
+        <div class="field-error" id="err-bizPhone">מספר לא תקין</div>
       </div>
 
       <div class="divider"></div>
@@ -1089,7 +1090,12 @@
 
       <div id="summaryContent"></div>
 
-      <div class="btn-row" style="margin-top:24px;">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#555;margin-top:20px;line-height:1.5;">
+        <input type="checkbox" id="agreeTerms" style="width:18px;height:18px;flex-shrink:0;accent-color:var(--blue);" />
+        קראתי ואני מסכים/ה ל<a href="terms.html" target="_blank" style="color:var(--blue);font-weight:700;text-decoration:underline;">תנאי השימוש</a>
+      </label>
+
+      <div class="btn-row" style="margin-top:16px;">
         <button type="button" class="btn-back" onclick="goBack(4)">→ חזור</button>
         <button type="button" class="btn-submit" id="submitBtn" onclick="handleSubmit()">
           שלח בקשת הצטרפות לאינדקס
@@ -1118,8 +1124,15 @@
 </footer>
 
 <script type="module">
-  import { db } from './firebase-config.js';
+  import { db, storage } from './firebase-config.js';
   import { collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+  import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+
+  async function uploadFile(file, path) {
+    const storageRef = ref(storage, path);
+    const snap = await uploadBytes(storageRef, file);
+    return await getDownloadURL(snap.ref);
+  }
 
   // ── STEPPER STATE ──
   let currentStep = 1;
@@ -1249,6 +1262,10 @@
         if (regionErr) regionErr.style.display = 'none';
         regionGrid.classList.remove('error-highlight');
       }
+
+      // טלפון ליצירת קשר — חובה לבעל מקצוע
+      const phone = document.getElementById('bizPhone').value.trim();
+      ok = vf('bizPhone', phoneRx.test(phone.replace(/\s/g, '')), 'מספר לא תקין') && ok;
     }
 
     return ok;
@@ -1376,8 +1393,17 @@
     const accessToken = crypto.randomUUID();
     data.accessToken    = accessToken;
     data.pendingChanges = null;
+    data.logo           = '';
+    data.photoProofUrl  = '';
 
     try {
+      // העלאת תמונת הוכחת אוהד אם קיימת
+      const fanPhotoFile = document.getElementById('bizFanPhoto')?.files[0];
+      if (fanPhotoFile) {
+        const tempId = Date.now().toString();
+        data.photoProofUrl = await uploadFile(fanPhotoFile, `members/proofs/${tempId}_${fanPhotoFile.name}`);
+      }
+
       await addDoc(collection(db, 'businesses'), data);
 
       // רישום אוטומטי גם כחבר (אוהד)
@@ -1405,6 +1431,7 @@
   }
 
   // חשיפת פונקציות לאירועים inline
+  window.showStep            = showStep;
   window.handleSubmit        = handleSubmit;
   window.goNext              = goNext;
   window.goBack              = goBack;
@@ -1439,6 +1466,20 @@
     document.getElementById('wrap-branches').style.display   = hasPhysical ? 'block' : 'none';
     document.getElementById('wrap-bizWebsiteStep2').style.display = hasOnline ? 'block' : 'none';
     document.getElementById('wrap-bizRegions').style.display = hasPro ? 'block' : 'none';
+
+    // טלפון: שם + חובה לפי סוג עסק
+    const phoneLabel = document.getElementById('label-bizPhone');
+    const phoneOpt   = document.getElementById('bizPhone-opt');
+    const phoneReq   = document.getElementById('bizPhone-req');
+    if (hasPro) {
+      phoneLabel.childNodes[0].textContent = 'טלפון ליצירת קשר ';
+      phoneOpt.style.display = 'none';
+      phoneReq.style.display = 'inline';
+    } else {
+      phoneLabel.childNodes[0].textContent = 'טלפון העסק ';
+      phoneOpt.style.display = 'inline';
+      phoneReq.style.display = 'none';
+    }
 
     // מסתיר "איפה לממש" אם רק בעל מקצוע נבחר
     const wrapDiscountType = document.getElementById('wrap-discountType');
