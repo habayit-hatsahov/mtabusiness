@@ -342,15 +342,37 @@
       position: relative; overflow: hidden;
     }
 
+    .sheet-hero-img {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+
     .sheet-logo {
       width: 72px; height: 72px; border-radius: 20px;
       display: flex; align-items: center; justify-content: center;
       font-family: 'Heebo', sans-serif;
       font-size: 28px; font-weight: 900; color: #fff;
       box-shadow: 0 6px 20px rgba(0,0,0,.2);
+      position: relative; z-index: 1;
     }
 
     .sheet-content { padding: 16px 20px 32px; }
+
+    .sheet-gallery {
+      display: flex; gap: 8px;
+      overflow-x: auto; scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      margin: 12px -20px 0; padding: 0 20px 4px;
+      scrollbar-width: none;
+    }
+    .sheet-gallery::-webkit-scrollbar { display: none; }
+    .sheet-gallery img {
+      flex-shrink: 0; width: 140px; height: 100px;
+      object-fit: cover; border-radius: 12px;
+      scroll-snap-align: start;
+      cursor: pointer;
+    }
 
     .sheet-name {
       font-size: 22px; font-weight: 900; color: #1a1a1a;
@@ -445,6 +467,20 @@
     }
 
     .sheet-clicks { font-size: 12px; color: var(--gray); text-align: center; margin-top: 8px; }
+
+    /* info rows (hours, branches) */
+    .sheet-info-section { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .sheet-info-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      background: #F8FAFF; border-radius: 10px; padding: 10px 12px;
+      font-size: 13px; color: #1e293b;
+    }
+    .sheet-info-row .info-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .sheet-info-row .info-body { flex: 1; line-height: 1.5; }
+    .sheet-info-row .info-label { font-size: 11px; color: var(--gray); font-weight: 600; margin-bottom: 2px; }
+    .sheet-info-row a { color: var(--blue); text-decoration: none; font-weight: 700; }
+    .sheet-branch-item { font-size: 13px; }
+    .sheet-branch-item + .sheet-branch-item { margin-top: 4px; }
 
     /* social */
     .sheet-social { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
@@ -677,7 +713,7 @@ function bizInitials(name) {
 
 function bizLogo(biz) {
   if (biz.logo) {
-    return `<img src="${biz.logo}" alt="${biz.name}" style="width:72px;height:72px;object-fit:contain;border-radius:14px;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.12);" onerror="this.replaceWith(bizLogoFallback('${biz.cat}','${biz.name}'))" />`;
+    return `<img src="${biz.logo}" alt="${biz.name}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" onerror="this.replaceWith(bizLogoFallback('${biz.cat}','${biz.name}'))" />`;
   }
   const colors = catColors[biz.cat] || ['#003DA5','#002a75'];
   const initials = bizInitials(biz.name);
@@ -693,22 +729,42 @@ function bizLogoFallback(cat, name) {
   return el;
 }
 
+// ── LOCATION LINE ────────────────────────────────────────────────────────────
+function bizLocationLine(biz) {
+  if (biz.isPro) {
+    if (biz.regions.includes('כל הארץ')) return '🗺️ עובד בכל הארץ';
+    if (biz.regions.length) return '📍 ' + biz.regions.join(' · ');
+  }
+  const prefix = biz.isPhysical ? '🏪 חנות פיזית' : '';
+  const city   = biz.city || '';
+  if (prefix && city) return prefix + ' · ' + city;
+  if (prefix)         return prefix;
+  if (city)           return '📍 ' + city;
+  return '';
+}
+
 // ── CARD BUILDER ─────────────────────────────────────────────────────────────
 function buildCard(biz, showRank) {
-  const newTag  = isNew(biz)   ? `<div class="biz-badge new-badge">✨ חדש</div>` : '';
-  const onlineTag = biz.online ? `<div class="biz-badge online-badge" style="top:8px;left:8px;">🌐 אונליין</div>` : '';
-  const rankTag = showRank     ? `<div class="rank-badge">#${showRank}</div>` : '';
+  const newTag  = isNew(biz) ? `<div class="biz-badge new-badge">✨ חדש</div>` : '';
+  const bothTypes = biz.isPhysical && biz.online;
+  const proTag  = biz.isPro
+    ? `<div class="biz-badge" style="top:8px;left:8px;background:#7C3AED;color:#fff;">🔧 בעל מקצוע</div>`
+    : '';
+  const onlineTag = !biz.isPro && biz.online
+    ? `<div class="biz-badge online-badge" style="top:8px;left:8px;">${bothTypes ? '🏪 חנות פיזית + אונליין' : '🌐 אונליין'}</div>`
+    : '';
+  const rankTag = showRank ? `<div class="rank-badge">#${showRank}</div>` : '';
   const couponLine = ''; // מוצג רק בדף העסק
 
   return `
-    <div class="biz-card" onclick="openBiz(${biz.id})">
+    <div class="biz-card" onclick="openBiz('${biz.id}')">
       <div class="biz-card-img">
         ${bizLogo(biz)}
-        ${newTag}${onlineTag}${rankTag}
+        ${newTag}${proTag}${onlineTag}${rankTag}
       </div>
       <div class="biz-card-body">
         <div class="biz-card-name">${biz.name}</div>
-        <div class="biz-card-cat">${catLabel(biz.cat)}</div>
+        <div class="biz-card-cat">${biz.isPro && biz.profession ? biz.profession : catLabel(biz.cat)}</div>
         ${biz.discount ? `
         <div class="biz-discount">
           <div class="biz-discount-icon">💛</div>
@@ -717,7 +773,7 @@ function buildCard(biz, showRank) {
             ${couponLine}
           </div>
         </div>` : ''}
-        <div class="biz-city">📍 ${biz.city}</div>
+        <div class="biz-city">${bizLocationLine(biz)}</div>
       </div>
     </div>`;
 }
@@ -853,12 +909,20 @@ function openBiz(id) {
   // hero
   document.getElementById('sheetHero').style.background =
     `linear-gradient(135deg,${colors[0]}33,${colors[1]}55)`;
+  const hero = document.getElementById('sheetHero');
   const logo = document.getElementById('sheetLogo');
+  const existingImg = hero.querySelector('.sheet-hero-img');
+  if (existingImg) existingImg.remove();
+
   if (b.logo) {
-    logo.innerHTML = `<img src="${b.logo}" alt="${b.name}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;" />`;
-    logo.style.background = '#fff';
-    logo.textContent = '';
+    const img = document.createElement('img');
+    img.src = b.logo;
+    img.alt = b.name;
+    img.className = 'sheet-hero-img';
+    hero.insertBefore(img, hero.firstChild);
+    logo.style.display = 'none';
   } else {
+    logo.style.display = 'flex';
     logo.innerHTML = '';
     logo.textContent = bizInitials(b.name);
     logo.style.background = `linear-gradient(135deg,${colors[0]},${colors[1]})`;
@@ -906,31 +970,148 @@ function openBiz(id) {
     document.getElementById('sheetCouponArea').innerHTML = '';
   }
 
-  // social
+  // gallery
+  const gallery = document.getElementById('sheetGallery');
+  if (b.photos && b.photos.length) {
+    gallery.innerHTML = b.photos.map(p => {
+      const url = (typeof p === 'string') ? p : p.url;
+      return url ? `<img src="${url}" loading="lazy" onclick="window.open('${url}','_blank')" />` : '';
+    }).join('');
+    gallery.style.display = 'flex';
+  } else {
+    gallery.innerHTML = '';
+    gallery.style.display = 'none';
+  }
+
+  // info section (hours, branches, contact, links)
+  const infoRows = [];
+
+  // שעות פעילות
+  if (b.hours) {
+    infoRows.push(`
+      <div class="sheet-info-row">
+        <span class="info-icon">🕐</span>
+        <div class="info-body">
+          <div class="info-label">שעות פעילות</div>
+          ${b.hours.replace(/\n/g, '<br>')}
+        </div>
+      </div>`);
+  }
+
+  // סניפים עם ניווט
+  if (b.branches && b.branches.length) {
+    const branchItems = b.branches
+      .filter(br => br.city || br.address)
+      .map(br => {
+        const full = [br.address, br.city].filter(Boolean).join(', ');
+        const wazeUrl = `https://waze.com/ul?q=${encodeURIComponent(full)}`;
+        const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(full)}`;
+        return `<div class="sheet-branch-item">
+          📍 ${full}
+          &nbsp;<a href="${wazeUrl}" target="_blank">Waze</a>
+          &nbsp;·&nbsp;<a href="${mapsUrl}" target="_blank">מפות</a>
+        </div>`;
+      });
+    if (branchItems.length) {
+      infoRows.push(`
+        <div class="sheet-info-row">
+          <span class="info-icon">🏪</span>
+          <div class="info-body">
+            <div class="info-label">${branchItems.length > 1 ? 'סניפים' : 'כתובת'}</div>
+            ${branchItems.join('')}
+          </div>
+        </div>`);
+    }
+  }
+
+  // אזורי פעילות (בעלי מקצוע)
+  if (b.isPro && b.regions && b.regions.length) {
+    infoRows.push(`
+      <div class="sheet-info-row">
+        <span class="info-icon">🗺️</span>
+        <div class="info-body">
+          <div class="info-label">אזורי פעילות</div>
+          ${b.regions.join(' · ')}
+        </div>
+      </div>`);
+  }
+
+  // מייל שירות
+  if (b.serviceEmail) {
+    infoRows.push(`
+      <div class="sheet-info-row">
+        <span class="info-icon">✉️</span>
+        <div class="info-body">
+          <div class="info-label">מייל שירות</div>
+          <a href="mailto:${b.serviceEmail}">${b.serviceEmail}</a>
+        </div>
+      </div>`);
+  }
+
+  // קישורים (אתר, אינסטגרם, פייסבוק)
+  const linkItems = [];
+  if (b.website)   linkItems.push(`<a href="${b.website.startsWith('http') ? b.website : 'https://'+b.website}" target="_blank">🌐 אתר</a>`);
+  if (b.instagram) {
+    const igHandle = b.instagram.trim().replace(/^@/, '');
+    const igUrl = igHandle.startsWith('http') ? igHandle : `https://instagram.com/${igHandle}`;
+    linkItems.push(`<a href="${igUrl}" target="_blank">📸 אינסטגרם</a>`);
+  }
+  if (b.facebook)  linkItems.push(`<a href="${b.facebook.startsWith('http') ? b.facebook : 'https://'+b.facebook}" target="_blank">👤 פייסבוק</a>`);
+  if (linkItems.length) {
+    infoRows.push(`
+      <div class="sheet-info-row">
+        <span class="info-icon">🔗</span>
+        <div class="info-body" style="display:flex;flex-wrap:wrap;gap:10px;">
+          ${linkItems.join('')}
+        </div>
+      </div>`);
+  }
+
+  const infoSection = document.getElementById('sheetInfoSection');
+  if (infoRows.length) {
+    infoSection.innerHTML = `<div class="sheet-info-section">${infoRows.join('')}</div>`;
+  } else {
+    infoSection.innerHTML = '';
+  }
+
+  // social (phone only — links moved to info section)
   const links = [];
   if (b.phone)     links.push(`<a href="tel:${b.phone}">📞 ${b.phone}</a>`);
-  if (b.website)   links.push(`<a href="https://${b.website}" target="_blank">🌐 אתר</a>`);
-  if (b.instagram) links.push(`<a href="https://instagram.com/${b.instagram}" target="_blank">📸 אינסטגרם</a>`);
+  if (b.whatsapp) {
+    const ph = b.whatsapp.replace(/\D/g,'');
+    const intl = ph.startsWith('0') ? '972'+ph.slice(1) : ph;
+    links.push(`<a href="https://wa.me/${intl}" target="_blank">💬 WhatsApp</a>`);
+  }
   document.getElementById('sheetSocial').innerHTML = links.join('');
 
   // CTA
-  if (b.phone) {
+  const ctaPhone = b.phone;
+  const ctaWa    = b.whatsapp || b.phone;
+  if (ctaPhone || ctaWa) {
     document.getElementById('sheetCta').style.display = 'flex';
-    document.getElementById('sheetCallBtn').onclick = () => location.href = 'tel:' + b.phone;
-    const ph = b.phone.replace(/\D/g,'');
-    const intl = ph.startsWith('0') ? '972'+ph.slice(1) : ph;
+    const callBtn = document.getElementById('sheetCallBtn');
+    if (ctaPhone) {
+      callBtn.style.display = '';
+      callBtn.onclick = () => location.href = 'tel:' + ctaPhone;
+    } else {
+      callBtn.style.display = 'none';
+    }
+    const waPh  = ctaWa.replace(/\D/g,'');
+    const waIntl = waPh.startsWith('0') ? '972'+waPh.slice(1) : waPh;
     document.getElementById('sheetWaBtn').onclick = () =>
-      window.open(`https://wa.me/${intl}?text=${encodeURIComponent('היי, ראיתי את העסק שלך בהבית הצהוב 💛')}`, '_blank');
+      window.open(`https://wa.me/${waIntl}?text=${encodeURIComponent('היי, ראיתי את העסק שלך בהבית הצהוב 💛')}`, '_blank');
   } else {
     document.getElementById('sheetCta').style.display = 'none';
   }
 
-  // dashboard btn (for business owners)
   const dashArea = document.getElementById('sheetDashBtn');
-  if (dashArea) {
-    dashArea.innerHTML = b.accessToken
-      ? `<a href="business-dashboard.html?token=${b.accessToken}" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;padding:12px;background:#f0f4ff;border:1.5px solid #003DA5;border-radius:12px;color:#003DA5;font-family:'Heebo',sans-serif;font-size:14px;font-weight:800;text-decoration:none;">🔑 כניסה לדשבורד בעל העסק</a>`
-      : '';
+  if (dashArea) dashArea.innerHTML = '';
+
+  // כפתור דף מלא
+  const fullBtn = document.getElementById('sheetFullPageBtn');
+  if (fullBtn) {
+    fullBtn.href = 'business-page.html?id=' + b.id;
+    fullBtn.style.display = 'block';
   }
 
   // open
@@ -1066,6 +1247,8 @@ function requestLocation() {
         <div class="sheet-benefit-type" id="sheetBenefitType"></div>
       </div>
       <div id="sheetCouponArea"></div>
+      <div class="sheet-gallery" id="sheetGallery"></div>
+      <div id="sheetInfoSection"></div>
       <div class="sheet-clicks" id="sheetClicks"></div>
       <div class="sheet-social" id="sheetSocial"></div>
       <div class="sheet-cta" id="sheetCta" style="display:none">
@@ -1073,6 +1256,7 @@ function requestLocation() {
         <button class="sheet-wa"   id="sheetWaBtn">💬 WhatsApp</button>
       </div>
       <div id="sheetDashBtn"></div>
+      <a id="sheetFullPageBtn" href="#" target="_blank" style="display:none;margin-top:10px;width:100%;text-align:center;background:#f1f5f9;border-radius:10px;padding:10px;font-family:'Heebo',sans-serif;font-size:13px;font-weight:700;color:var(--blue);text-decoration:none;">🔗 פתח דף מלא לשיתוף</a>
     </div>
   </div>
 </div>
@@ -1087,7 +1271,7 @@ function requestLocation() {
 <script type="module">
 import { db, auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // auth guard — מושבת זמנית
 // await new Promise(resolve => {
@@ -1099,9 +1283,7 @@ import { collection, getDocs, query, where } from "https://www.gstatic.com/fireb
 //   });
 // });
 
-try {
-  const snap = await getDocs(query(collection(db, 'businesses'), where('status', '==', 'approved')));
-
+onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')), snap => {
   const data = snap.docs.map(doc => {
     const b = doc.data();
     const types = b.discountTypes || [];
@@ -1118,20 +1300,31 @@ try {
       popular:      false,
       clicks:       b.clicks || 0,
       online:       bizTypes.includes('online'),
+      isPhysical:   bizTypes.includes('physical'),
+      isPro:        bizTypes.includes('pro'),
+      profession:   b.profession || '',
+      regions:      b.regions || [],
       lat:          null, lng: null,
       accessToken:  b.accessToken || null,
-      phone:        b.ownerPhone || b.bizPhone || '',
+      phone:        b.phone || b.ownerPhone || b.bizPhone || '',
+      whatsapp:     b.whatsapp || '',
+      serviceEmail: b.serviceEmail || '',
       desc:         b.desc || b.description || '',
       logo:         b.logo || '',
       photos:       b.photos || [],
+      branches:     b.branches || [],
+      hours:        b.hours || '',
+      website:      b.website || b.websiteOnline || '',
+      instagram:    b.instagram || '',
+      facebook:     b.facebook || '',
     };
   });
 
   window.loadFirebaseData(data);
-} catch(e) {
-  console.error('Firebase load error:', e);
+}, err => {
+  console.error('Firebase load error:', err);
   document.getElementById('loadingOverlay')?.remove();
-}
+});
 </script>
 
 <!-- DEV ONLY – למחיקה לפני העלאה -->
