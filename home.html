@@ -1053,13 +1053,17 @@ function sCopyCoupon(code) {
     <span class="bottom-nav-icon">👤</span>
     <span class="bottom-nav-label">פרופיל</span>
   </div>
+  <a class="bottom-nav-item" id="bizNavItem" href="#" style="display:none">
+    <span class="bottom-nav-icon">🏪</span>
+    <span class="bottom-nav-label">העסק שלי</span>
+  </a>
 </nav>
 
 <!-- ══ FIREBASE LOADER + AUTH GUARD ══ -->
 <script type="module">
 import { db, auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // auth guard — מושבת זמנית
 // await new Promise(resolve => {
@@ -1112,6 +1116,39 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
   console.error('Firebase load error:', err);
   document.getElementById('loadingOverlay')?.remove();
 });
+
+// ── בעל עסק — הצגת כפתור "העסק שלי" בסרגל התחתון ──
+async function initBizNavItem() {
+  const memberId = sessionStorage.getItem('hb_memberId');
+  let isBizOwner = false, phone = '', email = '';
+  if (memberId) {
+    const snap = await getDoc(doc(db, 'members', memberId));
+    if (snap.exists()) {
+      const d = snap.data();
+      isBizOwner = d.isBusinessOwner === true;
+      phone = d.phone || '';
+      email = d.email || '';
+    }
+  } else {
+    isBizOwner = true; // dev fallback
+  }
+  if (!isBizOwner) return;
+
+  let token = memberId ? '' : (sessionStorage.getItem('hb_lastBizToken') || 'c6342c93-a350-42b8-ad87-95fa005c8983');
+  if (memberId && (phone || email)) {
+    const bizQ = query(collection(db, 'businesses'), phone ? where('ownerPhone', '==', phone) : where('ownerEmail', '==', email));
+    const bizSnap = await getDocs(bizQ);
+    if (!bizSnap.empty) token = bizSnap.docs[0].data().accessToken || '';
+  }
+  if (!token) return;
+
+  const item = document.getElementById('bizNavItem');
+  if (item) {
+    item.href = `business-dashboard.html?token=${token}`;
+    item.style.display = 'flex';
+  }
+}
+initBizNavItem();
 </script>
 
 <!-- DEV ONLY – למחיקה לפני העלאה -->
