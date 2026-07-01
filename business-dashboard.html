@@ -115,6 +115,8 @@
     .info-label { font-size: 11px; color: var(--text-muted); }
     .info-value { font-size: 14px; font-weight: 600; color: var(--text); word-break: break-word; line-height: 1.5; }
     .info-value.missing { color: var(--text-muted); font-weight: 400; font-style: italic; }
+    .info-row.changed .info-label { color: var(--orange); }
+    .info-row.changed .info-value { color: var(--orange); font-weight: 800; }
 
     /* ── PENDING BANNER ── */
     .pending-banner {
@@ -124,15 +126,27 @@
     .pending-banner-title { font-size: 13px; font-weight: 800; color: var(--yellow); margin-bottom: 4px; }
     .pending-banner-sub   { font-size: 12px; color: var(--text-sm); line-height: 1.6; }
 
-    /* ── EDIT BTN ── */
-    .btn-edit-biz {
-      width: 100%; padding: 14px;
-      background: linear-gradient(135deg, var(--blue), var(--blue-mid));
-      color: var(--white); border: none; border-radius: var(--radius);
-      font-family: 'Heebo', sans-serif; font-size: 15px; font-weight: 800;
-      cursor: pointer; margin-top: 4px;
+    /* ── INLINE SECTION EDIT ── */
+    .info-card-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 12px; }
+    .info-card-head .info-card-title { margin-bottom: 0; }
+    .sec-edit-btn {
+      background: rgba(255,255,255,.08); color: var(--yellow); border: 1px solid rgba(255,222,0,.25); border-radius: 7px;
+      padding: 4px 10px; font-family: 'Heebo', sans-serif; font-size: 11px; font-weight: 700;
+      cursor: pointer; flex-shrink: 0;
     }
-    .btn-edit-biz:disabled { opacity: .4; cursor: not-allowed; }
+    .sec-edit-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .sec-edit-form { display: none; margin-top: 4px; }
+    .sec-edit-form.open { display: block; }
+    .info-rows.hidden-when-edit { display: none; }
+    .sec-edit-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .btn-cancel-sec {
+      flex: 1; padding: 11px; background: none; border: 1px solid var(--border-md); border-radius: 12px;
+      font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 700; color: var(--text-sm); cursor: pointer;
+    }
+    .btn-save-sec {
+      flex: 1.4; padding: 11px; background: var(--yellow); color: #0f1524; border: none; border-radius: 12px;
+      font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 800; cursor: pointer;
+    }
 
     /* ── STATS ── */
     .stats-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
@@ -175,21 +189,7 @@
     }
     .terms-topbar-title { color: var(--white); font-size: 16px; font-weight: 800; }
 
-    /* ── EDIT MODAL ── */
-    .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,.6);
-      z-index: 300; display: flex; align-items: flex-end;
-    }
-    .modal-overlay.hidden { display: none; }
-    .edit-sheet {
-      background: var(--nav-bg); border-radius: 24px 24px 0 0;
-      width: 100%; max-height: 92dvh; overflow-y: auto;
-      padding: 20px 20px 40px; border-top: 1px solid var(--border-md);
-    }
-    .edit-sheet-handle { width: 40px; height: 4px; background: rgba(255,255,255,.2); border-radius: 2px; margin: 0 auto 16px; }
-    .edit-sheet-title  { font-size: 17px; font-weight: 900; color: var(--yellow); margin-bottom: 4px; }
-    .edit-sheet-sub    { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
-
+    /* ── INLINE EDIT FORM FIELDS (reused inside sec-edit-form) ── */
     .form-group { margin-bottom: 14px; }
     .form-label { font-size: 12px; font-weight: 700; color: var(--text-sm); margin-bottom: 5px; display: block; }
     .form-input {
@@ -215,17 +215,134 @@
     }
     .toggle-pill.on::after { right: calc(100% - 22px); }
 
-    .btn-save-changes {
-      width: 100%; padding: 15px;
-      background: var(--yellow); color: #0f1524; border: none; border-radius: var(--radius);
-      font-family: 'Heebo', sans-serif; font-size: 15px; font-weight: 900;
-      cursor: pointer; margin-top: 6px;
+    /* ── TYPE / REGION CHIPS ── */
+    .region-pill-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+    .region-pill {
+      border: 1.5px solid var(--border-md); border-radius: 20px; padding: 6px 12px;
+      font-size: 12px; font-weight: 600; color: var(--text-sm); cursor: pointer;
+      background: var(--bg); transition: all .15s; user-select: none;
     }
-    .btn-close-edit {
-      width: 100%; padding: 12px; background: none;
+    .region-pill.selected { background: rgba(255,222,0,.15); border-color: var(--yellow); color: var(--yellow); }
+
+    /* ── CATEGORY PILLS ── */
+    .edit-cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 4px; }
+    .edit-cat-pill {
+      border: 1.5px solid var(--border-md); border-radius: 10px; padding: 9px 4px;
+      text-align: center; cursor: pointer; transition: all .15s;
+      background: var(--bg); user-select: none; position: relative;
+    }
+    .edit-cat-pill .cat-icon { font-size: 20px; display: block; margin-bottom: 3px; }
+    .edit-cat-pill .cat-name { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .edit-cat-pill.primary { border-color: var(--yellow); background: rgba(255,222,0,.1); }
+    .edit-cat-pill.primary .cat-name { color: var(--yellow); }
+    .edit-cat-pill.primary::after {
+      content: 'ראשית'; position: absolute; top: -8px; right: 50%; transform: translateX(50%);
+      background: var(--yellow); color: #1a1a00; font-size: 9px; font-weight: 800;
+      padding: 1px 5px; border-radius: 8px;
+    }
+    .edit-cat-pill.secondary { border-color: #4a6bcc; background: rgba(74,107,204,.15); }
+    .edit-cat-pill.secondary .cat-name { color: #a0b4f0; }
+    .edit-cat-pill.secondary::after {
+      content: 'משנית'; position: absolute; top: -8px; right: 50%; transform: translateX(50%);
+      background: #4a6bcc; color: var(--white); font-size: 9px; font-weight: 800;
+      padding: 1px 5px; border-radius: 8px;
+    }
+
+    /* ── MEDIA UPLOAD ── */
+    .edit-upload-zone {
+      border: 2px dashed var(--border-md); border-radius: 12px;
+      padding: 18px 14px; text-align: center; cursor: pointer;
+      background: rgba(255,255,255,.03); position: relative; transition: all .2s;
+      margin-bottom: 14px;
+    }
+    .edit-upload-zone:hover { border-color: var(--yellow); background: rgba(255,222,0,.08); }
+    .edit-upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; z-index: 1; }
+    .edit-upload-icon { font-size: 26px; }
+    .edit-upload-text { font-size: 13px; font-weight: 600; color: var(--yellow); margin-top: 4px; }
+    .edit-upload-sub  { font-size: 11px; color: var(--text-sm); margin-top: 2px; }
+    .edit-logo-preview { display: none; position: relative; width: 72px; height: 72px; margin: 0 auto 4px; }
+    .edit-logo-preview img { width: 72px; height: 72px; border-radius: 10px; object-fit: cover; border: 2px solid var(--border-md); }
+    .edit-logo-remove {
+      position: absolute; top: -6px; left: -6px; width: 20px; height: 20px; border-radius: 50%;
+      background: var(--orange); color: #fff; border: none; cursor: pointer;
+      font-size: 11px; font-weight: 800; z-index: 2; display: flex; align-items: center; justify-content: center;
+    }
+    .edit-media-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+      background: rgba(255,255,255,.04); border-radius: 10px; padding: 8px 10px; border: 1.5px solid var(--border-md);
+    }
+    .edit-media-thumb {
+      width: 48px; height: 48px; flex-shrink: 0; border-radius: 8px; border: 2px dashed var(--border-md);
+      background: rgba(0,61,165,.2); position: relative; cursor: pointer;
+      overflow: hidden; display: flex; align-items: center; justify-content: center;
+      font-size: 18px; color: var(--yellow);
+    }
+    .edit-media-thumb input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .edit-media-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .edit-media-fields { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+    .edit-media-fields input {
+      width: 100%; padding: 7px 10px; border: 1.5px solid var(--border-md);
+      border-radius: 8px; font-family: 'Heebo', sans-serif; font-size: 13px; outline: none;
+      background: var(--nav-bg); color: var(--text);
+    }
+    .edit-media-fields input:focus { border-color: var(--yellow); }
+    .edit-media-remove {
+      width: 28px; height: 28px; flex-shrink: 0; background: rgba(255,255,255,.08); border: none; border-radius: 6px;
+      cursor: pointer; color: var(--text-sm); font-size: 14px; display: flex; align-items: center; justify-content: center;
+    }
+    .edit-add-btn {
+      width: 100%; padding: 9px; border: 2px dashed var(--border-md); border-radius: 10px; background: transparent;
+      font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 700; color: var(--yellow); cursor: pointer;
+      transition: all .15s; margin-bottom: 4px;
+    }
+    .edit-add-btn:hover { border-color: var(--yellow); background: rgba(255,222,0,.08); }
+    .media-view-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; border: 2px solid var(--border-md); }
+    .media-view-label { font-size: 11px; color: var(--text-sm); margin-bottom: 6px; }
+
+    /* ── DRAFT (שינויים שטרם נשלחו) ── */
+    .card-changed-badge {
+      font-size: 10px; font-weight: 800; color: var(--yellow); background: rgba(255,222,0,.15);
+      border: 1px solid rgba(255,222,0,.35); border-radius: 8px; padding: 2px 7px; margin-right: 6px; vertical-align: middle;
+    }
+    .draft-submit-bar {
+      position: fixed; bottom: 82px; left: 50%; transform: translateX(-50%);
+      width: calc(100% - 32px); max-width: 608px;
+      background: var(--card-bg); border: 1.5px solid var(--yellow);
+      border-radius: var(--radius); padding: 14px 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.45);
+      z-index: 250; display: none; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .draft-submit-bar.show { display: flex; }
+    .draft-submit-actions { display: flex; gap: 8px; width: 100%; }
+    .btn-discard-draft {
+      background: none; border: 1px solid var(--border-md); color: var(--text-sm);
+      padding: 9px 12px; border-radius: 10px; font-size: 12px; font-weight: 700;
+      cursor: pointer; font-family: 'Heebo', sans-serif; white-space: nowrap;
+    }
+    .btn-submit-draft {
+      background: var(--yellow); color: #0f1524; border: none;
+      padding: 9px 14px; border-radius: 10px; font-size: 12px; font-weight: 800;
+      cursor: pointer; font-family: 'Heebo', sans-serif; white-space: nowrap;
+    }
+
+    /* ── CONFIRM SUMMARY VIEW ── */
+    .confirm-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .confirm-row:last-child { border-bottom: none; }
+    .confirm-field { display: block; font-size: 11px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px; }
+    .confirm-values { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+    .confirm-old { color: var(--text-sm); text-decoration: line-through; }
+    .confirm-arrow { color: var(--text-muted); }
+    .confirm-new { color: var(--orange); font-weight: 800; }
+    .btn-confirm-submit {
+      width: 100%; padding: 14px; margin-top: 14px;
+      background: var(--yellow); color: #0f1524; border: none; border-radius: var(--radius);
+      font-family: 'Heebo', sans-serif; font-size: 15px; font-weight: 800; cursor: pointer;
+    }
+    .btn-confirm-back {
+      width: 100%; padding: 12px; margin-top: 10px; background: none;
       border: 1px solid var(--border-md); border-radius: var(--radius);
       font-family: 'Heebo', sans-serif; font-size: 14px; font-weight: 700;
-      color: var(--text-sm); cursor: pointer; margin-top: 8px;
+      color: var(--text-sm); cursor: pointer;
     }
 
     /* ── TOAST ── */
@@ -282,8 +399,8 @@
       <div class="panel-body">
         <div id="pendingBanner" style="display:none">
           <div class="pending-banner">
-            <div class="pending-banner-title">⏳ שינויים ממתינים לאישור</div>
-            <div class="pending-banner-sub">שלחת בקשת עדכון. הצוות יבדוק ויאשר בהקדם.<br/>לא ניתן לשלוח שינויים נוספים עד לטיפול בבקשה הנוכחית.</div>
+            <div class="pending-banner-title">⏳ יש לך שינויים שממתינים לאישור מנהל</div>
+            <div class="pending-banner-sub">אפשר להמשיך לערוך בינתיים — כל שינוי נוסף יתווסף לאותה בקשה וישלח מחדש לבדיקה.</div>
           </div>
         </div>
         <div class="stats-row">
@@ -297,7 +414,6 @@
           </div>
         </div>
         <div id="bizInfoCards"></div>
-        <button class="btn-edit-biz" id="editBizBtn" onclick="openEditModal()">✏️ בקש עדכון פרטים</button>
 
         <!-- תנאי שימוש — שורת לינק בלבד -->
         <button class="terms-link-row" style="margin-top:8px;" onclick="switchView('terms')">
@@ -339,6 +455,24 @@
     </div>
   </div>
 
+  <!-- ══ VIEW: סיכום שינויים לפני שליחה ══ -->
+  <div class="view" id="view-confirm">
+    <div class="terms-topbar">
+      <button class="terms-back-btn" onclick="switchView('biz')">‹ חזרה לעריכה</button>
+      <div class="terms-topbar-title">📝 סיכום שינויים</div>
+    </div>
+    <div class="page">
+      <div class="panel-body" style="margin-top:16px;">
+        <div class="info-card">
+          <div class="info-card-title" id="confirmTitle">אלה השינויים שיישלחו לאישור מנהל</div>
+          <div id="confirmSummaryBody"></div>
+        </div>
+        <button class="btn-confirm-submit" id="confirmSubmitBtn" onclick="confirmAndSubmit()">✅ שלח לאישור מנהל</button>
+        <button class="btn-confirm-back" id="confirmBackBtn" onclick="switchView('biz')">↩ חזרה לעריכה</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- BOTTOM NAV -->
@@ -365,114 +499,89 @@
   </div>
 </nav>
 
-<!-- EDIT BIZ MODAL -->
-<div class="modal-overlay hidden" id="editModal">
-  <div class="edit-sheet">
-    <div class="edit-sheet-handle"></div>
-    <div class="edit-sheet-title">✏️ בקשת עדכון פרטים</div>
-    <div class="edit-sheet-sub">השינויים יישלחו לאישור הצוות לפני פרסום</div>
-
-    <div class="form-divider">🏪 פרטי העסק</div>
-    <div class="form-group">
-      <label class="form-label">שם העסק</label>
-      <input type="text" class="form-input" id="editName" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">תיאור העסק</label>
-      <textarea class="form-input" id="editDesc" rows="3"></textarea>
-    </div>
-    <div class="form-group" id="editProfessionWrap" style="display:none;">
-      <label class="form-label">מקצוע</label>
-      <input type="text" class="form-input" id="editProfession" placeholder="לדוג׳: נגר, אינסטלטור, חשמלאי..." />
-    </div>
-
-    <div class="form-divider">📞 יצירת קשר</div>
-    <div class="form-group">
-      <label class="form-label">טלפון עסק</label>
-      <input type="tel" class="form-input" id="editPhone" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">WhatsApp</label>
-      <input type="tel" class="form-input" id="editWhatsapp" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">מייל שירות לקוחות</label>
-      <input type="email" class="form-input" id="editServiceEmail" />
-    </div>
-
-    <div class="form-divider">📍 מיקום</div>
-    <div class="form-group">
-      <label class="form-label">עיר</label>
-      <input type="text" class="form-input" id="editCity" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">כתובת</label>
-      <input type="text" class="form-input" id="editAddress" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">שעות פעילות</label>
-      <input type="text" class="form-input" id="editHours" placeholder="לדוג׳: א׳-ה׳ 9:00-18:00, ו׳ 9:00-14:00" />
-    </div>
-
-    <div class="form-divider">💛 הטבה לחברים</div>
-    <div class="discount-toggle-row">
-      <span class="form-label" style="margin:0">יש הטבה לחברים?</span>
-      <div class="toggle-pill" id="editDiscToggle" onclick="toggleEditDiscount()"></div>
-    </div>
-    <div id="editDiscFields" style="display:none">
-      <div class="form-group">
-        <label class="form-label">פרטי ההטבה</label>
-        <input type="text" class="form-input" id="editDiscountText" placeholder="לדוג׳: 10% הנחה על כל הרכישות" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">קוד קופון (אם יש)</label>
-        <input type="text" class="form-input" id="editDiscountCode" placeholder="לדוג׳: MACCABI10" />
-      </div>
-    </div>
-
-    <div class="form-divider">🔗 קישורים דיגיטליים</div>
-    <div class="form-group">
-      <label class="form-label">אתר</label>
-      <input type="url" class="form-input" id="editWebsite" placeholder="https://" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">אינסטגרם</label>
-      <input type="text" class="form-input" id="editInstagram" placeholder="@username" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">פייסבוק</label>
-      <input type="text" class="form-input" id="editFacebook" />
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">הערה לצוות (אופציונלי)</label>
-      <textarea class="form-input" id="editNote" rows="2" placeholder="רוצה להוסיף משהו לצוות?"></textarea>
-    </div>
-
-    <button class="btn-save-changes" onclick="submitChanges()">שלח לאישור →</button>
-    <button class="btn-close-edit" onclick="closeEditModal()">ביטול</button>
+<!-- DRAFT SUBMIT BAR — מצטבר את כל השינויים שנערכו ומוגש כבקשה אחת -->
+<div class="draft-submit-bar" id="draftBar">
+  <div class="draft-submit-actions">
+    <button class="btn-discard-draft" onclick="discardAllChanges()">בטל</button>
+    <button class="btn-submit-draft" id="draftSubmitBtn" onclick="openConfirmSummary()" style="flex:1;">📤 סקירה ושליחה</button>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { db } from './firebase-config.js';
+import { db, storage } from './firebase-config.js';
 import {
   collection, query, where, getDocs, doc, updateDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import {
+  ref, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
 let biz      = null;
 let bizId    = null;
-let discountOn = false;
+let discEditOn = false;
+let photoCount = 0;
+let videoCount = 0;
+let draftChanges = {}; // שינויים שנערכו בכרטיסים אך טרם נשלחו לאישור מנהל (מוגשים כבקשה אחת מרוכזת)
 
+const FIELD_GROUPS = {
+  owner:      ['ownerFirst','ownerLast','ownerPhone','ownerEmail'],
+  bizdetails: ['bizTypes','name','desc','branches','city','address','phone','whatsapp','serviceEmail','profession','regions','websiteOnline'],
+  cathours:   ['categoryPrimary','cat','categorySecondary','hours'],
+  discount:   ['hasDiscount','discountText','discountTypes','discountCode'],
+  digital:    ['website','instagram','facebook'],
+  media:      ['logo','photos','videos'],
+};
+
+const CAT_DEFS = [
+  ['food','🍕','אוכל ושתייה'], ['fashion','👕','ביגוד ואופנה'], ['pro','🔧','בעלי מקצוע'],
+  ['health','💊','בריאות ויופי'], ['finance','📊','פיננסים'], ['sport','⚽','ספורט ופנאי'],
+  ['tech','💻','טכנולוגיה'], ['legal','⚖️','משפטים'], ['other','📦','אחר'],
+];
 const CAT_LABELS = {
   food:'🍕 אוכל ושתייה', pro:'🔧 בעלי מקצוע', fashion:'👕 ביגוד ואופנה',
   health:'💊 בריאות ויופי', finance:'📊 פיננסים', tech:'💻 טכנולוגיה',
   legal:'⚖️ משפטים', sport:'⚽ ספורט ופנאי', other:'📦 אחר'
 };
 const BIZ_TYPE_LABELS = { physical:'🏪 חנות פיזית', online:'🌐 אונליין', pro:'🔧 בעל מקצוע' };
+const DISCOUNT_TYPE_LABELS = { physical:'🏪 בחנות', online:'🌐 אונליין' };
+const REGION_LIST = ['כל הארץ','גוש דן','ירושלים והסביבה','השפלה','השרון','חיפה והצפון','הדרום'];
+const RELATION_LABELS = { '':'העסק שלי', spouse:'בן/בת זוג', parent:'הורה', sibling:'אח/ות', child:'ילד/ה', other:'אחר' };
 const STATUS_HE = { pending:'⏳ ממתין לאישור', approved:'✅ מאושר', rejected:'✗ נדחה' };
+
+const FIELD_LABELS = {
+  ownerFirst:'שם פרטי', ownerLast:'שם משפחה', ownerPhone:'טלפון בעל העסק', ownerEmail:'אימייל בעל העסק',
+  bizTypes:'סוג עסק', name:'שם העסק', desc:'תיאור', branches:'סניפים', city:'עיר', address:'כתובת',
+  profession:'מקצוע', regions:'אזורי פעילות', websiteOnline:'אתר אונליין',
+  phone:'טלפון עסק', whatsapp:'WhatsApp', serviceEmail:'מייל שירות',
+  categoryPrimary:'קטגוריה ראשית', cat:'קטגוריה ראשית', categorySecondary:'קטגוריות משניות', hours:'שעות פעילות',
+  hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTypes:'איפה ניתן לממש', discountCode:'קוד קופון',
+  website:'אתר', instagram:'אינסטגרם', facebook:'פייסבוק',
+  logo:'לוגו', photos:'גלריית תמונות', videos:'סרטונים',
+};
+
+function fmtFieldVal(k, v) {
+  if (k === 'discountTypes') return (v || []).map(t => DISCOUNT_TYPE_LABELS[t] || t).join(', ') || '—';
+  if (k === 'bizTypes') return (v || []).map(t => BIZ_TYPE_LABELS[t] || t).join(', ') || '—';
+  if (k === 'categoryPrimary' || k === 'cat') return CAT_LABELS[v] || v || '—';
+  if (k === 'categorySecondary') return (v || []).map(c => CAT_LABELS[c] || c).join(', ') || '—';
+  if (k === 'regions') return (v || []).join(', ') || '—';
+  if (k === 'branches') return (v || []).map(b => [b.city, b.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | ') || '—';
+  if (k === 'photos') return v && v.length ? `${v.length} תמונות` : '—';
+  if (k === 'videos') return v && v.length ? `${v.length} סרטונים` : '—';
+  if (k === 'logo') return v ? '🖼️ יש לוגו' : 'אין לוגו';
+  if (typeof v === 'boolean') return v ? 'כן' : 'לא';
+  return v || '—';
+}
+
+let changedFieldsSet = new Set(); // איחוד pendingChanges (כבר נשלח) + draftChanges (טרם נשלח) — לצורך סימון "שונה" בכתום
+
+async function uploadFile(file, path) {
+  const storageRef = ref(storage, path);
+  const snap = await uploadBytes(storageRef, file);
+  return await getDownloadURL(snap.ref);
+}
 
 // ── INIT ──
 const token = new URLSearchParams(location.search).get('token');
@@ -516,166 +625,657 @@ function showDashboard() {
 
 // ── BIZ VIEW ──
 function renderBizView() {
+  // מצב עבודה: הנתונים המאושרים + מה שכבר נשלח וממתין לאישור + טיוטה חדשה שטרם נשלחה (הכי עדכני מנצח)
+  const w = { ...biz, ...(biz.pendingChanges || {}), ...draftChanges };
+  changedFieldsSet = new Set([...Object.keys(biz.pendingChanges || {}), ...Object.keys(draftChanges)]);
+
   // hero
-  document.getElementById('bizHeroName').textContent = biz.name || '—';
-  const types = (biz.bizTypes || []).map(t => BIZ_TYPE_LABELS[t]).join(' · ');
-  const cat   = CAT_LABELS[biz.categoryPrimary || biz.cat] || '';
+  document.getElementById('bizHeroName').textContent = w.name || '—';
+  const types = (w.bizTypes || []).map(t => BIZ_TYPE_LABELS[t]).join(' · ');
+  const cat   = CAT_LABELS[w.categoryPrimary || w.cat] || '';
   document.getElementById('bizHeroMeta').textContent = [types, cat].filter(Boolean).join(' · ');
 
   const s = biz.status || 'pending';
   document.getElementById('bizStatusBadge').innerHTML =
     `<span class="status-badge ${s}">${STATUS_HE[s] || s}</span>`;
 
-  // pending banner
+  // pending banner — יש בקשה שכבר נשלחה וממתינה לאישור מנהל (אפשר להמשיך לערוך בינתיים)
   document.getElementById('pendingBanner').style.display = biz.pendingChanges ? 'block' : 'none';
 
   // stats
   document.getElementById('statClicks').textContent = biz.clicks ?? '0';
   document.getElementById('statStatus').textContent  = STATUS_HE[s] || s;
 
-  // edit btn
-  document.getElementById('editBizBtn').disabled = !!biz.pendingChanges;
+  // info cards — עריכה inline לכל שלב (לפי שלבי ההרשמה), על גבי אותו דף
+  document.getElementById('bizInfoCards').innerHTML =
+    renderOwnerCard(w) + renderBizDetailsCard(w) + renderCatHoursCard(w) + renderDiscountCard(w) + renderDigitalCard(w) + renderMediaCard(w);
+  initMediaForm(w);
 
-  // info cards
-  const branches    = biz.branches || [];
-  const firstBranch = branches[0] || {};
-  const cards = [
-    {
-      title: '🏪 פרטי העסק',
-      rows: [
-        ['שם', biz.name],
-        ['תיאור', biz.desc],
-        ['סוג', (biz.bizTypes || []).map(t => BIZ_TYPE_LABELS[t]).join(', ')],
-        ['קטגוריה', CAT_LABELS[biz.categoryPrimary || biz.cat]],
-      ]
-    },
-    {
-      title: '📞 יצירת קשר',
-      rows: [
-        ['טלפון', biz.phone],
-        ['WhatsApp', biz.whatsapp],
-        ['מייל שירות', biz.serviceEmail],
-      ]
-    },
-    {
-      title: '📍 מיקום ושעות',
-      rows: [
-        ['עיר', firstBranch.city || biz.city],
-        ['כתובת', firstBranch.address || biz.address],
-        ['שעות', biz.hours],
-      ]
-    },
-    {
-      title: '💛 הטבה לחברים',
-      rows: [
-        ['הטבה', biz.hasDiscount ? biz.discountText : 'אין הטבה'],
-        ['קוד קופון', biz.discountCode || null],
-      ]
-    },
-    {
-      title: '🔗 נוכחות דיגיטלית',
-      rows: [
-        ['אתר', biz.website || biz.websiteOnline],
-        ['אינסטגרם', biz.instagram],
-        ['פייסבוק', biz.facebook],
-      ]
-    },
-  ];
-
-  document.getElementById('bizInfoCards').innerHTML = cards.map(c => `
-    <div class="info-card">
-      <div class="info-card-title">${c.title}</div>
-      ${c.rows.filter(([, v]) => v !== undefined).map(([label, v]) => `
-        <div class="info-row">
-          <span class="info-label">${label}</span>
-          ${v ? `<span class="info-value">${v}</span>` : `<span class="info-value missing">לא מולא</span>`}
-        </div>`).join('')}
-    </div>`).join('');
+  // סרגל הגשה — מוצג רק כשיש שינויים חדשים שהצטברו וטרם נשלחו
+  const draftCount = Object.keys(draftChanges).length;
+  const draftBar = document.getElementById('draftBar');
+  draftBar.classList.toggle('show', draftCount > 0);
+  if (draftCount > 0) {
+    document.getElementById('draftSubmitBtn').textContent = biz.pendingChanges ? '📤 סקירה ועדכון בקשה' : '📤 סקירה ושליחה';
+  }
 }
 
-// ── VIEW SWITCH (העסק שלי ↔ תנאי שימוש) ──
+function esc(v) {
+  return (v == null ? '' : String(v)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+function rowHtml(label, v, fieldKeys) {
+  const keys = fieldKeys ? (Array.isArray(fieldKeys) ? fieldKeys : [fieldKeys]) : [];
+  const changed = keys.some(k => changedFieldsSet.has(k));
+  return `<div class="info-row${changed ? ' changed' : ''}"><span class="info-label">${label}</span>${v ? `<span class="info-value">${esc(v)}</span>` : `<span class="info-value missing">לא מולא</span>`}</div>`;
+}
+function cardTitle(icon, text, groupKey) {
+  const changed = FIELD_GROUPS[groupKey].some(f => changedFieldsSet.has(f));
+  return `<span class="info-card-title">${icon} ${text}${changed ? '<span class="card-changed-badge">שונה</span>' : ''}</span>`;
+}
+
+// ── 👤 שלב 1 — בעל העסק ──
+function renderOwnerCard(w) {
+  const isSub = w.isSubscriber === 'yes';
+  const verifyText = isSub
+    ? `מנוי · שער ${w.gate || '—'} · מס׳ ${w.subNum || '—'}`
+    : `לא מנוי${w.fbUrl ? ' · פייסבוק מצורף' : ''}`;
+  return `
+    <div class="info-card">
+      <div class="info-card-head">
+        ${cardTitle('👤', 'שלב 1 — בעל העסק', 'owner')}
+        <button class="sec-edit-btn" onclick="toggleSecEdit('owner')">✏️ ערוך</button>
+      </div>
+      <div class="info-rows" id="secView-owner">
+        ${rowHtml('שם', `${w.ownerFirst || ''} ${w.ownerLast || ''}`.trim(), ['ownerFirst','ownerLast'])}
+        ${rowHtml('טלפון', w.ownerPhone, 'ownerPhone')}
+        ${rowHtml('אימייל', w.ownerEmail, 'ownerEmail')}
+        ${rowHtml('קרבה לבעל המנוי', RELATION_LABELS[w.ownerRelation || ''] || w.ownerRelation)}
+        ${rowHtml('אימות אוהד', verifyText)}
+      </div>
+      <div class="sec-edit-form" id="secEdit-owner">
+        <div class="form-group">
+          <label class="form-label">שם פרטי</label>
+          <input type="text" class="form-input" id="editOwnerFirst" value="${esc(w.ownerFirst)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">שם משפחה</label>
+          <input type="text" class="form-input" id="editOwnerLast" value="${esc(w.ownerLast)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">טלפון</label>
+          <input type="tel" class="form-input" id="editOwnerPhone" value="${esc(w.ownerPhone)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">אימייל</label>
+          <input type="email" class="form-input" id="editOwnerEmail" value="${esc(w.ownerEmail)}" />
+        </div>
+        <div class="sec-edit-actions">
+          <button class="btn-cancel-sec" onclick="toggleSecEdit('owner')">ביטול</button>
+          <button class="btn-save-sec" onclick="saveOwner()">💾 שמור</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── 🏪 שלב 2 — פרטי העסק ──
+function renderBizDetailsCard(w) {
+  const types       = w.bizTypes || [];
+  const isPhysical  = types.includes('physical');
+  const isOnline    = types.includes('online');
+  const isPro       = types.includes('pro');
+  const firstBranch = (w.branches || [])[0] || {};
+  const regions     = w.regions || [];
+  const regionPillsHtml = REGION_LIST.map(r =>
+    `<div class="region-pill${regions.includes(r) ? ' selected' : ''}" onclick="toggleChipPill(this)">${r}</div>`
+  ).join('');
+
+  return `
+    <div class="info-card">
+      <div class="info-card-head">
+        ${cardTitle('🏪', 'שלב 2 — פרטי העסק', 'bizdetails')}
+        <button class="sec-edit-btn" onclick="toggleSecEdit('bizdetails')">✏️ ערוך</button>
+      </div>
+      <div class="info-rows" id="secView-bizdetails">
+        ${rowHtml('סוג עסק', types.map(t => BIZ_TYPE_LABELS[t]).join(', '), 'bizTypes')}
+        ${rowHtml('שם', w.name, 'name')}
+        ${rowHtml('תיאור', w.desc, 'desc')}
+        ${isPhysical ? rowHtml('עיר', firstBranch.city || w.city, ['branches','city']) + rowHtml('כתובת', firstBranch.address || w.address, ['branches','address']) : ''}
+        ${isOnline ? rowHtml('אתר אונליין', w.websiteOnline, 'websiteOnline') : ''}
+        ${isPro ? rowHtml('מקצוע', w.profession, 'profession') + rowHtml('אזורי פעילות', regions.join(', '), 'regions') : ''}
+        ${rowHtml('טלפון עסק', w.phone, 'phone')}
+        ${rowHtml('WhatsApp', w.whatsapp, 'whatsapp')}
+        ${rowHtml('מייל שירות', w.serviceEmail, 'serviceEmail')}
+      </div>
+      <div class="sec-edit-form" id="secEdit-bizdetails">
+        <div class="form-group">
+          <label class="form-label">סוג עסק</label>
+          <div class="region-pill-wrap" id="editBizTypeGrid">
+            <div class="region-pill${isPhysical ? ' selected' : ''}" data-type="physical" onclick="toggleBizType(this)">🏪 חנות פיזית</div>
+            <div class="region-pill${isOnline ? ' selected' : ''}" data-type="online" onclick="toggleBizType(this)">🌐 אונליין</div>
+            <div class="region-pill${isPro ? ' selected' : ''}" data-type="pro" onclick="toggleBizType(this)">🔧 בעל מקצוע</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">שם העסק</label>
+          <input type="text" class="form-input" id="editName" value="${esc(w.name)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">תיאור העסק</label>
+          <textarea class="form-input" id="editDesc" rows="3">${esc(w.desc)}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">עיר</label>
+          <input type="text" class="form-input" id="editCity" value="${esc(firstBranch.city || w.city)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">כתובת</label>
+          <input type="text" class="form-input" id="editAddress" value="${esc(firstBranch.address || w.address)}" />
+        </div>
+        <div class="form-group" id="editWebsiteOnlineWrap" style="display:${isOnline ? 'block' : 'none'}">
+          <label class="form-label">אתר אונליין</label>
+          <input type="url" class="form-input" id="editWebsiteOnline" value="${esc(w.websiteOnline)}" placeholder="www.example.co.il" />
+        </div>
+        <div class="form-group" id="editProfessionWrap" style="display:${isPro ? 'block' : 'none'}">
+          <label class="form-label">מקצוע</label>
+          <input type="text" class="form-input" id="editProfession" value="${esc(w.profession)}" placeholder="לדוג׳: נגר, אינסטלטור, חשמלאי..." />
+        </div>
+        <div class="form-group" id="editRegionWrap" style="display:${isPro ? 'block' : 'none'}">
+          <label class="form-label">אזורי פעילות</label>
+          <div class="region-pill-wrap" id="editRegionGrid">${regionPillsHtml}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">טלפון עסק</label>
+          <input type="tel" class="form-input" id="editPhone" value="${esc(w.phone)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">WhatsApp</label>
+          <input type="tel" class="form-input" id="editWhatsapp" value="${esc(w.whatsapp)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">מייל שירות לקוחות</label>
+          <input type="email" class="form-input" id="editServiceEmail" value="${esc(w.serviceEmail)}" />
+        </div>
+        <div class="sec-edit-actions">
+          <button class="btn-cancel-sec" onclick="toggleSecEdit('bizdetails')">ביטול</button>
+          <button class="btn-save-sec" onclick="saveBizDetails()">💾 שמור</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── 📋 שלב 3 — קטגוריה ושעות ──
+function renderCatHoursCard(w) {
+  const primCat = w.categoryPrimary || w.cat || '';
+  const secCats = w.categorySecondary || [];
+  const catPillsHtml = CAT_DEFS.map(([key, icon, label]) => {
+    const cls = primCat === key ? ' primary' : (secCats.includes(key) ? ' secondary' : '');
+    return `<div class="edit-cat-pill${cls}" data-cat="${key}" onclick="toggleCatPill(this)"><span class="cat-icon">${icon}</span><span class="cat-name">${label}</span></div>`;
+  }).join('');
+
+  return `
+    <div class="info-card">
+      <div class="info-card-head">
+        ${cardTitle('📋', 'שלב 3 — קטגוריה ושעות', 'cathours')}
+        <button class="sec-edit-btn" onclick="toggleSecEdit('cathours')">✏️ ערוך</button>
+      </div>
+      <div class="info-rows" id="secView-cathours">
+        ${rowHtml('קטגוריה ראשית', CAT_LABELS[primCat], ['categoryPrimary','cat'])}
+        ${rowHtml('קטגוריות משניות', secCats.map(c => CAT_LABELS[c]).join(', '), 'categorySecondary')}
+        ${rowHtml('שעות פעילות', w.hours, 'hours')}
+      </div>
+      <div class="sec-edit-form" id="secEdit-cathours">
+        <div class="form-group">
+          <label class="form-label">קטגוריה (ראשית ⭐ + עד 2 משניות)</label>
+          <div class="edit-cat-grid" id="editCatGrid">${catPillsHtml}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">שעות פעילות</label>
+          <input type="text" class="form-input" id="editHours" value="${esc(w.hours)}" placeholder="לדוג׳: א׳-ה׳ 9:00-18:00, ו׳ 9:00-14:00" />
+        </div>
+        <div class="sec-edit-actions">
+          <button class="btn-cancel-sec" onclick="toggleSecEdit('cathours')">ביטול</button>
+          <button class="btn-save-sec" onclick="saveCatHours()">💾 שמור</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── 💛 הטבה לחברים ──
+function renderDiscountCard(w) {
+  discEditOn = !!w.hasDiscount;
+  const types = w.discountTypes || [];
+  const typeChipsHtml = ['physical','online'].map(t =>
+    `<div class="region-pill${types.includes(t) ? ' selected' : ''}" data-disctype="${t}" onclick="toggleChipPill(this)">${DISCOUNT_TYPE_LABELS[t]}</div>`
+  ).join('');
+  return `
+    <div class="info-card">
+      <div class="info-card-head">
+        ${cardTitle('💛', 'הטבה לחברים', 'discount')}
+        <button class="sec-edit-btn" onclick="toggleSecEdit('discount')">✏️ ערוך</button>
+      </div>
+      <div class="info-rows" id="secView-discount">
+        ${rowHtml('הטבה', w.hasDiscount ? w.discountText : 'אין הטבה', ['hasDiscount','discountText'])}
+        ${rowHtml('איפה ניתן לממש', types.map(t => DISCOUNT_TYPE_LABELS[t]).join(', '), 'discountTypes')}
+        ${rowHtml('קוד קופון', w.discountCode, 'discountCode')}
+      </div>
+      <div class="sec-edit-form" id="secEdit-discount">
+        <div class="discount-toggle-row">
+          <span class="form-label" style="margin:0">יש הטבה לחברים?</span>
+          <div class="toggle-pill${discEditOn ? ' on' : ''}" id="editDiscToggle" onclick="toggleDiscountField()"></div>
+        </div>
+        <div id="editDiscFields" style="display:${discEditOn ? 'block' : 'none'}">
+          <div class="form-group">
+            <label class="form-label">פרטי ההטבה</label>
+            <input type="text" class="form-input" id="editDiscountText" value="${esc(w.discountText)}" placeholder="לדוג׳: 10% הנחה על כל הרכישות" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">איפה ניתן לממש</label>
+            <div class="region-pill-wrap" id="editDiscountTypeGrid">${typeChipsHtml}</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">קוד קופון (אם יש)</label>
+            <input type="text" class="form-input" id="editDiscountCode" value="${esc(w.discountCode)}" placeholder="לדוג׳: MACCABI10" />
+          </div>
+        </div>
+        <div class="sec-edit-actions">
+          <button class="btn-cancel-sec" onclick="toggleSecEdit('discount')">ביטול</button>
+          <button class="btn-save-sec" onclick="saveDiscount()">💾 שמור</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── 🔗 שלב 4 — קישורים דיגיטליים ──
+function renderDigitalCard(w) {
+  return `
+    <div class="info-card">
+      <div class="info-card-head">
+        ${cardTitle('🔗', 'שלב 4 — קישורים דיגיטליים', 'digital')}
+        <button class="sec-edit-btn" onclick="toggleSecEdit('digital')">✏️ ערוך</button>
+      </div>
+      <div class="info-rows" id="secView-digital">
+        ${rowHtml('אתר', w.website || w.websiteOnline, ['website','websiteOnline'])}
+        ${rowHtml('אינסטגרם', w.instagram, 'instagram')}
+        ${rowHtml('פייסבוק', w.facebook, 'facebook')}
+      </div>
+      <div class="sec-edit-form" id="secEdit-digital">
+        <div class="form-group">
+          <label class="form-label">אתר</label>
+          <input type="url" class="form-input" id="editWebsite" value="${esc(w.website || w.websiteOnline)}" placeholder="https://" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">אינסטגרם</label>
+          <input type="text" class="form-input" id="editInstagram" value="${esc(w.instagram)}" placeholder="@username" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">פייסבוק</label>
+          <input type="text" class="form-input" id="editFacebook" value="${esc(w.facebook)}" />
+        </div>
+        <div class="sec-edit-actions">
+          <button class="btn-cancel-sec" onclick="toggleSecEdit('digital')">ביטול</button>
+          <button class="btn-save-sec" onclick="saveDigital()">💾 שמור</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── 🖼️ מדיה (לוגו, גלריה, סרטונים) ──
+function renderMediaCard(w) {
+  const hasMedia = !!(w.logo || (w.photos && w.photos.length) || (w.videos && w.videos.length));
+  const viewHtml = hasMedia ? `
+    ${w.logo ? `<div style="margin-bottom:12px;"><div class="media-view-label">לוגו</div><a href="${w.logo}" target="_blank"><img src="${w.logo}" class="media-view-thumb" alt="לוגו" /></a></div>` : ''}
+    ${w.photos && w.photos.length ? `<div style="margin-bottom:12px;"><div class="media-view-label">גלריה (${w.photos.length} תמונות)</div><div style="display:flex;flex-wrap:wrap;gap:8px;">${w.photos.map(p => p.url ? `<a href="${p.url}" target="_blank" title="${esc(p.name || '')}"><img src="${p.url}" class="media-view-thumb" alt="${esc(p.name || '')}" /></a>` : '').join('')}</div></div>` : ''}
+    ${w.videos && w.videos.length ? `<div><div class="media-view-label">סרטונים (${w.videos.length})</div>${w.videos.map(v => `<div style="margin-bottom:4px;font-size:13px;"><a href="${v.url}" target="_blank" style="color:var(--yellow);text-decoration:underline">${esc(v.label || v.url)}</a></div>`).join('')}</div>` : ''}
+  ` : `<span class="info-value missing">אין מדיה עדיין</span>`;
+
+  return `
+    <div class="info-card">
+      <div class="info-card-head">
+        ${cardTitle('🖼️', 'מדיה', 'media')}
+        <button class="sec-edit-btn" onclick="toggleSecEdit('media')">✏️ ערוך</button>
+      </div>
+      <div class="info-rows" id="secView-media">${viewHtml}</div>
+      <div class="sec-edit-form" id="secEdit-media">
+        <div class="form-group">
+          <label class="form-label">🖼️ לוגו העסק</label>
+          <div class="edit-upload-zone" id="editLogoZone">
+            <input type="file" id="editLogoFile" accept="image/*" onchange="previewLogo(this)" />
+            <div id="editLogoPreviewWrap" class="edit-logo-preview">
+              <img id="editLogoImg" src="" alt="לוגו" />
+              <button class="edit-logo-remove" onclick="removeLogo(event)">✕</button>
+            </div>
+            <div id="editLogoPlaceholder">
+              <div class="edit-upload-icon">🖼️</div>
+              <div class="edit-upload-text">לחץ להעלאת לוגו</div>
+              <div class="edit-upload-sub">PNG, JPG · עד 5MB</div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">📸 תמונות גלריה</label>
+          <div id="editPhotoList"></div>
+          <button type="button" class="edit-add-btn" onclick="addPhotoRow()">+ הוסף תמונה</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">🎥 סרטונים</label>
+          <div id="editVideoList"></div>
+          <button type="button" class="edit-add-btn" onclick="addVideoRow()">+ הוסף סרטון</button>
+        </div>
+        <div class="sec-edit-actions">
+          <button class="btn-cancel-sec" onclick="toggleSecEdit('media')">ביטול</button>
+          <button class="btn-save-sec" onclick="saveMedia()">💾 שמור</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function initMediaForm(w) {
+  if (w.logo) {
+    document.getElementById('editLogoImg').src = w.logo;
+    document.getElementById('editLogoPreviewWrap').style.display = 'block';
+    document.getElementById('editLogoPlaceholder').style.display = 'none';
+  }
+  photoCount = 0;
+  document.getElementById('editPhotoList').innerHTML = '';
+  (w.photos || []).forEach(p => addPhotoRow(p.url || '', p.name || ''));
+  videoCount = 0;
+  document.getElementById('editVideoList').innerHTML = '';
+  (w.videos || []).forEach(v => addVideoRow(v.url || '', v.label || ''));
+}
+
+// ── VIEW SWITCH (העסק שלי ↔ תנאי שימוש ↔ סיכום שינויים) ──
 window.switchView = function(view) {
-  ['biz','terms'].forEach(v => {
+  ['biz','terms','confirm'].forEach(v => {
     document.getElementById('view-' + v).classList.toggle('active', v === view);
   });
 };
 
-// ── EDIT BIZ MODAL ──
-window.openEditModal = function() {
-  if (biz.pendingChanges) return;
-  const branches    = biz.branches || [];
-  const firstBranch = branches[0] || {};
-
-  document.getElementById('editName').value         = biz.name         || '';
-  document.getElementById('editDesc').value         = biz.desc         || '';
-  const isPro = (biz.bizTypes || []).includes('pro');
-  document.getElementById('editProfessionWrap').style.display = isPro ? 'block' : 'none';
-  document.getElementById('editProfession').value   = biz.profession   || '';
-  document.getElementById('editPhone').value        = biz.phone        || '';
-  document.getElementById('editWhatsapp').value     = biz.whatsapp     || '';
-  document.getElementById('editServiceEmail').value = biz.serviceEmail || '';
-  document.getElementById('editCity').value         = firstBranch.city    || biz.city    || '';
-  document.getElementById('editAddress').value      = firstBranch.address || biz.address || '';
-  document.getElementById('editHours').value        = biz.hours        || '';
-  document.getElementById('editWebsite').value      = biz.website      || biz.websiteOnline || '';
-  document.getElementById('editInstagram').value    = biz.instagram    || '';
-  document.getElementById('editFacebook').value     = biz.facebook     || '';
-  document.getElementById('editDiscountText').value = biz.discountText || '';
-  document.getElementById('editDiscountCode').value = biz.discountCode || '';
-  document.getElementById('editNote').value         = '';
-
-  discountOn = !!biz.hasDiscount;
-  document.getElementById('editDiscToggle').classList.toggle('on', discountOn);
-  document.getElementById('editDiscFields').style.display = discountOn ? 'block' : 'none';
-
-  document.getElementById('editModal').classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
+// ── סיכום שינויים לפני שליחה — מאפשר לחזור לעריכה בלי לאבד את הטיוטה ──
+window.openConfirmSummary = function() {
+  if (!Object.keys(draftChanges).length) return;
+  const rows = Object.entries(draftChanges).map(([k, v]) => {
+    const label  = FIELD_LABELS[k] || k;
+    const oldVal = (biz.pendingChanges && k in biz.pendingChanges) ? biz.pendingChanges[k] : biz[k];
+    return `<div class="confirm-row">
+      <span class="confirm-field">${esc(label)}</span>
+      <div class="confirm-values">
+        <span class="confirm-old">${esc(fmtFieldVal(k, oldVal))}</span>
+        <span class="confirm-arrow">→</span>
+        <span class="confirm-new">${esc(fmtFieldVal(k, v))}</span>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('confirmTitle').textContent = 'אלה השינויים שיישלחו לאישור מנהל';
+  document.getElementById('confirmSummaryBody').innerHTML = rows;
+  document.getElementById('confirmSubmitBtn').style.display = '';
+  document.getElementById('confirmBackBtn').textContent = '↩ חזרה לעריכה';
+  switchView('confirm');
 };
 
-window.closeEditModal = function() {
-  document.getElementById('editModal').classList.add('hidden');
-  document.body.style.overflow = '';
+window.confirmAndSubmit = async function() {
+  const success = await submitAllChanges();
+  if (!success) return;
+  document.getElementById('confirmTitle').textContent = '✅ הבקשה התקבלה!';
+  document.getElementById('confirmSummaryBody').innerHTML = `
+    <div style="text-align:center; padding: 10px 0 6px;">
+      <div style="font-size:38px; margin-bottom:10px;">✅</div>
+      <div style="font-size:14px; color:var(--text-sm); line-height:1.6;">מנהל הצוות בוחן כעת את הבקשה שלך ויאשר אותה בהקדם.</div>
+    </div>`;
+  document.getElementById('confirmSubmitBtn').style.display = 'none';
+  document.getElementById('confirmBackBtn').textContent = '↩ חזרה לדשבורד שלי';
 };
 
-window.toggleEditDiscount = function() {
-  discountOn = !discountOn;
-  document.getElementById('editDiscToggle').classList.toggle('on', discountOn);
-  document.getElementById('editDiscFields').style.display = discountOn ? 'block' : 'none';
+// ── INLINE SECTION EDIT (toggle view/form בתוך אותו כרטיס) ──
+window.toggleSecEdit = function(key) {
+  const view = document.getElementById('secView-' + key);
+  const edit = document.getElementById('secEdit-' + key);
+  if (!edit) return;
+  const opening = !edit.classList.contains('open');
+  edit.classList.toggle('open', opening);
+  if (view) view.classList.toggle('hidden-when-edit', opening);
 };
 
-window.submitChanges = async function() {
-  const changes = {
-    name:         document.getElementById('editName').value.trim(),
-    desc:         document.getElementById('editDesc').value.trim(),
-    profession:   document.getElementById('editProfession').value.trim(),
-    phone:        document.getElementById('editPhone').value.trim(),
-    whatsapp:     document.getElementById('editWhatsapp').value.trim(),
-    serviceEmail: document.getElementById('editServiceEmail').value.trim(),
-    city:         document.getElementById('editCity').value.trim(),
-    address:      document.getElementById('editAddress').value.trim(),
-    hours:        document.getElementById('editHours').value.trim(),
-    website:      document.getElementById('editWebsite').value.trim(),
-    instagram:    document.getElementById('editInstagram').value.trim(),
-    facebook:     document.getElementById('editFacebook').value.trim(),
-    hasDiscount:  discountOn,
-    discountText: discountOn ? document.getElementById('editDiscountText').value.trim() : '',
-    discountCode: discountOn ? document.getElementById('editDiscountCode').value.trim() : '',
-    _note:        document.getElementById('editNote').value.trim(),
-  };
+// ── טיוטת שינויים — מצטברת בזיכרון, לא נשמרת ל-Firestore עד "שלח לאישור" ──
+// מסמנת/שולחת רק שדות שבאמת השתנו (השוואה מול המצב הקודם), לא את כל שדות הכרטיס באופן גורף
+function stageChanges(updates) {
+  const prev = { ...biz, ...(biz.pendingChanges || {}), ...draftChanges };
+  const realChanges = {};
+  for (const [k, v] of Object.entries(updates)) {
+    if (JSON.stringify(prev[k] ?? null) !== JSON.stringify(v ?? null)) realChanges[k] = v;
+  }
+  if (!Object.keys(realChanges).length) {
+    renderBizView();
+    return;
+  }
+  Object.assign(draftChanges, realChanges);
+  showToast('✅ נשמר בטיוטה — טרם נשלח לאישור');
+  renderBizView();
+}
 
+window.submitAllChanges = async function() {
+  if (!Object.keys(draftChanges).length) return false;
+  // ממזג עם בקשה קיימת שכבר ממתינה לאישור (אם יש) — כך אפשר להמשיך לערוך בלי לחכות לאישור, בלי ליצור בקשה כפולה
+  const merged = { ...(biz.pendingChanges || {}), ...draftChanges };
   try {
     await updateDoc(doc(db, 'businesses', bizId), {
-      pendingChanges:   changes,
+      pendingChanges:   merged,
       pendingChangesAt: serverTimestamp()
     });
-    biz.pendingChanges = changes;
-    closeEditModal();
-    showToast('✅ השינויים נשלחו לאישור!');
+    biz.pendingChanges = merged;
+    draftChanges = {};
+    showToast('✅ הבקשה התקבלה!');
     renderBizView();
+    return true;
   } catch(e) {
     console.error(e);
     showToast('שגיאה — נסה/י שוב');
+    return false;
   }
+};
+
+window.discardAllChanges = function() {
+  if (!confirm('לבטל את כל השינויים שטרם נשלחו?')) return;
+  draftChanges = {};
+  showToast('השינויים שטרם נשלחו בוטלו');
+  renderBizView();
+};
+
+window.saveOwner = function() {
+  stageChanges({
+    ownerFirst: document.getElementById('editOwnerFirst').value.trim(),
+    ownerLast:  document.getElementById('editOwnerLast').value.trim(),
+    ownerPhone: document.getElementById('editOwnerPhone').value.trim(),
+    ownerEmail: document.getElementById('editOwnerEmail').value.trim(),
+  });
+};
+
+// ── כללי: toggle לכל pill מרובה-בחירה (אזורים / סוג מימוש הטבה) ──
+window.toggleChipPill = function(el) {
+  el.classList.toggle('selected');
+};
+
+window.toggleBizType = function(el) {
+  el.classList.toggle('selected');
+  const selected = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p => p.dataset.type);
+  document.getElementById('editProfessionWrap').style.display     = selected.includes('pro')    ? 'block' : 'none';
+  document.getElementById('editRegionWrap').style.display         = selected.includes('pro')    ? 'block' : 'none';
+  document.getElementById('editWebsiteOnlineWrap').style.display  = selected.includes('online') ? 'block' : 'none';
+};
+
+window.saveBizDetails = function() {
+  const bizTypes = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p => p.dataset.type);
+  const isProNow    = bizTypes.includes('pro');
+  const isOnlineNow = bizTypes.includes('online');
+  const city    = document.getElementById('editCity').value.trim();
+  const address = document.getElementById('editAddress').value.trim();
+  stageChanges({
+    bizTypes,
+    name:          document.getElementById('editName').value.trim(),
+    desc:          document.getElementById('editDesc').value.trim(),
+    branches:      [{ city, address }],
+    city, address,
+    phone:         document.getElementById('editPhone').value.trim(),
+    whatsapp:      document.getElementById('editWhatsapp').value.trim(),
+    serviceEmail:  document.getElementById('editServiceEmail').value.trim(),
+    profession:    isProNow ? document.getElementById('editProfession').value.trim() : '',
+    regions:       isProNow ? [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p => p.textContent.trim()) : [],
+    websiteOnline: isOnlineNow ? document.getElementById('editWebsiteOnline').value.trim() : '',
+  });
+};
+
+window.toggleCatPill = function(el) {
+  const primaryCount   = document.querySelectorAll('#editCatGrid .edit-cat-pill.primary').length;
+  const secondaryCount = document.querySelectorAll('#editCatGrid .edit-cat-pill.secondary').length;
+  if (!el.classList.contains('primary') && !el.classList.contains('secondary')) {
+    if (primaryCount === 0)      el.classList.add('primary');
+    else if (secondaryCount < 2) el.classList.add('secondary');
+  } else if (el.classList.contains('primary')) {
+    el.classList.remove('primary');
+  } else {
+    el.classList.remove('secondary');
+  }
+};
+
+window.saveCatHours = function() {
+  const primPill = document.querySelector('#editCatGrid .edit-cat-pill.primary');
+  const secPills = [...document.querySelectorAll('#editCatGrid .edit-cat-pill.secondary')];
+  const catKey   = primPill ? primPill.dataset.cat : '';
+  stageChanges({
+    categoryPrimary:   catKey,
+    cat:               catKey,
+    categorySecondary: secPills.map(p => p.dataset.cat),
+    hours:             document.getElementById('editHours').value.trim(),
+  });
+};
+
+window.saveDigital = function() {
+  stageChanges({
+    website:   document.getElementById('editWebsite').value.trim(),
+    instagram: document.getElementById('editInstagram').value.trim(),
+    facebook:  document.getElementById('editFacebook').value.trim(),
+  });
+};
+
+window.toggleDiscountField = function() {
+  discEditOn = !discEditOn;
+  document.getElementById('editDiscToggle').classList.toggle('on', discEditOn);
+  document.getElementById('editDiscFields').style.display = discEditOn ? 'block' : 'none';
+};
+
+window.saveDiscount = function() {
+  const discountTypes = [...document.querySelectorAll('#editDiscountTypeGrid .region-pill.selected')].map(p => p.dataset.disctype);
+  stageChanges({
+    hasDiscount:   discEditOn,
+    discountText:  discEditOn ? document.getElementById('editDiscountText').value.trim() : '',
+    discountTypes: discEditOn ? discountTypes : [],
+    discountCode:  discEditOn ? document.getElementById('editDiscountCode').value.trim() : '',
+  });
+};
+
+// ── מדיה: לוגו ──
+window.previewLogo = function(input) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('editLogoImg').src = e.target.result;
+    document.getElementById('editLogoPreviewWrap').style.display = 'block';
+    document.getElementById('editLogoPlaceholder').style.display = 'none';
+  };
+  reader.readAsDataURL(input.files[0]);
+};
+
+window.removeLogo = function(evt) {
+  if (evt) evt.stopPropagation();
+  document.getElementById('editLogoFile').value = '';
+  document.getElementById('editLogoImg').src = '';
+  document.getElementById('editLogoPreviewWrap').style.display = 'none';
+  document.getElementById('editLogoPlaceholder').style.display = 'block';
+};
+
+// ── מדיה: גלריה ──
+window.addPhotoRow = function(url = '', name = '') {
+  const idx = photoCount++;
+  const row = document.createElement('div');
+  row.className = 'edit-media-row';
+  row.id = 'photoRow-' + idx;
+  row.innerHTML = `
+    <div class="edit-media-thumb" id="photoThumb-${idx}">
+      📷
+      <input type="file" accept="image/*" onchange="thumbPreview(this, 'photoThumb-${idx}')" />
+      ${url ? `<img src="${url}" />` : ''}
+    </div>
+    <div class="edit-media-fields">
+      <input type="text" placeholder="שם / תיאור (לדוג׳: תפריט, חזית, מוצר...)" value="${esc(name)}" id="photoName-${idx}" />
+      <input type="url" placeholder="קישור תמונה (URL) — אופציונלי" value="${esc(url)}" id="photoUrl-${idx}" style="font-size:11px;color:var(--text-sm)" />
+    </div>
+    <button type="button" class="edit-media-remove" onclick="document.getElementById('photoRow-${idx}').remove()">✕</button>`;
+  document.getElementById('editPhotoList').appendChild(row);
+};
+
+window.thumbPreview = function(input, thumbId) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const thumb = document.getElementById(thumbId);
+    let img = thumb.querySelector('img');
+    if (!img) { img = document.createElement('img'); thumb.appendChild(img); }
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(input.files[0]);
+};
+
+// ── מדיה: סרטונים ──
+window.addVideoRow = function(url = '', label = '') {
+  const idx = videoCount++;
+  const row = document.createElement('div');
+  row.className = 'edit-media-row';
+  row.id = 'videoRow-' + idx;
+  row.innerHTML = `
+    <div class="edit-media-fields">
+      <input type="url" placeholder="קישור YouTube / Vimeo" value="${esc(url)}" id="videoUrl-${idx}" />
+      <input type="text" placeholder="תיאור (לדוג׳: סרטון מבוא, הדגמת שירות...)" value="${esc(label)}" id="videoLabel-${idx}" />
+    </div>
+    <button type="button" class="edit-media-remove" onclick="document.getElementById('videoRow-${idx}').remove()">✕</button>`;
+  document.getElementById('editVideoList').appendChild(row);
+};
+
+window.saveMedia = async function() {
+  showToast('שומר מדיה...');
+  const updates = {};
+
+  const logoFile = document.getElementById('editLogoFile').files[0];
+  if (logoFile) {
+    updates.logo = await uploadFile(logoFile, `businesses/${bizId}/logo_${Date.now()}`);
+  } else {
+    const existingSrc = document.getElementById('editLogoImg').src;
+    updates.logo = existingSrc.startsWith('http') ? existingSrc : '';
+  }
+
+  const photoRows = [...document.querySelectorAll('[id^="photoRow-"]')];
+  const photosResult = [];
+  for (const row of photoRows) {
+    const idx       = row.id.replace('photoRow-', '');
+    const fileInput = row.querySelector('input[type="file"]');
+    const urlInput  = document.getElementById('photoUrl-' + idx);
+    const nameInput = document.getElementById('photoName-' + idx);
+    const name      = nameInput?.value.trim() || '';
+    let   url       = urlInput?.value.trim() || '';
+    if (fileInput?.files[0]) {
+      url = await uploadFile(fileInput.files[0], `businesses/${bizId}/gallery_${Date.now()}_${idx}`);
+      if (urlInput) urlInput.value = url;
+    }
+    if (url || name) photosResult.push({ url, name });
+  }
+  updates.photos = photosResult;
+
+  updates.videos = [...document.querySelectorAll('[id^="videoRow-"]')].map(row => {
+    const idx   = row.id.replace('videoRow-', '');
+    const url   = document.getElementById('videoUrl-'   + idx)?.value.trim() || '';
+    const label = document.getElementById('videoLabel-' + idx)?.value.trim() || '';
+    return url ? { url, label } : null;
+  }).filter(Boolean);
+
+  stageChanges(updates);
 };
 
 // ── TOAST ──
