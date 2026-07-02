@@ -915,7 +915,7 @@ import { db, auth, storage } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 import {
   collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp,
-  addDoc, query, where, getDocs, getDoc
+  addDoc, query, where, getDocs, getDoc, runTransaction
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import {
   ref, uploadBytes, getDownloadURL
@@ -938,12 +938,20 @@ async function approveLinkedMember(b) {
     const memberDoc = msnap.docs[0];
     const m = memberDoc.data();
     if (m.status === 'approved') return;
+    const counterRef = doc(db, 'counters', 'members');
+    const memberNumber = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(counterRef);
+      const current = snap.exists() ? (snap.data().nextNumber || 1) : 1;
+      tx.set(counterRef, { nextNumber: current + 1 });
+      return current;
+    });
     const updatedFam = (m.familyMembers || []).map(f => ({ ...f, revoked: false }));
     await updateDoc(doc(db, 'members', memberDoc.id), {
       status: 'approved',
       approvedAt: serverTimestamp(),
       rejectedAt: null,
       familyApproved: true,
+      memberNumber,
       ...(updatedFam.length ? { familyMembers: updatedFam } : {}),
     });
   } catch (e) {

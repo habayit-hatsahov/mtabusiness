@@ -78,6 +78,8 @@
       font-size: 13px; font-weight: 600; color: var(--text-sm); cursor: pointer; transition: all .15s;
     }
     .filter-btn.active { background: rgba(255,222,0,.15); border-color: var(--yellow); color: var(--yellow); }
+    .filter-count { background: rgba(255,255,255,.1); padding: 1px 7px; border-radius: 8px; font-size: 11px; margin-right: 4px; }
+    .filter-btn.active .filter-count { background: rgba(255,222,0,.22); }
     .search-box {
       flex: 1; min-width: 160px; padding: 7px 14px; border: 2px solid var(--border-md);
       border-radius: 20px; font-family: 'Heebo', sans-serif; font-size: 13px; outline: none; background: var(--nav-bg); color: var(--text);
@@ -457,14 +459,18 @@
     </div>
   </div>
 
+  <button id="migrateBtn" onclick="migrateMemberNumbers()" style="display:none;width:100%;background:var(--orange);color:#fff;border:none;border-radius:10px;padding:10px;font-family:'Heebo',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:16px;">🔢 מספר חברים מאושרים ללא מספר חבר</button>
+
   <div class="filter-bar">
-    <button class="filter-btn active" data-val="all">הכל</button>
-    <button class="filter-btn" data-val="pending">ממתינים</button>
-    <button class="filter-btn" data-val="approved">מאושרים</button>
-    <button class="filter-btn" data-val="rejected">נדחו</button>
-    <button class="filter-btn" data-sub="sub">מנוי</button>
-    <button class="filter-btn" data-sub="nosub">לא מנוי</button>
-    <button class="filter-btn" data-sub="biz">בעל עסק</button>
+    <button class="filter-btn active" data-val="all">הכל <span class="filter-count" id="countAll"></span></button>
+    <button class="filter-btn" data-val="pending">ממתינים <span class="filter-count" id="countPending"></span></button>
+    <button class="filter-btn" data-val="approved">מאושרים <span class="filter-count" id="countApproved"></span></button>
+    <button class="filter-btn" data-val="rejected">נדחו <span class="filter-count" id="countRejected"></span></button>
+    <button class="filter-btn" data-sub="sub">מנוי <span class="filter-count" id="countSub"></span></button>
+    <button class="filter-btn" data-sub="nosub">לא מנוי <span class="filter-count" id="countNosub"></span></button>
+    <button class="filter-btn" data-sub="biz">בעל עסק <span class="filter-count" id="countBiz"></span></button>
+    <button class="filter-btn" data-sub="family">👨‍👩‍👧 בני משפחה <span class="filter-count" id="countFamily"></span></button>
+    <button class="filter-btn" data-sub="famchanges">🔄 בקשות משפחה <span class="filter-count" id="countFamChanges"></span></button>
     <input class="search-box" type="search" id="searchInput" placeholder="🔍  חיפוש שם / טלפון..." />
     <button class="filter-btn" id="selectModeBtn" onclick="toggleSelectMode()">☑️ בחר</button>
   </div>
@@ -668,9 +674,36 @@
 import { db, auth, storage } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 import {
-  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc
+  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc, runTransaction, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+
+async function allocateMemberNumber() {
+  const counterRef = doc(db, 'counters', 'members');
+  const newNum = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(counterRef);
+    const current = snap.exists() ? (snap.data().nextNumber || 1) : 1;
+    tx.set(counterRef, { nextNumber: current + 1 });
+    return current;
+  });
+  return newNum;
+}
+
+window.migrateMemberNumbers = async function() {
+  const approved = members.filter(m => m.status === 'approved' && !m.memberNumber);
+  if (!approved.length) { showToast('כל החברים כבר ממוספרים'); return; }
+  approved.sort((a, b) => {
+    const ta = a.approvedAt?.toDate?.() || new Date(0);
+    const tb = b.approvedAt?.toDate?.() || new Date(0);
+    return ta - tb;
+  });
+  if (!confirm(`למספר ${approved.length} חברים מאושרים שאין להם מספר חבר?`)) return;
+  for (const m of approved) {
+    const num = await allocateMemberNumber();
+    await updateDoc(doc(db, 'members', m.id), { memberNumber: num });
+  }
+  showToast(`✅ מוספרו ${approved.length} חברים`);
+};
 
 async function uploadFile(file, path) {
   const storageRef = ref(storage, path);
@@ -748,6 +781,21 @@ function updateStats() {
   document.getElementById('statFamily').textContent   = totalFam;
   document.getElementById('statPending').textContent  = members.filter(m => m.status === 'pending').length + pendingFam;
   document.getElementById('statApproved').textContent = members.filter(m => m.status === 'approved').length;
+  const needMigrate = members.filter(m => m.status === 'approved' && !m.memberNumber).length;
+  document.getElementById('migrateBtn').style.display = needMigrate ? 'block' : 'none';
+  updateFilterCounts();
+}
+
+function updateFilterCounts() {
+  document.getElementById('countAll').textContent      = members.length;
+  document.getElementById('countPending').textContent   = members.filter(m => m.status === 'pending').length;
+  document.getElementById('countApproved').textContent  = members.filter(m => m.status === 'approved').length;
+  document.getElementById('countRejected').textContent  = members.filter(m => m.status === 'rejected').length;
+  document.getElementById('countSub').textContent       = members.filter(m => m.isSubscriber === true).length;
+  document.getElementById('countNosub').textContent     = members.filter(m => m.isSubscriber !== true).length;
+  document.getElementById('countBiz').textContent       = members.filter(m => m.isBusinessOwner === true).length;
+  document.getElementById('countFamily').textContent    = members.filter(m => (m.familyMembers||[]).length > 0).length;
+  document.getElementById('countFamChanges').textContent = members.filter(m => !!m.pendingFamilyChanges).length;
 }
 
 // ── render ────────────────────────────────────────────────────────────────────
@@ -756,9 +804,11 @@ function render() {
   const filtered = members.filter(m => {
     const matchF = activeFilter === 'all' || m.status === activeFilter;
     const matchSub = activeSub === 'all'
-      || (activeSub === 'sub'   ? m.isSubscriber === true   : false)
-      || (activeSub === 'nosub' ? m.isSubscriber !== true   : false)
-      || (activeSub === 'biz'   ? m.isBusinessOwner === true : false);
+      || (activeSub === 'sub'        ? m.isSubscriber === true    : false)
+      || (activeSub === 'nosub'      ? m.isSubscriber !== true    : false)
+      || (activeSub === 'biz'        ? m.isBusinessOwner === true : false)
+      || (activeSub === 'family'     ? (m.familyMembers||[]).length > 0 : false)
+      || (activeSub === 'famchanges' ? !!m.pendingFamilyChanges   : false);
     const fullName = `${m.firstName||''} ${m.lastName||''}`.toLowerCase();
     const famNames = (m.familyMembers||[]).map(f => (f.name||'').toLowerCase()).join(' ');
     const matchS = !search || fullName.includes(search) || (m.phone||'').includes(search) || famNames.includes(search);
@@ -796,7 +846,22 @@ function render() {
             ${toggleQuick}
           </div>`;
         }).join('')}
-      </div>` : '';
+        ${m.pendingFamilyChanges ? `
+          <div class="family-sub" style="border-color:rgba(217,119,6,.4);background:var(--orange-bg);">
+            <span class="fam-icon">🔄</span>
+            <span class="fam-name" style="color:var(--orange);font-weight:700;">בקשת שינוי משפחה</span>
+            <button class="fam-status ok" style="border:none;cursor:pointer;" onclick="event.stopPropagation();approveFamilyChanges('${m.id}')">אשר</button>
+            <button class="fam-status revoked" style="border:none;cursor:pointer;" onclick="event.stopPropagation();rejectFamilyChanges('${m.id}')">דחה</button>
+          </div>` : ''}
+      </div>` : (m.pendingFamilyChanges ? `
+      <div class="family-bar">
+        <div class="family-sub" style="border-color:rgba(217,119,6,.4);background:var(--orange-bg);">
+          <span class="fam-icon">🔄</span>
+          <span class="fam-name" style="color:var(--orange);font-weight:700;">בקשת שינוי משפחה</span>
+          <button class="fam-status ok" style="border:none;cursor:pointer;" onclick="event.stopPropagation();approveFamilyChanges('${m.id}')">אשר</button>
+          <button class="fam-status revoked" style="border:none;cursor:pointer;" onclick="event.stopPropagation();rejectFamilyChanges('${m.id}')">דחה</button>
+        </div>
+      </div>` : '');
 
     let quickActions = '';
     if (m.status === 'pending') {
@@ -867,7 +932,7 @@ document.querySelector('.filter-bar').addEventListener('click', e => {
 document.getElementById('searchInput').addEventListener('input', render);
 
 // ── view sheet ────────────────────────────────────────────────────────────────
-window.openMemberSheet = function(id) {
+window.openMemberSheet = async function(id) {
   const m = members.find(x => x.id === id);
   if (!m) return;
 
@@ -875,6 +940,26 @@ window.openMemberSheet = function(id) {
   document.getElementById('vsAvatar').textContent = initials;
   document.getElementById('vsTitle').textContent  = `${m.firstName||''} ${m.lastName||''}`;
   document.getElementById('vsMeta').textContent   = `${m.phone||'—'} · ${m.email||'—'}`;
+
+  // שליפת לינק דשבורד עסק (אם בעל עסק)
+  let bizDashboardLink = '';
+  if (m.isBusinessOwner && m.email) {
+    try {
+      const bizQ = query(collection(db, 'businesses'), where('ownerEmail', '==', m.email));
+      const bizSnap = await getDocs(bizQ);
+      if (!bizSnap.empty) {
+        const bizData = bizSnap.docs[0].data();
+        const token = bizData.accessToken;
+        const bizName = bizData.name || 'העסק';
+        if (token) {
+          bizDashboardLink = `<a href="business-dashboard.html?token=${token}" target="_blank"
+            style="font-size:12px;font-weight:700;color:var(--yellow);text-decoration:none;background:rgba(255,222,0,.12);padding:4px 10px;border-radius:8px;border:1px solid rgba(255,222,0,.3);">
+            🏪 דשבורד עסק — ${bizName} ↗
+          </a>`;
+        }
+      }
+    } catch(e) { console.warn('bizDashboard lookup failed', e); }
+  }
 
   const ms = v => v ? v : '<span class="missing">לא מולא</span>';
 
@@ -947,7 +1032,95 @@ window.openMemberSheet = function(id) {
     authLine = `<span class="missing">לא צוין</span>`;
   }
 
+  // סקציית פרופיל
+  const profileSection = `
+    <div class="card-section">
+      <div class="card-section-title">🎟 כרטיס חבר ופרופיל</div>
+      <div style="padding:4px 0 10px;">
+        ${m.status === 'approved'
+          ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+               ${m.memberNumber ? `<span style="font-size:15px;font-weight:800;color:var(--yellow);">חבר #${String(m.memberNumber).padStart(5,'0')}</span>` : ''}
+               <span style="font-size:12px;color:var(--text-sm);">מאושר מ-${fmtDate(m.approvedAt)||'—'}</span>
+               <a href="profile.html" target="_blank" onclick="sessionStorage.setItem('hb_memberId','${id}')"
+                  style="font-size:12px;font-weight:700;color:var(--text-sm);text-decoration:none;background:rgba(255,255,255,.08);padding:4px 10px;border-radius:8px;border:1px solid var(--border-md);">
+                 👤 פרופיל האוהד ↗
+               </a>
+               ${bizDashboardLink}
+             </div>`
+          : `<span style="font-size:13px;color:var(--text-sm);">הכרטיס ייווצר לאחר אישור</span>`
+        }
+      </div>
+      <div class="detail-grid">
+        <div class="detail-item"><div class="lbl">שם מלא</div><div class="val">${m.firstName||''} ${m.lastName||''}</div></div>
+        <div class="detail-item"><div class="lbl">סטטוס</div><div class="val">${
+          m.status === 'approved' ? '<span style="color:#86efac;">✓ מאושר</span>'
+          : m.status === 'rejected' ? '<span style="color:var(--text-sm);">✗ נדחה</span>'
+          : '<span style="color:var(--orange);">⏳ ממתין</span>'
+        }</div></div>
+        <div class="detail-item"><div class="lbl">מנוי</div><div class="val">${m.isSubscriber ? 'כן · שער ' + (m.subscriberSection||'—') : 'לא'}</div></div>
+        <div class="detail-item"><div class="lbl">בעל עסק</div><div class="val">${m.isBusinessOwner ? 'כן' : 'לא'}</div></div>
+      </div>
+    </div>`;
+
+  // סקציית שינויי משפחה ממתינים
+  const pendingFam = m.pendingFamilyChanges || [];
+  const pendingFamHtml = pendingFam.length ? `
+    <div class="card-section">
+      <div class="card-section-title" style="background:var(--orange-bg);border-color:rgba(217,119,6,.4);color:var(--orange);">
+        🔄 בקשת שינוי בני משפחה
+        <span style="font-size:11px;font-weight:500;margin-right:auto;color:var(--text-sm);">${m.pendingFamilyChangesAt ? fmtDate(m.pendingFamilyChangesAt) : ''}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-sm);margin-bottom:10px;">האוהד ביקש לשנות את בני המשפחה שלו. להלן המצב המבוקש:</div>
+      ${pendingFam.map((f, i) => `
+        <div class="fam-card" style="border-color:rgba(217,119,6,.35);">
+          <div class="fam-avatar" style="background:var(--orange);">${(f.name?.[0]||'?').toUpperCase()}</div>
+          <div class="fam-details">
+            <div class="fam-name-row">
+              <span class="fam-fullname">${f.name||'—'}</span>
+              <span class="fam-relation-lbl">${REL_LABELS[f.relation]||f.relation||''}</span>
+            </div>
+            <div class="fam-contacts">
+              <span class="fam-contact-item">📱 <strong>${f.phone||'—'}</strong></span>
+              <span class="fam-contact-item">✉️ <strong>${f.email||'—'}</strong></span>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn btn-approve" onclick="approveFamilyChanges('${id}')" style="flex:1;">✅ אשר שינויים</button>
+        <button class="btn btn-reject" onclick="rejectFamilyChanges('${id}')" style="flex:1;">✗ דחה שינויים</button>
+      </div>
+    </div>` : '';
+
+  // היסטוריית שינויי משפחה
+  const famHistory = m.familyChangeHistory || [];
+  const historyHtml = famHistory.length ? `
+    <div class="card-section">
+      <div class="card-section-title">📋 היסטוריית שינויי משפחה (${famHistory.length})</div>
+      ${famHistory.slice().reverse().map(h => `
+        <div style="background:rgba(255,255,255,.04);border:1px solid var(--border-md);border-radius:8px;padding:10px 12px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:12px;font-weight:700;color:${
+              h.action === 'approved' ? '#86efac' : h.action === 'rejected' ? 'var(--orange)' : 'var(--text-sm)'
+            };">
+              ${h.action === 'approved' ? '✅ אושר' : h.action === 'rejected' ? '✗ נדחה' : '🔄 בקשה'}
+              ${h.by === 'admin' ? '(מנהל)' : '(אוהד)'}
+            </span>
+            <span style="font-size:11px;color:var(--text-muted);">${
+              h.timestamp ? new Date(h.timestamp).toLocaleDateString('he-IL', {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : ''
+            }</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-sm);margin-top:4px;">
+            לפני: ${(h.before||[]).map(f=>f.name).join(', ')||'ריק'} →
+            אחרי: ${(h.after||[]).map(f=>f.name).join(', ')||'ריק'}
+          </div>
+          ${h.note ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">הערה: ${h.note}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>` : '';
+
   document.getElementById('vsBody').innerHTML = `
+    ${profileSection}
     <div class="card-section">
       <div class="card-section-title">👤 פרטים אישיים</div>
       <div class="detail-grid">
@@ -974,7 +1147,9 @@ window.openMemberSheet = function(id) {
     <div class="card-section">
       <div class="card-section-title">👨‍👩‍👧 בני משפחה (${famMembers.length})</div>
       ${famHtml}
-    </div>`;
+    </div>
+    ${pendingFamHtml}
+    ${historyHtml}`;
 
   // כפתורי פעולה
   const editBtns = `
@@ -1016,11 +1191,72 @@ window.toggleFamilyRevoke = async function(id, idx, revoke) {
   const m = members.find(x => x.id === id);
   if (!m) return;
   const updatedFam = (m.familyMembers||[]).map((f,i) => i===idx ? {...f, revoked: revoke} : f);
-  // optimistic update
   m.familyMembers = updatedFam;
   await updateDoc(doc(db, 'members', id), { familyMembers: updatedFam });
   showToast(revoke ? `✗ אישור בוטל` : `✓ אישור שוחזר`);
   openMemberSheet(id);
+};
+
+// ── family change requests ──────────────────────────────────────────────────
+window.approveFamilyChanges = async function(id) {
+  const m = members.find(x => x.id === id);
+  if (!m || !m.pendingFamilyChanges) return;
+  if (!confirm('לאשר את שינוי בני המשפחה?')) return;
+
+  const historyEntry = {
+    timestamp: new Date().toISOString(),
+    action: 'approved',
+    by: 'admin',
+    before: m.familyMembers || [],
+    after: m.pendingFamilyChanges
+  };
+  const history = [...(m.familyChangeHistory || []), historyEntry];
+
+  await updateDoc(doc(db, 'members', id), {
+    familyMembers: m.pendingFamilyChanges,
+    pendingFamilyChanges: null,
+    pendingFamilyChangesAt: null,
+    familyChangeHistory: history
+  });
+
+  m.familyMembers = m.pendingFamilyChanges;
+  m.pendingFamilyChanges = null;
+  m.pendingFamilyChangesAt = null;
+  m.familyChangeHistory = history;
+
+  showToast('✅ שינוי בני המשפחה אושר');
+  render();
+  if (document.getElementById('viewSheet').classList.contains('open')) openMemberSheet(id);
+};
+
+window.rejectFamilyChanges = async function(id) {
+  const m = members.find(x => x.id === id);
+  if (!m || !m.pendingFamilyChanges) return;
+  if (!confirm('לדחות את בקשת שינוי בני המשפחה?')) return;
+
+  const historyEntry = {
+    timestamp: new Date().toISOString(),
+    action: 'rejected',
+    by: 'admin',
+    before: m.familyMembers || [],
+    after: m.pendingFamilyChanges,
+    note: 'נדחה על ידי מנהל'
+  };
+  const history = [...(m.familyChangeHistory || []), historyEntry];
+
+  await updateDoc(doc(db, 'members', id), {
+    pendingFamilyChanges: null,
+    pendingFamilyChangesAt: null,
+    familyChangeHistory: history
+  });
+
+  m.pendingFamilyChanges = null;
+  m.pendingFamilyChangesAt = null;
+  m.familyChangeHistory = history;
+
+  showToast('✗ בקשת השינוי נדחתה');
+  render();
+  if (document.getElementById('viewSheet').classList.contains('open')) openMemberSheet(id);
 };
 
 window.sendFamilyWA = function(id, idx) {
@@ -1118,16 +1354,18 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
     const rejected = inp ? inp.value === 'rejected' : false;
     return {...f, revoked: rejected};
   });
+  const memberNumber = await allocateMemberNumber();
   await updateDoc(doc(db, 'members', approvingId), {
     status: 'approved',
     approvedAt: serverTimestamp(),
     rejectedAt: null,
     familyApproved: true,
+    memberNumber,
     ...(updatedFam.length ? { familyMembers: updatedFam } : {}),
   });
   const btn = document.getElementById('confirmApproveBtn');
   btn.textContent = '✓ אושר!'; btn.disabled = true; btn.style.opacity = '.5';
-  showToast(`✅ ${m.firstName||''} ${m.lastName||''} אושר/ה!`);
+  showToast(`✅ ${m.firstName||''} ${m.lastName||''} אושר/ה! (חבר #${String(memberNumber).padStart(5,'0')})`);
 });
 
 window.modalSendWA = function() {
@@ -1188,6 +1426,10 @@ window.deleteMember = async function(id) {
   const name = `${m?.firstName||''} ${m?.lastName||''}`.trim();
   if (!confirm(`למחוק לצמיתות את ${name}?\nפעולה זו אינה ניתנת לביטול.`)) return;
   await deleteDoc(doc(db, 'members', id));
+  const remaining = members.filter(x => x.id !== id && x.status === 'approved' && x.memberNumber);
+  if (!remaining.length) {
+    await deleteDoc(doc(db, 'counters', 'members'));
+  }
   showToast(`🗑️ ${name} נמחק`);
 };
 
@@ -1345,6 +1587,21 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
     photoProofUrl:     document.getElementById('editPhotoProofUrl').value.trim() || null,
   };
 
+  // אם מנהל עורך משפחה ישירות — מנקה בקשת שינוי ממתינה
+  if (m.pendingFamilyChanges) {
+    const histEntry = {
+      timestamp: new Date().toISOString(),
+      action: 'approved',
+      by: 'admin',
+      before: m.familyMembers || [],
+      after: newFam,
+      note: 'עריכה ישירה על ידי מנהל'
+    };
+    updates.pendingFamilyChanges = null;
+    updates.pendingFamilyChangesAt = null;
+    updates.familyChangeHistory = [...(m.familyChangeHistory || []), histEntry];
+  }
+
   // העלאת תמונת הוכחה אם נבחרה
   const proofFile = document.getElementById('editProofFile')?.files[0];
   if (proofFile) {
@@ -1397,9 +1654,12 @@ window.bulkApprove = async function() {
   const pending = ids.filter(id => members.find(m => m.id === id)?.status === 'pending');
   if (!pending.length) { showToast('אין ממתינים בבחירה'); return; }
   if (!confirm(`לאשר ${pending.length} חברים?`)) return;
-  await Promise.all(pending.map(id => updateDoc(doc(db, 'members', id), {
-    status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null, familyApproved: true
-  })));
+  for (const id of pending) {
+    const memberNumber = await allocateMemberNumber();
+    await updateDoc(doc(db, 'members', id), {
+      status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null, familyApproved: true, memberNumber
+    });
+  }
   showToast(`✅ ${pending.length} חברים אושרו`);
   selectedIds.clear();
   document.getElementById('bulkBar').classList.remove('visible');
