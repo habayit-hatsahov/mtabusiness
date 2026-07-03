@@ -1,5 +1,5 @@
 $root = $PSScriptRoot
-$port = 5501
+$port = 5502
 
 # ── File watcher — tracks changes ──────────────────────────────────────────────
 $watcher = [System.IO.FileSystemWatcher]::new($root)

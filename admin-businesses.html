@@ -222,6 +222,10 @@
     .pending-actions { display: flex; gap: 8px; margin-top: 12px; }
     .btn-pending-approve { flex: 1; background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 8px; font-family: 'Heebo',sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; }
     .btn-pending-reject  { flex: 1; background: var(--nav-bg); color: var(--yellow); border: 1.5px solid rgba(234,179,8,.35); border-radius: 8px; padding: 8px; font-family: 'Heebo',sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .btn-pending-edit    { flex: 1; background: var(--card-bg); color: var(--yellow); border: 1.5px solid rgba(234,179,8,.35); border-radius: 8px; padding: 8px; font-family: 'Heebo',sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .pending-edit-input  { width: 100%; background: var(--nav-bg); border: 1.5px solid var(--yellow); border-radius: 6px; color: #86efac; font-family: 'Heebo',sans-serif; font-size: 12px; font-weight: 700; padding: 4px 8px; }
+    .card-dash-link { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; background: rgba(59,130,246,.15); text-decoration: none; font-size: 13px; flex-shrink: 0; transition: background .15s; }
+    .card-dash-link:hover { background: rgba(59,130,246,.3); }
 
     .dashboard-link-box { background: rgba(59,130,246,.1); border: 1.5px solid rgba(59,130,246,.3); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
     .dashboard-link-label { font-size: 12px; font-weight: 700; color: var(--yellow); margin-bottom: 6px; }
@@ -1096,12 +1100,14 @@ window.openBizSheet = function(id) {
     const rows = Object.entries(b.pendingChanges)
       .map(([k, v]) => {
         const label = PENDING_LABELS[k] || k;
-        return `<div class="pending-row"><span class="pending-field">${label}</span><span class="pending-old">${fmtVal(k, b[k])}</span><span class="pending-arrow">→</span><span class="pending-new">${fmtVal(k, v)}</span></div>`;
+        const isSimple = typeof v === 'string' || typeof v === 'number';
+        return `<div class="pending-row" data-key="${k}" data-simple="${isSimple}"><span class="pending-field">${label}</span><span class="pending-old">${fmtVal(k, b[k])}</span><span class="pending-arrow">→</span><span class="pending-new">${fmtVal(k, v)}</span></div>`;
       }).join('');
-    return `<div class="pending-section">
+    return `<div class="pending-section" data-biz-id="${id}">
       <div class="pending-title">✏️ שינויים ממתינים לאישורך</div>
       ${rows}
       <div class="pending-actions">
+        <button class="btn-pending-edit" onclick="editPendingChanges('${id}')">✏️ ערוך שינויים</button>
         <button class="btn-pending-approve" onclick="approvePendingChanges('${id}')">✅ אשר שינויים</button>
         <button class="btn-pending-reject" onclick="rejectPendingChanges('${id}')">✗ דחה שינויים</button>
       </div>
@@ -1113,7 +1119,10 @@ window.openBizSheet = function(id) {
     return `<div class="dashboard-link-box" style="margin-bottom:14px">
       <div class="dashboard-link-label">🔗 קישור דשבורד לבעל העסק</div>
       <div class="dashboard-link-url" id="vsDashUrl">${dashUrl}</div>
-      <button class="btn-copy-link" onclick="navigator.clipboard.writeText(document.getElementById('vsDashUrl').textContent).then(()=>showToast('✅ הקישור הועתק!'))">📋 העתק קישור</button>
+      <div style="display:flex;gap:8px">
+        <a class="btn-copy-link" href="${dashUrl}" target="_blank" style="flex:1;text-align:center;text-decoration:none;color:#fff;">🔗 פתח דשבורד</a>
+        <button class="btn-copy-link" style="flex:1" onclick="navigator.clipboard.writeText(document.getElementById('vsDashUrl').textContent).then(()=>showToast('✅ הקישור הועתק!'))">📋 העתק קישור</button>
+      </div>
     </div>`;
   })() : '';
 
@@ -1458,6 +1467,7 @@ function render() {
         </div>
         ${subPill}
         ${statusChip(b)}
+        ${b.accessToken ? `<a class="card-dash-link" href="${dashboardLinkFor(b)}" target="_blank" onclick="event.stopPropagation()" title="פתח דשבורד העסק">🔗</a>` : ''}
         <span class="chevron">›</span>
       </div>
     </div>`;
@@ -1683,18 +1693,45 @@ const PENDING_LABELS = {
   hasDiscount: 'הטבה פעילה', logo: 'לוגו', photos: 'גלריית תמונות', videos: 'סרטונים',
 };
 
+let _pendingEditMode = false;
+
+window.editPendingChanges = function(id) {
+  const b = businesses.find(x => x.id === id);
+  if (!b?.pendingChanges) return;
+  const section = document.querySelector('.pending-section[data-biz-id="' + id + '"]');
+  if (!section) return;
+  _pendingEditMode = true;
+  section.querySelectorAll('.pending-row').forEach(row => {
+    if (row.dataset.simple !== 'true') return;
+    const key = row.dataset.key;
+    const val = b.pendingChanges[key] ?? '';
+    const cell = row.querySelector('.pending-new');
+    cell.innerHTML = `<input type="text" class="pending-edit-input" data-key="${key}" value="${esc(String(val))}" />`;
+  });
+  const editBtn = section.querySelector('.btn-pending-edit');
+  if (editBtn) editBtn.style.display = 'none';
+};
+
 window.approvePendingChanges = async function(id) {
   const b = businesses.find(x => x.id === id);
   if (!b?.pendingChanges) return;
-  const updates = { ...b.pendingChanges, pendingChanges: null, pendingChangesAt: null };
+  let changes = { ...b.pendingChanges };
+  if (_pendingEditMode) {
+    document.querySelectorAll('.pending-edit-input').forEach(input => {
+      changes[input.dataset.key] = input.value;
+    });
+  }
+  const updates = { ...changes, pendingChanges: null, pendingChangesAt: null };
   await updateDoc(doc(db, 'businesses', id), updates);
   showToast('✅ שינויים אושרו ועודכנו!');
+  _pendingEditMode = false;
   closeViewSheet();
 };
 
 window.rejectPendingChanges = async function(id) {
   if (!confirm('לדחות את השינויים שבעל העסק שלח?')) return;
   await updateDoc(doc(db, 'businesses', id), { pendingChanges: null, pendingChangesAt: null });
+  _pendingEditMode = false;
   showToast('✗ שינויים נדחו');
   closeViewSheet();
 };
