@@ -36,9 +36,11 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 0 16px 90px;
+      padding: 0 64px 16px 16px;
       gap: 28px;
+      transition: padding-right .25s ease;
     }
+    body.nav-collapsed { padding-right: 20px; }
 
     /* ── TOP NAV ── */
     .top-nav {
@@ -46,7 +48,7 @@
       position: sticky; top: 0; z-index: 100;
       background: var(--nav-bg);
       padding: 14px 16px 12px;
-      margin: 0 -16px;
+      margin: 0 0 0 -16px;
       border-bottom: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-between;
     }
@@ -442,7 +444,7 @@
       };
     }
 
-    // ── בעל עסק — הצגת כפתור "העסק שלי" בסרגל התחתון ──
+    // ── בעל עסק — הצגת כפתור "העסק שלי" בסרגל הצד ──
     (async function initBizNavItem() {
       if (data.isBusinessOwner !== true) return;
       let token = memberId ? '' : (sessionStorage.getItem('hb_lastBizToken') || 'c6342c93-a350-42b8-ad87-95fa005c8983');
@@ -548,42 +550,181 @@
 })();
 </script>
 
-<!-- ══ BOTTOM NAV ══ -->
+<!-- ══ SIDE NAV ══ -->
 <style>
-  .bottom-nav {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    background: var(--nav-bg); border-top: 1px solid var(--border);
-    display: flex; padding: 10px 0 18px; z-index: 200;
+  .side-nav {
+    position: fixed; top: 0; bottom: 0; right: 0;
+    width: 64px; padding-top: 48px;
+    background: var(--nav-bg); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    gap: 20px; z-index: 200;
+    transition: transform .25s ease;
   }
-  .bottom-nav-item {
-    flex: 1; display: flex; flex-direction: column;
-    align-items: center; gap: 3px; text-decoration: none;
+  body.nav-collapsed .side-nav { transform: translateX(100%); }
+  .side-nav-item {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    width: 100%; cursor: pointer; text-decoration: none; color: var(--yellow);
   }
-  .bottom-nav-icon  { font-size: 22px; }
-  .bottom-nav-label { font-size: 10px; font-weight: 700; color: var(--text-muted); font-family: 'Heebo', sans-serif; }
-  .bottom-nav-item.active .bottom-nav-label { color: var(--yellow); }
+  .side-nav-icon { font-size: 21px; }
+  .side-nav-label { font-size: 9px; font-weight: 700; color: var(--yellow); font-family: 'Heebo', sans-serif; }
+  .side-nav-item.active { background: rgba(255,222,0,.14); border-radius: 10px; padding: 6px 0; }
+  .side-nav-toggle {
+    position: fixed; top: 0; right: 0;
+    width: 64px; height: 30px;
+    background: var(--yellow); border: 1px solid transparent;
+    border-radius: 0 0 0 10px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 201; color: #0f1524; font-size: 20px; font-weight: 900; line-height: 1;
+    box-shadow: 0 2px 10px rgba(0,0,0,.35);
+    transition: width .2s ease, border-radius .2s ease;
+  }
+  body.nav-collapsed .side-nav-toggle {
+    width: 20px;
+    border: 1px solid rgba(15,21,36,.4);
+    border-radius: 0 0 0 8px;
+  }
+
+  /* ══ CONTACT SHEET ══ */
+  .contact-overlay {
+    display: none; position: fixed; inset: 0; z-index: 300;
+    background: rgba(0,0,0,.65); backdrop-filter: blur(3px);
+    align-items: flex-end; justify-content: center;
+  }
+  .contact-overlay.open { display: flex; }
+  .contact-sheet {
+    background: var(--card-bg); width: 100%; max-width: 420px;
+    border-radius: 24px 24px 0 0;
+    padding: 10px 20px 28px; position: relative;
+    animation: contactSheetUp .3s cubic-bezier(.25,.46,.45,.94);
+  }
+  @media (min-width: 640px) {
+    .contact-overlay { align-items: center; }
+    .contact-sheet { border-radius: 24px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+  }
+  @keyframes contactSheetUp {
+    from { transform: translateY(100%); opacity: .5; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  .contact-sheet-handle {
+    width: 40px; height: 4px; background: var(--border-md);
+    border-radius: 4px; margin: 0 auto 14px;
+  }
+  @media (min-width: 640px) { .contact-sheet-handle { display: none; } }
+  .contact-sheet-close {
+    position: absolute; top: 14px; left: 14px;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(255,255,255,.08); border: none; color: var(--white);
+    font-size: 14px; cursor: pointer;
+  }
+  .contact-sheet-title { font-size: 17px; font-weight: 900; margin: 14px 0 4px; color: var(--white); }
+  .contact-sheet-sub { font-size: 12px; color: var(--text-sm); margin-bottom: 16px; }
+  .contact-options { display: flex; flex-direction: column; gap: 10px; }
+  .contact-option {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--nav-bg); border: 1px solid var(--border-md);
+    border-radius: 14px; padding: 12px 14px;
+    text-decoration: none; color: var(--white);
+  }
+  .contact-option-icon { font-size: 20px; }
+  .contact-option-title { font-size: 13px; font-weight: 800; }
+  .contact-option-sub { font-size: 11px; color: var(--text-sm); margin-top: 2px; }
+  .contact-option-soon { opacity: .55; }
 </style>
-<nav class="bottom-nav">
-  <a class="bottom-nav-item" href="home.html">
-    <span class="bottom-nav-icon">🏠</span>
-    <span class="bottom-nav-label">בית</span>
+<div class="side-nav-toggle" id="sideNavToggle" onclick="toggleSideNav()">⋮</div>
+<nav class="side-nav" id="sideNav">
+  <a class="side-nav-item" href="home.html">
+    <span class="side-nav-icon">🏠</span>
+    <span class="side-nav-label">בית</span>
   </a>
-  <a class="bottom-nav-item" href="home.html">
-    <span class="bottom-nav-icon">🔍</span>
-    <span class="bottom-nav-label">חיפוש</span>
+  <a class="side-nav-item" href="home.html">
+    <span class="side-nav-icon">🔍</span>
+    <span class="side-nav-label">חיפוש</span>
   </a>
-  <a class="bottom-nav-item" href="home.html#near">
-    <span class="bottom-nav-icon">📍</span>
-    <span class="bottom-nav-label">קרוב אליך</span>
+  <a class="side-nav-item" href="home.html#near">
+    <span class="side-nav-icon">📍</span>
+    <span class="side-nav-label">קרוב אליך</span>
   </a>
-  <a class="bottom-nav-item active" href="profile.html">
-    <span class="bottom-nav-icon">👤</span>
-    <span class="bottom-nav-label">פרופיל</span>
+  <a class="side-nav-item active" href="profile.html">
+    <span class="side-nav-icon">👤</span>
+    <span class="side-nav-label">פרופיל</span>
   </a>
-  <a class="bottom-nav-item" id="bizNavItem" href="#" style="display:none">
-    <span class="bottom-nav-icon">🏪</span>
-    <span class="bottom-nav-label">העסק שלי</span>
+  <a class="side-nav-item" id="bizNavItem" href="#" style="display:none">
+    <span class="side-nav-icon">🏪</span>
+    <span class="side-nav-label">העסק שלי</span>
+  </a>
+  <div class="side-nav-item" onclick="openContactSheet()">
+    <span class="side-nav-icon">📞</span>
+    <span class="side-nav-label">צור קשר</span>
+  </div>
+  <a class="side-nav-item" href="business.html">
+    <span class="side-nav-icon">➕</span>
+    <span class="side-nav-label">הוסף עסק</span>
   </a>
 </nav>
+<!-- ══ CONTACT SHEET ══ -->
+<div class="contact-overlay" id="contactOverlay" onclick="if(event.target===this)closeContactSheet()">
+  <div class="contact-sheet">
+    <div class="contact-sheet-handle"></div>
+    <button class="contact-sheet-close" onclick="closeContactSheet()">✕</button>
+    <div class="contact-sheet-title">📞 יצירת קשר</div>
+    <div class="contact-sheet-sub">נשמח לעזור — הצוות שלנו כאן בשבילכם</div>
+    <div class="contact-options" id="contactOptionsFan" style="display:none">
+      <a class="contact-option" href="mailto:info@habayithatsahov.co.il">
+        <span class="contact-option-icon">✉️</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">מייל</div>
+          <div class="contact-option-sub">info@habayithatsahov.co.il</div>
+        </div>
+      </a>
+      <div class="contact-option contact-option-soon">
+        <span class="contact-option-icon">📷</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">אינסטגרם</div>
+          <div class="contact-option-sub">בקרוב</div>
+        </div>
+      </div>
+    </div>
+    <div class="contact-options" id="contactOptionsBiz" style="display:none">
+      <a class="contact-option" href="mailto:info@habayithatsahov.co.il">
+        <span class="contact-option-icon">✉️</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">מייל</div>
+          <div class="contact-option-sub">info@habayithatsahov.co.il</div>
+        </div>
+      </a>
+      <a class="contact-option" href="https://wa.me/972500000000" target="_blank">
+        <span class="contact-option-icon">💬</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">WhatsApp</div>
+          <div class="contact-option-sub">שיחה ישירה עם הצוות</div>
+        </div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+  function applySideNavCollapsed(collapsed) {
+    document.body.classList.toggle('nav-collapsed', collapsed);
+  }
+  function toggleSideNav() {
+    const collapsed = !document.body.classList.contains('nav-collapsed');
+    localStorage.setItem('hb_navCollapsed', collapsed ? '1' : '0');
+    applySideNavCollapsed(collapsed);
+  }
+  applySideNavCollapsed(localStorage.getItem('hb_navCollapsed') === '1');
+
+  function openContactSheet() {
+    const isBizOwner = document.getElementById('bizNavItem')?.style.display === 'flex';
+    document.getElementById('contactOptionsFan').style.display = isBizOwner ? 'none' : 'flex';
+    document.getElementById('contactOptionsBiz').style.display = isBizOwner ? 'flex' : 'none';
+    document.getElementById('contactOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeContactSheet() {
+    document.getElementById('contactOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+</script>
 </body>
 </html>
