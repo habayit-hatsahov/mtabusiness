@@ -412,9 +412,9 @@ if (!bizId) {
         id:           snap.id,
         name:         raw.name || '',
         cat:          raw.categoryPrimary || 'other',
-        city:         (raw.branches && raw.branches[0]?.city) || (bizTypes.includes('online') ? 'אונליין' : ''),
+        city:         (raw.branches && raw.branches[0]?.city) || '',
         discount:     raw.discountText || '',
-        discountType: types.includes('online') ? 'online' : (types.includes('physical') ? 'physical' : ''),
+        discountTypes: types,
         coupon:       raw.discountCode || '',
         clicks:       raw.clicks || 0,
         online:       bizTypes.includes('online'),
@@ -487,31 +487,34 @@ if (!bizId) {
         show('benefitSection');
         document.getElementById('benefitText').textContent = b.discount;
 
-        const typeLabel = b.discountType === 'online'
-          ? '🌐 מימוש באתר האינטרנט'
-          : b.discountType === 'physical'
-            ? '🏪 מימוש בחנות הפיזית'
-            : '';
-        document.getElementById('benefitType').textContent = typeLabel;
+        const dTypes = b.discountTypes || [];
+        const DISC_TYPE_LABELS = { online: '🌐 מימוש באתר האינטרנט', physical: '🏪 מימוש בחנות הפיזית', sale: '🤝 מימוש במעמד המכירה / השירות' };
+        document.getElementById('benefitType').textContent = dTypes.map(t => DISC_TYPE_LABELS[t]).filter(Boolean).join(' · ');
         document.getElementById('clicksInfo').textContent  = `${clicks} חברים צפו בהטבה זו`;
 
         const area = document.getElementById('redemptionArea');
-        if (b.discountType === 'online' && b.coupon) {
-          area.innerHTML = `
+        let areaHtml = '';
+        if (dTypes.includes('online') && b.coupon) {
+          areaHtml += `
             <div class="coupon-box" style="margin-top:14px">
               <div class="coupon-lbl">קוד הקופון שלך</div>
               <div class="coupon-code">${b.coupon}</div>
               <button class="copy-btn" id="copyBtn" onclick="copyCoupon('${b.coupon}')">📋 העתק קוד</button>
             </div>`;
-        } else if (b.discountType === 'physical') {
-          area.innerHTML = `
+        }
+        if (dTypes.includes('physical') || dTypes.includes('sale')) {
+          const whereText = dTypes.includes('physical') && dTypes.includes('sale')
+            ? 'בחנות או במעמד השירות'
+            : dTypes.includes('sale') ? 'בפגישה או בשיחה עם נותן השירות' : 'בחנות';
+          areaHtml += `
             <div class="physical-box">
               <div style="font-size:32px">🎟️</div>
               <h4>הצג את התעודה שלך</h4>
-              <p>הצג את תעודת החבר הדיגיטלית שלך בחנות וקבל את ההטבה.</p>
+              <p>הצג את תעודת החבר הדיגיטלית שלך ${whereText} וקבל את ההטבה.</p>
               <a href="profile.html">פתח תעודת חבר 🎟️</a>
             </div>`;
         }
+        area.innerHTML = areaHtml;
       }
 
       // שורות מידע
