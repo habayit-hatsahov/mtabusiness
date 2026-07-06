@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>מדיניות לאוהדים ותקנון — הבית הצהוב</title>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
+  <script>
+    (function () {
+      var isRegisterCtx = new URLSearchParams(location.search).get('ctx') === 'register';
+      document.documentElement.setAttribute('data-ctx', isRegisterCtx ? 'register' : 'member');
+      if (!isRegisterCtx) {
+        var t = localStorage.getItem('hb_theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      }
+    })();
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -13,14 +23,39 @@
       --bg:        #151C2E;
       --nav-bg:    #0f1524;
       --card-bg:   #1a2440;
+      --card-bg2:  #1e2b47;
       --border:    rgba(255,255,255,0.07);
       --border-md: rgba(255,255,255,0.14);
       --text:      #FFFFFF;
       --text-sm:   rgba(255,255,255,0.5);
       --text-muted:rgba(255,255,255,0.32);
+      --fg-rgb:    255,255,255;
+      --accent:    var(--yellow);
+      --chrome-text:   var(--text);
+      --chrome-accent: var(--yellow);
+      --shadow:    0 2px 16px rgba(0,0,0,0.35);
     }
+
+    /* ══ מצב תצוגה בהיר — לנגישות (רק בהקשר חבר) ══ */
+    [data-theme="light"] {
+      --bg:        #F5F6FA;
+      --nav-bg:    #003DA5;
+      --card-bg:   #FFFFFF;
+      --card-bg2:  #F2F4FA;
+      --border:    rgba(18,32,61,0.10);
+      --border-md: rgba(18,32,61,0.16);
+      --text:      #12203D;
+      --text-sm:   #56658A;
+      --text-muted:#9aa6bd;
+      --fg-rgb:    18,32,61;
+      --accent:    #003DA5;
+      --chrome-text:   #FFFFFF;
+      --chrome-accent: #FFDE00;
+      --shadow:    0 2px 16px rgba(18,32,61,0.10);
+    }
+
     html { scroll-behavior: smooth; }
-    body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; padding-bottom: 80px; }
+    body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; padding-bottom: 24px; }
     ::-webkit-scrollbar { width: 0; }
 
     /* ══ TOP NAV ══ */
@@ -32,23 +67,113 @@
       display: flex; align-items: center; justify-content: space-between;
     }
     .nav-logo { display: flex; align-items: center; gap: 8px; text-decoration: none; }
-    .nav-logo-text { color: var(--text); font-size: 18px; font-weight: 900; }
-    .nav-logo-text span { color: var(--yellow); }
-    .nav-page-title { font-size: 14px; font-weight: 700; color: var(--text-sm); }
+    .nav-logo-text { color: var(--chrome-text); font-size: 18px; font-weight: 900; }
+    .nav-logo-text span { color: var(--chrome-accent); }
+    .nav-page-title { font-size: 14px; font-weight: 700; color: var(--chrome-text); opacity: .6; }
 
-    /* ══ BOTTOM NAV ══ */
-    .bottom-nav {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      background: var(--nav-bg); border-top: 1px solid var(--border);
-      display: flex; padding: 10px 0 18px; z-index: 200;
+    /* הצגה לפי הקשר — חבר (המבורגר) מול הרשמה (בלי ניווט) */
+    html:not([data-ctx="register"]) #topNavRegister { display: none; }
+    html[data-ctx="register"] #topNavMember,
+    html[data-ctx="register"] #menuOverlay,
+    html[data-ctx="register"] #contactOverlay { display: none !important; }
+
+    /* ══ MENU TOGGLE (המבורגר) ══ */
+    .menu-toggle {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--card-bg); border: 1px solid var(--border-md);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--accent); font-size: 16px; flex-shrink: 0;
     }
-    .bottom-nav-item {
-      flex: 1; display: flex; flex-direction: column;
-      align-items: center; gap: 3px; cursor: pointer; text-decoration: none;
+    .menu-toggle:active { transform: scale(.93); }
+
+    /* ══ FULL-SCREEN MENU ══ */
+    .menu-overlay {
+      display: none; position: fixed; inset: 0; z-index: 400;
+      background: var(--nav-bg); flex-direction: column;
     }
-    .bottom-nav-icon { font-size: 22px; }
-    .bottom-nav-label { font-size: 10px; font-weight: 700; color: var(--text-muted); font-family: 'Heebo', sans-serif; }
-    .bottom-nav-item.active .bottom-nav-label { color: var(--yellow); }
+    .menu-overlay.open { display: flex; }
+    .menu-header { display: flex; justify-content: flex-end; padding: 14px 16px; }
+    .menu-close {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--card-bg); border: 1px solid var(--border-md);
+      color: var(--text); font-size: 15px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .menu-list { display: flex; flex-direction: column; padding: 6px 20px 20px; gap: 6px; overflow-y: auto; }
+    .menu-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 16px 14px; border-radius: 14px;
+      text-decoration: none; color: var(--chrome-text); cursor: pointer;
+      font-family: 'Heebo', sans-serif; border: none; background: none; width: 100%; text-align: right;
+    }
+    .menu-item:active { background: rgba(var(--fg-rgb),.06); }
+    .menu-item-icon { font-size: 22px; width: 28px; text-align: center; flex-shrink: 0; }
+    .menu-item-label { font-size: 16px; font-weight: 700; }
+
+    /* ══ מתג מצב תצוגה (בהיר/כהה) ══ */
+    .menu-theme-row { justify-content: space-between; cursor: default; }
+    .menu-theme-row:active { background: none; }
+    .menu-theme-row .menu-item-label { flex: 1; }
+    .theme-switch { position: relative; width: 46px; height: 26px; flex-shrink: 0; }
+    .theme-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+    .theme-switch-slider {
+      position: absolute; inset: 0; background: var(--card-bg2);
+      border: 1px solid var(--border-md); border-radius: 20px;
+      pointer-events: none; transition: background .2s, border-color .2s;
+    }
+    .theme-switch-slider::before {
+      content: ''; position: absolute; width: 20px; height: 20px;
+      right: 2px; top: 2px; background: var(--text-muted);
+      border-radius: 50%; transition: transform .2s, background .2s;
+    }
+    .theme-switch input:checked + .theme-switch-slider { background: rgba(255,222,0,.18); border-color: var(--yellow); }
+    .theme-switch input:checked + .theme-switch-slider::before { transform: translateX(-20px); background: var(--yellow); }
+
+    /* ══ CONTACT SHEET ══ */
+    .contact-overlay {
+      display: none; position: fixed; inset: 0; z-index: 300;
+      background: rgba(0,0,0,.65); backdrop-filter: blur(3px);
+      align-items: flex-end; justify-content: center;
+    }
+    .contact-overlay.open { display: flex; }
+    .contact-sheet {
+      background: var(--card-bg); width: 100%; max-width: 420px;
+      border-radius: 24px 24px 0 0;
+      padding: 10px 20px 28px; position: relative;
+      animation: contactSheetUp .3s cubic-bezier(.25,.46,.45,.94);
+    }
+    @media (min-width: 640px) {
+      .contact-overlay { align-items: center; }
+      .contact-sheet { border-radius: 24px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+    }
+    @keyframes contactSheetUp {
+      from { transform: translateY(100%); opacity: .5; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+    .contact-sheet-handle {
+      width: 40px; height: 4px; background: var(--border-md);
+      border-radius: 4px; margin: 0 auto 14px;
+    }
+    @media (min-width: 640px) { .contact-sheet-handle { display: none; } }
+    .contact-sheet-close {
+      position: absolute; top: 14px; left: 14px;
+      width: 30px; height: 30px; border-radius: 50%;
+      background: rgba(var(--fg-rgb),.08); border: none; color: var(--text);
+      font-size: 14px; cursor: pointer;
+    }
+    .contact-sheet-title { font-size: 17px; font-weight: 900; margin: 14px 0 4px; }
+    .contact-sheet-sub { font-size: 12px; color: var(--text-sm); margin-bottom: 16px; }
+    .contact-options { display: flex; flex-direction: column; gap: 10px; }
+    .contact-option {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--card-bg2); border: 1px solid var(--border-md);
+      border-radius: 14px; padding: 12px 14px;
+      text-decoration: none; color: var(--text);
+    }
+    .contact-option-icon { font-size: 20px; }
+    .contact-option-title { font-size: 13px; font-weight: 800; }
+    .contact-option-sub { font-size: 11px; color: var(--text-sm); margin-top: 2px; }
+    .contact-option-soon { opacity: .55; }
 
     /* ══ CONTENT ══ */
     .container { max-width: 680px; margin: 0 auto; padding: 20px 16px 24px; }
@@ -105,13 +230,27 @@
       padding: 12px 0 4px;
     }
     .terms-footer strong { color: var(--yellow); }
+
+    /* ══ עומק נוסף במצב בהיר — למנוע מראה שטוח/לבן מדי ══ */
+    [data-theme="light"] .terms-card,
+    [data-theme="light"] .contact-sheet {
+      box-shadow: var(--shadow);
+    }
   </style>
 </head>
 <body>
 
-<!-- TOP NAV -->
-<header class="top-nav">
+<!-- TOP NAV — הקשר חבר (מהאינדקס/פרופיל) -->
+<header class="top-nav" id="topNavMember">
   <a href="home.html" class="nav-logo">
+    <span class="nav-logo-text">הבית <span>הצהוב</span></span>
+  </a>
+  <div class="menu-toggle" id="menuToggle" onclick="openMenu()">☰</div>
+</header>
+
+<!-- TOP NAV — הקשר הרשמה (אורח, לפני אישור חברות): בלי ניווט לשום דף אחר -->
+<header class="top-nav" id="topNavRegister">
+  <a href="fan-register.html" class="nav-logo">
     <span class="nav-logo-text">הבית <span>הצהוב</span></span>
   </a>
   <span class="nav-page-title">מדיניות לאוהדים ותקנון</span>
@@ -186,25 +325,181 @@ const content = localStorage.getItem('_hb_tpl_terms_fan') || DEFAULT_TERMS_FAN;
 renderTerms(content, document.getElementById('termsContent'));
 </script>
 
-<!-- BOTTOM NAV -->
-<nav class="bottom-nav">
-  <a class="bottom-nav-item" href="home.html">
-    <span class="bottom-nav-icon">🏠</span>
-    <span class="bottom-nav-label">בית</span>
-  </a>
-  <a class="bottom-nav-item" href="home.html" onclick="sessionStorage.setItem('openSearch','1')">
-    <span class="bottom-nav-icon">🔍</span>
-    <span class="bottom-nav-label">חיפוש</span>
-  </a>
-  <a class="bottom-nav-item" href="home.html#near">
-    <span class="bottom-nav-icon">📍</span>
-    <span class="bottom-nav-label">קרוב אליך</span>
-  </a>
-  <a class="bottom-nav-item" href="profile.html">
-    <span class="bottom-nav-icon">👤</span>
-    <span class="bottom-nav-label">פרופיל</span>
-  </a>
-</nav>
+<script type="module">
+  const isRegisterCtx = new URLSearchParams(location.search).get('ctx') === 'register';
+
+  // ── תפריט מלא (המבורגר) — רק בהקשר חבר ──
+  function openMenu() {
+    document.getElementById('menuOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeMenu() {
+    document.getElementById('menuOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  // ── מצב תצוגה בהיר/כהה (נגישות) ──
+  function toggleTheme(isLight) {
+    const theme = isLight ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('hb_theme', theme);
+  }
+  function initTheme() {
+    const saved = localStorage.getItem('hb_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    const input = document.getElementById('themeToggleInput');
+    if (input) input.checked = saved === 'light';
+  }
+
+  // ── צור קשר — מציג אפשרויות שונות לאוהד/בעל עסק ──
+  function openContactSheet() {
+    const isBizOwner = document.getElementById('menuBizItem')?.style.display === 'flex';
+    document.getElementById('contactOptionsFan').style.display = isBizOwner ? 'none' : 'flex';
+    document.getElementById('contactOptionsBiz').style.display = isBizOwner ? 'flex' : 'none';
+    document.getElementById('contactOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeContactSheet() {
+    document.getElementById('contactOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function requestLocationPermission() {
+    navigator.geolocation?.getCurrentPosition(
+      () => { localStorage.setItem('locationAllowed','true'); location.href = 'home.html#near'; },
+      () => localStorage.setItem('locationAllowed','false')
+    );
+  }
+
+  window.openMenu          = openMenu;
+  window.closeMenu          = closeMenu;
+  window.toggleTheme        = toggleTheme;
+  window.openContactSheet  = openContactSheet;
+  window.closeContactSheet = closeContactSheet;
+  window.requestLocationPermission = requestLocationPermission;
+
+  if (!isRegisterCtx) {
+    initTheme();
+
+    // ── בעל עסק — הצגת כפתור "העסק שלי" בתפריט המלא ──
+    import('./firebase-config.js').then(async ({ db }) => {
+      const { doc, getDoc, collection, query, where, getDocs } =
+        await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js');
+
+      const memberId = sessionStorage.getItem('hb_memberId');
+      let isBizOwner = false, phone = '', email = '';
+      if (memberId) {
+        const snap = await getDoc(doc(db, 'members', memberId));
+        if (snap.exists()) {
+          const d = snap.data();
+          isBizOwner = d.isBusinessOwner === true;
+          phone = d.phone || '';
+          email = d.email || '';
+        }
+      } else {
+        isBizOwner = true; // dev fallback
+      }
+      if (!isBizOwner) return;
+
+      let token = memberId ? '' : (sessionStorage.getItem('hb_lastBizToken') || 'c6342c93-a350-42b8-ad87-95fa005c8983');
+      if (memberId && (phone || email)) {
+        const bizQ = query(collection(db, 'businesses'), phone ? where('ownerPhone', '==', phone) : where('ownerEmail', '==', email));
+        const bizSnap = await getDocs(bizQ);
+        if (!bizSnap.empty) token = bizSnap.docs[0].data().accessToken || '';
+      }
+      if (!token) return;
+
+      const item = document.getElementById('menuBizItem');
+      if (item) {
+        item.href = `business-dashboard.html?token=${token}`;
+        item.style.display = 'flex';
+      }
+    }).catch(err => console.error('biz nav item skipped:', err));
+  }
+</script>
+
+<!-- ══ FULL-SCREEN MENU — רק בהקשר חבר ══ -->
+<div class="menu-overlay" id="menuOverlay">
+  <div class="menu-header">
+    <div class="menu-close" onclick="closeMenu()">✕</div>
+  </div>
+  <div class="menu-list">
+    <a class="menu-item" href="home.html">
+      <span class="menu-item-icon">🏠</span>
+      <span class="menu-item-label">בית</span>
+    </a>
+    <div class="menu-item menu-theme-row">
+      <span class="menu-item-icon">🌓</span>
+      <span class="menu-item-label">מצב תצוגה בהיר</span>
+      <label class="theme-switch">
+        <input type="checkbox" id="themeToggleInput" onchange="toggleTheme(this.checked)"/>
+        <span class="theme-switch-slider"></span>
+      </label>
+    </div>
+    <a class="menu-item" href="profile.html">
+      <span class="menu-item-icon">👤</span>
+      <span class="menu-item-label">פרופיל</span>
+    </a>
+    <a class="menu-item" id="menuBizItem" href="#" style="display:none">
+      <span class="menu-item-icon">🏪</span>
+      <span class="menu-item-label">העסק שלי</span>
+    </a>
+    <button class="menu-item" onclick="closeMenu(); openContactSheet()">
+      <span class="menu-item-icon">📞</span>
+      <span class="menu-item-label">צור קשר</span>
+    </button>
+    <a class="menu-item" href="business.html">
+      <span class="menu-item-icon">➕</span>
+      <span class="menu-item-label">הוסף עסק</span>
+    </a>
+    <button class="menu-item" onclick="closeMenu(); requestLocationPermission()">
+      <span class="menu-item-icon">📍</span>
+      <span class="menu-item-label">הפעלת הרשאת מיקום</span>
+    </button>
+  </div>
+</div>
+
+<!-- ══ CONTACT SHEET — רק בהקשר חבר ══ -->
+<div class="contact-overlay" id="contactOverlay" onclick="if(event.target===this)closeContactSheet()">
+  <div class="contact-sheet">
+    <div class="contact-sheet-handle"></div>
+    <button class="contact-sheet-close" onclick="closeContactSheet()">✕</button>
+    <div class="contact-sheet-title">📞 יצירת קשר</div>
+    <div class="contact-sheet-sub">נשמח לעזור — הצוות שלנו כאן בשבילכם</div>
+    <div class="contact-options" id="contactOptionsFan" style="display:none">
+      <a class="contact-option" href="mailto:info@habayithatsahov.co.il">
+        <span class="contact-option-icon">✉️</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">מייל</div>
+          <div class="contact-option-sub">info@habayithatsahov.co.il</div>
+        </div>
+      </a>
+      <div class="contact-option contact-option-soon">
+        <span class="contact-option-icon">📷</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">אינסטגרם</div>
+          <div class="contact-option-sub">בקרוב</div>
+        </div>
+      </div>
+    </div>
+    <div class="contact-options" id="contactOptionsBiz" style="display:none">
+      <a class="contact-option" href="mailto:info@habayithatsahov.co.il">
+        <span class="contact-option-icon">✉️</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">מייל</div>
+          <div class="contact-option-sub">info@habayithatsahov.co.il</div>
+        </div>
+      </a>
+      <a class="contact-option" href="https://wa.me/972500000000" target="_blank">
+        <span class="contact-option-icon">💬</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">WhatsApp</div>
+          <div class="contact-option-sub">שיחה ישירה עם הצוות</div>
+        </div>
+      </a>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>

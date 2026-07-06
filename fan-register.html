@@ -476,7 +476,7 @@
 
       <!-- מדיניות לאוהדים ותקנון -->
       <div class="terms-row">
-        <span>ניתן לעיין ב<a href="terms.html" target="_blank">מדיניות לאוהדים ותקנון</a></span>
+        <span>ניתן לעיין ב<a href="terms.html?ctx=register" onclick="saveRegDraft()">מדיניות לאוהדים ותקנון</a></span>
       </div>
 
       <button type="submit" class="btn-submit" id="submitBtn">
@@ -624,6 +624,7 @@
       return;
     }
 
+    localStorage.removeItem(DRAFT_KEY);
     form.style.display = 'none';
     success.style.display = 'block';
 
@@ -755,12 +756,65 @@
   }
   attachClearErrors(document);
 
+  // ── טיוטת טופס — נשמרת לפני מעבר לתקנון, כדי לא לאבד מה שמולא ──
+  const DRAFT_KEY = '_hb_regDraft';
+
+  function saveRegDraft() {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      firstName:         document.getElementById('firstName').value,
+      lastName:          document.getElementById('lastName').value,
+      phone:             document.getElementById('phone').value,
+      email:             document.getElementById('email').value,
+      isSubscriber:      document.getElementById('isSubscriber').value,
+      subscriberSection: document.getElementById('subscriberSection').value,
+      subscriberNumber:  document.getElementById('subscriberNumber').value,
+      wasSubscriber:     document.getElementById('wasSubscriber').value,
+      facebookUrl:       document.getElementById('facebookUrl').value,
+      isBusinessOwner:   document.getElementById('isBusinessOwner').value,
+      familyMembers:     getFamilyMembers(),
+    }));
+  }
+
+  function restoreRegDraft() {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return;
+    let d;
+    try { d = JSON.parse(raw); } catch { return; }
+
+    document.getElementById('firstName').value = d.firstName || '';
+    document.getElementById('lastName').value  = d.lastName  || '';
+    document.getElementById('phone').value     = d.phone     || '';
+    document.getElementById('email').value     = d.email     || '';
+
+    document.getElementById('isSubscriber').value = d.isSubscriber || '';
+    handleSubscriber(d.isSubscriber || '');
+    document.getElementById('subscriberSection').value = d.subscriberSection || '';
+    document.getElementById('subscriberNumber').value  = d.subscriberNumber  || '';
+    document.getElementById('wasSubscriber').value     = d.wasSubscriber     || '';
+    document.getElementById('facebookUrl').value       = d.facebookUrl       || '';
+
+    document.getElementById('isBusinessOwner').value = d.isBusinessOwner || '';
+    handleBusinessOwner(d.isBusinessOwner || '');
+
+    (d.familyMembers || []).forEach(fm => {
+      if (!fm.name && !fm.relation && !fm.phone && !fm.email) return;
+      addFamilyMember();
+      const idx = familyCount;
+      document.getElementById('fam-name-'  + idx).value = fm.name     || '';
+      document.getElementById('fam-rel-'   + idx).value = fm.relation || '';
+      document.getElementById('fam-phone-' + idx).value = fm.phone    || '';
+      document.getElementById('fam-email-' + idx).value = fm.email    || '';
+    });
+  }
+  restoreRegDraft();
+
   // ── EXPOSE TO INLINE HANDLERS ──
   window.requestRegLocation   = requestRegLocation;
   window.handleBusinessOwner  = handleBusinessOwner;
   window.handleSubscriber     = handleSubscriber;
   window.addFamilyMember      = addFamilyMember;
   window.removeFamilyMember   = removeFamilyMember;
+  window.saveRegDraft         = saveRegDraft;
 </script>
 
 </body>
