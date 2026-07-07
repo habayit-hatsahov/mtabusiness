@@ -638,8 +638,66 @@
     }
     .edit-logo-preview img {
       width: 72px; height: 72px; border-radius: 10px; object-fit: cover;
-      border: 2px solid var(--border-md);
     }
+    .edit-cover-preview {
+      display: none; position: relative; width: 100%; max-width: 220px; height: 110px;
+      margin: 0 auto 4px;
+    }
+    .edit-cover-preview img {
+      width: 100%; height: 100%; border-radius: 10px; object-fit: cover;
+    }
+    .thumb-download-btn {
+      position: absolute; bottom: 4px; left: 4px; z-index: 2;
+      width: 24px; height: 24px; border-radius: 50%;
+      background: rgba(0,0,0,.55); border: none; color: #fff;
+      font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .thumb-download-btn:hover { background: rgba(0,0,0,.75); }
+    .img-lightbox-overlay {
+      display: none; position: fixed; inset: 0; z-index: 600;
+      background: rgba(0,0,0,.88);
+      align-items: center; justify-content: center; padding: 40px 16px;
+    }
+    .img-lightbox-overlay.open { display: flex; }
+    .img-lightbox-overlay img { max-width: 100%; max-height: 100%; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+    .lightbox-close-btn, .lightbox-dl-btn {
+      position: fixed; top: 16px; z-index: 601;
+      height: 40px; border-radius: 20px; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 700;
+    }
+    .lightbox-close-btn { left: 16px; width: 40px; background: rgba(255,255,255,.15); color: #fff; font-size: 18px; }
+    .lightbox-dl-btn { right: 16px; padding: 0 18px; background: var(--yellow); color: #0f1524; }
+    .lightbox-nav-btn {
+      display: none; position: fixed; top: 50%; transform: translateY(-50%); z-index: 601;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3);
+      color: #fff; font-size: 24px; cursor: pointer;
+      align-items: center; justify-content: center;
+      direction: ltr; /* מונע mirroring אוטומטי של ‹ › בהקשר RTL */
+    }
+    .lightbox-nav-btn.prev { left: 16px; }
+    .lightbox-nav-btn.next { right: 16px; }
+    .media-missing-note {
+      background: var(--orange-bg); border: 1.5px solid rgba(217,119,6,.4);
+      border-radius: 10px; padding: 10px 12px; margin-bottom: 12px;
+      font-size: 12px; color: #fbbf24; font-weight: 600; line-height: 1.5;
+    }
+    .media-empty-slot {
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+      border: 2px dashed rgba(217,119,6,.45); border-radius: 12px;
+      background: var(--orange-bg);
+      color: #fbbf24; font-size: 10px; font-weight: 600; text-align: center; padding: 4px;
+    }
+    .media-empty-slot .icon { font-size: 22px; opacity: .7; }
+    .edit-media-pair-row { display: flex; gap: 10px; }
+    .edit-media-pair-row > div { flex: 1; min-width: 0; }
+    .edit-media-pair-label { font-size: 11px; color: var(--text-sm); font-weight: 600; margin-bottom: 6px; }
+    .edit-media-pair-row .edit-upload-zone { padding: 12px 6px; }
+    .edit-media-pair-row .edit-cover-preview { max-width: 100%; height: 72px; }
+    .edit-media-pair-row .edit-upload-icon { font-size: 20px; }
+    .edit-media-pair-row .edit-upload-text { font-size: 11px; }
+    .edit-media-pair-row .edit-upload-sub { font-size: 10px; }
     .edit-logo-remove {
       position: absolute; top: -6px; left: -6px;
       width: 20px; height: 20px; border-radius: 50%;
@@ -900,6 +958,7 @@
   <div class="main-tabs">
     <button class="main-tab active" data-tab="list" onclick="switchTab('list')">📋 רשימת עסקים</button>
     <button class="main-tab" data-tab="sections" onclick="switchTab('sections')">🗂️ ניהול סקשנים</button>
+    <button class="main-tab" data-tab="stats" onclick="switchTab('stats')">📊 מרכז נתונים</button>
   </div>
 
   <div id="listTabView">
@@ -925,6 +984,11 @@
     <div id="sectionsTable"></div>
   </div>
 
+  <div id="statsTabView" style="display:none">
+    <input class="search-box" type="search" id="statsSearch" placeholder="🔍  חיפוש עסק..." style="margin-bottom:14px;width:100%;box-sizing:border-box;" />
+    <div id="statsTable"></div>
+  </div>
+
 </div>
 
 <!-- BULK ACTION BAR -->
@@ -933,6 +997,15 @@
   <button class="btn btn-bulk-approve" onclick="bulkApprove()">✅ אשר נבחרים</button>
   <button class="btn btn-bulk-reject"  onclick="bulkReject()">✗ דחה נבחרים</button>
   <button class="btn btn-bulk-cancel"  onclick="clearSelection()">ביטול</button>
+</div>
+
+<!-- IMAGE LIGHTBOX -->
+<div class="img-lightbox-overlay" id="imgLightboxOverlay" onclick="if(event.target===this)closeImageLightbox()">
+  <button class="lightbox-close-btn" onclick="closeImageLightbox()">✕</button>
+  <button class="lightbox-dl-btn" onclick="downloadCurrentLightboxImage()">⬇ הורד</button>
+  <button class="lightbox-nav-btn prev" id="lightboxPrevBtn" onclick="event.stopPropagation();lightboxNext()">‹</button>
+  <img id="lightboxImg" src="" alt="" />
+  <button class="lightbox-nav-btn next" id="lightboxNextBtn" onclick="event.stopPropagation();lightboxPrev()">›</button>
 </div>
 
 <!-- VIEW SHEET -->
@@ -988,6 +1061,83 @@ async function uploadFile(file, path) {
   return await getDownloadURL(snap.ref);
 }
 
+// מגן מפני ערך תקול שנשמר בעבר בטעות (באג ישן: img.src='' נפתר לכתובת הדף עצמו, לא למחרוזת ריקה)
+function looksLikeImageUrl(url) {
+  return !!url && !/\.html?(\?|#|$)/i.test(url);
+}
+
+// ── תמונה קטנה עם לייטבוקס בלחיצה (במקום טאב חדש) + כפתור הורדה בודד ─────────
+// כל תמונה שמוצגת באותה פתיחת גיליון נרשמת ל-currentLightboxImages, כדי לתמוך בניווט ‹ › בלייטבוקס
+let currentLightboxImages = [];
+let lightboxIndex = 0;
+let lightboxCurrentUrl = '';
+let lightboxCurrentFilename = '';
+
+function resetLightboxSet() { currentLightboxImages = []; }
+
+function mediaThumbHtml(url, alt, w, h, filename) {
+  if (!url) return '';
+  const idx = currentLightboxImages.length;
+  currentLightboxImages.push({ url, filename });
+  return `
+    <div style="position:relative;display:inline-block;cursor:pointer;" onclick="openImageLightboxAt(${idx})">
+      <img src="${url}" alt="${esc(alt)}"
+           style="width:${w}px;height:${h}px;object-fit:cover;border-radius:10px;border:2px solid var(--border-md);display:block;" />
+      <button type="button" class="thumb-download-btn" title="הורד תמונה" onclick="event.stopPropagation();downloadImage('${url}','${filename}')">⬇</button>
+    </div>`;
+}
+
+function renderLightboxCurrent() {
+  const item = currentLightboxImages[lightboxIndex];
+  if (!item) return;
+  lightboxCurrentUrl = item.url;
+  lightboxCurrentFilename = item.filename;
+  document.getElementById('lightboxImg').src = item.url;
+  const multi = currentLightboxImages.length > 1;
+  document.getElementById('lightboxPrevBtn').style.display = multi ? 'flex' : 'none';
+  document.getElementById('lightboxNextBtn').style.display = multi ? 'flex' : 'none';
+}
+
+window.openImageLightboxAt = function(idx) {
+  lightboxIndex = idx;
+  renderLightboxCurrent();
+  document.getElementById('imgLightboxOverlay').classList.add('open');
+};
+
+window.closeImageLightbox = function() {
+  document.getElementById('imgLightboxOverlay').classList.remove('open');
+};
+
+window.lightboxNext = function() {
+  if (!currentLightboxImages.length) return;
+  lightboxIndex = (lightboxIndex + 1) % currentLightboxImages.length;
+  renderLightboxCurrent();
+};
+
+window.lightboxPrev = function() {
+  if (!currentLightboxImages.length) return;
+  lightboxIndex = (lightboxIndex - 1 + currentLightboxImages.length) % currentLightboxImages.length;
+  renderLightboxCurrent();
+};
+
+window.downloadCurrentLightboxImage = function() {
+  downloadImage(lightboxCurrentUrl, lightboxCurrentFilename);
+};
+
+// מוריד דרך שרת הפיתוח המקומי (server.ps1, /api/download-image) — עוקף חסימת CORS
+// של הדפדפן על fetch() ישיר לכתובת Firebase Storage. ⚠️ עובד רק בסביבת הפיתוח המקומית —
+// בפרודקשן (GitHub Pages, ללא שרת) יהיה צורך בהגדרת CORS על ה-bucket עצמו (ר' PROJECT_CONTEXT סעיף 12)
+window.downloadImage = function(url, filename) {
+  if (!url) return;
+  const proxyUrl = '/api/download-image?url=' + encodeURIComponent(url) + '&filename=' + encodeURIComponent(filename || 'image.jpg');
+  const a = document.createElement('a');
+  a.href = proxyUrl;
+  a.download = filename || 'image.jpg';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+};
+
 // ── אישור עסק מאשר אוטומטית את חברות האוהד המקושרת ─────────────────────────
 async function approveLinkedMember(b) {
   const email = b.ownerEmail || b.email || '';
@@ -1033,7 +1183,9 @@ window.switchTab = function(tab) {
   document.querySelectorAll('.main-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.getElementById('listTabView').style.display     = tab === 'list' ? '' : 'none';
   document.getElementById('sectionsTabView').style.display = tab === 'sections' ? '' : 'none';
+  document.getElementById('statsTabView').style.display    = tab === 'stats' ? '' : 'none';
   if (tab === 'sections') renderSectionsView();
+  if (tab === 'stats') renderStatsView();
 };
 
 const BIZ_TYPE_LABELS = { physical: '🏪 חנות פיזית', online: '🌐 אונליין', pro: '🔧 בעל מקצוע' };
@@ -1107,6 +1259,7 @@ function showToast(msg) {
 window.openBizSheet = function(id) {
   const b = businesses.find(x => x.id === id);
   if (!b) return;
+  resetLightboxSet();
 
   const ownerName  = `${b.ownerFirst || ''} ${b.ownerLast || ''}`.trim();
   const types      = b.bizTypes || [];
@@ -1169,9 +1322,10 @@ window.openBizSheet = function(id) {
       if (k === 'categoryPrimary' || k === 'cat') return (v && CAT_LABELS_MAP[v]) || v || '—';
       if (k === 'categorySecondary' || k === 'regions') return (v || []).map(c => CAT_LABELS_MAP[c] || c).join(', ') || '—';
       if (k === 'branches') return (v || []).map(br => [br.city, br.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | ') || '—';
-      if (k === 'photos') return v && v.length ? `${v.length} תמונות` : '—';
+      if (k === 'photos') return v && v.length ? v.map((p, i) => p.url ? mediaThumbHtml(p.url, p.name || '', 44, 44, `${b.name || 'business'}_gallery_${i + 1}.jpg`) : '').join('') : '—';
       if (k === 'videos') return v && v.length ? `${v.length} סרטונים` : '—';
-      if (k === 'logo') return v ? '🖼️ יש לוגו' : 'אין לוגו';
+      if (k === 'logo') return looksLikeImageUrl(v) ? mediaThumbHtml(v, 'לוגו', 44, 44, `${b.name || 'business'}_logo.jpg`) : 'אין לוגו';
+      if (k === 'coverPhoto') return looksLikeImageUrl(v) ? mediaThumbHtml(v, 'תמונה מייצגת', 60, 44, `${b.name || 'business'}_cover.jpg`) : 'אין תמונה מייצגת';
       if (typeof v === 'boolean') return v ? 'כן' : 'לא';
       return v || '—';
     };
@@ -1202,7 +1356,24 @@ window.openBizSheet = function(id) {
       </div>
     </div>`;
 
-  const hasMedia = !!(b.logo || (b.photos && b.photos.length) || (b.videos && b.videos.length));
+  const statsBlockHtml = `
+    <div class="card-section sections-status-block">
+      <div class="card-section-title"><span>📊 נתונים</span></div>
+      <div class="sections-status-grid">
+        <div class="sec-status-item"><div class="sec-status-label">👁 צפיות</div><span class="sec-badge-ro on">${b.clicks || 0}</span></div>
+        <div class="sec-status-item"><div class="sec-status-label">⭐ כוכבים</div><span class="sec-badge-ro on">${(b.likedBy || []).length}</span></div>
+      </div>
+    </div>`;
+
+  const coverUrl = looksLikeImageUrl(b.coverPhoto) ? b.coverPhoto : '';
+  const logoUrl  = looksLikeImageUrl(b.logo) ? b.logo : '';
+  const missingMediaParts = [];
+  if (!coverUrl) missingMediaParts.push('תמונה מייצגת');
+  if (!(b.photos && b.photos.filter(p => p.url).length)) missingMediaParts.push('גלריית תמונות');
+  if (!(b.videos && b.videos.length)) missingMediaParts.push('סרטון');
+  const missingMediaHtml = missingMediaParts.length
+    ? `<div class="media-missing-note">⚠️ חסר לבעל העסק: ${missingMediaParts.join(' · ')}</div>`
+    : '';
 
   const catPillsHtml = CAT_DEFS.map(([key, icon, label]) => {
     const cls = primCat === key ? ' primary' : (secCats.includes(key) ? ' secondary' : '');
@@ -1213,7 +1384,7 @@ window.openBizSheet = function(id) {
     `<div class="region-pill${regions.includes(r) ? ' selected' : ''}" onclick="toggleRegionAdmin(this)">${r}</div>`
   ).join('');
 
-  document.getElementById('vsBody').innerHTML = pendingHtml + sectionsBlockHtml + `
+  document.getElementById('vsBody').innerHTML = pendingHtml + sectionsBlockHtml + statsBlockHtml + `
     <div class="card-section">
       <div class="card-section-title"><span>👤 שלב 1 — בעל העסק</span><button class="sec-edit-btn" onclick="toggleSecEdit(1)">✏️ ערוך</button></div>
       <div class="detail-grid" id="secView1">
@@ -1358,46 +1529,66 @@ window.openBizSheet = function(id) {
     <div class="card-section">
       <div class="card-section-title"><span>🖼️ מדיה</span><button class="sec-edit-btn" onclick="toggleSecEdit(5)">✏️ ערוך</button></div>
       <div id="secView5">
-        ${hasMedia ? `
-        ${b.logo ? `
+        ${missingMediaHtml}
+        <div style="margin-bottom:12px;">
+          <div class="lbl" style="font-size:11px;color:var(--text-sm);margin-bottom:6px;">תמונה מייצגת</div>
+          ${coverUrl
+            ? mediaThumbHtml(coverUrl, 'תמונה מייצגת', 140, 90, `${b.name || 'business'}_cover.jpg`)
+            : `<div class="media-empty-slot" style="width:140px;height:90px;"><div class="icon">📷</div><div>לא הועלתה</div></div>`}
+        </div>
+        ${logoUrl ? `
           <div style="margin-bottom:12px;">
             <div class="lbl" style="font-size:11px;color:var(--text-sm);margin-bottom:6px;">לוגו</div>
-            <a href="${b.logo}" target="_blank">
-              <img src="${b.logo}" alt="לוגו"
-                   style="width:80px;height:80px;object-fit:cover;border-radius:12px;border:2px solid var(--border-md);display:block;" />
-            </a>
+            ${mediaThumbHtml(logoUrl, 'לוגו', 80, 80, `${b.name || 'business'}_logo.jpg`)}
           </div>` : ''}
-        ${b.photos && b.photos.length ? `
-          <div style="margin-bottom:12px;">
-            <div class="lbl" style="font-size:11px;color:var(--text-sm);margin-bottom:8px;">גלריה (${b.photos.length} תמונות)</div>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;">
-              ${b.photos.map(p => p.url ? `
-                <a href="${p.url}" target="_blank" title="${p.name||''}">
-                  <img src="${p.url}" alt="${p.name||''}"
-                       style="width:80px;height:80px;object-fit:cover;border-radius:10px;border:2px solid var(--border-md);" />
-                </a>` : '').join('')}
-            </div>
-          </div>` : ''}
-        ${b.videos && b.videos.length ? `
-          <div>
-            <div class="lbl" style="font-size:11px;color:var(--text-sm);margin-bottom:8px;">סרטונים (${b.videos.length})</div>
-            ${b.videos.map(v => `<div style="margin-bottom:4px;font-size:13px;"><a href="${v.url}" target="_blank" style="color:var(--blue);text-decoration:underline">${v.label || v.url}</a></div>`).join('')}
-          </div>` : ''}
-        ` : '<span class="missing">אין מדיה עדיין</span>'}
+        <div style="margin-bottom:12px;">
+          <div class="lbl" style="font-size:11px;color:var(--text-sm);margin-bottom:8px;">גלריה${b.photos && b.photos.length ? ` (${b.photos.length} תמונות)` : ''}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            ${b.photos && b.photos.length
+              ? b.photos.map((p, i) => p.url ? mediaThumbHtml(p.url, p.name || '', 80, 80, `${b.name || 'business'}_gallery_${i + 1}.jpg`) : '').join('')
+              : `<div class="media-empty-slot" style="width:80px;height:80px;"><div class="icon">📸</div><div>לא הועלתה</div></div>`}
+          </div>
+        </div>
+        <div>
+          <div class="lbl" style="font-size:11px;color:var(--text-sm);margin-bottom:8px;">סרטון</div>
+          ${b.videos && b.videos.length
+            ? b.videos.map(v => `<div style="margin-bottom:4px;font-size:13px;"><a href="${v.url}" target="_blank" style="color:var(--blue);text-decoration:underline">${v.label || v.url}</a></div>`).join('')
+            : `<div class="media-empty-slot" style="width:80px;height:80px;"><div class="icon">🎥</div><div>לא הועלה</div></div>`}
+        </div>
       </div>
       <div class="sec-edit-form" id="secEdit5">
         <div class="edit-storage-note">💡 תמונות וסרטונים ישמרו עם חיבור Firebase Storage. קישורי וידאו (YouTube/Vimeo) נשמרים כבר עכשיו.</div>
-        <div class="edit-section-title">🖼️ לוגו העסק</div>
-        <div class="edit-upload-zone" id="editLogoZone">
-          <input type="file" id="editLogoFile" accept="image/*" onchange="editPreviewLogo(this)" />
-          <div id="editLogoPreviewWrap" class="edit-logo-preview">
-            <img id="editLogoImg" src="" alt="לוגו" />
-            <button class="edit-logo-remove" onclick="editRemoveLogo(event)">✕</button>
+        <div class="edit-section-title">🖼️ תמונה מייצגת ולוגו</div>
+        <div class="edit-media-pair-row">
+          <div>
+            <div class="edit-media-pair-label">📷 תמונה מייצגת</div>
+            <div class="edit-upload-zone" id="editCoverPhotoZone">
+              <input type="file" id="editCoverPhotoFile" accept="image/*" onchange="editPreviewCoverPhoto(this)" />
+              <div id="editCoverPhotoPreviewWrap" class="edit-cover-preview">
+                <img id="editCoverPhotoImg" src="" alt="תמונה מייצגת" />
+                <button class="edit-logo-remove" onclick="editRemoveCoverPhoto(event)">✕</button>
+              </div>
+              <div id="editCoverPhotoPlaceholder">
+                <div class="edit-upload-icon">📷</div>
+                <div class="edit-upload-text">העלה תמונה</div>
+                <div class="edit-upload-sub">המקום / המוצר</div>
+              </div>
+            </div>
           </div>
-          <div id="editLogoPlaceholder">
-            <div class="edit-upload-icon">🖼️</div>
-            <div class="edit-upload-text">לחץ להעלאת לוגו</div>
-            <div class="edit-upload-sub">PNG, JPG · עד 5MB</div>
+          <div>
+            <div class="edit-media-pair-label">🖼️ לוגו (אם יש)</div>
+            <div class="edit-upload-zone" id="editLogoZone">
+              <input type="file" id="editLogoFile" accept="image/*" onchange="editPreviewLogo(this)" />
+              <div id="editLogoPreviewWrap" class="edit-logo-preview">
+                <img id="editLogoImg" src="" alt="לוגו" />
+                <button class="edit-logo-remove" onclick="editRemoveLogo(event)">✕</button>
+              </div>
+              <div id="editLogoPlaceholder">
+                <div class="edit-upload-icon">🖼️</div>
+                <div class="edit-upload-text">העלה לוגו</div>
+                <div class="edit-upload-sub">מומלץ ריבוע</div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="edit-section-title" style="margin-top:4px">📸 תמונות גלריה</div>
@@ -1414,9 +1605,18 @@ window.openBizSheet = function(id) {
     </div>
     `;
 
-  // מדיה — אתחול לוגו/גלריה/סרטונים בטופס העריכה
-  if (b.logo) {
-    document.getElementById('editLogoImg').src = b.logo;
+  // מדיה — אתחול תמונה מייצגת/לוגו/גלריה/סרטונים בטופס העריכה
+  if (looksLikeImageUrl(b.coverPhoto)) {
+    const coverImg = document.getElementById('editCoverPhotoImg');
+    coverImg.src = b.coverPhoto;
+    coverImg.dataset.existingUrl = b.coverPhoto;
+    document.getElementById('editCoverPhotoPreviewWrap').style.display = 'block';
+    document.getElementById('editCoverPhotoPlaceholder').style.display = 'none';
+  }
+  if (looksLikeImageUrl(b.logo)) {
+    const logoImg = document.getElementById('editLogoImg');
+    logoImg.src = b.logo;
+    logoImg.dataset.existingUrl = b.logo;
     document.getElementById('editLogoPreviewWrap').style.display = 'block';
     document.getElementById('editLogoPlaceholder').style.display = 'none';
   }
@@ -1671,6 +1871,62 @@ function renderSectionsView() {
     </div>`;
 }
 
+// ── מרכז נתונים — צפיות + כוכבים per עסק ──────────────────────────────────────
+let statsSort = { key: 'clicks', dir: 'desc' };
+
+function renderStatsView() {
+  const wrap   = document.getElementById('statsTable');
+  const search = (document.getElementById('statsSearch')?.value || '').trim().toLowerCase();
+  const approvedAll = businesses.filter(b => b.status === 'approved');
+  const shown = approvedAll.filter(b => !search || (b.name || '').toLowerCase().includes(search));
+
+  if (!shown.length) {
+    wrap.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>לא נמצאו עסקים מאושרים</p></div>`;
+    return;
+  }
+
+  const rows = shown.map(b => ({
+    id: b.id, name: b.name || '—', cat: CAT_LABELS_MAP[b.categoryPrimary] || b.categoryPrimary || '—',
+    clicks: b.clicks || 0, likes: (b.likedBy || []).length,
+  }));
+  rows.sort((a, b) => (a[statsSort.key] - b[statsSort.key]) * (statsSort.dir === 'asc' ? 1 : -1));
+
+  const totalClicks = rows.reduce((s, r) => s + r.clicks, 0);
+  const totalLikes  = rows.reduce((s, r) => s + r.likes, 0);
+
+  const arrow = key => statsSort.key !== key ? '' : (statsSort.dir === 'asc' ? ' ▲' : ' ▼');
+
+  wrap.innerHTML = `
+    <div class="stats-row" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="num">${totalClicks}</div><div class="lbl">👁 סה"כ צפיות</div></div>
+      <div class="stat-card"><div class="num">${totalLikes}</div><div class="lbl">⭐ סה"כ כוכבים</div></div>
+    </div>
+    <div class="sections-table-wrap">
+      <table class="sections-table">
+        <thead><tr>
+          <th>עסק</th><th>קטגוריה</th>
+          <th style="cursor:pointer" onclick="setStatsSort('clicks')">👁 צפיות${arrow('clicks')}</th>
+          <th style="cursor:pointer" onclick="setStatsSort('likes')">⭐ כוכבים${arrow('likes')}</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td>${r.name}</td>
+              <td>${r.cat}</td>
+              <td>${r.clicks}</td>
+              <td>${r.likes}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+window.setStatsSort = function(key) {
+  statsSort.dir = (statsSort.key === key && statsSort.dir === 'desc') ? 'asc' : 'desc';
+  statsSort.key = key;
+  renderStatsView();
+};
+
 // ── bulk select ──────────────────────────────────────────────────────────────
 function getFilteredIds() {
   const search = document.getElementById('searchInput').value.trim().toLowerCase();
@@ -1786,6 +2042,7 @@ document.querySelector('.filter-bar').addEventListener('click', e => {
 
 document.getElementById('searchInput').addEventListener('input', render);
 document.getElementById('sectionsSearch').addEventListener('input', renderSectionsView);
+document.getElementById('statsSearch').addEventListener('input', renderStatsView);
 
 // ── message templates ────────────────────────────────────────────────────────
 const DEFAULT_TPL_WA      = 'היי {name} 👋\nברוך הבא לבית הצהוב! 💛\n\nהעסק שלך "{business}" אושר לאינדקס.\n\n🔗 קישור לניהול העסק שלך (עריכת פרטים, תמונות ועוד): {dashboard_link}\n\nביחד ננצח 🏆';
@@ -1888,7 +2145,7 @@ const PENDING_LABELS = {
   categoryPrimary: 'קטגוריה ראשית', cat: 'קטגוריה ראשית', categorySecondary: 'קטגוריות משניות',
   hours: 'שעות פעילות', website: 'אתר', instagram: 'אינסטגרם', facebook: 'פייסבוק',
   discountText: 'פרטי הטבה', discountCode: 'קוד קופון', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש',
-  hasDiscount: 'הטבה פעילה', logo: 'לוגו', photos: 'גלריית תמונות', videos: 'סרטונים',
+  hasDiscount: 'הטבה פעילה', coverPhoto: 'תמונה מייצגת', logo: 'לוגו', photos: 'גלריית תמונות', videos: 'סרטונים',
 };
 
 let _pendingEditMode = false;
@@ -1989,9 +2246,32 @@ window.editPreviewLogo = function(input) {
 window.editRemoveLogo = function(evt) {
   if (evt) evt.stopPropagation();
   document.getElementById('editLogoFile').value = '';
-  document.getElementById('editLogoImg').src = '';
+  const img = document.getElementById('editLogoImg');
+  img.src = '';
+  img.dataset.existingUrl = '';
   document.getElementById('editLogoPreviewWrap').style.display = 'none';
   document.getElementById('editLogoPlaceholder').style.display = 'block';
+};
+
+window.editPreviewCoverPhoto = function(input) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('editCoverPhotoImg').src = e.target.result;
+    document.getElementById('editCoverPhotoPreviewWrap').style.display = 'block';
+    document.getElementById('editCoverPhotoPlaceholder').style.display = 'none';
+  };
+  reader.readAsDataURL(input.files[0]);
+};
+
+window.editRemoveCoverPhoto = function(evt) {
+  if (evt) evt.stopPropagation();
+  document.getElementById('editCoverPhotoFile').value = '';
+  const img = document.getElementById('editCoverPhotoImg');
+  img.src = '';
+  img.dataset.existingUrl = '';
+  document.getElementById('editCoverPhotoPreviewWrap').style.display = 'none';
+  document.getElementById('editCoverPhotoPlaceholder').style.display = 'block';
 };
 
 let editPhotoCount = 0;
@@ -2129,12 +2409,18 @@ window.saveSec5 = async function(id) {
   showToast('שומר מדיה...');
   const updates = {};
 
+  const coverPhotoFile = document.getElementById('editCoverPhotoFile').files[0];
+  if (coverPhotoFile) {
+    updates.coverPhoto = await uploadFile(coverPhotoFile, `businesses/${id}/coverPhoto_${Date.now()}`);
+  } else {
+    updates.coverPhoto = document.getElementById('editCoverPhotoImg').dataset.existingUrl || '';
+  }
+
   const logoFile = document.getElementById('editLogoFile').files[0];
   if (logoFile) {
     updates.logo = await uploadFile(logoFile, `businesses/${id}/logo_${Date.now()}`);
   } else {
-    const existingSrc = document.getElementById('editLogoImg').src;
-    updates.logo = existingSrc.startsWith('http') ? existingSrc : '';
+    updates.logo = document.getElementById('editLogoImg').dataset.existingUrl || '';
   }
 
   const photoRows = [...document.querySelectorAll('[id^="editPhoto-"]')];
@@ -2205,6 +2491,7 @@ onSnapshot(collection(db, 'businesses'), snapshot => {
     .sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0));
   render();
   if (activeTab === 'sections') renderSectionsView();
+  if (activeTab === 'stats') renderStatsView();
 });
 </script>
 

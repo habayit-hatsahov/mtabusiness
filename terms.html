@@ -6,13 +6,18 @@
   <title>מדיניות לאוהדים ותקנון — הבית הצהוב</title>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
   <script>
+    var isBizDoc = new URLSearchParams(location.search).get('doc') === 'biz';
     (function () {
+      // בעל עסק שממתין לאישור (doc=biz) עדיין לא חבר/עסק רשום — אין לו גישה לאינדקס/פרופיל,
+      // אז מקבל את אותה חסימת ניווט (בלי המבורגר) כמו אוהד שממתין לאישור (ctx=register)
       var isRegisterCtx = new URLSearchParams(location.search).get('ctx') === 'register';
-      document.documentElement.setAttribute('data-ctx', isRegisterCtx ? 'register' : 'member');
-      if (!isRegisterCtx) {
+      var restrictedCtx = isRegisterCtx || isBizDoc;
+      document.documentElement.setAttribute('data-ctx', restrictedCtx ? 'register' : 'member');
+      if (!restrictedCtx) {
         var t = localStorage.getItem('hb_theme') || 'dark';
         document.documentElement.setAttribute('data-theme', t);
       }
+      if (isBizDoc) document.title = 'תנאי הצטרפות ופעילות עסקית — הבית הצהוב';
     })();
   </script>
   <style>
@@ -248,18 +253,18 @@
   <div class="menu-toggle" id="menuToggle" onclick="openMenu()">☰</div>
 </header>
 
-<!-- TOP NAV — הקשר הרשמה (אורח, לפני אישור חברות): בלי ניווט לשום דף אחר -->
+<!-- TOP NAV — הקשר הרשמה (אורח, לפני אישור חברות/עסק): בלי ניווט לשום דף אחר -->
 <header class="top-nav" id="topNavRegister">
-  <a href="fan-register.html" class="nav-logo">
+  <a href="fan-register.html" class="nav-logo" id="registerBackLink">
     <span class="nav-logo-text">הבית <span>הצהוב</span></span>
   </a>
-  <span class="nav-page-title">מדיניות לאוהדים ותקנון</span>
+  <span class="nav-page-title" id="registerPageTitle">מדיניות לאוהדים ותקנון</span>
 </header>
 
 <div class="container">
 
   <div class="page-header">
-    <h1>מדיניות לאוהדים ותקנון</h1>
+    <h1 id="pageTitle">מדיניות לאוהדים ותקנון</h1>
     <p>הבית הצהוב — אינדקס העסקים של האוהדים</p>
   </div>
 
@@ -304,6 +309,27 @@ const DEFAULT_TERMS_FAN = `## 1. מהות האתר והשירות
 ## 8. סמכות שיפוט
 על תנאים אלו יחולו אך ורק דיני מדינת ישראל. מקום השיפוט הבלעדי: בתי המשפט המוסמכים במחוז תל אביב-יפו.`;
 
+const DEFAULT_TERMS_BIZ = `## 1. מהות האתר והשירות
+האתר משמש כאינדקס קהילתי המציג עסקים בבעלות אוהדי מכבי תל אביב, חבריהם ובני משפחתם. האתר הוא פלטפורמת תיווך בלבד ואינו צד לעסקאות.
+
+## 2. אישור ניהול ידני
+הגשת בקשה לרישום עסק אינה מהווה אישור אוטומטי. מנהלי האתר בודקים כל בקשה באופן ידני, וזכאים לאשר, לדחות, או להסיר כל עסק בכל עת.
+
+## 3. עדכון פרטים
+כל שינוי שתשלח/י מהדשבורד יועבר לאישור מנהלי האתר לפני שיוצג לחברי הקהילה. השינויים יוצגו לאחר בדיקה ואישור בלבד.
+
+## 4. אחריות על המידע
+בעל/ת העסק אחראי/ת לדיוק ואמינות המידע. מסירת מידע כוזב תגרור הסרה מהאינדקס.
+
+## 5. הגבלת אחריות
+"הבית הצהוב" אינו אחראי לכל נזק שייגרם כתוצאה מהסתמכות על המידע באתר, עסקאות עם עסקים המופיעים בו, או כל שימוש אחר.
+
+## 6. קישור הדשבורד
+הקישור לדשבורד הוא אישי ולא להעברה. כל שינוי שיבוצע דרך קישורך יחשב כבוצע על ידך.
+
+## 7. סמכות שיפוט
+על תנאים אלה יחולו דיני ישראל. מקום השיפוט: בתי המשפט המוסמכים בתל אביב-יפו.`;
+
 function renderTerms(raw, container) {
   container.innerHTML = '';
   raw.split('\n').forEach(line => {
@@ -321,7 +347,21 @@ function renderTerms(raw, container) {
   });
 }
 
-const content = localStorage.getItem('_hb_tpl_terms_fan') || DEFAULT_TERMS_FAN;
+if (isBizDoc) {
+  document.getElementById('pageTitle').textContent = 'תנאי הצטרפות ופעילות עסקית';
+  const backLink = document.getElementById('registerBackLink');
+  backLink.href = 'business.html?resume=1';
+  const titleEl = document.getElementById('registerPageTitle');
+  const backBtn = document.createElement('a');
+  backBtn.href = 'business.html?resume=1';
+  backBtn.className = 'nav-page-title';
+  backBtn.style.textDecoration = 'none';
+  backBtn.textContent = '‹ חזרה לסיכום ההרשמה';
+  titleEl.replaceWith(backBtn);
+}
+const content = isBizDoc
+  ? (localStorage.getItem('_hb_tpl_terms_biz') || DEFAULT_TERMS_BIZ)
+  : (localStorage.getItem('_hb_tpl_terms_fan') || DEFAULT_TERMS_FAN);
 renderTerms(content, document.getElementById('termsContent'));
 </script>
 

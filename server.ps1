@@ -1,3 +1,5 @@
+Add-Type -AssemblyName System.Web
+
 $root = $PSScriptRoot
 $port = 5502
 
@@ -43,6 +45,42 @@ Write-Host "✅ Server started on http://localhost:$port  (live-reload enabled)"
 
 while ($listener.IsListening) {
     $ctx = $listener.GetContext()
+
+    # ── Download proxy — עוקף חסימת CORS של הדפדפן על fetch() ישיר ל-Firebase Storage ──
+    # (dev בלבד; בפרודקשן בלי שרת (GitHub Pages) יש להגדיר CORS על ה-bucket עצמו)
+    if ($ctx.Request.Url.LocalPath -eq '/api/download-image') {
+        $qs = [System.Web.HttpUtility]::ParseQueryString($ctx.Request.Url.Query)
+        $imgUrl = $qs['url']
+        $filename = $qs['filename']
+        if (-not $filename) { $filename = 'image.jpg' }
+        if (-not $imgUrl) {
+            Write-Host "❌ Download proxy called without ?url="
+            $errBytes = [System.Text.Encoding]::UTF8.GetBytes('Missing url parameter')
+            $ctx.Response.StatusCode = 400
+            $ctx.Response.ContentType = 'text/plain; charset=utf-8'
+            $ctx.Response.ContentLength64 = $errBytes.LongLength
+            $ctx.Response.OutputStream.Write($errBytes, 0, $errBytes.Length)
+        } else {
+            try {
+                $webClient = [System.Net.WebClient]::new()
+                $bytes = $webClient.DownloadData($imgUrl)
+                $ctx.Response.ContentType = 'application/octet-stream'
+                $ctx.Response.Headers.Add('Content-Disposition', "attachment; filename=`"$filename`"")
+                $ctx.Response.ContentLength64 = $bytes.LongLength
+                $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+            } catch {
+                Write-Host "❌ Download proxy failed for $imgUrl : $_"
+                $errBytes = [System.Text.Encoding]::UTF8.GetBytes("Download failed: $_")
+                $ctx.Response.StatusCode = 502
+                $ctx.Response.ContentType = 'text/plain; charset=utf-8'
+                $ctx.Response.ContentLength64 = $errBytes.LongLength
+                $ctx.Response.OutputStream.Write($errBytes, 0, $errBytes.Length)
+            }
+        }
+        $ctx.Response.OutputStream.Flush()
+        $ctx.Response.OutputStream.Close()
+        continue
+    }
 
     # ── Ping endpoint for live-reload ──────────────────────────────────────────
     if ($ctx.Request.Url.LocalPath -eq '/__ping') {
