@@ -1045,7 +1045,7 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { db, auth, storage } from './firebase-config.js';
+import { db, auth, getStorageLazy } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 import {
   collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp,
@@ -1056,7 +1056,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
 async function uploadFile(file, path) {
-  const storageRef = ref(storage, path);
+  const storageRef = ref(await getStorageLazy(), path);
   const snap = await uploadBytes(storageRef, file);
   return await getDownloadURL(snap.ref);
 }
@@ -2485,14 +2485,45 @@ window.migrateBusinessesToMembers = async function() {
 const list = document.getElementById('bizList');
 list.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><p>טוען נתונים...</p></div>`;
 
+let _bizDataLoaded = false;
+
+// אם אחרי 10 שניות עדיין לא התקבלה תגובה (לא הצלחה ולא שגיאה) — כנראה תקיעה שקטה
+// של החיבור ל-Firestore (למשל בעיית רשת/הרשאות שלא נזרקת כ-error מפורש)
+const _bizLoadWatchdog = setTimeout(() => {
+  if (_bizDataLoaded) return;
+  document.getElementById('bizList').innerHTML = `
+    <div class="empty-state">
+      <div class="icon">⏳</div>
+      <p>הטעינה נמשכת יותר מהצפוי</p>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:6px">בדוק חיבור לאינטרנט / הרשאות Firebase</p>
+      <button class="btn btn-approve" style="margin:14px auto 0;max-width:180px" onclick="location.reload()">🔄 נסה שוב</button>
+    </div>`;
+  showToast('⏳ הטעינה נמשכת יותר מהצפוי...');
+}, 10000);
+
+function showBizLoadError(err) {
+  console.error('שגיאה בטעינת עסקים מ-Firestore:', err);
+  clearTimeout(_bizLoadWatchdog);
+  document.getElementById('bizList').innerHTML = `
+    <div class="empty-state">
+      <div class="icon">⚠️</div>
+      <p>שגיאה בטעינת הנתונים</p>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:6px">${esc(err.code || err.message || '')}</p>
+      <button class="btn btn-approve" style="margin:14px auto 0;max-width:180px" onclick="location.reload()">🔄 נסה שוב</button>
+    </div>`;
+  showToast('⚠️ שגיאה בטעינת נתונים — ' + (err.code || 'בדוק חיבור/הרשאות'));
+}
+
 onSnapshot(collection(db, 'businesses'), snapshot => {
+  _bizDataLoaded = true;
+  clearTimeout(_bizLoadWatchdog);
   businesses = snapshot.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0));
   render();
   if (activeTab === 'sections') renderSectionsView();
   if (activeTab === 'stats') renderStatsView();
-});
+}, showBizLoadError);
 </script>
 
 <!-- DEV ONLY -->

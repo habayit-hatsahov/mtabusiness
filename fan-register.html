@@ -85,25 +85,23 @@
     .hero-cats {
       display: block;
       margin-bottom: 4px;
-    }
-    .hero-cats .cat {
       color: var(--yellow);
       font-weight: 700;
       font-size: 13px;
-    }
-    .hero-cats .dot {
-      color: rgba(255,255,255,.25);
-      font-weight: 400;
-      margin: 0 5px;
     }
     .hero-perks {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      gap: 6px;
       margin-top: 18px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 2px;
     }
+    .hero-perks::-webkit-scrollbar { display: none; }
     .perk-item {
       font-size: 12px;
       font-weight: 600;
@@ -113,6 +111,10 @@
       border-radius: 20px;
       padding: 6px 14px;
       white-space: nowrap;
+    }
+    @media (max-width: 400px) {
+      .hero-perks { gap: 4px; }
+      .perk-item { font-size: 9.5px; padding: 5px 7px; border-radius: 14px; }
     }
 
     /* ── FORM WRAP ── */
@@ -329,13 +331,13 @@
   <h1>קונים כחול <em>צהוב.</em></h1>
   <p>אינדקס עסקים והטבות בלעדי לאוהדי מכבי תל אביב</p>
   <p class="hero-desc">
-    <span class="hero-cats"><span class="cat">אוכל</span><span class="dot">·</span><span class="cat">אירועים</span><span class="dot">·</span><span class="cat">בעלי מקצוע מכל התחומים</span><span class="dot">·</span><span class="cat">חנויות ומגוון רחב של עסקים</span><span class="dot">·</span><span class="cat">ועוד</span></span>
+    <span class="hero-cats">אוכל, אירועים, בעלי מקצוע מכל התחומים ועוד מגוון רחב של עסקים</span>
     הנחות מיוחדות שנשארות בין החברים.
   </p>
   <div class="hero-perks">
-    <div class="perk-item">⭐ ספקים מהימנים</div>
     <div class="perk-item">💛 הנחות בלעדיות</div>
-    <div class="perk-item">👨‍👩‍👧 מכבי זה משפחה</div>
+    <div class="perk-item">💙 קונים כחול צהוב</div>
+    <div class="perk-item">👨‍👩‍👧 הכל נשאר במשפחה</div>
   </div>
 </section>
 
@@ -474,9 +476,9 @@
         💛 נשלח לך למייל לינק להרשמת העסק באינדקס לאחר אישור החברות שלך.
       </div>
 
-      <!-- מדיניות לאוהדים ותקנון -->
+      <!-- תקנון ומדיניות לאוהדים -->
       <div class="terms-row">
-        <span>ניתן לעיין ב<a href="terms.html?ctx=register" onclick="saveRegDraft()">מדיניות לאוהדים ותקנון</a></span>
+        <span>ניתן לעיין ב<a href="terms.html?ctx=register" onclick="saveRegDraft()">תקנון ומדיניות לאוהדים</a></span>
       </div>
 
       <button type="submit" class="btn-submit" id="submitBtn">
@@ -500,12 +502,12 @@
 </footer>
 
 <script type="module">
-  import { db, storage } from './firebase-config.js';
+  import { db, getStorageLazy } from './firebase-config.js';
   import { collection, addDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
   import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
   async function uploadFile(file, path) {
-    const storageRef = ref(storage, path);
+    const storageRef = ref(await getStorageLazy(), path);
     const snap = await uploadBytes(storageRef, file);
     return await getDownloadURL(snap.ref);
   }
@@ -646,14 +648,36 @@
       box.innerHTML = '<div class="option-box-icon">📍</div><div class="option-box-desc">המכשיר לא תומך במיקום</div>';
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      () => {
-        box.innerHTML = `<div class="option-box-icon">✅</div><div class="option-box-title">המיקום אושר — נציג לך עסקים קרובים אליך!</div>`;
-      },
-      () => {
-        box.innerHTML = `<div class="option-box-icon">📍</div><div class="option-box-desc">דילגת על המיקום — תוכל להפעיל בהמשך מהאינדקס.</div>`;
-      }
-    );
+
+    // חלק מהדפדפנים (בעיקר דפדפנים פנימיים כמו אינסטגרם/פייסבוק) לא תמיד מחזירים
+    // תשובה לבקשת המיקום — בלי טיימאאוט הכפתור נשאר תקוע לנצח וחוסם את ההמשך.
+    let settled = false;
+    const finish = (html) => {
+      if (settled) return;
+      settled = true;
+      box.innerHTML = html;
+    };
+
+    const fallbackTimer = setTimeout(() => {
+      finish('<div class="option-box-icon">📍</div><div class="option-box-desc">לא הצלחנו לאתר מיקום — אפשר להמשיך בהרשמה, ולהפעיל מיקום בהמשך מהאינדקס.</div>');
+    }, 8000);
+
+    try {
+      navigator.geolocation.getCurrentPosition(
+        () => {
+          clearTimeout(fallbackTimer);
+          finish('<div class="option-box-icon">✅</div><div class="option-box-title">המיקום אושר — נציג לך עסקים קרובים אליך!</div>');
+        },
+        () => {
+          clearTimeout(fallbackTimer);
+          finish('<div class="option-box-icon">📍</div><div class="option-box-desc">דילגת על המיקום — תוכל להפעיל בהמשך מהאינדקס.</div>');
+        },
+        { timeout: 8000, maximumAge: 60000 }
+      );
+    } catch {
+      clearTimeout(fallbackTimer);
+      finish('<div class="option-box-icon">📍</div><div class="option-box-desc">לא ניתן לבקש מיקום כרגע — אפשר להמשיך בהרשמה.</div>');
+    }
   }
 
   // ── BUSINESS OWNER ──
