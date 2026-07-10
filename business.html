@@ -1280,8 +1280,58 @@
 
 <script type="module">
   import { db, getStorageLazy } from './firebase-config.js';
-  import { collection, addDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+  import { collection, addDoc, updateDoc, doc, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
   import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+
+  // ── קישור/יצירת רשומת חבר לבעל העסק — אם בעל העסק כבר רשום כאוהד (טלפון/מייל תואם), מקשרים
+  // לרשומה הקיימת במקום ליצור כפולה (ר' docs/PROJECT_CONTEXT.md סעיף "קישור בעל עסק ↔ חבר") ──
+  function normalizePhoneDigits(raw) {
+    let d = (raw || '').replace(/\D/g, '');
+    if (d.startsWith('972')) d = '0' + d.slice(3);
+    if (!d.startsWith('0'))  d = '0' + d;
+    return d;
+  }
+  function phoneCandidates(raw) {
+    const local = normalizePhoneDigits(raw);
+    const dashed = local.length === 10 ? local.slice(0,3) + '-' + local.slice(3) : local;
+    const e164 = '+972' + local.slice(1);
+    return [...new Set([local, dashed, e164])];
+  }
+  async function findExistingMember(phone, email) {
+    const emailLower = (email || '').trim().toLowerCase();
+    if (emailLower) {
+      const byEmail = await getDocs(query(collection(db, 'members'), where('email', '==', emailLower)));
+      if (!byEmail.empty) return byEmail.docs[0];
+    }
+    for (const cand of phoneCandidates(phone)) {
+      const byPhone = await getDocs(query(collection(db, 'members'), where('phone', '==', cand)));
+      if (!byPhone.empty) return byPhone.docs[0];
+    }
+    return null;
+  }
+  async function linkOrCreateOwnerMember(data, bizId) {
+    const existing = await findExistingMember(data.ownerPhone, data.ownerEmail);
+    if (existing) {
+      await updateDoc(doc(db, 'members', existing.id), { isBusinessOwner: true, linkedBusinessId: bizId });
+      return existing.id;
+    }
+    const memberRef = await addDoc(collection(db, 'members'), {
+      firstName:         data.ownerFirst,
+      lastName:          data.ownerLast,
+      phone:             data.ownerPhone,
+      email:             data.ownerEmail,
+      isSubscriber:      data.isSubscriber === 'yes',
+      subscriberSection: data.isSubscriber === 'yes' ? data.gate   : null,
+      subscriberNumber:  data.isSubscriber === 'yes' ? data.subNum : null,
+      facebookUrl:       data.fbUrl || null,
+      isBusinessOwner:   true,
+      linkedBusinessId:  bizId,
+      status:            'pending',
+      submittedAt:       serverTimestamp(),
+      familyMembers:     [],
+    });
+    return memberRef.id;
+  }
 
   async function uploadFile(file, path) {
     const storageRef = ref(await getStorageLazy(), path);
@@ -1600,20 +1650,8 @@
     let bizDocRef = null;
     try {
       bizDocRef = await addDoc(collection(db, 'businesses'), data);
-      await addDoc(collection(db, 'members'), {
-        firstName:         data.ownerFirst,
-        lastName:          data.ownerLast,
-        phone:             data.ownerPhone,
-        email:             data.ownerEmail,
-        isSubscriber:      data.isSubscriber === 'yes',
-        subscriberSection: data.isSubscriber === 'yes' ? data.gate   : null,
-        subscriberNumber:  data.isSubscriber === 'yes' ? data.subNum : null,
-        facebookUrl:       data.fbUrl || null,
-        isBusinessOwner:   true,
-        status:            'pending',
-        submittedAt:       serverTimestamp(),
-        familyMembers:     [],
-      });
+      const ownerMemberId = await linkOrCreateOwnerMember(data, bizDocRef.id);
+      await updateDoc(doc(db, 'businesses', bizDocRef.id), { ownerMemberId });
     } catch(e) { console.error('Firestore save failed:', e.message); }
 
     // שלב 2: מציגים הצלחה מיד — לא מחכים לתמונות

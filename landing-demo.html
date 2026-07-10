@@ -171,6 +171,9 @@ img { display: block; max-width: 100%; }
 .hero-login-back { background: none; border: none; color: var(--text-muted); font-size: 12px; cursor: pointer; text-decoration: underline; font-family: 'Heebo', sans-serif; }
 .hero-login-err { display: none; width: 100%; text-align: center; margin-top: 9px; font-size: 12.5px; color: #d97706; font-weight: 700; }
 .hero-login-err.show { display: block; }
+.hero-forgot-panel { display: none; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; width: 100%; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-md); }
+.hero-forgot-panel.show { display: flex; }
+.hero-forgot-msg { color: var(--yellow); }
 .hero-member-actions { display: flex; flex-direction: column; align-items: center; gap: 18px; margin-top: 36px; }
 .member-welcome-badge {
   display: inline-flex; align-items: center; gap: 8px;
@@ -480,9 +483,15 @@ img { display: block; max-width: 100%; }
                    oninput="this.value=this.value.replace(/\D/g,''); heroHideErr()"
                    onkeydown="if(event.key==='Enter')heroLogin()"/>
             <button class="hero-login-btn" id="heroLoginBtn" onclick="heroLogin()">התחברו</button>
-            <button class="hero-login-back" onclick="location.href='login.html'">שכחתי קוד</button>
+            <button class="hero-login-back" id="heroForgotToggle" onclick="heroToggleForgot()">שכחתי קוד</button>
           </div>
           <div class="hero-login-err" id="heroLoginErr"></div>
+          <div class="hero-forgot-panel" id="heroForgotPanel">
+            <input type="tel" id="heroForgotPhoneInput" class="hero-login-input" placeholder="הטלפון שנרשם"
+                   inputmode="tel" maxlength="12" onkeydown="if(event.key==='Enter')heroRequestResend()"/>
+            <button class="hero-login-btn" id="heroForgotBtn" onclick="heroRequestResend()">שלחו לי קוד למייל</button>
+          </div>
+          <div class="hero-login-err hero-forgot-msg" id="heroForgotMsg"></div>
         </div>
       </div>
     </div>
@@ -956,8 +965,12 @@ renderActivity(null);
 <!-- ══ נתונים אמיתיים מ-Firestore — קריאה בלבד, ציבורי (businesses/approved), ללא כתיבה וללא מידע אישי (members) ══ -->
 <!-- ══ + התחברות אוהד קיים ישירות מה-Hero (טלפון+קוד כניסה, זהה ללוגיקה של login.html) ══ -->
 <script type="module">
-import { db } from './firebase-config.js';
+import { db, auth } from './firebase-config.js';
 import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+
+// כתובת ה-Worker (Cloudflare) שמנפיק טוקני כניסה אחרי אימות טלפון+קוד מול Firestore בצד-שרת
+const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
 // ── אם זה חבר קיים (localStorage מהתחברות קודמת) — שולפים רק את שמו הפרטי לשדרוג "ברוכים השבים" ──
 try {
@@ -970,18 +983,12 @@ try {
   console.warn('landing-demo: לא ניתן היה לטעון את פרטי החבר החוזר.', err);
 }
 
-// ── התחברות ישירה בהירו — טלפון+קוד כניסה, זהה בלוגיקה ל-login.html ──
+// ── התחברות בהירו — טלפון+קוד כניסה, מאומת מול Firestore בצד-שרת דרך ה-Worker ──
 function heroNormalizePhoneDigits(raw) {
   let d = (raw || '').replace(/\D/g, '');
   if (d.startsWith('972')) d = '0' + d.slice(3);
   if (!d.startsWith('0'))  d = '0' + d;
   return d;
-}
-function heroPhoneCandidates(raw) {
-  const local = heroNormalizePhoneDigits(raw);
-  const dashed = local.length === 10 ? local.slice(0,3) + '-' + local.slice(3) : local;
-  const e164 = '+972' + local.slice(1);
-  return [...new Set([local, dashed, e164])];
 }
 window.heroHideErr = () => document.getElementById('heroLoginErr').classList.remove('show');
 function heroShowErr(msg) {
@@ -998,28 +1005,28 @@ window.heroLogin = async function() {
   const btn = document.getElementById('heroLoginBtn');
   btn.disabled = true; btn.textContent = 'בודק...';
   try {
-    const enteredDigits = heroNormalizePhoneDigits(phoneRaw);
-    const snap = await getDocs(query(collection(db, 'members'), where('loginCode', '==', code)));
-    const codeDoc = snap.docs[0];
-    const codeMatches = codeDoc
-      && heroNormalizePhoneDigits(codeDoc.data().phone) === enteredDigits
-      && codeDoc.data().status === 'approved';
+    const resp = await fetch(WORKER_URL + '/mint-member-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phoneRaw, code })
+    });
+    const data = await resp.json();
 
-    if (codeMatches) {
-      localStorage.setItem('hb_phone', enteredDigits);
-      localStorage.setItem('hb_memberId', codeDoc.id);
+    if (data.customToken) {
+      const cred = await signInWithCustomToken(auth, data.customToken);
+      localStorage.setItem('hb_phone', heroNormalizePhoneDigits(phoneRaw));
+      localStorage.setItem('hb_memberId', cred.user.uid);
       location.href = 'home.html';
       return;
     }
 
-    // הקוד/הצירוף לא תקינים — בדיקה נוספת לפי טלפון בלבד, כדי לתת הודעה מדויקת (זהה ל-login.html)
-    const phoneSnap = await getDocs(query(collection(db, 'members'), where('phone', 'in', heroPhoneCandidates(phoneRaw))));
-    const phoneDoc = phoneSnap.docs.find(d => d.data().status !== 'approved');
-
     btn.disabled = false; btn.textContent = 'התחברו';
-    if (phoneDoc) {
-      const st = phoneDoc.data().status;
-      heroShowErr(st === 'pending' ? 'הבקשה שלכם עדיין ממתינה לאישור — ברגע שתאושר תישלח אליכם הודעת מייל עם קוד כניסה.' : 'הבקשה שלכם נדחתה. לפרטים צרו קשר עם הצוות.');
+    if (data.error === 'pending') {
+      heroShowErr('הבקשה שלכם עדיין ממתינה לאישור — ברגע שתאושר תישלח אליכם הודעת מייל עם קוד כניסה.');
+    } else if (data.error === 'rejected') {
+      heroShowErr('הבקשה שלכם נדחתה. לפרטים צרו קשר עם הצוות.');
+    } else if (data.error === 'too_many_attempts') {
+      heroShowErr('יותר מדי ניסיונות — נסו שוב בעוד כמה דקות.');
     } else {
       heroShowErr('מספר טלפון או קוד שגויים');
     }
@@ -1027,6 +1034,42 @@ window.heroLogin = async function() {
     btn.disabled = false; btn.textContent = 'התחברו';
     heroShowErr('שגיאה — נסו שוב');
   }
+};
+
+window.heroToggleForgot = function() {
+  const panel = document.getElementById('heroForgotPanel');
+  panel.classList.toggle('show');
+  if (panel.classList.contains('show')) {
+    const phone = document.getElementById('heroPhoneInput').value.trim();
+    if (phone) document.getElementById('heroForgotPhoneInput').value = phone;
+    document.getElementById('heroForgotMsg').classList.remove('show');
+  }
+};
+
+window.heroRequestResend = async function() {
+  const phoneRaw = document.getElementById('heroForgotPhoneInput').value.trim();
+  const msgEl = document.getElementById('heroForgotMsg');
+  if (!phoneRaw) {
+    msgEl.textContent = 'נא להזין מספר טלפון';
+    msgEl.classList.add('show');
+    return;
+  }
+
+  const btn = document.getElementById('heroForgotBtn');
+  btn.disabled = true; btn.textContent = 'שולח...';
+  try {
+    await fetch(WORKER_URL + '/resend-login-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phoneRaw })
+    });
+  } catch (e) {
+    // שקט — עדיין מציגים את אותה הודעה כדי לא לחשוף מידע
+  }
+  // הודעה זהה בין "נמצא" ל"לא נמצא" — כדי לא לחשוף אילו מספרים רשומים במערכת
+  msgEl.textContent = 'אם המספר קיים במערכת המאושרת — הקוד יישלח למייל שנרשם בהקדם.';
+  msgEl.classList.add('show');
+  btn.disabled = false; btn.textContent = 'שלחו לי קוד למייל';
 };
 
 try {

@@ -503,8 +503,35 @@
 
 <script type="module">
   import { db, getStorageLazy } from './firebase-config.js';
-  import { collection, addDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+  import { collection, addDoc, updateDoc, doc, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
   import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+
+  // ── זיהוי הרשמה כפולה — אם כבר קיימת רשומת חבר עם אותו טלפון/מייל (למשל נרשם כבר
+  // כבעל עסק ומקבל רשומת חבר אוטומטית), מעדכנים אותה במקום ליצור כפולה ──
+  function normalizePhoneDigits(raw) {
+    let d = (raw || '').replace(/\D/g, '');
+    if (d.startsWith('972')) d = '0' + d.slice(3);
+    if (!d.startsWith('0'))  d = '0' + d;
+    return d;
+  }
+  function phoneCandidates(raw) {
+    const local = normalizePhoneDigits(raw);
+    const dashed = local.length === 10 ? local.slice(0,3) + '-' + local.slice(3) : local;
+    const e164 = '+972' + local.slice(1);
+    return [...new Set([local, dashed, e164])];
+  }
+  async function findExistingMember(phone, email) {
+    const emailLower = (email || '').trim().toLowerCase();
+    if (emailLower) {
+      const byEmail = await getDocs(query(collection(db, 'members'), where('email', '==', emailLower)));
+      if (!byEmail.empty) return byEmail.docs[0];
+    }
+    for (const cand of phoneCandidates(phone)) {
+      const byPhone = await getDocs(query(collection(db, 'members'), where('phone', '==', cand)));
+      if (!byPhone.empty) return byPhone.docs[0];
+    }
+    return null;
+  }
 
   async function uploadFile(file, path) {
     const storageRef = ref(await getStorageLazy(), path);
@@ -617,7 +644,26 @@
 
     let memberDocRef = null;
     try {
-      memberDocRef = await addDoc(collection(db, 'members'), data);
+      const existing = await findExistingMember(data.phone, data.email);
+      if (existing) {
+        // כבר קיים במערכת (למשל נרשם קודם כבעל עסק וקיבל רשומת חבר אוטומטית) —
+        // מעדכנים את הפרטים האישיים בלבד, בלי לגעת בסטטוס/isBusinessOwner/קוד כניסה קיימים
+        memberDocRef = doc(db, 'members', existing.id);
+        await updateDoc(memberDocRef, {
+          firstName:         data.firstName,
+          lastName:          data.lastName,
+          phone:             data.phone,
+          email:             data.email,
+          isSubscriber:      data.isSubscriber,
+          subscriberSection: data.subscriberSection,
+          subscriberNumber:  data.subscriberNumber,
+          wasSubscriber:     data.wasSubscriber,
+          facebookUrl:       data.facebookUrl,
+          familyMembers:     data.familyMembers,
+        });
+      } else {
+        memberDocRef = await addDoc(collection(db, 'members'), data);
+      }
     } catch (err) {
       console.error('Firebase error:', err);
       submitBtn.disabled = false;

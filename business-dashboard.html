@@ -968,13 +968,17 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { db, getStorageLazy } from './firebase-config.js';
+import { db, auth, getStorageLazy } from './firebase-config.js';
 import {
-  collection, query, where, getDocs, doc, updateDoc, serverTimestamp
+  doc, getDoc, updateDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import {
   ref, uploadBytes, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+import { signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+
+// כתובת ה-Worker (Cloudflare) שמאמת accessToken מול Firestore בצד-שרת ומנפיק טוקן כניסה
+const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
 let biz      = null;
 let bizId    = null;
@@ -1079,12 +1083,21 @@ if (!token) {
 
 async function loadBusiness(token) {
   try {
-    const q    = query(collection(db, 'businesses'), where('accessToken', '==', token));
-    const snap = await getDocs(q);
-    if (snap.empty) { showError(); return; }
+    const resp = await fetch(WORKER_URL + '/mint-biz-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken: token })
+    });
+    const data = await resp.json();
+    if (!data.customToken) { showError(); return; }
 
-    bizId = snap.docs[0].id;
-    biz   = { id: bizId, ...snap.docs[0].data() };
+    const cred = await signInWithCustomToken(auth, data.customToken);
+    bizId = cred.user.uid;
+
+    const snap = await getDoc(doc(db, 'businesses', bizId));
+    if (!snap.exists()) { showError(); return; }
+
+    biz = { id: bizId, ...snap.data() };
     loadDismissedChecklist();
     loadCompletenessDoneAt();
 

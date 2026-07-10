@@ -1149,15 +1149,22 @@ async function generateLoginCode() {
 }
 
 // ── אישור עסק מאשר אוטומטית את חברות האוהד המקושרת ─────────────────────────
+// עדיפות ל-ownerMemberId (קישור קבוע, לא תלוי בעדכון טלפון/מייל מאוחר) —
+// נתיב legacy לפי מייל נשאר רק לעסקים שטרם קושרו (לפני המיגרציה)
 async function approveLinkedMember(b) {
-  const email = b.ownerEmail || b.email || '';
-  if (!email) return;
   try {
-    const mq = query(collection(db, 'members'), where('email', '==', email));
-    const msnap = await getDocs(mq);
-    if (msnap.empty) return;
-    const memberDoc = msnap.docs[0];
-    const m = memberDoc.data();
+    let memberId = b.ownerMemberId || null;
+    if (!memberId) {
+      const email = b.ownerEmail || b.email || '';
+      if (!email) return;
+      const msnap = await getDocs(query(collection(db, 'members'), where('email', '==', email)));
+      if (msnap.empty) return;
+      memberId = msnap.docs[0].id;
+    }
+    const memberRef = doc(db, 'members', memberId);
+    const memberSnap = await getDoc(memberRef);
+    if (!memberSnap.exists()) return;
+    const m = memberSnap.data();
     if (m.status === 'approved') return;
     const counterRef = doc(db, 'counters', 'members');
     const memberNumber = await runTransaction(db, async (tx) => {
@@ -1168,11 +1175,12 @@ async function approveLinkedMember(b) {
     });
     const updatedFam = (m.familyMembers || []).map(f => ({ ...f, revoked: false }));
     const loginCode = m.loginCode || await generateLoginCode();
-    await updateDoc(doc(db, 'members', memberDoc.id), {
+    await updateDoc(memberRef, {
       status: 'approved',
       approvedAt: serverTimestamp(),
       rejectedAt: null,
       familyApproved: true,
+      isBusinessOwner: true,
       memberNumber,
       loginCode,
       loginCodeCreatedAt: serverTimestamp(),
@@ -2022,7 +2030,7 @@ window.bulkApprove = async function() {
   if (!ids.length) { showToast('אין עסקים ממתינים בבחירה'); return; }
   if (!confirm(`לאשר ${ids.length} עסקים?`)) return;
   await Promise.all(ids.map(async id => {
-    await updateDoc(doc(db, 'businesses', id), { status: 'approved', approvedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'businesses', id), { status: 'approved', approvedAt: serverTimestamp(), ownerEmailStatus: 'pending' });
     const b = businesses.find(x => x.id === id);
     if (b) await approveLinkedMember(b);
   }));
@@ -2117,7 +2125,8 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
   const b = businesses.find(x => x.id === pendingId);
   await updateDoc(doc(db, 'businesses', pendingId), {
     status: 'approved',
-    approvedAt: serverTimestamp()
+    approvedAt: serverTimestamp(),
+    ownerEmailStatus: 'pending'
   });
   if (b) await approveLinkedMember(b);
   document.getElementById('confirmBtn').textContent = '✓ אושר!';
@@ -2363,13 +2372,26 @@ async function saveSectionUpdates(id, updates) {
 }
 
 window.saveSec1 = async function(id) {
-  await saveSectionUpdates(id, {
+  const updates = {
     ownerFirst: document.getElementById('editOwnerFirst').value.trim(),
     ownerLast:  document.getElementById('editOwnerLast').value.trim(),
     ownerPhone: document.getElementById('editOwnerPhone').value.trim(),
     ownerEmail: document.getElementById('editOwnerEmail').value.trim(),
     note:       document.getElementById('editNote').value.trim(),
-  });
+  };
+  await saveSectionUpdates(id, updates);
+
+  // סנכרון לרשומת החבר המקושרת — כך שעריכת טלפון/מייל/שם כאן לא יוצרת פער
+  // מול הרשומה שדרכה בעל העסק בפועל נכנס (ר' docs/PROJECT_CONTEXT.md, תקלת יהב מטבחים)
+  const b = businesses.find(x => x.id === id);
+  if (b && b.ownerMemberId) {
+    await updateDoc(doc(db, 'members', b.ownerMemberId), {
+      firstName: updates.ownerFirst,
+      lastName:  updates.ownerLast,
+      phone:     updates.ownerPhone,
+      email:     updates.ownerEmail,
+    });
+  }
 };
 
 window.saveSec2 = async function(id) {
