@@ -72,6 +72,14 @@
       text-align: right; line-height: 1.5;
     }
     .err-msg.show { display: block; }
+    .info-msg {
+      display: none; margin-top: 8px;
+      background: rgba(255,222,0,0.08); border: 1.5px solid rgba(255,222,0,0.3);
+      border-radius: 10px; padding: 10px 14px;
+      font-size: 13px; color: var(--yellow); font-weight: 600;
+      text-align: right; line-height: 1.5;
+    }
+    .info-msg.show { display: block; }
     .btn {
       width: 100%; padding: 14px;
       background: var(--yellow);
@@ -81,25 +89,19 @@
     }
     .btn:disabled { opacity: .4; cursor: not-allowed; }
     .btn:not(:disabled):active { opacity: .85; }
-    .otp-section { display: none; }
-    .otp-section.show { display: block; }
-    .otp-input {
+    .code-input {
       text-align: center; font-size: 28px; letter-spacing: 6px;
       font-weight: 900; color: var(--yellow);
     }
-    .resend-row { margin-top: 14px; font-size: 13px; color: var(--text-muted); }
-    .resend-btn {
+    .forgot-link {
       background: none; border: none; color: var(--yellow);
       font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 700;
-      cursor: pointer; text-decoration: underline; display: none;
-    }
-    .resend-btn.show { display: inline; }
-    .back-btn {
-      background: none; border: none; color: var(--text-muted);
-      font-family: 'Heebo', sans-serif; font-size: 13px;
-      cursor: pointer; margin-top: 14px; text-decoration: underline;
+      cursor: pointer; text-decoration: underline; margin-top: 18px;
       display: block; width: 100%; text-align: center;
     }
+    .forgot-section { display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); text-align: right; }
+    .forgot-section.show { display: block; }
+    .resend-row { margin-top: 10px; font-size: 13px; color: var(--text-muted); text-align: center; }
     .spinner {
       display: inline-block; width: 16px; height: 16px;
       border: 2px solid rgba(0,0,0,.2);
@@ -126,250 +128,183 @@
     <div class="logo-text">הבית <span>הצהוב</span></div>
   </div>
 
-  <!-- שלב 1: טלפון -->
-  <div id="phoneSection">
-    <h1>כניסה לאינדקס</h1>
-    <p class="subtitle">אנחנו נשלח לך קוד אימות ב-SMS<br>לטלפון שרשמת בהצטרפות</p>
-    <div class="form-group">
-      <label>מספר טלפון</label>
-      <div class="phone-row">
-        <div class="phone-prefix">🇮🇱 +972</div>
-        <input type="tel" id="phoneInput" placeholder="05X-XXXXXXX"
-               inputmode="tel" maxlength="12"
-               oninput="clearPhoneErr()" onkeydown="if(event.key==='Enter')sendOTP()"/>
-      </div>
+  <h1>כניסה לאינדקס</h1>
+  <p class="subtitle">הזינו את מספר הטלפון ואת קוד הכניסה<br>שקיבלתם במייל לאחר אישור החברות</p>
+
+  <div class="form-group">
+    <label>מספר טלפון</label>
+    <div class="phone-row">
+      <div class="phone-prefix">🇮🇱 +972</div>
+      <input type="tel" id="phoneInput" placeholder="05X-XXXXXXX"
+             inputmode="tel" maxlength="12"
+             oninput="clearErr()" onkeydown="if(event.key==='Enter')doLogin()"/>
     </div>
-    <div class="err-msg" id="phoneErr"></div>
-    <div id="recaptcha-container"></div>
-    <button class="btn" id="sendBtn" onclick="sendOTP()">שלח קוד אימות</button>
   </div>
 
-  <!-- שלב 2: OTP -->
-  <div class="otp-section" id="otpSection">
-    <h1>הזן קוד אימות</h1>
-    <p class="subtitle" id="otpSubtitle">נשלח קוד לטלפון שלך</p>
-    <div class="form-group" style="margin-top:24px;">
-      <label>קוד בן 6 ספרות</label>
-      <input type="text" id="otpInput" class="otp-input"
-             placeholder="• • • • • •" maxlength="6"
-             inputmode="numeric" pattern="[0-9]*"
-             oninput="this.value=this.value.replace(/\D/g,''); clearOtpErr()"
-             onkeydown="if(event.key==='Enter')verifyOTP()"/>
+  <div class="form-group">
+    <label>קוד כניסה (6 ספרות)</label>
+    <input type="text" id="codeInput" class="code-input"
+           placeholder="• • • • • •" maxlength="6"
+           inputmode="numeric" pattern="[0-9]*"
+           oninput="this.value=this.value.replace(/\D/g,''); clearErr()"
+           onkeydown="if(event.key==='Enter')doLogin()"/>
+  </div>
+
+  <div class="err-msg" id="loginErr"></div>
+  <button class="btn" id="loginBtn" onclick="doLogin()">כניסה</button>
+
+  <button class="forgot-link" onclick="toggleForgot()">איבדת את קוד הכניסה שנשלח לך במייל?</button>
+
+  <div class="forgot-section" id="forgotSection">
+    <div class="form-group" style="margin-bottom:10px;">
+      <label>מספר טלפון (לשליחת הקוד למייל שנרשם)</label>
+      <div class="phone-row">
+        <div class="phone-prefix">🇮🇱 +972</div>
+        <input type="tel" id="forgotPhoneInput" placeholder="05X-XXXXXXX" inputmode="tel" maxlength="12"/>
+      </div>
     </div>
-    <div class="err-msg" id="otpErr"></div>
-    <button class="btn" id="verifyBtn" onclick="verifyOTP()">אמת וכנס</button>
-    <div class="resend-row">
-      <span id="resendTimer">שלח שוב בעוד <span id="countdown">60</span> שניות</span>
-      <button class="resend-btn" id="resendBtn" onclick="resendOTP()">שלח שוב</button>
-    </div>
-    <button class="back-btn" onclick="goBack()">← שנה מספר טלפון</button>
+    <div class="info-msg" id="forgotMsg"></div>
+    <button class="btn" id="forgotBtn" onclick="requestCodeResend()" style="background:rgba(255,222,0,0.15);color:var(--yellow);">שלח לי את הקוד למייל</button>
+    <div class="resend-row" id="forgotCooldown" style="display:none;"></div>
   </div>
 </div>
 
 <script type="module">
-import { auth, db } from './firebase-config.js';
+import { db } from './firebase-config.js';
 import {
-  RecaptchaVerifier, signInWithPhoneNumber, onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import {
-  collection, query, where, getDocs
+  collection, query, where, getDocs, doc, updateDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
-let confirmationResult = null;
-let resendInterval = null;
-
-function normalizePhone(raw) {
-  const digits = raw.replace(/\D/g, '');
-  if (digits.startsWith('972')) return '+' + digits;
-  if (digits.startsWith('0'))   return '+972' + digits.slice(1);
-  return '+972' + digits;
+function normalizePhoneDigits(raw) {
+  let d = (raw || '').replace(/\D/g, '');
+  if (d.startsWith('972')) d = '0' + d.slice(3);
+  if (!d.startsWith('0'))  d = '0' + d;
+  return d; // "0501234567"
 }
 
-// phone in DB might be "050-1234567" — convert E.164 to that format for matching
-function e164ToLocal(e164) {
-  const digits = e164.replace('+972', '0');
-  if (digits.length === 10) return digits.slice(0,3) + '-' + digits.slice(3);
-  return digits;
+// כמה וריאציות פורמט אפשריות שהמספר עשוי להישמר בהן ב-Firestore (הרשמה שומרת כטקסט חופשי, ללא נרמול)
+function phoneCandidates(raw) {
+  const local = normalizePhoneDigits(raw);
+  const dashed = local.length === 10 ? local.slice(0,3) + '-' + local.slice(3) : local;
+  const e164 = '+972' + local.slice(1);
+  return [...new Set([local, dashed, e164])];
 }
 
-function initRecaptcha() {
-  if (window._recaptcha) return;
-  window._recaptcha = new RecaptchaVerifier(auth, 'recaptcha-container', {
-    size: 'invisible',
-    callback: () => {}
-  });
-}
+window.doLogin = async function() {
+  const phoneRaw = document.getElementById('phoneInput').value.trim();
+  const code = document.getElementById('codeInput').value.trim();
+  if (!phoneRaw) return showErr('נא להזין מספר טלפון');
+  if (code.length !== 6) return showErr('נא להזין קוד בן 6 ספרות');
 
-function resetRecaptcha() {
-  if (window._recaptcha) {
-    try { window._recaptcha.clear(); } catch (e) {}
-    window._recaptcha = null;
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.innerHTML = 'בודק... <span class="spinner"></span>';
+
+  try {
+    const enteredDigits = normalizePhoneDigits(phoneRaw);
+    const snap = await getDocs(query(collection(db, 'members'), where('loginCode', '==', code)));
+    const codeDoc = snap.docs[0];
+    const codeMatches = codeDoc
+      && normalizePhoneDigits(codeDoc.data().phone) === enteredDigits
+      && codeDoc.data().status === 'approved';
+
+    if (codeMatches) {
+      localStorage.setItem('hb_phone', enteredDigits);
+      localStorage.setItem('hb_memberId', codeDoc.id);
+      const next = new URLSearchParams(location.search).get('next') || 'home.html';
+      location.href = next;
+      return;
+    }
+
+    // הקוד/הצירוף לא תקינים — בדיקה נוספת רק לפי טלפון, כדי לתת הודעה מדויקת
+    // (חבר ממתין לאישור עדיין לא קיבל loginCode בכלל, לכן לא יימצא בשאילתה הראשונה)
+    const phoneSnap = await getDocs(query(collection(db, 'members'), where('phone', 'in', phoneCandidates(phoneRaw))));
+    const phoneDoc = phoneSnap.docs.find(d => d.data().status !== 'approved');
+
+    btn.disabled = false; btn.textContent = 'כניסה';
+    if (phoneDoc) {
+      const st = phoneDoc.data().status;
+      showErr(st === 'pending'
+        ? 'הבקשה שלך עדיין ממתינה לאישור. ברגע שתאושר תישלח אליך הודעת מייל עם קוד כניסה.'
+        : 'הבקשה שלך נדחתה. לפרטים צור קשר עם הצוות.');
+    } else {
+      showErr('מספר טלפון או קוד שגויים');
+    }
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'כניסה';
+    showErr('שגיאה — נסה שוב');
   }
-}
+};
 
-window.sendOTP = async function() {
-  const raw = document.getElementById('phoneInput').value.trim();
-  if (!raw) return showPhoneErr('נא להזין מספר טלפון');
-  const phone = normalizePhone(raw);
-  if (!/^\+972[5][0-9]{8}$/.test(phone)) return showPhoneErr('מספר לא תקין — נא להזין מספר סלולרי ישראלי');
+window.toggleForgot = function() {
+  const sec = document.getElementById('forgotSection');
+  sec.classList.toggle('show');
+  if (sec.classList.contains('show')) {
+    const phone = document.getElementById('phoneInput').value.trim();
+    if (phone) document.getElementById('forgotPhoneInput').value = phone;
+  }
+};
 
-  const btn = document.getElementById('sendBtn');
+window.requestCodeResend = async function() {
+  const phoneRaw = document.getElementById('forgotPhoneInput').value.trim();
+  if (!phoneRaw) return showForgotMsg('נא להזין מספר טלפון');
+
+  const btn = document.getElementById('forgotBtn');
   btn.disabled = true;
   btn.innerHTML = 'שולח... <span class="spinner"></span>';
 
   try {
-    initRecaptcha();
-    confirmationResult = await signInWithPhoneNumber(auth, phone, window._recaptcha);
-    showOTPSection(phone);
-    startResendTimer();
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = 'שלח קוד אימות';
-    resetRecaptcha();
-    if (e.code === 'auth/too-many-requests') {
-      showPhoneErr('יותר מדי ניסיונות — נסה שוב מאוחר יותר');
-    } else {
-      showPhoneErr('שגיאה בשליחת SMS — בדוק את המספר ונסה שוב');
-    }
-  }
-};
+    const candidates = phoneCandidates(phoneRaw);
+    const snap = await getDocs(query(collection(db, 'members'), where('phone', 'in', candidates)));
+    const memberDoc = snap.docs.find(d => d.data().status === 'approved' && d.data().loginCode);
 
-window.verifyOTP = async function() {
-  const code = document.getElementById('otpInput').value.trim();
-  if (code.length !== 6) return showOtpErr('יש להזין קוד בן 6 ספרות');
-
-  const btn = document.getElementById('verifyBtn');
-  btn.disabled = true;
-  btn.innerHTML = 'מאמת... <span class="spinner"></span>';
-
-  try {
-    const result = await confirmationResult.confirm(code);
-    const e164 = result.user.phoneNumber;
-
-    // try local format (050-XXXXXXX) and E.164 (+972...)
-    const localPhone = e164ToLocal(e164);
-    const snap1 = await getDocs(
-      query(collection(db, 'members'), where('phone', '==', localPhone), where('status', '==', 'approved'))
-    );
-    const snap2 = !snap1.docs.length
-      ? await getDocs(query(collection(db, 'members'), where('phone', '==', e164), where('status', '==', 'approved')))
-      : { docs: [] };
-
-    const memberDoc = snap1.docs[0] || snap2.docs[0];
-
-    if (!memberDoc) {
-      await auth.signOut();
-      btn.disabled = false;
-      btn.textContent = 'אמת וכנס';
-      // check if pending
-      const snapPending = await getDocs(
-        query(collection(db, 'members'), where('phone', '==', localPhone))
-      );
-      if (snapPending.docs.length) {
-        const st = snapPending.docs[0].data().status;
-        showOtpErr(st === 'pending'
-          ? 'הבקשה שלך עדיין ממתינה לאישור. ברגע שתאושר תוכל להיכנס.'
-          : 'הבקשה שלך נדחתה. לפרטים צור קשר עם הצוות.');
+    if (memberDoc) {
+      const m = memberDoc.data();
+      const lastSent = m.lastCodeResendAt?.toDate?.();
+      const cooldownMs = 60 * 1000;
+      if (lastSent && (Date.now() - lastSent.getTime()) < cooldownMs) {
+        const waitSec = Math.ceil((cooldownMs - (Date.now() - lastSent.getTime())) / 1000);
+        showForgotMsg(`קוד כבר נשלח לאחרונה — נסו שוב בעוד ${waitSec} שניות`);
       } else {
-        showOtpErr('מספר זה אינו רשום במערכת. הרשם בדף ההרשמה.');
+        await updateDoc(doc(db, 'members', memberDoc.id), {
+          loginCodeEmailStatus: 'pending',
+          lastCodeResendAt: serverTimestamp()
+        });
       }
-      return;
     }
-
-    // localStorage (לא sessionStorage) — כניסה נשארת "זכורה" גם אחרי סגירת דפדפן/מכשיר
-    localStorage.setItem('hb_uid', result.user.uid);
-    localStorage.setItem('hb_phone', e164);
-    localStorage.setItem('hb_memberId', memberDoc.id);
-
-    const next = new URLSearchParams(location.search).get('next') || 'home.html';
-    location.href = next;
-
+    // הודעה זהה בין "נמצא" ל"לא נמצא" — כדי לא לחשוף אילו מספרים רשומים במערכת
+    showForgotMsg('אם המספר קיים במערכת המאושרת — הקוד יישלח למייל שנרשם בהקדם.');
   } catch (e) {
+    showForgotMsg('שגיאה — נסה שוב מאוחר יותר');
+  } finally {
     btn.disabled = false;
-    btn.textContent = 'אמת וכנס';
-    if (e.code === 'auth/invalid-verification-code') {
-      showOtpErr('קוד שגוי — בדוק שוב');
-    } else if (e.code === 'auth/code-expired') {
-      showOtpErr('הקוד פג תוקף — שלח קוד חדש');
-    } else {
-      showOtpErr('שגיאה — נסה שוב');
-    }
+    btn.textContent = 'שלח לי את הקוד למייל';
   }
 };
 
-window.resendOTP = async function() {
-  clearInterval(resendInterval);
-  document.getElementById('resendBtn').classList.remove('show');
-  document.getElementById('resendTimer').style.display = 'inline';
-  resetRecaptcha();
-  initRecaptcha();
-  const raw = document.getElementById('phoneInput').value.trim();
-  try {
-    confirmationResult = await signInWithPhoneNumber(auth, normalizePhone(raw), window._recaptcha);
-    startResendTimer();
-  } catch(e) {
-    showOtpErr('שגיאה בשליחה מחדש — נסה שוב');
-  }
-};
-
-window.goBack = function() {
-  clearInterval(resendInterval);
-  document.getElementById('otpSection').classList.remove('show');
-  document.getElementById('phoneSection').style.display = 'block';
-  document.getElementById('sendBtn').disabled = false;
-  document.getElementById('sendBtn').textContent = 'שלח קוד אימות';
-  document.getElementById('otpInput').value = '';
-  resetRecaptcha();
-};
-
-window.clearPhoneErr = () => {
-  document.getElementById('phoneErr').classList.remove('show');
+window.clearErr = () => {
+  document.getElementById('loginErr').classList.remove('show');
   document.getElementById('phoneInput').classList.remove('error-input');
-};
-window.clearOtpErr = () => {
-  document.getElementById('otpErr').classList.remove('show');
-  document.getElementById('otpInput').classList.remove('error-input');
+  document.getElementById('codeInput').classList.remove('error-input');
 };
 
-function showPhoneErr(msg) {
-  const el = document.getElementById('phoneErr');
+function showErr(msg) {
+  const el = document.getElementById('loginErr');
   el.textContent = msg; el.classList.add('show');
   document.getElementById('phoneInput').classList.add('error-input');
+  document.getElementById('codeInput').classList.add('error-input');
 }
-function showOtpErr(msg) {
-  const el = document.getElementById('otpErr');
+
+function showForgotMsg(msg) {
+  const el = document.getElementById('forgotMsg');
   el.textContent = msg; el.classList.add('show');
-  document.getElementById('otpInput').classList.add('error-input');
-}
-function showOTPSection(phone) {
-  document.getElementById('phoneSection').style.display = 'none';
-  document.getElementById('otpSection').classList.add('show');
-  document.getElementById('otpSubtitle').textContent = 'נשלח קוד ל-' + phone;
-  document.getElementById('otpInput').focus();
-}
-function startResendTimer() {
-  let secs = 60;
-  document.getElementById('countdown').textContent = secs;
-  document.getElementById('resendTimer').style.display = 'inline';
-  document.getElementById('resendBtn').classList.remove('show');
-  resendInterval = setInterval(() => {
-    secs--;
-    document.getElementById('countdown').textContent = secs;
-    if (secs <= 0) {
-      clearInterval(resendInterval);
-      document.getElementById('resendTimer').style.display = 'none';
-      document.getElementById('resendBtn').classList.add('show');
-    }
-  }, 1000);
 }
 
 // אם כבר מחובר — דלג ישר
-onAuthStateChanged(auth, user => {
-  if (user && localStorage.getItem('hb_memberId')) {
-    const next = new URLSearchParams(location.search).get('next') || 'home.html';
-    location.href = next;
-  }
-});
+if (localStorage.getItem('hb_memberId')) {
+  const next = new URLSearchParams(location.search).get('next') || 'home.html';
+  location.href = next;
+}
 </script>
 </body>
 </html>

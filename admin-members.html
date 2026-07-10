@@ -460,6 +460,7 @@
   </div>
 
   <button id="migrateBtn" onclick="migrateMemberNumbers()" style="display:none;width:100%;background:var(--orange);color:#fff;border:none;border-radius:10px;padding:10px;font-family:'Heebo',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:16px;">🔢 מספר חברים מאושרים ללא מספר חבר</button>
+  <button id="migrateCodeBtn" onclick="migrateLoginCodes()" style="display:none;width:100%;background:var(--orange);color:#fff;border:none;border-radius:10px;padding:10px;font-family:'Heebo',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:16px;">🔑 קוד כניסה לחברים מאושרים ללא קוד</button>
 
   <div class="filter-bar">
     <button class="filter-btn active" data-val="all">הכל <span class="filter-count" id="countAll"></span></button>
@@ -689,6 +690,16 @@ async function allocateMemberNumber() {
   return newNum;
 }
 
+// קוד כניסה קבוע (6 ספרות) — מחליף את ה-OTP. נבדקת ייחודיות מול Firestore לפני שימוש
+async function generateLoginCode() {
+  for (let i = 0; i < 20; i++) {
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const snap = await getDocs(query(collection(db, 'members'), where('loginCode', '==', code)));
+    if (snap.empty) return code;
+  }
+  throw new Error('לא הצלחנו להגריל קוד ייחודי');
+}
+
 window.migrateMemberNumbers = async function() {
   const approved = members.filter(m => m.status === 'approved' && !m.memberNumber);
   if (!approved.length) { showToast('כל החברים כבר ממוספרים'); return; }
@@ -703,6 +714,21 @@ window.migrateMemberNumbers = async function() {
     await updateDoc(doc(db, 'members', m.id), { memberNumber: num });
   }
   showToast(`✅ מוספרו ${approved.length} חברים`);
+};
+
+window.copyLoginCode = function(code) {
+  navigator.clipboard.writeText(code).then(() => showToast('✅ הקוד הועתק ללוח'));
+};
+
+window.migrateLoginCodes = async function() {
+  const approved = members.filter(m => m.status === 'approved' && !m.loginCode);
+  if (!approved.length) { showToast('לכל החברים המאושרים כבר יש קוד כניסה'); return; }
+  if (!confirm(`ליצור קוד כניסה ל-${approved.length} חברים מאושרים שאין להם קוד?\nלאחר היצירה יש לשלוח לכל אחד את הקוד ידנית (WhatsApp/מייל) מתוך הכרטיס שלו.`)) return;
+  for (const m of approved) {
+    const loginCode = await generateLoginCode();
+    await updateDoc(doc(db, 'members', m.id), { loginCode, loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending' });
+  }
+  showToast(`✅ נוצר קוד כניסה ל-${approved.length} חברים — יש לשלוח להם ידנית`);
 };
 
 async function uploadFile(file, path) {
@@ -759,10 +785,10 @@ function waPhone(p) { const ph = (p||'').replace(/\D/g,''); return ph.startsWith
 
 // ── messages ──────────────────────────────────────────────────────────────────
 function buildWA(m) {
-  return `היי ${m.firstName} 👋\nברוך הבא לבית הצהוב! 💛\n\nהבקשה שלך אושרה.\n\n🔗 קישור כניסה לאתר: [יוכנס בהמשך]\n👥 קהילת הווטסאפ: [יוכנס בהמשך]\n🎟️ תעודת חבר דיגיטלית: [יצורף בהמשך]\n\nביחד ננצח 🏆`;
+  return `היי ${m.firstName} 👋\nברוך הבא לבית הצהוב! 💛\n\nהבקשה שלך אושרה.\n\n🔑 קוד הכניסה האישי שלך: ${m.loginCode || '—'}\n🔗 כניסה לאתר: https://habayit-hatsahov.github.io/mtabusiness/login.html\n(הכניסה עם מספר הטלפון שנרשם + הקוד למעלה — שמור אותו)\n\n👥 קהילת הווטסאפ: [יוכנס בהמשך]\n🎟️ תעודת חבר דיגיטלית: [יצורף בהמשך]\n\nביחד ננצח 🏆`;
 }
 function buildMail(m) {
-  return `שלום ${m.firstName},\n\nשמחים לבשר שהצטרפותך לבית הצהוב אושרה!\n\nמצורפים:\n• קישור כניסה אישי לאתר\n• קישור לקהילת הווטסאפ\n• תעודת חבר דיגיטלית\n\nבאהבה,\nצוות הבית הצהוב 💛`;
+  return `שלום ${m.firstName},\n\nשמחים לבשר שהצטרפותך לבית הצהוב אושרה!\n\n🔑 קוד הכניסה האישי שלך: ${m.loginCode || '—'}\nשמור אותו — תזדקק לו בכל כניסה לאתר, יחד עם מספר הטלפון שנרשם.\n\n🔗 קישור לכניסה: https://habayit-hatsahov.github.io/mtabusiness/login.html\n\nמצורפים:\n• קישור לקהילת הווטסאפ\n• תעודת חבר דיגיטלית\n\nבאהבה,\nצוות הבית הצהוב 💛`;
 }
 function buildFamilyWA(f, primaryName) {
   return `היי ${f.name} 👋\nברוך הבא לבית הצהוב! 💛\n\nהצטרפת כבן/בת משפחה של ${primaryName}.\n\n🔗 קישור כניסה לאתר: [יוכנס בהמשך]\n🎟️ תעודת חבר דיגיטלית: [יצורף בהמשך]\n\nביחד ננצח 🏆`;
@@ -783,6 +809,8 @@ function updateStats() {
   document.getElementById('statApproved').textContent = members.filter(m => m.status === 'approved').length;
   const needMigrate = members.filter(m => m.status === 'approved' && !m.memberNumber).length;
   document.getElementById('migrateBtn').style.display = needMigrate ? 'block' : 'none';
+  const needMigrateCode = members.filter(m => m.status === 'approved' && !m.loginCode).length;
+  document.getElementById('migrateCodeBtn').style.display = needMigrateCode ? 'block' : 'none';
   updateFilterCounts();
 }
 
@@ -1133,6 +1161,11 @@ window.openMemberSheet = async function(id) {
         </div>
         <div class="detail-item"><div class="lbl">נרשם</div><div class="val">${fmtDate(m.submittedAt)||'—'}</div></div>
         ${m.status==='approved' ? `<div class="detail-item"><div class="lbl">אושר</div><div class="val">${fmtDate(m.approvedAt)||'—'}</div></div>` : ''}
+        ${m.status==='approved' ? `<div class="detail-item"><div class="lbl">קוד כניסה</div><div class="val">${
+          m.loginCode
+            ? `<b style="letter-spacing:2px;">${m.loginCode}</b> <button onclick="copyLoginCode('${m.loginCode}')" style="border:none;background:none;color:var(--blue);cursor:pointer;font-size:11px;font-weight:700;">📋 העתק</button>`
+            : `<span style="color:var(--orange);">אין קוד — לחץ על "🔑 קוד כניסה לחברים מאושרים ללא קוד" למעלה</span>`
+        }</div></div>` : ''}
       </div>
     </div>
     <div class="card-section">
@@ -1275,10 +1308,11 @@ window.sendFamilyMail = function(id, idx) {
 };
 
 // ── approve modal ─────────────────────────────────────────────────────────────
-window.openApproveModal = function(id) {
+window.openApproveModal = async function(id) {
   approvingId = id;
   const m = members.find(x => x.id === id);
   if (!m) return;
+  if (!m.loginCode) m.loginCode = await generateLoginCode(); // נשמר בפועל ל-Firestore רק באישור עצמו
 
   document.getElementById('approveModalSub').textContent = `${m.firstName||''} ${m.lastName||''} · ${m.phone||''}`;
   document.getElementById('approveWaText').value   = buildWA(m);
@@ -1355,12 +1389,16 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
     return {...f, revoked: rejected};
   });
   const memberNumber = await allocateMemberNumber();
+  const loginCode = m.loginCode || await generateLoginCode();
   await updateDoc(doc(db, 'members', approvingId), {
     status: 'approved',
     approvedAt: serverTimestamp(),
     rejectedAt: null,
     familyApproved: true,
     memberNumber,
+    loginCode,
+    loginCodeCreatedAt: serverTimestamp(),
+    loginCodeEmailStatus: 'pending',
     ...(updatedFam.length ? { familyMembers: updatedFam } : {}),
   });
   const btn = document.getElementById('confirmApproveBtn');
@@ -1656,11 +1694,13 @@ window.bulkApprove = async function() {
   if (!confirm(`לאשר ${pending.length} חברים?`)) return;
   for (const id of pending) {
     const memberNumber = await allocateMemberNumber();
+    const loginCode = await generateLoginCode();
     await updateDoc(doc(db, 'members', id), {
-      status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null, familyApproved: true, memberNumber
+      status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null, familyApproved: true, memberNumber,
+      loginCode, loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending'
     });
   }
-  showToast(`✅ ${pending.length} חברים אושרו`);
+  showToast(`✅ ${pending.length} חברים אושרו — יש לשלוח לכל אחד את קוד הכניסה מהכרטיס שלו`);
   selectedIds.clear();
   document.getElementById('bulkBar').classList.remove('visible');
 };

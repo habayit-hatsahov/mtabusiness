@@ -1138,6 +1138,16 @@ window.downloadImage = function(url, filename) {
   a.remove();
 };
 
+// קוד כניסה קבוע (6 ספרות) — מחליף את ה-OTP. נבדקת ייחודיות מול Firestore לפני שימוש
+async function generateLoginCode() {
+  for (let i = 0; i < 20; i++) {
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const snap = await getDocs(query(collection(db, 'members'), where('loginCode', '==', code)));
+    if (snap.empty) return code;
+  }
+  throw new Error('לא הצלחנו להגריל קוד ייחודי');
+}
+
 // ── אישור עסק מאשר אוטומטית את חברות האוהד המקושרת ─────────────────────────
 async function approveLinkedMember(b) {
   const email = b.ownerEmail || b.email || '';
@@ -1157,12 +1167,16 @@ async function approveLinkedMember(b) {
       return current;
     });
     const updatedFam = (m.familyMembers || []).map(f => ({ ...f, revoked: false }));
+    const loginCode = m.loginCode || await generateLoginCode();
     await updateDoc(doc(db, 'members', memberDoc.id), {
       status: 'approved',
       approvedAt: serverTimestamp(),
       rejectedAt: null,
       familyApproved: true,
       memberNumber,
+      loginCode,
+      loginCodeCreatedAt: serverTimestamp(),
+      loginCodeEmailStatus: 'pending',
       ...(updatedFam.length ? { familyMembers: updatedFam } : {}),
     });
   } catch (e) {
