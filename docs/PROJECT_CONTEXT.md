@@ -29,7 +29,7 @@
 | Hosting | GitHub Pages — `habayit-hatsahov.github.io/mtabusiness/` | ✅ פעיל |
 | Storage | Firebase Storage — תמונות עסקים, לוגואים, תפריטים | ⏳ לא חובר |
 | Auth | **⚠️ הוחלף (2026-07-10):** קוד כניסה קבוע (6 ספרות) לפי `phone`+`loginCode` ב-Firestore, **לא** Firebase Phone Auth/OTP יותר — ר' סעיף 9 סעיף 22. **מומש בפועל (2026-07-11):** Firebase custom tokens אמיתיים דרך ה-Worker (לא רק בדיקת Firestore) | ✅ מחובר (`landing-demo.html`, Hero inline) |
-| Cloudflare Worker | `worker/` — מנפיק custom tokens (חברים/עסקים), שולח מיילי קוד (Brevo, cron כל דקה), דדופ הרשמה (`/check-member-exists`) — כל הגישה שלו ל-Firestore דרך service account, עוקפת Security Rules | ✅ פעיל, פרוס (`habayit-hatsahov-worker.yellowzone.workers.dev`) |
+| Cloudflare Worker | `worker/` — מנפיק custom tokens (חברים/עסקים), שולח מיילי קוד (Brevo, cron כל דקה), דדופ הרשמה (`/check-member-exists`) — כל הגישה שלו ל-Firestore דרך service account, עוקפת Security Rules. **בגיט (2026-07-12)** — נכנס לאותו repo כמו שאר האתר; הפריסה בפועל עדיין נפרדת (`wrangler deploy`), הגיט הוא רק גיבוי/היסטוריה | ✅ פעיל, פרוס (`habayit-hatsahov-worker.yellowzone.workers.dev`) |
 | Firestore Security Rules | **✅ הודקו (2026-07-11)** — `firestore.rules` בשורש הריפו, אחרי שהיו פתוחות לגמרי מ-2026-07-10. ר' סעיף 16 לפירוט מלא | ✅ פורסם |
 | Storage Security Rules | **✅ נכתבו ופורסמו (2026-07-11)** — `storage.rules` בשורש הריפו, אותה פילוסופיה כמו Firestore. נבדק בפועל מול ה-API. ר' סעיף 16 | ✅ פורסם |
 | מיילים | EmailJS — אוטומטי בעת אישור חבר (חינמי עד 200/חודש). **⚠️ ייתכן מיושן** — Worker+Brevo כבר עושים בפועל אותו דבר (ר' סעיף 12) | ⏳ לא חובר (נשמר כמשימה) |
@@ -86,8 +86,8 @@ fan-register.html    ← דף נחיתה + הרשמת אוהד (אורחים)
 business.html        ← הרשמת עסק לאינדקס (אורחים + חברים, כולל אימות אוהד)
 firebase-config.js   ← הגדרות Firebase משותפות (מיובא ע"י business.html + admin-businesses.html)
 firestore.rules      ← 🆕 (2026-07-11) חוקי אבטחת Firestore — לא מועלה לאתר, רק מקור אמת בגרסאות; מפורסם ידנית ב-Firebase Console
-storage.rules        ← 🆕 (2026-07-11) חוקי אבטחת Firebase Storage — לא מועלה לאתר, רק מקור אמת בגרסאות; טרם פורסם, ר' סעיף 16
-worker/              ← Cloudflare Worker (Auth + מיילים) — תיקייה נפרדת, ר' סעיף 2
+storage.rules        ← 🆕 (2026-07-11) חוקי אבטחת Firebase Storage — לא מועלה לאתר, רק מקור אמת בגרסאות; פורסם ונבדק, ר' סעיף 16
+worker/              ← Cloudflare Worker (Auth + מיילים) — נכנס לאותו git repo (2026-07-12, ר' סעיף 2); הפריסה בפועל עדיין נפרדת (`wrangler deploy`, לא תלויה בגיט)
 home.html            ← אינדקס עסקים ראשי — חברים מאושרים (כולל חוויית עסק מלאה ב-bottom sheet)
 profile.html         ← פרופיל אישי + תעודת חבר + הגדרות — חברים מאושרים
 card.html            ← תעודת חבר standalone
@@ -852,6 +852,8 @@ home.html
   - **⚠️ ממצא חדש — Firebase Storage Security Rules מעולם לא נבדקו/לא נגענו בהן** — כל העבודה על אבטחה עד כה (guard, isAdmin, Firestore Rules) נגעה רק ב-Firestore. Storage (תמונות עסקים/לוגואים/הוכחות-אוהד) נשלט ע"י חוקי אבטחה נפרדים לגמרי, שלא נבדקו בשום שלב. **קיים סיכון קונקרטי דומה לתקלת ה-Firestore מ-2026-07-10** (כלל "test mode" עם תאריך תפוגה) — לא אומת אם קיים כאן. **דורש בדיקה ידנית של המשתמש** ב-Firebase Console → Storage → Rules — אין גישת API/CLI זמינה בסביבת הפיתוח הנוכחית לבדוק זאת מרחוק. ר' סעיף 12
   - **הבהרה:** משימת "EmailJS" (סעיף 2/10/14) כנראה מיושנת/מיותרת — Worker+Brevo כבר שולחים מיילים אוטומטיים לאותו תרחיש בדיוק (קוד כניסה, אישור עסק). לא בוטלה רשמית, רק סומנה כ"ייתכן מיושנת"
   - **ידוע וממתין למשתמש (לא טכני):** קישור ציבורי (פייסבוק/וואטסאפ) + `index.html` ל-`landing-demo.html` — חסום עד שהעיצוב שם יסתיים; ניקוי אלמנטי DEV — המשתמש מבצע בעצמו; CORS ל-Storage bucket (כפתור הורדת תמונה) — חומרה בינונית, לא חוסם
+
+- **🆕 `worker/` נכנס לאותו git repo של האתר (2026-07-12) — תוקן פער גיבוי אמיתי.** עד עכשיו (ר' רשומות 2026-07-11 למעלה) `worker/` תועד כ"תיקייה נפרדת מחוץ ל-git הראשי" — בבדיקה בפועל התברר שזה לא היה "נפרד בכוונה עם גיבוי משלו", אלא **לא היה תחת שום בקרת גרסאות בכלל**: לא ב-`mtabusiness`, לא ב-repo נפרד משלו (`git status` בתוך `worker/` גילה שאין שם `.git` עצמאי כלל — הפקודה פשוט טיפסה למעלה למצוא את ה-`.git` של הריפו הראשי). כלומר קוד ה-Auth infrastructure (הנפקת custom tokens, אימות טלפון+קוד, rate-limit, אינטגרציית Brevo, CORS) היה קיים אך ורק על מחשב המשתמש + כגרסה ארוזה/פרוסה על Cloudflare — ללא היסטוריה/גיבוי אמיתי בשום מקום. **נבדק לפני ההוספה שאין שם סודות** — `wrangler.toml` מאשר שה-secrets (`FIREBASE_SERVICE_ACCOUNT_JSON`/`BREVO_API_KEY`) מוזנים דרך `wrangler secret put` ונשמרים אצל Cloudflare, לא בקובץ מקומי. `worker/.gitignore` (כבר קיים מראש, מוציא `node_modules/`+`.wrangler/`) נמצא תקין. **הוחלט:** להוסיף את `worker/` לאותו repo `mtabusiness` (לא repo נפרד) — הכי פשוט, ואינו משנה כלום בתהליך הפריסה (`wrangler deploy` פועל ללא תלות בגיט). נדחף בקומיט נפרד.
 
 - **✅ `storage.rules` נכתב, פורסם ונבדק (2026-07-11) — משימת ה-Storage מסעיף 12 נסגרה.** מיפוי מלא של כל נתיבי ההעלאה בפועל בקוד (לא ניחוש):
   - **`businesses/{bizId}/logo` / `coverPhoto` / `gallery_N`** (עם/בלי `_{timestamp}` תלוי הקובץ) — נכתבים ב-3 מקומות: `business.html` (הרשמה, **אנונימי לגמרי**, מיד אחרי שנוצר מסמך `businesses/{bizId}` עם `status:'pending'`), `business-dashboard.html` (בעל עסק מחובר עם custom token מה-Worker, `auth.uid===bizId`), `admin-businesses.html` (מנהל).
