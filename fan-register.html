@@ -503,34 +503,27 @@
 
 <script type="module">
   import { db, getStorageLazy } from './firebase-config.js';
-  import { collection, addDoc, updateDoc, doc, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+  import { collection, addDoc, updateDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
   import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
+  const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
+
   // ── זיהוי הרשמה כפולה — אם כבר קיימת רשומת חבר עם אותו טלפון/מייל (למשל נרשם כבר
-  // כבעל עסק ומקבל רשומת חבר אוטומטית), מעדכנים אותה במקום ליצור כפולה ──
-  function normalizePhoneDigits(raw) {
-    let d = (raw || '').replace(/\D/g, '');
-    if (d.startsWith('972')) d = '0' + d.slice(3);
-    if (!d.startsWith('0'))  d = '0' + d;
-    return d;
-  }
-  function phoneCandidates(raw) {
-    const local = normalizePhoneDigits(raw);
-    const dashed = local.length === 10 ? local.slice(0,3) + '-' + local.slice(3) : local;
-    const e164 = '+972' + local.slice(1);
-    return [...new Set([local, dashed, e164])];
-  }
-  async function findExistingMember(phone, email) {
-    const emailLower = (email || '').trim().toLowerCase();
-    if (emailLower) {
-      const byEmail = await getDocs(query(collection(db, 'members'), where('email', '==', emailLower)));
-      if (!byEmail.empty) return byEmail.docs[0];
+  // כבעל עסק ומקבל רשומת חבר אוטומטית), מעדכנים אותה במקום ליצור כפולה. הבדיקה עצמה
+  // עברה לשרת (ה-Worker, /check-member-exists) — לא עוד שאילתה ישירה וחשופה על members ──
+  async function findExistingMemberId(phone, email) {
+    try {
+      const resp = await fetch(WORKER_URL + '/check-member-exists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, email })
+      });
+      const data = await resp.json();
+      return data.memberId || null;
+    } catch (e) {
+      console.error('fan-register.html: לא ניתן היה לבדוק כפילות מול השרת.', e);
+      return null;
     }
-    for (const cand of phoneCandidates(phone)) {
-      const byPhone = await getDocs(query(collection(db, 'members'), where('phone', '==', cand)));
-      if (!byPhone.empty) return byPhone.docs[0];
-    }
-    return null;
   }
 
   async function uploadFile(file, path) {
@@ -644,11 +637,11 @@
 
     let memberDocRef = null;
     try {
-      const existing = await findExistingMember(data.phone, data.email);
-      if (existing) {
+      const existingId = await findExistingMemberId(data.phone, data.email);
+      if (existingId) {
         // כבר קיים במערכת (למשל נרשם קודם כבעל עסק וקיבל רשומת חבר אוטומטית) —
         // מעדכנים את הפרטים האישיים בלבד, בלי לגעת בסטטוס/isBusinessOwner/קוד כניסה קיימים
-        memberDocRef = doc(db, 'members', existing.id);
+        memberDocRef = doc(db, 'members', existingId);
         await updateDoc(memberDocRef, {
           firstName:         data.firstName,
           lastName:          data.lastName,

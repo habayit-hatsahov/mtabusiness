@@ -483,10 +483,17 @@
   <script type="module">
     import { auth, db } from './firebase-config.js';
     import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
-    import { doc, getDoc, collection, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
+    import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
 
-    // ── AUTH GUARD — מושבת זמנית ─────────────────────────────────────────
-    const memberId = localStorage.getItem('hb_memberId');
+    // ── AUTH GUARD — session אמיתי (Firebase Auth) + hb_memberId תואם ────
+    const memberId = await new Promise(resolve => {
+      const unsub = onAuthStateChanged(auth, user => {
+        unsub();
+        const mid = localStorage.getItem('hb_memberId');
+        if (!user || !mid) { location.href = 'landing-demo.html'; return; }
+        resolve(mid);
+      });
+    });
 
     function pad(n) { return String(n).padStart(5,'0'); }
 
@@ -508,10 +515,9 @@
     (async function initBizNavItem() {
       if (data.isBusinessOwner !== true) return;
       let token = memberId ? '' : (sessionStorage.getItem('hb_lastBizToken') || 'c6342c93-a350-42b8-ad87-95fa005c8983');
-      if (memberId && (data.phone || data.email)) {
-        const bizQ = query(collection(db, 'businesses'), data.phone ? where('ownerPhone', '==', data.phone) : where('ownerEmail', '==', data.email));
-        const bizSnap = await getDocs(bizQ);
-        if (!bizSnap.empty) token = bizSnap.docs[0].data().accessToken || '';
+      if (memberId && data.linkedBusinessId) {
+        const bizSnap = await getDoc(doc(db, 'businesses', data.linkedBusinessId));
+        if (bizSnap.exists()) token = bizSnap.data().accessToken || '';
       }
       if (!token) return;
       const item = document.getElementById('menuBizItem');

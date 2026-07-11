@@ -647,30 +647,51 @@
 
 <script type="module">
 import { auth, db } from './firebase-config.js';
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { onAuthStateChanged, signOut, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
-// ── AUTH GUARD — מושבת זמנית ─────────────────────────────────────────────
-// הגעה מדשבורד עסק (bizToken) → תמיד להציג את הפרופיל של האוהד המקושר לעסק הזה,
-// ולא את מה שיש ב-session הנוכחי (למשל אם צופים בקישור של עסק אחר)
+// ── AUTH GUARD ────────────────────────────────────────────────────────────
+// 3 נתיבי גישה שונים לדף הזה:
+// 1) bizToken   — בעל עסק שמגיע מהדשבורד שלו (business-dashboard.html), מאומת מול ה-Worker לפי תוקף ה-accessToken (לא session חבר — זהות שונה, role:'business_owner')
+// 2) previewMemberId — תצוגה מקדימה של מנהל בלבד (קישור מ-admin-members.html), דורש isAdmin אמיתי על הרשומה של הצופה
+// 3) גישה רגילה — חבר צופה בפרופיל של עצמו, דורש session Firebase אמיתי + hb_memberId תואם
 const bizToken = new URLSearchParams(location.search).get('bizToken');
 const previewMemberId = new URLSearchParams(location.search).get('previewMemberId');
-let memberId = previewMemberId || localStorage.getItem('hb_memberId');
+let memberId;
 
 if (bizToken) {
-  try {
-    const resp = await fetch(WORKER_URL + '/mint-biz-token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accessToken: bizToken })
+  const resp = await fetch(WORKER_URL + '/mint-biz-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accessToken: bizToken })
+  }).catch(() => null);
+  const data = resp ? await resp.json().catch(() => ({})) : {};
+  if (!data.ownerMemberId || !data.customToken) { location.href = 'landing-demo.html'; await new Promise(() => {}); }
+  // מתחבר בפועל כעסק (role:'business_owner', uid=מזהה העסק) — נדרש כדי שקריאת מסמך
+  // החבר המקושר תעבור את חוקי ה-Firestore (בעל עסק מחובר יכול לקרוא רק את החבר שהוא מקושר אליו)
+  await signInWithCustomToken(auth, data.customToken);
+  memberId = data.ownerMemberId;
+} else if (previewMemberId) {
+  memberId = await new Promise(resolve => {
+    const unsub = onAuthStateChanged(auth, async user => {
+      unsub();
+      if (!user) { location.href = 'landing-demo.html'; return; }
+      const snap = await getDoc(doc(db, 'members', user.uid));
+      if (!snap.exists() || snap.data().isAdmin !== true) { location.href = 'home.html'; return; }
+      resolve(previewMemberId);
     });
-    const data = await resp.json();
-    if (data.ownerMemberId) memberId = data.ownerMemberId;
-  } catch (e) {
-    console.error('profile.html: לא ניתן היה לאתר את בעל העסק דרך ה-Worker.', e);
-  }
+  });
+} else {
+  memberId = await new Promise(resolve => {
+    const unsub = onAuthStateChanged(auth, user => {
+      unsub();
+      const mid = localStorage.getItem('hb_memberId');
+      if (!user || !mid) { location.href = 'landing-demo.html'; return; }
+      resolve(mid);
+    });
+  });
 }
 
 // ── LOAD MEMBER ───────────────────────────────────────────────────────────
@@ -733,19 +754,12 @@ if (member.isBusinessOwner) {
     const navItem = document.getElementById('menuBizItem');
     navItem.href = `business-dashboard.html?token=${lastToken}`;
     navItem.style.display = 'flex';
-  } else if (member.linkedBusinessId || member.phone) {
-    // עדיפות לקישור הקבוע (linkedBusinessId) — לא תלוי בטלפון הנוכחי, לא שביר לעריכות מאוחרות.
-    // נפילה-חזרה לשאילתת ownerPhone רק לרשומות ישנות שטרם קושרו
+  } else if (member.linkedBusinessId) {
+    // קישור קבוע (linkedBusinessId) — לא תלוי בטלפון הנוכחי, לא שביר לעריכות מאוחרות.
+    // שאילתת ownerPhone הישנה הוסרה — כל 50 העסקים הקיימים כבר קושרו במיגרציה (ר' PROJECT_CONTEXT סעיף 16)
     let biz = null;
-    if (member.linkedBusinessId) {
-      const bizSnap = await getDoc(doc(db, 'businesses', member.linkedBusinessId));
-      if (bizSnap.exists()) biz = bizSnap.data();
-    }
-    if (!biz && member.phone) {
-      const bizQ = query(collection(db, 'businesses'), where('ownerPhone', '==', member.phone));
-      const bizSnap = await getDocs(bizQ);
-      if (!bizSnap.empty) biz = bizSnap.docs[0].data();
-    }
+    const bizSnap = await getDoc(doc(db, 'businesses', member.linkedBusinessId));
+    if (bizSnap.exists()) biz = bizSnap.data();
     if (biz) {
       const token = biz.accessToken || '';
       const bizName = biz.name || 'העסק שלי';

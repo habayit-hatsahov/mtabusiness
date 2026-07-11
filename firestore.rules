@@ -1,0 +1,153 @@
+rules_version = '2';
+
+// ── הבית הצהוב — חוקי אבטחת Firestore ──────────────────────────────────────
+// עד 2026-07-11 החוקים היו פתוחים לגמרי (קריאה+כתיבה בלי אימות), כתיקון חירום
+// זמני אחרי שהחוקים הקודמים פגו תוקף (ר' docs/PROJECT_CONTEXT.md סעיף 12).
+// זהו ההידוק הראשון האמיתי, אחרי שנבנתה תשתית Auth מלאה (Worker מנפיק
+// Firebase custom tokens לחברים/עסקים/מנהלים, כל דפי החברים+הניהול בודקים
+// session אמיתי). ר' docs/PROJECT_CONTEXT.md למפת הגישה המלאה שהובילה לכתיבת
+// הקובץ הזה, ולתיעוד הפשרות המפורשות שהתקבלו.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── HELPERS ──────────────────────────────────────────────────────────
+    // Worker (worker/src/firestore.js, service-account OAuth) עוקף את כל
+    // החוקים האלה לגמרי — לא מושפע מהקובץ הזה בשום צורה.
+
+    // "אני מנהל?" — get() על מסמך *אחר* (members/{request.auth.uid}), לא
+    // רקורסיה עצמית על המסמך הנוכחי שה-rule מריץ עליו. תבנית סטנדרטית
+    // ובטוחה (Firestore data-driven lookup pattern).
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/members/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // "אני חבר מחובר כלשהו?" (לא בהכרח מנהל) — משמש להיתר הכתיבה הצר על
+    // likedBy/clicks בכל עסק (home.html). לא בודקים status=='approved':
+    // הגעה ל-request.auth.uid שמפנה למסמך חבר קיים כבר מרמזת על אישור
+    // (ה-Worker לא מנפיק custom token אלא לחברים עם status=='approved',
+    // ר' worker/src/index.js handleMemberLogin) — חוסך get() מיותר.
+    function isSignedInMember() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/members/$(request.auth.uid));
+    }
+
+    // "אני עסק מחובר (role: business_owner) שמקושר ל-memberId הזה?" —
+    // מאפשר ל-profile.html?bizToken= לקרוא את המסמך של בעל העסק שלו בלבד.
+    function isLinkedBusinessOwnerOf(memberId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/businesses/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/businesses/$(request.auth.uid)).data.ownerMemberId == memberId;
+    }
+
+    // ── MEMBERS ──────────────────────────────────────────────────────────
+    match /members/{memberId} {
+
+      // מנהל: הכול. חבר מחובר: רק המסמך של עצמו. בעל עסק מחובר: רק אם הוא
+      // מקושר (ownerMemberId) למסמך החבר הזה.
+      allow get: if isAdmin()
+        || (request.auth != null && request.auth.uid == memberId)
+        || isLinkedBusinessOwnerOf(memberId);
+
+      // אין list פומבי בכלל — דדופ עבר לגמרי ל-Worker (/check-member-exists).
+      allow list: if isAdmin();
+
+      // אורח (fan-register.html/business.html): מותר ליצור רשומת "pending"
+      // חדשה, אך חובה status=='pending' וחובה שלא ייכתב isAdmin בכלל.
+      allow create: if isAdmin()
+        || (
+          request.resource.data.status == 'pending' &&
+          !('isAdmin' in request.resource.data)
+        );
+
+      allow update: if isAdmin()
+
+        // (א) דדופ אנונימי לרשומה קיימת — אחרי שה-Worker כבר זיהה memberId
+        // תואם. עדיין ללא request.auth — מוגבל בקפדנות לשדות "פרופיל אישי".
+        || (
+          request.auth == null &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'firstName', 'lastName', 'phone', 'email',
+              'isSubscriber', 'subscriberSection', 'subscriberNumber',
+              'wasSubscriber', 'facebookUrl', 'familyMembers',
+              'isBusinessOwner', 'linkedBusinessId', 'photoProofUrl'
+            ]) &&
+          request.resource.data.status == resource.data.status &&
+          (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin)
+        )
+
+        // (ב) חבר מחובר עורך את המסמך של עצמו — home.html/profile.html.
+        || (
+          request.auth != null && request.auth.uid == memberId &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'phone', 'email',
+              'pendingFamilyChanges', 'pendingFamilyChangesAt',
+              'familyMembers'
+            ]) &&
+          request.resource.data.status == resource.data.status &&
+          (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin)
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // ── BUSINESSES ───────────────────────────────────────────────────────
+    match /businesses/{businessId} {
+
+      // מנהל, בעל העסק עצמו, או כל אחד (כולל אנונימי) רק אם המסמך עצמו
+      // כבר approved — עסקים מאושרים אמורים להיות ציבוריים; ממתינים/נדחים
+      // מכילים טלפון/מייל/accessToken של הבעלים ונשארים מוגנים.
+      allow get: if isAdmin()
+        || (request.auth != null && request.auth.uid == businessId)
+        || resource.data.status == 'approved';
+
+      // שאילתה ציבורית עם where('status','==','approved') בלבד — Firestore
+      // אוכף את זה ברמת ה-query (שאילתה בלי הפילטר הזה תיכשל כולה).
+      allow list: if isAdmin() || resource.data.status == 'approved';
+
+      // אורח יוצר בקשת עסק חדשה: חובה status=='pending'.
+      allow create: if isAdmin()
+        || request.resource.data.status == 'pending';
+
+      allow update: if isAdmin()
+
+        // (א) יצירה אנונימית ממשיכה עם updateDoc מיידי: הוספת ownerMemberId,
+        // ואח"כ עדכון תמונות אחרי Storage upload. status חייב להישאר pending.
+        || (
+          request.auth == null &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['ownerMemberId', 'photoProofUrl', 'logo', 'coverPhoto', 'photos'])
+        )
+
+        // (ב) בעל עסק מחובר עורך את pendingChanges של עצמו בלבד —
+        // business-dashboard.html. לעולם לא כותב לשדות "החיים" ישירות.
+        || (
+          request.auth != null && request.auth.uid == businessId &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['pendingChanges', 'pendingChangesAt'])
+        )
+
+        // (ג) כל חבר מחובר — likedBy/clicks בלבד, על כל עסק (home.html).
+        || (
+          isSignedInMember() &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['likedBy', 'clicks'])
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // ── COUNTERS (רק counters/members בשימוש בפועל) ──────────────────────
+    match /counters/{counterId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ברירת מחדל: הכול חסום. אין match לאף collection אחר.
+  }
+}

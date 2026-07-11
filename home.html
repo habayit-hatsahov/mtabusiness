@@ -1747,17 +1747,17 @@ document.addEventListener('DOMContentLoaded', () => {
 <script type="module">
 import { db, auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, getDoc, getDocs, updateDoc, arrayUnion, arrayRemove, increment } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
-// auth guard — מושבת זמנית
-// await new Promise(resolve => {
-//   const unsub = onAuthStateChanged(auth, user => {
-//     unsub();
-//     if (!user || !localStorage.getItem('hb_memberId')) {
-//       location.href = 'landing-demo.html';
-//     } else { resolve(); }
-//   });
-// });
+// auth guard — session אמיתי (Firebase Auth, custom token מונפק ב-landing-demo.html) + hb_memberId תואם
+await new Promise(resolve => {
+  const unsub = onAuthStateChanged(auth, user => {
+    unsub();
+    if (!user || !localStorage.getItem('hb_memberId')) {
+      location.href = 'landing-demo.html';
+    } else { resolve(); }
+  });
+});
 
 window._likeFirestoreToggle = async function(id, memberId, liked) {
   await updateDoc(doc(db, 'businesses', id), {
@@ -1820,14 +1820,13 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
 // ── בעל עסק — הצגת כפתור "העסק שלי" בסרגל הצד ──
 async function initBizNavItem() {
   const memberId = localStorage.getItem('hb_memberId');
-  let isBizOwner = false, phone = '', email = '';
+  let isBizOwner = false, linkedBusinessId = '';
   if (memberId) {
     const snap = await getDoc(doc(db, 'members', memberId));
     if (snap.exists()) {
       const d = snap.data();
       isBizOwner = d.isBusinessOwner === true;
-      phone = d.phone || '';
-      email = d.email || '';
+      linkedBusinessId = d.linkedBusinessId || '';
     }
   } else {
     isBizOwner = true; // dev fallback
@@ -1835,10 +1834,9 @@ async function initBizNavItem() {
   if (!isBizOwner) return;
 
   let token = memberId ? '' : (sessionStorage.getItem('hb_lastBizToken') || 'c6342c93-a350-42b8-ad87-95fa005c8983');
-  if (memberId && (phone || email)) {
-    const bizQ = query(collection(db, 'businesses'), phone ? where('ownerPhone', '==', phone) : where('ownerEmail', '==', email));
-    const bizSnap = await getDocs(bizQ);
-    if (!bizSnap.empty) token = bizSnap.docs[0].data().accessToken || '';
+  if (memberId && linkedBusinessId) {
+    const bizSnap = await getDoc(doc(db, 'businesses', linkedBusinessId));
+    if (bizSnap.exists()) token = bizSnap.data().accessToken || '';
   }
   if (!token) return;
 

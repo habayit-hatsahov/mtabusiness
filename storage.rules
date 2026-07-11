@@ -1,0 +1,81 @@
+rules_version = '2';
+
+// ── הבית הצהוב — חוקי אבטחת Firebase Storage ────────────────────────────────
+// עד עכשיו (2026-07-11) חוקי ה-Storage מעולם לא נבדקו/לא נכתבו במפורש — ר'
+// docs/PROJECT_CONTEXT.md סעיף 12. קיים סיכון שהבאקט עדיין ב-"test mode" עם
+// כלל פתוח שפג/יפוג תוקף (בדיוק כמו שקרה ל-Firestore ב-2026-07-10).
+// זהו ההידוק הראשון, במקביל ל-firestore.rules הקיים ובאותה פילוסופיה בדיוק.
+//
+// ⚠️ הערה חשובה שלא נפתרת ע"י הקובץ הזה: כל כתובת תמונה באתר מגיעה מ-
+// getDownloadURL(), שמטביעה טוקן גישה בתוך ה-URL עצמו (?alt=media&token=...).
+// מי שמחזיק את הכתובת המדויקת יכול לצפות בקובץ ללא קשר לחוקים כאן — זו
+// התנהגות מובנית של Firebase Storage, לא באג. החוקים כאן חוסמים גישה לכל מי
+// שאין לו את הכתובת (ניחוש נתיב, list גורף, כתיבה/מחיקה זדונית) — בדיוק כמו
+// שהתקלה ב-Firestore הייתה "כל אחד עם קישור יכול לקרוא/לכתוב הכל".
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── HELPERS ────────────────────────────────────────────────────────────
+    // firestore.get()/firestore.exists() — פונקציונליות cross-service, בודקת
+    // מסמכי Firestore ישירות מתוך חוקי Storage (אותו database, "(default)").
+
+    function isAdmin() {
+      return request.auth != null &&
+        firestore.exists(/databases/(default)/documents/members/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/members/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function underSizeLimit() {
+      return request.resource.size < 15 * 1024 * 1024; // 15MB — תמונות טלפון גדולות, בלי לאפשר קבצים ענקיים
+    }
+
+    // ── תמונות עסק: לוגו / תמונה מייצגת / גלריה (businesses/{bizId}/...) ────
+    // כתיבה: business.html (הרשמה, אנונימי, מסמך pending טרי) /
+    //        business-dashboard.html (בעל עסק מחובר, auth.uid==bizId) /
+    //        admin-businesses.html (מנהל)
+    match /businesses/{bizId}/{fileName} {
+
+      // קריאה: מנהל, בעל העסק עצמו, או כל אחד (כולל אנונימי) רק אם העסק
+      // כבר approved — תואם בדיוק לכלל ה-get המקביל ב-firestore.rules
+      // (עסקים מאושרים = ציבוריים בכוונה, כדי שיוצגו ב-home.html/landing-demo.html).
+      allow read: if isAdmin()
+        || (request.auth != null && request.auth.uid == bizId)
+        || firestore.get(/databases/(default)/documents/businesses/$(bizId)).data.status == 'approved';
+
+      allow write: if isImage() && underSizeLimit() && (
+        isAdmin()
+        || (request.auth != null && request.auth.uid == bizId)
+        // אורח בהרשמה ראשונית — בלי session, אך רק לתוך עסק שכבר נוצר כ-pending
+        // (business.html יוצר קודם את מסמך ה-Firestore, ורק אז מעלה תמונות)
+        || (
+          request.auth == null &&
+          firestore.exists(/databases/(default)/documents/businesses/$(bizId)) &&
+          firestore.get(/databases/(default)/documents/businesses/$(bizId)).data.status == 'pending'
+        )
+      );
+    }
+
+    // ── תמונת הוכחת אוהד (members/proofs/{memberId}_...) ────────────────────
+    // כתיבה: fan-register.html/business.html (הרשמה, אנונימי) /
+    //        admin-members.html (מנהל עורך)
+    // קריאה: מוצגת אך ורק ב-admin-members.html — אין תרחיש שבו האוהד עצמו
+    // או מבקר ציבורי צריכים לקרוא את זה.
+    match /members/proofs/{fileName} {
+      allow read: if isAdmin();
+
+      allow write: if isImage() && underSizeLimit() && (
+        isAdmin() || request.auth == null
+      );
+    }
+
+    // ברירת מחדל: הכול חסום. אין match לאף נתיב אחר.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

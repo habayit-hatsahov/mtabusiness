@@ -494,18 +494,17 @@ renderTerms(content, document.getElementById('termsContent'));
 
     // ── בעל עסק — הצגת כפתור "העסק שלי" בתפריט המלא ──
     import('./firebase-config.js').then(async ({ db }) => {
-      const { doc, getDoc, collection, query, where, getDocs } =
+      const { doc, getDoc } =
         await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js');
 
       const memberId = localStorage.getItem('hb_memberId');
-      let isBizOwner = false, phone = '', email = '';
+      let isBizOwner = false, linkedBusinessId = '';
       if (memberId) {
         const snap = await getDoc(doc(db, 'members', memberId));
         if (snap.exists()) {
           const d = snap.data();
           isBizOwner = d.isBusinessOwner === true;
-          phone = d.phone || '';
-          email = d.email || '';
+          linkedBusinessId = d.linkedBusinessId || '';
         }
       } else {
         isBizOwner = true; // dev fallback
@@ -513,10 +512,9 @@ renderTerms(content, document.getElementById('termsContent'));
       if (!isBizOwner) return;
 
       let token = memberId ? '' : (sessionStorage.getItem('hb_lastBizToken') || 'c6342c93-a350-42b8-ad87-95fa005c8983');
-      if (memberId && (phone || email)) {
-        const bizQ = query(collection(db, 'businesses'), phone ? where('ownerPhone', '==', phone) : where('ownerEmail', '==', email));
-        const bizSnap = await getDocs(bizQ);
-        if (!bizSnap.empty) token = bizSnap.docs[0].data().accessToken || '';
+      if (memberId && linkedBusinessId) {
+        const bizSnap = await getDoc(doc(db, 'businesses', linkedBusinessId));
+        if (bizSnap.exists()) token = bizSnap.data().accessToken || '';
       }
       if (!token) return;
 

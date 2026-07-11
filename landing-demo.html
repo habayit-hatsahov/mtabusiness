@@ -8,6 +8,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet"/>
+<!-- ⚡ מאיץ טעינת נתונים חיים: מתחיל את חיבור ה-SDK/הנתונים/התמונות מ-Firebase כבר בזמן ניתוח ה-HTML, במקום לחכות שהדפדפן יגיע ל-<script type="module"> בסוף הדף (אותו דפוס כמו home.html). משתמש ב-firestore-lite (136KB) במקום firestore המלא (455KB) — הדף הזה רק קורא נתונים פעם אחת (getDocs/getDoc), אין בו האזנת זמן-אמת (onSnapshot) שדורשת את הגרסה המלאה -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin/>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin/>
+<link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin/>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js"/>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore-lite.js"/>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js"/>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -214,9 +221,11 @@ img { display: block; max-width: 100%; }
 .stat-num { font-size: clamp(22px, 3vw, 30px); font-weight: 900; color: var(--yellow); font-variant-numeric: tabular-nums; }
 .stat-label { font-size: 12.5px; color: var(--text-sm); font-weight: 700; margin-top: 6px; }
 
-/* ══ FEATURED CAROUSEL (reuses home.html biz-card language) ══ */
+/* ══ FEATURED CAROUSEL — coverflow: הכרטיס במרכז בולט, הצדדים מוקטנים ומעומעמים ══ */
 .fc-scroll {
-  display: flex; gap: 16px; overflow-x: auto; padding: 6px 4px 20px;
+  display: flex; align-items: center; gap: 16px; overflow-x: auto;
+  padding: 30px 4px 34px;
+  padding-inline: calc(50% - 125px);
   scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
 }
 .fc-scroll::-webkit-scrollbar { display: none; }
@@ -224,19 +233,27 @@ img { display: block; max-width: 100%; }
   background: var(--card-bg); border-radius: var(--radius);
   border: 1px solid var(--border-md);
   min-width: 250px; max-width: 250px;
-  overflow: hidden; cursor: pointer; scroll-snap-align: start; flex-shrink: 0;
-  transition: transform .22s var(--ease), box-shadow .22s var(--ease), border-color .2s ease;
+  overflow: hidden; cursor: pointer; scroll-snap-align: center; flex-shrink: 0;
+  transform-origin: center;
+  transition: transform .3s var(--ease), box-shadow .3s ease, opacity .3s ease, border-color .2s ease;
   position: relative;
 }
-.biz-card:hover { transform: translateY(-6px); box-shadow: 0 18px 40px rgba(0,0,0,.4); }
+.biz-card:hover { box-shadow: 0 20px 46px rgba(0,0,0,.55), 0 0 26px rgba(255,222,0,.3), 0 0 0 1px rgba(255,222,0,.4); }
+.biz-card.is-center { border-color: rgba(255,222,0,.5); box-shadow: 0 24px 56px rgba(0,0,0,.5), 0 0 34px rgba(255,222,0,.28), 0 0 0 1px rgba(255,222,0,.35); }
 .biz-card-img { width: 100%; height: 132px; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-.biz-card-cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.biz-visual-img { opacity: 0; transition: opacity .35s ease; background: rgba(255,255,255,.03); }
+.biz-visual-img.loaded { opacity: 1; }
 .biz-logo { width: 62px; height: 62px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; color: #fff; }
 .biz-card-logo-badge {
   position: absolute; bottom: 8px; right: 8px; width: 44px; height: 44px; border-radius: 11px;
   background: #fff; box-shadow: 0 3px 10px rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
 .biz-card-logo-badge img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+.pv-logo-badge {
+  position: absolute; bottom: 5px; right: 5px; width: 26px; height: 26px; border-radius: 8px;
+  background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.pv-logo-badge img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
 .biz-badge { position: absolute; top: 10px; right: 10px; background: var(--yellow); color: #16130a; font-size: 10px; font-weight: 900; padding: 4px 10px; border-radius: 20px; }
 .biz-rating { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,.55); color: #fff; font-size: 11px; font-weight: 800; padding: 4px 9px; border-radius: 20px; display: flex; align-items: center; gap: 4px; }
 .biz-card-body { padding: 14px 16px 17px; }
@@ -245,6 +262,11 @@ img { display: block; max-width: 100%; }
 .biz-card-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; height: 34px; overflow: hidden; }
 .biz-discount { margin-top: 10px; background: rgba(255,222,0,.1); border: 1px solid rgba(255,222,0,.3); border-radius: 9px; padding: 7px 10px; font-size: 12px; font-weight: 700; color: var(--yellow); }
 .fc-cta { text-align: center; margin-top: 6px; }
+
+/* ══ שלד טעינה (skeleton) — מוצג עד שהנתונים האמיתיים מ-Firestore מגיעים, במקום להבזיק עסקי-דמה ואז להחליף ══ */
+@keyframes skelPulse { 0%,100% { opacity: .55; } 50% { opacity: .9; } }
+.skel-block { background: rgba(255,255,255,.07); border-radius: 8px; animation: skelPulse 1.3s ease-in-out infinite; }
+.skel-line { height: 13px; }
 
 /* ══ CATEGORIES ══ */
 .cats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 14px; }
@@ -754,10 +776,32 @@ const FALLBACK_BIZ = [
 
 function bizCardVisual(biz, small) {
   const colors = catColors[biz.cat] || ['#003DA5','#002a75'];
-  if (biz.logo) {
-    return `<img src="${biz.logo}" class="${small?'':'biz-card-cover-img'}" style="${small?'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;':''}" onerror="this.remove()"/>`;
-  }
+  const cover = biz.coverPhoto || null;
+  const logo = biz.logo || null;
+  // הכרטיסים הגדולים (קרוסלת "נבחרים") נמצאים למעלה בדף — נטענים eager; הכרטיסים הקטנים (רשימת התצוגה החסומה) נמצאים נמוך יותר — lazy
+  // fetchpriority="high" על הכרטיסים הגדולים — אומר לדפדפן להוריד את התמונות האלה לפני שאר משאבי הדף (לא רק eager, גם בעדיפות רשת גבוהה)
+  const mainImg = (src) => `<img src="${src}" loading="${small?'lazy':'eager'}" fetchpriority="${small?'auto':'high'}" decoding="async" class="biz-visual-img" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" onload="this.classList.add('loaded')" onerror="this.remove()"/>`;
+  const badge = (src) => `<div class="${small?'pv-logo-badge':'biz-card-logo-badge'}"><img src="${src}" loading="${small?'lazy':'eager'}" fetchpriority="${small?'auto':'high'}" decoding="async" onerror="this.parentElement.remove()"/></div>`;
+  // תמונה מייצגת (coverPhoto) ממלאת את הכרטיס; לוגו (אם יש) מוצג כ-badge קטן בפינה — תואם ל-home.html (סעיף 6.4)
+  if (cover) return mainImg(cover) + (logo ? badge(logo) : '');
+  // בלי תמונה מייצגת — נופלים ללוגו לבד, ממלא את כל הכרטיס (אותה החלטה כמו home.html: cover פשוט, בלי ריפוד/טשטוש)
+  if (logo) return mainImg(logo);
   return `<div class="${small?'pv-logo':'biz-logo'}" style="background:linear-gradient(135deg,${colors[0]},${colors[1]})">${bizInitials(biz.name)}</div>`;
+}
+
+// שלד טעינה זמני — מוצג עד שהנתונים האמיתיים מ-Firestore מגיעים, כדי לא "להבזיק" עסק דמה (FALLBACK_BIZ) ואז להחליף אותו בעסק אמיתי
+function renderFeaturedSkeleton() {
+  const el = document.getElementById('featuredScroll');
+  el.innerHTML = Array.from({length: 5}).map(() => `
+    <div class="biz-card">
+      <div class="biz-card-img skel-block"></div>
+      <div class="biz-card-body">
+        <div class="skel-block skel-line" style="width:70%"></div>
+        <div class="skel-block skel-line" style="width:40%;margin-top:8px;height:11px"></div>
+        <div class="skel-block" style="width:100%;height:34px;margin-top:8px"></div>
+      </div>
+    </div>`).join('');
+  requestAnimationFrame(updateFeaturedScale);
 }
 
 function renderFeatured(list) {
@@ -765,9 +809,10 @@ function renderFeatured(list) {
   const items = (list && list.length ? list : FALLBACK_BIZ).slice(0, 8);
   el.innerHTML = items.map(b => {
     const colors = catColors[b.cat] || ['#003DA5','#002a75'];
+    const hasVisual = !!(b.coverPhoto || b.logo);
     return `
     <div class="biz-card" style="border-color:${colors[0]}55" onclick="openGate()">
-      <div class="biz-card-img" style="background:linear-gradient(135deg,${colors[0]}55,${colors[1]}88)">
+      <div class="biz-card-img" style="background:${hasVisual ? 'rgba(255,255,255,.05)' : `linear-gradient(135deg,${colors[0]}55,${colors[1]}88)`}">
         ${bizCardVisual(b)}
         <div class="biz-badge">✨ נבחר</div>
         <div class="biz-rating">⭐ ${(4.6 + Math.round((b.name.length % 4))/10).toFixed(1)}</div>
@@ -780,7 +825,36 @@ function renderFeatured(list) {
       </div>
     </div>`;
   }).join('');
+  requestAnimationFrame(updateFeaturedScale);
 }
+
+// ── קרוסלת "עסקים נבחרים" — הכרטיס הכי קרוב למרכז מוגדל ובולט, הצדדים מוקטנים ומעומעמים ──
+function updateFeaturedScale() {
+  const container = document.getElementById('featuredScroll');
+  if (!container || !container.children.length) return;
+  const rect = container.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  let closest = null, closestDist = Infinity;
+  [...container.children].forEach(card => {
+    const cardRect = card.getBoundingClientRect();
+    const cardCenter = cardRect.left + cardRect.width / 2;
+    const dist = Math.abs(centerX - cardCenter);
+    const norm = Math.min(dist / (rect.width / 2), 1);
+    const scale = 1.1 - norm * 0.22;
+    const opacity = 1 - norm * 0.45;
+    card.style.transform = `scale(${scale})`;
+    card.style.opacity = opacity;
+    if (dist < closestDist) { closestDist = dist; closest = card; }
+  });
+  container.querySelectorAll('.biz-card.is-center').forEach(c => c.classList.remove('is-center'));
+  if (closest) closest.classList.add('is-center');
+}
+let featuredScaleRaf = null;
+document.getElementById('featuredScroll')?.addEventListener('scroll', () => {
+  if (featuredScaleRaf) return;
+  featuredScaleRaf = requestAnimationFrame(() => { updateFeaturedScale(); featuredScaleRaf = null; });
+});
+window.addEventListener('resize', () => requestAnimationFrame(updateFeaturedScale));
 
 function renderCategories() {
   document.getElementById('catsGrid').innerHTML = CATS.map(c => `
@@ -791,6 +865,19 @@ function renderCategories() {
 }
 
 let PREVIEW_DATA = [];
+function renderPreviewSkeleton() {
+  document.getElementById('previewCats').innerHTML = ['all', ...CATS.map(c=>c.key)].map(k => `
+    <div class="preview-cat-pill ${k==='all'?'active':''}" data-cat="${k}">${k==='all' ? 'הכל' : catLabel(k)}</div>
+  `).join('');
+  document.getElementById('previewGrid').innerHTML = Array.from({length: 8}).map(() => `
+    <div class="pv-card">
+      <div class="pv-card-img skel-block"></div>
+      <div class="pv-card-body">
+        <div class="skel-block skel-line" style="width:75%"></div>
+        <div class="skel-block skel-line" style="width:45%;margin-top:6px;height:10px"></div>
+      </div>
+    </div>`).join('');
+}
 function renderPreview(list) {
   PREVIEW_DATA = (list && list.length ? list : FALLBACK_BIZ);
   const cats = document.getElementById('previewCats');
@@ -802,9 +889,10 @@ function renderPreview(list) {
 function paintPreviewGrid(list) {
   document.getElementById('previewGrid').innerHTML = list.slice(0, 12).map(b => {
     const colors = catColors[b.cat] || ['#003DA5','#002a75'];
+    const hasVisual = !!(b.coverPhoto || b.logo);
     return `
     <div class="pv-card" onclick="openGate()">
-      <div class="pv-card-img" style="background:linear-gradient(135deg,${colors[0]}55,${colors[1]}88)">
+      <div class="pv-card-img" style="background:${hasVisual ? 'rgba(255,255,255,.05)' : `linear-gradient(135deg,${colors[0]}55,${colors[1]}88)`}">
         ${bizCardVisual(b, true)}
         <div class="pv-like">⭐</div>
       </div>
@@ -824,8 +912,19 @@ window.filterPreview = function(cat, el) {
   document.getElementById('previewSection').scrollIntoView({behavior:'smooth', block:'start'});
 };
 
+function renderActivitySkeleton() {
+  document.getElementById('spotlightLogo').style.background = 'transparent';
+  document.getElementById('spotlightLogo').classList.add('skel-block');
+  document.getElementById('spotlightLogo').textContent = '';
+  document.getElementById('spotlightName').innerHTML = '<span class="skel-block skel-line" style="display:inline-block;width:120px"></span>';
+  document.getElementById('spotlightSub').innerHTML = '<span class="skel-block skel-line" style="display:inline-block;width:160px;height:11px"></span>';
+  document.getElementById('newBizList').innerHTML = Array.from({length: 4}).map(() => `
+    <div class="new-biz-row"><span class="skel-block skel-line" style="width:100%"></span></div>
+  `).join('');
+}
 function renderActivity(list) {
   const items = (list && list.length ? list : FALLBACK_BIZ);
+  document.getElementById('spotlightLogo').classList.remove('skel-block');
   const spot = items[0];
   const colors = catColors[spot.cat] || ['#003DA5','#002a75'];
   document.getElementById('spotlightLogo').style.background = `linear-gradient(135deg,${colors[0]},${colors[1]})`;
@@ -942,18 +1041,35 @@ window.applyMemberUI = function(isMember, name) {
   window.applyMemberUI(!!localStorage.getItem('hb_memberId'), '');
 })();
 
-renderFeatured(null);
+// טעינה ראשונית — שלד בלבד, לא עסקי-דמה (FALLBACK_BIZ מוצג רק אם Firestore באמת נכשל/ריק, ר' בהמשך)
+renderFeaturedSkeleton();
 renderCategories();
-renderPreview(null);
-renderActivity(null);
+renderPreviewSkeleton();
+renderActivitySkeleton();
 </script>
 
 <!-- ══ נתונים אמיתיים מ-Firestore — קריאה בלבד, ציבורי (businesses/approved), ללא כתיבה וללא מידע אישי (members) ══ -->
 <!-- ══ + התחברות אוהד קיים ישירות מה-Hero (טלפון+קוד כניסה, דרך ה-Worker) ══ -->
 <script type="module">
-import { db, auth } from './firebase-config.js';
-import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
-import { signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+// ⚡ אתחול Firebase עצמאי לדף זה (לא דרך firebase-config.js המשותף) — משתמש ב-firestore-lite (136KB) במקום
+// firestore המלא (455KB) ש-firebase-config.js תמיד טוען, כי הדף הזה עושה רק קריאות חד-פעמיות (getDocs/getDoc),
+// בלי שום מנגנון האזנה בזמן-אמת (onSnapshot) שדורש את הגרסה המלאה. שאר הדפים (home/business-dashboard/admin-*)
+// כן צריכים onSnapshot ונשארים על firebase-config.js הרגיל — אין שינוי שם.
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { getFirestore, collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore-lite.js";
+import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyBfG7AU4BzSAbBpwPyKfA_NzUpy2pxzFu8",
+  authDomain:        "habayit-hatsahov.firebaseapp.com",
+  projectId:         "habayit-hatsahov",
+  storageBucket:     "habayit-hatsahov.firebasestorage.app",
+  messagingSenderId: "459607487972",
+  appId:             "1:459607487972:web:36ebe479e7a4e3a7bd43f1"
+};
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const auth = getAuth(app);
 
 // כתובת ה-Worker (Cloudflare) שמנפיק טוקני כניסה אחרי אימות טלפון+קוד מול Firestore בצד-שרת
 const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
@@ -1069,6 +1185,7 @@ try {
       desc: b.desc || b.description || '',
       discount: b.discountText || '',
       logo: (b.logo && !/\.html?(\?|#|$)/i.test(b.logo)) ? b.logo : '',
+      coverPhoto: (b.coverPhoto && !/\.html?(\?|#|$)/i.test(b.coverPhoto)) ? b.coverPhoto : '',
       isFeatured: !!b.isFeatured,
       isNew: !!b.isNew,
       likedBy: b.likedBy || [],
@@ -1090,9 +1207,13 @@ try {
     setTarget('statNew', newCount || null);
     const trustEl = document.getElementById('trustBizCount');
     if (trustEl) trustEl.textContent = data.length + '+';
+  } else {
+    // Firestore ענה אך אין שום עסק מאושר — נופלים לתוכן גיבוי (רק עכשיו, לא כהצצה ראשונית)
+    renderFeatured(null); renderPreview(null); renderActivity(null);
   }
 } catch (err) {
   console.warn('landing-demo: לא ניתן היה לטעון נתונים חיים, מוצג תוכן גיבוי.', err);
+  renderFeatured(null); renderPreview(null); renderActivity(null);
 }
 </script>
 
