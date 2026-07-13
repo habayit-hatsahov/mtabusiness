@@ -335,6 +335,29 @@
       border: 1px solid rgba(234,179,8,.35);
     }
 
+    .benefit-box {
+      background: rgba(255,222,0,.08);
+      border: 1.5px solid rgba(255,222,0,.3);
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+    .benefit-box-label { font-size: 11px; font-weight: 700; color: var(--yellow); letter-spacing: .3px; margin-bottom: 6px; }
+    .benefit-box-text { font-size: 14px; font-weight: 800; color: var(--text); }
+    .benefit-box-meta { font-size: 12px; color: var(--text-sm); margin-top: 6px; }
+    .benefit-box .missing { font-size: 13px; }
+    .add-benefit-btn {
+      width: 100%; margin-top: 14px; padding: 10px;
+      border-radius: 10px; border: 1.5px dashed rgba(255,222,0,.4);
+      background: transparent; color: var(--yellow);
+      font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 700;
+      cursor: pointer; transition: all .15s;
+    }
+    .add-benefit-btn:hover { background: rgba(255,222,0,.08); }
+    .remove-benefit-link {
+      font-size: 11px; color: var(--text-muted); cursor: pointer;
+      text-decoration: underline; margin-top: 12px; display: inline-block;
+    }
+
     .ver-tag {
       display: inline-block;
       font-size: 12px;
@@ -609,9 +632,17 @@
       display: inline-block; font-size: 11px; font-weight: 600;
       padding: 2px 8px; border-radius: 6px; margin: 1px 2px 1px 0;
     }
-    .field-tag.cat    { background: rgba(0,61,165,.25); color: #8fb8ff; }
-    .field-tag.type   { background: rgba(37,211,102,.18); color: #86efac; }
-    .field-tag.region { background: rgba(234,179,8,.18); color: #fde047; }
+    .field-tag.cat     { background: rgba(0,61,165,.25); color: #8fb8ff; }
+    .field-tag.tagname { background: transparent; border: 1px solid rgba(0,61,165,.4); color: #8fb8ff; }
+    .field-tag.type    { background: rgba(37,211,102,.18); color: #86efac; }
+    .field-tag.region  { background: rgba(234,179,8,.18); color: #fde047; }
+
+    .tag-suggestion-alert {
+      display: block; width: 100%;
+      background: var(--orange-bg); border: 1.5px solid rgba(217,119,6,.4);
+      border-radius: 10px; padding: 8px 12px;
+      color: var(--orange); font-size: 12px; font-weight: 600;
+    }
 
     .edit-section-title {
       font-size: 13px; font-weight: 800; color: var(--yellow);
@@ -787,7 +818,7 @@
       margin-top: 12px; overflow: hidden; max-height: 0; opacity: 0;
       transition: max-height .3s ease, opacity .2s ease;
     }
-    .tags-area.open { max-height: 260px; opacity: 1; }
+    .tags-area.open { max-height: 900px; opacity: 1; }
     .tag-chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
     .tag-chip {
       font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 20px;
@@ -796,6 +827,8 @@
     }
     .tag-chip.selected { background: rgba(255,222,0,.12); color: var(--yellow); border-color: var(--yellow); }
     .tag-chip.disabled { opacity: .35; cursor: not-allowed; }
+    .no-tag-chip { border-style: dashed; }
+    .no-tag-chip.selected { background: rgba(217,119,6,.12); color: var(--orange); border-color: var(--orange); border-style: dashed; }
 
     .disc-type-chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
     .disc-type-chip {
@@ -804,6 +837,7 @@
       cursor: pointer; transition: all .15s; user-select: none;
     }
     .disc-type-chip.selected { background: rgba(255,222,0,.12); color: var(--yellow); border-color: var(--yellow); }
+    .disc-type-chip.disabled { opacity: .35; cursor: not-allowed; }
     .disc-fields { display: none; margin-top: 12px; }
     .disc-fields.visible { display: block; }
     .char-count { font-size: 10px; color: var(--text-muted); text-align: left; margin-top: -8px; margin-bottom: 10px; }
@@ -1265,9 +1299,15 @@ function computeDiscountTypes(bizTypes, hasCode, redeemMode) {
 // מצב הבורר של סעיף 3 (קטגוריה/תגיות/הטבה) — מתאפס בכל פתיחת גיליון עסק
 let selectedCat = null;
 let selectedTags = [];
+let selectedAlsoCat = null;
+let noTagFits = false;
 let discEditOn = false;
 let discTypeSelected = null;
 let discRedeemMode = null;
+let discType2 = null, discType3 = null;
+let redeemMode2 = null, redeemMode3 = null;
+let benefitCount = 1;
+const MAX_BENEFITS = 3;
 let _editingBizTypes = [];
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -1354,18 +1394,36 @@ window.openBizSheet = function(id) {
   selectedCat  = mapCatKey(b.categoryPrimary || b.cat || '') || null;
   const validTagsForCat = CATEGORIES.find(c => c.key === selectedCat)?.tags || [];
   selectedTags = (b.tags || []).filter(t => validTagsForCat.includes(t)).slice(0, MAX_TAGS);
+  selectedAlsoCat = b.alsoUnderCategory ? mapCatKey(b.alsoUnderCategory) : null;
+  noTagFits = !!b.noTagFits;
   discEditOn = !!b.hasDiscount;
   const bBuilder = b.discountBuilder || (b.discountText ? { type: 'other', otherText: b.discountText } : {});
   discTypeSelected = bBuilder.type || null;
   discRedeemMode = b.discountRedeemMode || ((b.bizTypes || []).includes('physical') ? 'physical' : 'sale');
   _editingBizTypes = b.bizTypes || [];
 
+  const extraBenefits = b.additionalDiscounts || [];
+  benefitCount = 1 + extraBenefits.length;
+  discType2 = extraBenefits[0]?.builder?.type || null;
+  discType3 = extraBenefits[1]?.builder?.type || null;
+  redeemMode2 = extraBenefits[0]?.redeemMode || null;
+  redeemMode3 = extraBenefits[1]?.redeemMode || null;
+  const bBuilder2 = extraBenefits[0]?.builder || {};
+  const bBuilder3 = extraBenefits[1]?.builder || {};
+  const code2 = extraBenefits[0]?.code || '';
+  const code3 = extraBenefits[1]?.code || '';
+
   const primCat = mapCatKey(b.categoryPrimary || b.cat || '');
   const catHtml = primCat
-    ? `<span class="field-tag cat">${CAT_LABELS[primCat] || primCat}</span>` +
-      (b.tags || []).slice(0,2).map(t => `<span class="field-tag cat">${t}</span>`).join('') +
-      (b.tagSuggestion ? `<div class="missing" style="width:100%;margin-top:4px;font-size:11px">💡 העסק הציע תגית: "${esc(b.tagSuggestion)}"</div>` : '')
+    ? `<span class="field-tag cat">${CAT_LABELS[primCat] || primCat}</span>`
     : '<span class="missing">לא נבחר</span>';
+  const tagsArr = (b.tags || []).slice(0,2);
+  const tagsOnlyHtml = tagsArr.length
+    ? tagsArr.map(t => `<span class="field-tag tagname">${t}</span>`).join('')
+    : '<span class="missing">אין תגיות</span>';
+  const tagSuggestionHtml = b.tagSuggestion
+    ? `<div class="tag-suggestion-alert">💡 העסק הציע תגית שלא הייתה ברשימה: "${esc(b.tagSuggestion)}"</div>`
+    : '';
 
   const typeTagsHtml = types.length
     ? types.map(t => `<span class="field-tag type">${BIZ_TYPE_LABELS[t] || t}</span>`).join('')
@@ -1377,12 +1435,26 @@ window.openBizSheet = function(id) {
     : '<span class="missing">לא נבחר</span>';
 
   const discTypesArr = b.discountTypes && b.discountTypes.length ? b.discountTypes : (b.discountType ? [b.discountType] : []);
-  const discHtml = b.hasDiscount
-    ? `<span class="discount-tag">💛 ${b.discountText || '—'}</span>`
-    : '<span class="missing">אין הטבה</span>';
   const discTypesHtml = discTypesArr.length
     ? discTypesArr.map(t => DISCOUNT_TYPE_LABELS[t] || t).join(' + ')
     : '<span class="missing">לא נבחר</span>';
+  const extraBenefitsHtml = (b.additionalDiscounts || []).map((d, i) => `
+       <div style="margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,222,0,.25);">
+         <div class="benefit-box-meta" style="font-weight:700;color:var(--yellow);">הטבה נוספת ${i + 2}</div>
+         <div class="benefit-box-text">${esc(d.text) || '—'}</div>
+         <div class="benefit-box-meta">איפה ניתן לממש: ${(d.redeemTypes || []).map(t => DISCOUNT_TYPE_LABELS[t] || t).join(', ') || '—'}</div>
+         ${d.code ? `<div class="benefit-box-meta">קוד קופון: <span style="font-family:'Courier New',monospace">${esc(d.code)}</span></div>` : ''}
+       </div>`).join('');
+
+  const benefitBoxHtml = b.hasDiscount
+    ? `<div class="benefit-box">
+         <div class="benefit-box-label">💛 הטבה לחברים${(b.additionalDiscounts||[]).length ? ` <span style="font-weight:400;">(${1 + b.additionalDiscounts.length} הטבות)</span>` : ''}</div>
+         <div class="benefit-box-text">${esc(b.discountText) || '—'}</div>
+         <div class="benefit-box-meta">איפה ניתן לממש: ${discTypesHtml}</div>
+         ${b.discountCode ? `<div class="benefit-box-meta">קוד קופון: <span style="font-family:'Courier New',monospace">${esc(b.discountCode)}</span></div>` : ''}
+         ${extraBenefitsHtml}
+       </div>`
+    : '<span class="missing">אין הטבה</span>';
 
   const dashMiniLinkHtml = b.accessToken ? (() => {
     const dashUrl = dashboardLinkFor(b);
@@ -1400,13 +1472,15 @@ window.openBizSheet = function(id) {
     const fmtVal = (k, v) => {
       if (k === 'discountTypes') return (v || []).map(t => DISCOUNT_TYPE_LABELS[t] || t).join(', ') || '—';
       if (k === 'bizTypes') return (v || []).map(t => BIZ_TYPE_LABELS[t] || t).join(', ') || '—';
-      if (k === 'categoryPrimary' || k === 'cat') return (v && CAT_LABELS[mapCatKey(v)]) || v || '—';
+      if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoUnderCategory') return (v && CAT_LABELS[mapCatKey(v)]) || v || '—';
+      if (k === 'tags') return (v || []).join(', ') || '—';
       if (k === 'categorySecondary' || k === 'regions') return (v || []).map(c => CAT_LABELS[mapCatKey(c)] || c).join(', ') || '—';
       if (k === 'branches') return (v || []).map(br => [br.city, br.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | ') || '—';
       if (k === 'photos') return v && v.length ? v.map((p, i) => p.url ? mediaThumbHtml(p.url, p.name || '', 44, 44, `${b.name || 'business'}_gallery_${i + 1}.jpg`) : '').join('') : '—';
       if (k === 'videos') return v && v.length ? `${v.length} סרטונים` : '—';
       if (k === 'logo') return looksLikeImageUrl(v) ? mediaThumbHtml(v, 'לוגו', 44, 44, `${b.name || 'business'}_logo.jpg`) : 'אין לוגו';
       if (k === 'coverPhoto') return looksLikeImageUrl(v) ? mediaThumbHtml(v, 'תמונה מייצגת', 60, 44, `${b.name || 'business'}_cover.jpg`) : 'אין תמונה מייצגת';
+      if (k === 'additionalDiscounts') return v && v.length ? v.map(d => d.text).join(' | ') : '—';
       if (typeof v === 'boolean') return v ? 'כן' : 'לא';
       return v || '—';
     };
@@ -1503,7 +1577,7 @@ window.openBizSheet = function(id) {
         <div class="detail-item"><div class="lbl">עיר</div><div class="val"><span class="missing">לא מולא</span></div></div>
         <div class="detail-item"><div class="lbl">כתובת</div><div class="val"><span class="missing">לא מולא</span></div></div>`) : ''}
         ${isOnline ? `<div class="detail-item full"><div class="lbl">אתר אונליין</div><div class="val">${b.websiteOnline ? `<a href="${b.websiteOnline.startsWith('http') ? b.websiteOnline : 'https://'+b.websiteOnline}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.websiteOnline}</a>` : '<span class="missing">לא מולא</span>'}</div></div>` : ''}
-        ${isPro ? `<div class="detail-item full"><div class="lbl">מקצוע</div><div class="val">${m(b.profession)}</div></div><div class="detail-item full"><div class="lbl">אזורי פעילות</div><div class="val">${regHtml}</div></div>` : ''}
+        ${isPro ? `<div class="detail-item full"><div class="lbl">אזורי פעילות</div><div class="val">${regHtml}</div></div>` : ''}
         <div class="detail-item"><div class="lbl">טלפון עסק</div><div class="val">${mDash(b.phone)}</div></div>
         <div class="detail-item"><div class="lbl">WhatsApp</div><div class="val">${mDash(b.whatsapp)}</div></div>
         <div class="detail-item full"><div class="lbl">מייל שירות לקוחות</div><div class="val">${mDash(b.serviceEmail)}</div></div>
@@ -1519,9 +1593,6 @@ window.openBizSheet = function(id) {
         </div>
         <div class="form-row"><label>שם העסק</label><input type="text" id="editName" value="${esc(b.name)}" /></div>
         <div class="form-row"><label>תיאור העסק</label><textarea id="editDesc">${esc(b.desc)}</textarea></div>
-        <div class="form-row" id="editProfessionWrap" style="display:${isPro ? 'block' : 'none'}">
-          <label>מקצוע</label><input type="text" id="editProfession" value="${esc(b.profession)}" placeholder="לדוג׳: נגר, אינסטלטור, חשמלאי..." />
-        </div>
         <div class="form-row" id="editRegionWrap" style="display:${isPro ? 'block' : 'none'}">
           <label>אזורי פעילות</label><div class="region-pill-wrap" id="editRegionGrid">${regionPillsHtml}</div>
         </div>
@@ -1547,20 +1618,29 @@ window.openBizSheet = function(id) {
       <div class="card-section-title"><span>📋 שלב 3 — קטגוריה והטבה</span><button class="sec-edit-btn" onclick="toggleSecEdit(3)">✏️ ערוך</button></div>
       <div class="detail-grid" id="secView3">
         <div class="detail-item full"><div class="lbl">קטגוריה</div><div class="val">${catHtml}</div></div>
-        <div class="detail-item full"><div class="lbl">הטבה</div><div class="val">${discHtml}</div></div>
-        <div class="detail-item full"><div class="lbl">איפה ניתן לממש</div><div class="val">${discTypesHtml}</div></div>
-        <div class="detail-item full"><div class="lbl">קוד קופון</div><div class="val">${mDash(b.discountCode)}</div></div>
+        <div class="detail-item full"><div class="lbl">תגיות</div><div class="val">${b.noTagFits ? '<span class="missing">אין תגית מתאימה</span>' : tagsOnlyHtml}</div></div>
+        <div class="detail-item full"><div class="lbl">מופיע גם תחת</div><div class="val">${b.alsoUnderCategory ? `<span class="field-tag cat">${CAT_LABELS[selectedAlsoCat] || selectedAlsoCat}</span>` : '<span class="missing">לא נבחר</span>'}</div></div>
+        ${tagSuggestionHtml ? `<div class="detail-item full"><div class="val">${tagSuggestionHtml}</div></div>` : ''}
+        <div class="detail-item full"><div class="val">${benefitBoxHtml}</div></div>
         <div class="detail-item full"><div class="lbl">שעות פעילות</div><div class="val">${mDash(b.hours)}</div></div>
       </div>
       <div class="sec-edit-form" id="secEdit3">
         <div class="edit-section-title" style="margin-top:0">📋 קטגוריה</div>
         <div class="cat-circle-grid" id="editCatGrid"></div>
         <div class="tags-area" id="editTagsArea">
-          <div class="edit-cat-hint" id="editTagsLabel">בחרו עד ${MAX_TAGS} תגיות</div>
+          <div class="edit-cat-hint" id="editTagsLabel">בחרו תגית אחת לפחות (עד ${MAX_TAGS})</div>
           <div class="tag-chip-wrap" id="editTagsBar"></div>
+          <div class="tag-chip-wrap" style="margin-top:2px;">
+            <div class="tag-chip no-tag-chip${b.noTagFits ? ' selected' : ''}" id="editNoTagFitsChip" onclick="toggleNoTagFits()">✕ אין תגית שמתאימה לעסק</div>
+          </div>
           <div class="form-row" style="margin-top:6px;">
             <label>לא מצאתם תגית מתאימה? הציעו לנו</label>
             <input type="text" id="editTagSuggestion" value="${esc(b.tagSuggestion)}" placeholder="הקלידו הצעה לתגית חדשה..." maxlength="40" />
+          </div>
+          <div class="form-row" style="margin-top:14px;">
+            <label>🆕 מופיע גם תחת... (אופציונלי)</label>
+            <div class="edit-cat-hint" style="margin-bottom:8px;">קטגוריה נוספת לצורך סינון/גילוי באינדקס בלבד — לא משפיעה על התגיות או עיצוב הכרטיס.</div>
+            <div class="cat-circle-grid" id="editAlsoCatGrid"></div>
           </div>
         </div>
         <div class="edit-section-title" style="margin-top:18px">💛 הטבה לחברים</div>
@@ -1606,6 +1686,87 @@ window.openBizSheet = function(id) {
             <div class="disc-type-chip-wrap" id="editRedeemModeGrid"></div>
           </div>
           <div class="disc-redeem-note" id="editDiscRedeemNote"></div>
+
+          <div class="edit-cat-hint" style="margin-top:10px;">💡 יש לעסק יותר מהטבה אחת? אפשר להוסיף עוד — אופציונלי, מוצג רק בגיליון הפנימי.</div>
+          <button type="button" class="add-benefit-btn" id="addBenefitBtn" onclick="addBenefit()" style="display:${benefitCount >= MAX_BENEFITS ? 'none' : 'block'}">+ הוסף עוד הטבה (עד 2 נוספות)</button>
+
+          <div id="benefitWrap2" style="display:${benefitCount >= 2 ? 'block' : 'none'};margin-top:14px;">
+            <div class="edit-section-title" style="margin-top:0">🎁 הטבה נוספת</div>
+            <div class="form-row"><div class="disc-type-chip-wrap" id="editDiscTypeGrid2"></div></div>
+            <div class="disc-fields" id="discFields-percent2">
+              <div class="form-row-2">
+                <div class="form-row" style="margin:0;max-width:110px;"><label>אחוז</label><input type="number" id="editDiscPercentVal2" value="${esc(bBuilder2.percent)}" placeholder="10" min="1" max="100" oninput="onDiscBuilderInputN(2)" /></div>
+                <div class="form-row" style="margin:0;"><label>על מה?</label><input type="text" id="editDiscPercentOn2" value="${esc(bBuilder2.percentOn)}" placeholder="כל הקנייה" maxlength="30" oninput="onDiscBuilderInputN(2)" /></div>
+              </div>
+            </div>
+            <div class="disc-fields" id="discFields-gift2">
+              <div class="form-row"><label>מה חינם?</label><input type="text" id="editDiscGiftWhat2" value="${esc(bBuilder2.giftWhat)}" placeholder="קפה שני / ייעוץ ראשוני" maxlength="30" oninput="onDiscBuilderInputN(2)" /></div>
+            </div>
+            <div class="disc-fields" id="discFields-buyget2">
+              <div class="form-row-2">
+                <div class="form-row" style="margin:0;max-width:110px;"><label>קנה</label><input type="text" id="editDiscBuyX2" value="${esc(bBuilder2.buyX)}" placeholder="2" maxlength="10" oninput="onDiscBuilderInputN(2)" /></div>
+                <div class="form-row" style="margin:0;"><label>קבל</label><input type="text" id="editDiscBuyY2" value="${esc(bBuilder2.buyY)}" placeholder="1 מתנה" maxlength="20" oninput="onDiscBuilderInputN(2)" /></div>
+              </div>
+            </div>
+            <div class="disc-fields" id="discFields-shipping2">
+              <div class="form-row"><label>פירוט</label><input type="text" id="editDiscShipDetail2" value="${esc(bBuilder2.shipDetail)}" placeholder="לכל הזמנה / מעל 100 ₪" maxlength="30" oninput="onDiscBuilderInputN(2)" /></div>
+            </div>
+            <div class="disc-fields" id="discFields-price2">
+              <div class="form-row"><label>פירוט</label><input type="text" id="editDiscPriceDetail2" value="${esc(bBuilder2.priceDetail)}" placeholder="קפה שני ב-1 ₪" maxlength="35" oninput="onDiscBuilderInputN(2)" /></div>
+            </div>
+            <div class="disc-fields" id="discFields-other2">
+              <div class="form-row"><label>תיאור ההטבה</label><input type="text" id="editDiscOtherText2" value="${esc(bBuilder2.otherText)}" placeholder="תארו את ההטבה בקצרה..." maxlength="50" oninput="onDiscBuilderInputN(2)" /><div class="char-count" id="editDiscOtherCount2">0 / 50</div></div>
+            </div>
+            <div class="form-row">
+              <label>קוד קופון (אופציונלי)</label>
+              <input type="text" id="editDiscountCode2" value="${esc(code2)}" placeholder="לדוג׳: MACCABI10" style="direction:ltr;text-align:right" oninput="onDiscBuilderInputN(2)" />
+            </div>
+            <div class="form-row">
+              <label>כשאין קוד קופון — איפה מתממשת ההטבה?</label>
+              <div class="disc-type-chip-wrap" id="editRedeemModeGrid2"></div>
+            </div>
+            <div class="disc-redeem-note" id="editDiscRedeemNote2"></div>
+            <div class="remove-benefit-link" onclick="removeBenefit(2)">✕ הסר הטבה זו</div>
+          </div>
+
+          <div id="benefitWrap3" style="display:${benefitCount >= 3 ? 'block' : 'none'};margin-top:14px;">
+            <div class="edit-section-title" style="margin-top:0">🎁 הטבה נוספת</div>
+            <div class="form-row"><div class="disc-type-chip-wrap" id="editDiscTypeGrid3"></div></div>
+            <div class="disc-fields" id="discFields-percent3">
+              <div class="form-row-2">
+                <div class="form-row" style="margin:0;max-width:110px;"><label>אחוז</label><input type="number" id="editDiscPercentVal3" value="${esc(bBuilder3.percent)}" placeholder="10" min="1" max="100" oninput="onDiscBuilderInputN(3)" /></div>
+                <div class="form-row" style="margin:0;"><label>על מה?</label><input type="text" id="editDiscPercentOn3" value="${esc(bBuilder3.percentOn)}" placeholder="כל הקנייה" maxlength="30" oninput="onDiscBuilderInputN(3)" /></div>
+              </div>
+            </div>
+            <div class="disc-fields" id="discFields-gift3">
+              <div class="form-row"><label>מה חינם?</label><input type="text" id="editDiscGiftWhat3" value="${esc(bBuilder3.giftWhat)}" placeholder="קפה שני / ייעוץ ראשוני" maxlength="30" oninput="onDiscBuilderInputN(3)" /></div>
+            </div>
+            <div class="disc-fields" id="discFields-buyget3">
+              <div class="form-row-2">
+                <div class="form-row" style="margin:0;max-width:110px;"><label>קנה</label><input type="text" id="editDiscBuyX3" value="${esc(bBuilder3.buyX)}" placeholder="2" maxlength="10" oninput="onDiscBuilderInputN(3)" /></div>
+                <div class="form-row" style="margin:0;"><label>קבל</label><input type="text" id="editDiscBuyY3" value="${esc(bBuilder3.buyY)}" placeholder="1 מתנה" maxlength="20" oninput="onDiscBuilderInputN(3)" /></div>
+              </div>
+            </div>
+            <div class="disc-fields" id="discFields-shipping3">
+              <div class="form-row"><label>פירוט</label><input type="text" id="editDiscShipDetail3" value="${esc(bBuilder3.shipDetail)}" placeholder="לכל הזמנה / מעל 100 ₪" maxlength="30" oninput="onDiscBuilderInputN(3)" /></div>
+            </div>
+            <div class="disc-fields" id="discFields-price3">
+              <div class="form-row"><label>פירוט</label><input type="text" id="editDiscPriceDetail3" value="${esc(bBuilder3.priceDetail)}" placeholder="קפה שני ב-1 ₪" maxlength="35" oninput="onDiscBuilderInputN(3)" /></div>
+            </div>
+            <div class="disc-fields" id="discFields-other3">
+              <div class="form-row"><label>תיאור ההטבה</label><input type="text" id="editDiscOtherText3" value="${esc(bBuilder3.otherText)}" placeholder="תארו את ההטבה בקצרה..." maxlength="50" oninput="onDiscBuilderInputN(3)" /><div class="char-count" id="editDiscOtherCount3">0 / 50</div></div>
+            </div>
+            <div class="form-row">
+              <label>קוד קופון (אופציונלי)</label>
+              <input type="text" id="editDiscountCode3" value="${esc(code3)}" placeholder="לדוג׳: MACCABI10" style="direction:ltr;text-align:right" oninput="onDiscBuilderInputN(3)" />
+            </div>
+            <div class="form-row">
+              <label>כשאין קוד קופון — איפה מתממשת ההטבה?</label>
+              <div class="disc-type-chip-wrap" id="editRedeemModeGrid3"></div>
+            </div>
+            <div class="disc-redeem-note" id="editDiscRedeemNote3"></div>
+            <div class="remove-benefit-link" onclick="removeBenefit(3)">✕ הסר הטבה זו</div>
+          </div>
         </div>
         <div class="edit-section-title" style="margin-top:18px">🕐 שעות פעילות</div>
         <div class="form-row"><label>שעות <span style="font-weight:400;color:#aaa;font-size:11px">(כתוב בחופשיות)</span></label><input type="text" id="editHours" value="${esc(b.hours)}" placeholder="א׳-ה׳ 09:00-19:00, ו׳ 09:00-14:00" /></div>
@@ -1756,9 +1917,15 @@ window.openBizSheet = function(id) {
 
   renderCatGrid();
   renderTagsBar();
+  renderAlsoCatGrid();
   renderDiscTypeGrid();
   renderRedeemModeGrid();
   updateDiscRedeemNote();
+  for (let n = 2; n <= benefitCount; n++) {
+    renderDiscTypeGridN(n);
+    renderRedeemModeGridN(n);
+    updateDiscRedeemNoteN(n);
+  }
 
   document.getElementById('viewSheet').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -1780,10 +1947,8 @@ window.toggleRegionAdmin = function(el) {
 window.editToggleBizType = function(el) {
   el.classList.toggle('selected');
   const selected = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p => p.dataset.type);
-  const proWrap = document.getElementById('editProfessionWrap');
   const regWrap = document.getElementById('editRegionWrap');
   const webWrap = document.getElementById('editWebsiteOnlineWrap');
-  if (proWrap) proWrap.style.display = selected.includes('pro') ? 'block' : 'none';
   if (regWrap) regWrap.style.display = selected.includes('pro') ? 'block' : 'none';
   if (webWrap) webWrap.style.display = selected.includes('online') ? 'block' : 'none';
 };
@@ -2255,12 +2420,13 @@ window.modalSendMail = function() {
 const PENDING_LABELS = {
   ownerFirst: 'שם פרטי', ownerLast: 'שם משפחה', ownerPhone: 'טלפון בעל העסק', ownerEmail: 'אימייל בעל העסק',
   bizTypes: 'סוג עסק', name: 'שם העסק', desc: 'תיאור', branches: 'סניפים',
-  profession: 'מקצוע', regions: 'אזורי פעילות', websiteOnline: 'אתר אונליין',
+  regions: 'אזורי פעילות', websiteOnline: 'אתר אונליין',
   phone: 'טלפון עסק', whatsapp: 'WhatsApp', serviceEmail: 'מייל שירות', city: 'עיר', address: 'כתובת',
-  categoryPrimary: 'קטגוריה ראשית', cat: 'קטגוריה ראשית', categorySecondary: 'קטגוריות משניות',
+  categoryPrimary: 'קטגוריה', cat: 'קטגוריה', categorySecondary: 'קטגוריות משניות',
+  tags: 'תגיות', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת',
   hours: 'שעות פעילות', website: 'אתר', instagram: 'אינסטגרם', facebook: 'פייסבוק',
   discountText: 'פרטי הטבה', discountCode: 'קוד קופון', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש',
-  hasDiscount: 'הטבה פעילה', coverPhoto: 'תמונה מייצגת', logo: 'לוגו', photos: 'גלריית תמונות', videos: 'סרטונים',
+  hasDiscount: 'הטבה פעילה', additionalDiscounts: 'הטבות נוספות', coverPhoto: 'תמונה מייצגת', logo: 'לוגו', photos: 'גלריית תמונות', videos: 'סרטונים',
 };
 
 let _pendingEditMode = false;
@@ -2447,10 +2613,35 @@ function renderCatGrid() {
   ).join('');
 }
 
+function renderAlsoCatGrid() {
+  const grid = document.getElementById('editAlsoCatGrid');
+  if (!grid) return;
+  grid.innerHTML = CATEGORIES.filter(c => c.key !== selectedCat).map(c =>
+    `<div class="cat-circle-item${selectedAlsoCat === c.key ? ' active' : ''}" onclick="selectAlsoCat('${c.key}')">
+      <div class="cat-circle">${c.icon}</div>
+      <div class="cat-circle-label">${c.label}</div>
+    </div>`
+  ).join('');
+}
+
 window.selectCat = function(key) {
   selectedCat  = (selectedCat === key ? null : key);
   selectedTags = [];
+  noTagFits = false;
+  if (selectedAlsoCat === selectedCat) selectedAlsoCat = null;
   renderCatGrid();
+  renderTagsBar();
+  renderAlsoCatGrid();
+};
+
+window.selectAlsoCat = function(key) {
+  selectedAlsoCat = (selectedAlsoCat === key ? null : key);
+  renderAlsoCatGrid();
+};
+
+window.toggleNoTagFits = function() {
+  noTagFits = !noTagFits;
+  if (noTagFits) selectedTags = [];
   renderTagsBar();
 };
 
@@ -2462,12 +2653,14 @@ function renderTagsBar() {
   const cat = CATEGORIES.find(c => c.key === selectedCat);
   area.classList.toggle('open', !!cat);
   if (!cat) { bar.innerHTML = ''; return; }
-  label.innerHTML = `בחרו עד ${MAX_TAGS} תגיות מתוך "${cat.label}"`;
+  label.innerHTML = `בחרו תגית אחת לפחות (עד ${MAX_TAGS}) מתוך "${cat.label}"`;
   bar.innerHTML = cat.tags.map(t => {
     const sel = selectedTags.includes(t);
-    const dis = !sel && selectedTags.length >= MAX_TAGS;
+    const dis = noTagFits || (!sel && selectedTags.length >= MAX_TAGS);
     return `<div class="tag-chip${sel ? ' selected' : ''}${dis ? ' disabled' : ''}" onclick="${dis ? '' : `toggleTag('${t.replace(/'/g,"\\'")}')`}">${t}</div>`;
   }).join('');
+  const chip = document.getElementById('editNoTagFitsChip');
+  if (chip) chip.classList.toggle('selected', noTagFits);
 }
 
 window.toggleTag = function(tag) {
@@ -2501,12 +2694,13 @@ window.selectDiscType = function(key) {
 function renderRedeemModeGrid() {
   const grid = document.getElementById('editRedeemModeGrid');
   if (!grid) return;
+  const hasCode = !!document.getElementById('editDiscountCode')?.value.trim();
   const opts = [
     { key: 'physical', icon: '🏪', label: 'בחנות הפיזית' },
     { key: 'sale',     icon: '🤝', label: 'במעמד המכירה / השירות' },
   ];
   grid.innerHTML = opts.map(o =>
-    `<div class="disc-type-chip${discRedeemMode === o.key ? ' selected' : ''}" onclick="selectRedeemMode('${o.key}')">${o.icon} ${o.label}</div>`
+    `<div class="disc-type-chip${(!hasCode && discRedeemMode === o.key) ? ' selected' : ''}${hasCode ? ' disabled' : ''}" onclick="${hasCode ? '' : `selectRedeemMode('${o.key}')`}">${o.icon} ${o.label}</div>`
   ).join('');
 }
 
@@ -2528,7 +2722,148 @@ function updateDiscOtherCount() {
 window.onDiscBuilderInput = function() {
   updateDiscOtherCount();
   updateDiscRedeemNote();
+  renderRedeemModeGrid();
 };
+
+// ── הטבות נוספות (עד 3 סה"כ) — אופציונלי ──
+function getDiscType(n)       { return n === 2 ? discType2 : discType3; }
+function setDiscType(n, v)    { if (n === 2) discType2 = v; else discType3 = v; }
+function getRedeemModeN(n)    { return n === 2 ? redeemMode2 : redeemMode3; }
+function setRedeemModeN(n, v) { if (n === 2) redeemMode2 = v; else redeemMode3 = v; }
+
+function renderDiscTypeGridN(n) {
+  const grid = document.getElementById('editDiscTypeGrid' + n);
+  if (!grid) return;
+  const sel = getDiscType(n);
+  grid.innerHTML = DISCOUNT_TYPES.map(d =>
+    `<div class="disc-type-chip${sel === d.key ? ' selected' : ''}" onclick="selectDiscTypeN(${n},'${d.key}')">${d.icon} ${d.label}</div>`
+  ).join('');
+  document.querySelectorAll('#benefitWrap' + n + ' .disc-fields').forEach(el => el.classList.remove('visible'));
+  if (sel) {
+    const el = document.getElementById('discFields-' + sel + n);
+    if (el) el.classList.add('visible');
+  }
+  updateDiscOtherCountN(n);
+}
+
+window.selectDiscTypeN = function(n, key) {
+  setDiscType(n, getDiscType(n) === key ? null : key);
+  renderDiscTypeGridN(n);
+  onDiscBuilderInputN(n);
+};
+
+function renderRedeemModeGridN(n) {
+  const grid = document.getElementById('editRedeemModeGrid' + n);
+  if (!grid) return;
+  const hasCode = !!document.getElementById('editDiscountCode' + n)?.value.trim();
+  const mode = getRedeemModeN(n);
+  const opts = [
+    { key: 'physical', icon: '🏪', label: 'בחנות הפיזית' },
+    { key: 'sale',     icon: '🤝', label: 'במעמד המכירה / השירות' },
+  ];
+  grid.innerHTML = opts.map(o =>
+    `<div class="disc-type-chip${(!hasCode && mode === o.key) ? ' selected' : ''}${hasCode ? ' disabled' : ''}" onclick="${hasCode ? '' : `selectRedeemModeN(${n},'${o.key}')`}">${o.icon} ${o.label}</div>`
+  ).join('');
+}
+
+window.selectRedeemModeN = function(n, key) {
+  setRedeemModeN(n, key);
+  renderRedeemModeGridN(n);
+  onDiscBuilderInputN(n);
+};
+
+function updateDiscOtherCountN(n) {
+  const input = document.getElementById('editDiscOtherText' + n);
+  const count = document.getElementById('editDiscOtherCount' + n);
+  if (!input || !count) return;
+  const len = input.value.length;
+  count.textContent = `${len} / 50`;
+  count.classList.toggle('warn', len > 45);
+}
+
+function computeDiscBuilderTextN(n) {
+  const val = fid => document.getElementById(fid + n)?.value.trim() || '';
+  switch (getDiscType(n)) {
+    case 'percent': { const v = val('editDiscPercentVal'); const on = val('editDiscPercentOn'); return v ? `${v}% הנחה` + (on ? ` על ${on}` : '') : ''; }
+    case 'gift':    { const w = val('editDiscGiftWhat'); return w ? `${w} חינם` : ''; }
+    case 'buyget':  { const x = val('editDiscBuyX'); const y = val('editDiscBuyY'); return (x && y) ? `קנה ${x} קבל ${y}` : ''; }
+    case 'shipping':{ const d = val('editDiscShipDetail'); return 'משלוח חינם' + (d ? ` ${d}` : ''); }
+    case 'price':   return val('editDiscPriceDetail');
+    case 'other':   return val('editDiscOtherText');
+    default:        return '';
+  }
+}
+
+function discBuilderSnapshotN(n) {
+  const val = fid => document.getElementById(fid + n)?.value.trim() || '';
+  return {
+    type:        getDiscType(n),
+    percent:     val('editDiscPercentVal'),
+    percentOn:   val('editDiscPercentOn'),
+    giftWhat:    val('editDiscGiftWhat'),
+    buyX:        val('editDiscBuyX'),
+    buyY:        val('editDiscBuyY'),
+    shipDetail:  val('editDiscShipDetail'),
+    priceDetail: val('editDiscPriceDetail'),
+    otherText:   val('editDiscOtherText'),
+  };
+}
+
+function updateDiscRedeemNoteN(n) {
+  const note = document.getElementById('editDiscRedeemNote' + n);
+  if (!note) return;
+  const code = document.getElementById('editDiscountCode' + n)?.value.trim() || '';
+  const dTypes = computeDiscountTypes(_editingBizTypes, !!code, getRedeemModeN(n));
+  note.textContent = 'כך יוצג באתר: ' + dTypes.map(t => DISCOUNT_TYPE_LABELS[t] || t).join(', ');
+}
+
+window.onDiscBuilderInputN = function(n) {
+  updateDiscOtherCountN(n);
+  updateDiscRedeemNoteN(n);
+  renderRedeemModeGridN(n);
+};
+
+window.addBenefit = function() {
+  if (benefitCount >= MAX_BENEFITS) return;
+  benefitCount++;
+  document.getElementById('benefitWrap' + benefitCount).style.display = 'block';
+  renderDiscTypeGridN(benefitCount);
+  renderRedeemModeGridN(benefitCount);
+  updateAddBenefitBtn();
+};
+
+window.removeBenefit = function(n) {
+  document.getElementById('benefitWrap' + n).style.display = 'none';
+  setDiscType(n, null);
+  setRedeemModeN(n, null);
+  ['editDiscPercentVal','editDiscPercentOn','editDiscGiftWhat','editDiscBuyX','editDiscBuyY','editDiscShipDetail','editDiscPriceDetail','editDiscOtherText','editDiscountCode'].forEach(fid => {
+    const el = document.getElementById(fid + n);
+    if (el) el.value = '';
+  });
+  benefitCount = n - 1;
+  updateAddBenefitBtn();
+};
+
+function updateAddBenefitBtn() {
+  const btn = document.getElementById('addBenefitBtn');
+  if (btn) btn.style.display = benefitCount >= MAX_BENEFITS ? 'none' : 'block';
+}
+
+function collectAdditionalBenefits() {
+  const arr = [];
+  for (let n = 2; n <= benefitCount; n++) {
+    const text = computeDiscBuilderTextN(n);
+    if (!text) continue;
+    const code = document.getElementById('editDiscountCode' + n).value.trim();
+    const redeemMode = getRedeemModeN(n);
+    arr.push({
+      text, code, redeemMode,
+      redeemTypes: computeDiscountTypes(_editingBizTypes, !!code, redeemMode),
+      builder: discBuilderSnapshotN(n),
+    });
+  }
+  return arr;
+}
 
 function updateDiscRedeemNote() {
   const note = document.getElementById('editDiscRedeemNote');
@@ -2627,7 +2962,6 @@ window.saveSec2 = async function(id) {
     phone:        document.getElementById('editPhone').value.trim(),
     whatsapp:     document.getElementById('editWhatsapp').value.trim(),
     serviceEmail: document.getElementById('editServiceEmail').value.trim(),
-    profession:   isProNow ? document.getElementById('editProfession').value.trim() : '',
     regions:      isProNow ? [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p => p.textContent.trim()) : [],
     websiteOnline: isOnlineNow ? document.getElementById('editWebsiteOnline').value.trim() : '',
   };
@@ -2635,6 +2969,10 @@ window.saveSec2 = async function(id) {
 };
 
 window.saveSec3 = async function(id) {
+  if (selectedCat && !noTagFits && selectedTags.length === 0) {
+    showToast('⚠️ נא לבחור תגית אחת לפחות, או לסמן שאין תגית מתאימה');
+    return;
+  }
   const hasDiscount  = document.getElementById('editDiscountToggle').classList.contains('on');
   const discountCode = hasDiscount ? document.getElementById('editDiscountCode').value.trim() : '';
   await saveSectionUpdates(id, {
@@ -2642,13 +2980,16 @@ window.saveSec3 = async function(id) {
     cat:                selectedCat || '',
     categorySecondary:  [],
     tags:               selectedTags,
+    noTagFits,
     tagSuggestion:       document.getElementById('editTagSuggestion').value.trim(),
+    alsoUnderCategory:   selectedAlsoCat || '',
     hasDiscount,
     discountText:        hasDiscount ? computeDiscBuilderText() : '',
     discountCode,
     discountRedeemMode:  hasDiscount ? discRedeemMode : '',
     discountTypes:       hasDiscount ? computeDiscountTypes(_editingBizTypes, !!discountCode, discRedeemMode) : [],
     discountBuilder:     hasDiscount ? discBuilderSnapshot() : null,
+    additionalDiscounts: hasDiscount ? collectAdditionalBenefits() : [],
     hours:               document.getElementById('editHours').value.trim(),
   });
 };

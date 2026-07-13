@@ -249,8 +249,8 @@
     .biz-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
     .biz-card-tag {
       font-size: 10px; font-weight: 600; white-space: nowrap;
-      color: var(--accent); background: rgba(255,222,0,.1);
-      border: 1px solid rgba(255,222,0,.2);
+      color: rgba(var(--fg-rgb),.65); background: rgba(var(--fg-rgb),.08);
+      border: 1px solid var(--border);
       border-radius: 6px; padding: 2px 7px;
     }
 
@@ -413,8 +413,8 @@
     .sheet-name { font-size: 22px; font-weight: 900; color: var(--text); }
     .sheet-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
     .sheet-tag { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-    .sheet-tag.cat      { background: rgba(255,222,0,.15); color: var(--accent); }
-    .sheet-tag.tag      { background: rgba(255,222,0,.08); color: var(--accent); border: 1px solid rgba(255,222,0,.2); font-weight: 600; }
+    .sheet-tag.cat      { background: rgba(var(--fg-rgb),.09); color: var(--text); font-weight: 700; }
+    .sheet-tag.tag      { background: rgba(var(--fg-rgb),.07); color: var(--text-sm); border: 1px solid var(--border); font-weight: 600; }
     .sheet-tag.online   { background: rgba(37,211,102,.12); color: #25D366; }
     .sheet-tag.physical { background: rgba(var(--fg-rgb),.08); color: rgba(var(--fg-rgb),.75); }
     .sheet-tag.city     { color: var(--text-sm); font-weight: 400; }
@@ -434,8 +434,13 @@
       border-radius: 14px; padding: 14px 16px;
     }
     .sheet-benefit-label { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: .5px; margin-bottom: 6px; }
+    .sheet-benefit-count { font-size: 11px; font-weight: 600; color: var(--text-sm); margin-inline-start: 6px; }
     .sheet-benefit-text  { font-size: 16px; font-weight: 800; color: var(--text); }
     .sheet-benefit-type  { font-size: 12px; color: var(--text-sm); margin-top: 4px; }
+    .sheet-benefit-item + .sheet-benefit-item {
+      margin-top: 10px; padding-top: 10px;
+      border-top: 1px dashed rgba(255,222,0,.25);
+    }
 
     .sheet-coupon-box {
       display: none; margin-top: 10px;
@@ -711,7 +716,7 @@
 
 <!-- ══ HERO / SEARCH ══ -->
 <div class="hero">
-  <div class="hero-title">שלום, <span>ישראל</span> 👋<br>מה מחפשים היום?</div>
+  <div class="hero-title">שלום, <span id="heroUserName">חבר</span> 👋<br>מה מחפשים היום?</div>
   <div class="search-bar">
     <span class="search-icon">🔍</span>
     <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInput" oninput="handleSearch(this.value)"/>
@@ -1399,12 +1404,29 @@ function openBiz(id) {
 
   if (b.discount) {
     document.getElementById('sheetBenefit').style.display = 'block';
-    document.getElementById('sheetBenefitText').textContent = b.discount;
 
-    const dTypes = b.discountTypes && b.discountTypes.length ? b.discountTypes : (b.discountType ? [b.discountType] : []);
     const DISC_TYPE_LABELS = { online: '🌐 מימוש באתר האינטרנט', physical: '🏪 מימוש בחנות הפיזית', sale: '🤝 מימוש במעמד המכירה / השירות' };
-    document.getElementById('sheetBenefitType').textContent =
-      dTypes.map(t => DISC_TYPE_LABELS[t]).filter(Boolean).join(' · ') || '🏪 מימוש בחנות הפיזית';
+    const dTypes = b.discountTypes && b.discountTypes.length ? b.discountTypes : (b.discountType ? [b.discountType] : []);
+    const primaryTypeLine = dTypes.map(t => DISC_TYPE_LABELS[t]).filter(Boolean).join(' · ') || '🏪 מימוש בחנות הפיזית';
+
+    const extraBenefits = (b.additionalDiscounts || []).filter(d => d && d.text);
+    const allBenefits = [{ text: b.discount, typeLine: primaryTypeLine }].concat(
+      extraBenefits.map(d => {
+        const eTypes = d.redeemTypes && d.redeemTypes.length ? d.redeemTypes : [];
+        let line = eTypes.map(t => DISC_TYPE_LABELS[t]).filter(Boolean).join(' · ') || '🏪 מימוש בחנות הפיזית';
+        if (d.code && eTypes.includes('online')) line += ` · קוד: ${d.code}`;
+        return { text: d.text, typeLine: line };
+      })
+    );
+
+    document.getElementById('sheetBenefitLabel').innerHTML = allBenefits.length > 1
+      ? `💛 ההטבות שלך <span class="sheet-benefit-count">(${allBenefits.length} הטבות שונות)</span>`
+      : '💛 ההטבה שלך';
+    document.getElementById('sheetBenefitItems').innerHTML = allBenefits.map(item => `
+      <div class="sheet-benefit-item">
+        <div class="sheet-benefit-text">${item.text}</div>
+        <div class="sheet-benefit-type">${item.typeLine}</div>
+      </div>`).join('');
 
     // תצוגת מימוש ההטבה נקבעת לפי סוג העסק עצמו (isPhysical/isPro/online) —
     // חנות פיזית/בעל מקצוע מקבלים תמיד את תעודת החבר, אונליין מקבל תמיד קוד קופון
@@ -1632,9 +1654,8 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="sheet-meta"  id="sheetMeta"></div>
       <div class="sheet-desc"  id="sheetDesc"></div>
       <div class="sheet-benefit" id="sheetBenefit" style="display:none">
-        <div class="sheet-benefit-label">💛 ההטבה שלך</div>
-        <div class="sheet-benefit-text" id="sheetBenefitText"></div>
-        <div class="sheet-benefit-type" id="sheetBenefitType"></div>
+        <div class="sheet-benefit-label" id="sheetBenefitLabel">💛 ההטבה שלך</div>
+        <div id="sheetBenefitItems"></div>
       </div>
       <div id="sheetCouponArea"></div>
       <div class="sheet-gallery" id="sheetGallery"></div>
@@ -1775,6 +1796,17 @@ await new Promise(resolve => {
   });
 });
 
+// שם פרטי בברכת הבית — נשלף מהחבר המחובר בפועל (לא placeholder קבוע)
+(async () => {
+  try {
+    const memberId = localStorage.getItem('hb_memberId');
+    const snap = await getDoc(doc(db, 'members', memberId));
+    const firstName = snap.exists() ? (snap.data().firstName || '') : '';
+    const el = document.getElementById('heroUserName');
+    if (firstName && el) el.textContent = firstName;
+  } catch (e) { console.error('hero greeting name fetch failed:', e); }
+})();
+
 window._likeFirestoreToggle = async function(id, memberId, liked) {
   await updateDoc(doc(db, 'businesses', id), {
     likedBy: liked ? arrayRemove(memberId) : arrayUnion(memberId)
@@ -1785,11 +1817,19 @@ window._recordView = function(id) {
   updateDoc(doc(db, 'businesses', id), { clicks: increment(1) }).catch(() => {});
 };
 
+// גזירה חיה של "איפה ניתן לממש" — זהה ל-business-dashboard.html/admin-businesses.html/business.html.
+// לא סומכים על b.discountTypes המאוחסן (יכול "להתיישן" אם bizTypes/discountRedeemMode/קוד השתנו בלי שמירה מחדשת של הכרטיס) —
+// מחשבים בזמן אמת מהשדות המקוריים בכל טעינה, כדי שהתצוגה תמיד תואמת את מה שהעסק רואה בדשבורד שלו.
+function computeDiscountTypesLive(bizTypes, hasCode, redeemMode) {
+  if (hasCode) return ['online'];
+  return [redeemMode || ((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
+}
+
 onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')), snap => {
   const data = snap.docs.map(doc => {
     const b = doc.data();
-    const types = b.discountTypes || [];
     const bizTypes = b.bizTypes || [];
+    const types = b.hasDiscount ? computeDiscountTypesLive(bizTypes, !!b.discountCode, b.discountRedeemMode) : (b.discountTypes || []);
     return {
       id:           doc.id,
       name:         b.name || '',
@@ -1798,6 +1838,10 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
       city:         (b.branches && b.branches[0]?.city) || '',
       discount:     b.discountText || '',
       discountTypes: types,
+      additionalDiscounts: (b.additionalDiscounts || []).map(d => ({
+        ...d,
+        redeemTypes: computeDiscountTypesLive(bizTypes, !!d.code, d.redeemMode),
+      })),
       coupon:       b.discountCode || '',
       isNew:        b.isNew || false,
       newUntil:     b.newUntil || null,
@@ -1845,13 +1889,11 @@ async function initBizNavItem() {
       isBizOwner = d.isBusinessOwner === true;
       linkedBusinessId = d.linkedBusinessId || '';
     }
-  } else {
-    isBizOwner = true; // dev fallback
   }
   if (!isBizOwner) return;
 
-  let token = memberId ? '' : (sessionStorage.getItem('hb_lastBizToken') || 'c6342c93-a350-42b8-ad87-95fa005c8983');
-  if (memberId && linkedBusinessId) {
+  let token = '';
+  if (linkedBusinessId) {
     const bizSnap = await getDoc(doc(db, 'businesses', linkedBusinessId));
     if (bizSnap.exists()) token = bizSnap.data().accessToken || '';
   }
@@ -1870,17 +1912,9 @@ let _memberCardData = null;
 async function loadMemberCardData() {
   if (_memberCardData) return _memberCardData;
   const memberId = localStorage.getItem('hb_memberId');
-  if (memberId) {
-    const snap = await getDoc(doc(db, 'members', memberId));
-    _memberCardData = snap.exists() ? snap.data() : {};
-  } else {
-    // dev fallback — ללא session אמיתי
-    _memberCardData = {
-      firstName: 'ישראל', lastName: 'ישראלי',
-      memberNumber: 142, approvedAt: { toDate: () => new Date('2025-10-01') },
-      isSubscriber: true, subscriberSection: '8',
-    };
-  }
+  if (!memberId) throw new Error('אין session מחובר — לא ניתן לטעון תעודת חבר');
+  const snap = await getDoc(doc(db, 'members', memberId));
+  _memberCardData = snap.exists() ? snap.data() : {};
   return _memberCardData;
 }
 
@@ -1896,7 +1930,16 @@ window.toggleMemberCard = async function(link) {
 
   if (!box.innerHTML) {
     const bizName = document.getElementById('sheetName').textContent || '';
-    const data = await loadMemberCardData();
+    let data;
+    try {
+      data = await loadMemberCardData();
+    } catch (e) {
+      console.error('loadMemberCardData failed:', e);
+      box.innerHTML = '<div class="mini-card-biz-note">⚠️ לא ניתן לטעון את תעודת החבר כרגע. נסה/י לרענן את הדף ולנסות שוב.</div>';
+      box.style.display = 'block';
+      link.textContent = '🔽 סגור אימות';
+      return;
+    }
     const pad = n => String(n).padStart(5, '0');
     const fullName = `${data.firstName || ''} ${data.lastName || ''}`.trim();
     const memberNum = data.memberNumber || 0;

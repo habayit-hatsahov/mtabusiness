@@ -652,6 +652,15 @@ import { doc, getDoc, updateDoc, collection, query, where, getDocs, serverTimest
 
 const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
+// ── SIGN OUT ──────────────────────────────────────────────────────────────
+// מוגדר מוקדם ככל האפשר (לפני ה-Auth guard למטה) — כדי שכפתור ההתנתקות תמיד
+// יעבוד, גם אם טעינת הנתונים/ה-Auth guard נתקעת/נכשלת בהמשך הדף.
+window.signOutUser = async function() {
+  try { await signOut(auth); } catch (e) {}
+  ['hb_uid', 'hb_phone', 'hb_memberId'].forEach(k => localStorage.removeItem(k));
+  location.href = 'landing-demo.html';
+};
+
 // ── AUTH GUARD ────────────────────────────────────────────────────────────
 // 3 נתיבי גישה שונים לדף הזה:
 // 1) bizToken   — בעל עסק שמגיע מהדשבורד שלו (business-dashboard.html), מאומת מול ה-Worker לפי תוקף ה-accessToken (לא session חבר — זהות שונה, role:'business_owner')
@@ -716,45 +725,14 @@ if (memberId) {
     pendingFamilyChangesAt: data.pendingFamilyChangesAt || null,
   };
 } else {
-  // dev fallback
-  member = {
-    firstName: 'ישראל', lastName: 'ישראלי',
-    memberId: 142, approvedDate: new Date('2025-10-01'),
-    isSubscriber: true, subscriberSection: '8',
-    phone: '050-0000000', email: 'israel@gmail.com',
-    familyMembers: [],
-    isBusinessOwner: true,
-  };
+  // אין session אמיתי — חוסמים לגמרי, לא מציגים דאטה בדויה (הוסר dev fallback)
+  location.href = 'landing-demo.html';
+  await new Promise(() => {});
 }
 
 // ── BUSINESS PROFILE ─────────────────────────────────────────────────────
 if (member.isBusinessOwner) {
-  // dev fallback — אין session אמיתי, אז מציגים את העסק שנצפה לאחרונה (אם נצפה עסק ספציפי דרך הקישור שלו)
-  if (!memberId) {
-    const lastToken = sessionStorage.getItem('hb_lastBizToken') || 'c6342c93-a350-42b8-ad87-95fa005c8983';
-    let bizName = 'יהב מטבחים (דמו)';
-    let statusText = '✅ מאושר';
-    let statusColor = 'var(--green)';
-    const bizQ = query(collection(db, 'businesses'), where('accessToken', '==', lastToken));
-    const bizSnap = await getDocs(bizQ);
-    if (!bizSnap.empty) {
-      const bd = bizSnap.docs[0].data();
-      bizName = bd.name || bizName;
-      const bizStatus = bd.status || 'pending';
-      statusText  = bizStatus === 'approved' ? '✅ מאושר' : bizStatus === 'rejected' ? '❌ נדחה' : '⏳ ממתין לאישור';
-      statusColor = bizStatus === 'approved' ? 'var(--green)' : 'var(--orange)';
-    }
-    document.getElementById('bizProfileSection').style.display = 'block';
-    document.getElementById('bizProfileName').textContent = bizName;
-    document.getElementById('bizProfileStatus').textContent = statusText;
-    document.getElementById('bizProfileStatus').style.color = statusColor;
-    const btn = document.getElementById('bizDashBtn');
-    btn.href = `business-dashboard.html?token=${lastToken}`;
-    btn.style.display = 'flex';
-    const navItem = document.getElementById('menuBizItem');
-    navItem.href = `business-dashboard.html?token=${lastToken}`;
-    navItem.style.display = 'flex';
-  } else if (member.linkedBusinessId) {
+  if (member.linkedBusinessId) {
     // קישור קבוע (linkedBusinessId) — לא תלוי בטלפון הנוכחי, לא שביר לעריכות מאוחרות.
     // שאילתת ownerPhone הישנה הוסרה — כל 50 העסקים הקיימים כבר קושרו במיגרציה (ר' PROJECT_CONTEXT סעיף 16)
     let biz = null;
@@ -779,14 +757,6 @@ if (member.isBusinessOwner) {
     }
   }
 }
-
-// ── SIGN OUT ──────────────────────────────────────────────────────────────
-window.signOutUser = async function() {
-  await signOut(auth);
-  // מסירים רק את מפתחות הזיהוי — לא localStorage.clear(), כדי לא למחוק העדפות אחרות (hb_theme, locationAllowed וכו')
-  ['hb_uid', 'hb_phone', 'hb_memberId'].forEach(k => localStorage.removeItem(k));
-  location.href = 'landing-demo.html';
-};
 
 // ── UPDATE TO FIRESTORE ───────────────────────────────────────────────────
 async function saveMemberField(updates) {

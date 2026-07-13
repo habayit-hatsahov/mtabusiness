@@ -45,6 +45,7 @@ Write-Host "✅ Server started on http://localhost:$port  (live-reload enabled)"
 
 while ($listener.IsListening) {
     $ctx = $listener.GetContext()
+    try {
 
     # ── Download proxy — עוקף חסימת CORS של הדפדפן על fetch() ישיר ל-Firebase Storage ──
     # (dev בלבד; בפרודקשן בלי שרת (GitHub Pages) יש להגדיר CORS על ה-bucket עצמו)
@@ -131,4 +132,12 @@ while ($listener.IsListening) {
 
     $ctx.Response.OutputStream.Flush()
     $ctx.Response.OutputStream.Close()
+
+    } catch {
+        Write-Host "❌ Request error ($($ctx.Request.Url.LocalPath)): $_"
+        try {
+            $ctx.Response.StatusCode = 500
+            $ctx.Response.OutputStream.Close()
+        } catch {}
+    }
 }
