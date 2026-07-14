@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>הבית הצהוב – תעודת חבר</title>
+  <title>Yellow Zone – תעודת חבר</title>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
   <script>
     (function () {
@@ -95,6 +95,14 @@
       cursor: pointer; color: var(--accent); font-size: 16px; flex-shrink: 0;
     }
     .menu-toggle:active { transform: scale(.93); }
+    .nav-icon-btn {
+      width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+      background: var(--card-bg); border: 1px solid var(--border-md);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--accent); cursor: pointer; padding: 0; font: inherit;
+    }
+    .nav-icon-btn svg { width: 17px; height: 17px; }
+    .nav-icon-btn:active { transform: scale(.93); }
     .nav-share {
       display: flex; align-items: center; gap: 6px;
       cursor: pointer; text-decoration: none; flex-shrink: 0; min-width: 0;
@@ -403,6 +411,9 @@
   <header class="top-nav">
     <div class="nav-actions">
       <div class="menu-toggle" id="menuToggle" onclick="openMenu()">☰</div>
+      <button class="nav-icon-btn" id="navThemeToggle" onclick="toggleThemeBtn()" title="החלף מצב תצוגה" aria-label="החלף מצב תצוגה">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>
+      </button>
       <a class="nav-share" href="landing-demo.html" title="שתפו / דף נחיתה">
         <span class="nav-share-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -431,7 +442,6 @@
 
         <!-- TOP -->
         <div class="card-top">
-          <div class="card-logo-text">הבית <span>הצהוב</span></div>
           <svg width="26" height="30" viewBox="0 0 104 118" fill="none">
             <g style="fill:#002a75;">
               <g transform="matrix(1.25,0,0,1.25,0,30.09)"><path d="M0,0 26,0 13,22.9Z"/></g>
@@ -442,12 +452,13 @@
               <g transform="matrix(1.25,0,0,1.25,35.2,0)"><path d="M0,23.4 13.2,0 26.9,23.4 17.4,35.9 8.4,23.4Z"/></g>
             </g>
           </svg>
+          <div class="card-logo-text">Yellow <span>Zone</span></div>
         </div>
 
         <!-- MID -->
         <div class="card-mid">
           <div class="card-member-label">שם החבר</div>
-          <div class="card-member-name" id="cardName">ישראל ישראלי</div>
+          <div class="card-member-name" id="cardName"></div>
         </div>
 
         <!-- BOTTOM -->
@@ -455,11 +466,11 @@
           <div class="card-fields">
             <div class="card-field">
               <div class="card-field-label">מספר חבר</div>
-              <div class="card-field-value yellow" id="cardNumber">#00142</div>
+              <div class="card-field-value yellow" id="cardNumber">#-----</div>
             </div>
             <div class="card-field">
               <div class="card-field-label">תאריך הצטרפות</div>
-              <div class="card-field-value" id="cardDate">06/25</div>
+              <div class="card-field-value" id="cardDate">--/--</div>
             </div>
             <div class="card-field" id="gateField">
               <div class="card-field-label">שער</div>
@@ -485,17 +496,53 @@
     import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
     import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
 
-    // ── AUTH GUARD — session אמיתי (Firebase Auth) + hb_memberId תואם ────
+    function pad(n) { return String(n).padStart(5,'0'); }
+
+    // ── מציג את התעודה על המסך — קרוא גם לרינדור המיידי מ-cache (למטה) וגם לרינדור האמיתי אחרי fetch ──
+    function renderCardIdentity(d) {
+      const fullName   = (d.firstName || '') + ' ' + (d.lastName || '');
+      const approvedAt = d.approvedAt instanceof Date ? d.approvedAt : new Date(d.approvedAt);
+
+      document.getElementById('cardName').textContent   = fullName;
+      document.getElementById('cardNumber').textContent = '#' + pad(d.memberNumber || 0);
+      document.getElementById('cardDate').textContent   =
+        String(approvedAt.getMonth()+1).padStart(2,'0') + '/' + String(approvedAt.getFullYear()).slice(2);
+
+      const gateField = document.getElementById('gateField');
+      if (d.isSubscriber && d.subscriberSection) {
+        document.getElementById('cardGate').textContent = d.subscriberSection;
+        if (gateField) gateField.style.display = 'block';
+      } else {
+        if (gateField) gateField.style.display = 'none';
+      }
+
+      const infoDate = document.getElementById('infoDate');
+      if (infoDate) infoDate.textContent = approvedAt.toLocaleDateString('he-IL',{day:'numeric',month:'long',year:'numeric'});
+      const familyTag = document.querySelector('.info-box .family-tag');
+      if (familyTag) familyTag.textContent = (d.isSubscriber && d.subscriberSection) ? 'מנוי שער ' + d.subscriberSection : 'אוהד';
+    }
+
+    // ── הצגה מיידית מה-cache המקומי (הנתונים האחרונים שנטענו בהצלחה), עד שהנתונים העדכניים מגיעים מ-Firestore ──
+    // תנאי הבטיחות: ה-cache חייב להיות משויך בדיוק ל-hb_memberId הנוכחי — אחרת (מכשיר משותף/משתמש התחלף) לא מציגים אותו בכלל.
+    try {
+      const uidNow = localStorage.getItem('hb_memberId');
+      const cached = JSON.parse(localStorage.getItem('hb_card_cache') || 'null');
+      if (uidNow && cached && cached.uid === uidNow) renderCardIdentity(cached);
+    } catch (e) {}
+
+    // ── AUTH GUARD — session אמיתי (Firebase Auth) + חייב להיות תואם בפועל ל-hb_memberId (לא רק "שניהם קיימים בנפרד") ────
     const memberId = await new Promise(resolve => {
       const unsub = onAuthStateChanged(auth, user => {
         unsub();
         const mid = localStorage.getItem('hb_memberId');
-        if (!user || !mid) { location.href = 'landing-demo.html'; return; }
-        resolve(mid);
+        if (!user || !mid || user.uid !== mid) {
+          ['hb_uid', 'hb_phone', 'hb_memberId'].forEach(k => localStorage.removeItem(k));
+          location.href = 'landing-demo.html';
+          return;
+        }
+        resolve(user.uid);
       });
     });
-
-    function pad(n) { return String(n).padStart(5,'0'); }
 
     const snap = await getDoc(doc(db, 'members', memberId));
     const data = snap.exists() ? snap.data() : {};
@@ -516,30 +563,19 @@
       }
     })();
 
-    const fullName   = (data.firstName || '') + ' ' + (data.lastName || '');
-    const memberNum  = data.memberNumber || 0;
     const approvedAt = data.approvedAt?.toDate() || new Date();
-    const isSubscriber = data.isSubscriber === true || data.isSubscriber === 'yes';
-    const gate = data.subscriberSection || null;
+    const normalized = {
+      firstName: data.firstName || '', lastName: data.lastName || '',
+      memberNumber: data.memberNumber || 0, approvedAt,
+      isSubscriber: data.isSubscriber === true || data.isSubscriber === 'yes',
+      subscriberSection: data.subscriberSection || null,
+    };
+    renderCardIdentity(normalized);
 
-    document.getElementById('cardName').textContent   = fullName;
-    document.getElementById('cardNumber').textContent = '#' + pad(memberNum);
-    document.getElementById('cardDate').textContent   =
-      String(approvedAt.getMonth()+1).padStart(2,'0') + '/' + String(approvedAt.getFullYear()).slice(2);
-
-    const gateField = document.getElementById('gateField');
-    if (isSubscriber && gate) {
-      document.getElementById('cardGate').textContent = gate;
-      if (gateField) gateField.style.display = 'block';
-    } else {
-      if (gateField) gateField.style.display = 'none';
-    }
-
-    // info-box (optional — exists in some versions)
-    const infoDate = document.getElementById('infoDate');
-    if (infoDate) infoDate.textContent = approvedAt.toLocaleDateString('he-IL',{day:'numeric',month:'long',year:'numeric'});
-    const familyTag = document.querySelector('.info-box .family-tag');
-    if (familyTag) familyTag.textContent = (isSubscriber && gate) ? 'מנוי שער ' + gate : 'אוהד';
+    // עדכון ה-cache המקומי לנתונים הטריים — כדי שבכניסה הבאה יהיה מה להציג מיידית (ר' renderCardIdentity לעיל).
+    try {
+      localStorage.setItem('hb_card_cache', JSON.stringify({ ...normalized, uid: memberId, approvedAt: approvedAt.toISOString() }));
+    } catch (e) {}
 
     // save to gallery
     window.saveCard = async function() {
@@ -547,7 +583,7 @@
       if (typeof html2canvas !== 'undefined') {
         const canvas = await html2canvas(card, { scale: 3, backgroundColor: null });
         const link = document.createElement('a');
-        link.download = 'תעודת-חבר-הבית-הצהוב.png';
+        link.download = 'תעודת-חבר-Yellow-Zone.png';
         link.href = canvas.toDataURL('image/png');
         link.click();
       } else {
@@ -650,25 +686,6 @@
   }
   .menu-footer strong { color: var(--chrome-accent); }
 
-  /* ══ מתג מצב תצוגה (בהיר/כהה) ══ */
-  .menu-theme-row { justify-content: space-between; cursor: default; }
-  .menu-theme-row:active { background: none; }
-  .menu-theme-row .menu-item-label { flex: 1; }
-  .theme-switch { position: relative; width: 46px; height: 26px; flex-shrink: 0; }
-  .theme-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
-  .theme-switch-slider {
-    position: absolute; inset: 0; background: var(--card-bg);
-    border: 1px solid var(--border-md); border-radius: 20px;
-    pointer-events: none; transition: background .2s, border-color .2s;
-  }
-  .theme-switch-slider::before {
-    content: ''; position: absolute; width: 20px; height: 20px;
-    right: 2px; top: 2px; background: var(--text-muted);
-    border-radius: 50%; transition: transform .2s, background .2s;
-  }
-  .theme-switch input:checked + .theme-switch-slider { background: rgba(255,222,0,.18); border-color: var(--yellow); }
-  .theme-switch input:checked + .theme-switch-slider::before { transform: translateX(-20px); background: var(--yellow); }
-
   /* ══ CONTACT SHEET ══ */
   .contact-overlay {
     display: none; position: fixed; inset: 0; z-index: 300;
@@ -736,14 +753,6 @@
       <span class="menu-item-icon">🏠</span>
       <span class="menu-item-label">בית</span>
     </a>
-    <div class="menu-item menu-theme-row">
-      <span class="menu-item-icon">🌓</span>
-      <span class="menu-item-label">מצב תצוגה בהיר</span>
-      <label class="theme-switch">
-        <input type="checkbox" id="themeToggleInput" onchange="toggleTheme(this.checked)"/>
-        <span class="theme-switch-slider"></span>
-      </label>
-    </div>
     <a class="menu-item" href="profile.html">
       <span class="menu-item-icon">👤</span>
       <span class="menu-item-label">פרטים אישיים</span>
@@ -756,7 +765,7 @@
       <span class="menu-item-icon">📞</span>
       <span class="menu-item-label">צור קשר</span>
     </button>
-    <a class="menu-item" href="business.html">
+    <a class="menu-item" href="business.html" target="_blank" rel="noopener">
       <span class="menu-item-icon">➕</span>
       <span class="menu-item-label">הוסף עסק</span>
     </a>
@@ -835,16 +844,14 @@
   }
 
   // ── מצב תצוגה בהיר/כהה (נגישות) ──
-  function toggleTheme(isLight) {
-    const theme = isLight ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('hb_theme', theme);
+  function toggleThemeBtn() {
+    const next = (localStorage.getItem('hb_theme') || 'dark') === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('hb_theme', next);
   }
   function initTheme() {
     const saved = localStorage.getItem('hb_theme') || 'dark';
     document.documentElement.setAttribute('data-theme', saved);
-    const input = document.getElementById('themeToggleInput');
-    if (input) input.checked = saved === 'light';
   }
   document.addEventListener('DOMContentLoaded', initTheme);
 
