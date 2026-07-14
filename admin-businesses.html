@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>הבית הצהוב – ניהול עסקים</title>
+  <title>Yellow Zone – ניהול עסקים</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
   <style>
@@ -1099,6 +1099,67 @@ async function uploadFile(file, path) {
   return await getDownloadURL(snap.ref);
 }
 
+// ── דחיסת תמונה לפני העלאה (canvas) — הקובץ המקורי מהטלפון יכול להיות כמה MB ──────────────────────
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+function dataUrlToFile(dataUrl, filename) {
+  const [meta, b64] = dataUrl.split(',');
+  const mime = meta.match(/:(.*?);/)[1];
+  const bin  = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], filename, { type: mime });
+}
+function compressImageFile(file, maxDim = 1280, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    fileToDataUrl(file).then(rawDataUrl => {
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width  = Math.round(width  * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = rawDataUrl;
+    }).catch(reject);
+  });
+}
+async function compressToFile(file, maxDim, quality, filename) {
+  const dataUrl = await compressImageFile(file, maxDim, quality);
+  return dataUrlToFile(dataUrl, filename || file.name);
+}
+// מעלה גרסה מלאה-אך-דחוסה (1280px) + thumbnail קטן (400px, לכרטיסים בפיד home.html) של אותה תמונה.
+// נראות הכרטיס לא משתנה — רק כמות המידע שיורדת ברשת. נופל בחזרה להעלאת המקור אם הדחיסה נכשלת.
+async function uploadImageWithThumb(file, basePath) {
+  try {
+    const [mainFile, thumbFile] = await Promise.all([
+      compressToFile(file, 1280, 0.82, file.name),
+      compressToFile(file, 400, 0.75, 'thumb_' + file.name),
+    ]);
+    const [url, thumbUrl] = await Promise.all([
+      uploadFile(mainFile, basePath),
+      uploadFile(thumbFile, basePath + '_thumb'),
+    ]);
+    return { url, thumbUrl };
+  } catch (e) {
+    console.error('⚠️ image compression failed, falling back to original file:', e);
+    return { url: await uploadFile(file, basePath), thumbUrl: '' };
+  }
+}
+
 // מגן מפני ערך תקול שנשמר בעבר בטעות (באג ישן: img.src='' נפתר לכתובת הדף עצמו, לא למחרוזת ריקה)
 function looksLikeImageUrl(url) {
   return !!url && !/\.html?(\?|#|$)/i.test(url);
@@ -1424,6 +1485,9 @@ window.openBizSheet = function(id) {
   const tagSuggestionHtml = b.tagSuggestion
     ? `<div class="tag-suggestion-alert">💡 העסק הציע תגית שלא הייתה ברשימה: "${esc(b.tagSuggestion)}"</div>`
     : '';
+  const alsoCatSuggestionHtml = b.alsoCategorySuggestion
+    ? `<div class="tag-suggestion-alert">💡 העסק חושב שהוא מתאים גם לקטגוריה נוספת: "${esc(b.alsoCategorySuggestion)}"</div>`
+    : '';
 
   const typeTagsHtml = types.length
     ? types.map(t => `<span class="field-tag type">${BIZ_TYPE_LABELS[t] || t}</span>`).join('')
@@ -1621,6 +1685,7 @@ window.openBizSheet = function(id) {
         <div class="detail-item full"><div class="lbl">תגיות</div><div class="val">${b.noTagFits ? '<span class="missing">אין תגית מתאימה</span>' : tagsOnlyHtml}</div></div>
         <div class="detail-item full"><div class="lbl">מופיע גם תחת</div><div class="val">${b.alsoUnderCategory ? `<span class="field-tag cat">${CAT_LABELS[selectedAlsoCat] || selectedAlsoCat}</span>` : '<span class="missing">לא נבחר</span>'}</div></div>
         ${tagSuggestionHtml ? `<div class="detail-item full"><div class="val">${tagSuggestionHtml}</div></div>` : ''}
+        ${alsoCatSuggestionHtml ? `<div class="detail-item full"><div class="val">${alsoCatSuggestionHtml}</div></div>` : ''}
         <div class="detail-item full"><div class="val">${benefitBoxHtml}</div></div>
         <div class="detail-item full"><div class="lbl">שעות פעילות</div><div class="val">${mDash(b.hours)}</div></div>
       </div>
@@ -1879,6 +1944,7 @@ window.openBizSheet = function(id) {
     const coverImg = document.getElementById('editCoverPhotoImg');
     coverImg.src = b.coverPhoto;
     coverImg.dataset.existingUrl = b.coverPhoto;
+    coverImg.dataset.existingThumbUrl = b.coverPhotoThumb || '';
     document.getElementById('editCoverPhotoPreviewWrap').style.display = 'block';
     document.getElementById('editCoverPhotoPlaceholder').style.display = 'none';
   }
@@ -1886,6 +1952,7 @@ window.openBizSheet = function(id) {
     const logoImg = document.getElementById('editLogoImg');
     logoImg.src = b.logo;
     logoImg.dataset.existingUrl = b.logo;
+    logoImg.dataset.existingThumbUrl = b.logoThumb || '';
     document.getElementById('editLogoPreviewWrap').style.display = 'block';
     document.getElementById('editLogoPlaceholder').style.display = 'none';
   }
@@ -2324,9 +2391,9 @@ document.getElementById('sectionsSearch').addEventListener('input', renderSectio
 document.getElementById('statsSearch').addEventListener('input', renderStatsView);
 
 // ── message templates ────────────────────────────────────────────────────────
-const DEFAULT_TPL_WA      = 'היי {name} 👋\nברוך הבא לבית הצהוב! 💛\n\nהעסק שלך "{business}" אושר לאינדקס.\n\n🔗 קישור לניהול העסק שלך (עריכת פרטים, תמונות ועוד): {dashboard_link}\n\nביחד ננצח 🏆';
-const DEFAULT_TPL_MAIL    = 'שלום {name},\n\nשמחים לבשר שהעסק "{business}" אושר לאינדקס הבלעדי שלנו!\n\nהנה הקישור האישי שלך לניהול העסק — עריכת פרטים, הוספת תמונות ועוד:\n{dashboard_link}\n\nבאהבה,\nצוות הבית הצהוב 💛';
-const DEFAULT_TPL_SUBJECT = 'העסק שלך אושר לאינדקס הבית הצהוב 💛';
+const DEFAULT_TPL_WA      = 'היי {name} 👋\nברוך הבא ל-Yellow Zone! 💛\n\nהעסק שלך "{business}" אושר לאינדקס.\n\n🔗 קישור לניהול העסק שלך (עריכת פרטים, תמונות ועוד): {dashboard_link}\n\nביחד ננצח 🏆';
+const DEFAULT_TPL_MAIL    = 'שלום {name},\n\nשמחים לבשר שהעסק "{business}" אושר לאינדקס הבלעדי שלנו!\n\nהנה הקישור האישי שלך לניהול העסק — עריכת פרטים, הוספת תמונות ועוד:\n{dashboard_link}\n\nבאהבה,\nצוות Yellow Zone 💛';
+const DEFAULT_TPL_SUBJECT = 'העסק שלך אושר לאינדקס Yellow Zone 💛';
 
 function getTpl(key, fallback) {
   return localStorage.getItem('_hb_tpl_' + key) || fallback;
@@ -2423,7 +2490,7 @@ const PENDING_LABELS = {
   regions: 'אזורי פעילות', websiteOnline: 'אתר אונליין',
   phone: 'טלפון עסק', whatsapp: 'WhatsApp', serviceEmail: 'מייל שירות', city: 'עיר', address: 'כתובת',
   categoryPrimary: 'קטגוריה', cat: 'קטגוריה', categorySecondary: 'קטגוריות משניות',
-  tags: 'תגיות', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת',
+  tags: 'תגיות', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'הצעה לקטגוריה נוספת',
   hours: 'שעות פעילות', website: 'אתר', instagram: 'אינסטגרם', facebook: 'פייסבוק',
   discountText: 'פרטי הטבה', discountCode: 'קוד קופון', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש',
   hasDiscount: 'הטבה פעילה', additionalDiscounts: 'הטבות נוספות', coverPhoto: 'תמונה מייצגת', logo: 'לוגו', photos: 'גלריית תמונות', videos: 'סרטונים',
@@ -3008,16 +3075,22 @@ window.saveSec5 = async function(id) {
 
   const coverPhotoFile = document.getElementById('editCoverPhotoFile').files[0];
   if (coverPhotoFile) {
-    updates.coverPhoto = await uploadFile(coverPhotoFile, `businesses/${id}/coverPhoto_${Date.now()}`);
+    const { url, thumbUrl } = await uploadImageWithThumb(coverPhotoFile, `businesses/${id}/coverPhoto_${Date.now()}`);
+    updates.coverPhoto = url;
+    updates.coverPhotoThumb = thumbUrl;
   } else {
     updates.coverPhoto = document.getElementById('editCoverPhotoImg').dataset.existingUrl || '';
+    updates.coverPhotoThumb = document.getElementById('editCoverPhotoImg').dataset.existingThumbUrl || '';
   }
 
   const logoFile = document.getElementById('editLogoFile').files[0];
   if (logoFile) {
-    updates.logo = await uploadFile(logoFile, `businesses/${id}/logo_${Date.now()}`);
+    const { url, thumbUrl } = await uploadImageWithThumb(logoFile, `businesses/${id}/logo_${Date.now()}`);
+    updates.logo = url;
+    updates.logoThumb = thumbUrl;
   } else {
     updates.logo = document.getElementById('editLogoImg').dataset.existingUrl || '';
+    updates.logoThumb = document.getElementById('editLogoImg').dataset.existingThumbUrl || '';
   }
 
   const photoRows = [...document.querySelectorAll('[id^="editPhoto-"]')];

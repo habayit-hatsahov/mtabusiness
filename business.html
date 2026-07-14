@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>הבית הצהוב – הרשמת עסקים</title>
+  <title>Yellow Zone – הרשמת עסקים</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
   <style>
@@ -32,7 +32,7 @@
     }
 
     html { scroll-behavior: smooth; }
-    body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--text); }
+    body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; display: flex; flex-direction: column; }
 
     /* ── HERO ── */
     .hero {
@@ -119,6 +119,7 @@
 
     /* ── STEPPER ── */
     .stepper-wrap {
+      width: 100%;
       max-width: 480px;
       margin: 0 auto;
       padding: 24px 16px 0;
@@ -185,6 +186,7 @@
 
     /* ── FORM WRAP ── */
     .form-wrap {
+      width: 100%;
       max-width: 480px;
       margin: 0 auto;
       padding: 16px 16px 60px;
@@ -617,7 +619,7 @@
       background: var(--input-bg);
       user-select: none;
     }
-    .biz-type-card:hover { border-color: var(--yellow); background: rgba(255,222,0,.05); }
+    .biz-type-card:hover:not(.selected) { border-color: rgba(255,222,0,.35); background: rgba(255,222,0,.03); }
     .biz-type-card.selected {
       border-color: var(--yellow);
       background: rgba(255,222,0,.1);
@@ -660,6 +662,7 @@
     footer {
       background: #0f1524; color: rgba(255,255,255,.4);
       text-align: center; padding: 24px 20px; font-size: 13px;
+      margin-top: auto;
     }
     footer strong { color: var(--yellow); }
   </style>
@@ -695,7 +698,7 @@
         <g transform="matrix(1.25,0,0,1.25,35.2,0)"><path d="M0,23.4 13.2,0 26.9,23.4 17.4,35.9 8.4,23.4z"/></g>
       </g>
     </svg>
-    <span>הבית <em>הצהוב</em></span>
+    <span>Yellow <em>Zone</em></span>
   </div>
 
   <h1>הצטרף לאינדקס העסקים<em>של אוהדי מכבי תל אביב</em></h1>
@@ -997,10 +1000,10 @@
             <input type="text" id="tagSuggestion" placeholder="הקלידו הצעה לתגית חדשה..." maxlength="40" />
           </div>
 
-          <div class="section-subtitle" style="margin:18px 0 8px;">🆕 מופיע גם תחת... <span class="opt">(אופציונלי)</span></div>
-          <div class="cat-hint" style="margin-top:0;">אם העסק שלך רלוונטי גם לתחום נוסף (למשל קייטרינג שהוא גם "אירועים" וגם "אוכל") — בחר/י קטגוריה נוספת, כדי שגם לקוחות שמסננים לפיה ימצאו אותך. זה לא משנה את התגיות או העיצוב של הכרטיס שלך.</div>
-          <div style="height:12px;"></div>
-          <div class="cat-circle-grid" id="alsoCatGrid"></div>
+          <div class="section-subtitle" style="margin:18px 0 8px;">🆕 מתאים גם לתחום נוסף? <span class="opt">(אופציונלי)</span></div>
+          <div class="cat-hint" style="margin-top:0;">אם העסק שלך רלוונטי גם לתחום נוסף (למשל קייטרינג שהוא גם "אירועים" וגם "אוכל") — כתוב/י לנו איזה, ואנחנו נבחן את זה.</div>
+          <div style="height:8px;"></div>
+          <input type="text" id="alsoCatSuggestion" placeholder="לדוגמה: גם קטגוריית אירועים..." maxlength="60" />
         </div>
       </div>
 
@@ -1359,7 +1362,7 @@
 </div>
 
 <footer>
-  <strong>הבית הצהוב</strong> · אינדקס עסקים לאוהדים
+  <strong>Yellow Zone</strong> · אינדקס עסקים לאוהדים
 </footer>
 
 <script type="module">
@@ -1414,6 +1417,38 @@
     const storageRef = ref(await getStorageLazy(), path);
     const snap = await uploadBytes(storageRef, file);
     return await getDownloadURL(snap.ref);
+  }
+
+  // דוחס תמונה (canvas, ר' compressImageFile למטה) ומחזיר File מוכן להעלאה — לא dataURL כמו compressImageFile עצמה
+  async function compressToFile(file, maxDim, quality, filename) {
+    const dataUrl = await compressImageFile(file, maxDim, quality);
+    return dataUrlToFile(dataUrl, filename || file.name);
+  }
+
+  // מעלה גרסה מלאה-אך-דחוסה (1280px, לגיליון הפנימי) + thumbnail קטן (400px, לכרטיסים בפיד) של אותה תמונה.
+  // אם הדחיסה נכשלת מכל סיבה (קובץ פגום וכו') — נופל בחזרה להעלאת הקובץ המקורי כמו שהיה, לא חוסם את ההרשמה.
+  async function uploadImageWithThumb(file, basePath, uploads, key) {
+    try {
+      const [mainFile, thumbFile] = await Promise.all([
+        compressToFile(file, 1280, 0.82, file.name),
+        compressToFile(file, 400, 0.75, 'thumb_' + file.name),
+      ]);
+      const [url, thumbUrl] = await Promise.all([
+        uploadFile(mainFile, basePath),
+        uploadFile(thumbFile, basePath + '_thumb'),
+      ]);
+      uploads[key] = url;
+      uploads[key + 'Thumb'] = thumbUrl;
+      console.log(`✅ ${key} uploaded (compressed + thumb)`);
+    } catch (e) {
+      console.error(`⚠️ ${key} compression failed, falling back to original file:`, e);
+      try {
+        uploads[key] = await uploadFile(file, basePath);
+        console.log(`✅ ${key} uploaded (original, no compression)`);
+      } catch (e2) {
+        console.error(`❌ ${key} upload failed:`, e2.code, e2.message);
+      }
+    }
   }
 
   // ── STEPPER STATE ──
@@ -1647,7 +1682,7 @@
   // ── SUCCESS MESSAGE (from localStorage) ──
   (function loadSuccessMsg() {
     const defTitle = 'הבקשה התקבלה!';
-    const defBody = 'תודה! הפרטים של העסק שלך הועברו לצוות. 💛\n\nלאחר בדיקה ואישור — תקבל/י קישור אישי לדשבורד\nשבו תוכל/י לנהל את דף העסק שלך, לעדכן פרטים,\nלהעלות תמונות ולוגו ולצפות בסטטיסטיקות.\n\nהעסק שלך יופיע באינדקס הבלעדי של הבית הצהוב!';
+    const defBody = 'תודה! הפרטים של העסק שלך הועברו לצוות. 💛\n\nלאחר בדיקה ואישור — תקבל/י קישור אישי לדשבורד\nשבו תוכל/י לנהל את דף העסק שלך, לעדכן פרטים,\nלהעלות תמונות ולוגו ולצפות בסטטיסטיקות.\n\nהעסק שלך יופיע באינדקס הבלעדי של Yellow Zone!';
     document.getElementById('successTitle').textContent = localStorage.getItem('_hb_tpl_success_biz_title') || defTitle;
     const body = localStorage.getItem('_hb_tpl_success_biz_body') || defBody;
     document.getElementById('successBody').innerHTML = body.split('\n').map(l => l || '<br/>').join('<br/>');
@@ -1697,7 +1732,7 @@
       tags:              [...selectedTags],
       noTagFits,
       tagSuggestion:     document.getElementById('tagSuggestion').value.trim(),
-      alsoUnderCategory: selectedAlsoCat || '',
+      alsoCategorySuggestion: document.getElementById('alsoCatSuggestion').value.trim(),
 
       // הטבה
       hasDiscount:        document.getElementById('hasDiscount').checked,
@@ -1761,16 +1796,11 @@
             .then(url => { uploads.photoProofUrl = url; console.log('✅ fan photo uploaded'); })
             .catch(e => { console.error('❌ fan photo upload failed:', e.code, e.message); })
         );
-        if (logoFile) tasks.push(
-          uploadFile(logoFile, `businesses/${docId}/logo`)
-            .then(url => { uploads.logo = url; console.log('✅ logo uploaded'); })
-            .catch(e => { console.error('❌ logo upload failed:', e.code, e.message); })
-        );
-        if (coverPhotoFile) tasks.push(
-          uploadFile(coverPhotoFile, `businesses/${docId}/coverPhoto`)
-            .then(url => { uploads.coverPhoto = url; console.log('✅ cover photo uploaded'); })
-            .catch(e => { console.error('❌ cover photo upload failed:', e.code, e.message); })
-        );
+        // לוגו/תמונה מייצגת — נדחסות לפני העלאה (הקובץ המקורי מהטלפון יכול להיות כמה MB), + גרסת
+        // thumbnail קטנה נפרדת (~400px) שהכרטיסים בפיד (home.html) יעדיפו במקום להוריד את הגרסה המלאה
+        // רק כדי להציג אותה זעירה. ר' PROJECT_CONTEXT.md — נראות הכרטיס לא משתנה, רק כמות המידע ברשת.
+        if (logoFile) tasks.push(uploadImageWithThumb(logoFile, `businesses/${docId}/logo`, uploads, 'logo'));
+        if (coverPhotoFile) tasks.push(uploadImageWithThumb(coverPhotoFile, `businesses/${docId}/coverPhoto`, uploads, 'coverPhoto'));
         galleryFiles.forEach((f, i) => tasks.push(
           uploadFile(f, `businesses/${docId}/gallery_${i}`)
             .then(url => { uploads[`photo_${i}`] = { url, name: f.name }; console.log(`✅ gallery[${i}] uploaded`); })
@@ -1783,7 +1813,9 @@
         const updateData = {};
         if (uploads.photoProofUrl) updateData.photoProofUrl = uploads.photoProofUrl;
         if (uploads.logo)          updateData.logo = uploads.logo;
+        if (uploads.logoThumb)     updateData.logoThumb = uploads.logoThumb;
         if (uploads.coverPhoto)    updateData.coverPhoto = uploads.coverPhoto;
+        if (uploads.coverPhotoThumb) updateData.coverPhotoThumb = uploads.coverPhotoThumb;
         const photos = galleryFiles.map((f, i) => uploads[`photo_${i}`]).filter(Boolean);
         if (photos.length)         updateData.photos = photos;
 
@@ -1811,7 +1843,6 @@
   window.selectCat           = selectCat;
   window.toggleTag           = toggleTag;
   window.toggleNoTagFits     = toggleNoTagFits;
-  window.selectAlsoCat       = selectAlsoCat;
   window.selectDiscType      = selectDiscType;
   window.selectRedeemMode    = selectRedeemMode;
   window.onDiscBuilderInput  = onDiscBuilderInput;
@@ -1968,7 +1999,6 @@
 
   let selectedCat      = null;
   let selectedTags      = [];
-  let selectedAlsoCat   = null;
   let noTagFits        = false;
   let discTypeSelected = null;
   let discRedeemMode   = null;
@@ -2017,25 +2047,12 @@
     clearTagsError();
   }
 
-  function renderAlsoCatGrid() {
-    const grid = document.getElementById('alsoCatGrid');
-    if (!grid) return;
-    grid.innerHTML = CATEGORIES.filter(c => c.key !== selectedCat).map(c =>
-      `<div class="cat-circle-item${selectedAlsoCat === c.key ? ' active' : ''}" onclick="selectAlsoCat('${c.key}')">
-        <div class="cat-circle">${c.icon}</div>
-        <div class="cat-circle-label">${c.label}</div>
-      </div>`
-    ).join('');
-  }
-
   function selectCat(key) {
     selectedCat  = (selectedCat === key ? null : key);
     selectedTags = [];
     noTagFits = false;
-    if (selectedAlsoCat === selectedCat) selectedAlsoCat = null;
     renderCatGrid();
     renderTagsBar();
-    renderAlsoCatGrid();
     if (selectedCat) {
       const err = document.getElementById('err-category');
       if (err) err.style.display = 'none';
@@ -2049,11 +2066,6 @@
     else if (selectedTags.length < MAX_TAGS) selectedTags.push(tag);
     renderTagsBar();
     clearTagsError();
-  }
-
-  function selectAlsoCat(key) {
-    selectedAlsoCat = (selectedAlsoCat === key ? null : key);
-    renderAlsoCatGrid();
   }
 
   // ── בנאי הטבה מובנה — סוג ← שדות קצרים ← הרכבה אוטומטית לטקסט ──
@@ -2357,7 +2369,6 @@
   }
 
   renderCatGrid();
-  renderAlsoCatGrid();
   renderDiscTypeGrid();
   renderRedeemModeGrid();
 
@@ -2413,7 +2424,8 @@
     html += '<div class="summary-section-title">🏷️ קטגוריות והטבות</div>';
     html += sr('קטגוריה', selectedCat ? CAT_LABELS[selectedCat] : '');
     if (selectedTags.length) html += sr('תגיות', selectedTags.join(', '));
-    if (selectedAlsoCat) html += sr('מופיע גם תחת', CAT_LABELS[selectedAlsoCat]);
+    const alsoCatSug = v('alsoCatSuggestion');
+    if (alsoCatSug) html += sr('הצעה לקטגוריה נוספת', alsoCatSug);
 
     const hasDisc = document.getElementById('hasDiscount').checked;
     html += sr('הטבה', hasDisc ? 'כן' : 'לא');
@@ -2707,7 +2719,7 @@
       tags:              [...selectedTags],
       noTagFits,
       tagSuggestion:     v('tagSuggestion'),
-      alsoUnderCategory: selectedAlsoCat || '',
+      alsoCategorySuggestion: v('alsoCatSuggestion'),
 
       hasDiscount:        document.getElementById('hasDiscount').checked,
       discountBuilder:    discBuilderSnapshot(),
@@ -2805,7 +2817,7 @@
     (d.tags || []).forEach(t => toggleTag(t));
     if (d.noTagFits) { noTagFits = true; renderTagsBar(); }
     document.getElementById('tagSuggestion').value = d.tagSuggestion || '';
-    if (d.alsoUnderCategory) selectAlsoCat(d.alsoUnderCategory);
+    document.getElementById('alsoCatSuggestion').value = d.alsoCategorySuggestion || '';
 
     if (!d.hasDiscount) toggleDiscount();
     fillDiscBuilderFields(d.discountBuilder);

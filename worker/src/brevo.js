@@ -34,7 +34,7 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
     body: JSON.stringify({
       sender: { name: 'Yellow Zone', email: env.SENDER_EMAIL },
       to: [{ email: toEmail, name: ownerName || '' }],
-      subject: 'העסק שלך אושר לאינדקס הבית הצהוב 💛',
+      subject: 'העסק שלך אושר לאינדקס Yellow Zone 💛',
       htmlContent: `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>שמחים לבשר — "${businessName}" אושר! 💛</h2>
