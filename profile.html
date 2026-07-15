@@ -52,7 +52,7 @@
       --shadow:    0 2px 16px rgba(18,32,61,0.10);
     }
     html { scroll-behavior: smooth; }
-    body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; }
+    body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; display: flex; flex-direction: column; }
     ::-webkit-scrollbar { width: 0; }
 
     /* ══ TOP NAV ══ */
@@ -78,7 +78,7 @@
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
       cursor: pointer; color: var(--accent); flex-shrink: 0;
     }
-    .hbg-line { width: 16px; height: 1.6px; border-radius: 2px; background: currentColor; }
+    .hbg-line { width: 16px; height: 2px; border-radius: 2px; background: currentColor; }
     .menu-toggle:active { transform: scale(.93); }
     .nav-icon-btn {
       width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
@@ -90,9 +90,13 @@
     .nav-icon-btn:active { transform: scale(.93); }
 
     /* ══ FOOTER ══ */
-    .site-footer { text-align: center; padding: 32px 16px 26px; }
+    .site-footer { text-align: center; padding: 32px 16px 26px; margin-top: auto; }
     .site-footer-line { color: var(--text-muted); font-size: 11px; line-height: 1.6; }
     .site-footer-link { color: var(--text-muted); text-decoration: underline; }
+    .site-footer-highlight { color: var(--yellow); font-weight: 700; text-decoration: none; }
+    .site-footer-highlight.site-footer-link { text-decoration: none; }
+    .site-footer-brand { color: var(--text); font-weight: 900; }
+    .footer-ig-icon { width: 13px; height: 13px; vertical-align: -2px; }
     .signout-btn {
       background: rgba(var(--fg-rgb),0.07);
       border: 1px solid var(--border-md);
@@ -125,7 +129,7 @@
       transition: background .15s;
     }
     .menu-close .hbg-line {
-      position: absolute; top: 50%; left: 50%; margin: -0.8px 0 0 -8px;
+      position: absolute; top: 50%; left: 50%; margin: -1px 0 0 -8px;
     }
     .menu-close .hbg-line:nth-child(1) { transform: rotate(45deg); }
     .menu-close .hbg-line:nth-child(2) { transform: rotate(-45deg); }
@@ -147,6 +151,9 @@
     }
     .menu-item-icon svg { width: 18px; height: 18px; }
     .menu-item-label { font-size: 15px; font-weight: 700; }
+    /* פריט התפריט שמסמן על איזה דף אנחנו נמצאים כרגע */
+    .menu-item.active .menu-item-icon { background: rgba(255,222,0,.16); }
+    .menu-item.active .menu-item-label { color: var(--yellow); font-weight: 900; }
     .menu-group-gap { margin-top: 12px; }
     .menu-footer {
       text-align: center; padding: 16px 20px 24px;
@@ -231,7 +238,7 @@
     }
 
     /* ══ CONTENT ══ */
-    .content { padding: 16px; max-width: 900px; margin: 0 auto; }
+    .content { width: 100%; padding: 16px; max-width: 900px; margin: 0 auto; }
 
     /* ══ SPLIT — זהות/תעודה קבועות מהצד, שאר הפרטים גוללים (כמו business-dashboard.html) ══ */
     .profile-split { display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 20px; }
@@ -625,7 +632,7 @@
 </div>
 
 <footer class="site-footer">
-  <div class="site-footer-line"><a class="site-footer-link" href="https://instagram.com/Yellowzone.mta" target="_blank">📷 Yellowzone.mta</a> · קהילת אוהדי מכבי · © 2025 · <a class="site-footer-link" href="terms.html">תקנון ומדיניות לאוהדים</a></div>
+  <div class="site-footer-line"><a class="site-footer-link site-footer-highlight" href="https://instagram.com/Yellowzone.mta" target="_blank"><span dir="ltr">Yellowzone.mta <svg class="footer-ig-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></span></a> · <span class="site-footer-brand">Yellow Zone</span> · © 2026 · <a class="site-footer-link" href="terms.html">תקנון ומדיניות לאוהדים</a></div>
 </footer>
 
 <div class="toast" id="toast"></div>
@@ -1028,6 +1035,7 @@ async function saveMemberField(updates) {
   function openMenu() {
     document.getElementById('menuOverlay').classList.add('open');
     document.body.style.overflow = 'hidden';
+    updateLocationMenuLabel();
   }
   function closeMenu() {
     document.getElementById('menuOverlay').classList.remove('open');
@@ -1090,18 +1098,63 @@ async function saveMemberField(updates) {
     const isOn = locationToggle.classList.toggle('on');
     if (isOn) {
       navigator.geolocation?.getCurrentPosition(
-        () => localStorage.setItem('locationAllowed','true'),
+        pos => { localStorage.setItem('locationAllowed','true'); fetchLocationCityName(pos.coords.latitude, pos.coords.longitude); },
         () => { locationToggle.classList.remove('on'); localStorage.setItem('locationAllowed','false'); }
       );
     } else {
       localStorage.setItem('locationAllowed','false');
+      updateLocationMenuLabel();
     }
   }
 
+  function updateLocationMenuLabel() {
+    const granted = localStorage.getItem('locationAllowed') === 'true';
+    const label = document.getElementById('menuLocationLabel');
+    const icon = document.getElementById('menuLocationIcon');
+    const city = document.getElementById('menuLocationCity');
+    const hint = document.getElementById('menuLocationHint');
+    if (label) label.textContent = granted ? 'עדכון מיקום' : 'הפעלת הרשאת מיקום';
+    if (icon) icon.textContent = granted ? '🔄' : '📍';
+    if (city) city.textContent = granted ? (localStorage.getItem('hb_locationCityName') || '') : '';
+    if (hint) hint.style.display = 'none';
+  }
+
+  function fetchLocationCityName(lat, lng) {
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=he`)
+      .then(r => r.json())
+      .then(data => {
+        const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || '';
+        localStorage.setItem('hb_locationCityName', city || 'מיקום נוכחי');
+        updateLocationMenuLabel();
+      })
+      .catch(() => { localStorage.setItem('hb_locationCityName', 'מיקום נוכחי'); updateLocationMenuLabel(); });
+  }
+
+  function showMenuLocationError(labelText, hintText) {
+    const label = document.getElementById('menuLocationLabel');
+    const hint = document.getElementById('menuLocationHint');
+    if (label) label.textContent = labelText;
+    if (hint) { hint.textContent = hintText; hint.style.display = 'block'; }
+    setTimeout(updateLocationMenuLabel, 6000);
+  }
+
+  // גרנט ראשון (עוד לא אושר) → מנווט ל-home.html לראות עסקים קרובים (אין סקשן "קרוב אליך" בדף הזה)
+  // כבר אושר (עדכון/רענון) → נשאר בדף, רק מרענן קואורדינטות ומעדכן את שם העיר בהמבורגר
   function requestLocationPermission() {
+    const alreadyGranted = localStorage.getItem('locationAllowed') === 'true';
+    const label = document.getElementById('menuLocationLabel');
+    if (label) label.textContent = 'מאתר מיקום...';
     navigator.geolocation?.getCurrentPosition(
-      () => { localStorage.setItem('locationAllowed','true'); location.href = 'home.html#near'; },
-      () => { localStorage.setItem('locationAllowed','false'); showToast('לא ניתנה הרשאת מיקום'); }
+      pos => {
+        localStorage.setItem('locationAllowed', 'true');
+        if (alreadyGranted) fetchLocationCityName(pos.coords.latitude, pos.coords.longitude);
+        else location.href = 'home.html#near';
+      },
+      err => {
+        localStorage.setItem('locationAllowed', 'false');
+        if (err && err.code === 1) showMenuLocationError('🔒 הדפדפן חוסם מיקום', 'לחצו על סמל המנעול ליד שורת הכתובת, אשרו מיקום לאתר, ונסו שוב');
+        else showMenuLocationError('⚠️ המיקום נכשל', 'נסו שוב בעוד רגע');
+      }
     );
   }
 
@@ -1144,7 +1197,7 @@ async function saveMemberField(updates) {
       <span class="menu-item-icon">🏠</span>
       <span class="menu-item-label">בית</span>
     </a>
-    <a class="menu-item" href="profile.html">
+    <a class="menu-item active" href="profile.html">
       <span class="menu-item-icon">👤</span>
       <span class="menu-item-label">פרטים אישיים</span>
     </a>
@@ -1170,9 +1223,15 @@ async function saveMemberField(updates) {
       </span>
       <span class="menu-item-label">הזמינו חברים ובעלי עסקים להצטרף ל-Yellow Zone</span>
     </button>
-    <button class="menu-item" onclick="closeMenu(); requestLocationPermission()">
-      <span class="menu-item-icon">📍</span>
-      <span class="menu-item-label">הפעלת הרשאת מיקום</span>
+    <button class="menu-item" onclick="requestLocationPermission()">
+      <span class="menu-item-icon" id="menuLocationIcon">📍</span>
+      <span style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+        <span style="display:flex; align-items:center; gap:6px;">
+          <span class="menu-item-label" id="menuLocationLabel">הפעלת הרשאת מיקום</span>
+          <span id="menuLocationCity" style="font-size:12px; color:var(--accent); font-weight:600;"></span>
+        </span>
+        <span id="menuLocationHint" style="display:none; font-size:11px; font-weight:500; color:rgba(var(--fg-rgb),0.5); line-height:1.4;"></span>
+      </span>
     </button>
     <a class="menu-item" href="https://instagram.com/Yellowzone.mta" target="_blank">
       <span class="menu-item-icon">
@@ -1181,7 +1240,7 @@ async function saveMemberField(updates) {
       <span class="menu-item-label">Yellowzone.mta</span>
     </a>
   </div>
-  <div class="menu-footer"><strong>Yellow Zone</strong> · קהילת אוהדי מכבי</div>
+  <div class="menu-footer"><a class="site-footer-link site-footer-highlight" href="https://instagram.com/Yellowzone.mta" target="_blank"><span dir="ltr">Yellowzone.mta <svg class="footer-ig-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></span></a> · <span class="site-footer-brand">Yellow Zone</span> · © 2026 · <a class="site-footer-link" href="terms.html">תקנון ומדיניות לאוהדים</a></div>
 </div>
 <!-- ══ CONTACT SHEET ══ -->
 <div class="contact-overlay" id="contactOverlay" onclick="if(event.target===this)closeContactSheet()">
