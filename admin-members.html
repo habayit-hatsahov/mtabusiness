@@ -793,11 +793,26 @@ function showToast(msg) {
 function waPhone(p) { const ph = (p||'').replace(/\D/g,''); return ph.startsWith('0') ? '972'+ph.slice(1) : ph; }
 
 // ── messages ──────────────────────────────────────────────────────────────────
+// תבניות ניתנות לעריכה מ-admin-messages.html ("הודעה לאוהד") — נשמרות תחת
+// _hb_tpl_fan_* באותה מוסכמה כמו _hb_tpl_wa/mail של admin-businesses.html
+const DEFAULT_FAN_WA = 'היי {name} 👋\nברוך הבא ל-Yellow Zone! 💛\n\nהבקשה שלך אושרה.\n\n🔑 קוד הכניסה האישי שלך: {code}\n🔗 כניסה לאתר: https://habayit-hatsahov.github.io/mtabusiness/landing-demo.html\n(הכניסה עם מספר הטלפון שנרשם + הקוד למעלה — שמור אותו)\n\n👥 קהילת הווטסאפ: [יוכנס בהמשך]\n🎟️ תעודת חבר דיגיטלית: [יצורף בהמשך]\n\nביחד ננצח 🏆';
+const DEFAULT_FAN_MAIL = 'שלום {name},\n\nשמחים לבשר שהצטרפותך ל-Yellow Zone אושרה!\n\n🔑 קוד הכניסה האישי שלך: {code}\nשמור אותו — תזדקק לו בכל כניסה לאתר, יחד עם מספר הטלפון שנרשם.\n\n🔗 קישור לכניסה: https://habayit-hatsahov.github.io/mtabusiness/landing-demo.html\n\nמצורפים:\n• קישור לקהילת הווטסאפ\n• תעודת חבר דיגיטלית\n\nבאהבה,\nצוות Yellow Zone 💛';
+const DEFAULT_FAN_MAIL_SUBJECT = 'ברוך הבא ל-Yellow Zone 💛';
+
+function getTpl(key, fallback) {
+  return localStorage.getItem('_hb_tpl_' + key) || fallback;
+}
+function applyFanTpl(tpl, m) {
+  return tpl.replace(/\{name\}/g, m.firstName || '').replace(/\{code\}/g, m.loginCode || '—');
+}
 function buildWA(m) {
-  return `היי ${m.firstName} 👋\nברוך הבא ל-Yellow Zone! 💛\n\nהבקשה שלך אושרה.\n\n🔑 קוד הכניסה האישי שלך: ${m.loginCode || '—'}\n🔗 כניסה לאתר: https://habayit-hatsahov.github.io/mtabusiness/landing-demo.html\n(הכניסה עם מספר הטלפון שנרשם + הקוד למעלה — שמור אותו)\n\n👥 קהילת הווטסאפ: [יוכנס בהמשך]\n🎟️ תעודת חבר דיגיטלית: [יצורף בהמשך]\n\nביחד ננצח 🏆`;
+  return applyFanTpl(getTpl('fan_wa', DEFAULT_FAN_WA), m);
 }
 function buildMail(m) {
-  return `שלום ${m.firstName},\n\nשמחים לבשר שהצטרפותך ל-Yellow Zone אושרה!\n\n🔑 קוד הכניסה האישי שלך: ${m.loginCode || '—'}\nשמור אותו — תזדקק לו בכל כניסה לאתר, יחד עם מספר הטלפון שנרשם.\n\n🔗 קישור לכניסה: https://habayit-hatsahov.github.io/mtabusiness/landing-demo.html\n\nמצורפים:\n• קישור לקהילת הווטסאפ\n• תעודת חבר דיגיטלית\n\nבאהבה,\nצוות Yellow Zone 💛`;
+  return applyFanTpl(getTpl('fan_mail', DEFAULT_FAN_MAIL), m);
+}
+function getFanMailSubject() {
+  return getTpl('fan_mailSubject', DEFAULT_FAN_MAIL_SUBJECT);
 }
 function buildFamilyWA(f, primaryName) {
   return `היי ${f.name} 👋\nברוך הבא ל-Yellow Zone! 💛\n\nהצטרפת כבן/בת משפחה של ${primaryName}.\n\n🔗 קישור כניסה לאתר: [יוכנס בהמשך]\n🎟️ תעודת חבר דיגיטלית: [יצורף בהמשך]\n\nביחד ננצח 🏆`;
@@ -1165,7 +1180,7 @@ window.openMemberSheet = async function(id) {
         <div class="detail-item"><div class="lbl">בעל עסק?</div><div class="val">${bizOwnerVal}</div></div>
         <div class="detail-item"><div class="lbl">אימייל</div>
           <div class="val">${ms(m.email)}
-            ${m.email ? `<a href="https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(m.email)}&su=${encodeURIComponent('ברוך הבא ל-Yellow Zone 💛')}&body=${encodeURIComponent(buildMail(m))}" target="_blank" style="margin-right:8px;font-size:11px;font-weight:700;color:var(--blue);text-decoration:none;">✉️ מייל</a>` : ''}
+            ${m.email ? `<a href="https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(m.email)}&su=${encodeURIComponent(getFanMailSubject())}&body=${encodeURIComponent(buildMail(m))}" target="_blank" style="margin-right:8px;font-size:11px;font-weight:700;color:var(--blue);text-decoration:none;">✉️ מייל</a>` : ''}
           </div>
         </div>
         <div class="detail-item"><div class="lbl">נרשם</div><div class="val">${fmtDate(m.submittedAt)||'—'}</div></div>
@@ -1428,7 +1443,7 @@ window.modalSendMail = function() {
   const m = members.find(x => x.id === approvingId);
   if (!m) return;
   const text = document.getElementById('approveMailText').value;
-  window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(m.email||'')}&su=${encodeURIComponent('ברוך הבא ל-Yellow Zone 💛')}&body=${encodeURIComponent(text)}`, '_blank');
+  window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(m.email||'')}&su=${encodeURIComponent(getFanMailSubject())}&body=${encodeURIComponent(text)}`, '_blank');
   const btn = document.getElementById('approveMailBtn');
   btn.textContent = '✓ נפתח'; btn.style.opacity = '.5'; btn.style.pointerEvents = 'none';
 };
@@ -1486,7 +1501,7 @@ window.sendWA = function(id) {
 };
 window.sendMail = function(id) {
   const m = members.find(x => x.id === id);
-  window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(m.email||'')}&su=${encodeURIComponent('ברוך הבא ל-Yellow Zone 💛')}&body=${encodeURIComponent(buildMail(m))}`, '_blank');
+  window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(m.email||'')}&su=${encodeURIComponent(getFanMailSubject())}&body=${encodeURIComponent(buildMail(m))}`, '_blank');
 };
 
 // ── edit modal ────────────────────────────────────────────────────────────────

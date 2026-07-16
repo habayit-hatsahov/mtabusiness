@@ -151,6 +151,8 @@ async function handleCheckMemberExists({ phone, email }, env) {
 // במקום שני מיילים נפרדים. אם רק צד אחד ממתין (למשל בעל עסק שכבר יש לו קוד מוקדם יותר), נשלח בנפרד כרגיל.
 async function runEmailSweeps(env) {
   const accessToken = await getGoogleAccessToken(env);
+  const templatesDoc = await firestoreGetDoc(env, accessToken, 'settings/messageTemplates');
+  const templates = templatesDoc?.fields || {};
   const pendingMembers = await firestoreRunQuery(env, accessToken, 'members', 'loginCodeEmailStatus', 'pending');
   const handledBusinessIds = new Set();
 
@@ -169,6 +171,7 @@ async function runEmailSweeps(env) {
           code: m.fields.loginCode,
           businessName: business.fields.name,
           dashboardLink: `${SITE_BASE}business-dashboard.html?token=${business.fields.accessToken}`,
+          tpl: { subject: templates.combinedSubject, body: templates.combinedBody },
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
           loginCodeEmailStatus: 'sent',
@@ -184,6 +187,7 @@ async function runEmailSweeps(env) {
           toEmail: m.fields.email,
           toName: m.fields.firstName,
           code: m.fields.loginCode,
+          tpl: { subject: templates.loginSubject, body: templates.loginBody },
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
           loginCodeEmailStatus: 'sent',
@@ -209,6 +213,7 @@ async function runEmailSweeps(env) {
         ownerName,
         businessName: b.fields.name,
         dashboardLink: `${SITE_BASE}business-dashboard.html?token=${b.fields.accessToken}`,
+        tpl: { subject: templates.bizSubject, body: templates.bizBody },
       });
       await firestorePatch(env, accessToken, `businesses/${b.id}`, {
         ownerEmailStatus: 'sent',
