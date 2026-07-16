@@ -226,6 +226,7 @@ import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/f
 import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
 
 const REPLY_TO_ADDRESS = 'yellowzonemta@gmail.com';
+const FROM_ADDRESS = 'yellowzonemta@gmail.com'; // worker/wrangler.toml → SENDER_EMAIL (יתחלף ל-noreply@yellowzone.co.il אחרי אימות הדומיין ב-Brevo)
 const SETTINGS_DOC = () => doc(db, 'settings', 'messageTemplates');
 
 // storage: 'firestore' (settings/messageTemplates, key = Firestore field name)
@@ -234,9 +235,9 @@ const SETTINGS_DOC = () => doc(db, 'settings', 'messageTemplates');
 const ITEMS = [
   {
     id: 'login', group: 'auto', storage: 'firestore', icon: '🔑', title: 'קוד כניסה (אוהדים)',
-    sub: 'נשלח לאוהד בכל בקשת קוד כניסה חדש',
-    who: 'לכל מי שנרשם או מתחבר <b>כאוהד בלבד</b> (בלי עסק).',
-    when: 'בכל בקשת קוד כניסה חדש.',
+    sub: 'נשלח באישור ראשוני, וגם ב"שכחתי קוד"',
+    who: 'לכל מי שנרשם או מתחבר <b>כאוהד</b> — כולל אוהד שהוא <b>גם בעל עסק</b>, כשהוא לוחץ "שכחתי קוד". במקרה הזה הוא מקבל רק את הקוד — לא את מייל האישור המאוחד, שנשלח פעם אחת בלבד באישור הראשוני.',
+    when: 'בבקשת קוד כניסה חדש (אישור ראשוני), וגם בלחיצה על "שכחתי קוד" ב-landing-demo.html — שתי הפעולות עוברות דרך אותה תשתית ומשתמשות באותה תבנית.',
     replyTo: false,
     vars: [['name','שם האוהד'], ['code','קוד הכניסה']],
     fields: [
@@ -350,6 +351,12 @@ function renderRow(item) {
 
 function renderModal(item) {
   const varsHtml = item.vars.map(([k, d]) => `<code>{${k}}</code> = ${d}`).join(' · ');
+  const fromTop = item.group === 'auto'
+    ? `<div class="replyto-row" style="margin-bottom:8px">
+         <span class="replyto-badge" style="color:var(--yellow);background:rgba(255,222,0,.15)">✉️ נשלח מכתובת (From)</span>
+         <input class="tpl-input" type="text" id="${item.id}From" readonly style="flex:1" />
+       </div>`
+    : `<div class="tpl-hint" style="margin-bottom:14px">✉️ נפתח מהחשבון האישי שלך (Gmail/WhatsApp) — הנמען יראה את הכתובת שממנה אתה בפועל שולח, לא כתובת קבועה של המערכת.</div>`;
   const replyToTop = item.replyTo
     ? `<div class="replyto-row" style="margin-bottom:14px">
          <span class="replyto-badge">✓ תשובה למייל (Reply-To) פעילה</span>
@@ -367,6 +374,7 @@ function renderModal(item) {
           <h3>${item.icon} ${item.title}</h3>
           <button class="close-btn" onclick="closeItemModal('${item.id}')">✕</button>
         </div>
+        ${fromTop}
         ${replyToTop}
         <div class="tab-explain">
           <span class="who">למי נשלח:</span> ${item.who}<br>
@@ -393,6 +401,7 @@ function loadItemValues(item) {
     el.value = val;
   });
   if (item.replyTo) document.getElementById(item.id + 'ReplyTo').value = REPLY_TO_ADDRESS;
+  if (item.group === 'auto') document.getElementById(item.id + 'From').value = FROM_ADDRESS;
 }
 
 window.openItemModal = function(id) {

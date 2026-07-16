@@ -1,4 +1,16 @@
 const REPLY_TO_BUSINESS = 'yellowzonemta@gmail.com';
+const LOGO_URL = 'https://habayit-hatsahov.github.io/mtabusiness/Maccabi.svg';
+
+// ריבוע צהוב עם לוגו מכבי ת"א — תצוגת קוד הכניסה במיילים האוטומטיים
+function codeBoxHtml(code) {
+  return `
+    <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:20px auto">
+      <tr><td style="width:170px;background:#FFDE00;border-radius:20px;padding:52px 10px;text-align:center">
+        <img src="${LOGO_URL}" width="34" alt="Yellow Zone" style="display:block;margin:0 auto 12px auto" />
+        <div style="font-size:34px;font-weight:900;letter-spacing:4px;color:#16130a;line-height:1">${code}</div>
+      </td></tr>
+    </table>`;
+}
 
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -48,7 +60,7 @@ export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl }) {
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>ברוכים הבאים ל-Yellow Zone 💛</h2>
           <p style="color:#555">הנה קוד הכניסה שלך לאינדקס:</p>
-          <p style="font-size:32px;font-weight:900;letter-spacing:6px">${code}</p>
+          ${codeBoxHtml(code)}
           <p>הזינו אותו במסך הכניסה יחד עם מספר הטלפון שלכם.</p>
         </div>`;
 
@@ -95,7 +107,7 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>ברוכים הבאים ל-Yellow Zone 💛</h2>
           <p style="color:#555">הנה קוד הכניסה שלך לאינדקס (כאוהד):</p>
-          <p style="font-size:32px;font-weight:900;letter-spacing:6px">${code}</p>
+          ${codeBoxHtml(code)}
           <p>הזינו אותו במסך הכניסה יחד עם מספר הטלפון שלכם.</p>
           <hr style="border:none;border-top:1px solid #eee;margin:24px 0"/>
           <p style="color:#555">בנוסף — העסק "${businessName}" שלך אושר לאינדקס! 💛</p>
