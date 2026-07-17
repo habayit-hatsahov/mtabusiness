@@ -275,6 +275,9 @@
       display: flex; align-items: center; gap: 5px;
     }
     .biz-discount-text { font-size: 11px; font-weight: 700; color: var(--accent); line-height: 1.3; }
+    /* מצב בהיר — רקע צהוב רך (לא דהוי מדי) + טקסט כהה רגיל לקריאות, בלי שילוב כחול-צהוב צעקני */
+    [data-theme="light"] .biz-discount { background: rgba(255,199,44,0.18); border-color: rgba(255,199,44,0.5); }
+    [data-theme="light"] .biz-discount-text { color: var(--text); }
 
     .biz-city { margin-top: 7px; font-size: 10px; color: rgba(var(--fg-rgb),0.4); display: flex; align-items: center; gap: 3px; }
 
@@ -415,13 +418,19 @@
     .sheet-name { font-size: 22px; font-weight: 900; color: var(--text); }
     .sheet-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
     .sheet-tag { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-    .sheet-tag.cat      { background: rgba(var(--fg-rgb),.09); color: var(--text); font-weight: 700; }
     .sheet-tag.tag      { background: rgba(var(--fg-rgb),.07); color: var(--text-sm); border: 1px solid var(--border); font-weight: 600; }
     .sheet-tag.online   { background: rgba(37,211,102,.12); color: #25D366; }
     .sheet-tag.physical { background: rgba(var(--fg-rgb),.08); color: rgba(var(--fg-rgb),.75); }
     .sheet-tag.city     { color: var(--text-sm); font-weight: 400; }
     .sheet-tag.like     { background: rgba(255,222,0,.07); color: rgba(var(--fg-rgb),.55); border: 1px solid var(--border-md); cursor: pointer; }
     .sheet-tag.like.liked { background: rgba(255,222,0,.18); color: var(--accent); border-color: var(--yellow); }
+
+    /* קטגוריה (ראשית + "מופיע גם תחת") — שורה נפרדת מתחת לפילים של תגיות/סוג-עסק/עיר,
+       כדי שלא תיראה כמו עוד תגית כפולה (ר' PROJECT_CONTEXT.md) */
+    .sheet-cat-line { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; }
+    .sheet-cat-primary { color: var(--text); font-weight: 700; }
+    .sheet-cat-also-label { color: var(--text-sm); font-weight: 500; }
+    .sheet-cat-also-value { color: var(--text); font-weight: 700; }
 
     .sheet-desc {
       font-size: 14px; color: var(--text-sm); line-height: 1.7;
@@ -580,7 +589,7 @@
     .menu-bg-logo {
       position: absolute; z-index: 0; pointer-events: none;
       width: 130vw; max-width: 900px; height: auto;
-      left: 50%; bottom: -35%; transform: translateX(-50%);
+      left: 50%; top: 0; transform: translateX(-50%);
       color: var(--header-accent); opacity: .07;
     }
     .menu-header, .menu-list, .menu-footer { position: relative; z-index: 1; }
@@ -1073,7 +1082,7 @@ function buildCard(biz, showNewBadge, eager) {
         ${tags.length ? `<div class="biz-card-tags">${tags.map(t => `<span class="biz-card-tag">${t}</span>`).join('')}</div>` : ''}
         ${biz.discount ? `
         <div class="biz-discount">
-          <div class="biz-discount-text">💛 ${biz.discount}</div>
+          <div class="biz-discount-text">${biz.discount}</div>
         </div>` : ''}
       </div>
     </div>`;
@@ -1236,7 +1245,7 @@ function filterCat(cat, el) {
   else if (cat === 'online')  { filtered = _dailySectionOrder.online || [];   title = '🛒 קניה אונליין'; }
   else if (cat === 'near')    { filtered = lastNearBusinesses || businesses;      title = '📍 קרוב אליך'; }
   else if (cat === 'everyone'){ filtered = _dailySectionOrder.everyone || businesses; title = '🏬 כל העסקים'; }
-  else { filtered = businesses.filter(b => mapCatKey(b.cat) === cat); title = catIcon(cat) + ' ' + catLabel(cat); }
+  else { filtered = businesses.filter(b => mapCatKey(b.cat) === cat || (b.alsoUnderCategory && mapCatKey(b.alsoUnderCategory) === cat)); title = catIcon(cat) + ' ' + catLabel(cat); }
 
   document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${title}</div>`;
 
@@ -1245,6 +1254,7 @@ function filterCat(cat, el) {
       '<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>אין עסקים בקטגוריה זו עדיין</p></div>';
   } else {
     document.getElementById('catFeedGrid').innerHTML = filtered.map(b => buildCard(b, cat === 'new')).join('');
+    observeLazyImages(document.getElementById('catFeedGrid'));
   }
 }
 
@@ -1308,6 +1318,7 @@ function runSearch(val) {
   document.getElementById('catFeedGrid').innerHTML = results.length
     ? results.map(b => buildCard(b)).join('')
     : '<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>לא נמצאו תוצאות</p></div>';
+  observeLazyImages(document.getElementById('catFeedGrid'));
 }
 
 // ── LOCATION ──────────────────────────────────────────────────────────────────
@@ -1483,16 +1494,30 @@ function initTheme() {
 }
 document.addEventListener('DOMContentLoaded', initTheme);
 
-// ── שיתוף — הזמנת חברים לדף ההרשמה (native share בנייד, WhatsApp Web + העתקה בדסקטופ) ──
+// ── שיתוף — הזמנת חברים לדף ההרשמה (תפריט מותאם אישית, שליטה מלאה על הסגירה) ──
 function shareApp() {
   const shareData = {
-    title: 'Yellow Zone — קהילת העסקים של אוהדי מכבי ת"א',
     text: 'מצאתי קהילה של עסקים של אוהדי מכבי — עסקים, הטבות והמלצות אמיתיות מהקהילה. בואו תצטרפו:',
     url: location.origin + location.pathname.replace(/[^/]*$/, '') + 'landing-demo.html',
   };
-  if (navigator.share) { navigator.share(shareData).catch(() => {}); return; }
-  window.open(`https://wa.me/?text=${encodeURIComponent(shareData.text + ' ' + shareData.url)}`, '_blank');
-  navigator.clipboard?.writeText(shareData.url).catch(() => {});
+  document.getElementById('shareLinkText').textContent = shareData.url;
+  document.getElementById('shareWhatsappLink').href = `https://wa.me/?text=${encodeURIComponent(shareData.text + ' ' + shareData.url)}`;
+  document.getElementById('shareOverlay').classList.add('open');
+}
+function closeShareSheet() {
+  document.getElementById('shareOverlay').classList.remove('open');
+  openMenu();
+}
+function copyShareLink(event) {
+  event.stopPropagation();
+  const url = document.getElementById('shareLinkText').textContent;
+  navigator.clipboard?.writeText(url).catch(() => {});
+  const btn = event.currentTarget.closest('.contact-option').querySelector('.contact-copy-btn');
+  if (btn) {
+    const original = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  }
 }
 
 // ── צור קשר — מציג אפשרויות שונות לאוהד/בעל עסק ──
@@ -1554,11 +1579,16 @@ function renderSheetMeta(b) {
   const typeTxt = bizTypeLine(b);
   document.getElementById('sheetMeta').innerHTML = `
     ${sheetLikeHtml(b)}
-    <span class="sheet-tag cat">${catIcon(cat)} ${catLabel(cat)}</span>
     ${typeTxt ? `<span class="sheet-tag ${bizTypeTagClass(b)}">${typeTxt}</span>` : ''}
     ${tags.map(t => `<span class="sheet-tag tag">${t}</span>`).join('')}
     ${b.city ? `<span class="sheet-tag city">📍 ${b.city}</span>` : ''}
     ${b.isPro && b.regions && b.regions.length ? `<span class="sheet-tag city">🗺️ ${b.regions.join(' · ')}</span>` : ''}`;
+
+  // קטגוריה ראשית + "מופיע גם תחת" (אם המנהל קבע) — שורה נפרדת, לא עוד פיל בשורת התגיות (ר' CSS .sheet-cat-line)
+  const alsoCat = b.alsoUnderCategory ? mapCatKey(b.alsoUnderCategory) : null;
+  document.getElementById('sheetCatLine').innerHTML = `
+    <span class="sheet-cat-primary">${catIcon(cat)} ${catLabel(cat)}</span>
+    ${alsoCat ? `<span class="sheet-cat-also-label">מופיע גם תחת</span> <span class="sheet-cat-also-value">${catIcon(alsoCat)} ${catLabel(alsoCat)}</span>` : ''}`;
 }
 
 function refreshSheetIfOpen() {
@@ -1879,6 +1909,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="sheet-content">
       <div class="sheet-name"  id="sheetName"></div>
       <div class="sheet-meta"  id="sheetMeta"></div>
+      <div class="sheet-cat-line" id="sheetCatLine"></div>
       <div class="sheet-desc"  id="sheetDesc"></div>
       <div class="sheet-benefit" id="sheetBenefit" style="display:none">
         <div class="sheet-benefit-label" id="sheetBenefitLabel">💛 ההטבה שלך</div>
@@ -1949,7 +1980,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <span class="menu-item-icon">🛠️</span>
       <span class="menu-item-label">דשבורד ניהול</span>
     </a>
-    <button class="menu-item menu-group-gap" onclick="shareApp()">
+    <button class="menu-item menu-group-gap" onclick="closeMenu(); shareApp()">
       <span class="menu-item-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
       </span>
@@ -2024,6 +2055,32 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
   </div>
 </div>
+<!-- ══ SHARE SHEET ══ -->
+<div class="contact-overlay" id="shareOverlay" onclick="if(event.target===this)closeShareSheet()">
+  <div class="contact-sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeShareSheet()">✕</button>
+    <div class="contact-sheet-title">📤 הזמינו חברים</div>
+    <div class="contact-sheet-sub">שתפו את Yellow Zone עם חברים ובעלי עסקים</div>
+    <div class="contact-options">
+      <div class="contact-option" onclick="copyShareLink(event)">
+        <span class="contact-option-icon">🔗</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">העתקת קישור</div>
+          <div class="contact-option-sub" id="shareLinkText"></div>
+        </div>
+        <button class="contact-copy-btn" onclick="copyShareLink(event)" title="העתק קישור">📋</button>
+      </div>
+      <a class="contact-option" id="shareWhatsappLink" href="#" target="_blank">
+        <span class="contact-option-icon">💬</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">WhatsApp</div>
+          <div class="contact-option-sub">שתפו בהודעה</div>
+        </div>
+      </a>
+    </div>
+  </div>
+</div>
 
 <!-- ══ FIREBASE LOADER + AUTH GUARD ══ -->
 <script type="module">
@@ -2058,6 +2115,7 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
       id:           doc.id,
       name:         b.name || '',
       cat:          b.categoryPrimary || 'other',
+      alsoUnderCategory: b.alsoUnderCategory || '',
       tags:         b.tags || [],
       city:         (b.branches && b.branches[0]?.city) || '',
       discount:     b.discountText || '',

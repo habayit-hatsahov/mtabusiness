@@ -535,6 +535,10 @@
     .cat-circle-item.active .cat-circle { background: rgba(255,222,0,.15); }
     .cat-circle-label { font-size: 10px; font-weight: 600; color: var(--text-sm); line-height: 1.3; }
     .cat-circle-item.active .cat-circle-label { color: var(--yellow); }
+    /* "מופיע גם תחת" — קבוע, לא לחיץ: מציג את המצב הנוכחי + שאר הקטגוריות לעיון בלבד (בקשת שינוי היא רק במלל, ר' editAlsoCatNote) */
+    .cat-circle-grid.readonly .cat-circle-item { cursor: default; }
+    .cat-circle-grid.readonly .cat-circle-item:hover { background: none; }
+    .cat-circle-grid.readonly .cat-circle-item:not(.active) { opacity: .45; }
 
     /* ── TAGS ── */
     .tags-area {
@@ -711,11 +715,14 @@
     .pv-sheet-name { font-size: 18px; font-weight: 900; color: var(--text); }
     .pv-sheet-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
     .pv-sheet-tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 14px; }
-    .pv-sheet-tag.cat      { background: rgba(255,255,255,.09); color: var(--text); }
     .pv-sheet-tag.tag      { background: rgba(255,255,255,.07); color: var(--text-sm); border: 1px solid var(--border); font-weight: 600; }
     .pv-sheet-tag.online   { background: rgba(37,211,102,.12); color: #25D366; }
     .pv-sheet-tag.physical { background: rgba(var(--fg-rgb),.08); color: rgba(var(--fg-rgb),.75); }
     .pv-sheet-tag.city     { color: var(--text-sm); font-weight: 400; font-size: 11px; }
+    .pv-sheet-cat-line { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 6px; font-size: 11.5px; }
+    .pv-sheet-cat-primary { color: var(--text); font-weight: 700; }
+    .pv-sheet-cat-also-label { color: var(--text-sm); font-weight: 500; }
+    .pv-sheet-cat-also-value { color: var(--text); font-weight: 700; }
     .pv-sheet-desc {
       font-size: 13px; color: var(--text-sm); line-height: 1.6;
       margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
@@ -1047,6 +1054,7 @@ const MAX_BENEFITS = 3;
 let selectedCat  = null; // קטגוריה יחידה שנבחרה בעריכה
 let selectedTags = [];   // עד MAX_TAGS תגיות שנבחרו בעריכה
 let noTagFits = false;       // "אין תגית מתאימה" — פוטר מחובת בחירת תגית
+let selectedAlsoCat = null; // "מופיע גם תחת" — קבוע, לקריאה בלבד: משקף את הקטגוריה המאושרת בפועל (alsoUnderCategory). לא ניתן לעריכה מהגריד; בקשת שינוי היא רק במלל (editAlsoCatNote)
 let photoCount = 0;
 let videoCount = 0;
 let dismissedChecklistItems = new Set(); // תוויות פריטים שבעל העסק סימן ✓/✗ ידנית — נעלמים לצמיתות (נשמר per-עסק ב-localStorage)
@@ -1055,8 +1063,8 @@ let draftChanges = {};
 
 const FIELD_GROUPS = {
   owner:      ['ownerFirst','ownerLast','ownerPhone','ownerEmail'],
-  bizdetails: ['bizTypes','name','desc','branches','city','address','phone','whatsapp','serviceEmail','regions','websiteOnline'],
-  cathours:   ['categoryPrimary','cat','tags','noTagFits','tagSuggestion','alsoCategorySuggestion','hours'],
+  bizdetails: ['bizTypes','name','desc','branches','city','address','phone','whatsapp','serviceEmail','regions','websiteOnline','hours'],
+  cathours:   ['categoryPrimary','cat','tags','noTagFits','tagSuggestion','alsoCategoryNote'],
   discount:   ['hasDiscount','discountText','discountTypes','discountCode','discountRedeemMode','additionalDiscounts'],
   digital:    ['website','instagram','facebook'],
   media:      ['coverPhoto','logo','photos','videos'],
@@ -1082,7 +1090,6 @@ function mapCatKey(cat) {
 }
 
 const CAT_LABELS = Object.fromEntries(CATEGORIES.map(c => [c.key, `${c.icon} ${c.label}`]));
-const CAT_LABELS_SHORT = Object.fromEntries(CATEGORIES.map(c => [c.key, c.label]));
 
 const BIZ_TYPE_LABELS = { physical:'🏪 חנות פיזית', online:'🌐 אונליין', pro:'🔧 בעל מקצוע' };
 const DISCOUNT_TYPE_LABELS = { physical:'🏪 בחנות הפיזית', online:'🌐 באתר', sale:'🤝 במעמד המכירה/השירות' };
@@ -1114,7 +1121,7 @@ const FIELD_LABELS = {
   bizTypes:'סוג עסק', name:'שם העסק', desc:'תיאור', branches:'סניפים', city:'עיר', address:'כתובת',
   regions:'אזורי פעילות', websiteOnline:'אתר אונליין',
   phone:'טלפון עסק', whatsapp:'WhatsApp', serviceEmail:'מייל שירות',
-  categoryPrimary:'קטגוריה', cat:'קטגוריה', tags:'תגיות', noTagFits:'אין תגית מתאימה', tagSuggestion:'הצעת תגית', alsoCategorySuggestion:'הצעה לקטגוריה נוספת', hours:'שעות פעילות',
+  categoryPrimary:'קטגוריה ראשית', cat:'קטגוריה ראשית', tags:'תגיות', noTagFits:'אין תגית מתאימה', tagSuggestion:'הצעת תגית', alsoCategorySuggestion:'הצעה למופיע גם תחת', alsoCategoryNote:'הערה לגבי קטגוריה נוספת', hours:'שעות פעילות',
   hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTypes:'איפה ניתן לממש', discountCode:'קוד קופון', discountRedeemMode:'מקום מימוש (כשאין קוד)', additionalDiscounts:'הטבות נוספות',
   website:'אתר', instagram:'אינסטגרם', facebook:'פייסבוק',
   coverPhoto:'תמונה מייצגת', logo:'לוגו', photos:'גלריית תמונות', videos:'סרטונים',
@@ -1142,7 +1149,7 @@ const TIPS = {
   whatsapp:      '💡 WhatsApp הוא ערוץ התקשורת הפופולרי ביותר בפלטפורמה',
   phone:         '💡 טלפון זמין = אמינות גבוהה בעיני הלקוחות',
   website:       '💡 קישור לאתר מחזק את האמינות ומראה מקצועיות',
-  instagram:     '💡 אינסטגרם פעיל מראה שהעסק חי ופועל',
+  instagram:     '💡 חשוב להכניס כתובת אינסטגרם — כדי שנוכל לתייג ולפרסם את העסק שלכם בעמוד שלנו',
 };
 
 function fmtFieldVal(k, v) {
@@ -1308,6 +1315,7 @@ function renderBizView(flashZone) {
   initMediaForm(w);
   renderCatGrid();
   renderTagsBar();
+  renderAlsoCatGrid();
   renderDiscTypeGrid();
   renderRedeemModeGrid();
   updateDiscRedeemNote();
@@ -1417,6 +1425,7 @@ function renderBizDetailsCard(w) {
         ${rowHtml('טלפון עסק', w.phone, 'phone')}
         ${rowHtml('WhatsApp', w.whatsapp, 'whatsapp')}
         ${rowHtml('מייל שירות', w.serviceEmail, 'serviceEmail')}
+        ${rowHtml('שעות פעילות', w.hours, 'hours')}
       </div>
       <div class="sec-edit-form" id="secEdit-bizdetails">
         <div class="form-group">
@@ -1467,6 +1476,11 @@ function renderBizDetailsCard(w) {
           <label class="form-label">מייל שירות לקוחות</label>
           <input type="email" class="form-input" id="editServiceEmail" value="${esc(w.serviceEmail)}" />
         </div>
+        <div class="form-group">
+          <label class="form-label">שעות פעילות</label>
+          <input type="text" class="form-input" id="editHours" value="${esc(w.hours)}" placeholder="לדוג׳: א׳-ה׳ 9:00-18:00, ו׳ 9:00-14:00" data-pv="hours" />
+          ${tipHtml('hours')}
+        </div>
         <div class="sec-edit-actions">
           <button class="btn-cancel-sec" onclick="toggleSecEdit('bizdetails')">ביטול</button>
           <button class="btn-save-sec" onclick="saveBizDetails()">💾 שמור</button>
@@ -1475,25 +1489,27 @@ function renderBizDetailsCard(w) {
     </div>`;
 }
 
-// ── 📋 שלב 3 — קטגוריה, תגיות ושעות ──
+// ── 📋 שלב 3 — קטגוריה ותגיות ──
 function renderCatHoursCard(w) {
   selectedCat  = mapCatKey(w.categoryPrimary || w.cat || '') || null;
   // מנקים תגיות זרות שלא שייכות לרשימת התגיות הנעולה של הקטגוריה הנוכחית (למשל אחרי מיפוי קטגוריה ישנה)
   const validTags = CATEGORIES.find(c => c.key === selectedCat)?.tags || [];
   selectedTags = (w.tags || []).filter(t => validTags.includes(t)).slice(0, MAX_TAGS);
   noTagFits = !!w.noTagFits;
+  // "מופיע גם תחת" — קבוע, לא לחיץ: מציג רק את המצב המאושר בפועל (ר' renderAlsoCatGrid). בקשת שינוי היא רק במלל (editAlsoCatNote).
+  selectedAlsoCat = w.alsoUnderCategory ? mapCatKey(w.alsoUnderCategory) : null;
 
   return `
     <div class="info-card">
       <div class="info-card-head">
-        ${cardTitle('📋', 'שלב 3 — קטגוריה, תגיות ושעות', 'cathours')}
+        ${cardTitle('📋', 'שלב 3 — קטגוריה ותגיות', 'cathours')}
         <button class="sec-edit-btn" onclick="toggleSecEdit('cathours')">✏️ ערוך</button>
       </div>
-      <div class="card-guide">הקטגוריה והתגיות קובעות איפה תופיע/י באינדקס ובאילו חיפושים תעלה/י. שעות פעילות עוזרות לאוהד לדעת מתי לפנות.</div>
+      <div class="card-guide">הקטגוריה והתגיות קובעות איפה תופיע/י באינדקס ובאילו חיפושים תעלה/י.</div>
       <div class="info-rows" id="secView-cathours">
-        ${rowHtml('קטגוריה', CAT_LABELS[selectedCat], ['categoryPrimary','cat'])}
+        ${rowHtml('קטגוריה ראשית', CAT_LABELS[selectedCat], ['categoryPrimary','cat'])}
         ${rowHtml('תגיות', w.noTagFits ? 'אין תגית מתאימה' : selectedTags.join(', '), 'tags')}
-        ${rowHtml('שעות פעילות', w.hours, 'hours')}
+        ${w.alsoUnderCategory ? rowHtml('מופיע גם תחת', CAT_LABELS[mapCatKey(w.alsoUnderCategory)]) : ''}
       </div>
       <div class="sec-edit-form" id="secEdit-cathours">
         <div class="form-group">
@@ -1512,15 +1528,16 @@ function renderCatHoursCard(w) {
             <input type="text" class="form-input tag-suggest-input" id="editTagSuggestion" value="${esc(w.tagSuggestion)}" placeholder="הקלידו הצעה לתגית חדשה..." maxlength="40" />
           </div>
           <div class="form-group" style="margin-top:14px;">
-            <label class="form-label">🆕 מתאים גם לתחום נוסף? (אופציונלי)</label>
-            <div class="card-guide" style="margin:0 0 8px;">אם העסק שלך רלוונטי גם לתחום נוסף — כתוב/י לנו איזה, ואנחנו נבחן את זה.</div>
-            <input type="text" class="form-input" id="editAlsoCatSuggestion" value="${esc(w.alsoCategorySuggestion)}" placeholder="לדוגמה: גם קטגוריית אירועים..." maxlength="60" />
+            <label class="form-label">🆕 מופיע גם תחת</label>
+            <div class="card-guide" style="margin:0 0 8px;">${w.alsoUnderCategory
+              ? `הצוות אישר שאתם מוצגים גם תחת <strong>${CAT_LABELS[mapCatKey(w.alsoUnderCategory)]}</strong> (מסומן למטה). שאר הקטגוריות מוצגות לעיון בלבד.`
+              : `כרגע אינכם מוצגים תחת קטגוריה נוספת. הגריד למטה לעיון בלבד — כל הקטגוריות הקיימות.`}</div>
+            <div class="cat-circle-grid readonly" id="editAlsoCatGrid"></div>
+            <div class="form-group" style="margin-top:10px;">
+              <label class="form-label">רוצים קטגוריה משנית חדשה, לשנות אותה, או לבטל? כתבו לנו איזו קטגוריה מתאימה</label>
+              <input type="text" class="form-input" id="editAlsoCatNote" value="${esc(w.alsoCategoryNote)}" placeholder="לדוגמה: בקשה לקטגוריית X, או לבטל את הקטגוריה הנוספת..." maxlength="120" />
+            </div>
           </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">שעות פעילות</label>
-          <input type="text" class="form-input" id="editHours" value="${esc(w.hours)}" placeholder="לדוג׳: א׳-ה׳ 9:00-18:00, ו׳ 9:00-14:00" data-pv="hours" />
-          ${tipHtml('hours')}
         </div>
         <div class="sec-edit-actions">
           <button class="btn-cancel-sec" onclick="toggleSecEdit('cathours')">ביטול</button>
@@ -1725,7 +1742,7 @@ function renderDigitalCard(w) {
         ${cardTitle('🔗', 'שלב 4 — קישורים דיגיטליים', 'digital')}
         <button class="sec-edit-btn" onclick="toggleSecEdit('digital')">✏️ ערוך</button>
       </div>
-      <div class="card-guide">קישור לאתר או לרשת חברתית מוסיף אמינות ומראה שהעסק פעיל ומעודכן.</div>
+      <div class="card-guide">קישור לאתר או לרשת חברתית מוסיף אמינות ומראה שהעסק פעיל ומעודכן. <strong style="color:var(--yellow);">חשוב להכניס כתובת אינסטגרם — כדי שנוכל לתייג ולפרסם את העסק שלכם בעמוד שלנו.</strong></div>
       <div class="info-rows" id="secView-digital">
         ${rowHtml('אתר', w.website || w.websiteOnline, ['website','websiteOnline'])}
         ${rowHtml('אינסטגרם', w.instagram, 'instagram')}
@@ -1885,7 +1902,7 @@ const COMPLETENESS_CHECKS = [
   { icon: '🖼️', label: 'לוגו',                              weight: 5,  section: 'media',      filled: w => looksLikeImageUrl(w.logo) },
   { icon: '📋', label: 'קטגוריה',                          weight: 15, section: 'cathours',   filled: w => !!(w.categoryPrimary || w.cat) },
   { icon: '📞', label: 'טלפון או WhatsApp',                weight: 5,  section: 'bizdetails', filled: w => !!(w.phone || w.whatsapp) },
-  { icon: '🕐', label: 'שעות פעילות',                      weight: 5,  section: 'cathours',   filled: w => !!w.hours },
+  { icon: '🕐', label: 'שעות פעילות',                      weight: 5,  section: 'bizdetails', filled: w => !!w.hours },
   { icon: '📍', label: 'עיר / מיקום',                      weight: 5,  section: 'bizdetails', filled: w => !!(w.city || (w.branches && w.branches[0] && w.branches[0].city)) },
   { icon: '🔗', label: 'קישור לאתר או רשת חברתית',        weight: 5,  section: 'digital',    filled: w => !!(w.website || w.websiteOnline || w.instagram || w.facebook) },
   { icon: '💛', label: 'הטבה לחברי הקהילה',                weight: 15, section: 'discount',   filled: w => !!(w.hasDiscount && w.discountText) },
@@ -2008,6 +2025,7 @@ function getPreviewState() {
     w.serviceEmail  = document.getElementById('editServiceEmail')?.value || '';
     w.bizTypes = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p => p.dataset.type);
     w.regions  = [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p => p.textContent.trim());
+    w.hours    = document.getElementById('editHours')?.value || '';
   }
 
   const catForm = document.getElementById('secEdit-cathours');
@@ -2015,7 +2033,6 @@ function getPreviewState() {
     w.categoryPrimary = selectedCat || '';
     w.cat = w.categoryPrimary;
     w.tags = [...selectedTags];
-    w.hours = document.getElementById('editHours')?.value || '';
   }
 
   const discForm = document.getElementById('secEdit-discount');
@@ -2079,14 +2096,25 @@ function renderPreview(stateOverride, flashZone) {
   const tags = (w.tags || []).slice(0, MAX_TAGS);
   const fz = zone => (flashZone === zone ? ' pv-flash-zone' : '');
 
+  // סוג עסק — פיל אחד מאוחד (פיזית+אונליין ביחד, כשרלוונטי), זהה ל-bizTypeLine() ב-home.html — לא 2 פילים נפרדים
+  const typeTxt = isPro ? '🔧 בעל מקצוע / נותן שירות'
+    : (isPhysical && isOnline) ? '🏪 חנות פיזית + 🌐 אונליין'
+    : isOnline ? '🌐 חנות אונליין'
+    : isPhysical ? '🏪 חנות פיזית' : '';
+  const typeCls = (isOnline && !isPhysical && !isPro) ? 'online' : 'physical';
+
   const metaTags = [
-    cat ? `<span class="pv-sheet-tag cat">${CAT_LABELS_SHORT[cat] || cat}</span>` : '',
+    typeTxt ? `<span class="pv-sheet-tag ${typeCls}">${typeTxt}</span>` : '',
     ...tags.map(t => `<span class="pv-sheet-tag tag">${esc(t)}</span>`),
-    isPhysical ? '<span class="pv-sheet-tag physical">🏪 חנות פיזית</span>' : '',
-    isOnline ? '<span class="pv-sheet-tag online">🌐 אונליין</span>' : '',
     w.city ? `<span class="pv-sheet-tag city">📍 ${esc(w.city)}</span>` : '',
     isPro && regions.length ? `<span class="pv-sheet-tag city">🗺️ ${regions.map(esc).join(' · ')}</span>` : '',
   ].filter(Boolean).join('');
+
+  // קטגוריה (+"מופיע גם תחת") — שורה נפרדת מתחת לפילים, זהה למבנה ב-home.html (.sheet-cat-line), לא עוד פיל בתוך metaTags
+  const alsoCat = w.alsoUnderCategory ? mapCatKey(w.alsoUnderCategory) : null;
+  const catLineHtml = cat ? `
+        <span class="pv-sheet-cat-primary">${CAT_LABELS[cat] || cat}</span>
+        ${alsoCat ? `<span class="pv-sheet-cat-also-label">מופיע גם תחת</span> <span class="pv-sheet-cat-also-value">${CAT_LABELS[alsoCat] || alsoCat}</span>` : ''}` : '';
 
   const infoRows = [];
   if (w.hours) infoRows.push(`<div class="pv-sheet-info-row${fz('hours')}"><span class="pv-icon">🕐</span><div class="pv-body"><div class="pv-lbl">שעות פעילות</div>${esc(w.hours)}</div></div>`);
@@ -2123,6 +2151,7 @@ function renderPreview(stateOverride, flashZone) {
       <div class="pv-sheet-body">
         <div class="pv-sheet-name${fz('name')}">${esc(w.name) || '<span style="color:var(--text-muted)">שם העסק</span>'}</div>
         ${metaTags ? `<div class="pv-sheet-meta${fz('meta')}">${metaTags}</div>` : ''}
+        ${catLineHtml ? `<div class="pv-sheet-cat-line${fz('meta')}">${catLineHtml}</div>` : ''}
         <div class="pv-sheet-desc${w.desc ? '' : ' empty'}${fz('desc')}">${w.desc ? esc(w.desc) : 'תיאור העסק שלך יופיע כאן...'}</div>
         ${w.hasDiscount && w.discountText ? `
         <div class="pv-sheet-benefit${fz('discount')}">
@@ -2388,6 +2417,7 @@ window.saveBizDetails = function() {
     serviceEmail:  document.getElementById('editServiceEmail').value.trim(),
     regions:       isProNow ? [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p => p.textContent.trim()) : [],
     websiteOnline: isOnlineNow ? document.getElementById('editWebsiteOnline').value.trim() : '',
+    hours:         document.getElementById('editHours').value.trim(),
   });
 };
 
@@ -2427,8 +2457,22 @@ window.selectCat = function(key) {
   noTagFits = false;
   renderCatGrid();
   renderTagsBar();
+  renderAlsoCatGrid();
   renderPreview(null, 'meta');
 };
+
+// ── "מופיע גם תחת" — תצוגה קבועה, לא לחיצה: משקפת רק את המצב המאושר בפועל (alsoUnderCategory).
+// בקשת שינוי/הוספה/ביטול קטגוריה משנית מוגשת אך ורק דרך שדה הטקסט editAlsoCatNote — ר' saveCatHours.
+function renderAlsoCatGrid() {
+  const grid = document.getElementById('editAlsoCatGrid');
+  if (!grid) return;
+  grid.innerHTML = CATEGORIES.filter(c => c.key !== selectedCat).map(c =>
+    `<div class="cat-circle-item${selectedAlsoCat === c.key ? ' active' : ''}">
+      <div class="cat-circle">${c.icon}</div>
+      <div class="cat-circle-label">${c.label}</div>
+    </div>`
+  ).join('');
+}
 
 window.toggleTag = function(tag) {
   const idx = selectedTags.indexOf(tag);
@@ -2456,8 +2500,7 @@ window.saveCatHours = function() {
     tags:              [...selectedTags],
     noTagFits,
     tagSuggestion:     document.getElementById('editTagSuggestion').value.trim(),
-    alsoCategorySuggestion: document.getElementById('editAlsoCatSuggestion').value.trim(),
-    hours:             document.getElementById('editHours').value.trim(),
+    alsoCategoryNote:  document.getElementById('editAlsoCatNote').value.trim(),
   });
 };
 
