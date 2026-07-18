@@ -374,68 +374,6 @@
       cursor: pointer; white-space: nowrap;
     }
 
-    /* ══ FAMILY ══ */
-    .family-member-card {
-      background: var(--card-bg2); border-radius: 12px;
-      padding: 14px; margin-bottom: 8px;
-      border: 1px solid var(--border-md);
-    }
-    .family-member-card:last-child { margin-bottom: 0; }
-    .family-header {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 10px;
-    }
-    .family-name { font-size: 14px; font-weight: 800; color: var(--text); }
-    .family-relation { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-    .family-edit-btn {
-      background: rgba(var(--fg-rgb),0.07);
-      border: 1px solid var(--border-md);
-      color: var(--text-sm); border-radius: 8px; padding: 5px 10px;
-      font-family: 'Heebo', sans-serif; font-size: 11px; font-weight: 700;
-      cursor: pointer;
-    }
-    .family-fields { display: none; }
-    .family-fields.open { display: block; }
-    .family-field-row {
-      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
-    }
-    .family-field-row:last-child { margin-bottom: 0; }
-    .family-field-label { font-size: 12px; color: var(--text-muted); width: 45px; flex-shrink: 0; }
-    .family-input {
-      font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 600;
-      color: var(--text); background: var(--bg);
-      border: 1px solid var(--border-md);
-      border-radius: 8px; padding: 7px 10px;
-      flex: 1; text-align: right; outline: none;
-      transition: border-color .15s;
-    }
-    .family-input:focus { border-color: var(--yellow); }
-    .family-save-btn {
-      width: 100%; margin-top: 10px;
-      background: var(--yellow); color: #0f1524;
-      border: none; border-radius: 10px; padding: 10px;
-      font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 900;
-      cursor: pointer;
-    }
-    .no-family {
-      text-align: center; color: var(--text-sm); font-size: 13px; padding: 8px 0 12px;
-    }
-    .add-family-btn {
-      width: 100%; margin-top: 10px;
-      background: rgba(var(--fg-rgb),0.05);
-      border: 1px dashed var(--border-md);
-      color: var(--text-sm);
-      font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 700;
-      padding: 11px; border-radius: 12px; cursor: pointer;
-      transition: background .15s, border-color .15s;
-    }
-    .add-family-btn:hover { background: rgba(255,222,0,0.06); border-color: rgba(255,222,0,0.3); color: var(--yellow); }
-    .add-family-form {
-      background: var(--card-bg2); border-radius: 12px;
-      padding: 14px; margin-top: 10px;
-      border: 1px solid var(--border-md);
-    }
-
     /* ══ SETTINGS ══ */
     .setting-row {
       display: flex; justify-content: space-between;
@@ -474,8 +412,6 @@
 
     /* ══ עומק נוסף במצב בהיר — למנוע מראה שטוח/לבן מדי ══ */
     [data-theme="light"] .card-section,
-    [data-theme="light"] .family-member-card,
-    [data-theme="light"] .add-family-form,
     [data-theme="light"] .contact-sheet {
       box-shadow: var(--shadow);
     }
@@ -594,12 +530,6 @@
         <span id="approvedDateDetail" style="font-size:11px;color:var(--text-muted);display:block;margin-top:2px;"></span>
       </div>
     </div>
-  </div>
-
-  <!-- FAMILY MEMBERS -->
-  <div class="card-section">
-    <div class="section-title">👨‍👩‍👧 בני משפחה</div>
-    <div id="familyList"></div>
   </div>
 
   <!-- BUSINESS PROFILE -->
@@ -780,13 +710,10 @@ if (memberId) {
     subscriberSection: data.subscriberSection || null,
     phone:           data.phone  || '',
     email:           data.email  || '',
-    familyMembers:   data.familyMembers || [],
     isBusinessOwner: data.isBusinessOwner === true,
     isAdmin:          data.isAdmin === true,
     linkedBusinessId: data.linkedBusinessId || null,
     status:          data.status || 'pending',
-    pendingFamilyChanges:   data.pendingFamilyChanges || null,
-    pendingFamilyChangesAt: data.pendingFamilyChangesAt || null,
   };
 } else {
   // אין session אמיתי — חוסמים לגמרי, לא מציגים דאטה בדויה (הוסר dev fallback)
@@ -832,10 +759,6 @@ if (member.isBusinessOwner) {
 async function saveMemberField(updates) {
   await updateDoc(doc(db, 'members', memberId), updates);
 }
-
-  const RELATION_LABELS = {
-    spouse: 'בן/בת זוג', child: 'ילד/ה', parent: 'הורה', sibling: 'אח/ות', other: 'אחר'
-  };
 
   // ── HERO + CARD + DETAILS ──────────────────────────────────────────────────
   renderIdentity(member);
@@ -884,170 +807,7 @@ async function saveMemberField(updates) {
     showToast('הפרטים עודכנו ✓');
   }
 
-  // ── FAMILY ───────────────────────────────────────────────────────────────
-  const RELATION_OPTIONS = [
-    { value: 'spouse',  label: 'בן/בת זוג' },
-    { value: 'child',   label: 'ילד/ה' },
-    { value: 'parent',  label: 'הורה' },
-    { value: 'sibling', label: 'אח/ות' },
-    { value: 'other',   label: 'אחר' },
-  ];
-
-  function relationSelect(selected = '') {
-    return `<select class="family-input" id="fm_new_relation" style="appearance:none;">
-      ${RELATION_OPTIONS.map(o => `<option value="${o.value}" ${selected===o.value?'selected':''}>${o.label}</option>`).join('')}
-    </select>`;
-  }
-
-  function renderFamily() {
-    const list = document.getElementById('familyList');
-    const hasPending = member.status === 'approved' && member.pendingFamilyChanges;
-    const displayArr = hasPending ? member.pendingFamilyChanges : (member.familyMembers || []);
-    const canAdd = displayArr.length < 2;
-
-    const pendingBanner = hasPending
-      ? `<div style="background:rgba(217,119,6,.12);border:1.5px solid rgba(217,119,6,.4);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
-           <div style="font-size:13px;font-weight:700;color:#fbbf24;">⏳ בקשת שינוי ממתינה לאישור מנהל</div>
-           <div style="font-size:11px;color:var(--text-sm);margin-top:4px;">השינויים שביצעת עדיין בבדיקה. ניתן לעדכן את הבקשה.</div>
-         </div>`
-      : '';
-
-    const existingHtml = displayArr.length === 0
-      ? '<div class="no-family">לא נוספו בני משפחה עדיין</div>'
-      : displayArr.map((fm, i) => `
-          <div class="family-member-card"${hasPending ? ' style="border-color:rgba(217,119,6,.35);"' : ''}>
-            <div class="family-header">
-              <div>
-                <div class="family-name">${fm.name}</div>
-                <div class="family-relation">${RELATION_LABELS[fm.relation] || fm.relation}</div>
-              </div>
-              <div style="display:flex;gap:6px;">
-                <button class="family-edit-btn" onclick="toggleFamilyEdit(${i})">✏️ ערוך</button>
-                <button class="family-edit-btn" style="border-color:rgba(255,100,100,0.3);color:rgba(255,120,120,0.8);" onclick="deleteFamilyMember(${i})">🗑</button>
-              </div>
-            </div>
-            <div class="family-fields" id="familyFields${i}">
-              <div class="family-field-row">
-                <span class="family-field-label">שם</span>
-                <input class="family-input" id="fm${i}_name" value="${fm.name}" placeholder="שם מלא" />
-              </div>
-              <div class="family-field-row">
-                <span class="family-field-label">טלפון</span>
-                <input class="family-input" id="fm${i}_phone" value="${fm.phone||''}" placeholder="מספר טלפון" type="tel" dir="ltr" />
-              </div>
-              <div class="family-field-row">
-                <span class="family-field-label">אימייל</span>
-                <input class="family-input" id="fm${i}_email" value="${fm.email||''}" placeholder="כתובת מייל" type="email" dir="ltr" />
-              </div>
-              <button class="family-save-btn" onclick="saveFamilyMember(${i})">שמור שינויים</button>
-            </div>
-          </div>
-        `).join('');
-
-    const addBtn = canAdd
-      ? `<button class="add-family-btn" id="addFamilyBtn" onclick="showAddFamilyForm()">+ הוסף בן/בת משפחה (${displayArr.length}/2)</button>`
-      : '';
-
-    list.innerHTML = pendingBanner + existingHtml + addBtn;
-  }
-
-  function showAddFamilyForm() {
-    document.getElementById('addFamilyBtn').outerHTML = `
-      <div class="add-family-form" id="addFamilyForm">
-        <div class="family-field-row">
-          <span class="family-field-label">שם</span>
-          <input class="family-input" id="fm_new_name" placeholder="שם מלא" />
-        </div>
-        <div class="family-field-row">
-          <span class="family-field-label">קרבה</span>
-          ${relationSelect()}
-        </div>
-        <div class="family-field-row">
-          <span class="family-field-label">טלפון</span>
-          <input class="family-input" id="fm_new_phone" placeholder="מספר טלפון" type="tel" dir="ltr" />
-        </div>
-        <div class="family-field-row">
-          <span class="family-field-label">אימייל</span>
-          <input class="family-input" id="fm_new_email" placeholder="כתובת מייל" type="email" dir="ltr" />
-        </div>
-        <div style="display:flex;gap:8px;margin-top:10px;">
-          <button class="family-save-btn" style="flex:1;" onclick="addFamilyMember()">הוסף</button>
-          <button class="family-save-btn" style="flex:0 0 auto;background:rgba(var(--fg-rgb),0.07);color:var(--text-sm);" onclick="renderFamily()">ביטול</button>
-        </div>
-      </div>`;
-    document.getElementById('fm_new_name').focus();
-  }
-
-  async function commitFamilyChange(newFamilyArray) {
-    if (!memberId) return;
-    if (member.status === 'approved') {
-      await saveMemberField({
-        pendingFamilyChanges: newFamilyArray,
-        pendingFamilyChangesAt: serverTimestamp()
-      });
-      member.pendingFamilyChanges = newFamilyArray;
-      showToast('הבקשה נשלחה לאישור מנהל');
-    } else {
-      member.familyMembers = newFamilyArray;
-      await saveMemberField({ familyMembers: newFamilyArray });
-      showToast('בני המשפחה עודכנו ✓');
-    }
-    renderFamily();
-  }
-
-  function addFamilyMember() {
-    const name     = document.getElementById('fm_new_name').value.trim();
-    const relation = document.getElementById('fm_new_relation').value;
-    const phone    = document.getElementById('fm_new_phone').value.trim();
-    const email    = document.getElementById('fm_new_email').value.trim();
-    if (!name) { showToast('יש להזין שם'); return; }
-
-    const base = getActiveFamilyArray();
-    base.push({ name, relation, phone, email });
-    commitFamilyChange(base);
-  }
-
-  function toggleFamilyEdit(i) {
-    document.getElementById('familyFields' + i).classList.toggle('open');
-  }
-
-  function getActiveFamilyArray() {
-    const src = (member.status === 'approved' && member.pendingFamilyChanges)
-      ? member.pendingFamilyChanges
-      : member.familyMembers || [];
-    return src.map(f => ({...f}));
-  }
-
-  function saveFamilyMember(i) {
-    const name  = document.getElementById(`fm${i}_name`).value.trim();
-    const phone = document.getElementById(`fm${i}_phone`).value.trim();
-    const email = document.getElementById(`fm${i}_email`).value.trim();
-    if (!name) return;
-
-    const arr = getActiveFamilyArray();
-    arr[i].name  = name;
-    arr[i].phone = phone;
-    arr[i].email = email;
-    commitFamilyChange(arr);
-  }
-
-  function deleteFamilyMember(i) {
-    const arr = getActiveFamilyArray();
-    if (!confirm(`למחוק את ${arr[i].name}?`)) return;
-    arr.splice(i, 1);
-    commitFamilyChange(arr);
-  }
-
-  renderFamily();
-
   // חשיפה לגלובל (נדרש כי onclick ב-HTML לא רואה scope של module)
-  window.showAddFamilyForm  = showAddFamilyForm;
-  window.addFamilyMember    = addFamilyMember;
-  window.toggleFamilyEdit   = toggleFamilyEdit;
-  window.saveFamilyMember   = saveFamilyMember;
-  window.renderFamily       = renderFamily;
-  window.deleteFamilyMember = deleteFamilyMember;
-  window.commitFamilyChange = commitFamilyChange;
   window.saveCard          = saveCard;
   window.startEdit         = startEdit;
   window.saveEdit          = saveEdit;
