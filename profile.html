@@ -659,9 +659,16 @@
 <a href="nav.html" style="position:fixed;top:70px;left:8px;z-index:9999;background:#002a75;color:#FFD700;border:1.5px solid #FFD700;border-radius:20px;padding:6px 12px;font-family:'Heebo',sans-serif;font-size:11px;font-weight:700;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.3);white-space:nowrap;">← תפריט</a>
 
 <script type="module">
-import { auth, db } from './firebase-config.js';
-import { onAuthStateChanged, signOut, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { auth as primaryAuth, db as primaryDb, firebaseConfig } from './firebase-config.js';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+// כברירת מחדל משתמשים ב-session המשותף (הכניסה הרגילה של החבר/מנהל). רק בגישת
+// bizToken (תצוגת דשבורד-עסק, ר' business-dashboard.html) מוחלפים ל-app מבודד —
+// כדי שכניסה כבעל-עסק לא תדרוס את ה-session האמיתי של מי שפתוח לו טאב אחר באותו דפדפן
+let auth = primaryAuth;
+let db   = primaryDb;
 
 const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
@@ -725,6 +732,10 @@ if (bizToken) {
   }).catch(() => null);
   const data = resp ? await resp.json().catch(() => ({})) : {};
   if (!data.ownerMemberId || !data.customToken) { location.href = 'landing-demo.html'; await new Promise(() => {}); }
+  // app מבודד לזהות העסק — לא ה-session המשותף (ר' הערה למעלה)
+  const bizApp = initializeApp(firebaseConfig, 'bizProfile');
+  auth = getAuth(bizApp);
+  db   = getFirestore(bizApp);
   // מתחבר בפועל כעסק (role:'business_owner', uid=מזהה העסק) — נדרש כדי שקריאת מסמך
   // החבר המקושר תעבור את חוקי ה-Firestore (בעל עסק מחובר יכול לקרוא רק את החבר שהוא מקושר אליו)
   await signInWithCustomToken(auth, data.customToken);

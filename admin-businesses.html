@@ -1617,7 +1617,8 @@ window.openBizSheet = function(id) {
       <div class="card-section-title"><span>📊 נתונים</span></div>
       <div class="sections-status-grid">
         <div class="sec-status-item"><div class="sec-status-label">👁 צפיות</div><span class="sec-badge-ro on">${b.clicks || 0}</span></div>
-        <div class="sec-status-item"><div class="sec-status-label">⭐ כוכבים</div><span class="sec-badge-ro on">${(b.likedBy || []).length}</span></div>
+        <div class="sec-status-item" title="מספר האוהדים שבאמת סימנו לב לעסק (לחיצות אמיתיות)"><div class="sec-status-label">💙 לב אמיתי</div><span class="sec-badge-ro on">${(b.likedBy || []).length}</span></div>
+        <div class="sec-status-item" title="המספר שמוצג בפועל באינדקס ולבעל העסק — ניתן לעריכה"><div class="sec-status-label">💙 לב מוצג</div>${likesOverrideCellHtml(b)}</div>
       </div>
     </div>`;
 
@@ -2145,6 +2146,33 @@ function isSecFeaturedActive(b) {
   return !!(b.isFeatured && (!b.featuredUntil || new Date() < new Date(b.featuredUntil)));
 }
 
+function isLikesOverrideActive(b) {
+  return b.likesOverride != null && (!b.likesOverrideUntil || new Date() < new Date(b.likesOverrideUntil));
+}
+
+function likesOverrideCellHtml(b) {
+  if (isLikesOverrideActive(b)) {
+    const untilLine = b.likesOverrideUntil ? `עד ${fmtDateHe(b.likesOverrideUntil)}` : 'קבוע';
+    const setLine = b.likesOverrideSetAt ? `הופעל ${fmtDateHe(b.likesOverrideSetAt)}` : '';
+    return `<div class="sec-cell">
+      <span class="sec-badge-ro on">${b.likesOverride}</span>
+      <div class="sec-active-line">${untilLine}${setLine ? ` · ${setLine}` : ''}</div>
+      <button class="sec-mini-btn" onclick="clearLikesOverride('${b.id}')">הסר, חזרה למספר האמיתי</button>
+    </div>`;
+  }
+  return `<div class="sec-cell">
+    <div class="sec-setup-row">
+      <input type="number" class="sec-days-input" id="likesVal-${b.id}" min="0" placeholder="מס'" />
+      <span style="font-size:10px;color:var(--text-sm)">מספר לב להצגה</span>
+    </div>
+    <div class="sec-setup-row">
+      <input type="number" class="sec-days-input" id="likesDays-${b.id}" min="1" placeholder="ימים" />
+      <span style="font-size:10px;color:var(--text-sm)">ימים (ריק=קבוע)</span>
+    </div>
+    <button class="sec-activate-btn" onclick="activateLikesOverride('${b.id}')">💙 הפעל</button>
+  </div>`;
+}
+
 function newCellHtml(b) {
   if (isSecNewActive(b)) {
     return `<div class="sec-cell">
@@ -2221,6 +2249,18 @@ window.toggleDealsSection = async function(id, current) {
   await applySectionUpdate(id, { sectionDeals: !current });
 };
 
+window.activateLikesOverride = async function(id) {
+  const val = parseInt(document.getElementById(`likesVal-${id}`)?.value, 10);
+  if (isNaN(val) || val < 0) { showToast('נא להזין מספר תקין'); return; }
+  const days = parseInt(document.getElementById(`likesDays-${id}`)?.value, 10);
+  const until = (days && days > 0) ? new Date(Date.now() + days * 86400000).toISOString() : null;
+  await applySectionUpdate(id, { likesOverride: val, likesOverrideUntil: until, likesOverrideSetAt: new Date().toISOString() }, '💙 מספר הלב עודכן');
+};
+
+window.clearLikesOverride = async function(id) {
+  await applySectionUpdate(id, { likesOverride: null, likesOverrideUntil: null, likesOverrideSetAt: null }, 'הוסר, חוזר למספר האמיתי');
+};
+
 function renderSectionsView() {
   const wrap   = document.getElementById('sectionsTable');
   const search = (document.getElementById('sectionsSearch')?.value || '').trim().toLowerCase();
@@ -2283,14 +2323,14 @@ function renderStatsView() {
   wrap.innerHTML = `
     <div class="stats-row" style="margin-bottom:16px;">
       <div class="stat-card"><div class="num">${totalClicks}</div><div class="lbl">👁 סה"כ צפיות</div></div>
-      <div class="stat-card"><div class="num">${totalLikes}</div><div class="lbl">⭐ סה"כ כוכבים</div></div>
+      <div class="stat-card" title="סך האוהדים שסימנו לב לעסקים באינדקס"><div class="num">${totalLikes}</div><div class="lbl">💙 סה"כ לבבות</div></div>
     </div>
     <div class="sections-table-wrap">
       <table class="sections-table">
         <thead><tr>
           <th>עסק</th><th>קטגוריה</th>
           <th style="cursor:pointer" onclick="setStatsSort('clicks')">👁 צפיות${arrow('clicks')}</th>
-          <th style="cursor:pointer" onclick="setStatsSort('likes')">⭐ כוכבים${arrow('likes')}</th>
+          <th style="cursor:pointer" onclick="setStatsSort('likes')" title="מספר האוהדים שסימנו לב לעסק באינדקס">💙 לבבות${arrow('likes')}</th>
         </tr></thead>
         <tbody>
           ${rows.map(r => `

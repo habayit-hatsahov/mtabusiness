@@ -353,9 +353,13 @@
       padding: 4px 12px; border-radius: 20px;
       font-size: 11px; font-weight: 700; white-space: nowrap;
     }
+    .biz-hero-likes-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex-shrink: 0; }
     .biz-hero-likes {
-      display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+      display: inline-flex; align-items: center; gap: 4px;
       color: var(--yellow); font-size: 12px; font-weight: 800;
+    }
+    .biz-hero-hint {
+      color: rgba(255,255,255,.5); font-size: 10.5px; line-height: 1.3; max-width: 150px;
     }
     .status-badge.pending  { background: rgba(255,215,0,.2); color: var(--yellow); border: 1px solid rgba(255,215,0,.4); }
     .status-badge.approved { background: rgba(22,163,74,.2); color: #86efac; border: 1px solid rgba(22,163,74,.3); }
@@ -850,7 +854,10 @@
     <div class="biz-hero">
       <div class="biz-hero-name" id="bizHeroName"></div>
       <div class="biz-hero-meta" id="bizHeroMeta"></div>
-      <div class="biz-hero-likes" id="bizHeroLikes"></div>
+      <div class="biz-hero-likes-wrap">
+        <div class="biz-hero-likes" id="bizHeroLikes"></div>
+        <div class="biz-hero-hint" id="bizHeroLikesHint"></div>
+      </div>
       <div id="bizStatusBadge"></div>
     </div>
 
@@ -1030,17 +1037,33 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { db, auth, getStorageLazy } from './firebase-config.js';
+import { firebaseConfig } from './firebase-config.js';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import {
-  doc, getDoc, updateDoc, serverTimestamp
+  getFirestore, doc, getDoc, updateDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import {
   ref, uploadBytes, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
-import { signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
 // כתובת ה-Worker (Cloudflare) שמאמת accessToken מול Firestore בצד-שרת ומנפיק טוקן כניסה
 const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
+
+// app נפרד ומבודד (לא ה-app המשותף מ-firebase-config.js) — כניסה כבעל-עסק כאן לא אמורה
+// לדרוס session Firebase משותף (מנהל/חבר שפתוח לו טאב אחר באותו דפדפן, ר' דיווח מ-2026-07-18:
+// מנהל שנכנס לדשבורד עסק היה נזרק מחוץ ל-admin-businesses.html בחזרה, כי ה-session שלו הוחלף בזה של העסק)
+const bizApp = initializeApp(firebaseConfig, 'bizDashboard');
+const db   = getFirestore(bizApp);
+const auth = getAuth(bizApp);
+let _storage = null;
+async function getStorageLazy() {
+  if (!_storage) {
+    const { getStorage } = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js");
+    _storage = getStorage(bizApp);
+  }
+  return _storage;
+}
 
 let biz      = null;
 let bizId    = null;
@@ -1302,7 +1325,12 @@ function renderBizView(flashZone) {
   const types = (w.bizTypes || []).map(t => BIZ_TYPE_LABELS[t]).join(' · ');
   const cat   = CAT_LABELS[mapCatKey(w.categoryPrimary || w.cat)] || '';
   document.getElementById('bizHeroMeta').textContent = [types, cat].filter(Boolean).join(' · ');
-  document.getElementById('bizHeroLikes').textContent = `⭐ ${(biz.likedBy || []).length}`;
+  const likesOverrideActive = biz.likesOverride != null && (!biz.likesOverrideUntil || new Date() < new Date(biz.likesOverrideUntil));
+  const likesCount = likesOverrideActive ? biz.likesOverride : (biz.likedBy || []).length;
+  const bizHeroLikesEl = document.getElementById('bizHeroLikes');
+  bizHeroLikesEl.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M12,21.35 L10.55,20.03 C5.4,15.36 2,12.27 2,8.5 C2,5.41 4.42,3 7.5,3 C9.24,3 10.91,3.81 12,5.08 C13.09,3.81 14.76,3 16.5,3 C19.58,3 22,5.41 22,8.5 C22,12.27 18.6,15.36 13.45,20.03 L12,21.35 Z" fill="currentColor"/></svg><span>${likesCount} אהבו</span>`;
+  bizHeroLikesEl.title = 'מספר האוהדים שסימנו לב לעסק שלך באינדקס';
+  document.getElementById('bizHeroLikesHint').textContent = 'אוהדים שסימנו לב לעסק שלך';
 
   const s = biz.status || 'pending';
   document.getElementById('bizStatusBadge').innerHTML =

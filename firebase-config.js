@@ -27,4 +27,4 @@ async function getStorageLazy() {
   return _storage;
 }
 
-export { db, auth, getStorageLazy };
+export { db, auth, getStorageLazy, firebaseConfig };
