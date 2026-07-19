@@ -235,16 +235,7 @@
 
     /* ══ HERO ══ */
     .hero {
-      text-align: center;
-    }
-    .avatar {
-      width: 68px; height: 68px;
-      background: var(--yellow);
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 24px; font-weight: 900; color: #0f1524;
-      margin: 0 auto 10px;
-      box-shadow: 0 0 0 3px rgba(255,222,0,0.2);
+      text-align: right;
     }
     .hero-name { color: var(--text); font-size: 20px; font-weight: 900; margin-bottom: 6px; }
     .status-chip {
@@ -441,7 +432,6 @@
 
   <!-- HERO -->
   <div class="card-section hero">
-    <div class="avatar" id="profileAvatar"></div>
     <div class="hero-name" id="profileName"></div>
   </div>
 
@@ -612,6 +602,52 @@ window.signOutUser = async function() {
   location.href = 'landing-demo.html';
 };
 
+// ── SAVE CARD ────────────────────────────────────────────────────────────
+// מוגדר מוקדם (כמו signOutUser למעלה) כדי שהכפתור יעבוד גם לפני שה-Auth guard למטה מסתיים.
+// בנייד (iOS בפרט) ל-<a download> על data-URI אין תמיכה אמינה — קודם מנסים navigator.share
+// (פותח את תפריט השיתוף המקורי עם "שמור תמונה"), ורק אם אין תמיכה נופלים ל-download.
+function waitForHtml2Canvas() {
+  if (typeof html2canvas !== 'undefined') return Promise.resolve();
+  return new Promise(resolve => {
+    const iv = setInterval(() => {
+      if (typeof html2canvas !== 'undefined') { clearInterval(iv); resolve(); }
+    }, 150);
+    setTimeout(() => { clearInterval(iv); resolve(); }, 8000);
+  });
+}
+
+window.saveCard = async function() {
+  const card = document.getElementById('memberCardEl');
+  await waitForHtml2Canvas();
+  if (typeof html2canvas === 'undefined') {
+    alert('לחץ לחיצה ארוכה על הכרטיס ובחר "שמור תמונה"');
+    return;
+  }
+  try {
+    const canvas = await html2canvas(card, { scale: 3, backgroundColor: null });
+    canvas.toBlob(async (blob) => {
+      if (!blob) { alert('לא הצלחנו ליצור את התמונה, נסו שוב'); return; }
+      const file = new File([blob], 'תעודת-חבר.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file] }); return; }
+        catch (e) { if (e?.name === 'AbortError') return; }
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = 'תעודת-חבר.png';
+      link.href = url;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    }, 'image/png');
+  } catch (e) {
+    alert('לחץ לחיצה ארוכה על הכרטיס ובחר "שמור תמונה"');
+  }
+};
+
+const _html2canvasScript = document.createElement('script');
+_html2canvasScript.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
+document.head.appendChild(_html2canvasScript);
+
 // ── AUTH GUARD ────────────────────────────────────────────────────────────
 // 3 נתיבי גישה שונים לדף הזה:
 // 1) bizToken   — בעל עסק שמגיע מהדשבורד שלו (business-dashboard.html), מאומת מול ה-Worker לפי תוקף ה-accessToken (לא session חבר — זהות שונה, role:'business_owner')
@@ -624,10 +660,8 @@ let memberId;
 // ── מציג את השם/תעודה/פרטים על המסך — קרוא גם לרינדור המיידי מ-cache (למטה) וגם לרינדור האמיתי אחרי fetch ──
 function renderIdentity(m) {
   const fullName = (m.firstName || '') + ' ' + (m.lastName || '');
-  const initials = (m.firstName?.[0] || '') + (m.lastName?.[0] || '');
   const approvedDate = m.approvedDate instanceof Date ? m.approvedDate : new Date(m.approvedDate);
 
-  document.getElementById('profileAvatar').textContent = initials;
   document.getElementById('profileName').textContent   = fullName;
   document.getElementById('cardName').textContent  = fullName;
   document.getElementById('cardNumber').textContent = '#' + String(m.memberId).padStart(5,'0');
@@ -808,8 +842,7 @@ async function saveMemberField(updates) {
     showToast('הפרטים עודכנו ✓');
   }
 
-  // חשיפה לגלובל (נדרש כי onclick ב-HTML לא רואה scope של module)
-  window.saveCard          = saveCard;
+  // חשיפה לגלובל (נדרש כי onclick ב-HTML לא רואה scope של module) — saveCard כבר הוגדר למעלה
   window.startEdit         = startEdit;
   window.saveEdit          = saveEdit;
   window.toggleLocation    = toggleLocation;
@@ -947,23 +980,6 @@ async function saveMemberField(updates) {
       }
     );
   }
-
-  // ── SAVE CARD ────────────────────────────────────────────────────────────
-  async function saveCard() {
-    if (typeof html2canvas !== 'undefined') {
-      const canvas = await html2canvas(document.getElementById('memberCardEl'), { scale: 3, backgroundColor: null });
-      const link = document.createElement('a');
-      link.download = 'תעודת-חבר.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    } else {
-      alert('לחץ לחיצה ארוכה על הכרטיס ובחר "שמור תמונה"');
-    }
-  }
-
-  const s = document.createElement('script');
-  s.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
-  document.head.appendChild(s);
 
   // ── TOAST ────────────────────────────────────────────────────────────────
   function showToast(msg) {

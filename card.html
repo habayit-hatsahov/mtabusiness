@@ -507,6 +507,48 @@
 
     function pad(n) { return String(n).padStart(5,'0'); }
 
+    // ── שמירת התעודה לגלריה — מוגדר מיד (לא בתוך ה-await-ים למטה) כדי שהכפתור יעבוד
+    // גם אם המשתמש לוחץ לפני שנתוני Firestore נטענו (בעיקר ברשת סלולרית איטית).
+    // בנייד (iOS בפרט) ל-<a download> על data-URI אין תמיכה אמינה — לכן קודם מנסים
+    // navigator.share (פותח את תפריט השיתוף המקורי עם "שמור תמונה"), ורק אם אין תמיכה נופלים ל-download.
+    function waitForHtml2Canvas() {
+      if (typeof html2canvas !== 'undefined') return Promise.resolve();
+      return new Promise(resolve => {
+        const iv = setInterval(() => {
+          if (typeof html2canvas !== 'undefined') { clearInterval(iv); resolve(); }
+        }, 150);
+        setTimeout(() => { clearInterval(iv); resolve(); }, 8000);
+      });
+    }
+
+    window.saveCard = async function() {
+      const card = document.getElementById('memberCard');
+      await waitForHtml2Canvas();
+      if (typeof html2canvas === 'undefined') {
+        alert('לשמירה לגלריה — לחץ לחיצה ארוכה על התעודה ובחר "שמור תמונה"');
+        return;
+      }
+      try {
+        const canvas = await html2canvas(card, { scale: 3, backgroundColor: null });
+        canvas.toBlob(async (blob) => {
+          if (!blob) { alert('לא הצלחנו ליצור את התמונה, נסו שוב'); return; }
+          const file = new File([blob], 'תעודת-חבר-Yellow-Zone.png', { type: 'image/png' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            try { await navigator.share({ files: [file] }); return; }
+            catch (e) { if (e?.name === 'AbortError') return; }
+          }
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.download = 'תעודת-חבר-Yellow-Zone.png';
+          link.href = url;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 30000);
+        }, 'image/png');
+      } catch (e) {
+        alert('לשמירה לגלריה — לחץ לחיצה ארוכה על התעודה ובחר "שמור תמונה"');
+      }
+    };
+
     // ── מציג את התעודה על המסך — קרוא גם לרינדור המיידי מ-cache (למטה) וגם לרינדור האמיתי אחרי fetch ──
     function renderCardIdentity(d) {
       const fullName   = (d.firstName || '') + ' ' + (d.lastName || '');
@@ -585,20 +627,6 @@
     try {
       localStorage.setItem('hb_card_cache', JSON.stringify({ ...normalized, uid: memberId, approvedAt: approvedAt.toISOString() }));
     } catch (e) {}
-
-    // save to gallery
-    window.saveCard = async function() {
-      const card = document.getElementById('memberCard');
-      if (typeof html2canvas !== 'undefined') {
-        const canvas = await html2canvas(card, { scale: 3, backgroundColor: null });
-        const link = document.createElement('a');
-        link.download = 'תעודת-חבר-Yellow-Zone.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-      } else {
-        alert('לשמירה לגלריה — לחץ לחיצה ארוכה על התעודה ובחר "שמור תמונה"');
-      }
-    };
 
     const s = document.createElement('script');
     s.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
