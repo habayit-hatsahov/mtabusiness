@@ -560,6 +560,23 @@
     @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     .success-state h3 { font-size: 22px; font-weight: 800; color: var(--yellow); }
     .success-state p  { color: var(--text-muted); font-size: 14px; line-height: 1.7; margin-top: 10px; }
+    .success-back-link {
+      display: none; margin-top: 20px; background: rgba(255,222,0,.12);
+      color: var(--yellow); border: 1.5px solid rgba(255,222,0,.35);
+      border-radius: 14px; padding: 13px 20px; font-family: 'Heebo', sans-serif;
+      font-size: 15px; font-weight: 800; text-decoration: none;
+    }
+
+    /* ── חזרה לאתר — מוצג רק כשמגיעים מ"הוסף עסק" בהמבורגר (?ctx=menu) ── */
+    .back-to-site {
+      display: none; position: fixed; top: 14px; left: 14px; z-index: 500;
+      align-items: center; gap: 6px;
+      background: rgba(0,0,0,.4); backdrop-filter: blur(6px);
+      color: #fff; font-size: 13px; font-weight: 700;
+      padding: 8px 14px; border-radius: 20px; text-decoration: none;
+      border: 1px solid rgba(255,255,255,.15);
+    }
+    .back-to-site.show { display: inline-flex; }
 
     /* ── ERRORS ── */
     .field-error {
@@ -669,6 +686,8 @@
   </style>
 </head>
 <body>
+
+<a class="back-to-site" id="backToSiteLink" href="home.html">← חזרה לאתר</a>
 
 <!-- Netlify Forms detection (hidden) -->
 <form name="business-registration" netlify netlify-honeypot="bot-field" hidden>
@@ -1376,6 +1395,7 @@
       <div class="success-icon">🏆</div>
       <h3 id="successTitle">הבקשה התקבלה!</h3>
       <p id="successBody"></p>
+      <a class="success-back-link" id="successBackLink" href="home.html">🏠 חזרה לאתר</a>
     </div>
 
   </div>
@@ -1391,6 +1411,14 @@
   import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
+
+  // ── "חזרה לאתר" — מוצג רק כשמגיעים מ"הוסף עסק" בהמבורגר (business.html?ctx=menu),
+  // כדי לפתור מסך-ללא-מוצא באפליקציה המותקנת (PWA standalone, אין UI דפדפן לחזור).
+  // לא מוצג בכניסות אחרות (קישור ישיר/שיתוף) — שם אין "לאן לחזור".
+  if (new URLSearchParams(location.search).get('ctx') === 'menu') {
+    document.getElementById('backToSiteLink')?.classList.add('show');
+    document.getElementById('successBackLink').style.display = 'inline-block';
+  }
 
   // ── קישור/יצירת רשומת חבר לבעל העסק — אם בעל העסק כבר רשום כאוהד (טלפון/מייל תואם), מקשרים
   // לרשומה הקיימת במקום ליצור כפולה (ר' docs/PROJECT_CONTEXT.md סעיף "קישור בעל עסק ↔ חבר").
@@ -2828,7 +2856,8 @@
   async function goToBizTerms(event) {
     event.preventDefault();
     await saveBizRegDraft();
-    location.href = 'terms.html?doc=biz';
+    const fromMenu = new URLSearchParams(location.search).get('ctx') === 'menu';
+    location.href = 'terms.html?doc=biz' + (fromMenu ? '&ctx=menu' : '');
     return false;
   }
 
