@@ -33,6 +33,16 @@
    npx wrangler secret put BREVO_API_KEY
    ```
    (מפתח ה-API מ-Brevo — Settings → SMTP & API → API Keys)
+   ```
+   npx wrangler secret put ANTHROPIC_API_KEY
+   ```
+   (מפתח ה-API מ-console.anthropic.com — **בשימוש פעיל היום**. **אל תשלח לי אותו בצ'אט**, בדיוק כמו שאר הסודות למעלה — הדבק ישירות בטרמינל)
+
+   **אופציונלי, לעתיד:** אם/כש-`src/gemini.js` יופעל (ר' `docs/PROJECT_CONTEXT.md` — ממתין לפרויקט Google Cloud עם מכסת פרויקטים פנויה), יידרש גם:
+   ```
+   npx wrangler secret put GEMINI_API_KEY
+   ```
+   (מ-aistudio.google.com/apikey — כבר מוגדר היום, אך לא בשימוש כרגע)
 
 6. **פריסה:**
    ```

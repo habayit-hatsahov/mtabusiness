@@ -4,6 +4,7 @@ import { firestoreRunQuery, firestoreGetDoc, firestorePatch } from './firestore.
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt } from './ratelimit.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail } from './brevo.js';
+import { shortenBenefitText } from './anthropic.js';
 
 const SITE_BASE = 'https://habayit-hatsahov.github.io/mtabusiness/';
 
@@ -24,6 +25,9 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/check-member-exists') {
         return json(await handleCheckMemberExists(await request.json(), env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/shorten-benefit') {
+        return json(await handleShortenBenefit(await request.json(), request, env), env, request);
       }
       return json({ error: 'not_found' }, env, request, 404);
     } catch (e) {
@@ -145,6 +149,41 @@ async function handleCheckMemberExists({ phone, email }, env) {
   }
 
   return { exists: false, memberId: null };
+}
+
+// הגנה על עלות קריאות ה-AI — מכסה נפרדת מ-isRateLimited/recordAttempt (ratelimit.js), שנועד ספציפית
+// לניחוש קוד-כניסה (מפתחות phone/ip). כאן אין טלפון בכלל, רק IP, אז מכסה ייעודית פשוטה על אותו KV.
+const SHORTEN_IP_LIMIT = 20;
+const SHORTEN_IP_WINDOW_SEC = 15 * 60;
+
+async function shortenIsRateLimited(kv, ip) {
+  const count = parseInt((await kv.get(`attempts:shorten-ip:${ip || 'unknown'}`)) || '0', 10);
+  return count >= SHORTEN_IP_LIMIT;
+}
+async function shortenRecordAttempt(kv, ip) {
+  const key = `attempts:shorten-ip:${ip || 'unknown'}`;
+  const current = parseInt((await kv.get(key)) || '0', 10);
+  await kv.put(key, String(current + 1), { expirationTtl: SHORTEN_IP_WINDOW_SEC });
+}
+
+// מקבל טקסט הטבה ארוך וחופשי מבעל העסק, מחזיר כותרת מקוצרת (עד 35 תווים) שנוצרה ע"י Claude —
+// לפי docs/PROJECT_CONTEXT.md (2026-07-20): המנהל רואה טקסט מקור + הצעה זה-לצד-זה ומאשר/עורך,
+// בעל העסק לא רואה את השלב הזה בכלל. עדיין בשלב דמו — לא מחובר לטופסי business.html/business-dashboard.html.
+async function handleShortenBenefit({ text }, request, env) {
+  if (!text || typeof text !== 'string' || !text.trim()) return { error: 'invalid_request' };
+  if (text.length > 500) return { error: 'text_too_long' };
+
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (await shortenIsRateLimited(env.RATE_LIMIT_KV, ip)) return { error: 'too_many_attempts' };
+  await shortenRecordAttempt(env.RATE_LIMIT_KV, ip);
+
+  try {
+    const shortTitle = await shortenBenefitText(env, text.trim());
+    return { shortTitle };
+  } catch (e) {
+    console.error(e);
+    return { error: 'ai_failed' };
+  }
 }
 
 // כשחבר הוא גם בעל עסק שממתין לאותו מייל אישור — נשלח מייל אחד מאוחד (קוד כניסה + קישור לדשבורד)
