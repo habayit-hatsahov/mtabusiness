@@ -852,8 +852,6 @@
       cursor: pointer; transition: all .15s; user-select: none;
     }
     .disc-type-chip.selected { background: rgba(255,222,0,.12); color: var(--yellow); border-color: var(--yellow); }
-    /* צ'יפים לא-לחיצים — רק "השראה" ליד שדה הטקסט החופשי, לא בחירה */
-    .disc-type-chip.inspire { cursor: default; font-size: 11px; padding: 5px 10px; opacity: .8; border-style: dashed; }
     .char-count { font-size: 10px; color: var(--text-muted); text-align: left; margin-top: 4px; }
     .char-count.warn { color: var(--orange); }
     .disc-redeem-note {
@@ -1723,10 +1721,17 @@ window.openBizSheet = function(id) {
         <div class="edit-section-title" style="margin-top:0">📋 קטגוריה</div>
         <div class="cat-circle-grid" id="editCatGrid"></div>
         <div class="tags-area" id="editTagsArea">
-          <div class="edit-cat-hint" id="editTagsLabel">בחרו תגית אחת לפחות (עד ${MAX_TAGS})</div>
+          <div class="edit-cat-hint" id="editTagsLabel">בחרו תגית</div>
           <div class="tag-chip-wrap" id="editTagsBar"></div>
           <div class="tag-chip-wrap" style="margin-top:2px;">
             <div class="tag-chip no-tag-chip${b.noTagFits ? ' selected' : ''}" id="editNoTagFitsChip" onclick="toggleNoTagFits()">✕ אין תגית שמתאימה לעסק</div>
+          </div>
+          <div class="toggle-row" id="editSecondTagRow" style="display:none;margin-top:10px;">
+            <label>תגית שנייה <span style="font-weight:400;color:var(--text-sm);">(אופציונלי)</span></label>
+            <button class="toggle" id="editSecondTagToggle" onclick="toggleSecondTagEdit()"></button>
+          </div>
+          <div id="editSecondTagDetails" style="display:none;margin-top:6px;">
+            <div class="tag-chip-wrap" id="editTagsBar2"></div>
           </div>
           <div class="form-row" style="margin-top:6px;">
             <label>לא מצאתם תגית מתאימה? הציעו לנו</label>
@@ -1758,14 +1763,7 @@ window.openBizSheet = function(id) {
         <div id="editDiscountFields" style="display:${b.hasDiscount ? 'block' : 'none'}">
           <div class="form-row">
             <label>תיאור ההטבה <span style="font-weight:400;color:var(--text-sm);">(התיאור המלא — מוצג בגיליון העסק, וגם המקור לכותרת הקצרה)</span></label>
-            <div style="font-size:11.5px;color:var(--text-sm);margin-bottom:5px;">💡 סוגי הטבה נפוצים — לא בחירה, רק השראה:</div>
-            <div class="disc-type-chip-wrap" style="margin-bottom:6px;">
-              <div class="disc-type-chip inspire">📊 אחוז הנחה</div>
-              <div class="disc-type-chip inspire">🎁 מתנה / חינם</div>
-              <div class="disc-type-chip inspire">🛒 קנה וקבל</div>
-              <div class="disc-type-chip inspire">📦 משלוח חינם</div>
-              <div class="disc-type-chip inspire">💰 מחיר מיוחד</div>
-            </div>
+            <div style="font-size:11.5px;color:var(--text-sm);margin-bottom:8px;line-height:1.6;">💡 כמה רעיונות להטבה (לא בחירה, רק השראה): <strong>אחוז הנחה</strong> · <strong>מתנה/חינם</strong> · <strong>קנה וקבל</strong> · <strong>משלוח חינם</strong> · <strong>מחיר מיוחד</strong></div>
             <textarea id="editDiscTextFull" rows="3" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול, לא כולל ימי שישי-שבת" maxlength="500" oninput="onDiscBuilderInput()">${esc(b.discountTextFull || b.discountText)}</textarea>
           </div>
           <div class="form-row">
@@ -2747,25 +2745,64 @@ function renderTagsBar() {
   const area  = document.getElementById('editTagsArea');
   const bar   = document.getElementById('editTagsBar');
   const label = document.getElementById('editTagsLabel');
+  const secondRow = document.getElementById('editSecondTagRow');
+  const secondToggle = document.getElementById('editSecondTagToggle');
+  const secondDetails = document.getElementById('editSecondTagDetails');
   if (!area || !bar) return;
   const cat = CATEGORIES.find(c => c.key === selectedCat);
   area.classList.toggle('open', !!cat);
-  if (!cat) { bar.innerHTML = ''; return; }
-  label.innerHTML = `בחרו תגית אחת לפחות (עד ${MAX_TAGS}) מתוך "${cat.label}"`;
+  if (!cat) { bar.innerHTML = ''; if (secondRow) secondRow.style.display = 'none'; return; }
+  label.innerHTML = `בחרו תגית מתוך "${cat.label}"`;
   bar.innerHTML = cat.tags.map(t => {
-    const sel = selectedTags.includes(t);
-    const dis = noTagFits || (!sel && selectedTags.length >= MAX_TAGS);
-    return `<div class="tag-chip${sel ? ' selected' : ''}${dis ? ' disabled' : ''}" onclick="${dis ? '' : `toggleTag('${t.replace(/'/g,"\\'")}')`}">${t}</div>`;
+    const sel = selectedTags[0] === t;
+    const dis = noTagFits;
+    return `<div class="tag-chip${sel ? ' selected' : ''}${dis ? ' disabled' : ''}" onclick="${dis ? '' : `selectPrimaryTag('${t.replace(/'/g,"\\'")}')`}">${t}</div>`;
   }).join('');
   const chip = document.getElementById('editNoTagFitsChip');
   if (chip) chip.classList.toggle('selected', noTagFits);
+  if (secondRow) secondRow.style.display = (selectedTags[0] && !noTagFits) ? 'flex' : 'none';
+  if (secondToggle) secondToggle.classList.toggle('on', !!selectedTags[1]);
+  if (secondDetails) secondDetails.style.display = selectedTags[1] ? 'block' : 'none';
+  renderSecondTagBar();
 }
 
-window.toggleTag = function(tag) {
-  const idx = selectedTags.indexOf(tag);
-  if (idx >= 0) selectedTags.splice(idx, 1);
-  else if (selectedTags.length < MAX_TAGS) selectedTags.push(tag);
+// תגית שנייה — אופציונלית, מוסתרת מאחורי טוגל (כמו "מופיע גם תחת"), נבחרת רק מתוך תגיות שנשארו
+function renderSecondTagBar() {
+  const bar2 = document.getElementById('editTagsBar2');
+  if (!bar2) return;
+  const cat = CATEGORIES.find(c => c.key === selectedCat);
+  if (!cat || !selectedTags[0]) { bar2.innerHTML = ''; return; }
+  bar2.innerHTML = cat.tags.filter(t => t !== selectedTags[0]).map(t => {
+    const sel = selectedTags[1] === t;
+    return `<div class="tag-chip${sel ? ' selected' : ''}" onclick="selectSecondTag('${t.replace(/'/g,"\\'")}')">${t}</div>`;
+  }).join('');
+}
+
+window.selectPrimaryTag = function(tag) {
+  if (selectedTags[0] === tag) {
+    selectedTags = [];
+  } else {
+    selectedTags = [tag, ...selectedTags.slice(1)].filter(Boolean);
+  }
   renderTagsBar();
+};
+
+window.selectSecondTag = function(tag) {
+  selectedTags[1] = (selectedTags[1] === tag ? undefined : tag);
+  selectedTags = selectedTags.filter(Boolean);
+  renderSecondTagBar();
+};
+
+window.toggleSecondTagEdit = function() {
+  const details = document.getElementById('editSecondTagDetails');
+  const willOpen = !(details && details.style.display === 'block');
+  const toggle = document.getElementById('editSecondTagToggle');
+  if (toggle) toggle.classList.toggle('on', willOpen);
+  if (details) details.style.display = willOpen ? 'block' : 'none';
+  if (!willOpen && selectedTags[1]) {
+    selectedTags = selectedTags.slice(0, 1);
+    renderSecondTagBar();
+  }
 };
 
 // ── בנאי הטבה — טקסט חופשי, קיצור AI (Claude, דרך ה-Worker) יוצר כותרת קצרה לכרטיס בשמירה ──
