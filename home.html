@@ -728,9 +728,9 @@
     .site-footer { text-align: center; padding: 32px 16px 26px; margin-top: auto; }
     .site-footer-line { color: var(--text-muted); font-size: 11px; line-height: 1.6; }
     .site-footer-link { color: var(--text-muted); text-decoration: underline; }
-    .site-footer-highlight { color: var(--yellow); font-weight: 700; text-decoration: none; }
+    .site-footer-highlight { color: var(--accent); font-weight: 700; text-decoration: none; }
     .site-footer-highlight.site-footer-link { text-decoration: none; }
-    .site-footer-brand { color: var(--text); font-weight: 900; }
+    .site-footer-brand { color: var(--text-muted); font-weight: 900; }
     .footer-ig-icon { width: 13px; height: 13px; vertical-align: -2px; }
 
     /* ══ עומק נוסף במצב בהיר — למנוע מראה שטוח/לבן מדי ══ */
@@ -1049,6 +1049,7 @@ document.addEventListener('DOMContentLoaded', () => {
 window.loadFirebaseData = function(data, isPreview) {
   businesses = data;
   renderSections();
+  if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey);
   if (isPreview) return;
   refreshSheetIfOpen();
   initLocation();
@@ -1208,7 +1209,7 @@ function buildCard(biz, showNewBadge, eager) {
   const tags    = (biz.tags || []).slice(0,2);
   const extraCount = (biz.additionalDiscounts || []).filter(d => d && d.text).length;
   return `
-    <div class="biz-card"${cardStyle} onclick="openBiz('${biz.id}')">
+    <div class="biz-card" data-id="${biz.id}"${cardStyle} onclick="openBiz('${biz.id}')">
       <div class="biz-card-img"${imgBg ? ` style="background:${imgBg}"` : ''}>
         ${bizCardImage(biz, eager)}
         ${newTag}
@@ -1281,12 +1282,62 @@ function _rotate(arr, offset) {
 }
 
 // ── RENDER SECTIONS ───────────────────────────────────────────────────────────
+// שומר את סדר-ה-id של הרינדור האחרון לכל סקשן, כדי לא לכתוב HTML/DOM מחדש (ובכך לא לאבד
+// מיקום גלילה בתוך שורה / להבהב) כשה-snapshot מ-Firestore חוזר עם אותה קבוצת עסקים באותו
+// סדר — זה קורה כמעט בכל עדכון חי (למשל לייק על עסק אחר, קליק, עריכה של עסק לא-קשור).
+let _lastRenderedOrder = {};
+function _idsKey(list) { return list.map(b => b.id).join(','); }
+function _writeSectionIfChanged(sectionKey, containerId, list, buildFn, emptyHtml) {
+  // חשוב: האלמנט חייב להימצא *לפני* שמסמנים sectionKey כ"מעודכן" — אם getElementById נכשל
+  // פעם אחת (בעיית תזמון חד-פעמית), ולא היינו בודקים את זה קודם, ה-key היה נרשם בכל זאת,
+  // וכל קריאה עתידית עם אותו הרכב הייתה מדלגת לצמיתות בלי לכתוב את ה-DOM בפועל אף פעם.
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const key = _idsKey(list);
+  // רשת ביטחון: גם אם ה-key "חושב" שכבר נכתב, אם בפועל עדיין נשאר skeleton-card מהטעינה
+  // הראשונית (למשל snapshot כפול מ-Firestore — פעם מה-cache המקומי, פעם מהשרת — ששיבש את
+  // הסימון בלי שהכתיבה בפועל הצליחה), כותבים בכל זאת. עדיף כתיבה מיותרת אחת על "תקוע לצמיתות".
+  const alreadyLooksRendered = _lastRenderedOrder[sectionKey] === key && !el.querySelector('.skeleton-card');
+  if (alreadyLooksRendered) return;
+  _lastRenderedOrder[sectionKey] = key;
+  el.innerHTML = list.length ? list.map(buildFn).join('') : (emptyHtml || '');
+  observeLazyImages(el);
+}
+
+// שימור מיקום גלילה ויזואלי סביב renderSections() — כל תוכן שמעל המקום שהמשתמש גלול אליו יכול
+// לשנות גובה (סקשן none↔block כמו featured/loved/myLoved, או שורה שמקבלת/מאבדת עסק), ולדחוף
+// את מה שהוא רואה בפועל למעלה/למטה על המסך. במקום לנחש *אילו* סקשנים עלולים להשתנות (שביר —
+// זה בדיוק מה שהחמיץ מקרה שבו לייק על עסק דחף תוכן שהיה בתוך שדה הראייה, לא רק מעליו), עוגנים
+// לפי כותרת-הסקשן (`.section-title`) הכי קרובה לראש המסך — היא אלמנט יציב (חלק מה-HTML הקבוע,
+// לא נהרס ע"י innerHTML replacement של _writeSectionIfChanged) — וזוכרים בדיוק היכן היא נמצאת
+// על המסך. אחרי כל השינויים, מוצאים את אותה כותרת ומתקנים את הגלילה כך שהיא תחזור לאותו מקום
+// פיזי בדיוק — כך המשתמש נשאר "איפה שהוא היה", לא משנה מה השתנה מעליו.
+function _captureScrollAnchor() {
+  const titles = document.querySelectorAll('.section-title');
+  let best = null, bestTop = -Infinity;
+  titles.forEach(t => {
+    const top = t.getBoundingClientRect().top;
+    if (top <= 4 && top > bestTop) { best = t; bestTop = top; }
+  });
+  if (!best) return null;
+  return { el: best, top: bestTop };
+}
+function _restoreScrollAnchor(anchor) {
+  if (!anchor || !anchor.el.isConnected) return;
+  const delta = anchor.el.getBoundingClientRect().top - anchor.top;
+  if (delta) window.scrollBy(0, delta);
+}
+
 function renderSections() {
+  const _scrollAnchor = _captureScrollAnchor();
   const daySeed = _todaySeedStr();
   const masterOrder = seededShuffle(businesses, daySeed); // סדר-בסיס אחד, יומי, משותף לכל הסקשנים
 
-  // מעקב "מי כבר תפס מקום 1-2" — כדי שאותו עסק לא יוביל (מקום ראשון/שני בגלילה) בכמה סקשנים בבת אחת.
-  // לא נוגע ב-*מי נכנס* לסקשן (זה עדיין נשלט לגמרי ע"י isFeatured/isNew/sectionDeals וכו') — רק בסדר הפנימי.
+  // מעקב "מי כבר תפס מקום 1-2" — כדי שאותו עסק לא יוביל (מקום ראשון/שני בגלילה) בכמה סקשנים
+  // מסוחררים בבת אחת. לא נוגע ב-*מי נכנס* לסקשן (זה עדיין נשלט לגמרי ע"י isFeatured/isNew/
+  // sectionDeals וכו') — רק בסדר הפנימי. בכוונה לא כולל פופולריים/הכי אהובים (ר' למטה) —
+  // הם מבוססי-נתון-אמיתי שמשתנה בזמן אמת, וצירוף שלהם היה גורם לסקשנים המסוחררים "לזוז" בכל
+  // פעם שמישהו עושה לייק לעסק כלשהו, למרות שההרכב שלהם עצמם לא השתנה.
   const usedLeaders = new Set();
   function arrangeSection(filterFn, sectionKey) {
     const subset = masterOrder.filter(filterFn);
@@ -1304,60 +1355,70 @@ function renderSections() {
     return _rotate(subset, offset); // fallback (רק אם אין די עסקים כדי להימנע מחפיפה)
   }
 
-  // "פופולריים"/"הכי אהובים" מדורגים לפי נתון אמיתי (קליקים/לייקים) — לא מסוחררים, כדי לא לפגוע במשמעות
-  // הדירוג. עדיין נספרים ב-usedLeaders, כך שאם עסק באמת מוביל שם, שאר הסקשנים יימנעו מלהוביל אותו גם.
+  // "פופולריים"/"הכי אהובים" מדורגים לפי נתון אמיתי (קליקים/לייקים) — לא מסוחררים, כדי לא לפגוע
+  // במשמעות הדירוג. מותר להם לזוז בעצמם כשהנתון האמיתי משתנה (זו הכוונה) — אבל הם לא נכנסים
+  // ל-usedLeaders, כדי לא "לדחוף" את הסקשנים המסוחררים לזוז יחד איתם.
   const popular = [...businesses].sort((a,b) => b.clicks - a.clicks).slice(0,5);
-  popular.slice(0,2).forEach(b => usedLeaders.add(b.id));
-  document.getElementById('popularBizScroll').innerHTML = popular.map(b => buildCard(b)).join('');
-  observeLazyImages(document.getElementById('popularBizScroll'));
+  _writeSectionIfChanged('popular', 'popularBizScroll', popular, b => buildCard(b));
 
   const loved = businesses.filter(b => (b.likedBy||[]).length > 0)
                            .sort((a,b) => (b.likedBy||[]).length - (a.likedBy||[]).length)
                            .slice(0,10);
-  loved.slice(0,2).forEach(b => usedLeaders.add(b.id));
   document.getElementById('lovedSection').style.display = loved.length ? 'block' : 'none';
-  document.getElementById('lovedBizScroll').innerHTML = loved.map(b => buildCard(b)).join('');
-  observeLazyImages(document.getElementById('lovedBizScroll'));
+  _writeSectionIfChanged('loved', 'lovedBizScroll', loved, b => buildCard(b));
 
   // featured=eager (src ישיר, בלי lazy) — הסקשן הראשון שנראה בכניסה, תמיד גלוי, מעט פריטים.
   const featured = arrangeSection(b => isFeatured(b), 'featured');
   _dailySectionOrder.featured = featured;
   document.getElementById('featuredSection').style.display  = featured.length ? 'block' : 'none';
-  document.getElementById('featuredBizScroll').innerHTML    = featured.map(b => buildCard(b, false, true)).join('');
+  _writeSectionIfChanged('featured', 'featuredBizScroll', featured, b => buildCard(b, false, true));
 
   const newBiz = arrangeSection(b => isNew(b), 'new');
   _dailySectionOrder.new = newBiz;
-  document.getElementById('newBizScroll').innerHTML =
-    newBiz.map(b => buildCard(b, true)).join('') ||
-    '<p style="color:var(--text-muted);font-size:13px;padding:8px 0">בקרוב...</p>';
-  observeLazyImages(document.getElementById('newBizScroll'));
+  _writeSectionIfChanged('new', 'newBizScroll', newBiz, b => buildCard(b, true),
+    '<p style="color:var(--text-muted);font-size:13px;padding:8px 0">בקרוב...</p>');
 
   const deals = arrangeSection(b => b.discount && b.sectionDeals !== false, 'deals');
   _dailySectionOrder.deals = deals;
-  document.getElementById('dealsBizScroll').innerHTML = deals.map(b => buildCard(b)).join('');
-  observeLazyImages(document.getElementById('dealsBizScroll'));
+  _writeSectionIfChanged('deals', 'dealsBizScroll', deals, b => buildCard(b));
 
   const myId = currentMemberId();
   const myLoved = myId ? businesses.filter(b => (b.likedBy||[]).includes(myId)) : [];
   document.getElementById('myLovedSection').style.display = myLoved.length ? 'block' : 'none';
-  document.getElementById('myLovedBizScroll').innerHTML = myLoved.map(b => buildCard(b)).join('');
-  observeLazyImages(document.getElementById('myLovedBizScroll'));
+  _writeSectionIfChanged('myLoved', 'myLovedBizScroll', myLoved, b => buildCard(b));
 
   const online = arrangeSection(b => b.online, 'online');
   _dailySectionOrder.online = online;
-  document.getElementById('onlineBizScroll').innerHTML = online.map(b => buildCard(b)).join('');
-  observeLazyImages(document.getElementById('onlineBizScroll'));
+  _writeSectionIfChanged('online', 'onlineBizScroll', online, b => buildCard(b));
 
   const everyone = arrangeSection(() => true, 'everyone');
   _dailySectionOrder.everyone = everyone;
-  document.getElementById('allBizGrid').innerHTML = everyone.map(b => buildCard(b)).join('');
-  observeLazyImages(document.getElementById('allBizGrid'));
+  _writeSectionIfChanged('everyone', 'allBizGrid', everyone, b => buildCard(b));
+
+  // עדכון "חי" של תג-הלב (מסומן/לא + מספר) על כרטיסים שכבר קיימים ב-DOM, כולל בסקשנים שדולגו
+  // למעלה כי סדר-ה-id שלהם לא השתנה — כדי שלייק עדיין ישתקף מיד בכל מקום שהעסק מופיע.
+  syncLiveCardFields();
+
+  _restoreScrollAnchor(_scrollAnchor);
+}
+
+function syncLiveCardFields() {
+  document.querySelectorAll('.biz-card[data-id]').forEach(card => {
+    const biz = businesses.find(b => b.id === card.dataset.id);
+    if (!biz) return;
+    const likeEl = card.querySelector('.biz-card-like');
+    if (likeEl) likeEl.outerHTML = likeBadge(biz);
+  });
 }
 
 // ── CATEGORY FILTER ───────────────────────────────────────────────────────────
 // גובה העמוד משתנה בין תצוגת "הכל" לדף הבית (במיוחד במובייל, עמודה אחת) — לכן שומרים
 // ומשחזרים את מיקום הגלילה במפורש, במקום לסמוך על שימור scrollY הסביל של הדפדפן.
 let _homeScrollY = 0;
+
+// הקטגוריה/סקשן שפתוח כרגע ב"רואה הכל" (null כשחוזרים ל"הכל"/דף הבית) — משמש כדי לרענן
+// את הגריד הזה גם כשמגיעים נתונים חדשים (למשל לייק) בזמן שהוא פתוח, ר' renderCatFeedContent().
+let _currentCatFeedKey = null;
 
 function filterCat(cat, el) {
   document.querySelectorAll('.cat-item').forEach(c => c.classList.remove('active'));
@@ -1367,6 +1428,7 @@ function filterCat(cat, el) {
   const catV = document.getElementById('catFeed');
 
   if (cat === 'all') {
+    _currentCatFeedKey = null;
     main.style.display = 'block';
     catV.style.display = 'none';
     // behavior:'instant' חובה כאן — html{scroll-behavior:smooth} הגלובלי היה הופך את זה לגלילה
@@ -1381,6 +1443,14 @@ function filterCat(cat, el) {
   catV.style.display = 'block';
   window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 
+  _currentCatFeedKey = cat;
+  renderCatFeedContent(cat);
+}
+
+// בונה מחדש את תוכן הגריד של "רואה הכל" לקטגוריה/סקשן הנתונים, בלי לגעת בגלילה/display —
+// נקרא גם מ-filterCat (פתיחה ראשונית) וגם מ-loadFirebaseData (רענון בזמן שהתצוגה כבר פתוחה,
+// כדי שלייק/הסרת-לייק ישתקפו מיד גם כשלא נמצאים בדף הבית הראשי — ר' PROJECT_CONTEXT.md).
+function renderCatFeedContent(cat) {
   // featured/new/deals/online/everyone נקראים מ-_dailySectionOrder (שחושב ב-renderSections) —
   // לא מחושבים כאן מחדש, כדי שהתצוגה המורחבת ("הכל") תתאים בדיוק לשורת הגלילה, כולל הימנעות-מהובלה-כפולה.
   let filtered = [], title = '';
@@ -1751,14 +1821,24 @@ function maybeShowInAppBanner() {
 document.addEventListener('DOMContentLoaded', maybeShowInAppBanner);
 
 // ── שיתוף — הזמנת חברים לדף ההרשמה (תפריט מותאם אישית, שליטה מלאה על הסגירה) ──
+let _shareData = null;
 function shareApp() {
-  const shareData = {
+  _shareData = {
+    title: 'Yellow Zone',
     text: 'מצאתי קהילה של עסקים של אוהדי מכבי — עסקים, הטבות והמלצות אמיתיות מהקהילה. בואו תצטרפו:',
     url: location.origin + location.pathname.replace(/[^/]*$/, '') + 'landing-demo.html',
   };
-  document.getElementById('shareLinkText').textContent = shareData.url;
-  document.getElementById('shareWhatsappLink').href = `https://wa.me/?text=${encodeURIComponent(shareData.text + ' ' + shareData.url)}`;
+  document.getElementById('shareLinkText').textContent = _shareData.url;
+  document.getElementById('shareWhatsappLink').href = `https://wa.me/?text=${encodeURIComponent(_shareData.text + ' ' + _shareData.url)}`;
+  // "שיתוף" (תפריט השיתוף המובנה של המכשיר) מוצג רק אם הדפדפן תומך ב-Web Share API — לא קיים בכל דפדפן/דסקטופ
+  const nativeOption = document.getElementById('shareNativeOption');
+  if (nativeOption) nativeOption.style.display = navigator.share ? 'flex' : 'none';
   document.getElementById('shareOverlay').classList.add('open');
+}
+async function nativeShareApp(event) {
+  event.stopPropagation();
+  if (!navigator.share || !_shareData) return;
+  try { await navigator.share(_shareData); } catch (e) { /* המשתמש ביטל או שאין תמיכה — לא באג, לא צריך לטפל */ }
 }
 function closeShareSheet() {
   document.getElementById('shareOverlay').classList.remove('open');
@@ -2340,6 +2420,13 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="contact-option-sub">שתפו בהודעה</div>
         </div>
       </a>
+      <div class="contact-option" id="shareNativeOption" style="display:none" onclick="nativeShareApp(event)">
+        <span class="contact-option-icon">📤</span>
+        <div class="contact-option-body">
+          <div class="contact-option-title">שיתוף</div>
+          <div class="contact-option-sub">עוד אפליקציות ואנשי קשר</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -2509,17 +2596,25 @@ window._recordView = function(id) {
 };
 
 // ── בעל עסק — הצגת כפתור "העסק שלי" בסרגל הצד ──
+// דיווח על אדמין שגם בעל עסק לא ראה "דשבורד ניהול" בהמבורגר (2026-07-21) — לוג אבחון זמני, ר' PROJECT_CONTEXT.md.
 async function initBizNavItem() {
   const memberId = auth.currentUser?.uid;
   let isBizOwner = false, linkedBusinessId = '', isAdminMember = false;
-  if (memberId) {
-    const snap = await getDoc(doc(db, 'members', memberId));
-    if (snap.exists()) {
-      const d = snap.data();
-      isBizOwner = d.isBusinessOwner === true;
-      linkedBusinessId = d.linkedBusinessId || '';
-      isAdminMember = d.isAdmin === true;
+  try {
+    if (memberId) {
+      const snap = await getDoc(doc(db, 'members', memberId));
+      if (snap.exists()) {
+        const d = snap.data();
+        isBizOwner = d.isBusinessOwner === true;
+        linkedBusinessId = d.linkedBusinessId || '';
+        isAdminMember = d.isAdmin === true;
+      }
+      console.debug('[initBizNavItem]', { memberId, docExists: snap.exists(), isAdminMember, isBizOwner, linkedBusinessId });
+    } else {
+      console.debug('[initBizNavItem] no memberId (auth.currentUser is empty)');
     }
+  } catch (e) {
+    console.error('[initBizNavItem] failed reading member doc:', e);
   }
   if (isAdminMember) {
     const adminItem = document.getElementById('menuAdminItem');
@@ -2528,9 +2623,13 @@ async function initBizNavItem() {
   if (!isBizOwner) return;
 
   let token = '';
-  if (linkedBusinessId) {
-    const bizSnap = await getDoc(doc(db, 'businesses', linkedBusinessId));
-    if (bizSnap.exists()) token = bizSnap.data().accessToken || '';
+  try {
+    if (linkedBusinessId) {
+      const bizSnap = await getDoc(doc(db, 'businesses', linkedBusinessId));
+      if (bizSnap.exists()) token = bizSnap.data().accessToken || '';
+    }
+  } catch (e) {
+    console.error('[initBizNavItem] failed reading linked business doc:', e);
   }
   if (!token) return;
 
