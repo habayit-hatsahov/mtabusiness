@@ -2201,36 +2201,52 @@ function closeBizSheet() {
   _openBizId = null;
 }
 
-// ── משיכה למטה לסגירת גיליון העסק (מובייל) — פעיל רק כשהגיליון גלול לגמרי למעלה (scrollTop===0),
-// כדי לא להתנגש עם גלילת התוכן הרגילה של הגיליון עצמו.
+// ── משיכה למטה לסגירת גיליון העסק (מובייל) ──
 // חייב DOMContentLoaded: הסקריפט הזה (לא-מודולרי) רץ מיד בזמן הפענוח, לפני שה-HTML של
-// #bizSheet (בהמשך הדף, אחרי </script>) בכלל קיים ב-DOM — בלי זה getElementById תמיד null
+// #bizSheet (בהמשך הדף, אחרי שהסקריפט הזה נגמר) בכלל קיים ב-DOM — בלי זה getElementById תמיד null
 // והפונקציה כולה no-op בשקט, בלי שגיאה שמעידה על כך.
+// ⚠️ אזהרה לעתיד: אסור לכתוב את הרצף המילולי סגור-סקריפט (< / script >, בלי רווחים) בתוך תגובת
+// JS כאן — הדפדפן מזהה אותו כסוגר-תג אמיתי גם בתוך "הערה", לא משנה שזה JS תחביר. זו בדיוק
+// התקלה שקרתה כאן (ר' PROJECT_CONTEXT.md §31) — כל התוכן אחרי הרצף הזה הפך לטקסט גלוי בדף.
+//
+// 🔧 DEBUG זמני (למחיקה אחרי שהמשתמש מאשר שזה עובד): תיבת טקסט גלויה שמראה בזמן אמת מה
+// הקוד קולט, כדי לאבחן במכשיר אמיתי בלי גישה ל-Web Inspector (ר' PROJECT_CONTEXT.md סעיף 31).
 document.addEventListener('DOMContentLoaded', function initBizSheetSwipeToClose() {
   const sheet = document.getElementById('bizSheet');
   if (!sheet) return;
+  const handle = document.getElementById('bizSheetHandle');
+  if (!handle) return;
+
+  const dbg = document.createElement('div');
+  dbg.id = 'swipeDebug';
+  dbg.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#ff2d55;color:#fff;font:12px monospace;padding:6px 10px;white-space:pre-wrap;pointer-events:none;';
+  dbg.textContent = 'swipe-debug: ממתין למגע על הידית...';
+  document.body.appendChild(dbg);
+  function log(msg) { dbg.textContent = 'swipe-debug: ' + msg; }
+
   let startY = 0, dy = 0, dragging = false;
 
-  sheet.addEventListener('touchstart', e => {
-    dragging = sheet.scrollTop <= 0;
+  handle.addEventListener('touchstart', e => {
+    dragging = true;
     startY = e.touches[0].clientY;
     dy = 0;
+    log('touchstart, startY=' + startY.toFixed(0));
   }, { passive: true });
 
-  sheet.addEventListener('touchmove', e => {
-    if (!dragging) return;
-    // preventDefault תמיד (גם dy<=0) — קריאה רק אחרי שהכיוון כבר ידוע עלולה להגיע מאוחר מדי:
-    // ברגע שדפדפן ה-iOS "נועל" מחווה כגלילה טבעית של ההורה, preventDefault מאוחר לא עוצר אותה.
+  handle.addEventListener('touchmove', e => {
+    if (!dragging) { log('touchmove אבל dragging=false (לא אמור לקרות)'); return; }
     e.preventDefault();
     dy = e.touches[0].clientY - startY;
-    if (dy <= 0) { sheet.style.transform = ''; return; } // גרירה כלפי מעלה — לא מזיזים חזותית
+    log('touchmove, dy=' + dy.toFixed(0));
+    if (dy <= 0) { sheet.style.transform = ''; return; }
     sheet.style.transform = `translateY(${dy}px)`;
   }, { passive: false });
 
-  sheet.addEventListener('touchend', () => {
+  handle.addEventListener('touchend', () => {
     if (!dragging) return;
     dragging = false;
-    if (dy > 90) {
+    log('touchend, dy סופי=' + dy.toFixed(0) + (dy > 60 ? ' → סוגר' : ' → חוזר'));
+    if (dy > 60) {
       closeBizSheet();
       sheet.style.transform = '';
     } else {
@@ -2241,40 +2257,7 @@ document.addEventListener('DOMContentLoaded', function initBizSheetSwipeToClose(
     dy = 0;
   }, { passive: true });
 
-  // ── מסלול שני, אמין יותר: גרירה מ"ידית" הגיליון עצמה (הפס הקטן למעלה) ──
-  // הגרסה למעלה תלויה ב-scrollTop<=0 של כל הגיליון (שגם גולל תוכן) — יש חשד ל-iOS Safari
-  // שה-rubber-band/momentum-scroll הטבעי "מתחרה" עם ה-transform הידני ומנצח לפעמים, גם עם
-  // preventDefault. הידית עצמה היא אלמנט קבוע, קטן, לא-גולל — גרירה שמתחילה עליה במפורש
-  // (לא תלוית scrollTop) לא אמורה בכלל להתנגש עם גלילת התוכן.
-  const handle = document.getElementById('bizSheetHandle');
-  if (handle) {
-    let hStartY = 0, hDy = 0, hDragging = false;
-    handle.addEventListener('touchstart', e => {
-      hDragging = true;
-      hStartY = e.touches[0].clientY;
-      hDy = 0;
-    }, { passive: true });
-    handle.addEventListener('touchmove', e => {
-      if (!hDragging) return;
-      e.preventDefault(); // תמיד — גם לפני שכיוון ה-dy ידוע, ר' הערה למעלה על "נעילת מחווה"
-      hDy = e.touches[0].clientY - hStartY;
-      if (hDy <= 0) { sheet.style.transform = ''; return; }
-      sheet.style.transform = `translateY(${hDy}px)`;
-    }, { passive: false });
-    handle.addEventListener('touchend', () => {
-      if (!hDragging) return;
-      hDragging = false;
-      if (hDy > 60) {
-        closeBizSheet();
-        sheet.style.transform = '';
-      } else {
-        sheet.style.transition = 'transform .25s ease';
-        sheet.style.transform = '';
-        setTimeout(() => { sheet.style.transition = ''; }, 250);
-      }
-      hDy = 0;
-    }, { passive: true });
-  }
+  handle.addEventListener('touchcancel', () => log('touchcancel! (הדפדפן ביטל את המחווה בכוח)'), { passive: true });
 });
 
 function sCopyCoupon(code) {
