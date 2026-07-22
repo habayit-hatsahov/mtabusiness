@@ -1340,17 +1340,18 @@ const CATEGORIES = [
   { key:'events',  icon:'🎉', label:'אירועים והפקות',       tags:['מוזיקה ודיג\'יי','אטרקציות ומתנפחים','אוכל ואלכוהול לאירועים','צילום ומדיה','עיצוב והפקת אירועים'] },
   { key:'vehicle', icon:'🚗', label:'רכב ותחבורה',          tags:['מוסכים וחלקי חילוף','מצברים וחשמלאות','ציוד ואביזרי רכיבה','שליחויות ולוגיסטיקה','שירותי דרך וגרר'] },
   { key:'home',    icon:'🏠', label:'בית וניקיון',           tags:['בנייה ושיפוצים','נגרות וריהוט','עיצוב ופיתוח גינות','ניקיון ואחזקה','הדברה ומנעולנים'] },
-  { key:'fashion', icon:'👕', label:'אופנה, ספורט ופנאי',   tags:['חנויות ספורט וגלישה','בגדים ואופנה','תכשיטים ויהלומים','משקפי שמש ואביזרי אופנה','אטרקציות ופנאי'] },
-  { key:'digital', icon:'💻', label:'דיגיטל וטכנולוגיה',    tags:['פיתוח ואוטומציות','בניית אתרים ודיגיטל','חבילות תקשורת וסלולר','מחשוב ומעבדות תיקון'] },
-  { key:'health',  icon:'💊', label:'בריאות ויופי',          tags:['מספרות וטיפוח','מרפאות ורופאים','רפואה משלימה וטיפול קנאביס','אופטיקה ומשקפיים','כושר ותזונה'] },
+  { key:'fashion', icon:'👕', label:'אופנה, יופי ובריאות',  tags:['בגדים ואופנה','תכשיטים ויהלומים','משקפיים ואביזרי אופנה','מספרות וטיפוח','מרפאות ורופאים','רפואה משלימה וטיפול קנאביס','קעקועים'] },
+  { key:'sport',   icon:'⚽', label:'ספורט ופנאי',          tags:['חנויות ספורט וגלישה','אטרקציות ופנאי','כושר ותזונה'] },
+  { key:'digital', icon:'💻', label:'דיגיטל וטכנולוגיה',    tags:['פיתוח ואוטומציות','בניית אתרים ודיגיטל','חבילות תקשורת וסלולר','מחשוב ומעבדות תיקון','חנות טלפונים'] },
   { key:'finance', icon:'⚖️', label:'פיננסים ומשפט',        tags:['עורכי דין ומשפט','סוכני ביטוח','ייעוץ משכנתאות ופיננסים','רואי חשבון ומיסוי'] },
 ];
 const MAX_TAGS = 2;
 const CAT_LABELS = Object.fromEntries(CATEGORIES.map(c => [c.key, `${c.icon} ${c.label}`]));
 
 // מיפוי קטגוריות ישנות לחדשות (עסקים קיימים ב-DB שעדיין לא נערכו) — זהה ל-home.html/business-dashboard.html
+// health בוטלה כקטגוריה עצמאית (2026-07-21): תוכנה התפצל בין fashion (טיפוח/מרפאות/רפואה משלימה) ל-sport (כושר ותזונה) — עסקים קיימים עם health ממופים ל-fashion כברירת מחדל עד שיישמרו מחדש
 function mapCatKey(cat) {
-  const legacyMap = { pro:'home', tech:'digital', legal:'finance', sport:'fashion', other:'home' };
+  const legacyMap = { pro:'home', tech:'digital', legal:'finance', other:'home', health:'fashion' };
   return legacyMap[cat] || cat;
 }
 
@@ -1483,12 +1484,25 @@ window.openBizSheet = function(id) {
   const effTagSuggestion      = ('tagSuggestion' in _pc) ? _pc.tagSuggestion : b.tagSuggestion;
   const effAlsoCatSuggestion  = ('alsoCategorySuggestion' in _pc) ? _pc.alsoCategorySuggestion : b.alsoCategorySuggestion;
   const effAlsoCatNote        = ('alsoCategoryNote' in _pc) ? _pc.alsoCategoryNote : b.alsoCategoryNote;
+  const effTagSecondSuggestion = ('tagSecondSuggestion' in _pc) ? _pc.tagSecondSuggestion : b.tagSecondSuggestion;
   const _tagSuggestionPending = 'tagSuggestion' in _pc;
   const _alsoCatPending       = ('alsoCategorySuggestion' in _pc) || ('alsoCategoryNote' in _pc);
+  const _tagSecondPending      = 'tagSecondSuggestion' in _pc;
 
   const tagSuggestionHtml = effTagSuggestion
     ? `<div class="tag-suggestion-alert">💡 העסק הציע תגית שלא הייתה ברשימה: "${esc(effTagSuggestion)}"${_tagSuggestionPending ? ' <span style="opacity:.7;font-weight:600;">(ממתין לאישור)</span>' : ''}</div>`
     : '';
+  // תגית שנייה — בדיוק כמו "מופיע גם תחת": בעל העסק בוחר מהרשימה הנעולה, אבל הבחירה נכתבת רק כהצעה
+  // (tagSecondSuggestion) ואינה נכנסת ל-tags[1] בפועל עד שהמנהל בוחר אותה בעצמו למטה בבורר הישיר (saveSec3).
+  const liveSecondTagAdmin = (b.tags || [])[1] || '';
+  const tagSecondSuggestionHtml = (effTagSecondSuggestion && effTagSecondSuggestion !== liveSecondTagAdmin)
+    ? `<div class="tag-suggestion-alert">💡 העסק ביקש תגית שנייה: "${esc(effTagSecondSuggestion)}"${_tagSecondPending ? ' <span style="opacity:.7;font-weight:600;">(ממתין לאישור)</span>' : ''}</div>`
+    : '';
+  // המנהל מקבל את הבורר פתוח עם ההצעה כבר מסומנת (טוגל מופעל + תגית נבחרת) — אישור הוא פשוט "שמור";
+  // אפשר גם לבחור תגית אחרת, או לכבות את הטוגל כדי לדחות. לפי משוב מפורש מהמשתמש (לא כמו alsoUnderCategory).
+  if (!selectedTags[1] && effTagSecondSuggestion && effTagSecondSuggestion !== liveSecondTagAdmin && validTagsForCat.includes(effTagSecondSuggestion)) {
+    selectedTags[1] = effTagSecondSuggestion;
+  }
   // מ-2026-07-17 alsoCategorySuggestion הוא מפתח קטגוריה שנבחר בגריד אצל בעל העסק (לא טקסט חופשי) —
   // אם יש ערך ישן שלא תואם אף מפתח (טקסט חופשי מלפני השינוי), עדיין מציגים אותו כמו שהוא כ-fallback
   const alsoCatSuggestionLabel = CATEGORIES.some(c => c.key === effAlsoCatSuggestion)
@@ -1715,6 +1729,7 @@ window.openBizSheet = function(id) {
         <div class="detail-item full"><div class="lbl">תגיות</div><div class="val">${b.noTagFits ? '<span class="missing">אין תגית מתאימה</span>' : tagsOnlyHtml}</div></div>
         <div class="detail-item full"><div class="lbl">מופיע גם תחת</div><div class="val">${b.alsoUnderCategory ? `<span class="field-tag cat">${CAT_LABELS[selectedAlsoCat] || selectedAlsoCat}</span>` : '<span class="missing">לא נבחר</span>'}</div></div>
         ${tagSuggestionHtml ? `<div class="detail-item full"><div class="val">${tagSuggestionHtml}</div></div>` : ''}
+        ${tagSecondSuggestionHtml ? `<div class="detail-item full"><div class="val">${tagSecondSuggestionHtml}</div></div>` : ''}
         ${alsoCatSuggestionHtml ? `<div class="detail-item full"><div class="val">${alsoCatSuggestionHtml}</div></div>` : ''}
       </div>
       <div class="sec-edit-form" id="secEdit3">
@@ -1726,16 +1741,17 @@ window.openBizSheet = function(id) {
           <div class="tag-chip-wrap" style="margin-top:2px;">
             <div class="tag-chip no-tag-chip${b.noTagFits ? ' selected' : ''}" id="editNoTagFitsChip" onclick="toggleNoTagFits()">✕ אין תגית שמתאימה לעסק</div>
           </div>
+          <div class="form-row" style="margin-top:6px;">
+            <label>לא מצאתם תגית מתאימה? הציעו לנו</label>
+            <input type="text" id="editTagSuggestion" value="${esc(b.tagSuggestion)}" placeholder="הקלידו הצעה לתגית חדשה..." maxlength="40" />
+          </div>
+          ${tagSecondSuggestionHtml ? `<div style="margin-top:10px;">${tagSecondSuggestionHtml}</div>` : ''}
           <div class="toggle-row" id="editSecondTagRow" style="display:none;margin-top:10px;">
             <label>תגית שנייה <span style="font-weight:400;color:var(--text-sm);">(אופציונלי)</span></label>
             <button class="toggle" id="editSecondTagToggle" onclick="toggleSecondTagEdit()"></button>
           </div>
           <div id="editSecondTagDetails" style="display:none;margin-top:6px;">
             <div class="tag-chip-wrap" id="editTagsBar2"></div>
-          </div>
-          <div class="form-row" style="margin-top:6px;">
-            <label>לא מצאתם תגית מתאימה? הציעו לנו</label>
-            <input type="text" id="editTagSuggestion" value="${esc(b.tagSuggestion)}" placeholder="הקלידו הצעה לתגית חדשה..." maxlength="40" />
           </div>
           <div class="form-row" style="margin-top:14px;">
             <label>🆕 מופיע גם תחת... (אופציונלי)</label>
@@ -1761,9 +1777,9 @@ window.openBizSheet = function(id) {
           <button class="toggle${b.hasDiscount ? ' on' : ''}" id="editDiscountToggle" onclick="toggleDiscount()"></button>
         </div>
         <div id="editDiscountFields" style="display:${b.hasDiscount ? 'block' : 'none'}">
+          <div style="font-size:11.5px;color:var(--text-sm);margin-bottom:12px;line-height:1.6;">💡 כמה רעיונות להטבה (לא בחירה, רק השראה): <strong>אחוז הנחה</strong> · <strong>מתנה/חינם</strong> · <strong>קנה וקבל</strong> · <strong>משלוח חינם</strong> · <strong>מחיר מיוחד</strong></div>
           <div class="form-row">
             <label>תיאור ההטבה <span style="font-weight:400;color:var(--text-sm);">(התיאור המלא — מוצג בגיליון העסק, וגם המקור לכותרת הקצרה)</span></label>
-            <div style="font-size:11.5px;color:var(--text-sm);margin-bottom:8px;line-height:1.6;">💡 כמה רעיונות להטבה (לא בחירה, רק השראה): <strong>אחוז הנחה</strong> · <strong>מתנה/חינם</strong> · <strong>קנה וקבל</strong> · <strong>משלוח חינם</strong> · <strong>מחיר מיוחד</strong></div>
             <textarea id="editDiscTextFull" rows="3" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול, לא כולל ימי שישי-שבת" maxlength="500" oninput="onDiscBuilderInput()">${esc(b.discountTextFull || b.discountText)}</textarea>
           </div>
           <div class="form-row">
@@ -2498,7 +2514,7 @@ const PENDING_LABELS = {
   regions: 'אזורי פעילות', websiteOnline: 'אתר אונליין',
   phone: 'טלפון עסק', whatsapp: 'WhatsApp', serviceEmail: 'מייל שירות', city: 'עיר', address: 'כתובת',
   categoryPrimary: 'קטגוריה ראשית', cat: 'קטגוריה ראשית', categorySecondary: 'קטגוריות משניות',
-  tags: 'תגיות', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'בקשת העסק למופיע גם תחת', alsoCategoryNote: 'הערת העסק לגבי קטגוריה נוספת',
+  tags: 'תגיות', tagSecondSuggestion: 'בקשת העסק לתגית שנייה', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'בקשת העסק למופיע גם תחת', alsoCategoryNote: 'הערת העסק לגבי קטגוריה נוספת',
   hours: 'שעות פעילות', website: 'אתר', instagram: 'אינסטגרם', facebook: 'פייסבוק',
   discountText: 'כותרת ההטבה בכרטיס', discountTextFull: 'תיאור מלא (מבעל העסק)', discountCode: 'קוד קופון', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש',
   hasDiscount: 'הטבה פעילה', additionalDiscounts: 'הטבות נוספות', coverPhoto: 'תמונה מייצגת', logo: 'לוגו', photos: 'גלריית תמונות', videos: 'סרטונים',
@@ -2509,7 +2525,7 @@ const FIELD_TO_STEP = {
   ownerFirst: 1, ownerLast: 1, ownerPhone: 1, ownerEmail: 1, note: 1,
   bizTypes: 2, name: 2, desc: 2, branches: 2, city: 2, address: 2, phone: 2, whatsapp: 2, serviceEmail: 2,
   regions: 2, websiteOnline: 2, hours: 2, website: 2, instagram: 2, facebook: 2,
-  categoryPrimary: 3, cat: 3, categorySecondary: 3, tags: 3, noTagFits: 3, tagSuggestion: 3,
+  categoryPrimary: 3, cat: 3, categorySecondary: 3, tags: 3, tagSecondSuggestion: 3, noTagFits: 3, tagSuggestion: 3,
   alsoUnderCategory: 3, alsoCategorySuggestion: 3, alsoCategoryNote: 3,
   hasDiscount: 4, discountText: 4, discountTextFull: 4, discountCode: 4, discountType: 4, discountTypes: 4,
   discountRedeemMode: 4, discountBuilder: 4, additionalDiscounts: 4,
@@ -3058,15 +3074,25 @@ window.saveSec3 = async function(id) {
     showToast('⚠️ נא לבחור תגית אחת לפחות, או לסמן שאין תגית מתאימה');
     return;
   }
-  await saveSectionUpdates(id, {
-    categoryPrimary:    selectedCat || '',
-    cat:                selectedCat || '',
-    categorySecondary:  [],
-    tags:               selectedTags,
+  const updates = {
+    categoryPrimary:      selectedCat || '',
+    cat:                  selectedCat || '',
+    categorySecondary:    [],
+    tags:                 selectedTags,
     noTagFits,
-    tagSuggestion:       document.getElementById('editTagSuggestion').value.trim(),
-    alsoUnderCategory:   selectedAlsoCat || '',
-  });
+    tagSuggestion:        document.getElementById('editTagSuggestion').value.trim(),
+    alsoUnderCategory:    selectedAlsoCat || '',
+    tagSecondSuggestion:  '', // המנהל טיפל בהצעה כאן ישירות (קיבל/דחה) — ההצעה כבר לא רלוונטית
+  };
+  // אם ההצעה הייתה גם בתוך pendingChanges (הגיעה מ-business-dashboard.html דרך stageChanges),
+  // מסנכרנים את שתי השורות האלה שם גם כן — אחרת אישור-גורף מאוחר יותר (approvePendingChanges)
+  // ידרוס בחזרה את tags הישן שממתין שם, ויבטל את מה שהמנהל בדיוק אישר כאן. ר' PROJECT_CONTEXT.md §8.
+  const b = businesses.find(x => x.id === id);
+  if (b?.pendingChanges) {
+    if ('tags' in b.pendingChanges) updates['pendingChanges.tags'] = selectedTags;
+    if ('tagSecondSuggestion' in b.pendingChanges) updates['pendingChanges.tagSecondSuggestion'] = '';
+  }
+  await saveSectionUpdates(id, updates);
 };
 
 // "כותרת בכרטיס" נשמרת מהשדה הידני (editDiscShortTitle) ולא נדרסת אוטומטית ע"י AI בכל שמירה —
