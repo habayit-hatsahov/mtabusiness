@@ -237,6 +237,11 @@
          (במיוחד "עסקים נבחרים" — הסקשן היחיד עם טעינת תמונות eager, לא lazy — ר' PROJECT_CONTEXT.md).
          בלי זה, ה-scrollLeft=0 שאנחנו קובעים ב-JS יכול "להידרס" ע"י scroll anchoring טבעי של הדפדפן. */
       overflow-anchor: none;
+      /* מפורש, לא מסתמכים על ירושה מ-html[dir=rtl] — חשד ל-iOS Safari: כשיש מעט מספיק פריטים
+         שהתוכן לא עולה על רוחב המכל (אין בפועל צורך לגלול), יש תקלה ידועה שבה flex-start
+         ב-RTL "נשכח" והפריטים מתמרכזים/נדחקים במקום להיצמד לימין — ר' PROJECT_CONTEXT.md §31. */
+      direction: rtl;
+      justify-content: flex-start;
     }
     .cards-scroll::-webkit-scrollbar { display: none; }
 
@@ -985,7 +990,7 @@
     <div class="cards-scroll" id="myLovedBizScroll"></div>
   </div>
 
-  <div class="section" id="nearSection">
+  <div class="section" id="nearSection" style="display:none">
     <div class="section-header">
       <div class="section-title">קרוב אליך</div>
       <div style="display:flex; align-items:center; gap:10px;">
@@ -1597,12 +1602,13 @@ function checkGeoPermissionState() {
   return navigator.permissions.query({ name: 'geolocation' }).then(s => s.state).catch(() => null);
 }
 
+// "קרוב אליך" מוסתר לגמרי (display:none בסטטי-HTML) כל עוד אין הרשאת מיקום — אין טעם
+// להציג סקשן ריק/CTA בתוך הפיד, כי יש כבר דרך ברורה לבקש מיקום מההמבורגר
+// ("📍 הפעלת הרשאת מיקום"). מופיע לבד ברגע שיש מיקום בפועל (ר' applyLocation).
 function initLocation() {
   const saved = localStorage.getItem('locationAllowed');
   if (saved === 'true') {
     navigator.geolocation?.getCurrentPosition(pos => applyLocation(pos), err => handleLocationError(err));
-  } else {
-    checkGeoPermissionState().then(state => state === 'denied' ? showNearBlocked() : showNearEmpty());
   }
 }
 
@@ -1626,8 +1632,7 @@ function showNearBlocked() {
 
 function handleLocationError(err) {
   localStorage.setItem('locationAllowed', 'false');
-  if (err && err.code === 1) showNearBlocked();
-  else showNearEmpty();
+  // הסקשן נשאר מוסתר (ברירת המחדל) — אין CTA להציג בתוך הפיד, ר' הערה ב-initLocation.
 }
 
 // נקודת כניסה משותפת לבקשת/רענון מיקום — מהתגית ליד "קרוב אליך", מההמבורגר, ומכפתור מצב-ריק
@@ -1686,6 +1691,7 @@ function updateLocationMenuLabel() {
 }
 
 function applyLocation(pos) {
+  document.getElementById('nearSection').style.display = 'block';
   const { latitude: lat, longitude: lng } = pos.coords;
   const nearbyAll = businesses
     .filter(b => b.lat && b.lng)
