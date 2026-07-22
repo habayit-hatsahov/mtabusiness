@@ -233,6 +233,10 @@
       display: flex; gap: 12px;
       overflow-x: auto; padding: 0 16px 4px;
       scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+      /* מונע מהדפדפן "לעזור" ולהזיז לבד את scrollLeft כפיצוי על שינוי-גודל תוכן א-סינכרוני
+         (במיוחד "עסקים נבחרים" — הסקשן היחיד עם טעינת תמונות eager, לא lazy — ר' PROJECT_CONTEXT.md).
+         בלי זה, ה-scrollLeft=0 שאנחנו קובעים ב-JS יכול "להידרס" ע"י scroll anchoring טבעי של הדפדפן. */
+      overflow-anchor: none;
     }
     .cards-scroll::-webkit-scrollbar { display: none; }
 
@@ -362,6 +366,9 @@
       padding: 10px 40px;
       margin: 4px auto -8px;
       box-sizing: content-box;
+      /* אומר לדפדפן במפורש לא לזהות כאן שום מחווה טבעית (גלילה/זום) — בלי זה iOS Safari עלול
+         "לנעול" את המחווה כגלילה של ההורה (הגיליון) עוד לפני ש-JS מספיק לקרוא preventDefault */
+      touch-action: none;
     }
     @media (min-width: 600px) { .sheet-handle { display: none; } }
 
@@ -2212,9 +2219,11 @@ document.addEventListener('DOMContentLoaded', function initBizSheetSwipeToClose(
 
   sheet.addEventListener('touchmove', e => {
     if (!dragging) return;
-    dy = e.touches[0].clientY - startY;
-    if (dy <= 0) return; // גרירה כלפי מעלה — משאירים לגלילה הרגילה
+    // preventDefault תמיד (גם dy<=0) — קריאה רק אחרי שהכיוון כבר ידוע עלולה להגיע מאוחר מדי:
+    // ברגע שדפדפן ה-iOS "נועל" מחווה כגלילה טבעית של ההורה, preventDefault מאוחר לא עוצר אותה.
     e.preventDefault();
+    dy = e.touches[0].clientY - startY;
+    if (dy <= 0) { sheet.style.transform = ''; return; } // גרירה כלפי מעלה — לא מזיזים חזותית
     sheet.style.transform = `translateY(${dy}px)`;
   }, { passive: false });
 
@@ -2247,9 +2256,9 @@ document.addEventListener('DOMContentLoaded', function initBizSheetSwipeToClose(
     }, { passive: true });
     handle.addEventListener('touchmove', e => {
       if (!hDragging) return;
+      e.preventDefault(); // תמיד — גם לפני שכיוון ה-dy ידוע, ר' הערה למעלה על "נעילת מחווה"
       hDy = e.touches[0].clientY - hStartY;
-      if (hDy <= 0) return;
-      e.preventDefault();
+      if (hDy <= 0) { sheet.style.transform = ''; return; }
       sheet.style.transform = `translateY(${hDy}px)`;
     }, { passive: false });
     handle.addEventListener('touchend', () => {
