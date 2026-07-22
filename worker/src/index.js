@@ -5,6 +5,7 @@ import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt } from './ratelimit.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail } from './brevo.js';
 import { shortenBenefitText } from './anthropic.js';
+import { suggestFallbackImages } from './pexels.js';
 
 const SITE_BASE = 'https://habayit-hatsahov.github.io/mtabusiness/';
 
@@ -28,6 +29,9 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/shorten-benefit') {
         return json(await handleShortenBenefit(await request.json(), request, env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/suggest-fallback-images') {
+        return json(await handleSuggestFallbackImages(await request.json(), request, env), env, request);
       }
       return json({ error: 'not_found' }, env, request, 404);
     } catch (e) {
@@ -151,19 +155,20 @@ async function handleCheckMemberExists({ phone, email }, env) {
   return { exists: false, memberId: null };
 }
 
-// הגנה על עלות קריאות ה-AI — מכסה נפרדת מ-isRateLimited/recordAttempt (ratelimit.js), שנועד ספציפית
-// לניחוש קוד-כניסה (מפתחות phone/ip). כאן אין טלפון בכלל, רק IP, אז מכסה ייעודית פשוטה על אותו KV.
-const SHORTEN_IP_LIMIT = 20;
-const SHORTEN_IP_WINDOW_SEC = 15 * 60;
+// הגנה על עלות קריאות ה-AI/API חיצוני — מכסה נפרדת מ-isRateLimited/recordAttempt (ratelimit.js), שנועד
+// ספציפית לניחוש קוד-כניסה (מפתחות phone/ip). כאן אין טלפון בכלל, רק IP, אז מכסה ייעודית פשוטה על אותו KV,
+// לפי פעולה (action) כדי ש-shorten-benefit ו-suggest-fallback-images לא ישתפו מכסה ביניהם.
+const IP_LIMIT = 20;
+const IP_WINDOW_SEC = 15 * 60;
 
-async function shortenIsRateLimited(kv, ip) {
-  const count = parseInt((await kv.get(`attempts:shorten-ip:${ip || 'unknown'}`)) || '0', 10);
-  return count >= SHORTEN_IP_LIMIT;
+async function ipIsRateLimited(kv, action, ip) {
+  const count = parseInt((await kv.get(`attempts:${action}-ip:${ip || 'unknown'}`)) || '0', 10);
+  return count >= IP_LIMIT;
 }
-async function shortenRecordAttempt(kv, ip) {
-  const key = `attempts:shorten-ip:${ip || 'unknown'}`;
+async function ipRecordAttempt(kv, action, ip) {
+  const key = `attempts:${action}-ip:${ip || 'unknown'}`;
   const current = parseInt((await kv.get(key)) || '0', 10);
-  await kv.put(key, String(current + 1), { expirationTtl: SHORTEN_IP_WINDOW_SEC });
+  await kv.put(key, String(current + 1), { expirationTtl: IP_WINDOW_SEC });
 }
 
 // מקבל טקסט הטבה ארוך וחופשי מבעל העסק, מחזיר כותרת מקוצרת (עד 35 תווים) שנוצרה ע"י Claude —
@@ -174,8 +179,8 @@ async function handleShortenBenefit({ text }, request, env) {
   if (text.length > 500) return { error: 'text_too_long' };
 
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  if (await shortenIsRateLimited(env.RATE_LIMIT_KV, ip)) return { error: 'too_many_attempts' };
-  await shortenRecordAttempt(env.RATE_LIMIT_KV, ip);
+  if (await ipIsRateLimited(env.RATE_LIMIT_KV, 'shorten', ip)) return { error: 'too_many_attempts' };
+  await ipRecordAttempt(env.RATE_LIMIT_KV, 'shorten', ip);
 
   try {
     const shortTitle = await shortenBenefitText(env, text.trim());
@@ -183,6 +188,25 @@ async function handleShortenBenefit({ text }, request, env) {
   } catch (e) {
     console.error(e);
     return { error: 'ai_failed' };
+  }
+}
+
+// מקבל תגית עסק (למשל "משקפיים ואביזרי אופנה") ומחזיר 5 תמונות סטוק מ-Pexels כמועמדות לתמונת ברירת
+// מחדל — לעסק שלא העלה תמונה משלו. המנהל בוחר אחת ומאשר בנפרד מ-pendingChanges (ר' docs/PROJECT_CONTEXT.md).
+async function handleSuggestFallbackImages({ tag }, request, env) {
+  if (!tag || typeof tag !== 'string' || !tag.trim()) return { error: 'invalid_request' };
+  if (tag.length > 100) return { error: 'invalid_request' };
+
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (await ipIsRateLimited(env.RATE_LIMIT_KV, 'fallback-img', ip)) return { error: 'too_many_attempts' };
+  await ipRecordAttempt(env.RATE_LIMIT_KV, 'fallback-img', ip);
+
+  try {
+    const options = await suggestFallbackImages(env, tag.trim());
+    return { options };
+  } catch (e) {
+    console.error(e);
+    return { error: 'image_search_failed' };
   }
 }
 

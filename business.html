@@ -1205,8 +1205,7 @@
       <div class="section-title">🖼️ תמונה מייצגת ולוגו</div>
 
       <div style="background:rgba(255,222,0,.08);border:1px solid rgba(255,222,0,.25);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#d4b800;line-height:1.7;">
-        💡 כך העסק שלך יוצג באינדקס: <strong style="color:var(--yellow);">תמונה גדולה שמייצגת את העסק</strong> (המקום / המוצר / השירות שלך), ואם יש לך גם לוגו — הוא יוצג כתגית קטנה בפינת התמונה. <strong style="color:var(--yellow);">נדרשת לפחות תמונה אחת מהשתיים.</strong><br/><br/>
-        יש לך רק תמונה מייצגת? מצוין, זה מספיק. יש לך רק לוגו? אפשר להעלות רק אותו כרגע — ייתכן שנוסיף לעסק שלך תמונה מייצגת מתאימה בהמשך. בכל מקרה, <strong style="color:var(--yellow);">תמיד אפשר לבקש לעדכן או להחליף את התמונות מאוחר יותר</strong> דרך דשבורד ניהול העסק שלך.
+        💡 <strong style="color:var(--yellow);">תמונה אמיתית של העסק = הרבה יותר חשיפה ולחיצות מלקוחות, ואמינות גבוהה יותר.</strong> תמונה גדולה מייצגת את העסק (המקום / המוצר / השירות), ולוגו (אם יש) יוצג כתגית קטנה בפינתה. <strong style="color:var(--yellow);">לא תעלו — נציג תמונה גנרית במקום העסק שלכם.</strong>
       </div>
 
       <div class="media-mock">
@@ -1242,9 +1241,7 @@
           </div>
         </div>
       </div>
-      <div style="font-size:12px;color:var(--yellow);font-weight:700;margin-top:-6px;margin-bottom:12px;">* חובה להעלות לפחות אחת מהשתיים</div>
-
-      <div class="field-error" id="err-media" style="display:none">נא להעלות לפחות תמונה אחת — תמונה מייצגת או לוגו</div>
+      <div style="font-size:12px;color:var(--text-sm);margin-top:-6px;margin-bottom:12px;">מומלץ להעלות תמונה מייצגת ולוגו — לא חובה. בלי תמונה מייצגת נציג ללקוחות תמונה כללית עד שתעלו משלכם.</div>
 
       <div class="divider"></div>
 
@@ -1598,32 +1595,11 @@
     return ok;
   }
 
-  // תמונה מייצגת + לוגו אופציונליים בנפרד, אך נדרשת לפחות אחת מהשתיים
-  function validateStep4() {
-    const hasLogo  = !!document.getElementById('bizLogoFile')?.files.length;
-    const hasCover = !!document.getElementById('bizCoverPhotoFile')?.files.length;
-    const ok = hasLogo || hasCover;
-    const err = document.getElementById('err-media');
-    const coverZone = document.getElementById('coverPhotoZone');
-    const logoZone  = document.getElementById('logoZone');
-    if (!ok) {
-      if (err) err.style.display = 'block';
-      coverZone.classList.add('req-error');
-      logoZone.classList.add('req-error');
-    } else {
-      if (err) err.style.display = 'none';
-      coverZone.classList.remove('req-error');
-      logoZone.classList.remove('req-error');
-    }
-    return ok;
-  }
-
   function goNext(fromStep) {
     let valid = true;
     if (fromStep === 1) valid = validateStep1();
     if (fromStep === 2) valid = validateStep2();
     if (fromStep === 3) valid = validateStep3();
-    if (fromStep === 4) valid = validateStep4();
     if (!valid) {
       const firstErr = document.querySelector('#step' + fromStep + ' .error, #step' + fromStep + ' .field-error[style*="block"]');
       if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1650,7 +1626,7 @@
   })();
 
   async function handleSubmit() {
-    if (!validateStep1() || !validateStep2() || !validateStep3() || !validateStep4()) {
+    if (!validateStep1() || !validateStep2() || !validateStep3()) {
       return;
     }
     if (!document.getElementById('agreeTerms').checked) {
@@ -1769,6 +1745,15 @@
       const coverPhotoFile = document.getElementById('bizCoverPhotoFile')?.files[0];
       const galleryFiles   = [...(document.getElementById('bizGalleryFiles')?.files || [])].slice(0, 5);
 
+      // אם הועלתה רק תמונה אחת מבין השתיים — היא תמיד הופכת לתמונה המייצגת (הגדולה), לא ללוגו.
+      // לוגו נשאר ריק אלא אם הועלו שתי תמונות בנפרד (ר' docs/PROJECT_CONTEXT.md).
+      const effectiveCoverFile = coverPhotoFile || logoFile || null;
+      const effectiveLogoFile  = coverPhotoFile ? logoFile : null;
+
+      // תמונת ברירת מחדל אוטומטית (Pexels) — כבויה זמנית (2026-07-22): איכות/סגנון התמונות
+      // שחזרו מהחיפוש לא היו מספיק טובות. עד שזה ייפתר, עסק בלי תמונה נשאר בלי תמונה — מנהל
+      // מכניס ידנית. ה-endpoint ב-Worker (/suggest-fallback-images) עדיין קיים, רק לא נקרא מכאן.
+
       // הכל במקביל
       const tasks = [];
       if (fanPhotoFile) tasks.push(
@@ -1779,8 +1764,8 @@
       // לוגו/תמונה מייצגת — נדחסות לפני העלאה (הקובץ המקורי מהטלפון יכול להיות כמה MB), + גרסת
       // thumbnail קטנה נפרדת (~400px) שהכרטיסים בפיד (home.html) יעדיפו במקום להוריד את הגרסה המלאה
       // רק כדי להציג אותה זעירה. ר' PROJECT_CONTEXT.md — נראות הכרטיס לא משתנה, רק כמות המידע ברשת.
-      if (logoFile) tasks.push(uploadImageWithThumb(logoFile, `businesses/${docId}/logo`, uploads, 'logo'));
-      if (coverPhotoFile) tasks.push(uploadImageWithThumb(coverPhotoFile, `businesses/${docId}/coverPhoto`, uploads, 'coverPhoto'));
+      if (effectiveLogoFile) tasks.push(uploadImageWithThumb(effectiveLogoFile, `businesses/${docId}/logo`, uploads, 'logo'));
+      if (effectiveCoverFile) tasks.push(uploadImageWithThumb(effectiveCoverFile, `businesses/${docId}/coverPhoto`, uploads, 'coverPhoto'));
       galleryFiles.forEach((f, i) => tasks.push(
         uploadFile(f, `businesses/${docId}/gallery_${i}`)
           .then(url => { uploads[`photo_${i}`] = { url, name: f.name }; console.log(`✅ gallery[${i}] uploaded`); })
@@ -2546,7 +2531,6 @@
         <div style="font-size:11px;color:var(--gray);margin-top:2px;">לחץ להחלפה</div>`;
     };
     reader.readAsDataURL(file);
-    validateStep4();
   }
 
   function removeLogo() {
@@ -2555,7 +2539,6 @@
       <div class="upload-icon">🏪</div>
       <div class="upload-text">העלה לוגו</div>
       <div class="upload-sub">מומלץ ריבוע</div>`;
-    validateStep4();
   }
 
   function previewCoverPhoto(input) {
@@ -2570,7 +2553,6 @@
         <div style="font-size:11px;color:var(--gray);margin-top:2px;">לחץ להחלפה</div>`;
     };
     reader.readAsDataURL(file);
-    validateStep4();
   }
 
   function removeCoverPhoto() {
@@ -2579,7 +2561,6 @@
       <div class="upload-icon">📷</div>
       <div class="upload-text">העלה תמונה</div>
       <div class="upload-sub">המקום / המוצר</div>`;
-    validateStep4();
   }
 
   function previewGallery(input) {

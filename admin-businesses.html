@@ -1857,6 +1857,29 @@ window.openBizSheet = function(id) {
             ? mediaThumbHtml(coverUrl, 'תמונה מייצגת', 140, 90, `${b.name || 'business'}_cover.jpg`)
             : `<div class="media-empty-slot" style="width:140px;height:90px;"><div class="icon">📷</div><div>לא הועלתה</div></div>`}
         </div>
+        ${b.pendingFallbackPhotoOptions && b.pendingFallbackPhotoOptions.length ? `
+        <div style="margin-bottom:12px;padding:10px;border:1px solid rgba(255,222,0,.3);background:rgba(255,222,0,.06);border-radius:10px;">
+          <div class="lbl" style="font-size:11px;color:var(--yellow);margin-bottom:8px;font-weight:700;">🖼️ הצעת תמונות — לחצו על תמונה כדי להגדיל. בחרו תמונה מייצגת אחת (אופציונלי), וסמנו תמונות נוספות להוספה לגלריה. תמונה שלא תיבחר לאף יעד לא תישמר.</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${b.pendingFallbackPhotoOptions.map((opt, i) => `
+              <div id="fallbackOpt_${id}_${i}" style="display:flex;align-items:center;gap:12px;padding:6px;border-radius:10px;border:1.5px solid transparent;">
+                ${mediaThumbHtml(opt.thumbUrl, 'מועמדת ' + (i + 1), 120, 84, `${b.name || 'business'}_fallback_${i + 1}.jpg`)}
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <label style="font-size:12.5px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="radio" name="fallbackCover_${id}" value="${i}" style="width:16px;height:16px;cursor:pointer;" onchange="updateFallbackOptCards('${id}', ${b.pendingFallbackPhotoOptions.length})" /> ⭐ תמונה מייצגת
+                  </label>
+                  <label style="font-size:12.5px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="checkbox" class="fallbackGallery_${id}" value="${i}" style="width:16px;height:16px;cursor:pointer;" onchange="updateFallbackOptCards('${id}', ${b.pendingFallbackPhotoOptions.length})" /> ➕ לגלריה
+                  </label>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="sec-edit-btn" onclick="rejectFallbackPhoto('${id}')">✕ דחה הכל</button>
+            <button class="btn-save-sec" onclick="applyFallbackPhotoSelection('${id}')">✓ אשר בחירה</button>
+          </div>
+        </div>` : ''}
         ${logoUrl ? `
           <div style="margin-bottom:12px;">
             <div class="lbl" style="font-size:11px;color:var(--text-sm);margin-bottom:6px;">לוגו</div>
@@ -2581,6 +2604,80 @@ window.rejectPendingChanges = async function(id) {
   await updateDoc(doc(db, 'businesses', id), { pendingChanges: null, pendingChangesAt: null });
   _pendingEditMode = false;
   showToast('✗ שינויים נדחו');
+  closeViewSheet();
+};
+
+// ── תמונת ברירת מחדל (Pexels) — עצמאי לגמרי מ-pendingChanges: לא חלק מהחבילה שהעסק שלח, אלא
+// הצעת מערכת שממתינה לבחירה/אישור נפרד של המנהל, בין אם העסק חדש (status:pending) ובין אם קיים.
+// מדגיש (מסגרת צהובה) כל כרטיס-תמונה שנבחר לפחות ליעד אחד — עובר על כל האופציות בכל שינוי כי בחירת
+// radio חדשה מבטלת אוטומטית את הקודמת, וגם הכרטיס שאיבד את הבחירה צריך לאבד את ההדגשה.
+window.updateFallbackOptCards = function(id, count) {
+  for (let i = 0; i < count; i++) {
+    const card  = document.getElementById(`fallbackOpt_${id}_${i}`);
+    if (!card) continue;
+    const radio = document.querySelector(`input[name="fallbackCover_${id}"][value="${i}"]`);
+    const check = document.querySelector(`.fallbackGallery_${id}[value="${i}"]`);
+    card.style.borderColor = ((radio && radio.checked) || (check && check.checked)) ? 'var(--yellow)' : 'transparent';
+  }
+};
+
+// תמונה מייצגת — בחירה יחידה (radio); לגלריה — כל תמונה בנפרד (checkbox), אפשר גם יחד עם המייצגת.
+// תמונה שלא נבחרה לאף יעד פשוט לא מועלית — נזרקת בשקט (זו הייתה רק הצעה, לא נשמרה בשום מקום קודם).
+window.applyFallbackPhotoSelection = async function(id) {
+  const b = businesses.find(x => x.id === id);
+  const options = b?.pendingFallbackPhotoOptions;
+  if (!options) return;
+
+  const coverRadio    = document.querySelector(`input[name="fallbackCover_${id}"]:checked`);
+  const galleryChecks = [...document.querySelectorAll(`.fallbackGallery_${id}:checked`)];
+  if (!coverRadio && !galleryChecks.length) {
+    showToast('לא נבחרה אף תמונה');
+    return;
+  }
+
+  showToast('⏳ מעלה תמונות...');
+  try {
+    const updates = { pendingFallbackPhotoOptions: null };
+
+    if (coverRadio) {
+      const opt = options[parseInt(coverRadio.value, 10)];
+      const [mainBlob, thumbBlob] = await Promise.all([
+        fetch(opt.url).then(r => r.blob()),
+        fetch(opt.thumbUrl).then(r => r.blob()),
+      ]);
+      const basePath = `businesses/${id}/coverPhoto_fallback_${Date.now()}`;
+      const [url, thumbUrl] = await Promise.all([
+        uploadFile(mainBlob, basePath),
+        uploadFile(thumbBlob, basePath + '_thumb'),
+      ]);
+      updates.coverPhoto = url;
+      updates.coverPhotoThumb = thumbUrl;
+    }
+
+    if (galleryChecks.length) {
+      const newPhotos = [];
+      for (const chk of galleryChecks) {
+        const idx = parseInt(chk.value, 10);
+        const opt = options[idx];
+        const blob = await fetch(opt.url).then(r => r.blob());
+        const url = await uploadFile(blob, `businesses/${id}/gallery_fallback_${Date.now()}_${idx}`);
+        newPhotos.push({ url, name: '' });
+      }
+      updates.photos = [...(b.photos || []), ...newPhotos];
+    }
+
+    await updateDoc(doc(db, 'businesses', id), updates);
+    showToast('✅ נשמר בהצלחה');
+    closeViewSheet();
+  } catch (e) {
+    console.error('⚠️ applyFallbackPhotoSelection failed:', e);
+    showToast('❌ שגיאה בהעלאת התמונות');
+  }
+};
+
+window.rejectFallbackPhoto = async function(id) {
+  await updateDoc(doc(db, 'businesses', id), { pendingFallbackPhotoOptions: null });
+  showToast('✗ ההצעה נדחתה');
   closeViewSheet();
 };
 

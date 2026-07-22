@@ -1314,6 +1314,25 @@ async function uploadImageWithThumb(file, basePath) {
   }
 }
 
+// ── תמונת ברירת מחדל (Pexels) — כשנשמרת מדיה בלי תמונה מייצגת, מבקשים מה-Worker 5 מועמדות לפי
+// התגית של העסק. לא חוסם שמירה אם זה נכשל (חיבור לשירות חיצוני) — בעל העסק כבר לא רואה את זה בכלל,
+// זו הצעה שממתינה לבחירת מנהל בנפרד מ-pendingChanges (ר' docs/PROJECT_CONTEXT.md).
+async function fetchFallbackPhotoOptions(tag) {
+  if (!tag) return null;
+  try {
+    const resp = await fetch(WORKER_URL + '/suggest-fallback-images', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tag }),
+    });
+    const data = await resp.json();
+    return (data.options && data.options.length) ? data.options : null;
+  } catch (e) {
+    console.error('⚠️ fallback image suggestion failed:', e);
+    return null;
+  }
+}
+
 // ── INIT ──
 const token = new URLSearchParams(location.search).get('token');
 if (!token) {
@@ -1813,6 +1832,7 @@ function renderMediaCard(w) {
                 <div class="edit-upload-sub">המקום / המוצר</div>
               </div>
             </div>
+            ${!coverUrl ? `<div class="field-tip" style="margin-top:6px;"><span class="tip-icon">💡</span><span>תמונה אמיתית של העסק = הרבה יותר חשיפה, לחיצות ואמינות מול לקוחות.</span></div>` : ''}
           </div>
           <div class="form-group">
             <label class="form-label">🖼️ לוגו <span style="font-weight:400;color:var(--text-sm)">(אם יש)</span></label>
@@ -2952,24 +2972,45 @@ window.saveMedia = async function() {
   showToast('שומר מדיה...');
   const updates = {};
 
-  const coverPhotoFile = document.getElementById('editCoverPhotoFile').files[0];
+  const coverPhotoFile   = document.getElementById('editCoverPhotoFile').files[0];
+  const existingCoverUrl = document.getElementById('editCoverPhotoImg').dataset.existingUrl || '';
+  const existingCoverThumbUrl = document.getElementById('editCoverPhotoImg').dataset.existingThumbUrl || '';
+  const logoFile         = document.getElementById('editLogoFile').files[0];
+  const existingLogoUrl  = document.getElementById('editLogoImg').dataset.existingUrl || '';
+  const existingLogoThumbUrl = document.getElementById('editLogoImg').dataset.existingThumbUrl || '';
+  const hasOwnCover = !!(coverPhotoFile || existingCoverUrl);
+
+  // אם אין תמונה מייצגת משלה (לא חדשה ולא קיימת) — הלוגו (חדש או קיים) הופך לתמונה המייצגת,
+  // כי הוא היחיד שיש. לוגו נשאר ריק במקרה הזה (ר' docs/PROJECT_CONTEXT.md).
   if (coverPhotoFile) {
     const { url, thumbUrl } = await uploadImageWithThumb(coverPhotoFile, `businesses/${bizId}/coverPhoto_${Date.now()}`);
     updates.coverPhoto = url;
     updates.coverPhotoThumb = thumbUrl;
+  } else if (existingCoverUrl) {
+    updates.coverPhoto = existingCoverUrl;
+    updates.coverPhotoThumb = existingCoverThumbUrl;
+  } else if (logoFile) {
+    const { url, thumbUrl } = await uploadImageWithThumb(logoFile, `businesses/${bizId}/coverPhoto_${Date.now()}`);
+    updates.coverPhoto = url;
+    updates.coverPhotoThumb = thumbUrl;
+  } else if (existingLogoUrl) {
+    updates.coverPhoto = existingLogoUrl;
+    updates.coverPhotoThumb = existingLogoThumbUrl;
   } else {
-    updates.coverPhoto = document.getElementById('editCoverPhotoImg').dataset.existingUrl || '';
-    updates.coverPhotoThumb = document.getElementById('editCoverPhotoImg').dataset.existingThumbUrl || '';
+    updates.coverPhoto = '';
+    updates.coverPhotoThumb = '';
   }
 
-  const logoFile = document.getElementById('editLogoFile').files[0];
-  if (logoFile) {
+  if (!hasOwnCover) {
+    updates.logo = '';
+    updates.logoThumb = '';
+  } else if (logoFile) {
     const { url, thumbUrl } = await uploadImageWithThumb(logoFile, `businesses/${bizId}/logo_${Date.now()}`);
     updates.logo = url;
     updates.logoThumb = thumbUrl;
   } else {
-    updates.logo = document.getElementById('editLogoImg').dataset.existingUrl || '';
-    updates.logoThumb = document.getElementById('editLogoImg').dataset.existingThumbUrl || '';
+    updates.logo = existingLogoUrl;
+    updates.logoThumb = existingLogoThumbUrl;
   }
 
   const photoRows = [...document.querySelectorAll('[id^="photoRow-"]')];
@@ -2997,6 +3038,9 @@ window.saveMedia = async function() {
   }).filter(Boolean);
 
   stageChanges(updates);
+
+  // תמונת ברירת מחדל אוטומטית (Pexels) — כבויה זמנית (2026-07-22): איכות/סגנון התמונות לא
+  // היו מספיק טובות. עד שזה ייפתר, עסק בלי תמונה נשאר בלי תמונה — מנהל מכניס ידנית.
 };
 
 // ── TOAST ──
@@ -3022,6 +3066,9 @@ window.closeMenu = function() {
 window.goBackOrHome = function(event) {
   if (document.referrer && document.referrer.indexOf(location.origin) === 0 && history.length > 1) {
     event.preventDefault();
+    // דגל ל-home.html: history.back() משחזר bfcache במיקום הגלילה המדויק מלפני היציאה לדשבורד —
+    // כאן רוצים תמיד לחזור לראש הדף (ר' ה-pageshow listener ב-home.html).
+    sessionStorage.setItem('hb_backTop', '1');
     history.back();
     return false;
   }
