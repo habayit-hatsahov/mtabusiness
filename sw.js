@@ -1,4 +1,4 @@
-const CACHE_NAME = 'yz-shell-v4';
+const CACHE_NAME = 'yz-shell-v5';
 const PRECACHE_URLS = ['home.html', 'manifest.json', 'firebase-config.js'];
 
 self.addEventListener('install', event => {
