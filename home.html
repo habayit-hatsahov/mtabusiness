@@ -356,8 +356,12 @@
 
     .sheet-handle {
       width: 40px; height: 4px;
-      background: rgba(var(--fg-rgb),.15); border-radius: 2px;
-      margin: 12px auto 0;
+      background: rgba(var(--fg-rgb),.15); background-clip: content-box;
+      border-radius: 2px;
+      /* ריפוד שקוף מסביב לפס הדק — מגדיל את שטח-הנגיעה בפועל למשיכה, בלי לשנות איך זה נראה */
+      padding: 10px 40px;
+      margin: 4px auto -8px;
+      box-sizing: content-box;
     }
     @media (min-width: 600px) { .sheet-handle { display: none; } }
 
@@ -1298,6 +1302,12 @@ function _rotate(arr, offset) {
 // סדר — זה קורה כמעט בכל עדכון חי (למשל לייק על עסק אחר, קליק, עריכה של עסק לא-קשור).
 let _lastRenderedOrder = {};
 function _idsKey(list) { return list.map(b => b.id).join(','); }
+// גובה-ריק זהה בדיוק לגובה כרטיס אמיתי (215px, ר' .biz-card) — כדי שמעבר בין "אין תוכן" ל"יש
+// תוכן" (למשל הלייק הראשון-אי-פעם) לא ישנה את גובה השורה בכלל, ולא ידרוש שום פיצוי-גלילה.
+function _emptyRowHtml(text) {
+  return `<p style="color:var(--text-muted);font-size:13px;height:215px;box-sizing:border-box;
+    display:flex;align-items:center;justify-content:center;text-align:center;padding:0 20px">${text}</p>`;
+}
 function _writeSectionIfChanged(sectionKey, containerId, list, buildFn, emptyHtml) {
   // חשוב: האלמנט חייב להימצא *לפני* שמסמנים sectionKey כ"מעודכן" — אם getElementById נכשל
   // פעם אחת (בעיית תזמון חד-פעמית), ולא היינו בודקים את זה קודם, ה-key היה נרשם בכל זאת,
@@ -1398,19 +1408,16 @@ function renderSections() {
   const loved = businesses.filter(b => (b.likedBy||[]).length > 0)
                            .sort((a,b) => (b.likedBy||[]).length - (a.likedBy||[]).length)
                            .slice(0,10);
-  _writeSectionIfChanged('loved', 'lovedBizScroll', loved, b => buildCard(b),
-    '<p style="color:var(--text-muted);font-size:13px;padding:8px 0">אין עדיין עסקים שאהבתם</p>');
+  _writeSectionIfChanged('loved', 'lovedBizScroll', loved, b => buildCard(b), _emptyRowHtml('אף עסק עדיין לא קיבל לייק'));
 
   // featured=eager (src ישיר, בלי lazy) — הסקשן הראשון שנראה בכניסה, תמיד גלוי, מעט פריטים.
   const featured = arrangeSection(b => isFeatured(b), 'featured');
   _dailySectionOrder.featured = featured;
-  _writeSectionIfChanged('featured', 'featuredBizScroll', featured, b => buildCard(b, false, true),
-    '<p style="color:var(--text-muted);font-size:13px;padding:8px 0">בקרוב...</p>');
+  _writeSectionIfChanged('featured', 'featuredBizScroll', featured, b => buildCard(b, false, true), _emptyRowHtml('בקרוב...'));
 
   const newBiz = arrangeSection(b => isNew(b), 'new');
   _dailySectionOrder.new = newBiz;
-  _writeSectionIfChanged('new', 'newBizScroll', newBiz, b => buildCard(b, true),
-    '<p style="color:var(--text-muted);font-size:13px;padding:8px 0">בקרוב...</p>');
+  _writeSectionIfChanged('new', 'newBizScroll', newBiz, b => buildCard(b, true), _emptyRowHtml('בקרוב...'));
 
   const deals = arrangeSection(b => b.discount && b.sectionDeals !== false, 'deals');
   _dailySectionOrder.deals = deals;
@@ -1418,8 +1425,7 @@ function renderSections() {
 
   const myId = currentMemberId();
   const myLoved = myId ? businesses.filter(b => (b.likedBy||[]).includes(myId)) : [];
-  _writeSectionIfChanged('myLoved', 'myLovedBizScroll', myLoved, b => buildCard(b),
-    '<p style="color:var(--text-muted);font-size:13px;padding:8px 0">עדיין לא סימנתם ❤️ לאף עסק</p>');
+  _writeSectionIfChanged('myLoved', 'myLovedBizScroll', myLoved, b => buildCard(b), _emptyRowHtml('עדיין לא סימנתם לב לאף עסק'));
 
   const online = arrangeSection(b => b.online, 'online');
   _dailySectionOrder.online = online;
@@ -2225,6 +2231,41 @@ document.addEventListener('DOMContentLoaded', function initBizSheetSwipeToClose(
     }
     dy = 0;
   }, { passive: true });
+
+  // ── מסלול שני, אמין יותר: גרירה מ"ידית" הגיליון עצמה (הפס הקטן למעלה) ──
+  // הגרסה למעלה תלויה ב-scrollTop<=0 של כל הגיליון (שגם גולל תוכן) — יש חשד ל-iOS Safari
+  // שה-rubber-band/momentum-scroll הטבעי "מתחרה" עם ה-transform הידני ומנצח לפעמים, גם עם
+  // preventDefault. הידית עצמה היא אלמנט קבוע, קטן, לא-גולל — גרירה שמתחילה עליה במפורש
+  // (לא תלוית scrollTop) לא אמורה בכלל להתנגש עם גלילת התוכן.
+  const handle = document.getElementById('bizSheetHandle');
+  if (handle) {
+    let hStartY = 0, hDy = 0, hDragging = false;
+    handle.addEventListener('touchstart', e => {
+      hDragging = true;
+      hStartY = e.touches[0].clientY;
+      hDy = 0;
+    }, { passive: true });
+    handle.addEventListener('touchmove', e => {
+      if (!hDragging) return;
+      hDy = e.touches[0].clientY - hStartY;
+      if (hDy <= 0) return;
+      e.preventDefault();
+      sheet.style.transform = `translateY(${hDy}px)`;
+    }, { passive: false });
+    handle.addEventListener('touchend', () => {
+      if (!hDragging) return;
+      hDragging = false;
+      if (hDy > 60) {
+        closeBizSheet();
+        sheet.style.transform = '';
+      } else {
+        sheet.style.transition = 'transform .25s ease';
+        sheet.style.transform = '';
+        setTimeout(() => { sheet.style.transition = ''; }, 250);
+      }
+      hDy = 0;
+    }, { passive: true });
+  }
 });
 
 function sCopyCoupon(code) {
@@ -2309,7 +2350,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <!-- ══ BIZ MODAL ══ -->
 <div class="biz-overlay" id="bizOverlay" onclick="if(event.target===this)closeBizSheet()">
   <div class="biz-sheet" id="bizSheet">
-    <div class="sheet-handle"></div>
+    <div class="sheet-handle" id="bizSheetHandle"></div>
     <button class="sheet-close" onclick="closeBizSheet()">✕</button>
     <div class="sheet-hero" id="sheetHero">
       <div class="sheet-logo" id="sheetLogo"></div>
