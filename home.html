@@ -1312,6 +1312,10 @@ function _writeSectionIfChanged(sectionKey, containerId, list, buildFn, emptyHtm
   if (alreadyLooksRendered) return;
   _lastRenderedOrder[sectionKey] = key;
   el.innerHTML = list.length ? list.map(buildFn).join('') : (emptyHtml || '');
+  // כרטיס ראשון תמיד צמוד להתחלה (ימין ב-RTL) — בלי זה, שורת גלילה אופקית (.cards-scroll)
+  // עלולה "לזכור" scrollLeft ישן ממצב קודם (למשל אחרי שהמשתמש גלל בה בעבר), ואז הכרטיס
+  // הראשון בהרכב החדש נראה חצי-חתוך במקום צמוד לקצה. no-op על .cards-grid (לא גולל אופקית).
+  el.scrollLeft = 0;
   observeLazyImages(el);
 }
 
@@ -2185,8 +2189,11 @@ function closeBizSheet() {
 }
 
 // ── משיכה למטה לסגירת גיליון העסק (מובייל) — פעיל רק כשהגיליון גלול לגמרי למעלה (scrollTop===0),
-// כדי לא להתנגש עם גלילת התוכן הרגילה של הגיליון עצמו ──
-(function initBizSheetSwipeToClose() {
+// כדי לא להתנגש עם גלילת התוכן הרגילה של הגיליון עצמו.
+// חייב DOMContentLoaded: הסקריפט הזה (לא-מודולרי) רץ מיד בזמן הפענוח, לפני שה-HTML של
+// #bizSheet (בהמשך הדף, אחרי </script>) בכלל קיים ב-DOM — בלי זה getElementById תמיד null
+// והפונקציה כולה no-op בשקט, בלי שגיאה שמעידה על כך.
+document.addEventListener('DOMContentLoaded', function initBizSheetSwipeToClose() {
   const sheet = document.getElementById('bizSheet');
   if (!sheet) return;
   let startY = 0, dy = 0, dragging = false;
@@ -2218,7 +2225,7 @@ function closeBizSheet() {
     }
     dy = 0;
   }, { passive: true });
-})();
+});
 
 function sCopyCoupon(code) {
   navigator.clipboard?.writeText(code).catch(()=>{});
