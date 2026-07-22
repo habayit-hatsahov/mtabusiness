@@ -13,14 +13,14 @@
       location.href = 'landing-demo.html';
     }
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-    // חזרה מדשבורד בעל-עסק (business-dashboard.html) — history.back() משחזר bfcache במיקום הגלילה
-    // המדויק מלפני היציאה, מה שלא רלוונטי כאן כי לדשבורד נכנסים מתפריט/פרופיל ולא מגלילה בפיד.
-    // ר' goBackOrHome ב-business-dashboard.html שמסמן את הדגל לפני history.back().
+    // כל כניסה לדף הבית מתחילה מלמעלה — בין אם טעינה טרייה, חזרה מ-history.back() (bfcache
+    // משחזר את הגלילה המדויקת מלפני היציאה, שלא רלוונטית כאן), חזרה מהאפליקציה ברקע וכו'.
+    // pageshow יורה בכל הצגה של הדף (גם טעינה ראשונה) — scrollTo(0,0) שם הוא no-op כשהגלילה
+    // כבר 0, ולכן בטוח תמיד. hb_backTop (הדגל הישן שסימן רק goBackOrHome ב-business-dashboard.html)
+    // עדיין מנוקה כאן ליתר ביטחון, אבל אינו עוד תנאי — הבדיקה הכללית מכסה גם אותו.
     window.addEventListener('pageshow', function () {
-      if (sessionStorage.getItem('hb_backTop')) {
-        sessionStorage.removeItem('hb_backTop');
-        window.scrollTo(0, 0);
-      }
+      sessionStorage.removeItem('hb_backTop');
+      window.scrollTo(0, 0);
     });
     (function () {
       var t = localStorage.getItem('hb_theme') || 'dark';
@@ -1327,15 +1327,24 @@ function _captureScrollAnchor() {
   const titles = document.querySelectorAll('.section-title');
   let best = null, bestTop = -Infinity;
   titles.forEach(t => {
-    const top = t.getBoundingClientRect().top;
-    if (top <= 4 && top > bestTop) { best = t; bestTop = top; }
+    const rect = t.getBoundingClientRect();
+    // סקשן מוסתר (display:none, כמו "הכי אהובים"/"העסקים שאהבתי" לפני שיש בהם תוכן) מחזיר
+    // getBoundingClientRect אפסי לגמרי (0,0,0,0) — top=0 "מנצח" בטעות כל כותרת אמיתית שנגללה
+    // מעל המסך (top שלילי), ואם הסקשן המוסתר הזה הופך ל-visible באותו רינדור (למשל לייק ראשון
+    // לעסק), ה-delta שנחשב אחר-כך ענק ומזנק את הגלילה למקום אקראי. מדלגים על כותרות בתוך סקשן מוסתר.
+    if (rect.width === 0 && rect.height === 0) return;
+    if (rect.top <= 4 && rect.top > bestTop) { best = t; bestTop = rect.top; }
   });
   if (!best) return null;
   return { el: best, top: bestTop };
 }
 function _restoreScrollAnchor(anchor) {
   if (!anchor || !anchor.el.isConnected) return;
-  const delta = anchor.el.getBoundingClientRect().top - anchor.top;
+  const rect = anchor.el.getBoundingClientRect();
+  // אם הסקשן של העוגן עצמו התחבא (display:none) בין התפיסה לשחזור — אין מולו מה לתקן,
+  // עדיף לא לזוז בכלל מאשר לקפוץ לפי delta שגוי מול (0,0).
+  if (rect.width === 0 && rect.height === 0) return;
+  const delta = rect.top - anchor.top;
   if (delta) window.scrollBy(0, delta);
 }
 
