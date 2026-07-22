@@ -1355,7 +1355,13 @@ function renderSections() {
   // נחתה באמצע סקשן במקום למעלה.
   const _scrollAnchor = window.scrollY > 4 ? _captureScrollAnchor() : null;
   const daySeed = _todaySeedStr();
-  const masterOrder = seededShuffle(businesses, daySeed); // סדר-בסיס אחד, יומי, משותף לכל הסקשנים
+  // שאילתת Firestore בלי orderBy לא מבטיחה סדר יציב בין snapshots — כל כתיבה כלשהי (למשל לייק
+  // על עסק כלשהו, לא בהכרח קשור) עלולה להחזיר את businesses בסדר-התחלתי שונה, וכיוון ש-
+  // seededShuffle מערבב לפי המיקומים ההתחלתיים, סדר-פלט שונה = "כל העסקים" (שכולל את כולם,
+  // הכי רגיש לזה) נראה כאילו מתערבב מחדש בכל לייק. ממיינים לפי id (יציב) לפני הערבוב היומי,
+  // כך ש-masterOrder תלוי רק ב-daySeed + קבוצת ה-id-ים, לא בסדר שה-SDK החזיר הפעם.
+  const stableOrder = [...businesses].sort((a, b) => a.id.localeCompare(b.id));
+  const masterOrder = seededShuffle(stableOrder, daySeed); // סדר-בסיס אחד, יומי, משותף לכל הסקשנים
 
   // מעקב "מי כבר תפס מקום 1-2" — כדי שאותו עסק לא יוביל (מקום ראשון/שני בגלילה) בכמה סקשנים
   // מסוחררים בבת אחת. לא נוגע ב-*מי נכנס* לסקשן (זה עדיין נשלט לגמרי ע"י isFeatured/isNew/
