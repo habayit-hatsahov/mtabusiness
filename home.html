@@ -1074,6 +1074,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = skeletonCards(4);
   });
+  // רשימת העסקים מ-cache מקומי (הנתונים האחרונים שנטענו בהצלחה), עד שהנתונים העדכניים מגיעים —
+  // חייב לרוץ כאן (script רגיל, לא ES module) ולא בבלוק ה-Firebase-loader למטה: import של
+  // Firebase SDK חוסם את כל גוף אותו בלוק עד שהוא נטען *ורץ* במלואו, אז קריאת ה-cache הזו — שלא
+  // תלויה ב-Firebase בכלל — הייתה בפועל ממתינה לטעינת כל ה-SDK לפני שמראים ולו כרטיס אחד.
+  // זו רשימה פומבית (לא אישית כמו ברכת השם) — אין תנאי-התאמה ל-hb_memberId, כל מבקר רואה את אותם עסקים מאושרים.
+  try {
+    const cachedBiz = JSON.parse(localStorage.getItem('hb_businesses_cache') || 'null');
+    if (Array.isArray(cachedBiz) && cachedBiz.length) window.loadFirebaseData(cachedBiz, true);
+  } catch (e) {}
 });
 
 // isPreview=true — רינדור מיידי מ-cache מקומי (ר' ה-module script), רק מציג כרטיסים.
@@ -2576,13 +2585,6 @@ import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, arrayUnio
 
 // חושף את auth ל-<script> הרגיל (לא module) שמעליו — currentMemberId() שם צריך auth.currentUser, אך import הוא scoped ל-module הזה בלבד
 window._auth = auth;
-
-// ── רשימת העסקים — הצגה מיידית מ-cache מקומי (הנתונים האחרונים שנטענו בהצלחה), עד שהנתונים העדכניים מגיעים ──
-// זו רשימה פומבית (לא אישית כמו ברכת השם) — אין תנאי-התאמה ל-hb_memberId, כל מבקר רואה את אותם עסקים מאושרים.
-try {
-  const cachedBiz = JSON.parse(localStorage.getItem('hb_businesses_cache') || 'null');
-  if (Array.isArray(cachedBiz) && cachedBiz.length) window.loadFirebaseData(cachedBiz, true);
-} catch (e) {}
 
 // ── רשימת העסקים המאושרים היא קריאה פומבית לפי חוקי Firestore (לא דורשת auth) —
 // נרשמת כאן, *לפני* ה-auth guard שמתחתיה, כדי שהטעינה תתחיל במקביל לבדיקת ה-session
