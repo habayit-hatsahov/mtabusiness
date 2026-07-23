@@ -1348,7 +1348,9 @@ let changedFieldsSet = new Set();
 
 async function uploadFile(file, path) {
   const storageRef = ref(await getStorageLazy(), path);
-  const snap = await uploadBytes(storageRef, file);
+  // immutable בטוח כי כל נתיב העלאה כבר ייחודי (timestamp/החלפה מלאה) — מונע בדיקת-304 מיותרת
+  // בכל טעינה חוזרת של אותה תמונה (ר' docs/PROJECT_CONTEXT.md).
+  const snap = await uploadBytes(storageRef, file, { cacheControl: 'public, max-age=31536000, immutable' });
   return await getDownloadURL(snap.ref);
 }
 
@@ -1383,7 +1385,8 @@ function compressImageFile(file, maxDim = 1280, quality = 0.82) {
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        // webp — כ-25-35% קטן יותר מ-JPEG באיכות דומה; דפדפן ישן מאוד שלא תומך נופל בשקט ל-PNG (לא נשבר).
+        resolve(canvas.toDataURL('image/webp', quality));
       };
       img.onerror = reject;
       img.src = rawDataUrl;
@@ -3123,7 +3126,12 @@ window.saveMedia = async function() {
     const name      = nameInput?.value.trim() || '';
     let   url       = urlInput?.value.trim() || '';
     if (fileInput?.files[0]) {
-      url = await uploadFile(fileInput.files[0], `businesses/${bizId}/gallery_${Date.now()}_${idx}`);
+      // דחיסה לפני העלאה (כמו קאבר/לוגו) — בלי thumbnail נפרד, גלריה לא מוצגת בכרטיס הפיד.
+      // נופל בחזרה לקובץ המקורי אם הדחיסה נכשלת מכל סיבה, לא חוסם את השמירה.
+      let fileToUpload = fileInput.files[0];
+      try { fileToUpload = await compressToFile(fileToUpload, 1280, 0.82, fileToUpload.name); }
+      catch (e) { console.error('⚠️ gallery image compression failed, falling back to original file:', e); }
+      url = await uploadFile(fileToUpload, `businesses/${bizId}/gallery_${Date.now()}_${idx}`);
       if (urlInput) urlInput.value = url;
     }
     if (url || name) photosResult.push({ url, name });

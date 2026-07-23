@@ -1109,7 +1109,9 @@ const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
 async function uploadFile(file, path) {
   const storageRef = ref(await getStorageLazy(), path);
-  const snap = await uploadBytes(storageRef, file);
+  // immutable בטוח כי כל נתיב העלאה כבר ייחודי (timestamp/החלפה מלאה) — מונע בדיקת-304 מיותרת
+  // בכל טעינה חוזרת של אותה תמונה (ר' docs/PROJECT_CONTEXT.md).
+  const snap = await uploadBytes(storageRef, file, { cacheControl: 'public, max-age=31536000, immutable' });
   return await getDownloadURL(snap.ref);
 }
 
@@ -1144,7 +1146,8 @@ function compressImageFile(file, maxDim = 1280, quality = 0.82) {
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        // webp — כ-25-35% קטן יותר מ-JPEG באיכות דומה; דפדפן ישן מאוד שלא תומך נופל בשקט ל-PNG (לא נשבר).
+        resolve(canvas.toDataURL('image/webp', quality));
       };
       img.onerror = reject;
       img.src = rawDataUrl;

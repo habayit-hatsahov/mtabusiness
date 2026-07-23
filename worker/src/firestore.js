@@ -33,7 +33,8 @@ function fieldsToObject(fields) {
 }
 
 // שאילתת equality בודדת על collection ברמת השורש — { id, fields: {...} }[]
-export async function firestoreRunQuery(env, accessToken, collectionId, fieldPath, value) {
+// limit ברירת מחדל (10) נשאר זהה לכל הקריאות הקיימות — פרמטר אופציונלי חדש, לא משנה התנהגות קיימת.
+export async function firestoreRunQuery(env, accessToken, collectionId, fieldPath, value, limit = 10) {
   const resp = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}:runQuery`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -47,7 +48,7 @@ export async function firestoreRunQuery(env, accessToken, collectionId, fieldPat
             value: toFirestoreValue(value),
           },
         },
-        limit: 10,
+        limit,
       },
     }),
   });

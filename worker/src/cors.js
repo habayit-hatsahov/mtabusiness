@@ -10,7 +10,7 @@ export function corsHeaders(env, request) {
   return {
     'Access-Control-Allow-Origin': resolveAllowedOrigin(env, request),
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, x-admin-secret',
     'Access-Control-Max-Age': '86400',
     'Content-Type': 'application/json; charset=utf-8',
   };

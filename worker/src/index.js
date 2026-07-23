@@ -6,6 +6,7 @@ import { isRateLimited, recordAttempt } from './ratelimit.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail } from './brevo.js';
 import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
+import { runBackfillThumbnails } from './backfill.js';
 
 const SITE_BASE = 'https://habayit-hatsahov.github.io/mtabusiness/';
 
@@ -32,6 +33,9 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/suggest-fallback-images') {
         return json(await handleSuggestFallbackImages(await request.json(), request, env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/backfill-thumbnails') {
+        return json(await handleBackfillThumbnails(request, env), env, request);
       }
       return json({ error: 'not_found' }, env, request, 404);
     } catch (e) {
@@ -208,6 +212,17 @@ async function handleSuggestFallbackImages({ tag }, request, env) {
     console.error(e);
     return { error: 'image_search_failed' };
   }
+}
+
+// ריצה חד-פעמית (לא cron, לא נקרא מהאתר הציבורי) — משלימה coverPhotoThumb/logoThumb לעסקים ישנים
+// שאין להם (ר' src/backfill.js לפירוט מלא). מוגן בסוד סטטי (ADMIN_BACKFILL_SECRET) כי אין כאן שכבת
+// Firebase Auth/isAdmin כמו בשאר הדפים — זה נקרא ישירות (curl/כפתור זמני), לא מהקליינט הרגיל.
+async function handleBackfillThumbnails(request, env) {
+  const secret = request.headers.get('x-admin-secret') || '';
+  if (!env.ADMIN_BACKFILL_SECRET || secret !== env.ADMIN_BACKFILL_SECRET) {
+    return { error: 'unauthorized' };
+  }
+  return await runBackfillThumbnails(env);
 }
 
 // כשחבר הוא גם בעל עסק שממתין לאותו מייל אישור — נשלח מייל אחד מאוחד (קוד כניסה + קישור לדשבורד)

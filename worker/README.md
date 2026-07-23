@@ -44,6 +44,14 @@
    ```
    (מ-aistudio.google.com/apikey — כבר מוגדר היום, אך לא בשימוש כרגע)
 
+   **חדש (2026-07-23) — נדרש לפני שאפשר להריץ את ה-backfill למטה:**
+   ```
+   npx wrangler secret put ADMIN_BACKFILL_SECRET
+   ```
+   (ערך לבחירתך — סוד שרירותי, לא קשור לחשבון Firebase/Google; משמש רק כדי ש-`/backfill-thumbnails` לא יהיה פתוח לכל האינטרנט. שמור אותו בצד — תצטרך אותו בכל קריאה ל-endpoint)
+
+   **גם: יש להפעיל את המוצר "Cloudflare Images" בחשבון Cloudflare** (Dashboard → Images) — נדרש כדי ש-binding ה-`[images]` ב-`wrangler.toml` יעבוד בפריסה. זה לא קשור לזהות ה-DNS/proxy של הדומיין yellowzone.co.il.
+
 6. **פריסה:**
    ```
    npm run deploy
@@ -64,6 +72,17 @@ curl -X POST https://<worker-url>/mint-biz-token \
   -H "Content-Type: application/json" \
   -d '{"accessToken":"<uuid-אמיתי-של-עסק>"}'
 ```
+
+## Backfill thumbnails לעסקים ישנים (חד-פעמי)
+
+משלים `coverPhotoThumb`/`logoThumb` לכל עסק approved שחסר לו — ר' `docs/PROJECT_CONTEXT.md` סעיף 12 להסבר המלא. מריצים **פעם אחת** אחרי הפריסה (לא cron, לא רץ לבד):
+
+```
+curl -X POST https://<worker-url>/backfill-thumbnails \
+  -H "x-admin-secret: <הערך שהזנת ב-ADMIN_BACKFILL_SECRET>"
+```
+
+תשובה: `{"total":..,"updated":..,"skipped":..,"errors":[...]}`. אם `errors` לא ריק — אפשר להריץ שוב (רק העסקים שעדיין חסרים thumb יעובדו, לא כפילות).
 
 ## פיתוח מקומי
 

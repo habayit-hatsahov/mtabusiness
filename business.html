@@ -1373,7 +1373,9 @@
 
   async function uploadFile(file, path) {
     const storageRef = ref(await getStorageLazy(), path);
-    const snap = await uploadBytes(storageRef, file);
+    // immutable בטוח כי כל נתיב העלאה כבר ייחודי (timestamp/החלפה מלאה) — מונע בדיקת-304 מיותרת
+    // בכל טעינה חוזרת של אותה תמונה (ר' docs/PROJECT_CONTEXT.md).
+    const snap = await uploadBytes(storageRef, file, { cacheControl: 'public, max-age=31536000, immutable' });
     return await getDownloadURL(snap.ref);
   }
 
@@ -1766,8 +1768,11 @@
       // רק כדי להציג אותה זעירה. ר' PROJECT_CONTEXT.md — נראות הכרטיס לא משתנה, רק כמות המידע ברשת.
       if (effectiveLogoFile) tasks.push(uploadImageWithThumb(effectiveLogoFile, `businesses/${docId}/logo`, uploads, 'logo'));
       if (effectiveCoverFile) tasks.push(uploadImageWithThumb(effectiveCoverFile, `businesses/${docId}/coverPhoto`, uploads, 'coverPhoto'));
+      // דחיסה לפני העלאה (כמו קאבר/לוגו) — בלי thumbnail נפרד, גלריה לא מוצגת בכרטיס הפיד.
+      // נופל בחזרה לקובץ המקורי אם הדחיסה נכשלת מכל סיבה, לא חוסם את ההרשמה.
       galleryFiles.forEach((f, i) => tasks.push(
-        uploadFile(f, `businesses/${docId}/gallery_${i}`)
+        compressToFile(f, 1280, 0.82, f.name).catch(e => { console.error(`⚠️ gallery[${i}] compression failed, falling back to original file:`, e); return f; })
+          .then(fileToUpload => uploadFile(fileToUpload, `businesses/${docId}/gallery_${i}`))
           .then(url => { uploads[`photo_${i}`] = { url, name: f.name }; console.log(`✅ gallery[${i}] uploaded`); })
           .catch(e => { console.error(`❌ gallery[${i}] upload failed:`, e.code, e.message); })
       ));
@@ -2642,7 +2647,8 @@
           const canvas = document.createElement('canvas');
           canvas.width = width; canvas.height = height;
           canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', quality));
+          // webp — כ-25-35% קטן יותר מ-JPEG באיכות דומה; דפדפן ישן מאוד שלא תומך נופל בשקט ל-PNG (לא נשבר).
+          resolve(canvas.toDataURL('image/webp', quality));
         };
         img.onerror = reject;
         img.src = rawDataUrl;
