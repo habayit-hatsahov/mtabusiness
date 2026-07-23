@@ -116,6 +116,15 @@
     }
     html { scroll-behavior: smooth; }
     html.hb-checking body { visibility: hidden; }
+    .hb-splash {
+      position: fixed; inset: 0; z-index: 999999;
+      display: flex; align-items: center; justify-content: center;
+      background: #fff;
+      opacity: 0; pointer-events: none;
+      transition: opacity .25s ease;
+    }
+    .hb-splash.show { opacity: 1; pointer-events: auto; }
+    .hb-splash img { width: min(240px, 60vw); height: auto; }
     body {
       font-family: 'Heebo', sans-serif;
       background: var(--bg);
@@ -833,6 +842,27 @@
 </head>
 <body>
 
+<!-- ══ מסך פתיחה — מכסה את "הבזק" הרקע הריק (לבן/כחול) בזמן שהתוכן עדיין נטען ══
+     מוצג רק אם הטעינה איטית (ר' הטיימר של 150ms למטה) — טעינה מהירה (cache חם) לא תראה אותו בכלל. -->
+<div class="hb-splash" id="hbSplash"><img src="icons/logo-splash.jpeg" alt="Yellow Zone"/></div>
+<script>
+  window._hbSplashReady = false;
+  window._hbSplashTimer = setTimeout(function () {
+    var el = document.getElementById('hbSplash');
+    if (el) el.classList.add('show');
+  }, 150);
+  // נקרא מתוך loadFirebaseData ברגע שיש תוכן אמיתי על המסך — אידמפוטנטי, בטוח לקרוא כמה פעמים
+  window._hbHideSplash = function () {
+    if (window._hbSplashReady) return;
+    window._hbSplashReady = true;
+    clearTimeout(window._hbSplashTimer);
+    var el = document.getElementById('hbSplash');
+    if (!el) return;
+    el.classList.remove('show');
+    setTimeout(function () { el.remove(); }, 300);
+  };
+</script>
+
 <!-- ══ PWA — התרעה על דפדפן פנימי (וואטסאפ/אינסטגרם/פייסבוק) ══ -->
 <div class="pwa-inapp-banner" id="pwaInAppBanner">
   <span id="pwaInAppText">📲 רוצים להתקין את Yellow Zone?</span>
@@ -1090,6 +1120,7 @@ document.addEventListener('DOMContentLoaded', () => {
 window.loadFirebaseData = function(data, isPreview) {
   businesses = data;
   renderSections();
+  window._hbHideSplash && window._hbHideSplash();
   if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey);
   if (isPreview) return;
   refreshSheetIfOpen();
