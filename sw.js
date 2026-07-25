@@ -68,23 +68,27 @@ self.addEventListener('fetch', event => {
 // לבדוק אם הפענוח של .json() עצמו הוא מה ששובר עברית ב-iOS 26, לא ההצפנה/דיפדפן.
 // אם זה יעבוד — נשאיר את הפורמט הזה; אם לא — נחזור ל-JSON (ר' PROJECT_CONTEXT.md).
 self.addEventListener('push', event => {
-  let title = 'Yellow Zone', body = '', url = 'home.html';
-  try {
-    const raw = event.data ? event.data.text() : '';
-    const stripped = raw.replace(/^"|"$/g, '');
-    const [t, b, u] = stripped.split('|||');
-    if (t) title = t;
-    if (b) body = b;
-    if (u) url = u;
-  } catch (e) { /* לא הצליח לפענח, נשאר בברירת המחדל */ }
-  event.waitUntil(self.registration.showNotification(title, {
-    body,
-    icon: 'icons/icon-192.png',
-    badge: 'icons/icon-192.png',
-    dir: 'rtl',
-    lang: 'he',
-    data: { url },
-  }));
+  // Promise.resolve() בכוונה — .text() אמור להיות סינכרוני לפי התקן, אבל אם WebKit/iOS
+  // מחזיר שם בפועל Promise (סטייה מהתקן), זה עדיין יעבוד נכון בלי לזרוק שגיאה בטעות.
+  const work = Promise.resolve(event.data ? event.data.text() : '')
+    .then(raw => {
+      let title = 'Yellow Zone', body = '', url = 'home.html';
+      const stripped = String(raw).replace(/^"|"$/g, '');
+      const [t, b, u] = stripped.split('|||');
+      if (t) title = t;
+      if (b) body = b;
+      if (u) url = u;
+      return self.registration.showNotification(title, {
+        body,
+        icon: 'icons/icon-192.png',
+        badge: 'icons/icon-192.png',
+        dir: 'rtl',
+        lang: 'he',
+        data: { url },
+      });
+    })
+    .catch(e => self.registration.showNotification('Yellow Zone', { body: 'שגיאת פענוח: ' + e.message }));
+  event.waitUntil(work);
 });
 
 self.addEventListener('notificationclick', event => {
