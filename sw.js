@@ -63,26 +63,21 @@ self.addEventListener('fetch', event => {
   );
 });
 
-// ── Web Push — התראה שהוורקר שלח (worker/src/push.js) ──
-// 🧪 (2026-07-26): worker/src/push.js שולח פורמט "Declarative Web Push" של אפל
-// ({web_push:8030, notification:{...}}) — דפדפנים שתומכים בזה (Safari/iOS חדש) אמורים
-// להציג את ההתראה ברמת המערכת, בלי לקרוא ל-event הזה בכלל. זה כאן כ-fallback imperative
-// לדפדפנים שלא תומכים בזה (או אם התמיכה חלקית) — יודע לפרק גם את הצורה המקוננת החדשה.
+// ── Web Push — התראה שהוורקר שלח (worker/src/push.js), payload = {title, body, url} ──
+// ⚠️ ידוע (2026-07-26): עברית מוצגת כ-"?" ב-iOS 26.5.2 — נבדק לעומק ונשלל שזו בעיה כאן
+// (ר' ההערה ב-worker/src/push.js + docs/PROJECT_CONTEXT.md). לא לחזור לחקור בלי מידע חדש.
 self.addEventListener('push', event => {
   const work = Promise.resolve(event.data ? event.data.text() : '')
-    .then(raw => {
-      const parsed = JSON.parse(raw);
-      const n = parsed.notification || parsed; // תומך גם בפורמט השטוח הישן {title,body,url}
-      return self.registration.showNotification(n.title || 'Yellow Zone', {
-        body: n.body || '',
-        icon: 'icons/icon-192.png',
-        badge: 'icons/icon-192.png',
-        dir: n.dir || 'rtl',
-        lang: n.lang || 'he',
-        data: { url: n.navigate || n.url || 'home.html' },
-      });
-    })
-    .catch(e => self.registration.showNotification('Yellow Zone', { body: 'שגיאת פענוח: ' + e.message }));
+    .then(raw => JSON.parse(raw))
+    .catch(() => ({}))
+    .then(data => self.registration.showNotification(data.title || 'Yellow Zone', {
+      body: data.body || '',
+      icon: 'icons/icon-192.png',
+      badge: 'icons/icon-192.png',
+      dir: 'rtl',
+      lang: 'he',
+      data: { url: data.url || 'home.html' },
+    }));
   event.waitUntil(work);
 });
 
