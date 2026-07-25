@@ -63,17 +63,27 @@ self.addEventListener('fetch', event => {
   );
 });
 
-// ── Web Push — התראה שהוורקר שלח (worker/src/push.js), payload = {title, body, url} ──
+// ── Web Push — התראה שהוורקר שלח (worker/src/push.js) ──
+// 🧪 זמני-לאבחון (2026-07-26): טקסט גולמי מופרד ב-"|||" במקום JSON.parse/.json() —
+// לבדוק אם הפענוח של .json() עצמו הוא מה ששובר עברית ב-iOS 26, לא ההצפנה/דיפדפן.
+// אם זה יעבוד — נשאיר את הפורמט הזה; אם לא — נחזור ל-JSON (ר' PROJECT_CONTEXT.md).
 self.addEventListener('push', event => {
-  let data = {};
-  try { data = event.data ? event.data.json() : {}; } catch (e) { /* payload לא-JSON, מתעלמים */ }
-  event.waitUntil(self.registration.showNotification(data.title || 'Yellow Zone', {
-    body: data.body || '',
+  let title = 'Yellow Zone', body = '', url = 'home.html';
+  try {
+    const raw = event.data ? event.data.text() : '';
+    const stripped = raw.replace(/^"|"$/g, '');
+    const [t, b, u] = stripped.split('|||');
+    if (t) title = t;
+    if (b) body = b;
+    if (u) url = u;
+  } catch (e) { /* לא הצליח לפענח, נשאר בברירת המחדל */ }
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
     icon: 'icons/icon-192.png',
     badge: 'icons/icon-192.png',
     dir: 'rtl',
     lang: 'he',
-    data: { url: data.url || 'home.html' },
+    data: { url },
   }));
 });
 
