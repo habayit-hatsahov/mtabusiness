@@ -214,6 +214,10 @@
   <div class="section-label">📨 הודעות ידניות מהדשבורד</div>
   <div class="section-hint">נשלחות רק כשאתה לוחץ בעצמך על 📲 WhatsApp או ✉️ מייל ליד עסק/חבר בדשבורד הניהול. נשמר בדפדפן הזה בלבד.</div>
   <div id="group-manual"></div>
+
+  <div class="section-label">📜 תקנון</div>
+  <div class="section-hint">הטקסט המשפטי שמוצג בעמוד התקנון (terms.html) לאוהדים ולעסקים. נשמר בענן (Firestore), קריאה ציבורית — עדכון כאן משנה את מה שכל מבקר רואה, בכל מכשיר.</div>
+  <div id="group-terms"></div>
 </div>
 
 <div id="modals-container"></div>
@@ -228,8 +232,10 @@ import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/12.14.0/
 const REPLY_TO_ADDRESS = 'yellowzonemta@gmail.com';
 const FROM_ADDRESS = 'yellowzonemta@gmail.com'; // worker/wrangler.toml → SENDER_EMAIL (יתחלף ל-noreply@yellowzone.co.il אחרי אימות הדומיין ב-Brevo)
 const SETTINGS_DOC = () => doc(db, 'settings', 'messageTemplates');
+const SITE_TEXTS_DOC = () => doc(db, 'settings', 'siteTexts');
 
-// storage: 'firestore' (settings/messageTemplates, key = Firestore field name)
+// storage: 'firestore' (settings/messageTemplates, key = Firestore field name, קריאה מוגבלת למנהל)
+//        | 'firestoreSite' (settings/siteTexts, קריאה ציבורית — נקרא ישירות ע"י terms.html)
 //        | 'local' (localStorage, key = השם שנשמר תחת _hb_tpl_<key> — נקרא גם על ידי
 //          admin-businesses.html / admin-members.html כדי לבנות בפועל את הודעות ה-WA/מייל)
 const ITEMS = [
@@ -317,6 +323,82 @@ const ITEMS = [
       fan_mail: 'שלום {name},\n\nשמחים לבשר שהצטרפותך ל-Yellow Zone אושרה!\n\n🔑 קוד הכניסה האישי שלך: {code}\nשמור אותו — תזדקק לו בכל כניסה לאתר, יחד עם מספר הטלפון שנרשם.\n\n🔗 קישור לכניסה: https://habayit-hatsahov.github.io/mtabusiness/landing-demo.html\n\nמצורפים:\n• קישור לקהילת הווטסאפ\n• תעודת חבר דיגיטלית\n\nבאהבה,\nצוות Yellow Zone 💛',
     },
   },
+  {
+    id: 'termsFan', group: 'terms', storage: 'firestoreSite', icon: '📜', title: 'תקנון — אוהדים',
+    sub: 'מוצג ב-terms.html לכל אוהד שנרשם/מעיין',
+    who: 'כל מבקר שנכנס לעמוד התקנון בהקשר <b>אוהד</b> — כולל בזמן הרשמה (קישור מ-fan-register.html) וגם עיון חופשי מהתפריט.',
+    when: 'מוצג מיידית בטעינת terms.html — ציבורי, לא דורש התחברות.',
+    replyTo: false,
+    vars: [],
+    fields: [
+      { key: 'termsFan', label: 'טקסט התקנון (כותרות מתחילות ב-##)', type: 'textarea', rows: 20 },
+    ],
+    defaults: {
+      termsFan: `## 1. מהות האתר והשירות
+פלטפורמת תיווך והצגה בלבד: האתר משמש כאינדקס וכלוח מודעות קהילתי שמטרתו להציג עסקים ונותני שירות בבעלות או בניהול של אוהדי הקבוצה, חבריהם ובני משפחתם.
+אי-תלות בעסקאות: האתר אינו צד, במישרין או בעקיפין, לכל התקשרות, עסקה, רכישה, חוזה או הבנה בין המשתמש לבין מי מהעסקים המופיעים באתר.
+
+## 2. הגבלת אחריות והסרת אחריות מוחלטת
+"Yellow Zone", מפעילת האתר, מנהליו, וכן בעלי העסקים ונותני השירות המפרסמים בו, אינם נושאים ולא יישאו בכל אחריות מכל סוג שהוא לגבי הרכישות או הגלישה.
+טיב השירות והמוצרים: אין לאתר כל אחריות על איכות, טיב, חוקיות, בטיחות, או אספקה של המוצרים או השירותים המוצעים על ידי העסקים המופיעים באינדקס.
+נזקים ישירים או עקיפים: האתר ובעליו לא יהיו אחראים לכל נזק, הפסד, עוגמת נפש או פגיעה שייגרמו למשתמש כתוצאה מהסתמכות על המידע באתר.
+סכסוכים בין משתמשים לעסקים: בכל מקרה של מחלוקת, המשתמש פוטר באופן מוחלט את האתר מכל אחריות.
+
+## 3. מדיניות רישום, סינון ואישור עסקים
+אישור ידני ומותנה: הגשת בקשה לרישום עסק באתר אינה מהווה אישור אוטומטי לפרסומו.
+זכות סינון מוחלטת: הנהלת האתר שומרת לעצמה את הזכות המלאה לקבוע מי רשאי להופיע באינדקס, בכל עת ומכל סיבה שהיא.
+עדכון והסרת תכנים: מנהלי האתר רשאים להסיר פרסום של עסק קיים באופן מיידי במידה ויעלה חשש כי המידע אינו מדויק.
+
+## 4. נכונות המידע ואמינות הפרסומים
+המידע על העסקים נמסר לאתר על ידי בעלי העסקים עצמם. האתר אינו בודק את אמיתות המידע, רישיונות העסק, או יושרתם. האחריות הבלעדית לבדיקת העסק חלה על המשתמש בלבד.
+
+## 5. התנהגות משתמשים וקהילתיות
+האתר הוקם מתוך רוח קהילתית ועזרה הדדית בין אוהדים. המשתמש מתחייב שלא לעשות שימוש באתר למטרות לא חוקיות, פגיעה בפרטיות, הטעיה, או פרסום תכנים פוגעניים.
+
+## 6. קניין רוחני
+כל הזכויות בעיצוב האתר, קוד המקור, סימני המסחר, הלוגו והטקסטים המקוריים שייכים בלעדית ל"Yellow Zone".
+
+## 7. שינויים באתר ובתנאי השימוש
+מנהלי האתר שומרים לעצמם את הזכות לערוך, לשנות, להוסיף או להסיר עסקים מהאינדקס בכל עת, ללא הודעה מוקדמת.
+תנאים אלו עשויים להתעדכן מעת לעת. הגרסה המופיעה באתר היא הגרסה המחייבת.
+
+## 8. סמכות שיפוט
+על תנאים אלו יחולו אך ורק דיני מדינת ישראל. מקום השיפוט הבלעדי: בתי המשפט המוסמכים במחוז תל אביב-יפו.`,
+    },
+  },
+  {
+    id: 'termsBiz', group: 'terms', storage: 'firestoreSite', icon: '📜', title: 'תקנון — עסקים',
+    sub: 'מוצג ב-terms.html לכל עסק שנרשם/מעיין',
+    who: 'כל מבקר שנכנס לעמוד התקנון בהקשר <b>עסק</b> — כולל בזמן הרשמה (קישור מ-business.html, שם הסימון עליו חובה לשליחת הטופס).',
+    when: 'מוצג מיידית בטעינת terms.html?doc=biz — ציבורי, לא דורש התחברות.',
+    replyTo: false,
+    vars: [],
+    fields: [
+      { key: 'termsBiz', label: 'טקסט התקנון (כותרות מתחילות ב-##)', type: 'textarea', rows: 20 },
+    ],
+    defaults: {
+      termsBiz: `## 1. מהות האתר והשירות
+האתר משמש כאינדקס קהילתי המציג עסקים בבעלות אוהדי מכבי תל אביב, חבריהם ובני משפחתם. האתר הוא פלטפורמת תיווך בלבד ואינו צד לעסקאות.
+
+## 2. אישור ניהול ידני
+הגשת בקשה לרישום עסק אינה מהווה אישור אוטומטי. מנהלי האתר בודקים כל בקשה באופן ידני, וזכאים לאשר, לדחות, או להסיר כל עסק בכל עת.
+
+## 3. עדכון פרטים
+כל שינוי שתשלח/י מהדשבורד יועבר לאישור מנהלי האתר לפני שיוצג לחברי הקהילה. השינויים יוצגו לאחר בדיקה ואישור בלבד.
+
+## 4. אחריות על המידע
+בעל/ת העסק אחראי/ת לדיוק ואמינות המידע. מסירת מידע כוזב תגרור הסרה מהאינדקס.
+
+## 5. הגבלת אחריות
+"Yellow Zone" אינו אחראי לכל נזק שייגרם כתוצאה מהסתמכות על המידע באתר, עסקאות עם עסקים המופיעים בו, או כל שימוש אחר.
+
+## 6. קישור הדשבורד
+הקישור לדשבורד הוא אישי ולא להעברה. כל שינוי שיבוצע דרך קישורך יחשב כבוצע על ידך.
+
+## 7. סמכות שיפוט
+על תנאים אלה יחולו דיני ישראל. מקום השיפוט: בתי המשפט המוסמכים בתל אביב-יפו.`,
+    },
+  },
 ];
 
 function getLocal(key, fallback) {
@@ -327,6 +409,7 @@ function setLocal(key, val) {
 }
 
 let firestoreData = {};
+let siteTextsData = {};
 
 function fieldHtml(f) {
   if (f.type === 'textarea') {
@@ -350,12 +433,16 @@ function renderRow(item) {
 }
 
 function renderModal(item) {
-  const varsHtml = item.vars.map(([k, d]) => `<code>{${k}}</code> = ${d}`).join(' · ');
+  const varsHtml = item.vars.length
+    ? `<div class="tpl-hint"><strong>משתנים זמינים:</strong> ${item.vars.map(([k, d]) => `<code>{${k}}</code> = ${d}`).join(' · ')}</div>`
+    : '';
   const fromTop = item.group === 'auto'
     ? `<div class="replyto-row" style="margin-bottom:8px">
          <span class="replyto-badge" style="color:var(--yellow);background:rgba(255,222,0,.15)">✉️ נשלח מכתובת (From)</span>
          <input class="tpl-input" type="text" id="${item.id}From" readonly style="flex:1" />
        </div>`
+    : item.group === 'terms'
+    ? `<div class="tpl-hint" style="margin-bottom:14px">📜 מוצג כטקסט בעמוד ציבורי (terms.html) — לא נשלח כהודעה למישהו.</div>`
     : `<div class="tpl-hint" style="margin-bottom:14px">✉️ נפתח מהחשבון האישי שלך (Gmail/WhatsApp) — הנמען יראה את הכתובת שממנה אתה בפועל שולח, לא כתובת קבועה של המערכת.</div>`;
   const replyToTop = item.replyTo
     ? `<div class="replyto-row" style="margin-bottom:14px">
@@ -380,7 +467,7 @@ function renderModal(item) {
           <span class="who">למי נשלח:</span> ${item.who}<br>
           <span class="who">מתי:</span> ${item.when}${replyToExplain}
         </div>
-        <div class="tpl-hint"><strong>משתנים זמינים:</strong> ${varsHtml}</div>
+        ${varsHtml}
         ${item.fields.map(fieldHtml).join('')}
         <div class="btn-row">
           <button class="btn btn-save" id="save-${item.id}" onclick="saveItem('${item.id}')" style="flex:1">שמור ✓</button>
@@ -397,6 +484,8 @@ function loadItemValues(item) {
     const el = document.getElementById(f.key);
     const val = item.storage === 'firestore'
       ? (firestoreData[f.key] ?? item.defaults[f.key])
+      : item.storage === 'firestoreSite'
+      ? (siteTextsData[f.key] ?? item.defaults[f.key])
       : getLocal(f.key, item.defaults[f.key]);
     el.value = val;
   });
@@ -420,13 +509,17 @@ window.saveItem = async function(id) {
   const values = {};
   item.fields.forEach(f => values[f.key] = document.getElementById(f.key).value);
 
-  if (item.storage === 'firestore') {
+  if (item.storage === 'firestore' || item.storage === 'firestoreSite') {
+    const targetDoc = item.storage === 'firestore' ? SETTINGS_DOC() : SITE_TEXTS_DOC();
+    const cache = item.storage === 'firestore' ? firestoreData : siteTextsData;
     btn.disabled = true;
     btn.textContent = 'שומר…';
     try {
-      await setDoc(SETTINGS_DOC(), values, { merge: true });
-      Object.assign(firestoreData, values);
-      showToast('✅ ההודעה נשמרה — תיכנס לתוקף במייל הבא שיישלח');
+      await setDoc(targetDoc, values, { merge: true });
+      Object.assign(cache, values);
+      showToast(item.storage === 'firestoreSite'
+        ? '✅ התקנון נשמר — מוצג מיד לכל מבקר בעמוד'
+        : '✅ ההודעה נשמרה — תיכנס לתוקף במייל הבא שיישלח');
     } catch (e) {
       console.error(e);
       showToast('⚠️ שמירה נכשלה, נסה שוב');
@@ -456,10 +549,12 @@ function showToast(msg) {
 async function init() {
   document.getElementById('group-auto').innerHTML = ITEMS.filter(i => i.group === 'auto').map(renderRow).join('');
   document.getElementById('group-manual').innerHTML = ITEMS.filter(i => i.group === 'manual').map(renderRow).join('');
+  document.getElementById('group-terms').innerHTML = ITEMS.filter(i => i.group === 'terms').map(renderRow).join('');
   document.getElementById('modals-container').innerHTML = ITEMS.map(renderModal).join('');
 
-  const snap = await getDoc(SETTINGS_DOC());
+  const [snap, siteSnap] = await Promise.all([getDoc(SETTINGS_DOC()), getDoc(SITE_TEXTS_DOC())]);
   firestoreData = snap.exists() ? snap.data() : {};
+  siteTextsData = siteSnap.exists() ? siteSnap.data() : {};
 
   ITEMS.forEach(loadItemValues);
 }

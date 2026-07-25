@@ -7,6 +7,7 @@ import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail
 import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
 import { runBackfillThumbnails } from './backfill.js';
+import { sendWebPush } from './push.js';
 
 const SITE_BASE = 'https://habayit-hatsahov.github.io/mtabusiness/';
 
@@ -36,6 +37,9 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/backfill-thumbnails') {
         return json(await handleBackfillThumbnails(request, env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/send-test-push') {
+        return json(await handleSendTestPush(request, env), env, request);
       }
       return json({ error: 'not_found' }, env, request, 404);
     } catch (e) {
@@ -137,22 +141,32 @@ async function handleResendCode({ phone }, env) {
 
 // דדופ בהרשמה (fan-register.html/business.html) — מחליף שאילתה ישירה מהקליינט על members
 // לפי טלפון/מייל (חשפה PII של חברים אחרים ללא אימות). מריץ מול Firestore עם הרשאת ה-service
-// account (עוקפת rules), אך מחזיר החוצה רק exists+memberId — לעולם לא שדה נוסף.
-async function handleCheckMemberExists({ phone, email }, env) {
+// account (עוקפת rules), אך מחזיר החוצה רק exists+memberId+nameMismatch — לעולם לא שדה נוסף
+// (nameMismatch הוא בוליאני בלבד, לא חושף את השם הקיים בפועל).
+const normName = (s) => (s || '').trim().toLowerCase();
+
+async function handleCheckMemberExists({ phone, email, firstName, lastName }, env) {
   if (!phone && !email) return { error: 'invalid_request' };
 
   const accessToken = await getGoogleAccessToken(env);
 
+  // דגל ל-admin: טלפון/מייל תואמים רשומה קיימת, אך השם שהוזן שונה מהותית מהשם
+  // הרשום עליה — כנראה שני אנשים שונים חולקים טלפון/מייל, לא אותו אדם שנרשם
+  // שוב (fan-register.html אחרת ידרוס בשקט firstName/lastName על הרשומה הקיימת).
+  const nameMismatch = (existing) =>
+    !!(firstName || lastName) &&
+    (normName(existing.firstName) !== normName(firstName) || normName(existing.lastName) !== normName(lastName));
+
   const emailLower = (email || '').trim().toLowerCase();
   if (emailLower) {
     const byEmail = await firestoreRunQuery(env, accessToken, 'members', 'email', emailLower);
-    if (byEmail.length) return { exists: true, memberId: byEmail[0].id };
+    if (byEmail.length) return { exists: true, memberId: byEmail[0].id, nameMismatch: nameMismatch(byEmail[0].fields) };
   }
 
   if (phone) {
     for (const candidate of phoneCandidates(phone)) {
       const byPhone = await firestoreRunQuery(env, accessToken, 'members', 'phone', candidate);
-      if (byPhone.length) return { exists: true, memberId: byPhone[0].id };
+      if (byPhone.length) return { exists: true, memberId: byPhone[0].id, nameMismatch: nameMismatch(byPhone[0].fields) };
     }
   }
 
@@ -223,6 +237,41 @@ async function handleBackfillThumbnails(request, env) {
     return { error: 'unauthorized' };
   }
   return await runBackfillThumbnails(env);
+}
+
+// בדיקה ידנית בלבד (curl/Postman) לוודא שצינור ה-Web Push עובד קצה-לקצה — לא כפתור בדשבורד,
+// לא שולח לקהל. סוד ייעודי נפרד (לא ADMIN_BACKFILL_SECRET) כדי לא לגעת בסוד קיים של פיצ'ר אחר.
+async function handleSendTestPush(request, env) {
+  const secret = request.headers.get('x-admin-secret') || '';
+  if (!env.PUSH_TEST_SECRET || secret !== env.PUSH_TEST_SECRET) {
+    return { error: 'unauthorized' };
+  }
+  const { memberId, title, body, url } = await request.json();
+  if (!memberId) return { error: 'missing_memberId' };
+
+  const accessToken = await getGoogleAccessToken(env);
+  const member = await firestoreGetDoc(env, accessToken, `members/${memberId}`);
+  const subs = member?.fields?.pushSubscriptions || {}; // מיפוי מכשיר→מנוי (ר' home.html enablePushNotifications)
+  const deviceKeys = Object.keys(subs).filter((k) => subs[k]?.endpoint);
+  if (!deviceKeys.length) return { error: 'no_subscription_for_member' };
+
+  const results = {};
+  const staleKeys = [];
+  for (const key of deviceKeys) {
+    const result = await sendWebPush(env, subs[key], {
+      title: title || 'Yellow Zone',
+      body: body || 'התראת בדיקה 🔔',
+      url: url || SITE_BASE,
+    });
+    results[key] = result;
+    if (result.status === 404 || result.status === 410) staleKeys.push(key);
+  }
+
+  if (staleKeys.length) {
+    const remaining = Object.fromEntries(Object.entries(subs).filter(([k]) => !staleKeys.includes(k)));
+    await firestorePatch(env, accessToken, `members/${memberId}`, { pushSubscriptions: remaining });
+  }
+  return { sentTo: deviceKeys.length, results };
 }
 
 // כשחבר הוא גם בעל עסק שממתין לאותו מייל אישור — נשלח מייל אחד מאוחד (קוד כניסה + קישור לדשבורד)

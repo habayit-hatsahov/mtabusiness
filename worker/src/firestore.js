@@ -7,6 +7,10 @@ function toFirestoreValue(v) {
   if (typeof v === 'boolean') return { booleanValue: v };
   if (typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
   if (v instanceof Date) return { timestampValue: v.toISOString() };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(toFirestoreValue) } };
+  if (typeof v === 'object') {
+    return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, vv]) => [k, toFirestoreValue(vv)])) } };
+  }
   throw new Error('unsupported value type for firestore write: ' + typeof v);
 }
 
@@ -19,6 +23,7 @@ function fromFirestoreValue(v) {
   if ('timestampValue' in v) return v.timestampValue;
   if ('nullValue' in v) return null;
   if ('arrayValue' in v) return (v.arrayValue.values || []).map(fromFirestoreValue);
+  if ('mapValue' in v) return fieldsToObject(v.mapValue.fields);
   return null;
 }
 

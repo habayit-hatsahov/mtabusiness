@@ -73,17 +73,31 @@ service cloud.firestore {
               'firstName', 'lastName', 'phone', 'email',
               'isSubscriber', 'subscriberSection', 'subscriberNumber',
               'wasSubscriber', 'facebookUrl',
-              'isBusinessOwner', 'linkedBusinessId', 'photoProofUrl'
+              'isBusinessOwner', 'linkedBusinessId', 'photoProofUrl',
+              'reviewFlag', 'reviewFlagAt', 'submittedAt', 'nameConflict'
             ]) &&
-          request.resource.data.status == resource.data.status &&
-          (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin)
+          // status: מותר להישאר זהה, או לרדת ל-'pending' בלבד (למשל אי-התאמת שם
+          // בהרשמה כפולה) — לעולם לא לעלות ל-'approved' מנתיב לא-מאומת.
+          (request.resource.data.status == resource.data.status ||
+           request.resource.data.status == 'pending') &&
+          (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin) &&
+          // הגנה נוספת (אירוע אמיתי 2026-07-24: הרשמה עם טלפון של חבר אמיתי
+          // דרסה את השם/מייל שלו עצמו) — כשנכתב nameConflict, השדות האישיים
+          // של הרשומה הקיימת חייבים להישאר בדיוק כמו שהיו, בלי יוצא מן הכלל.
+          (!('nameConflict' in request.resource.data) ||
+            (request.resource.data.firstName == resource.data.firstName &&
+             request.resource.data.lastName  == resource.data.lastName &&
+             request.resource.data.email     == resource.data.email &&
+             request.resource.data.phone     == resource.data.phone))
         )
 
         // (ב) חבר מחובר עורך את המסמך של עצמו — home.html/profile.html.
+        // pushSubscriptions: מיפוי מכשיר→מנוי, נכתב מ-home.html כשחבר מאשר הרשאת Web Push (ר' §51/52) —
+        // מיפוי (לא שדה בודד) כדי שמחשב+טלפון לא ידרסו זה את זה.
         || (
           request.auth != null && request.auth.uid == memberId &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['phone', 'email']) &&
+            .hasOnly(['phone', 'email', 'pushSubscriptions']) &&
           request.resource.data.status == resource.data.status &&
           (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin)
         );
@@ -150,6 +164,14 @@ service cloud.firestore {
     // ר' ההערה למעלה) כשהוא שולח את המיילים האוטומטיים בפועל.
     match /settings/{docId} {
       allow read, write: if isAdmin();
+    }
+
+    // settings/siteTexts — טקסטים ציבוריים (תקנון לאוהדים/עסקים) שמוצגים
+    // ב-terms.html לכל מבקר באתר, לא רק למנהל — לכן קריאה פתוחה לכולם,
+    // בעוד עריכה נשארת מוגבלת למנהל בלבד (admin-messages.html).
+    match /settings/siteTexts {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // ברירת מחדל: הכול חסום. אין match לאף collection אחר.

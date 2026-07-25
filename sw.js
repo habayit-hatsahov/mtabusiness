@@ -62,3 +62,27 @@ self.addEventListener('fetch', event => {
     })
   );
 });
+
+// ── Web Push — התראה שהוורקר שלח (worker/src/push.js), payload = {title, body, url} ──
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { /* payload לא-JSON, מתעלמים */ }
+  event.waitUntil(self.registration.showNotification(data.title || 'Yellow Zone', {
+    body: data.body || '',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    data: { url: data.url || 'home.html' },
+  }));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = event.notification.data?.url || 'home.html';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientsList => {
+      const existing = clientsList.find(c => c.url.includes(new URL(url, self.location.href).pathname));
+      if (existing) return existing.focus();
+      return self.clients.openWindow(url);
+    })
+  );
+});

@@ -431,10 +431,23 @@ if (isBizDoc) {
   backBtn.textContent = '‹ חזרה להרשמה';
   titleEl.replaceWith(backBtn);
 }
-const content = isBizDoc
+const termsContentEl = document.getElementById('termsContent');
+const defaultContent = isBizDoc
   ? (localStorage.getItem('_hb_tpl_terms_biz') || DEFAULT_TERMS_BIZ)
   : (localStorage.getItem('_hb_tpl_terms_fan') || DEFAULT_TERMS_FAN);
-renderTerms(content, document.getElementById('termsContent'));
+renderTerms(defaultContent, termsContentEl);
+
+// הנוסח הרשמי נערך ב-admin-messages.html ונשמר ב-Firestore (settings/siteTexts,
+// קריאה ציבורית) — כדי שעדכון מנהל יגיע בפועל לכל מבקר, לא רק לדפדפן שלו
+// (localStorage למעלה הוא רק רשת-ביטחון למקרה שהטעינה מהענן נכשלת/איטית).
+import('./firebase-config.js').then(async ({ db }) => {
+  const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js');
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'siteTexts'));
+    const val = snap.exists() ? snap.data()[isBizDoc ? 'termsBiz' : 'termsFan'] : null;
+    if (val) renderTerms(val, termsContentEl);
+  } catch (e) { console.error('טעינת תקנון מ-Firestore נכשלה:', e.message); }
+});
 </script>
 
 <script type="module">
