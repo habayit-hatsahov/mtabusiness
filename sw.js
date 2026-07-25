@@ -64,27 +64,22 @@ self.addEventListener('fetch', event => {
 });
 
 // ── Web Push — התראה שהוורקר שלח (worker/src/push.js) ──
-// 🧪 זמני-לאבחון (2026-07-26): טקסט גולמי מופרד ב-"|||" במקום JSON.parse/.json() —
-// לבדוק אם הפענוח של .json() עצמו הוא מה ששובר עברית ב-iOS 26, לא ההצפנה/דיפדפן.
-// אם זה יעבוד — נשאיר את הפורמט הזה; אם לא — נחזור ל-JSON (ר' PROJECT_CONTEXT.md).
+// 🧪 (2026-07-26): worker/src/push.js שולח פורמט "Declarative Web Push" של אפל
+// ({web_push:8030, notification:{...}}) — דפדפנים שתומכים בזה (Safari/iOS חדש) אמורים
+// להציג את ההתראה ברמת המערכת, בלי לקרוא ל-event הזה בכלל. זה כאן כ-fallback imperative
+// לדפדפנים שלא תומכים בזה (או אם התמיכה חלקית) — יודע לפרק גם את הצורה המקוננת החדשה.
 self.addEventListener('push', event => {
-  // Promise.resolve() בכוונה — .text() אמור להיות סינכרוני לפי התקן, אבל אם WebKit/iOS
-  // מחזיר שם בפועל Promise (סטייה מהתקן), זה עדיין יעבוד נכון בלי לזרוק שגיאה בטעות.
   const work = Promise.resolve(event.data ? event.data.text() : '')
     .then(raw => {
-      let title = 'Yellow Zone', body = '', url = 'home.html';
-      const stripped = String(raw).replace(/^"|"$/g, '');
-      const [t, b, u] = stripped.split('|||');
-      if (t) title = t;
-      if (b) body = b;
-      if (u) url = u;
-      return self.registration.showNotification(title, {
-        body,
+      const parsed = JSON.parse(raw);
+      const n = parsed.notification || parsed; // תומך גם בפורמט השטוח הישן {title,body,url}
+      return self.registration.showNotification(n.title || 'Yellow Zone', {
+        body: n.body || '',
         icon: 'icons/icon-192.png',
         badge: 'icons/icon-192.png',
-        dir: 'rtl',
-        lang: 'he',
-        data: { url },
+        dir: n.dir || 'rtl',
+        lang: n.lang || 'he',
+        data: { url: n.navigate || n.url || 'home.html' },
       });
     })
     .catch(e => self.registration.showNotification('Yellow Zone', { body: 'שגיאת פענוח: ' + e.message }));
