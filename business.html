@@ -1184,13 +1184,6 @@
         </div>
       </div>
 
-      <div class="divider"></div>
-
-      <div class="section-title">✉️ רוצה לכתוב לנו משהו?</div>
-      <div class="form-group">
-        <textarea id="bizNote" rows="3" placeholder="שאלות, בקשות מיוחדות, או כל דבר שחשוב לך שנדע..." style="resize:vertical;min-height:70px;"></textarea>
-      </div>
-
       <div class="btn-row">
         <button type="button" class="btn-back" onclick="goBack(3)">→ חזור</button>
         <button type="button" class="btn-next" onclick="goNext(3)">המשך ← תמונות ולוגו</button>
@@ -1284,6 +1277,13 @@
 
       <div id="summaryContent"></div>
 
+      <div class="divider"></div>
+
+      <div class="section-title">✉️ רוצה לכתוב לנו משהו?</div>
+      <div class="form-group">
+        <textarea id="bizNote" rows="3" placeholder="שאלות, בקשות מיוחדות, או כל דבר שחשוב לך שנדע... (אופציונלי)" style="resize:vertical;min-height:70px;"></textarea>
+      </div>
+
       <label id="termsLabel" style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--text-muted);margin-top:20px;line-height:1.5;padding:10px;border-radius:10px;border:2px solid transparent;transition:border-color .2s;" onclick="if (event.target.tagName !== 'A' && event.target.id !== 'agreeTerms') { event.preventDefault(); document.getElementById('agreeTerms').click(); }">
         <span style="position:relative;width:22px;height:22px;flex-shrink:0;">
           <input type="checkbox" id="agreeTerms" style="position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;z-index:2;cursor:pointer;" onchange="paintAgreeTermsBox(this.checked); this.closest('label').style.borderColor='transparent'" />
@@ -1317,7 +1317,7 @@
 
 <script type="module">
   import { db, getStorageLazy } from './firebase-config.js';
-  import { collection, addDoc, updateDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+  import { collection, addDoc, updateDoc, doc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
   import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
@@ -1618,13 +1618,33 @@
   }
 
   // ── SUBMIT ──
-  // ── SUCCESS MESSAGE (from localStorage) ──
+  // ── SUCCESS MESSAGE ──
+  const successTitleEl = document.getElementById('successTitle');
+  const successBodyEl  = document.getElementById('successBody');
+  function renderSuccessMsg(title, body) {
+    successTitleEl.textContent = title;
+    successBodyEl.innerHTML = body.split('\n').map(l => l || '<br/>').join('<br/>');
+  }
   (function loadSuccessMsg() {
     const defTitle = 'הבקשה התקבלה!';
     const defBody = 'תודה! הפרטים של העסק שלך הועברו לצוות. 💛\n\nלאחר בדיקה ואישור — תקבל/י קישור אישי לדשבורד\nשבו תוכל/י לנהל את דף העסק שלך, לעדכן פרטים,\nלהעלות תמונות ולוגו ולצפות בסטטיסטיקות.\n\nהעסק שלך יופיע באינדקס הבלעדי של Yellow Zone!';
-    document.getElementById('successTitle').textContent = localStorage.getItem('_hb_tpl_success_biz_title') || defTitle;
-    const body = localStorage.getItem('_hb_tpl_success_biz_body') || defBody;
-    document.getElementById('successBody').innerHTML = body.split('\n').map(l => l || '<br/>').join('<br/>');
+    renderSuccessMsg(
+      localStorage.getItem('_hb_tpl_success_biz_title') || defTitle,
+      localStorage.getItem('_hb_tpl_success_biz_body') || defBody
+    );
+
+    // הנוסח הרשמי נערך ב-admin-messages.html ונשמר ב-Firestore (settings/siteTexts,
+    // קריאה ציבורית) — localStorage למעלה הוא רק רשת-ביטחון, לא מקור האמת.
+    import('./firebase-config.js').then(async ({ db }) => {
+      const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js');
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'siteTexts'));
+        const data = snap.exists() ? snap.data() : null;
+        if (data && (data.successBizTitle || data.successBizBody)) {
+          renderSuccessMsg(data.successBizTitle || defTitle, data.successBizBody || defBody);
+        }
+      } catch (e) { console.error('טעינת הודעת הצלחה מ-Firestore נכשלה:', e.message); }
+    });
   })();
 
   async function handleSubmit() {
@@ -1951,6 +1971,20 @@
   ];
   const MAX_TAGS = 2;
   const CAT_LABELS = Object.fromEntries(CATEGORIES.map(c => [c.key, `${c.icon} ${c.label}`]));
+
+  // קטלוג תגיות בר-עריכה בפועל (settings/tagTaxonomy, נערך ב-admin-sections-anchors-demo.html) —
+  // דורס את CATEGORIES[].tags במקום, כדי שכל שאר הקוד (renderTagsBar/renderSecondTagBar) ימשיך לעבוד
+  // בלי שינוי. קריאה ציבורית (firestore.rules), נופל בחזרה לרשימה הקשיחה למעלה אם הטעינה נכשלת/עוד ריקה —
+  // אף פעם לא חוסם הרשמה בגלל זה.
+  (async function loadLiveTagTaxonomy() {
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'tagTaxonomy'));
+      if (!snap.exists()) return;
+      const data = snap.data();
+      CATEGORIES.forEach(c => { if (Array.isArray(data[c.key])) c.tags = data[c.key]; });
+      if (typeof selectedCat !== 'undefined' && selectedCat) { renderTagsBar(); renderSecondTagBar(); }
+    } catch (e) { console.error('טעינת קטלוג תגיות מ-Firestore נכשלה:', e.message); }
+  })();
 
   const DISCOUNT_TYPE_LABELS = { physical:'🏪 בחנות הפיזית', online:'🌐 באתר', sale:'🤝 במעמד המכירה/השירות' };
 
@@ -2410,14 +2444,6 @@
       });
     }
     html += '</div>';
-
-    const note = v('bizNote');
-    if (note) {
-      html += '<div class="summary-section">';
-      html += '<div class="summary-section-title">✉️ הערה</div>';
-      html += sr('', note);
-      html += '</div>';
-    }
 
     // שלב 4 — מדיה
     const logoFile       = document.getElementById('bizLogoFile')?.files[0];

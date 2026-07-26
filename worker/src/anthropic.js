@@ -50,7 +50,15 @@ function truncateToWordBoundary(text, maxLen) {
   return (lastSpace > maxLen * 0.4 ? cut.slice(0, lastSpace) : cut).trim();
 }
 
-export async function shortenBenefitText(env, longText) {
+// הרחבת הפרומפט לבקשת כמה חלופות בקריאה אחת (במקום כמה קריאות נפרדות שעלולות לחזור עם אותה תשובה,
+// כי הפרומפט הבסיסי מנוסח לתשובה "נכונה" יחידה, לא לגיוון) — משמש למסך המנהל שרוצה לבחור מתוך כמה ניסוחים.
+function multiSystemPrompt(count) {
+  return `${SYSTEM_PROMPT}
+
+הפעם המשתמש מבקש ${count} ניסוחים שונים (לא ${count} פעמים אותה תשובה) — כל אחד עומד לבד בכל הכללים למעלה (כולל מגבלת התווים), אבל מנוסח אחרת מהאחרים (למשל דגש שונה, סדר מילים שונה, או זיהוי-סוג שונה אם הטקסט המקורי מאפשר יותר מפרשנות אחת). הפלט: בדיוק ${count} שורות, כל שורה כותרת אחת שלמה, בלי מספור/תבליטים/טקסט נוסף.`;
+}
+
+export async function shortenBenefitText(env, longText, count = 1) {
   const resp = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
     headers: {
@@ -62,8 +70,8 @@ export async function shortenBenefitText(env, longText) {
       // בלי thinking בכלל — ב-Haiku 4.5 (בניגוד ל-Sonnet 5) השמטת הפרמטר כבר אומרת "בלי חשיבה מורחבת"
       // כברירת מחדל; לא שולחים {type:'disabled'} כי זה לא תואם את צורת ה-thinking הישנה של הדור הזה.
       model: MODEL,
-      max_tokens: 60,
-      system: SYSTEM_PROMPT,
+      max_tokens: count > 1 ? 60 * count : 60,
+      system: count > 1 ? multiSystemPrompt(count) : SYSTEM_PROMPT,
       messages: [{ role: 'user', content: longText }],
     }),
   });
@@ -71,7 +79,13 @@ export async function shortenBenefitText(env, longText) {
 
   const data = await resp.json();
   const textBlock = (data.content || []).find((b) => b.type === 'text');
-  const shortTitle = (textBlock?.text || '').trim();
-  if (!shortTitle) throw new Error('anthropic_empty_response');
-  return truncateToWordBoundary(shortTitle, MAX_TITLE_LEN);
+  const raw = (textBlock?.text || '').trim();
+  if (!raw) throw new Error('anthropic_empty_response');
+
+  if (count <= 1) return truncateToWordBoundary(raw, MAX_TITLE_LEN);
+
+  const lines = raw.split('\n').map((l) => l.replace(/^[-•\d.)\s]+/, '').trim()).filter(Boolean);
+  const titles = lines.slice(0, count).map((l) => truncateToWordBoundary(l, MAX_TITLE_LEN));
+  // רשת ביטחון — אם המודל החזיר פחות שורות ממה שביקשנו, לפחות לא לקרוס עם מערך ריק
+  return titles.length ? titles : [truncateToWordBoundary(raw, MAX_TITLE_LEN)];
 }

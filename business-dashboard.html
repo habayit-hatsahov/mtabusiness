@@ -969,6 +969,8 @@
             </div>
           </div>
 
+          <div id="contactNoteBanner" style="display:none"></div>
+
           <!-- מומלץ מחשב — רק במסכי מובייל, מעל מד השלמות כדי שתהיה ההערה הראשונה שרואים -->
           <div class="desktop-tip-banner">
             <div class="desktop-tip-banner-title">💻 מומלץ לערוך מהמחשב</div>
@@ -1241,6 +1243,7 @@ const MAX_BENEFITS = 3;
 let selectedCat  = null; // קטגוריה יחידה שנבחרה בעריכה
 let selectedTags = [];   // עד MAX_TAGS תגיות שנבחרו בעריכה
 let noTagFits = false;       // "אין תגית מתאימה" — פוטר מחובת בחירת תגית
+let pendingSecondTagSuggestion = ''; // הצעת תגית שנייה ממתינה לאישור מנהל — מוזנת ל-selectedTags[1] רק כשפותחים את הטוגל בפועל, לא אוטומטית
 let selectedAlsoCat = null; // "מופיע גם תחת" — קבוע, לקריאה בלבד: משקף את הקטגוריה המאושרת בפועל (alsoUnderCategory). לא ניתן לעריכה מהגריד; בקשת שינוי היא רק במלל (editAlsoCatNote)
 let photoCount = 0;
 let videoCount = 0;
@@ -1269,6 +1272,20 @@ const CATEGORIES = [
   { key:'finance', icon:'⚖️', label:'פיננסים ומשפט',        tags:['עורכי דין ומשפט','סוכני ביטוח','ייעוץ משכנתאות ופיננסים','רואי חשבון ומיסוי'] },
 ];
 const MAX_TAGS = 2;
+
+// קטלוג תגיות בר-עריכה בפועל (settings/tagTaxonomy, נערך ב-admin-sections-anchors-demo.html) — דורס
+// את CATEGORIES[].tags במקום (גם renderTagsBar/renderSecondTagBar וגם ה-validTags guard ב-
+// renderCatHoursCard ממשיכים לעבוד בלי שינוי, כי כולם קוראים מאותו אובייקט). קריאה ציבורית, נופל
+// בחזרה לרשימה הקשיחה למעלה אם הטעינה נכשלת — אף פעם לא חוסם עריכה בגלל זה.
+(async function loadLiveTagTaxonomy() {
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'tagTaxonomy'));
+    if (!snap.exists()) return;
+    const data = snap.data();
+    CATEGORIES.forEach(c => { if (Array.isArray(data[c.key])) c.tags = data[c.key]; });
+    if (typeof selectedCat !== 'undefined' && selectedCat) { renderTagsBar(); renderSecondTagBar(); }
+  } catch (e) { console.error('טעינת קטלוג תגיות מ-Firestore נכשלה:', e.message); }
+})();
 
 // מיפוי קטגוריות ישנות לחדשות (עסקים קיימים ב-DB שעדיין לא נערכו) — זהה ל-home.html
 // health בוטלה כקטגוריה עצמאית (2026-07-21): תוכנה התפצל בין fashion (טיפוח/מרפאות/רפואה משלימה) ל-sport (כושר ותזונה) — עסקים קיימים עם health ממופים ל-fashion כברירת מחדל עד שיישמרו מחדש
@@ -1513,6 +1530,7 @@ function renderBizView(flashZone) {
     `<span class="status-badge ${s}">${STATUS_HE[s] || s}</span>`;
 
   document.getElementById('pendingBanner').style.display = biz.pendingChanges ? 'block' : 'none';
+  renderContactNoteBanner(biz);
 
   document.getElementById('bizInfoCards').innerHTML =
     renderOwnerCard(w) + renderBizDetailsCard(w) + renderCatHoursCard(w) + renderDiscountCard(w) + renderDigitalCard(w) + renderMediaCard(w);
@@ -1542,6 +1560,39 @@ function renderBizView(flashZone) {
 
 function esc(v) {
   return (v == null ? '' : String(v)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+// ── ✉️ "רוצה לכתוב לנו משהו?" — ההודעה שנשלחה בשלב הסיכום בהרשמה, מוצגת כאן עם סטטוס טיפול (מטופל ע"י מנהל).
+// אחרי שהמנהל מסמן "טופל", בעל העסק רואה את זה בכניסה הראשונה שלו לדשבורד; אחרי כמה ימים מאותה כניסה
+// ראשונה (לא מהרגע שהמנהל סימן) ההודעה מתנקה לבד — כדי לא להשאיר "זבל" ישן על המסך לתמיד.
+const CONTACT_NOTE_CLEAR_DAYS = 5;
+async function renderContactNoteBanner(b) {
+  const el = document.getElementById('contactNoteBanner');
+  if (!el) return;
+  if (!b.note) { el.style.display = 'none'; return; }
+  if (b.noteHandled && b.noteHandledAt) {
+    if (b.noteOwnerAckAt) {
+      const ackDate = b.noteOwnerAckAt.toDate ? b.noteOwnerAckAt.toDate() : new Date(b.noteOwnerAckAt);
+      if (Date.now() - ackDate.getTime() >= CONTACT_NOTE_CLEAR_DAYS * 86400000) {
+        el.style.display = 'none';
+        b.note = ''; b.noteHandled = false; b.noteHandledAt = null; b.noteOwnerAckAt = null;
+        try { await updateDoc(doc(db, 'businesses', bizId), { note: '', noteHandled: false, noteHandledAt: null, noteOwnerAckAt: null }); } catch (e) { console.error(e); }
+        return;
+      }
+    } else {
+      try { await updateDoc(doc(db, 'businesses', bizId), { noteOwnerAckAt: serverTimestamp() }); b.noteOwnerAckAt = new Date(); } catch (e) { console.error(e); }
+    }
+  }
+  el.style.display = 'block';
+  el.innerHTML = b.noteHandled
+    ? `<div class="pending-banner" style="border-color:#16a34a;background:rgba(22,163,74,.08)">
+        <div class="pending-banner-title">✓ ההודעה שכתבתם לנו טופלה</div>
+        <div class="pending-banner-sub">"${esc(b.note)}"</div>
+      </div>`
+    : `<div class="pending-banner">
+        <div class="pending-banner-title">✉️ ההודעה שכתבתם לנו ממתינה לטיפול</div>
+        <div class="pending-banner-sub">"${esc(b.note)}"</div>
+      </div>`;
 }
 function rowHtml(label, v, fieldKeys) {
   const keys = fieldKeys ? (Array.isArray(fieldKeys) ? fieldKeys : [fieldKeys]) : [];
@@ -1699,11 +1750,10 @@ function renderCatHoursCard(w) {
   // מנקים תגיות זרות שלא שייכות לרשימת התגיות הנעולה של הקטגוריה הנוכחית (למשל אחרי מיפוי קטגוריה ישנה)
   const validTags = CATEGORIES.find(c => c.key === selectedCat)?.tags || [];
   selectedTags = (w.tags || []).filter(t => validTags.includes(t)).slice(0, MAX_TAGS);
-  // תגית שנייה שהוצעה (עדיין לא אושרה ע"י מנהל) — מוצגת בטופס העריכה לצורך המשך עבודה,
-  // גם אם עוד לא נכנסה בפועל ל-tags הנעולים למעלה. ר' saveCatHours ו-PROJECT_CONTEXT.md §8.
-  if (!selectedTags[1] && w.tagSecondSuggestion && validTags.includes(w.tagSecondSuggestion)) {
-    selectedTags[1] = w.tagSecondSuggestion;
-  }
+  // תגית שנייה שהוצעה (עדיין לא אושרה ע"י מנהל) — לא נכנסת אוטומטית ל-selectedTags[1] (זה היה פותח
+  // את הטוגל לבד בלי שביקשו, ר' PROJECT_CONTEXT.md). נשמרת בצד ומוזנת רק אם ממש פותחים את הטוגל
+  // (ר' toggleSecondTagEdit) — כך אישור המנהל עדיין נשאר "פתח וזה כבר שם", בלי שהטוגל ייראה פתוח מאליו.
+  pendingSecondTagSuggestion = (w.tagSecondSuggestion && validTags.includes(w.tagSecondSuggestion)) ? w.tagSecondSuggestion : '';
   noTagFits = !!w.noTagFits;
   // "מופיע גם תחת" — קבוע, לא לחיץ: מציג רק את המצב המאושר בפועל (ר' renderAlsoCatGrid). בקשת שינוי היא רק במלל (editAlsoCatNote).
   selectedAlsoCat = w.alsoUnderCategory ? mapCatKey(w.alsoUnderCategory) : null;
@@ -2630,7 +2680,11 @@ window.toggleSecondTagEdit = function() {
   const toggle = document.getElementById('editSecondTagToggle');
   if (toggle) toggle.classList.toggle('on', willOpen);
   if (details) details.style.display = willOpen ? 'block' : 'none';
-  if (!willOpen && selectedTags[1]) {
+  if (willOpen && !selectedTags[1] && pendingSecondTagSuggestion) {
+    selectedTags[1] = pendingSecondTagSuggestion;
+    renderSecondTagBar();
+    renderPreview(null, 'meta');
+  } else if (!willOpen && selectedTags[1]) {
     selectedTags = selectedTags.slice(0, 1);
     renderSecondTagBar();
     renderPreview(null, 'meta');

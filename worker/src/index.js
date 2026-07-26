@@ -1,9 +1,9 @@
 import { corsHeaders, handlePreflight, json } from './cors.js';
-import { getGoogleAccessToken, mintFirebaseCustomToken } from './jwt.js';
+import { getGoogleAccessToken, mintFirebaseCustomToken, verifyAdminIdToken } from './jwt.js';
 import { firestoreRunQuery, firestoreGetDoc, firestorePatch } from './firestore.js';
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt } from './ratelimit.js';
-import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail } from './brevo.js';
+import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail } from './brevo.js';
 import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
 import { runBackfillThumbnails } from './backfill.js';
@@ -40,6 +40,9 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/send-test-push') {
         return json(await handleSendTestPush(request, env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/send-broadcast-email') {
+        return json(await handleSendBroadcastEmail(await request.json(), env), env, request);
       }
       return json({ error: 'not_found' }, env, request, 404);
     } catch (e) {
@@ -192,15 +195,21 @@ async function ipRecordAttempt(kv, action, ip) {
 // מקבל טקסט הטבה ארוך וחופשי מבעל העסק, מחזיר כותרת מקוצרת (עד 35 תווים) שנוצרה ע"י Claude —
 // לפי docs/PROJECT_CONTEXT.md (2026-07-20): המנהל רואה טקסט מקור + הצעה זה-לצד-זה ומאשר/עורך,
 // בעל העסק לא רואה את השלב הזה בכלל. עדיין בשלב דמו — לא מחובר לטופסי business.html/business-dashboard.html.
-async function handleShortenBenefit({ text }, request, env) {
+async function handleShortenBenefit({ text, count }, request, env) {
   if (!text || typeof text !== 'string' || !text.trim()) return { error: 'invalid_request' };
   if (text.length > 500) return { error: 'text_too_long' };
+  // count — כמה חלופות ניסוח לבקש בקריאה אחת (מסך המנהל מבקש 3 לבחירה); ברירת מחדל 1, זהה להתנהגות הקיימת
+  const n = Math.max(1, Math.min(5, parseInt(count, 10) || 1));
 
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   if (await ipIsRateLimited(env.RATE_LIMIT_KV, 'shorten', ip)) return { error: 'too_many_attempts' };
   await ipRecordAttempt(env.RATE_LIMIT_KV, 'shorten', ip);
 
   try {
+    if (n > 1) {
+      const shortTitles = await shortenBenefitText(env, text.trim(), n);
+      return { shortTitles };
+    }
     const shortTitle = await shortenBenefitText(env, text.trim());
     return { shortTitle };
   } catch (e) {
@@ -272,6 +281,57 @@ async function handleSendTestPush(request, env) {
     await firestorePatch(env, accessToken, `members/${memberId}`, { pushSubscriptions: remaining });
   }
   return { sentTo: deviceKeys.length, results };
+}
+
+// שידור מייל — לכל בעלי העסקים/אוהדים המאושרים כברירת מחדל, או לרשימת מזהים ספציפית שהמנהל בחר
+// (מרכז הודעות, admin-sections-anchors-demo.html — בורר-קהל מבוסס selectedBizIds/selectedFanIds
+// הקיימים כבר ב"כל העסקים"/"כל האוהדים"). נקרא ישירות מדפדפן, לא curl בלבד, ולכן מאומת בפועל דרך
+// verifyAdminIdToken (לא סוד סטטי — ר' PROJECT_CONTEXT.md). לולאה סדרתית מכוונת (לא batched) —
+// מספיק ליחס הנוכחי (עשרות נמענים, לא מאות).
+async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, businessIds, memberIds }, env) {
+  if (!subject || !body) return { error: 'missing_fields' };
+  try {
+    await verifyAdminIdToken(env, idToken);
+  } catch (e) {
+    return { error: 'unauthorized' };
+  }
+
+  const accessToken = await getGoogleAccessToken(env);
+  const isFans = audienceType === 'fans';
+  let recipients;
+  if (isFans) {
+    if (Array.isArray(memberIds) && memberIds.length) {
+      const docs = await Promise.all(memberIds.map((id) => firestoreGetDoc(env, accessToken, `members/${id}`)));
+      recipients = docs.filter(Boolean);
+    } else {
+      recipients = await firestoreRunQuery(env, accessToken, 'members', 'status', 'approved', 500);
+    }
+  } else if (Array.isArray(businessIds) && businessIds.length) {
+    const docs = await Promise.all(businessIds.map((id) => firestoreGetDoc(env, accessToken, `businesses/${id}`)));
+    recipients = docs.filter(Boolean);
+  } else {
+    recipients = await firestoreRunQuery(env, accessToken, 'businesses', 'status', 'approved', 500);
+  }
+
+  const results = [];
+  for (const r of recipients) {
+    const email = isFans ? r.fields.email : r.fields.ownerEmail;
+    const name = isFans ? r.fields.firstName : r.fields.name;
+    if (!email) {
+      results.push({ id: r.id, name, status: 'failed', error: 'no_email' });
+      continue;
+    }
+    try {
+      const vars = isFans
+        ? { name: r.fields.firstName || '', code: r.fields.loginCode || '', link: `${SITE_BASE}home.html` }
+        : { name: r.fields.ownerFirst || '', business: r.fields.name || '', link: `${SITE_BASE}business-dashboard.html?token=${r.fields.accessToken}` };
+      await sendBroadcastEmail(env, { toEmail: email, toName: isFans ? (r.fields.firstName || '') : (r.fields.ownerFirst || ''), subject, body, vars });
+      results.push({ id: r.id, name, email, status: 'sent' });
+    } catch (e) {
+      results.push({ id: r.id, name, email, status: 'failed', error: String(e).slice(0, 300) });
+    }
+  }
+  return { results };
 }
 
 // כשחבר הוא גם בעל עסק שממתין לאותו מייל אישור — נשלח מייל אחד מאוחד (קוד כניסה + קישור לדשבורד)

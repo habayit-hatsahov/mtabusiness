@@ -143,6 +143,16 @@ service cloud.firestore {
             .hasOnly(['pendingChanges', 'pendingChangesAt'])
         )
 
+        // (ב2) בעל עסק מחובר מאשר צפייה בהודעה שהמנהל סימן "טופלה" (noteOwnerAckAt), או שהיא
+        // מתנקה אוטומטית אצלו כמה ימים אחרי (note/noteHandled/noteHandledAt/noteOwnerAckAt) —
+        // ר' business-dashboard.html renderContactNoteBanner. פעולה עצמית על הודעה שהוא עצמו
+        // כתב, לא דורשת אישור מנהל כמו pendingChanges רגיל.
+        || (
+          request.auth != null && request.auth.uid == businessId &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['note', 'noteHandled', 'noteHandledAt', 'noteOwnerAckAt'])
+        )
+
         // (ג) כל חבר מחובר — likedBy/clicks בלבד, על כל עסק (home.html).
         || (
           isSignedInMember() &&
@@ -172,6 +182,28 @@ service cloud.firestore {
     match /settings/siteTexts {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // settings/sectionAnchors — עיגוני סלוטים ידניים לסקשנים/קטגוריות בעמוד הבית (home.html) —
+    // אותו דפוס בדיוק כמו siteTexts: קריאה ציבורית (home.html קורא לכל מבקר), כתיבה מנהל בלבד
+    // (admin-sections-anchors-demo.html). ר' docs/PROJECT_CONTEXT.md לתיעוד הסכימה.
+    match /settings/sectionAnchors {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // settings/tagTaxonomy — קטלוג התגיות האפשריות לכל קטגוריה (rename/delete/merge בניהול תגיות,
+    // admin-sections-anchors-demo.html). אותו דפוס: קריאה ציבורית, כתיבה מנהל בלבד. הערה: business.html/
+    // business-dashboard.html/admin-businesses.html עדיין לא קוראים ממנו — נשארו על הקטלוג הקשיח שלהם.
+    match /settings/tagTaxonomy {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // messageBroadcasts — היסטוריית שידורי מייל למרכז ההודעות (admin-sections-anchors-demo.html).
+    // נכתב מהקליינט אחרי שהוורקר (/send-broadcast-email) כבר שלח בפועל — מנהל בלבד, אין קריאה ציבורית.
+    match /messageBroadcasts/{broadcastId} {
+      allow read, write: if isAdmin();
     }
 
     // ברירת מחדל: הכול חסום. אין match לאף collection אחר.
