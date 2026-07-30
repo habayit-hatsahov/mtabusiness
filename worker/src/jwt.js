@@ -1,4 +1,5 @@
 import { importPKCS8, SignJWT } from 'jose';
+import { firestoreGetDoc } from './firestore.js';
 
 let cachedKey = null; // { key, clientEmail } — נשמר בזיכרון ה-isolate בין קריאות (best-effort, לא קריטי)
 
@@ -55,4 +56,30 @@ export async function getGoogleAccessToken(env) {
     { expirationTtl: Math.max(60, expires_in - 60) }
   );
   return access_token;
+}
+
+// מאמת ID token אמיתי של Firebase Auth (client-side, מ-auth.currentUser.getIdToken()) ומוודא isAdmin===true
+// על members/{uid}. נדרש ל-endpoints שנקראים ישירות מדפדפן ודורשים admin אמיתי (למשל /send-broadcast-email) —
+// בניגוד ל-ADMIN_BACKFILL_SECRET/PUSH_TEST_SECRET (סוד סטטי), כאן הקוד הקורא (admin-sections-anchors-demo.html)
+// ציבורי בפועל (קובץ סטטי הניתן להורדה), אז סוד מוטבע שם לא באמת סוד. accounts:lookup הוא ה-REST API
+// הסטנדרטי של Identity Toolkit לאימות ID token בלי צורך במימוש JWT-signature verification עצמאי.
+export async function verifyAdminIdToken(env, idToken) {
+  if (!idToken) throw new Error('missing_id_token');
+  const resp = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${env.FIREBASE_WEB_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    }
+  );
+  if (!resp.ok) throw new Error('invalid_id_token');
+  const data = await resp.json();
+  const uid = data.users?.[0]?.localId;
+  if (!uid) throw new Error('invalid_id_token');
+
+  const accessToken = await getGoogleAccessToken(env);
+  const member = await firestoreGetDoc(env, accessToken, `members/${uid}`);
+  if (!member || member.fields.isAdmin !== true) throw new Error('not_admin');
+  return uid;
 }

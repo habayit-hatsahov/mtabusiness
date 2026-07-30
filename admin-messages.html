@@ -218,6 +218,10 @@
   <div class="section-label">📜 תקנון</div>
   <div class="section-hint">הטקסט המשפטי שמוצג בעמוד התקנון (terms.html) לאוהדים ולעסקים. נשמר בענן (Firestore), קריאה ציבורית — עדכון כאן משנה את מה שכל מבקר רואה, בכל מכשיר.</div>
   <div id="group-terms"></div>
+
+  <div class="section-label">✅ הודעת הצלחה</div>
+  <div class="section-hint">מוצג במסך "הבקשה התקבלה!" מיד אחרי שליחת טופס הרשמה (אוהד/עסק). נשמר בענן (Firestore), קריאה ציבורית — עדכון כאן משנה את מה שכל נרשם רואה, בכל מכשיר.</div>
+  <div id="group-success"></div>
 </div>
 
 <div id="modals-container"></div>
@@ -399,6 +403,38 @@ const ITEMS = [
 על תנאים אלה יחולו דיני ישראל. מקום השיפוט: בתי המשפט המוסמכים בתל אביב-יפו.`,
     },
   },
+  {
+    id: 'successFan', group: 'success', storage: 'firestoreSite', icon: '✅', title: 'הבקשה התקבלה — אוהדים',
+    sub: 'מוצג ל-fan-register.html מיד אחרי שליחת הטופס',
+    who: 'כל אוהד ששלח את טופס ההרשמה, לפני שקיבל אישור מנהל.',
+    when: 'מוצג מיידית בדפדפן, ברגע השליחה — לפני שהבקשה נבדקת בפועל.',
+    replyTo: false,
+    vars: [],
+    fields: [
+      { key: 'successFanTitle', label: 'כותרת', type: 'input' },
+      { key: 'successFanBody', label: 'גוף ההודעה', type: 'textarea', rows: 8 },
+    ],
+    defaults: {
+      successFanTitle: 'הבקשה התקבלה!',
+      successFanBody: 'תודה על ההרשמה!\nהבקשה שלך בבדיקה אצל הצוות —\nלאחר האישור תקבל/י מייל עם:\n\n🔗 קישור כניסה לאתר\n🪪 תעודת חבר דיגיטלית\n📋 כל פרטי החברות ואופן השימוש בהטבות\n\nבקרוב מאוד ⚡',
+    },
+  },
+  {
+    id: 'successBiz', group: 'success', storage: 'firestoreSite', icon: '✅', title: 'הבקשה התקבלה — עסקים',
+    sub: 'מוצג ל-business.html מיד אחרי שליחת הטופס',
+    who: 'כל בעל עסק ששלח את טופס ההרשמה, לפני שקיבל אישור מנהל.',
+    when: 'מוצג מיידית בדפדפן, ברגע השליחה — לפני שהבקשה נבדקת בפועל.',
+    replyTo: false,
+    vars: [],
+    fields: [
+      { key: 'successBizTitle', label: 'כותרת', type: 'input' },
+      { key: 'successBizBody', label: 'גוף ההודעה', type: 'textarea', rows: 8 },
+    ],
+    defaults: {
+      successBizTitle: 'הבקשה התקבלה!',
+      successBizBody: 'תודה! הפרטים של העסק שלך הועברו לצוות. 💛\n\nלאחר בדיקה ואישור — תקבל/י קישור אישי לדשבורד\nשבו תוכל/י לנהל את דף העסק שלך, לעדכן פרטים,\nלהעלות תמונות ולוגו ולצפות בסטטיסטיקות.\n\nהעסק שלך יופיע באינדקס הבלעדי של Yellow Zone!',
+    },
+  },
 ];
 
 function getLocal(key, fallback) {
@@ -443,6 +479,8 @@ function renderModal(item) {
        </div>`
     : item.group === 'terms'
     ? `<div class="tpl-hint" style="margin-bottom:14px">📜 מוצג כטקסט בעמוד ציבורי (terms.html) — לא נשלח כהודעה למישהו.</div>`
+    : item.group === 'success'
+    ? `<div class="tpl-hint" style="margin-bottom:14px">✅ מוצג ישירות במסך ההרשמה עצמו, מיד אחרי השליחה — לא נשלח כהודעה/מייל למישהו.</div>`
     : `<div class="tpl-hint" style="margin-bottom:14px">✉️ נפתח מהחשבון האישי שלך (Gmail/WhatsApp) — הנמען יראה את הכתובת שממנה אתה בפועל שולח, לא כתובת קבועה של המערכת.</div>`;
   const replyToTop = item.replyTo
     ? `<div class="replyto-row" style="margin-bottom:14px">
@@ -517,8 +555,10 @@ window.saveItem = async function(id) {
     try {
       await setDoc(targetDoc, values, { merge: true });
       Object.assign(cache, values);
-      showToast(item.storage === 'firestoreSite'
+      showToast(item.group === 'terms'
         ? '✅ התקנון נשמר — מוצג מיד לכל מבקר בעמוד'
+        : item.group === 'success'
+        ? '✅ נשמר — מוצג מיד לכל נרשם חדש'
         : '✅ ההודעה נשמרה — תיכנס לתוקף במייל הבא שיישלח');
     } catch (e) {
       console.error(e);
@@ -550,6 +590,7 @@ async function init() {
   document.getElementById('group-auto').innerHTML = ITEMS.filter(i => i.group === 'auto').map(renderRow).join('');
   document.getElementById('group-manual').innerHTML = ITEMS.filter(i => i.group === 'manual').map(renderRow).join('');
   document.getElementById('group-terms').innerHTML = ITEMS.filter(i => i.group === 'terms').map(renderRow).join('');
+  document.getElementById('group-success').innerHTML = ITEMS.filter(i => i.group === 'success').map(renderRow).join('');
   document.getElementById('modals-container').innerHTML = ITEMS.map(renderModal).join('');
 
   const [snap, siteSnap] = await Promise.all([getDoc(SETTINGS_DOC()), getDoc(SITE_TEXTS_DOC())]);

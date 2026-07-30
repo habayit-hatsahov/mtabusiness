@@ -95,6 +95,18 @@
     .member-card.pending  { border-right-color: var(--orange); }
     .member-card.approved { border-right-color: #25D366; }
     .member-card.rejected { border-right-color: var(--border-md); opacity: .7; }
+    .member-card.flagged  { border-right-color: #ef4444; opacity: 1; }
+
+    .flag-banner {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      background: rgba(239,68,68,.15); border-top: 1px solid rgba(239,68,68,.3);
+      color: #fca5a5; font-size: 12px; font-weight: 700; padding: 8px 14px;
+    }
+    .flag-banner button {
+      background: rgba(255,255,255,.12); color: #fff; border: none; border-radius: 6px;
+      padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; flex-shrink: 0;
+      font-family: 'Heebo', sans-serif;
+    }
 
     .card-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; user-select: none; }
     .avatar {
@@ -120,6 +132,7 @@
     .ver-pill { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; }
     .ver-pill.sub   { background: rgba(59,130,246,.18); color: #93c5fd; border: 1px solid rgba(59,130,246,.35); }
     .ver-pill.photo { background: rgba(37,211,102,.18); color: #86efac; border: 1px solid rgba(37,211,102,.35); }
+    .ver-pill.biz   { background: rgba(255,222,0,.18); color: var(--yellow); border: 1px solid rgba(255,222,0,.35); }
 
     .chevron { color: var(--text-muted); font-size: 16px; flex-shrink: 0; }
 
@@ -394,7 +407,6 @@
     <button class="filter-btn" data-val="rejected">נדחו <span class="filter-count" id="countRejected"></span></button>
     <button class="filter-btn" data-sub="sub">מנוי <span class="filter-count" id="countSub"></span></button>
     <button class="filter-btn" data-sub="nosub">לא מנוי <span class="filter-count" id="countNosub"></span></button>
-    <button class="filter-btn" data-sub="biz">בעל עסק <span class="filter-count" id="countBiz"></span></button>
     <input class="search-box" type="search" id="searchInput" placeholder="🔍  חיפוש שם / טלפון..." />
     <button class="filter-btn" id="selectModeBtn" onclick="toggleSelectMode()">☑️ בחר</button>
   </div>
@@ -486,14 +498,6 @@
       <div class="form-row-2" style="margin-top:14px">
         <div class="form-row" style="margin:0"><label>טלפון</label><input type="tel" id="editPhone" /></div>
         <div class="form-row" style="margin:0"><label>אימייל</label><input type="email" id="editEmail" /></div>
-      </div>
-      <div class="form-row" style="margin-top:14px">
-        <label>בעל עסק?</label>
-        <select id="editIsBusinessOwner">
-          <option value="">לא צוין</option>
-          <option value="yes">כן, יש לי עסק</option>
-          <option value="no">לא</option>
-        </select>
       </div>
       <div class="edit-btn-row">
         <button class="btn btn-approve" onclick="editGoNext(1)" style="flex:1">המשך ←</button>
@@ -676,6 +680,12 @@ function fmtDate(v) {
   const d = toDate(v);
   return d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' });
 }
+// מצב שליחת מייל קוד הכניסה — השדות נכתבים בפועל ב-worker/src/index.js (runEmailSweeps/handleResendCode)
+function emailStatusHtml(status, sentAt, err) {
+  if (status === 'sent') return `<span style="color:#86efac;">✅ נשלח${sentAt ? ' ב-'+fmtDate(sentAt) : ''}</span>`;
+  if (status === 'failed') return `<span style="color:#ef4444;">❌ נכשל${err ? ': '+err : ''}</span>`;
+  return `<span style="color:var(--orange);">⏳ ממתין לשליחה</span>`;
+}
 function waitingChip(v) {
   const h = (Date.now() - toDate(v)) / 3600000;
   const [cls, icon] = h < 6 ? ['fresh','🟢'] : h < 24 ? ['medium','🟠'] : ['long','🔴'];
@@ -740,7 +750,6 @@ function updateFilterCounts() {
   document.getElementById('countRejected').textContent  = members.filter(m => m.status === 'rejected').length;
   document.getElementById('countSub').textContent       = members.filter(m => m.isSubscriber === true).length;
   document.getElementById('countNosub').textContent     = members.filter(m => m.isSubscriber !== true).length;
-  document.getElementById('countBiz').textContent       = members.filter(m => m.isBusinessOwner === true).length;
 }
 
 // ── render ────────────────────────────────────────────────────────────────────
@@ -750,8 +759,7 @@ function render() {
     const matchF = activeFilter === 'all' || m.status === activeFilter;
     const matchSub = activeSub === 'all'
       || (activeSub === 'sub'        ? m.isSubscriber === true    : false)
-      || (activeSub === 'nosub'      ? m.isSubscriber !== true    : false)
-      || (activeSub === 'biz'        ? m.isBusinessOwner === true : false);
+      || (activeSub === 'nosub'      ? m.isSubscriber !== true    : false);
     const fullName = `${m.firstName||''} ${m.lastName||''}`.toLowerCase();
     const matchS = !search || fullName.includes(search) || (m.phone||'').includes(search);
     return matchF && matchSub && matchS;
@@ -790,19 +798,27 @@ function render() {
 
     const cbChecked = selectedIds.has(m.id) ? 'checked' : '';
 
+    const flagBanner = m.reviewFlag ? `
+      <div class="flag-banner">
+        <span><b>🔴 דרוש בדיקה</b> — ⚠️ טלפון/מייל תואם רשומה קיימת בשם אחר: "${m.nameConflict?.firstName||''} ${m.nameConflict?.lastName||''}" (${m.nameConflict?.phone||''} · ${m.nameConflict?.email||''}) — ייתכן ששני אנשים שונים</span>
+        <button onclick="event.stopPropagation();clearReviewFlag('${m.id}')">✓ סומן כנבדק</button>
+      </div>` : '';
+
     return `
-    <div class="member-card ${m.status}" onclick="handleCardClick(event,'${m.id}')">
+    <div class="member-card ${m.status}${m.reviewFlag ? ' flagged' : ''}" onclick="handleCardClick(event,'${m.id}')">
       <div class="card-header">
         <div class="card-cb-wrap"><input type="checkbox" class="card-cb" ${cbChecked} onclick="event.stopPropagation();toggleSelect('${m.id}',this)" /></div>
         <div class="avatar">${initials}</div>
         <div class="card-info">
           <div class="card-name">${m.firstName||''} ${m.lastName||''}</div>
-          <div class="card-meta">${m.phone||''} · ${m.email||''}</div>
+          <div class="card-meta">${m.phone||''} · ${m.email||''}${m.status==='approved' && m.loginCode ? ` · <b style="letter-spacing:1px;">${m.loginCode}</b> <button onclick="event.stopPropagation();copyLoginCode('${m.loginCode}')" style="border:none;background:none;color:var(--blue);cursor:pointer;font-size:11px;font-weight:700;">📋</button>` : ''}</div>
         </div>
         ${verInline(m)}
+        ${m.isBusinessOwner ? '<span class="ver-pill biz">🏪 בעל עסק</span>' : ''}
         ${statusChip(m)}
         <span class="chevron">›</span>
       </div>
+      ${flagBanner}
       ${quickActions}
     </div>`;
   }).join('');
@@ -844,16 +860,31 @@ window.openMemberSheet = async function(id) {
   document.getElementById('vsTitle').textContent  = `${m.firstName||''} ${m.lastName||''}`;
   document.getElementById('vsMeta').textContent   = `${m.phone||'—'} · ${m.email||'—'}`;
 
-  // שליפת לינק דשבורד עסק (אם בעל עסק)
+  // שליפת לינק דשבורד עסק (אם בעל עסק) — עדיפות ל-linkedBusinessId/ownerMemberId
+  // (קישור קבוע, לא תלוי בעדכון טלפון/מייל מאוחר); ownerEmail הוא fallback legacy
+  // בלבד לעסקים שנוצרו לפני המיגרציה (ר' admin-businesses.html: approveLinkedMember)
   let bizDashboardLink = '';
-  if (m.isBusinessOwner && m.email) {
+  let bizName = '';
+  if (m.isBusinessOwner) {
     try {
-      const bizQ = query(collection(db, 'businesses'), where('ownerEmail', '==', m.email));
-      const bizSnap = await getDocs(bizQ);
-      if (!bizSnap.empty) {
-        const bizData = bizSnap.docs[0].data();
+      let bizData = null;
+      if (m.linkedBusinessId) {
+        const bizSnap = await getDoc(doc(db, 'businesses', m.linkedBusinessId));
+        if (bizSnap.exists()) bizData = bizSnap.data();
+      }
+      if (!bizData) {
+        const bizQ = query(collection(db, 'businesses'), where('ownerMemberId', '==', m.id));
+        const bizSnap = await getDocs(bizQ);
+        if (!bizSnap.empty) bizData = bizSnap.docs[0].data();
+      }
+      if (!bizData && m.email) {
+        const bizQ = query(collection(db, 'businesses'), where('ownerEmail', '==', m.email));
+        const bizSnap = await getDocs(bizQ);
+        if (!bizSnap.empty) bizData = bizSnap.docs[0].data();
+      }
+      if (bizData) {
         const token = bizData.accessToken;
-        const bizName = bizData.name || 'העסק';
+        bizName = bizData.name || 'העסק';
         if (token) {
           bizDashboardLink = `<a href="business-dashboard.html?token=${token}" target="_blank"
             style="font-size:12px;font-weight:700;color:var(--yellow);text-decoration:none;background:rgba(255,222,0,.12);padding:4px 10px;border-radius:8px;border:1px solid rgba(255,222,0,.3);">
@@ -880,10 +911,6 @@ window.openMemberSheet = async function(id) {
     verHtml = `<span class="missing">לא צוין</span>`;
   }
 
-  const bizOwnerVal = m.isBusinessOwner === true
-    ? '✅ כן, מעוניין לרשום עסק'
-    : m.isBusinessOwner === false ? 'לא' : '<span class="missing">לא צוין</span>';
-
   // build auth line — single compact row
   let authLine = '';
   if (m.isSubscriber === true) {
@@ -897,6 +924,15 @@ window.openMemberSheet = async function(id) {
   } else {
     authLine = `<span class="missing">לא צוין</span>`;
   }
+
+  // הערת התנגשות-שם — נשארת גלויה גם אחרי "✓ סומן כנבדק" (reviewFlag מתאפס,
+  // nameConflict לא), כדי שלא יאבד התיעוד שהיתה כאן התנגשות בעבר.
+  const conflictNote = m.nameConflict ? `
+    <div style="margin-bottom:14px;padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:10px;font-size:12px;color:var(--text-sm);line-height:1.6;">
+      🔶 ${m.reviewFlag ? '<b>דרוש בדיקה</b> — ' : ''}הייתה כאן התנגשות שם${fmtDate(m.nameConflict.flaggedAt) ? ' ב-'+fmtDate(m.nameConflict.flaggedAt) : ''}: מישהו נרשם בתור
+      "${m.nameConflict.firstName||''} ${m.nameConflict.lastName||''}" (${m.nameConflict.phone||''} · ${m.nameConflict.email||''})
+      עם אותו טלפון/מייל של הרשומה הזו${m.reviewFlag ? '' : ' — כבר נבדק'}.
+    </div>` : '';
 
   // סקציית פרופיל
   const profileSection = `
@@ -912,6 +948,7 @@ window.openMemberSheet = async function(id) {
                  👤 פרופיל האוהד ↗
                </a>
                ${bizDashboardLink}
+               ${m.loginCode ? `<span style="font-size:11px;letter-spacing:1px;color:#fde68a;">🔑 <b>${m.loginCode}</b></span> <button onclick="copyLoginCode('${m.loginCode}')" style="border:none;background:none;color:var(--blue);cursor:pointer;font-size:11px;font-weight:700;">📋</button> <span style="font-size:11px;color:var(--text-sm);">${emailStatusHtml(m.loginCodeEmailStatus, m.loginCodeEmailSentAt, m.loginCodeEmailError)}</span>` : ''}
              </div>`
           : `<span style="font-size:13px;color:var(--text-sm);">הכרטיס ייווצר לאחר אישור</span>`
         }
@@ -924,17 +961,21 @@ window.openMemberSheet = async function(id) {
           : '<span style="color:var(--orange);">⏳ ממתין</span>'
         }</div></div>
         <div class="detail-item"><div class="lbl">מנוי</div><div class="val">${m.isSubscriber ? 'כן · שער ' + (m.subscriberSection||'—') : 'לא'}</div></div>
-        <div class="detail-item"><div class="lbl">בעל עסק</div><div class="val">${m.isBusinessOwner ? 'כן' : 'לא'}</div></div>
+        <div class="detail-item"><div class="lbl">בעל עסק</div><div class="val">${
+          m.isBusinessOwner
+            ? `כן${bizName ? ' — ' + bizName : ''}`
+            : 'לא'
+        }</div></div>
       </div>
     </div>`;
 
   document.getElementById('vsBody').innerHTML = `
+    ${conflictNote}
     ${profileSection}
     <div class="card-section">
       <div class="card-section-title">👤 פרטים אישיים</div>
       <div class="detail-grid">
         <div class="detail-item"><div class="lbl">טלפון</div><div class="val">${ms(m.phone)}</div></div>
-        <div class="detail-item"><div class="lbl">בעל עסק?</div><div class="val">${bizOwnerVal}</div></div>
         <div class="detail-item"><div class="lbl">אימייל</div>
           <div class="val">${ms(m.email)}
             ${m.email ? `<a href="https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(m.email)}&su=${encodeURIComponent(getFanMailSubject())}&body=${encodeURIComponent(buildMail(m))}" target="_blank" style="margin-right:8px;font-size:11px;font-weight:700;color:var(--blue);text-decoration:none;">✉️ מייל</a>` : ''}
@@ -942,11 +983,7 @@ window.openMemberSheet = async function(id) {
         </div>
         <div class="detail-item"><div class="lbl">נרשם</div><div class="val">${fmtDate(m.submittedAt)||'—'}</div></div>
         ${m.status==='approved' ? `<div class="detail-item"><div class="lbl">אושר</div><div class="val">${fmtDate(m.approvedAt)||'—'}</div></div>` : ''}
-        ${m.status==='approved' ? `<div class="detail-item"><div class="lbl">קוד כניסה</div><div class="val">${
-          m.loginCode
-            ? `<b style="letter-spacing:2px;">${m.loginCode}</b> <button onclick="copyLoginCode('${m.loginCode}')" style="border:none;background:none;color:var(--blue);cursor:pointer;font-size:11px;font-weight:700;">📋 העתק</button>`
-            : `<span style="color:var(--orange);">אין קוד — לחץ על "🔑 קוד כניסה לחברים מאושרים ללא קוד" למעלה</span>`
-        }</div></div>` : ''}
+        ${m.status==='approved' && !m.loginCode ? `<div class="detail-item full"><div class="lbl">קוד כניסה</div><div class="val"><span style="color:var(--orange);">אין קוד — לחץ על "🔑 קוד כניסה לחברים מאושרים ללא קוד" למעלה</span></div></div>` : ''}
       </div>
     </div>
     <div class="card-section">
@@ -1026,7 +1063,7 @@ window.closeApproveModal = function() {
 document.getElementById('confirmApproveBtn').addEventListener('click', async () => {
   const m = members.find(x => x.id === approvingId);
   if (!m) return;
-  const memberNumber = await allocateMemberNumber();
+  const memberNumber = m.memberNumber || await allocateMemberNumber();
   const loginCode = m.loginCode || await generateLoginCode();
   await updateDoc(doc(db, 'members', approvingId), {
     status: 'approved',
@@ -1073,6 +1110,11 @@ window.rejectMember = async function(id) {
     await updateDoc(doc(db, 'members', id), { status: 'rejected', rejectedAt: serverTimestamp() });
     showToast('הבקשה נדחתה');
   }
+};
+
+window.clearReviewFlag = async function(id) {
+  await updateDoc(doc(db, 'members', id), { reviewFlag: null, reviewFlagAt: null });
+  showToast('✓ סומן כנבדק');
 };
 
 window.deleteMember = async function(id) {
@@ -1131,7 +1173,6 @@ window.openEditModal = function(id) {
   document.getElementById('editLastName').value  = m.lastName  || '';
   document.getElementById('editPhone').value     = m.phone     || '';
   document.getElementById('editEmail').value     = m.email     || '';
-  document.getElementById('editIsBusinessOwner').value = m.isBusinessOwner===true ? 'yes' : m.isBusinessOwner===false ? 'no' : '';
 
   const isSub = m.isSubscriber===true ? 'yes' : m.isSubscriber===false ? 'no' : '';
   document.getElementById('editIsSubscriber').value = isSub;
@@ -1174,7 +1215,6 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
     lastName:          document.getElementById('editLastName').value.trim(),
     phone:             document.getElementById('editPhone').value.trim(),
     email:             document.getElementById('editEmail').value.trim(),
-    isBusinessOwner:   document.getElementById('editIsBusinessOwner').value === 'yes',
     isSubscriber:      isSub === 'yes',
     subscriberSection: isSub==='yes' ? document.getElementById('editGate').value       : null,
     subscriberNumber:  isSub==='yes' ? document.getElementById('editSubNumber').value.trim() : null,
@@ -1236,8 +1276,9 @@ window.bulkApprove = async function() {
   if (!pending.length) { showToast('אין ממתינים בבחירה'); return; }
   if (!confirm(`לאשר ${pending.length} חברים?`)) return;
   for (const id of pending) {
-    const memberNumber = await allocateMemberNumber();
-    const loginCode = await generateLoginCode();
+    const m = members.find(x => x.id === id);
+    const memberNumber = m?.memberNumber || await allocateMemberNumber();
+    const loginCode = m?.loginCode || await generateLoginCode();
     await updateDoc(doc(db, 'members', id), {
       status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null, memberNumber,
       loginCode, loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending'

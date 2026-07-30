@@ -95,6 +95,19 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
   });
 }
 
+// שידור חד-פעמי לקהל (מרכז הודעות, admin-sections-anchors-demo.html) — subject/body מגיעים מהמנהל
+// (טיוטה ב-settings/broadcastDraft), עם placeholders {name}/{business}/{link} שמוחלפים לכל נמען בנפרד.
+export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, vars }) {
+  const finalSubject = applyVars(subject, vars);
+  const htmlContent = `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px;line-height:1.7">${textToHtml(applyVars(body, vars))}</div>`;
+  await sendBrevoEmail(env, {
+    to: [{ email: toEmail, name: toName || '' }],
+    replyTo: { email: REPLY_TO_BUSINESS },
+    subject: finalSubject,
+    htmlContent,
+  });
+}
+
 // מייל מאוחד — כשבעל עסק מאושר גם כאוהד וגם כבעל עסק באותה פעולה
 export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl }) {
   const vars = { name: toName || '', code, business: businessName, link: dashboardLink };

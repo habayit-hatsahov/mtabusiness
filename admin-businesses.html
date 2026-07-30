@@ -1018,6 +1018,7 @@
       <button class="filter-btn" data-val="approved">מאושרים</button>
       <button class="filter-btn" data-val="rejected">נדחו</button>
       <button class="filter-btn filter-changes" data-val="changes" id="filterChangesBtn">✏️ שינויים <span class="changes-badge" id="changesBadge">0</span></button>
+      <button class="filter-btn" data-val="preTerms" title="עסקים שנרשמו לפני שאישור תקנון נשמר בפועל">📜 לפני תיעוד תקנון</button>
       <input class="search-box" type="search" id="searchInput" placeholder="🔍  חיפוש שם עסק / בעלים..." />
     </div>
 
@@ -1400,6 +1401,13 @@ function regDateFull(ts) {
   return d.toLocaleDateString('he-IL') + ' · ' + d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' });
 }
 
+// מצב שליחת מייל אישור עסק — השדות נכתבים בפועל ב-worker/src/index.js (runEmailSweeps)
+function ownerEmailStatusHtml(status, sentAt, err) {
+  if (status === 'sent') return `<span style="color:#86efac;">✅ נשלח${sentAt ? ' ב-'+regDateFull(sentAt) : ''}</span>`;
+  if (status === 'failed') return `<span style="color:#ef4444;">❌ נכשל${err ? ': '+err : ''}</span>`;
+  return `<span style="color:var(--orange);">⏳ ממתין לשליחה</span>`;
+}
+
 function esc(v) {
   return (v == null ? '' : String(v)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }
@@ -1431,10 +1439,27 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-window.openBizSheet = function(id) {
+window.openBizSheet = async function(id) {
   const b = businesses.find(x => x.id === id);
   if (!b) return;
   resetLightboxSet();
+
+  // שליפת קוד הכניסה של האוהד המקושר (עדיפות ל-ownerMemberId האמין, ר' admin-members.html
+  // openMemberSheet לאותה לוגיקה בכיוון ההפוך) — כדי להציג אותו יחד עם לינק הדשבורד למעלה בגיליון
+  let ownerLoginCode = '';
+  try {
+    let memberData = null;
+    if (b.ownerMemberId) {
+      const mSnap = await getDoc(doc(db, 'members', b.ownerMemberId));
+      if (mSnap.exists()) memberData = mSnap.data();
+    }
+    if (!memberData && b.ownerEmail) {
+      const mQ = query(collection(db, 'members'), where('email', '==', b.ownerEmail));
+      const mSnap = await getDocs(mQ);
+      if (!mSnap.empty) memberData = mSnap.docs[0].data();
+    }
+    if (memberData) ownerLoginCode = memberData.loginCode || '';
+  } catch (e) { console.warn('ownerMember lookup failed', e); }
 
   const ownerName  = `${b.ownerFirst || ''} ${b.ownerLast || ''}`.trim();
   const types      = b.bizTypes || [];
@@ -1559,9 +1584,16 @@ window.openBizSheet = function(id) {
       <button class="dash-mini-copy" title="העתק קישור" onclick="event.stopPropagation();navigator.clipboard.writeText('${dashUrl}').then(()=>showToast('✅ הקישור הועתק!'))">📋</button>
     </span>`;
   })() : '';
+  const ownerCodeChip = ownerLoginCode ? `<span class="dash-mini-wrap">
+      <b style="font-size:11px;letter-spacing:1px;color:#fde68a;">🔑 ${ownerLoginCode}</b>
+      <button class="dash-mini-copy" title="העתק קוד" onclick="event.stopPropagation();navigator.clipboard.writeText('${ownerLoginCode}').then(()=>showToast('✅ הקוד הועתק!'))">📋</button>
+    </span>` : '';
+  // תקנון — קומפקטי, למעלה ליד הכותרת (לא שורה מלאה ב-detail-grid, לפי בקשת המשתמש). agreedTermsAt
+  // לא רטרואקטיבי (נשמר לראשונה ב-2026-07-25) — שדה חסר = "לפני תיעוד", לא "לא אישר" (ר' §51 חלק ב')
+  const termsChip = `<span style="font-size:11px;color:var(--text-sm);white-space:nowrap;">${b.agreedTermsAt ? `📜 אישר ${regDateFull(b.agreedTermsAt)}` : '📜 לפני תיעוד'}</span>`;
 
-  document.getElementById('vsTitle').innerHTML = `${b.name || '—'} ${dashMiniLinkHtml}`;
-  document.getElementById('vsMeta').innerHTML  = metaStr;
+  document.getElementById('vsTitle').innerHTML = `${b.name || '—'} ${dashMiniLinkHtml}${ownerCodeChip}`;
+  document.getElementById('vsMeta').innerHTML  = `${metaStr} · ${termsChip}`;
 
   // סקציית שינויים ממתינים (מעל הכל)
   const pendingHtml = b.pendingChanges ? (() => {
@@ -1643,6 +1675,7 @@ window.openBizSheet = function(id) {
         <div class="detail-item full"><div class="lbl">קרבה לבעל המנוי</div><div class="val">${RELATION_LABELS[b.ownerRelation || ''] || mDash(b.ownerRelation)}</div></div>
         <div class="detail-item full"><div class="lbl">אימות אוהד</div><div class="val">${verHtml}</div></div>
         <div class="detail-item full"><div class="lbl">📅 תאריך הרשמה</div><div class="val">${regDateFull(b.submittedAt)}</div></div>
+        ${b.status === 'approved' ? `<div class="detail-item full"><div class="lbl">סטטוס מייל אישור</div><div class="val">${ownerEmailStatusHtml(b.ownerEmailStatus, b.ownerEmailSentAt, b.ownerEmailError)}</div></div>` : ''}
         ${b.note ? `<div class="detail-item full"><div class="lbl">✉️ הערה מבעל העסק</div><div class="val desc" style="background:rgba(255,222,0,.08);border:1.5px solid rgba(255,222,0,.35);border-radius:8px;padding:8px 12px;color:var(--yellow);">${b.note}</div></div>` : ''}
       </div>
       <div class="sec-edit-form" id="secEdit1">
@@ -2054,7 +2087,9 @@ function render() {
       ? true
       : activeFilter === 'changes'
         ? !!b.pendingChanges
-        : b.status === activeFilter;
+        : activeFilter === 'preTerms'
+          ? !b.agreedTermsAt
+          : b.status === activeFilter;
     const matchS = !search ||
       (b.name || '').toLowerCase().includes(search) ||
       (b.ownerFirst + ' ' + b.ownerLast).toLowerCase().includes(search);
@@ -2087,6 +2122,13 @@ function render() {
     const pendingBadge = b.pendingChanges
       ? `<span class="chip pending-edit" title="בעל העסק שלח שינויים לאישור">✏️ שינויים</span>`
       : '';
+    const dashMiniLinkHtmlCard = (b.status === 'approved' && b.accessToken) ? (() => {
+      const dashUrl = dashboardLinkFor(b);
+      return `<span class="dash-mini-wrap">
+        <a class="dash-mini-link" href="${dashUrl}" target="_blank" title="${dashUrl}" onclick="event.stopPropagation()">🔗 דשבורד</a>
+        <button class="dash-mini-copy" title="העתק קישור" onclick="event.stopPropagation();navigator.clipboard.writeText('${dashUrl}').then(()=>showToast('✅ הקישור הועתק!'))">📋</button>
+      </span>`;
+    })() : '';
 
     return `
     <div class="biz-card ${b.status}${isSelected ? ' selected' : ''}" id="card-${b.id}">
@@ -2095,7 +2137,7 @@ function render() {
         <div class="biz-avatar">🏪</div>
         <div class="card-info">
           <div class="card-name">${b.name || '—'} ${pendingBadge}</div>
-          <div class="card-meta">${metaStr}</div>
+          <div class="card-meta">${metaStr} ${dashMiniLinkHtmlCard}</div>
         </div>
         ${statusChip(b)}
         <span class="chevron">›</span>
