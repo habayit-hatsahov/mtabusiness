@@ -971,18 +971,39 @@
 </head>
 <body>
 
-<!-- ══ מסך פתיחה — מכסה את "הבזק" הרקע הריק (לבן/כחול) בזמן שהתוכן עדיין נטען ══
-     מוצג רק אם הטעינה איטית (ר' הטיימר של 150ms למטה) — טעינה מהירה (cache חם) לא תראה אותו בכלל. -->
+<!-- ══ מסך פתיחה — רגע-מותג בכניסה הראשונה לסשן (כמו cold start של אפליקציה, בהשראת וולט) ══
+     מוצג רק בכניסה הראשונה ל-home.html בטאב (sessionStorage) — ניווט חוזר אליו מדף אחר
+     באותו סשן לא יציג אותו שוב. נשאר על המסך מינימום ~1.5 שניות (גם אם התוכן מוכן מהר יותר,
+     כדי שהרגע יורגש ולא יבזיק), ונעלם ברגע שהתוכן האמיתי מוכן מאחוריו — עם רשת ביטחון של 3.5
+     שניות למקרה שהנתונים לעולם לא מגיעים (כשל רשת וכו'), כדי לא להשאיר את המשתמש תקוע. -->
 <div class="hb-splash" id="hbSplash"><img src="icons/logo-splash.jpeg" alt="Yellow Zone"/></div>
 <script>
+  window._hbSplashFirstEntry = !sessionStorage.getItem('hb_splash_shown');
   window._hbSplashReady = false;
-  window._hbSplashTimer = setTimeout(function () {
-    var el = document.getElementById('hbSplash');
-    if (el) el.classList.add('show');
-  }, 150);
+  if (window._hbSplashFirstEntry) {
+    sessionStorage.setItem('hb_splash_shown', '1');
+    window._hbSplashStart = Date.now();
+    var hbSplashEl = document.getElementById('hbSplash');
+    if (hbSplashEl) hbSplashEl.classList.add('show');
+    window._hbSplashTimer = setTimeout(function () { window._hbHideSplash(); }, 3500);
+  } else {
+    var hbSplashElSkip = document.getElementById('hbSplash');
+    if (hbSplashElSkip) hbSplashElSkip.remove();
+  }
   // נקרא מתוך loadFirebaseData ברגע שיש תוכן אמיתי על המסך — אידמפוטנטי, בטוח לקרוא כמה פעמים
   window._hbHideSplash = function () {
-    if (window._hbSplashReady) return;
+    if (window._hbSplashReady || !window._hbSplashFirstEntry) { window._hbSplashReady = true; return; }
+    if (window._hbSplashHidePending) return;
+    var minShow = 1500;
+    var elapsed = Date.now() - window._hbSplashStart;
+    if (elapsed < minShow) {
+      window._hbSplashHidePending = true;
+      setTimeout(function () {
+        window._hbSplashHidePending = false;
+        window._hbHideSplash();
+      }, minShow - elapsed);
+      return;
+    }
     window._hbSplashReady = true;
     clearTimeout(window._hbSplashTimer);
     var el = document.getElementById('hbSplash');
