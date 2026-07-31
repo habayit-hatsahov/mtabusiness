@@ -235,12 +235,29 @@
       color: var(--ink); font-size: 12.5px; font-weight: 700; cursor: pointer; text-decoration: none;
     }
     .see-all svg { flex: none; }
+    .section-actions { display: flex; align-items: center; gap: 8px; }
+    .scroll-arrow-btn {
+      display: none;
+      width: 34px; height: 34px; border-radius: var(--r-chip); flex-shrink: 0;
+      background: var(--surface); border: 1px solid var(--line);
+      align-items: center; justify-content: center;
+      color: var(--ink-2); cursor: pointer;
+    }
+    .scroll-arrow-btn:hover { background: var(--field); color: var(--ink); }
+    @media (min-width: 640px) {
+      .scroll-arrow-btn { display: flex; }
+    }
 
     /* ══ CARDS SCROLL ══ */
     .cards-scroll {
       display: flex; gap: 12px;
       overflow-x: auto; padding: 0 16px 4px;
       scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+      /* בלי זה, בשורות שבאמת גולשות (יותר כרטיסים ממה שנכנס בתצוגה) הדפדפן "מתקן" את scrollLeft=0
+         שה-JS קובע ל--28 (בדיוק ה-padding) כדי ליישר את הכרטיס הראשון לפי scroll-snap — והריפוד
+         נבלע: הכרטיס הראשון נדבק לקצה האמיתי במקום להיות מוזח כמו בשורות שלא גולשות. scroll-padding
+         אומר ל-snap לכבד את אותו ריפוד, לא להתעלם ממנו. חייב להיות זהה לערך ה-padding בפועל. */
+      scroll-padding-inline: 16px;
       /* מונע מהדפדפן "לעזור" ולהזיז לבד את scrollLeft כפיצוי על שינוי-גודל תוכן א-סינכרוני
          (במיוחד "עסקים נבחרים" — הסקשן היחיד עם טעינת תמונות eager, לא lazy — ר' PROJECT_CONTEXT.md).
          בלי זה, ה-scrollLeft=0 שאנחנו קובעים ב-JS יכול "להידרס" ע"י scroll anchoring טבעי של הדפדפן. */
@@ -250,6 +267,12 @@
          ב-RTL "נשכח" והפריטים מתמרכזים/נדחקים במקום להיצמד לימין — ר' PROJECT_CONTEXT.md §31. */
       direction: rtl;
       justify-content: flex-start;
+      /* דהייה רכה רק בקצה השמאלי (שם תמיד נמצא הכרטיס-החצי-גלוי, ר' עיצוב X.5-כרטיסים) —
+         לא בקצה הימני: שם תמיד יושב הכרטיס הראשון האמיתי, שלם ומעוגן, בלי מה "לרמוז" עליו.
+         דהייה סימטרית (משני הצדדים) גרמה לבאג-אמת: היא כירסמה 28px מפיקסלים אמיתיים של הכרטיס
+         הראשון עצמו (לא רק מריפוד ריק), ויצרה "פינה לבנה" נראית-לעין בפינה הימנית שלו. */
+      -webkit-mask-image: linear-gradient(to right, transparent 0, black 28px, black 100%);
+      mask-image: linear-gradient(to right, transparent 0, black 28px, black 100%);
     }
     .cards-scroll::-webkit-scrollbar { display: none; }
 
@@ -280,12 +303,16 @@
     }
     .biz-card-cover-img { transition: transform .45s cubic-bezier(.2,.7,.3,1); }
     .biz-card:hover .biz-card-cover-img { transform: scale(1.06); }
+    /* עודכן משם-מקוצר-2-אותיות (34px) לשם-מלא — פונט קטן יותר וקו-שבירה כדי שהשם השלם ייכנס
+       בתיבת-4:3, בקשה מפורשת: "תרשום את השם שלהם בצהוב במקום רק את הקיצור" */
     .biz-logo {
       position: absolute; inset: 0; width: 100%; height: 100%;
       background: var(--ink);
       display: flex; align-items: center; justify-content: center;
-      font-size: 34px; font-weight: 800; color: var(--acc);
-      letter-spacing: -1px; font-family: 'Rubik', sans-serif;
+      padding: 14px; text-align: center;
+      font-size: 19px; font-weight: 800; color: var(--acc);
+      line-height: 1.25; letter-spacing: -0.01em; font-family: 'Rubik', sans-serif;
+      overflow: hidden;
     }
     .biz-card-cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
     .biz-card-logo-badge {
@@ -315,7 +342,7 @@
     .biz-card-like.liked .like-heart path { fill: var(--acc); stroke: var(--acc); }
 
     .biz-card-body { padding: 12px 16px 16px; display: flex; flex-direction: column; flex: 1; min-height: 0; }
-    .biz-card-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .biz-card-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .biz-card-cat  { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
 
     /* flex-wrap:wrap כרגיל — 2 תגיות קצרות/בינוניות יישבו זו-ליד-זו בשורה אחת (מוקטן טיפה כדי לעזור למקרים גבוליים),
@@ -332,6 +359,8 @@
       display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
     }
     .biz-discount-text {
+      /* בקשה מפורשת: הנחה בכחול (--ink, אותו כחול-המותג), שם העסק בשחור (#000) — ההבדלה
+         עכשיו דרך זוג-הצבעים הזה, לא badge/רקע. */
       font-size: 14px; font-weight: 700; color: var(--ink); line-height: 1.3;
       width: 100%;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -343,8 +372,11 @@
     .biz-city { margin-top: 6px; font-size: 10.5px; color: var(--ink-3); display: flex; align-items: center; gap: 3px; }
 
     /* ══ GRID CARDS (category view) ══ */
-    .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); grid-auto-rows: auto; gap: 12px; padding: 0 16px; }
-    .cards-grid .biz-card { min-width: unset; max-width: unset; width: 100%; }
+    /* עודכן מ-stretch-דו-עמודות (minmax(160px,1fr) + width:100% על הכרטיס) לגודל-קבוע (238px,
+       אותו גודל בדיוק כמו כרטיס-שורה) — במסך-מובייל רגיל (~375-430px) זה נותן עמודה אחת
+       באופן טבעי (238+12 רווח > השטח הפנוי), גם ב"הכל" וגם בלחיצה על קטגוריה. justify-content:center
+       כדי שהכרטיס היחיד לא יידבק לקצה אחד. בדסקטופ (media query למטה) יש override נפרד. */
+    .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, 238px); grid-auto-rows: auto; gap: 12px; padding: 0 16px; justify-content: center; }
 
     /* ══ EMPTY ══ */
     .empty-cat { text-align: center; padding: 40px 20px; color: var(--text-sm); font-size: 14px; }
@@ -672,7 +704,8 @@
     .menu-drawer {
       position: relative; z-index: 1;
       width: min(392px, 88vw); flex: none; align-self: stretch;
-      background: var(--surface);
+      /* ניסיון: רקע צהוב (--acc) במקום לבן — ר' התאמות-ניגודיות בהמשך (לוגו-רקע/פסים/שורה-פעילה) */
+      background: var(--acc);
       display: flex; flex-direction: column;
       box-shadow: -18px 0 44px rgba(10,42,102,.18);
       overflow: hidden;
@@ -681,13 +714,28 @@
     @keyframes menuDrawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
     .menu-bg-logo {
       position: absolute; z-index: 0; pointer-events: none;
-      bottom: -60px; left: -78px; width: 230px; height: auto;
-      opacity: .07; mix-blend-mode: multiply;
+      /* left:-78px היה דוחף כ-1/3 מהלוגו מחוץ לגבול השמאלי של המגירה (overflow:hidden חותך שם) —
+         לא נראה בפועל. עכשיו קרוב לצד שמאל (לא ממורכז) אבל בלי להיחתך. */
+      /* הועלה מ--60px — היה חופף כמעט לגמרי מתחת לריבוע-האינסטגרם. עכשיו רק חפיפה קלה.
+         הוגדל מ-230px ל-420px כך שיכסה לפחות חצי מגובה המגירה מלמטה, כמו רקע-דוגמה משתלב
+         ולא רק אייקון-watermark קטן. עדיין קרוב לצד שמאל (לא ממורכז) — עם הגודל החדש זה אומר
+         שהוא גם גולש טיפה מעבר לקצה הימני של המגירה, וזה בסדר לרקע גדול כזה. */
+      bottom: -10px; left: 15px; width: 420px; height: auto;
+      /* לבן בלי multiply (multiply עם לבן לא עושה כלום חזותית) — אופסיטי גבוה טיפה כי לבן-על-צהוב
+         עדיין מאוד עדין בניגוד ל-multiply-על-לבן הקודם */
+      color: #fff; opacity: .18;
     }
     .menu-header, .menu-list, .menu-promo { position: relative; z-index: 1; }
     .menu-header {
+      /* בקשה מפורשת: "הקו למעלה" יהיה כמו קו-האתר (top-nav) שיתחבר איתו — אותו מתכון בדיוק:
+         רקע לבן + border-bottom צהוב + box-shadow כחול, לא עוד שני div נפרדים (menu-stripe,
+         ר' למטה — הוסרו מה-HTML כדי לא לקבל קו כפול). */
       display: flex; align-items: center; justify-content: space-between;
-      padding: 6px 16px 4px;
+      padding: 7px 16px;
+      background: var(--surface);
+      border-bottom: 3px solid var(--acc);
+      box-shadow: 0 3px 0 0 var(--ink);
+      position: relative; z-index: 2;
     }
     .menu-header-logo img { display: block; height: 26px; width: auto; object-fit: contain; }
     .menu-close {
@@ -705,8 +753,10 @@
     .menu-close .hbg-line:nth-child(2) { transform: rotate(-45deg); }
     .menu-close:active { background: var(--acc-soft); }
     .menu-stripe { height: 3px; }
-    .menu-stripe.acc { background: var(--acc); }
-    .menu-stripe.ink { background: var(--ink); }
+    /* ניסיון: על רקע-צהוב פס צהוב היה נבלע — הוחלף לכחול+לבן (השמות acc/ink נשארו כמו שהיו
+       ב-HTML, רק הצבע-בפועל שהם מייצרים כאן שונה מהמשמעות המילולית שלהם) */
+    .menu-stripe.acc { background: var(--ink); }
+    .menu-stripe.ink { background: #fff; }
     .menu-list { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 8px 8px 8px; gap: 2px; overflow-y: auto; }
     .menu-item {
       display: flex; align-items: center; gap: 13px;
@@ -725,13 +775,14 @@
     }
     .menu-item-icon svg { width: 18px; height: 18px; }
     .menu-item-label { font-size: 14.5px; font-weight: 600; }
-    /* פריט התפריט שמסמן על איזה דף אנחנו נמצאים כרגע */
-    .menu-item.active { border-right-color: var(--acc); background: var(--acc-soft); }
-    .menu-item.active .menu-item-icon { background: var(--acc); color: var(--ink); }
+    /* פריט התפריט שמסמן על איזה דף אנחנו נמצאים כרגע — ניסיון: לבן על הרקע הצהוב (היה
+       צהוב-בהיר-על-לבן, הפוך עכשיו כשהרקע עצמו צהוב) */
+    .menu-item.active { border-right-color: var(--ink); background: #fff; }
+    .menu-item.active .menu-item-icon { background: var(--ink); color: #fff; }
     .menu-item.active .menu-item-label { font-weight: 700; }
     .menu-group-gap { margin-top: 12px; }
     .menu-promo {
-      margin: 14px 16px 0; padding: 14px 16px; border-radius: var(--r-card);
+      margin: 14px 16px 16px; padding: 14px 16px; border-radius: var(--r-card);
       background: var(--acc-soft); border: 1px solid var(--acc-line);
       display: flex; align-items: center; gap: 12px; text-decoration: none;
     }
@@ -796,6 +847,73 @@
     .site-footer-highlight.site-footer-link { text-decoration: none; }
     .site-footer-brand { color: var(--ink-3); font-weight: 700; }
     .footer-ig-icon { width: 13px; height: 13px; vertical-align: -2px; }
+
+    /* ══ קונטיינר רחב לדסקטופ — שטח-תוכן קבוע 1370px, ממורכז ══
+       אותו רעיון מ-demo-redesign-home.html (מקור-האמת למידות), אבל עם שוליים מצומצמים (20px
+       במקום 28px) ויעד-כרטיסים מוגדל ל-5.5 (במקום 4.5) לפי בקשה מפורשת ("ננסה לצמצם שוליים
+       ולשים 5.5"): .section (לא-גולל) נעצר ב-1410px + padding:20px, וה-.cards-scroll הגולל
+       יורש קופסה כבר-מצומצמת ל-1410-2*20=1370px בלי שום padding משלו. קריטי שזה יישב על
+       .section ולא על .cards-scroll עצמו — padding לא באמת "עוצר" תוכן שגולל (זה קובע רק את
+       מיקום-המנוחה בצד ההתחלה, שום דבר לא מונע מהתוכן להמשיך עד קצה-הקופסה האמיתי בצד השני;
+       ר' תקלה שנתפסה בפועל כשזה היה על cards-scroll — נתן 5.5-6 כרטיסים במקום 4.5 המיועדים אז).
+       238px רוחב כרטיס + 12px רווח: 5 כרטיסים שלמים (5*250-12=1238) + עוד 132/238≈55% מהשישי. */
+    @media (min-width: 761px) {
+      .section {
+        /* width:100% חובה כאן — body הוא flex container (column), ו-.section הוא flex item ישיר
+           שלו. margin-inline:auto על flex item בלי width מפורש גורם ל"התכווצות לפי תוכן"
+           (shrink-to-fit) במקום מתיחה-עד-1410, כי auto-margins בציר-הרוחב מבטלים את ברירת-המחדל
+           align-items:stretch. נתפס בפועל בשורות-כרטיסים דלילות (למשל "העסקים שאהבתי", 3 כרטיסים בלבד). */
+        width: 100%;
+        max-width: 1410px; margin-inline: auto;
+        padding-left: 20px; padding-right: 20px;
+      }
+      .section-header, .cards-scroll, .cards-grid {
+        padding-left: 0; padding-right: 0;
+      }
+      .cards-scroll { scroll-padding-inline: 0; }
+      .site-footer {
+        padding-left: max(20px, calc((100% - 1370px) / 2));
+        padding-right: max(20px, calc((100% - 1370px) / 2));
+      }
+      /* top-nav/hero/cats-section לא נכנסים לקונטיינר-הצר עצמם — הרקע הלבן שלהם חייב להישאר
+         פרוש על כל רוחב הדף (בקשה מפורשת). ל-cats-scroll (הגולל) יש max-width+margin:auto
+         משלו ישירות — לא padding כמו בניסיון הקודם: cats-scroll הוא ילד רגיל של .cats-section
+         שהוא בלוק פשוט (לא flex item), אז margin:auto כאן מתנהג בדיוק כמו קונטיינר-ממורכז קלאסי,
+         בלי הבאג של flex-shrink-to-content שיש ל-.section למעלה. אין לו padding משלו כלל —
+         ה"שוליים" מגיעים כולם מה-margin החיצוני, אז אין padding לתוכן-גולל לעקוף (ר' תקלת
+         cards-scroll הקודמת). max-width זהה בכוונה ל-1370 (=1410-2*20) כדי שהקטגוריות ייושרו
+         בדיוק עם שורות-הכרטיסים למטה. */
+      .cats-scroll {
+        max-width: 1370px; margin-inline: auto;
+        padding-left: 0; padding-right: 0;
+        scroll-padding-inline: 0;
+        justify-content: space-between;
+      }
+      /* עדכון: לא עוד ריפוד קבוע 24px — התוכן (לוגו/המבורגר, "שלום רמי"+חיפוש) מתיישר עכשיו
+         לאותו קונטיינר-1370 כמו הקטגוריות/הכרטיסים (שוליים ריקים בצדדים, ר' בקשה מפורשת).
+         הרקע הלבן + הקו צהוב+כחול (border-bottom/box-shadow על .top-nav עצמו) נשארים פרושים
+         על כל רוחב הדף בכל מקרה — padding לא חותך background/border, רק מזיז את התוכן פנימה. */
+      .top-nav, .hero {
+        padding-left: max(20px, calc((100% - 1370px) / 2));
+        padding-right: max(20px, calc((100% - 1370px) / 2));
+      }
+      .cat-item { width: 104px; gap: 10px; }
+      .cat-circle { width: 78px; height: 78px; }
+      .cat-circle svg { width: 32px; height: 32px; }
+      .cat-label { font-size: 13px; }
+      /* ניסיון: 294px במקום 238px — באותו שטח-תוכן קיים (1370px, לא שינינו שוליים) זה נותן
+         בדיוק 4.5 כרטיסים גלויים בשורה (4 שלמים + 146/294≈50% מהחמישי) במקום 5.5 קודם.
+         width:100% על biz-card, שהיה מיועד ל-.cards-grid בלבד, ה-.cards-grid .biz-card
+         הספציפי יותר מנצח ממילא — נשאר עקבי לגודל הזהה שביקשת (שורות=גריד=294px). */
+      .biz-card { min-width: 294px; max-width: 294px; }
+      /* תצוגת "רואה הכל" (cards-grid, מ"הכל" בסקשן) — כרטיסים באותו גודל קבוע כמו בשורות. עם
+         auto-fill ברוחב-קבוע (לא minmax גמיש) זה נותן כמה עמודות שנכנסות בקונטיינר 1370px. */
+      .cards-grid { grid-template-columns: repeat(auto-fill, 294px); }
+      .cards-grid .biz-card { min-width: 294px; max-width: 294px; width: 294px; }
+      /* לחיצה על קטגוריה אמיתית (לא "הכל") — 2 בשורה (לא 1, לא הגריד-הרחב), אותו גודל כרטיס.
+         מוחל דרך cards-grid-list שמתווסף/מוסר ב-renderCatFeedContent לפי סוג ה-cat. */
+      .cards-grid.cards-grid-list { grid-template-columns: repeat(2, 294px); }
+    }
 
     /* ══ PWA — התקנה למסך הבית ══ */
     .pwa-install-banner {
@@ -935,6 +1053,10 @@
       <div class="cat-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></div>
       <div class="cat-label">הכל</div>
     </div>
+    <div class="cat-item" onclick="filterCat('myLoved',this)">
+      <div class="cat-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12,21.35 L10.55,20.03 C5.4,15.36 2,12.27 2,8.5 C2,5.41 4.42,3 7.5,3 C9.24,3 10.91,3.81 12,5.08 C13.09,3.81 14.76,3 16.5,3 C19.58,3 22,5.41 22,8.5 C22,12.27 18.6,15.36 13.45,20.03 L12,21.35 Z"/></svg></div>
+      <div class="cat-label">העסקים שאהבתי</div>
+    </div>
     <div class="cat-item" onclick="filterCat('food',this)">
       <div class="cat-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 3v7a3 3 0 0 0 6 0V3"/><path d="M7 10v11"/><path d="M17 3c-1.7 1.3-2.5 3.3-2.5 5.5S15.3 13 17 13v8"/></svg></div>
       <div class="cat-label">אוכל ומסעדות</div>
@@ -976,7 +1098,11 @@
   <div class="section" id="featuredSection">
     <div class="section-header">
       <div class="section-title">עסקים נבחרים</div>
-      <a class="see-all" onclick="filterCat('featured',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+      <div class="section-actions">
+        <a class="see-all" onclick="filterCat('featured',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,1)" aria-label="הקודם"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,-1)" aria-label="הבא"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></button>
+      </div>
     </div>
     <div class="cards-scroll" id="featuredBizScroll"></div>
   </div>
@@ -984,7 +1110,11 @@
   <div class="section">
     <div class="section-header">
       <div class="section-title">חדש אצלנו</div>
-      <a class="see-all" onclick="filterCat('new',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+      <div class="section-actions">
+        <a class="see-all" onclick="filterCat('new',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,1)" aria-label="הקודם"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,-1)" aria-label="הבא"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></button>
+      </div>
     </div>
     <div class="cards-scroll" id="newBizScroll"></div>
   </div>
@@ -992,7 +1122,11 @@
   <div class="section">
     <div class="section-header">
       <div class="section-title">הטבות שוות</div>
-      <a class="see-all" onclick="filterCat('deals',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+      <div class="section-actions">
+        <a class="see-all" onclick="filterCat('deals',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,1)" aria-label="הקודם"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,-1)" aria-label="הבא"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></button>
+      </div>
     </div>
     <div class="cards-scroll" id="dealsBizScroll"></div>
   </div>
@@ -1000,7 +1134,11 @@
   <div class="section" id="lovedSection">
     <div class="section-header">
       <div class="section-title">הכי אהובים</div>
-      <a class="see-all" onclick="filterCat('loved',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+      <div class="section-actions">
+        <a class="see-all" onclick="filterCat('loved',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,1)" aria-label="הקודם"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,-1)" aria-label="הבא"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></button>
+      </div>
     </div>
     <div class="cards-scroll" id="lovedBizScroll"></div>
   </div>
@@ -1008,7 +1146,11 @@
   <div class="section">
     <div class="section-header">
       <div class="section-title">הכי פופולריים</div>
-      <a class="see-all" onclick="filterCat('popular',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+      <div class="section-actions">
+        <a class="see-all" onclick="filterCat('popular',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,1)" aria-label="הקודם"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,-1)" aria-label="הבא"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></button>
+      </div>
     </div>
     <div class="cards-scroll" id="popularBizScroll"></div>
   </div>
@@ -1016,7 +1158,11 @@
   <div class="section">
     <div class="section-header">
       <div class="section-title">קניה אונליין</div>
-      <a class="see-all" onclick="filterCat('online',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+      <div class="section-actions">
+        <a class="see-all" onclick="filterCat('online',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,1)" aria-label="הקודם"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,-1)" aria-label="הבא"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></button>
+      </div>
     </div>
     <div class="cards-scroll" id="onlineBizScroll"></div>
   </div>
@@ -1024,7 +1170,11 @@
   <div class="section" id="myLovedSection">
     <div class="section-header">
       <div class="section-title">העסקים שאהבתי</div>
-      <a class="see-all" onclick="filterCat('myLoved',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+      <div class="section-actions">
+        <a class="see-all" onclick="filterCat('myLoved',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,1)" aria-label="הקודם"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,-1)" aria-label="הבא"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></button>
+      </div>
     </div>
     <div class="cards-scroll" id="myLovedBizScroll"></div>
   </div>
@@ -1039,6 +1189,8 @@
           <span id="nearLocationAction" style="font-size:10px; color:rgba(var(--fg-rgb),0.35);">עדכון מיקום</span>
         </div>
         <a class="see-all" onclick="filterCat('near',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,1)" aria-label="הקודם"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,-1)" aria-label="הבא"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></button>
       </div>
     </div>
     <div class="cards-scroll" id="nearBizScroll"></div>
@@ -1057,7 +1209,11 @@
   <div class="section">
     <div class="section-header">
       <div class="section-title">כל העסקים</div>
-      <a class="see-all" onclick="filterCat('everyone',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+      <div class="section-actions">
+        <a class="see-all" onclick="filterCat('everyone',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,1)" aria-label="הקודם"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,-1)" aria-label="הבא"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></button>
+      </div>
     </div>
     <div class="cards-scroll" id="allBizGrid"></div>
   </div>
@@ -1077,7 +1233,7 @@
 
 <footer class="site-footer">
   <img class="site-footer-logo" src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
-  <div class="site-footer-line"><a class="site-footer-link site-footer-highlight" href="https://instagram.com/Yellowzone.mta" target="_blank"><span dir="ltr">Yellowzone.mta <svg class="footer-ig-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></span></a> · © 2026 · <a class="site-footer-link" href="terms.html">תקנון ומדיניות לאוהדים</a></div>
+  <div class="site-footer-line"><a class="site-footer-link site-footer-highlight" href="https://instagram.com/Yellowzone.mta" target="_blank"><span dir="ltr">Yellowzone.mta <svg class="footer-ig-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></span></a> · © 2026 · <a class="site-footer-link" href="terms.html">תקנון ומדיניות לאוהדים (עודכן: יולי 2026)</a></div>
 </footer>
 
 <script>
@@ -1201,7 +1357,7 @@ function bizLogo(biz) {
   if (biz.logo) {
     return `<img src="${biz.logo}" alt="${biz.name}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" onerror="this.replaceWith(bizLogoFallbackEl('${biz.cat}','${biz.name}'))" />`;
   }
-  return `<div class="biz-logo">${bizInitials(biz.name)}</div>`;
+  return `<div class="biz-logo">${biz.name}</div>`;
 }
 
 // מגן מפני ערך תקול שנשמר בעבר בטעות (באג ישן: img.src='' נפתר לכתובת הדף עצמו, לא למחרוזת ריקה)
@@ -1256,7 +1412,7 @@ function bizCardImage(biz, eager) {
 function bizLogoFallbackEl(cat, name) {
   const el = document.createElement('div');
   el.className = 'biz-logo';
-  el.textContent = bizInitials(name);
+  el.textContent = name;
   return el;
 }
 
@@ -1544,6 +1700,23 @@ let _homeScrollY = 0;
 // את הגריד הזה גם כשמגיעים נתונים חדשים (למשל לייק) בזמן שהוא פתוח, ר' renderCatFeedContent().
 let _currentCatFeedKey = null;
 
+// חיצי גלילה בהדר-סקשן (רק במסך רחב, ר' .scroll-arrow-btn) — מזיז בדיוק 4 כרטיסים שלמים,
+// לא את כל רוחב-התצוגה (~4.5 כרטיסים, ר' .cards-scroll padding). כך חצי-הכרטיס שהציץ בקצה
+// לפני הלחיצה הופך לכרטיס מלא בסט החדש, וחצי-כרטיס חדש מציץ בקצה השני — לא נשאר שריד
+// של אותו חצי-כרטיס שכבר נראה.
+function scrollCardsRow(btn, dir) {
+  const section = btn.closest('.section');
+  const row = section && section.querySelector('.cards-scroll');
+  const card = row && row.querySelector('.biz-card');
+  if (!card) return;
+  const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+  // 4, לא 5 — חייב להיות זהה ל"שלם" ביעד-הכרטיסים הנוכחי (כרגע חזרה ל-4.5, ר' .biz-card
+  // ב-media query — הכרטיסים התרחבו ל-294px במקום השוליים, אז חזרנו ל-4.5 כמו קודם),
+  // אחרת חצי-הכרטיס שנשאר מהלחיצה הקודמת לא הופך לכרטיס-מלא בסט החדש.
+  const step = 4 * (card.getBoundingClientRect().width + gap);
+  row.scrollBy({ left: dir * step, behavior: 'smooth' });
+}
+
 function filterCat(cat, el) {
   document.querySelectorAll('.cat-item').forEach(c => c.classList.remove('active'));
   if (el) el.classList.add('active');
@@ -1594,6 +1767,12 @@ function renderCatFeedContent(cat) {
   }
 
   document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${title}</div>`;
+
+  // "רואה הכל" מסקשן (featured/new/deals/...) נשאר גריד רחב (5 בשורה בדסקטופ) — לחיצה על
+  // קטגוריה אמיתית (food/events/... מהעיגולים למעלה, לא ברשימה הזו) הופכת לרשימה אנכית של
+  // עסק אחד בשורה, לפי בקשה מפורשת של המשתמש (מדגיש/ מרוכז יותר לגבי קטגוריה ספציפית).
+  const CAT_FEED_GRID_KEYS = ['featured','new','deals','popular','loved','myLoved','online','near','everyone'];
+  document.getElementById('catFeedGrid').classList.toggle('cards-grid-list', !CAT_FEED_GRID_KEYS.includes(cat));
 
   if (!filtered.length) {
     document.getElementById('catFeedGrid').innerHTML =
@@ -2452,8 +2631,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
     </a>
   </div>
-  <div class="menu-stripe acc"></div>
-  <div class="menu-stripe ink"></div>
   <div class="menu-list">
     <button class="menu-item active" onclick="closeMenu(); showHome(); window.scrollTo({top:0,behavior:'smooth'})">
       <span class="menu-item-icon">🏠</span>

@@ -945,9 +945,17 @@ function hydrateBiz(id, raw) {
     ownerSubscriberNumber: raw.subNum || null,
     ownerFacebookUrl: raw.fbUrl || '',
     ownerProofPhotoUrl: raw.photoProofUrl || '',
-    aiShortTitle: raw.discountText || '',
-    discountFullText: raw.discountTextFull || raw.discountText || '',
-    additionalDiscounts: raw.additionalDiscounts || [],
+    // תוקן — 2 באגים אמיתיים היו כאן:
+    // (1) discountFullText נפל-בחזרה ל-raw.discountText (הכותרת המקוצרת) כשלא היה discountTextFull —
+    //     זה גרם לטופס-העריכה להציג את הכותרת-הקצרה כאילו היא התיאור-המלא, ושמירה "מאשרת" את
+    //     ההחלפה השקטה הזו לצמיתות — בדיוק התלונה: "דורסת את ההטבה הראשונה ומעתיקה את המקוצרת".
+    // (2) שני השדות קראו רק מ-raw (המצב המאושר/הישן), אף פעם לא מ-raw.pendingChanges (מה שבעל
+    //     העסק בפועל ביקש ועדיין ממתין לאישור) — אז אם הייתה בקשה ממתינה, המנהל היה עורך על סמך
+    //     נתונים ישנים, והשמירה הייתה דורסת את הבקשה האמיתית של בעל העסק בלי לדעת שהוא בכלל ראה אותה.
+    aiShortTitle: (raw.pendingChanges && 'discountText' in raw.pendingChanges) ? raw.pendingChanges.discountText : (raw.discountText || ''),
+    discountFullText: (raw.pendingChanges && 'discountTextFull' in raw.pendingChanges) ? raw.pendingChanges.discountTextFull : (raw.discountTextFull || ''),
+    // אותו תיקון (2) גם כאן — הטבה 2/3 חייבות להעדיף בקשה-ממתינה על פני המצב הישן, מאותה סיבה בדיוק
+    additionalDiscounts: (raw.pendingChanges && 'additionalDiscounts' in raw.pendingChanges) ? raw.pendingChanges.additionalDiscounts : (raw.additionalDiscounts || []),
     // דיף שינויים ממתינים — נבנה מהערך הישן על המסמך מול הערך המוצע ב-pendingChanges (אמיתי, לא מוק)
     pendingChangeDiff: raw.pendingChanges ? Object.fromEntries(
       Object.keys(raw.pendingChanges).map(k => [k, { old: fmtDiffVal(raw[k]), new: fmtDiffVal(raw.pendingChanges[k]) }])
