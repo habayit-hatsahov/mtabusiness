@@ -772,20 +772,24 @@
       background: none; width: 100%; text-align: right;
       transition: background .15s;
     }
-    .menu-item:active { background: var(--field); }
+    /* לחיצה — כחול (var(--ink)) במקום אפור, כולל היפוך אייקון+טקסט ללבן לניגודיות (בקשה מפורשת:
+       "יותר מעניין ויפה"), לא רק לפריט ה"פעיל"/דף-נוכחי (זה נשאר נפרד, ר' .menu-item.active למטה) */
+    .menu-item:active { background: var(--ink); color: #fff; }
+    .menu-item:active .menu-item-icon { background: rgba(255,255,255,.18); color: #fff; }
     .menu-item-icon {
       width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
       background: var(--field); color: var(--ink);
       display: flex; align-items: center; justify-content: center;
       font-size: 16px;
+      transition: background .15s, color .15s;
     }
     .menu-item-icon svg { width: 18px; height: 18px; }
     .menu-item-label { font-size: 14.5px; font-weight: 600; }
     /* פריט התפריט שמסמן על איזה דף אנחנו נמצאים כרגע — ניסיון: לבן על הרקע הצהוב (היה
        צהוב-בהיר-על-לבן, הפוך עכשיו כשהרקע עצמו צהוב) */
-    .menu-item.active { border-right-color: var(--ink); background: #fff; }
-    .menu-item.active .menu-item-icon { background: var(--ink); color: #fff; }
-    .menu-item.active .menu-item-label { font-weight: 700; }
+    .menu-item.active { border-right-color: var(--ink); background: var(--ink); }
+    .menu-item.active .menu-item-icon { background: rgba(255,255,255,.18); color: #fff; }
+    .menu-item.active .menu-item-label { font-weight: 700; color: #fff; }
     .menu-group-gap { margin-top: 12px; }
     .menu-promo {
       margin: 14px 16px 16px; padding: 14px 16px; border-radius: var(--r-card);
@@ -799,6 +803,12 @@
     }
     .menu-promo-title { font-size: 14px; font-weight: 700; color: var(--ink); }
     .menu-promo-sub { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+    .menu-add-biz {
+      display: block; margin: 0 16px 16px; text-align: right;
+      font-size: 12.5px; font-weight: 700; color: var(--ink-3);
+      text-decoration: none; cursor: pointer;
+    }
+    .menu-add-biz:active { color: var(--ink); }
 
     /* ══ CONTACT SHEET ══ */
     .contact-overlay {
@@ -853,6 +863,14 @@
     .site-footer-highlight.site-footer-link { text-decoration: none; }
     .site-footer-brand { color: var(--ink-3); font-weight: 700; }
     .footer-ig-icon { width: 13px; height: 13px; vertical-align: -2px; }
+    /* מובייל צר (~375px) — הלוגו+שורת-הקישורים לא נכנסים ברוחב אחד (נמדד בפועל: 375.9px תוכן
+       מול 343px זמין), הדפדפן עוטף ל-2 שורות נפרדות (flex-wrap) שנראות "לא באותו קו" — בקשה
+       מפורשת של המשתמש. מקטינים מעט לוגו/רווח/גופן/ריפוד כדי שיישאר תמיד בשורה אחת. */
+    @media (max-width: 480px) {
+      .site-footer { padding-left: 14px; padding-right: 14px; gap: 8px; }
+      .site-footer-logo { height: 22px; }
+      .site-footer-line { font-size: 10.5px; }
+    }
 
     /* ══ קונטיינר רחב לדסקטופ — שטח-תוכן קבוע 1370px, ממורכז ══
        אותו רעיון מ-demo-redesign-home.html (מקור-האמת למידות), אבל עם שוליים מצומצמים (20px
@@ -986,19 +1004,32 @@
 <script>
   window._hbSplashFirstEntry = !sessionStorage.getItem('hb_splash_shown');
   window._hbSplashReady = false;
+  window._hbSplashPending = { cards: false, name: false };
   if (window._hbSplashFirstEntry) {
     sessionStorage.setItem('hb_splash_shown', '1');
     window._hbSplashStart = Date.now();
     var hbSplashEl = document.getElementById('hbSplash');
     if (hbSplashEl) hbSplashEl.classList.add('show');
-    window._hbSplashTimer = setTimeout(function () { window._hbHideSplash(); }, 3500);
+    // רשת-ביטחון אמיתית בלבד (לא עוד "טיימר רגיל") — מיועדת רק לכשל אמיתי (רשת מתה וכו'),
+    // לא לחיבור רגיל-אבל-איטי: כניסה קרה-לגמרי (התקנה טרייה, בלי שום cache מקומי חם) יכולה
+    // לקחת בלגיטימיות 10-15 שניות (טעינת SDK + auth + 2 שאילתות Firestore רצופות). 3.5s
+    // הישן היה קצר מדי — נורה תמיד לפני שהתוכן האמיתי מוכן, וחשף מסך-בית ריק/שבור למשתמש
+    // בדיוק כשה-splash כבר נעלם (דווח בפועל, ר' PROJECT_CONTEXT.md).
+    window._hbSplashTimer = setTimeout(function () { window._hbHideSplash(true); }, 15000);
   } else {
     var hbSplashElSkip = document.getElementById('hbSplash');
     if (hbSplashElSkip) hbSplashElSkip.remove();
   }
-  // נקרא מתוך loadFirebaseData ברגע שיש תוכן אמיתי על המסך — אידמפוטנטי, בטוח לקרוא כמה פעמים
-  window._hbHideSplash = function () {
+  // נקרא per-חלק ('cards'/'name') ברגע שהוא מוכן בפועל — המסך נעלם רק כששני החלקים
+  // מוכנים (או שרשת-הביטחון מתפרצת), כדי שלא ייחשף מצב-ביניים חצי-ריק.
+  window._hbMarkReady = function (part) {
+    if (window._hbSplashPending) window._hbSplashPending[part] = true;
+    window._hbHideSplash();
+  };
+  window._hbHideSplash = function (force) {
     if (window._hbSplashReady || !window._hbSplashFirstEntry) { window._hbSplashReady = true; return; }
+    var p = window._hbSplashPending;
+    if (!force && p && !(p.cards && p.name)) return;
     if (window._hbSplashHidePending) return;
     var minShow = 1500;
     var elapsed = Date.now() - window._hbSplashStart;
@@ -1006,7 +1037,7 @@
       window._hbSplashHidePending = true;
       setTimeout(function () {
         window._hbSplashHidePending = false;
-        window._hbHideSplash();
+        window._hbHideSplash(force);
       }, minShow - elapsed);
       return;
     }
@@ -1310,7 +1341,7 @@ document.addEventListener('DOMContentLoaded', () => {
 window.loadFirebaseData = function(data, isPreview) {
   businesses = data;
   renderSections();
-  window._hbHideSplash && window._hbHideSplash();
+  window._hbMarkReady && window._hbMarkReady('cards');
   if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey);
   if (isPreview) return;
   refreshSheetIfOpen();
@@ -2713,10 +2744,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="menu-promo-sub">כל ההטבות החדשות קודם באינסטגרם</div>
     </span>
   </a>
-  <a class="menu-item" href="business.html?ctx=menu" target="_blank" rel="noopener">
-    <span class="menu-item-icon">➕</span>
-    <span class="menu-item-label">הוסף עסק</span>
-  </a>
+  <a class="menu-add-biz" href="business.html?ctx=menu" target="_blank" rel="noopener">➕ הוסיפו עסק</a>
 </div><!-- end menu-drawer -->
 </div>
 <!-- ══ CONTACT SHEET ══ -->
@@ -2946,14 +2974,39 @@ await new Promise(resolve => {
   try {
     const memberId = auth.currentUser?.uid;
     const snap = await getDoc(doc(db, 'members', memberId));
-    const firstName = snap.exists() ? (snap.data().firstName || '') : '';
+    const data = snap.exists() ? snap.data() : {};
+    const firstName = data.firstName || '';
     const el = document.getElementById('heroUserName');
     if (el) el.textContent = firstName || 'חבר';
     // עדכון ה-cache המקומי לביקור הבא (ר' ההצגה המיידית לעיל, לפני ה-auth guard)
     if (firstName) {
       try { localStorage.setItem('hb_greeting_cache', JSON.stringify({ uid: memberId, firstName })); } catch (e) {}
     }
+    // טעינה מוקדמת (prefetch) של כל מה ש-profile.html צריך — אותו מסמך members/{uid} כבר בידינו
+    // כאן, אז אין שאילתה נוספת. כתוב באותו פורמט בדיוק שprofile.html קורא (renderIdentity/hb_profile_cache),
+    // כדי שמעבר מ-home.html ל"פרטים אישיים" יראה הכל מיד מה-cache, בלי לחכות לשליפה משלו. בקשה מפורשת
+    // של המשתמש: "זה צריך לעלות ברקע שאני נמצא באינדקס".
+    if (snap.exists()) {
+      try {
+        localStorage.setItem('hb_profile_cache', JSON.stringify({
+          uid: memberId,
+          firstName: data.firstName || '',
+          lastName:  data.lastName  || '',
+          memberId:  data.memberNumber || 0,
+          approvedDate: (data.approvedAt?.toDate() || new Date()).toISOString(),
+          isSubscriber: data.isSubscriber === true || data.isSubscriber === 'yes',
+          subscriberSection: data.subscriberSection || null,
+          phone: data.phone || '',
+          email: data.email || '',
+          isBusinessOwner: data.isBusinessOwner === true,
+          isAdmin: data.isAdmin === true,
+          linkedBusinessId: data.linkedBusinessId || null,
+          status: data.status || 'pending',
+        }));
+      } catch (e) {}
+    }
   } catch (e) { console.error('hero greeting name fetch failed:', e); }
+  window._hbMarkReady && window._hbMarkReady('name');
 })();
 
 window._likeFirestoreToggle = async function(id, memberId, liked) {
