@@ -98,7 +98,7 @@ while ($listener.IsListening) {
 
     # ── Normal file serving ────────────────────────────────────────────────────
     $path = $ctx.Request.Url.LocalPath.TrimStart('/')
-    if ($path -eq '' -or $path -eq '/') { $path = 'nav.html' }
+    if ($path -eq '' -or $path -eq '/') { $path = 'landing-demo.html' }
     $file = Join-Path $root $path
 
     if (Test-Path $file) {

@@ -8,6 +8,7 @@ import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
 import { runBackfillThumbnails } from './backfill.js';
 import { sendWebPush } from './push.js';
+import { handleDownloadImage } from './download.js';
 
 const SITE_BASE = 'https://habayit-hatsahov.github.io/mtabusiness/';
 
@@ -43,6 +44,9 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/send-broadcast-email') {
         return json(await handleSendBroadcastEmail(await request.json(), env), env, request);
+      }
+      if (request.method === 'GET' && url.pathname === '/download-image') {
+        return handleDownloadImage(request, env);
       }
       return json({ error: 'not_found' }, env, request, 404);
     } catch (e) {
