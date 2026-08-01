@@ -36,7 +36,7 @@ const TAG_TO_QUERY = {
   'אטרקציות ופנאי': 'leisure activity fun',
   'כושר ותזונה': 'gym fitness nutrition',
   'פיתוח ואוטומציות': 'software development coding',
-  'בניית אתרים ודיגיטל': 'web design digital agency',
+  'בניית אתרים ועיצוב גרפי': 'web design digital agency',
   'חבילות תקשורת וסלולר': 'mobile phone telecom',
   'מחשוב ומעבדות תיקון': 'computer repair lab',
   'חנות טלפונים': 'phone store electronics',

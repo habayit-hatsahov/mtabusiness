@@ -1,5 +1,5 @@
 const REPLY_TO_BUSINESS = 'yellowzonemta@gmail.com';
-const LOGO_URL = 'https://habayit-hatsahov.github.io/mtabusiness/Maccabi.svg';
+const LOGO_URL = 'https://yellowzone.co.il/Maccabi.svg';
 
 // ריבוע צהוב עם לוגו מכבי ת"א — תצוגת קוד הכניסה במיילים האוטומטיים
 function codeBoxHtml(code) {

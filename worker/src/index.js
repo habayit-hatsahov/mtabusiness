@@ -10,7 +10,7 @@ import { runBackfillThumbnails } from './backfill.js';
 import { sendWebPush } from './push.js';
 import { handleDownloadImage } from './download.js';
 
-const SITE_BASE = 'https://habayit-hatsahov.github.io/mtabusiness/';
+const SITE_BASE = 'https://yellowzone.co.il/';
 
 export default {
   async fetch(request, env) {

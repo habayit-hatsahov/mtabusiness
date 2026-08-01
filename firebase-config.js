@@ -17,7 +17,7 @@ const db   = getFirestore(app);
 const auth = getAuth(app);
 
 // Storage נטען רק בדפים שבאמת מעלים קבצים (dynamic import) —
-// כך home.html/card.html/terms.html וכו' לא מורידים 46KB מיותרים בכל טעינה
+// כך home.html/terms.html וכו' לא מורידים 46KB מיותרים בכל טעינה
 let _storage = null;
 async function getStorageLazy() {
   if (!_storage) {
