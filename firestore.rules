@@ -97,12 +97,20 @@ service cloud.firestore {
         || (
           request.auth != null && request.auth.uid == memberId &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['phone', 'email', 'pushSubscriptions']) &&
+            // lastSeenAt נוסף כאן כתשתית לשלב 7 (שכבת מדידה) — אין עדיין קוד שכותב אליו בפועל
+            .hasOnly(['phone', 'email', 'pushSubscriptions', 'lastSeenAt']) &&
           request.resource.data.status == resource.data.status &&
           (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin)
         );
 
       allow delete: if isAdmin();
+
+      // יומן פעילות של החבר — תת-אוסף, נוסף רק (נכתב מ-logActivity() ב-admin-sections-anchors-demo.html).
+      // רק מנהל קורא/כותב — לא בעל-הרשומה עצמו, אין ל-members/profile.html צורך לראות את היומן.
+      match /activity/{activityId} {
+        allow read, create: if isAdmin();
+        allow update, delete: if false;
+      }
     }
 
     // ── BUSINESSES ───────────────────────────────────────────────────────
@@ -137,8 +145,12 @@ service cloud.firestore {
 
         // (ב) בעל עסק מחובר עורך את pendingChanges של עצמו בלבד —
         // business-dashboard.html. לעולם לא כותב לשדות "החיים" ישירות.
+        // resource.data.status=='approved' — עסק מקבל גישה לדשבורד רק לאחר אישור (accessToken
+        // מונפק רק אז), אבל ברמת ה-rules זה לא היה נאכף במפורש; מצב "pending עם pendingChanges"
+        // בלתי-אפשרי במערכת בפועל, אבל לא הוגן חסום עד עכשיו. ר' עדכון-המעצב 02.08.2026, פריט 5.
         || (
           request.auth != null && request.auth.uid == businessId &&
+          resource.data.status == 'approved' &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['pendingChanges', 'pendingChangesAt'])
         )
@@ -161,6 +173,19 @@ service cloud.firestore {
         );
 
       allow delete: if isAdmin();
+
+      // יומן פעילות של העסק — אותו דפוס בדיוק כמו members/{memberId}/activity למעלה.
+      match /activity/{activityId} {
+        allow read, create: if isAdmin();
+        allow update, delete: if false;
+      }
+
+      // אגרגציה יומית לעסק (שלב 7, §3 במפרט — "businesses/{bizId}/statsDaily/{date}") — יסודות
+      // בלבד: אין עדיין שום קוד שכותב לכאן. בפועל ייכתב ע"י ה-Worker (service-account, עוקף
+      // rules) בשלב האגרגציה העתידי — admin-בלבד ברמת ה-rules כדי שמרכז-הנתונים יוכל לקרוא ישירות.
+      match /statsDaily/{dateId} {
+        allow read, write: if isAdmin();
+      }
     }
 
     // ── COUNTERS (רק counters/members בשימוש בפועל) ──────────────────────
@@ -174,6 +199,13 @@ service cloud.firestore {
     // ר' ההערה למעלה) כשהוא שולח את המיילים האוטומטיים בפועל.
     match /settings/{docId} {
       allow read, write: if isAdmin();
+
+      // יומן פעילות למסמכי settings (למשל landingContent — שלב 6) — אותו דפוס בדיוק כמו
+      // members/{memberId}/activity ו-businesses/{bizId}/activity: נוסף בלבד, מנהל בלבד.
+      match /activity/{activityId} {
+        allow read, create: if isAdmin();
+        allow update, delete: if false;
+      }
     }
 
     // settings/siteTexts — טקסטים ציבוריים (תקנון לאוהדים/עסקים) שמוצגים
@@ -203,6 +235,47 @@ service cloud.firestore {
     // messageBroadcasts — היסטוריית שידורי מייל למרכז ההודעות (admin-sections-anchors-demo.html).
     // נכתב מהקליינט אחרי שהוורקר (/send-broadcast-email) כבר שלח בפועל — מנהל בלבד, אין קריאה ציבורית.
     match /messageBroadcasts/{broadcastId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── שכבת מדידה (שלב 7, §3 במפרט — "מרכז נתונים") — יסודות בלבד ────────
+    // 2026-08-02: אין עדיין אף כותב אמיתי (לא דף חי, לא Worker) — המשתמש ביקש במפורש
+    // "רק היסודות עכשיו", בלי לגעת בדפים חיים. events הוא משטח-הכתיבה הפומבי הראשון
+    // בפרויקט שגם גולש לא-מחובר לגמרי (welcome.html, לפני הרשמה) יצטרך לכתוב אליו בעתיד —
+    // ולכן מאומת בקפדנות שדה-שדה, לא רק "כל אחד יכול לכתוב". אין קריאה פומבית בכלל.
+    match /events/{eventId} {
+      allow read: if isAdmin();
+      allow update, delete: if false;
+
+      allow create: if
+        request.resource.data.keys().hasOnly([
+          'type', 'bizId', 'memberId', 'sessionId', 'path', 'referrer', 'device', 'blockId', 'channel', 'createdAt'
+        ]) &&
+        request.resource.data.keys().hasAll(['type', 'sessionId', 'device', 'createdAt']) &&
+        request.resource.data.type in [
+          'pageView', 'bizImpression', 'bizClick', 'bizContact', 'heart',
+          'gateBlock', 'landingBlockClick', 'formOpen', 'formSubmit'
+        ] &&
+        request.resource.data.device in ['mobile', 'desktop'] &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 100 &&
+        (!('bizId' in request.resource.data) || request.resource.data.bizId == null ||
+          (request.resource.data.bizId is string && request.resource.data.bizId.size() <= 100)) &&
+        (!('memberId' in request.resource.data) || request.resource.data.memberId == null ||
+          (request.resource.data.memberId is string && request.resource.data.memberId.size() <= 100)) &&
+        (!('path' in request.resource.data) || request.resource.data.path == null ||
+          (request.resource.data.path is string && request.resource.data.path.size() <= 200)) &&
+        (!('referrer' in request.resource.data) || request.resource.data.referrer == null ||
+          (request.resource.data.referrer is string && request.resource.data.referrer.size() <= 50)) &&
+        (!('blockId' in request.resource.data) || request.resource.data.blockId == null ||
+          (request.resource.data.blockId is string && request.resource.data.blockId.size() <= 50)) &&
+        (!('channel' in request.resource.data) || request.resource.data.channel == null ||
+          (request.resource.data.channel is string && request.resource.data.channel.size() <= 50));
+    }
+
+    // statsDaily — אגרגציה יומית כלל-פלטפורמה (מקביל ל-businesses/{id}/statsDaily למעלה).
+    // ייכתב בפועל רק ע"י ה-Worker (service-account, עוקף rules) בשלב האגרגציה העתידי.
+    match /statsDaily/{dateId} {
       allow read, write: if isAdmin();
     }
 

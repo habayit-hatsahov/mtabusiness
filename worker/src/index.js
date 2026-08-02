@@ -292,12 +292,27 @@ async function handleSendTestPush(request, env) {
 // הקיימים כבר ב"כל העסקים"/"כל האוהדים"). נקרא ישירות מדפדפן, לא curl בלבד, ולכן מאומת בפועל דרך
 // verifyAdminIdToken (לא סוד סטטי — ר' PROJECT_CONTEXT.md). לולאה סדרתית מכוונת (לא batched) —
 // מספיק ליחס הנוכחי (עשרות נמענים, לא מאות).
-async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, businessIds, memberIds }, env) {
+async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, businessIds, memberIds, testEmail }, env) {
   if (!subject || !body) return { error: 'missing_fields' };
   try {
     await verifyAdminIdToken(env, idToken);
   } catch (e) {
     return { error: 'unauthorized' };
+  }
+
+  // מייל בדיקה עצמי (§8 במפרט, מרכז ההודעות) — נמען יחיד, כתובת גולמית שלא בהכרח קיימת ב-Firestore
+  // (אין רשומת businesses/members אמיתית לחפש), אז ערכי-placeholder לדוגמה בלבד, לא נתוני-אמת.
+  if (testEmail) {
+    const isFansTest = audienceType === 'fans';
+    const vars = isFansTest
+      ? { name: 'ישראל ישראלי', code: '123456', link: `${SITE_BASE}home.html` }
+      : { name: 'ישראל ישראלי', business: 'עסק לדוגמה', link: `${SITE_BASE}business-dashboard.html?token=demo` };
+    try {
+      await sendBroadcastEmail(env, { toEmail: testEmail, toName: 'בדיקה', subject: `[בדיקה] ${subject}`, body, vars });
+      return { results: [{ id: 'test', name: testEmail, email: testEmail, status: 'sent' }], isTest: true };
+    } catch (e) {
+      return { results: [{ id: 'test', name: testEmail, email: testEmail, status: 'failed', error: String(e).slice(0, 300) }], isTest: true };
+    }
   }
 
   const accessToken = await getGoogleAccessToken(env);

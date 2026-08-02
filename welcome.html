@@ -515,7 +515,7 @@ button { font-family: inherit; }
 
 <!-- ══ שני ריבועי התמונה ══ -->
 <div class="img-cards-row">
-  <a class="img-card" id="cardFans" href="business.html" target="_blank">
+  <a class="img-card" id="cardFans" href="business.html" target="_blank" onclick="window.logEvent && window.logEvent('landingBlockClick',{blockId:'tile1'})">
     <img src="images/landing/hero-fans-illustration.png" alt="אוהדי מכבי בבר"/>
     <div class="img-card-overlay"></div>
     <div class="img-card-content">
@@ -524,7 +524,7 @@ button { font-family: inherit; }
     </div>
     <span class="img-card-pill">לרישום עסק<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></span>
   </a>
-  <button class="img-card" id="cardBiz" onclick="scrollToPreview()">
+  <button class="img-card" id="cardBiz" onclick="window.logEvent && window.logEvent('landingBlockClick',{blockId:'tile2'});scrollToPreview()">
     <img src="images/landing/biz-crowd-illustration.png" alt="קהל אוהדי מכבי"/>
     <div class="img-card-overlay"></div>
     <div class="img-card-content">
@@ -635,7 +635,7 @@ button { font-family: inherit; }
       <div class="lp-biz-box-eyebrow">לבעלי עסקים</div>
       <div class="lp-biz-box-title">יש לכם עסק? <span>מקומכם איתנו.</span></div>
       <div class="lp-biz-box-text">הצטרפו לאינדקס העסקים של אוהדי מכבי תל אביב, הגדילו את החשיפה שלכם, וקבלו לקוחות חדשים שכבר בצד שלכם.</div>
-      <a class="lp-btn lp-btn-yellow" href="business.html" target="_blank">רשמו את העסק שלכם</a>
+      <a class="lp-btn lp-btn-yellow" href="business.html" target="_blank" onclick="window.logEvent && window.logEvent('landingBlockClick',{blockId:'blueBox'})">רשמו את העסק שלכם</a>
     </div>
     <div class="lp-biz-rows">
       <div class="lp-biz-row"><span class="lp-biz-check"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0A2A66" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></span><span>חשיפה לקהילת אוהדים פעילה</span></div>
@@ -654,8 +654,8 @@ button { font-family: inherit; }
     <div class="lp-final-title">מוכנים להצטרף?</div>
     <div class="lp-final-sub">ההרשמה לוקחת פחות משתי דקות — ואתם בפנים.</div>
     <div class="lp-final-actions">
-      <button class="lp-final-btn lp-final-btn-ink" onclick="openJoinModal()">להרשמה כאוהד</button>
-      <a class="lp-final-btn lp-final-btn-white" href="business.html" target="_blank">רשמו את העסק שלכם</a>
+      <button class="lp-final-btn lp-final-btn-ink" onclick="window.logEvent && window.logEvent('landingBlockClick',{blockId:'yellowBox'});openJoinModal()">להרשמה כאוהד</button>
+      <a class="lp-final-btn lp-final-btn-white" href="business.html" target="_blank" onclick="window.logEvent && window.logEvent('landingBlockClick',{blockId:'yellowBox'})">רשמו את העסק שלכם</a>
     </div>
   </div>
 </section>
@@ -738,6 +738,7 @@ document.addEventListener('keydown', e => {
 // אותו מנגנון בדיוק כמו landing-demo.html: בדסקטופ טוענים fan-register.html?embed=1
 // (מסתיר הדר/הירו עצמאיים כי הפאנל הצהוב החיצוני כבר נותן את המיתוג), במובייל את הדף המלא.
 function openJoinModal() {
+  window.logEvent && window.logEvent('formOpen', { blockId: 'joinModal' });
   const f = document.getElementById('joinFrame');
   const wide = window.matchMedia('(min-width: 760px)').matches;
   const wantedSrc = wide ? 'fan-register.html?embed=1' : 'fan-register.html';
@@ -746,6 +747,7 @@ function openJoinModal() {
   document.body.style.overflow = 'hidden';
 }
 function openLoginModal() {
+  window.logEvent && window.logEvent('formOpen', { blockId: 'loginModal' });
   document.getElementById('loginOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
   setTimeout(() => document.getElementById('heroPhoneInput')?.focus(), 200);
@@ -794,7 +796,7 @@ window.applyMemberUI = function(isMember, name) {
 <script type="module">
 // אתחול עצמאי כמו landing-demo.html — firestore-lite (136KB) כי יש רק getDocs חד-פעמי, בלי onSnapshot.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore-lite.js";
+import { getFirestore, collection, query, where, getDocs, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore-lite.js";
 import { getAuth, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -824,6 +826,35 @@ await new Promise(resolve => {
     resolve();
   });
 });
+
+// ── שכבת מדידה (שלב 7, §3 במפרט) — זהה ל-home.html, מותאם ל-firestore-lite (בלי onSnapshot,
+// אבל addDoc/serverTimestamp נתמכים). מגיעים לכאן רק אורחים בפועל — חבר עם session תקף כבר
+// הופנה ל-home.html למעלה, אף פעם לא נשאר על העמוד הזה. חשוף כ-window. כי cardFans/cardBiz/
+// openJoinModal וכו' יושבים ב-<script> קלאסי נפרד למעלה, לא במודול הזה.
+function _hbSessionId() {
+  let id = sessionStorage.getItem('hb_session_id');
+  if (!id) {
+    id = 'hb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    sessionStorage.setItem('hb_session_id', id);
+  }
+  return id;
+}
+window.logEvent = function(type, extra) {
+  const e = extra || {};
+  addDoc(collection(db, 'events'), {
+    type,
+    bizId: e.bizId ?? null,
+    memberId: localStorage.getItem('hb_memberId') || null,
+    sessionId: _hbSessionId(),
+    path: location.pathname,
+    referrer: document.referrer || null,
+    device: window.innerWidth <= 700 ? 'mobile' : 'desktop',
+    blockId: e.blockId ?? null,
+    channel: e.channel ?? null,
+    createdAt: serverTimestamp(),
+  }).catch(err => console.error('logEvent failed:', type, err));
+};
+window.logEvent('pageView');
 
 // ── התחברות — טלפון+קוד, מאומת מול Firestore בצד-שרת דרך ה-Worker (זהה ל-landing-demo.html) ──
 window.heroHideErr = () => document.getElementById('heroLoginErr').classList.remove('show');
@@ -900,6 +931,12 @@ function bizInitials(name) {
   const words = (name || '').trim().split(/\s+/);
   return words[0] || '★';
 }
+// גולש לא-מחובר שמנסה "לפתוח" כרטיס-עסק בתצוגה המקדימה — זה בדיוק ה-gateBlock מהמפרט (§3,
+// "המדד הכי חשוב בטאב 6"): נחסם ומופנה להרשמה, במקום לראות את גיליון-הפרטים המלא כמו ב-home.html.
+window.previewCardGateBlock = function(id) {
+  window.logEvent && window.logEvent('gateBlock', { bizId: id });
+  openJoinModal();
+};
 function previewCardHtml(biz) {
   // זהה בדיוק לשער ב-home.html (bizCardImage) — "יש תמונה" נקבע לפי השדה הראשי בלבד
   // (coverPhoto/logo), לא לפי ה-thumb. thumb משמש רק כ-src מועדף כשהשדה הראשי כבר קיים —
@@ -915,7 +952,7 @@ function previewCardHtml(biz) {
     : `<div class="biz-logo">${biz.name}</div>`;
   const likeCount = (biz.likedBy || []).length;
   return `
-    <div class="biz-card">
+    <div class="biz-card" style="cursor:pointer" onclick="previewCardGateBlock('${biz.id}')">
       <div class="biz-card-img">
         ${imgHtml}
         <div class="biz-card-like">

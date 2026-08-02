@@ -2296,6 +2296,7 @@ async function toggleLike(id) {
   const b = businesses.find(x => x.id === id);
   if (!b) return;
   const liked = (b.likedBy || []).includes(myId);
+  if (!liked) window.logEvent && window.logEvent('heart', { bizId: id }); // רק על הוספת-לב, לא על הסרה
   await window._likeFirestoreToggle(id, myId, liked);
 }
 
@@ -2304,6 +2305,7 @@ function openBiz(id) {
   if (!b) return;
   _openBizId = id;
   window._recordView(b.id);
+  window.logEvent && window.logEvent('bizClick', { bizId: id });
 
   const hero = document.getElementById('sheetHero');
   const logo = document.getElementById('sheetLogo');
@@ -2483,12 +2485,14 @@ function openBiz(id) {
   if (ctaPhone || ctaWa) {
     document.getElementById('sheetCta').style.display = 'flex';
     const callBtn = document.getElementById('sheetCallBtn');
-    if (ctaPhone) { callBtn.style.display = ''; callBtn.onclick = () => location.href = 'tel:' + ctaPhone; }
+    if (ctaPhone) { callBtn.style.display = ''; callBtn.onclick = () => { window.logEvent && window.logEvent('bizContact', { bizId: _openBizId, channel: 'phone' }); location.href = 'tel:' + ctaPhone; }; }
     else          { callBtn.style.display = 'none'; }
     const waPh   = ctaWa.replace(/\D/g,'');
     const waIntl = waPh.startsWith('0') ? '972'+waPh.slice(1) : waPh;
-    document.getElementById('sheetWaBtn').onclick = () =>
+    document.getElementById('sheetWaBtn').onclick = () => {
+      window.logEvent && window.logEvent('bizContact', { bizId: _openBizId, channel: 'whatsapp' });
       window.open(`https://wa.me/${waIntl}?text=${encodeURIComponent('היי, ראיתי את העסק שלך ב-Yellow Zone 💛')}`, '_blank');
+    };
   } else { document.getElementById('sheetCta').style.display = 'none'; }
 
   const dashArea = document.getElementById('sheetDashBtn');
@@ -2869,7 +2873,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <script type="module">
 import { db, auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // חושף את auth ל-<script> הרגיל (לא module) שמעליו — currentMemberId() שם צריך auth.currentUser, אך import הוא scoped ל-module הזה בלבד
 window._auth = auth;
@@ -3010,6 +3014,10 @@ await new Promise(resolve => {
   window._hbMarkReady && window._hbMarkReady('name');
 })();
 
+// lastSeenAt (שלב 7, §3 במפרט) — נכתב פה כי זה בדיוק המקום שכבר קורא/כותב על מסמך החבר-המחובר
+// בכל טעינה של home.html. fire-and-forget, לא חוסם שום דבר.
+updateDoc(doc(db, 'members', auth.currentUser.uid), { lastSeenAt: serverTimestamp() }).catch(() => {});
+
 window._likeFirestoreToggle = async function(id, memberId, liked) {
   await updateDoc(doc(db, 'businesses', id), {
     likedBy: liked ? arrayRemove(memberId) : arrayUnion(memberId)
@@ -3019,6 +3027,35 @@ window._likeFirestoreToggle = async function(id, memberId, liked) {
 window._recordView = function(id) {
   updateDoc(doc(db, 'businesses', id), { clicks: increment(1) }).catch(() => {});
 };
+
+// ── שכבת מדידה (שלב 7, §3 במפרט) — event log גולמי, לא אגרגציה. sessionId אחד לכל טאב
+// (sessionStorage, לא localStorage — פותח טאב חדש = session חדש). firestore.rules אוכף
+// שכל השדות תקינים; כאן רק בונים את האובייקט. window.logEvent (לא top-level module const) כי
+// openBiz/toggleLike/sheetCallBtn/sheetWaBtn יושבים ב-<script> הרגיל שמעל, לא ב-module הזה.
+function _hbSessionId() {
+  let id = sessionStorage.getItem('hb_session_id');
+  if (!id) {
+    id = 'hb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    sessionStorage.setItem('hb_session_id', id);
+  }
+  return id;
+}
+window.logEvent = function(type, extra) {
+  const e = extra || {};
+  addDoc(collection(db, 'events'), {
+    type,
+    bizId: e.bizId ?? null,
+    memberId: currentMemberId() || null,
+    sessionId: _hbSessionId(),
+    path: location.pathname,
+    referrer: document.referrer || null,
+    device: window.innerWidth <= 700 ? 'mobile' : 'desktop',
+    blockId: e.blockId ?? null,
+    channel: e.channel ?? null,
+    createdAt: serverTimestamp(),
+  }).catch(err => console.error('logEvent failed:', type, err));
+};
+window.logEvent('pageView');
 
 // ── Web Push — הרשמה להתראות (VAPID). המפתח הציבורי לא סוד (ר' worker/wrangler.toml) ──
 const VAPID_PUBLIC_KEY = 'BECSM177-gOp4bBBQNnZPd4wsO23UnSkKFVbf5pBXtH6DENFhif2Ywr7uhR3wqKrP0_CJwfzpZN1KwYvZ6rNvCM';
