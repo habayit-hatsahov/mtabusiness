@@ -95,7 +95,7 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
   });
 }
 
-// שידור חד-פעמי לקהל (מרכז הודעות, admin-sections-anchors-demo.html) — subject/body מגיעים מהמנהל
+// שידור חד-פעמי לקהל (מרכז הודעות, admin-dashboard.html) — subject/body מגיעים מהמנהל
 // (טיוטה ב-settings/broadcastDraft), עם placeholders {name}/{business}/{link} שמוחלפים לכל נמען בנפרד.
 export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, vars }) {
   const finalSubject = applyVars(subject, vars);

@@ -60,7 +60,7 @@ export async function getGoogleAccessToken(env) {
 
 // מאמת ID token אמיתי של Firebase Auth (client-side, מ-auth.currentUser.getIdToken()) ומוודא isAdmin===true
 // על members/{uid}. נדרש ל-endpoints שנקראים ישירות מדפדפן ודורשים admin אמיתי (למשל /send-broadcast-email) —
-// בניגוד ל-ADMIN_BACKFILL_SECRET/PUSH_TEST_SECRET (סוד סטטי), כאן הקוד הקורא (admin-sections-anchors-demo.html)
+// בניגוד ל-ADMIN_BACKFILL_SECRET/PUSH_TEST_SECRET (סוד סטטי), כאן הקוד הקורא (admin-dashboard.html)
 // ציבורי בפועל (קובץ סטטי הניתן להורדה), אז סוד מוטבע שם לא באמת סוד. accounts:lookup הוא ה-REST API
 // הסטנדרטי של Identity Toolkit לאימות ID token בלי צורך במימוש JWT-signature verification עצמאי.
 export async function verifyAdminIdToken(env, idToken) {

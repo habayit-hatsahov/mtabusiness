@@ -288,7 +288,7 @@ async function handleSendTestPush(request, env) {
 }
 
 // שידור מייל — לכל בעלי העסקים/אוהדים המאושרים כברירת מחדל, או לרשימת מזהים ספציפית שהמנהל בחר
-// (מרכז הודעות, admin-sections-anchors-demo.html — בורר-קהל מבוסס selectedBizIds/selectedFanIds
+// (מרכז הודעות, admin-dashboard.html — בורר-קהל מבוסס selectedBizIds/selectedFanIds
 // הקיימים כבר ב"כל העסקים"/"כל האוהדים"). נקרא ישירות מדפדפן, לא curl בלבד, ולכן מאומת בפועל דרך
 // verifyAdminIdToken (לא סוד סטטי — ר' PROJECT_CONTEXT.md). לולאה סדרתית מכוונת (לא batched) —
 // מספיק ליחס הנוכחי (עשרות נמענים, לא מאות).
