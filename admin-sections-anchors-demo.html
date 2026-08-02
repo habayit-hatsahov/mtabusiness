@@ -2338,21 +2338,30 @@ function waLink(phone, msg) {
   return `https://wa.me/${intl}?text=${encodeURIComponent(msg)}`;
 }
 
-window.sendBizWA = function(phone, ownerName, businessName, accessToken) {
+// כל 4 הפונקציות מקבלות עכשיו id כפרמטר ראשון (בעבר לא קיבלו בכלל — זו הסיבה שהשליחות הידניות
+// האלה מעולם לא נרשמו ביומן, ר' docs/PROJECT_CONTEXT.md §12). הפתיחה עצמה (wa.me/mailto) לא-חוסמת
+// ולא נכשלת אף פעם; logActivity רץ אחריה בלי await כדי לא לעכב את ה-window.open.
+window.sendBizWA = function(id, phone, ownerName, businessName, accessToken) {
   window.open(waLink(phone, applyBizTpl(getTpl('wa', DEFAULT_TPL_WA), ownerName, businessName, accessToken)), '_blank');
+  logActivity('businesses', id, { type: 'email', title: 'נשלחה הודעת WhatsApp ידנית לבעל העסק', detail: `לטלפון ${phone}`, field: 'channel', before: null, after: 'whatsapp' });
 };
-window.sendBizMail = function(email, ownerName, businessName, accessToken) {
-  const subject = encodeURIComponent(applyBizTpl(getTpl('mailSubject', DEFAULT_TPL_SUBJECT), ownerName, businessName, accessToken));
+window.sendBizMail = function(id, email, ownerName, businessName, accessToken) {
+  const subjectRaw = applyBizTpl(getTpl('mailSubject', DEFAULT_TPL_SUBJECT), ownerName, businessName, accessToken);
+  const subject = encodeURIComponent(subjectRaw);
   const body = encodeURIComponent(applyBizTpl(getTpl('mail', DEFAULT_TPL_MAIL), ownerName, businessName, accessToken));
   window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+  logActivity('businesses', id, { type: 'email', title: 'נשלח מייל ידני לבעל העסק', detail: `אל ${email} · נושא: "${subjectRaw}"`, field: 'channel', before: null, after: 'email' });
 };
-window.sendFanWA = function(phone, name, code) {
+window.sendFanWA = function(id, phone, name, code) {
   window.open(waLink(phone, applyFanTplLocal(getTpl('fan_wa', DEFAULT_FAN_WA), name, code)), '_blank');
+  logActivity('members', id, { type: 'email', title: 'נשלחה הודעת WhatsApp ידנית', detail: `לטלפון ${phone}`, field: 'channel', before: null, after: 'whatsapp' });
 };
-window.sendFanMail = function(email, name, code) {
-  const subject = encodeURIComponent(getTpl('fan_mailSubject', DEFAULT_FAN_MAIL_SUBJECT));
+window.sendFanMail = function(id, email, name, code) {
+  const subjectRaw = getTpl('fan_mailSubject', DEFAULT_FAN_MAIL_SUBJECT);
+  const subject = encodeURIComponent(subjectRaw);
   const body = encodeURIComponent(applyFanTplLocal(getTpl('fan_mail', DEFAULT_FAN_MAIL), name, code));
   window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+  logActivity('members', id, { type: 'email', title: 'נשלח מייל ידני', detail: `אל ${email} · נושא: "${subjectRaw}"`, field: 'channel', before: null, after: 'email' });
 };
 
 function discountBlockHtml(d, idx) {
@@ -3254,7 +3263,7 @@ function bizFullDetailHtml(id, opts) {
     <button class="act-btn task-back-btn" onclick="${o.backFn}()">→ חזרה</button>
     <div class="approve-card">
       <div class="approve-card-head">
-        <div class="approve-card-title">${b.name} ${dashLinkChip}${loginCodeChip}${b.ownerPhone ? ` <button class="icon-btn" title="שלח וואטסאפ" onclick="sendBizWA('${b.ownerPhone}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">📲</button>` : ''}${b.ownerEmail ? ` <button class="icon-btn" title="שלח מייל" onclick="sendBizMail('${b.ownerEmail}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">✉️</button>` : ''}</div>
+        <div class="approve-card-title">${b.name} ${dashLinkChip}${loginCodeChip}${b.ownerPhone ? ` <button class="icon-btn" title="שלח וואטסאפ" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">📲</button>` : ''}${b.ownerEmail ? ` <button class="icon-btn" title="שלח מייל" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">✉️</button>` : ''}</div>
         <div class="approve-card-meta">${bizReviewBadgeHtml(b)}${bizMetaStr(b)} · ${termsChip}${emailStatusChip}</div>
       </div>
       <div class="approve-card-actions top">${bizStatusChipHtml(b)}${statusActions}${bizReviewGapHtml(b)}</div>
@@ -3339,9 +3348,9 @@ function bizFullDetailHtml(id, opts) {
         <div class="approve-field">
           <div class="approve-field-label">📞 יצירת קשר עם לקוחות</div>
           <div class="approve-longtext">
-            טלפון: ${b.phone || '—'}${b.phone ? ` <button class="icon-btn" title="שלח וואטסאפ" onclick="sendBizWA('${b.phone}','${b.name}','${b.name}','${b.accessToken||''}')">📲</button>` : ''}<br>
+            טלפון: ${b.phone || '—'}${b.phone ? ` <button class="icon-btn" title="שלח וואטסאפ" onclick="sendBizWA('${b.id}','${b.phone}','${b.name}','${b.name}','${b.accessToken||''}')">📲</button>` : ''}<br>
             WhatsApp: ${b.whatsapp || '—'}<br>
-            מייל שירות: ${b.serviceEmail || '—'}${b.serviceEmail ? ` <button class="icon-btn" title="שלח מייל" onclick="sendBizMail('${b.serviceEmail}','${b.name}','${b.name}','${b.accessToken||''}')">✉️</button>` : ''}
+            מייל שירות: ${b.serviceEmail || '—'}${b.serviceEmail ? ` <button class="icon-btn" title="שלח מייל" onclick="sendBizMail('${b.id}','${b.serviceEmail}','${b.name}','${b.name}','${b.accessToken||''}')">✉️</button>` : ''}
           </div>
         </div>
         <div class="approve-field">
@@ -4073,7 +4082,7 @@ function fanFullDetailHtml(id, opts) {
     <button class="act-btn task-back-btn" onclick="${o.backFn}()">→ חזרה</button>
     <div class="approve-card">
       <div class="approve-card-head">
-        <div class="approve-card-title">${f.name} ${fanBizDashChip}${fanLoginCodeChip}${f.phone ? ` <button class="icon-btn" title="שלח וואטסאפ" onclick="sendFanWA('${f.phone}','${f.name}','${f.loginCode||''}')">📲</button>` : ''}${f.email ? ` <button class="icon-btn" title="שלח מייל" onclick="sendFanMail('${f.email}','${f.name}','${f.loginCode||''}')">✉️</button>` : ''}</div>
+        <div class="approve-card-title">${f.name} ${fanBizDashChip}${fanLoginCodeChip}${f.phone ? ` <button class="icon-btn" title="שלח וואטסאפ" onclick="sendFanWA('${f.id}','${f.phone}','${f.name}','${f.loginCode||''}')">📲</button>` : ''}${f.email ? ` <button class="icon-btn" title="שלח מייל" onclick="sendFanMail('${f.id}','${f.email}','${f.name}','${f.loginCode||''}')">✉️</button>` : ''}</div>
         <div class="approve-card-meta">נרשם ${fmtDate(f.registeredAt)} (${agoLabel(f.registeredAt)})${fanEmailStatusChip ? ' · ' + fanEmailStatusChip : ''}</div>
       </div>
       ${actionsTop}
@@ -5412,8 +5421,8 @@ function quickJudgmentHtml(b) {
       <div class="qj-note-text"><strong>העסק כתב לנו: </strong>"${esc(b.note)}"</div>
       <div class="qj-row-actions">
         <button class="qj-btn" onclick="toggleBizNoteHandled('${b.id}', true)">סימון כטופל</button>
-        ${b.ownerPhone ? `<button class="qj-btn link" onclick="sendBizWA('${b.ownerPhone}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">מענה בוואטסאפ</button>` : ''}
-        ${b.ownerEmail ? `<button class="qj-btn link" onclick="sendBizMail('${b.ownerEmail}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">מענה במייל</button>` : ''}
+        ${b.ownerPhone ? `<button class="qj-btn link" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">מענה בוואטסאפ</button>` : ''}
+        ${b.ownerEmail ? `<button class="qj-btn link" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">מענה במייל</button>` : ''}
       </div>
     </div>` : '';
   const totalCount = items.length + (hasNote ? 1 : 0);
