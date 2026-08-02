@@ -796,7 +796,7 @@ window.applyMemberUI = function(isMember, name) {
 <script type="module">
 // אתחול עצמאי כמו landing-demo.html — firestore-lite (136KB) כי יש רק getDocs חד-פעמי, בלי onSnapshot.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-import { getFirestore, collection, query, where, getDocs, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore-lite.js";
+import { getFirestore, collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore-lite.js";
 import { getAuth, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -855,6 +855,46 @@ window.logEvent = function(type, extra) {
   }).catch(err => console.error('logEvent failed:', type, err));
 };
 window.logEvent('pageView');
+
+// ── תוכן דף-הנחיתה מ-Firestore (שילוב אמיתי, לאחר admin-sections-anchors-demo.html §11) ──
+// דורס את הטקסט/תמונות הקבועים בהמשך רק לשדות שהמנהל בפועל פרסם. אם המסמך לא קיים בכלל (עוד
+// לא פורסם אף פעם) — הדף ממשיך בדיוק כמו שהיה, עם ברירות-המחדל הקבועות שכבר כתובות ב-HTML.
+function setTextKeepChildren(el, text) {
+  if (!el || !text) return;
+  const first = el.childNodes[0];
+  if (first && first.nodeType === Node.TEXT_NODE) first.nodeValue = text;
+  else el.insertBefore(document.createTextNode(text), el.firstChild);
+}
+(async () => {
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'landingContent'));
+    if (!snap.exists()) return;
+    const c = snap.data();
+    if (c.heroTitle) document.getElementById('heroTitle').textContent = c.heroTitle;
+    if (c.heroSlogan) document.querySelector('.lp-hero-slogan').textContent = c.heroSlogan;
+    if (Array.isArray(c.tiles)) {
+      [document.getElementById('cardFans'), document.getElementById('cardBiz')].forEach((card, i) => {
+        const t = c.tiles[i];
+        if (!card || !t) return;
+        if (t.img) card.querySelector('img').src = t.img;
+        if (t.title) card.querySelector('.img-card-title').textContent = t.title;
+        if (t.sub) card.querySelector('.img-card-sub').textContent = t.sub;
+        if (t.pill) setTextKeepChildren(card.querySelector('.img-card-pill'), t.pill);
+      });
+    }
+    if (c.previewKicker) document.querySelector('.lp-section-kicker').textContent = c.previewKicker;
+    if (c.previewTitle) document.querySelector('.lp-section-title').textContent = c.previewTitle;
+    if (c.previewSub) document.querySelector('.lp-section-sub').textContent = c.previewSub;
+    if (c.bizEyebrow) document.querySelector('.lp-biz-box-eyebrow').textContent = c.bizEyebrow;
+    if (c.bizTitle) document.querySelector('.lp-biz-box-title').textContent = c.bizTitle;
+    if (c.bizText) document.querySelector('.lp-biz-box-text').textContent = c.bizText;
+    if (c.bizBtn) document.querySelector('.lp-biz-box-head .lp-btn-yellow').textContent = c.bizBtn;
+    if (c.finalTitle) document.querySelector('.lp-final-title').textContent = c.finalTitle;
+    if (c.finalSub) document.querySelector('.lp-final-sub').textContent = c.finalSub;
+    if (c.finalBtn1) document.querySelector('.lp-final-btn-ink').textContent = c.finalBtn1;
+    if (c.finalBtn2) document.querySelector('.lp-final-btn-white').textContent = c.finalBtn2;
+  } catch (e) { console.error('טעינת תוכן דף-הנחיתה מ-Firestore נכשלה, נשאר על ברירת-המחדל הקבועה:', e); }
+})();
 
 // ── התחברות — טלפון+קוד, מאומת מול Firestore בצד-שרת דרך ה-Worker (זהה ל-landing-demo.html) ──
 window.heroHideErr = () => document.getElementById('heroLoginErr').classList.remove('show');
