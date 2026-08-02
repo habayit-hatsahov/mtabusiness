@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>דמו — סקשנים ועיגונים (מרכז ניהול חדש)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  /* ══ דמו מבודד, טרם משולב — ר' PROJECT_CONTEXT.md §123 ואילך.
+     מקור: scratch_design_import_admin/handoff/"5 סקשנים ועיגונים.dc.html" — פיקסל-לפיקסל.
+     10 מיקומים לכל סקשן, עיגון קבוע/זמני/מחליף-מתוזמן/סבב-אוטומטי — המנגנון שלם בקוד החי
+     היום (settings/sectionAnchors), זה עיצוב-בלבד לחשיפת מה שכבר קיים + פאנל "מה מסתיים בקרוב". ══ */
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: #F5F6F8; font-family: 'Heebo', system-ui, sans-serif; color: #101828; -webkit-font-smoothing: antialiased; }
+  a { color: #0A2A66; text-decoration: none; }
+  a:hover { color: #164193; }
+  input, textarea, select, button { font-family: inherit; color: inherit; }
+  input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid #0A2A66; outline-offset: 2px; }
+  ::selection { background: #FFE680; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #D9DEE5; border-radius: 99px; border: 3px solid #F5F6F8; }
+  button { border: none; background: none; cursor: pointer; }
+
+  .shell { min-height: 100vh; display: grid; grid-template-columns: 236px minmax(0,1fr); transition: grid-template-columns .18s ease; }
+  .shell.collapsed { grid-template-columns: 64px minmax(0,1fr); }
+
+  .nav { overflow: hidden; background: #FFFFFF; border-inline-start: 1px solid #DDE2E8; min-height: 100vh; position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; gap: 4px; padding: 18px 12px; }
+  .nav-head { display: flex; align-items: center; gap: 10px; padding: 0 6px 16px; margin-bottom: 6px; border-bottom: 1px solid #E3E7EC; }
+  .nav-head img { height: 20px; width: auto; display: block; }
+  .nav-toggle { width: 30px; height: 30px; flex: none; border-radius: 8px; background: #F5F6F8; color: #475467; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+  .nav-toggle:hover { background: #DDE2E8; color: #101828; }
+  .nav-group-label { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: #667085; padding: 0 8px 6px; }
+  .nav-item { display: flex; align-items: center; gap: 11px; padding: 0 10px; height: 40px; border-radius: 9px; color: #475467; }
+  .nav-item:hover { background: #F5F6F8; color: #101828; }
+  .nav-item svg { flex: none; display: block; }
+  .nav-item span.label { font-size: 13.5px; font-weight: 500; white-space: nowrap; }
+  .nav-item .spacer { flex: 1; }
+  .nav-item .count { background: #F2F4F7; color: #475467; font-size: 11px; font-weight: 700; border-radius: 99px; padding: 1px 7px; }
+  .nav-item.active { background: #0A2A66; color: #fff; cursor: default; }
+  .nav-item.active span.label { font-weight: 600; }
+  .nav-item.active .count { background: #FFD400; color: #0A2A66; }
+  .nav-divider { height: 1px; background: #E3E7EC; margin: 12px 8px; }
+  .nav-foot { display: flex; align-items: center; gap: 10px; padding: 10px; border-top: 1px solid #E3E7EC; margin-top: auto; }
+  .nav-avatar { width: 28px; height: 28px; flex: none; border-radius: 99px; background: #FFD400; color: #0A2A66; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .shell.collapsed .nav-label-hide { display: none; }
+
+  .content { min-width: 0; overflow-x: auto; }
+  .content-head { padding: 24px 28px 16px; min-width: 1180px; display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+  .crumb { font-size: 12px; font-weight: 500; color: #667085; margin-bottom: 5px; display: flex; align-items: center; gap: 7px; }
+  .crumb a { color: #0A2A66; font-weight: 600; }
+  .page-title { font-size: 23px; font-weight: 700; letter-spacing: -0.02em; }
+  .kpis { display: flex; gap: 26px; align-items: flex-end; }
+  .kpi-num { font-size: 21px; font-weight: 700; line-height: 1.1; }
+  .kpi-num .unit { font-size: 12px; font-weight: 500; color: #667085; }
+  .kpi-label { font-size: 11.5px; font-weight: 500; color: #667085; margin-top: 2px; }
+  .kpi-sep { width: 1px; height: 34px; background: #DDE2E8; }
+
+  .picker-row { padding: 0 28px 16px; min-width: 1180px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .picker-label { font-size: 11px; font-weight: 700; color: #667085; margin-inline-end: 4px; }
+  .sec-pill { padding: 6px 12px; border-radius: 99px; font-size: 12.5px; font-weight: 500; background: #fff; border: 1px solid #DDE2E8; color: #475467; }
+  .sec-pill.on { background: #0A2A66; color: #fff; border: none; font-weight: 600; }
+  .sec-pill:hover:not(.on) { background: #F2F4F7; }
+  .picker-sep { width: 1px; height: 22px; background: #DDE2E8; margin: 0 6px; }
+  select.cat-select { height: 32px; padding: 0 10px; border: 1px solid #DDE2E8; border-radius: 99px; background: #fff; font-size: 12.5px; font-weight: 500; color: #344054; }
+
+  .layout { padding: 0 28px 40px; min-width: 1180px; display: grid; grid-template-columns: minmax(520px,1fr) 366px; gap: 18px; align-items: start; }
+  .col-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .dcard { background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.09); overflow: hidden; }
+
+  .slots-head { padding: 15px 20px 13px; display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+  .slots-head-title { font-size: 15px; font-weight: 700; }
+  .slots-hint { flex-basis: 100%; font-size: 11.5px; color: #667085; }
+  .slots-list { border-top: 1px solid #E3E7EC; display: flex; flex-direction: column; gap: 1px; background: #DDE2E8; }
+  .slot-row { padding: 13px 20px; background: #fff; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .slot-row.expiring { background: #FFFDF5; }
+  .slot-num { width: 28px; height: 28px; flex: none; border-radius: 8px; font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .slot-num.anchored { background: #0A2A66; color: #fff; }
+  .slot-num.auto { background: #F2F4F7; color: #475467; }
+  .slot-biz { flex: 1 1 180px; min-width: 0; }
+  .slot-biz-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slot-biz-name.auto { font-weight: 500; color: #475467; }
+  .slot-biz-meta { font-size: 11.5px; color: #667085; margin-top: 2px; }
+  .slot-type { flex: 0 0 148px; display: flex; flex-direction: column; gap: 3px; }
+  .slot-type-badge { font-size: 10.5px; font-weight: 600; border-radius: 6px; padding: 2px 8px; align-self: flex-start; }
+  .slot-type-badge.fixed { background: #0A2A66; color: #fff; }
+  .slot-type-badge.temp { background: #EEF2FA; color: #0A2A66; }
+  .slot-type-badge.auto { background: #F2F4F7; color: #475467; }
+  .slot-expiry { font-size: 11px; font-weight: 700; color: #B54708; }
+  .slot-expiry.calm { font-weight: 600; color: #475467; }
+  .slot-detail { flex: 1 1 190px; min-width: 0; font-size: 11.5px; color: #475467; line-height: 1.5; }
+  .slot-detail.warn { color: #B54708; font-weight: 600; }
+  .slot-detail .hl { font-weight: 600; }
+  .slot-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+  .btn-slot-outline { height: 29px; padding: 0 10px; border: 1px solid #DDE2E8; border-radius: 8px; background: #fff; color: #344054; font-size: 11.5px; font-weight: 600; }
+  .btn-slot-outline:hover { background: #F2F4F7; }
+  .btn-slot-remove { height: 29px; padding: 0 10px; border-radius: 8px; color: #475467; font-size: 11.5px; font-weight: 600; }
+  .btn-slot-remove:hover { color: #B42318; }
+  .btn-slot-primary { height: 29px; padding: 0 10px; border-radius: 8px; background: #FFD400; color: #0A2A66; font-size: 11.5px; font-weight: 700; }
+  .btn-slot-primary:hover { background: #FFDE33; }
+  .btn-slot-anchor-outline { height: 29px; padding: 0 10px; border: 1px solid #0A2A66; border-radius: 8px; background: #fff; color: #0A2A66; font-size: 11.5px; font-weight: 600; }
+  .btn-slot-anchor-outline:hover { background: #EEF2FA; }
+  .slot-free-tag { font-size: 11.5px; color: #667085; }
+
+  .picker-panel { padding: 14px 20px 16px; background: #F7F9FC; }
+  .picker-panel-title { font-size: 12.5px; font-weight: 700; margin-bottom: 11px; }
+  .picker-panel-row { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
+  .picker-panel-row select.wide { flex: 1; min-width: 210px; height: 34px; padding: 0 10px; border: 1px solid #DDE2E8; border-radius: 9px; background: #fff; font-size: 12.5px; }
+  .kind-toggle { display: flex; border: 1px solid #DDE2E8; border-radius: 9px; overflow: hidden; }
+  .kind-toggle > div { padding: 8px 13px; font-size: 12px; font-weight: 500; background: #fff; color: #475467; }
+  .kind-toggle > div.on { background: #0A2A66; color: #fff; font-weight: 600; }
+  .kind-toggle:hover > div:not(.on) { background: #F2F4F7; }
+  .picker-panel-note { font-size: 12px; color: #667085; }
+  .picker-panel-actions { margin-top: 12px; display: flex; gap: 8px; }
+  .btn-picker-save { height: 34px; padding: 0 15px; border-radius: 9px; background: #0A2A66; color: #fff; font-size: 12.5px; font-weight: 600; }
+  .btn-picker-save:hover { background: #164193; }
+  .btn-picker-cancel { height: 34px; padding: 0 13px; border: 1px solid #DDE2E8; border-radius: 9px; background: #fff; color: #475467; font-size: 12.5px; font-weight: 600; }
+  .btn-picker-cancel:hover { background: #F9FAFB; }
+
+  .anchor-footer { padding: 13px 20px; border-top: 1px solid #E3E7EC; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .anchor-footer-label { font-size: 12.5px; font-weight: 600; }
+  .anchor-footer select { height: 32px; padding: 0 9px; border: 1px solid #DDE2E8; border-radius: 8px; background: #fff; font-size: 12.5px; }
+  .anchor-footer select.wide { flex: 1; min-width: 190px; }
+  .btn-anchor-go { height: 32px; padding: 0 14px; border-radius: 8px; background: #0A2A66; color: #fff; font-size: 12.5px; font-weight: 600; }
+  .btn-anchor-go:hover { background: #164193; }
+  .anchor-footer-note { padding: 0 20px 14px; font-size: 11.5px; color: #667085; line-height: 1.6; }
+
+  /* ── עמודת צד ── */
+  .col-side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .expiring-card { background: #0A2A66; border-radius: 14px; overflow: hidden; color: #fff; }
+  .expiring-head { padding: 16px 18px 14px; }
+  .expiring-kicker { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: #9BB0D9; margin-bottom: 4px; }
+  .expiring-title { font-size: 14.5px; font-weight: 700; }
+  .expiring-sep { height: 1px; background: rgba(255,255,255,.14); }
+  .expiring-item { padding: 13px 18px; display: flex; align-items: flex-start; gap: 11px; }
+  .expiring-item:hover { background: rgba(255,255,255,.06); }
+  .expiring-num { width: 26px; height: 26px; flex: none; border-radius: 7px; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .expiring-num.urgent { background: #FFD400; color: #0A2A66; }
+  .expiring-num.calm { background: rgba(255,255,255,.14); color: #fff; }
+  .expiring-name { font-size: 12.5px; font-weight: 600; }
+  .expiring-when { font-size: 11.5px; margin-top: 2px; }
+  .expiring-when.urgent { color: #FFD400; font-weight: 600; }
+  .expiring-when.calm { color: #C9D6EE; }
+  .expiring-replacer { font-size: 11.5px; color: #C9D6EE; margin-top: 4px; line-height: 1.5; }
+  .expiring-replacer .hl { color: #fff; font-weight: 600; }
+  .expiring-arrow { font-size: 14px; margin-top: 4px; }
+  .expiring-arrow.urgent { color: #FFD400; }
+  .expiring-arrow.calm { color: #9BB0D9; }
+
+  .preview-head { padding: 14px 16px 12px; }
+  .preview-title { font-size: 13.5px; font-weight: 700; }
+  .preview-sub { font-size: 11.5px; color: #667085; margin-top: 3px; }
+  .preview-list { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 7px; }
+  .preview-row { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 10px; border: 1px solid #E3E7EC; }
+  .preview-row.anchored { border-color: #DDE2E8; background: #F7F9FC; }
+  .preview-idx { width: 20px; font-size: 11.5px; font-weight: 700; color: #667085; }
+  .preview-idx.anchored { color: #0A2A66; }
+  .preview-name { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #475467; }
+  .preview-name.anchored { font-weight: 600; color: #101828; }
+  .preview-tag { font-size: 10.5px; color: #667085; }
+  .preview-tag.anchored { font-weight: 600; color: #0A2A66; }
+  .preview-more { font-size: 11px; color: #667085; padding-top: 2px; }
+
+  .how-head { padding: 15px 16px 12px; }
+  .how-title { font-size: 13.5px; font-weight: 700; }
+  .how-sub { font-size: 11.5px; color: #667085; margin-top: 3px; }
+  .how-row { border-top: 1px solid #E3E7EC; padding: 12px 16px; }
+  .how-row.current { background: #F7F9FC; }
+  .how-row.legend { background: #FFFBEB; }
+  .how-row.dict { background: #F9FAFB; }
+  .how-row-h { font-size: 12.5px; font-weight: 700; margin-bottom: 4px; }
+  .how-row-h .now { font-size: 10.5px; font-weight: 600; color: #0A2A66; }
+  .how-row-body { font-size: 12px; color: #475467; line-height: 1.6; }
+  .how-row-body .hl { font-weight: 600; }
+  .legend-h { font-size: 11.5px; font-weight: 700; color: #B54708; margin-bottom: 6px; }
+  .legend-body { font-size: 11.5px; color: #475467; line-height: 1.75; }
+  .legend-body .t { font-weight: 700; }
+
+  .demo-badge { position: fixed; bottom: 14px; left: 14px; background: #101828; color: #fff; font-size: 11px; font-weight: 700; padding: 6px 12px; border-radius: 99px; z-index: 70; box-shadow: 0 4px 14px rgba(16,24,40,.25); }
+</style>
+</head>
+<body>
+
+<div class="shell" id="shell">
+
+  <!-- ══ סרגל ניהול ══ -->
+  <div class="nav" id="nav">
+    <div class="nav-head">
+      <img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone" class="nav-label-hide" />
+      <div class="spacer"></div>
+      <button class="nav-toggle" id="navToggle" title="פתיחה / סגירה של התפריט"></button>
+    </div>
+    <div class="nav-group-label nav-label-hide">ניהול</div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
+      <span class="label nav-label-hide">דשבורד ראשי</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">9</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M4 21V8l8-5 8 5v13"></path><path d="M9 21v-6h6v6"></path><path d="M8 11h.01"></path><path d="M16 11h.01"></path></svg>
+      <span class="label nav-label-hide">כל העסקים</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">7</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+      <span class="label nav-label-hide">כל האוהדים</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">2</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r="1.2"></circle></svg>
+      <span class="label nav-label-hide">ניהול תגיות</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">3</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
+      <span class="label nav-label-hide">מרכז לבבות</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">2</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg>
+      <span class="label nav-label-hide">מרכז הודעות</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+      <span class="label nav-label-hide">תוכן דף הנחיתה</span>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-group-label nav-label-hide">תצוגה בדף הבית</div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg>
+      <span class="label nav-label-hide">סקשנים</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">2</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+      <span class="label nav-label-hide">קטגוריות</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide" style="background:none;font-weight:400;color:#667085">8</span>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>
+      <span class="label nav-label-hide">מרכז נתונים</span>
+    </div>
+    <div class="nav-foot">
+      <div class="nav-avatar">ר</div>
+      <div class="nav-label-hide" style="min-width:0"><div style="font-size:12.5px;font-weight:600;white-space:nowrap">רמי כהן</div><div style="font-size:11px;color:#667085;white-space:nowrap">מנהל מערכת</div></div>
+    </div>
+  </div>
+
+  <!-- ══ תוכן ══ -->
+  <div class="content">
+    <div class="content-head">
+      <div style="flex:1;min-width:240px">
+        <div class="crumb"><a href="demo-redesign-admin-tasks.html">← מרכז המשימות</a><span style="color:#667085">/</span><span>סקשנים · ⭐ נבחרים</span></div>
+        <div class="page-title">2 עיגונים מסתיימים בשבוע הקרוב</div>
+      </div>
+      <div class="kpis">
+        <div><div class="kpi-num">4<span class="unit">/10</span></div><div class="kpi-label">מיקומים מעוגנים</div></div>
+        <div class="kpi-sep"></div>
+        <div><div class="kpi-num">38<span class="unit">/42</span></div><div class="kpi-label">בסבב האוטומטי · 4 מעוגנים</div></div>
+      </div>
+    </div>
+
+    <div class="picker-row">
+      <div class="picker-label">סקשנים</div>
+      <div class="sec-pill on">⭐ נבחרים · 4</div>
+      <div class="sec-pill">✨ חדש אצלנו · 2</div>
+      <div class="sec-pill">💛 הטבות שוות · 1</div>
+      <div class="sec-pill">🛒 קניה אונליין · 0</div>
+      <div class="sec-pill">🏬 כל העסקים · 3</div>
+      <div class="picker-sep"></div>
+      <div class="picker-label">קטגוריות</div>
+      <select class="cat-select">
+        <option>בחירת קטגוריה…</option>
+        <option>אוכל ומסעדות · 2 מעוגנים</option>
+        <option>רכב ותחבורה · 1 מעוגן</option>
+        <option>אירועים והפקות · 0</option>
+        <option>בית וניקיון · 0</option>
+        <option>אופנה, יופי ובריאות · 3 מעוגנים</option>
+        <option>ספורט ופנאי · 0</option>
+        <option>דיגיטל וטכנולוגיה · 1 מעוגן</option>
+        <option>פיננסים ומשפט · 0</option>
+      </select>
+    </div>
+
+    <div class="layout">
+
+      <!-- ── עשרת המיקומים ── -->
+      <div class="col-main">
+        <div class="dcard">
+          <div class="slots-head">
+            <div class="slots-head-title">עשרת המיקומים ב־⭐ נבחרים</div>
+            <div class="spacer"></div>
+            <select class="cat-select"><option>מיון: לפי מיקום</option><option>מיון: מה שמסתיים ראשון</option><option>מיון: ללא מחליף קודם</option></select>
+            <div class="slots-hint">מיקום פנוי מתמלא בסבב יומי הוגן — 38 עסקים, מתוך 42 המאושרים פחות 4 המעוגנים. מיקום מעוגן תמיד מוצג בו.</div>
+          </div>
+
+          <div class="slots-list">
+            <!-- 1 — קבוע עם מחליף מתוזמן -->
+            <div class="slot-row">
+              <div class="slot-num anchored">1</div>
+              <div class="slot-biz"><div class="slot-biz-name">מוסך אלון ובניו</div><div class="slot-biz-meta">רכב ותחבורה · עוגן 14.06 ע״י רמי כהן</div></div>
+              <div class="slot-type"><span class="slot-type-badge fixed">עיגון קבוע</span></div>
+              <div class="slot-detail">מחליף מתוזמן ב־12.08: <span class="hl">קפה שקד</span> (קבוע)</div>
+              <div class="slot-actions"><button class="btn-slot-outline">החלפה</button><button class="btn-slot-outline">עריכת תזמון</button><button class="btn-slot-remove">הסרה</button></div>
+            </div>
+
+            <!-- 2 — זמני שפג בקרוב, בלי מחליף -->
+            <div class="slot-row expiring">
+              <div class="slot-num anchored">2</div>
+              <div class="slot-biz"><div class="slot-biz-name">פלאפל הזהב</div><div class="slot-biz-meta">אוכל ומסעדות · עוגן 20.07 ע״י רמי כהן</div></div>
+              <div class="slot-type"><span class="slot-type-badge temp">עיגון זמני</span><span class="slot-expiry">פג בעוד 3 ימים</span></div>
+              <div class="slot-detail warn">אין מחליף — המיקום יחזור לסבב האוטומטי</div>
+              <div class="slot-actions"><button class="btn-slot-primary" id="pickerToggleBtn">קביעת מחליף</button><button class="btn-slot-outline">הארכה</button><button class="btn-slot-remove">הסרה</button></div>
+            </div>
+
+            <!-- בורר המחליף — נפתח במקום -->
+            <div class="picker-panel" id="pickerPanel" style="display:none">
+              <div class="picker-panel-title">מי יחליף את ״פלאפל הזהב״ במיקום 2</div>
+              <div class="picker-panel-row">
+                <select class="wide"><option>בחירת עסק מ־42 המאושרים…</option><option>קפה שקד · אוכל ומסעדות</option><option>א.ד. מצברים וחשמל רכב · רכב ותחבורה</option><option>בייקרי לחם ועוד · אוכל ומסעדות</option><option>עו״ד רון שגב ושותפים · פיננסים ומשפט</option></select>
+                <div class="kind-toggle"><div class="on">קבוע</div><div>זמני</div></div>
+                <div class="picker-panel-note">נכנס אוטומטית כשהעיגון הנוכחי פג · 04.08</div>
+              </div>
+              <div class="picker-panel-actions"><button class="btn-picker-save">שמירת המחליף</button><button class="btn-picker-cancel" id="pickerCancelBtn">ביטול</button></div>
+            </div>
+
+            <!-- 3 — סבב אוטומטי, עם בורר-עיגון בשורה -->
+            <div class="slot-row">
+              <div class="slot-num auto">3</div>
+              <div class="slot-biz"><div class="slot-biz-name auto">סבב אוטומטי</div><div class="slot-biz-meta">היום מוצג כאן: סטודיו קורל</div></div>
+              <div class="slot-type"><span class="slot-type-badge auto">מתחלף יומית</span></div>
+              <div class="slot-detail">מתמלא מ־38 העסקים בסבב הוגן</div>
+              <div class="slot-actions"><button class="btn-slot-anchor-outline" id="slot3ToggleBtn">עיגון עסק כאן</button></div>
+            </div>
+            <div class="picker-panel" id="slot3Panel" style="display:none">
+              <div class="picker-panel-title">עיגון עסק במיקום 3</div>
+              <div class="picker-panel-row">
+                <select class="wide"><option>בחירת עסק מ־38 שבסבב…</option><option>קפה שקד · אוכל ומסעדות</option><option>בייקרי לחם ועוד · אוכל ומסעדות</option><option>תכשיטי ליבנה · אופנה, יופי ובריאות</option><option>מכון כושר פולס · ספורט ופנאי</option></select>
+                <div class="kind-toggle"><div class="on">קבוע</div><div>זמני</div></div>
+                <div class="picker-panel-note">קבוע — עד הסרה ידנית או תזמון החלפה</div>
+              </div>
+              <div class="picker-panel-actions"><button class="btn-picker-save">עיגון במיקום 3</button><button class="btn-picker-cancel" id="slot3CancelBtn">ביטול</button></div>
+            </div>
+
+            <!-- 4 — קבוע בלי תזמון -->
+            <div class="slot-row">
+              <div class="slot-num anchored">4</div>
+              <div class="slot-biz"><div class="slot-biz-name">עו״ד רון שגב ושותפים</div><div class="slot-biz-meta">פיננסים ומשפט · עוגן 11.03 ע״י רמי כהן</div></div>
+              <div class="slot-type"><span class="slot-type-badge fixed">עיגון קבוע</span></div>
+              <div class="slot-detail">בלי תאריך סיום · עד הסרה ידנית</div>
+              <div class="slot-actions"><button class="btn-slot-outline">החלפה</button><button class="btn-slot-outline">תזמון החלפה</button><button class="btn-slot-remove">הסרה</button></div>
+            </div>
+
+            <!-- 5 — זמני עם מחליף -->
+            <div class="slot-row">
+              <div class="slot-num anchored">5</div>
+              <div class="slot-biz"><div class="slot-biz-name">א.ד. מצברים וחשמל רכב</div><div class="slot-biz-meta">רכב ותחבורה · עוגן 02.07 ע״י רמי כהן</div></div>
+              <div class="slot-type"><span class="slot-type-badge temp">עיגון זמני</span><span class="slot-expiry calm">פג בעוד 6 ימים</span></div>
+              <div class="slot-detail">בפקיעה נכנס: <span class="hl">בייקרי לחם ועוד</span> (זמני, 30 יום)</div>
+              <div class="slot-actions"><button class="btn-slot-outline">עריכת תזמון</button><button class="btn-slot-remove">הסרה</button></div>
+            </div>
+
+            <!-- 6-10 אוטומטיים -->
+            <div class="slot-row"><div class="slot-num auto">6</div><div class="slot-biz"><div class="slot-biz-name auto">סבב אוטומטי</div><div class="slot-biz-meta">היום מוצג כאן: קפה שקד</div></div><div class="slot-type"><span class="slot-type-badge auto">מתחלף יומית</span></div><div class="slot-detail">מתמלא מ־38 העסקים בסבב הוגן</div><div class="slot-free-tag">מיקום פנוי</div></div>
+            <div class="slot-row"><div class="slot-num auto">7</div><div class="slot-biz"><div class="slot-biz-name auto">סבב אוטומטי</div><div class="slot-biz-meta">היום מוצג כאן: בייקרי לחם ועוד</div></div><div class="slot-type"><span class="slot-type-badge auto">מתחלף יומית</span></div><div class="slot-detail">מתמלא מ־38 העסקים בסבב הוגן</div><div class="slot-free-tag">מיקום פנוי</div></div>
+            <div class="slot-row"><div class="slot-num auto">8</div><div class="slot-biz"><div class="slot-biz-name auto">סבב אוטומטי</div><div class="slot-biz-meta">היום מוצג כאן: מכון כושר פולס</div></div><div class="slot-type"><span class="slot-type-badge auto">מתחלף יומית</span></div><div class="slot-detail">מתמלא מ־38 העסקים בסבב הוגן</div><div class="slot-free-tag">מיקום פנוי</div></div>
+            <div class="slot-row"><div class="slot-num auto">9</div><div class="slot-biz"><div class="slot-biz-name auto">סבב אוטומטי</div><div class="slot-biz-meta">היום מוצג כאן: תכשיטי ליבנה</div></div><div class="slot-type"><span class="slot-type-badge auto">מתחלף יומית</span></div><div class="slot-detail">מתמלא מ־38 העסקים בסבב הוגן</div><div class="slot-free-tag">מיקום פנוי</div></div>
+            <div class="slot-row"><div class="slot-num auto">10</div><div class="slot-biz"><div class="slot-biz-name auto">סבב אוטומטי</div><div class="slot-biz-meta">היום מוצג כאן: קייטרינג בן דוד</div></div><div class="slot-type"><span class="slot-type-badge auto">מתחלף יומית</span></div><div class="slot-detail">מתמלא מ־38 העסקים בסבב הוגן</div><div class="slot-free-tag">מיקום פנוי</div></div>
+          </div>
+
+          <div class="anchor-footer">
+            <div class="anchor-footer-label">עיגון עסק למיקום:</div>
+            <select><option>מיקום 6 — פנוי</option><option>מיקום 7 — פנוי</option><option>מיקום 8 — פנוי</option><option>מיקום 9 — פנוי</option><option>מיקום 10 — פנוי</option></select>
+            <select class="wide"><option>בחירת עסק מ־38 שבסבב…</option><option>קפה שקד · אוכל ומסעדות</option><option>בייקרי לחם ועוד · אוכל ומסעדות</option><option>תכשיטי ליבנה · אופנה, יופי ובריאות</option></select>
+            <div class="kind-toggle"><div class="on">קבוע</div><div>זמני</div></div>
+            <button class="btn-anchor-go">עיגון</button>
+          </div>
+          <div class="anchor-footer-note">רק עשרת המיקומים הראשונים ניתנים לעיגון. מיקום 11 והלאה תמיד אוטומטי.</div>
+        </div>
+      </div>
+
+      <!-- ── עמודת צד ── -->
+      <div class="col-side">
+        <div class="expiring-card">
+          <div class="expiring-head"><div class="expiring-kicker">דורש החלטה</div><div class="expiring-title">מה מסתיים בקרוב</div></div>
+          <div class="expiring-sep"></div>
+          <div class="expiring-item" id="expiringItem1">
+            <div class="expiring-num urgent">2</div>
+            <div style="flex:1;min-width:0">
+              <div class="expiring-name">פלאפל הזהב</div>
+              <div class="expiring-when urgent">פג ב־04.08 · בעוד 3 ימים</div>
+              <div class="expiring-replacer">מחליף: <span class="hl">לא נקבע</span> — המיקום יחזור לסבב האוטומטי</div>
+            </div>
+            <span class="expiring-arrow urgent">←</span>
+          </div>
+          <div class="expiring-sep"></div>
+          <div class="expiring-item">
+            <div class="expiring-num calm">5</div>
+            <div style="flex:1;min-width:0">
+              <div class="expiring-name">א.ד. מצברים וחשמל רכב</div>
+              <div class="expiring-when calm">פג ב־07.08 · בעוד 6 ימים</div>
+              <div class="expiring-replacer">מחליף: <span class="hl">בייקרי לחם ועוד</span> · עיגון זמני ל־30 יום, עד 06.09</div>
+            </div>
+            <span class="expiring-arrow calm">←</span>
+          </div>
+          <div class="expiring-sep"></div>
+          <div class="expiring-item">
+            <div class="expiring-num calm">1</div>
+            <div style="flex:1;min-width:0">
+              <div class="expiring-name">מוסך אלון ובניו</div>
+              <div class="expiring-when calm">עיגון קבוע · החלפה מתוזמנת ל־12.08</div>
+              <div class="expiring-replacer">מחליף: <span class="hl">קפה שקד</span> · עיגון קבוע, בלי תאריך סיום</div>
+            </div>
+            <span class="expiring-arrow calm">←</span>
+          </div>
+        </div>
+
+        <div class="dcard">
+          <div class="preview-head"><div class="preview-title">כך זה ייראה היום בדף הבית</div><div class="preview-sub">מעוגנים במקומם, השאר מהסבב היומי</div></div>
+          <div class="preview-list">
+            <div class="preview-row anchored"><div class="preview-idx anchored">1</div><div class="preview-name anchored">מוסך אלון ובניו</div><div class="preview-tag anchored">מעוגן</div></div>
+            <div class="preview-row anchored"><div class="preview-idx anchored">2</div><div class="preview-name anchored">פלאפל הזהב</div><div class="preview-tag anchored">מעוגן</div></div>
+            <div class="preview-row"><div class="preview-idx">3</div><div class="preview-name">סטודיו קורל</div><div class="preview-tag">סבב</div></div>
+            <div class="preview-row anchored"><div class="preview-idx anchored">4</div><div class="preview-name anchored">עו״ד רון שגב ושותפים</div><div class="preview-tag anchored">מעוגן</div></div>
+            <div class="preview-row anchored"><div class="preview-idx anchored">5</div><div class="preview-name anchored">א.ד. מצברים וחשמל רכב</div><div class="preview-tag anchored">מעוגן</div></div>
+            <div class="preview-row"><div class="preview-idx">6</div><div class="preview-name">קפה שקד</div><div class="preview-tag">סבב</div></div>
+            <div class="preview-more">ועוד 4 מיקומים מהסבב</div>
+          </div>
+        </div>
+
+        <div class="dcard">
+          <div class="how-head"><div class="how-title">איך עובד כל סקשן</div><div class="how-sub">מי נכנס אליו, ומה מותר לעגן בו</div></div>
+          <div class="how-row current"><div class="how-row-h">⭐ נבחרים <span class="now">— מוצג עכשיו</span></div><div class="how-row-body">עסקים שמנהל סימן ⭐ ״נבחר״ בכרטיס. סימון ידני, לא תכונה של העסק — <span class="hl">אפשר לעגן כאן כל עסק מאושר</span>.</div></div>
+          <div class="how-row"><div class="how-row-h">✨ חדש אצלנו</div><div class="how-row-body">עסקים שסומנו ✨ ״חדש״, בדרך כלל ל־30 יום. גם זה סימון ידני — <span class="hl">אין הגבלה על מי אפשר לעגן</span>.</div></div>
+          <div class="how-row"><div class="how-row-h">💛 הטבות שוות</div><div class="how-row-body">עסקים עם הטבה שהוגדרה בפועל בדשבורד שלהם. זו תכונה אמיתית של העסק — <span class="hl">ניתן לעגן רק עסק שיש לו הטבה</span>.</div></div>
+          <div class="how-row"><div class="how-row-h">🛒 קניה אונליין</div><div class="how-row-body">עסקים שסימנו סוג פעילות ״אונליין״ בפרופיל. תכונה אמיתית — <span class="hl">ניתן לעגן רק עסק שסימן אונליין</span>.</div></div>
+          <div class="how-row"><div class="how-row-h">🏬 כל העסקים</div><div class="how-row-body">כל 42 המאושרים כבר בפנים. העיגון כאן קובע <span class="hl">רק את סדר ההצגה</span>, לא חברות בסקשן.</div></div>
+          <div class="how-row dict"><div class="how-row-h">☰ שמונה הקטגוריות</div><div class="how-row-body">נכנסים רק עסקים שהקטגוריה הראשית שלהם היא זו, או שאושר להם ״מופיע גם תחת״. <span class="hl">אי אפשר לעגן עסק שלא שייך לקטגוריה</span> — העיגון קובע רק את הסדר בתוכה. המיקומים הלא־מעוגנים מתמלאים בסבב יומי הוגן, בדיוק כמו בסקשנים.</div></div>
+          <div class="how-row legend">
+            <div class="legend-h">מילון</div>
+            <div class="legend-body">
+              <span class="t">עיגון קבוע</span> — נשאר עד הסרה ידנית או עד תאריך החלפה שתזמנת<br />
+              <span class="t">עיגון זמני</span> — פג בתאריך; אם אין מחליף, המיקום חוזר לסבב<br />
+              <span class="t">מחליף מתוזמן</span> — עסק שנקבע מראש לרשת את המיקום, גם על עיגון זמני (נכנס בפקיעה) וגם על קבוע (בתאריך שבחרת)<br />
+              <span class="t">סבב אוטומטי</span> — מיקום לא מעוגן, מתחלף כל יום בסבב הוגן
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="demo-badge">דמו — טרם משולב · מקור: 5 סקשנים ועיגונים.dc.html</div>
+
+<script>
+  const shell = document.getElementById('shell');
+  const navToggle = document.getElementById('navToggle');
+  let navOpen = true;
+  function renderNavToggle() { navToggle.textContent = navOpen ? '⟩' : '⟨'; }
+  navToggle.onclick = () => { navOpen = !navOpen; shell.classList.toggle('collapsed', !navOpen); renderNavToggle(); };
+  renderNavToggle();
+
+  // ── בורר-מחליף למיקום 2 (זמני שפג בקרוב) — נפתח גם מהשורה עצמה וגם מלחיצה בפאנל "מה מסתיים בקרוב" ──
+  const pickerPanel = document.getElementById('pickerPanel');
+  function togglePicker() { pickerPanel.style.display = pickerPanel.style.display === 'none' ? '' : 'none'; }
+  document.getElementById('pickerToggleBtn').onclick = togglePicker;
+  document.getElementById('pickerCancelBtn').onclick = togglePicker;
+  document.getElementById('expiringItem1').onclick = togglePicker;
+
+  // ── בורר-עיגון למיקום 3 (סבב אוטומטי) ──
+  const slot3Panel = document.getElementById('slot3Panel');
+  function toggleSlot3() { slot3Panel.style.display = slot3Panel.style.display === 'none' ? '' : 'none'; }
+  document.getElementById('slot3ToggleBtn').onclick = toggleSlot3;
+  document.getElementById('slot3CancelBtn').onclick = toggleSlot3;
+</script>
+
+</body>
+</html>

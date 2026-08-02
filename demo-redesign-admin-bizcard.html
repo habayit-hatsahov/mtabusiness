@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>דמו — כרטיס עסק (מרכז ניהול חדש)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  /* ══ דמו מבודד, טרם משולב — ר' PROJECT_CONTEXT.md §123/124.
+     מקור: scratch_design_import_admin/handoff/"1 כרטיס עסק.dc.html" — פיקסל-לפיקסל.
+     עמוד-מלא (מחליף bizFullDetailHtml) — לא הפאנל-המוחלק שכבר נבנה ב-demo-redesign-admin-tasks.html
+     (יש חפיפה מכוונת בתוכן: 5-שלבים/שיפוט-מהיר/יומן — אבל כאן זו תצוגת-עמוד-מלא עם רשימת-עסקים
+     צדדית, לא drawer שנפתח מעל הטבלה). נתונים סטטיים כמו במוקאפ. ══ */
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: #F5F6F8; font-family: 'Heebo', system-ui, sans-serif; color: #101828; -webkit-font-smoothing: antialiased; }
+  a { color: #0A2A66; text-decoration: none; }
+  a:hover { color: #164193; }
+  input, textarea, select, button { font-family: inherit; color: inherit; }
+  input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid #0A2A66; outline-offset: 2px; }
+  ::selection { background: #FFE680; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #D9DEE5; border-radius: 99px; border: 3px solid #F5F6F8; }
+  button { border: none; background: none; cursor: pointer; }
+
+  .shell { min-height: 100vh; display: grid; grid-template-columns: 236px minmax(0,1fr); transition: grid-template-columns .18s ease; }
+  .shell.collapsed { grid-template-columns: 64px minmax(0,1fr); }
+
+  /* ── סרגל ניהול ── */
+  .nav { overflow: hidden; background: #FFFFFF; border-inline-start: 1px solid #DDE2E8; min-height: 100vh; position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; gap: 4px; padding: 18px 12px; }
+  .nav-head { display: flex; align-items: center; gap: 10px; padding: 0 6px 16px; margin-bottom: 6px; border-bottom: 1px solid #E3E7EC; }
+  .nav-head img { height: 20px; width: auto; display: block; }
+  .nav-toggle { width: 30px; height: 30px; flex: none; border-radius: 8px; background: #F5F6F8; color: #475467; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+  .nav-toggle:hover { background: #DDE2E8; color: #101828; }
+  .nav-group-label { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: #667085; padding: 0 8px 6px; }
+  .nav-item { display: flex; align-items: center; gap: 11px; padding: 0 10px; height: 40px; border-radius: 9px; color: #475467; }
+  .nav-item:hover { background: #F5F6F8; color: #101828; }
+  .nav-item svg { flex: none; display: block; }
+  .nav-item span.label { font-size: 13.5px; font-weight: 500; white-space: nowrap; }
+  .nav-item .spacer { flex: 1; }
+  .nav-item .count { background: #F2F4F7; color: #475467; font-size: 11px; font-weight: 700; border-radius: 99px; padding: 1px 7px; }
+  .nav-item.active { background: #0A2A66; color: #fff; cursor: default; }
+  .nav-item.active span.label { font-weight: 600; }
+  .nav-item.active .count { background: #FFD400; color: #0A2A66; }
+  .nav-divider { height: 1px; background: #E3E7EC; margin: 12px 8px; }
+  .nav-foot { display: flex; align-items: center; gap: 10px; padding: 10px; border-top: 1px solid #E3E7EC; margin-top: auto; }
+  .nav-avatar { width: 28px; height: 28px; flex: none; border-radius: 99px; background: #FFD400; color: #0A2A66; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .shell.collapsed .nav-label-hide { display: none; }
+
+  /* ── תוכן ── */
+  .content { min-width: 0; overflow-x: auto; display: flex; flex-direction: column; }
+  .content-head { padding: 24px 28px 18px; min-width: 1216px; display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+  .crumb { font-size: 12px; font-weight: 500; color: #667085; margin-bottom: 5px; display: flex; align-items: center; gap: 7px; }
+  .crumb a { color: #0A2A66; font-weight: 600; }
+  .page-title { font-size: 23px; font-weight: 700; letter-spacing: -0.02em; }
+  .kpis { display: flex; gap: 26px; align-items: flex-end; }
+  .kpi-num { font-size: 21px; font-weight: 700; line-height: 1.1; }
+  .kpi-num.accent { color: #0A2A66; }
+  .kpi-num .unit { font-size: 12px; font-weight: 500; color: #667085; }
+  .kpi-label { font-size: 11.5px; font-weight: 500; color: #667085; margin-top: 2px; }
+  .kpi-sep { width: 1px; height: 34px; background: #DDE2E8; }
+
+  .layout { padding: 0 28px 40px; min-width: 1216px; display: grid; grid-template-columns: 288px minmax(480px,1fr) 356px; gap: 18px; align-items: start; }
+
+  /* ── רשימת עסקים ── */
+  .biz-list-card { background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.09); overflow: hidden; position: sticky; top: 16px; }
+  .biz-list-top { padding: 14px 16px 12px; }
+  .biz-search { position: relative; }
+  .biz-search input { width: 100%; height: 38px; padding: 0 34px 0 12px; border: 1px solid #DDE2E8; border-radius: 9px; background: #F9FAFB; font-size: 13px; }
+  .biz-search span { position: absolute; inset-inline-start: 11px; top: 10px; color: #667085; font-size: 14px; }
+  .biz-list-top select { width: 100%; height: 34px; margin-top: 10px; padding: 0 10px; border: 1px solid #DDE2E8; border-radius: 9px; background: #fff; font-size: 12.5px; font-weight: 500; color: #344054; }
+  .biz-list-filters { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .biz-list-filters .pill-f { padding: 5px 11px; border-radius: 99px; font-size: 12px; font-weight: 500; background: #F9FAFB; color: #475467; }
+  .biz-list-filters .pill-f.on { background: #101828; color: #fff; font-weight: 600; }
+  .biz-list-filters .pill-f:hover:not(.on) { background: #F2F4F7; }
+  .biz-list-sep { height: 1px; background: #DDE2E8; }
+  .biz-list-item { padding: 13px 16px; border-top: 1px solid #DDE2E8; cursor: pointer; border-inline-start: 3px solid transparent; }
+  .biz-list-item:first-child { border-top: none; }
+  .biz-list-item:hover { background: #FCFCFD; }
+  .biz-list-item.active { background: #F7F9FC; border-inline-start-color: #0A2A66; }
+  .biz-list-item-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+  .biz-list-name { font-size: 13.5px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .biz-list-item.active .biz-list-name { font-weight: 600; }
+  .biz-list-progress { font-size: 11px; font-weight: 600; color: #475467; flex: none; }
+  .biz-list-badges { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .biz-list-meta { margin-top: 7px; font-size: 11.5px; color: #667085; }
+
+  .badge { font-size: 10.5px; font-weight: 600; border-radius: 6px; padding: 2px 8px; }
+  .badge.primary { background: #0A2A66; color: #fff; }
+  .badge.treat { background: #EEF2FA; color: #0A2A66; }
+  .badge.warn { background: #FFFBEB; color: #B54708; }
+  .badge.lg { font-size: 11.5px; border-radius: 7px; padding: 3px 10px; }
+
+  .dcard { background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.09); }
+  .col-main { min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+
+  /* ── שיפוט מהיר ── */
+  .qj-card { overflow: hidden; }
+  .qj-head { padding: 14px 20px 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .qj-toggle-btn { width: 26px; height: 26px; flex: none; border-radius: 7px; background: #F2F4F7; color: #475467; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .qj-toggle-btn:hover { background: #DDE2E8; color: #101828; }
+  .qj-head-title { font-size: 14.5px; font-weight: 700; cursor: pointer; }
+  .qj-count { background: #EEF2FA; color: #0A2A66; font-size: 11px; font-weight: 700; border-radius: 99px; padding: 2px 8px; }
+  .qj-hint { flex-basis: 100%; font-size: 11.5px; color: #667085; }
+  .qj-list { border-top: 1px solid #E3E7EC; display: flex; flex-direction: column; gap: 1px; background: #DDE2E8; }
+  .qj-row { padding: 12px 20px; background: #fff; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .qj-row-label { flex: 0 0 128px; }
+  .qj-row-step { font-size: 10.5px; font-weight: 600; color: #667085; margin-bottom: 2px; }
+  .qj-row-field { font-size: 13.5px; font-weight: 600; }
+  .qj-row-diff { flex: 1 1 200px; display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .qj-row-old { font-size: 12.5px; color: #667085; text-decoration: line-through; white-space: nowrap; }
+  .qj-row-arrow { color: #667085; font-size: 13px; }
+  .qj-row-diff input { flex: 1; min-width: 110px; height: 34px; padding: 0 10px; border: 1px solid #DDE2E8; border-radius: 8px; background: #fff; font-size: 13px; font-weight: 700; }
+  .qj-actions { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+  .btn-qj-approve { height: 29px; padding: 0 11px; border-radius: 8px; background: #0A2A66; color: #fff; font-size: 11.5px; font-weight: 600; }
+  .btn-qj-approve:hover { background: #164193; }
+  .btn-qj-reject { height: 29px; padding: 0 11px; border: 1px solid #DDE2E8; border-radius: 8px; background: #fff; color: #475467; font-size: 11.5px; font-weight: 600; }
+  .btn-qj-reject:hover { background: #F9FAFB; }
+  .btn-qj-goto { height: 29px; padding: 0 6px; color: #0A2A66; font-size: 11.5px; font-weight: 600; }
+  .btn-qj-goto:hover { text-decoration: underline; }
+  .btn-qj-deny { height: 29px; padding: 0 11px; border-radius: 8px; color: #475467; font-size: 11.5px; font-weight: 600; }
+  .btn-qj-deny:hover { color: #B42318; }
+  .qj-note-row { border-top: 1px solid #E3E7EC; padding: 11px 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .qj-note-text { font-size: 12.5px; color: #344054; flex: 1; min-width: 220px; padding-inline-start: 11px; border-inline-start: 2px solid #FFD400; line-height: 1.5; }
+  .btn-note-handle { height: 30px; padding: 0 12px; border-radius: 8px; background: #F2F4F7; color: #344054; font-size: 12px; font-weight: 600; }
+  .btn-note-handle:hover { background: #DDE2E8; }
+  .btn-note-reply { height: 30px; padding: 0 12px; border-radius: 8px; color: #0A2A66; font-size: 12px; font-weight: 600; }
+  .btn-note-reply:hover { background: #F2F4F7; }
+
+  /* ── זהות ── */
+  .identity-card { padding: 22px 24px; }
+  .identity-top { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .identity-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .identity-dates { font-size: 12px; color: #667085; margin-bottom: 8px; }
+  .identity-name { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+  .identity-contact { margin-top: 9px; font-size: 13.5px; color: #475467; }
+  .identity-contact .k { color: #101828; }
+  .identity-tags { margin-top: 12px; display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: #667085; }
+  .identity-actions { display: flex; flex-direction: column; gap: 8px; min-width: 172px; }
+  .identity-actions-row { display: flex; gap: 8px; }
+  .btn-id-wa { flex: 1; height: 36px; border-radius: 9px; background: #0A2A66; color: #fff; font-size: 13px; font-weight: 600; padding: 0 12px; }
+  .btn-id-wa:hover { background: #164193; }
+  .btn-id-mail { flex: 1; height: 36px; border: 1px solid #0A2A66; border-radius: 9px; background: #fff; color: #0A2A66; font-size: 13px; font-weight: 600; padding: 0 12px; }
+  .btn-id-mail:hover { background: #EEF2FA; }
+  .btn-id-dash { height: 36px; border: 1px solid #DDE2E8; border-radius: 9px; background: #fff; color: #344054; font-size: 13px; font-weight: 600; padding: 0 14px; }
+  .btn-id-dash:hover { background: #F9FAFB; }
+  .identity-notes { margin-top: 18px; padding-top: 16px; border-top: 1px solid #E3E7EC; display: flex; gap: 10px; flex-wrap: wrap; }
+  .identity-note { flex: 1; min-width: 150px; border-radius: 10px; padding: 11px 13px; }
+  .identity-note.warn { background: #FFFBEB; }
+  .identity-note.neutral { background: #F9FAFB; }
+  .identity-note-h { font-size: 11px; font-weight: 600; margin-bottom: 3px; }
+  .identity-note.warn .identity-note-h { color: #B54708; }
+  .identity-note.neutral .identity-note-h { color: #667085; }
+  .identity-note-v { font-size: 12.5px; color: #475467; line-height: 1.5; }
+
+  /* ── המיקום באינדקס ── */
+  .anchor-card { overflow: hidden; }
+  .anchor-head { padding: 15px 22px 13px; display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+  .anchor-head-title { font-size: 14.5px; font-weight: 700; }
+  .anchor-head a { font-size: 12px; font-weight: 600; }
+  .anchor-list { border-top: 1px solid #E3E7EC; display: flex; flex-direction: column; gap: 1px; background: #DDE2E8; }
+  .anchor-row { padding: 12px 22px; background: #fff; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .anchor-row-label { flex: 0 0 132px; }
+  .anchor-row-section { font-size: 10.5px; font-weight: 600; color: #667085; margin-bottom: 2px; }
+  .anchor-row-pos { font-size: 13.5px; font-weight: 600; }
+  .anchor-row-pos.muted { font-weight: 500; color: #475467; }
+  .anchor-row-detail { flex: 1 1 210px; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: #475467; }
+  .anchor-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+  .anchor-seg { display: flex; border: 1px solid #DDE2E8; border-radius: 8px; overflow: hidden; }
+  .anchor-seg > div { padding: 6px 11px; font-size: 11.5px; font-weight: 500; background: #fff; color: #475467; }
+  .anchor-seg > div.on { background: #0A2A66; color: #fff; font-weight: 600; }
+  .btn-anchor-row { height: 29px; padding: 0 10px; display: inline-flex; align-items: center; border: 1px solid #DDE2E8; border-radius: 8px; background: #fff; color: #344054; font-size: 11.5px; font-weight: 600; }
+  .btn-anchor-row:hover { background: #F2F4F7; }
+  .btn-anchor-row.outline-accent { border-color: #0A2A66; color: #0A2A66; }
+  .btn-anchor-row.outline-accent:hover { background: #EEF2FA; }
+  .btn-anchor-remove { height: 29px; padding: 0 10px; border-radius: 8px; color: #475467; font-size: 11.5px; font-weight: 600; }
+  .btn-anchor-remove:hover { color: #B42318; }
+
+  .flag-grid { border-top: 1px solid #E3E7EC; padding: 15px 22px 18px; display: grid; grid-template-columns: repeat(auto-fit,minmax(215px,1fr)); gap: 12px; }
+  .flag-box { border-radius: 10px; padding: 12px 13px; }
+  .flag-box.neutral { background: #F9FAFB; }
+  .flag-box.warn { background: #FFFBEB; }
+  .flag-box-h { font-size: 11px; font-weight: 600; margin-bottom: 7px; }
+  .flag-box.neutral .flag-box-h { color: #667085; }
+  .flag-box.warn .flag-box-h { color: #B54708; }
+  .flag-box-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .flag-box-val { font-size: 12.5px; font-weight: 600; }
+  .flag-box-sub { font-size: 11.5px; color: #667085; }
+  .btn-flag-remove { height: 27px; padding: 0 9px; border: 1px solid #DDE2E8; border-radius: 7px; background: #fff; color: #475467; font-size: 11px; font-weight: 600; }
+  .btn-flag-remove:hover { background: #F2F4F7; }
+  .hearts-num { font-size: 12.5px; font-weight: 700; }
+  .hearts-edit { margin-top: 8px; display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+  .hearts-edit input[type=number] { height: 28px; padding: 0 8px; border: 1px solid #DDE2E8; border-radius: 7px; background: #fff; font-size: 12px; }
+  .hearts-edit input[type=number]:first-child { width: 66px; font-weight: 600; }
+  .hearts-edit input[type=number]:nth-child(2) { width: 62px; }
+  .btn-hearts-update { height: 28px; padding: 0 10px; border-radius: 7px; background: #0A2A66; color: #fff; font-size: 11px; font-weight: 600; }
+  .btn-hearts-update:hover { background: #164193; }
+  .btn-hearts-reset { height: 28px; padding: 0 9px; border-radius: 7px; color: #475467; font-size: 11px; font-weight: 600; }
+  .btn-hearts-reset:hover { color: #B42318; }
+
+  /* ── 5 השלבים (עמוד-מלא, כל שדה ניתן לעריכה) ── */
+  .steps-card { overflow: hidden; }
+  .steps-head { padding: 17px 24px 15px; display: flex; align-items: center; gap: 12px; }
+  .steps-head-title { font-size: 15px; font-weight: 700; flex: 1; }
+  .steps-head-hint { font-size: 12px; color: #667085; }
+  .step-block { border-top: 1px solid #E3E7EC; }
+  .step-block.open { background: #FCFCFD; }
+  .step-row { padding: 15px 24px; display: flex; align-items: center; gap: 13px; }
+  .step-num { width: 26px; height: 26px; flex: none; border-radius: 99px; background: #F2F4F7; color: #475467; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+  .step-num.active { background: #0A2A66; color: #fff; }
+  .step-body { flex: 1; min-width: 0; }
+  .step-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .step-name { font-size: 14px; font-weight: 600; }
+  .step-sub { font-size: 12px; color: #667085; margin-top: 2px; }
+  .step-reviewed { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: #344054; user-select: none; }
+  .step-reviewed input { width: 16px; height: 16px; accent-color: #0A2A66; }
+  .btn-step-edit { height: 32px; padding: 0 13px; border: 1px solid #DDE2E8; border-radius: 8px; background: #fff; font-size: 12.5px; font-weight: 600; color: #344054; }
+  .btn-step-edit:hover { background: #F9FAFB; }
+  .btn-step-close { height: 32px; padding: 0 13px; border-radius: 8px; background: #101828; color: #fff; font-size: 12.5px; font-weight: 600; }
+  .btn-step-close:hover { background: #344054; }
+
+  .step-form { padding: 2px 24px 22px; }
+  .step-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+  .step-field { }
+  .step-field.full { grid-column: 1 / -1; }
+  .step-field-h { font-size: 11.5px; font-weight: 600; color: #667085; margin-bottom: 6px; }
+  .step-field-h.changed { display: flex; align-items: center; gap: 7px; color: #0A2A66; }
+  .field-changed-tag { background: #EEF2FA; color: #0A2A66; font-size: 10px; font-weight: 600; border-radius: 5px; padding: 1px 6px; }
+  .step-field input[type=text], .step-field textarea { width: 100%; height: 38px; padding: 0 12px; border: 1px solid #DDE2E8; border-radius: 9px; background: #fff; font-size: 13.5px; }
+  .step-field textarea { height: auto; padding: 10px 12px; line-height: 1.6; resize: vertical; }
+  .step-field input.changed-val { border-color: #B7C6E4; background: #FAFBFE; font-weight: 600; }
+  .step-field-was { margin-top: 6px; font-size: 11.5px; color: #475467; }
+  .biz-type-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .biz-type-chip { display: flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 99px; font-size: 12.5px; }
+  .biz-type-chip.on { background: #EEF2FA; color: #0A2A66; font-weight: 600; }
+  .biz-type-chip.off { background: #F9FAFB; color: #475467; font-weight: 500; }
+  .step-form-actions { margin-top: 18px; display: flex; gap: 9px; }
+  .btn-step-save { height: 38px; padding: 0 20px; border-radius: 9px; background: #0A2A66; color: #fff; font-size: 13px; font-weight: 600; }
+  .btn-step-save:hover { background: #164193; }
+  .btn-step-cancel { height: 38px; padding: 0 16px; border: 1px solid #DDE2E8; border-radius: 9px; background: #fff; color: #475467; font-size: 13px; font-weight: 600; }
+  .btn-step-cancel:hover { background: #F9FAFB; }
+
+  .ai-box { margin: 0 24px 20px; background: #F7F9FC; border-radius: 11px; padding: 14px 16px; }
+  .ai-box-head { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }
+  .ai-tag { background: #0A2A66; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .06em; border-radius: 5px; padding: 2px 6px; }
+  .ai-box-title { font-size: 12.5px; font-weight: 600; flex: 1; }
+  .ai-box-note { font-size: 11.5px; font-weight: 600; color: #0A2A66; }
+  .ai-box-row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .ai-box-row input { flex: 1; min-width: 200px; height: 38px; padding: 0 12px; border: 1px solid #DDE2E8; border-radius: 9px; background: #fff; font-size: 13.5px; font-weight: 600; }
+  .btn-ai-suggest { height: 38px; padding: 0 15px; border: 1px solid #DDE2E8; border-radius: 9px; background: #fff; font-size: 12.5px; font-weight: 600; color: #344054; white-space: nowrap; }
+  .btn-ai-suggest:hover { background: #F9FAFB; }
+  .ai-preview-card { width: 151px; flex: none; background: #fff; border-radius: 9px; padding: 8px 10px; box-shadow: 0 1px 2px rgba(16,24,40,.06); }
+  .ai-preview-h { font-size: 9.5px; font-weight: 600; color: #667085; margin-bottom: 4px; }
+  .ai-preview-text { font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .media-row { padding: 0 24px 22px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .media-thumb { width: 72px; height: 72px; border-radius: 10px; background: #F2F4F7; }
+  .media-thumb.logo { width: 96px; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600; color: #667085; }
+  .media-thumb.missing { width: 128px; background: #FFFBEB; border: 1px dashed #EAAA08; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600; color: #B54708; }
+
+  /* ── פאנל צד: החלטות + יומן ── */
+  .col-side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .decisions-card { background: #0A2A66; border-radius: 14px; overflow: hidden; color: #fff; }
+  .decisions-top { padding: 17px 18px 15px; }
+  .decisions-kicker { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: #9BB0D9; margin-bottom: 11px; }
+  .decisions-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; }
+  .decisions-progress-text { font-size: 12.5px; color: #C9D6EE; flex: 1; line-height: 1.5; }
+  .decisions-bars { display: flex; gap: 3px; }
+  .decisions-bars div { width: 16px; height: 4px; border-radius: 99px; background: rgba(255,255,255,.22); }
+  .decisions-bars div.on { background: #FFD400; }
+  .btn-remove-index { width: 100%; height: 36px; border: 1px solid rgba(255,255,255,.25); border-radius: 9px; background: transparent; color: #fff; font-size: 12.5px; font-weight: 600; }
+  .btn-remove-index:hover { background: rgba(255,255,255,.08); }
+  .log-sep { height: 1px; background: rgba(255,255,255,.14); }
+  .log-head { padding: 15px 18px 12px; }
+  .log-title { font-size: 13px; font-weight: 700; }
+  .log-sub { font-size: 11.5px; color: #9BB0D9; margin-top: 3px; }
+  .log-write { padding: 0 18px 14px; }
+  .log-textarea { width: 100%; padding: 9px 11px; border: 1px solid rgba(255,255,255,.22); border-radius: 9px; background: rgba(255,255,255,.06); color: #fff; font-size: 12.5px; line-height: 1.5; resize: vertical; }
+  .log-textarea::placeholder { color: #9BB0D9; }
+  .log-write-actions { margin-top: 7px; display: flex; align-items: center; gap: 8px; }
+  .btn-log-add { height: 32px; padding: 0 13px; border-radius: 8px; background: #FFD400; color: #0A2A66; font-size: 12px; font-weight: 700; }
+  .btn-log-add:hover { background: #FFDE33; }
+  .log-write-note { font-size: 11px; color: #9BB0D9; }
+  .log-timeline { padding: 12px 18px 0; display: flex; flex-direction: column; }
+  .log-entry { display: flex; gap: 10px; padding-bottom: 13px; }
+  .log-dot-col { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .log-dot { width: 8px; height: 8px; border-radius: 99px; margin-top: 4px; }
+  .log-dot.note { background: #FFD400; }
+  .log-dot.decision { background: #9BB0D9; }
+  .log-dot.auto { background: rgba(255,255,255,.45); }
+  .log-dot-line { width: 1px; flex: 1; background: rgba(255,255,255,.2); }
+  .log-entry-title { font-size: 12.5px; font-weight: 600; }
+  .log-entry-detail { font-size: 12px; color: #C9D6EE; line-height: 1.55; margin-top: 2px; }
+  .log-entry-meta { font-size: 11px; color: #9BB0D9; margin-top: 4px; }
+  .log-foot { padding: 0 18px 18px; }
+  .btn-log-more { width: 100%; height: 34px; border: 1px solid rgba(255,255,255,.25); border-radius: 9px; background: transparent; color: #fff; font-size: 12px; font-weight: 600; }
+  .btn-log-more:hover { background: rgba(255,255,255,.08); }
+
+  .demo-badge { position: fixed; bottom: 14px; left: 14px; background: #101828; color: #fff; font-size: 11px; font-weight: 700; padding: 6px 12px; border-radius: 99px; z-index: 70; box-shadow: 0 4px 14px rgba(16,24,40,.25); }
+</style>
+</head>
+<body>
+
+<div class="shell" id="shell">
+
+  <!-- ══ סרגל ניהול ══ -->
+  <div class="nav" id="nav">
+    <div class="nav-head">
+      <img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone" class="nav-label-hide" />
+      <div class="spacer"></div>
+      <button class="nav-toggle" id="navToggle" title="פתיחה / סגירה של התפריט"></button>
+    </div>
+    <div class="nav-group-label nav-label-hide">ניהול</div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
+      <span class="label nav-label-hide">דשבורד ראשי</span>
+    </div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M4 21V8l8-5 8 5v13"></path><path d="M9 21v-6h6v6"></path><path d="M8 11h.01"></path><path d="M16 11h.01"></path></svg>
+      <span class="label nav-label-hide">כל העסקים</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">7</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+      <span class="label nav-label-hide">כל האוהדים</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">2</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r="1.2"></circle></svg>
+      <span class="label nav-label-hide">ניהול תגיות</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">3</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
+      <span class="label nav-label-hide">מרכז לבבות</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">2</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg>
+      <span class="label nav-label-hide">מרכז הודעות</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+      <span class="label nav-label-hide">תוכן דף הנחיתה</span>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-group-label nav-label-hide">תצוגה בדף הבית</div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg>
+      <span class="label nav-label-hide">סקשנים</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">2</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+      <span class="label nav-label-hide">קטגוריות</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide" style="background:none;font-weight:400;color:#667085">8</span>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>
+      <span class="label nav-label-hide">מרכז נתונים</span>
+    </div>
+    <div class="nav-foot">
+      <div class="nav-avatar">ר</div>
+      <div class="nav-label-hide" style="min-width:0"><div style="font-size:12.5px;font-weight:600;white-space:nowrap">רמי כהן</div><div style="font-size:11px;color:#667085;white-space:nowrap">מנהל מערכת</div></div>
+    </div>
+  </div>
+
+  <!-- ══ תוכן ══ -->
+  <div class="content">
+    <div class="content-head">
+      <div style="flex:1;min-width:240px">
+        <div class="crumb"><a href="demo-redesign-admin-tasks.html">← מרכז המשימות</a><span style="color:#667085">/</span><span>כל העסקים</span></div>
+        <div class="page-title">7 עסקים דורשים ממך פעולה</div>
+      </div>
+      <div class="kpis">
+        <div><div class="kpi-num accent">7</div><div class="kpi-label">משימות פתוחות</div></div>
+        <div class="kpi-sep"></div>
+        <div><div class="kpi-num">18.4<span class="unit"> שע׳</span></div><div class="kpi-label">זמן טיפול ממוצע</div></div>
+        <div class="kpi-sep"></div>
+        <div><div class="kpi-num">42<span class="unit">/61</span></div><div class="kpi-label">עסקים באינדקס</div></div>
+      </div>
+    </div>
+
+    <div class="layout">
+
+      <!-- ── רשימת עסקים ── -->
+      <div class="biz-list-card">
+        <div class="biz-list-top">
+          <div class="biz-search"><input type="search" placeholder="חיפוש עסק, עיר או קטגוריה" /><span>⌕</span></div>
+          <select><option>מיון: הממתין הכי הרבה זמן</option><option>מיון: הכי פחות שלבים נסקרו</option><option>מיון: הכי הרבה שלבים נסקרו</option><option>מיון: החדש ביותר</option><option>מיון: הישן ביותר</option></select>
+          <div class="biz-list-filters"><div class="pill-f on">הכל · 7</div><div class="pill-f">ממתינים לאישור · 3</div><div class="pill-f">בקשות מבעלי עסקים · 3</div></div>
+        </div>
+        <div class="biz-list-sep"></div>
+        <div>
+          <div class="biz-list-item active">
+            <div class="biz-list-item-top"><div class="biz-list-name">מוסך אלון ובניו</div><div class="biz-list-progress">2/4</div></div>
+            <div class="biz-list-badges"><span class="badge primary">בקשה מבעל העסק</span><span class="badge treat">שינוי פרטים</span><span class="badge treat">בקשת תגית</span><span class="badge treat">כתבו לנו</span></div>
+            <div class="biz-list-meta">אלון בן חמו · באינדקס מ־14.06</div>
+          </div>
+          <div class="biz-list-item">
+            <div class="biz-list-item-top"><div class="biz-list-name">פלאפל הזהב</div><div class="biz-list-progress">4/4</div></div>
+            <div class="biz-list-badges"><span class="badge primary">בקשה מבעל העסק</span><span class="badge treat">כתבו לנו</span></div>
+            <div class="biz-list-meta">יוסי אלבז · באינדקס מ־08.04</div>
+          </div>
+          <div class="biz-list-item">
+            <div class="biz-list-item-top"><div class="biz-list-name">סטודיו קורל</div><div class="biz-list-progress">0/4</div></div>
+            <div class="biz-list-badges"><span class="badge primary">עסק ממתין לאישור</span></div>
+            <div class="biz-list-meta">קורל אזולאי · במערכת 3 שבועות</div>
+          </div>
+          <div class="biz-list-item">
+            <div class="biz-list-item-top"><div class="biz-list-name">א.ד. מצברים וחשמל רכב</div><div class="biz-list-progress">4/4</div></div>
+            <div class="biz-list-badges"><span class="badge primary">בקשה מבעל העסק</span><span class="badge treat">בקשת קטגוריה</span></div>
+            <div class="biz-list-meta">דוד אמסלם · באינדקס מ־02.05</div>
+          </div>
+          <div class="biz-list-item">
+            <div class="biz-list-item-top"><div class="biz-list-name">קפה שקד</div><div class="biz-list-progress">1/4</div></div>
+            <div class="biz-list-badges"><span class="badge primary">עסק ממתין לאישור</span></div>
+            <div class="biz-list-meta">שקד לוי · במערכת יומיים</div>
+          </div>
+          <div class="biz-list-item">
+            <div class="biz-list-item-top"><div class="biz-list-name">בייקרי לחם ועוד</div><div class="biz-list-progress">3/4</div></div>
+            <div class="biz-list-badges"><span class="badge primary">עסק ממתין לאישור</span></div>
+            <div class="biz-list-meta">רונית שגב · במערכת 8 ימים</div>
+          </div>
+          <div class="biz-list-item">
+            <div class="biz-list-item-top"><div class="biz-list-name">מכון כושר פולס</div><div class="biz-list-progress">4/4</div></div>
+            <div class="biz-list-badges"><span class="badge primary">כרטיס חסר באינדקס</span><span class="badge warn">חסרה תמונה מייצגת</span></div>
+            <div class="biz-list-meta">איתי נחום · באינדקס מ־19.02</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── כרטיס העסק ── -->
+      <div class="col-main">
+
+        <!-- שיפוט מהיר -->
+        <div class="dcard qj-card">
+          <div class="qj-head">
+            <button class="qj-toggle-btn" id="qjToggleBtn">−</button>
+            <div class="qj-head-title" id="qjToggleTitle">שיפוט מהיר</div>
+            <span class="qj-count">3</span>
+            <div class="spacer"></div>
+            <div class="qj-hint" id="qjHint">כל בקשה ניתנת לעריכה כאן לפני אישור, או לקפיצה לשלב שממנו היא באה</div>
+          </div>
+          <div id="qjBody">
+            <div class="qj-list">
+              <div class="qj-row">
+                <div class="qj-row-label"><div class="qj-row-step">שלב 2 · שינוי פרטים</div><div class="qj-row-field">טלפון עסק</div></div>
+                <div class="qj-row-diff"><span class="qj-row-old">03-5540221</span><span class="qj-row-arrow">→</span><input type="text" value="03-5591180" /></div>
+                <div class="qj-actions"><button class="btn-qj-approve">אישור</button><button class="btn-qj-reject">דחייה</button><button class="btn-qj-goto">לשלב 2 ←</button></div>
+              </div>
+              <div class="qj-row">
+                <div class="qj-row-label"><div class="qj-row-step">שלב 2 · שינוי פרטים</div><div class="qj-row-field">שעות פעילות</div></div>
+                <div class="qj-row-diff"><span class="qj-row-old">א׳-ה׳ 08:00-17:00</span><span class="qj-row-arrow">→</span><input type="text" value="א׳-ה׳ 07:30-18:00 · ו׳ 07:30-13:00" /></div>
+                <div class="qj-actions"><button class="btn-qj-approve">אישור</button><button class="btn-qj-reject">דחייה</button><button class="btn-qj-goto">לשלב 2 ←</button></div>
+              </div>
+              <div class="qj-row">
+                <div class="qj-row-label"><div class="qj-row-step">שלב 3 · בקשת תגית</div><div class="qj-row-field">תגית חדשה שהוצעה</div></div>
+                <div class="qj-row-diff"><input type="text" value="פחחות וצבע" /></div>
+                <div class="qj-actions"><button class="btn-qj-approve">אישור כתגית</button><button class="btn-qj-reject">מיפוי לקיימת</button><button class="btn-qj-deny">דחייה</button><button class="btn-qj-goto">לשלב 3 ←</button><button class="btn-qj-goto">לניהול התגיות ←</button></div>
+              </div>
+            </div>
+            <div class="qj-note-row">
+              <div class="qj-note-text"><span style="font-weight:600">העסק כתב לנו: </span>אני מעדיף שהטלפון שיופיע יהיה הנייד ולא הקווי, אנשים לא עונים במשרד.</div>
+              <button class="btn-note-handle">סימון כטופל</button>
+              <button class="btn-note-reply">מענה בוואטסאפ</button>
+              <button class="btn-note-reply">מענה במייל</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- זהות -->
+        <div class="dcard identity-card">
+          <div class="identity-top">
+            <div style="flex:1;min-width:220px">
+              <div class="identity-badges"><span class="badge primary lg">בקשה מבעל העסק</span><span class="badge treat lg">שינוי פרטים</span><span class="badge treat lg">בקשת תגית</span><span class="badge treat lg">כתבו לנו</span></div>
+              <div class="identity-dates">באינדקס מ־14.06.2026 · הבקשות נשלחו לפני יומיים</div>
+              <div class="identity-name">מוסך אלון ובניו</div>
+              <div class="identity-contact">אלון בן חמו · <span class="k">054-8123991</span> · alon.mosach@gmail.com</div>
+              <div class="identity-tags"><span>🚗 רכב ותחבורה</span><span>חנות פיזית · חולון</span><span>קוד כניסה 481902</span></div>
+            </div>
+            <div class="identity-actions">
+              <div class="identity-actions-row"><button class="btn-id-wa">וואטסאפ</button><button class="btn-id-mail">מייל</button></div>
+              <button class="btn-id-dash">פתיחת דשבורד העסק</button>
+            </div>
+          </div>
+          <div class="identity-notes">
+            <div class="identity-note warn"><div class="identity-note-h">מנוי לא מאומת</div><div class="identity-note-v">אומת בתמונה בשער + פייסבוק — דורש בדיקה ידנית</div></div>
+            <div class="identity-note neutral"><div class="identity-note-h">תקנון</div><div class="identity-note-v">אושר 14.06.2026</div></div>
+            <div class="identity-note neutral"><div class="identity-note-h">מייל אישור</div><div class="identity-note-v">נשלח 14.06 עם לינק לדשבורד</div></div>
+          </div>
+        </div>
+
+        <!-- המיקום באינדקס -->
+        <div class="dcard anchor-card">
+          <div class="anchor-head"><div class="anchor-head-title">המיקום באינדקס</div><div class="spacer"></div><a href="demo-redesign-admin-sections.html">לדשבורד הסקשנים ←</a></div>
+          <div class="anchor-list">
+            <div class="anchor-row">
+              <div class="anchor-row-label"><div class="anchor-row-section">⭐ נבחרים</div><div class="anchor-row-pos">מיקום 1</div></div>
+              <div class="anchor-row-detail"><span class="badge primary">עיגון קבוע</span><span>החלפה מתוזמנת ל־12.08 · קפה שקד</span></div>
+              <div class="anchor-actions">
+                <div class="anchor-seg"><div class="on">קבוע</div><div>זמני</div></div>
+                <button class="btn-anchor-row">לשורה בסקשן</button>
+                <button class="btn-anchor-remove">הסרת העיגון</button>
+              </div>
+            </div>
+            <div class="anchor-row">
+              <div class="anchor-row-label"><div class="anchor-row-section">🚗 רכב ותחבורה</div><div class="anchor-row-pos">מיקום 3</div></div>
+              <div class="anchor-row-detail"><span class="badge treat">עיגון זמני</span><span>פג ב־19.08 · בעוד 18 ימים · בלי מחליף</span></div>
+              <div class="anchor-actions">
+                <div class="anchor-seg"><div>קבוע</div><div class="on">זמני</div></div>
+                <button class="btn-anchor-row">לשורה בסקשן</button>
+                <button class="btn-anchor-remove">הסרת העיגון</button>
+              </div>
+            </div>
+            <div class="anchor-row">
+              <div class="anchor-row-label"><div class="anchor-row-section">💛 הטבות שוות</div><div class="anchor-row-pos muted">בסבב האוטומטי</div></div>
+              <div class="anchor-row-detail">מוצג לפי הסבב היומי ההוגן, לא מעוגן למיקום קבוע</div>
+              <div class="anchor-actions"><button class="btn-anchor-row outline-accent">עיגון למיקום</button></div>
+            </div>
+          </div>
+          <div class="flag-grid">
+            <div class="flag-box neutral"><div class="flag-box-h">✨ חדש אצלנו</div><div class="flag-box-row"><span class="flag-box-val">פעיל עד 14.07</span><button class="btn-flag-remove">הסרה</button></div></div>
+            <div class="flag-box neutral"><div class="flag-box-h">⭐ נבחר</div><div class="flag-box-row"><span class="flag-box-val">קבוע</span><button class="btn-flag-remove">הסרה</button></div></div>
+            <div class="flag-box neutral"><div class="flag-box-h">💛 הטבות שוות</div><div class="flag-box-row"><span class="flag-box-val">מוצג</span><span class="flag-box-sub">יש הטבה מוגדרת</span></div></div>
+            <div class="flag-box warn">
+              <div class="flag-box-h">💙 לבבות</div>
+              <div class="flag-box-row"><span class="hearts-num">184</span><span class="flag-box-sub">אמיתי 47 · מוצג 184 עד 31.08</span></div>
+              <div class="hearts-edit">
+                <input type="number" value="184" />
+                <input type="number" placeholder="ימים" />
+                <button class="btn-hearts-update">עדכון</button>
+                <button class="btn-hearts-reset">חזרה למספר האמיתי</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5 השלבים -->
+        <div class="dcard steps-card">
+          <div class="steps-head"><div class="steps-head-title">חמשת השלבים מההרשמה</div><div class="steps-head-hint">סמנו "נסקר" בכל שלב שעברתם עליו</div></div>
+
+          <div class="step-block">
+            <div class="step-row">
+              <div class="step-num">1</div>
+              <div class="step-body"><div class="step-name">בעל העסק</div><div class="step-sub">אלון בן חמו · לא מנוי · תמונת הוכחה + פייסבוק</div></div>
+              <button class="btn-step-edit">עריכה</button>
+            </div>
+          </div>
+
+          <div class="step-block open" id="step2Block">
+            <div class="step-row">
+              <div class="step-num active">2</div>
+              <div class="step-body">
+                <div class="step-name-row"><div class="step-name">פרטי העסק</div><span class="badge treat">2 שינויים מבוקשים</span></div>
+                <div class="step-sub">פתוח לעריכה</div>
+              </div>
+              <label class="step-reviewed"><input type="checkbox" id="rev2" checked />נסקר</label>
+              <button class="btn-step-close" id="step2CloseBtn">סגירה</button>
+            </div>
+            <div class="step-form" id="step2Form">
+              <div class="step-form-grid">
+                <div class="step-field full"><div class="step-field-h">שם העסק</div><input type="text" value="מוסך אלון ובניו" /></div>
+                <div class="step-field full">
+                  <div class="step-field-h">סוג עסק</div>
+                  <div class="biz-type-chips">
+                    <label class="biz-type-chip on"><input type="checkbox" checked />חנות פיזית</label>
+                    <label class="biz-type-chip off"><input type="checkbox" />אונליין</label>
+                    <label class="biz-type-chip off"><input type="checkbox" />בעל מקצוע</label>
+                  </div>
+                </div>
+                <div class="step-field"><div class="step-field-h">עיר</div><input type="text" value="חולון" /></div>
+                <div class="step-field"><div class="step-field-h">כתובת</div><input type="text" value="המרכבה 18" /></div>
+                <div class="step-field">
+                  <div class="step-field-h changed">טלפון עסק<span class="field-changed-tag">מבוקש שינוי</span></div>
+                  <input type="text" class="changed-val" value="03-5591180" />
+                  <div class="step-field-was">היה 03-5540221</div>
+                </div>
+                <div class="step-field"><div class="step-field-h">וואטסאפ</div><input type="text" value="054-8123991" /></div>
+                <div class="step-field full">
+                  <div class="step-field-h changed">שעות פעילות<span class="field-changed-tag">מבוקש שינוי</span></div>
+                  <input type="text" class="changed-val" value="א׳-ה׳ 07:30-18:00 · ו׳ 07:30-13:00" />
+                  <div class="step-field-was">היה א׳-ה׳ 08:00-17:00</div>
+                </div>
+                <div class="step-field full"><div class="step-field-h">תיאור העסק</div><textarea rows="3">מוסך מורשה לכל סוגי הרכבים, שירות אישי ואמין מ-1998. טיפולים, בדיקות לפני קנייה וטסט.</textarea></div>
+              </div>
+              <div class="step-form-actions"><button class="btn-step-save">שמירת השלב</button><button class="btn-step-cancel">ביטול</button></div>
+            </div>
+          </div>
+
+          <div class="step-block">
+            <div class="step-row">
+              <div class="step-num active">3</div>
+              <div class="step-body"><div class="step-name-row"><div class="step-name">קטגוריה ותגיות</div><span class="badge treat">בקשת תגית</span></div><div class="step-sub">רכב ותחבורה · מוסכים וחלקי חילוף · תגית שנייה פנויה</div></div>
+              <label class="step-reviewed"><input type="checkbox" checked />נסקר</label>
+              <button class="btn-step-edit">עריכה</button>
+            </div>
+          </div>
+
+          <div class="step-block">
+            <div class="step-row">
+              <div class="step-num">4</div>
+              <div class="step-body"><div class="step-name">הטבה לחברים</div><div class="step-sub">15% על טיפול תקופתי · מימוש בחנות · הטבה אחת מתוך 3</div></div>
+              <label class="step-reviewed"><input type="checkbox" />נסקר</label>
+              <button class="btn-step-edit">עריכה</button>
+            </div>
+            <div class="ai-box">
+              <div class="ai-box-head"><span class="ai-tag">AI</span><div class="ai-box-title">הכותרת שתופיע על הכרטיס באינדקס</div><div class="ai-box-note">נכנסת ברוחב</div></div>
+              <div class="ai-box-row">
+                <input type="text" value="15% הנחה על טיפול תקופתי" />
+                <button class="btn-ai-suggest">הצע 3 נוסחים</button>
+                <div class="ai-preview-card"><div class="ai-preview-h">כך זה ייראה</div><div class="ai-preview-text">15% הנחה על טיפול תקופתי</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-block">
+            <div class="step-row">
+              <div class="step-num">5</div>
+              <div class="step-body"><div class="step-name-row"><div class="step-name">מדיה</div><span class="badge warn">חסרה תמונה מייצגת</span></div><div class="step-sub">לוגו הועלה · 3 בגלריה · אין סרטונים</div></div>
+              <label class="step-reviewed"><input type="checkbox" />נסקר</label>
+              <button class="btn-step-edit">עריכה</button>
+            </div>
+            <div class="media-row">
+              <div class="media-thumb logo">לוגו</div>
+              <div class="media-thumb missing">חסרה תמונה</div>
+              <div class="media-thumb"></div><div class="media-thumb"></div><div class="media-thumb"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── פאנל ההחלטה ── -->
+      <div class="col-side">
+        <div class="decisions-card">
+          <div class="decisions-top">
+            <div class="decisions-kicker">החלטות על העסק</div>
+            <div class="decisions-progress">
+              <div class="decisions-progress-text">נסקרו <span id="reviewedCount">2</span> מתוך 4 שלבים</div>
+              <div class="decisions-bars" id="decisionBars"><div class="on"></div><div class="on"></div><div></div><div></div></div>
+            </div>
+            <button class="btn-remove-index">הסרה מהאינדקס</button>
+          </div>
+          <div class="log-sep"></div>
+          <div class="log-head"><div class="log-title">יומן העסק</div><div class="log-sub">כל פעולה על העסק נרשמת כאן אוטומטית — אישור, דחייה, עריכת שדה, סימוני סקשן, מיילים ושליחות ידניות</div></div>
+          <div class="log-write">
+            <textarea class="log-textarea" rows="2" placeholder="כתוב הערה על העסק — תיכנס ליומן"></textarea>
+            <div class="log-write-actions"><button class="btn-log-add">הוספה ליומן</button><div class="log-write-note">גלוי למנהלים בלבד</div></div>
+          </div>
+          <div class="log-sep"></div>
+          <div class="log-timeline">
+            <div class="log-entry"><div class="log-dot-col"><div class="log-dot note"></div><div class="log-dot-line"></div></div><div><div class="log-entry-title">הערת מנהל</div><div class="log-entry-detail">התקשרתי לאלון, הוא מאשר שהנייד הוא המספר הנכון להצגה.</div><div class="log-entry-meta">רמי כהן · היום 09:14</div></div></div>
+            <div class="log-entry"><div class="log-dot-col"><div class="log-dot decision"></div><div class="log-dot-line"></div></div><div><div class="log-entry-title">בקשת שינוי התקבלה מבעל העסק</div><div class="log-entry-detail">3 בקשות: טלפון עסק, שעות פעילות, תגית חדשה</div><div class="log-entry-meta">מהדשבורד של העסק · לפני יומיים</div></div></div>
+            <div class="log-entry"><div class="log-dot-col"><div class="log-dot decision"></div><div class="log-dot-line"></div></div><div><div class="log-entry-title">אושרה בקשת תגית שנייה</div><div class="log-entry-detail">״מוסכים וחלקי חילוף״ נוספה כתגית ראשית</div><div class="log-entry-meta">רמי כהן · 21.06.2026</div></div></div>
+            <div class="log-entry"><div class="log-dot-col"><div class="log-dot auto"></div><div class="log-dot-line"></div></div><div><div class="log-entry-title">מייל אישור נשלח</div><div class="log-entry-detail">״העסק שלך אושר לאינדקס Yellow Zone״ · עם לינק לדשבורד</div><div class="log-entry-meta">אוטומטי · 14.06.2026</div></div></div>
+            <div class="log-entry"><div class="log-dot-col"><div class="log-dot decision"></div></div><div><div class="log-entry-title">העסק אושר והועלה לאינדקס</div><div class="log-entry-detail">4 מתוך 4 שלבים נסקרו לפני האישור</div><div class="log-entry-meta">רמי כהן · 14.06.2026</div></div></div>
+            <div id="logExtra" style="display:none">
+              <div class="log-entry"><div class="log-dot-col"><div class="log-dot decision"></div><div class="log-dot-line"></div></div><div><div class="log-entry-title">המנהל ערך שדה · שעות פעילות</div><div class="log-entry-detail">א׳-ה׳ 09:00-17:00 → א׳-ה׳ 08:00-17:00</div><div class="log-entry-meta">רמי כהן · 18.06.2026</div></div></div>
+              <div class="log-entry"><div class="log-dot-col"><div class="log-dot decision"></div><div class="log-dot-line"></div></div><div><div class="log-entry-title">הודלק סימון ✨ חדש אצלנו · ל-30 יום</div><div class="log-entry-meta">רמי כהן · 15.06.2026</div></div></div>
+              <div class="log-entry"><div class="log-dot-col"><div class="log-dot auto"></div><div class="log-dot-line"></div></div><div><div class="log-entry-title">וואטסאפ נשלח ידנית לבעל העסק</div><div class="log-entry-meta">רמי כהן · 14.06.2026</div></div></div>
+              <div class="log-entry"><div class="log-dot-col"><div class="log-dot auto"></div></div><div><div class="log-entry-title">בקשת הרשמה נשלחה · 5 שלבים הושלמו</div><div class="log-entry-meta">בעל העסק · 08.06.2026</div></div></div>
+            </div>
+          </div>
+          <div class="log-foot"><button class="btn-log-more" id="logMoreBtn">הצגת היומן המלא (9 רשומות)</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="demo-badge">דמו — טרם משולב · מקור: 1 כרטיס עסק.dc.html</div>
+
+<script>
+  const shell = document.getElementById('shell');
+  const navToggle = document.getElementById('navToggle');
+  let navOpen = true;
+  function renderNavToggle() { navToggle.textContent = navOpen ? '⟩' : '⟨'; }
+  navToggle.onclick = () => { navOpen = !navOpen; shell.classList.toggle('collapsed', !navOpen); renderNavToggle(); };
+  renderNavToggle();
+
+  // ── שיפוט מהיר: פתוח כברירת מחדל, מתקפל ── (§ מרכז-הודעות/מרכז-משימות — אותו רעיון, פתוח בהתחלה)
+  const qjToggleBtn = document.getElementById('qjToggleBtn');
+  const qjToggleTitle = document.getElementById('qjToggleTitle');
+  const qjBody = document.getElementById('qjBody');
+  const qjHint = document.getElementById('qjHint');
+  let qjOpen = true;
+  function renderQj() {
+    qjBody.style.display = qjOpen ? '' : 'none';
+    qjToggleBtn.textContent = qjOpen ? '−' : '+';
+    qjHint.textContent = qjOpen ? 'כל בקשה ניתנת לעריכה כאן לפני אישור, או לקפיצה לשלב שממנו היא באה' : 'סגור — לחצו כדי לפרוס את כל הבקשות';
+  }
+  qjToggleBtn.onclick = () => { qjOpen = !qjOpen; renderQj(); };
+  qjToggleTitle.onclick = () => { qjOpen = !qjOpen; renderQj(); };
+
+  // ── שלב 2 (פרטי-העסק) — היחיד עם טופס-עריכה-מלא פתוח בדוגמה; "נסקר" גם קובע את הפסים בפאנל ──
+  const rev2 = document.getElementById('rev2');
+  const step2Form = document.getElementById('step2Form');
+  const step2CloseBtn = document.getElementById('step2CloseBtn');
+  const reviewedCount = document.getElementById('reviewedCount');
+  const bars = Array.from(document.querySelectorAll('#decisionBars div'));
+  let step2FormOpen = true;
+  let revState = [true, true, false, false]; // שלבים 2-5
+  function renderReview() {
+    reviewedCount.textContent = revState.filter(Boolean).length;
+    bars.forEach((b, i) => b.classList.toggle('on', revState[i]));
+  }
+  rev2.onchange = () => { revState[0] = rev2.checked; renderReview(); };
+  step2CloseBtn.onclick = () => { step2FormOpen = !step2FormOpen; step2Form.style.display = step2FormOpen ? '' : 'none'; step2CloseBtn.textContent = step2FormOpen ? 'סגירה' : 'פתיחה'; };
+  renderReview();
+
+  // ── יומן — הרחבת היסטוריה מלאה ──
+  const logExtra = document.getElementById('logExtra');
+  const logMoreBtn = document.getElementById('logMoreBtn');
+  let logOpen = false;
+  logMoreBtn.onclick = () => {
+    logOpen = !logOpen;
+    logExtra.style.display = logOpen ? '' : 'none';
+    logMoreBtn.textContent = logOpen ? 'הסתרת הרשומות הקודמות' : 'הצגת היומן המלא (9 רשומות)';
+  };
+</script>
+
+</body>
+</html>

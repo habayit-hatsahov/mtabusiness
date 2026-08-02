@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>דמו — כל האוהדים (מרכז ניהול חדש)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  /* ══ דמו מבודד, טרם משולב — ר' PROJECT_CONTEXT.md §123 ואילך.
+     מקור: scratch_design_import_admin/handoff/"3 כל האוהדים.dc.html" — פיקסל-לפיקסל.
+     מקביל למבנה demo-redesign-admin-bizcard.html (רשימה+כרטיס+פאנל-החלטות), אותם class-names
+     חוזרים בכוונה. ייחודי לכאן: פאנל שיפוט-מהיר לדגל-דדופ ("אותו אדם"/"כפילות") + אימות-מנוי
+     ידני (תמונה+פייסבוק) — אין שלבים-מתקפלים כמו בעסק, כי לאוהד אין 5-שלבי-הרשמה. ══ */
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: #F5F6F8; font-family: 'Heebo', system-ui, sans-serif; color: #101828; -webkit-font-smoothing: antialiased; }
+  a { color: #0A2A66; text-decoration: none; }
+  a:hover { color: #164193; }
+  input, textarea, select, button { font-family: inherit; color: inherit; }
+  input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid #0A2A66; outline-offset: 2px; }
+  ::selection { background: #FFE680; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #D9DEE5; border-radius: 99px; border: 3px solid #F5F6F8; }
+  button { border: none; background: none; cursor: pointer; }
+
+  .shell { min-height: 100vh; display: grid; grid-template-columns: 236px minmax(0,1fr); transition: grid-template-columns .18s ease; }
+  .shell.collapsed { grid-template-columns: 64px minmax(0,1fr); }
+
+  .nav { overflow: hidden; background: #FFFFFF; border-inline-start: 1px solid #DDE2E8; min-height: 100vh; position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; gap: 4px; padding: 18px 12px; }
+  .nav-head { display: flex; align-items: center; gap: 10px; padding: 0 6px 16px; margin-bottom: 6px; border-bottom: 1px solid #E3E7EC; }
+  .nav-head img { height: 20px; width: auto; display: block; }
+  .nav-toggle { width: 30px; height: 30px; flex: none; border-radius: 8px; background: #F5F6F8; color: #475467; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+  .nav-toggle:hover { background: #DDE2E8; color: #101828; }
+  .nav-group-label { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: #667085; padding: 0 8px 6px; }
+  .nav-item { display: flex; align-items: center; gap: 11px; padding: 0 10px; height: 40px; border-radius: 9px; color: #475467; }
+  .nav-item:hover { background: #F5F6F8; color: #101828; }
+  .nav-item svg { flex: none; display: block; }
+  .nav-item span.label { font-size: 13.5px; font-weight: 500; white-space: nowrap; }
+  .nav-item .spacer { flex: 1; }
+  .nav-item .count { background: #F2F4F7; color: #475467; font-size: 11px; font-weight: 700; border-radius: 99px; padding: 1px 7px; }
+  .nav-item.active { background: #0A2A66; color: #fff; cursor: default; }
+  .nav-item.active span.label { font-weight: 600; }
+  .nav-item.active .count { background: #FFD400; color: #0A2A66; }
+  .nav-divider { height: 1px; background: #E3E7EC; margin: 12px 8px; }
+  .nav-foot { display: flex; align-items: center; gap: 10px; padding: 10px; border-top: 1px solid #E3E7EC; margin-top: auto; }
+  .nav-avatar { width: 28px; height: 28px; flex: none; border-radius: 99px; background: #FFD400; color: #0A2A66; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .shell.collapsed .nav-label-hide { display: none; }
+
+  .content { min-width: 0; overflow-x: auto; }
+  .content-head { padding: 24px 28px 18px; min-width: 1216px; display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+  .crumb { font-size: 12px; font-weight: 500; color: #667085; margin-bottom: 5px; display: flex; align-items: center; gap: 7px; }
+  .crumb a { color: #0A2A66; font-weight: 600; }
+  .page-title { font-size: 23px; font-weight: 700; letter-spacing: -0.02em; }
+  .kpis { display: flex; gap: 26px; align-items: flex-end; }
+  .kpi-num { font-size: 21px; font-weight: 700; line-height: 1.1; }
+  .kpi-num .unit { font-size: 12px; font-weight: 500; color: #667085; }
+  .kpi-label { font-size: 11.5px; font-weight: 500; color: #667085; margin-top: 2px; }
+  .kpi-sep { width: 1px; height: 34px; background: #DDE2E8; }
+
+  .layout { padding: 0 28px 40px; min-width: 1216px; display: grid; grid-template-columns: 288px minmax(430px,1fr) 356px; gap: 18px; align-items: start; }
+
+  .fan-list-card { background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.09); overflow: hidden; position: sticky; top: 16px; }
+  .fan-list-top { padding: 14px 16px 12px; }
+  .fan-search { position: relative; }
+  .fan-search input { width: 100%; height: 38px; padding: 0 34px 0 12px; border: 1px solid #DDE2E8; border-radius: 9px; background: #F9FAFB; font-size: 13px; }
+  .fan-search svg { position: absolute; inset-inline-start: 11px; top: 11px; }
+  .fan-list-filters { display: flex; gap: 6px; margin-top: 11px; flex-wrap: wrap; }
+  .fan-list-filters .pill-f { padding: 5px 11px; border-radius: 99px; font-size: 12px; font-weight: 500; background: #F9FAFB; color: #475467; }
+  .fan-list-filters .pill-f.on { background: #101828; color: #fff; font-weight: 600; }
+  .fan-list-filters .pill-f:hover:not(.on) { background: #F2F4F7; }
+  .fan-list-selects { display: flex; gap: 7px; margin-top: 9px; }
+  .fan-list-selects select { flex: 1; height: 32px; padding: 0 8px; border: 1px solid #DDE2E8; border-radius: 8px; background: #fff; font-size: 12px; font-weight: 500; color: #344054; }
+  .fan-list-sep { height: 1px; background: #F2F4F7; }
+  .fan-list-item { padding: 13px 16px; border-top: 1px solid #DDE2E8; cursor: pointer; border-inline-start: 3px solid transparent; }
+  .fan-list-item:first-child { border-top: none; }
+  .fan-list-item:hover { background: #FCFCFD; }
+  .fan-list-item.active { background: #F7F9FC; border-inline-start-color: #0A2A66; }
+  .fan-list-name { font-size: 13.5px; font-weight: 500; margin-bottom: 7px; }
+  .fan-list-item.active .fan-list-name { font-weight: 600; }
+  .fan-list-badges { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .fan-list-meta { margin-top: 7px; font-size: 11.5px; color: #667085; }
+
+  .badge { font-size: 10.5px; font-weight: 600; border-radius: 6px; padding: 2px 8px; }
+  .badge.primary { background: #0A2A66; color: #fff; }
+  .badge.treat { background: #EEF2FA; color: #0A2A66; }
+  .badge.warn { background: #FFFBEB; color: #B54708; }
+  .badge.lg { font-size: 11.5px; border-radius: 7px; padding: 3px 10px; }
+
+  .dcard { background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.09); }
+  .col-main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── שיפוט מהיר ── */
+  .qj-card { overflow: hidden; }
+  .qj-head { padding: 14px 20px 12px; display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+  .qj-toggle-btn { width: 26px; height: 26px; flex: none; border-radius: 7px; background: #F2F4F7; color: #475467; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .qj-toggle-btn:hover { background: #DDE2E8; color: #101828; }
+  .qj-head-title { font-size: 14.5px; font-weight: 700; cursor: pointer; }
+  .qj-flag-badge { background: #FFFBEB; color: #B54708; font-size: 11px; font-weight: 700; border-radius: 99px; padding: 2px 8px; }
+  .qj-approve-fan { height: 34px; padding: 0 15px; border-radius: 9px; background: #FFD400; color: #0A2A66; font-size: 13px; font-weight: 700; }
+  .qj-approve-fan:hover { background: #FFDE33; }
+  .qj-reject-fan { height: 34px; padding: 0 13px; border: 1px solid #DDE2E8; border-radius: 9px; background: #fff; color: #475467; font-size: 12.5px; font-weight: 600; }
+  .qj-reject-fan:hover { background: #F9FAFB; }
+  .qj-hint { flex-basis: 100%; font-size: 11.5px; color: #667085; }
+  .qj-list { border-top: 1px solid #E3E7EC; display: flex; flex-direction: column; gap: 1px; background: #DDE2E8; }
+  .qj-row { padding: 12px 20px; background: #fff; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .qj-row-label { flex: 0 0 128px; }
+  .qj-row-h { font-size: 10.5px; font-weight: 600; color: #667085; margin-bottom: 2px; }
+  .qj-row-title { font-size: 13.5px; font-weight: 600; }
+  .qj-row-body { flex: 1 1 200px; font-size: 12.5px; color: #475467; line-height: 1.55; min-width: 0; }
+  .qj-row-body a { font-weight: 600; }
+  .qj-actions { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+  .btn-qj-approve { height: 29px; padding: 0 11px; border-radius: 8px; background: #0A2A66; color: #fff; font-size: 11.5px; font-weight: 600; }
+  .btn-qj-approve:hover { background: #164193; }
+  .btn-qj-reject { height: 29px; padding: 0 11px; border: 1px solid #DDE2E8; border-radius: 8px; background: #fff; color: #475467; font-size: 11.5px; font-weight: 600; }
+  .btn-qj-reject:hover { background: #F9FAFB; }
+  .proof-thumb { width: 64px; height: 48px; flex: none; border-radius: 8px; background: #F2F4F7; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #667085; }
+  .qj-verify-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: #344054; cursor: pointer; }
+  .qj-verify-check input { width: 16px; height: 16px; accent-color: #0A2A66; }
+
+  /* ── זהות ── */
+  .identity-card { padding: 20px 22px; }
+  .identity-top { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .identity-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 9px; }
+  .identity-name { font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+  .identity-contact { margin-top: 9px; font-size: 13.5px; color: #475467; }
+  .identity-dates { margin-top: 10px; font-size: 12px; color: #667085; }
+  .identity-actions-row { display: flex; gap: 8px; }
+  .btn-id-wa { height: 36px; padding: 0 14px; border-radius: 9px; background: #0A2A66; color: #fff; font-size: 13px; font-weight: 600; }
+  .btn-id-wa:hover { background: #164193; }
+  .btn-id-mail { height: 36px; padding: 0 14px; border: 1px solid #0A2A66; border-radius: 9px; background: #fff; color: #0A2A66; font-size: 13px; font-weight: 600; }
+  .btn-id-mail:hover { background: #EEF2FA; }
+  .identity-boxes { margin-top: 18px; padding-top: 16px; border-top: 1px solid #E3E7EC; display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 10px; }
+  .identity-box { border-radius: 10px; padding: 11px 13px; }
+  .identity-box.neutral { background: #F9FAFB; }
+  .identity-box.warn { background: #FFFBEB; }
+  .identity-box-h { font-size: 11px; font-weight: 600; margin-bottom: 3px; }
+  .identity-box.neutral .identity-box-h { color: #667085; }
+  .identity-box.warn .identity-box-h { color: #B54708; }
+  .identity-box-v { font-size: 12.5px; color: #475467; }
+
+  /* ── פרטי הרשמה ── */
+  .reg-card { overflow: hidden; }
+  .reg-head { padding: 15px 22px 13px; display: flex; align-items: center; gap: 10px; }
+  .reg-head-title { font-size: 14.5px; font-weight: 700; flex: 1; }
+  .btn-reg-edit { height: 32px; padding: 0 13px; border: 1px solid #DDE2E8; border-radius: 8px; background: #fff; font-size: 12.5px; font-weight: 600; color: #344054; }
+  .btn-reg-edit:hover { background: #F9FAFB; }
+  .reg-grid { border-top: 1px solid #E3E7EC; padding: 16px 22px 20px; display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 16px 22px; }
+  .reg-field.full { grid-column: 1 / -1; }
+  .reg-field-h { font-size: 11px; font-weight: 600; color: #667085; margin-bottom: 4px; }
+  .reg-field-v { font-size: 13.5px; font-weight: 500; }
+  .proof-photo { width: 190px; height: 118px; border-radius: 10px; background: #F2F4F7; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600; color: #667085; cursor: pointer; }
+
+  /* ── פאנל צד: החלטות + יומן ── */
+  .decisions-card { background: #0A2A66; border-radius: 14px; overflow: hidden; color: #fff; }
+  .decisions-top { padding: 17px 18px 15px; }
+  .decisions-kicker { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: #9BB0D9; margin-bottom: 11px; }
+  .decisions-text { font-size: 12.5px; color: #C9D6EE; line-height: 1.55; margin-bottom: 13px; }
+  .btn-delete-fan { width: 100%; height: 36px; border: 1px solid rgba(255,255,255,.25); border-radius: 9px; background: transparent; color: #fff; font-size: 12.5px; font-weight: 600; }
+  .btn-delete-fan:hover { background: rgba(255,255,255,.08); }
+  .log-sep { height: 1px; background: rgba(255,255,255,.14); }
+  .log-head { padding: 15px 18px 12px; }
+  .log-title { font-size: 13px; font-weight: 700; }
+  .log-sub { font-size: 11.5px; color: #9BB0D9; margin-top: 3px; }
+  .log-write { padding: 0 18px 14px; }
+  .log-textarea { width: 100%; padding: 9px 11px; border: 1px solid rgba(255,255,255,.22); border-radius: 9px; background: rgba(255,255,255,.06); color: #fff; font-size: 12.5px; line-height: 1.5; resize: vertical; }
+  .log-textarea::placeholder { color: #9BB0D9; }
+  .log-write-actions { margin-top: 7px; display: flex; align-items: center; gap: 8px; }
+  .btn-log-add { height: 32px; padding: 0 13px; border-radius: 8px; background: #FFD400; color: #0A2A66; font-size: 12px; font-weight: 700; }
+  .btn-log-add:hover { background: #FFDE33; }
+  .log-write-note { font-size: 11px; color: #9BB0D9; }
+  .log-timeline { padding: 12px 18px 0; display: flex; flex-direction: column; }
+  .log-entry { display: flex; gap: 10px; padding-bottom: 13px; }
+  .log-dot-col { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .log-dot { width: 8px; height: 8px; border-radius: 99px; margin-top: 4px; }
+  .log-dot.note { background: #FFD400; }
+  .log-dot.decision { background: #9BB0D9; }
+  .log-dot.auto { background: rgba(255,255,255,.45); }
+  .log-dot-line { width: 1px; flex: 1; background: rgba(255,255,255,.2); }
+  .log-entry-title { font-size: 12.5px; font-weight: 600; }
+  .log-entry-detail { font-size: 12px; color: #C9D6EE; line-height: 1.55; margin-top: 2px; }
+  .log-entry-meta { font-size: 11px; color: #9BB0D9; margin-top: 4px; }
+  .log-foot { padding: 0 18px 18px; }
+  .btn-log-more { width: 100%; height: 34px; border: 1px solid rgba(255,255,255,.25); border-radius: 9px; background: transparent; color: #fff; font-size: 12px; font-weight: 600; }
+  .btn-log-more:hover { background: rgba(255,255,255,.08); }
+
+  .demo-badge { position: fixed; bottom: 14px; left: 14px; background: #101828; color: #fff; font-size: 11px; font-weight: 700; padding: 6px 12px; border-radius: 99px; z-index: 70; box-shadow: 0 4px 14px rgba(16,24,40,.25); }
+</style>
+</head>
+<body>
+
+<div class="shell" id="shell">
+
+  <!-- ══ סרגל ניהול ══ -->
+  <div class="nav" id="nav">
+    <div class="nav-head">
+      <img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone" class="nav-label-hide" />
+      <div class="spacer"></div>
+      <button class="nav-toggle" id="navToggle" title="פתיחה / סגירה של התפריט"></button>
+    </div>
+    <div class="nav-group-label nav-label-hide">ניהול</div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
+      <span class="label nav-label-hide">דשבורד ראשי</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">9</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M4 21V8l8-5 8 5v13"></path><path d="M9 21v-6h6v6"></path><path d="M8 11h.01"></path><path d="M16 11h.01"></path></svg>
+      <span class="label nav-label-hide">כל העסקים</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">7</span>
+    </div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+      <span class="label nav-label-hide">כל האוהדים</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">2</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r="1.2"></circle></svg>
+      <span class="label nav-label-hide">ניהול תגיות</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">3</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
+      <span class="label nav-label-hide">מרכז לבבות</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">2</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg>
+      <span class="label nav-label-hide">מרכז הודעות</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+      <span class="label nav-label-hide">תוכן דף הנחיתה</span>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-group-label nav-label-hide">תצוגה בדף הבית</div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg>
+      <span class="label nav-label-hide">סקשנים</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide">2</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+      <span class="label nav-label-hide">קטגוריות</span><span class="spacer nav-label-hide"></span><span class="count nav-label-hide" style="background:none;font-weight:400;color:#667085">8</span>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>
+      <span class="label nav-label-hide">מרכז נתונים</span>
+    </div>
+    <div class="nav-foot">
+      <div class="nav-avatar">ר</div>
+      <div class="nav-label-hide" style="min-width:0"><div style="font-size:12.5px;font-weight:600;white-space:nowrap">רמי כהן</div><div style="font-size:11px;color:#667085;white-space:nowrap">מנהל מערכת</div></div>
+    </div>
+  </div>
+
+  <!-- ══ תוכן ══ -->
+  <div class="content">
+    <div class="content-head">
+      <div style="flex:1;min-width:240px">
+        <div class="crumb"><a href="demo-redesign-admin-tasks.html">← מרכז המשימות</a><span style="color:#667085">/</span><span>כל האוהדים</span></div>
+        <div class="page-title">2 אוהדים ממתינים לאישור</div>
+      </div>
+      <div class="kpis">
+        <div><div class="kpi-num">1,284</div><div class="kpi-label">אוהדים מאושרים</div></div>
+        <div class="kpi-sep"></div>
+        <div><div class="kpi-num">61<span class="unit">%</span></div><div class="kpi-label">מנויים מאומתים</div></div>
+        <div class="kpi-sep"></div>
+        <div><div class="kpi-num">+38</div><div class="kpi-label">נרשמו השבוע</div></div>
+      </div>
+    </div>
+
+    <div class="layout">
+
+      <!-- ── רשימת האוהדים ── -->
+      <div class="fan-list-card">
+        <div class="fan-list-top">
+          <div class="fan-search"><input type="search" placeholder="חיפוש לפי שם, טלפון או מייל" /><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#667085" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg></div>
+          <div class="fan-list-filters"><div class="pill-f on">הכל · 5</div><div class="pill-f">ממתינים לאישור · 2</div><div class="pill-f">טרם נבדקו · 47</div></div>
+          <div class="fan-list-selects">
+            <select><option>מיון: זמן המתנה</option><option>מיון: החדש ביותר</option><option>מיון: הישן ביותר</option><option>מיון: טרם נבדק קודם</option></select>
+            <select><option>כל סוגי האימות</option><option>מנוי פעיל</option><option>לא מנוי</option><option>בעלי עסק</option></select>
+          </div>
+        </div>
+        <div class="fan-list-sep"></div>
+        <div>
+          <div class="fan-list-item active">
+            <div class="fan-list-name">דניאל מזרחי</div>
+            <div class="fan-list-badges"><span class="badge primary">אוהד ממתין לאישור</span><span class="badge warn">שם לא תואם</span></div>
+            <div class="fan-list-meta">לא מנוי · ממתין 5 ימים</div>
+          </div>
+          <div class="fan-list-item">
+            <div class="fan-list-name">מיכל ברקוביץ׳</div>
+            <div class="fan-list-badges"><span class="badge primary">אוהד ממתין לאישור</span></div>
+            <div class="fan-list-meta">מנויה · שער 7 · ממתינה יום</div>
+          </div>
+          <div class="fan-list-item">
+            <div class="fan-list-name">אלון בן חמו</div>
+            <div class="fan-list-badges"><span class="badge primary" style="background:#F2F4F7;color:#475467">מאושר · אין פעולה</span><span class="badge treat">בעל עסק</span></div>
+            <div class="fan-list-meta">מוסך אלון ובניו · חבר 842</div>
+          </div>
+          <div class="fan-list-item">
+            <div class="fan-list-name">שירן אבוטבול</div>
+            <div class="fan-list-badges"><span class="badge primary">מייל קוד נכשל</span><span class="badge warn">שליחה מחדש</span></div>
+            <div class="fan-list-meta">מנויה · חבר 839</div>
+          </div>
+          <div class="fan-list-item">
+            <div class="fan-list-name">עומר קפלן</div>
+            <div class="fan-list-badges"><span class="badge primary" style="background:#F2F4F7;color:#475467">מאושר · אין פעולה</span></div>
+            <div class="fan-list-meta">לא מנוי · חבר 831</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── כרטיס האוהד ── -->
+      <div class="col-main">
+
+        <!-- שיפוט מהיר -->
+        <div class="dcard qj-card">
+          <div class="qj-head">
+            <button class="qj-toggle-btn" id="qjToggleBtn">−</button>
+            <div class="qj-head-title" id="qjToggleTitle">שיפוט מהיר</div>
+            <span class="qj-flag-badge">דגל בדיקה</span>
+            <div class="spacer"></div>
+            <button class="qj-approve-fan">אישור האוהד</button>
+            <button class="qj-reject-fan">דחייה</button>
+            <div class="qj-hint" id="qjHint">הדגל, האימות והבדיקה — הכל כאן, בלי לגלול לפרטי ההרשמה</div>
+          </div>
+          <div id="qjBody">
+            <div class="qj-list">
+              <div class="qj-row">
+                <div class="qj-row-label"><div class="qj-row-h">דגל אוטומטי</div><div class="qj-row-title">שם לא תואם</div></div>
+                <div class="qj-row-body">נרשם בשם ״דניאל מזרחי״, קיימת רשומה קודמת עם אותו טלפון בשם ״דני מזרחי״ — דדופ הרשמה</div>
+                <div class="qj-actions"><button class="btn-qj-approve">אותו אדם, אשר</button><button class="btn-qj-reject">כפילות, מחק</button></div>
+              </div>
+              <div class="qj-row">
+                <div class="qj-row-label"><div class="qj-row-h">אימות אוהד</div><div class="qj-row-title">לא מנוי</div></div>
+                <div class="qj-row-body" style="display:flex;align-items:center;gap:10px">
+                  <div class="proof-thumb">הוכחה</div>
+                  <div>תמונה בשער אוהדים + <a href="#fb">קישור פייסבוק</a><br />היה מנוי בעבר: כן</div>
+                </div>
+                <div class="qj-actions"><button class="btn-qj-approve">אומת</button><button class="btn-qj-reject">הגדלת התמונה</button></div>
+              </div>
+              <div class="qj-row">
+                <div class="qj-row-label"><div class="qj-row-h">בדיקת מנהל</div><div class="qj-row-title" id="verifiedLabel">טרם נבדק</div></div>
+                <div class="qj-row-body"><label class="qj-verify-check"><input type="checkbox" id="verifiedCheck" />סימון כנבדק ואומת על ידי</label></div>
+                <div class="qj-actions"><button class="btn-qj-reject">התקשרתי, לא ענה</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- זהות -->
+        <div class="dcard identity-card">
+          <div class="identity-top">
+            <div style="flex:1;min-width:200px">
+              <div class="identity-badges"><span class="badge primary lg">אוהד ממתין לאישור</span><span class="badge warn lg">שם לא תואם</span></div>
+              <div class="identity-name">דניאל מזרחי</div>
+              <div class="identity-contact">052-4419087 · daniel.mizrahi@gmail.com</div>
+              <div class="identity-dates">נרשם 27.07.2026 · ממתין 5 ימים · טרם הוקצה מספר חבר</div>
+            </div>
+            <div class="identity-actions-row"><button class="btn-id-wa">וואטסאפ</button><button class="btn-id-mail">מייל</button></div>
+          </div>
+          <div class="identity-boxes">
+            <div class="identity-box neutral"><div class="identity-box-h">קוד כניסה</div><div class="identity-box-v">ייוצר אוטומטית באישור</div></div>
+            <div class="identity-box neutral"><div class="identity-box-h">מספר חבר</div><div class="identity-box-v">יוקצה מהמונה באישור</div></div>
+            <div class="identity-box neutral"><div class="identity-box-h">בעל עסק</div><div class="identity-box-v">לא מקושר לעסק</div></div>
+            <div class="identity-box warn"><div class="identity-box-h">מנוי</div><div class="identity-box-v">לא מנוי — אימות ידני</div></div>
+          </div>
+        </div>
+
+        <!-- פרטי ההרשמה -->
+        <div class="dcard reg-card">
+          <div class="reg-head"><div class="reg-head-title">פרטי ההרשמה</div><button class="btn-reg-edit">עריכה</button></div>
+          <div class="reg-grid">
+            <div class="reg-field"><div class="reg-field-h">שם פרטי ומשפחה</div><div class="reg-field-v">דניאל מזרחי</div></div>
+            <div class="reg-field"><div class="reg-field-h">טלפון</div><div class="reg-field-v">052-4419087</div></div>
+            <div class="reg-field"><div class="reg-field-h">אימייל</div><div class="reg-field-v">daniel.mizrahi@gmail.com</div></div>
+            <div class="reg-field"><div class="reg-field-h">מנוי בפועל</div><div class="reg-field-v">לא</div></div>
+            <div class="reg-field"><div class="reg-field-h">היה מנוי בעבר</div><div class="reg-field-v">כן</div></div>
+            <div class="reg-field"><div class="reg-field-h">קישור פייסבוק</div><a href="#fb2" class="reg-field-v" style="display:block">facebook.com/daniel.mizrahi</a></div>
+            <div class="reg-field full"><div class="reg-field-h" style="margin-bottom:6px">תמונה בשער אוהדים</div><div class="proof-photo">תמונת הוכחה — לחצו להגדלה</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── החלטות ויומן ── -->
+      <div class="col-side" style="position:sticky;top:16px">
+        <div class="decisions-card">
+          <div class="decisions-top">
+            <div class="decisions-kicker">החלטות על האוהד</div>
+            <div class="decisions-text">אישור מקצה מספר חבר וקוד כניסה, ושולח את מייל הקוד אוטומטית.</div>
+            <button class="btn-delete-fan">מחיקת האוהד</button>
+          </div>
+          <div class="log-sep"></div>
+          <div class="log-head"><div class="log-title">יומן האוהד</div><div class="log-sub">כל אישור, בדיקה, מייל והערה — לפי סדר כרונולוגי</div></div>
+          <div class="log-write">
+            <textarea class="log-textarea" rows="2" placeholder="כתוב הערה על האוהד — תיכנס ליומן"></textarea>
+            <div class="log-write-actions"><button class="btn-log-add">הוספה ליומן</button><div class="log-write-note">גלוי למנהלים בלבד</div></div>
+          </div>
+          <div class="log-sep"></div>
+          <div class="log-timeline">
+            <div class="log-entry"><div class="log-dot-col"><div class="log-dot note"></div><div class="log-dot-line"></div></div><div><div class="log-entry-title">הערת מנהל</div><div class="log-entry-detail">ניסיתי להתקשר פעמיים, לא ענה. ממתין לאימות מול הרשומה הקודמת.</div><div class="log-entry-meta">רמי כהן · אתמול 16:40</div></div></div>
+            <div class="log-entry"><div class="log-dot-col"><div class="log-dot auto"></div><div class="log-dot-line"></div></div><div><div class="log-entry-title">דגל בדיקה נוצר אוטומטית</div><div class="log-entry-detail">שם לא תואם רשומה קודמת עם אותו טלפון</div><div class="log-entry-meta">אוטומטי · 27.07.2026</div></div></div>
+            <div class="log-entry"><div class="log-dot-col"><div class="log-dot decision"></div></div><div><div class="log-entry-title">בקשת הצטרפות נשלחה</div><div class="log-entry-detail">טופס הרשמת אוהד · תמונת הוכחה + פייסבוק</div><div class="log-entry-meta">האוהד · 27.07.2026</div></div></div>
+            <div id="logExtra" style="display:none">
+              <div class="log-entry"><div class="log-dot-col"><div class="log-dot auto"></div></div><div><div class="log-entry-title">תמונת הוכחה הועלתה</div><div class="log-entry-detail">תמונה בשער אוהדים + קישור פייסבוק</div><div class="log-entry-meta">האוהד · 27.07.2026</div></div></div>
+            </div>
+          </div>
+          <div class="log-foot"><button class="btn-log-more" id="logMoreBtn">הצגת היומן המלא (4 רשומות)</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="demo-badge">דמו — טרם משולב · מקור: 3 כל האוהדים.dc.html</div>
+
+<script>
+  const shell = document.getElementById('shell');
+  const navToggle = document.getElementById('navToggle');
+  let navOpen = true;
+  function renderNavToggle() { navToggle.textContent = navOpen ? '⟩' : '⟨'; }
+  navToggle.onclick = () => { navOpen = !navOpen; shell.classList.toggle('collapsed', !navOpen); renderNavToggle(); };
+  renderNavToggle();
+
+  const qjToggleBtn = document.getElementById('qjToggleBtn');
+  const qjToggleTitle = document.getElementById('qjToggleTitle');
+  const qjBody = document.getElementById('qjBody');
+  const qjHint = document.getElementById('qjHint');
+  let qjOpen = true;
+  function renderQj() {
+    qjBody.style.display = qjOpen ? '' : 'none';
+    qjToggleBtn.textContent = qjOpen ? '−' : '+';
+    qjHint.textContent = qjOpen ? 'הדגל, האימות והבדיקה — הכל כאן, בלי לגלול לפרטי ההרשמה' : 'סגור — לחצו כדי לפרוס את כל הבדיקות';
+  }
+  qjToggleBtn.onclick = () => { qjOpen = !qjOpen; renderQj(); };
+  qjToggleTitle.onclick = () => { qjOpen = !qjOpen; renderQj(); };
+
+  // ── "בדיקת מנהל" — checkbox קובע גם את התווית (§ בקוד החי: toggleFanVerified) ──
+  const verifiedCheck = document.getElementById('verifiedCheck');
+  const verifiedLabel = document.getElementById('verifiedLabel');
+  verifiedCheck.onchange = () => { verifiedLabel.textContent = verifiedCheck.checked ? 'נבדק ואומת' : 'טרם נבדק'; };
+
+  const logExtra = document.getElementById('logExtra');
+  const logMoreBtn = document.getElementById('logMoreBtn');
+  let logOpen = false;
+  logMoreBtn.onclick = () => {
+    logOpen = !logOpen;
+    logExtra.style.display = logOpen ? '' : 'none';
+    logMoreBtn.textContent = logOpen ? 'הסתרת הרשומות הקודמות' : 'הצגת היומן המלא (4 רשומות)';
+  };
+</script>
+
+</body>
+</html>
