@@ -1521,7 +1521,7 @@ function mapCatKey(cat) {
 }
 
 const CAT_LABELS = Object.fromEntries(CATEGORIES.map(c =>[c.key, `${c.icon} ${c.label}`]));
-// גרסה בלי אימוג'י — בשימוש בשורת "קטגוריה ראשית" בקלף "העסק" בתצוגה סגורה בלבד, לפי בקשה מפורשת.
+// גרסה בלי אימוג'י — בשימוש בשורות "קטגוריה ראשית"/"מופיע גם תחת" בקלף "העסק" (תצוגה+עריכה), לפי בקשה מפורשת.
 // שאר המקומות (כותרת-על, פריוויו-חי, קלף-הטבות) ממשיכים להשתמש ב-CAT_LABELS עם אימוג'י, לא נגעתי בהם.
 const CAT_LABELS_PLAIN = Object.fromEntries(CATEGORIES.map(c =>[c.key, c.label]));
 
@@ -2033,8 +2033,8 @@ function renderCatHoursCard(w) {
     ? rowHtml('תגית שנייה (מוצעת)', `${pendingSecondTag} — ממתינה לאישור מנהל`, 'tagSecondSuggestion')
     : (liveSecondTag ? rowHtml('תגית שנייה', liveSecondTag) : '');
   const alsoCatRowHtml = pendingAlsoCatSuggestion
-    ? rowHtml('מופיע גם תחת (מוצע)', `${CAT_LABELS[pendingAlsoCatSuggestion]} — ממתין לאישור מנהל`, 'alsoCategorySuggestion')
-    : (w.alsoUnderCategory ? rowHtml('מופיע גם תחת', CAT_LABELS[mapCatKey(w.alsoUnderCategory)]) : '');
+    ? rowHtml('מופיע גם תחת (מוצע)', `${CAT_LABELS_PLAIN[pendingAlsoCatSuggestion]} — ממתין לאישור מנהל`, 'alsoCategorySuggestion')
+    : (w.alsoUnderCategory ? rowHtml('מופיע גם תחת', CAT_LABELS_PLAIN[mapCatKey(w.alsoUnderCategory)]) : '');
 
   const catTypes = w.bizTypes || [];
   return `
@@ -2095,7 +2095,7 @@ function renderCatHoursCard(w) {
           </div>
           <div id="editAlsoCatDetails" style="display:none;margin-top:6px;">
             <div class="card-guide" style="margin:0 0 8px;">${w.alsoUnderCategory
-              ? `הצוות אישר שאתם מוצגים גם תחת <strong>${CAT_LABELS[mapCatKey(w.alsoUnderCategory)]}</strong>. בחירה אחרת נשמרת כמו כל שינוי אחר בדשבורד — ממתינה לאישור מנהל.`
+              ? `הצוות אישר שאתם מוצגים גם תחת <strong>${CAT_LABELS_PLAIN[mapCatKey(w.alsoUnderCategory)]}</strong>. בחירה אחרת נשמרת כמו כל שינוי אחר בדשבורד — ממתינה לאישור מנהל.`
               : `בחרו קטגוריה נוספת — נשמר כמו כל שינוי אחר בדשבורד, ממתין לאישור מנהל לפני שהוא מופיע באינדקס.`}</div>
             <div class="cat-circle-grid" id="editAlsoCatGrid"></div>
           </div>
@@ -2851,10 +2851,18 @@ function setupLivePreview() {
 })();
 
 // ── VIEW SWITCH ──
+// שומר את מיקום-הגלילה של view-biz לפני שעוברים לתת-תצוגה (תנאים/סיכום) ומחזיר אותו בחזרה —
+// בלי זה, view-terms קצר יותר מ-view-biz "קימץ" את גובה-הדף וגרם לגלילה להתאפס ל-0, ובחזרה
+// ל-view-biz (עכשיו שוב גבוה) ה-0 הזה נשאר במקום למקם בחזרה איפה שהמשתמש היה (למשל ליד הצ'קבוקס
+// בתחתית העריכה) — נראה כאילו "חזרה" קופצת לראש הדף.
+let _bizScrollY = 0;
 window.switchView = function(view) {
+  const wasBiz = document.getElementById('view-biz')?.classList.contains('active');
+  if (wasBiz && view !== 'biz') _bizScrollY = window.scrollY;
   ['biz','terms','confirm'].forEach(v =>{
     document.getElementById('view-' + v).classList.toggle('active', v === view);
   });
+  window.scrollTo(0, view === 'biz' ? _bizScrollY : 0);
 };
 
 // ── CONFIRM SUMMARY ──

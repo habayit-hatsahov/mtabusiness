@@ -165,6 +165,16 @@ service cloud.firestore {
             .hasOnly(['note', 'noteHandled', 'noteHandledAt', 'noteOwnerAckAt'])
         )
 
+        // (ב3) בעל עסק מחובר מאשר תנאי-הצטרפות מהדשבורד (2026-08-05) — ל-50 העסקים הישנים
+        // שהצטרפו לפני שהצ'קבוקס הזה היה קיים בטופס ההרשמה. אישור חד-פעמי, לא ניתן לביטול
+        // (רק דורש שעדיין לא אושר — resource.data לא מכיל agreedTermsAt).
+        || (
+          request.auth != null && request.auth.uid == businessId &&
+          !('agreedTermsAt' in resource.data) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['agreedTermsAt'])
+        )
+
         // (ג) כל חבר מחובר — likedBy/clicks בלבד, על כל עסק (home.html).
         || (
           isSignedInMember() &&
