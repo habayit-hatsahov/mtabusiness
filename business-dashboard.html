@@ -1356,7 +1356,7 @@
 import { firebaseConfig } from './firebase-config.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, updateDoc, serverTimestamp
+  getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import {
   ref, uploadBytes, getDownloadURL
@@ -1383,6 +1383,7 @@ async function getStorageLazy() {
 
 let biz = null;
 let bizId = null;
+let weeklySchedule = []; // שיבוץ עסק-השבוע/הטבת-השבוע ששייך לעסק הזה (weekly_schedule, ר' loadBusiness)
 let discEditOn = false;
 let discRedeemMode = null; // physical/sale — בחירת בעל העסק, רלוונטי כשאין קוד קופון
 let redeemMode2 = null, redeemMode3 = null; // הטבות נוספות (עד 3 סה"כ)
@@ -1405,6 +1406,7 @@ const FIELD_GROUPS = {
   bizdetails: ['bizTypes','name','desc','branches','city','address','phone','whatsapp','serviceEmail','regions','websiteOnline','hours'],
   cathours: ['categoryPrimary','cat','tags','tagSecondSuggestion','noTagFits','tagSuggestion','alsoCategorySuggestion'],
   discount: ['hasDiscount','discountText','discountTypes','discountRedeemMode','additionalDiscounts'],
+  weekly: ['wantsBusinessOfWeek','wantsBenefitOfWeek'],
   digital: ['website','instagram','facebook'],
   media: ['coverPhoto','logo','photos','videos'],
 };
@@ -1465,6 +1467,7 @@ const FIELD_LABELS = {
   phone:'טלפון עסק', whatsapp:'WhatsApp', serviceEmail:'מייל שירות',
   categoryPrimary:'קטגוריה ראשית', cat:'קטגוריה ראשית', tags:'תגיות', tagSecondSuggestion:'הצעת תגית שנייה', noTagFits:'אין תגית מתאימה', tagSuggestion:'הצעת תגית', alsoCategorySuggestion:'הצעה למופיע גם תחת', alsoCategoryNote:'הערה לגבי קטגוריה נוספת', hours:'שעות פעילות',
   hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTypes:'איפה ניתן לממש', discountRedeemMode:'מקום מימוש', additionalDiscounts:'הטבות נוספות',
+  wantsBusinessOfWeek:'עסק השבוע', wantsBenefitOfWeek:'הטבת השבוע',
   website:'אתר', instagram:'אינסטגרם', facebook:'פייסבוק',
   coverPhoto:'תמונה מייצגת', logo:'לוגו', photos:'גלריית תמונות', videos:'סרטונים',
 };
@@ -1619,6 +1622,13 @@ async function loadBusiness(token) {
     loadDismissedChecklist();
     loadCompletenessDoneAt();
 
+    // שיבוץ "עסק השבוע · הטבת השבוע" (אם יש) — נקרא פעם אחת בטעינה, לתצוגת סטטוס בלבד
+    // (ר' renderWeeklyCard). שליפה חד-פעמית, לא live — עקבי עם שאר loadBusiness (getDoc בודד).
+    try {
+      const schedSnap = await getDocs(query(collection(db, 'weekly_schedule'), where('businessId', '==', bizId)));
+      weeklySchedule = schedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) { console.error('שגיאה בטעינת שיבוץ עסק-השבוע:', e); weeklySchedule = []; }
+
     sessionStorage.setItem('hb_lastBizToken', token);
 
     document.getElementById('loadingScreen').style.display = 'none';
@@ -1671,7 +1681,7 @@ function renderBizView(flashZone) {
   renderContactNoteBanner(biz);
 
   document.getElementById('bizInfoCards').innerHTML =
-    renderOwnerCard(w) + renderBizDetailsCard(w) + renderCatHoursCard(w) + renderDiscountCard(w) + renderDigitalCard(w) + renderMediaCard(w);
+    renderOwnerCard(w) + renderBizDetailsCard(w) + renderCatHoursCard(w) + renderDiscountCard(w) + renderWeeklyCard(w) + renderDigitalCard(w) + renderMediaCard(w);
   initMediaForm(w);
   renderCatGrid();
   renderTagsBar();
@@ -1817,7 +1827,9 @@ function renderBizDetailsCard(w) {
         ${rowHtml('סוג עסק', types.map(t =>BIZ_TYPE_LABELS[t]).join(', '), 'bizTypes')}
         ${rowHtml('שם', w.name, 'name')}
         ${rowHtml('תיאור', w.desc, 'desc')}
-        ${isPhysical ? rowHtml('עיר', firstBranch.city || w.city, ['branches','city']) + rowHtml('כתובת', firstBranch.address || w.address, ['branches','address']) : ''}
+        ${isPhysical ? ((w.branches && w.branches.length > 1)
+          ? rowHtml('סניפים', w.branches.map(br => [br.city, br.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | '), 'branches')
+          : rowHtml('עיר', firstBranch.city || w.city, ['branches','city']) + rowHtml('כתובת', firstBranch.address || w.address, ['branches','address'])) : ''}
         ${isOnline ? rowHtml('אתר אונליין', w.websiteOnline, 'websiteOnline') : ''}
         ${isPro ? rowHtml('אזורי פעילות', regions.join(', '), 'regions') : ''}
         ${rowHtml('טלפון עסק', w.phone, 'phone')}
@@ -1845,12 +1857,9 @@ function renderBizDetailsCard(w) {
           ${tipHtml('desc')}
         </div>
         <div class="form-group">
-          <label class="form-label">עיר</label>
-          <input type="text" class="form-input" id="editCity" value="${esc(firstBranch.city || w.city)}" data-pv="city" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">כתובת</label>
-          <input type="text" class="form-input" id="editAddress" value="${esc(firstBranch.address || w.address)}" />
+          <label class="form-label">סניפים</label>
+          <div id="editBranchesList">${branchRowsHtml(w.branches && w.branches.length ? w.branches : [{ city: w.city || '', address: w.address || '' }])}</div>
+          <button type="button" class="btn-add-branch-like" onclick="addBranchRow()" style="margin-top:8px;width:100%;padding:10px;border-radius:11px;border:1.5px dashed var(--yellow);background:transparent;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">+ הוסף סניף</button>
         </div>
         <div class="form-group" id="editWebsiteOnlineWrap" style="display:${isOnline ? 'block' : 'none'}">
           <label class="form-label">אתר אונליין</label>
@@ -2060,6 +2069,61 @@ function renderDiscountCard(w) {
         <div class="sec-edit-actions">
           <button class="btn-cancel-sec" onclick="toggleSecEdit('discount')">ביטול</button>
           <button class="btn-save-sec" onclick="saveDiscount()">שמור</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── עסק השבוע · הטבת השבוע — שתי שאלות עצמאיות, בלי שדות נלווים (ר' "עסק השבוע והטבת השבוע.md").
+// הצטרפות/יציאה מרשימת ההמתנה נשארת כאן (הבעת עניין בלבד). ניהול השיבוץ בפועל (מי, איזה שבוע,
+// תוכן) יושב במסך "עסק השבוע" באדמין — כאן רק תצוגת-סטטוס, נגזרת מ-weeklySchedule (נטען חד-פעמית
+// ב-loadBusiness), לפי המפרט: "ברשימה, טרם נקבע תור" / "התור שלכם: DATE–DATE". תוכן ההטבה/תמונות
+// לא נערכים כאן ביודעין — הוחלט (2026-08-04) שהמנהל הוא זה שמזין/מחליט את התוכן שמתפרסם, אחרי
+// שיחת טלפון, לא בעל העסק ישירות — ר' PROJECT_CONTEXT.md §146.
+function weeklyTrackStatusText(track) {
+  const fmtD = (d) => d.toLocaleDateString('he-IL');
+  const rows = weeklySchedule.filter(s => s.track === track && s.businessId === bizId);
+  const now = new Date();
+  const active = rows.find(s => {
+    const start = new Date(s.weekStart + 'T00:00:00');
+    const end = new Date(start); end.setDate(end.getDate() + 7);
+    return now < end; // השבוע הנוכחי או עתידי — עדיין "רלוונטי"
+  });
+  if (active) {
+    const start = new Date(active.weekStart + 'T00:00:00');
+    const end = new Date(start); end.setDate(end.getDate() + 6);
+    return `התור שלכם: ${fmtD(start)}–${fmtD(end)}`;
+  }
+  return null; // אין שיבוץ עתידי/נוכחי — נופל לחזרה ל"ברשימת ההמתנה"/"לא מסומן" לפי הטוגל
+}
+function renderWeeklyCard(w) {
+  const wow = !!w.wantsBusinessOfWeek;
+  const wob = !!w.wantsBenefitOfWeek;
+  const wowStatus = wow ? (weeklyTrackStatusText('business') || 'ברשימת ההמתנה, טרם נקבע תור') : 'לא מסומן';
+  const wobStatus = wob ? (weeklyTrackStatusText('benefit') || 'ברשימת ההמתנה, טרם נקבע תור') : 'לא מסומן';
+  return `
+    <div class="info-card">
+      <div class="info-card-head">
+        ${cardTitle('', 'עסק השבוע · הטבת השבוע', 'weekly')}
+        <button class="sec-edit-btn" onclick="toggleSecEdit('weekly')">ערוך</button>
+      </div>
+      <div class="card-guide">חשיפה בראש דף הבית, לכל האוהדים הרשומים — הבעת עניין בלבד, הצוות פונה לפני התור שלכם.</div>
+      <div class="info-rows" id="secView-weekly">
+        ${rowHtml('עסק השבוע', wowStatus, 'wantsBusinessOfWeek')}
+        ${rowHtml('הטבת השבוע', wobStatus, 'wantsBenefitOfWeek')}
+      </div>
+      <div class="sec-edit-form" id="secEdit-weekly">
+        <div class="form-group" onclick="toggleWeeklyPill('wow')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:var(--card-bg2);border-radius:11px;padding:12px 14px;">
+          <span style="font-size:14px;font-weight:600;">רוצים להיות עסק השבוע? (סקירה + באנר בדף הבית)</span>
+          <div class="toggle-pill${wow ? ' on' : ''}" id="editWowToggle"></div>
+        </div>
+        <div class="form-group" onclick="toggleWeeklyPill('wob')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:var(--card-bg2);border-radius:11px;padding:12px 14px;">
+          <span style="font-size:14px;font-weight:600;">רוצים לתת את הטבת השבוע? (הטבה חד-פעמית)</span>
+          <div class="toggle-pill${wob ? ' on' : ''}" id="editWobToggle"></div>
+        </div>
+        <div class="sec-edit-actions">
+          <button class="btn-cancel-sec" onclick="toggleSecEdit('weekly')">ביטול</button>
+          <button class="btn-save-sec" onclick="saveWeekly()">שמור</button>
         </div>
       </div>
     </div>`;
@@ -2350,7 +2414,8 @@ function getPreviewState() {
   if (bizForm && bizForm.classList.contains('open')) {
     w.name = document.getElementById('editName')?.value || '';
     w.desc = document.getElementById('editDesc')?.value || '';
-    w.city = document.getElementById('editCity')?.value || '';
+    w.branches = document.getElementById('editBranchesList') ? collectBranchRows() : w.branches;
+    w.city = (w.branches && w.branches[0] && w.branches[0].city) || '';
     w.phone = document.getElementById('editPhone')?.value || '';
     w.whatsapp = document.getElementById('editWhatsapp')?.value || '';
     w.websiteOnline = document.getElementById('editWebsiteOnline')?.value || '';
@@ -2799,6 +2864,17 @@ window.saveOwner = function() {
   });
 };
 
+window.toggleWeeklyPill = function(which) {
+  const el = document.getElementById(which === 'wow' ? 'editWowToggle' : 'editWobToggle');
+  el.classList.toggle('on');
+};
+window.saveWeekly = function() {
+  stageChanges({
+    wantsBusinessOfWeek: document.getElementById('editWowToggle').classList.contains('on'),
+    wantsBenefitOfWeek: document.getElementById('editWobToggle').classList.contains('on'),
+  });
+};
+
 window.toggleChipPill = function(el) {
   el.classList.toggle('selected');
   refreshPreviews(null, el.dataset.disctype ? 'discount' : 'meta');
@@ -2812,20 +2888,54 @@ window.toggleBizType = function(el) {
   refreshPreviews(null, 'meta');
 };
 
+// ── סניפים מרובים — הטופס (business.html) מאפשר N סניפים; עד 04/08/2026 הדשבורד ערך רק סניף
+// יחיד ומחק בשקט כל סניף נוסף בשמירה. תבנית זהה ל"+ הוסף עוד הטבה" בכרטיס ההטבות (renderDiscountCard).
+function branchRowHtml(city, address, idx) {
+  return `
+    <div class="branch-row" data-branch-idx="${idx}" style="border:1px solid var(--border);border-radius:11px;padding:12px;margin-bottom:8px;position:relative;background:var(--card-bg2);">
+      ${idx > 0 ? `<button type="button" onclick="removeBranchRow(${idx})" style="position:absolute;top:8px;left:8px;background:none;border:none;font-size:15px;cursor:pointer;color:var(--text-muted);">✕</button>` : ''}
+      <div style="font-size:11.5px;font-weight:700;color:var(--text-sm);margin-bottom:8px;">סניף ${idx + 1}</div>
+      <div class="form-group" style="margin-bottom:8px;"><input type="text" class="form-input branch-city" value="${esc(city)}" placeholder="עיר" /></div>
+      <div class="form-group" style="margin-bottom:0;"><input type="text" class="form-input branch-address" value="${esc(address)}" placeholder="כתובת מלאה" /></div>
+    </div>`;
+}
+function branchRowsHtml(branches) {
+  return branches.map((b, i) => branchRowHtml(b.city || '', b.address || '', i)).join('');
+}
+window.addBranchRow = function() {
+  const list = document.getElementById('editBranchesList');
+  const idx = list.querySelectorAll('.branch-row').length;
+  list.insertAdjacentHTML('beforeend', branchRowHtml('', '', idx));
+};
+window.removeBranchRow = function(idx) {
+  const list = document.getElementById('editBranchesList');
+  const rows = [...list.querySelectorAll('.branch-row')];
+  rows[idx]?.remove();
+  // מספור מחדש — אחרת אינדקסים/כפתורי-הסרה מתבלבלים אחרי מחיקה מהאמצע
+  list.innerHTML = branchRowsHtml([...list.querySelectorAll('.branch-row')].map(r => ({
+    city: r.querySelector('.branch-city').value, address: r.querySelector('.branch-address').value,
+  })));
+};
+function collectBranchRows() {
+  return [...document.querySelectorAll('#editBranchesList .branch-row')].map(r => ({
+    city: r.querySelector('.branch-city').value.trim(),
+    address: r.querySelector('.branch-address').value.trim(),
+  })).filter(b => b.city || b.address);
+}
+
 window.saveBizDetails = function() {
   const bizTypes = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p =>p.dataset.type);
   const isProNow = bizTypes.includes('pro');
   const isOnlineNow = bizTypes.includes('online');
   const isPhysicalNow = bizTypes.includes('physical');
-  const city = document.getElementById('editCity').value.trim();
-  const address = document.getElementById('editAddress').value.trim();
+  const branches = isPhysicalNow ? collectBranchRows() : [];
   stageChanges({
     bizTypes,
     name: document.getElementById('editName').value.trim(),
     desc: document.getElementById('editDesc').value.trim(),
-    branches: isPhysicalNow ? [{ city, address }] : [],
-    city: isPhysicalNow ? city : '',
-    address: isPhysicalNow ? address : '',
+    branches,
+    city: branches[0]?.city || '',
+    address: branches[0]?.address || '',
     phone: document.getElementById('editPhone').value.trim(),
     whatsapp: document.getElementById('editWhatsapp').value.trim(),
     serviceEmail: document.getElementById('editServiceEmail').value.trim(),

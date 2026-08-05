@@ -188,6 +188,64 @@ service cloud.firestore {
       }
     }
 
+    // ── WEEKLY_INTEREST (business.html §145 — "עסק השבוע · הטבת השבוע") ───
+    // אין כאן match בכלל עד עכשיו (2026-08-04) — משמעות: גם הכתיבה האנונימית מ-business.html
+    // וגם הקריאה של תור-הניהול ב-admin-dashboard.html נחסמו כברירת-מחדל ("הכול חסום" בתחתית
+    // הקובץ). נתפס כי תור-הניהול ב-admin-dashboard.html קיבל permission-denied בבדיקה חיה —
+    // הכתיבה המקורית מ-business.html מעולם לא נבדקה בפועל מול Firestore אמיתי (רק staging
+    // מקומי, ר' docs/PROJECT_CONTEXT.md §145), אז הפער לא נתפס קודם.
+    match /weekly_interest/{docId} {
+      allow read, list: if isAdmin();
+
+      // אורח יוצר רשומת-עניין חדשה מיד אחרי הרשמת עסק — בלי auth (עדיין אין accessToken באותו רגע).
+      // חובה כל השדות בדיוק בערכי ברירת המחדל שהקוד כותב בפועל (business.html), כדי שלא ייכתב
+      // תור מזויף/משובש; לפחות אחד מ-2 הדגלים חייב להיות true (אחרת אין סיבה לרשומה בכלל).
+      allow create: if isAdmin()
+        || (
+          request.resource.data.keys().hasOnly([
+            'businessId', 'wantsBusinessOfWeek', 'wantsBenefitOfWeek', 'requestedAt',
+            'contactStatus', 'scheduledWeek', 'scheduledTrack', 'contentStatus'
+          ]) &&
+          request.resource.data.keys().hasAll([
+            'businessId', 'wantsBusinessOfWeek', 'wantsBenefitOfWeek', 'requestedAt',
+            'contactStatus', 'scheduledWeek', 'scheduledTrack', 'contentStatus'
+          ]) &&
+          request.resource.data.businessId is string &&
+          request.resource.data.wantsBusinessOfWeek is bool &&
+          request.resource.data.wantsBenefitOfWeek is bool &&
+          (request.resource.data.wantsBusinessOfWeek || request.resource.data.wantsBenefitOfWeek) &&
+          request.resource.data.requestedAt == request.time &&
+          request.resource.data.contactStatus == 'pending' &&
+          request.resource.data.scheduledWeek == null &&
+          request.resource.data.scheduledTrack == null &&
+          request.resource.data.contentStatus == 'missing'
+        );
+
+      // מנהל בלבד מעדכן (admin-dashboard.html — טאב "עסק השבוע": סטטוס פנייה/הוצאה-מהרשימה).
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+
+      match /activity/{activityId} {
+        allow read, create: if isAdmin();
+        allow update, delete: if false;
+      }
+    }
+
+    // ── WEEKLY_SCHEDULE (admin-dashboard.html — טאב "עסק השבוע") ────────────────────────────
+    // כתיבה/עריכה — מנהל בלבד, אין אף כתיבה ציבורית/אנונימית. תמונות מועלות דרך Storage
+    // (uploadFile), ה-URL נשמר כאן כמחרוזת. קריאה — גם בעל העסק המשובץ עצמו (business-dashboard.html
+    // renderWeeklyCard, §146 סבב רביעי): תצוגת-סטטוס בלבד ("התור שלכם: DATE–DATE"), לא עריכה —
+    // לכן read/list, לא write.
+    match /weekly_schedule/{docId} {
+      allow read, list: if isAdmin() || (request.auth != null && resource.data.businessId == request.auth.uid);
+      allow write: if isAdmin();
+
+      match /activity/{activityId} {
+        allow read, create: if isAdmin();
+        allow update, delete: if false;
+      }
+    }
+
     // ── COUNTERS (רק counters/members בשימוש בפועל) ──────────────────────
     match /counters/{counterId} {
       allow read, write: if isAdmin();
