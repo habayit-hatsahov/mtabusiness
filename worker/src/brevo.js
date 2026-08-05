@@ -1,4 +1,6 @@
-const REPLY_TO_BUSINESS = 'yellowzonemta@gmail.com';
+// כתובת-מענה לכל המיילים היוצאים (לא רק לבעלי-עסקים יותר) — המשתמש ביקש במפורש (2026-08-05) שגם
+// אוהדים יוכלו להשיב למייל שלהם, כדי לאפשר שיתופי-פעולה שמתחילים מתגובה חופשית.
+const REPLY_TO = 'yellowzonemta@gmail.com';
 const LOGO_URL = 'https://yellowzone.co.il/Maccabi.svg';
 
 // ריבוע צהוב עם לוגו מכבי ת"א — תצוגת קוד הכניסה במיילים האוטומטיים
@@ -28,7 +30,16 @@ function textToHtml(text) {
     .join('');
 }
 
+// כתובת-פיזית קטנה בתחתית כל מייל אוטומטי — לא לשם יצירת-קשר בפועל (הפרויקט קהילתי, בלי משרד
+// רשום), רק כי Gmail/פילטרי-ספאם מצפים לראות כתובת-דואר-כלשהי בפוטר מייל שיווקי/אוטומטי; חסרה = סמן-ספאם.
+function footerHtml() {
+  return `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px">Yellow Zone · תל אביב, ישראל</div>`;
+}
+
 async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent }) {
+  // כל מייל יוצא (גם תבניות-מנהל וגם ברירת-המחדל הקבועה) מקבל את אותו פוטר וגרסת-טקסט-חלופית —
+  // ריכוזי כאן ולא בכל קורא-קריאה, כדי שלא יישכח פעם אחת מתוך 4 (ר' "מסירות מייל ל-Gmail" בתיעוד).
+  const finalHtml = htmlContent + footerHtml();
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
@@ -41,10 +52,17 @@ async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent }
       to,
       ...(replyTo ? { replyTo } : {}),
       subject,
-      htmlContent,
+      htmlContent: finalHtml,
+      textContent: stripHtml(finalHtml),
     }),
   });
   if (!resp.ok) throw new Error('brevo_send_failed: ' + (await resp.text()));
+}
+
+// html->text גס, רק להסרת תגיות עצמן (לא escape — הטקסט כבר-לא-מקודד, עובר ישירות ל-textContent
+// שממילא לא מפרש HTML). מספיק ל-alt-text, לא מטרתו לשמר מבנה עשיר.
+function stripHtml(html) {
+  return html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
 }
 
 // tpl אופציונלי — override מ-settings/messageTemplates (Firestore), נערך ב-admin-messages.html.
@@ -66,6 +84,7 @@ export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl }) {
 
   await sendBrevoEmail(env, {
     to: [{ email: toEmail, name: toName || '' }],
+    replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
   });
@@ -89,7 +108,7 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
 
   await sendBrevoEmail(env, {
     to: [{ email: toEmail, name: ownerName || '' }],
-    replyTo: { email: REPLY_TO_BUSINESS },
+    replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
   });
@@ -102,7 +121,7 @@ export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, 
   const htmlContent = `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px;line-height:1.7">${textToHtml(applyVars(body, vars))}</div>`;
   await sendBrevoEmail(env, {
     to: [{ email: toEmail, name: toName || '' }],
-    replyTo: { email: REPLY_TO_BUSINESS },
+    replyTo: { email: REPLY_TO },
     subject: finalSubject,
     htmlContent,
   });
@@ -129,7 +148,7 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
 
   await sendBrevoEmail(env, {
     to: [{ email: toEmail, name: toName || '' }],
-    replyTo: { email: REPLY_TO_BUSINESS },
+    replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
   });
