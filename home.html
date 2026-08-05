@@ -2012,12 +2012,21 @@ function updateLocationMenuLabel() {
   if (hint) hint.style.display = 'none';
 }
 
+// מרחק-קשת אמיתי בק"מ בין 2 נק' geo (לא הפרש-מעלות שטוח — מעלת-אורך "שווה" מרחק שונה לפי קו-הרוחב)
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 function applyLocation(pos) {
   document.getElementById('nearSection').style.display = 'block';
   const { latitude: lat, longitude: lng } = pos.coords;
   const nearbyAll = businesses
     .filter(b => b.lat && b.lng)
-    .map(b => ({ ...b, dist: Math.sqrt((b.lat-lat)**2 + (b.lng-lng)**2) }))
+    .map(b => ({ ...b, dist: haversineKm(lat, lng, b.lat, b.lng) }))
     .sort((a,b) => a.dist - b.dist);
   lastNearBusinesses = nearbyAll.length ? nearbyAll : null;
   const nearby = nearbyAll.slice(0,6);

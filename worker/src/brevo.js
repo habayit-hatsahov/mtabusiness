@@ -32,8 +32,12 @@ function textToHtml(text) {
 
 // כתובת-פיזית קטנה בתחתית כל מייל אוטומטי — לא לשם יצירת-קשר בפועל (הפרויקט קהילתי, בלי משרד
 // רשום), רק כי Gmail/פילטרי-ספאם מצפים לראות כתובת-דואר-כלשהי בפוטר מייל שיווקי/אוטומטי; חסרה = סמן-ספאם.
+// שורת "לא ספאם" — עידוד לנמען לשפר את המוניטין של הדומיין (Gmail/ספאם-פילטרים לומדים ממי שמסמן ידנית).
 function footerHtml() {
-  return `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px">Yellow Zone · תל אביב, ישראל</div>`;
+  return `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px;line-height:1.6">
+    אם המייל הזה נחת בתיקיית הספאם/קידומים, נשמח שתסמנו אותו כ"לא ספאם" — כך מיילים עתידיים יגיעו ישר לתיבה הראשית.<br>
+    Yellow Zone · תל אביב, ישראל
+  </div>`;
 }
 
 async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent }) {
