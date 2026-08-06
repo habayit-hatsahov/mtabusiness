@@ -610,7 +610,7 @@
 
 <footer class="site-footer">
   <img class="site-footer-logo" src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
-  <div class="site-footer-line"><a class="site-footer-link site-footer-highlight" href="https://instagram.com/Yellowzone.mta" target="_blank"><span dir="ltr">Yellowzone.mta <svg class="footer-ig-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></span></a> · © 2026 · <a class="site-footer-link" href="terms.html">תקנון ומדיניות לאוהדים</a></div>
+  <div class="site-footer-line"><a class="site-footer-link site-footer-highlight" href="https://instagram.com/Yellowzone.mta" target="_blank"><span dir="ltr">Yellowzone.mta <svg class="footer-ig-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></span></a> · <a class="site-footer-link" href="terms.html">תקנון ומדיניות לאוהדים</a></div>
 </footer>
 
 <div class="toast" id="toast"></div>
@@ -823,6 +823,9 @@ if (member.isBusinessOwner) {
         document.getElementById('bizDashBtn').style.display = 'flex';
         document.getElementById('menuBizItem').href = `business-dashboard.html?token=${token}`;
         document.getElementById('menuBizItem').style.display = 'flex';
+        // רק לעסק מאושר — קישור-שיתוף לעסק לא-מאושר לא יעבוד בכל מקרה (ר' shareMyBiz).
+        window._myBizShare = { name: bizName };
+        document.getElementById('menuShareBizItem').style.display = 'flex';
       } else {
         document.getElementById('bizPendingMsg').style.display = 'block';
       }
@@ -1008,12 +1011,30 @@ async function saveMemberField(updates) {
   maybeShowInAppBanner();
   window.dismissInAppBanner = dismissInAppBanner;
 
-  // ── שיתוף — הזמנת חברים לדף ההרשמה (תפריט מותאם אישית, שליטה מלאה על הסגירה) ──
+  // ── שיתוף — הזמנת חברים לדף ההרשמה, וגם שיתוף העסק-של-בעל-העסק (אותה תשתית, ר' home.html) ──
   function shareApp() {
     const shareData = {
       text: 'מצאתי קהילה של עסקים של אוהדי מכבי — עסקים, הטבות והמלצות אמיתיות מהקהילה. בואו תצטרפו:',
       url: location.origin + '/welcome.html',
     };
+    document.getElementById('shareSheetTitle').textContent = '📤 הזמינו חברים';
+    document.getElementById('shareSheetSub').textContent = 'שתפו את Yellow Zone עם חברים ובעלי עסקים';
+    document.getElementById('shareLinkText').textContent = shareData.url;
+    document.getElementById('shareWhatsappLink').href = `https://wa.me/?text=${encodeURIComponent(shareData.text + ' ' + shareData.url)}`;
+    document.getElementById('shareOverlay').classList.add('open');
+  }
+  // שם-עסק לפרמטר-URL קריא (בלי encodeURIComponent בכוונה — ר' הערה מקבילה ב-home.html/shareBiz).
+  function slugify(str) {
+    return (str || '').trim().replace(/["'?#&/\\]/g, '').replace(/\s+/g, '-');
+  }
+  function shareMyBiz() {
+    if (!window._myBizShare) return;
+    const shareData = {
+      text: `תראו את "${window._myBizShare.name}" ב-Yellow Zone:`,
+      url: location.origin + '/home.html?biz=' + slugify(window._myBizShare.name),
+    };
+    document.getElementById('shareSheetTitle').textContent = '📤 שיתוף העסק שלכם';
+    document.getElementById('shareSheetSub').textContent = `שתפו את "${window._myBizShare.name}" עם חברים`;
     document.getElementById('shareLinkText').textContent = shareData.url;
     document.getElementById('shareWhatsappLink').href = `https://wa.me/?text=${encodeURIComponent(shareData.text + ' ' + shareData.url)}`;
     document.getElementById('shareOverlay').classList.add('open');
@@ -1034,6 +1055,7 @@ async function saveMemberField(updates) {
     }
   }
   window.shareApp = shareApp;
+  window.shareMyBiz = shareMyBiz;
   window.closeShareSheet = closeShareSheet;
   window.copyShareLink = copyShareLink;
 
@@ -1188,6 +1210,12 @@ async function saveMemberField(updates) {
       </span>
       <span class="menu-item-label">הזמינו חברים ובעלי עסקים להצטרף ל-Yellow Zone</span>
     </button>
+    <button class="menu-item" id="menuShareBizItem" onclick="shareMyBiz()" style="display:none">
+      <span class="menu-item-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/></svg>
+      </span>
+      <span class="menu-item-label">שתפו את העסק שלכם עם חברים</span>
+    </button>
     <button class="menu-item" onclick="requestLocationPermission()">
       <span class="menu-item-icon" id="menuLocationIcon">📍</span>
       <span style="display:flex; flex-direction:column; gap:2px; min-width:0;">
@@ -1267,8 +1295,8 @@ async function saveMemberField(updates) {
   <div class="contact-sheet">
     <div class="contact-sheet-handle"></div>
     <button class="contact-sheet-close" onclick="closeShareSheet()">✕</button>
-    <div class="contact-sheet-title">📤 הזמינו חברים</div>
-    <div class="contact-sheet-sub">שתפו את Yellow Zone עם חברים ובעלי עסקים</div>
+    <div class="contact-sheet-title" id="shareSheetTitle">📤 הזמינו חברים</div>
+    <div class="contact-sheet-sub" id="shareSheetSub">שתפו את Yellow Zone עם חברים ובעלי עסקים</div>
     <div class="contact-options">
       <div class="contact-option" onclick="copyShareLink(event)">
         <span class="contact-option-icon">🔗</span>
