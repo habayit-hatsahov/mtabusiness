@@ -1279,16 +1279,25 @@
         body: JSON.stringify({ phone, email })
       });
       const data = await resp.json();
-      return data.memberId || null;
+      return { memberId: data.memberId || null, hasName: !!data.hasName };
     } catch (e) {
       console.error('business.html: לא ניתן היה לבדוק כפילות מול השרת.', e);
-      return null;
+      return { memberId: null, hasName: false };
     }
   }
   async function linkOrCreateOwnerMember(data, bizId) {
-    const existingId = await findExistingMemberId(data.ownerPhone, data.ownerEmail);
+    const { memberId: existingId, hasName } = await findExistingMemberId(data.ownerPhone, data.ownerEmail);
     if (existingId) {
-      await updateDoc(doc(db, 'members', existingId), { isBusinessOwner: true, linkedBusinessId: bizId });
+      const patch = { isBusinessOwner: true, linkedBusinessId: bizId };
+      // אם לרשומה הקיימת אין עדיין שם (למשל נוצרה ריקה בעבר) — משלימים מהטופס,
+      // בלי לדרוס שם אמיתי קיים (יכול להיות שונה מהבעלים הרשמי, למשל בן-משפחה שנרשם בשם קרוב).
+      // hasName מגיע מה-Worker (יש לו גישת-אדמין, קורא ישירות מ-Firestore) — לקוח אנונימי
+      // לא יכול לקרוא members/{id} של מישהו אחר (firestore.rules), אז אי-אפשר לבדוק את זה ישירות מכאן.
+      if (!hasName) {
+        patch.firstName = data.ownerFirst;
+        patch.lastName = data.ownerLast;
+      }
+      await updateDoc(doc(db, 'members', existingId), patch);
       return existingId;
     }
     const memberRef = await addDoc(collection(db, 'members'), {

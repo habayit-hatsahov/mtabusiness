@@ -1465,7 +1465,7 @@
 </div>
 
 <script type="module">
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig, db as sharedDb, auth as sharedAuth } from './firebase-config.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import {
   getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, query, where, getDocs
@@ -3985,21 +3985,22 @@ function maybeShowInAppBanner() {
 }
 maybeShowInAppBanner();
 
-// ── מנהל שגם בעל-עסק — הצגת "דשבורד ניהול" בהמבורגר (2026-08-06) ──
-// app שני, נפרד לגמרי מ-bizApp (למעלה, מבודד בכוונה לזרימת הטוקן של דשבורד-העסק) — קורא רק את
-// ה-session הרגיל/המשותף (אותו persistence שhome.html/profile.html משתמשים בו) כדי לבדוק אם יש גם
-// מנהל מחובר באותו דפדפן. לא נוגע ולא נדרס ע"י ה-session-בטוקן של דשבורד-העסק עצמו.
+// ── מנהל שגם בעל-עסק — הצגת "דשבורד ניהול" בהמבורגר (2026-08-06, תוקן 2026-08-06) ──
+// קורא את ה-session המשותף (sharedAuth/sharedDb מ-firebase-config.js — אותו app בדיוק
+// שhome.html/admin-dashboard.html משתמשים בו) כדי לבדוק אם יש גם מנהל מחובר באותו דפדפן.
+// גרסה קודמת יצרה app שלישי בשם ('memberSession') כדי "לא לגעת" ב-bizApp המבודד — אבל named
+// app נפרד ב-Firebase Auth מקבל persistence משלו, נפרד לגמרי מה-app שבו התבצעה ההתחברות
+// בפועל (ה-app ברירת-המחדל של firebase-config.js), אז onAuthStateChanged שם תמיד חזר null,
+// גם כשהמנהל בהחלט מחובר בטאב אחר. sharedAuth/sharedDb הם רק import — לא נגיעה ב-bizApp/auth/db
+// המקומיים של הקובץ (עדיין מבודדים לגמרי לזרימת-הטוקן של דשבורד-העסק).
 (async function initAdminNavItem() {
   try {
-    const memberApp = initializeApp(firebaseConfig, 'memberSession');
-    const memberAuth = getAuth(memberApp);
-    const memberDb = getFirestore(memberApp);
     const user = await new Promise(resolve => {
-      const unsub = onAuthStateChanged(memberAuth, u =>{ unsub(); resolve(u); });
+      const unsub = onAuthStateChanged(sharedAuth, u => { unsub(); resolve(u); });
     });
     const storedId = localStorage.getItem('hb_memberId');
     if (!user || !storedId || user.uid !== storedId) return;
-    const snap = await getDoc(doc(memberDb, 'members', user.uid));
+    const snap = await getDoc(doc(sharedDb, 'members', user.uid));
     if (snap.exists() && snap.data().isAdmin === true) {
       const item = document.getElementById('menuAdminItem');
       if (item) item.style.display = 'flex';

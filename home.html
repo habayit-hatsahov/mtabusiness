@@ -3057,6 +3057,20 @@ getDoc(doc(db, 'settings', 'sectionAnchors'))
   .then(snap => window.loadSectionAnchors(snap.exists() ? snap.data() : {}))
   .catch(err => console.error('Section anchors load error:', err));
 
+// קריאת מסמך-חבר עם ניסיון-חוזר יחיד — נצפה race לסירוגין (2026-08-06, המשתמש דיווח חי): הקריאה
+// הראשונה ל-Firestore לפעמים מחזירה "לא קיים" על מסמך שבוודאות קיים (נראה גם בברכת-השם וגם
+// בתפריט-הניהול/עסק, שתי קריאות נפרדות לאותו מסמך) ומתקן את עצמו ברענון. נשלל: נתונים חסרים,
+// firestore.rules (מתיר קריאה-עצמית תמיד וללא תנאי), cache מקומי (לא מוגדר בקוד), Service Worker
+// (לא נוגע בבקשות Firebase). שורש-הסיבה המדויק לא אותר — זה תיקון-הגנתי לתוצאה, לא לסיבה.
+async function fetchMemberDocWithRetry(memberId) {
+  let snap = await getDoc(doc(db, 'members', memberId));
+  if (!snap.exists()) {
+    await new Promise(r => setTimeout(r, 500));
+    snap = await getDoc(doc(db, 'members', memberId));
+  }
+  return snap;
+}
+
 // ── ברכת השם — הצגה מיידית מ-cache מקומי (כמו profile.html), לפני שה-auth guard/fetch אפילו רצים ──
 // תנאי בטיחות זהה: מוצג רק אם השם נשמר בדיוק תחת ה-hb_memberId הנוכחי (מכשיר משותף/משתמש אחר → לא מוצג).
 try {
@@ -3084,7 +3098,7 @@ await new Promise(resolve => {
 (async () => {
   try {
     const memberId = auth.currentUser?.uid;
-    const snap = await getDoc(doc(db, 'members', memberId));
+    const snap = await fetchMemberDocWithRetry(memberId);
     const data = snap.exists() ? snap.data() : {};
     const firstName = data.firstName || '';
     const el = document.getElementById('heroUserName');
@@ -3229,7 +3243,7 @@ async function initBizNavItem() {
   let isBizOwner = false, linkedBusinessId = '', isAdminMember = false;
   try {
     if (memberId) {
-      const snap = await getDoc(doc(db, 'members', memberId));
+      const snap = await fetchMemberDocWithRetry(memberId);
       if (snap.exists()) {
         const d = snap.data();
         isBizOwner = d.isBusinessOwner === true;
