@@ -1333,6 +1333,10 @@
       <span class="menu-item-icon">🏪</span>
       <span class="menu-item-label">העסק שלי (כאן)</span>
     </div>
+    <a class="menu-item" id="menuAdminItem" href="admin-dashboard.html" style="display:none">
+      <span class="menu-item-icon">🛠️</span>
+      <span class="menu-item-label">דשבורד ניהול</span>
+    </a>
     <button class="menu-item menu-group-gap" onclick="openContactSheet()">
       <span class="menu-item-icon">📞</span>
       <span class="menu-item-label">צור קשר</span>
@@ -1469,7 +1473,7 @@ import {
 import {
   ref, uploadBytes, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
-import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { getAuth, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
 // כתובת ה-Worker (Cloudflare) שמאמת accessToken מול Firestore בצד-שרת ומנפיק טוקן כניסה
 const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
@@ -3980,6 +3984,28 @@ function maybeShowInAppBanner() {
   document.getElementById('pwaInAppBanner')?.classList.add('show');
 }
 maybeShowInAppBanner();
+
+// ── מנהל שגם בעל-עסק — הצגת "דשבורד ניהול" בהמבורגר (2026-08-06) ──
+// app שני, נפרד לגמרי מ-bizApp (למעלה, מבודד בכוונה לזרימת הטוקן של דשבורד-העסק) — קורא רק את
+// ה-session הרגיל/המשותף (אותו persistence שhome.html/profile.html משתמשים בו) כדי לבדוק אם יש גם
+// מנהל מחובר באותו דפדפן. לא נוגע ולא נדרס ע"י ה-session-בטוקן של דשבורד-העסק עצמו.
+(async function initAdminNavItem() {
+  try {
+    const memberApp = initializeApp(firebaseConfig, 'memberSession');
+    const memberAuth = getAuth(memberApp);
+    const memberDb = getFirestore(memberApp);
+    const user = await new Promise(resolve => {
+      const unsub = onAuthStateChanged(memberAuth, u =>{ unsub(); resolve(u); });
+    });
+    const storedId = localStorage.getItem('hb_memberId');
+    if (!user || !storedId || user.uid !== storedId) return;
+    const snap = await getDoc(doc(memberDb, 'members', user.uid));
+    if (snap.exists() && snap.data().isAdmin === true) {
+      const item = document.getElementById('menuAdminItem');
+      if (item) item.style.display = 'flex';
+    }
+  } catch (e) { console.error('[initAdminNavItem] failed:', e); }
+})();
 </script>
 
 </body>
