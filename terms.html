@@ -619,11 +619,26 @@
   window.copyShareLink          = copyShareLink;
 
   if (!isRegisterCtx) {
-    // ── בעל עסק — הצגת כפתור "העסק שלי" בתפריט המלא ──
-    import('./firebase-config.js').then(async ({ db }) => {
+    // ── בעל עסק / מנהל — הצגת פריטי-תפריט תלויי-חבר בתפריט המלא ──
+    // terms.html הוא דף ציבורי (מגיעים אליו גם אורחים בהרשמה, גם בעלי-עסק ממתינים) —
+    // לכן, בשונה מ-home.html/profile.html, אין כאן auth guard שחוסם/מפנה; אם אין
+    // session Firebase תקף פשוט לא מציגים את הפריטים האלה (נכשל בשקט, לא שגיאה).
+    // ה-getDoc על members/{memberId} דורש request.auth.uid==memberId (firestore.rules),
+    // אז memberId חייב לבוא מ-auth.currentUser.uid בפועל, לא רק מ-localStorage.
+    import('./firebase-config.js').then(async ({ db, auth }) => {
       const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js');
+      const { onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js');
 
-      const memberId = localStorage.getItem('hb_memberId');
+      const storedId = localStorage.getItem('hb_memberId');
+      if (!storedId) return;
+
+      const memberId = await new Promise(resolve => {
+        const unsub = onAuthStateChanged(auth, user => {
+          unsub();
+          resolve((user && user.uid === storedId) ? user.uid : null);
+        });
+      });
+
       let isBizOwner = false, linkedBusinessId = '', isAdminMember = false;
       if (memberId) {
         const snap = await getDoc(doc(db, 'members', memberId));

@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>מרכז ניהול — Yellow Zone</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<!-- Rubik נטען כאן רק בשביל מדידת-פיקסלים מדויקת של כותרת-ההטבה (ensureFitsCard, ר' למטה) —
+     זה הפונט האמיתי של .biz-discount-text ב-home.html (body{font-family:'Rubik'}), לא Heebo
+     שהאדמין עצמו משתמש בו לעיצוב. נטען סינכרוני (לא preload+swap כמו ב-home.html) כדי שהמדידה
+     הראשונה לא תרוץ לפני שהפונט זמין (סיכון-race עם טעינה אסינכרונית). -->
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@700&display=swap" rel="stylesheet">
 <script src="categories.js"></script>
 <style>
 :root {
@@ -546,6 +551,11 @@ body {
 .qj-arrow { color: var(--text-sm); font-size: 12px; }
 .qj-input { flex: 1; min-width: 100px; height: 32px; padding: 0 9px; border: 1px solid var(--border-md); border-radius: 7px; background: var(--card-bg); font-size: 12.5px; font-weight: 700; }
 .qj-value-text { font-size: 12.5px; font-weight: 600; }
+.qj-structured { flex-direction: column; align-items: flex-start; gap: 6px; }
+.qj-structured-old, .qj-structured-new { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.qj-value-hint { font-size: 10.5px; font-weight: 600; color: var(--text-sm); flex: none; }
+.qj-photo-thumbs { display: flex; gap: 4px; flex-wrap: wrap; }
+.qj-photo-thumbs img { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-md); }
 .qj-row-actions { display: flex; gap: 5px; flex-wrap: wrap; }
 .qj-btn { height: 28px; padding: 0 10px; border: 1px solid var(--border-md); border-radius: 7px; background: var(--card-bg); color: var(--text-sm); font-size: 11px; font-weight: 700; cursor: pointer; }
 .qj-btn:hover { background: var(--nav-bg); }
@@ -914,6 +924,11 @@ body {
 .identity-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .identity-dates { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
 .identity-name { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+.identity-name-row { display: flex; align-items: center; gap: 8px; }
+.identity-name-edit-btn { border: none; background: none; cursor: pointer; font-size: 15px; opacity: .55; padding: 2px 4px; flex: none; }
+.identity-name-edit-btn:hover { opacity: 1; }
+.identity-name-edit { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.identity-name-edit input { height: 34px; padding: 0 10px; border: 1px solid var(--border-md); border-radius: 8px; background: var(--card-bg); font-size: 18px; font-weight: 700; min-width: 200px; }
 .identity-contact { margin-top: 9px; font-size: 13.5px; color: var(--text-sm); }
 .identity-contact .k { color: var(--text); }
 .identity-tags { margin-top: 12px; display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
@@ -1480,6 +1495,20 @@ body {
 .lct-final-box [contenteditable]:empty::before { content: attr(data-placeholder); opacity: .5; }
 
 .lct-footer-note { padding: 20px 24px 24px; text-align: center; font-size: 11px; color: var(--text-muted); }
+
+/* ── שומר-אינדיקטור גלובלי — הפער שדווח: לחיצה על שמירה/העלאת-תמונה לא הראתה שום שינוי במסך
+   עד ש-renderMain() רץ בסוף (יכול לקחת כמה שניות בהעלאת/דחיסת תמונה) — למנהל לא היה שום סימן
+   שהלחיצה בכלל נקלטה. פיל קבוע-מיקום, לא תלוי בכפתור הספציפי (יש עשרות נקודות-שמירה בקובץ הזה). */
+.saving-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(0); z-index: 9999;
+  display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px; background: var(--ink, #14213d);
+  color: #fff; font-size: 13px; font-weight: 700; box-shadow: 0 6px 24px rgba(0,0,0,.25); opacity: 0; pointer-events: none;
+  transition: opacity .18s, transform .18s; }
+.saving-toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+.saving-toast.error { background: #b3261e; }
+.saving-toast.ok { background: #1e7d4a; }
+.saving-toast-spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: saving-toast-spin .7s linear infinite; flex: none; }
+.saving-toast.error .saving-toast-spinner, .saving-toast.ok .saving-toast-spinner { display: none; }
+@keyframes saving-toast-spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -1520,6 +1549,37 @@ let WEEKLY_SCHEDULE = []; // שיבוץ בפועל לשבוע ספציפי — �
 let CURRENT_ADMIN = { uid: null, name: 'מנהל', email: '' };
 
 const REGIONS_MOCK = ['גוש דן','ירושלים והסביבה','השפלה','השרון','חיפה והצפון','הדרום'];
+
+// ── שומר-אינדיקטור גלובלי (ר' CSS .saving-toast) — נוסף ל-DOM פעם אחת, לא תלוי באיזה כפתור נלחץ.
+// showSaving/hideSaving עוטפים את saveSectionUpdates (17 נקודות-קריאה) + פעולות-העלאה שקורות
+// *לפני* ה-updateDoc (דחיסה/העלאה ל-Storage, החלק האיטי באמת בתמונות) — בלעדיהן המנהל לוחץ
+// "העלה"/"שמור" ולא רואה שום שינוי במסך עד שהכל מסתיים, שניות אחר כך.
+let savingDepth = 0;
+function ensureSavingToastEl() {
+  let el = document.getElementById('savingToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'savingToast';
+    el.className = 'saving-toast';
+    el.innerHTML = '<span class="saving-toast-spinner"></span><span class="saving-toast-label"></span>';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function showSaving(label) {
+  savingDepth++;
+  const el = ensureSavingToastEl();
+  el.className = 'saving-toast show';
+  el.querySelector('.saving-toast-label').textContent = label || 'שומר...';
+}
+function hideSaving(ok, doneLabel) {
+  savingDepth = Math.max(0, savingDepth - 1);
+  if (savingDepth > 0) return; // עוד פעולה במקביל עדיין רצה — לא לסגור מתחתיה
+  const el = ensureSavingToastEl();
+  el.className = 'saving-toast show' + (ok === false ? ' error' : ' ok');
+  el.querySelector('.saving-toast-label').textContent = ok === false ? 'שגיאה בשמירה' : (doneLabel || 'נשמר ✓');
+  setTimeout(() => { if (savingDepth === 0) el.classList.remove('show'); }, 1400);
+}
 
 function toJsDate(ts) { return ts && ts.toDate ? ts.toDate() : (ts || null); }
 // זהה ל-esc() ב-admin-businesses.html — למניעת שבירת HTML/XSS כשערך שדה (name/value) מכיל " או <
@@ -1924,13 +1984,18 @@ const ICO_DATA    = `<svg ${ICO_ATTRS}><path d="M3 3v18h18"></path><path d="m19 
 const ICO_WEEKLY  = `<svg ${ICO_ATTRS}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>`;
 const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
-// ── מגבלת אורך אמיתית לכותרת ה-AI (זהה ל-business-dashboard.html/worker/src/anthropic.js) — מדידת
-// פיקסלים אמיתית מול רוחב הכרטיס בפועל, לא ספירת תווים גסה. השדה באדמין עד עכשיו אכף רק "35/40 מומלץ"
-// (לא אכיפה אמיתית), מה שאיפשר לשמור כותרת שחורגת בפועל בכרטיס במובייל — זה מה שתוקן כאן.
-const CARD_TITLE_RAW_WIDTH = 151;
+// ── מגבלת אורך אמיתית לכותרת ה-AI — מדידת פיקסלים אמיתית מול רוחב הכרטיס בפועל, לא ספירת תווים גסה.
+// 🐛 באג-אמת שנמצא (2026-08-08, המשתמש דיווח "יש עוד מקום"): הקבועים כאן לא תאמו את .biz-discount-text
+// האמיתי ב-home.html בשלושה דברים בו-זמנית — (1) רוחב 151px היה שרירותי, לא נמדד מול .biz-card בפועל
+// (מינימום אמיתי — כרטיסי גלילה-אופקית במובייל, min-width:260px — הרחב מ-260px, כמו הרשת/allBizGrid,
+// לא הצומת המצומצם). (2) גופן 11px Heebo בזמן שה-CSS האמיתי הוא 14px. (3) family Heebo בזמן שגוף-הדף
+// כולו ב-home.html הוא Rubik (body{font-family:'Rubik'}) — שני פונטים שונים עם מטריקות-רוחב שונות
+// לגמרי. שלוש הטעויות ביחד גרמו לחיתוך-טקסט הרבה יותר אגרסיבי ממה שבאמת נדרש כדי להישאר בשורה אחת.
+// 260 (min-width הכי-צר של .biz-card) − 32 (2×16px padding של .biz-card-body) = 228px רוחב-זמין אמיתי.
+const CARD_TITLE_RAW_WIDTH = 228;
 const CARD_TITLE_SAFETY_MARGIN = 10;
 const CARD_TITLE_MAX_WIDTH = CARD_TITLE_RAW_WIDTH - CARD_TITLE_SAFETY_MARGIN;
-const CARD_TITLE_FONT = '700 11px Heebo';
+const CARD_TITLE_FONT = '700 14px Rubik';
 let _measureCanvas = null;
 function measureTextWidth(text, font) {
   if (!_measureCanvas) _measureCanvas = document.createElement('canvas');
@@ -4205,7 +4270,15 @@ function bizFullDetailHtml(id, opts) {
         <div style="flex:1;min-width:220px">
           <div class="identity-badges">${idBadges.join('')}</div>
           <div class="identity-dates">${idDates}</div>
-          <div class="identity-name">${esc(b.name)}</div>
+          <div class="identity-name-row" id="idNameViewRow_${b.id}">
+            <div class="identity-name">${esc(b.name)}</div>
+            <button type="button" class="identity-name-edit-btn" onclick="toggleBizNameEdit('${b.id}')" title="שינוי שם העסק">✏️</button>
+          </div>
+          <div class="identity-name-edit" id="idNameEditRow_${b.id}" style="display:none">
+            <input type="text" id="idNameInput_${b.id}" value="${esc(b.name)}">
+            <button type="button" class="act-btn approve tiny" onclick="saveBizName('${b.id}')">שמירה</button>
+            <button type="button" class="act-btn tiny" onclick="toggleBizNameEdit('${b.id}')">ביטול</button>
+          </div>
           <div class="identity-contact">${esc(bizMetaStr(b))}${b.ownerPhone ? ` · <span class="k">${esc(b.ownerPhone)}</span>` : ''}${b.ownerEmail ? ` · ${esc(b.ownerEmail)}` : ''}</div>
           <div class="identity-tags">${idTagsHtml}</div>
         </div>
@@ -4253,7 +4326,10 @@ function bizFullDetailHtml(id, opts) {
   // ── שלב 3 — קטגוריה ותגיות. editTagsAreaHtml/tagFreeSuggestionHtml נשארו בדיוק כמו שהיו (state-מורכב,
   // לא נגעתי בפנים) — רק המיקום שבו הם מוצגים עבר מ-secView3 (שנעלם) ל-secEdit3 (§131).
   const step3TreatLabel = idCls.treatments.includes('tag') ? 'בקשת תגית' : idCls.treatments.includes('category') ? 'בקשת קטגוריה' : '';
-  const step3Badge = step3TreatLabel ? `<span class="treat-badge">${step3TreatLabel}</span>` : '';
+  // step3Changes — שינוי-שדה ישיר דרך pendingChanges (למשל categoryPrimary/tags) בלי treatment-badge
+  // ייעודי (tagSuggestion וכו') לא הציג שום סימן קודם — אותה תבנית-בעיה כמו שלב 1/5 למטה.
+  const step3Changes = changeItemsBySection[3] || [];
+  const step3Badge = step3TreatLabel ? `<span class="treat-badge">${step3TreatLabel}</span>` : (step3Changes.length ? `<span class="treat-badge">${step3Changes.length} שינויים מבוקשים</span>` : '');
   const step3Active = !!step3TreatLabel;
   const step3Reviewed = !!(b.reviewedSections && b.reviewedSections[3]);
   const step3TagsList = (b.tags || []).filter(Boolean);
@@ -4264,8 +4340,12 @@ function bizFullDetailHtml(id, opts) {
   const step4Changes = changeItemsBySection[4] || [];
   const step4Reviewed = !!(b.reviewedSections && b.reviewedSections[4]);
   const step4DiscountCount = allDiscounts.filter(d => d && d.text).length;
+  // תיקון: "אין הטבה מוגדרת" הוצג גם לעסק עם hasDiscount=true+discountText קצר שיש לו, רק כי
+  // אין discountTextFull שמור — הטעה שגרמה לחשוב שלעסק אין הטבה בכלל. נופל בחזרה לקצר לתצוגה
+  // בלבד (לא לשדה-העריכה עצמו, ר' ההערה ב-stepFieldHtml למעלה).
+  const step4DiscSummary = b.discountFullText || b.discountText || b.aiShortTitle || '';
   const step4Sub = [
-    b.discountFullText ? (b.discountFullText.length > 60 ? b.discountFullText.slice(0, 60) + '…' : b.discountFullText) : 'אין הטבה מוגדרת',
+    step4DiscSummary ? (step4DiscSummary.length > 60 ? step4DiscSummary.slice(0, 60) + '…' : step4DiscSummary) : (b.hasDiscount ? 'הטבה מסומנת פעילה, אין עדיין טקסט' : 'אין הטבה מוגדרת'),
     b.discountRedeemMode ? REDEEM_MODE_LABELS_MOCK[b.discountRedeemMode] : '',
     step4DiscountCount > 1 ? `הטבה אחת מתוך ${step4DiscountCount}` : ''
   ].filter(Boolean).join(' · ');
@@ -4273,7 +4353,15 @@ function bizFullDetailHtml(id, opts) {
   // (self-contained, כתובת-Storage/דחיסה אמיתיות לא נגעתי בהן) — mediaRealViewHtml משמש גם כתצוגה-מקדימה
   // תמידית (מחוץ לטופס, כמו קופסת-AI בשלב 4), לא רק כ"view-mode ישן" — כך שלא אבד מידע.
   const step5Reviewed = !!(b.reviewedSections && b.reviewedSections[5]);
-  const step5Badge = missingFieldsFor(b).includes('🖼️ תמונה מייצגת') ? `<span class="warn-badge">חסרה תמונה מייצגת</span>` : '';
+  // step5Changes — הפער המדויק שדווח: עסק מעלה תמונות/סרטונים/לוגו/קאבר חדשים (הולכים ל-pendingChanges,
+  // ר' ההערה למעלה ב-quickJudgmentHtml), ושלב "תמונות" לא הראה שום סימן שיש בכלל בקשה ממתינה —
+  // בניגוד לשלבים 2/4 שכבר הציגו "X שינויים מבוקשים". התמונות עצמן עדיין נסקרות/מאושרות ב"שיפוט מהיר"
+  // למעלה (עם התצוגה-הקריאה שתוקנה שם), הבאדג' כאן רק מצביע "יש שם משהו לבדוק".
+  const step5Changes = changeItemsBySection[5] || [];
+  const step5Badge = [
+    missingFieldsFor(b).includes('🖼️ תמונה מייצגת') ? `<span class="warn-badge">חסרה תמונה מייצגת</span>` : '',
+    step5Changes.length ? `<span class="treat-badge">${step5Changes.length} שינויים מבוקשים</span>` : '',
+  ].filter(Boolean).join('');
   const step5Sub = [
     b.logo ? 'לוגו הועלה' : 'אין לוגו',
     `${(b.photos||[]).length} בגלריה`,
@@ -4289,6 +4377,10 @@ function bizFullDetailHtml(id, opts) {
     : ownerVerifStatus === 'rejected' ? `<span class="warn-badge">✗ נדחה</span>`
     : ownerVerifStatus === 'info_requested' ? `<span class="treat-badge">ממתין למידע נוסף</span>`
     : `<span class="treat-badge">ממתין להחלטה</span>`;
+  // step1Changes — בדיוק אותה תבנית-בעיה כמו שלב 3/5: שינוי-שדה ישיר (טלפון/מייל/קרבה וכו') דרך
+  // pendingChanges לא הציג שום סימן בכרטיס "אימות בעל העסק" קודם.
+  const step1Changes = changeItemsBySection[1] || [];
+  const step1ChangesBadge = step1Changes.length ? `<span class="treat-badge">${step1Changes.length} שינויים מבוקשים</span>` : '';
   const ownerVerifPhotoHtml = b.ownerIsSubscriber
     ? `<div class="owner-verify-photo-empty">מנוי מכבי — לא נדרשת תמונה</div>`
     : b.ownerProofPhotoUrl
@@ -4316,7 +4408,7 @@ function bizFullDetailHtml(id, opts) {
       <div class="step-block${step3Active ? ' open' : ''}" id="stepBlock3_${b.id}">
         <div class="step-row">
           <div class="step-num${step3Active ? ' active' : ''}">1</div>
-          <div class="step-body">
+          <div class="step-body" onclick="toggleBizSecEdit('${b.id}',3)" style="cursor:pointer">
             <div class="step-name-row"><div class="step-name">העסק · קטגוריה ותגיות</div>${step3Badge}</div>
             <div class="step-sub">${esc(step3Sub)}</div>
           </div>
@@ -4350,7 +4442,7 @@ function bizFullDetailHtml(id, opts) {
       <div class="step-block${step2Changes.length ? ' open' : ''}" id="stepBlock2_${b.id}">
         <div class="step-row">
           <div class="step-num${step2Changes.length ? ' active' : ''}">2</div>
-          <div class="step-body">
+          <div class="step-body" onclick="toggleBizSecEdit('${b.id}',2)" style="cursor:pointer">
             <div class="step-name-row"><div class="step-name">פרטים ויצירת קשר</div>${step2Changes.length ? `<span class="treat-badge">${step2Changes.length} שינויים מבוקשים</span>` : ''}</div>
             <div class="step-sub">${esc(step2Sub)}</div>
           </div>
@@ -4416,7 +4508,7 @@ function bizFullDetailHtml(id, opts) {
       <div class="step-block${step4Changes.length ? ' open' : ''}" id="stepBlock4_${b.id}">
         <div class="step-row">
           <div class="step-num${step4Changes.length ? ' active' : ''}">3</div>
-          <div class="step-body">
+          <div class="step-body" onclick="toggleBizSecEdit('${b.id}',4)" style="cursor:pointer">
             <div class="step-name-row"><div class="step-name">הטבות</div>${step4Changes.length ? `<span class="treat-badge">${step4Changes.length} שינויים מבוקשים</span>` : ''}${b.wantsBusinessOfWeek ? `<span class="treat-badge">🏆 ביקשו עסק השבוע</span>` : ''}${b.wantsBenefitOfWeek ? `<span class="treat-badge">🎁 ביקשו הטבת השבוע</span>` : ''}</div>
             <div class="step-sub">${esc(step4Sub)}</div>
           </div>
@@ -4424,10 +4516,26 @@ function bizFullDetailHtml(id, opts) {
           <button class="btn-step-edit" id="stepEditBtn4_${b.id}" onclick="toggleBizSecEdit('${b.id}',4)">${step4Changes.length ? 'סגירה' : 'עריכה'}</button>
         </div>
         ${(b.wantsBusinessOfWeek || b.wantsBenefitOfWeek) ? `<div style="padding:0 24px 14px;font-size:12.5px;color:var(--text-sm);line-height:1.6;">${b.wantsBusinessOfWeek ? 'הביעו עניין ב<strong>עסק השבוע</strong> (סקירה + באנר בדף הבית). ' : ''}${b.wantsBenefitOfWeek ? 'הביעו עניין ב<strong>הטבת השבוע</strong> (הטבה חד-פעמית). ' : ''}שיבוץ בפועל מתבצע ממסך "עסק השבוע" בסרגל הצד.</div>` : ''}
-        ${(b.discountFullText || (b.pendingChangeDiff && b.pendingChangeDiff.discountText)) ? `<div style="padding:0 24px 18px">${aiTitleFieldHtml(b, { standalone: true })}</div>` : ''}
+        <!-- בעבר מוצג רק אם כבר יש discountFullText/בקשה-ממתינה, ואז הוחלף ל-hasDiscount בלבד. אבל
+             נמצא בפועל (עיצוב שיער קובי / חבילות תקשורת לבית, 2026-08-08): עסק יכול להיות עם
+             hasDiscount:false ב-Firestore אבל discountText אמיתי עדיין שמור על המסמך (למשל טוגל
+             שכבה בעבר בלי שהטקסט נמחק) — admin-businesses.html הישן מציג לפי discountText בלבד,
+             בלי קשר ל-hasDiscount, ולכן הראה את הטקסט כשה-dashboard החדש הראה תיבה ריקה. עכשיו
+             מוצג אם *או* hasDiscount *או* שיש בפועל טקסט קיים — לא מסתמכים על הדגל לבד. -->
+        ${(b.hasDiscount || b.discountText || b.discountFullText || b.aiShortTitle) ? `<div style="padding:0 24px 18px">${aiTitleFieldHtml(b, { standalone: true })}</div>` : ''}
         <div class="step-form${step4Changes.length ? ' open' : ''}" id="secEdit4_${b.id}">
           <div class="step-form-grid">
-            ${stepFieldHtml('discountText', 'הטבה 1 — ראשית (מוצגת בכרטיס באינדקס)', `<textarea id="edit_discount_${b.id}" rows="3" placeholder="פרטי ההטבה לחברי המועדון...">${b.discountFullText||''}</textarea>`, true)}
+            ${stepFieldHtml('discountText', 'הטבה 1 — ראשית (מוצגת בכרטיס באינדקס)',
+              // עסק עם hasDiscount=true אבל בלי discountTextFull שמור (לא עבר את תהליך-הקיצור-ב-AI,
+              // או נכנס לפני שהשדה הזה נוסף) — השדה הזה יראה ריק לגמרי גם אם יש לו הטבה אמיתית.
+              // בכוונה *לא* נופל בחזרה לכתוב את הכותרת הקצרה כערך השדה (זו בדיוק תבנית-הבאג מ-§81.4:
+              // שמירה-בלי-לגעת הייתה "מקבעת" את הקצר כאילו הוא המלא, לצמיתות) — רק מציג רמז-הקשר
+              // שהכותרת הקצרה קיימת, כדי שהמנהל ידע שיש הטבה ויזין תיאור מלא אמיתי (או ישאל את העסק).
+              (b.hasDiscount && !b.discountFullText && (b.discountText || b.aiShortTitle)
+                ? `<div class="step-field-hint" style="font-size:11.5px;color:var(--warn,#a35b00);margin-bottom:4px">⚠️ אין תיאור מלא שמור לעסק הזה — יש רק כותרת קצרה בכרטיס: "${esc(b.discountText || b.aiShortTitle)}". מלאו כאן תיאור מלא אמיתי (לא להעתיק את הקצר).</div>`
+                : '')
+              + `<textarea id="edit_discount_${b.id}" rows="3" placeholder="פרטי ההטבה לחברי המועדון...">${b.discountFullText||''}</textarea>`
+            , true)}
             <div class="step-field"><div class="step-field-h">מקום מימוש — הטבה 1</div><select id="edit_redeem1_${b.id}">${redeemOptions(b.discountRedeemMode||'physical')}</select></div>
           </div>
           <details class="edit-optional" ${(b.additionalDiscounts && b.additionalDiscounts[0]) ? 'open' : ''} style="margin-top:14px">
@@ -4450,7 +4558,7 @@ function bizFullDetailHtml(id, opts) {
       <div class="step-block" id="stepBlock5_${b.id}">
         <div class="step-row">
           <div class="step-num">4</div>
-          <div class="step-body">
+          <div class="step-body" onclick="toggleBizSecEdit('${b.id}',5)" style="cursor:pointer">
             <div class="step-name-row"><div class="step-name">תמונות</div>${step5Badge}</div>
             <div class="step-sub">${esc(step5Sub)}</div>
           </div>
@@ -4472,8 +4580,8 @@ function bizFullDetailHtml(id, opts) {
   const ownerVerifStepHtml = `
     <div class="dcard owner-verify-step">
       <div class="step-row">
-        <div class="step-body">
-          <div class="step-name-row"><div class="step-name">🎫 אימות בעל העסק</div>${ownerVerifBadge}</div>
+        <div class="step-body" onclick="toggleBizSecEdit('${b.id}',1)" style="cursor:pointer">
+          <div class="step-name-row"><div class="step-name">🎫 אימות בעל העסק</div>${ownerVerifBadge}${step1ChangesBadge}</div>
           <div class="step-sub">${esc(step1Sub)}</div>
         </div>
         <button class="btn-step-edit" id="stepEditBtn1_${b.id}" onclick="toggleBizSecEdit('${b.id}',1)">עריכה</button>
@@ -4598,10 +4706,46 @@ function fmtActivityVal(v) {
   if (typeof v === 'object') return v.toDate ? fmtDate(v.toDate()) : (v instanceof Date ? fmtDate(v) : '(אובייקט)');
   return String(v);
 }
+// 🐛 4 ניסיונות קודמים לתקן קפיצת-גלילה ע"י *שחזור* המיקום אחרי renderMain() נכשלו בפועל (scrollY
+// גולמי / עוגן-לקצה-הפאנל / drawer.scrollTop / עוגן-לאלמנט-ספציפי) — כולם ניסו לתקן תוצאה של הרס,
+// לא את ההרס עצמו. renderMain() תמיד בונה מחדש innerHTML *שלם* של #tabContent — כולל .task-drawer
+// (שיש לו overflow-y:auto, גלילה-פנימית) או bizDetailCol/fanDetailCol עצמם, כלומר ה-container הגלילי
+// *נהרס ונבנה מחדש בכל שמירה* — אין לדפדפן שום "זיכרון" scrollTop לשמר על אלמנט שכבר לא קיים, וכל
+// ניסיון-שחזור הוא מרוץ-תזמון (requestAnimationFrame מול layout/paint) שלא אמין ב-100% מהמקרים.
+// הפתרון האמיתי: לא להרוס את ה-container הגלילי בכלל. refreshOpenDetailPanel() מעדכן ישירות רק את
+// ה-innerHTML *של מה שבתוך* הפאנל הפתוח (.task-drawer-body / bizDetailCol / fanDetailCol עצמם) —
+// ה-container שיש לו overflow/scrollTop נשאר אותו אלמנט DOM בדיוק, אז אין בכלל "קפיצה" לתקן.
+function refreshOpenDetailPanel() {
+  // blur() מפורש לפני ההחלפה — מניע אפשרי-נוסף (אלמנט ממוקד שנהרס יכול לגרור גלילה-לתצוגה
+  // בחלק מהדפדפנים) — לא אומת כשורש-הבעיה בפועל (השורש האמיתי היה onSnapshot נפרד, ר' renderAllPreserveScroll
+  // למטה), אבל נשאר כהגנה זולה ובטוחה.
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  const drawerBody = document.querySelector('.task-drawer-body');
+  if (drawerBody && typeof selectedTaskKey !== 'undefined' && selectedTaskKey) {
+    drawerBody.innerHTML = taskDetailHtml2(selectedTaskKey);
+    return true;
+  }
+  const bizCol = document.getElementById('bizDetailCol');
+  if (bizCol && typeof selectedBizDetailId !== 'undefined' && selectedBizDetailId) {
+    bizCol.innerHTML = bizFullDetailHtml(selectedBizDetailId);
+    return true;
+  }
+  const fanCol = document.getElementById('fanDetailCol');
+  if (fanCol && typeof selectedFanDetailId !== 'undefined' && selectedFanDetailId) {
+    fanCol.innerHTML = fanFullDetailHtml(selectedFanDetailId);
+    return true;
+  }
+  return false; // אף פאנל-פרטים פתוח — נופל ל-renderMain() מלא, בטוח בכל הקשר אחר
+}
+function renderMainPreserveScroll() {
+  if (!refreshOpenDetailPanel()) renderMain();
+}
+
 async function saveSectionUpdates(id, updates) {
   const b = findBiz(id);
   const beforeVals = {};
   if (b) Object.keys(updates).forEach(k => { beforeVals[k] = b[k]; });
+  showSaving('שומר...');
   try {
     await updateDoc(doc(db, 'businesses', id), updates);
     if (b) {
@@ -4619,9 +4763,27 @@ async function saveSectionUpdates(id, updates) {
         field: fields[0], before: beforeVals[fields[0]] ?? null, after: updates[fields[0]] ?? null,
       });
     }
-    renderMain();
-  } catch (e) { console.error(e); alert('שגיאה בשמירה: ' + e.message); }
+    hideSaving(true);
+    renderMainPreserveScroll();
+  } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בשמירה: ' + e.message); }
 }
+
+// עריכה מהירה של שם העסק ישירות מכרטיס-הזהות (ראש הכרטיס) — לפני זה שינוי-שם היה קיים רק קבור
+// בתוך שלב 2 "פרטים ויצירת קשר" → עריכה. המשתמש ביקש גישה ישירה, בלי לפתוח את כל הטופס.
+window.toggleBizNameEdit = function(id) {
+  const viewRow = document.getElementById('idNameViewRow_' + id);
+  const editRow = document.getElementById('idNameEditRow_' + id);
+  if (!viewRow || !editRow) return;
+  const editing = editRow.style.display !== 'none';
+  viewRow.style.display = editing ? 'flex' : 'none';
+  editRow.style.display = editing ? 'none' : 'flex';
+  if (!editing) document.getElementById('idNameInput_' + id)?.focus();
+};
+window.saveBizName = async function(id) {
+  const val = document.getElementById('idNameInput_' + id).value.trim();
+  if (!val) { alert('שם העסק לא יכול להיות ריק'); return; }
+  await saveSectionUpdates(id, { name: val }); // renderMain בתוך saveSectionUpdates כבר בונה מחדש את הכרטיס במצב-תצוגה עם השם המעודכן
+};
 
 // יומן פעילות לעסק/אוהד — תת-אוסף businesses/{id}/activity או members/{id}/activity (לא מערך על
 // המסמך, כדי שהיומן יגדל בלי הגבלה). קריטי: כל פעולת-ניהול (אישור/דחייה/עריכה/החלטת-תגית/עיגון/
@@ -4779,7 +4941,12 @@ window.saveBizSec4 = async function(id) {
   const b = findBiz(id);
   if (!b) return;
   const discountFullText = document.getElementById('edit_discount_'+id).value.trim();
-  const hasDiscount = !!discountFullText;
+  // 🐛 באג-אמת שנמצא (2026-08-08): hasDiscount חושב *רק* מ-discountFullText — עסק עם הטבה אמיתית
+  // (hasDiscount:true, discountText קצר עם תוכן) אבל בלי discountTextFull שמור (לא עבר קיצור-AI,
+  // או עסק ישן) היה מאבד את ההטבה *כליל* בכל שמירה של שלב 4, גם אם המנהל רק שינה "מקום מימוש" —
+  // כי התיבה הריקה גרמה ל-hasDiscount:false, ואז discountText/discountRedeemMode/additionalDiscounts
+  // כולם נמחקים באותה שמירה (למטה). עכשיו נשמר "יש הטבה" גם אם יש כותרת-קצרה קיימת בלי תיאור-מלא.
+  const hasDiscount = !!(discountFullText || b.discountText || b.aiShortTitle);
   // רשת ביטחון אחרונה — לא ניתן לשמור כותרת שחורגת בפועל מרוחב הכרטיס, גם אם המנהל הקליד/הדביק
   // משהו ארוך יותר ידנית (ensureFitsCard חותך בעדינות לגבול מילה, זהה ל-business-dashboard.html)
   const discountText = ensureFitsCard(bizAiTitleEdits[id] !== undefined ? bizAiTitleEdits[id] : (b.aiShortTitle || ''));
@@ -4878,15 +5045,26 @@ window.updateOwnerProofPreview = function(id, url) {
 
 // ── סוג עסק בטופס עריכה — כל checkbox חושף/מסתיר רק את השדות הרלוונטיים לסוג הזה (ר' business-dashboard.html שלב 2) ──
 window.onEditBizTypeChange = function(id) {
-  const isPhysical = document.getElementById('edit_type_physical_'+id).checked;
-  const isOnline = document.getElementById('edit_type_online_'+id).checked;
-  const isPro = document.getElementById('edit_type_pro_'+id).checked;
+  const physicalCb = document.getElementById('edit_type_physical_'+id);
+  const onlineCb   = document.getElementById('edit_type_online_'+id);
+  const proCb      = document.getElementById('edit_type_pro_'+id);
+  const isPhysical = physicalCb.checked;
+  const isOnline   = onlineCb.checked;
+  const isPro      = proCb.checked;
   const physicalEl = document.getElementById('edit_typePhysicalFields_'+id);
-  const onlineEl = document.getElementById('edit_typeOnlineFields_'+id);
-  const proEl = document.getElementById('edit_typeProFields_'+id);
+  const onlineEl   = document.getElementById('edit_typeOnlineFields_'+id);
+  const proEl      = document.getElementById('edit_typeProFields_'+id);
   if (physicalEl) physicalEl.style.display = isPhysical ? 'block' : 'none';
   if (onlineEl) onlineEl.style.display = isOnline ? 'grid' : 'none';
   if (proEl) proEl.style.display = isPro ? 'block' : 'none';
+  // 🐛 באג-אמת שנמצא (2026-08-08, המשתמש: "בוחר עוד סוג עסק וזה משתנה אבל לא מופיע"): ה-checkbox
+  // עצמו מוסתר לגמרי (`.biz-type-card input { display:none }`, ר' CSS) — הסימון הוויזואלי היחיד
+  // הוא מחלקת `.on` על ה-label העוטף, שהתחילה מ-render ראשוני (`types.includes(...)`) ומעולם לא
+  // עודכנה בלחיצה. ה-checkbox בפועל *כן* השתנה (המצב הפנימי תקין, שמירה הייתה עובדת נכון) — פשוט
+  // בלי שום משוב חזותי, בדיוק כמו הבאג הכללי עם כפתורי-שמירה שתוקן קודם באותו סשן.
+  physicalCb.closest('.biz-type-card')?.classList.toggle('on', isPhysical);
+  onlineCb.closest('.biz-type-card')?.classList.toggle('on', isOnline);
+  proCb.closest('.biz-type-card')?.classList.toggle('on', isPro);
 };
 
 window.selectPrimaryTag = function(id, tag) {
@@ -4894,7 +5072,14 @@ window.selectPrimaryTag = function(id, tag) {
     editSelectedTags = [];
     editSecondTagOpen = false;
   } else {
-    editSelectedTags = [tag, ...editSelectedTags.slice(1)].filter(Boolean);
+    // 🐛 באג-אמת שנמצא (2026-08-08, המשתמש: "מוסיף מוחק משהו שם לא מסתדר לי"): אם התגית שנבחרת
+    // עכשיו כראשית היא בדיוק אותה תגית שכבר הייתה שנייה — הקוד הישן פשוט שרשר `[tag, ...קודם]`
+    // בלי לבדוק כפילות, ויצר [X,X]. שורת התגית-השנייה בכל זאת מסננת את הראשית מתוך ה-pool
+    // (secondPool ב-editTagsAreaHtml), אז X "נעלם" משם ויזואלית — אבל עדיין שמור פנימית
+    // כ-editSelectedTags[1], ונכתב בפועל כתגית כפולה בשמירה (saveBizSec3). אם התגית-השנייה
+    // הקיימת זהה לזאת שנבחרת עכשיו כראשית — מנקים אותה, לא משכפלים.
+    const nextSecond = editSelectedTags[1] === tag ? undefined : editSelectedTags[1];
+    editSelectedTags = [tag, nextSecond].filter(Boolean);
   }
   rerenderEditTagsArea(id);
 };
@@ -5290,6 +5475,14 @@ function fanFullDetailHtml(id, opts) {
         <div class="qj-header-actions">
           <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קוד כניסה (Brevo)" onclick="approveFan('${f.id}')">✅ אשר את האוהד</button>
           <button class="qj-btn-reject-app" onclick="rejectFan('${f.id}')">✗ דחה</button>
+        </div>` : f.status === 'approved' ? `
+        <div class="qj-header-actions">
+          <button class="qj-btn-reject-app" onclick="rejectFan('${f.id}')">↩️ ביטול אישור — לממתין</button>
+          <button class="qj-btn-reject-app" onclick="rejectApprovedFan('${f.id}')">✗ דחייה</button>
+        </div>` : f.status === 'rejected' ? `
+        <div class="qj-header-actions">
+          <button class="qj-btn-approve-app" onclick="restoreFanToPending('${f.id}')">↩️ שחזור לממתין</button>
+          <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קוד כניסה (Brevo)" onclick="approveFan('${f.id}')">✅ אשר בכל זאת</button>
         </div>` : ''}
       </div>
       ${fanQjOpen ? `<div class="qj-body">${fanQjRows.join('')}</div>` : ''}
@@ -5450,6 +5643,7 @@ window.saveFanDetails = async function(id) {
     facebookUrl: isSub ? null : document.getElementById('fanEditFbUrl_' + id).value.trim(),
   };
   const changedFields = f0 ? Object.keys(updates).filter(k => f0[k] !== updates[k]) : [];
+  showSaving('שומר...');
   try {
     await updateDoc(doc(db, 'members', id), updates);
     const f = findFan(id);
@@ -5461,8 +5655,9 @@ window.saveFanDetails = async function(id) {
         field: changedFields[0], before: f0[changedFields[0]] ?? null, after: updates[changedFields[0]] ?? null,
       });
     }
-    renderMain();
-  } catch (e) { console.error(e); alert('שגיאה בשמירה: ' + e.message); }
+    hideSaving(true);
+    renderMainPreserveScroll();
+  } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בשמירה: ' + e.message); }
 };
 
 window.toggleFanVerified = async function(id, checked) {
@@ -6021,23 +6216,34 @@ function mediaRealEditHtml(b) {
       </div>
     </div>`;
 }
+// showSaving/hideSaving כאן — לפני saveSectionUpdates, כי דחיסה+העלאה ל-Storage הם החלק
+// האיטי-באמת (כמה שניות על תמונה מהטלפון), לא ה-updateDoc עצמו. try/catch נוסף כאן במפורש —
+// לפני התיקון, כשל בהעלאה (רשת/Storage) לא היה נתפס בשום מקום ולא מציג שום שגיאה למנהל בכלל.
 window.uploadBizLogo = async function(id) {
   const file = document.getElementById('bizLogoFile_' + id)?.files[0];
   if (!file) { alert('נא לבחור קובץ קודם'); return; }
-  const { url, thumbUrl } = await uploadImageWithThumb(file, `businesses/${id}/logo_${Date.now()}`);
-  await saveSectionUpdates(id, { logo: url, logoThumb: thumbUrl });
+  showSaving('מעלה לוגו...');
+  try {
+    const { url, thumbUrl } = await uploadImageWithThumb(file, `businesses/${id}/logo_${Date.now()}`);
+    await saveSectionUpdates(id, { logo: url, logoThumb: thumbUrl });
+  } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בהעלאת הלוגו: ' + e.message); }
 };
 window.removeBizLogo = async function(id) { await saveSectionUpdates(id, { logo: '', logoThumb: '' }); };
 window.uploadBizCover = async function(id) {
   const file = document.getElementById('bizCoverFile_' + id)?.files[0];
   if (!file) { alert('נא לבחור קובץ קודם'); return; }
-  const { url, thumbUrl } = await uploadImageWithThumb(file, `businesses/${id}/coverPhoto_${Date.now()}`);
-  await saveSectionUpdates(id, { coverPhoto: url, coverPhotoThumb: thumbUrl });
+  showSaving('מעלה תמונה מייצגת...');
+  try {
+    const { url, thumbUrl } = await uploadImageWithThumb(file, `businesses/${id}/coverPhoto_${Date.now()}`);
+    await saveSectionUpdates(id, { coverPhoto: url, coverPhotoThumb: thumbUrl });
+  } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בהעלאת התמונה: ' + e.message); }
 };
 window.removeBizCover = async function(id) { await saveSectionUpdates(id, { coverPhoto: '', coverPhotoThumb: '' }); };
 window.uploadBizGalleryPhoto = async function(id) {
   const file = document.getElementById('bizGalleryFile_' + id)?.files[0];
   if (!file) { alert('נא לבחור קובץ קודם'); return; }
+  showSaving('מעלה תמונה לגלריה...');
+  try {
   const b = findBiz(id);
   // דחיסה לפני העלאה (כמו קאבר/לוגו) — בלי thumbnail נפרד, זהה ל-business.html בהרשמה (גלריה לא
   // מוצגת בכרטיס הפיד עצמו, רק בתוך דף העסק) — קובץ מקורי מהטלפון יכול להיות כמה MB, קריטי לביצועים.
@@ -6047,6 +6253,7 @@ window.uploadBizGalleryPhoto = async function(id) {
   const url = await uploadFile(uploadFileObj, `businesses/${id}/gallery_${Date.now()}`);
   const photos = [...(b.photos || []), { url, name: file.name }];
   await saveSectionUpdates(id, { photos });
+  } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בהעלאת התמונה: ' + e.message); }
 };
 window.removeBizGalleryPhoto = async function(id, idx) {
   const b = findBiz(id);
@@ -6096,7 +6303,7 @@ function aiTitleFieldHtml(b, opts) {
         <div class="ai-title-fit ${fit.over?'over':''}" data-ai-title-len="${b.id}">${fit.text}</div>
       </div>
       <div class="ai-title-row">
-        <input type="text" value="${val || ''}" maxlength="40" data-ai-title-input="${b.id}" oninput="setBizAiTitle('${b.id}', this.value)">
+        <input type="text" value="${val || ''}" maxlength="55" data-ai-title-input="${b.id}" oninput="setBizAiTitle('${b.id}', this.value)">
         <button type="button" class="act-btn tiny" onclick="regenerateAiTitles('${b.id}')" data-ai-title-regen="${b.id}">הצע 3 נוסחים</button>
         <div class="ai-title-preview">
           <div class="ai-title-preview-label">כך זה ייראה</div>
@@ -6243,6 +6450,26 @@ window.deleteFan = async function(id) {
   try { await deleteDoc(doc(db, 'members', id)); fanBackToList(); }
   catch (e) { console.error(e); alert('שגיאה במחיקה: ' + e.message); }
 };
+// ── ביטול-החלטה אחרי אישור/דחייה — אותו פער בדיוק כמו rejectApprovedBiz/restoreBizToPending למעלה,
+// באוהדים. שים לב: לא נוגע ב-memberNumber/loginCode שכבר הוקצו ל-approveFan — נשארים על הרשומה
+// (לא "מבטלים" קוד-כניסה שכבר יתכן ונשלח בפועל), רק סטטוס הגישה משתנה.
+window.rejectApprovedFan = async function(id) {
+  const f = MOCK_FANS.find(x => x.id === id);
+  if (!f) return;
+  if (!confirm(`לדחות את "${f.name}"? הוא לא יוכל יותר להתחבר.`)) return;
+  try {
+    await updateDoc(doc(db, 'members', id), { status: 'rejected', rejectedAt: serverTimestamp(), approvedAt: null });
+    await logActivity('members', id, { type: 'status', title: 'האוהד נדחה (לאחר אישור)', detail: `"${f.name}" נדחה אחרי שהיה מאושר`, field: 'status', before: f.status, after: 'rejected' });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+window.restoreFanToPending = async function(id) {
+  const f = MOCK_FANS.find(x => x.id === id);
+  if (!f) return;
+  try {
+    await updateDoc(doc(db, 'members', id), { status: 'pending', rejectedAt: null, approvedAt: null });
+    await logActivity('members', id, { type: 'status', title: 'האוהד הוחזר לממתין (משחזור דחייה)', detail: `"${f.name}" הוחזר לממתין`, field: 'status', before: f.status, after: 'pending' });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
 
 window.approveBiz = async function(id) {
   const b = findBiz(id);
@@ -6277,6 +6504,27 @@ window.deleteBiz = async function(id) {
   if (!confirm(`למחוק לצמיתות את "${b.name}"? לא ניתן לבטל.`)) return;
   try { await deleteDoc(doc(db, 'businesses', id)); bizBackToList(); }
   catch (e) { console.error(e); alert('שגיאה במחיקה: ' + e.message); }
+};
+// ── ביטול-החלטה אחרי אישור/דחייה — הפער שדווח: לא הייתה שום דרך בכרטיס עסק *מאושר* לבטל את
+// האישור (rejectBiz כבר יודע להחזיר מאושר→ממתין, אבל שום כפתור לא קרא לו כשהעסק כבר מאושר —
+// statusActions/showApproveApp הציגו כפתורי-החלטה רק כש-status==='pending'). דחייה-ישירה
+// ממאושר, ושחזור-מדחייה, פשוט לא היו קיימים בכלל כפעולות.
+window.rejectApprovedBiz = async function(id) {
+  const b = findBiz(id);
+  if (!b) return;
+  if (!confirm(`לדחות את "${b.name}"? הוא יוסר מהאינדקס הציבורי.`)) return;
+  try {
+    await updateDoc(doc(db, 'businesses', id), { status: 'rejected', rejectedAt: serverTimestamp(), approvedAt: null });
+    await logActivity('businesses', id, { type: 'status', title: 'העסק נדחה (לאחר אישור)', detail: `"${b.name}" נדחה אחרי שהיה מאושר`, field: 'status', before: b.status, after: 'rejected' });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+window.restoreBizToPending = async function(id) {
+  const b = findBiz(id);
+  if (!b) return;
+  try {
+    await updateDoc(doc(db, 'businesses', id), { status: 'pending', rejectedAt: null, approvedAt: null });
+    await logActivity('businesses', id, { type: 'status', title: 'העסק הוחזר לממתין (משחזור דחייה)', detail: `"${b.name}" הוחזר לממתין`, field: 'status', before: b.status, after: 'pending' });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
 
 // ── אישור/דחייה ישירים מהכרטיס לתגית שנייה ולקטגוריה שנייה ("מופיע גם תחת") — בלי לפתוח טופס עריכה מלא ──
@@ -6409,10 +6657,14 @@ window.approveChangeField = async function(id, field, valueOverride) {
   const b = findBiz(id);
   if (!b || !b.pendingChanges || !(field in b.pendingChanges)) return;
   const oldVal = b[field];
+  // שדות-מבנה (מערך/אובייקט — תמונות/סרטונים/סניפים/הטבות-נוספות...) לא מגיעים עם valueOverride
+  // בכלל (אין קלט-טקסט חופשי בשבילם, ר' qjStructuredPreviewHtml) — הערך המקורי מ-pendingChanges
+  // הוא האמת, לא לבנות אותו מחדש מטקסט שהמנהל לא נגע בו.
+  const newVal = valueOverride !== undefined ? valueOverride : b.pendingChanges[field];
   const newPending = { ...b.pendingChanges };
   delete newPending[field];
   const stillPending = Object.keys(newPending).length > 0;
-  const updates = { [field]: valueOverride, pendingChanges: stillPending ? newPending : null };
+  const updates = { [field]: newVal, pendingChanges: stillPending ? newPending : null };
   if (!stillPending) updates.pendingChangesAt = null;
   try {
     await updateDoc(doc(db, 'businesses', id), updates);
@@ -6421,8 +6673,8 @@ window.approveChangeField = async function(id, field, valueOverride) {
     b.healthScore = computeHealthScore(b);
     await logActivity('businesses', id, {
       type: 'changeDecision', title: `אושר שינוי: ${DIFF_FIELD_LABELS_MOCK[field] || field}`,
-      detail: `${DIFF_FIELD_LABELS_MOCK[field] || field}: "${oldVal}" → "${valueOverride}"`,
-      field, before: oldVal, after: valueOverride,
+      detail: `${DIFF_FIELD_LABELS_MOCK[field] || field}: "${fmtActivityVal(oldVal)}" → "${fmtActivityVal(newVal)}"`,
+      field, before: oldVal, after: newVal,
     });
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה באישור השינוי: ' + e.message); }
@@ -6754,6 +7006,27 @@ window.qjApproveTagFlow = function(id, mode) {
   if (mode === 'new') startNewCatPicking(id); else startMapTagSuggestion(id);
   jumpToBizSection(id, 3);
 };
+// תצוגה קריאה של שדה-מבנה (מערך/אובייקט) בשורת "שיפוט מהיר" — לא JSON.stringify גולמי.
+// photos/videos מקבלים תצוגה ייעודית (תמונות בפועל / קישור+תווית); כל שאר המערכים (סניפים,
+// הטבות-נוספות, תגיות, אזורים...) מקבלים סיכום-טקסט קריא. ר' ההערה ב-rowHtml למעלה למה זה קיים.
+function qjStructuredPreviewHtml(field, val) {
+  const arr = Array.isArray(val) ? val : (val ? [val] : []);
+  if (!arr.length) return '<span class="qj-value-text">—</span>';
+  if (field === 'photos') {
+    return `<div class="qj-photo-thumbs">${arr.map(p => p && p.url ? `<img src="${esc(p.url)}" alt="${esc(p.name||'')}">` : '').join('')}</div>`;
+  }
+  if (field === 'videos') {
+    return `<span class="qj-value-text">${esc(arr.map(v => v.label || v.url).filter(Boolean).join(' · '))}</span>`;
+  }
+  if (field === 'additionalDiscounts') {
+    return `<span class="qj-value-text">${esc(arr.map(d => d && d.text).filter(Boolean).join(' | '))}</span>`;
+  }
+  if (field === 'branches') {
+    return `<span class="qj-value-text">${esc(arr.map(br => `${br.city||''} — ${br.address||''}`).join(' · '))}</span>`;
+  }
+  // מערך-טקסטים פשוט (תגיות/אזורים/סוגי-עסק) או אובייקט לא-צפוי — סיכום קריא, לא JSON גולמי
+  return `<span class="qj-value-text">${esc(arr.map(x => typeof x === 'object' ? Object.values(x).filter(Boolean).join(' ') : x).join(', '))}</span>`;
+}
 function quickJudgmentHtml(b) {
   const items = bizPendingChangeItems(b);
   const hasNote = bizHasUnhandledNote(b);
@@ -6764,6 +7037,29 @@ function quickJudgmentHtml(b) {
   const isOpen = !qjCollapsedIds.has(b.id);
   const rowHtml = (it) => {
     if (b.pendingChangeDiff && it.field in b.pendingChangeDiff) {
+      // שדה-מבנה (מערך/אובייקט — תמונות/סרטונים/הטבות-נוספות/סניפים/תגיות וכו') לא יכול לעבור
+      // דרך תיבת-טקסט-חופשי לעריכה: ה-value של <input type="text"> הוא תמיד string, אז אישור
+      // היה כותב את ה-JSON-כטקסט (או רשימה מופרדת-פסיקים) *כמחרוזת* לתוך שדה שאמור להיות מערך —
+      // שובר את כל מקום שקורא את השדה הזה (mediaRealViewHtml/home.html וכו', .map על string=שגיאה).
+      // נמצא בפועל: תמונות-שהועלו על ידי עסק לא הופיעו כי הן ישבו ב-pendingChanges בצורה הזו, לא נראות
+      // כתמונות בשום מקום. תצוגה קריאה בלבד + אישור עם הערך המקורי (b.pendingChanges[field]), לא מהקלט.
+      const pendingVal = b.pendingChanges ? b.pendingChanges[it.field] : undefined;
+      const isStructured = Array.isArray(pendingVal) || (pendingVal !== null && typeof pendingVal === 'object');
+      if (isStructured) {
+        return `
+        <div class="qj-row">
+          <div class="qj-row-label"><div class="qj-row-step">שלב ${it.section} · שינוי פרטים</div><div class="qj-row-name">${it.label}</div></div>
+          <div class="qj-row-value qj-structured">
+            <div class="qj-structured-old"><span class="qj-value-hint">היה:</span> ${qjStructuredPreviewHtml(it.field, b[it.field])}</div>
+            <div class="qj-structured-new"><span class="qj-value-hint">מבוקש:</span> ${qjStructuredPreviewHtml(it.field, pendingVal)}</div>
+          </div>
+          <div class="qj-row-actions">
+            <button class="qj-btn primary" onclick="approveChangeField('${b.id}','${it.field}')">אישור</button>
+            <button class="qj-btn reject" onclick="rejectChangeField('${b.id}','${it.field}')">דחייה</button>
+            <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',${it.section})">לשלב ${it.section} ←</button>
+          </div>
+        </div>`;
+      }
       const inputId = `qjInput_${b.id}_${it.field}`;
       return `
         <div class="qj-row">
@@ -6844,6 +7140,14 @@ function quickJudgmentHtml(b) {
         <div class="qj-header-actions">
           <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קישור לדשבורד" onclick="approveBiz('${b.id}')">✅ אשר את העסק</button>
           <button class="qj-btn-reject-app" onclick="rejectBiz('${b.id}')">✗ דחה</button>
+        </div>` : b.status === 'approved' ? `
+        <div class="qj-header-actions">
+          <button class="qj-btn-reject-app" onclick="rejectBiz('${b.id}')">↩️ ביטול אישור — לממתין</button>
+          <button class="qj-btn-reject-app" onclick="rejectApprovedBiz('${b.id}')">✗ דחייה</button>
+        </div>` : b.status === 'rejected' ? `
+        <div class="qj-header-actions">
+          <button class="qj-btn-approve-app" onclick="restoreBizToPending('${b.id}')">↩️ שחזור לממתין</button>
+          <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קישור לדשבורד" onclick="approveBiz('${b.id}')">✅ אשר בכל זאת</button>
         </div>` : ''}
         <div class="qj-hint">${hint}</div>
       </div>
@@ -8879,6 +9183,18 @@ function renderAll() {
   renderSidebar();
   renderMain();
 }
+// 🐛 שורש-הבאג האמיתי לקפיצת-הגלילה (נמצא רק אחרי שהמשתמש בדק בפועל עם console.log): לא
+// saveSectionUpdates/renderMainPreserveScroll בכלל — יש onSnapshot גלובלי על 'businesses'/'members'
+// (למטה) שרץ *עצמאית*, בלי שום קשר לזרימת-השמירה שלנו, בכל פעם שמסמך כלשהו משתנה — כולל הכתיבה-
+// העצמית-של-המנהל (updateDoc בתוך saveSectionUpdates מעדכן את ה-cache המקומי של Firestore כמעט
+// מיידית, מה שמפעיל את ה-listener הזה *באמצע* ה-await, לפני שהקוד שלנו בכלל ממשיך). הקורא-לחזרה
+// שלו קרא ל-renderAll() (=renderSidebar+renderMain) ללא תנאי — הריסה-מלאה-ובנייה-מחדש בלתי-תלויה
+// לגמרי בכל מה שתוקן עד עכשיו ב-saveSectionUpdates. זו הקפיצה שנמדדה: scrollTop=0 כבר *באמצע*
+// ה-await updateDoc(), הרבה לפני ש-refreshOpenDetailPanel שלנו בכלל רץ.
+function renderAllPreserveScroll() {
+  renderSidebar();
+  if (!refreshOpenDetailPanel()) renderMain();
+}
 
 // admin guard — session אמיתי (Firebase Auth) + isAdmin:true על רשומת החבר, זהה ל-admin-businesses.html/admin-members.html
 await new Promise(resolve => {
@@ -8899,13 +9215,15 @@ function maybeInitialRender() { if (_bizLoaded && _fanLoaded) renderAll(); }
 onSnapshot(collection(db, 'businesses'), snapshot => {
   MOCK_BUSINESSES = snapshot.docs.map(d => hydrateBiz(d.id, d.data()));
   _bizLoaded = true;
-  if (_fanLoaded) renderAll(); else maybeInitialRender();
+  // renderAllPreserveScroll (לא renderAll) — ה-listener הזה גם רץ בגלל הכתיבה-העצמית-של-המנהל, לא
+  // רק שינויים-מבחוץ. ר' ההערה ב-renderAllPreserveScroll למעלה, זה שורש-הבאג האמיתי לקפיצת-הגלילה.
+  if (_fanLoaded) renderAllPreserveScroll(); else maybeInitialRender();
 }, err => console.error('שגיאה בטעינת עסקים מ-Firestore:', err));
 
 onSnapshot(collection(db, 'members'), snapshot => {
   MOCK_FANS = snapshot.docs.map(d => hydrateFan(d.id, d.data()));
   _fanLoaded = true;
-  if (_bizLoaded) renderAll(); else maybeInitialRender();
+  if (_bizLoaded) renderAllPreserveScroll(); else maybeInitialRender();
 }, err => console.error('שגיאה בטעינת אוהדים מ-Firestore:', err));
 
 // עסק השבוע · הטבת השבוע — 2 אוספים, לא חוסמים את הרינדור הראשוני (תורים קטנים, לא קריטיים כמו עסקים/אוהדים)

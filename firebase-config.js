@@ -1,6 +1,6 @@
 // ── Firebase Configuration — Yellow Zone ──
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-import { getFirestore }  from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import { getAuth }       from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -12,8 +12,23 @@ const firebaseConfig = {
   appId:             "1:459607487972:web:36ebe479e7a4e3a7bd43f1"
 };
 
-const app  = initializeApp(firebaseConfig);
-const db   = getFirestore(app);
+const app = initializeApp(firebaseConfig);
+
+// מטמון מקומי מתמיד (IndexedDB) — ביקור חוזר באפליקציה מקבל onSnapshot ראשוני מיידי מתוך
+// המכשיר עצמו (בלי לחכות לרשת) ומתעדכן ברקע ברגע שהנתונים האמיתיים חוזרים משרת. משפיע בעיקר
+// על מסך-הפתיחה (splash/skeleton) בפתיחות חוזרות של האפליקציה המותקנת — לא על ההתקנה הראשונה
+// (אין עדיין כלום במטמון). נופל בבטחה ל-getFirestore הרגיל אם האתחול נכשל (למשל דפדפן ישן/
+// פרטי בלי IndexedDB) כדי שלא יישבר שום דבר.
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  });
+} catch (e) {
+  console.error('Firestore persistent cache init failed, falling back to memory cache:', e);
+  db = getFirestore(app);
+}
+
 const auth = getAuth(app);
 
 // Storage נטען רק בדפים שבאמת מעלים קבצים (dynamic import) —

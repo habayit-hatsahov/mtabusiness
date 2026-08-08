@@ -466,6 +466,25 @@
       font-size: 15px; font-weight: 800; text-decoration: none;
     }
 
+    /* ── מצב-העלאת-מדיה ברקע — הבאג שנמצא: מסך "התקבל בהצלחה" הוצג מיד, לפני שתמונות/לוגו בכלל
+       התחילו להעלות, בלי שום סימן. אם המשתמש סגר את הדף (התנהגות טבעית אחרי "הצלחה") — ההעלאה
+       שהייתה עדיין ב-Promise תלוי-ועומד נהרגת עם הטאב, והתמונות אף פעם לא הגיעו ל-Firestore.
+       פס-סטטוס קטן + beforeunload guard בזמן ההעלאה בפועל (ר' handleSubmit). */
+    .success-upload-status {
+      display: none; margin-top: 16px; padding: 10px 14px; border-radius: 10px;
+      background: var(--acc-soft); border: 1px solid var(--acc-line);
+      font-size: 12.5px; font-weight: 700; color: var(--text);
+      align-items: center; justify-content: center; gap: 8px;
+    }
+    .success-upload-status.show { display: flex; }
+    .success-upload-status .spinner-sm {
+      width: 13px; height: 13px; border-radius: 50%; flex: none;
+      border: 2px solid rgba(0,0,0,.15); border-top-color: var(--text);
+      animation: spin .7s linear infinite;
+    }
+    .success-upload-status.done .spinner-sm { display: none; }
+    .success-upload-status.failed { background: #fdeceb; border-color: #f3b7b0; color: #8a2c22; }
+
     .back-to-site {
       display: none; position: fixed; top: 14px; right: 14px; z-index: 500;
       width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
@@ -1244,6 +1263,7 @@
       <div class="success-icon"><svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#0A2A66" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
       <h3 id="successTitle">הבקשה התקבלה!</h3>
       <p id="successBody"></p>
+      <div class="success-upload-status" id="successUploadStatus"><span class="spinner-sm"></span><span id="successUploadStatusText"></span></div>
       <a class="success-back-link" id="successBackLink" href="home.html">חזרה לאתר</a>
       </div>
     </div>
@@ -1758,6 +1778,20 @@
 
       const effectiveCoverFile = coverPhotoFile || logoFile || null;
       const effectiveLogoFile  = coverPhotoFile ? logoFile : null;
+      const hasMediaToUpload = !!(fanPhotoFile || effectiveCoverFile || effectiveLogoFile || galleryFiles.length);
+
+      // ── הבאג שנמצא: מסך "הבקשה התקבלה" (successState) כבר מוצג למשתמש (למעלה, סינכרוני, לפני
+      // ה-IIFE הזה) — מבחינתו הרישום הסתיים. אם הוא סוגר/עוזב את הדף עכשיו (בדיוק מה שמצפים שיעשה
+      // אחרי הודעת-הצלחה), ה-IIFE נהרג עם הטאב ותמונות/לוגו/קאבר שנבחרו לא מגיעים ל-Firestore בכלל —
+      // בלי שום שגיאה, בלי שום עדות. beforeunload guard + פס-סטטוס גלוי סוגרים את הפער.
+      const uploadStatusEl = document.getElementById('successUploadStatus');
+      const uploadStatusTextEl = document.getElementById('successUploadStatusText');
+      const beforeUnloadGuard = (e) => { e.preventDefault(); e.returnValue = ''; return ''; };
+      if (hasMediaToUpload) {
+        window.addEventListener('beforeunload', beforeUnloadGuard);
+        uploadStatusTextEl.textContent = 'מעלים את התמונות שלכם — נא לא לסגור את הדף...';
+        uploadStatusEl.className = 'success-upload-status show';
+      }
 
       const tasks = [];
       if (fanPhotoFile) tasks.push(
@@ -1789,9 +1823,18 @@
       }
 
       await Promise.allSettled(tasks);
+      let mediaSaveOk = true;
       try {
         await updateDoc(doc(db, 'businesses', docId), uploads);
-      } catch (e) { console.error('businesses media update failed:', e.message); }
+      } catch (e) { console.error('businesses media update failed:', e.message); mediaSaveOk = false; }
+
+      if (hasMediaToUpload) {
+        window.removeEventListener('beforeunload', beforeUnloadGuard);
+        uploadStatusEl.className = 'success-upload-status show ' + (mediaSaveOk ? 'done' : 'failed');
+        uploadStatusTextEl.textContent = mediaSaveOk
+          ? '✓ התמונות הועלו בהצלחה'
+          : '⚠️ שמירת התמונות נכשלה — תוכלו להעלות שוב מהדשבורד שיישלח אליכם לאחר האישור';
+      }
     })();
   }
 

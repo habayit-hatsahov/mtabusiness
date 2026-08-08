@@ -1074,11 +1074,12 @@
     var hbSplashEl = document.getElementById('hbSplash');
     if (hbSplashEl) hbSplashEl.classList.add('show');
     // רשת-ביטחון אמיתית בלבד (לא עוד "טיימר רגיל") — מיועדת רק לכשל אמיתי (רשת מתה וכו'),
-    // לא לחיבור רגיל-אבל-איטי: כניסה קרה-לגמרי (התקנה טרייה, בלי שום cache מקומי חם) יכולה
-    // לקחת בלגיטימיות 10-15 שניות (טעינת SDK + auth + 2 שאילתות Firestore רצופות). 3.5s
-    // הישן היה קצר מדי — נורה תמיד לפני שהתוכן האמיתי מוכן, וחשף מסך-בית ריק/שבור למשתמש
-    // בדיוק כשה-splash כבר נעלם (דווח בפועל, ר' PROJECT_CONTEXT.md).
-    window._hbSplashTimer = setTimeout(function () { window._hbHideSplash(true); }, 15000);
+    // לא לחיבור רגיל-אבל-איטי. הורד מ-15s ל-10s (2026-08-08, בקשת המשתמש): מסך-פתיחה שנתקע
+    // 15 שניות "לא נראה טוב" גם אם התוכן בסוף מגיע — 10s נשאר מספיק להתקנה קרה-לגמרי (טעינת
+    // SDK+auth+Firestore) בלי להשאיר את המשתמש בתחושה שהאפליקציה תקועה. יחד עם מטמון-Firestore
+    // מתמיד (firebase-config.js) וניסיונות-חוזרים חזקים יותר לקריאת מסמך-החבר (fetchMemberDocWithRetry
+    // למטה) — פחות סיכוי להגיע בכלל לרשת-הביטחון הזו.
+    window._hbSplashTimer = setTimeout(function () { window._hbHideSplash(true); }, 10000);
   } else {
     var hbSplashElSkip = document.getElementById('hbSplash');
     if (hbSplashElSkip) hbSplashElSkip.remove();
@@ -1094,7 +1095,9 @@
     var p = window._hbSplashPending;
     if (!force && p && !(p.cards && p.name)) return;
     if (window._hbSplashHidePending) return;
-    var minShow = 1500;
+    // 5 שניות בכוונה (2026-08-08, בקשת המשתמש) — לא רק "רגע-מותג" קצר: זמן קבוע ויציב שנותן
+    // לכרטיסים+לדף להיטען מאחורי הקלעים, בלי שהתחושה תשתנה לפי מהירות-הרשת של המבקר הספציפי.
+    var minShow = 5000;
     var elapsed = Date.now() - window._hbSplashStart;
     if (elapsed < minShow) {
       window._hbSplashHidePending = true;
@@ -3167,10 +3170,16 @@ getDoc(doc(db, 'settings', 'sectionAnchors'))
 // firestore.rules (מתיר קריאה-עצמית תמיד וללא תנאי), cache מקומי (לא מוגדר בקוד), Service Worker
 // (לא נוגע בבקשות Firebase). שורש-הסיבה המדויק לא אותר — זה תיקון-הגנתי לתוצאה, לא לסיבה.
 async function fetchMemberDocWithRetry(memberId) {
-  let snap = await getDoc(doc(db, 'members', memberId));
-  if (!snap.exists()) {
-    await new Promise(r => setTimeout(r, 500));
+  // עד 3 ניסיונות-חוזרים (לא רק אחד) עם השהיה עולה — חיזוק ל-2026-08-08: דווח מקרה שבו גם
+  // ניסיון-חוזר יחיד אחרי 500ms לא הספיק (ברכת-שם תקינה, אבל "דשבורד ניהול"/"העסק שלי"
+  // נשארו חסרים בהמבורגר עד ניווט-ידני לפרופיל וחזרה). ההשהיות נשארות קטנות בסה"כ (עד ~3.1s
+  // תוספת מרבית) כדי לא להתנגש עם רשת-הביטחון של ה-splash (10s, למעלה).
+  const delays = [0, 400, 900, 1800];
+  let snap;
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
     snap = await getDoc(doc(db, 'members', memberId));
+    if (snap.exists()) return snap;
   }
   return snap;
 }
