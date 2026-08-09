@@ -1,4 +1,4 @@
-const CACHE_NAME = 'yz-shell-v19';
+const CACHE_NAME = 'yz-shell-v20';
 const PRECACHE_URLS = ['home.html', 'manifest.json', 'firebase-config.js'];
 
 self.addEventListener('install', event => {
@@ -45,7 +45,14 @@ self.addEventListener('fetch', event => {
           if (res.ok) cache.put(req, res.clone());
           return res;
         } catch (e) {
-          return cached || fetch(req); // בלי cache בכלל (ביקור ראשון אי-פעם, offline) — עדיין ננסה רשת
+          // הבקשה-עם-timeout לא הספיקה תוך 1.5s (בדיוק החיבור-האיטי שהיה אמור ליהנות הכי הרבה
+          // מהתיקון האחרון) — באג-אמת שנתפס בפועל (2026-08-10): הניסיון-החוזר הזה מעולם לא נשמר
+          // ב-cache, אז ביקור-איטי חוזר ממשיך לקבל תוכן ישן שוב ושוב, בלי שהמטמון מתעדכן.
+          // עכשיו: הניסיון-החוזר (בלי timeout) תמיד ממשיך ברקע וכותב ל-cache כשהוא מסתיים —
+          // בין אם הוגש עכשיו (אין cache בכלל) ובין אם הוגש cache-ישן והרשת עדיין ממשיכה ברקע.
+          const retry = fetch(req).then(res => { if (res.ok) cache.put(req, res.clone()); return res; }).catch(() => null);
+          if (cached) { retry.catch(() => {}); return cached; }
+          return (await retry) || cached;
         }
       })
     );
