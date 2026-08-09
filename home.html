@@ -43,6 +43,93 @@
   <!-- categories.js הוזז מכאן להמשך הדף (ליד cats-section, ~שורה 1186) — 2026-08-10: script קלאסי-חוסם
        כאן ב-head היה מעכב את כל שאר הפרסור (כולל מסך-הפתיחה הצהוב ממש בתחילת body!) עד שקובץ קטן
        זה חוזר מהרשת. הצרכן הסינכרוני היחיד שלו נמצא הרבה יותר מאוחר בדף — אין סיבה שיחסום כאן. -->
+  <!-- CSS קריטי בלבד — כל השאר (עוד כ-1000 שורות) הוזז אחרי מסך-הפתיחה (ר' הערה למטה ליד ה-<style> השני).
+       מסך-הפתיחה זקוק רק לכללים האלה כדי להצטייר נכון; שאר הדף מכוסה לגמרי מאחוריו עד שהוא נעלם,
+       אז אין סיבה שהדפדפן יחכה להוריד+לפרסר את כל הגיליון-הענק הזה לפני שהוא בכלל מצייר פיקסל ראשון. -->
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html.hb-checking body { visibility: hidden; }
+    :root { --yellow: #FFD400; }
+    .hb-splash {
+      position: fixed; inset: 0; z-index: 999999;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--yellow);
+      opacity: 0; pointer-events: none;
+      transform: translateY(0);
+      transition: opacity .25s ease;
+    }
+    .hb-splash.show { opacity: 1; pointer-events: auto; }
+    .hb-splash.leaving {
+      pointer-events: none;
+      transform: translateY(100%);
+      transition: transform .55s cubic-bezier(.4,0,.2,1);
+    }
+    .hb-splash img { width: min(240px, 60vw); height: auto; }
+  </style>
+</head>
+<body>
+
+<!-- ══ מסך פתיחה — רגע-מותג בכניסה הראשונה לסשן (כמו cold start של אפליקציה, בהשראת וולט) ══
+     מוצג רק בכניסה הראשונה ל-home.html בטאב (sessionStorage) — ניווט חוזר אליו מדף אחר
+     באותו סשן לא יציג אותו שוב. נשאר על המסך מינימום ~1.5 שניות (גם אם התוכן מוכן מהר יותר,
+     כדי שהרגע יורגש ולא יבזיק), ונעלם ברגע שהתוכן האמיתי מוכן מאחוריו — עם רשת ביטחון של 3.5
+     שניות למקרה שהנתונים לעולם לא מגיעים (כשל רשת וכו'), כדי לא להשאיר את המשתמש תקוע. -->
+<div class="hb-splash" id="hbSplash"><img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/></div>
+<script>
+  window._hbSplashFirstEntry = !sessionStorage.getItem('hb_splash_shown');
+  window._hbSplashReady = false;
+  window._hbSplashPending = { cards: false, name: false };
+  if (window._hbSplashFirstEntry) {
+    sessionStorage.setItem('hb_splash_shown', '1');
+    window._hbSplashStart = Date.now();
+    var hbSplashEl = document.getElementById('hbSplash');
+    if (hbSplashEl) hbSplashEl.classList.add('show');
+    // רשת-ביטחון אמיתית בלבד (לא עוד "טיימר רגיל") — מיועדת רק לכשל אמיתי (רשת מתה וכו'),
+    // לא לחיבור רגיל-אבל-איטי. הורד מ-15s ל-10s (2026-08-08, בקשת המשתמש): מסך-פתיחה שנתקע
+    // 15 שניות "לא נראה טוב" גם אם התוכן בסוף מגיע — 10s נשאר מספיק להתקנה קרה-לגמרי (טעינת
+    // SDK+auth+Firestore) בלי להשאיר את המשתמש בתחושה שהאפליקציה תקועה. יחד עם מטמון-Firestore
+    // מתמיד (firebase-config.js) וניסיונות-חוזרים חזקים יותר לקריאת מסמך-החבר (fetchMemberDocWithRetry
+    // למטה) — פחות סיכוי להגיע בכלל לרשת-הביטחון הזו.
+    window._hbSplashTimer = setTimeout(function () { window._hbHideSplash(true); }, 10000);
+  } else {
+    var hbSplashElSkip = document.getElementById('hbSplash');
+    if (hbSplashElSkip) hbSplashElSkip.remove();
+  }
+  // נקרא per-חלק ('cards'/'name') ברגע שהוא מוכן בפועל — המסך נעלם רק כששני החלקים
+  // מוכנים (או שרשת-הביטחון מתפרצת), כדי שלא ייחשף מצב-ביניים חצי-ריק.
+  window._hbMarkReady = function (part) {
+    if (window._hbSplashPending) window._hbSplashPending[part] = true;
+    window._hbHideSplash();
+  };
+  window._hbHideSplash = function (force) {
+    if (window._hbSplashReady || !window._hbSplashFirstEntry) { window._hbSplashReady = true; return; }
+    var p = window._hbSplashPending;
+    if (!force && p && !(p.cards && p.name)) return;
+    if (window._hbSplashHidePending) return;
+    // 5 שניות בכוונה (2026-08-08, בקשת המשתמש) — לא רק "רגע-מותג" קצר: זמן קבוע ויציב שנותן
+    // לכרטיסים+לדף להיטען מאחורי הקלעים, בלי שהתחושה תשתנה לפי מהירות-הרשת של המבקר הספציפי.
+    var minShow = 5000;
+    var elapsed = Date.now() - window._hbSplashStart;
+    if (elapsed < minShow) {
+      window._hbSplashHidePending = true;
+      setTimeout(function () {
+        window._hbSplashHidePending = false;
+        window._hbHideSplash(force);
+      }, minShow - elapsed);
+      return;
+    }
+    window._hbSplashReady = true;
+    clearTimeout(window._hbSplashTimer);
+    var el = document.getElementById('hbSplash');
+    if (!el) return;
+    el.classList.add('leaving');
+    setTimeout(function () { el.remove(); }, 560);
+  };
+</script>
+
+<!-- ══ שאר-הגיליון (כל מה שהיה ב-head, הוזז לכאן — ר' הערה למעלה ב-CSS-הקריטי). נמצא אחרי
+     מסך-הפתיחה בכוונה: נטען/מפורסר בזמן שהמסך-הצהוב כבר מכסה את כל המסך, בלי לעכב את הציור
+     הראשון שלו. ══ -->
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -1057,66 +1144,6 @@
       display: flex; align-items: center; justify-content: center;
     }
   </style>
-</head>
-<body>
-
-<!-- ══ מסך פתיחה — רגע-מותג בכניסה הראשונה לסשן (כמו cold start של אפליקציה, בהשראת וולט) ══
-     מוצג רק בכניסה הראשונה ל-home.html בטאב (sessionStorage) — ניווט חוזר אליו מדף אחר
-     באותו סשן לא יציג אותו שוב. נשאר על המסך מינימום ~1.5 שניות (גם אם התוכן מוכן מהר יותר,
-     כדי שהרגע יורגש ולא יבזיק), ונעלם ברגע שהתוכן האמיתי מוכן מאחוריו — עם רשת ביטחון של 3.5
-     שניות למקרה שהנתונים לעולם לא מגיעים (כשל רשת וכו'), כדי לא להשאיר את המשתמש תקוע. -->
-<div class="hb-splash" id="hbSplash"><img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/></div>
-<script>
-  window._hbSplashFirstEntry = !sessionStorage.getItem('hb_splash_shown');
-  window._hbSplashReady = false;
-  window._hbSplashPending = { cards: false, name: false };
-  if (window._hbSplashFirstEntry) {
-    sessionStorage.setItem('hb_splash_shown', '1');
-    window._hbSplashStart = Date.now();
-    var hbSplashEl = document.getElementById('hbSplash');
-    if (hbSplashEl) hbSplashEl.classList.add('show');
-    // רשת-ביטחון אמיתית בלבד (לא עוד "טיימר רגיל") — מיועדת רק לכשל אמיתי (רשת מתה וכו'),
-    // לא לחיבור רגיל-אבל-איטי. הורד מ-15s ל-10s (2026-08-08, בקשת המשתמש): מסך-פתיחה שנתקע
-    // 15 שניות "לא נראה טוב" גם אם התוכן בסוף מגיע — 10s נשאר מספיק להתקנה קרה-לגמרי (טעינת
-    // SDK+auth+Firestore) בלי להשאיר את המשתמש בתחושה שהאפליקציה תקועה. יחד עם מטמון-Firestore
-    // מתמיד (firebase-config.js) וניסיונות-חוזרים חזקים יותר לקריאת מסמך-החבר (fetchMemberDocWithRetry
-    // למטה) — פחות סיכוי להגיע בכלל לרשת-הביטחון הזו.
-    window._hbSplashTimer = setTimeout(function () { window._hbHideSplash(true); }, 10000);
-  } else {
-    var hbSplashElSkip = document.getElementById('hbSplash');
-    if (hbSplashElSkip) hbSplashElSkip.remove();
-  }
-  // נקרא per-חלק ('cards'/'name') ברגע שהוא מוכן בפועל — המסך נעלם רק כששני החלקים
-  // מוכנים (או שרשת-הביטחון מתפרצת), כדי שלא ייחשף מצב-ביניים חצי-ריק.
-  window._hbMarkReady = function (part) {
-    if (window._hbSplashPending) window._hbSplashPending[part] = true;
-    window._hbHideSplash();
-  };
-  window._hbHideSplash = function (force) {
-    if (window._hbSplashReady || !window._hbSplashFirstEntry) { window._hbSplashReady = true; return; }
-    var p = window._hbSplashPending;
-    if (!force && p && !(p.cards && p.name)) return;
-    if (window._hbSplashHidePending) return;
-    // 5 שניות בכוונה (2026-08-08, בקשת המשתמש) — לא רק "רגע-מותג" קצר: זמן קבוע ויציב שנותן
-    // לכרטיסים+לדף להיטען מאחורי הקלעים, בלי שהתחושה תשתנה לפי מהירות-הרשת של המבקר הספציפי.
-    var minShow = 5000;
-    var elapsed = Date.now() - window._hbSplashStart;
-    if (elapsed < minShow) {
-      window._hbSplashHidePending = true;
-      setTimeout(function () {
-        window._hbSplashHidePending = false;
-        window._hbHideSplash(force);
-      }, minShow - elapsed);
-      return;
-    }
-    window._hbSplashReady = true;
-    clearTimeout(window._hbSplashTimer);
-    var el = document.getElementById('hbSplash');
-    if (!el) return;
-    el.classList.add('leaving');
-    setTimeout(function () { el.remove(); }, 560);
-  };
-</script>
 
 <!-- ══ PWA — התרעה על דפדפן פנימי (וואטסאפ/אינסטגרם/פייסבוק) ══ -->
 <div class="pwa-inapp-banner" id="pwaInAppBanner">
