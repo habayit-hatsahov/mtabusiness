@@ -22,12 +22,31 @@ function applyVars(text, vars) {
   return Object.entries(vars).reduce((s, [k, v]) => s.split(`{${k}}`).join(v ?? ''), text);
 }
 
-// טקסט חופשי (כמו שנערך ב-admin-messages.html) -> HTML פשוט: שורה ריקה = פסקה חדשה
-function textToHtml(text) {
-  return escapeHtml(text)
-    .split('\n\n')
-    .map((para) => `<p>${para.replace(/\n/g, '<br>')}</p>`)
-    .join('');
+// כפתור צהוב ממותג — משמש כש-{link} יושב על שורה נפרדת (פסקה משלו) בתבנית מותאמת-אישית
+function linkButtonHtml(link, label) {
+  return `
+    <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:16px auto">
+      <tr><td style="background:#FFDE00;border-radius:14px">
+        <a href="${link}" style="display:inline-block;color:#16130a;font-weight:900;text-decoration:none;padding:12px 28px;font-size:15px">${label}</a>
+      </td></tr>
+    </table>`;
+}
+
+// כותרת קטנה עם הלוגו — בראש כל מייל עם תבנית מותאמת-אישית (2, כתחליף ללוגו-מכבי בתוך תיבת-הקוד)
+function brandHeaderHtml() {
+  return `<div style="text-align:center;padding:0 0 8px 0"><img src="${LOGO_URL}" width="30" alt="Yellow Zone" /></div>`;
+}
+
+// תבנית מותאמת-אישית -> HTML: כל פסקה (שורה ריקה מפרידה, כמו textToHtml) הופכת ל-<p>, חוץ מפסקה
+// שהיא בדיוק "{code}" או "{link}" בשורה משלה — זו מקבלת את העיצוב הממותג (תיבת-קוד/כפתור) במקום
+// טקסט רגיל. שימוש רגיל של {code}/{link} בתוך משפט (לא בשורה נפרדת) ממשיך להתחלף לטקסט פשוט כרגיל.
+function richBodyHtml(bodyTemplate, vars, linkLabel) {
+  return bodyTemplate.split('\n\n').map((para) => {
+    const trimmed = para.trim();
+    if (trimmed === '{code}' && vars.code) return codeBoxHtml(vars.code);
+    if (trimmed === '{link}' && vars.link) return linkButtonHtml(vars.link, linkLabel || 'כניסה');
+    return `<p>${escapeHtml(applyVars(para, vars)).replace(/\n/g, '<br>')}</p>`;
+  }).join('');
 }
 
 // כתובת-פיזית קטנה בתחתית כל מייל אוטומטי — לא לשם יצירת-קשר בפועל (הפרויקט קהילתי, בלי משרד
@@ -70,14 +89,17 @@ function stripHtml(html) {
 }
 
 // tpl אופציונלי — override מ-settings/messageTemplates (Firestore), נערך ב-admin-messages.html.
-// כשקיים, מחליף גם את הנושא וגם את גוף ההודעה (כטקסט פשוט, לא ה-HTML המעוצב של הדיפולט).
+// כשקיים, מחליף גם את הנושא וגם את גוף ההודעה — טקסט חופשי דרך richBodyHtml, כולל תיבת-קוד/כפתור
+// ממותגים אם {code}/{link} יושבים על שורה נפרדת משלהם בתבנית.
 export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl }) {
-  const vars = { name: toName || '', code };
+  // בניגוד לבעלי-עסקים, לאוהד אין accessToken אישי (הכניסה היא תמיד טלפון+קוד) — אז {link} כאן
+  // הוא כתובת האתר הכללית, זהה לכל אוהד, לא קישור-קסם מותאם-אישית.
+  const vars = { name: toName || '', code, link: 'https://yellowzone.co.il/welcome.html' };
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
     : 'ברוכים הבאים ל-Yellow Zone — קוד הכניסה שלך';
   const htmlContent = tpl?.body
-    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">${textToHtml(applyVars(tpl.body, vars))}</div>`
+    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאתר')}</div>`
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>ברוכים הבאים ל-Yellow Zone 💛</h2>
@@ -101,7 +123,7 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
     ? applyVars(tpl.subject, vars)
     : 'העסק שלך אושר לאינדקס Yellow Zone 💛';
   const htmlContent = tpl?.body
-    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">${textToHtml(applyVars(tpl.body, vars))}</div>`
+    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאזור העסק שלי')}</div>`
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>שמחים לבשר — "${businessName}" אושר! 💛</h2>
@@ -122,7 +144,7 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
 // (טיוטה ב-settings/broadcastDraft), עם placeholders {name}/{business}/{link} שמוחלפים לכל נמען בנפרד.
 export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, vars }) {
   const finalSubject = applyVars(subject, vars);
-  const htmlContent = `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px;line-height:1.7">${textToHtml(applyVars(body, vars))}</div>`;
+  const htmlContent = `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px;line-height:1.7">${brandHeaderHtml()}${richBodyHtml(body, vars, vars.code ? 'כניסה לאתר' : 'כניסה לאזור העסק שלי')}</div>`;
   await sendBrevoEmail(env, {
     to: [{ email: toEmail, name: toName || '' }],
     replyTo: { email: REPLY_TO },
@@ -138,7 +160,7 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
     ? applyVars(tpl.subject, vars)
     : 'ברוכים הבאים ל-Yellow Zone 💛';
   const htmlContent = tpl?.body
-    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">${textToHtml(applyVars(tpl.body, vars))}</div>`
+    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאזור העסק שלי')}</div>`
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>ברוכים הבאים ל-Yellow Zone 💛</h2>

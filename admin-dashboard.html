@@ -380,6 +380,47 @@ body {
 .media-slot-ic { font-size: 22px; }
 .media-slot-label { font-size: 10px; color: var(--text-muted); font-weight: 700; text-align: center; padding: 0 4px; }
 .media-slot-note { font-size: 10.5px; color: var(--text-muted); margin-top: 6px; }
+.cover-pos-box { width: 220px; max-width: 100%; aspect-ratio: 4/3; position: relative; overflow: hidden;
+  border-radius: 10px; border: 1px solid var(--border); cursor: grab; touch-action: none; background: var(--nav-bg); }
+.cover-pos-box.dragging { cursor: grabbing; }
+.cover-pos-box img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+/* בדיוק כמו .biz-card-logo-badge/.biz-card-logo-badge img ב-home.html — ההדמיה צריכה להראות את
+   הכרטיס האמיתי, כולל התג הקטן, לא רק את התמונה החתוכה לבד (המשתמש ביקש: "כמו שבאינדקס"). */
+.cover-pos-box .biz-card-logo-badge {
+  position: absolute; bottom: 8px; right: 8px; z-index: 2;
+  width: 26px; height: 26px; border-radius: 7px;
+  background: #fff; box-shadow: 0 2px 8px rgba(15,23,42,.18);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; pointer-events: none;
+}
+.cover-pos-box .biz-card-logo-badge img { position: static; width: 100%; height: 100%; object-fit: contain; padding: 3px; }
+
+/* תמונה-קטנה עם כפתור-הורדה צמוד + לייטבוקס בלחיצה (במקום טאב חדש) — זהה בהיגיון ל-admin-businesses.html
+   (מוריד דרך פרוקסי כדי לעקוף חסימת CORS על fetch ישיר ל-Firebase Storage). המשתמש דחה במפורש את
+   הגרסה הקודמת (<a target="_blank">) — רצה הורדה ישירה מהתמונה עצמה, בלי לצאת מהעמוד בכלל.
+   ר' PROJECT_CONTEXT.md §185. */
+.media-thumb-wrap { position: relative; display: inline-block; cursor: pointer; flex: none; }
+.thumb-download-btn {
+  position: absolute; bottom: 3px; left: 3px; z-index: 2;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(0,0,0,.55); border: none; color: #fff;
+  font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.thumb-download-btn:hover { background: rgba(0,0,0,.75); }
+.img-lightbox-overlay {
+  display: none; position: fixed; inset: 0; z-index: 900;
+  background: rgba(0,0,0,.88);
+  align-items: center; justify-content: center; padding: 40px 16px;
+}
+.img-lightbox-overlay.open { display: flex; }
+.img-lightbox-overlay img { max-width: 100%; max-height: 100%; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.lightbox-close-btn, .lightbox-dl-btn {
+  position: fixed; top: 16px; z-index: 901;
+  height: 40px; border-radius: 20px; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-family: inherit; font-size: 13px; font-weight: 700;
+}
+.lightbox-close-btn { left: 16px; width: 40px; background: rgba(255,255,255,.15); color: #fff; font-size: 18px; }
+.lightbox-dl-btn { right: 16px; padding: 0 18px; background: var(--green); color: #fff; }
 
 .approve-card-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .approve-card-actions.top { margin: 0 0 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
@@ -1525,6 +1566,13 @@ body {
 
 </div>
 
+<!-- לייטבוקס תמונה משותף — נפתח בלחיצה על כל תמונת-מדיה בשלב "תמונות" (§185), במקום טאב חדש -->
+<div class="img-lightbox-overlay" id="imgLightboxOverlay" onclick="if(event.target===this)closeImageLightbox()">
+  <button class="lightbox-close-btn" onclick="closeImageLightbox()">✕</button>
+  <button class="lightbox-dl-btn" onclick="downloadCurrentLightboxImage()">⬇ הורד</button>
+  <img id="lightboxImg" src="" alt="" />
+</div>
+
 <script type="module">
 // ── 2026-07-26: חובר ל-Firestore אמיתי (שלב 1) — MOCK_BUSINESSES/MOCK_FANS הוחלפו ב-onSnapshot
 // אמיתי (ר' בסוף הקובץ). השם "MOCK_" נשאר בכוונה (39 מקומות משתמשים בו בקובץ) — הוא כבר לא מוק,
@@ -1548,7 +1596,7 @@ let WEEKLY_SCHEDULE = []; // שיבוץ בפועל לשבוע ספציפי — �
 // משמשת את logActivity() לרישום actorUid/actorName אמיתיים על כל רשומת יומן.
 let CURRENT_ADMIN = { uid: null, name: 'מנהל', email: '' };
 
-const REGIONS_MOCK = ['גוש דן','ירושלים והסביבה','השפלה','השרון','חיפה והצפון','הדרום'];
+const REGIONS_MOCK = ['כל הארץ','גוש דן','ירושלים והסביבה','השפלה','השרון','חיפה והצפון','הדרום'];
 
 // ── שומר-אינדיקטור גלובלי (ר' CSS .saving-toast) — נוסף ל-DOM פעם אחת, לא תלוי באיזה כפתור נלחץ.
 // showSaving/hideSaving עוטפים את saveSectionUpdates (17 נקודות-קריאה) + פעולות-העלאה שקורות
@@ -1757,7 +1805,106 @@ function hydrateFan(id, raw) {
 }
 
 function findBiz(id) { return MOCK_BUSINESSES.find(b => b.id === id); }
+
+// ── מיקום תמונה מייצגת על הכרטיס (coverPhotoPosition) — גרירה חיה בתוך תצוגה-מקדימה ביחס 4:3,
+// זהה בדיוק ל-.biz-card-img/.biz-card-cover-img ב-home.html (ר' PROJECT_CONTEXT.md §184). נשמר
+// כ-CSS object-position ("X% Y%") ומוזרם ישירות לתמונת-הכרטיס האמיתית — לא רק תצוגה-מקדימה פרטית.
+const bizCoverPosEdits = {};
+function parseCoverPos(str) {
+  const m = /^(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/.exec(String(str || '').trim());
+  return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 50, y: 50 };
+}
+function getCoverPos(id) {
+  if (!bizCoverPosEdits[id]) {
+    const b = findBiz(id);
+    bizCoverPosEdits[id] = parseCoverPos(b && b.coverPhotoPosition);
+  }
+  return bizCoverPosEdits[id];
+}
+function applyCoverPos(id) {
+  const img = document.getElementById('coverPosImg_' + id);
+  const pos = getCoverPos(id);
+  if (img) img.style.objectPosition = pos.x.toFixed(0) + '% ' + pos.y.toFixed(0) + '%';
+}
+let coverDragState = null;
+window.startCoverDrag = function(ev, id) {
+  ev.preventDefault();
+  const box = document.getElementById('coverPosBox_' + id);
+  if (!box) return;
+  const rect = box.getBoundingClientRect();
+  const cur = getCoverPos(id);
+  coverDragState = { id, startX: ev.clientX, startY: ev.clientY, startPosX: cur.x, startPosY: cur.y, w: rect.width, h: rect.height };
+  box.classList.add('dragging');
+  box.setPointerCapture && box.setPointerCapture(ev.pointerId);
+};
+document.addEventListener('pointermove', (ev) => {
+  if (!coverDragState) return;
+  const dx = ev.clientX - coverDragState.startX;
+  const dy = ev.clientY - coverDragState.startY;
+  // גרירה ימינה = "מזיזים את התמונה ימינה" (המשתמש רואה יותר מהצד השמאלי שלה) — לכן ההפחתה, לא הוספה.
+  const nx = Math.min(100, Math.max(0, coverDragState.startPosX - (dx / coverDragState.w) * 100));
+  const ny = Math.min(100, Math.max(0, coverDragState.startPosY - (dy / coverDragState.h) * 100));
+  bizCoverPosEdits[coverDragState.id] = { x: nx, y: ny };
+  applyCoverPos(coverDragState.id);
+});
+document.addEventListener('pointerup', () => {
+  if (!coverDragState) return;
+  document.getElementById('coverPosBox_' + coverDragState.id)?.classList.remove('dragging');
+  coverDragState = null;
+});
+window.resetCoverPos = function(id) {
+  bizCoverPosEdits[id] = { x: 50, y: 50 };
+  applyCoverPos(id);
+};
+window.saveCoverPos = async function(id) {
+  const pos = getCoverPos(id);
+  await saveSectionUpdates(id, { coverPhotoPosition: pos.x.toFixed(0) + '% ' + pos.y.toFixed(0) + '%' });
+};
+
+// ── תמונה-קטנה עם כפתור-הורדה צמוד + לייטבוקס בלחיצה — זהה בהיגיון ל-admin-businesses.html
+// (mediaThumbHtml/downloadImage שם). המשתמש דחה במפורש <a target="_blank"> — רצה הורדה ישירה מהתמונה
+// עצמה בלי לצאת מהעמוד, ותצוגה-גדולה שלא פותחת טאב חדש. ר' PROJECT_CONTEXT.md §185.
+let lightboxCurrentUrl = '';
+let lightboxCurrentFilename = '';
+function mediaThumbHtml(url, filename, sizeStyle, alt, objectFit) {
+  if (!url) return '';
+  const safeUrl = esc(url);
+  return `
+    <div class="media-thumb-wrap" style="${sizeStyle}" onclick="openImageLightbox('${safeUrl}','${esc(filename || 'image.jpg')}')">
+      <img src="${safeUrl}" alt="${esc(alt || '')}" style="width:100%;height:100%;object-fit:${objectFit || 'cover'};display:block;">
+      <button type="button" class="thumb-download-btn" title="הורד תמונה" onclick="event.stopPropagation();downloadImage('${safeUrl}','${esc(filename || 'image.jpg')}')">⬇</button>
+    </div>`;
+}
+window.openImageLightbox = function(url, filename) {
+  lightboxCurrentUrl = url;
+  lightboxCurrentFilename = filename;
+  document.getElementById('lightboxImg').src = url;
+  document.getElementById('imgLightboxOverlay').classList.add('open');
+};
+window.closeImageLightbox = function() {
+  document.getElementById('imgLightboxOverlay').classList.remove('open');
+};
+window.downloadCurrentLightboxImage = function() {
+  downloadImage(lightboxCurrentUrl, lightboxCurrentFilename);
+};
+// מוריד דרך פרוקסי — עוקף חסימת CORS של הדפדפן על fetch() ישיר לכתובת Firebase Storage, זהה-ביט-לביט
+// ל-downloadImage ב-admin-businesses.html (localhost→server.ps1 /api/download-image, פרודקשן→Worker).
+window.downloadImage = function(url, filename) {
+  if (!url) return;
+  const isLocalDev = location.hostname === 'localhost';
+  const base = isLocalDev ? '/api/download-image' : (WORKER_URL + '/download-image');
+  const proxyUrl = base + '?url=' + encodeURIComponent(url) + '&filename=' + encodeURIComponent(filename || 'image.jpg');
+  const a = document.createElement('a');
+  a.href = proxyUrl;
+  a.download = filename || 'image.jpg';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+};
+
 const REDEEM_MODE_LABELS_MOCK = { physical: '🏪 בחנות הפיזית', sale: '🤝 במעמד המכירה/השירות', online: '🌐 באתר' };
+// תאימות לאחור: discountRedeemMode/redeemMode היו מחרוזת יחידה לפני שהמימוש הפך לבחירה מרובה (ר' PROJECT_CONTEXT.md §182)
+function toRedeemArr(x) { return Array.isArray(x) ? x : (x ? [x] : []); }
 
 // ── קוד כניסה של האוהד המקושר לעסק — לא שדה על מסמך העסק עצמו (הוא על members/{ownerMemberId}),
 // לכן לא זמין סינכרונית מ-hydrateBiz. נשלף ברקע (זהה ללוקאפ ב-admin-businesses.html openBizSheet
@@ -4074,7 +4221,7 @@ function bizFormSummaryHtml(b) {
     <div class="form-discount-box">
       <div class="form-discount-tags">
         <span class="form-discount-tag${i===0?' primary':''}">${i===0?'ראשית · על הכרטיס':'בגיליון הפנימי'}</span>
-        <span class="form-discount-meta">${d.redeemMode?REDEEM_MODE_LABELS_MOCK[d.redeemMode]||'':''}${d.code?' · קוד '+esc(d.code):''}</span>
+        <span class="form-discount-meta">${toRedeemArr(d.redeemMode).map(t=>REDEEM_MODE_LABELS_MOCK[t]||t).join(', ')}${d.code?' · קוד '+esc(d.code):''}</span>
       </div>
       <div class="form-discount-text">${esc(d.text)}</div>
     </div>`).join('') : `<div class="placeholder-note">אין הטבה מוגדרת</div>`;
@@ -4214,12 +4361,23 @@ function bizFullDetailHtml(id, opts) {
     .map(c => `<option value="${c.key}" ${b.alsoUnderCategory===c.key?'selected':''}>${c.icon} ${c.label}</option>`).join('');
   const branch = (b.branches && b.branches[0]) || { city: '', address: '' };
   const proRegionsChecks = REGIONS_MOCK.map(r => `<label><input type="checkbox" class="edit-proregion-${b.id}" value="${r}" ${(b.regions||[]).includes(r)?'checked':''}> ${r}</label>`).join('');
-  const redeemOptions = (val) => `
-    <option value="physical" ${val==='physical'?'selected':''}>🏪 בחנות הפיזית</option>
-    <option value="sale" ${val==='sale'?'selected':''}>🤝 במעמד המכירה/השירות</option>
-    <option value="online" ${val==='online'?'selected':''}>🌐 באתר</option>`;
-  const d2 = (b.additionalDiscounts && b.additionalDiscounts[0]) || { text:'', redeemMode:'physical' };
-  const d3 = (b.additionalDiscounts && b.additionalDiscounts[1]) || { text:'', redeemMode:'physical' };
+  // בחירה מרובה אמיתית (checkboxes, לא select) — עסק יכול לתמוך בכמה מקומות-מימוש בו-זמנית לאותה
+  // הטבה (למשל גם "בחנות הפיזית" וגם "באתר" עם קוד קופון). ר' PROJECT_CONTEXT.md §182/§183.
+  const redeemChecks = (suffix, val) => {
+    const selected = toRedeemArr(val);
+    return Object.keys(REDEEM_MODE_LABELS_MOCK).map(k =>
+      `<label style="display:inline-flex;align-items:center;gap:5px;margin-inline-end:14px;font-weight:400;cursor:pointer"><input type="checkbox" class="edit-redeem-${suffix}-${b.id}" value="${k}" ${selected.includes(k)?'checked':''} ${k==='online'?`onchange="toggleAdminCouponWrap('${suffix}','${b.id}')"`:''}> ${REDEEM_MODE_LABELS_MOCK[k]}</label>`
+    ).join('');
+  };
+  // קוד הקופון עצמו — נגלה רק כש"באתר" מסומן, בדיוק כמו business.html/business-dashboard.html/
+  // admin-businesses.html. עד עכשיו המסך הזה לא הציג/אפשר לערוך את הקוד בכלל (§183 — נוסף לפי בקשת המשתמש).
+  const couponWrap = (suffix, code, checkedOnline) => `
+    <div class="edit-coupon-wrap" id="editCouponWrap-${suffix}-${b.id}" style="display:${checkedOnline?'block':'none'};margin-top:8px">
+      <label style="font-size:12px;color:var(--text-sm,#9aa4b5);display:block;margin-bottom:4px">קוד קופון <span style="font-weight:400">(מה שבעל העסק הזין)</span></label>
+      <input type="text" id="edit_coupon_${suffix}_${b.id}" value="${esc(code||'')}" style="text-transform:uppercase;letter-spacing:1px" placeholder="לדוג׳: MACCABI10">
+    </div>`;
+  const d2 = (b.additionalDiscounts && b.additionalDiscounts[0]) || { text:'', redeemMode:[], code:'' };
+  const d3 = (b.additionalDiscounts && b.additionalDiscounts[1]) || { text:'', redeemMode:[], code:'' };
 
   // כל פריטי השינוי הממתינים, מקובצים לפי שלב — משמש לצביעת כותרת השלב למטה ולסימון-שדה-שהשתנה
   // בטופסי העריכה (stepChangedField/stepFieldWas, §131). המשתמש: "תצבע לי את השלב ואת השדה שמבוקש לשינוי".
@@ -4346,7 +4504,7 @@ function bizFullDetailHtml(id, opts) {
   const step4DiscSummary = b.discountFullText || b.discountText || b.aiShortTitle || '';
   const step4Sub = [
     step4DiscSummary ? (step4DiscSummary.length > 60 ? step4DiscSummary.slice(0, 60) + '…' : step4DiscSummary) : (b.hasDiscount ? 'הטבה מסומנת פעילה, אין עדיין טקסט' : 'אין הטבה מוגדרת'),
-    b.discountRedeemMode ? REDEEM_MODE_LABELS_MOCK[b.discountRedeemMode] : '',
+    [toRedeemArr(b.discountRedeemMode).map(t => REDEEM_MODE_LABELS_MOCK[t] || t).join(', '), b.discountCode ? `קוד ${b.discountCode}` : ''].filter(Boolean).join(' · '),
     step4DiscountCount > 1 ? `הטבה אחת מתוך ${step4DiscountCount}` : ''
   ].filter(Boolean).join(' · ');
   // ── שלב 5 — מדיה (האחרון, §134 המשך). mediaRealViewHtml/mediaRealEditHtml נשארו בדיוק כמו שהיו
@@ -4536,17 +4694,19 @@ function bizFullDetailHtml(id, opts) {
                 : '')
               + `<textarea id="edit_discount_${b.id}" rows="3" placeholder="פרטי ההטבה לחברי המועדון...">${b.discountFullText||''}</textarea>`
             , true)}
-            <div class="step-field"><div class="step-field-h">מקום מימוש — הטבה 1</div><select id="edit_redeem1_${b.id}">${redeemOptions(b.discountRedeemMode||'physical')}</select></div>
+            <div class="step-field full"><div class="step-field-h">מקום מימוש — הטבה 1 (ניתן לבחור כמה)</div><div>${redeemChecks('1', b.discountRedeemMode)}</div>${couponWrap('1', b.discountCode, toRedeemArr(b.discountRedeemMode).includes('online'))}</div>
           </div>
           <details class="edit-optional" ${(b.additionalDiscounts && b.additionalDiscounts[0]) ? 'open' : ''} style="margin-top:14px">
             <summary>+ הוסף עוד הטבה (הטבה 2)</summary>
             <textarea id="edit_disc2_text_${b.id}" rows="2" placeholder="טקסט הטבה 2...">${d2.text}</textarea>
-            <select id="edit_disc2_redeem_${b.id}" style="margin-top:8px">${redeemOptions(d2.redeemMode)}</select>
+            <div style="margin-top:8px">${redeemChecks('2', d2.redeemMode)}</div>
+            ${couponWrap('2', d2.code, toRedeemArr(d2.redeemMode).includes('online'))}
           </details>
           <details class="edit-optional" ${(b.additionalDiscounts && b.additionalDiscounts[1]) ? 'open' : ''}>
             <summary>+ הוסף עוד הטבה (הטבה 3)</summary>
             <textarea id="edit_disc3_text_${b.id}" rows="2" placeholder="טקסט הטבה 3...">${d3.text}</textarea>
-            <select id="edit_disc3_redeem_${b.id}" style="margin-top:8px">${redeemOptions(d3.redeemMode)}</select>
+            <div style="margin-top:8px">${redeemChecks('3', d3.redeemMode)}</div>
+            ${couponWrap('3', d3.code, toRedeemArr(d3.redeemMode).includes('online'))}
           </details>
           <div class="step-form-actions">
             <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',4)">ביטול</button>
@@ -4937,6 +5097,14 @@ window.saveBizSec3 = async function(id) {
   await saveSectionUpdates(id, updates);
 };
 
+// חושף/מסתיר את שדה קוד-הקופון כש"באתר" מסומן/מבוטל — checkbox native, לא צ'יפ custom, אז אין
+// re-render כמו ב-3 הקבצים האחרים; onchange פשוט על ה-checkbox עצמו מספיק.
+window.toggleAdminCouponWrap = function(suffix, id) {
+  const cb = document.querySelector('.edit-redeem-'+suffix+'-'+id+'[value="online"]');
+  const wrap = document.getElementById('editCouponWrap-'+suffix+'-'+id);
+  if (wrap) wrap.style.display = (cb && cb.checked) ? 'block' : 'none';
+};
+
 window.saveBizSec4 = async function(id) {
   const b = findBiz(id);
   if (!b) return;
@@ -4952,14 +5120,23 @@ window.saveBizSec4 = async function(id) {
   const discountText = ensureFitsCard(bizAiTitleEdits[id] !== undefined ? bizAiTitleEdits[id] : (b.aiShortTitle || ''));
   const disc2Text = document.getElementById('edit_disc2_text_'+id).value.trim();
   const disc3Text = document.getElementById('edit_disc3_text_'+id).value.trim();
+  const checkedRedeem = suffix => Array.from(document.querySelectorAll('.edit-redeem-'+suffix+'-'+id+':checked')).map(el => el.value);
+  // קוד קופון נשמר רק כשהמקום שנבחר בפועל כולל "אונליין" — אחרת מנוקה, אותו עיקרון בדיוק כמו
+  // business-dashboard.html (ר' ההערה שם), כדי לא להשאיר קוד ישן/לא-רלוונטי אחרי שהמנהל מבטל את "באתר".
+  const couponFor = suffix => {
+    const el = document.getElementById('edit_coupon_'+suffix+'_'+id);
+    return checkedRedeem(suffix).includes('online') ? (el?.value.trim() || '') : '';
+  };
+  const redeem1 = checkedRedeem('1');
   const additionalDiscounts = [];
-  if (disc2Text) additionalDiscounts.push({ text: disc2Text, redeemMode: document.getElementById('edit_disc2_redeem_'+id).value });
-  if (disc3Text) additionalDiscounts.push({ text: disc3Text, redeemMode: document.getElementById('edit_disc3_redeem_'+id).value });
+  if (disc2Text) additionalDiscounts.push({ text: disc2Text, redeemMode: checkedRedeem('2'), code: couponFor('2') });
+  if (disc3Text) additionalDiscounts.push({ text: disc3Text, redeemMode: checkedRedeem('3'), code: couponFor('3') });
   const updates = {
     hasDiscount,
     discountText: hasDiscount ? discountText : '',
     discountTextFull: hasDiscount ? discountFullText : '',
-    discountRedeemMode: hasDiscount ? document.getElementById('edit_redeem1_'+id).value : '',
+    discountRedeemMode: hasDiscount ? redeem1 : [],
+    discountCode: hasDiscount ? couponFor('1') : '',
     additionalDiscounts: hasDiscount ? additionalDiscounts : [],
   };
   await saveSectionUpdates(id, updates);
@@ -6162,12 +6339,15 @@ function taskDetailHtml2(key) {
 // (uploadFile/uploadImageWithThumb, זהה ל-admin-businesses.html). כל פעולה כותבת מיידית (בלי טופס
 // אחד גדול "שמור הכל") — פשוט יותר ובטוח יותר מלנסות לשחזר טופס-ענק דינמי לגלריה/סרטונים.
 function mediaRealViewHtml(b) {
-  const galleryThumbs = (b.photos || []).slice(0, 3).map(p =>
-    `<div class="media-slot thumb filled"><img src="${p.url}" style="width:100%;height:100%;object-fit:cover"></div>`).join('');
+  // בלי slice — הרשמה מגבילה ל-5 תמונות גלריה, ורצוי לראות את כולן כאן ולא רק 3 ראשונות (המשתמש
+  // דיווח שנראה "רק 3", הריבוע-flex-wrap כבר תומך בכמה שורות בלי לשבור פריסה).
+  // כל תמונה פותחת לייטבוקס בלחיצה (לא טאב חדש) + כפתור-הורדה צמוד — ר' mediaThumbHtml למעלה, §185.
+  const galleryThumbs = (b.photos || []).map(p =>
+    `<div class="media-slot thumb filled">${mediaThumbHtml(p.url, p.name, 'width:100%;height:100%', b.name)}</div>`).join('');
   return `
     <div class="media-slot-row">
-      <div class="media-slot logo ${b.logo?'filled':''}">${b.logo ? `<img src="${b.logo}" style="width:100%;height:100%;object-fit:contain">` : `<span class="media-slot-ic">—</span><span class="media-slot-label">לוגו</span>`}</div>
-      <div class="media-slot cover ${b.coverPhoto?'filled':'missing'}">${b.coverPhoto ? `<img src="${b.coverPhotoThumb || b.coverPhoto}" style="width:100%;height:100%;object-fit:cover">` : `<span class="media-slot-ic">—</span><span class="media-slot-label">חסרה תמונה</span>`}</div>
+      <div class="media-slot logo ${b.logo?'filled':''}">${b.logo ? mediaThumbHtml(b.logo, 'logo.png', 'width:100%;height:100%', 'לוגו', 'contain') : `<span class="media-slot-ic">—</span><span class="media-slot-label">לוגו</span>`}</div>
+      <div class="media-slot cover ${b.coverPhoto?'filled':'missing'}">${b.coverPhoto ? mediaThumbHtml(b.coverPhotoThumb || b.coverPhoto, 'cover.jpg', 'width:100%;height:100%', b.name) : `<span class="media-slot-ic">—</span><span class="media-slot-label">חסרה תמונה</span>`}</div>
       ${galleryThumbs}
     </div>
     <div class="approve-longtext" style="margin-top:6px">${(b.photos||[]).length} תמונות בגלריה · ${(b.videos||[]).length} סרטונים</div>`;
@@ -6176,7 +6356,7 @@ function mediaRealViewHtml(b) {
 function mediaRealEditHtml(b) {
   const photosHtml = (b.photos || []).map((p, idx) => `
     <div class="media-slot-row" style="margin-top:6px">
-      <img src="${p.url}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;flex:none">
+      ${mediaThumbHtml(p.url, p.name, 'width:56px;height:56px;border-radius:6px;overflow:hidden', b.name)}
       <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name || '')}</span>
       <button class="act-btn reject tiny" onclick="removeBizGalleryPhoto('${b.id}', ${idx})">🗑️ הסר</button>
     </div>`).join('');
@@ -6189,18 +6369,28 @@ function mediaRealEditHtml(b) {
     <div class="media-manager" id="media_${b.id}">
       <div class="approve-field-label">לוגו</div>
       <div class="media-slot-row">
-        ${b.logo ? `<img src="${b.logo}" style="width:56px;height:56px;object-fit:contain;border-radius:6px;flex:none">` : ''}
+        ${b.logo ? mediaThumbHtml(b.logo, 'logo.png', 'width:56px;height:56px;border-radius:6px;overflow:hidden', 'לוגו', 'contain') : ''}
         <input type="file" accept="image/*" id="bizLogoFile_${b.id}" style="flex:1">
         <button class="act-btn approve tiny" onclick="uploadBizLogo('${b.id}')">⬆️ העלה</button>
         ${b.logo ? `<button class="act-btn reject tiny" onclick="removeBizLogo('${b.id}')">🗑️ הסר</button>` : ''}
       </div>
       <div class="approve-field-label" style="margin-top:14px">תמונה מייצגת</div>
       <div class="media-slot-row">
-        ${b.coverPhoto ? `<img src="${b.coverPhotoThumb || b.coverPhoto}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;flex:none">` : ''}
+        ${b.coverPhoto ? mediaThumbHtml(b.coverPhotoThumb || b.coverPhoto, 'cover.jpg', 'width:56px;height:56px;border-radius:6px;overflow:hidden', b.name) : ''}
         <input type="file" accept="image/*" id="bizCoverFile_${b.id}" style="flex:1">
         <button class="act-btn approve tiny" onclick="uploadBizCover('${b.id}')">⬆️ העלה</button>
         ${b.coverPhoto ? `<button class="act-btn reject tiny" onclick="removeBizCover('${b.id}')">🗑️ הסר</button>` : ''}
       </div>
+      ${b.coverPhoto ? `
+      <div class="approve-field-label" style="margin-top:14px">מיקום התמונה על הכרטיס <span style="font-weight:400;color:var(--text-muted)">(גררו — כך היא נראית בפועל באינדקס, יחס 4:3, כולל תג-הלוגו אם קיים)</span></div>
+      <div class="cover-pos-box" id="coverPosBox_${b.id}" onpointerdown="startCoverDrag(event,'${b.id}')">
+        <img id="coverPosImg_${b.id}" src="${b.coverPhoto}" draggable="false" style="object-position:${esc(b.coverPhotoPosition || '50% 50%')}">
+        ${b.logo ? `<div class="biz-card-logo-badge"><img src="${b.logo}" alt="לוגו"></div>` : ''}
+      </div>
+      <div class="media-slot-row" style="margin-top:8px">
+        <button type="button" class="act-btn tiny" onclick="resetCoverPos('${b.id}')">↺ איפוס למרכז</button>
+        <button type="button" class="act-btn approve tiny" onclick="saveCoverPos('${b.id}')">💾 שמירת מיקום</button>
+      </div>` : ''}
       <div class="approve-field-label" style="margin-top:14px">גלריית תמונות</div>
       ${photosHtml}
       <div class="media-slot-row" style="margin-top:6px">
@@ -6405,12 +6595,13 @@ async function approveLinkedMember(b) {
     const mSnap = await getDoc(doc(db, 'members', memberId));
     if (!mSnap.exists()) return;
     const m = mSnap.data();
-    const updates = { status: 'approved', approvedAt: serverTimestamp(), isBusinessOwner: true };
+    // loginCodeEmailStatus תמיד חוזר ל-pending (גם לחבר שכבר יש לו קוד) — המשתמש ביקש שהקוד
+    // תמיד יישלח מחדש באישור, כדי שיהיה "מול העיניים" גם למי ששכח, לא רק בפעם הראשונה.
+    const updates = { status: 'approved', approvedAt: serverTimestamp(), isBusinessOwner: true, loginCodeEmailStatus: 'pending' };
     if (!m.memberNumber) updates.memberNumber = await allocateMemberNumber();
     if (!m.loginCode) {
       updates.loginCode = await generateLoginCode();
       updates.loginCodeCreatedAt = serverTimestamp();
-      updates.loginCodeEmailStatus = 'pending';
     }
     await updateDoc(doc(db, 'members', memberId), updates);
   } catch (e) { console.error('approveLinkedMember failed', e); }
@@ -8478,10 +8669,74 @@ window.resetTemplateItem = function(id) {
 
 function templateFieldHtml(item, f) {
   const val = esc(tplFieldValue(item, f));
+  const preview = item.group === 'auto' ? ` oninput="updateTemplatePreview('${item.id}')"` : '';
   return f.type === 'textarea'
-    ? `<div class="approve-field-label" style="margin-top:10px">${f.label}</div><textarea class="broadcast-body-input" id="tplField_${f.key}" rows="${f.rows||8}">${val}</textarea>`
-    : `<div class="approve-field-label" style="margin-top:10px">${f.label}</div><input class="chain-select" type="text" id="tplField_${f.key}" value="${val}">`;
+    ? `<div class="approve-field-label" style="margin-top:10px">${f.label}</div><textarea class="broadcast-body-input" id="tplField_${f.key}" rows="${f.rows||8}"${preview}>${val}</textarea>`
+    : `<div class="approve-field-label" style="margin-top:10px">${f.label}</div><input class="chain-select" type="text" id="tplField_${f.key}" value="${val}"${preview}>`;
 }
+
+// ── תצוגה מקדימה אמיתית לתבניות האוטומטיות (login/biz/combined) — מראה בדיוק את העיצוב הממותג
+// (תיבת-קוד/כפתור/לוגו) שהוורקר בונה בפועל ב-worker/src/brevo.js (richBodyHtml/codeBoxHtml/
+// linkButtonHtml/brandHeaderHtml). קוד מוכפל בכוונה (אין שיתוף-קוד בין Worker ל-admin) — כל שינוי
+// עיצוב שם צריך להשתקף גם כאן כדי שהתצוגה תישאר נאמנה למה שנשלח בפועל.
+const TPL_LOGO_URL = 'https://yellowzone.co.il/Maccabi.svg';
+function tplCodeBoxHtml(code) {
+  return `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:20px auto"><tr><td style="width:170px;background:#FFDE00;border-radius:20px;padding:52px 10px;text-align:center"><img src="${TPL_LOGO_URL}" width="34" alt="Yellow Zone" style="display:block;margin:0 auto 12px auto" /><div style="font-size:34px;font-weight:900;letter-spacing:4px;color:#16130a;line-height:1">${esc(code)}</div></td></tr></table>`;
+}
+function tplLinkButtonHtml(link, label) {
+  return `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:16px auto"><tr><td style="background:#FFDE00;border-radius:14px"><a href="${esc(link)}" style="display:inline-block;color:#16130a;font-weight:900;text-decoration:none;padding:12px 28px;font-size:15px">${esc(label)}</a></td></tr></table>`;
+}
+function tplBrandHeaderHtml() {
+  return `<div style="text-align:center;padding:0 0 8px 0"><img src="${TPL_LOGO_URL}" width="30" alt="Yellow Zone" /></div>`;
+}
+function tplRichBodyHtml(bodyTemplate, vars, linkLabel) {
+  return (bodyTemplate || '').split('\n\n').map(para => {
+    const trimmed = para.trim();
+    if (trimmed === '{code}' && vars.code) return tplCodeBoxHtml(vars.code);
+    if (trimmed === '{link}' && vars.link) return tplLinkButtonHtml(vars.link, linkLabel || 'כניסה');
+    return `<p>${esc(applyBroadcastVars(para, vars)).replace(/\n/g, '<br>')}</p>`;
+  }).join('');
+}
+
+const AUTO_TPL_SAMPLE_VARS = {
+  login: { name: 'ישראל ישראלי', code: '123456', link: 'https://yellowzone.co.il/welcome.html' },
+  biz: { name: 'ישראל ישראלי', business: 'עסק לדוגמה', link: 'https://yellowzone.co.il/business-dashboard.html?token=demo' },
+  combined: { name: 'ישראל ישראלי', code: '123456', business: 'עסק לדוגמה', link: 'https://yellowzone.co.il/business-dashboard.html?token=demo' },
+};
+const AUTO_TPL_LINK_LABEL = { login: 'כניסה לאתר', biz: 'כניסה לאזור העסק שלי', combined: 'כניסה לאזור העסק שלי' };
+
+let openTemplatePreviewId = null;
+window.toggleTemplatePreview = function(id) {
+  openTemplatePreviewId = openTemplatePreviewId === id ? null : id;
+  renderMain();
+};
+function autoTemplatePreviewHtml(item) {
+  const vars = AUTO_TPL_SAMPLE_VARS[item.id];
+  const subjEl = document.getElementById('tplField_' + item.fields[0].key);
+  const bodyEl = document.getElementById('tplField_' + item.fields[1].key);
+  const subject = subjEl ? subjEl.value : tplFieldValue(item, item.fields[0]);
+  const body = bodyEl ? bodyEl.value : tplFieldValue(item, item.fields[1]);
+  return `
+    <div class="broadcast-preview">
+      <div class="broadcast-preview-label">כך המייל ייראה (נתוני-דוגמה: ${esc(vars.name)})</div>
+      <div class="broadcast-preview-envelope" style="padding:0;overflow:hidden">
+        <div class="broadcast-preview-head" style="padding:12px 16px">
+          <div class="broadcast-preview-meta">מ־ Yellow Zone</div>
+          <div class="broadcast-preview-subject">${esc(applyBroadcastVars(subject, vars))}</div>
+        </div>
+        <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:16px 24px;background:#fff">
+          ${tplBrandHeaderHtml()}${tplRichBodyHtml(body, vars, AUTO_TPL_LINK_LABEL[item.id])}
+        </div>
+      </div>
+      <div class="broadcast-preview-note">נתוני-דוגמה בלבד, שום מייל לא נשלח. {code}/{link} מקבלים את העיצוב הממותג רק כשהם בפסקה נפרדת (שורה ריקה משני הצדדים)</div>
+    </div>`;
+}
+window.updateTemplatePreview = function(id) {
+  if (openTemplatePreviewId !== id) return;
+  const box = document.getElementById('tplPreviewBox_' + id);
+  const item = findMessageTemplate(id);
+  if (box && item) box.innerHTML = autoTemplatePreviewHtml(item);
+};
 
 // §137 המשך — שורה+פרוט בסגנון tpl-row/tpl-detail (מוקאף), במקום chain-block/chain-label הישנים.
 // אותה לוגיקה בדיוק (openTemplateId יחיד, saveTemplateItem/resetTemplateItem/tplFieldValue) —
@@ -8495,6 +8750,12 @@ function templateDetailBodyHtml(item) {
     : '';
   const replyToVal = item.replyTo ? `כן — ${TPL_REPLY_TO_ADDRESS}` : (item.group === 'auto' ? 'אין — כתובת ללא מענה' : '—');
   const fieldsHtml = item.fields.map(f => templateFieldHtml(item, f)).join('');
+  const previewOpen = openTemplatePreviewId === item.id;
+  const previewHtml = item.group === 'auto' ? `
+    <div class="broadcast-actions" style="margin-top:10px">
+      <button class="act-btn" onclick="toggleTemplatePreview('${item.id}')">👁 ${previewOpen ? 'סגירת התצוגה המקדימה' : 'תצוגה מקדימה'}</button>
+    </div>
+    <div id="tplPreviewBox_${item.id}">${previewOpen ? autoTemplatePreviewHtml(item) : ''}</div>` : '';
   return `
     <div class="tpl-detail-grid">
       <div class="tpl-detail-card"><div class="h">למי</div><div class="v">${item.who}</div></div>
@@ -8503,6 +8764,7 @@ function templateDetailBodyHtml(item) {
     </div>
     ${varsShortHtml}
     ${fieldsHtml}
+    ${previewHtml}
     <div class="broadcast-actions" style="margin-top:12px">
       <button class="act-btn" onclick="resetTemplateItem('${item.id}')">↩ ברירת מחדל</button>
       <button class="act-btn approve" onclick="saveTemplateItem('${item.id}')">💾 שמור</button>
