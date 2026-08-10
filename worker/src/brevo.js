@@ -22,6 +22,12 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// הדגשה בסגנון וואטסאפ — *מילה* הופך ל-<b>מילה</b>. רץ אחרי escapeHtml בכוונה (הכוכביות עצמן לא
+// מושפעות מ-escape, אז זה בטוח להפוך אותן ל-HTML אחרי, בלי לפתוח פרצת-XSS על שאר הטקסט).
+function applyBold(escapedText) {
+  return escapedText.replace(/\*(.+?)\*/g, '<b>$1</b>');
+}
+
 function applyVars(text, vars) {
   return Object.entries(vars).reduce((s, [k, v]) => s.split(`{${k}}`).join(v ?? ''), text);
 }
@@ -59,7 +65,7 @@ function richBodyHtml(bodyTemplate, vars, linkLabel) {
     if (trimmed === '{code}' && vars.code) return codeBoxHtml(vars.code);
     if (trimmed === '{link}' && vars.link) return linkButtonHtml(vars.link, linkLabel || 'כניסה');
     if (trimmed === '{login_link}') return linkButtonHtml('https://yellowzone.co.il/welcome.html', 'כניסה לאתר');
-    return `<p style="margin:0 0 16px 0">${escapeHtml(applyVars(para, vars)).replace(/\n/g, '<br>')}</p>`;
+    return `<p style="margin:0 0 16px 0">${applyBold(escapeHtml(applyVars(para, vars))).replace(/\n/g, '<br>')}</p>`;
   }).join('');
 }
 
