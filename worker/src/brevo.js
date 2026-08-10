@@ -10,10 +10,10 @@ const LOGO_HORIZONTAL_URL = 'https://yellowzone.co.il/images/yellowzone-logo-hor
 function codeBoxHtml(code) {
   return `
     <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:20px auto">
-      <tr><td style="width:170px;background:#FFDE00;border-radius:20px;padding:52px 10px 14px;text-align:center">
-        <img src="${LOGO_URL}" width="34" alt="Yellow Zone" style="display:block;margin:0 auto 12px auto" />
-        <div style="font-size:34px;font-weight:900;letter-spacing:4px;color:#16130a;line-height:1">${code}</div>
-        <div style="margin-top:14px"><a href="https://yellowzone.co.il" style="font-size:14px;font-weight:700;color:#16130a;text-decoration:underline">yellowzone.co.il</a></div>
+      <tr><td style="width:260px;background:#FFDE00;border-radius:20px;padding:22px 20px;text-align:center">
+        <img src="${LOGO_URL}" width="26" alt="Yellow Zone" style="display:block;margin:0 auto 8px auto" />
+        <div style="font-size:32px;font-weight:900;letter-spacing:4px;color:#16130a;line-height:1">${code}</div>
+        <div style="margin-top:10px"><a href="https://yellowzone.co.il" style="font-size:14px;font-weight:700;color:#16130a;text-decoration:underline">yellowzone.co.il</a></div>
       </td></tr>
     </table>`;
 }
@@ -37,9 +37,15 @@ function linkButtonHtml(link, label) {
 }
 
 // לוגו הרוחבי של האתר (לא הריבועי-של-תיבת-הקוד) בפינה — לא באמצע, כדי לא לכפול את הלוגו שכבר
-// מופיע בתוך תיבת-הקוד (codeBoxHtml). יושב בצד ימין כי ההורה הופך RTL+text-align:right.
+// מופיע בתוך תיבת-הקוד (codeBoxHtml). בכוונה בצד שמאל, מול כיוון-הקריאה RTL של שאר הגוף.
 function brandHeaderHtml() {
-  return `<div style="text-align:right;margin:0 0 18px 0"><img src="${LOGO_HORIZONTAL_URL}" height="26" alt="Yellow Zone" /></div>`;
+  return `<div style="text-align:left;margin:0 0 18px 0"><img src="${LOGO_HORIZONTAL_URL}" height="26" alt="Yellow Zone" /></div>`;
+}
+
+// עוטף את הגוף בעמודה ברוחב קבוע (לא נמתח על פני כל רוחב המסך/חלון-דוא"ל) — כדי שאורך השורות
+// יהיה עקבי במקום שורה ארוכה מאוד ואחריה שורה קצרה מאוד. תיבת-הקוד/כפתורים נשארים ממורכזים בתוכה.
+function boundedColumnHtml(innerHtml) {
+  return `<div style="max-width:480px;margin:0 auto;text-align:right">${innerHtml}</div>`;
 }
 
 // תבנית מותאמת-אישית -> HTML: כל פסקה (שורה ריקה מפרידה, כמו textToHtml) הופכת ל-<p>, חוץ מפסקה
@@ -53,7 +59,7 @@ function richBodyHtml(bodyTemplate, vars, linkLabel) {
     if (trimmed === '{code}' && vars.code) return codeBoxHtml(vars.code);
     if (trimmed === '{link}' && vars.link) return linkButtonHtml(vars.link, linkLabel || 'כניסה');
     if (trimmed === '{login_link}') return linkButtonHtml('https://yellowzone.co.il/welcome.html', 'כניסה לאתר');
-    return `<p>${escapeHtml(applyVars(para, vars)).replace(/\n/g, '<br>')}</p>`;
+    return `<p style="margin:0 0 16px 0">${escapeHtml(applyVars(para, vars)).replace(/\n/g, '<br>')}</p>`;
   }).join('');
 }
 
@@ -107,7 +113,7 @@ export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl }) {
     ? applyVars(tpl.subject, vars)
     : 'ברוכים הבאים ל-Yellow Zone — קוד הכניסה שלך';
   const htmlContent = tpl?.body
-    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאתר')}</div>`
+    ? `<div dir="rtl" style="font-family:Arial,sans-serif;padding:24px">${boundedColumnHtml(brandHeaderHtml() + richBodyHtml(tpl.body, vars, 'כניסה לאתר'))}</div>`
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>ברוכים הבאים ל-Yellow Zone 💛</h2>
@@ -131,7 +137,7 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
     ? applyVars(tpl.subject, vars)
     : 'העסק שלך אושר לאינדקס Yellow Zone 💛';
   const htmlContent = tpl?.body
-    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאזור העסק שלי')}</div>`
+    ? `<div dir="rtl" style="font-family:Arial,sans-serif;padding:24px">${boundedColumnHtml(brandHeaderHtml() + richBodyHtml(tpl.body, vars, 'כניסה לאזור העסק שלי'))}</div>`
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>שמחים לבשר — "${businessName}" אושר! 💛</h2>
@@ -152,7 +158,7 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
 // (טיוטה ב-settings/broadcastDraft), עם placeholders {name}/{business}/{link} שמוחלפים לכל נמען בנפרד.
 export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, vars }) {
   const finalSubject = applyVars(subject, vars);
-  const htmlContent = `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px;line-height:1.7">${brandHeaderHtml()}${richBodyHtml(body, vars, vars.code ? 'כניסה לאתר' : 'כניסה לאזור העסק שלי')}</div>`;
+  const htmlContent = `<div dir="rtl" style="font-family:Arial,sans-serif;padding:24px;line-height:1.7">${boundedColumnHtml(brandHeaderHtml() + richBodyHtml(body, vars, vars.code ? 'כניסה לאתר' : 'כניסה לאזור העסק שלי'))}</div>`;
   await sendBrevoEmail(env, {
     to: [{ email: toEmail, name: toName || '' }],
     replyTo: { email: REPLY_TO },
@@ -168,7 +174,7 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
     ? applyVars(tpl.subject, vars)
     : 'ברוכים הבאים ל-Yellow Zone 💛';
   const htmlContent = tpl?.body
-    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאזור העסק שלי')}</div>`
+    ? `<div dir="rtl" style="font-family:Arial,sans-serif;padding:24px">${boundedColumnHtml(brandHeaderHtml() + richBodyHtml(tpl.body, vars, 'כניסה לאזור העסק שלי'))}</div>`
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>ברוכים הבאים ל-Yellow Zone 💛</h2>
