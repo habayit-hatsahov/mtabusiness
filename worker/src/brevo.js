@@ -1,15 +1,18 @@
 // כתובת-מענה לכל המיילים היוצאים (לא רק לבעלי-עסקים יותר) — המשתמש ביקש במפורש (2026-08-05) שגם
 // אוהדים יוכלו להשיב למייל שלהם, כדי לאפשר שיתופי-פעולה שמתחילים מתגובה חופשית.
 const REPLY_TO = 'yellowzonemta@gmail.com';
-const LOGO_URL = 'https://yellowzone.co.il/Maccabi.svg';
+const LOGO_URL = 'https://yellowzone.co.il/images/yellowzone-mark-square.png';
 
-// ריבוע צהוב עם לוגו מכבי ת"א — תצוגת קוד הכניסה במיילים האוטומטיים
+// ריבוע צהוב עם לוגו מכבי ת"א — תצוגת קוד הכניסה במיילים האוטומטיים. כתובת הכניסה מוצגת כשורת-
+// כיתוב קטנה בתוך אותה תיבה (לא כפתור/פסקה נפרדת) — כדי שלא יהיה צורך ב-{login_link} נוסף אחרי
+// הקוד בכל תבנית שרוצה גם להראות לאן נכנסים איתו.
 function codeBoxHtml(code) {
   return `
     <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:20px auto">
-      <tr><td style="width:170px;background:#FFDE00;border-radius:20px;padding:52px 10px;text-align:center">
+      <tr><td style="width:170px;background:#FFDE00;border-radius:20px;padding:52px 10px 14px;text-align:center">
         <img src="${LOGO_URL}" width="34" alt="Yellow Zone" style="display:block;margin:0 auto 12px auto" />
         <div style="font-size:34px;font-weight:900;letter-spacing:4px;color:#16130a;line-height:1">${code}</div>
+        <div style="margin-top:14px"><a href="https://yellowzone.co.il" style="font-size:14px;font-weight:700;color:#16130a;text-decoration:underline">yellowzone.co.il</a></div>
       </td></tr>
     </table>`;
 }
@@ -38,13 +41,16 @@ function brandHeaderHtml() {
 }
 
 // תבנית מותאמת-אישית -> HTML: כל פסקה (שורה ריקה מפרידה, כמו textToHtml) הופכת ל-<p>, חוץ מפסקה
-// שהיא בדיוק "{code}" או "{link}" בשורה משלה — זו מקבלת את העיצוב הממותג (תיבת-קוד/כפתור) במקום
-// טקסט רגיל. שימוש רגיל של {code}/{link} בתוך משפט (לא בשורה נפרדת) ממשיך להתחלף לטקסט פשוט כרגיל.
+// שהיא בדיוק "{code}"/"{link}"/"{login_link}" בשורה משלה — זו מקבלת את העיצוב הממותג (תיבת-קוד/
+// כפתור) במקום טקסט רגיל. {login_link} הוא כפתור קבוע לכתובת הכניסה הכללית (welcome.html, זהה
+// לכולם — לא per-נמען כמו {link}), לשימוש כשרוצים להדגיש רק את דרך-הכניסה הרגילה בלי טוקן-דשבורד.
+// שימוש רגיל של המשתנים האלה בתוך משפט (לא בשורה נפרדת) ממשיך להתחלף לטקסט פשוט כרגיל.
 function richBodyHtml(bodyTemplate, vars, linkLabel) {
   return bodyTemplate.split('\n\n').map((para) => {
     const trimmed = para.trim();
     if (trimmed === '{code}' && vars.code) return codeBoxHtml(vars.code);
     if (trimmed === '{link}' && vars.link) return linkButtonHtml(vars.link, linkLabel || 'כניסה');
+    if (trimmed === '{login_link}') return linkButtonHtml('https://yellowzone.co.il/welcome.html', 'כניסה לאתר');
     return `<p>${escapeHtml(applyVars(para, vars)).replace(/\n/g, '<br>')}</p>`;
   }).join('');
 }
