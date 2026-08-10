@@ -8680,6 +8680,7 @@ function templateFieldHtml(item, f) {
 // linkButtonHtml/brandHeaderHtml). קוד מוכפל בכוונה (אין שיתוף-קוד בין Worker ל-admin) — כל שינוי
 // עיצוב שם צריך להשתקף גם כאן כדי שהתצוגה תישאר נאמנה למה שנשלח בפועל.
 const TPL_LOGO_URL = 'https://yellowzone.co.il/images/yellowzone-mark-square.png';
+const TPL_LOGO_HORIZONTAL_URL = 'https://yellowzone.co.il/images/yellowzone-logo-horizontal.png';
 function tplCodeBoxHtml(code) {
   return `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:20px auto"><tr><td style="width:170px;background:#FFDE00;border-radius:20px;padding:52px 10px 14px;text-align:center"><img src="${TPL_LOGO_URL}" width="34" alt="Yellow Zone" style="display:block;margin:0 auto 12px auto" /><div style="font-size:34px;font-weight:900;letter-spacing:4px;color:#16130a;line-height:1">${esc(code)}</div><div style="margin-top:14px"><a href="https://yellowzone.co.il" style="font-size:14px;font-weight:700;color:#16130a;text-decoration:underline">yellowzone.co.il</a></div></td></tr></table>`;
 }
@@ -8687,7 +8688,7 @@ function tplLinkButtonHtml(link, label) {
   return `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:16px auto"><tr><td style="background:#FFDE00;border-radius:14px"><a href="${esc(link)}" style="display:inline-block;color:#16130a;font-weight:900;text-decoration:none;padding:12px 28px;font-size:15px">${esc(label)}</a></td></tr></table>`;
 }
 function tplBrandHeaderHtml() {
-  return `<div style="text-align:center;padding:0 0 8px 0"><img src="${TPL_LOGO_URL}" width="30" alt="Yellow Zone" /></div>`;
+  return `<div style="text-align:right;margin:0 0 18px 0"><img src="${TPL_LOGO_HORIZONTAL_URL}" height="26" alt="Yellow Zone" /></div>`;
 }
 function tplRichBodyHtml(bodyTemplate, vars, linkLabel) {
   return (bodyTemplate || '').split('\n\n').map(para => {
@@ -8706,10 +8707,18 @@ const AUTO_TPL_SAMPLE_VARS = {
 };
 const AUTO_TPL_LINK_LABEL = { login: 'כניסה לאתר', biz: 'כניסה לאזור העסק שלי', combined: 'כניסה לאזור העסק שלי' };
 
+// לא קורא ל-renderMain() בכוונה — זה היה בונה מחדש את שדה-הטקסט מהערך השמור/דיפולטי (tplFieldValue)
+// ומוחק כל מה שהמשתמש הקליד ועדיין לא שמר. עדכון ישיר של קופסת-התצוגה+הכפתור בלבד, כמו
+// updateTemplatePreview — הקלט עצמו (הטקסטארה) לא נוגעים בו בכלל.
 let openTemplatePreviewId = null;
 window.toggleTemplatePreview = function(id) {
   openTemplatePreviewId = openTemplatePreviewId === id ? null : id;
-  renderMain();
+  const box = document.getElementById('tplPreviewBox_' + id);
+  const btn = document.getElementById('tplPreviewBtn_' + id);
+  const item = findMessageTemplate(id);
+  const isOpen = openTemplatePreviewId === id;
+  if (box && item) box.innerHTML = isOpen ? autoTemplatePreviewHtml(item) : '';
+  if (btn) btn.textContent = isOpen ? '👁 סגירת התצוגה המקדימה' : '👁 תצוגה מקדימה';
 };
 function autoTemplatePreviewHtml(item) {
   const vars = AUTO_TPL_SAMPLE_VARS[item.id];
@@ -8725,7 +8734,7 @@ function autoTemplatePreviewHtml(item) {
           <div class="broadcast-preview-meta">מ־ Yellow Zone</div>
           <div class="broadcast-preview-subject">${esc(applyBroadcastVars(subject, vars))}</div>
         </div>
-        <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:16px 24px;background:#fff">
+        <div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:16px 24px;background:#fff">
           ${tplBrandHeaderHtml()}${tplRichBodyHtml(body, vars, AUTO_TPL_LINK_LABEL[item.id])}
         </div>
       </div>
@@ -8754,7 +8763,7 @@ function templateDetailBodyHtml(item) {
   const previewOpen = openTemplatePreviewId === item.id;
   const previewHtml = item.group === 'auto' ? `
     <div class="broadcast-actions" style="margin-top:10px">
-      <button class="act-btn" onclick="toggleTemplatePreview('${item.id}')">👁 ${previewOpen ? 'סגירת התצוגה המקדימה' : 'תצוגה מקדימה'}</button>
+      <button class="act-btn" id="tplPreviewBtn_${item.id}" onclick="toggleTemplatePreview('${item.id}')">👁 ${previewOpen ? 'סגירת התצוגה המקדימה' : 'תצוגה מקדימה'}</button>
     </div>
     <div id="tplPreviewBox_${item.id}">${previewOpen ? autoTemplatePreviewHtml(item) : ''}</div>` : '';
   return `

@@ -2,6 +2,7 @@
 // אוהדים יוכלו להשיב למייל שלהם, כדי לאפשר שיתופי-פעולה שמתחילים מתגובה חופשית.
 const REPLY_TO = 'yellowzonemta@gmail.com';
 const LOGO_URL = 'https://yellowzone.co.il/images/yellowzone-mark-square.png';
+const LOGO_HORIZONTAL_URL = 'https://yellowzone.co.il/images/yellowzone-logo-horizontal.png';
 
 // ריבוע צהוב עם לוגו מכבי ת"א — תצוגת קוד הכניסה במיילים האוטומטיים. כתובת הכניסה מוצגת כשורת-
 // כיתוב קטנה בתוך אותה תיבה (לא כפתור/פסקה נפרדת) — כדי שלא יהיה צורך ב-{login_link} נוסף אחרי
@@ -35,9 +36,10 @@ function linkButtonHtml(link, label) {
     </table>`;
 }
 
-// כותרת קטנה עם הלוגו — בראש כל מייל עם תבנית מותאמת-אישית (2, כתחליף ללוגו-מכבי בתוך תיבת-הקוד)
+// לוגו הרוחבי של האתר (לא הריבועי-של-תיבת-הקוד) בפינה — לא באמצע, כדי לא לכפול את הלוגו שכבר
+// מופיע בתוך תיבת-הקוד (codeBoxHtml). יושב בצד ימין כי ההורה הופך RTL+text-align:right.
 function brandHeaderHtml() {
-  return `<div style="text-align:center;padding:0 0 8px 0"><img src="${LOGO_URL}" width="30" alt="Yellow Zone" /></div>`;
+  return `<div style="text-align:right;margin:0 0 18px 0"><img src="${LOGO_HORIZONTAL_URL}" height="26" alt="Yellow Zone" /></div>`;
 }
 
 // תבנית מותאמת-אישית -> HTML: כל פסקה (שורה ריקה מפרידה, כמו textToHtml) הופכת ל-<p>, חוץ מפסקה
@@ -105,7 +107,7 @@ export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl }) {
     ? applyVars(tpl.subject, vars)
     : 'ברוכים הבאים ל-Yellow Zone — קוד הכניסה שלך';
   const htmlContent = tpl?.body
-    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאתר')}</div>`
+    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאתר')}</div>`
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>ברוכים הבאים ל-Yellow Zone 💛</h2>
@@ -129,7 +131,7 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
     ? applyVars(tpl.subject, vars)
     : 'העסק שלך אושר לאינדקס Yellow Zone 💛';
   const htmlContent = tpl?.body
-    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאזור העסק שלי')}</div>`
+    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאזור העסק שלי')}</div>`
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>שמחים לבשר — "${businessName}" אושר! 💛</h2>
@@ -166,7 +168,7 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
     ? applyVars(tpl.subject, vars)
     : 'ברוכים הבאים ל-Yellow Zone 💛';
   const htmlContent = tpl?.body
-    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאזור העסק שלי')}</div>`
+    ? `<div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px">${brandHeaderHtml()}${richBodyHtml(tpl.body, vars, 'כניסה לאזור העסק שלי')}</div>`
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>ברוכים הבאים ל-Yellow Zone 💛</h2>
