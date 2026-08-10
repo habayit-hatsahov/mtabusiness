@@ -11,9 +11,8 @@ function codeBoxHtml(code) {
   return `
     <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:20px auto">
       <tr><td style="width:260px;background:#FFDE00;border-radius:20px;padding:22px 20px;text-align:center">
-        <img src="${LOGO_URL}" width="26" alt="Yellow Zone" style="display:block;margin:0 auto 8px auto" />
-        <div style="font-size:32px;font-weight:900;letter-spacing:4px;color:#16130a;line-height:1">${code}</div>
-        <div style="margin-top:10px"><a href="https://yellowzone.co.il" style="font-size:14px;font-weight:700;color:#16130a;text-decoration:underline">yellowzone.co.il</a></div>
+        <div style="font-size:32px;font-weight:900;letter-spacing:4px;color:#0A2A66;line-height:1">${code}</div>
+        <div style="margin-top:10px"><a href="https://yellowzone.co.il" style="font-size:14px;font-weight:700;color:#0A2A66;text-decoration:underline">yellowzone.co.il</a></div>
       </td></tr>
     </table>`;
 }
@@ -30,6 +29,17 @@ function applyBold(escapedText) {
 
 function applyVars(text, vars) {
   return Object.entries(vars).reduce((s, [k, v]) => s.split(`{${k}}`).join(v ?? ''), text);
+}
+
+// הופך כתובות-אתר בתוך טקסט חופשי לקישורים לחיצים — תומך גם ב-URL מלא (https://...) וגם בדומיין
+// חשוף בלי פרוטוקול (למשל instagram.com/user), כי כותבים תוכן-מייל בטקסט רגיל בלי להקליד https://
+// בכל פעם. רץ אחרי escapeHtml+applyBold בכוונה (הטקסט כבר-HTML-בטוח, אין סיכון XSS מהקישור עצמו
+// כי המקור זהה לטקסט שכבר עבר escape).
+function linkifyUrls(text) {
+  return text.replace(/(https?:\/\/[^\s<]+|(?:www\.)?[a-zA-Z0-9-]+\.(?:com|co\.il|net|org|io)(?:\/[^\s<]*)?)/g, (match) => {
+    const href = match.startsWith('http') ? match : `https://${match}`;
+    return `<a href="${href}" style="color:#16130a;font-weight:700;text-decoration:underline">${match}</a>`;
+  });
 }
 
 // כפתור צהוב ממותג — משמש כש-{link} יושב על שורה נפרדת (פסקה משלו) בתבנית מותאמת-אישית
@@ -65,7 +75,7 @@ function richBodyHtml(bodyTemplate, vars, linkLabel) {
     if (trimmed === '{code}' && vars.code) return codeBoxHtml(vars.code);
     if (trimmed === '{link}' && vars.link) return linkButtonHtml(vars.link, linkLabel || 'כניסה');
     if (trimmed === '{login_link}') return linkButtonHtml('https://yellowzone.co.il/welcome.html', 'כניסה לאתר');
-    return `<p style="margin:0 0 16px 0">${applyBold(escapeHtml(applyVars(para, vars))).replace(/\n/g, '<br>')}</p>`;
+    return `<p style="margin:0 0 16px 0">${linkifyUrls(applyBold(escapeHtml(applyVars(para, vars)))).replace(/\n/g, '<br>')}</p>`;
   }).join('');
 }
 
