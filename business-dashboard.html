@@ -1527,8 +1527,8 @@ let biz = null;
 let bizId = null;
 let weeklySchedule = []; // שיבוץ עסק-השבוע/הטבת-השבוע ששייך לעסק הזה (weekly_schedule, ר' loadBusiness)
 let discEditOn = false;
-let discRedeemMode = null; // physical/sale — בחירת בעל העסק, רלוונטי כשאין קוד קופון
-let redeemMode2 = null, redeemMode3 = null; // הטבות נוספות (עד 3 סה"כ)
+let discRedeemMode = []; // בחירה מרובה — יכול להיות גם "בחנות" וגם "באתר" בו-זמנית
+let redeemMode2 = [], redeemMode3 = []; // הטבות נוספות (עד 3 סה"כ)
 let benefitCount = 1;
 const MAX_BENEFITS = 3;
 let selectedCat = null; // קטגוריה יחידה שנבחרה בעריכה
@@ -1599,8 +1599,12 @@ const DISCOUNT_TYPE_LABELS_PLAIN = { physical:'בחנות הפיזית', online:
 // "איפה ניתן לממש" — בחירה ידנית ישירה של בעל העסק (physical/sale/online), בלי קוד קופון שמכתיב את זה.
 // אם עדיין לא נבחר, ברירת מחדל חכמה לפי bizTypes (ניתנת לשינוי ע"י בעל העסק).
 function computeDiscountTypes(bizTypes, redeemMode) {
-  return [redeemMode || ((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
+  const arr = Array.isArray(redeemMode) ? redeemMode : (redeemMode ? [redeemMode] : []);
+  return arr.length ? arr : [((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
 }
+
+// תאימות לאחור: עסקים ישנים שנשמרו לפני שהמימוש הפך לבחירה מרובה — discountRedeemMode היה מחרוזת יחידה
+function toRedeemArr(x) { return Array.isArray(x) ? x : (x ? [x] : []); }
 
 const REGION_LIST = ['כל הארץ','גוש דן','ירושלים והסביבה','השפלה','השרון','חיפה והצפון','הדרום'];
 const RELATION_LABELS = { '':'העסק שלי', spouse:'בן/בת זוג', parent:'הורה', sibling:'אח/ות', child:'ילד/ה', other:'אחר' };
@@ -1633,7 +1637,7 @@ const TIPS = {
 };
 
 function fmtFieldVal(k, v) {
-  if (k === 'discountTypes') return (v || []).map(t =>DISCOUNT_TYPE_LABELS[t] || t).join(', ') || '—';
+  if (k === 'discountTypes' || k === 'discountRedeemMode') return (Array.isArray(v) ? v : (v ? [v] : [])).map(t =>DISCOUNT_TYPE_LABELS[t] || t).join(', ') || '—';
   if (k === 'bizTypes') return (v || []).map(t =>BIZ_TYPE_LABELS[t] || t).join(', ') || '—';
   if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoCategorySuggestion') return v ? (CAT_LABELS[mapCatKey(v)] || v) : '—';
   if (k === 'tags') return (v || []).join(', ') || '—';
@@ -2221,13 +2225,16 @@ function renderDiscountCard(w) {
   discEditOn = !!w.hasDiscount;
   // תאימות לאחור: עסק ישן עם קוד קופון (מהמודל הקודם, לפני שהמימוש הפך לבחירה ידנית) הוצג בפועל כ"אונליין" —
   // ברירת המחדל כאן שומרת על זה עד שבעל העסק בוחר במפורש אחרת, כדי לא "לאבד" את הסטטוס בשקט בשמירה הראשונה
-  discRedeemMode = w.discountRedeemMode || (w.discountCode ? 'online' : ((w.bizTypes || []).includes('physical') ? 'physical' : 'sale'));
+  discRedeemMode = toRedeemArr(w.discountRedeemMode);
+  if (!discRedeemMode.length) discRedeemMode = [w.discountCode ? 'online' : ((w.bizTypes || []).includes('physical') ? 'physical' : 'sale')];
   const dTypes = computeDiscountTypes(w.bizTypes, discRedeemMode);
 
   const extra = w.additionalDiscounts || [];
   benefitCount = 1 + extra.length;
-  redeemMode2 = extra[0]?.redeemMode || (extra[0]?.code ? 'online' : null);
-  redeemMode3 = extra[1]?.redeemMode || (extra[1]?.code ? 'online' : null);
+  redeemMode2 = toRedeemArr(extra[0]?.redeemMode);
+  if (!redeemMode2.length && extra[0]?.code) redeemMode2 = ['online'];
+  redeemMode3 = toRedeemArr(extra[1]?.redeemMode);
+  if (!redeemMode3.length && extra[1]?.code) redeemMode3 = ['online'];
 
   // "בבדיקת אישור מנהל" בשני מקרים: (1) יש שינוי בקבוצת ההטבה שטרם אושר — טיוטה מקומית או
   // כבר-נשלחה, changedFieldsSet כולל את שניהם; (2) העסק כולו עדיין ממתין לאישור ראשוני
@@ -2748,10 +2755,12 @@ function renderPreview(stateOverride, flashZone) {
           }).join('')}
         </div>` : '';
 
-  // מימוש ההטבה — כרטיס לכל אופן-מימוש שהעסק תומך בו, זהה במבנה ל-home.html (.redeem-card),
-  // תמיד-סגור בפריוויו (להמחשה בלבד, לא אינטראקטיבי — אין כאן תעודת-חבר/קופון אמיתיים להציג)
+  // מימוש ההטבה — כרטיס לכל אופן-מימוש שההטבה הראשית *בפועל* נבחרה עבורו (w.discountTypes, ניתן
+  // לבחור כמה יחד), זהה במבנה ל-home.html (.redeem-card). תמיד-סגור בפריוויו (להמחשה בלבד, לא
+  // אינטראקטיבי — אין כאן תעודת-חבר/קופון אמיתיים להציג)
+  const dTypes2 = w.discountTypes || [];
   let redeemHtml = '';
-  if (w.hasDiscount && w.discountText && (isPhysical || isPro)) {
+  if (w.hasDiscount && w.discountText && (isPhysical || isPro) && (dTypes2.includes('physical') || dTypes2.includes('sale'))) {
     const isProOnly = isPro && !isPhysical;
     const title = isProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות';
     const desc = (isPhysical && isPro) ? 'הציגו את תעודת החבר בקופה או מול נותן השירות, לאימות ההטבה'
@@ -2766,7 +2775,7 @@ function renderPreview(stateOverride, flashZone) {
           <div class="pv-redeem-btn">פתיחה</div>
         </div>`;
   }
-  if (w.hasDiscount && isOnline && w.discountCode) {
+  if (w.hasDiscount && dTypes2.includes('online') && w.discountCode) {
     redeemHtml += `
         <div class="pv-redeem-card${fz('discount')}">
           <div class="pv-redeem-top">
@@ -2852,7 +2861,8 @@ function renderFeedPreview(stateOverride, flashZone) {
   let imgHtml;
   if (hasCover) {
     const badge = hasLogo ? `<div class="biz-card-logo-badge"><img src="${w.logo}" alt="${esc(w.name)} — לוגו" /></div>` : '';
-    imgHtml = `<img src="${w.coverPhoto}" alt="${esc(w.name)}" class="biz-card-cover-img" />${badge}`;
+    const posStyle = w.coverPhotoPosition ? ` style="object-position:${esc(w.coverPhotoPosition)}"` : '';
+    imgHtml = `<img src="${w.coverPhoto}" alt="${esc(w.name)}" class="biz-card-cover-img"${posStyle} />${badge}`;
   } else if (hasLogo) {
     imgHtml = `<img src="${w.logo}" alt="${esc(w.name)}" class="biz-card-cover-img" />`;
   } else {
@@ -3385,14 +3395,15 @@ function renderRedeemModeGrid() {
     { key: 'online',   icon: '🌐', label: 'באתר' },
   ];
   grid.innerHTML = opts.map(o =>
-    `<div class="disc-type-chip${discRedeemMode === o.key ? ' selected' : ''}" onclick="selectRedeemMode('${o.key}')">${o.label}</div>`
+    `<div class="disc-type-chip${discRedeemMode.includes(o.key) ? ' selected' : ''}" onclick="selectRedeemMode('${o.key}')">${o.label}</div>`
   ).join('');
   const codeWrap = document.getElementById('editOnlineCodeWrap');
-  if (codeWrap) codeWrap.style.display = discRedeemMode === 'online' ? 'block' : 'none';
+  if (codeWrap) codeWrap.style.display = discRedeemMode.includes('online') ? 'block' : 'none';
 }
 
 window.selectRedeemMode = function(key) {
-  discRedeemMode = key;
+  const i = discRedeemMode.indexOf(key);
+  if (i === -1) discRedeemMode.push(key); else discRedeemMode.splice(i, 1);
   renderRedeemModeGrid();
   onDiscBuilderInput();
 };
@@ -3439,14 +3450,16 @@ function renderRedeemModeGridN(n) {
     { key: 'online',   icon: '🌐', label: 'באתר' },
   ];
   grid.innerHTML = opts.map(o =>
-    `<div class="disc-type-chip${mode === o.key ? ' selected' : ''}" onclick="selectRedeemModeN(${n},'${o.key}')">${o.label}</div>`
+    `<div class="disc-type-chip${mode.includes(o.key) ? ' selected' : ''}" onclick="selectRedeemModeN(${n},'${o.key}')">${o.label}</div>`
   ).join('');
   const codeWrap = document.getElementById('editOnlineCodeWrap' + n);
-  if (codeWrap) codeWrap.style.display = mode === 'online' ? 'block' : 'none';
+  if (codeWrap) codeWrap.style.display = mode.includes('online') ? 'block' : 'none';
 }
 
 window.selectRedeemModeN = function(n, key) {
-  setRedeemModeN(n, key);
+  const mode = getRedeemModeN(n);
+  const i = mode.indexOf(key);
+  if (i === -1) mode.push(key); else mode.splice(i, 1);
   renderRedeemModeGridN(n);
   onDiscBuilderInputN(n);
 };
@@ -3492,7 +3505,7 @@ window.addBenefit = function() {
 // עכשיו הבלוק נשאר פתוח וריק, מוכן למילוי מיידי; collectAdditionalBenefits() ממילא מדלג על
 // שדה-טקסט ריק בשמירה, כך שלא נשמר כלום אם לא ממלאים מחדש.
 window.removeBenefit = function(n) {
-  setRedeemModeN(n, null);
+  setRedeemModeN(n, []);
   ['editDiscOtherText', 'editDiscountCode'].forEach(id =>{
     const el = document.getElementById(id + n);
     if (el) el.value = '';
@@ -3515,7 +3528,7 @@ function collectAdditionalBenefits() {
     const text = computeDiscBuilderTextN(n);
     if (!text) continue;
     const redeemMode = getRedeemModeN(n);
-    const code = redeemMode === 'online' ? (document.getElementById('editDiscountCode' + n)?.value.trim() || '') : '';
+    const code = redeemMode.includes('online') ? (document.getElementById('editDiscountCode' + n)?.value.trim() || '') : '';
     arr.push({
       text, redeemMode, code,
       redeemTypes: computeDiscountTypes(bizTypes, redeemMode),
@@ -3594,7 +3607,7 @@ window.saveDiscount = async function() {
   const bizTypes = committedState().bizTypes || [];
   // קוד קופון נשמר רק כשמקום המימוש שנבחר בפועל הוא "אונליין" — אחרת מנוקה, כדי לא להשאיר קוד ישן/לא-רלוונטי
   // שיכול "לבלבל" תצוגות אחרות (הקוד כבר לא קובע את מקום המימוש, מקום המימוש קובע אם הקוד רלוונטי)
-  const discountCode = (discEditOn && discRedeemMode === 'online')
+  const discountCode = (discEditOn && discRedeemMode.includes('online'))
     ? document.getElementById('editDiscountCode').value.trim() : '';
   const fullText = discEditOn ? computeDiscBuilderText() : '';
 

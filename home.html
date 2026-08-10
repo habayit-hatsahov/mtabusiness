@@ -1544,7 +1544,10 @@ function bizCardImage(biz, eager) {
     const badge = logo
       ? `<div class="biz-card-logo-badge"><img ${srcAttr(logo)} alt="${biz.name} — לוגו" decoding="async" onerror="this.parentElement.remove()" /></div>`
       : '';
-    return `<img ${srcAttr(cover)} alt="${biz.name}" class="biz-card-cover-img" decoding="async" onerror="this.remove()" />${badge}`;
+    // מיקום-מיקוד נבחר ע"י מנהל באדמין (coverPhotoPosition, "X% Y%") — נגרר על תמונה-4:3 זהה
+    // לכרטיס הזה בדיוק, ר' PROJECT_CONTEXT.md §184. ברירת-מחדל 50% 50% = התנהגות-object-position הרגילה.
+    const posStyle = biz.coverPhotoPosition ? ` style="object-position:${biz.coverPhotoPosition}"` : '';
+    return `<img ${srcAttr(cover)} alt="${biz.name}" class="biz-card-cover-img"${posStyle} decoding="async" onerror="this.remove()" />${badge}`;
   }
   return bizLogo({ ...biz, logo });
 }
@@ -2541,11 +2544,14 @@ function openBiz(id) {
       </div>`;
     }).join('');
 
-    // מימוש ההטבה — כרטיס לכל אופן-מימוש שהעסק תומך בו (פיזי/נותן-שירות + אונליין), מוצגים יחד,
-    // לא בבורר-מעבר. פיזי ונותן-שירות הם אותו סוג-כרטיס (תעודת חבר), רק הניסוח משתנה.
+    // מימוש ההטבה — כרטיס לכל אופן-מימוש שההטבה הראשית *בפועל* נבחרה עבורו (b.discountTypes, ניתן
+    // לבחור כמה יחד — ר' PROJECT_CONTEXT.md §182/§183), מוצגים יחד, לא בבורר-מעבר. פיזי ונותן-שירות
+    // הם אותו סוג-כרטיס (תעודת חבר), רק הניסוח משתנה לפי סוג העסק. תלוי גם בסוג העסק (isPhysical/
+    // isPro/online) כדי לא להציג "הגיעו לחנות"/קוד-קופון לעסק שבפועל לא תומך בזה בכלל. משתמש ב-dTypes
+    // שכבר חושב למעלה (ר' primaryTypeLine) — אותו מקור-אמת בדיוק, לא כפילות.
     const area = document.getElementById('sheetCouponArea');
     let areaHtml = '';
-    if (b.isPhysical || b.isPro) {
+    if ((b.isPhysical || b.isPro) && (dTypes.includes('physical') || dTypes.includes('sale'))) {
       const isProOnly = b.isPro && !b.isPhysical;
       const title = isProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות';
       const desc = (b.isPhysical && b.isPro) ? 'הציגו את תעודת החבר בקופה או מול נותן השירות, לאימות ההטבה'
@@ -2564,7 +2570,7 @@ function openBiz(id) {
           <div class="mini-card-wrap" id="sheetMemberCard" style="display:none;"></div>
         </div>`;
     }
-    if (b.online && b.coupon) {
+    if (dTypes.includes('online') && b.coupon) {
       areaHtml += `
         <div class="redeem-card">
           <div class="redeem-top">
@@ -3127,8 +3133,12 @@ window._auth = auth;
 // נרשמת כאן, *לפני* ה-auth guard שמתחתיה, כדי שהטעינה תתחיל במקביל לבדיקת ה-session
 // ולא תמתין לה — חוסך את זמן ה-onAuthStateChanged הראשוני (בדיקת IndexedDB) לפני שרואים כרטיסים.
 function computeDiscountTypesLive(bizTypes, hasCode, redeemMode) {
+  // תאימות לאחור: עסקים ישנים עם קוד קופון בלי discountRedeemMode כלל מוצגים כ"אונליין" בלבד —
+  // אבל אם יש בחירה מפורשת (מערך, כולל בחירה-מרובה כמו "גם בחנות וגם באתר"), היא תמיד מנצחת.
+  const arr = Array.isArray(redeemMode) ? redeemMode : (redeemMode ? [redeemMode] : []);
+  if (arr.length) return arr;
   if (hasCode) return ['online'];
-  return [redeemMode || ((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
+  return [((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
 }
 
 onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')), snap => {
@@ -3176,6 +3186,7 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
       logoThumb:    b.logoThumb || '',
       coverPhoto:   b.coverPhoto || '',
       coverPhotoThumb: b.coverPhotoThumb || '',
+      coverPhotoPosition: b.coverPhotoPosition || '',
       photos:       b.photos || [],
       branches:     b.branches || [],
       hours:        b.hours || '',

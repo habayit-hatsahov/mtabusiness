@@ -1402,8 +1402,12 @@ function mapCatKey(cat) {
 }
 
 function computeDiscountTypes(bizTypes, redeemMode) {
-  return [redeemMode || ((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
+  const arr = Array.isArray(redeemMode) ? redeemMode : (redeemMode ? [redeemMode] : []);
+  return arr.length ? arr : [((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
 }
+
+// תאימות לאחור: עסקים ישנים שנשמרו לפני שהמימוש הפך לבחירה מרובה — discountRedeemMode היה מחרוזת יחידה
+function toRedeemArr(x) { return Array.isArray(x) ? x : (x ? [x] : []); }
 
 // מצב הבורר של סעיף 3 (קטגוריה/תגיות/הטבה) — מתאפס בכל פתיחת גיליון עסק
 let selectedCat = null;
@@ -1411,8 +1415,8 @@ let selectedTags = [];
 let selectedAlsoCat = null;
 let noTagFits = false;
 let discEditOn = false;
-let discRedeemMode = null;
-let redeemMode2 = null, redeemMode3 = null;
+let discRedeemMode = [];
+let redeemMode2 = [], redeemMode3 = [];
 let benefitCount = 1;
 const MAX_BENEFITS = 3;
 let _editingBizTypes = [];
@@ -1528,13 +1532,14 @@ window.openBizSheet = async function(id) {
   selectedAlsoCat = b.alsoUnderCategory ? mapCatKey(b.alsoUnderCategory) : null;
   noTagFits = !!b.noTagFits;
   discEditOn = !!b.hasDiscount;
-  discRedeemMode = b.discountRedeemMode || ((b.bizTypes || []).includes('physical') ? 'physical' : 'sale');
+  discRedeemMode = toRedeemArr(b.discountRedeemMode);
+  if (!discRedeemMode.length) discRedeemMode = [((b.bizTypes || []).includes('physical') ? 'physical' : 'sale')];
   _editingBizTypes = b.bizTypes || [];
 
   const extraBenefits = b.additionalDiscounts || [];
   benefitCount = 1 + extraBenefits.length;
-  redeemMode2 = extraBenefits[0]?.redeemMode || null;
-  redeemMode3 = extraBenefits[1]?.redeemMode || null;
+  redeemMode2 = toRedeemArr(extraBenefits[0]?.redeemMode);
+  redeemMode3 = toRedeemArr(extraBenefits[1]?.redeemMode);
   const code2 = extraBenefits[0]?.code || '';
   const code3 = extraBenefits[1]?.code || '';
 
@@ -1640,7 +1645,7 @@ window.openBizSheet = async function(id) {
   // סקציית שינויים ממתינים (מעל הכל)
   const pendingHtml = b.pendingChanges ? (() => {
     const fmtVal = (k, v) => {
-      if (k === 'discountTypes') return (v || []).map(t => DISCOUNT_TYPE_LABELS[t] || t).join(', ') || '—';
+      if (k === 'discountTypes' || k === 'discountRedeemMode') return (Array.isArray(v) ? v : (v ? [v] : [])).map(t => DISCOUNT_TYPE_LABELS[t] || t).join(', ') || '—';
       if (k === 'bizTypes') return (v || []).map(t => BIZ_TYPE_LABELS[t] || t).join(', ') || '—';
       if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoUnderCategory' || k === 'alsoCategorySuggestion') return (v && CAT_LABELS[mapCatKey(v)]) || v || '—';
       if (k === 'tags') return (v || []).join(', ') || '—';
@@ -3017,14 +3022,15 @@ function renderRedeemModeGrid() {
     { key: 'online',   icon: '🌐', label: 'באתר' },
   ];
   grid.innerHTML = opts.map(o =>
-    `<div class="disc-type-chip${discRedeemMode === o.key ? ' selected' : ''}" onclick="selectRedeemMode('${o.key}')">${o.icon} ${o.label}</div>`
+    `<div class="disc-type-chip${discRedeemMode.includes(o.key) ? ' selected' : ''}" onclick="selectRedeemMode('${o.key}')">${o.icon} ${o.label}</div>`
   ).join('');
   const codeWrap = document.getElementById('editOnlineCodeWrap');
-  if (codeWrap) codeWrap.style.display = discRedeemMode === 'online' ? 'block' : 'none';
+  if (codeWrap) codeWrap.style.display = discRedeemMode.includes('online') ? 'block' : 'none';
 }
 
 window.selectRedeemMode = function(key) {
-  discRedeemMode = key;
+  const i = discRedeemMode.indexOf(key);
+  if (i === -1) discRedeemMode.push(key); else discRedeemMode.splice(i, 1);
   renderRedeemModeGrid();
   onDiscBuilderInput();
 };
@@ -3051,14 +3057,16 @@ function renderRedeemModeGridN(n) {
     { key: 'online',   icon: '🌐', label: 'באתר' },
   ];
   grid.innerHTML = opts.map(o =>
-    `<div class="disc-type-chip${mode === o.key ? ' selected' : ''}" onclick="selectRedeemModeN(${n},'${o.key}')">${o.icon} ${o.label}</div>`
+    `<div class="disc-type-chip${mode.includes(o.key) ? ' selected' : ''}" onclick="selectRedeemModeN(${n},'${o.key}')">${o.icon} ${o.label}</div>`
   ).join('');
   const codeWrap = document.getElementById('editOnlineCodeWrap' + n);
-  if (codeWrap) codeWrap.style.display = mode === 'online' ? 'block' : 'none';
+  if (codeWrap) codeWrap.style.display = mode.includes('online') ? 'block' : 'none';
 }
 
 window.selectRedeemModeN = function(n, key) {
-  setRedeemModeN(n, key);
+  const mode = getRedeemModeN(n);
+  const i = mode.indexOf(key);
+  if (i === -1) mode.push(key); else mode.splice(i, 1);
   renderRedeemModeGridN(n);
   onDiscBuilderInputN(n);
 };
@@ -3102,7 +3110,7 @@ window.addBenefit = function() {
 
 window.removeBenefit = function(n) {
   document.getElementById('benefitWrap' + n).style.display = 'none';
-  setRedeemModeN(n, null);
+  setRedeemModeN(n, []);
   ['editDiscOtherText', 'editDiscountCode'].forEach(fid => {
     const el = document.getElementById(fid + n);
     if (el) el.value = '';
@@ -3122,7 +3130,7 @@ function collectAdditionalBenefits() {
     const text = computeDiscBuilderTextN(n);
     if (!text) continue;
     const redeemMode = getRedeemModeN(n);
-    const code = redeemMode === 'online' ? (document.getElementById('editDiscountCode' + n)?.value.trim() || '') : '';
+    const code = redeemMode.includes('online') ? (document.getElementById('editDiscountCode' + n)?.value.trim() || '') : '';
     arr.push({
       text, redeemMode, code,
       redeemTypes: computeDiscountTypes(_editingBizTypes, redeemMode),
@@ -3288,7 +3296,7 @@ window.saveSec4 = async function(id) {
   const hasDiscount = document.getElementById('editDiscountToggle').classList.contains('on');
   const fullText     = hasDiscount ? computeDiscBuilderText() : '';
   const shortText    = hasDiscount ? ensureFitsCard(document.getElementById('editDiscShortTitle').value.trim()) : '';
-  const discountCode = (hasDiscount && discRedeemMode === 'online')
+  const discountCode = (hasDiscount && discRedeemMode.includes('online'))
     ? document.getElementById('editDiscountCode').value.trim() : '';
 
   await saveSectionUpdates(id, {

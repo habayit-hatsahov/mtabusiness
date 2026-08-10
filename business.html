@@ -1556,7 +1556,7 @@
 
       const redeemGrid = document.getElementById('redeemModeGrid');
       const redeemErr  = document.getElementById('err-redeemMode');
-      if (!discRedeemMode) {
+      if (!discRedeemMode.length) {
         if (redeemErr) redeemErr.style.display = 'block';
         redeemGrid.classList.add('error-highlight');
         ok = false;
@@ -1606,8 +1606,8 @@
       return;
     }
     // ברירת מחדל חכמה ל"איפה מתממשת ההטבה" בכניסה לשלב 3, לפי סוג העסק שנבחר בשלב 1
-    if (fromStep === 1 && discRedeemMode === null) {
-      discRedeemMode = selectedBizTypes.has('physical') ? 'physical' : 'sale';
+    if (fromStep === 1 && discRedeemMode.length === 0) {
+      discRedeemMode = [selectedBizTypes.has('physical') ? 'physical' : 'sale'];
       renderRedeemModeGrid();
       updateDiscRedeemNote();
     }
@@ -1661,7 +1661,7 @@
 
     const hasDiscountVal   = document.getElementById('hasDiscount').checked;
     const fullDiscountText = hasDiscountVal ? computeDiscBuilderText() : '';
-    const discountCodeVal = (hasDiscountVal && discRedeemMode === 'online')
+    const discountCodeVal = (hasDiscountVal && discRedeemMode.includes('online'))
       ? document.getElementById('discountCode').value.trim() : '';
 
     const data = {
@@ -1977,14 +1977,15 @@
   const DISCOUNT_TYPE_LABELS = { physical:'בחנות הפיזית', online:'באתר', sale:'במעמד המכירה/השירות' };
 
   function computeDiscountTypes(bizTypes, redeemMode) {
-    return [redeemMode || ((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
+    const arr = Array.isArray(redeemMode) ? redeemMode : (redeemMode ? [redeemMode] : []);
+    return arr.length ? arr : [((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
   }
 
   let selectedCat      = null;
   let selectedTags      = [];
   let noTagFits        = false;
   let selectedAlsoCat  = null;
-  let discRedeemMode   = null;
+  let discRedeemMode   = []; // בחירה מרובה — יכול להיות גם "בחנות" וגם "באתר" בו-זמנית
 
   function renderCatGrid() {
     const grid = document.getElementById('categoryGrid');
@@ -2135,14 +2136,15 @@
       { key: 'online',   label: 'באתר' },
     ];
     grid.innerHTML = opts.map(o =>
-      `<div class="disc-type-chip${discRedeemMode === o.key ? ' selected' : ''}" onclick="selectRedeemMode('${o.key}')">${o.label}</div>`
+      `<div class="disc-type-chip${discRedeemMode.includes(o.key) ? ' selected' : ''}" onclick="selectRedeemMode('${o.key}')">${o.label}</div>`
     ).join('');
     const codeWrap = document.getElementById('onlineCodeWrap');
-    if (codeWrap) codeWrap.style.display = discRedeemMode === 'online' ? 'block' : 'none';
+    if (codeWrap) codeWrap.style.display = discRedeemMode.includes('online') ? 'block' : 'none';
   }
 
   function selectRedeemMode(key) {
-    discRedeemMode = key;
+    const i = discRedeemMode.indexOf(key);
+    if (i === -1) discRedeemMode.push(key); else discRedeemMode.splice(i, 1);
     renderRedeemModeGrid();
     onDiscBuilderInput();
     document.getElementById('err-redeemMode').style.display = 'none';
@@ -2185,15 +2187,15 @@
     const details = document.getElementById('discountDetails');
     cb.checked = !cb.checked;
     details.style.display = cb.checked ? 'block' : 'none';
-    if (cb.checked && discRedeemMode === null) {
-      discRedeemMode = selectedBizTypes.has('physical') ? 'physical' : 'sale';
+    if (cb.checked && discRedeemMode.length === 0) {
+      discRedeemMode = [selectedBizTypes.has('physical') ? 'physical' : 'sale'];
       renderRedeemModeGrid();
       updateDiscRedeemNote();
     }
   }
 
   // ── הטבות נוספות (עד 3 סה"כ) ──
-  let redeemMode2 = null, redeemMode3 = null;
+  let redeemMode2 = [], redeemMode3 = [];
   let benefitCount = 1;
   const MAX_BENEFITS = 3;
 
@@ -2210,14 +2212,16 @@
       { key: 'online',   label: 'באתר' },
     ];
     grid.innerHTML = opts.map(o =>
-      `<div class="disc-type-chip${mode === o.key ? ' selected' : ''}" onclick="selectRedeemModeN(${n},'${o.key}')">${o.label}</div>`
+      `<div class="disc-type-chip${mode.includes(o.key) ? ' selected' : ''}" onclick="selectRedeemModeN(${n},'${o.key}')">${o.label}</div>`
     ).join('');
     const codeWrap = document.getElementById('onlineCodeWrap' + n);
-    if (codeWrap) codeWrap.style.display = mode === 'online' ? 'block' : 'none';
+    if (codeWrap) codeWrap.style.display = mode.includes('online') ? 'block' : 'none';
   }
 
   function selectRedeemModeN(n, key) {
-    setRedeemModeN(n, key);
+    const mode = getRedeemModeN(n);
+    const i = mode.indexOf(key);
+    if (i === -1) mode.push(key); else mode.splice(i, 1);
     renderRedeemModeGridN(n);
     onDiscBuilderInputN(n);
   }
@@ -2251,7 +2255,7 @@
 
   function removeBenefit(n) {
     document.getElementById('benefitWrap' + n).style.display = 'none';
-    setRedeemModeN(n, null);
+    setRedeemModeN(n, []);
     ['discOtherText', 'discountCode'].forEach(id => {
       const el = document.getElementById(id + n);
       if (el) el.value = '';
@@ -2273,7 +2277,7 @@
       const text = computeDiscBuilderTextN(n);
       if (!text) continue;
       const redeemMode = getRedeemModeN(n);
-      const code = redeemMode === 'online' ? (document.getElementById('discountCode' + n)?.value.trim() || '') : '';
+      const code = redeemMode.includes('online') ? (document.getElementById('discountCode' + n)?.value.trim() || '') : '';
       arr.push({
         text, redeemMode, code,
         redeemTypes: computeDiscountTypes([...selectedBizTypes], redeemMode),
@@ -2767,7 +2771,7 @@
     if (!d.hasDiscount) toggleDiscount();
     fillDiscBuilderFields(d.discountBuilder);
     document.getElementById('discountCode').value = d.discountCode || '';
-    if (d.discountRedeemMode) { discRedeemMode = d.discountRedeemMode; renderRedeemModeGrid(); }
+    if (d.discountRedeemMode) { discRedeemMode = Array.isArray(d.discountRedeemMode) ? d.discountRedeemMode : [d.discountRedeemMode]; renderRedeemModeGrid(); }
     onDiscBuilderInput();
 
     if (d.wantsBusinessOfWeek) toggleWeekly('wow');
