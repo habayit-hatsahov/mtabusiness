@@ -511,8 +511,19 @@ button { font-family: inherit; }
 
 <!-- ══ HERO ══ -->
 <section class="lp-hero">
-  <h1 id="heroTitle">כל העסקים של אוהדי מכבי תל אביב, במקום אחד</h1>
-  <div class="lp-hero-slogan">אוהדי מכבי קונים כחול־צהוב</div>
+  <!-- מוסתרים כברירת-מחדל (מתוך ה-HTML עצמו, לא CSS/JS מאוחר) כדי שהציור-הראשון לא יראה את
+       הטקסט הקבוע כאן לפני שידוע איזה טקסט לפרסם בפועל מ-Firestore — ר' script.type=module
+       למטה שחושף אותם + רשת-ביטחון עצמאית מיד למטה שמוודאת שהם לא נשארים מוסתרים אם ה-module
+       לא רץ בכלל (לדוגמה: חסימת-רשת של Firebase). -->
+  <h1 id="heroTitle" style="visibility:hidden">כל העסקים של אוהדי מכבי תל אביב, במקום אחד</h1>
+  <div class="lp-hero-slogan" style="visibility:hidden">אוהדי מכבי קונים כחול־צהוב</div>
+  <script>
+    setTimeout(function () {
+      var t = document.getElementById('heroTitle'), s = document.querySelector('.lp-hero-slogan');
+      if (t) t.style.visibility = '';
+      if (s) s.style.visibility = '';
+    }, 1200);
+  </script>
 
   <div class="reg-card-wrap" id="guestRegBlock">
     <div class="reg-card">
@@ -886,6 +897,19 @@ function setTitleKeepYellowWord(el, text) {
   el.innerHTML = esc.replace(/צהוב/g, '<span class="img-card-title-yellow">צהוב</span>');
 }
 (async () => {
+  // מסתיר את כותרת-ההירו+הסלוגן עד שידוע איזה טקסט מוצג בפועל — בלי זה רואים תמיד קודם את
+  // ברירת-המחדל הקבועה ב-HTML ואז הבזק להחלפה בתוכן שפורסם (firestore-lite אין לו cache
+  // מקומי, אז יש תמיד קריאת-רשת אמיתית שמגיעה אחרי הציור הראשון). רשת-ביטחון 700ms מוודאת
+  // שהכותרת לא נשארת מוסתרת אם Firestore איטי/נכשל.
+  const heroTitleEl = document.getElementById('heroTitle');
+  const heroSloganEl = document.querySelector('.lp-hero-slogan');
+  if (heroTitleEl) heroTitleEl.style.visibility = 'hidden';
+  if (heroSloganEl) heroSloganEl.style.visibility = 'hidden';
+  const revealHero = () => {
+    if (heroTitleEl) heroTitleEl.style.visibility = '';
+    if (heroSloganEl) heroSloganEl.style.visibility = '';
+  };
+  const heroSafetyTimer = setTimeout(revealHero, 700);
   try {
     const snap = await getDoc(doc(db, 'settings', 'landingContent'));
     if (!snap.exists()) return;
@@ -914,6 +938,7 @@ function setTitleKeepYellowWord(el, text) {
     if (c.finalBtn1) document.querySelector('.lp-final-btn-ink').textContent = c.finalBtn1;
     if (c.finalBtn2) document.querySelector('.lp-final-btn-white').textContent = c.finalBtn2;
   } catch (e) { console.error('טעינת תוכן דף-הנחיתה מ-Firestore נכשלה, נשאר על ברירת-המחדל הקבועה:', e); }
+  finally { clearTimeout(heroSafetyTimer); revealHero(); }
 })();
 
 // ── התחברות — טלפון+קוד, מאומת מול Firestore בצד-שרת דרך ה-Worker (זהה ל-landing-demo.html) ──
