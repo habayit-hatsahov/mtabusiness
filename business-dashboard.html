@@ -204,6 +204,32 @@
       text-decoration: none; cursor: pointer;
     }
     .menu-add-biz:active { color: var(--text); }
+    /* ── IMAGE LIGHTBOX — לחיצה על תמונה (בדמו/פריוויו וגם בשלב 4) פותחת תצוגה מוגדלת ── */
+    .img-lightbox-overlay {
+      display: none; position: fixed; inset: 0; z-index: 500;
+      background: rgba(0,0,0,.82); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; padding: 24px;
+      cursor: zoom-out;
+    }
+    .img-lightbox-overlay.open { display: flex; }
+    .img-lightbox-overlay img {
+      max-width: 100%; max-height: 100%; border-radius: 12px;
+      box-shadow: 0 24px 60px rgba(0,0,0,.5); cursor: default;
+    }
+    .img-lightbox-close {
+      position: absolute; top: 16px; left: 16px; z-index: 5;
+      width: 38px; height: 38px; border-radius: 50%;
+      background: rgba(255,255,255,.15); border: none;
+      color: #fff; font-size: 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .img-lightbox-close:hover { background: rgba(255,255,255,.28); }
+    /* תמונות שמאפשרות הגדלה מקבלות סמן-זכוכית-מגדלת, כדי שיהיה ברור שאפשר ללחוץ. editCoverPhotoImg/
+       editLogoImg לא בכלל — שם הלחיצה על התמונה עצמה עדיין פותחת בורר-קבצים (מוחלף-תמונה), ההגדלה
+       שם רק דרך כפתור-🔍 הייעודי (ר' .edit-img-enlarge). */
+    .pv-sheet-hero img, .pv-sheet-gallery img, .pv-feed-card img, .edit-media-thumb img {
+      cursor: zoom-in;
+    }
     /* ── CONTACT SHEET ── */
     .contact-overlay {
       display: none; position: fixed; inset: 0; z-index: 410;
@@ -536,6 +562,11 @@
     }
     .pending-banner-title { font-size: 13px; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
     .pending-banner-sub { font-size: 12px; color: var(--text-sm); line-height: 1.6; }
+    .pending-banner-rows {
+      margin-top: 12px; background: var(--card-bg); border-radius: 10px;
+      padding: 2px 14px; border: 1px solid rgba(255,222,0,.4);
+    }
+    .pending-banner-rows:empty { display: none; }
 
     /* ── מומלץ מחשב (רק במסכי מובייל, בראש הפאנל — ההערה הראשונה שרואים, לפני מד השלמות) ── */
     .desktop-tip-banner {
@@ -840,6 +871,14 @@
       background: var(--orange); color: #fff; border: none; cursor: pointer;
       font-size: 11px; font-weight: 800; z-index: 2; display: flex; align-items: center; justify-content: center;
     }
+    /* כפתור הגדלה — אותו עיקרון-בדיוק כמו edit-logo-remove (z-index:2, בתוך ה-preview-wrap):
+       input[type=file] השקוף שמכסה את כל edit-upload-zone (z-index:1) "בולע" כל onclick שינסה
+       לשבת ישירות על ה-<img> עצמו (בלי z-index משלו) — לכן חייב כפתור נפרד, לא onclick על התמונה. */
+    .edit-img-enlarge {
+      position: absolute; bottom: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(0,0,0,.62); color: #fff; border: none; cursor: pointer;
+      font-size: 12px; z-index: 2; display: flex; align-items: center; justify-content: center;
+    }
     .edit-media-row {
       display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
       background: rgba(var(--fg-rgb),.04); border-radius: 10px; padding: 8px 10px; border: 1.5px solid var(--border-md);
@@ -852,6 +891,10 @@
     }
     .edit-media-thumb input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
     .edit-media-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    /* "+" ברור בריבוע-ההעלאה הריק — לפי בקשה מפורשת (2026-08-12): לפני זה הריבוע היה ריק לגמרי,
+       שום סימן שצריך ללחוץ שם כדי להעלות תמונה. pointer-events:none — הלחיצה עצמה תמיד מגיעה
+       ל-input[type=file] השקוף שמעליו (position:absolute), לא לטקסט עצמו. */
+    .edit-media-thumb-plus { font-size: 22px; font-weight: 800; pointer-events: none; line-height: 1; }
     .edit-media-fields { flex: 1; display: flex; flex-direction: column; gap: 5px; }
     .edit-media-fields input {
       width: 100%; padding: 7px 10px; border: 1.5px solid var(--border-md);
@@ -870,11 +913,6 @@
     }
     .edit-add-btn:hover { border-color: var(--yellow); background: rgba(255,222,0,.08); }
 
-    /* ── DRAFT ── */
-    .card-changed-badge {
-      font-size: 10px; font-weight: 800; color: var(--accent); background: rgba(255,222,0,.15);
-      border: 1px solid rgba(255,222,0,.35); border-radius: 8px; padding: 2px 7px; margin-right: 6px; vertical-align: middle;
-    }
     .draft-submit-bar {
       position: fixed; bottom: 20px; right: 16px; left: 16px; margin: 0 auto;
       width: auto; max-width: 608px;
@@ -897,10 +935,11 @@
     }
 
     /* ── CONFIRM SUMMARY VIEW ── */
-    .confirm-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+    /* מוגדל לפי בקשה מפורשת (2026-08-12) — "את הסקירה צריך להגדיל יותר קצת שיהיה ברור" */
+    .confirm-row { padding: 13px 0; border-bottom: 1px solid var(--border); }
     .confirm-row:last-child { border-bottom: none; }
-    .confirm-field { display: block; font-size: 11px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px; }
-    .confirm-values { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+    .confirm-field { display: block; font-size: 13px; font-weight: 800; color: var(--text-muted); margin-bottom: 5px; }
+    .confirm-values { display: flex; align-items: center; gap: 8px; font-size: 15.5px; line-height: 1.5; flex-wrap: wrap; }
     .confirm-old { color: var(--text-sm); text-decoration: line-through; }
     .confirm-arrow { color: var(--text-muted); }
     .confirm-new { color: var(--orange); font-weight: 800; }
@@ -921,12 +960,20 @@
        ══════════════════════════════════════════════════════ */
 
     /* Full card — replicates bottom sheet from home.html */
+    /* יחס-הרוחב-גובה של ה-hero זהה בדיוק ל-.sheet-hero האמיתי ב-home.html (520px/300px = 26:15) —
+       לפני זה height קבוע 130px בעוד .pv-sheet נמתח לרוחב-המסגרת המלא (עד 860px), יחס שונה לגמרי
+       מהמודאל האמיתי (860:130 מול 520:300) — אותה תמונת-קאבר נחתכת אחרת לגמרי בין הפריוויו לאתר
+       החי (המשתמש דיווח על כך, ר' PROJECT_CONTEXT.md §193). ניסיון קודם עם max-width:520px קבוע
+       על .pv-sheet יישר את יחס-החיתוך נכון, אבל השאיר שוליים שחורים ריקים מסביב בתוך המסגרת
+       הרחבה יותר (860px) — aspect-ratio במקום height קבוע פותר את שתי הבעיות ביחד: הכרטיס ממשיך
+       למלא את כל רוחב המסגרת (בלי שוליים), וה-hero משמר את אותו יחס-חיתוך בדיוק כמו באתר, רק
+       בגודל-פיקסלים גדול יותר (אותו קרופ, מוצג יותר גדול — לא קרופ שונה). */
     .pv-sheet {
       background: var(--card-bg); border-radius: var(--radius);
       border: 1px solid var(--border-md); overflow: hidden;
     }
     .pv-sheet-hero {
-      height: 130px; display: flex; align-items: center; justify-content: center;
+      aspect-ratio: 26 / 15; display: flex; align-items: center; justify-content: center;
       position: relative; overflow: hidden;
       background: var(--text);
     }
@@ -934,22 +981,22 @@
       position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
     }
     .pv-sheet-hero-logo-badge {
-      position: absolute; bottom: -20px; right: 16px; z-index: 3;
-      width: 56px; height: 56px; border-radius: 16px;
+      position: absolute; bottom: -26px; right: 20px; z-index: 3;
+      width: 72px; height: 72px; border-radius: 18px;
       background: #fff; border: none;
-      box-shadow: 0 6px 16px rgba(0,0,0,.28);
+      box-shadow: 0 8px 20px rgba(10,42,102,.22);
       display: flex; align-items: center; justify-content: center; overflow: hidden;
     }
     .pv-sheet-hero-logo-badge img {
       position: static; width: 100%; height: 100%; object-fit: contain; padding: 4px;
     }
     .pv-sheet-logo {
-      width: 64px; height: 64px; border-radius: 18px;
+      width: 82px; height: 82px; border-radius: 15px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 24px; font-weight: 900; color: var(--yellow);
+      font-size: 26px; font-weight: 900; color: var(--yellow);
       position: relative; z-index: 1; font-family: 'Rubik', sans-serif;
     }
-    .pv-sheet-body { padding: 28px 16px 18px; }
+    .pv-sheet-body { padding: 40px 20px 24px; }
     .pv-sheet-name { font-size: 18px; font-weight: 900; color: var(--text); }
     .pv-sheet-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .pv-sheet-tag { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 14px; }
@@ -987,13 +1034,15 @@
     }
     .pv-sheet-benefit-secondary .pv-sheet-benefit-text { font-size: 12.5px; }
     .pv-sheet-gallery {
-      display: flex; gap: 6px; overflow-x: auto;
+      display: flex; gap: 8px; overflow-x: auto;
       scrollbar-width: none;
     }
     .pv-sheet-gallery::-webkit-scrollbar { display: none; }
+    /* גודל+רדיוס זהים בדיוק ל-.sheet-gallery img האמיתי ב-home.html — הפריוויו כאן היה קטן
+       יותר מהתצוגה האמיתית באתר (84px/8px בעבר), לא רק "קצת קטן" לפי טעם, אלא לא-מדויק. */
     .pv-sheet-gallery img {
-      flex-shrink: 0; width: 84px; height: 84px;
-      object-fit: cover; border-radius: 8px;
+      flex-shrink: 0; width: 104px; height: 104px;
+      object-fit: cover; border-radius: 12px;
     }
     .pv-sheet-info { margin-top: 10px; display: flex; flex-direction: column; gap: 12px; }
     .pv-sheet-info-row {
@@ -1215,8 +1264,9 @@
         <div class="panel-body">
           <div id="pendingBanner" style="display:none">
             <div class="pending-banner">
-              <div class="pending-banner-title">⏳ יש לך שינויים שממתינים לאישור מנהל</div>
-              <div class="pending-banner-sub">אפשר להמשיך לערוך בינתיים — כל שינוי נוסף יתווסף לאותה בקשה וישלח מחדש לבדיקה.</div>
+              <div class="pending-banner-title">יש לך שינויים שממתינים לאישור מנהל</div>
+              <div class="pending-banner-sub">אפשר להמשיך לערוך בינתיים — כל שינוי נוסף יתווסף לאותה בקשה וישלח מחדש לבדיקה. כל השינויים שממתינים לאישור, מרוכזים כאן:</div>
+              <div class="pending-banner-rows" id="pendingBannerRows"></div>
             </div>
           </div>
 
@@ -1224,8 +1274,8 @@
 
           <!-- מומלץ מחשב — רק במסכי מובייל, מעל מד השלמות כדי שתהיה ההערה הראשונה שרואים -->
           <div class="desktop-tip-banner">
-            <div class="desktop-tip-banner-title">מומלץ לערוך מהמחשב</div>
-            <div class="desktop-tip-banner-sub">מסך גדול ומקלדת מלאה מקלים על מילוי מדויק של הפרטים ומצמצמים טעויות הקלדה לפני שליחה לאישור מנהל.</div>
+            <div class="desktop-tip-banner-title">העריכה מותאמת למחשב — לא לטלפון</div>
+            <div class="desktop-tip-banner-sub">מסך גדול ומקלדת מלאה נדרשים למילוי נוח ומדויק של הפרטים. מומלץ להיכנס ולערוך רק מהמחשב, לפני שליחה לאישור מנהל.</div>
           </div>
 
           <!-- מד שלמות — רשימת פעולות ספציפית עם ניקוד, לוחצים וקופצים ישר לעריכה -->
@@ -1461,6 +1511,12 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- IMAGE LIGHTBOX — לחיצה על תמונה בדמו/פריוויו ("ככה זה ייראה") או בשלב 4 (מדיה) פותחת תצוגה מוגדלת -->
+<div class="img-lightbox-overlay" id="imgLightboxOverlay" onclick="if(event.target===this)closeImgLightbox()">
+  <button class="img-lightbox-close" onclick="closeImgLightbox()">✕</button>
+  <img id="imgLightboxImg" src="" alt="" onclick="event.stopPropagation()"/>
+</div>
+
 <!-- ══ PWA — התקנה למסך הבית ══ -->
 <div class="pwa-install-banner" id="pwaInstallBanner">
   <span class="pwa-install-icon">📲</span>
@@ -1508,6 +1564,67 @@ import { getAuth, signInWithCustomToken, onAuthStateChanged } from "https://www.
 // כתובת ה-Worker (Cloudflare) שמאמת accessToken מול Firestore בצד-שרת ומנפיק טוקן כניסה
 const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
+// תמונה של עסק pending/rejected חסומה ב-storage.rules ל-<img> רגיל בלי אימות (ר' §193,
+// storage.rules:46-48) — Worker /view-image מביא אותה בצד-שרת עם הרשאת ה-service-account
+// (עוקף דרך GCS ישיר, ר' worker/src/download.js) ומחזיר inline. חשוב: להשתמש בזה רק ל-.src
+// לתצוגה — dataset.existingUrl/updates.coverPhoto וכו' תמיד נשארים ה-URL הגולמי (מה שנשמר בפועל).
+function bizImageViewUrl(url) {
+  if (!url) return '';
+  // תצוגה-מקדימה מקומית של קובץ שטרם נשמר (FileReader/data:) — לא קיימת ב-Storage בכלל, אין מה
+  // להעביר דרך ה-Worker proxy. קורה בפועל דרך captureLiveMediaEdits (ר' renderBizView).
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  return WORKER_URL + '/view-image?url=' + encodeURIComponent(url);
+}
+
+// לוכד את מצב-המדיה-החי בטופס-העריכה (כולל עריכות שטרם נלחץ עליהן "שמור" — למשל שורת-גלריה
+// שנמחקה, או קובץ חדש שנבחר) *לפני* ש-renderBizView מוחק ובונה מחדש את כל ה-DOM. בלי זה, כל
+// render לא-קשור (שמירת שלב אחר לגמרי בזמן שהמדיה פתוחה) היה מוחק בשקט עריכות-מדיה לא-שמורות —
+// באג-אמת (2026-08-12, ר' PROJECT_CONTEXT.md §194: "התמונה בדמו הפכה לכחול" אחרי מחיקת גלריה).
+// מבדיל data: (קובץ חדש שנבחר, טרם הועלה) מ-URL קיים (משתמש ב-dataset.existingUrl הגולמי, לא
+// ב-.src המוצג — שכבר עבר bizImageViewUrl ויוכפל אם יוזן שוב).
+function captureLiveMediaEdits() {
+  const mediaForm = document.getElementById('secEdit-media');
+  if (!mediaForm || !mediaForm.classList.contains('open') || mediaForm.classList.contains('locked')) return null;
+
+  const coverImg = document.getElementById('editCoverPhotoImg');
+  const coverWrap = document.getElementById('editCoverPhotoPreviewWrap');
+  const coverShown = coverWrap && coverWrap.style.display !== 'none' && coverImg;
+  const coverPhoto = coverShown ? (coverImg.src.startsWith('data:') ? coverImg.src : (coverImg.dataset.existingUrl || '')) : '';
+
+  const logoImg = document.getElementById('editLogoImg');
+  const logoWrap = document.getElementById('editLogoPreviewWrap');
+  const logoShown = logoWrap && logoWrap.style.display !== 'none' && logoImg;
+  const logo = logoShown ? (logoImg.src.startsWith('data:') ? logoImg.src : (logoImg.dataset.existingUrl || '')) : '';
+
+  const photos = [...document.querySelectorAll('#editPhotoList [id^="photoRow-"]')].map(row => {
+    const idx = row.id.replace('photoRow-', '');
+    const thumb = document.getElementById('photoThumb-' + idx);
+    const img = thumb ? thumb.querySelector('img') : null;
+    const rawUrlInput = document.getElementById('photoUrl-' + idx)?.value.trim() || '';
+    const url = (img && img.src.startsWith('data:')) ? img.src : rawUrlInput;
+    const name = document.getElementById('photoName-' + idx)?.value.trim() || '';
+    return { url, name };
+  }).filter(p => p.url);
+
+  return {
+    coverPhoto, coverPhotoThumb: coverShown ? (coverImg.dataset.existingThumbUrl || '') : '',
+    logo, logoThumb: logoShown ? (logoImg.dataset.existingThumbUrl || '') : '',
+    photos,
+  };
+}
+
+// לחיצה על תמונה (בדמו/פריוויו וגם בשלב 4-מדיה) פותחת תצוגה מוגדלת — בקשה מפורשת (2026-08-12,
+// ר' PROJECT_CONTEXT.md §194). מקבל את ה-src הנוכחי של התמונה שנלחצה כמו שהוא (כבר עבר
+// bizImageViewUrl אם צריך, או data: URL זמני לתצוגה-מקדימה של קובץ טרם-נשמר) — לא בונה URL חדש.
+window.openImgLightbox = function(src) {
+  if (!src) return;
+  document.getElementById('imgLightboxImg').src = src;
+  document.getElementById('imgLightboxOverlay').classList.add('open');
+};
+window.closeImgLightbox = function() {
+  document.getElementById('imgLightboxOverlay').classList.remove('open');
+};
+
 // app נפרד ומבודד (לא ה-app המשותף מ-firebase-config.js) — כניסה כבעל-עסק כאן לא אמורה
 // לדרוס session Firebase משותף (מנהל/חבר שפתוח לו טאב אחר באותו דפדפן, ר' דיווח מ-2026-07-18:
 // מנהל שנכנס לדשבורד עסק היה נזרק מחוץ ל-admin-businesses.html בחזרה, כי ה-session שלו הוחלף בזה של העסק)
@@ -1551,9 +1668,37 @@ const FIELD_GROUPS = {
   owner: ['ownerFirst','ownerLast','ownerPhone','ownerEmail'],
   cathours: ['bizTypes','name','categoryPrimary','cat','tags','tagSecondSuggestion','noTagFits','tagSuggestion','alsoCategorySuggestion'],
   bizdetails: ['desc','branches','city','address','phone','whatsapp','serviceEmail','regions','websiteOnline','hours','website','instagram','facebook'],
-  discount: ['hasDiscount','discountText','discountTypes','discountRedeemMode','additionalDiscounts','wantsBusinessOfWeek','wantsBenefitOfWeek'],
-  media: ['coverPhoto','logo','photos','videos'],
+  discount: ['hasDiscount','discountText','discountTextFull','discountCode','discountTypes','discountRedeemMode','discountBuilder','additionalDiscounts','wantsBusinessOfWeek','wantsBenefitOfWeek'],
+  media: ['coverPhoto','coverPhotoThumb','logo','logoThumb','photos','videos'],
 };
+
+// מספר-שלב לכל שדה (1·cathours 2·bizdetails 3·discount 4·media 5·owner, ר' ההערה למעלה) — לשימוש
+// בסדר-התצוגה בסקירה (openConfirmSummary), כדי שהשינויים יוצגו לפי סדר-השלבים ולא לפי סדר-לחיצה
+// (המשתמש: "חשוב להציג את השינויים לפי השלבים שיהיה נוח לעין לבעל העסק" — הצעת-תגית-שנייה שנוספה
+// אחרונה הופיעה בתחתית הרשימה, לא ליד שאר שדות שלב 1).
+const FIELD_STEP_ORDER = { cathours: 1, bizdetails: 2, discount: 3, media: 4, owner: 5 };
+const FIELD_TO_STEP = {};
+Object.entries(FIELD_GROUPS).forEach(([group, fields]) => {
+  fields.forEach(f => { FIELD_TO_STEP[f] = FIELD_STEP_ORDER[group]; });
+});
+// שדות שלא מוצגים בסקירה בכלל — כולם כפילויות-מכוונות של שדה אחר שכבר מוצג (אותו תוכן, נכתב
+// פעמיים משתי סיבות היסטוריות/תאימות-לאחור שונות), או snapshot פנימי לא-קריא. בדיקה שיטתית
+// (2026-08-12, ר' PROJECT_CONTEXT.md §197) של *כל* שדה שנכתב אי-פעם דרך stageChanges מול
+// FIELD_LABELS/fmtFieldVal — נמצאו עוד כמה כפילויות באותה משפחה בדיוק כמו cat/categoryPrimary:
+// - cat: כפילות-מכוונת של categoryPrimary (שני שמות לאותו שדה, ר' saveCatHours).
+// - city/address: כפילות-מכוונת של branches[0].city/address (נכתבים גם בנפרד וגם בתוך branches[]).
+// - discountTypes: נגזר תמיד מ-discountRedeemMode (computeDiscountTypes מחזירה אותו מערך בפועל
+//   כשיש בחירה) — אותו תוכן פעמיים, "מקום מימוש" כבר מוצג בנפרד.
+// - coverPhotoThumb/logoThumb: גרסה-ממוזערת של coverPhoto/logo — נגזרת אוטומטית, לא עריכה נפרדת.
+// - discountBuilder: snapshot פנימי ל-restore הטופס (אובייקט מקונן, לא טקסט קריא — היה מוצג
+//   "[object Object] → [object Object]").
+// - discountText: הכותרת הקצרה שנגזרת אוטומטית (AI) מ-discountTextFull — לא משהו שבעל-העסק כתב/
+//   ערך בעצמו, ולפעמים עדיין ריקה/placeholder-ית בזמן שהקיצור עוד רץ ברקע ("אני מחכה לטקסט של..."
+//   — המשתמש דיווח, ר' §194). discountTextFull כבר מוצג בנפרד בתור "תיאור ההטבה".
+const CONFIRM_ROW_EXCLUDE = new Set([
+  'cat', 'city', 'address', 'discountTypes', 'coverPhotoThumb', 'logoThumb',
+  'discountBuilder', 'discountText',
+]);
 
 // קטגוריות + תגיות — מקור אמת יחיד, זהה ל-home.html ול-categories-demo.html
 // CATEGORIES מגיע מ-categories.js (window.CATEGORIES, script קלאסי בטעינה מוקדמת ב-head) —
@@ -1616,10 +1761,10 @@ const FIELD_LABELS = {
   regions:'אזורי פעילות', websiteOnline:'אתר אונליין',
   phone:'טלפון עסק', whatsapp:'WhatsApp', serviceEmail:'מייל שירות',
   categoryPrimary:'קטגוריה ראשית', cat:'קטגוריה ראשית', tags:'תגיות', tagSecondSuggestion:'הצעת תגית שנייה', noTagFits:'אין תגית מתאימה', tagSuggestion:'הצעת תגית', alsoCategorySuggestion:'הצעה למופיע גם תחת', alsoCategoryNote:'הערה לגבי קטגוריה נוספת', hours:'שעות פעילות',
-  hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTypes:'איפה ניתן לממש', discountRedeemMode:'מקום מימוש', additionalDiscounts:'הטבות נוספות',
+  hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTextFull:'תיאור ההטבה', discountCode:'קוד קופון', discountTypes:'איפה ניתן לממש', discountRedeemMode:'מקום מימוש', additionalDiscounts:'הטבות נוספות',
   wantsBusinessOfWeek:'עסק השבוע', wantsBenefitOfWeek:'הטבת השבוע',
   website:'אתר', instagram:'אינסטגרם', facebook:'פייסבוק',
-  coverPhoto:'תמונה מייצגת', logo:'לוגו', photos:'גלריית תמונות', videos:'סרטונים',
+  coverPhoto:'תמונה מייצגת', coverPhotoThumb:'תמונה מייצגת (ממוזערת)', logo:'לוגו', logoThumb:'לוגו (ממוזער)', photos:'גלריית תמונות', videos:'סרטונים',
 };
 
 const TIPS = {
@@ -1636,10 +1781,12 @@ const TIPS = {
   instagram: ' חשוב להכניס כתובת אינסטגרם — כדי שנוכל לתייג ולפרסם את העסק שלכם בעמוד שלנו',
 };
 
+// ⚠️ 2026-08-12 — משתמש ב-*_PLAIN (בלי אימוג'י/אייקון) בכוונה, לא הגרסאות-עם-אימוג'י — המשתמש:
+// "בקובייה החדשה של השינויים למעלה תוריד את האימוגים".
 function fmtFieldVal(k, v) {
-  if (k === 'discountTypes' || k === 'discountRedeemMode') return (Array.isArray(v) ? v : (v ? [v] : [])).map(t =>DISCOUNT_TYPE_LABELS[t] || t).join(', ') || '—';
-  if (k === 'bizTypes') return (v || []).map(t =>BIZ_TYPE_LABELS[t] || t).join(', ') || '—';
-  if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoCategorySuggestion') return v ? (CAT_LABELS[mapCatKey(v)] || v) : '—';
+  if (k === 'discountTypes' || k === 'discountRedeemMode') return (Array.isArray(v) ? v : (v ? [v] : [])).map(t =>DISCOUNT_TYPE_LABELS_PLAIN[t] || t).join(', ') || '—';
+  if (k === 'bizTypes') return (v || []).map(t =>BIZ_TYPE_LABELS_PLAIN[t] || t).join(', ') || '—';
+  if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoCategorySuggestion') return v ? (CAT_LABELS_PLAIN[mapCatKey(v)] || v) : '—';
   if (k === 'tags') return (v || []).join(', ') || '—';
   if (k === 'regions') return (v || []).join(', ') || '—';
   if (k === 'branches') return (v || []).map(b =>[b.city, b.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | ') || '—';
@@ -1678,6 +1825,13 @@ function dataUrlToFile(dataUrl, filename) {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new File([bytes], filename, { type: mime });
+}
+// DataTransfer — הדרך התקנית היחידה לקבוע input.files מקוד (input.value לא ניתן לכתיבה מסיבות
+// אבטחה) — משמש ל-initMediaForm כששוחזרים קובץ-שנבחר-אך-טרם-נשמר אחרי render לא-קשור.
+function setInputFiles(inputEl, files) {
+  const dt = new DataTransfer();
+  files.forEach(f => dt.items.add(f));
+  inputEl.files = dt.files;
 }
 function compressImageFile(file, maxDim = 1280, quality = 0.82) {
   return new Promise((resolve, reject) =>{
@@ -1811,6 +1965,9 @@ function showDashboard() {
 function renderBizView(flashZone) {
   const w = { ...biz, ...(biz.pendingChanges || {}), ...draftChanges };
   changedFieldsSet = new Set([...Object.keys(biz.pendingChanges || {}), ...Object.keys(draftChanges)]);
+  // ר' captureLiveMediaEdits — נלכד *לפני* שה-HTML למטה נמחק ונבנה מחדש, כדי לא לאבד עריכות-מדיה
+  // לא-שמורות (המדיה, בשונה משאר השלבים, נערכת ב-DOM ישירות ולא ב-draftChanges עד לחיצת "שמור").
+  const liveMediaEdits = captureLiveMediaEdits();
 
   document.getElementById('bizHeroName').textContent = w.name || '—';
   const types = (w.bizTypes || []).map(t =>BIZ_TYPE_LABELS_PLAIN[t]).join(' · ');
@@ -1829,13 +1986,28 @@ function renderBizView(flashZone) {
   document.getElementById('bizHeroShareBtn').style.display = s === 'approved' ? 'inline-flex' : 'none';
   document.getElementById('menuShareBizItem').style.display = s === 'approved' ? 'flex' : 'none';
 
-  document.getElementById('pendingBanner').style.display = biz.pendingChanges ? 'block' : 'none';
+  // באנר מרוכז אחד למעלה — כל שינוי שממתין לאישור (גם כבר-נשלח וגם עדיין-בטיוטה-מקומית), לפי
+  // בקשה מפורשת (2026-08-12, ר' PROJECT_CONTEXT.md §194): "נרכז לו את כל השינויים למעלה פשוט
+  // ולא על הכרטיס" — כי הדגשה-בכתום בתוך כל שלב בנפרד התגלתה כלא-אמינה (חלק מהשדות לא הודגשו
+  // כמו שצריך). הכרטיסים למטה לא שונו — מוצגים בדיוק כמו קודם.
+  const allPendingChanges = { ...(biz.pendingChanges || {}), ...draftChanges };
+  const pendingRows = buildChangeRows(allPendingChanges);
+  document.getElementById('pendingBanner').style.display = pendingRows ? 'block' : 'none';
+  document.getElementById('pendingBannerRows').innerHTML = pendingRows;
   renderContactNoteBanner(biz);
   renderTermsAckPrompt(biz);
 
   document.getElementById('bizInfoCards').innerHTML =
     renderCatHoursCard(w) + renderBizDetailsCard(w) + renderDiscountCard(w) + renderMediaCard(w) + renderOwnerCard(w);
-  initMediaForm(w);
+  initMediaForm(liveMediaEdits ? { ...w, ...liveMediaEdits } : w);
+  if (liveMediaEdits) {
+    // מחזירים את שלב-המדיה למצב פתוח (renderMediaCard תמיד בונה אותו סגור+נעול כברירת-מחדל) —
+    // אחרת המשתמש רואה את השלב "נסגר" באמצע עריכה בלי שנגע בו.
+    const editEl = document.getElementById('secEdit-media');
+    const viewEl = document.getElementById('secView-media');
+    if (editEl) { editEl.classList.add('open'); editEl.classList.remove('locked'); }
+    if (viewEl) viewEl.classList.add('hidden-when-edit');
+  }
   renderCatGrid();
   renderTagsBar();
   renderAlsoCatGrid();
@@ -1856,7 +2028,11 @@ function renderBizView(flashZone) {
   }
 
   renderCompleteness(w);
-  refreshPreviews(w, flashZone);
+  // ⚠️ 2026-08-12 — היה refreshPreviews(w, flashZone) עם w הממוזג (biz+pendingChanges+draftChanges) —
+  // עקף בשקט את התיקון ב-getLiveDemoState/refreshPreviews (§196): render מלא (אחרי כל שמירה)
+  // המשיך להאכיל את הדמו בתוכן-טיוטה במקום מה שבאמת חי, בדיוק המצב שהמשתמש ביקש לבטל. בלי
+  // ארגומנט — נופל לברירת-המחדל getLiveDemoState() כמו כל קריאה אחרת ל-refreshPreviews.
+  refreshPreviews(null, flashZone);
 }
 
 function esc(v) {
@@ -1913,20 +2089,23 @@ async function renderContactNoteBanner(b) {
         <div class="pending-banner-sub">"${esc(b.note)}"</div>
       </div>`;
 }
-function rowHtml(label, v, fieldKeys) {
-  const keys = fieldKeys ? (Array.isArray(fieldKeys) ? fieldKeys : [fieldKeys]) : [];
-  const changed = keys.some(k =>changedFieldsSet.has(k));
-  return `<div class="info-row${changed ? ' changed' : ''}"><span class="info-label">${label}</span>${v ? `<span class="info-value">${esc(v)}</span>` : `<span class="info-value missing">לא מולא</span>`}</div>`;
+// ⚠️ 2026-08-12 — הדגשה-בכתום פר-שדה הוסרה (fieldKeys/changed נשארו כפרמטר בקריאות קיימות אבל
+// לא בשימוש) — המשתמש: "בשלבים אל תציג את הבקשות, ריכזנו אותם למעלה בגלל זה אז תוריד את כל
+// מה שכתום". הבאנר המרוכז (pendingBanner) הוא המקום היחיד עכשיו שמסמן שינוי-ממתין, ר' §195/196.
+function rowHtml(label, v) {
+  return `<div class="info-row"><span class="info-label">${label}</span>${v ? `<span class="info-value">${esc(v)}</span>` : `<span class="info-value missing">לא מולא</span>`}</div>`;
 }
 // שורת הטבה-נוספת (2/3) מודגשת בצהוב בתצוגת-הסיכום — כדי להבדיל אותן ויזואלית מההטבה הראשית
 // ומזו-לזו, לפי בקשה מפורשת. לא עובר דרך rowHtml כי צריך מחלקה נוספת (highlight).
 function benefitRowHtml(label, v) {
   return `<div class="info-row benefit-row"><span class="info-label">${label}</span><span class="info-value">${esc(v)}</span></div>`;
 }
-// step = מספר-השלב הקנוני (1-5, ר' FIELD_GROUPS) — עיגול-מספר אחרי כותרת הכרטיס, לא עוד אייקון-אימוג'י
-function cardTitle(step, text, groupKey) {
-  const changed = FIELD_GROUPS[groupKey].some(f =>changedFieldsSet.has(f));
-  return `<div class="info-card-title-wrap"><span class="info-card-title">${text}${changed ? '<span class="card-changed-badge">שונה</span>' : ''}</span><span class="step-num-badge">${step}</span></div>`;
+// step = מספר-השלב הקנוני (1-5, ר' FIELD_GROUPS) — עיגול-מספר אחרי כותרת הכרטיס, לא עוד אייקון-אימוג'י.
+// ⚠️ 2026-08-12 — תג "בקשה לשינוי" פר-כרטיס הוסר (לא רק groupKey, גם לא בשימוש יותר) — המשתמש:
+// "תוריד את השינויים מהכרטיסים עצמם" — הבאנר המרוכז למעלה (renderBizView, pendingBanner) הוא
+// המקום היחיד עכשיו שמראה מה ממתין לאישור, ר' §195.
+function cardTitle(step, text) {
+  return `<div class="info-card-title-wrap"><span class="info-card-title">${text}</span><span class="step-num-badge">${step}</span></div>`;
 }
 function tipHtml(field) {
   return TIPS[field] ? `<div class="field-tip">${TIPS[field].trim()}</div>` : '';
@@ -1934,10 +2113,13 @@ function tipHtml(field) {
 
 // ── שלב 1 — בעל העסק ──
 function renderOwnerCard(w) {
-  const isSub = w.isSubscriber === 'yes';
+  // ⚠️ 2026-08-12 — שורות-התצוגה מציגות רק biz (חי) — ר' §197. gate/subNum/isSubscriber/fbUrl/
+  // ownerRelation ממילא לעולם לא נכתבים דרך stageChanges (רק הצוות משנה אותם) — biz.* ו-w.*
+  // תמיד זהים בפועל עבורם, אבל biz.* עקבי-בכוונה עם שאר הכרטיס.
+  const isSub = biz.isSubscriber === 'yes';
   const verifyText = isSub
-    ? `מנוי · שער ${w.gate || '—'} · מס׳ ${w.subNum || '—'}`
-    : `לא מנוי${w.fbUrl ? ' · פייסבוק מצורף' : ''}`;
+    ? `מנוי · שער ${biz.gate || '—'} · מס׳ ${biz.subNum || '—'}`
+    : `לא מנוי${biz.fbUrl ? ' · פייסבוק מצורף' : ''}`;
   return `
     <div class="info-card">
       <div class="info-card-head">
@@ -1946,10 +2128,10 @@ function renderOwnerCard(w) {
       </div>
       <div class="card-guide">הפרטים האלה מיועדים לצוות בלבד ולא מוצגים לאוהדים באינדקס. הם משמשים אותנו כדי ליצור איתכם קשר ולאמת שהעסק אכן שלכם.</div>
       <div class="info-rows" id="secView-owner">
-        ${rowHtml('שם', `${w.ownerFirst || ''} ${w.ownerLast || ''}`.trim(), ['ownerFirst','ownerLast'])}
-        ${rowHtml('טלפון', w.ownerPhone, 'ownerPhone')}
-        ${rowHtml('אימייל', w.ownerEmail, 'ownerEmail')}
-        ${rowHtml('קרבה לבעל המנוי', RELATION_LABELS[w.ownerRelation || ''] || w.ownerRelation)}
+        ${rowHtml('שם', `${biz.ownerFirst || ''} ${biz.ownerLast || ''}`.trim())}
+        ${rowHtml('טלפון', biz.ownerPhone)}
+        ${rowHtml('אימייל', biz.ownerEmail)}
+        ${rowHtml('קרבה לבעל המנוי', RELATION_LABELS[biz.ownerRelation || ''] || biz.ownerRelation)}
         ${rowHtml('אימות אוהד', verifyText)}
       </div>
       <div style="font-size:11.5px;color:var(--text-muted);line-height:1.55;margin-top:8px;">מספר המנוי, השער וקרבה לבעל המנוי אושרו על ידי הצוות ואי אפשר לשנות אותם מכאן. אם משהו לא מדויק, כתבו לנו ונעדכן.</div>
@@ -1990,12 +2172,23 @@ function renderBizDetailsCard(w) {
     `<div class="region-pill${regions.includes(r) ? ' selected' : ''}" onclick="toggleChipPill(this)">${r}</div>`
   ).join('');
 
-  const instaMissingHtml = !w.instagram ? `
+  const instaMissingHtml = !biz.instagram ? `
     <div class="push-card push-card-yellow">
       <div class="push-card-title">שווה למלא אינסטגרם</div>
       <div class="push-card-body">כדי שנוכל לתייג ולפרסם את העסק שלכם בעמוד שלנו. קישור לאתר או לרשת חברתית גם מוסיף אמינות ומראה שהעסק פעיל.</div>
       <button type="button" class="push-card-btn" onclick="jumpToSection('bizdetails')">להוספה</button>
     </div>` : '';
+
+  // ⚠️ 2026-08-12 — שורות-התצוגה (secView) מציגות רק מה שבאמת חי (biz), לא w הממוזג-עם-טיוטה —
+  // ר' §197. משתני ה-w למעלה (types/isPhysical/.../regionPillsHtml) ממשיכים לשרת רק את טופס-
+  // העריכה (secEdit) — שם כן צריך לשקף טיוטה-בהמשך-עריכה.
+  const liveTypesView = biz.bizTypes || [];
+  const liveIsPhysical = liveTypesView.includes('physical');
+  const liveIsOnline = liveTypesView.includes('online');
+  const liveIsPro = liveTypesView.includes('pro');
+  const liveBranchesView = biz.branches || [];
+  const liveFirstBranchView = liveBranchesView[0] || {};
+  const liveRegionsView = biz.regions || [];
   return `
     <div class="info-card">
       <div class="info-card-head">
@@ -2004,20 +2197,20 @@ function renderBizDetailsCard(w) {
       </div>
       <div class="card-guide">שם, תיאור ודרכי יצירת קשר — זה מה שאוהד רואה קודם כל כשהוא פותח את הכרטיס שלכם. טלפון זמין ושעות פעילות מעלים אמינות, ותיאור נרחב ומפורט עונה למה לבחור דווקא בכם.</div>
       <div class="info-rows" id="secView-bizdetails">
-        ${rowHtml('תיאור', w.desc, 'desc')}
-        ${isPhysical ? ((w.branches && w.branches.length > 1)
-          ? rowHtml('סניפים', w.branches.map(br => [br.city, br.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | '), 'branches')
-          : rowHtml('עיר', firstBranch.city || w.city, ['branches','city']) + rowHtml('כתובת', firstBranch.address || w.address, ['branches','address'])) : ''}
-        ${isOnline ? rowHtml('אתר אונליין', w.websiteOnline, 'websiteOnline') : ''}
-        ${isPro ? rowHtml('אזורי פעילות', regions.join(', '), 'regions') : ''}
-        ${rowHtml('טלפון עסק', w.phone, 'phone')}
-        ${rowHtml('WhatsApp', w.whatsapp, 'whatsapp')}
-        ${rowHtml('מייל שירות', w.serviceEmail, 'serviceEmail')}
-        ${rowHtml('שעות פעילות', w.hours, 'hours')}
-        ${rowHtml('אתר', w.website, 'website')}
-        ${rowHtml('אינסטגרם', w.instagram, 'instagram')}
+        ${rowHtml('תיאור', biz.desc)}
+        ${liveIsPhysical ? ((liveBranchesView.length > 1)
+          ? rowHtml('סניפים', liveBranchesView.map(br => [br.city, br.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | '))
+          : rowHtml('עיר', liveFirstBranchView.city || biz.city) + rowHtml('כתובת', liveFirstBranchView.address || biz.address)) : ''}
+        ${liveIsOnline ? rowHtml('אתר אונליין', biz.websiteOnline) : ''}
+        ${liveIsPro ? rowHtml('אזורי פעילות', liveRegionsView.join(', ')) : ''}
+        ${rowHtml('טלפון עסק', biz.phone)}
+        ${rowHtml('WhatsApp', biz.whatsapp)}
+        ${rowHtml('מייל שירות', biz.serviceEmail)}
+        ${rowHtml('שעות פעילות', biz.hours)}
+        ${rowHtml('אתר', biz.website)}
+        ${rowHtml('אינסטגרם', biz.instagram)}
         ${instaMissingHtml}
-        ${rowHtml('פייסבוק', w.facebook, 'facebook')}
+        ${rowHtml('פייסבוק', biz.facebook)}
       </div>
       <div class="sec-edit-form" id="secEdit-bizdetails">
         <div class="form-group">
@@ -2095,14 +2288,15 @@ function renderCatHoursCard(w) {
   selectedAlsoCat = w.alsoUnderCategory ? mapCatKey(w.alsoUnderCategory) : null;
   pendingAlsoCatSuggestion = (w.alsoCategorySuggestion && w.alsoCategorySuggestion !== selectedAlsoCat) ? w.alsoCategorySuggestion : '';
 
-  const liveSecondTag = (w.tags || [])[1] || '';
-  const pendingSecondTag = w.tagSecondSuggestion || '';
-  const secondTagRowHtml = pendingSecondTag && pendingSecondTag !== liveSecondTag
-    ? rowHtml('תגית שנייה (מוצעת)', `${pendingSecondTag} — ממתינה לאישור מנהל`, 'tagSecondSuggestion')
-    : (liveSecondTag ? rowHtml('תגית שנייה', liveSecondTag) : '');
-  const alsoCatRowHtml = pendingAlsoCatSuggestion
-    ? rowHtml('מופיע גם תחת (מוצע)', `${CAT_LABELS_PLAIN[pendingAlsoCatSuggestion]} — ממתין לאישור מנהל`, 'alsoCategorySuggestion')
-    : (w.alsoUnderCategory ? rowHtml('מופיע גם תחת', CAT_LABELS_PLAIN[mapCatKey(w.alsoUnderCategory)]) : '');
+  // ⚠️ 2026-08-12 — שורות-התצוגה (סעיף secView, לא טופס-העריכה) מציגות רק מה שבאמת חי היום
+  // (biz בלבד) — לא הצעות/טיוטות ממתינות-לאישור בכלל. המשתמש: "בשלבים מציגים רק את מה שקורה
+  // באמת על הכרטיס... זה [ההצעות הממתינות] אנחנו אמרנו רק למעלה בבקשות לשינוי". קודם הוצגו כאן
+  // "תגית שנייה (מוצעת) — ממתינה לאישור מנהל" וכו' — כפילות מבלבלת מול הבאנר המרוכז (§195-197).
+  const liveCatKeyView = mapCatKey(biz.categoryPrimary || biz.cat || '');
+  const liveCatTypesView = biz.bizTypes || [];
+  const liveTagsView = biz.tags || [];
+  const secondTagRowHtml = (!biz.noTagFits && liveTagsView[1]) ? rowHtml('תגית שנייה', liveTagsView[1]) : '';
+  const alsoCatRowHtml = biz.alsoUnderCategory ? rowHtml('מופיע גם תחת', CAT_LABELS_PLAIN[mapCatKey(biz.alsoUnderCategory)]) : '';
 
   const catTypes = w.bizTypes || [];
   return `
@@ -2113,11 +2307,11 @@ function renderCatHoursCard(w) {
       </div>
       <div class="card-guide">הקטגוריה והתגיות קובעות איפה תופיע/י באינדקס ובאילו חיפושים תעלה/י. תגית מדויקת עוזרת לאוהדים למצוא אתכם ומסבירה במבט אחד מה אתם עושים.</div>
       <div class="info-rows" id="secView-cathours">
-        ${rowHtml('שם העסק', w.name, 'name')}
-        ${rowHtml('סוג עסק', catTypes.map(t =>BIZ_TYPE_LABELS_PLAIN[t]).join(', '), 'bizTypes')}
-        ${rowHtml('קטגוריה ראשית', CAT_LABELS_PLAIN[selectedCat], ['categoryPrimary','cat'])}
-        ${rowHtml('תגיות', w.noTagFits ? 'אין תגית מתאימה' : (selectedTags[0] || ''), 'tags')}
-        ${w.noTagFits ? '' : secondTagRowHtml}
+        ${rowHtml('שם העסק', biz.name)}
+        ${rowHtml('סוג עסק', liveCatTypesView.map(t =>BIZ_TYPE_LABELS_PLAIN[t]).join(', '))}
+        ${rowHtml('קטגוריה ראשית', CAT_LABELS_PLAIN[liveCatKeyView])}
+        ${rowHtml('תגיות', biz.noTagFits ? 'אין תגית מתאימה' : (liveTagsView[0] || ''))}
+        ${biz.noTagFits ? '' : secondTagRowHtml}
         ${alsoCatRowHtml}
       </div>
       <div class="sec-edit-form" id="secEdit-cathours">
@@ -2236,18 +2430,16 @@ function renderDiscountCard(w) {
   redeemMode3 = toRedeemArr(extra[1]?.redeemMode);
   if (!redeemMode3.length && extra[1]?.code) redeemMode3 = ['online'];
 
-  // "בבדיקת אישור מנהל" בשני מקרים: (1) יש שינוי בקבוצת ההטבה שטרם אושר — טיוטה מקומית או
-  // כבר-נשלחה, changedFieldsSet כולל את שניהם; (2) העסק כולו עדיין ממתין לאישור ראשוני
-  // (biz.status==='pending', למשל עסק חדש שרק נרשם) — אז שום דבר "לא באמת חי" עדיין, גם אם
-  // יש כבר טקסט הטבה בשדות (מולא בהרשמה, לא עבר עדיין עין של מנהל). ר' בקשה מפורשת.
-  const discountPendingApproval = (biz.status || 'pending') === 'pending'
-    || FIELD_GROUPS.discount.some(f => changedFieldsSet.has(f));
-  const liveCardRow = discountPendingApproval
-    ? rowHtml('מוצג כרגע בכרטיס באינדקס', 'בבדיקת אישור מנהל')
-    : rowHtml('מוצג כרגע בכרטיס באינדקס', biz.hasDiscount ? biz.discountText : 'אין הטבה');
+  // ⚠️ 2026-08-12 — שורת-התצוגה מציגה תמיד את התוכן החי-בפועל (biz), לא "בבדיקת אישור מנהל" —
+  // המשתמש: "תחזיר לתוכן המקורי כמו שצריך כי עדיין לא אושרה [ההטבה]". גם שאר שורות-התצוגה
+  // (איפה ניתן לממש/הטבות נוספות/עסק-השבוע) עברו לקרוא מ-biz ישירות, לא מ-w (הממוזג עם טיוטה) —
+  // עקבי עם cathours (ר' §197) ועם עקרון "בשלבים מציגים רק את מה שקורה באמת על הכרטיס".
+  const liveCardRow = rowHtml('מוצג כרגע בכרטיס באינדקס', biz.hasDiscount ? biz.discountText : 'אין הטבה');
+  const liveDTypes = biz.hasDiscount ? computeDiscountTypes(biz.bizTypes, toRedeemArr(biz.discountRedeemMode)) : [];
+  const liveExtra = biz.additionalDiscounts || [];
 
-  const wow = !!w.wantsBusinessOfWeek;
-  const wob = !!w.wantsBenefitOfWeek;
+  const wow = !!biz.wantsBusinessOfWeek;
+  const wob = !!biz.wantsBenefitOfWeek;
   const wowStatus = wow ? (weeklyTrackStatusText('business') || 'ברשימת ההמתנה, טרם נקבע תור') : 'לא סומן';
   const wobStatus = wob ? (weeklyTrackStatusText('benefit') || 'ברשימת ההמתנה, טרם נקבע תור') : 'לא סומן';
   return `
@@ -2259,23 +2451,23 @@ function renderDiscountCard(w) {
       <div class="card-guide">כרטיסים עם הטבה ברורה מקבלים הרבה יותר פניות — זו הסיבה המרכזית שאוהדים בוחרים דווקא בכם. יש לכם יותר מהטבה אחת? אפשר להוסיף עד שתיים נוספות, והן מוצגות בגיליון הפנימי של העסק.</div>
       <div class="info-rows" id="secView-discount">
         ${liveCardRow}
-        ${w.hasDiscount ? rowHtml('איפה ניתן לממש', dTypes.map(t =>DISCOUNT_TYPE_LABELS_PLAIN[t]).join(', '), 'discountTypes') : ''}
-        ${extra[0]?.text ? benefitRowHtml('הטבה 2', extra[0].text) : ''}
-        ${extra[1]?.text ? benefitRowHtml('הטבה 3', extra[1].text) : ''}
+        ${biz.hasDiscount ? rowHtml('תיאור ההטבה', biz.discountTextFull || biz.discountText) : ''}
+        ${biz.hasDiscount ? rowHtml('איפה ניתן לממש', liveDTypes.map(t =>DISCOUNT_TYPE_LABELS_PLAIN[t]).join(', ')) : ''}
+        ${liveExtra[0]?.text ? benefitRowHtml('הטבה 2', liveExtra[0].text) : ''}
+        ${liveExtra[1]?.text ? benefitRowHtml('הטבה 3', liveExtra[1].text) : ''}
         ${weeklyQuestionsHtml(wow, wob, wowStatus, wobStatus, false)}
       </div>
       <div class="sec-edit-form" id="secEdit-discount">
-        <div style="font-size:13px;font-weight:700;color:var(--accent);background:#FFFBE5;border:1px solid #F3E39A;border-radius:11px;padding:11px 13px;line-height:1.6;margin-bottom:14px;">מוצג כרגע בכרטיס באינדקס: <strong>${discountPendingApproval ? 'בבדיקת אישור מנהל' : esc(biz.hasDiscount ? biz.discountText : 'אין הטבה')}</strong> — השורה הזו לא ניתנת לעריכה כאן, הצוות גוזר אותה מההטבה הראשית שתמלאו למטה.</div>
         <div class="discount-toggle-row">
           <span class="form-label" style="margin:0">יש הטבה לחברים?</span>
           <div class="toggle-pill${discEditOn ? ' on' : ''}" id="editDiscToggle" onclick="toggleDiscountField()"></div>
         </div>
         <div id="editDiscFields" style="display:${discEditOn ? 'block' : 'none'}">
           <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:12px;line-height:1.6;">כמה רעיונות להטבה (לא בחירה, רק השראה): <strong>אחוז הנחה</strong>· <strong>מתנה/חינם</strong>· <strong>קנה וקבל</strong>· <strong>משלוח חינם</strong>· <strong>מחיר מיוחד</strong><br/>לדוגמה: "10% הנחה על כל הקנייה" / "קנה 1 קבל 1" / "משלוח חינם מעל 150 ₪"</div>
-          <div class="card-guide" style="font-weight:700;color:var(--accent);margin-bottom:8px;">זו ההטבה הראשית — היא זו שמוצגת על כרטיס העסק באינדקס, לכל חברי הקהילה.</div>
+          <div class="card-guide" style="font-weight:700;color:var(--accent);margin-bottom:8px;">זו ההטבה הראשית — ממנה אנחנו גוזרים תיאור קצר שיוצג על כרטיס העסק שלכם</div>
           <div class="form-group">
             <label class="form-label">תיאור ההטבה — ספרו לנו עליה בהרחבה <span style="font-weight:400;color:var(--text-muted);">(עד 300 תווים)</span></label>
-            <textarea class="form-input" id="editDiscOtherText" rows="4" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול, לא כולל ימי שישי-שבת. בתוקף עד סוף העונה, לא ניתן לשלב עם מבצעים אחרים." maxlength="300" oninput="onDiscBuilderInput()">${esc(w.discountTextFull || w.discountText)}</textarea>
+            <textarea class="form-input" id="editDiscOtherText" rows="4" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול, לא כולל ימי שישי-שבת. בתוקף עד סוף העונה, לא ניתן לשלב עם מבצעים אחרים." maxlength="300" oninput="onDiscBuilderInput()">${esc(biz.discountTextFull || biz.discountText)}</textarea>
             <div style="font-size:12px;color:var(--text-muted);margin-top:6px;margin-bottom:8px;">אפשר לפרט תנאים, תוקף וסייגים — מהתיאור הזה ניצור אוטומטית כותרת קצרה שתוצג על הכרטיס החיצוני שלכם, לאחר אישור מנהל.</div>
             <div class="char-count" id="editDiscOtherCount">0 / 300</div>
           </div>
@@ -2363,9 +2555,10 @@ function looksLikeImageUrl(url) {
 
 // ── מדיה ──
 function renderMediaCard(w) {
-  const coverUrl = looksLikeImageUrl(w.coverPhoto) ? w.coverPhoto : '';
+  // ⚠️ 2026-08-12 — "חסרה תמונה" משקף מה שבאמת חי (biz), לא w הממוזג-עם-טיוטה — ר' §197.
+  const coverUrl = looksLikeImageUrl(biz.coverPhoto) ? biz.coverPhoto : '';
   const missingCover = !coverUrl;
-  const missingGallery = !(w.photos && w.photos.filter(p =>p.url).length);
+  const missingGallery = !(biz.photos && biz.photos.filter(p =>p.url).length);
   let mediaMissingTitle = '';
   if (missingCover && missingGallery) mediaMissingTitle = 'חסרות תמונה מייצגת וגלריה';
   else if (missingCover) mediaMissingTitle = 'חסרה תמונה מייצגת';
@@ -2395,6 +2588,7 @@ function renderMediaCard(w) {
               <div id="editCoverPhotoPreviewWrap" class="edit-cover-preview">
                 <img id="editCoverPhotoImg" src="" alt="תמונה מייצגת" />
                 <button class="edit-logo-remove" onclick="removeCoverPhoto(event)">✕</button>
+                <button class="edit-img-enlarge" onclick="event.stopPropagation();openImgLightbox(document.getElementById('editCoverPhotoImg').src)" title="הגדלה">🔍</button>
               </div>
               <div id="editCoverPhotoPlaceholder">
                 <div class="edit-upload-icon">📷</div>
@@ -2412,6 +2606,7 @@ function renderMediaCard(w) {
               <div id="editLogoPreviewWrap" class="edit-logo-preview">
                 <img id="editLogoImg" src="" alt="לוגו" />
                 <button class="edit-logo-remove" onclick="removeLogo(event)">✕</button>
+                <button class="edit-img-enlarge" onclick="event.stopPropagation();openImgLightbox(document.getElementById('editLogoImg').src)" title="הגדלה">🔍</button>
             </div>
             <div id="editLogoPlaceholder">
               <div class="edit-upload-icon">🖼️</div>
@@ -2443,8 +2638,16 @@ function renderMediaCard(w) {
 function initMediaForm(w) {
   const coverImg = document.getElementById('editCoverPhotoImg');
   if (looksLikeImageUrl(w.coverPhoto)) {
-    coverImg.src = w.coverPhoto;
-    coverImg.dataset.existingUrl = w.coverPhoto;
+    coverImg.src = bizImageViewUrl(w.coverPhoto);
+    // data: = קובץ חדש שנבחר וטרם נשמר (שוחזר ע"י captureLiveMediaEdits אחרי render לא-קשור) —
+    // לא URL "קיים" באמת. משחזרים גם את input.files בעצמו (setInputFiles/dataUrlToFile כבר
+    // קיימים כאן לשחזור-טיוטה), אחרת saveMedia לא ימצא קובץ להעלות בפועל בלחיצת "שמור" הבאה.
+    if (w.coverPhoto.startsWith('data:')) {
+      coverImg.dataset.existingUrl = '';
+      try { setInputFiles(document.getElementById('editCoverPhotoFile'), [dataUrlToFile(w.coverPhoto, 'cover.jpg')]); } catch (e) { console.error('cover restore failed:', e); }
+    } else {
+      coverImg.dataset.existingUrl = w.coverPhoto;
+    }
     coverImg.dataset.existingThumbUrl = w.coverPhotoThumb || '';
     document.getElementById('editCoverPhotoPreviewWrap').style.display = 'block';
     document.getElementById('editCoverPhotoPlaceholder').style.display = 'none';
@@ -2458,8 +2661,13 @@ function initMediaForm(w) {
   }
   const logoImg = document.getElementById('editLogoImg');
   if (looksLikeImageUrl(w.logo)) {
-    logoImg.src = w.logo;
-    logoImg.dataset.existingUrl = w.logo;
+    logoImg.src = bizImageViewUrl(w.logo);
+    if (w.logo.startsWith('data:')) {
+      logoImg.dataset.existingUrl = '';
+      try { setInputFiles(document.getElementById('editLogoFile'), [dataUrlToFile(w.logo, 'logo.jpg')]); } catch (e) { console.error('logo restore failed:', e); }
+    } else {
+      logoImg.dataset.existingUrl = w.logo;
+    }
     logoImg.dataset.existingThumbUrl = w.logoThumb || '';
     document.getElementById('editLogoPreviewWrap').style.display = 'block';
     document.getElementById('editLogoPlaceholder').style.display = 'none';
@@ -2636,6 +2844,7 @@ function getPreviewState() {
     w.discountText = discEditOn ? computeDiscBuilderText() : '';
     w.discountRedeemMode = discRedeemMode;
     w.discountTypes = discEditOn ? computeDiscountTypes(w.bizTypes, discRedeemMode) : [];
+    w.discountCode = (discEditOn && discRedeemMode.includes('online')) ? (document.getElementById('editDiscountCode')?.value.trim() || '') : '';
     w.additionalDiscounts = discEditOn ? collectAdditionalBenefits() : [];
   } else {
     // הכותרת הקצרה (discountText) עוברת קיצור AI לפני שהיא נשמרת בטיוטה/ממתין-לאישור —
@@ -2795,7 +3004,7 @@ function renderPreview(stateOverride, flashZone) {
         <div class="pv-sheet-benefit-heading">${extraBenefits.length ? 'ההטבות שלך' : 'ההטבה שלך'}</div>
         <div class="pv-sheet-benefit${fz('discount')}">
           ${extraBenefits.length ? '<div class="pv-sheet-benefit-tag">ההטבה הראשית</div>' : ''}
-          <div class="pv-sheet-benefit-text">${esc(w.discountText)}</div>
+          <div class="pv-sheet-benefit-text">${esc(w.discountTextFull || w.discountText)}</div>
           ${discRedeemText ? `<div class="pv-sheet-benefit-where">${discRedeemText}</div>` : ''}
         </div>` : '';
   const secondaryBenefitHtml = extraBenefits.length ? `
@@ -2813,16 +3022,16 @@ function renderPreview(stateOverride, flashZone) {
   const benefitHtml = primaryBenefitHtml + secondaryBenefitHtml;
 
   const galleryHtml = w.photos && w.photos.length
-    ? `<div class="pv-section-label${fz('gallery')}">מהחנות</div><div class="pv-sheet-gallery${fz('gallery')}">${w.photos.map(p =>p.url ? `<img src="${p.url}" alt="${esc(p.name || '')}" />` : '').join('')}</div>`
+    ? `<div class="pv-section-label${fz('gallery')}">מהחנות</div><div class="pv-sheet-gallery${fz('gallery')}">${w.photos.map(p =>p.url ? `<img src="${esc(bizImageViewUrl(p.url))}" alt="${esc(p.name || '')}" onclick="openImgLightbox(this.src)" />` : '').join('')}</div>`
     : '';
 
   const fullHtml = `
     <div class="pv-sheet">
       <div class="pv-sheet-hero${fz('logo')}">
         ${looksLikeImageUrl(w.coverPhoto)
-          ? `<img src="${w.coverPhoto}" alt="${esc(w.name)}" />${looksLikeImageUrl(w.logo) ? `<div class="pv-sheet-hero-logo-badge"><img src="${w.logo}" alt="${esc(w.name)} — לוגו" /></div>` : ''}`
+          ? `<img src="${esc(bizImageViewUrl(w.coverPhoto))}" alt="${esc(w.name)}" onclick="openImgLightbox(this.src)" />${looksLikeImageUrl(w.logo) ? `<div class="pv-sheet-hero-logo-badge"><img src="${esc(bizImageViewUrl(w.logo))}" alt="${esc(w.name)} — לוגו" /></div>` : ''}`
           : looksLikeImageUrl(w.logo)
-            ? `<img src="${w.logo}" alt="${esc(w.name)}" />`
+            ? `<img src="${esc(bizImageViewUrl(w.logo))}" alt="${esc(w.name)}" onclick="openImgLightbox(this.src)" />`
             : `<div class="pv-sheet-logo">${pvInitials(w.name)}</div>`
         }
       </div>
@@ -2860,11 +3069,11 @@ function renderFeedPreview(stateOverride, flashZone) {
 
   let imgHtml;
   if (hasCover) {
-    const badge = hasLogo ? `<div class="biz-card-logo-badge"><img src="${w.logo}" alt="${esc(w.name)} — לוגו" /></div>` : '';
+    const badge = hasLogo ? `<div class="biz-card-logo-badge"><img src="${esc(bizImageViewUrl(w.logo))}" alt="${esc(w.name)} — לוגו" /></div>` : '';
     const posStyle = w.coverPhotoPosition ? ` style="object-position:${esc(w.coverPhotoPosition)}"` : '';
-    imgHtml = `<img src="${w.coverPhoto}" alt="${esc(w.name)}" class="biz-card-cover-img"${posStyle} />${badge}`;
+    imgHtml = `<img src="${esc(bizImageViewUrl(w.coverPhoto))}" alt="${esc(w.name)}" class="biz-card-cover-img"${posStyle} onclick="openImgLightbox(this.src)" />${badge}`;
   } else if (hasLogo) {
-    imgHtml = `<img src="${w.logo}" alt="${esc(w.name)}" class="biz-card-cover-img" />`;
+    imgHtml = `<img src="${esc(bizImageViewUrl(w.logo))}" alt="${esc(w.name)}" class="biz-card-cover-img" onclick="openImgLightbox(this.src)" />`;
   } else {
     imgHtml = `<div class="biz-logo">${pvInitials(w.name)}</div>`;
   }
@@ -2890,10 +3099,19 @@ function renderFeedPreview(stateOverride, flashZone) {
   if (feedEl) feedEl.innerHTML = feedHtml;
 }
 
-// עוטף את שני הרנדררים (הכרטיס הפנימי הקיים + כרטיס-הפיד החדש) — קורא ל-getPreviewState() פעם אחת
-// ומזין את שניהם באותו state, כדי ששני התצוגות יתעדכנו/יהבהבו יחד בכל שינוי
+// עוטף את שני הרנדררים (הכרטיס הפנימי הקיים + כרטיס-הפיד החדש) — קורא ל-getLiveDemoState() פעם
+// אחת ומזין את שניהם באותו state.
+// ⚠️ 2026-08-12 — לפני זה קרא ל-getPreviewState() (ממזג draftChanges + קורא DOM חי מהטופס
+// הפתוח) — המשתמש: "תוריד את השינויים מהכרטיסים עצמם, זה מבלבל, זה לא מה שמוצג באמת כרגע".
+// עכשיו הדמו/פריוויו מציג תמיד את מה שבאמת חי היום (biz בלבד) — לא טיוטה/ממתין-לאישור בכלל.
+// זה גם מסלק בעצם את הבאג "התמונה הפכה לכחול בפתיחת עריכת-מדיה" (ר' §195) — שם ה-DOM-live-read
+// היה השורש. getPreviewState() המקורית (עם המיזוג המלא) עדיין קיימת ובשימוש במד-השלמות ובסקירה-
+// לפני-שליחה (openConfirmSummary) — שם דווקא כן רוצים לראות "אחרי השינויים", בכוונה.
+function getLiveDemoState() {
+  return { ...biz };
+}
 function refreshPreviews(stateOverride, flashZone) {
-  const w = stateOverride || getPreviewState();
+  const w = stateOverride || getLiveDemoState();
   renderPreview(w, flashZone);
   renderFeedPreview(w, flashZone);
 }
@@ -2974,18 +3192,31 @@ window.switchView = function(view) {
   ['biz','terms','confirm'].forEach(v =>{
     document.getElementById('view-' + v).classList.toggle('active', v === view);
   });
+  // סרגל-הטיוטה הצף ("בטל"/"סקירה ושליחה") מוצג/מוסתר לפי draftChanges בלבד (ר' renderBizView) —
+  // בלי תלות בתצוגה הפעילה, אז הוא נשאר גלוי גם במסך-הסקירה עצמו, מעל כפתור "שלח לאישור מנהל"
+  // שלו — שני כפתורי-שליחה בו-זמנית, מבלבל (המשתמש דיווח). מוסתר במפורש כל עוד לא חזרנו ל-'biz'.
+  document.getElementById('draftBar').classList.toggle('show', view === 'biz' && Object.keys(draftChanges).length >0);
   window.scrollTo(0, view === 'biz' ? _bizScrollY : 0);
 };
 
 // ── CONFIRM SUMMARY ──
-window.openConfirmSummary = function() {
-  if (!Object.keys(draftChanges).length) return;
-  // בסקירה מציגים רק מה שבאמת נבחר/השתנה — לא כל מפתח שנכנס ל-draftChanges (למשל noTagFits:false
-  // שחוזר להיות false בלי שינוי אמיתי, בגלל undefined!=="false" ב-stageChanges). ריק/false נחשב "כלום".
+// בונה שורות-דיף מכל מפת-שינויים (draftChanges לבד, או ממוזג עם pendingChanges) — מקור-אמת יחיד
+// גם לסקירה-לפני-שליחה (openConfirmSummary) וגם לבאנר המרוכז למעלה (pendingBanner ב-renderBizView).
+// isEmptyVal: בסקירה מציגים רק מה שבאמת נבחר/השתנה — לא כל מפתח שנכנס ל-draftChanges (למשל
+// noTagFits:false שחוזר להיות false בלי שינוי אמיתי, בגלל undefined!=="false" ב-stageChanges).
+function buildChangeRows(changes) {
   const isEmptyVal = x =>x === false || x === '' || x == null || (Array.isArray(x) && x.length === 0);
-  const rows = Object.entries(draftChanges).filter(([, v]) =>!isEmptyVal(v)).map(([k, v]) =>{
+  return Object.entries(changes)
+    .filter(([k, v]) =>!isEmptyVal(v) && !CONFIRM_ROW_EXCLUDE.has(k))
+    .sort(([ka], [kb]) =>(FIELD_TO_STEP[ka] || 99) - (FIELD_TO_STEP[kb] || 99))
+    .map(([k, v]) =>{
     const label = FIELD_LABELS[k] || k;
-    const oldVal = (biz.pendingChanges && k in biz.pendingChanges) ? biz.pendingChanges[k] : biz[k];
+    // ⚠️ 2026-08-12 — היה נופל בחזרה ל-biz.pendingChanges[k] אם השדה כבר בפנים — אבל הבאנר המרוכז
+    // (renderBizView) קורא ל-buildChangeRows עם allPendingChanges שכבר *הוא* biz.pendingChanges
+    // ממוזג עם draftChanges — כשגם v וגם ה"ישן" מגיעים מאותה מפה, השורה מציגה "X → X" (המשתמש
+    // דיווח: טלפון-עסק הראה את אותו מספר משני הצדדים). "ישן" חייב תמיד להיות הערך-החי-והמאושר
+    // בפועל (biz[k]) — לא ערך-ממתין-אחר, גם אם קיים.
+    const oldVal = biz[k];
     // נבחר חדש (לא היה כלום קודם) — בלי חץ-שינוי מבלבל, רק הערך החדש
     if (isEmptyVal(oldVal)) {
       return `<div class="confirm-row">
@@ -3004,6 +3235,11 @@ window.openConfirmSummary = function() {
       </div>
     </div>`;
   }).join('');
+}
+
+window.openConfirmSummary = function() {
+  if (!Object.keys(draftChanges).length) return;
+  const rows = buildChangeRows(draftChanges);
 
   const { pct, items } = computeCompleteness(getPreviewState());
   const missing = items.filter(i =>!i.done).sort((a, b) =>b.weight - a.weight);
@@ -3062,7 +3298,32 @@ window.toggleSecEdit = function(key) {
 };
 
 // ── DRAFT CHANGES ──
-function normForCompare(v) {
+// השוואה עמוקה אמיתית — לא JSON.stringify (סדר-מפתחות בתוך מערכים/אובייקטים שחוזרים מ-Firestore
+// לא מובטח, ר' PROJECT_CONTEXT.md feedback_firestore_deep_equal). באג-אמת (2026-08-12): סניפים/מקום-
+// מימוש הראו "שונה" בסקירה למרות שהמשתמש לא נגע בהם, כי JSON.stringify על אותו תוכן בדיוק בסדר-
+// מפתחות שונה מפיק מחרוזות שונות → מזוהה בטעות כשינוי אמיתי.
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return a === b;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((v, i) => deepEqual(v, b[i]));
+  }
+  if (typeof a === 'object' && typeof b === 'object') {
+    const keysA = Object.keys(a), keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    return keysA.every(k => deepEqual(a[k], b[k]));
+  }
+  return false;
+}
+// שדות שהיו מחרוזת בודדת בפורמט הישן ("sale") והפכו למערך-בחירה-מרובה ("['sale']") — עסקים ישנים
+// עדיין מחזיקים את הפורמט הישן ב-Firestore בפועל (ר' toRedeemArr). בלי הנרמול הזה, JSON-type שונה
+// (מחרוזת מול מערך) לאותו ערך בדיוק תמיד ייראה כ"שונה" גם עם deepEqual אמיתי — סוג שונה, לא רק
+// ערך שונה. באג-אמת: "מקום מימוש" הראה כאילו "נמחק ונבחר מחדש" למרות שלא נגעו בו (עסק "גולדה
+// אירועים", ר' PROJECT_CONTEXT.md §194).
+const LEGACY_ARRAY_FIELDS = new Set(['discountRedeemMode', 'discountTypes']);
+function normForCompare(v, key) {
+  if (key && LEGACY_ARRAY_FIELDS.has(key)) v = toRedeemArr(v);
   if (v === undefined || v === null) return null;
   if (Array.isArray(v)) {
     const filtered = v.filter(item =>{
@@ -3079,7 +3340,7 @@ function stageChanges(updates, flashZone) {
   const prev = { ...biz, ...(biz.pendingChanges || {}), ...draftChanges };
   const realChanges = {};
   for (const [k, v] of Object.entries(updates)) {
-    if (JSON.stringify(normForCompare(prev[k])) !== JSON.stringify(normForCompare(v))) realChanges[k] = v;
+    if (!deepEqual(normForCompare(prev[k], k), normForCompare(v, k))) realChanges[k] = v;
   }
   if (!Object.keys(realChanges).length) {
     renderBizView();
@@ -3617,11 +3878,12 @@ window.saveDiscount = async function() {
   const prevFullText = cur.discountTextFull || cur.discountText || '';
   const needsAI = !!(fullText && (fullText !== prevFullText || !cur.discountText));
 
+  // טקסט-טעינה אחיד — לא חושף לבעל-העסק שיש קיצור-AI ברקע (המשתמש: "תוריד את זה אין טעם בזה").
   const btn = document.querySelector('#secEdit-discount .btn-save-sec');
   const originalLabel = btn ? btn.textContent : '';
   if (btn) {
     btn.disabled = true;
-    btn.textContent = needsAI ? '⏳ יוצרים כותרת קצרה מהתיאור שלכם...' : '⏳ שומר...';
+    btn.textContent = '⏳ שומר...';
   }
 
   const shortText = !discEditOn ? '' : (needsAI ? await shortenBenefitAI(fullText) : (cur.discountText || ''));
@@ -3702,7 +3964,7 @@ window.addPhotoRow = function(url = '', name = '') {
     <div class="edit-media-thumb" id="photoThumb-${idx}">
       
       <input type="file" accept="image/*" onchange="thumbPreview(this, 'photoThumb-${idx}')" />
-      ${url ? `<img src="${url}" />` : ''}
+      ${url ? `<img src="${esc(bizImageViewUrl(url))}" onclick="event.stopPropagation();openImgLightbox(this.src)" />` : '<span class="edit-media-thumb-plus">+</span>'}
     </div>
     <div class="edit-media-fields">
       <input type="text" placeholder="שם / תיאור (לדוג׳: תפריט, חזית, מוצר...)" value="${esc(name)}" id="photoName-${idx}" />

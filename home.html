@@ -513,8 +513,9 @@
     }
     .biz-overlay.open { display: flex; }
 
+    /* 520→600px — בקשה מפורשת: "קטן יחסית, אפשר להגדיל" (2026-08-12, ר' PROJECT_CONTEXT.md §193) */
     .biz-sheet {
-      background: var(--surface); width: 100%; max-width: 520px;
+      background: var(--surface); width: 100%; max-width: 600px;
       max-height: 88dvh; border-radius: 20px 20px 0 0;
       overflow-y: auto; overflow-x: hidden;
       animation: sheetUp .3s cubic-bezier(.25,.46,.45,.94);
@@ -554,8 +555,11 @@
       box-shadow: 0 2px 8px rgba(10,42,102,.18);
     }
 
+    /* aspect-ratio במקום height קבוע (היה 300px) — height-קבוע נתן יחס-חיתוך שונה בכל רוחב-מסך
+       (במובייל הצר, לפני הקאפ של 600px, height:300px קבוע יצר יחס "מרובע" יותר מאשר בדסקטופ —
+       אותה תמונה נראתה חתוכה אחרת בכל viewport). 26:15 = בדיוק 600:346, שומר על אותו קרופ בכל רוחב. */
     .sheet-hero {
-      height: 300px; display: flex; align-items: center; justify-content: center;
+      aspect-ratio: 26 / 15; display: flex; align-items: center; justify-content: center;
       position: relative; overflow: hidden;
       background: var(--field);
     }
@@ -3419,15 +3423,19 @@ async function initBizNavItem() {
   }
   if (!isBizOwner) return;
 
-  let token = '';
+  let token = '', approved = false;
   try {
     if (linkedBusinessId) {
       const bizSnap = await getDoc(doc(db, 'businesses', linkedBusinessId));
       if (bizSnap.exists()) {
         const bizData = bizSnap.data();
         token = bizData.accessToken || '';
-        // רק לעסק מאושר וחי באינדקס — קישור-שיתוף לעסק לא-מאושר לא יעבוד בכל מקרה (ר' shareMyBiz/shareBiz).
-        if (bizData.status === 'approved') {
+        approved = bizData.status === 'approved';
+        // "העסק שלי" בתפריט (וגם שיתוף) מוצגים רק לעסק מאושר — עסק pending/rejected עדיין לא
+        // עבר את שער האישור הראשוני, זהה בדיוק לגייטינג הקיים ב-profile.html (§36). לפני התיקון
+        // הזה (2026-08-12) "העסק שלי" הוצג לכל בעל-token גם כשהעסק pending — בעל עסק שממתין
+        // לאישור לא אמור לראות "העסק שלי" בתפריט בכלל.
+        if (approved) {
           window._myBizShare = { name: bizData.name || '' }; // ר' ההערה ליד ההצהרה — לא bare
           const shareItem = document.getElementById('menuShareBizItem');
           if (shareItem) shareItem.style.display = 'flex';
@@ -3437,7 +3445,7 @@ async function initBizNavItem() {
   } catch (e) {
     console.error('[initBizNavItem] failed reading linked business doc:', e);
   }
-  if (!token) return;
+  if (!token || !approved) return;
 
   const item = document.getElementById('menuBizItem');
   if (item) {

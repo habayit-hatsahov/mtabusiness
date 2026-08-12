@@ -444,7 +444,7 @@
 
 <script type="module">
   import { db, getStorageLazy } from './firebase-config.js';
-  import { collection, addDoc, updateDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+  import { collection, addDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
   import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
@@ -600,55 +600,20 @@
 
     let memberDocRef = null;
     try {
-      const { memberId: existingId, nameMismatch } = await findExistingMemberId(data.phone, data.email, data.firstName, data.lastName);
+      // תמיד יוצרים רשומת-pending חדשה — לעולם לא דורסים רשומה קיימת מטופס
+      // ציבורי לא-מאומת. אירוע אמיתי (2026-08-12): הרשמת-בדיקה עם המייל של המנהל
+      // עצמו דרסה בשקט את הטלפון האמיתי שלו (אין תג/סימן, אי אפשר לדעת שזה קרה) —
+      // וזה גם וקטור השתלטות-חשבון אמיתי, כי הכניסה היא טלפון+קוד: מי שיודע שם+מייל
+      // של חבר קיים יכול "לדרוס" את הטלפון שלו לטלפון שבשליטתו. אם ה-Worker מוצא
+      // התאמת טלפון/מייל לרשומה קיימת — מסמנים דגל להצלבה ידנית ע"י מנהל
+      // (admin-dashboard.html, "כל האוהדים") במקום לגעת ברשומה הקיימת בכלל.
+      const { memberId: existingId } = await findExistingMemberId(data.phone, data.email, data.firstName, data.lastName);
       if (existingId) {
-        // כבר קיים במערכת (למשל נרשם קודם כבעל עסק וקיבל רשומת חבר אוטומטית) —
-        // מעדכנים את הפרטים האישיים בלבד, בלי לגעת בסטטוס/isBusinessOwner/קוד כניסה קיימים.
-        memberDocRef = doc(db, 'members', existingId);
-        if (nameMismatch) {
-          // אי-התאמת שם — כנראה שני אנשים שונים חולקים טלפון/מייל, לא אותו אדם.
-          // לעולם לא נוגעים בזהות הקיימת (firstName/lastName/phone/email/...) —
-          // אירוע אמיתי (2026-07-24): הרשמה חוזרת עם טלפון של חבר אמיתי (מנהל!)
-          // דרסה את הרשומה שלו עצמו בשם/מייל של ההרשמה החדשה. מסמנים לבדיקת אדמין
-          // (ר' admin-members.html) ושומרים את מה שהוגש בנפרד תחת nameConflict,
-          // בלי לגעת ברשומה המקורית בכלל (firestore.rules אוכף את זה: השדות
-          // האישיים חייבים להישאר זהים כשנכתב nameConflict).
-          await updateDoc(memberDocRef, {
-            status:        'pending',
-            reviewFlag:    'name_mismatch',
-            reviewFlagAt:  serverTimestamp(),
-            // מתעדכן כדי שהכרטיס יעלה למעלה ברשימה (ממוינת לפי submittedAt) כחדש
-            // שדורש תשומת לב, במקום להיטבע עם תאריך ההרשמה המקורית.
-            submittedAt:   serverTimestamp(),
-            nameConflict: {
-              firstName:         data.firstName,
-              lastName:          data.lastName,
-              phone:             data.phone,
-              email:             data.email,
-              isSubscriber:      data.isSubscriber,
-              subscriberSection: data.subscriberSection,
-              subscriberNumber:  data.subscriberNumber,
-              wasSubscriber:     data.wasSubscriber,
-              facebookUrl:       data.facebookUrl,
-              flaggedAt:         serverTimestamp(),
-            },
-          });
-        } else {
-          await updateDoc(memberDocRef, {
-            firstName:         data.firstName,
-            lastName:          data.lastName,
-            phone:             data.phone,
-            email:             data.email,
-            isSubscriber:      data.isSubscriber,
-            subscriberSection: data.subscriberSection,
-            subscriberNumber:  data.subscriberNumber,
-            wasSubscriber:     data.wasSubscriber,
-            facebookUrl:       data.facebookUrl,
-          });
-        }
-      } else {
-        memberDocRef = await addDoc(collection(db, 'members'), data);
+        data.reviewFlag   = 'possible_duplicate';
+        data.reviewFlagAt = serverTimestamp();
+        data.duplicateOfId = existingId;
       }
+      memberDocRef = await addDoc(collection(db, 'members'), data);
     } catch (err) {
       console.error('Firebase error:', err);
       submitBtn.disabled = false;

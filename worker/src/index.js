@@ -8,7 +8,8 @@ import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
 import { runBackfillThumbnails } from './backfill.js';
 import { sendWebPush } from './push.js';
-import { handleDownloadImage } from './download.js';
+import { handleDownloadImage, handleViewImage } from './download.js';
+import { handleUploadBizMedia } from './bizmedia.js';
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -23,6 +24,9 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/mint-biz-token') {
         return json(await handleBusinessLogin(await request.json(), env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/upload-biz-media') {
+        return json(await handleUploadBizMedia(request, env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/resend-login-code') {
         return json(await handleResendCode(await request.json(), env), env, request);
@@ -47,6 +51,9 @@ export default {
       }
       if (request.method === 'GET' && url.pathname === '/download-image') {
         return handleDownloadImage(request, env);
+      }
+      if (request.method === 'GET' && url.pathname === '/view-image') {
+        return handleViewImage(request, env);
       }
       return json({ error: 'not_found' }, env, request, 404);
     } catch (e) {

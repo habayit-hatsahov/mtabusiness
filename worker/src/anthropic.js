@@ -81,6 +81,13 @@ export async function shortenBenefitText(env, longText, count = 1) {
   const textBlock = (data.content || []).find((b) => b.type === 'text');
   const raw = (textBlock?.text || '').trim();
   if (!raw) throw new Error('anthropic_empty_response');
+  // רשת-ביטחון תוכן — אירוע אמיתי (2026-08-12): "לא יכול לעזור בהנחה" נשמר כ"כותרת" בפועל על עסק
+  // אמיתי, כי שום קוד לא בדק את התוכן — רק את האורך. קצר-מספיק כדי לעבור את truncateToWordBoundary
+  // בלי בעיה, אבל לא כותרת-הטבה בכלל. אם המודל בכל זאת סירב/הסביר במקום לתת כותרת — עדיף להיכשל
+  // ולתת לצד-הקורא (business-dashboard.html) ליפול בחזרה לקיצור-מכני (naiveShorten) מאשר לשמור זבל.
+  if (/^(לא יכול|אינני|אני לא|מצטער|סליחה|i (can'?t|cannot)|sorry|as an ai)/i.test(raw)) {
+    throw new Error('anthropic_refusal_like_response: ' + raw.slice(0, 100));
+  }
 
   if (count <= 1) return truncateToWordBoundary(raw, MAX_TITLE_LEN);
 

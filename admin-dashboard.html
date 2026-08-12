@@ -1700,8 +1700,20 @@ async function uploadImageWithThumb(file, basePath) {
   }
 }
 
-// המרה קריאה לתצוגת דיף (לא כמו fmtVal המפורט של admin-businesses.html — מספיק לקריאה בסיסית, לא מפורמט לפי סוג שדה)
-function fmtDiffVal(v) {
+// המרה קריאה לתצוגת דיף — מקבל את מפתח השדה (k) כדי לתרגם ערכי enum/קטגוריה לעברית במקום להציג
+// את המפתח הגולמי (למשל 'sport' → '⚽ ספורט') — זהה ברעיון ל-fmtFieldVal ב-business-dashboard.html.
+// שדות-מבנה (מערך/אובייקט) לא עוברים כאן בפועל — quickJudgmentHtml מפנה אותם ל-qjStructuredPreviewHtml
+// לפי הערך הגולמי (לא לפי המחרוזת המפורמטת כאן), אז הטיפול במערכים כאן הוא רק רשת-ביטחון למקרי-קצה
+// (למשל discountRedeemMode בפורמט הישן — מחרוזת בודדת, לא מערך).
+function fmtDiffVal(k, v) {
+  if (k === 'discountRedeemMode' || k === 'discountTypes') {
+    const arr = toRedeemArr(v);
+    return arr.length ? arr.map(t => REDEEM_MODE_LABELS_MOCK[t] || t).join(', ') : '—';
+  }
+  if (k === 'bizTypes') return (v || []).length ? v.map(t => BIZ_TYPE_LABELS_MOCK[t] || t).join(', ') : '—';
+  if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoCategorySuggestion' || k === 'alsoUnderCategory') {
+    return v ? ((CATEGORIES.find(c => c.key === v) || {}).label || v) : '—';
+  }
   if (v == null || v === '') return '—';
   if (typeof v === 'boolean') return v ? 'כן' : 'לא';
   if (Array.isArray(v)) return v.length ? v.map(x => typeof x === 'object' ? JSON.stringify(x) : x).join(', ') : '—';
@@ -1762,7 +1774,7 @@ function hydrateBiz(id, raw) {
     additionalDiscounts: (raw.pendingChanges && 'additionalDiscounts' in raw.pendingChanges) ? raw.pendingChanges.additionalDiscounts : (raw.additionalDiscounts || []),
     // דיף שינויים ממתינים — נבנה מהערך הישן על המסמך מול הערך המוצע ב-pendingChanges (אמיתי, לא מוק)
     pendingChangeDiff: raw.pendingChanges ? Object.fromEntries(
-      Object.keys(raw.pendingChanges).map(k => [k, { old: fmtDiffVal(raw[k]), new: fmtDiffVal(raw.pendingChanges[k]) }])
+      Object.keys(raw.pendingChanges).map(k => [k, { old: fmtDiffVal(k, raw[k]), new: fmtDiffVal(k, raw.pendingChanges[k]) }])
     ) : null,
     changeSubmittedAt: toJsDate(raw.pendingChangesAt),
     isNew: !!raw.isNew,
@@ -1799,6 +1811,7 @@ function hydrateFan(id, raw) {
     isBusinessOwner: !!raw.isBusinessOwner,
     linkedBusinessId: raw.linkedBusinessId || null,
     reviewFlag: raw.reviewFlag || null,
+    duplicateOfId: raw.duplicateOfId || null,
     adminVerified: !!raw.adminVerified, // עדיין לא נשמר בפועל — שדה חדש שהדמו הציע, לא קיים ב-Firestore
     adminNote: raw.adminNote || '',
   };
@@ -1866,19 +1879,27 @@ window.saveCoverPos = async function(id) {
 // עצמה בלי לצאת מהעמוד, ותצוגה-גדולה שלא פותחת טאב חדש. ר' PROJECT_CONTEXT.md §185.
 let lightboxCurrentUrl = '';
 let lightboxCurrentFilename = '';
+// תמונה של עסק pending/rejected חסומה ב-storage.rules ל-<img>/הורדה רגילים בלי אימות (ר' §193,
+// storage.rules:46-48) — Worker /view-image מביא אותה בצד-שרת עם הרשאת ה-service-account (עוקף
+// את הרוב דרך GCS ישיר, ר' worker/src/download.js) ומחזיר inline. משמש לכל תצוגת-תמונה כאן
+// (thumbnail/lightbox) — לא רק ל-downloadImage שכבר עבר דרך /download-image.
+function bizImageViewUrl(url) {
+  return url ? (WORKER_URL + '/view-image?url=' + encodeURIComponent(url)) : '';
+}
 function mediaThumbHtml(url, filename, sizeStyle, alt, objectFit) {
   if (!url) return '';
   const safeUrl = esc(url);
+  const viewUrl = esc(bizImageViewUrl(url));
   return `
     <div class="media-thumb-wrap" style="${sizeStyle}" onclick="openImageLightbox('${safeUrl}','${esc(filename || 'image.jpg')}')">
-      <img src="${safeUrl}" alt="${esc(alt || '')}" style="width:100%;height:100%;object-fit:${objectFit || 'cover'};display:block;">
+      <img src="${viewUrl}" alt="${esc(alt || '')}" style="width:100%;height:100%;object-fit:${objectFit || 'cover'};display:block;">
       <button type="button" class="thumb-download-btn" title="הורד תמונה" onclick="event.stopPropagation();downloadImage('${safeUrl}','${esc(filename || 'image.jpg')}')">⬇</button>
     </div>`;
 }
 window.openImageLightbox = function(url, filename) {
   lightboxCurrentUrl = url;
   lightboxCurrentFilename = filename;
-  document.getElementById('lightboxImg').src = url;
+  document.getElementById('lightboxImg').src = bizImageViewUrl(url);
   document.getElementById('imgLightboxOverlay').classList.add('open');
 };
 window.closeImageLightbox = function() {
@@ -4542,7 +4563,7 @@ function bizFullDetailHtml(id, opts) {
   const ownerVerifPhotoHtml = b.ownerIsSubscriber
     ? `<div class="owner-verify-photo-empty">מנוי מכבי — לא נדרשת תמונה</div>`
     : b.ownerProofPhotoUrl
-      ? `<img src="${esc(b.ownerProofPhotoUrl)}" alt="תמונה בשער אוהדים">`
+      ? `<img src="${esc(bizImageViewUrl(b.ownerProofPhotoUrl))}" alt="תמונה בשער אוהדים">`
       : `<div class="owner-verify-photo-empty">לא הועלתה תמונה</div>`;
   const ownerVerifCardHtml = `
     <div class="owner-verify-card">
@@ -4628,7 +4649,7 @@ function bizFullDetailHtml(id, opts) {
                 <label class="biz-type-card ${types.includes('pro')?'on':''}">
                   <input type="checkbox" id="edit_type_pro_${b.id}" ${types.includes('pro')?'checked':''} onchange="onEditBizTypeChange('${b.id}')">
                   <div class="bt-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 1 5.4-5.4l-2.5 2.5"></path></svg></div>
-                  <div class="bt-name">נותן שירות</div>
+                  <div class="bt-name">בעל מקצוע / נותן שירות</div>
                   <div class="bt-desc">אתם מגיעים ללקוח</div>
                 </label>
               </div>
@@ -5579,7 +5600,8 @@ function fanRowsHtml() {
     // על כל שורה — הוסר מכאן כי זה הפך את הרשימה לצפופה/ארוכה-מדי (כמעט כל שורה קיבלה באדג׳ נוסף).
     const badges = [`<span class="class-badge${primaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(primaryLabel)}</span>`]
       .concat(cls.treatments.map(t => `<span class="treat-badge">${TREATMENT_LABELS[t]}</span>`));
-    if (f.reviewFlag) badges.push(`<span class="warn-badge">שם לא תואם</span>`);
+    if (f.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">כפילות אפשרית</span>`);
+    else if (f.reviewFlag) badges.push(`<span class="warn-badge">שם לא תואם</span>`);
     if (f.isBusinessOwner) badges.push(`<span class="treat-badge">בעל עסק</span>`);
     const sel = selectedFanIds.has(f.id);
     const active = f.id === selectedFanDetailId;
@@ -5635,6 +5657,24 @@ function fanFullDetailHtml(id, opts) {
           <button class="qj-btn reject" onclick="deleteFan('${f.id}')">כפילות, מחק</button>
         </div>
       </div>`);
+  } else if (f.reviewFlag === 'possible_duplicate') {
+    // הרשמה חדשה שהטלפון/מייל שלה תואמים רשומת-חבר קיימת — לא נדרסת אוטומטית (ר' fan-register.html,
+    // אירוע 2026-08-12), רק מסומנת להצלבה ידנית. מציגים כאן את פרטי הרשומה הקיימת זה-לצד-זה כדי שהמנהל
+    // יוכל להחליט: אותו אדם נרשם שוב (למחוק את הכפולה) או שני אנשים שונים חולקים פרט-קשר (לנקות דגל).
+    const other = findFan(f.duplicateOfId);
+    const otherInfo = other
+      ? `${esc(other.name)} · ${esc(other.phone||'—')} · ${esc(other.email||'—')} · ${other.status==='approved'?'מאושר':other.status==='rejected'?'נדחה':'ממתין'}`
+      : 'הרשומה הקיימת לא נמצאה (יתכן ונמחקה)';
+    fanQjRows.push(`
+      <div class="qj-row">
+        <div class="qj-row-label"><div class="qj-row-step">דגל אוטומטי</div><div class="qj-row-name">כפילות אפשרית</div></div>
+        <div class="qj-row-value"><span class="qj-value-text">הטלפון/מייל שהוזנו כאן תואמים רשומת-חבר קיימת: <b>${otherInfo}</b>. בדקו אם זה אותו אדם שנרשם שוב (למחוק את ההרשמה הכפולה) או שני אנשים שונים שחולקים פרט-קשר (לנקות את הדגל ולאשר כרשומה נפרדת).</span></div>
+        <div class="qj-row-actions">
+          ${other ? `<button class="qj-btn" onclick="selectFanDetail('${other.id}')">צפייה ברשומה הקיימת</button>` : ''}
+          <button class="qj-btn reject" onclick="deleteFan('${f.id}')">כפילות, מחק את החדשה</button>
+          <button class="qj-btn primary" onclick="resolveFanReviewFlagSamePerson('${f.id}')">לא כפילות, נקה דגל</button>
+        </div>
+      </div>`);
   }
   fanQjRows.push(`
     <div class="qj-row">
@@ -5672,6 +5712,7 @@ function fanFullDetailHtml(id, opts) {
   const idBadges = [`<span class="class-badge lg${idPrimaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(idPrimaryLabel)}</span>`]
     .concat(idCls.treatments.map(t => `<span class="treat-badge lg">${TREATMENT_LABELS[t]}</span>`));
   if (f.reviewFlag === 'name_mismatch') idBadges.push(`<span class="warn-badge lg">שם לא תואם</span>`);
+  if (f.reviewFlag === 'possible_duplicate') idBadges.push(`<span class="warn-badge lg">כפילות אפשרית</span>`);
   const idDates = [
     `נרשם ${fmtDate(f.registeredAt)}`,
     f.status === 'pending' ? `ממתין ${agoLabel(f.registeredAt)}` : '',
@@ -5720,7 +5761,7 @@ function fanFullDetailHtml(id, opts) {
         <div class="form-field full">
           <div class="form-field-label">תמונה בשער אוהדים</div>
           ${f.photoProofUrl
-            ? `<a href="${esc(f.photoProofUrl)}" target="_blank" rel="noopener" class="fan-proof-photo" style="background-image:url('${esc(f.photoProofUrl)}')" title="לחצו להגדלה"></a>`
+            ? `<a href="${esc(bizImageViewUrl(f.photoProofUrl))}" target="_blank" rel="noopener" class="fan-proof-photo" style="background-image:url('${esc(bizImageViewUrl(f.photoProofUrl))}')" title="לחצו להגדלה"></a>`
             : `<div class="fan-proof-photo empty">לא הועלתה תמונת הוכחה</div>`}
         </div>
       </div>
@@ -5851,20 +5892,24 @@ window.toggleFanVerified = async function(id, checked) {
   } catch (e) { console.error(e); alert('שגיאה בשמירה: ' + e.message); }
 };
 
-// "אותו אדם, אשר" בפאנל שיפוט-מהיר של דגל-דדופ ("3 כל האוהדים.dc.html") — מנקה רק את הדגל, לא נוגעת
-// ב-status. זהה בכוונה לתבנית שכבר הייתה קיימת ב-admin-members.html ("✓ סומן כנבדק", מנקה רק את הדגל) —
-// לעולם לא לאשר חבר אוטומטית מכאן, ר' feedback_never_auto_decide_membership. אישור בפועל עדיין דורש
-// לחיצה נפרדת על "✅ אשר" הרגיל. "כפילות, מחק" (בממשק) קורא ישירות ל-deleteFan הקיימת — אין לוגיקה חדשה.
+// "אותו אדם, אשר" / "לא כפילות, נקה דגל" בפאנל שיפוט-מהיר של דגל-דדופ ("3 כל האוהדים.dc.html") —
+// מנקה רק את הדגל (ואת duplicateOfId, אם היה), לא נוגעת ב-status. זהה בכוונה לתבנית שכבר הייתה קיימת
+// ב-admin-members.html ("✓ סומן כנבדק", מנקה רק את הדגל) — לעולם לא לאשר חבר אוטומטית מכאן, ר'
+// feedback_never_auto_decide_membership. אישור בפועל עדיין דורש לחיצה נפרדת על "✅ אשר" הרגיל.
+// "כפילות, מחק" (בממשק) קורא ישירות ל-deleteFan הקיימת — אין לוגיקה חדשה. כללי לשני סוגי הדגל
+// (name_mismatch הישן ו-possible_duplicate החדש, ר' fan-register.html).
 window.resolveFanReviewFlagSamePerson = async function(id) {
   const f = findFan(id);
-  if (!f || f.reviewFlag !== 'name_mismatch') return;
+  if (!f || !f.reviewFlag) return;
+  const prevFlag = f.reviewFlag;
   try {
-    await updateDoc(doc(db, 'members', id), { reviewFlag: null, reviewFlagAt: null });
+    await updateDoc(doc(db, 'members', id), { reviewFlag: null, reviewFlagAt: null, duplicateOfId: null });
     f.reviewFlag = null;
+    f.duplicateOfId = null;
     await logActivity('members', id, {
       type: 'status', title: 'דגל-בדיקה טופל — אותו אדם',
       detail: `"${f.name}" סומן ע"י מנהל כאותו אדם (לא כפילות) — הדגל הוסר, האישור עצמו עדיין דורש לחיצה נפרדת`,
-      field: 'reviewFlag', before: 'name_mismatch', after: null,
+      field: 'reviewFlag', before: prevFlag, after: null,
     });
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
@@ -6275,7 +6320,8 @@ function taskRow2Html(x) {
   const e = x.entity;
   const key = `${x.kind}:${x.id}`;
   const badges = [`<span class="class-badge">${x.c.primary}</span>`].concat(x.c.treatments.map(t => `<span class="treat-badge">${TREATMENT_LABELS[t]}</span>`));
-  if (x.kind === 'fan' && e.reviewFlag) badges.push(`<span class="warn-badge">דגל בדיקה — שם לא תואם</span>`);
+  if (x.kind === 'fan' && e.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">דגל בדיקה — כפילות אפשרית</span>`);
+  else if (x.kind === 'fan' && e.reviewFlag) badges.push(`<span class="warn-badge">דגל בדיקה — שם לא תואם</span>`);
   if (x.kind === 'biz' && x.c.primary === 'כרטיס חסר באינדקס') {
     missingFieldsFor(e).slice(0, 2).forEach(label => badges.push(`<span class="warn-badge">${label}</span>`));
   }
@@ -6384,8 +6430,8 @@ function mediaRealEditHtml(b) {
       ${b.coverPhoto ? `
       <div class="approve-field-label" style="margin-top:14px">מיקום התמונה על הכרטיס <span style="font-weight:400;color:var(--text-muted)">(גררו — כך היא נראית בפועל באינדקס, יחס 4:3, כולל תג-הלוגו אם קיים)</span></div>
       <div class="cover-pos-box" id="coverPosBox_${b.id}" onpointerdown="startCoverDrag(event,'${b.id}')">
-        <img id="coverPosImg_${b.id}" src="${b.coverPhoto}" draggable="false" style="object-position:${esc(b.coverPhotoPosition || '50% 50%')}">
-        ${b.logo ? `<div class="biz-card-logo-badge"><img src="${b.logo}" alt="לוגו"></div>` : ''}
+        <img id="coverPosImg_${b.id}" src="${esc(bizImageViewUrl(b.coverPhoto))}" draggable="false" style="object-position:${esc(b.coverPhotoPosition || '50% 50%')}">
+        ${b.logo ? `<div class="biz-card-logo-badge"><img src="${esc(bizImageViewUrl(b.logo))}" alt="לוגו"></div>` : ''}
       </div>
       <div class="media-slot-row" style="margin-top:8px">
         <button type="button" class="act-btn tiny" onclick="resetCoverPos('${b.id}')">↺ איפוס למרכז</button>
@@ -6787,30 +6833,58 @@ window.rejectAlsoCatSuggestion = async function(id) {
 // זהה ל-PENDING_LABELS ב-admin-businesses.html
 const DIFF_FIELD_LABELS_MOCK = {
   ownerFirst: 'שם פרטי', ownerLast: 'שם משפחה', ownerPhone: 'טלפון בעל העסק', ownerEmail: 'אימייל בעל העסק',
-  ownerRelation: 'קרבה לבעל המנוי', fanInstagram: 'אינסטגרם אימות',
+  ownerRelation: 'קרבה לבעל המנוי', fanInstagram: 'אינסטגרם אימות', note: 'הערה מהעסק',
   bizTypes: 'סוג עסק', name: 'שם העסק', desc: 'תיאור', branches: 'סניפים',
   regions: 'אזורי פעילות', websiteOnline: 'אתר אונליין',
   phone: 'טלפון עסק', whatsapp: 'WhatsApp', serviceEmail: 'מייל שירות', city: 'עיר', address: 'כתובת',
   categoryPrimary: 'קטגוריה ראשית', cat: 'קטגוריה ראשית', categorySecondary: 'קטגוריות משניות',
   tags: 'תגיות', tagSecondSuggestion: 'בקשת העסק לתגית שנייה', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'בקשת העסק למופיע גם תחת', alsoCategoryNote: 'הערת העסק לגבי קטגוריה נוספת',
   hours: 'שעות פעילות', website: 'אתר', instagram: 'אינסטגרם', facebook: 'פייסבוק',
-  discountText: 'כותרת ההטבה בכרטיס', discountTextFull: 'תיאור מלא (מבעל העסק)', discountCode: 'קוד קופון', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש',
-  hasDiscount: 'הטבה פעילה', additionalDiscounts: 'הטבות נוספות', coverPhoto: 'תמונה מייצגת', logo: 'לוגו', photos: 'גלריית תמונות', videos: 'סרטונים',
+  discountText: 'כותרת ההטבה בכרטיס', discountTextFull: 'הטבה', discountCode: 'קוד קופון', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש', discountRedeemMode: 'מקום מימוש ההטבה', discountBuilder: 'הגדרות ההטבה',
+  hasDiscount: 'הטבה פעילה', additionalDiscounts: 'הטבות נוספות', coverPhoto: 'תמונה מייצגת', coverPhotoThumb: 'תמונה מייצגת (תמונה ממוזערת)', logo: 'לוגו', logoThumb: 'לוגו (תמונה ממוזערת)', photos: 'גלריית תמונות', videos: 'סרטונים',
   wantsBusinessOfWeek: 'עסק השבוע', wantsBenefitOfWeek: 'הטבת השבוע',
 };
-// לאיזה שלב בכרטיס שייך כל שדה שיכול להשתנות — כדי שהשינוי יוצג בתוך השלב הנכון (לא רק שלב 4 גורף),
-// ושלחיצה על שורת דיף תפתח בפועל את עריכת השלב הרלוונטי (הכרטיס כבר תמיד פתוח, אין יותר "לפתוח" אותו).
-// זהה ל-FIELD_TO_STEP/PENDING_LABELS ב-admin-businesses.html — מפתח שדה → שלב, לצורך קפיצה/ארגון הדיף
-const DIFF_FIELD_TO_SECTION = {
-  ownerFirst: 1, ownerLast: 1, ownerPhone: 1, ownerEmail: 1, note: 1, ownerRelation: 1, fanInstagram: 1,
-  bizTypes: 2, name: 2, desc: 2, branches: 2, city: 2, address: 2, phone: 2, whatsapp: 2, serviceEmail: 2,
-  regions: 2, websiteOnline: 2, hours: 2, website: 2, instagram: 2, facebook: 2,
-  categoryPrimary: 3, cat: 3, categorySecondary: 3, tags: 3, tagSecondSuggestion: 3, noTagFits: 3, tagSuggestion: 3,
-  alsoUnderCategory: 3, alsoCategorySuggestion: 3, alsoCategoryNote: 3,
-  hasDiscount: 4, discountText: 4, discountTextFull: 4, discountCode: 4, discountType: 4, discountTypes: 4,
-  discountRedeemMode: 4, discountBuilder: 4, additionalDiscounts: 4, wantsBusinessOfWeek: 4, wantsBenefitOfWeek: 4,
-  coverPhoto: 5, coverPhotoThumb: 5, logo: 5, logoThumb: 5, photos: 5, videos: 5,
-};
+// כל קבוצת-שדות מוגדרת עם שני מספרים נפרדים בכוונה, כי הם משרתים שני צרכים שונים לגמרי:
+// - domId: מספר ה-DOM הפנימי של סעיף-העריכה בכרטיס-הביקורת המלא למטה (secEdit{n}_id/stepBlock{n}_id,
+//   ר' bizFullDetailHtml) — owner=1/bizdetails=2/category=3/discount=4/media=5. זה מספור-לגאסי
+//   (§145/§149) שקיים כבר בקוד ה-DOM/jumpToBizSection/changeItemsBySection — לא ניתן לשנות בלי
+//   לגעת בהם, ואין סיבה לגעת (הם כבר עובדים נכון, זו לא הבעיה שדווחה).
+// - display: מספר-התצוגה הקנוני ב"שיפוט מהיר" בלבד (כותרת+מיון) — זהה ל-FIELD_STEP_ORDER ב-
+//   business-dashboard.html (cathours=1, bizdetails=2, discount=3, media=4, owner=5). זה מה שהמשתמש
+//   רואה ומצפה לו: "שלב 1 קטגוריה ראשית... הסדר מבולגן... תסדר אותו כמו בשינוי [=בדשבורד-העסק]"
+//   (ר' PROJECT_CONTEXT.md §200). לא סתם מספר-שרירותי — display הוא זה שקובע גם את סדר-ההופעה
+//   וגם את הכותרת (name), display אחר לגמרי מ-domId.
+// fields מסודר לפי סדר-ההצגה האמיתי *בתוך* השלב (נבדק שורה-שורה מול renderCatHoursCard/
+// renderBizDetailsCard/renderDiscountCard/renderMediaCard/renderOwnerCard ב-business-dashboard.html,
+// לא ניחוש) — כדי ש"קטגוריה ראשית" למשל תמיד יופיע לפני "תגית שנייה", לא לפי סדר-מקרי של
+// Object.keys(pendingChanges) שתלוי בסדר-כתיבה בפיירסטור.
+const DIFF_GROUPS = [
+  { domId: 3, display: 1, name: 'העסק', fields: ['bizTypes', 'name', 'categoryPrimary', 'cat', 'categorySecondary', 'tags', 'tagSecondSuggestion', 'noTagFits', 'tagSuggestion', 'alsoUnderCategory', 'alsoCategorySuggestion', 'alsoCategoryNote'] },
+  { domId: 2, display: 2, name: 'פרטים ויצירת קשר', fields: ['desc', 'branches', 'city', 'address', 'websiteOnline', 'regions', 'phone', 'whatsapp', 'serviceEmail', 'hours', 'website', 'instagram', 'facebook'] },
+  { domId: 4, display: 3, name: 'ההטבות', fields: ['hasDiscount', 'discountText', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountType', 'discountTypes', 'discountBuilder', 'additionalDiscounts', 'wantsBusinessOfWeek', 'wantsBenefitOfWeek'] },
+  { domId: 5, display: 4, name: 'תמונות', fields: ['coverPhoto', 'coverPhotoThumb', 'logo', 'logoThumb', 'photos', 'videos'] },
+  { domId: 1, display: 5, name: 'אימות בעל העסק', fields: ['ownerFirst', 'ownerLast', 'ownerPhone', 'ownerEmail', 'ownerRelation', 'fanInstagram', 'note'] },
+];
+const DIFF_FIELD_TO_SECTION = {};   // → domId (jumpToBizSection/changeItemsBySection — לא לשנות משמעות)
+const DIFF_FIELD_TO_DISPLAY = {};   // → מספר-תצוגה קנוני (1-5), לשיפוט-מהיר בלבד
+const DIFF_FIELD_ORDER_INDEX = {};  // → מיקום השדה בתוך הקבוצה שלו
+const DIFF_SECTION_NAMES = {};      // display-number → שם השלב לכותרת-משנה, זהה לארגומנט השני של cardTitle() באותו שלב ב-business-dashboard.html
+DIFF_GROUPS.forEach(g => {
+  DIFF_SECTION_NAMES[g.display] = g.name;
+  g.fields.forEach((f, i) => {
+    DIFF_FIELD_TO_SECTION[f] = g.domId;
+    DIFF_FIELD_TO_DISPLAY[f] = g.display;
+    DIFF_FIELD_ORDER_INDEX[f] = i;
+  });
+});
+// שדות שלא מוצגים בדיף בכלל — כפילויות-מכוונות של שדה אחר שכבר מוצג, או snapshot פנימי לא-קריא.
+// זהה בדיוק ל-CONFIRM_ROW_EXCLUDE ב-business-dashboard.html (ר' ההערה שם) — cat=כפילות של
+// categoryPrimary, city/address=כפילות של branches[0], discountTypes=נגזר מ-discountRedeemMode,
+// coverPhotoThumb/logoThumb=גרסה ממוזערת נגזרת, discountBuilder=snapshot פנימי (הציג "OTHER" גולמי —
+// ר' PROJECT_CONTEXT.md §199), discountText=כותרת נגזרת אוטומטית (AI) מ-discountTextFull.
+const DIFF_FIELD_EXCLUDE = new Set([
+  'cat', 'city', 'address', 'discountTypes', 'coverPhotoThumb', 'logoThumb', 'discountBuilder', 'discountText',
+]);
 
 // זהה ל-approvePendingChanges/rejectPendingChanges ב-admin-businesses.html — b.pendingChanges (לא
 // b.pendingChangeDiff, שהוא רק גרסת-תצוגה מפורמטת) מכיל את הערכים הגולמיים האמיתיים לכתיבה בפועל.
@@ -6914,26 +6988,42 @@ function bizPendingChangeItems(b) {
   const items = [];
   if (b.pendingChangeDiff) {
     Object.keys(b.pendingChangeDiff).forEach(key => {
-      const n = DIFF_FIELD_TO_SECTION[key] || 2;
+      if (DIFF_FIELD_EXCLUDE.has(key)) return; // כפילות-מכוונת/snapshot פנימי — ר' הערת DIFF_FIELD_EXCLUDE
       const d = b.pendingChangeDiff[key];
-      items.push({ section: n, field: key, label: DIFF_FIELD_LABELS_MOCK[key] || key, old: d.old, new: d.new, detail: `לפני: "${d.old}"  →  עכשיו: "${d.new}"` });
+      if (d.old === d.new) return; // בלי שינוי אמיתי — לא להציג "X → X" (רק מה שבאמת ביקשו לשנות)
+      // section (domId) חייב להישאר מספור-ה-DOM הפנימי — changeItemsBySection/jumpToBizSection
+      // בכרטיס-הביקורת המלא (bizFullDetailHtml) תלויים בו ישירות. display הוא הקנוני-לתצוגה,
+      // רק לשיפוט-מהיר (כותרת+מיון) — ר' ההערה המפורטת ליד DIFF_GROUPS. אסור לערבב בין השניים.
+      items.push({
+        section: DIFF_FIELD_TO_SECTION[key] || 2, display: DIFF_FIELD_TO_DISPLAY[key] || 2,
+        field: key, label: DIFF_FIELD_LABELS_MOCK[key] || key, old: d.old, new: d.new,
+        detail: `לפני: "${d.old}"  →  עכשיו: "${d.new}"`,
+      });
     });
   }
+  // ארבע ההצעות הבאות שייכות לקבוצת "העסק · קטגוריה ותגיות" (domId=3/display=1). alreadyInDiff
+  // מונע שורה כפולה אם אותו שדה כבר הוצג דרך pendingChangeDiff למעלה (יכול לקרות אם השדה גם נכתב
+  // ל-pendingChanges וגם עדיין חי כשדה נפרד).
+  const alreadyInDiff = key => b.pendingChangeDiff && key in b.pendingChangeDiff && !DIFF_FIELD_EXCLUDE.has(key);
   const liveSecondTag = (b.tags || [])[1] || '';
-  if (b.tagSecondSuggestion && b.tagSecondSuggestion !== liveSecondTag) {
-    items.push({ section: 3, field: 'tagSecondSuggestion', label: '🏷️ תגית שנייה', detail: `הציע/ה: "${b.tagSecondSuggestion}"` });
+  if (b.tagSecondSuggestion && b.tagSecondSuggestion !== liveSecondTag && !alreadyInDiff('tagSecondSuggestion')) {
+    items.push({ section: 3, display: 1, field: 'tagSecondSuggestion', label: '🏷️ תגית שנייה', detail: `הציע/ה: "${b.tagSecondSuggestion}"` });
   }
-  if (b.tagSuggestion) {
-    items.push({ section: 3, field: 'tagSuggestion', label: '🆕 תגית חדשה (הצעה חופשית)', detail: `הציע/ה: "${b.tagSuggestion}"` });
+  if (b.tagSuggestion && !alreadyInDiff('tagSuggestion')) {
+    items.push({ section: 3, display: 1, field: 'tagSuggestion', label: '🆕 תגית חדשה (הצעה חופשית)', detail: `הציע/ה: "${b.tagSuggestion}"` });
   }
-  const alsoCatSugMeta = (b.alsoCategorySuggestion && b.alsoCategorySuggestion !== b.alsoUnderCategory)
+  const alsoCatSugMeta = (b.alsoCategorySuggestion && b.alsoCategorySuggestion !== b.alsoUnderCategory && !alreadyInDiff('alsoCategorySuggestion'))
     ? CATEGORIES.find(c => c.key === b.alsoCategorySuggestion) : null;
   if (alsoCatSugMeta) {
-    items.push({ section: 3, field: 'alsoCategorySuggestion', label: '🏷️ קטגוריה נוספת ("מופיע גם תחת")', detail: `הציע/ה: ${alsoCatSugMeta.icon} ${alsoCatSugMeta.label}` });
+    items.push({ section: 3, display: 1, field: 'alsoCategorySuggestion', label: '🏷️ קטגוריה נוספת ("מופיע גם תחת")', detail: `הציע/ה: ${alsoCatSugMeta.icon} ${alsoCatSugMeta.label}` });
   }
-  if (b.alsoCategoryNote) {
-    items.push({ section: 3, field: 'alsoCategoryNote', label: '📝 הערה לגבי קטגוריה נוספת', detail: `"${b.alsoCategoryNote}"` });
+  if (b.alsoCategoryNote && !alreadyInDiff('alsoCategoryNote')) {
+    items.push({ section: 3, display: 1, field: 'alsoCategoryNote', label: '📝 הערה לגבי קטגוריה נוספת', detail: `"${b.alsoCategoryNote}"` });
   }
+  // ממוין לפי מספר-התצוגה הקנוני (display, 1←5) ובתוך אותו שלב לפי סדר-השאלות האמיתי בטופס
+  // (DIFF_FIELD_ORDER_INDEX) — לא לפי section (domId, שמספורו שרירותי-היסטורי ולא קשור לסדר-תצוגה)
+  // ולא לפי סדר-מקרי של Object.keys(pendingChanges). שדה בלי אינדקס-ידוע מקבל 99 → אחרון בתוך השלב.
+  items.sort((a, b2) => (a.display - b2.display) || ((DIFF_FIELD_ORDER_INDEX[a.field] ?? 99) - (DIFF_FIELD_ORDER_INDEX[b2.field] ?? 99)));
   return items;
 }
 
@@ -7215,7 +7305,16 @@ function qjStructuredPreviewHtml(field, val) {
   if (field === 'branches') {
     return `<span class="qj-value-text">${esc(arr.map(br => `${br.city||''} — ${br.address||''}`).join(' · '))}</span>`;
   }
-  // מערך-טקסטים פשוט (תגיות/אזורים/סוגי-עסק) או אובייקט לא-צפוי — סיכום קריא, לא JSON גולמי
+  if (field === 'bizTypes') {
+    return `<span class="qj-value-text">${esc(arr.map(t => BIZ_TYPE_LABELS_MOCK[t] || t).join(', '))}</span>`;
+  }
+  if (field === 'discountRedeemMode') {
+    return `<span class="qj-value-text">${esc(toRedeemArr(val).map(t => REDEEM_MODE_LABELS_MOCK[t] || t).join(', '))}</span>`;
+  }
+  if (field === 'categorySecondary') {
+    return `<span class="qj-value-text">${esc(arr.map(k => (CATEGORIES.find(c => c.key === k) || {}).label || k).join(', '))}</span>`;
+  }
+  // מערך-טקסטים פשוט (תגיות/אזורים) או אובייקט לא-צפוי — סיכום קריא, לא JSON גולמי
   return `<span class="qj-value-text">${esc(arr.map(x => typeof x === 'object' ? Object.values(x).filter(Boolean).join(' ') : x).join(', '))}</span>`;
 }
 function quickJudgmentHtml(b) {
@@ -7239,7 +7338,7 @@ function quickJudgmentHtml(b) {
       if (isStructured) {
         return `
         <div class="qj-row">
-          <div class="qj-row-label"><div class="qj-row-step">שלב ${it.section} · שינוי פרטים</div><div class="qj-row-name">${it.label}</div></div>
+          <div class="qj-row-label"><div class="qj-row-step">שלב ${it.display} · ${DIFF_SECTION_NAMES[it.display] || ''}</div><div class="qj-row-name">${it.label}</div></div>
           <div class="qj-row-value qj-structured">
             <div class="qj-structured-old"><span class="qj-value-hint">היה:</span> ${qjStructuredPreviewHtml(it.field, b[it.field])}</div>
             <div class="qj-structured-new"><span class="qj-value-hint">מבוקש:</span> ${qjStructuredPreviewHtml(it.field, pendingVal)}</div>
@@ -7247,14 +7346,14 @@ function quickJudgmentHtml(b) {
           <div class="qj-row-actions">
             <button class="qj-btn primary" onclick="approveChangeField('${b.id}','${it.field}')">אישור</button>
             <button class="qj-btn reject" onclick="rejectChangeField('${b.id}','${it.field}')">דחייה</button>
-            <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',${it.section})">לשלב ${it.section} ←</button>
+            <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',${it.section})">לשלב ${it.display} ←</button>
           </div>
         </div>`;
       }
       const inputId = `qjInput_${b.id}_${it.field}`;
       return `
         <div class="qj-row">
-          <div class="qj-row-label"><div class="qj-row-step">שלב ${it.section} · שינוי פרטים</div><div class="qj-row-name">${it.label}</div></div>
+          <div class="qj-row-label"><div class="qj-row-step">שלב ${it.display} · ${DIFF_SECTION_NAMES[it.display] || ''}</div><div class="qj-row-name">${it.label}</div></div>
           <div class="qj-row-value">
             <span class="qj-old">${it.old}</span><span class="qj-arrow">→</span>
             <input type="text" id="${inputId}" class="qj-input" value="${esc(String(it.new))}">
@@ -7262,23 +7361,23 @@ function quickJudgmentHtml(b) {
           <div class="qj-row-actions">
             <button class="qj-btn primary" onclick="approveChangeField('${b.id}','${it.field}', document.getElementById('${inputId}').value)">אישור</button>
             <button class="qj-btn reject" onclick="rejectChangeField('${b.id}','${it.field}')">דחייה</button>
-            <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',${it.section})">לשלב ${it.section} ←</button>
+            <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',${it.section})">לשלב ${it.display} ←</button>
           </div>
         </div>`;
     }
     if (it.field === 'tagSecondSuggestion') return `
         <div class="qj-row">
-          <div class="qj-row-label"><div class="qj-row-step">שלב 3 · בקשת תגית</div><div class="qj-row-name">${it.label}</div></div>
+          <div class="qj-row-label"><div class="qj-row-step">שלב 1 · ${DIFF_SECTION_NAMES[1]} · בקשת תגית</div><div class="qj-row-name">${it.label}</div></div>
           <div class="qj-row-value"><span class="qj-value-text">"${esc(b.tagSecondSuggestion)}"</span></div>
           <div class="qj-row-actions">
             <button class="qj-btn primary" onclick="approveTagSecondSuggestion('${b.id}')">אישור</button>
             <button class="qj-btn reject" onclick="rejectTagSecondSuggestion('${b.id}')">דחייה</button>
-            <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',3)">לשלב 3 ←</button>
+            <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',3)">לשלב 1 ←</button>
           </div>
         </div>`;
     if (it.field === 'tagSuggestion') return `
         <div class="qj-row">
-          <div class="qj-row-label"><div class="qj-row-step">שלב 3 · בקשת תגית</div><div class="qj-row-name">${it.label}</div></div>
+          <div class="qj-row-label"><div class="qj-row-step">שלב 1 · ${DIFF_SECTION_NAMES[1]} · בקשת תגית</div><div class="qj-row-name">${it.label}</div></div>
           <div class="qj-row-value"><span class="qj-value-text">"${esc(b.tagSuggestion)}"</span></div>
           <div class="qj-row-actions">
             <button class="qj-btn primary" onclick="qjApproveTagFlow('${b.id}','new')">אישור כתגית</button>
@@ -7288,20 +7387,20 @@ function quickJudgmentHtml(b) {
         </div>`;
     if (it.field === 'alsoCategorySuggestion') return `
         <div class="qj-row">
-          <div class="qj-row-label"><div class="qj-row-step">שלב 3 · בקשת קטגוריה</div><div class="qj-row-name">${it.label}</div></div>
+          <div class="qj-row-label"><div class="qj-row-step">שלב 1 · ${DIFF_SECTION_NAMES[1]} · בקשת קטגוריה</div><div class="qj-row-name">${it.label}</div></div>
           <div class="qj-row-value"><span class="qj-value-text">${it.detail}</span></div>
           <div class="qj-row-actions">
             <button class="qj-btn primary" onclick="approveAlsoCatSuggestion('${b.id}')">אישור</button>
             <button class="qj-btn reject" onclick="rejectAlsoCatSuggestion('${b.id}')">דחייה</button>
-            <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',3)">לשלב 3 ←</button>
+            <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',3)">לשלב 1 ←</button>
           </div>
         </div>`;
     // alsoCategoryNote — מלל חופשי, אין פונקציית אישור/דחייה ייעודית היום (גם לא ב-diffHtmlForSection הקיים) — תצוגה+קפיצה בלבד
     return `
         <div class="qj-row">
-          <div class="qj-row-label"><div class="qj-row-step">שלב 3</div><div class="qj-row-name">${it.label}</div></div>
+          <div class="qj-row-label"><div class="qj-row-step">שלב 1 · ${DIFF_SECTION_NAMES[1]}</div><div class="qj-row-name">${it.label}</div></div>
           <div class="qj-row-value"><span class="qj-value-text">${it.detail}</span></div>
-          <div class="qj-row-actions"><button class="qj-btn link" onclick="jumpToBizSection('${b.id}',3)">לשלב 3 ←</button></div>
+          <div class="qj-row-actions"><button class="qj-btn link" onclick="jumpToBizSection('${b.id}',3)">לשלב 1 ←</button></div>
         </div>`;
   };
   const noteRow = hasNote ? `

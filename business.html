@@ -59,7 +59,7 @@
 
     .top-bar {
       background: var(--card-bg); padding: 14px 20px 6px;
-      display: flex; align-items: center; justify-content: space-between;
+      display: flex; align-items: center; justify-content: flex-end;
     }
     .top-bar img { display: block; height: 34px; width: auto; object-fit: contain; }
     .top-bar-maccabi { height: 30px; }
@@ -466,10 +466,10 @@
       font-size: 15px; font-weight: 800; text-decoration: none;
     }
 
-    /* ── מצב-העלאת-מדיה ברקע — הבאג שנמצא: מסך "התקבל בהצלחה" הוצג מיד, לפני שתמונות/לוגו בכלל
-       התחילו להעלות, בלי שום סימן. אם המשתמש סגר את הדף (התנהגות טבעית אחרי "הצלחה") — ההעלאה
-       שהייתה עדיין ב-Promise תלוי-ועומד נהרגת עם הטאב, והתמונות אף פעם לא הגיעו ל-Firestore.
-       פס-סטטוס קטן + beforeunload guard בזמן ההעלאה בפועל (ר' handleSubmit). */
+    /* ── מצב-שליחה (submittingState) — תמונות/לוגו/קאבר מועלים מצד-שרת (Worker /upload-biz-media,
+       ר' handleSubmit) *לפני* שמוצג "הבקשה התקבלה", כדי שלא יהיה חלון-זמן שבו ההצלחה כבר מוצגת
+       אבל ההעלאה עדיין תלויה-ועומדת בדפדפן (סגירת-דף באותו רגע = תמונות אבודות בלי סימן). מאז
+       שההעלאה עברה לשרת, סגירת-דף אחרי שהבקשה הזו כבר נשלחה לא פוגעת בכלום. */
     .success-upload-status {
       display: none; margin-top: 16px; padding: 10px 14px; border-radius: 10px;
       background: var(--acc-soft); border: 1px solid var(--acc-line);
@@ -482,8 +482,6 @@
       border: 2px solid rgba(0,0,0,.15); border-top-color: var(--text);
       animation: spin .7s linear infinite;
     }
-    .success-upload-status.done .spinner-sm { display: none; }
-    .success-upload-status.failed { background: #fdeceb; border-color: #f3b7b0; color: #8a2c22; }
 
     .back-to-site {
       display: none; position: fixed; top: 14px; right: 14px; z-index: 500;
@@ -625,7 +623,6 @@
 
 <!-- HEADER -->
 <div class="top-bar">
-  <img class="top-bar-maccabi" src="Maccabi.svg" alt="" aria-hidden="true"/>
   <img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
 </div>
 <div class="stripe-yellow"></div>
@@ -700,7 +697,7 @@
           </div>
           <div class="biz-type-card" data-type="pro" onclick="selectBizType('pro')">
             <div class="biz-type-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 1 5.4-5.4l-2.5 2.5"></path></svg></div>
-            <div class="biz-type-name">נותן שירות</div>
+            <div class="biz-type-name">בעל מקצוע / נותן שירות</div>
             <div class="biz-type-desc">אתם מגיעים ללקוח</div>
           </div>
         </div>
@@ -1099,7 +1096,7 @@
         <label>תמונות גלריה <span class="opt">(עד 5 תמונות)</span></label>
         <div class="cat-hint" style="margin-top:0;margin-bottom:12px;"><strong>כמה שיותר תמונות אמיתיות — כך יותר אמון ולחיצות.</strong> תמונות של המקום, המוצרים, או העבודה שלכם נותנות לאוהדים תחושה מדויקת של מה מחכה להם, ומשפרות משמעותית את הסיכוי שיבחרו בכם.</div>
         <div class="upload-zone" onclick="document.getElementById('bizGalleryFiles').click()">
-          <input type="file" id="bizGalleryFiles" accept="image/*" multiple style="display:none" onchange="previewGallery(this)" />
+          <input type="file" id="bizGalleryFiles" accept="image/*" multiple style="display:none" onchange="onGalleryFilesPicked(this)" />
           <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5-5 5 5"></path><path d="M12 5v13"></path></svg></div>
           <div class="upload-text">לחץ לבחירת תמונות</div>
           <div class="upload-sub">ניתן לבחור מספר תמונות בבת אחת</div>
@@ -1257,13 +1254,20 @@
       </div>
     </div>
 
+    <!-- SUBMITTING — התמונות מועלות מצד-שרת (Worker) לפני שמוצגת הצלחה, כדי שלא יהיה חלון-זמן שבו
+         "הבקשה התקבלה" מוצג בזמן שההעלאה עדיין תלויה ועומדת בדפדפן (ר' successState למטה להיסטוריה). -->
+    <div class="success-state" id="submittingState">
+      <div class="form-card">
+        <div class="success-upload-status show"><span class="spinner-sm"></span><span>שולח את הבקשה שלכם...</span></div>
+      </div>
+    </div>
+
     <!-- SUCCESS -->
     <div class="success-state" id="successState">
       <div class="form-card">
       <div class="success-icon"><svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#0A2A66" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
       <h3 id="successTitle">הבקשה התקבלה!</h3>
       <p id="successBody"></p>
-      <div class="success-upload-status" id="successUploadStatus"><span class="spinner-sm"></span><span id="successUploadStatusText"></span></div>
       <a class="success-back-link" id="successBackLink" href="home.html">חזרה לאתר</a>
       </div>
     </div>
@@ -1276,9 +1280,8 @@
 </footer>
 
 <script type="module">
-  import { db, getStorageLazy } from './firebase-config.js';
+  import { db } from './firebase-config.js';
   import { collection, addDoc, updateDoc, doc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
-  import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
@@ -1337,39 +1340,11 @@
     return memberRef.id;
   }
 
-  async function uploadFile(file, path) {
-    const storageRef = ref(await getStorageLazy(), path);
-    const snap = await uploadBytes(storageRef, file, { cacheControl: 'public, max-age=31536000, immutable' });
-    return await getDownloadURL(snap.ref);
-  }
-
+  // דחיסה בלבד (בלי העלאה) — התמונות עצמן מועלות מצד-שרת דרך /upload-biz-media (ר' handleSubmit),
+  // לא דרך ה-Client SDK. הדחיסה נשארת בצד-לקוח כדי לשמור את גוף-הבקשה קטן ומהיר לשליחה.
   async function compressToFile(file, maxDim, quality, filename) {
     const dataUrl = await compressImageFile(file, maxDim, quality);
     return dataUrlToFile(dataUrl, filename || file.name);
-  }
-
-  async function uploadImageWithThumb(file, basePath, uploads, key) {
-    try {
-      const [mainFile, thumbFile] = await Promise.all([
-        compressToFile(file, 1280, 0.82, file.name),
-        compressToFile(file, 400, 0.75, 'thumb_' + file.name),
-      ]);
-      const [url, thumbUrl] = await Promise.all([
-        uploadFile(mainFile, basePath),
-        uploadFile(thumbFile, basePath + '_thumb'),
-      ]);
-      uploads[key] = url;
-      uploads[key + 'Thumb'] = thumbUrl;
-      console.log(`✅ ${key} uploaded (compressed + thumb)`);
-    } catch (e) {
-      console.error(`⚠️ ${key} compression failed, falling back to original file:`, e);
-      try {
-        uploads[key] = await uploadFile(file, basePath);
-        console.log(`✅ ${key} uploaded (original, no compression)`);
-      } catch (e2) {
-        console.error(`❌ ${key} upload failed:`, e2.code, e2.message);
-      }
-    }
   }
 
   // ── STEPPER STATE ──
@@ -1643,10 +1618,12 @@
   })();
 
   async function handleSubmit() {
-    if (!validateStep1() || !validateStep2() || !validateStep3() || !validateOwnerVerification()) {
-      if (!validateStep1()) showStep(1);
-      else if (!validateStep2()) showStep(2);
-      else if (!validateStep3()) showStep(3);
+    const step1Ok = validateStep1(), step2Ok = validateStep2(), step3Ok = validateStep3(), step5Ok = validateOwnerVerification();
+    if (!step1Ok || !step2Ok || !step3Ok || !step5Ok) {
+      const failedStep = !step1Ok ? 1 : !step2Ok ? 2 : !step3Ok ? 3 : 5;
+      showStep(failedStep);
+      const firstErr = document.querySelector('#step' + failedStep + ' .error, #step' + failedStep + ' .field-error[style*="block"]');
+      if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     if (!document.getElementById('agreeTerms').checked) {
@@ -1732,9 +1709,19 @@
     data.videos         = getVideos();
     data.photoProofUrl  = '';
 
+    // הקבצים נאספים *לפני* שהטופס מוסתר — האלמנטים נשארים ב-DOM (display:none, לא נמחקים), אבל
+    // בטוח יותר לקרוא files[] מוקדם, לפני כל await.
+    const fanPhotoFile   = document.getElementById('bizFanPhoto')?.files[0];
+    const logoFile       = document.getElementById('bizLogoFile')?.files[0];
+    const coverPhotoFile = document.getElementById('bizCoverPhotoFile')?.files[0];
+    const galleryFiles   = [...(document.getElementById('bizGalleryFiles')?.files || [])].slice(0, 5);
+    const effectiveCoverFile = coverPhotoFile || logoFile || null;
+    const effectiveLogoFile  = coverPhotoFile ? logoFile : null;
+    const hasMediaToUpload = !!(fanPhotoFile || effectiveCoverFile || effectiveLogoFile || galleryFiles.length);
+
     document.getElementById('mainCard').querySelectorAll('.step-panel').forEach(p => p.style.display = 'none');
     document.getElementById('stepperBar').style.display = 'none';
-    document.getElementById('successState').style.display = 'block';
+    document.getElementById('submittingState').style.display = 'block';
     localStorage.removeItem('_hb_bizRegDraft');
 
     (async () => {
@@ -1745,7 +1732,11 @@
         await updateDoc(doc(db, 'businesses', bizDocRef.id), { ownerMemberId });
       } catch(e) { console.error('Firestore save failed:', e.message); }
 
-      if (!bizDocRef) return;
+      if (!bizDocRef) {
+        document.getElementById('submittingState').style.display = 'none';
+        document.getElementById('successState').style.display = 'block';
+        return;
+      }
 
       // "עסק השבוע"/"הטבת השבוע" — רשומת תור נפרדת ב-weekly_interest (מודל הנתונים מ-§2 במסמך),
       // כדי שמסך הניהול "10 עסק השבוע" יוכל לקרוא רשימת מי הביע עניין בלי לסרוק את כל businesses
@@ -1768,79 +1759,45 @@
           .catch(e => console.error('shorten-benefit background update failed:', e));
       }
 
-      const uploads = {};
-      const docId = bizDocRef.id;
-
-      const fanPhotoFile   = document.getElementById('bizFanPhoto')?.files[0];
-      const logoFile       = document.getElementById('bizLogoFile')?.files[0];
-      const coverPhotoFile = document.getElementById('bizCoverPhotoFile')?.files[0];
-      const galleryFiles   = [...(document.getElementById('bizGalleryFiles')?.files || [])].slice(0, 5);
-
-      const effectiveCoverFile = coverPhotoFile || logoFile || null;
-      const effectiveLogoFile  = coverPhotoFile ? logoFile : null;
-      const hasMediaToUpload = !!(fanPhotoFile || effectiveCoverFile || effectiveLogoFile || galleryFiles.length);
-
-      // ── הבאג שנמצא: מסך "הבקשה התקבלה" (successState) כבר מוצג למשתמש (למעלה, סינכרוני, לפני
-      // ה-IIFE הזה) — מבחינתו הרישום הסתיים. אם הוא סוגר/עוזב את הדף עכשיו (בדיוק מה שמצפים שיעשה
-      // אחרי הודעת-הצלחה), ה-IIFE נהרג עם הטאב ותמונות/לוגו/קאבר שנבחרו לא מגיעים ל-Firestore בכלל —
-      // בלי שום שגיאה, בלי שום עדות. beforeunload guard + פס-סטטוס גלוי סוגרים את הפער.
-      const uploadStatusEl = document.getElementById('successUploadStatus');
-      const uploadStatusTextEl = document.getElementById('successUploadStatusText');
-      const beforeUnloadGuard = (e) => { e.preventDefault(); e.returnValue = ''; return ''; };
+      // תמונות/לוגו/קאבר/הוכחת-אוהד מועלים דרך ה-Worker (/upload-biz-media), לא דרך ה-Client SDK —
+      // ברגע שה-fetch הזה נשלח והתקבל בשרת, ההעלאה בפועל ל-Firebase Storage ממשיכה שם גם אם המשתמש
+      // סוגר את הדף מיד אחרי (בניגוד לזרימה הקודמת, שהריצה uploadBytes ישירות מהדפדפן — תלויה בטאב
+      // פתוח, ולכן דרשה beforeunload guard+באנר-אזהרה גלוי). "הבקשה התקבלה" מוצג רק *אחרי* שה-fetch
+      // חוזר, כדי שלא יהיה בכלל חלון-זמן שבו ההצלחה מוצגת וההעלאה עדיין תלויה-ועומדת.
       if (hasMediaToUpload) {
-        window.addEventListener('beforeunload', beforeUnloadGuard);
-        uploadStatusTextEl.textContent = 'מעלים את התמונות שלכם — נא לא לסגור את הדף...';
-        uploadStatusEl.className = 'success-upload-status show';
+        try {
+          const form = new FormData();
+          form.append('accessToken', accessToken);
+          if (fanPhotoFile) form.append('fanPhoto', fanPhotoFile);
+          if (effectiveLogoFile) form.append('logo', effectiveLogoFile);
+          if (effectiveCoverFile) {
+            const [mainFile, thumbFile] = await Promise.all([
+              compressToFile(effectiveCoverFile, 1280, 0.82, effectiveCoverFile.name),
+              compressToFile(effectiveCoverFile, 400, 0.75, 'thumb_' + effectiveCoverFile.name),
+            ]).catch(() => [effectiveCoverFile, effectiveCoverFile]);
+            form.append('cover', mainFile);
+            form.append('coverThumb', thumbFile);
+          }
+          for (const file of galleryFiles) {
+            const compressed = await compressToFile(file, 1280, 0.82, file.name).catch(() => file);
+            form.append('gallery', compressed);
+          }
+          const resp = await fetch(WORKER_URL + '/upload-biz-media', { method: 'POST', body: form });
+          const result = await resp.json();
+          if (!result.ok) console.error('upload-biz-media failed:', result);
+        } catch (e) {
+          console.error('upload-biz-media request failed:', e.message);
+        }
       }
 
-      const tasks = [];
-      if (fanPhotoFile) tasks.push(
-        uploadFile(fanPhotoFile, `members/proofs/${docId}_fan`)
-          .then(url => { uploads.photoProofUrl = url; })
-          .catch(e => console.error('fan photo upload failed:', e.code, e.message))
-      );
-      if (effectiveCoverFile) tasks.push(
-        uploadImageWithThumb(effectiveCoverFile, `businesses/${docId}_cover`, uploads, 'coverPhoto')
-      );
-      if (effectiveLogoFile) tasks.push(
-        uploadFile(effectiveLogoFile, `businesses/${docId}_logo`)
-          .then(url => { uploads.logo = url; })
-          .catch(e => console.error('logo upload failed:', e.code, e.message))
-      );
-      if (galleryFiles.length) {
-        uploads.photos = new Array(galleryFiles.length);
-        uploads.photosThumbs = new Array(galleryFiles.length);
-        galleryFiles.forEach((file, i) => {
-          tasks.push(
-            (async () => {
-              const tmp = {};
-              await uploadImageWithThumb(file, `businesses/${docId}_gallery_${i}`, tmp, 'img');
-              uploads.photos[i] = tmp.img || '';
-              uploads.photosThumbs[i] = tmp.imgThumb || tmp.img || '';
-            })()
-          );
-        });
-      }
-
-      await Promise.allSettled(tasks);
-      let mediaSaveOk = true;
-      try {
-        await updateDoc(doc(db, 'businesses', docId), uploads);
-      } catch (e) { console.error('businesses media update failed:', e.message); mediaSaveOk = false; }
-
-      if (hasMediaToUpload) {
-        window.removeEventListener('beforeunload', beforeUnloadGuard);
-        uploadStatusEl.className = 'success-upload-status show ' + (mediaSaveOk ? 'done' : 'failed');
-        uploadStatusTextEl.textContent = mediaSaveOk
-          ? '✓ התמונות הועלו בהצלחה'
-          : '⚠️ שמירת התמונות נכשלה — תוכלו להעלות שוב מהדשבורד שיישלח אליכם לאחר האישור';
-      }
+      document.getElementById('submittingState').style.display = 'none';
+      document.getElementById('successState').style.display = 'block';
     })();
   }
 
   // ── BIZ TYPE ──
   let selectedBizTypes = new Set();
-  const bizTypeLabels = { physical: 'חנות פיזית', online: 'אונליין', pro: 'נותן שירות' };
+  const bizTypeLabels = { physical: 'חנות פיזית', online: 'אונליין', pro: 'בעל מקצוע / נותן שירות' };
 
   function selectBizType(type) {
     if (selectedBizTypes.has(type)) {
@@ -1961,7 +1918,7 @@
   // מקור-אמת יחיד ל-5 הקבצים. img שם הוא בסיסי-בלבד; כאן תמיד גוון navy (רקע-בהיר), כמו קודם.
   const CATEGORIES = window.CATEGORIES.map(c => ({ ...c, img: window.catIconFile(c, 'navy') }));
   const MAX_TAGS = 2;
-  const CAT_LABELS = Object.fromEntries(CATEGORIES.map(c => [c.key, `${c.icon} ${c.label}`]));
+  const CAT_LABELS = Object.fromEntries(CATEGORIES.map(c => [c.key, c.label]));
 
   // קטלוג תגיות בר-עריכה בפועל (settings/tagTaxonomy, נערך ב-admin-dashboard.html)
   (async function loadLiveTagTaxonomy() {
@@ -2535,6 +2492,22 @@
       <div class="upload-sub">המקום / המוצר / השירות</div>`;
   }
 
+  // מצטבר-הבחירה האמיתי לגלריה — קלט-קובץ native מחליף את כל ה-FileList שלו בכל פתיחה חוזרת של
+  // הבוחר (לא מוסיף), אז "בחר עוד תמונה" היה דורס את מה שנבחר קודם. המערך הזה הוא מקור-האמת היחיד,
+  // ו-input.files תמיד מסונכרן ממנו (לא להפך) — גם בבחירה, גם בהסרה, גם בשחזור-טיוטה.
+  let gallerySelectedFiles = [];
+
+  function setGalleryFiles(filesArr) {
+    gallerySelectedFiles = filesArr.slice(0, 5);
+    const input = document.getElementById('bizGalleryFiles');
+    setInputFiles(input, gallerySelectedFiles);
+    previewGallery(input);
+  }
+
+  function onGalleryFilesPicked(input) {
+    setGalleryFiles([...gallerySelectedFiles, ...Array.from(input.files)]);
+  }
+
   function previewGallery(input) {
     const preview = document.getElementById('galleryPreview');
     preview.innerHTML = '';
@@ -2554,14 +2527,10 @@
   }
 
   function removeGalleryFile(idx) {
-    const input = document.getElementById('bizGalleryFiles');
-    const remaining = Array.from(input.files).filter((_, i) => i !== idx);
-    const dt = new DataTransfer();
-    remaining.forEach(f => dt.items.add(f));
-    input.files = dt.files;
-    previewGallery(input);
+    setGalleryFiles(gallerySelectedFiles.filter((_, i) => i !== idx));
   }
 
+  window.onGalleryFilesPicked = onGalleryFilesPicked;
   window.removeLogo        = removeLogo;
   window.removeCoverPhoto  = removeCoverPhoto;
   window.removeGalleryFile = removeGalleryFile;
@@ -2797,8 +2766,7 @@
         setInputFiles(document.getElementById('bizFanPhoto'), [dataUrlToFile(d.fanPhotoData, d.fanPhotoName || 'fan.jpg')]);
       }
       if (d.gallery?.length) {
-        setInputFiles(document.getElementById('bizGalleryFiles'), d.gallery.map(g => dataUrlToFile(g.data, g.name || 'photo.jpg')));
-        previewGallery(document.getElementById('bizGalleryFiles'));
+        setGalleryFiles(d.gallery.map(g => dataUrlToFile(g.data, g.name || 'photo.jpg')));
       }
     } catch (e) { console.error('draft media restore failed:', e); }
 

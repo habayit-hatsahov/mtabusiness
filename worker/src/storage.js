@@ -1,6 +1,9 @@
 // העלאה ל-Firebase Storage דרך ה-REST API (לא ה-Client SDK) — אותו bucket/service-account שכבר
-// משמש ל-Firestore (ר' jwt.js, getGoogleAccessToken). לא מייצר download-token: storage.rules כבר
-// מתירים read פומבי לתמונות של עסק approved בלי טוקן (ר' storage.rules), אז ה-URL הפשוט מספיק.
+// משמש ל-Firestore (ר' jwt.js, getGoogleAccessToken). לא מייצר download-token: ניסיון בפועל
+// (2026-08-12) להוסיף firebaseStorageDownloadTokens ל-metadata אחרי ההעלאה (PATCH) נכשל עם
+// 400 "Not allowed to set custom metadata for firebaseStorageDownloadTokens" — כנראה חסום
+// ב-API הזה כשלא דרך ה-SDK הרשמי. הפתרון בפועל לצפייה בתמונה של עסק לא-מאושר עבר ל-proxy
+// מאומת ב-Worker (ר' handleViewBizMedia ב-index.js) — לא כאן.
 export async function uploadToFirebaseStorage(env, accessToken, path, bytes, contentType) {
   const encodedPath = encodeURIComponent(path);
   const base = `https://firebasestorage.googleapis.com/v0/b/${env.FIREBASE_STORAGE_BUCKET}/o`;

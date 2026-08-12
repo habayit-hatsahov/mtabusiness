@@ -655,21 +655,24 @@
       }
       if (!isBizOwner) return;
 
-      let token = '';
+      let token = '', approved = false;
       if (linkedBusinessId) {
         const bizSnap = await getDoc(doc(db, 'businesses', linkedBusinessId));
         if (bizSnap.exists()) {
           const bizData = bizSnap.data();
           token = bizData.accessToken || '';
-          // רק לעסק מאושר — קישור-שיתוף לעסק לא-מאושר לא יעבוד בכל מקרה (ר' shareMyBiz).
-          if (bizData.status === 'approved') {
+          approved = bizData.status === 'approved';
+          // "העסק שלי" בתפריט (וגם שיתוף) מוצגים רק לעסק מאושר — זהה בדיוק לגייטינג הקיים
+          // ב-profile.html (§36). לפני התיקון הזה (2026-08-12) "העסק שלי" הוצג לכל בעל-token
+          // גם כשהעסק pending — בעל עסק שממתין לאישור לא אמור לראות "העסק שלי" בתפריט בכלל.
+          if (approved) {
             window._myBizShare = { name: bizData.name || '' };
             const shareItem = document.getElementById('menuShareBizItem');
             if (shareItem) shareItem.style.display = 'flex';
           }
         }
       }
-      if (!token) return;
+      if (!token || !approved) return;
 
       const item = document.getElementById('menuBizItem');
       if (item) {
