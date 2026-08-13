@@ -615,7 +615,7 @@
 import { auth as primaryAuth, db as primaryDb, firebaseConfig } from './firebase-config.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, getDocFromServer, updateDoc, collection, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // כברירת מחדל משתמשים ב-session המשותף (הכניסה הרגילה של החבר/מנהל). רק בגישת
 // bizToken (תצוגת דשבורד-עסק, ר' business-dashboard.html) מוחלפים ל-app מבודד —
@@ -765,9 +765,23 @@ if (bizToken) {
 }
 
 // ── LOAD MEMBER ───────────────────────────────────────────────────────────
+// getDocFromServer+ניסיונות-חוזרים — זהה ל-fetchMemberDocWithRetry ב-home.html (ר' ההערה שם):
+// מיד אחרי כניסה טרייה persistentLocalCache עלול להחזיר תשובת-cache ריקה/לא-מסונכרנת במקום
+// לפנות לשרת, וגורם ל"דשבורד ניהול"/"העסק שלי" להיעדר מהתפריט עד רענון ידני.
+async function fetchMemberDocWithRetry(id) {
+  const delays = [0, 400, 900, 1800];
+  let snap;
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
+    snap = await getDocFromServer(doc(db, 'members', id));
+    if (snap.exists()) return snap;
+  }
+  return snap;
+}
+
 let member;
 if (memberId) {
-  const memberSnap = await getDoc(doc(db, 'members', memberId));
+  const memberSnap = await fetchMemberDocWithRetry(memberId);
   const data = memberSnap.exists() ? memberSnap.data() : {};
   member = {
     firstName:    data.firstName || '',

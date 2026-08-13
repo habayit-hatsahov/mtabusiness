@@ -622,7 +622,7 @@
     // ה-getDoc על members/{memberId} דורש request.auth.uid==memberId (firestore.rules),
     // אז memberId חייב לבוא מ-auth.currentUser.uid בפועל, לא רק מ-localStorage.
     import('./firebase-config.js').then(async ({ db, auth }) => {
-      const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js');
+      const { doc, getDoc, getDocFromServer } = await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js');
       const { onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js');
 
       const storedId = localStorage.getItem('hb_memberId');
@@ -635,9 +635,18 @@
         });
       });
 
+      // getDocFromServer+ניסיונות-חוזרים — זהה ל-fetchMemberDocWithRetry ב-home.html: מיד אחרי
+      // כניסה טרייה persistentLocalCache עלול להחזיר תשובת-cache ריקה/לא-מסונכרנת במקום לפנות
+      // לשרת, וגורם ל"דשבורד ניהול"/"העסק שלי" להיעדר מהתפריט עד רענון ידני.
       let isBizOwner = false, linkedBusinessId = '', isAdminMember = false;
       if (memberId) {
-        const snap = await getDoc(doc(db, 'members', memberId));
+        const delays = [0, 400, 900, 1800];
+        let snap;
+        for (let i = 0; i < delays.length; i++) {
+          if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
+          snap = await getDocFromServer(doc(db, 'members', memberId));
+          if (snap.exists()) break;
+        }
         if (snap.exists()) {
           const d = snap.data();
           isBizOwner = d.isBusinessOwner === true;

@@ -1550,7 +1550,7 @@
 import { firebaseConfig, db as sharedDb, auth as sharedAuth } from './firebase-config.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, query, where, getDocs
+  getFirestore, doc, getDoc, getDocFromServer, updateDoc, serverTimestamp, collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import {
   ref, uploadBytes, getDownloadURL
@@ -4376,7 +4376,16 @@ maybeShowInAppBanner();
     });
     const storedId = localStorage.getItem('hb_memberId');
     if (!user || !storedId || user.uid !== storedId) return;
-    const snap = await getDoc(doc(sharedDb, 'members', user.uid));
+    // getDocFromServer+ניסיונות-חוזרים — זהה ל-fetchMemberDocWithRetry ב-home.html: מיד אחרי
+    // כניסה טרייה persistentLocalCache עלול להחזיר תשובת-cache ריקה/לא-מסונכרנת במקום לפנות
+    // לשרת, וגורם ל"דשבורד ניהול" להיעדר מהתפריט עד רענון ידני.
+    const delays = [0, 400, 900, 1800];
+    let snap;
+    for (let i = 0; i < delays.length; i++) {
+      if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
+      snap = await getDocFromServer(doc(sharedDb, 'members', user.uid));
+      if (snap.exists()) break;
+    }
     if (snap.exists() && snap.data().isAdmin === true) {
       const item = document.getElementById('menuAdminItem');
       if (item) item.style.display = 'flex';

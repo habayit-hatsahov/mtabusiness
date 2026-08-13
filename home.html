@@ -3122,7 +3122,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <script type="module">
 import { db, auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, getDoc, getDocFromServer, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // חושף את auth ל-<script> הרגיל (לא module) שמעליו — currentMemberId() שם צריך auth.currentUser, אך import הוא scoped ל-module הזה בלבד
 window._auth = auth;
@@ -3205,21 +3205,20 @@ getDoc(doc(db, 'settings', 'sectionAnchors'))
   .then(snap => window.loadSectionAnchors(snap.exists() ? snap.data() : {}))
   .catch(err => console.error('Section anchors load error:', err));
 
-// קריאת מסמך-חבר עם ניסיון-חוזר יחיד — נצפה race לסירוגין (2026-08-06, המשתמש דיווח חי): הקריאה
-// הראשונה ל-Firestore לפעמים מחזירה "לא קיים" על מסמך שבוודאות קיים (נראה גם בברכת-השם וגם
-// בתפריט-הניהול/עסק, שתי קריאות נפרדות לאותו מסמך) ומתקן את עצמו ברענון. נשלל: נתונים חסרים,
-// firestore.rules (מתיר קריאה-עצמית תמיד וללא תנאי), cache מקומי (לא מוגדר בקוד), Service Worker
-// (לא נוגע בבקשות Firebase). שורש-הסיבה המדויק לא אותר — זה תיקון-הגנתי לתוצאה, לא לסיבה.
+// קריאת מסמך-חבר עם ניסיון-חוזר — נצפה race לסירוגין (2026-08-06, המשתמש דיווח חי, וחוזר שוב
+// ב-2026-08-13): הקריאה הראשונה ל-Firestore לפעמים מחזירה "לא קיים" על מסמך שבוודאות קיים
+// (נראה גם בברכת-השם וגם בתפריט-הניהול/עסק) ומתקן את עצמו לבד תוך 1-3 שניות. שורש סביר שנמצא
+// ב-2026-08-13: firebase-config.js מפעיל persistentLocalCache — מיד אחרי כניסה טרייה (redirect
+// מ-welcome.html) ה-cache המקומי עוד לא מכיל את המסמך, ו-getDoc() הרגיל עשוי להחזיר תשובת-cache
+// ריקה/לא-מסונכרנת במקום לפנות לשרת. תוקן ב-getDocFromServer (עוקף cache לגמרי, תמיד רשת אמיתית)
+// במקום getDoc — אם זה פותר את זה סופית, אפשר להוריד את מנגנון-הניסיונות-החוזרים בעתיד, אבל הוא
+// נשאר כרגע כרשת-ביטחון נוספת (עד ~3.1s תוספת מרבית, לא מתנגש עם רשת-הביטחון של ה-splash, 10s).
 async function fetchMemberDocWithRetry(memberId) {
-  // עד 3 ניסיונות-חוזרים (לא רק אחד) עם השהיה עולה — חיזוק ל-2026-08-08: דווח מקרה שבו גם
-  // ניסיון-חוזר יחיד אחרי 500ms לא הספיק (ברכת-שם תקינה, אבל "דשבורד ניהול"/"העסק שלי"
-  // נשארו חסרים בהמבורגר עד ניווט-ידני לפרופיל וחזרה). ההשהיות נשארות קטנות בסה"כ (עד ~3.1s
-  // תוספת מרבית) כדי לא להתנגש עם רשת-הביטחון של ה-splash (10s, למעלה).
   const delays = [0, 400, 900, 1800];
   let snap;
   for (let i = 0; i < delays.length; i++) {
     if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
-    snap = await getDoc(doc(db, 'members', memberId));
+    snap = await getDocFromServer(doc(db, 'members', memberId));
     if (snap.exists()) return snap;
   }
   return snap;
