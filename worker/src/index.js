@@ -362,14 +362,26 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
 
 // כשחבר הוא גם בעל עסק שממתין לאותו מייל אישור — נשלח מייל אחד מאוחד (קוד כניסה + קישור לדשבורד)
 // במקום שני מיילים נפרדים. אם רק צד אחד ממתין (למשל בעל עסק שכבר יש לו קוד מוקדם יותר), נשלח בנפרד כרגיל.
+//
+// MAX_SWEEP_RECIPIENTS — תקרה על כמות הנמענים המטופלים בהרצת-cron בודדת (רץ כל דקה, ר' wrangler.toml
+// [triggers]). בלי תקרה, אישור-המוני של הרבה עסקים/חברים בבת-אחת (למשל 46 עסקים בישיבה אחת) עלול
+// לגרום להרצה בודדת לבצע מאות קריאות-משנה (עד ~4 ל-Firestore+Brevo לכל נמען) — חוצה את מכסת
+// ה-subrequests של Cloudflare Workers (50 בתוכנית חינמית להרצה) ומפיל את ההרצה באמצע, עם נמענים
+// שנשארים 'failed' לצמיתות בלי ניסיון-חוזר אוטומטי. עם התקרה, השאר פשוט נשארים 'pending' ומטופלים
+// בהרצת-הדקה הבאה — תור גדול מתרוקן תוך כמה דקות, בלי סיכון למכסה בשום תוכנית.
+const MAX_SWEEP_RECIPIENTS = 10;
+
 async function runEmailSweeps(env) {
   const accessToken = await getGoogleAccessToken(env);
   const templatesDoc = await firestoreGetDoc(env, accessToken, 'settings/messageTemplates');
   const templates = templatesDoc?.fields || {};
   const pendingMembers = await firestoreRunQuery(env, accessToken, 'members', 'loginCodeEmailStatus', 'pending');
   const handledBusinessIds = new Set();
+  let processed = 0;
 
   for (const m of pendingMembers) {
+    if (processed >= MAX_SWEEP_RECIPIENTS) break;
+    processed++;
     try {
       let business = null;
       if (m.fields.isBusinessOwner === true && m.fields.linkedBusinessId) {
@@ -419,6 +431,8 @@ async function runEmailSweeps(env) {
   const pendingBiz = await firestoreRunQuery(env, accessToken, 'businesses', 'ownerEmailStatus', 'pending');
   for (const b of pendingBiz) {
     if (handledBusinessIds.has(b.id)) continue;
+    if (processed >= MAX_SWEEP_RECIPIENTS) break;
+    processed++;
     try {
       const ownerName = `${b.fields.ownerFirst || ''} ${b.fields.ownerLast || ''}`.trim();
       await sendBusinessApprovedEmail(env, {
