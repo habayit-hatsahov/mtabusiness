@@ -1635,6 +1635,13 @@ function esc(v) {
   return (v == null ? '' : String(v)).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
+// שער (כדורגל) / אולם-יציע (כדורסל) — תווית שדה-המיקום לפי הענף שאומת בפועל. verifiedSport לא קיים
+// ברשומות ישנות (לפני הוספת שאלת הענף) — נופל בחזרה ל"שער" כברירת מחדל, כמו ההתנהגות הקודמת.
+function sectionLabelFor(verifiedSport) {
+  return verifiedSport === 'basketball' ? 'אולם/יציע' : 'שער';
+}
+const SPORT_LABELS = { football: 'כדורגל', basketball: 'כדורסל', both: 'כדורגל+כדורסל' };
+
 // ── העלאת מדיה אמיתית ל-Firebase Storage — זהה בדיוק ל-admin-businesses.html (uploadFile/
 // compressImageFile/compressToFile/uploadImageWithThumb) — שלב 5 (מדיה) הוא הראשון בדמו שצריך את זה. ──
 async function uploadFile(file, path) {
@@ -1750,6 +1757,8 @@ function hydrateBiz(id, raw) {
     branches,
     reviewedSections: raw.reviewedSections || {}, // עדיין לא נשמר בפועל — ר' toggleSecReviewed
     ownerIsSubscriber: raw.isSubscriber === 'yes',
+    ownerFanSport: raw.fanSport || null,
+    ownerVerifiedSport: raw.verifiedSport || null,
     ownerSubscriberSection: raw.gate || null,
     ownerSubscriberNumber: raw.subNum || null,
     ownerFacebookUrl: raw.fbUrl || '',
@@ -4300,7 +4309,7 @@ function bizFormSummaryHtml(b) {
           ${field('אימייל', b.ownerEmail, !b.ownerEmail)}
           ${field('קרבה לבעל המנוי', RELATION_LABELS_MOCK[b.ownerRelation]||b.ownerRelation||'', !b.ownerRelation)}
           ${field('מנוי מכבי', b.ownerIsSubscriber?'כן':'לא · אימות ידני', false)}
-          ${field('שער / מספר מנוי', b.ownerIsSubscriber?[b.ownerSubscriberSection,b.ownerSubscriberNumber].filter(Boolean).join(' / '):'', !b.ownerIsSubscriber)}
+          ${field(sectionLabelFor(b.ownerVerifiedSport) + ' / מספר מנוי', b.ownerIsSubscriber?[b.ownerSubscriberSection,b.ownerSubscriberNumber].filter(Boolean).join(' / '):'', !b.ownerIsSubscriber)}
         </div>
 
         <div class="form-sec-title">סיכום ושליחה</div>
@@ -4431,7 +4440,7 @@ function bizFullDetailHtml(id, opts) {
   const idMailBtn = b.ownerEmail ? `<button class="btn-id-mail" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">מייל</button>` : '';
   const idDashBtn = b.accessToken ? `<a href="business-dashboard.html?token=${b.accessToken}" target="_blank" class="btn-id-dash">פתיחת דשבורד העסק</a>` : '';
   const idSubNote = b.ownerIsSubscriber
-    ? `<div class="identity-note neutral"><div class="identity-note-h">מנוי מאומת</div><div class="identity-note-v">שער ${esc(b.ownerSubscriberSection||'—')} · מס' מנוי ${esc(b.ownerSubscriberNumber||'—')}</div></div>`
+    ? `<div class="identity-note neutral"><div class="identity-note-h">מנוי מאומת</div><div class="identity-note-v">${b.ownerFanSport ? SPORT_LABELS[b.ownerFanSport] + ' · ' : ''}${sectionLabelFor(b.ownerVerifiedSport)} ${esc(b.ownerSubscriberSection||'—')} · מס' מנוי ${esc(b.ownerSubscriberNumber||'—')}</div></div>`
     : `<div class="identity-note warn"><div class="identity-note-h">מנוי לא מאומת</div><div class="identity-note-v">אומת בתמונה בשער + פייסבוק — דורש בדיקה ידנית</div></div>`;
   const idTermsNote = `<div class="identity-note neutral"><div class="identity-note-h">תקנון</div><div class="identity-note-v">${b.agreedTermsAt ? `אושר ${fmtDate(b.agreedTermsAt)}` : 'טרם אושר'}</div></div>`;
   const idEmailNote = b.status === 'approved'
@@ -4479,7 +4488,7 @@ function bizFullDetailHtml(id, opts) {
   // ── שלב 1 — בעל העסק, ראשון להומר לסגנון step-block (§131, "שלב אחד בכל פעם"). שלבים 3-5 עדיין בסגנון-הישן.
   const step1Sub = [
     ([b.ownerFirst, b.ownerLast].filter(Boolean).join(' ') || '—'),
-    b.ownerIsSubscriber ? `מנוי · שער ${b.ownerSubscriberSection || '—'}` : 'לא מנוי',
+    b.ownerIsSubscriber ? `מנוי · ${sectionLabelFor(b.ownerVerifiedSport)} ${b.ownerSubscriberSection || '—'}` : 'לא מנוי',
     b.ownerRelation ? `קרבה: ${RELATION_LABELS_MOCK[b.ownerRelation] || b.ownerRelation}` : ''
   ].filter(Boolean).join(' · ');
   // ── שלב 2 — פרטי העסק (הכי גדול מבין ה-5). stepChangedField/stepFieldWas/stepFieldHtml משותפים
@@ -4571,7 +4580,7 @@ function bizFullDetailHtml(id, opts) {
       <div class="owner-verify-info">
         <div class="owner-verify-grid">
           <div><div class="form-field-label">מספר מנוי</div><div class="form-field-val${!b.ownerSubscriberNumber?' empty':''}">${b.ownerSubscriberNumber?esc(b.ownerSubscriberNumber):'לא נמסר'}</div></div>
-          <div><div class="form-field-label">שער</div><div class="form-field-val${!b.ownerSubscriberSection?' empty':''}">${b.ownerSubscriberSection?esc(b.ownerSubscriberSection):'—'}</div></div>
+          <div><div class="form-field-label">${sectionLabelFor(b.ownerVerifiedSport)}</div><div class="form-field-val${!b.ownerSubscriberSection?' empty':''}">${b.ownerSubscriberSection?esc(b.ownerSubscriberSection):'—'}</div></div>
           <div><div class="form-field-label">קרבה לבעל המנוי</div><div class="form-field-val">${esc(RELATION_LABELS_MOCK[b.ownerRelation]||'—')}</div></div>
         </div>
         ${b.ownerFacebookUrl ? `<div class="owner-verify-fb"><span class="form-field-label">פייסבוק</span><a href="${esc(b.ownerFacebookUrl)}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
@@ -4789,7 +4798,13 @@ function bizFullDetailHtml(id, opts) {
             </div>
           </div>
           <div class="step-form-grid" id="edit_ownerSubFields_${b.id}" style="display:${b.ownerIsSubscriber?'grid':'none'};margin-top:10px">
-            <div class="step-field"><div class="step-field-h">שער</div><input type="text" id="edit_ownerSection_${b.id}" value="${b.ownerSubscriberSection||''}" placeholder="שער"></div>
+            <div class="step-field"><div class="step-field-h">ענף (לצורך האימות)</div>
+              <select id="edit_ownerSport_${b.id}" onchange="onEditOwnerSportChange('${b.id}')">
+                <option value="football" ${b.ownerVerifiedSport!=='basketball'?'selected':''}>כדורגל</option>
+                <option value="basketball" ${b.ownerVerifiedSport==='basketball'?'selected':''}>כדורסל</option>
+              </select>
+            </div>
+            <div class="step-field"><div class="step-field-h" id="edit_ownerSectionLabel_${b.id}">${sectionLabelFor(b.ownerVerifiedSport)}</div><input type="text" id="edit_ownerSection_${b.id}" value="${b.ownerSubscriberSection||''}" placeholder="${sectionLabelFor(b.ownerVerifiedSport)}"></div>
             <div class="step-field"><div class="step-field-h">מספר מנוי</div><input type="text" id="edit_ownerNumber_${b.id}" value="${b.ownerSubscriberNumber||''}" placeholder="מס' מנוי"></div>
           </div>
           <div id="edit_ownerNoSubFields_${b.id}" style="display:${!b.ownerIsSubscriber?'block':'none'};margin-top:10px">
@@ -4999,6 +5014,7 @@ window.saveBizSec1 = async function(id) {
     // אימות "אוהד מכבי" של בעל העסק — נשמר רק לפי הנתיב שנבחר בפועל (מנוי/לא מנוי), כמו בהרשמה האמיתית —
     // אין "היה מנוי בעבר" (שדה שלא קיים בהרשמת בעל עסק, ר' business.html) ואין ערך-צל מהנתיב הלא-נבחר.
     isSubscriber: isSub ? 'yes' : 'no',
+    verifiedSport: isSub ? document.getElementById('edit_ownerSport_'+id).value : null,
     gate:   isSub ? (document.getElementById('edit_ownerSection_'+id).value.trim() || null) : null,
     subNum: isSub ? (document.getElementById('edit_ownerNumber_'+id).value.trim() || null) : null,
     fbUrl:  isSub ? '' : document.getElementById('edit_ownerFbUrl_'+id).value.trim(),
@@ -5232,6 +5248,12 @@ window.onEditOwnerSubChange = function(id) {
   const noSubFields = document.getElementById('edit_ownerNoSubFields_'+id);
   if (subFields) subFields.style.display = isSub ? 'grid' : 'none';
   if (noSubFields) noSubFields.style.display = isSub ? 'none' : 'block';
+};
+window.onEditOwnerSportChange = function(id) {
+  const sport = document.getElementById('edit_ownerSport_'+id).value;
+  const label = sectionLabelFor(sport);
+  document.getElementById('edit_ownerSectionLabel_'+id).textContent = label;
+  document.getElementById('edit_ownerSection_'+id).placeholder = label;
 };
 window.updateOwnerProofPreview = function(id, url) {
   const wrap = document.getElementById('edit_ownerProofPreview_'+id);
@@ -5723,7 +5745,7 @@ function fanFullDetailHtml(id, opts) {
   const idLoginNote = `<div class="identity-note neutral"><div class="identity-note-h">קוד כניסה</div><div class="identity-note-v">${(f.status === 'approved' && f.loginCode) ? esc(f.loginCode) : 'ייווצר אוטומטית באישור'}</div></div>`;
   const idBizNote = linkedBiz ? `<div class="identity-note neutral"><div class="identity-note-h">בעל עסק</div><div class="identity-note-v">${linkedBiz.accessToken ? `<a href="business-dashboard.html?token=${linkedBiz.accessToken}" target="_blank">🏪 ${esc(linkedBiz.name)}</a>` : esc(linkedBiz.name)}</div></div>` : '';
   const idSubNote = f.isSubscriber
-    ? `<div class="identity-note neutral"><div class="identity-note-h">מנוי</div><div class="identity-note-v">שער ${esc(f.subscriberSection||'—')} · מס' ${esc(f.subscriberNumber||'—')}</div></div>`
+    ? `<div class="identity-note neutral"><div class="identity-note-h">מנוי</div><div class="identity-note-v">${f.fanSport ? SPORT_LABELS[f.fanSport] + ' · ' : ''}${sectionLabelFor(f.verifiedSport)} ${esc(f.subscriberSection||'—')} · מס' ${esc(f.subscriberNumber||'—')}</div></div>`
     : `<div class="identity-note warn"><div class="identity-note-h">מנוי</div><div class="identity-note-v">לא מנוי כרגע${f.wasSubscriber === 'yes' ? ' (היה מנוי בעבר)' : ''}</div></div>`;
   const idEmailNote = (f.status === 'approved' && f.loginCode)
     ? `<div class="identity-note ${f.loginCodeEmailStatus === 'failed' ? 'warn' : 'neutral'}"><div class="identity-note-h">מייל קוד כניסה</div><div class="identity-note-v">${f.loginCodeEmailStatus === 'sent' ? 'נשלח' : f.loginCodeEmailStatus === 'failed' ? 'נכשל' : 'ממתין'}</div></div>`
@@ -5782,7 +5804,14 @@ function fanFullDetailHtml(id, opts) {
           </select>
         </div>
         <div id="fanEditSubFields_${f.id}" style="display:${f.isSubscriber ? 'grid' : 'none'};margin-top:10px" class="form-row-2">
-          <div class="form-row" style="margin:0"><label>שער</label><input type="text" id="fanEditGate_${f.id}" value="${esc(f.subscriberSection || '')}" /></div>
+          <div class="form-row" style="margin:0"><label>ענף (לצורך האימות)</label>
+            <select id="fanEditSport_${f.id}" onchange="onFanEditSportChange('${f.id}')">
+              <option value="football" ${f.verifiedSport!=='basketball'?'selected':''}>כדורגל</option>
+              <option value="basketball" ${f.verifiedSport==='basketball'?'selected':''}>כדורסל</option>
+            </select>
+          </div>
+          <div></div>
+          <div class="form-row" style="margin:0"><label id="fanEditGateLabel_${f.id}">${sectionLabelFor(f.verifiedSport)}</label><input type="text" id="fanEditGate_${f.id}" value="${esc(f.subscriberSection || '')}" /></div>
           <div class="form-row" style="margin:0"><label>מס' מנוי</label><input type="text" id="fanEditSubNum_${f.id}" value="${esc(f.subscriberNumber || '')}" /></div>
         </div>
         <div id="fanEditNoSubFields_${f.id}" style="display:${f.isSubscriber ? 'none' : 'block'};margin-top:10px">
@@ -5845,6 +5874,10 @@ window.onFanEditSubChange = function(id) {
   if (subEl) subEl.style.display = isSub ? 'grid' : 'none';
   if (noSubEl) noSubEl.style.display = isSub ? 'none' : 'block';
 };
+window.onFanEditSportChange = function(id) {
+  const sport = document.getElementById('fanEditSport_'+id).value;
+  document.getElementById('fanEditGateLabel_'+id).textContent = sectionLabelFor(sport);
+};
 // עריכת פרטים אישיים+אימות מנוי — זהה ל-admin-members.html saveEditBtn (שדות אמיתיים בלבד)
 window.saveFanDetails = async function(id) {
   const f0 = findFan(id);
@@ -5855,6 +5888,7 @@ window.saveFanDetails = async function(id) {
     phone: document.getElementById('fanEditPhone_' + id).value.trim(),
     email: document.getElementById('fanEditEmail_' + id).value.trim(),
     isSubscriber: isSub,
+    verifiedSport: isSub ? document.getElementById('fanEditSport_' + id).value : null,
     subscriberSection: isSub ? document.getElementById('fanEditGate_' + id).value.trim() : null,
     subscriberNumber: isSub ? document.getElementById('fanEditSubNum_' + id).value.trim() : null,
     wasSubscriber: isSub ? null : document.getElementById('fanEditWasSub_' + id).value,

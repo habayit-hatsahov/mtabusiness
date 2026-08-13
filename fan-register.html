@@ -363,20 +363,55 @@
         <div class="field-error" id="err-isSubscriber">נא לענות על השאלה</div>
 
         <div class="sub-block" id="subscriberFields">
-          <div class="form-row">
-            <div class="form-group">
-              <label for="subscriberSection">שער <span class="req">*</span></label>
-              <select id="subscriberSection">
-                <option value="">בחר שער...</option>
-                <option>1</option><option>2</option><option>7</option>
-                <option>8</option><option>11</option><option>13</option>
-              </select>
-              <div class="field-error" id="err-subscriberSection">נא לבחור שער</div>
+          <div class="form-group">
+            <label>לאיזה ענף אתה מנוי? <span class="req">*</span></label>
+            <div class="toggle-row" id="sportToggleRow" style="flex-wrap:wrap">
+              <button type="button" class="toggle-btn" id="sportFootballBtn" onclick="setFanSport('football')">כדורגל</button>
+              <button type="button" class="toggle-btn" id="sportBasketballBtn" onclick="setFanSport('basketball')">כדורסל</button>
+              <button type="button" class="toggle-btn" id="sportBothBtn" onclick="setFanSport('both')">שניהם</button>
             </div>
+            <select id="fanSport" style="display:none">
+              <option value="">בחר תשובה...</option>
+              <option value="football">כדורגל</option>
+              <option value="basketball">כדורסל</option>
+              <option value="both">שניהם</option>
+            </select>
+            <div class="field-error" id="err-fanSport">נא לבחור ענף</div>
+          </div>
+
+          <div class="sub-block" id="verifiedSportRow">
             <div class="form-group">
-              <label for="subscriberNumber">מספר מנוי <span class="req">*</span></label>
-              <input type="text" id="subscriberNumber" placeholder="12345" inputmode="numeric" />
-              <div class="field-error" id="err-subscriberNumber">נא להזין מספר מנוי</div>
+              <label>לאיזה ענף תרצה לבצע את האימות? <span class="req">*</span></label>
+              <div style="font-size:11px;color:var(--text-muted);margin:-4px 0 6px;">לאימות נדרש להזין רק מספר מנוי אחד — בחר/י ענף אחד להזנת הפרטים</div>
+              <div class="toggle-row" id="verifiedSportToggleRow">
+                <button type="button" class="toggle-btn" id="verifiedFootballBtn" onclick="setVerifiedSport('football')">כדורגל</button>
+                <button type="button" class="toggle-btn" id="verifiedBasketballBtn" onclick="setVerifiedSport('basketball')">כדורסל</button>
+              </div>
+              <select id="verifiedSport" style="display:none">
+                <option value="">בחר תשובה...</option>
+                <option value="football">כדורגל</option>
+                <option value="basketball">כדורסל</option>
+              </select>
+              <div class="field-error" id="err-verifiedSport">נא לבחור ענף לאימות</div>
+            </div>
+          </div>
+
+          <div class="sub-block" id="locationRow">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="subscriberSection"><span id="subscriberSectionLabel">שער</span> <span class="req">*</span></label>
+                <select id="subscriberSection">
+                  <option value="">בחר שער...</option>
+                  <option>1</option><option>2</option><option>7</option>
+                  <option>8</option><option>11</option><option>13</option>
+                </select>
+                <div class="field-error" id="err-subscriberSection">נא לבחור מיקום</div>
+              </div>
+              <div class="form-group">
+                <label for="subscriberNumber">מספר מנוי <span class="req">*</span></label>
+                <input type="text" id="subscriberNumber" placeholder="12345" inputmode="numeric" />
+                <div class="field-error" id="err-subscriberNumber">נא להזין מספר מנוי</div>
+              </div>
             </div>
           </div>
         </div>
@@ -493,8 +528,10 @@
     const el  = document.getElementById(id);
     const err = document.getElementById('err-' + id);
     if (!el) return true;
-    // isSubscriber מיוצג ויזואלית ע"י כפתורי-toggle, לא ה-select (מוסתר) — צובעים גם את השורה שלהם
-    const toggleRow = id === 'isSubscriber' ? document.getElementById('subscriberToggleRow') : null;
+    // isSubscriber/fanSport/verifiedSport מיוצגים ויזואלית ע"י כפתורי-toggle, לא ה-select
+    // (מוסתר) — צובעים גם את השורה שלהם
+    const TOGGLE_ROW_MAP = { isSubscriber: 'subscriberToggleRow', fanSport: 'sportToggleRow', verifiedSport: 'verifiedSportToggleRow' };
+    const toggleRow = TOGGLE_ROW_MAP[id] ? document.getElementById(TOGGLE_ROW_MAP[id]) : null;
     if (!ok) {
       el.classList.add('error');
       if (toggleRow) toggleRow.classList.add('error');
@@ -522,6 +559,11 @@
     ok = vf('isSubscriber', isSub !== '') && ok;
 
     if (isSub === 'yes') {
+      const fanSportVal = document.getElementById('fanSport').value;
+      ok = vf('fanSport', fanSportVal !== '') && ok;
+      if (fanSportVal === 'both') {
+        ok = vf('verifiedSport', document.getElementById('verifiedSport').value !== '') && ok;
+      }
       ok = vf('subscriberSection', document.getElementById('subscriberSection').value !== '') && ok;
       ok = vf('subscriberNumber',  document.getElementById('subscriberNumber').value.trim().length >= 3) && ok;
     }
@@ -582,6 +624,10 @@
     submitBtn.innerHTML = 'שולח... <span class="spinner"></span>';
 
     const isSub = document.getElementById('isSubscriber').value;
+    const fanSportVal = isSub === 'yes' ? document.getElementById('fanSport').value : null;
+    const verifiedSportVal = isSub === 'yes'
+      ? (fanSportVal === 'both' ? document.getElementById('verifiedSport').value : fanSportVal)
+      : null;
 
     const data = {
       firstName:         document.getElementById('firstName').value.trim(),
@@ -589,6 +635,8 @@
       phone:             normalizePhone(document.getElementById('phone').value.trim()),
       email:             document.getElementById('email').value.trim(),
       isSubscriber:      isSub === 'yes',
+      fanSport:          fanSportVal,
+      verifiedSport:     verifiedSportVal,
       subscriberSection: isSub === 'yes' ? document.getElementById('subscriberSection').value : null,
       subscriberNumber:  isSub === 'yes' ? document.getElementById('subscriberNumber').value.trim() : null,
       wasSubscriber:     isSub === 'no'  ? document.getElementById('wasSubscriber').value : null,
@@ -693,6 +741,53 @@
     vf('isSubscriber', true); // בחירה ידנית — מנקה שגיאה קודמת אם הייתה
   }
 
+  // ── ענף (כדורגל/כדורסל/שניהם) — קובע את תווית/רשימת שדה המיקום, ואם "שניהם" נבחר
+  // פותח שאלת-המשך לבחירת הענף היחיד שישמש בפועל לאימות (מספר מנוי אחד בלבד) ──
+  function updateSectionField(sport) {
+    const labelEl  = document.getElementById('subscriberSectionLabel');
+    const selectEl = document.getElementById('subscriberSection');
+    if (sport === 'basketball') {
+      labelEl.textContent = 'אולם/יציע';
+      selectEl.innerHTML = '<option value="">בחר אולם/יציע...</option>' +
+        Array.from({ length: 12 }, (_, i) => `<option>${i + 1}</option>`).join('');
+    } else {
+      labelEl.textContent = 'שער';
+      selectEl.innerHTML = '<option value="">בחר שער...</option>' +
+        ['1', '2', '7', '8', '11', '13'].map(n => `<option>${n}</option>`).join('');
+    }
+  }
+
+  function setFanSport(val) {
+    document.getElementById('fanSport').value = val;
+    document.getElementById('sportFootballBtn').classList.toggle('on', val === 'football');
+    document.getElementById('sportBasketballBtn').classList.toggle('on', val === 'basketball');
+    document.getElementById('sportBothBtn').classList.toggle('on', val === 'both');
+    vf('fanSport', true);
+
+    const bothRow = document.getElementById('verifiedSportRow');
+    if (val === 'both') {
+      bothRow.classList.add('show');
+      document.getElementById('verifiedSport').value = '';
+      document.getElementById('verifiedFootballBtn').classList.remove('on');
+      document.getElementById('verifiedBasketballBtn').classList.remove('on');
+      document.getElementById('locationRow').classList.remove('show');
+    } else {
+      bothRow.classList.remove('show');
+      document.getElementById('verifiedSport').value = val;
+      updateSectionField(val);
+      document.getElementById('locationRow').classList.toggle('show', val !== '');
+    }
+  }
+
+  function setVerifiedSport(val) {
+    document.getElementById('verifiedSport').value = val;
+    document.getElementById('verifiedFootballBtn').classList.toggle('on', val === 'football');
+    document.getElementById('verifiedBasketballBtn').classList.toggle('on', val === 'basketball');
+    vf('verifiedSport', true);
+    updateSectionField(val);
+    document.getElementById('locationRow').classList.toggle('show', val !== '');
+  }
+
   // ── EMBED MODE — "כבר רשום? כניסה" בתוך ה-iframe מפעיל את מנגנון-ההתחברות האמיתי
   // שכבר קיים ב-welcome.html (heroLoginWidget), לא מכפיל אותו כאן. עובד רק כי שני
   // הדפים מוגשים מאותו origin (השרת המקומי) — same-origin iframe access.
@@ -727,6 +822,8 @@
       phone:             document.getElementById('phone').value,
       email:             document.getElementById('email').value,
       isSubscriber:      document.getElementById('isSubscriber').value,
+      fanSport:          document.getElementById('fanSport').value,
+      verifiedSport:     document.getElementById('verifiedSport').value,
       subscriberSection: document.getElementById('subscriberSection').value,
       subscriberNumber:  document.getElementById('subscriberNumber').value,
       wasSubscriber:     document.getElementById('wasSubscriber').value,
@@ -746,6 +843,10 @@
     document.getElementById('email').value     = d.email     || '';
 
     setSubscriber(d.isSubscriber || '');
+    if (d.isSubscriber === 'yes') {
+      setFanSport(d.fanSport || '');
+      if (d.fanSport === 'both') setVerifiedSport(d.verifiedSport || '');
+    }
     document.getElementById('subscriberSection').value = d.subscriberSection || '';
     document.getElementById('subscriberNumber').value  = d.subscriberNumber  || '';
     document.getElementById('wasSubscriber').value     = d.wasSubscriber     || '';
@@ -757,6 +858,8 @@
   window.requestRegLocation   = requestRegLocation;
   window.handleSubscriber     = handleSubscriber;
   window.setSubscriber        = setSubscriber;
+  window.setFanSport          = setFanSport;
+  window.setVerifiedSport     = setVerifiedSport;
   window.embedGoLogin         = embedGoLogin;
   window.saveRegDraft         = saveRegDraft;
 </script>

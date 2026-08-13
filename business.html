@@ -1185,20 +1185,46 @@
       </div>
 
       <div id="bizSubscriberFields" style="display:none">
-        <div class="form-row">
-          <div class="form-group">
-            <label for="bizGate">שער <span class="req">*</span></label>
-            <select id="bizGate">
-              <option value="">בחר שער...</option>
-              <option>1</option><option>2</option><option>7</option>
-              <option>8</option><option>11</option><option>13</option>
-            </select>
-            <div class="field-error" id="err-bizGate">נא לבחור שער</div>
+        <div class="form-group">
+          <label>לאיזה ענף אתם מנויים? <span class="req">*</span></label>
+          <input type="hidden" id="bizFanSport" value="" />
+          <div class="verify-choice-row">
+            <div class="verify-choice" id="bizSportFootballChoice" onclick="setBizFanSport('football')">כדורגל</div>
+            <div class="verify-choice" id="bizSportBasketballChoice" onclick="setBizFanSport('basketball')">כדורסל</div>
+            <div class="verify-choice" id="bizSportBothChoice" onclick="setBizFanSport('both')">שניהם</div>
           </div>
+          <div class="field-error" id="err-bizFanSport">נא לבחור ענף</div>
+        </div>
+
+        <div id="bizVerifiedSportRow" style="display:none">
           <div class="form-group">
-            <label for="bizSubNum">מספר מנוי <span class="req">*</span></label>
-            <input type="text" id="bizSubNum" placeholder="12345" inputmode="numeric" />
-            <div class="field-error" id="err-bizSubNum">שדה חובה</div>
+            <label>לאיזה ענף תרצו לבצע את האימות? <span class="req">*</span></label>
+            <div style="font-size:11px;color:var(--text-muted);margin:-4px 0 6px;">לאימות נדרש להזין רק מספר מנוי אחד — בחרו ענף אחד להזנת הפרטים</div>
+            <input type="hidden" id="bizVerifiedSport" value="" />
+            <div class="verify-choice-row">
+              <div class="verify-choice" id="bizVerifiedFootballChoice" onclick="setBizVerifiedSport('football')">כדורגל</div>
+              <div class="verify-choice" id="bizVerifiedBasketballChoice" onclick="setBizVerifiedSport('basketball')">כדורסל</div>
+            </div>
+            <div class="field-error" id="err-bizVerifiedSport">נא לבחור ענף לאימות</div>
+          </div>
+        </div>
+
+        <div id="bizLocationRow" style="display:none">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="bizGate"><span id="bizGateLabel">שער</span> <span class="req">*</span></label>
+              <select id="bizGate">
+                <option value="">בחר שער...</option>
+                <option>1</option><option>2</option><option>7</option>
+                <option>8</option><option>11</option><option>13</option>
+              </select>
+              <div class="field-error" id="err-bizGate">נא לבחור מיקום</div>
+            </div>
+            <div class="form-group">
+              <label for="bizSubNum">מספר מנוי <span class="req">*</span></label>
+              <input type="text" id="bizSubNum" placeholder="12345" inputmode="numeric" />
+              <div class="field-error" id="err-bizSubNum">שדה חובה</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1329,6 +1355,8 @@
       phone:             data.ownerPhone,
       email:             data.ownerEmail,
       isSubscriber:      data.isSubscriber === 'yes',
+      fanSport:          data.isSubscriber === 'yes' ? data.fanSport      : null,
+      verifiedSport:     data.isSubscriber === 'yes' ? data.verifiedSport : null,
       subscriberSection: data.isSubscriber === 'yes' ? data.gate   : null,
       subscriberNumber:  data.isSubscriber === 'yes' ? data.subNum : null,
       facebookUrl:       data.fbUrl || null,
@@ -1559,6 +1587,11 @@
     ok = vf('bizIsSubscriber', isSub !== '') && ok;
 
     if (isSub === 'yes') {
+      const fanSportVal = document.getElementById('bizFanSport').value;
+      ok = vf('bizFanSport', fanSportVal !== '') && ok;
+      if (fanSportVal === 'both') {
+        ok = vf('bizVerifiedSport', document.getElementById('bizVerifiedSport').value !== '') && ok;
+      }
       ok = vf('bizGate',   document.getElementById('bizGate').value !== '') && ok;
       ok = vf('bizSubNum', document.getElementById('bizSubNum').value.trim().length >= 3) && ok;
     }
@@ -1649,6 +1682,10 @@
       ownerEmail:       document.getElementById('ownerEmail').value.trim(),
       ownerRelation:    document.getElementById('ownerRelation').value,
       isSubscriber:     document.getElementById('bizIsSubscriber').value,
+      fanSport:         document.getElementById('bizFanSport').value,
+      verifiedSport:    document.getElementById('bizFanSport').value === 'both'
+                           ? document.getElementById('bizVerifiedSport').value
+                           : document.getElementById('bizFanSport').value,
       gate:             document.getElementById('bizGate').value,
       subNum:           document.getElementById('bizSubNum').value.trim(),
       fbUrl:            document.getElementById('bizFbUrl').value.trim(),
@@ -2266,6 +2303,54 @@
     document.getElementById('err-bizIsSubscriber').style.display = 'none';
   }
 
+  // ── ענף (כדורגל/כדורסל/שניהם) — קובע את תווית/רשימת שדה המיקום, ואם "שניהם" נבחר
+  // פותח שאלת-המשך לבחירת הענף היחיד שישמש בפועל לאימות (מספר מנוי אחד בלבד) ──
+  function updateBizGateField(sport) {
+    const labelEl  = document.getElementById('bizGateLabel');
+    const selectEl = document.getElementById('bizGate');
+    if (sport === 'basketball') {
+      labelEl.textContent = 'אולם/יציע';
+      selectEl.innerHTML = '<option value="">בחר אולם/יציע...</option>' +
+        Array.from({ length: 12 }, (_, i) => `<option>${i + 1}</option>`).join('');
+    } else {
+      labelEl.textContent = 'שער';
+      selectEl.innerHTML = '<option value="">בחר שער...</option>' +
+        ['1', '2', '7', '8', '11', '13'].map(n => `<option>${n}</option>`).join('');
+    }
+  }
+
+  function setBizFanSport(val) {
+    document.getElementById('bizFanSport').value = val;
+    document.getElementById('bizSportFootballChoice').classList.toggle('selected', val === 'football');
+    document.getElementById('bizSportBasketballChoice').classList.toggle('selected', val === 'basketball');
+    document.getElementById('bizSportBothChoice').classList.toggle('selected', val === 'both');
+    document.getElementById('err-bizFanSport').style.display = 'none';
+
+    const bothRow     = document.getElementById('bizVerifiedSportRow');
+    const locationRow = document.getElementById('bizLocationRow');
+    if (val === 'both') {
+      bothRow.style.display = 'block';
+      document.getElementById('bizVerifiedSport').value = '';
+      document.getElementById('bizVerifiedFootballChoice').classList.remove('selected');
+      document.getElementById('bizVerifiedBasketballChoice').classList.remove('selected');
+      locationRow.style.display = 'none';
+    } else {
+      bothRow.style.display = 'none';
+      document.getElementById('bizVerifiedSport').value = val;
+      updateBizGateField(val);
+      locationRow.style.display = val !== '' ? 'block' : 'none';
+    }
+  }
+
+  function setBizVerifiedSport(val) {
+    document.getElementById('bizVerifiedSport').value = val;
+    document.getElementById('bizVerifiedFootballChoice').classList.toggle('selected', val === 'football');
+    document.getElementById('bizVerifiedBasketballChoice').classList.toggle('selected', val === 'basketball');
+    document.getElementById('err-bizVerifiedSport').style.display = 'none';
+    updateBizGateField(val);
+    document.getElementById('bizLocationRow').style.display = val !== '' ? 'block' : 'none';
+  }
+
   naiveShorten;
 
   // קיצור מכני-פשוט (לא AI) — רק כרשת ביטחון אם קריאת ה-AI נכשלת/נתקעת
@@ -2595,6 +2680,8 @@
       ownerPhone: v('ownerPhone'), ownerEmail: v('ownerEmail'),
       ownerRelation: document.getElementById('ownerRelation').value,
       isSubscriber:  document.getElementById('bizIsSubscriber').value,
+      fanSport:      document.getElementById('bizFanSport').value,
+      verifiedSport: document.getElementById('bizVerifiedSport').value,
       gate:   document.getElementById('bizGate').value,
       subNum: v('bizSubNum'),
       fbUrl:  v('bizFbUrl'),
@@ -2690,6 +2777,10 @@
     document.getElementById('bizIsSubscriber').value = d.isSubscriber || '';
     if (d.isSubscriber === 'yes') setSubscriber(true);
     else if (d.isSubscriber === 'no') setSubscriber(false);
+    if (d.isSubscriber === 'yes') {
+      setBizFanSport(d.fanSport || '');
+      if (d.fanSport === 'both') setBizVerifiedSport(d.verifiedSport || '');
+    }
     document.getElementById('bizGate').value   = d.gate   || '';
     document.getElementById('bizSubNum').value = d.subNum || '';
     document.getElementById('bizFbUrl').value  = d.fbUrl  || '';
@@ -2783,7 +2874,8 @@
     addBenefit, addBranch, addVideoRow, goBack, goNext, handleSubmit,
     onDiscBuilderInput, onDiscBuilderInputN, removeBenefit, removeBranch,
     selectAlsoCat, selectBizType, selectCat, selectPrimaryTag, selectRedeemMode,
-    selectRedeemModeN, selectSecondTag, setSubscriber, showStep, toggleAlsoCat,
+    selectRedeemModeN, selectSecondTag, setSubscriber, setBizFanSport, setBizVerifiedSport,
+    showStep, toggleAlsoCat,
     toggleDayClosed, toggleDiscount, toggleNoTagFits, toggleRegion, toggleWeekly,
     updateMinCounter,
   });
