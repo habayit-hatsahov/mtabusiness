@@ -3237,13 +3237,21 @@ try {
 
 // auth guard — session אמיתי (Firebase Auth, custom token מונפק ב-welcome.html) + חייב להיות תואם בפועל ל-hb_memberId, לא רק "שניהם קיימים בנפרד" (ר' PROJECT_CONTEXT.md סעיף 12/4d — פער ישן שגרם ל-permission-denied שקט)
 await new Promise(resolve => {
-  const unsub = onAuthStateChanged(auth, user => {
+  const unsub = onAuthStateChanged(auth, async user => {
     unsub();
     const storedId = localStorage.getItem('hb_memberId');
     if (!user || !storedId || user.uid !== storedId) {
       ['hb_uid', 'hb_phone', 'hb_memberId'].forEach(k => localStorage.removeItem(k));
       location.href = 'welcome.html';
-    } else { resolve(); }
+      return;
+    }
+    // בכניסה טרייה-לגמרי (מיד אחרי signInWithCustomToken ב-welcome.html + ניווט-דף-מלא) נצפה
+    // (2026-08-13, המשתמש דיווח חי): auth.currentUser כבר קיים אבל קריאות-Firestore הראשונות
+    // נכשלות עם "Missing or insufficient permissions" גם על מסמך-החבר-של-עצמו — נראה שה-ID
+    // token עוד לא "מוכן" בפועל ל-SDK הפנימי של Firestore באותו רגע. getIdToken() מפורש כאן
+    // מכריח את ה-SDK לוודא/לרענן טוקן תקף לפני שממשיכים לכל קריאת-Firestore אחרת בדף.
+    try { await user.getIdToken(); } catch (e) { console.error('getIdToken failed:', e); }
+    resolve();
   });
 });
 

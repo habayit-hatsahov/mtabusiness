@@ -629,9 +629,16 @@
       if (!storedId) return;
 
       const memberId = await new Promise(resolve => {
-        const unsub = onAuthStateChanged(auth, user => {
+        const unsub = onAuthStateChanged(auth, async user => {
           unsub();
-          resolve((user && user.uid === storedId) ? user.uid : null);
+          if (user && user.uid === storedId) {
+            // getIdToken מפורש — ר' הערה זהה ב-home.html: בכניסה טרייה-לגמרי נצפה
+            // permission-denied על מסמך-החבר-של-עצמו לפני שהטוקן "מוכן" ל-SDK הפנימי.
+            try { await user.getIdToken(); } catch (e) { console.error('getIdToken failed:', e); }
+            resolve(user.uid);
+          } else {
+            resolve(null);
+          }
         });
       });
 
