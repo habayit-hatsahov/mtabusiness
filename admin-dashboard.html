@@ -11,6 +11,7 @@
      הראשונה לא תרוץ לפני שהפונט זמין (סיכון-race עם טעינה אסינכרונית). -->
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@700&display=swap" rel="stylesheet">
 <script src="categories.js"></script>
+<script src="email-domain-check.js"></script>
 <style>
 :root {
   /* שלב 8, §18+נספח במפרט — פלטת המותג (כחול+צהוב), מחליפה את הניטרלי הקודם.
@@ -1144,6 +1145,16 @@ body {
 .task-table-wait { font-size: 12px; font-weight: 600; color: var(--text-sm); }
 .task-table-row .act-btn.primary-yellow { background: var(--accent-cta); color: var(--accent-cta-ink); border: none; font-weight: 800; }
 .task-table-row .act-btn.primary-yellow:hover { background: var(--accent-cta-hover); }
+
+/* ── תקלות מייל (§204) — קובייה חמישית במרכז המשימות; אותו שלד-טבלה, עם עמודת-כתובת במקום עמודת-הסקירה ── */
+.mail-issues-note { font-size: 11.5px; color: var(--text-sm); margin: 0 0 8px; line-height: 1.7; }
+.task-table.mail-issues .task-table-row { grid-template-columns: minmax(180px,1.3fr) 210px minmax(150px,.9fr) 100px 190px; cursor: default; }
+.mail-issues .mi-addr { font-size: 11.5px; font-weight: 600; direction: ltr; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-issues .mi-addr.bad { color: #b91c1c; text-decoration: underline wavy rgba(185,28,28,.5); }
+.mail-issues .mi-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 900px) {
+  .task-table.mail-issues .task-table-row { grid-template-columns: 1fr; }
+}
 .task-drawer-backdrop { position: fixed; inset: 0; background: rgba(16,24,40,.32); z-index: 59; }
 .task-drawer {
   position: fixed; top: 0; bottom: 0; inset-inline-end: 0; z-index: 60; width: 52vw; min-width: 520px; max-width: 96vw;
@@ -1635,6 +1646,53 @@ function esc(v) {
   return (v == null ? '' : String(v)).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
+// לשימוש כשמזריקים ערך חופשי (שם עסק/בעל עסק/אוהד) לתוך onclick="fn('...')" — עד עכשיו הוזרק גולמי,
+// כך ששם עם גרש (למשל "צ'ומפי") שבר את מחרוזת ה-JS, ושם עם מרכאות (למשל 'ד"ר אופטיקה') שבר גם את
+// תכונת ה-HTML עצמה — בשני המקרים הכפתור הפך ללא-לחיץ בלי שגיאה גלויה. מברחת קודם ל-JS (\ ו-') ואז ל-HTML.
+function escJsAttr(v) {
+  return esc(String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+}
+
+// ── אזהרת דומיין-מייל שגוי (ר' email-domain-check.js) ──────────────────────────────────────
+// מוצגת בכרטיס *לפני* האישור, כי זה הכשל היחיד שלא מייצר שום שגיאה בשום מקום: Brevo מקבל את
+// הבקשה גם לדומיין typo-squatting כמו gamil.com, אנחנו מסמנים "נשלח", והנמען לא מקבל כלום.
+// (באג-אמת: "יהב מטבחים", 2026-08-15, ר' docs/PROJECT_CONTEXT.md §203)
+function emailDomainHit(email) {
+  return (typeof window.checkEmailDomain === 'function') ? window.checkEmailDomain(email) : null;
+}
+// ── סטטוס מסירה אמיתי מ-Brevo (§205) ──────────────────────────────────────────────────────
+// "נשלח" = Brevo קיבל מאיתנו את הבקשה. השורה הזאת היא מה שקרה *אחרי* — האמת מהשרת שקיבל את המייל.
+// ריק כשעוד לא הגיע אירוע (webhook לא מוגדר, או שהמייל בדרך) — ואז פשוט לא מוצג כלום.
+const MAIL_DELIVERY_LABELS = {
+  delivered:    { txt: 'נמסר בפועל לתיבה',                      bad: false },
+  bounced:      { txt: 'חזר — הכתובת לא קיימת',                  bad: true },
+  bounced_soft: { txt: 'חזר זמנית (תיבה מלאה/שרת עסוק)',        bad: true },
+  blocked:      { txt: 'נחסם — הכתובת ברשימת החסומים של Brevo',  bad: true },
+  spam:         { txt: 'סומן כספאם ע"י הנמען',                   bad: true },
+  invalid:      { txt: 'כתובת לא חוקית',                         bad: true },
+  error:        { txt: 'שגיאת מסירה',                            bad: true },
+};
+function mailDeliveryLineHtml(status, at, reason) {
+  const meta = MAIL_DELIVERY_LABELS[status];
+  if (!meta) return '';
+  return `<br>${meta.bad ? '⛔' : '✅'} ${meta.txt}${at ? ' · ' + fmtDateTime(at) : ''}${meta.bad && reason ? `<br>${esc(String(reason).slice(0, 120))}` : ''}`;
+}
+function mailDeliveryFailed(status) {
+  return !!(MAIL_DELIVERY_LABELS[status] && MAIL_DELIVERY_LABELS[status].bad);
+}
+
+function emailWarnNote(email) {
+  const hit = emailDomainHit(email);
+  if (!hit) return '';
+  return `<div class="identity-note warn"><div class="identity-note-h">כתובת מייל חשודה</div><div class="identity-note-v">הדומיין "${esc(hit.domain)}" לא נראה תקין — כנראה ${esc(hit.suggested)}.<br>מייל לכתובת כזאת יסומן כאן "נשלח" אבל לא יגיע לאף אחד.</div></div>`;
+}
+// אישור-אנוש לפני אישור נמען עם כתובת חשודה — מחזיר false אם המנהל בחר לעצור ולתקן קודם
+function confirmSuspectEmail(email, who) {
+  const hit = emailDomainHit(email);
+  if (!hit) return true;
+  return confirm(`הכתובת של ${who} היא ${hit.domain} — כנראה צריך להיות ${hit.suggested}.\n\nאם זו טעות, המייל יסומן "נשלח" אבל לא יגיע לאף אחד. לתקן קודם את הכתובת?\n\nאישור = לאשר בכל זאת · ביטול = עוצר, אתקן קודם`);
+}
+
 // שער (כדורגל) / אולם-יציע (כדורסל) — תווית שדה-המיקום לפי הענף שאומת בפועל. verifiedSport לא קיים
 // ברשומות ישנות (לפני הוספת שאלת הענף) — נופל בחזרה ל"שער" כברירת מחדל, כמו ההתנהגות הקודמת.
 function sectionLabelFor(verifiedSport) {
@@ -1739,6 +1797,7 @@ function hydrateBiz(id, raw) {
     rejectedAt: toJsDate(raw.rejectedAt),
     agreedTermsAt: toJsDate(raw.agreedTermsAt),
     ownerEmailSentAt: toJsDate(raw.ownerEmailSentAt),
+    ownerEmailDeliveryAt: toJsDate(raw.ownerEmailDeliveryAt),   // מ-webhook המסירה של Brevo, §205
     pendingChangesAt: toJsDate(raw.pendingChangesAt),
     hasCoverPhoto: !!raw.coverPhoto,
     hasLogo: !!raw.logo,
@@ -1816,6 +1875,7 @@ function hydrateFan(id, raw) {
     rejectedAt: toJsDate(raw.rejectedAt),
     loginCodeCreatedAt: toJsDate(raw.loginCodeCreatedAt),
     loginCodeEmailSentAt: toJsDate(raw.loginCodeEmailSentAt),
+    loginCodeEmailDeliveryAt: toJsDate(raw.loginCodeEmailDeliveryAt),   // מ-webhook המסירה של Brevo, §205
     hasProofPhoto: !!raw.photoProofUrl,
     isBusinessOwner: !!raw.isBusinessOwner,
     linkedBusinessId: raw.linkedBusinessId || null,
@@ -3203,6 +3263,12 @@ function waLink(phone, msg) {
   const intl = digits.startsWith('0') ? '972' + digits.slice(1) : digits;
   return `https://wa.me/${intl}?text=${encodeURIComponent(msg)}`;
 }
+// mailto: לא עשה כלום אצל המנהל בפועל (דווח חי 2026-08-13, בשני עסקים) — אין אפליקציית-מייל רשומה
+// כברירת-מחדל בדפדפן/מערכת, המנהל עובד מול Gmail בדפדפן. נפתח חלון-כתיבה של Gmail בטאב חדש במקום —
+// לא תלוי ברישום handler, עובד כל עוד המנהל מחובר ל-Gmail.
+function gmailComposeLink(to, subject, body) {
+  return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
 
 // כל 4 הפונקציות מקבלות עכשיו id כפרמטר ראשון (בעבר לא קיבלו בכלל — זו הסיבה שהשליחות הידניות
 // האלה מעולם לא נרשמו ביומן, ר' docs/PROJECT_CONTEXT.md §12). הפתיחה עצמה (wa.me/mailto) לא-חוסמת
@@ -3213,9 +3279,8 @@ window.sendBizWA = function(id, phone, ownerName, businessName, accessToken) {
 };
 window.sendBizMail = function(id, email, ownerName, businessName, accessToken) {
   const subjectRaw = applyBizTpl(getTpl('mailSubject', DEFAULT_TPL_SUBJECT), ownerName, businessName, accessToken);
-  const subject = encodeURIComponent(subjectRaw);
-  const body = encodeURIComponent(applyBizTpl(getTpl('mail', DEFAULT_TPL_MAIL), ownerName, businessName, accessToken));
-  window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+  const bodyRaw = applyBizTpl(getTpl('mail', DEFAULT_TPL_MAIL), ownerName, businessName, accessToken);
+  window.open(gmailComposeLink(email, subjectRaw, bodyRaw), '_blank');
   logActivity('businesses', id, { type: 'email', title: 'נשלח מייל ידני לבעל העסק', detail: `אל ${email} · נושא: "${subjectRaw}"`, field: 'channel', before: null, after: 'email' });
 };
 window.sendFanWA = function(id, phone, name, code) {
@@ -3224,9 +3289,8 @@ window.sendFanWA = function(id, phone, name, code) {
 };
 window.sendFanMail = function(id, email, name, code) {
   const subjectRaw = getTpl('fan_mailSubject', DEFAULT_FAN_MAIL_SUBJECT);
-  const subject = encodeURIComponent(subjectRaw);
-  const body = encodeURIComponent(applyFanTplLocal(getTpl('fan_mail', DEFAULT_FAN_MAIL), name, code));
-  window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+  const bodyRaw = applyFanTplLocal(getTpl('fan_mail', DEFAULT_FAN_MAIL), name, code);
+  window.open(gmailComposeLink(email, subjectRaw, bodyRaw), '_blank');
   logActivity('members', id, { type: 'email', title: 'נשלח מייל ידני', detail: `אל ${email} · נושא: "${subjectRaw}"`, field: 'channel', before: null, after: 'email' });
 };
 
@@ -4436,15 +4500,27 @@ function bizFullDetailHtml(id, opts) {
     (typeLabels && typeLabels !== '—') ? `<span>${esc(typeLabels)}${idCity ? ' · ' + esc(idCity) : ''}</span>` : (idCity ? `<span>${esc(idCity)}</span>` : ''),
     ownerLoginCode ? `<span>קוד כניסה ${esc(ownerLoginCode)}</span>` : ''
   ].filter(Boolean).join('');
-  const idWaBtn = b.ownerPhone ? `<button class="btn-id-wa" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">וואטסאפ</button>` : '';
-  const idMailBtn = b.ownerEmail ? `<button class="btn-id-mail" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">מייל</button>` : '';
+  const idWaBtn = b.ownerPhone ? `<button class="btn-id-wa" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">וואטסאפ</button>` : '';
+  const idMailBtn = b.ownerEmail ? `<button class="btn-id-mail" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מייל</button>` : '';
   const idDashBtn = b.accessToken ? `<a href="business-dashboard.html?token=${b.accessToken}" target="_blank" class="btn-id-dash">פתיחת דשבורד העסק</a>` : '';
   const idSubNote = b.ownerIsSubscriber
     ? `<div class="identity-note neutral"><div class="identity-note-h">מנוי מאומת</div><div class="identity-note-v">${b.ownerFanSport ? SPORT_LABELS[b.ownerFanSport] + ' · ' : ''}${sectionLabelFor(b.ownerVerifiedSport)} ${esc(b.ownerSubscriberSection||'—')} · מס' מנוי ${esc(b.ownerSubscriberNumber||'—')}</div></div>`
     : `<div class="identity-note warn"><div class="identity-note-h">מנוי לא מאומת</div><div class="identity-note-v">אומת בתמונה בשער + פייסבוק — דורש בדיקה ידנית</div></div>`;
   const idTermsNote = `<div class="identity-note neutral"><div class="identity-note-h">תקנון</div><div class="identity-note-v">${b.agreedTermsAt ? `אושר ${fmtDate(b.agreedTermsAt)}` : 'טרם אושר'}</div></div>`;
+  // אישור-שליחה מלא: מתי בדיוק (תאריך+שעה) ולאיזו כתובת בפועל. עד עכשיו הופיע רק "נשלח עם לינק
+  // לדשבורד" — בלי זמן ובלי יעד. אחרי המקרה של "יהב מטבחים" (2026-08-15): הכתובת הייתה
+  // yardenyv@gamil.com (שגיאת-כתיב בדומיין, לא gmail) — Brevo מקבל את הבקשה ומחזיר הצלחה, אנחנו
+  // מסמנים 'sent' בלי שגיאה, והמייל פשוט לא מגיע לאף אחד. הצגת כתובת-היעד היא מה שמאפשר לתפוס
+  // את זה בעין. שים לב: כשהחבר המקושר מקבל "מייל מאוחד" (קוד כניסה + לינק לדשבורד יחד) הוא נשלח
+  // בפועל לכתובת שברשומת החבר — היא מסונכרנת ל-ownerEmail בשמירת "אימות בעל העסק", ר' saveBizStep.
   const idEmailNote = b.status === 'approved'
-    ? `<div class="identity-note ${b.ownerEmailStatus === 'failed' ? 'warn' : 'neutral'}"><div class="identity-note-h">מייל אישור</div><div class="identity-note-v">${b.ownerEmailStatus === 'sent' ? 'נשלח עם לינק לדשבורד' : b.ownerEmailStatus === 'failed' ? 'שליחה נכשלה' : 'ממתין לשליחה'}</div></div>`
+    ? `<div class="identity-note ${(b.ownerEmailStatus === 'failed' || mailDeliveryFailed(b.ownerEmailDelivery)) ? 'warn' : 'neutral'}"><div class="identity-note-h">מייל אישור</div><div class="identity-note-v">${
+        b.ownerEmailStatus === 'sent'
+          ? `✅ נשלח${b.ownerEmailSentAt ? ' · ' + fmtDateTime(b.ownerEmailSentAt) : ''}<br>אל ${esc(b.ownerEmail || '—')} · כולל לינק לדשבורד${mailDeliveryLineHtml(b.ownerEmailDelivery, b.ownerEmailDeliveryAt, b.ownerEmailDeliveryReason)}`
+          : b.ownerEmailStatus === 'failed'
+            ? `❌ שליחה נכשלה<br>אל ${esc(b.ownerEmail || '—')}${b.ownerEmailError ? `<br>${esc(String(b.ownerEmailError).slice(0, 200))}` : ''}`
+            : `⏳ ממתין לשליחה — יוצא אוטומטית תוך דקה מהאישור${b.ownerEmail ? `<br>אל ${esc(b.ownerEmail)}` : ''}`
+      }</div></div>`
     : '';
   // §147 — הערת-עסק (b.note) הייתה מוצגת רק בתוך "שיפוט מהיר" (ונעלמת לגמרי אם אין הערה בכלל, או
   // מתכווצת אם כבר טופלה) — המשתמש דיווח שזה "נעלם בשקט". תיבה קבועה כאן בכרטיס-הזהות, תמיד גלויה,
@@ -4475,7 +4551,7 @@ function bizFullDetailHtml(id, opts) {
           ${idDashBtn}
         </div>
       </div>
-      <div class="identity-notes">${idSubNote}${idTermsNote}${idEmailNote}${idNoteBox}</div>
+      <div class="identity-notes">${emailWarnNote(b.ownerEmail)}${idSubNote}${idTermsNote}${idEmailNote}${idNoteBox}</div>
     </div>`;
 
   const anchorCardHtml = b.status === 'approved' ? `
@@ -5386,6 +5462,16 @@ window.clearBizSelection = function() {
 // בולק אמיתי — אותה צורת כתיבה כמו admin-businesses.html bulkApprove/bulkReject
 window.bulkSetBizStatus = async function(status) {
   const ids = [...selectedBizIds];
+  // באישור-המוני אין הזדמנות לראות כרטיס-כרטיס — לכן סיכום אחד של כל הכתובות החשודות בבחירה,
+  // לפני שמאשרים. ביטול = לא אושר כלום, אפשר לתקן קודם.
+  if (status === 'approved') {
+    const suspects = ids.map(id => bizById(id)).filter(b => b && b.status === 'pending' && emailDomainHit(b.ownerEmail));
+    if (suspects.length && !confirm(
+      `${suspects.length} מהעסקים שנבחרו עם כתובת מייל שנראית שגויה:\n\n` +
+      suspects.map(b => `• ${b.name} — ${b.ownerEmail} (כנראה ${emailDomainHit(b.ownerEmail).suggested})`).join('\n') +
+      `\n\nלכתובות כאלה המייל יסומן "נשלח" אבל לא יגיע לאף אחד.\n\nאישור = לאשר את כולם בכל זאת · ביטול = לא לאשר כלום, אתקן קודם`
+    )) return;
+  }
   selectedBizIds.clear();
   try {
     if (status === 'approved') {
@@ -5740,15 +5826,23 @@ function fanFullDetailHtml(id, opts) {
     f.status === 'pending' ? `ממתין ${agoLabel(f.registeredAt)}` : '',
     f.memberNumber ? `חבר מס' ${f.memberNumber}` : (f.status === 'pending' ? 'טרם הוקצה מספר חבר' : '')
   ].filter(Boolean).join(' · ');
-  const idWaBtn = f.phone ? `<button class="btn-id-wa" onclick="sendFanWA('${f.id}','${f.phone}','${f.name}','${f.loginCode||''}')">וואטסאפ</button>` : '';
-  const idMailBtn = f.email ? `<button class="btn-id-mail" onclick="sendFanMail('${f.id}','${f.email}','${f.name}','${f.loginCode||''}')">מייל</button>` : '';
+  const idWaBtn = f.phone ? `<button class="btn-id-wa" onclick="sendFanWA('${f.id}','${f.phone}','${escJsAttr(f.name)}','${f.loginCode||''}')">וואטסאפ</button>` : '';
+  const idMailBtn = f.email ? `<button class="btn-id-mail" onclick="sendFanMail('${f.id}','${f.email}','${escJsAttr(f.name)}','${f.loginCode||''}')">מייל</button>` : '';
   const idLoginNote = `<div class="identity-note neutral"><div class="identity-note-h">קוד כניסה</div><div class="identity-note-v">${(f.status === 'approved' && f.loginCode) ? esc(f.loginCode) : 'ייווצר אוטומטית באישור'}</div></div>`;
   const idBizNote = linkedBiz ? `<div class="identity-note neutral"><div class="identity-note-h">בעל עסק</div><div class="identity-note-v">${linkedBiz.accessToken ? `<a href="business-dashboard.html?token=${linkedBiz.accessToken}" target="_blank">🏪 ${esc(linkedBiz.name)}</a>` : esc(linkedBiz.name)}</div></div>` : '';
   const idSubNote = f.isSubscriber
     ? `<div class="identity-note neutral"><div class="identity-note-h">מנוי</div><div class="identity-note-v">${f.fanSport ? SPORT_LABELS[f.fanSport] + ' · ' : ''}${sectionLabelFor(f.verifiedSport)} ${esc(f.subscriberSection||'—')} · מס' ${esc(f.subscriberNumber||'—')}</div></div>`
     : `<div class="identity-note warn"><div class="identity-note-h">מנוי</div><div class="identity-note-v">לא מנוי כרגע${f.wasSubscriber === 'yes' ? ' (היה מנוי בעבר)' : ''}</div></div>`;
+  // אותו אישור-שליחה כמו בכרטיס העסק (ר' ההערה ב-bizFullDetailHtml): תאריך+שעה מדויקים וכתובת
+  // היעד בפועל, כדי שכתובת שגויה תיתפס בעין — "נשלח" לבדו לא אומר שהמייל הגיע לאן שצריך.
   const idEmailNote = (f.status === 'approved' && f.loginCode)
-    ? `<div class="identity-note ${f.loginCodeEmailStatus === 'failed' ? 'warn' : 'neutral'}"><div class="identity-note-h">מייל קוד כניסה</div><div class="identity-note-v">${f.loginCodeEmailStatus === 'sent' ? 'נשלח' : f.loginCodeEmailStatus === 'failed' ? 'נכשל' : 'ממתין'}</div></div>`
+    ? `<div class="identity-note ${(f.loginCodeEmailStatus === 'failed' || mailDeliveryFailed(f.loginCodeEmailDelivery)) ? 'warn' : 'neutral'}"><div class="identity-note-h">מייל קוד כניסה</div><div class="identity-note-v">${
+        f.loginCodeEmailStatus === 'sent'
+          ? `✅ נשלח${f.loginCodeEmailSentAt ? ' · ' + fmtDateTime(f.loginCodeEmailSentAt) : ''}<br>אל ${esc(f.email || '—')}${mailDeliveryLineHtml(f.loginCodeEmailDelivery, f.loginCodeEmailDeliveryAt, f.loginCodeEmailDeliveryReason)}`
+          : f.loginCodeEmailStatus === 'failed'
+            ? `❌ שליחה נכשלה<br>אל ${esc(f.email || '—')}${f.loginCodeEmailError ? `<br>${esc(String(f.loginCodeEmailError).slice(0, 200))}` : ''}`
+            : `⏳ ממתין לשליחה — יוצא אוטומטית תוך דקה מהאישור${f.email ? `<br>אל ${esc(f.email)}` : ''}`
+      }</div></div>`
     : '';
   const identityCardHtml = `
     <div class="dcard identity-card">
@@ -5761,7 +5855,7 @@ function fanFullDetailHtml(id, opts) {
         </div>
         ${(idWaBtn || idMailBtn) ? `<div class="identity-actions-row">${idWaBtn}${idMailBtn}</div>` : ''}
       </div>
-      <div class="identity-notes">${idLoginNote}${idBizNote}${idSubNote}${idEmailNote}</div>
+      <div class="identity-notes">${emailWarnNote(f.email)}${idLoginNote}${idBizNote}${idSubNote}${idEmailNote}</div>
     </div>`;
 
   // כרטיס "פרטי ההרשמה" נפרד (2026-08-04, תואם-handoff — קודם היה טקסט-חופשי בתוך approve-card, לא
@@ -5982,6 +6076,15 @@ window.clearFanSelection = function() {
 // בולק אמיתי — אותה צורת כתיבה כמו admin-members.html bulkApprove/bulkReject
 window.bulkSetFanStatus = async function(status) {
   const ids = [...selectedFanIds];
+  // אותו סיכום-אזהרה כמו באישור-המוני של עסקים (ר' bulkSetBizStatus)
+  if (status === 'approved') {
+    const suspects = ids.map(id => MOCK_FANS.find(x => x.id === id)).filter(f => f && f.status === 'pending' && emailDomainHit(f.email));
+    if (suspects.length && !confirm(
+      `${suspects.length} מהאוהדים שנבחרו עם כתובת מייל שנראית שגויה:\n\n` +
+      suspects.map(f => `• ${f.name} — ${f.email} (כנראה ${emailDomainHit(f.email).suggested})`).join('\n') +
+      `\n\nלכתובות כאלה קוד-הכניסה יסומן "נשלח" אבל לא יגיע לאף אחד.\n\nאישור = לאשר את כולם בכל זאת · ביטול = לא לאשר כלום, אתקן קודם`
+    )) return;
+  }
   selectedFanIds.clear();
   try {
     if (status === 'approved') {
@@ -6204,6 +6307,9 @@ const TASK_CLASS_TILES = [
   { key: 'pendingFan', primary: 'אוהד ממתין לאישור', label: 'אוהדים ממתינים לאישור' },
   { key: 'requests',   primary: 'בקשה מבעל העסק',   label: 'בקשות מבעלי עסקים' },
   { key: 'incomplete', primary: 'כרטיס חסר באינדקס', label: 'כרטיס חסר באינדקס' },
+  // קובייה חמישית — לא מבוססת classifyAction כמו הארבע שמעליה, אלא על mailIssueList() (§204).
+  // כשהיא נבחרת, גוף-הטבלה מוחלף ברשימת-התקלות במקום ברשימת-המשימות המאוחדת.
+  { key: 'mailIssues', primary: null, label: 'תקלות מייל' },
 ];
 
 // כל עסק/אוהד עם primary פעיל (לא "מאושר · אין פעולה") — מבוסס classifyAction בלבד, לא בדיקה נפרדת
@@ -6226,7 +6332,7 @@ function taskWaitLabel(x) {
 function taskFilteredList() {
   let items = unifiedTaskItems();
   const tile = TASK_CLASS_TILES.find(t => t.key === taskClassFilter);
-  if (tile) items = items.filter(x => x.c.primary === tile.primary);
+  if (tile && tile.primary) items = items.filter(x => x.c.primary === tile.primary);
   if (taskEntityFilter !== 'all') items = items.filter(x => x.kind === taskEntityFilter);
   if (taskCategoryFilter !== 'all') items = items.filter(x => x.kind === 'biz' && x.entity.catKey === taskCategoryFilter);
   if (taskPeriodFilter !== 'all') {
@@ -6273,11 +6379,12 @@ window.setTaskCategoryFilter = function(v) { taskCategoryFilter = v; refreshTask
 function refreshTaskCenter() {
   const tilesEl = document.getElementById('taskTilesWrap');
   if (tilesEl) tilesEl.outerHTML = taskTilesHtml();
-  const list = taskFilteredList();
+  const isMail = mailIssuesActive();
+  const list = isMail ? mailFilteredList() : taskFilteredList();
   const tableWrap = document.getElementById('taskTableWrap');
-  if (tableWrap) tableWrap.innerHTML = taskTableBodyHtml(list);
+  if (tableWrap) tableWrap.innerHTML = isMail ? mailIssuesTableHtml(list) : taskTableBodyHtml(list);
   const countEl = document.getElementById('taskListCount');
-  if (countEl) countEl.textContent = `מציג ${list.length} מתוך ${unifiedTaskItems().length}`;
+  if (countEl) countEl.textContent = `מציג ${list.length} מתוך ${isMail ? mailIssueList().length : unifiedTaskItems().length}`;
 }
 
 window.selectTask2 = function(kind, id) {
@@ -6298,6 +6405,9 @@ function taskTilesHtml() {
   const pendingBizItems = all.filter(x => x.c.primary === 'עסק ממתין לאישור');
   const oldestPendingBiz = pendingBizItems.slice().sort((a,b)=>taskWaitDate(a)-taskWaitDate(b))[0];
   const flaggedFans = all.filter(x => x.kind==='fan' && x.c.primary==='אוהד ממתין לאישור' && x.entity.reviewFlag).length;
+  const mailIssues = mailIssueList();
+  const mailBlocking = mailIssues.filter(x => x.sev <= 2).length;      // כבר אושרו — המייל לא הגיע בפועל
+  const mailBeforeApprove = mailIssues.filter(x => x.sev === 3).length; // עוד לא אושרו — אפשר למנוע מראש
   const tile = (t, num, sub) => `
     <div class="class-tile ${taskClassFilter===t.key?'active':''} ${t.key==='pendingBiz'&&taskClassFilter==='all'?'primary':(taskClassFilter===t.key?'primary':'')}" onclick="setTaskClassFilter('${t.key}')">
       <div class="class-tile-top"><span class="class-tile-num">${num}</span><span class="class-tile-label">${t.label}</span></div>
@@ -6309,6 +6419,9 @@ function taskTilesHtml() {
       ${tile(TASK_CLASS_TILES[1], countOf('אוהד ממתין לאישור'), `<div class="class-tile-sub">${flaggedFans ? `⚠️ ${flaggedFans} עם דגל בדיקה` : ''}</div>`)}
       ${tile(TASK_CLASS_TILES[2], requestsItems.length, `<div class="class-tile-chips"><span class="treat-badge">שינוי פרטים ${tCount('details')}</span><span class="treat-badge">תגית ${tCount('tag')}</span><span class="treat-badge">קטגוריה ${tCount('category')}</span><span class="treat-badge">כתבו לנו ${tCount('note')}</span></div>`)}
       ${tile(TASK_CLASS_TILES[3], countOf('כרטיס חסר באינדקס'), `<div class="class-tile-chips"><span class="warn-badge">חסרים פרטים בכרטיס</span></div>`)}
+      ${tile(TASK_CLASS_TILES[4], mailBlocking ? `<span style="color:#b91c1c">${mailIssues.length}</span>` : mailIssues.length, mailIssues.length
+        ? `<div class="class-tile-chips">${mailBlocking ? `<span class="warn-badge">${mailBlocking} לא קיבלו בפועל</span>` : ''}${mailBeforeApprove ? `<span class="treat-badge">${mailBeforeApprove} לתקן לפני אישור</span>` : ''}</div>`
+        : `<div class="class-tile-sub">כל מי שאושר קיבל את המייל שלו</div>`)}
     </div>`;
 }
 
@@ -6387,11 +6500,10 @@ function taskTableBodyHtml(list) {
 }
 
 function taskCenterHtml() {
-  const list = taskFilteredList();
   return `
     ${taskTilesHtml()}
     <div class="filter-toolbar">${taskFilterBarHtml()}</div>
-    <div id="taskTableWrap">${taskTableBodyHtml(list)}</div>
+    <div id="taskTableWrap">${mailIssuesActive() ? mailIssuesTableHtml(mailFilteredList()) : taskTableBodyHtml(taskFilteredList())}</div>
     ${selectedTaskKey ? taskDrawerHtml(selectedTaskKey) : ''}`;
 }
 
@@ -6690,6 +6802,7 @@ async function approveLinkedMember(b) {
 window.approveFan = async function(id) {
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return;
+  if (!confirmSuspectEmail(f.email, `"${f.name}"`)) return;
   try {
     const memberNumber = await allocateMemberNumber();
     const loginCode = await generateLoginCode();
@@ -6749,6 +6862,7 @@ window.approveBiz = async function(id) {
   const reviewTotal = BIZ_REVIEW_SECTIONS.length;
   // תזכורת רכה, לא חסימה — המנהל עדיין יכול לאשר גם בלי לסמן את כל השלבים כנסקרו
   if (reviewed < reviewTotal && !confirm(`רק ${reviewed}/${reviewTotal} שלבים סומנו כ"נסקר". לאשר בכל זאת?`)) return;
+  if (!confirmSuspectEmail(b.ownerEmail, `"${b.name}"`)) return;
   try {
     await updateDoc(doc(db, 'businesses', id), { status: 'approved', approvedAt: serverTimestamp(), ownerEmailStatus: 'pending' });
     await approveLinkedMember(b);
@@ -7442,8 +7556,8 @@ function quickJudgmentHtml(b) {
       <div class="qj-note-text"><strong>העסק כתב לנו: </strong>"${esc(b.note)}"</div>
       <div class="qj-row-actions">
         <button class="qj-btn" onclick="toggleBizNoteHandled('${b.id}', true)">סימון כטופל</button>
-        ${b.ownerPhone ? `<button class="qj-btn link" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">מענה בוואטסאפ</button>` : ''}
-        ${b.ownerEmail ? `<button class="qj-btn link" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${b.ownerFirst}','${b.name}','${b.accessToken||''}')">מענה במייל</button>` : ''}
+        ${b.ownerPhone ? `<button class="qj-btn link" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מענה בוואטסאפ</button>` : ''}
+        ${b.ownerEmail ? `<button class="qj-btn link" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מענה במייל</button>` : ''}
       </div>
     </div>` : '';
   const totalCount = items.length + (hasNote ? 1 : 0);
@@ -8217,9 +8331,9 @@ window.bulkWeeklyFollowupMail = function() {
     const w = WEEKLY_INTEREST.find(x => x.id === id);
     const b = w && bizById(w.businessId);
     if (!b || !b.ownerEmail) return;
-    const subject = encodeURIComponent(DEFAULT_WEEKLY_FOLLOWUP_SUBJECT);
-    const body = encodeURIComponent(DEFAULT_WEEKLY_FOLLOWUP_MAIL.replace(/\{name\}/g, b.ownerFirst || '').replace(/\{business\}/g, b.name));
-    window.open(`mailto:${b.ownerEmail}?subject=${subject}&body=${body}`, '_blank');
+    const subject = DEFAULT_WEEKLY_FOLLOWUP_SUBJECT;
+    const body = DEFAULT_WEEKLY_FOLLOWUP_MAIL.replace(/\{name\}/g, b.ownerFirst || '').replace(/\{business\}/g, b.name);
+    window.open(gmailComposeLink(b.ownerEmail, subject, body), '_blank');
     logActivity('weekly_interest', id, { type: 'email', title: 'נשלח מייל מעקב "נחזור אליכם"', detail: `אל ${b.ownerEmail}`, field: 'channel', before: null, after: 'email' });
   });
 };
@@ -8237,8 +8351,8 @@ function weeklyInterestRowMergedHtml(w) {
   const tracks = [w.wantsBusinessOfWeek ? 'business' : null, w.wantsBenefitOfWeek ? 'benefit' : null].filter(Boolean);
   const marks = tracks.map(t => `<span class="tag-chip">${WEEKLY_TRACK_LABELS[t]}</span>`).join(' ');
   const statusLines = tracks.map(t => `<div>${WEEKLY_TRACK_LABELS[t]}: ${WEEKLY_STATUS_LABELS[weeklyDerivedStatus(w, t)] || ''}</div>`).join('');
-  const waBtn = b.ownerPhone ? `<button class="act-btn tiny" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${b.ownerFirst||''}','${b.name}','${b.accessToken||''}')">וואטסאפ</button>` : '';
-  const mailBtn = b.ownerEmail ? `<button class="act-btn tiny" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${b.ownerFirst||''}','${b.name}','${b.accessToken||''}')">מייל</button>` : '';
+  const waBtn = b.ownerPhone ? `<button class="act-btn tiny" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${escJsAttr(b.ownerFirst||'')}','${escJsAttr(b.name)}','${b.accessToken||''}')">וואטסאפ</button>` : '';
+  const mailBtn = b.ownerEmail ? `<button class="act-btn tiny" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${escJsAttr(b.ownerFirst||'')}','${escJsAttr(b.name)}','${b.accessToken||''}')">מייל</button>` : '';
   return `
     <div class="wk-row">
       <label class="wk-check"><input type="checkbox" ${selectedWeeklyIds.has(w.id)?'checked':''} onchange="toggleWeeklySelected('${w.id}')"></label>
@@ -9095,9 +9209,9 @@ window.sendManualAdhoc = function(channel, id) {
   } else {
     const subjTpl = manualAdhocValue(item, isFans ? 'fan_mailSubject' : 'mailSubject');
     const bodyTpl = manualAdhocValue(item, isFans ? 'fan_mail' : 'mail');
-    const subject = encodeURIComponent(isFans ? subjTpl : applyBizTpl(subjTpl, x.ownerFirst || '', x.name, x.accessToken || ''));
-    const body = encodeURIComponent(isFans ? applyFanTplLocal(bodyTpl, x.name, x.loginCode || '') : applyBizTpl(bodyTpl, x.ownerFirst || '', x.name, x.accessToken || ''));
-    window.open(`mailto:${isFans ? x.email : x.ownerEmail}?subject=${subject}&body=${body}`, '_blank');
+    const subject = isFans ? subjTpl : applyBizTpl(subjTpl, x.ownerFirst || '', x.name, x.accessToken || '');
+    const body = isFans ? applyFanTplLocal(bodyTpl, x.name, x.loginCode || '') : applyBizTpl(bodyTpl, x.ownerFirst || '', x.name, x.accessToken || '');
+    window.open(gmailComposeLink(isFans ? x.email : x.ownerEmail, subject, body), '_blank');
   }
 };
 
@@ -9515,6 +9629,156 @@ window.resendFailedFromBroadcast = async function(historyId) {
     broadcastSending = false;
     renderMain();
   }
+};
+
+// ══ מרכז תקלות מייל (§204) ════════════════════════════════════════════════════════════════
+// למה זה קיים: שליחת מייל היא הצינור היחיד במערכת שאפשר להיכשל בו **בלי שאף אחד יידע**. הכי גרוע
+// הוא דומיין עם שגיאת-כתיב (gamil.com): Brevo מקבל את הבקשה, אנחנו מסמנים "נשלח", והנמען לא מקבל
+// כלום לעולם. הפאנל הזה מרכז את כל המקרים שבהם עסק/אוהד כנראה לא קיבל מאיתנו מייל בפועל.
+// (ר' docs/PROJECT_CONTEXT.md §203 — באג-אמת "יהב מטבחים", 2026-08-15)
+//
+// חמש התקלות שנתפסות, לפי חומרה:
+//   1. failed     — Brevo החזיר שגיאה מפורשת (ownerEmailError/loginCodeEmailError שמור אצלנו)
+//   2. sentToBad  — סומן "נשלח" אבל לדומיין שגוי → הכי מסוכן, נראה תקין לגמרי בכל מסך אחר
+//   3. stuck      — אושר לפני יותר מ-10 דקות ועדיין 'pending' (ה-cron רץ כל דקה — משהו תקוע)
+//   4. noEmail    — מאושר בלי כתובת מייל בכלל
+//   5. badPending — כתובת שגויה/לא-תקינה אצל מי שעוד לא אושר → לתקן לפני האישור, לא אחריו
+const MAIL_STUCK_MINUTES = 10;
+const MAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function mailIssueList() {
+  const out = [];
+  const now = Date.now();
+
+  const add = (kind, id, name, email, sev, badge, detail, when, canResend) =>
+    out.push({ kind, id, name, email: email || '', sev, badge, detail, when: when || null, canResend: !!canResend });
+
+  for (const b of MOCK_BUSINESSES) {
+    if (b.status === 'rejected') continue;
+    const approved = b.status === 'approved';
+    const hit = emailDomainHit(b.ownerEmail);
+    const malformed = b.ownerEmail && !MAIL_RX.test(b.ownerEmail);
+    if (approved && b.ownerEmailStatus === 'failed') {
+      add('biz', b.id, b.name, b.ownerEmail, 1, 'שליחה נכשלה', b.ownerEmailError ? String(b.ownerEmailError).slice(0, 160) : 'Brevo החזיר שגיאה', b.ownerEmailSentAt, true);
+    } else if (approved && mailDeliveryFailed(b.ownerEmailDelivery)) {
+      // Brevo דיווח בפועל שהמייל לא נחת (§205) — עדיף על כל ניחוש שלנו
+      add('biz', b.id, b.name, b.ownerEmail, 1, 'המייל חזר', `${MAIL_DELIVERY_LABELS[b.ownerEmailDelivery].txt}${b.ownerEmailDeliveryReason ? ' · ' + String(b.ownerEmailDeliveryReason).slice(0, 120) : ''}`, b.ownerEmailDeliveryAt || b.ownerEmailSentAt, true);
+    } else if (approved && (hit || malformed)) {
+      add('biz', b.id, b.name, b.ownerEmail, 1, 'נשלח לכתובת שגויה',
+        hit ? `הדומיין "${hit.domain}" לא קיים כשירות מייל — כנראה ${hit.suggested}. המייל סומן "נשלח" ולא הגיע.` : 'הכתובת לא בנויה כמו כתובת מייל תקינה.',
+        b.ownerEmailSentAt, true);
+    } else if (approved && !b.ownerEmail) {
+      add('biz', b.id, b.name, '', 2, 'אין כתובת מייל', 'העסק מאושר אבל אין למי לשלוח — צריך להשיג כתובת ולעדכן בכרטיס.', b.approvedAt, false);
+    } else if (approved && b.ownerEmailStatus !== 'sent' && b.approvedAt && (now - b.approvedAt.getTime()) > MAIL_STUCK_MINUTES * 60000) {
+      add('biz', b.id, b.name, b.ownerEmail, 2, 'תקוע בתור', `אושר ${agoLabel(b.approvedAt)} והמייל עדיין לא יצא. ה-cron רץ כל דקה — כדאי לבדוק את ה-Worker.`, b.approvedAt, true);
+    } else if (!approved && (hit || malformed)) {
+      add('biz', b.id, b.name, b.ownerEmail, 3, 'כתובת שגויה — לפני אישור',
+        hit ? `כנראה ${hit.suggested}. אם תאשר ככה, המייל "יישלח" ולא יגיע.` : 'הכתובת לא בנויה כמו כתובת מייל תקינה — לתקן לפני האישור.',
+        b.registeredAt, false);
+    }
+  }
+
+  for (const f of MOCK_FANS) {
+    if (f.status === 'rejected') continue;
+    const approved = f.status === 'approved';
+    const hit = emailDomainHit(f.email);
+    const malformed = f.email && !MAIL_RX.test(f.email);
+    if (approved && f.loginCodeEmailStatus === 'failed') {
+      add('fan', f.id, f.name, f.email, 1, 'שליחה נכשלה', f.loginCodeEmailError ? String(f.loginCodeEmailError).slice(0, 160) : 'Brevo החזיר שגיאה', f.loginCodeEmailSentAt, !!f.loginCode);
+    } else if (approved && mailDeliveryFailed(f.loginCodeEmailDelivery)) {
+      add('fan', f.id, f.name, f.email, 1, 'המייל חזר', `${MAIL_DELIVERY_LABELS[f.loginCodeEmailDelivery].txt}${f.loginCodeEmailDeliveryReason ? ' · ' + String(f.loginCodeEmailDeliveryReason).slice(0, 120) : ''}`, f.loginCodeEmailDeliveryAt || f.loginCodeEmailSentAt, !!f.loginCode);
+    } else if (approved && (hit || malformed)) {
+      add('fan', f.id, f.name, f.email, 1, 'נשלח לכתובת שגויה',
+        hit ? `הדומיין "${hit.domain}" לא קיים כשירות מייל — כנראה ${hit.suggested}. קוד הכניסה סומן "נשלח" ולא הגיע.` : 'הכתובת לא בנויה כמו כתובת מייל תקינה.',
+        f.loginCodeEmailSentAt, !!f.loginCode);
+    } else if (approved && !f.email) {
+      add('fan', f.id, f.name, '', 2, 'אין כתובת מייל', 'האוהד מאושר אבל אין למי לשלוח את קוד הכניסה.', f.approvedAt, false);
+    } else if (approved && f.loginCode && f.loginCodeEmailStatus !== 'sent' && f.approvedAt && (now - f.approvedAt.getTime()) > MAIL_STUCK_MINUTES * 60000) {
+      add('fan', f.id, f.name, f.email, 2, 'תקוע בתור', `אושר ${agoLabel(f.approvedAt)} וקוד הכניסה עדיין לא יצא.`, f.approvedAt, true);
+    } else if (!approved && (hit || malformed)) {
+      add('fan', f.id, f.name, f.email, 3, 'כתובת שגויה — לפני אישור',
+        hit ? `כנראה ${hit.suggested}. אם תאשר ככה, קוד הכניסה "יישלח" ולא יגיע.` : 'הכתובת לא בנויה כמו כתובת מייל תקינה — לתקן לפני האישור.',
+        f.registeredAt, false);
+    }
+  }
+
+  return out.sort((a, b) => a.sev - b.sev || (b.when ? b.when.getTime() : 0) - (a.when ? a.when.getTime() : 0));
+}
+
+function mailIssueRowHtml(x) {
+  const sevClass = x.sev === 1 ? 'warn-badge' : x.sev === 2 ? 'warn-badge' : 'treat-badge';
+  const openLabel = x.kind === 'biz' ? 'פתיחת כרטיס העסק' : 'פתיחת כרטיס האוהד';
+  const resendBtn = x.canResend
+    ? `<button class="act-btn approve tiny" onclick="event.stopPropagation();${x.kind === 'biz' ? 'requeueBizEmail' : 'requeueFanEmail'}('${x.id}')">שליחה חוזרת</button>`
+    : '';
+  return `
+    <div class="task-table-row">
+      <div class="task-table-main">
+        <div class="task-table-name">${esc(x.name)}</div>
+        <div class="task-table-meta">${x.kind === 'biz' ? 'עסק' : 'אוהד'} · ${esc(x.detail)}</div>
+      </div>
+      <div class="task-table-badges"><span class="${sevClass}">${esc(x.badge)}</span></div>
+      <div class="mi-addr ${x.sev <= 1 ? 'bad' : ''}">${esc(x.email || '— אין כתובת —')}</div>
+      <div class="task-table-wait">${x.when ? agoLabel(x.when) : '—'}</div>
+      <div class="mi-actions">
+        <button class="act-btn tiny" onclick="event.stopPropagation();selectTask2('${x.kind}','${x.id}')">${openLabel}</button>
+        ${resendBtn}
+      </div>
+    </div>`;
+}
+
+// הקובייה "תקלות מייל" פעילה — אז גוף-הטבלה הוא רשימת-התקלות, לא רשימת-המשימות המאוחדת
+function mailIssuesActive() { return taskClassFilter === 'mailIssues'; }
+
+// אותם שני מסנני-רוחב של מרכז המשימות (חיפוש + עסקים/אוהדים) חלים גם כאן. המיונים/התקופה/
+// הקטגוריה לא רלוונטיים לתקלה — המיון כאן תמיד לפי חומרה, וזה מכוון.
+function mailFilteredList() {
+  let list = mailIssueList();
+  if (taskEntityFilter !== 'all') list = list.filter(x => x.kind === taskEntityFilter);
+  const q = taskSearchQ.trim();
+  if (q) list = list.filter(x => `${x.name} ${x.email}`.includes(q));
+  return list;
+}
+
+function mailIssuesTableHtml(list) {
+  if (!list.length) {
+    return `<div class="placeholder-note">אין תקלות מייל פתוחות 🎉 כל מי שאושר קיבל את המייל שלו לכתובת תקינה.</div>`;
+  }
+  return `
+    <div class="mail-issues-note">מייל שנשלח לדומיין שגוי מסומן אצלנו "נשלח" ולעולם לא מגיע — לכן הוא מופיע כאן ולא בשום מסך אחר. "שליחה חוזרת" מחזירה את הנמען לתור, והמייל יוצא תוך דקה.</div>
+    <div class="task-table mail-issues">${list.map(mailIssueRowHtml).join('')}</div>`;
+}
+
+// שליחה חוזרת — פשוט מחזיר את הנמען ל-'pending'; ה-cron של ה-Worker (כל דקה) שולח בפועל,
+// בדיוק כמו באישור רגיל. לא נוגע בסטטוס האישור עצמו — אין צורך לבטל-ולאשר מחדש.
+window.requeueBizEmail = async function(id) {
+  const b = findBiz(id);
+  if (!b) return;
+  if (b.status !== 'approved') { alert('אפשר לשלוח שוב רק לעסק מאושר.'); return; }
+  if (!b.ownerEmail) { alert('אין כתובת מייל לעסק הזה — צריך להוסיף אותה בכרטיס (שלב "אימות בעל העסק").'); return; }
+  if (!confirmSuspectEmail(b.ownerEmail, `"${b.name}"`)) return;
+  if (!confirm(`לשלוח שוב את מייל האישור ל"${b.name}"?\n\nאל: ${b.ownerEmail}\n\nהמייל יוצא אוטומטית תוך דקה.`)) return;
+  try {
+    // מנקה גם את תוצאת-המסירה הקודמת (§205) — אחרת "חזר" ישן נשאר על המסך אחרי שליחה חדשה
+    await updateDoc(doc(db, 'businesses', id), { ownerEmailStatus: 'pending', ownerEmailError: null, ownerEmailDelivery: null, ownerEmailDeliveryAt: null, ownerEmailDeliveryReason: null });
+    await logActivity('businesses', id, { type: 'email', title: 'מייל האישור נשלח שוב', detail: `אל ${b.ownerEmail}`, field: 'ownerEmailStatus', before: b.ownerEmailStatus || null, after: 'pending' });
+    alert('נכנס לתור — המייל יוצא תוך דקה. הסטטוס בכרטיס יתעדכן ל"נשלח" עם השעה המדויקת.');
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+
+window.requeueFanEmail = async function(id) {
+  const f = MOCK_FANS.find(x => x.id === id);
+  if (!f) return;
+  if (f.status !== 'approved') { alert('אפשר לשלוח שוב רק לאוהד מאושר.'); return; }
+  if (!f.email) { alert('אין כתובת מייל לאוהד הזה.'); return; }
+  if (!f.loginCode) { alert('לאוהד הזה עדיין אין קוד כניסה — צריך לאשר אותו קודם.'); return; }
+  if (!confirmSuspectEmail(f.email, `"${f.name}"`)) return;
+  if (!confirm(`לשלוח שוב את מייל קוד הכניסה ל"${f.name}"?\n\nאל: ${f.email}\n\nהמייל יוצא אוטומטית תוך דקה.`)) return;
+  try {
+    await updateDoc(doc(db, 'members', id), { loginCodeEmailStatus: 'pending', loginCodeEmailError: null, loginCodeEmailDelivery: null, loginCodeEmailDeliveryAt: null, loginCodeEmailDeliveryReason: null });
+    await logActivity('members', id, { type: 'email', title: 'מייל קוד הכניסה נשלח שוב', detail: `אל ${f.email}`, field: 'loginCodeEmailStatus', before: f.loginCodeEmailStatus || null, after: 'pending' });
+    alert('נכנס לתור — המייל יוצא תוך דקה.');
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
 
 function homeTabHtml() {

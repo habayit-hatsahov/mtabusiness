@@ -10,6 +10,7 @@ import { runBackfillThumbnails } from './backfill.js';
 import { sendWebPush } from './push.js';
 import { handleDownloadImage, handleViewImage } from './download.js';
 import { handleUploadBizMedia } from './bizmedia.js';
+import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js';
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -48,6 +49,14 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/send-broadcast-email') {
         return json(await handleSendBroadcastEmail(await request.json(), env), env, request);
+      }
+      // נקרא ע"י Brevo עצמו (לא מהאתר) — אימות דרך ?key=BREVO_WEBHOOK_SECRET, ר' src/brevo-webhook.js
+      if (request.method === 'POST' && url.pathname === '/brevo-webhook') {
+        return json(await handleBrevoWebhook(request, env), env, request);
+      }
+      // הרצה חד-פעמית ידנית (curl) — רושמת את ה-webhook אצל Brevo במקום להגדיר אותו בממשק שלהם
+      if (request.method === 'POST' && url.pathname === '/setup-brevo-webhook') {
+        return json(await handleSetupBrevoWebhook(request, env), env, request);
       }
       if (request.method === 'GET' && url.pathname === '/download-image') {
         return handleDownloadImage(request, env);

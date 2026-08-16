@@ -12,6 +12,7 @@
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
   <noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet"/></noscript>
   <script src="categories.js"></script>
+  <script src="email-domain-check.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     ::-webkit-scrollbar { width: 6px; }
@@ -510,6 +511,21 @@
       background: rgba(217,119,6,.08);
       box-shadow: 0 0 0 3px rgba(217,119,6,.15);
     }
+    /* אזהרת שגיאת-כתיב בדומיין המייל (ר' email-domain-check.js) — לא שגיאה אדומה, אלא שאלה:
+       אפשר לתקן בקליק אחד, ואפשר לאשר שהכתובת נכונה ולהמשיך. */
+    .field-warn {
+      display: none; margin-top: 6px; padding: 8px 10px;
+      background: rgba(37,99,235,.08); border: 1px solid rgba(37,99,235,.3);
+      border-radius: 8px; font-size: 12.5px; font-weight: 600; color: #1e40af;
+    }
+    .field-warn.show { display: block; }
+    .field-warn-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .field-warn-actions button {
+      font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
+      border-radius: 8px; padding: 6px 12px; border: 1px solid rgba(37,99,235,.35);
+      background: #1d4ed8; color: #fff;
+    }
+    .field-warn-actions button.ghost { background: transparent; color: #1e40af; }
     .biz-type-grid.error-highlight,
     .region-grid.error-highlight,
     .cat-circle-grid.error-highlight,
@@ -1151,6 +1167,7 @@
           <label for="ownerEmail">אימייל <span class="req">*</span></label>
           <input type="email" id="ownerEmail" placeholder="you@gmail.com" inputmode="email" />
           <div class="field-error" id="err-ownerEmail">מייל לא תקין</div>
+          <div class="field-warn" id="warn-ownerEmail"></div>
         </div>
       </div>
 
@@ -1435,6 +1452,51 @@
     return true;
   }
 
+  // ── שומר-מייל: שגיאת-כתיב בדומיין ─────────────────────────────────────────────────────────
+  // כל עוד לא תוקן ולא אושר במפורש "הכתובת שלי נכונה" — לא עוברים את השלב. זו לא קפדנות לשמה:
+  // כתובת עם דומיין שגוי היא הכשל היחיד במערכת שלא מייצר שום שגיאה בשום מקום — Brevo מקבל את
+  // הבקשה, אנחנו מסמנים "נשלח", ובעל העסק פשוט לעולם לא מקבל את קוד-הכניסה ואת לינק-הדשבורד
+  // (באג-אמת, "יהב מטבחים" 2026-08-15, ר' docs/PROJECT_CONTEXT.md §203).
+  const emailTypoAck = {};   // id-שדה -> הכתובת (lowercase) שהמשתמש אישר במפורש
+
+  function emailTypoOk(inputId) {
+    const el  = document.getElementById(inputId);
+    const box = document.getElementById('warn-' + inputId);
+    if (!el || !box || typeof window.checkEmailDomain !== 'function') return true;
+    const val = el.value.trim();
+    const hit = window.checkEmailDomain(val);
+    if (!hit || emailTypoAck[inputId] === val.toLowerCase()) { box.classList.remove('show'); return true; }
+
+    // בנייה ב-DOM ולא ב-innerHTML — הערכים מגיעים ממה שהמשתמש הקליד
+    box.textContent = '';
+    const q = document.createElement('div');
+    q.textContent = `בדוק רגע — הדומיין "${hit.domain}" לא נראה כמו כתובת אמיתית. התכוונת ל-${hit.suggested}?`;
+    const row = document.createElement('div');
+    row.className = 'field-warn-actions';
+    const fix = document.createElement('button');
+    fix.type = 'button';
+    fix.textContent = `כן, תקן ל-${hit.suggestedDomain}`;
+    fix.addEventListener('click', () => {
+      el.value = hit.suggested;
+      el.classList.remove('error');
+      box.classList.remove('show');
+    });
+    const keep = document.createElement('button');
+    keep.type = 'button';
+    keep.className = 'ghost';
+    keep.textContent = 'הכתובת שלי נכונה';
+    keep.addEventListener('click', () => {
+      emailTypoAck[inputId] = el.value.trim().toLowerCase();
+      box.classList.remove('show');
+    });
+    row.appendChild(fix);
+    row.appendChild(keep);
+    box.appendChild(q);
+    box.appendChild(row);
+    box.classList.add('show');
+    return false;
+  }
+
   function updateMinCounter(fieldId, countId, min) {
     const t = document.getElementById(fieldId).value.trim();
     const cnt = document.getElementById(countId);
@@ -1583,7 +1645,10 @@
     ok = vf('ownerFirst', fn.length >= 2) && ok;
     ok = vf('ownerLast',  ln.length >= 2) && ok;
     ok = vf('ownerPhone', phoneRx.test(phone.replace(/\s/g,''))) && ok;
-    ok = vf('ownerEmail', emailRx.test(email)) && ok;
+    const emailFormatOk = vf('ownerEmail', emailRx.test(email));
+    ok = emailFormatOk && ok;
+    // בדיקת-הדומיין רצה רק על כתובת שכבר תקינה במבנה — אחרת שתי הודעות סותרות על אותו שדה
+    if (emailFormatOk) ok = emailTypoOk('ownerEmail') && ok;
     ok = vf('bizIsSubscriber', isSub !== '') && ok;
 
     if (isSub === 'yes') {
@@ -1609,7 +1674,7 @@
     if (fromStep === 2) valid = validateStep2();
     if (fromStep === 3) valid = validateStep3();
     if (!valid) {
-      const firstErr = document.querySelector('#step' + fromStep + ' .error, #step' + fromStep + ' .field-error[style*="block"]');
+      const firstErr = document.querySelector('#step' + fromStep + ' .error, #step' + fromStep + ' .field-error[style*="block"], #step' + fromStep + ' .field-warn.show');
       if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
@@ -1655,7 +1720,7 @@
     if (!step1Ok || !step2Ok || !step3Ok || !step5Ok) {
       const failedStep = !step1Ok ? 1 : !step2Ok ? 2 : !step3Ok ? 3 : 5;
       showStep(failedStep);
-      const firstErr = document.querySelector('#step' + failedStep + ' .error, #step' + failedStep + ' .field-error[style*="block"]');
+      const firstErr = document.querySelector('#step' + failedStep + ' .error, #step' + failedStep + ' .field-error[style*="block"], #step' + failedStep + ' .field-warn.show');
       if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }

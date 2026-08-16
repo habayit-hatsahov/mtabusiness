@@ -8,6 +8,7 @@
   <link rel="manifest" href="manifest.json"/>
   <link rel="icon" href="icons/favicon-32.png"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <script src="email-domain-check.js"></script>
   <script>
     // ── מצב "embed" — כשהדף נטען בתוך ה-iframe של מודאל-ההרשמה בדסקטופ (welcome.html),
     // הכותרת/הירו הצהוב של העמוד העצמאי מוסתרים (הפאנל הצהוב החיצוני כבר נותן את המיתוג),
@@ -252,6 +253,20 @@
       background: rgba(217,119,6,.08);
       box-shadow: 0 0 0 3px rgba(217,119,6,.15);
     }
+    /* אזהרת שגיאת-כתיב בדומיין המייל — זהה ל-business.html (ר' email-domain-check.js) */
+    .field-warn {
+      display: none; margin-top: 6px; padding: 8px 10px;
+      background: rgba(37,99,235,.08); border: 1px solid rgba(37,99,235,.3);
+      border-radius: 8px; font-size: 12.5px; font-weight: 600; color: #1e40af;
+    }
+    .field-warn.show { display: block; }
+    .field-warn-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .field-warn-actions button {
+      font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
+      border-radius: 8px; padding: 6px 12px; border: 1px solid rgba(37,99,235,.35);
+      background: #1d4ed8; color: #fff;
+    }
+    .field-warn-actions button.ghost { background: transparent; color: #1e40af; }
     @keyframes shakeX {
       0%, 100% { transform: translateX(0); }
       20% { transform: translateX(-4px); }
@@ -333,6 +348,7 @@
           <label for="email">אימייל <span class="req">*</span></label>
           <input type="email" id="email" placeholder="israel@gmail.com" autocomplete="email" inputmode="email" />
           <div class="field-error" id="err-email">נא להזין כתובת אימייל תקינה</div>
+          <div class="field-warn" id="warn-email"></div>
         </div>
       </div>
 
@@ -544,6 +560,48 @@
     return true;
   }
 
+  // ── שומר-מייל: שגיאת-כתיב בדומיין (זהה ל-business.html) ───────────────────────────────────
+  // אוהד עם דומיין שגוי לא יקבל לעולם את קוד-הכניסה שלו, ואף אחד לא ידע שזה קרה — Brevo מדווח
+  // "נשלח" בהצלחה גם לדומיין typo-squatting (ר' docs/PROJECT_CONTEXT.md §203).
+  const emailTypoAck = {};
+
+  function emailTypoOk(inputId) {
+    const el  = document.getElementById(inputId);
+    const box = document.getElementById('warn-' + inputId);
+    if (!el || !box || typeof window.checkEmailDomain !== 'function') return true;
+    const val = el.value.trim();
+    const hit = window.checkEmailDomain(val);
+    if (!hit || emailTypoAck[inputId] === val.toLowerCase()) { box.classList.remove('show'); return true; }
+
+    box.textContent = '';
+    const q = document.createElement('div');
+    q.textContent = `בדוק רגע — הדומיין "${hit.domain}" לא נראה כמו כתובת אמיתית. התכוונת ל-${hit.suggested}?`;
+    const row = document.createElement('div');
+    row.className = 'field-warn-actions';
+    const fix = document.createElement('button');
+    fix.type = 'button';
+    fix.textContent = `כן, תקן ל-${hit.suggestedDomain}`;
+    fix.addEventListener('click', () => {
+      el.value = hit.suggested;
+      el.classList.remove('error');
+      box.classList.remove('show');
+    });
+    const keep = document.createElement('button');
+    keep.type = 'button';
+    keep.className = 'ghost';
+    keep.textContent = 'הכתובת שלי נכונה';
+    keep.addEventListener('click', () => {
+      emailTypoAck[inputId] = el.value.trim().toLowerCase();
+      box.classList.remove('show');
+    });
+    row.appendChild(fix);
+    row.appendChild(keep);
+    box.appendChild(q);
+    box.appendChild(row);
+    box.classList.add('show');
+    return false;
+  }
+
   function runValidation() {
     const fn    = document.getElementById('firstName').value.trim();
     const ln    = document.getElementById('lastName').value.trim();
@@ -555,7 +613,10 @@
     ok = vf('firstName', fn.length >= 2) && ok;
     ok = vf('lastName',  ln.length >= 2) && ok;
     ok = vf('phone',     phoneRx.test(phone.replace(/\s/g,''))) && ok;
-    ok = vf('email',     emailRx.test(email)) && ok;
+    const emailFormatOk = vf('email', emailRx.test(email));
+    ok = emailFormatOk && ok;
+    // רק על כתובת תקינה-במבנה — אחרת שתי הודעות סותרות על אותו שדה
+    if (emailFormatOk) ok = emailTypoOk('email') && ok;
     ok = vf('isSubscriber', isSub !== '') && ok;
 
     if (isSub === 'yes') {
@@ -615,7 +676,7 @@
     e.preventDefault();
 
     if (!runValidation()) {
-      const firstErr = document.querySelector('#mainCard .error, #mainCard .field-error[style*="block"]');
+      const firstErr = document.querySelector('#mainCard .error, #mainCard .field-error[style*="block"], #mainCard .field-warn.show');
       if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
