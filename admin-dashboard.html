@@ -1680,6 +1680,17 @@ function mailDeliveryLineHtml(status, at, reason) {
 function mailDeliveryFailed(status) {
   return !!(MAIL_DELIVERY_LABELS[status] && MAIL_DELIVERY_LABELS[status].bad);
 }
+// תווית קצרה לשורה בקובייה "תקלות מייל" — לכל סוג כשל-מסירה תווית משלו ולא "המייל חזר" גורף,
+// כי הטיפול שונה לגמרי: כתובת שלא קיימת = לתקן כתובת; חסימה/ספאם = הנמען קיים אבל Brevo לא
+// ישלח אליו יותר, וצריך ליצור קשר בערוץ אחר.
+const MAIL_DELIVERY_BADGES = {
+  bounced: 'המייל חזר',
+  bounced_soft: 'המייל חזר (זמנית)',
+  blocked: 'הכתובת חסומה ב-Brevo',
+  spam: 'הנמען סימן כספאם',
+  invalid: 'כתובת לא חוקית',
+  error: 'שגיאת מסירה',
+};
 
 function emailWarnNote(email) {
   const hit = emailDomainHit(email);
@@ -9662,7 +9673,7 @@ function mailIssueList() {
       add('biz', b.id, b.name, b.ownerEmail, 1, 'שליחה נכשלה', b.ownerEmailError ? String(b.ownerEmailError).slice(0, 160) : 'Brevo החזיר שגיאה', b.ownerEmailSentAt, true);
     } else if (approved && mailDeliveryFailed(b.ownerEmailDelivery)) {
       // Brevo דיווח בפועל שהמייל לא נחת (§205) — עדיף על כל ניחוש שלנו
-      add('biz', b.id, b.name, b.ownerEmail, 1, 'המייל חזר', `${MAIL_DELIVERY_LABELS[b.ownerEmailDelivery].txt}${b.ownerEmailDeliveryReason ? ' · ' + String(b.ownerEmailDeliveryReason).slice(0, 120) : ''}`, b.ownerEmailDeliveryAt || b.ownerEmailSentAt, true);
+      add('biz', b.id, b.name, b.ownerEmail, 1, MAIL_DELIVERY_BADGES[b.ownerEmailDelivery] || 'המייל לא נמסר', `Brevo דיווח: ${MAIL_DELIVERY_LABELS[b.ownerEmailDelivery].txt}${b.ownerEmailDeliveryReason ? ' · ' + String(b.ownerEmailDeliveryReason).slice(0, 120) : ''}`, b.ownerEmailDeliveryAt || b.ownerEmailSentAt, true);
     } else if (approved && (hit || malformed)) {
       add('biz', b.id, b.name, b.ownerEmail, 1, 'נשלח לכתובת שגויה',
         hit ? `הדומיין "${hit.domain}" לא קיים כשירות מייל — כנראה ${hit.suggested}. המייל סומן "נשלח" ולא הגיע.` : 'הכתובת לא בנויה כמו כתובת מייל תקינה.',
@@ -9686,7 +9697,7 @@ function mailIssueList() {
     if (approved && f.loginCodeEmailStatus === 'failed') {
       add('fan', f.id, f.name, f.email, 1, 'שליחה נכשלה', f.loginCodeEmailError ? String(f.loginCodeEmailError).slice(0, 160) : 'Brevo החזיר שגיאה', f.loginCodeEmailSentAt, !!f.loginCode);
     } else if (approved && mailDeliveryFailed(f.loginCodeEmailDelivery)) {
-      add('fan', f.id, f.name, f.email, 1, 'המייל חזר', `${MAIL_DELIVERY_LABELS[f.loginCodeEmailDelivery].txt}${f.loginCodeEmailDeliveryReason ? ' · ' + String(f.loginCodeEmailDeliveryReason).slice(0, 120) : ''}`, f.loginCodeEmailDeliveryAt || f.loginCodeEmailSentAt, !!f.loginCode);
+      add('fan', f.id, f.name, f.email, 1, MAIL_DELIVERY_BADGES[f.loginCodeEmailDelivery] || 'המייל לא נמסר', `Brevo דיווח: ${MAIL_DELIVERY_LABELS[f.loginCodeEmailDelivery].txt}${f.loginCodeEmailDeliveryReason ? ' · ' + String(f.loginCodeEmailDeliveryReason).slice(0, 120) : ''}`, f.loginCodeEmailDeliveryAt || f.loginCodeEmailSentAt, !!f.loginCode);
     } else if (approved && (hit || malformed)) {
       add('fan', f.id, f.name, f.email, 1, 'נשלח לכתובת שגויה',
         hit ? `הדומיין "${hit.domain}" לא קיים כשירות מייל — כנראה ${hit.suggested}. קוד הכניסה סומן "נשלח" ולא הגיע.` : 'הכתובת לא בנויה כמו כתובת מייל תקינה.',
