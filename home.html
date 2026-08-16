@@ -2305,8 +2305,21 @@ window.addEventListener('appinstalled', () => {
   hideInstallBanner();
 });
 document.addEventListener('DOMContentLoaded', maybeShowInstallBanner);
+// ── Service Worker — נרשם רק באתר החי, לא בפיתוח מקומי (2026-08-16) ────────────────────────
+// ב-localhost ה-SW לא נותן שום ערך (אין התקנה כאפליקציה, אין offline, אין פוש) והוא רק מגיש
+// גרסה מהמטמון ומסתיר שינויים שזה עתה נכתבו בקוד — בזבוז זמן חוזר בכל בדיקה מקומית.
+// לא מספיק *לא לרשום*: SW שכבר נרשם בעבר ממשיך לשלוט בדף גם בלי register חדש — לכן ב-localhost
+// גם מבטלים רישום קיים ומנקים את המטמון, פעולה חד-פעמית שמנקה מכונות שכבר "נדבקו".
+// isLocalDev משותף לשלושת הדפים שרושמים SW (home/profile/business-dashboard) — כל שינוי כאן
+// צריך להיעשות בשלושתם. ר' docs/PROJECT_CONTEXT.md §211.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  const isLocalDev = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+  if (isLocalDev) {
+    navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+    if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
+  } else {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
 }
 
 // ── PWA — התרעה כשהדף נפתח בתוך דפדפן פנימי (וואטסאפ/אינסטגרם/פייסבוק) ──
