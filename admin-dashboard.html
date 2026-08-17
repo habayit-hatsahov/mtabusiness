@@ -1702,8 +1702,15 @@ function emailDomainHit(email) {
 // ── סטטוס מסירה אמיתי מ-Brevo (§205) ──────────────────────────────────────────────────────
 // "נשלח" = Brevo קיבל מאיתנו את הבקשה. השורה הזאת היא מה שקרה *אחרי* — האמת מהשרת שקיבל את המייל.
 // ריק כשעוד לא הגיע אירוע (webhook לא מוגדר, או שהמייל בדרך) — ואז פשוט לא מוצג כלום.
+//
+// ⚠️ delivered נקרא כאן "שרת הנמען קיבל" ולא "נמסר לתיבה" — וזה לא ניסוח זהיר, זה תיקון של טעות
+// אמיתית (2026-08-17, "יעדים לוגיסטיים"). delivered פירושו שהשרת המקבל ענה 250 OK, וזהו. Gmail
+// מסנן *לפני* התשובה הזאת, אז אצלו זה כמעט תמיד באמת "הגיע לתיבה" — אבל Microsoft 365 ארגוני
+// (mail.protection.outlook.com) מקבל קודם ומסנן אחר כך, כך שאותו delivered מתיישב מצוין עם הודעה
+// שיושבת בדואר-זבל או בהסגר-ארגוני שהנמען לא רואה כלל. התווית הישנה הצהירה ידע שאין לנו, וגרמה
+// לסגור מקרה פתוח כ"תקין". ר' docs/PROJECT_CONTEXT.md §206.
 const MAIL_DELIVERY_LABELS = {
-  delivered:    { txt: 'נמסר בפועל לתיבה',                      bad: false },
+  delivered:    { txt: 'שרת הנמען קיבל את המייל',               bad: false },
   bounced:      { txt: 'חזר — הכתובת לא קיימת',                  bad: true },
   bounced_soft: { txt: 'חזר זמנית (תיבה מלאה/שרת עסוק)',        bad: true },
   blocked:      { txt: 'נחסם — הכתובת ברשימת החסומים של Brevo',  bad: true },
@@ -1711,14 +1718,52 @@ const MAIL_DELIVERY_LABELS = {
   invalid:      { txt: 'כתובת לא חוקית',                         bad: true },
   error:        { txt: 'שגיאת מסירה',                            bad: true },
 };
-function mailDeliveryLineHtml(status, at, reason) {
+
+// כמה ימים "נמסר אבל אף אחד לא נגע בו" נחשב עדיין סביר לפני שזה עולה כתקלה לטיפול
+const MAIL_UNOPENED_DAYS = 3;
+
+// ⚠️ מדידת-הפתיחה נוספה ב-2026-08-17. לכל מייל שיצא *לפני* התאריך הזה אין ולעולם לא יהיה נתון
+// פתיחה — לא כי הוא לא נפתח, אלא כי לא הקשבנו. בלי החסם הזה כל 51 העסקים הקיימים היו קופצים
+// בבת-אחת כ"נמסר ולא נפתח" ומטביעים את הקובייה בהתראות-שווא ביום הראשון. §206
+const MAIL_OPEN_TRACKING_SINCE = new Date('2026-08-17T00:00:00+03:00');
+function mailOpenTracked(sentAt) {
+  return !!(sentAt && sentAt.getTime() >= MAIL_OPEN_TRACKING_SINCE.getTime());
+}
+
+// פתיחה בפועל (§206) — ההוכחה החיובית היחידה שיש לנו שהמייל באמת הגיע לבן-אדם. חשוב להבין את
+// הא-סימטריה, והיא נכתבת גם על המסך ולא רק כאן: פתיחה = ודאות שהגיע. *אי*-פתיחה = לא ראיה לכלום,
+// כי המדידה היא פיקסל-תמונה ו-Outlook/M365 חוסמים תמונות כברירת מחדל. לכן זה אף פעם לא מסומן
+// "נכשל", רק "לבדוק".
+function mailOpenLineHtml({ openedAt, clickedAt, deliveryStatus, sentAt }) {
+  if (clickedAt) return `<br>✅ נפתח ונלחץ בו קישור · ${fmtDateTime(clickedAt)} — הוכחה ודאית שהמייל הגיע`;
+  if (openedAt) return `<br>✅ נפתח בפועל · ${fmtDateTime(openedAt)} — הוכחה ודאית שהמייל הגיע`;
+  if (!mailOpenTracked(sentAt)) return `<br><span style="color:#8a8a8a">ℹ️ מדידת פתיחה לא הייתה פעילה כשהמייל הזה נשלח — אין נתון, וזה לא אומר שלא נפתח</span>`;
+  if (deliveryStatus !== 'delivered') return '';
+  return `<br><span style="color:#b26b00">⚠️ טרם נפתח — קבלה בשרת אינה מבטיחה תיבת דואר נכנס (ייתכן ספאם או הסגר ארגוני). פתיחה היא ההוכחה היחידה, אבל היעדרה אינו ראיה: Outlook חוסם תמונות ולכן פתיחה לא תמיד נמדדת.</span>`;
+}
+
+function mailDeliveryLineHtml({ status, at, reason, openedAt, clickedAt, sentAt }) {
   const meta = MAIL_DELIVERY_LABELS[status];
-  if (!meta) return '';
-  return `<br>${meta.bad ? '⛔' : '✅'} ${meta.txt}${at ? ' · ' + fmtDateTime(at) : ''}${meta.bad && reason ? `<br>${esc(String(reason).slice(0, 120))}` : ''}`;
+  const deliveryLine = meta
+    ? `<br>${meta.bad ? '⛔' : '✅'} ${meta.txt}${at ? ' · ' + fmtDateTime(at) : ''}${meta.bad && reason ? `<br>${esc(String(reason).slice(0, 120))}` : ''}`
+    : '';
+  return deliveryLine + mailOpenLineHtml({ openedAt, clickedAt, deliveryStatus: status, sentAt });
 }
 function mailDeliveryFailed(status) {
   return !!(MAIL_DELIVERY_LABELS[status] && MAIL_DELIVERY_LABELS[status].bad);
 }
+// "נמסר ולא נפתח" (§206) — לא כשל, אלא הסימן שהיה חסר לגמרי: השרת המקבל אישר קבלה, ומאז אף אחד
+// לא נגע במייל. זה בדיוק המצב של "יעדים לוגיסטיים" (2026-08-17), שנראה תקין לחלוטין בכל מסך.
+// סיווג sev=3 בכוונה (ולא 1) — זו בקשה לאמת, לא הצהרה שהמייל נכשל, ר' הא-סימטריה ב-mailOpenLineHtml.
+function mailUnopenedTooLong(sendStatus, deliveryStatus, openedAt, clickedAt, sentAt, now) {
+  if (sendStatus !== 'sent' || deliveryStatus !== 'delivered') return false;
+  if (openedAt || clickedAt) return false;
+  if (!mailOpenTracked(sentAt)) return false;   // נשלח לפני שהמדידה קיימה — אין נתון, אין תקלה
+  return (now - sentAt.getTime()) > MAIL_UNOPENED_DAYS * 86400000;
+}
+const MAIL_UNOPENED_DETAIL = (sentAt) =>
+  `נשלח ${agoLabel(sentAt)} ושרת הנמען אישר קבלה — אבל מאז לא נרשמה שום פתיחה. ייתכן שההודעה בדואר-זבל או בהסגר ארגוני. ⚠️ ייתכן גם שהיא נקראה בלי טעינת תמונות (Outlook חוסם כברירת מחדל) ואז הפתיחה פשוט לא נמדדת — לכן זו בקשה לאמת טלפונית, לא הצהרה שהמייל נכשל.`;
+
 // תווית קצרה לשורה בקובייה "תקלות מייל" — לכל סוג כשל-מסירה תווית משלו ולא "המייל חזר" גורף,
 // כי הטיפול שונה לגמרי: כתובת שלא קיימת = לתקן כתובת; חסימה/ספאם = הנמען קיים אבל Brevo לא
 // ישלח אליו יותר, וצריך ליצור קשר בערוץ אחר.
@@ -1848,6 +1893,8 @@ function hydrateBiz(id, raw) {
     agreedTermsAt: toJsDate(raw.agreedTermsAt),
     ownerEmailSentAt: toJsDate(raw.ownerEmailSentAt),
     ownerEmailDeliveryAt: toJsDate(raw.ownerEmailDeliveryAt),   // מ-webhook המסירה של Brevo, §205
+    ownerEmailOpenedAt: toJsDate(raw.ownerEmailOpenedAt),       // פתיחה בפועל, §206
+    ownerEmailClickedAt: toJsDate(raw.ownerEmailClickedAt),     // לחיצה על קישור במייל, §206
     pendingChangesAt: toJsDate(raw.pendingChangesAt),
     hasCoverPhoto: !!raw.coverPhoto,
     hasLogo: !!raw.logo,
@@ -1926,6 +1973,8 @@ function hydrateFan(id, raw) {
     loginCodeCreatedAt: toJsDate(raw.loginCodeCreatedAt),
     loginCodeEmailSentAt: toJsDate(raw.loginCodeEmailSentAt),
     loginCodeEmailDeliveryAt: toJsDate(raw.loginCodeEmailDeliveryAt),   // מ-webhook המסירה של Brevo, §205
+    loginCodeEmailOpenedAt: toJsDate(raw.loginCodeEmailOpenedAt),       // פתיחה בפועל, §206
+    loginCodeEmailClickedAt: toJsDate(raw.loginCodeEmailClickedAt),     // לחיצה על קישור במייל, §206
     hasProofPhoto: !!raw.photoProofUrl,
     isBusinessOwner: !!raw.isBusinessOwner,
     linkedBusinessId: raw.linkedBusinessId || null,
@@ -4650,14 +4699,21 @@ function bizFullDetailHtml(id, opts) {
   // מסמנים 'sent' בלי שגיאה, והמייל פשוט לא מגיע לאף אחד. הצגת כתובת-היעד היא מה שמאפשר לתפוס
   // את זה בעין. שים לב: כשהחבר המקושר מקבל "מייל מאוחד" (קוד כניסה + לינק לדשבורד יחד) הוא נשלח
   // בפועל לכתובת שברשומת החבר — היא מסונכרנת ל-ownerEmail בשמירת "אימות בעל העסק", ר' saveBizStep.
+  // "שליחה חוזרת" ישב עד עכשיו *רק* בשורות הקובייה "תקלות מייל" — כלומר היה זמין רק כשהמערכת כבר
+  // החליטה שיש תקלה. במקרה "יעדים לוגיסטיים" (2026-08-17) הרשומה נראתה מושלמת (sent+delivered,
+  // דומיין תקין), בעל העסק לא קיבל כלום, ולא היה שום כפתור לשלוח לו שוב באף מסך. הכפתור עובר לכאן
+  // ומוצג תמיד כשיש כתובת — פעולה בסיסית לא צריכה להיות מותנית באבחון-אוטומטי מוצלח. §206
+  const idEmailResendBtn = (b.status === 'approved' && b.ownerEmail)
+    ? `<button type="button" class="act-btn approve tiny" style="margin-top:8px" onclick="event.stopPropagation();requeueBizEmail('${b.id}')">שליחה חוזרת</button>`
+    : '';
   const idEmailNote = b.status === 'approved'
     ? `<div class="identity-note ${(b.ownerEmailStatus === 'failed' || mailDeliveryFailed(b.ownerEmailDelivery)) ? 'warn' : 'neutral'}"><div class="identity-note-h">מייל אישור</div><div class="identity-note-v">${
         b.ownerEmailStatus === 'sent'
-          ? `✅ נשלח${b.ownerEmailSentAt ? ' · ' + fmtDateTime(b.ownerEmailSentAt) : ''}<br>אל ${esc(b.ownerEmail || '—')} · כולל לינק לדשבורד${mailDeliveryLineHtml(b.ownerEmailDelivery, b.ownerEmailDeliveryAt, b.ownerEmailDeliveryReason)}`
+          ? `✅ נשלח${b.ownerEmailSentAt ? ' · ' + fmtDateTime(b.ownerEmailSentAt) : ''}<br>אל ${esc(b.ownerEmail || '—')} · כולל לינק לדשבורד${mailDeliveryLineHtml({ status: b.ownerEmailDelivery, at: b.ownerEmailDeliveryAt, reason: b.ownerEmailDeliveryReason, openedAt: b.ownerEmailOpenedAt, clickedAt: b.ownerEmailClickedAt, sentAt: b.ownerEmailSentAt })}`
           : b.ownerEmailStatus === 'failed'
             ? `❌ שליחה נכשלה<br>אל ${esc(b.ownerEmail || '—')}${b.ownerEmailError ? `<br>${esc(String(b.ownerEmailError).slice(0, 200))}` : ''}`
             : `⏳ ממתין לשליחה — יוצא אוטומטית תוך דקה מהאישור${b.ownerEmail ? `<br>אל ${esc(b.ownerEmail)}` : ''}`
-      }</div></div>`
+      }${idEmailResendBtn}</div></div>`
     : '';
   // §147 — הערת-עסק (b.note) הייתה מוצגת רק בתוך "שיפוט מהיר" (ונעלמת לגמרי אם אין הערה בכלל, או
   // מתכווצת אם כבר טופלה) — המשתמש דיווח שזה "נעלם בשקט". תיבה קבועה כאן בכרטיס-הזהות, תמיד גלויה,
@@ -6017,14 +6073,19 @@ function fanFullDetailHtml(id, opts) {
     : `<div class="identity-note warn"><div class="identity-note-h">מנוי</div><div class="identity-note-v">לא מנוי כרגע${f.wasSubscriber === 'yes' ? ' (היה מנוי בעבר)' : ''}</div></div>`;
   // אותו אישור-שליחה כמו בכרטיס העסק (ר' ההערה ב-bizFullDetailHtml): תאריך+שעה מדויקים וכתובת
   // היעד בפועל, כדי שכתובת שגויה תיתפס בעין — "נשלח" לבדו לא אומר שהמייל הגיע לאן שצריך.
+  // כפתור "שליחה חוזרת" זמין תמיד כשיש כתובת — לא רק כשהמערכת זיהתה תקלה. ר' ההערה המקבילה
+  // ב-bizFullDetailHtml (§206).
+  const idEmailResendBtn = (f.status === 'approved' && f.loginCode && f.email)
+    ? `<button type="button" class="act-btn approve tiny" style="margin-top:8px" onclick="event.stopPropagation();requeueFanEmail('${f.id}')">שליחה חוזרת</button>`
+    : '';
   const idEmailNote = (f.status === 'approved' && f.loginCode)
     ? `<div class="identity-note ${(f.loginCodeEmailStatus === 'failed' || mailDeliveryFailed(f.loginCodeEmailDelivery)) ? 'warn' : 'neutral'}"><div class="identity-note-h">מייל קוד כניסה</div><div class="identity-note-v">${
         f.loginCodeEmailStatus === 'sent'
-          ? `✅ נשלח${f.loginCodeEmailSentAt ? ' · ' + fmtDateTime(f.loginCodeEmailSentAt) : ''}<br>אל ${esc(f.email || '—')}${mailDeliveryLineHtml(f.loginCodeEmailDelivery, f.loginCodeEmailDeliveryAt, f.loginCodeEmailDeliveryReason)}`
+          ? `✅ נשלח${f.loginCodeEmailSentAt ? ' · ' + fmtDateTime(f.loginCodeEmailSentAt) : ''}<br>אל ${esc(f.email || '—')}${mailDeliveryLineHtml({ status: f.loginCodeEmailDelivery, at: f.loginCodeEmailDeliveryAt, reason: f.loginCodeEmailDeliveryReason, openedAt: f.loginCodeEmailOpenedAt, clickedAt: f.loginCodeEmailClickedAt, sentAt: f.loginCodeEmailSentAt })}`
           : f.loginCodeEmailStatus === 'failed'
             ? `❌ שליחה נכשלה<br>אל ${esc(f.email || '—')}${f.loginCodeEmailError ? `<br>${esc(String(f.loginCodeEmailError).slice(0, 200))}` : ''}`
             : `⏳ ממתין לשליחה — יוצא אוטומטית תוך דקה מהאישור${f.email ? `<br>אל ${esc(f.email)}` : ''}`
-      }</div></div>`
+      }${idEmailResendBtn}</div></div>`
     : '';
   const identityCardHtml = `
     <div class="dcard identity-card">
@@ -10167,6 +10228,8 @@ function mailIssueList() {
       add('biz', b.id, b.name, '', 2, 'אין כתובת מייל', 'העסק מאושר אבל אין למי לשלוח — צריך להשיג כתובת ולעדכן בכרטיס.', b.approvedAt, false);
     } else if (approved && b.ownerEmailStatus !== 'sent' && b.approvedAt && (now - b.approvedAt.getTime()) > MAIL_STUCK_MINUTES * 60000) {
       add('biz', b.id, b.name, b.ownerEmail, 2, 'תקוע בתור', `אושר ${agoLabel(b.approvedAt)} והמייל עדיין לא יצא. ה-cron רץ כל דקה — כדאי לבדוק את ה-Worker.`, b.approvedAt, true);
+    } else if (approved && mailUnopenedTooLong(b.ownerEmailStatus, b.ownerEmailDelivery, b.ownerEmailOpenedAt, b.ownerEmailClickedAt, b.ownerEmailSentAt, now)) {
+      add('biz', b.id, b.name, b.ownerEmail, 3, 'נמסר ולא נפתח', MAIL_UNOPENED_DETAIL(b.ownerEmailSentAt), b.ownerEmailSentAt, true);
     } else if (!approved && (hit || malformed)) {
       add('biz', b.id, b.name, b.ownerEmail, 3, 'כתובת שגויה — לפני אישור',
         hit ? `כנראה ${hit.suggested}. אם תאשר ככה, המייל "יישלח" ולא יגיע.` : 'הכתובת לא בנויה כמו כתובת מייל תקינה — לתקן לפני האישור.',
@@ -10191,6 +10254,8 @@ function mailIssueList() {
       add('fan', f.id, f.name, '', 2, 'אין כתובת מייל', 'האוהד מאושר אבל אין למי לשלוח את קוד הכניסה.', f.approvedAt, false);
     } else if (approved && f.loginCode && f.loginCodeEmailStatus !== 'sent' && f.approvedAt && (now - f.approvedAt.getTime()) > MAIL_STUCK_MINUTES * 60000) {
       add('fan', f.id, f.name, f.email, 2, 'תקוע בתור', `אושר ${agoLabel(f.approvedAt)} וקוד הכניסה עדיין לא יצא.`, f.approvedAt, true);
+    } else if (approved && mailUnopenedTooLong(f.loginCodeEmailStatus, f.loginCodeEmailDelivery, f.loginCodeEmailOpenedAt, f.loginCodeEmailClickedAt, f.loginCodeEmailSentAt, now)) {
+      add('fan', f.id, f.name, f.email, 3, 'נמסר ולא נפתח', MAIL_UNOPENED_DETAIL(f.loginCodeEmailSentAt), f.loginCodeEmailSentAt, !!f.loginCode);
     } else if (!approved && (hit || malformed)) {
       add('fan', f.id, f.name, f.email, 3, 'כתובת שגויה — לפני אישור',
         hit ? `כנראה ${hit.suggested}. אם תאשר ככה, קוד הכניסה "יישלח" ולא יגיע.` : 'הכתובת לא בנויה כמו כתובת מייל תקינה — לתקן לפני האישור.',
@@ -10340,7 +10405,7 @@ window.requeueBizEmail = async function(id) {
   if (!confirm(`לשלוח שוב את מייל האישור ל"${b.name}"?\n\nאל: ${b.ownerEmail}\n\nהמייל יוצא אוטומטית תוך דקה.`)) return;
   try {
     // מנקה גם את תוצאת-המסירה הקודמת (§205) — אחרת "חזר" ישן נשאר על המסך אחרי שליחה חדשה
-    await updateDoc(doc(db, 'businesses', id), { ownerEmailStatus: 'pending', ownerEmailError: null, ownerEmailDelivery: null, ownerEmailDeliveryAt: null, ownerEmailDeliveryReason: null });
+    await updateDoc(doc(db, 'businesses', id), { ownerEmailStatus: 'pending', ownerEmailError: null, ownerEmailDelivery: null, ownerEmailDeliveryAt: null, ownerEmailDeliveryReason: null, ownerEmailOpenedAt: null, ownerEmailClickedAt: null });
     await logActivity('businesses', id, { type: 'email', title: 'מייל האישור נשלח שוב', detail: `אל ${b.ownerEmail}`, field: 'ownerEmailStatus', before: b.ownerEmailStatus || null, after: 'pending' });
     alert('נכנס לתור — המייל יוצא תוך דקה. הסטטוס בכרטיס יתעדכן ל"נשלח" עם השעה המדויקת.');
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
@@ -10355,7 +10420,7 @@ window.requeueFanEmail = async function(id) {
   if (!confirmSuspectEmail(f.email, `"${f.name}"`)) return;
   if (!confirm(`לשלוח שוב את מייל קוד הכניסה ל"${f.name}"?\n\nאל: ${f.email}\n\nהמייל יוצא אוטומטית תוך דקה.`)) return;
   try {
-    await updateDoc(doc(db, 'members', id), { loginCodeEmailStatus: 'pending', loginCodeEmailError: null, loginCodeEmailDelivery: null, loginCodeEmailDeliveryAt: null, loginCodeEmailDeliveryReason: null });
+    await updateDoc(doc(db, 'members', id), { loginCodeEmailStatus: 'pending', loginCodeEmailError: null, loginCodeEmailDelivery: null, loginCodeEmailDeliveryAt: null, loginCodeEmailDeliveryReason: null, loginCodeEmailOpenedAt: null, loginCodeEmailClickedAt: null });
     await logActivity('members', id, { type: 'email', title: 'מייל קוד הכניסה נשלח שוב', detail: `אל ${f.email}`, field: 'loginCodeEmailStatus', before: f.loginCodeEmailStatus || null, after: 'pending' });
     alert('נכנס לתור — המייל יוצא תוך דקה.');
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }

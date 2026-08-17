@@ -12,8 +12,8 @@
 import { getGoogleAccessToken } from './jwt.js';
 import { firestoreRunQuery, firestorePatch } from './firestore.js';
 
-// מיפוי שמות-האירועים של Brevo למילון פנימי אחד. אירוע שלא ברשימה (opened/click/request/
-// unsubscribed וכו') לא מעניין אותנו כאן ופשוט מדולג — לא שגיאה.
+// מיפוי שמות-האירועים של Brevo למילון פנימי אחד. אירוע שלא ברשימה (request/unsubscribed וכו')
+// לא מעניין אותנו כאן ופשוט מדולג — לא שגיאה.
 const EVENT_STATUS = {
   delivered: 'delivered',
   hard_bounce: 'bounced',
@@ -22,6 +22,20 @@ const EVENT_STATUS = {
   spam: 'spam',
   invalid_email: 'invalid',
   error: 'error',
+};
+
+// ── אירועי מגע (§206) ────────────────────────────────────────────────────────────────────────
+// למה אלה נשמרים בשדות *נפרדים* ולא כערך נוסף ב-EVENT_STATUS: "נמסר" ו"נפתח" הן שתי עובדות שונות
+// שיכולות להתקיים יחד, ואם 'opened' היה דורס את ownerEmailDelivery היינו מאבדים את סטטוס-המסירה
+// (ובכיוון ההפוך, אירוע spam שמגיע אחרי פתיחה היה מוחק את הראיה שהמייל כן הגיע).
+//
+// זו ההוכחה החיובית היחידה שיש לנו שהמייל הגיע לבן-אדם ולא רק לשרת — ובדיוק היא שחסרה במקרה
+// "יעדים לוגיסטיים" (2026-08-17), שבו delivered לבדו נראה כמו "הכול תקין".
+// ⚠️ אי-פתיחה אינה ראיה הפוכה: המדידה היא פיקסל-תמונה, ו-Outlook/M365 חוסמים תמונות כברירת מחדל.
+const EVENT_TOUCH_FIELD = {
+  opened: 'Opened',
+  unique_opened: 'Opened',
+  click: 'Clicked',
 };
 
 // תקרת-אירועים להרצה בודדת — כל אירוע עולה עד ~4 קריאות-משנה (2 שאילתות + פאצ'ים), ותקרת
@@ -37,7 +51,7 @@ const MAX_EVENTS_PER_REQUEST = 8;
 //
 // שמות-האירועים כאן הם ה-camelCase של ה-API ליצירה (hardBounce), בעוד שב-payload שמגיע בפועל
 // הם snake_case (hard_bounce) — הבדל אמיתי בצד של Brevo, ר' EVENT_STATUS למעלה.
-const WEBHOOK_EVENTS = ['delivered', 'hardBounce', 'softBounce', 'blocked', 'spam', 'invalid'];
+const WEBHOOK_EVENTS = ['delivered', 'hardBounce', 'softBounce', 'blocked', 'spam', 'invalid', 'opened', 'uniqueOpened', 'click'];
 const WEBHOOK_DESC = 'Yellow Zone — delivery events';
 
 export async function handleSetupBrevoWebhook(request, env) {
@@ -102,9 +116,11 @@ export async function handleBrevoWebhook(request, env) {
   let handled = 0, matched = 0;
 
   for (const ev of events) {
-    const status = EVENT_STATUS[String(ev.event || '').toLowerCase()];
+    const evName = String(ev.event || '').toLowerCase();
+    const status = EVENT_STATUS[evName];
+    const touch = EVENT_TOUCH_FIELD[evName];
     const email = String(ev.email || '').trim().toLowerCase();
-    if (!status || !email) continue;
+    if ((!status && !touch) || !email) continue;
     handled++;
 
     // חותמת-הזמן של האירוע עצמו, לא של הרגע שקיבלנו אותו (Brevo יכול לאחר/לנסות שוב)
@@ -118,20 +134,21 @@ export async function handleBrevoWebhook(request, env) {
       firestoreRunQuery(env, accessToken, 'members', 'email', email, 3),
     ]);
 
+    // אירוע-מסירה כותב את שדות המסירה; אירוע-מגע כותב *רק* את חותמת הפתיחה/הלחיצה. שני הענפים
+    // אף פעם לא נוגעים באותם שדות, ולכן סדר-ההגעה בין delivered ל-opened לא משנה.
+    const bizPatch = touch
+      ? { [`ownerEmail${touch}At`]: at }
+      : { ownerEmailDelivery: status, ownerEmailDeliveryAt: at, ownerEmailDeliveryReason: reason };
+    const memberPatch = touch
+      ? { [`loginCodeEmail${touch}At`]: at }
+      : { loginCodeEmailDelivery: status, loginCodeEmailDeliveryAt: at, loginCodeEmailDeliveryReason: reason };
+
     for (const b of bizList) {
-      await firestorePatch(env, accessToken, `businesses/${b.id}`, {
-        ownerEmailDelivery: status,
-        ownerEmailDeliveryAt: at,
-        ownerEmailDeliveryReason: reason,
-      });
+      await firestorePatch(env, accessToken, `businesses/${b.id}`, bizPatch);
       matched++;
     }
     for (const m of memberList) {
-      await firestorePatch(env, accessToken, `members/${m.id}`, {
-        loginCodeEmailDelivery: status,
-        loginCodeEmailDeliveryAt: at,
-        loginCodeEmailDeliveryReason: reason,
-      });
+      await firestorePatch(env, accessToken, `members/${m.id}`, memberPatch);
       matched++;
     }
   }

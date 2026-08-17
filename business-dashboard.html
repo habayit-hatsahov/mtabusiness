@@ -1827,6 +1827,9 @@ function fmtFieldVal(k, v) {
 let changedFieldsSet = new Set();
 
 async function uploadFile(file, path) {
+  // גם Storage מזהה את המשתמש דרך אותו Firebase Auth היחיד-לדומיין — העלאה בזהות של החבר במקום
+  // בזהות של העסק נדחית ב-storage/unauthorized בדיוק כמו כתיבת Firestore. §213
+  if (!(await ensureBizAuth())) throw new Error('biz_auth_unavailable');
   const storageRef = ref(await getStorageLazy(), path);
   // immutable בטוח כי כל נתיב העלאה כבר ייחודי (timestamp/החלפה מלאה) — מונע בדיקת-304 מיותרת
   // בכל טעינה חוזרת של אותה תמונה (ר' docs/PROJECT_CONTEXT.md).
@@ -1968,6 +1971,63 @@ async function loadBusiness(token) {
   }
 }
 
+// ── שמירה על זהות-העסק לפני כל כתיבה (§213) ─────────────────────────────────────────────────
+// כל כתיבה כאן מותנית ב-firestore.rules ב-`request.auth.uid == businessId`, והזהות הזאת מגיעה
+// מ-signInWithCustomToken חד-פעמי ב-loadBusiness (ה-Worker מנפיק uid=businessId מול accessToken).
+// היא חיה על ה-app המבודד 'bizDashboard' — ולכן, בניגוד למה שאפשר לחשוב, אין כאן התנגשות עם
+// ה-session של החבר ב-home/profile; הם על app אחר לגמרי.
+//
+// מה שכן קורה: אם ה-session הזה אינו חי ברגע הכתיבה (פג, נוקה, שוחזר מ-bfcache אחרי זמן רב,
+// אחסון הדפדפן פונה) — כל כתיבה נדחית ב-permission-denied, והמשתמש ראה רק "שגיאה — נסה/י שוב".
+// דיווח-אמת: "Dj & music producter" (2026-08-17), שינוי שעות-פעילות שלא נכתב מעולם ואבד.
+//
+// ⚠️ הסיבה המדויקת לכשל שלו לא הוכחה — ההודעה הגנרית בלעה את קוד-השגיאה. הגארד הזה מטפל במחלקת
+// הכשלים הזאת (מרענן זהות ומנסה שוב) *וגם* חושף את הסיבה האמיתית בפעם הבאה, במקום להסתיר אותה.
+async function ensureBizAuth(force = false) {
+  if (!force && auth.currentUser && auth.currentUser.uid === bizId) return true;
+  const tok = token || sessionStorage.getItem('hb_lastBizToken');
+  if (!tok || !bizId) return false;
+  try {
+    const resp = await fetch(WORKER_URL + '/mint-biz-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken: tok }),
+    });
+    const data = await resp.json();
+    if (!data.customToken) return false;
+    const cred = await signInWithCustomToken(auth, data.customToken);
+    return cred.user.uid === bizId;
+  } catch (e) {
+    console.error('ensureBizAuth failed:', e);
+    return false;
+  }
+}
+
+// עוטף כל כתיבה של הדשבורד: מוודא זהות-עסק לפני, ואם Firestore בכל זאת דחה על הרשאה — מרענן את
+// הזהות בכפייה ומנסה שוב פעם אחת בלבד. לא יותר, כדי שכשל אמיתי לא ייבלע בלולאת-ניסיונות.
+async function withBizAuth(writeFn) {
+  if (!(await ensureBizAuth())) throw new Error('biz_auth_unavailable');
+  try {
+    return await writeFn();
+  } catch (e) {
+    if (e && e.code === 'permission-denied' && await ensureBizAuth(true)) return await writeFn();
+    throw e;
+  }
+}
+
+// הודעת-שגיאה שאומרת מה קרה בפועל. "שגיאה — נסה/י שוב" גנרי הוא מה שהסתיר את הבאג הזה: בעל
+// העסק ניסה שוב ושוב באותה זהות שגויה, ואף אחד לא ידע שמדובר בהרשאה ולא בתקלת-רשת.
+function bizWriteErrorMsg(e) {
+  if (e && (e.message === 'biz_auth_unavailable' || e.code === 'permission-denied')) {
+    return 'החיבור לעסק פג — רענן/י את הדף ונסה/י שוב';
+  }
+  return 'שגיאה — נסה/י שוב';
+}
+
+// bfcache: Safari-מובייל משחזר את הדף בלי להריץ את הסקריפט מחדש — בדיוק הרגע שבו הזהות כבר
+// עלולה להיות של החבר. מרעננים מיד בחזרה לדף, כדי שבעל העסק לא ייתקל בשגיאה מלכתחילה.
+window.addEventListener('pageshow', (e) => { if (e.persisted && bizId) ensureBizAuth(); });
+
 function showError() {
   document.getElementById('loadingScreen').style.display = 'none';
   document.getElementById('errorScreen').style.display = 'flex';
@@ -2096,11 +2156,11 @@ async function renderContactNoteBanner(b) {
       if (Date.now() - ackDate.getTime() >= CONTACT_NOTE_CLEAR_DAYS * 86400000) {
         el.style.display = 'none';
         b.note = ''; b.noteHandled = false; b.noteHandledAt = null; b.noteOwnerAckAt = null;
-        try { await updateDoc(doc(db, 'businesses', bizId), { note: '', noteHandled: false, noteHandledAt: null, noteOwnerAckAt: null }); } catch (e) { console.error(e); }
+        try { await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { note: '', noteHandled: false, noteHandledAt: null, noteOwnerAckAt: null })); } catch (e) { console.error(e); }
         return;
       }
     } else {
-      try { await updateDoc(doc(db, 'businesses', bizId), { noteOwnerAckAt: serverTimestamp() }); b.noteOwnerAckAt = new Date(); } catch (e) { console.error(e); }
+      try { await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { noteOwnerAckAt: serverTimestamp() })); b.noteOwnerAckAt = new Date(); } catch (e) { console.error(e); }
     }
   }
   el.style.display = 'block';
@@ -3403,10 +3463,10 @@ window.submitAllChanges = async function() {
   if (!Object.keys(draftChanges).length) return false;
   const merged = { ...(biz.pendingChanges || {}), ...draftChanges };
   try {
-    await updateDoc(doc(db, 'businesses', bizId), {
+    await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), {
       pendingChanges: merged,
       pendingChangesAt: serverTimestamp()
-    });
+    }));
     biz.pendingChanges = merged;
     draftChanges = {};
     showToast(' הבקשה התקבלה!');
@@ -3414,7 +3474,8 @@ window.submitAllChanges = async function() {
     return true;
   } catch(e) {
     console.error(e);
-    showToast('שגיאה — נסה/י שוב');
+    // draftChanges *לא* מתאפס כאן בכוונה — הטיוטה נשארת על המסך כדי שהעריכה לא תאבד בכשל.
+    showToast(bizWriteErrorMsg(e));
     return false;
   }
 };
@@ -4150,13 +4211,13 @@ window.showToast = showToast;
 window.acceptTermsNow = async function() {
   const cb = document.getElementById('ownerAgreeTerms');
   try {
-    await updateDoc(doc(db, 'businesses', bizId), { agreedTermsAt: serverTimestamp() });
+    await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { agreedTermsAt: serverTimestamp() }));
     biz.agreedTermsAt = new Date();
     showToast('התנאים אושרו, תודה!');
     renderBizView();
   } catch (e) {
     console.error(e);
-    showToast('שגיאה בשמירה — נסו שוב');
+    showToast(bizWriteErrorMsg(e));
     if (cb) cb.checked = false;
   }
 };
