@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
   <script src="categories.js"></script>
+  <script src="phone-check.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     ::-webkit-scrollbar { width: 6px; }
@@ -1456,6 +1457,15 @@ function ownerEmailStatusHtml(status, sentAt, err) {
 
 function esc(v) {
   return (v == null ? '' : String(v)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+// מספר טלפון/WhatsApp עם ספרה עודפת או חסרה (ר' phone-check.js). מחזיר true = אפשר להמשיך.
+// ריק תמיד תקין — שני השדות אופציונליים. זהה למקבילה ב-admin-dashboard.html.
+function confirmSuspectPhone(phone, who) {
+  const v = String(phone || '').trim();
+  if (!v || typeof window.isValidILPhone !== 'function' || window.isValidILPhone(v)) return true;
+  const digits = v.replace(/\D/g, '').length;
+  return confirm(`${who} — "${v}" הוא ${digits} ספרות, וזה לא מספר ישראלי תקין.\n\nמספר כזה יוצר בכרטיס כפתור שמוביל ל"המספר לא קיים".\n\nאישור = לשמור בכל זאת · ביטול = עוצר, אתקן קודם`);
 }
 
 function waitingChip(ts) {
@@ -3260,6 +3270,10 @@ window.saveSec2 = async function(id) {
     instagram:    document.getElementById('editInstagram').value.trim(),
     facebook:     document.getElementById('editFacebook').value.trim(),
   };
+  // אזהרת-מספר-שבור (ר' phone-check.js). confirm ולא חסימה — המנהל הוא מי שמתקן נתונים שגויים.
+  // זהה למה שנוסף ב-admin-dashboard.html saveBizSec2. ר' docs/PROJECT_CONTEXT.md §204.
+  if (!confirmSuspectPhone(updates.phone, 'טלפון העסק')) return;
+  if (!confirmSuspectPhone(updates.whatsapp, 'ה-WhatsApp')) return;
   await saveSectionUpdates(id, updates);
 };
 

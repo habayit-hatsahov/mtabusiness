@@ -13,6 +13,7 @@
   <noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet"/></noscript>
   <script src="categories.js"></script>
   <script src="email-domain-check.js"></script>
+  <script src="phone-check.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     ::-webkit-scrollbar { width: 6px; }
@@ -511,6 +512,14 @@
       background: rgba(217,119,6,.08);
       box-shadow: 0 0 0 3px rgba(217,119,6,.15);
     }
+    /* ה-input בתוך .social-input הוא border:none — המסגרת יושבת על העטיפה, לכן מצב-השגיאה
+       חייב להיות מסומן עליה (נדרש מאז שנוספה ולידציה לשדה ה-WhatsApp). דפדפן בלי :has()
+       פשוט מתעלם מהכלל, ונשארים רקע-השגיאה על ה-input עצמו + טקסט השגיאה מתחת. */
+    .social-input:has(input.error) {
+      border-color: #d97706;
+      background: rgba(217,119,6,.08);
+      box-shadow: 0 0 0 3px rgba(217,119,6,.15);
+    }
     /* אזהרת שגיאת-כתיב בדומיין המייל (ר' email-domain-check.js) — לא שגיאה אדומה, אלא שאלה:
        אפשר לתקן בקליק אחד, ואפשר לאשר שהכתובת נכונה ולהמשיך. */
     .field-warn {
@@ -875,6 +884,7 @@
         <div class="form-group">
           <label for="bizWhatsapp">WhatsApp <span class="opt">(אופציונלי)</span></label>
           <div class="social-input"><span class="social-prefix"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.1a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"></path></svg></span><input type="tel" id="bizWhatsapp" placeholder="050-0000000" inputmode="tel" /></div>
+          <div class="field-error" id="err-bizWhatsapp">נא להזין מספר WhatsApp תקין, או להשאיר ריק</div>
         </div>
         <div class="form-group">
           <label for="bizServiceEmail">מייל שירות לקוחות <span class="opt">(אופציונלי)</span></label>
@@ -1437,8 +1447,14 @@
   }
 
   // ── VALIDATION HELPERS ──
-  const phoneRx = /^0[0-9]{1,2}[-.\s]?[0-9]{7,8}$/;
+  // ⚠️ היה כאן phoneRx = /^0[0-9]{1,2}[-.\s]?[0-9]{7,8}$/ — שקיבל גם 11 ספרות
+  // (0 + "52" + "78786931"), ולכן נכנסו לפרודקשן מספרים שבורים שבנו קישורי wa.me/tel
+  // מתים ("יש הדברה", "צ'ומפי"). הוולידציה עברה ל-window.isValidILPhone (phone-check.js),
+  // שבודק אורך מדויק לפי הקידומת. ר' docs/PROJECT_CONTEXT.md §204.
   const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // fail-open אם phone-check.js לא נטען (זהה לגארד על checkEmailDomain למטה) — כשל בטעינת
+  // קובץ סטטי לא יכול להיות סיבה שאף עסק לא מצליח להירשם.
+  const phoneOk = v => typeof window.isValidILPhone !== 'function' || window.isValidILPhone(v);
 
   // מנרמל טלפון לפורמט אחיד לפני שמירה (050-1234567 / 0501234567 / +972501234567 → 0501234567) —
   // כך שהוורקר לא צריך "לנחש" וריאציות-פורמט בהתחברות/"שכחתי קוד". הוולידציה עצמה (phoneRx) נשארת
@@ -1572,12 +1588,18 @@
     const isOnlineOnly = selectedBizTypes.size === 1 && selectedBizTypes.has('online');
     if (!isOnlineOnly) {
       const bizPhone = document.getElementById('bizPhone').value.trim();
-      ok = vf('bizPhone', phoneRx.test(bizPhone.replace(/\s/g, '')), 'נא להזין מספר טלפון תקין') && ok;
+      ok = vf('bizPhone', phoneOk(bizPhone), 'נא להזין מספר טלפון תקין') && ok;
     } else {
       document.getElementById('bizPhone').classList.remove('error');
       const phoneErr = document.getElementById('err-bizPhone');
       if (phoneErr) phoneErr.style.display = 'none';
     }
+
+    // WhatsApp — אופציונלי, אבל אם הוקלד משהו הוא חייב להיות מספר תקין. עד 2026-08-17 השדה
+    // הזה לא עבר שום ולידציה, וכך נשמר "05278786931" (11 ספרות) ל"יש הדברה" — כפתור WhatsApp
+    // מת בכרטיס. ריק = תקין (השדה לא חובה). ר' docs/PROJECT_CONTEXT.md §204.
+    const bizWa = document.getElementById('bizWhatsapp').value.trim();
+    ok = vf('bizWhatsapp', !bizWa || phoneOk(bizWa), 'נא להזין מספר WhatsApp תקין, או להשאיר ריק') && ok;
 
     if (selectedBizTypes.has('physical')) {
       const branches = getBranches();
@@ -1656,7 +1678,7 @@
     let ok = true;
     ok = vf('ownerFirst', fn.length >= 2) && ok;
     ok = vf('ownerLast',  ln.length >= 2) && ok;
-    ok = vf('ownerPhone', phoneRx.test(phone.replace(/\s/g,''))) && ok;
+    ok = vf('ownerPhone', phoneOk(phone)) && ok;
     const emailFormatOk = vf('ownerEmail', emailRx.test(email));
     ok = emailFormatOk && ok;
     // בדיקת-הדומיין רצה רק על כתובת שכבר תקינה במבנה — אחרת שתי הודעות סותרות על אותו שדה

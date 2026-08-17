@@ -9,6 +9,7 @@
   <link rel="icon" href="icons/favicon-32.png"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
   <script src="email-domain-check.js"></script>
+  <script src="phone-check.js"></script>
   <script>
     // ── מצב "embed" — כשהדף נטען בתוך ה-iframe של מודאל-ההרשמה בדסקטופ (welcome.html),
     // הכותרת/הירו הצהוב של העמוד העצמאי מוסתרים (הפאנל הצהוב החיצוני כבר נותן את המיתוג),
@@ -540,8 +541,12 @@
   }
 
   // ── VALIDATION HELPERS ──
-  const phoneRx = /^0[0-9]{1,2}[-.\s]?[0-9]{7,8}$/;
+  // ⚠️ היה כאן phoneRx = /^0[0-9]{1,2}[-.\s]?[0-9]{7,8}$/ — שקיבל גם 11 ספרות. אצל אוהד זה חמור
+  // במיוחד: הטלפון הוא מזהה-ההתחברות ("שכחתי קוד"), ומספר עם ספרה עודפת/חסרה = אוהד שלא מצליח
+  // להיכנס. הוולידציה עברה ל-window.isValidILPhone (phone-check.js). ר' docs/PROJECT_CONTEXT.md §204.
   const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // fail-open אם phone-check.js לא נטען — זהה לגארד על checkEmailDomain למטה.
+  const phoneOk = v => typeof window.isValidILPhone !== 'function' || window.isValidILPhone(v);
 
   // מנרמל טלפון לפורמט אחיד לפני שמירה (050-1234567 / 0501234567 / +972501234567 → 0501234567) —
   // כך שהוורקר לא צריך "לנחש" וריאציות-פורמט בהתחברות/"שכחתי קוד". הוולידציה עצמה (phoneRx) נשארת
@@ -625,7 +630,7 @@
     let ok = true;
     ok = vf('firstName', fn.length >= 2) && ok;
     ok = vf('lastName',  ln.length >= 2) && ok;
-    ok = vf('phone',     phoneRx.test(phone.replace(/\s/g,''))) && ok;
+    ok = vf('phone',     phoneOk(phone)) && ok;
     const emailFormatOk = vf('email', emailRx.test(email));
     ok = emailFormatOk && ok;
     // רק על כתובת תקינה-במבנה — אחרת שתי הודעות סותרות על אותו שדה

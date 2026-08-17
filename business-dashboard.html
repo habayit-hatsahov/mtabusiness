@@ -12,6 +12,7 @@
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
   <noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet"/></noscript>
   <script src="categories.js"></script>
+  <script src="phone-check.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     ::-webkit-scrollbar { width: 5px; }
@@ -2838,7 +2839,28 @@ function initMediaForm(w) {
   }
   photoCount = 0;
   document.getElementById('editPhotoList').innerHTML = '';
-  (w.photos || []).forEach(p =>addPhotoRow(p.url || '', p.name || ''));
+  // ⚠️ §219 — תמונות-הגלריה חייבות את אותו טיפול ב-data: כמו הקאבר והלוגו למעלה, וזה היה חסר כאן.
+  // הבאג ("KASTEN Diamonds"): קובץ שנבחר וטרם נשמר נלכד ע"י captureLiveMediaEdits כ-data:URL,
+  // וכאן הוא נדחף כמות-שהוא לתוך *שדה-הטקסט* photoUrl-N. saveMedia קורא את השדה הזה כשאין קובץ
+  // חדש, ולכן ה-base64 המלא (מאות KB לתמונה) נכנס ל-photos[].url ומשם ל-pendingChanges —
+  // מסמך Firestore חוסם ב-1MB, והכתיבה נפלה ב-invalid-argument. עכשיו: משחזרים אותו כ-*קובץ*
+  // בשדה-הקובץ (כמו הקאבר), משאירים את שדה-ה-URL ריק, ומציגים תצוגה-מקדימה — כך saveMedia
+  // מעלה אותו ל-Storage כרגיל ומה שנשמר הוא ה-URL הקצר.
+  (w.photos || []).forEach(p => {
+    const url = p.url || '';
+    if (!url.startsWith('data:')) { addPhotoRow(url, p.name || ''); return; }
+    addPhotoRow('', p.name || '');
+    const idx = photoCount - 1;
+    const thumb = document.getElementById('photoThumb-' + idx);
+    try {
+      setInputFiles(thumb.querySelector('input[type="file"]'), [dataUrlToFile(url, `photo${idx}.jpg`)]);
+      let img = thumb.querySelector('img');
+      if (!img) { img = document.createElement('img'); thumb.appendChild(img); }
+      img.src = url;
+      const plus = thumb.querySelector('.edit-media-thumb-plus');
+      if (plus) plus.remove();
+    } catch (e) { console.error('gallery photo restore failed:', e); }
+  });
   videoCount = 0;
   document.getElementById('editVideoList').innerHTML = '';
   (w.videos || []).forEach(v =>addVideoRow(v.url || '', v.label || ''));
@@ -3130,7 +3152,13 @@ function renderPreview(stateOverride, flashZone) {
   if (isPro && regions.length) infoRows.push(`<div class="pv-sheet-info-row${fz('regions')}"><span class="pv-icon">${PV_ICONS.mapPin}</span><div class="pv-body"><div class="pv-lbl">אזורי פעילות</div>${regions.map(esc).join(' · ')}</div></div>`);
   if (w.serviceEmail) infoRows.push(`<div class="pv-sheet-info-row${fz('serviceEmail')}"><span class="pv-icon">${PV_ICONS.mail}</span><div class="pv-body"><div class="pv-lbl">מייל שירות</div><span class="pv-ltr">${esc(w.serviceEmail)}</span></div></div>`);
   if (w.phone) infoRows.push(`<div class="pv-sheet-info-row${fz('phone')}"><span class="pv-icon">${PV_ICONS.phone}</span><div class="pv-body"><div class="pv-lbl">טלפון</div>${isPro && w.ownerFirst ? `<span style="color:var(--accent);font-weight:700">${esc(w.ownerFirst)}</span>- ` : ''}<span class="pv-ltr">${esc(w.phone)}</span></div></div>`);
-  if (w.whatsapp) infoRows.push(`<div class="pv-sheet-info-row${fz('whatsapp')}"><span class="pv-icon">${PV_ICONS.whatsapp}</span><div class="pv-body"><div class="pv-lbl">WhatsApp</div><span class="pv-ltr">${esc(w.whatsapp)}</span></div></div>`);
+  // התצוגה-המקדימה חייבת להראות בדיוק את מה שהאוהד רואה: home.html מציג שורת/כפתור WhatsApp
+  // רק על מספר תקין (bizWaLink שם), ובלי fallback לטלפון. ר' docs/PROJECT_CONTEXT.md §204.
+  // אם phone-check.js לא נטען — נופלים חזרה ל"יש מספר = מציגים" (fail-open) ורושמים לקונסול,
+  // כדי שהתצוגה לא תסתיר שורה בשקט בגלל כשל-טעינה של קובץ סטטי.
+  if (typeof window.waLink !== 'function') console.warn('phone-check.js לא נטען — תצוגת ה-WhatsApp בתצוגה-המקדימה לא מאומתת');
+  const pvWaOk = typeof window.waLink === 'function' ? !!window.waLink(w.whatsapp) : !!w.whatsapp;
+  if (pvWaOk) infoRows.push(`<div class="pv-sheet-info-row${fz('whatsapp')}"><span class="pv-icon">${PV_ICONS.whatsapp}</span><div class="pv-body"><div class="pv-lbl">WhatsApp</div><span class="pv-ltr">${esc(w.whatsapp)}</span></div></div>`);
 
   // נוכחות דיגיטלית — כפתורים קטנים עם שם-הפלטפורמה בלבד (לא הקישור הגולמי), זהה ל-home.html
   const linkItems = [];
@@ -3243,10 +3271,10 @@ function renderPreview(stateOverride, flashZone) {
         ${infoRows.length ? `<div class="pv-sheet-info">${infoRows.join('')}</div>` : ''}
         ${linksHtml}
         ${branchesHtml}
-        ${w.phone || w.whatsapp ? `
+        ${w.phone || pvWaOk ? `
         <div class="pv-sheet-cta">
           ${w.phone ? `<div class="pv-cta-btn pv-cta-call">${PV_ICONS.phone}<span>התקשר</span></div>` : ''}
-          <div class="pv-cta-btn pv-cta-wa">${PV_ICONS.whatsapp}<span>WhatsApp</span></div>
+          ${pvWaOk ? `<div class="pv-cta-btn pv-cta-wa">${PV_ICONS.whatsapp}<span>WhatsApp</span></div>` : ''}
         </div>` : ''}
       </div>
     </div>`;
@@ -3561,19 +3589,65 @@ function stageChanges(updates, flashZone) {
   renderBizView(flashZone);
 }
 
+// ── ניקוי מטען לפני כתיבה ל-Firestore (§219) ────────────────────────────────────────────────
+// שני סוגי ערכים מפילים כתיבה ב-invalid-argument, ושניהם *נראו* לבעל-העסק כמו תקלה כללית:
+//   1. undefined — בכל עומק, לא רק ברמה העליונה. הבדיקה הקודמת עברה רק על מפתחות עליונים
+//      ולכן פספסה בדיוק את המקרים השכיחים: photos[].url, branches[].address, additionalDiscounts[].
+//   2. data:URL — base64 מלא של תמונה שטרם הועלתה (ר' initMediaForm/§219). מסמך Firestore חסום
+//      ב-1MB, וחמש תמונות כאלה עוברות אותו בקלות.
+// מחזיר { value, dropped[] } — כל ערך שהוסר מדווח בנתיב המלא שלו, לא נעלם בשקט.
+function sanitizeForFirestore(value, path, dropped) {
+  if (value === undefined || typeof value === 'function' || typeof value === 'symbol') {
+    dropped.push((path || 'root') + ' (ריק)');
+    return undefined;
+  }
+  if (typeof value === 'string' && value.startsWith('data:')) {
+    dropped.push((path || 'root') + ' (תמונה שלא הועלתה)');
+    return undefined;
+  }
+  if (value === null || value instanceof Date) return value;
+  if (Array.isArray(value)) {
+    const out = [];
+    value.forEach((v, i) => {
+      const s = sanitizeForFirestore(v, `${path}[${i}]`, dropped);
+      if (s !== undefined) out.push(s);
+    });
+    return out;
+  }
+  if (typeof value === 'object') {
+    const out = {};
+    for (const k of Object.keys(value)) {
+      const s = sanitizeForFirestore(value[k], path ? `${path}.${k}` : k, dropped);
+      if (s !== undefined) out[k] = s;
+    }
+    return out;
+  }
+  return value;
+}
+
 window.submitAllChanges = async function() {
   if (!Object.keys(draftChanges).length) return false;
-  const merged = { ...(biz.pendingChanges || {}), ...draftChanges };
-  // Firestore דוחה כל ערך undefined בכתיבה ("Unsupported field value: undefined") — שגיאה שאינה
-  // permission-denied, ולכן היא נראתה לבעל-העסק בדיוק כמו כשל-הרשאה. שדה שערכו undefined ממילא
-  // אין בו מה לשמור (מקור אפשרי: קלט שנעלם מה-DOM בין העריכה לשליחה, `el?.value` שהחזיר undefined).
-  // מסירים אותו כדי שכל שאר השינויים כן יישלחו, ורושמים לקונסול אילו שדות נפלו — לא בשקט.
-  const undef = Object.keys(merged).filter(k => merged[k] === undefined);
-  if (undef.length) {
-    console.warn('submitAllChanges: dropping undefined fields', undef);
-    undef.forEach(k => delete merged[k]);
+  const dropped = [];
+  const merged = sanitizeForFirestore({ ...(biz.pendingChanges || {}), ...draftChanges }, '', dropped);
+  if (dropped.length) console.warn('submitAllChanges: dropped values', dropped);
+
+  // תמונה שלא הועלתה היא לא "פרט חסר" — זה בדיוק מה שבעל-העסק התכוון לשלוח. עוצרים ואומרים
+  // לו מה לעשות, במקום לשלוח בשקט בקשה בלי התמונות (שזה מה שקרה בפועל, §219).
+  const missingImages = dropped.filter(d => d.includes('תמונה שלא הועלתה')).length;
+  if (missingImages) {
+    reportBizWriteError('submitChanges', new Error('unuploaded_images'), `data:URL ב-${missingImages} שדות: ${dropped.join(', ').slice(0, 200)}`);
+    showToast(`${missingImages} תמונות טרם הועלו — פתח/י את שלב התמונות ולחצ/י "שמור", ואז שלח/י לאישור`);
+    return false;
   }
   if (!Object.keys(merged).length) { showToast('שגיאה — לא נמצא שינוי לשליחה'); return false; }
+
+  // מסמך Firestore חסום ב-1MB. עדיף לעצור עם הסבר מאשר לקבל invalid-argument גנרי מהשרת.
+  const payloadSize = JSON.stringify(merged).length;
+  if (payloadSize > 900000) {
+    reportBizWriteError('submitChanges', new Error('payload_too_large'), `${payloadSize} bytes, שדות: ${Object.keys(merged).join(',')}`);
+    showToast('התוכן כבד מדי לשליחה — נסה/י להסיר כמה תמונות ולשלוח שוב');
+    return false;
+  }
   try {
     await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), {
       pendingChanges: merged,
@@ -3588,7 +3662,7 @@ window.submitAllChanges = async function() {
   } catch(e) {
     console.error(e);
     // draftChanges *לא* מתאפס כאן בכוונה — הטיוטה נשארת על המסך כדי שהעריכה לא תאבד בכשל.
-    reportBizWriteError('submitChanges', e, 'שדות: ' + Object.keys(merged).join(','));
+    reportBizWriteError('submitChanges', e, `${payloadSize}B · שדות: ${Object.keys(merged).join(',')}`);
     showToast(bizWriteErrorMsg(e));
     return false;
   }
@@ -3671,6 +3745,23 @@ function collectBranchRows() {
 }
 
 window.saveBizDetails = function() {
+  // ולידציית מספרים — עד 2026-08-17 המסך הזה שמר טלפון/WhatsApp בלי שום בדיקה, ולכן בעל עסק
+  // יכול היה להזין מספר עם ספרה עודפת/חסרה ולקבל כפתור WhatsApp מת בכרטיס ("המספר לא קיים").
+  // חוסם את השמירה-לטיוטה, בדיוק כמו בדיקת-התגית ב-saveCatHours. ר' docs/PROJECT_CONTEXT.md §204.
+  // fail-open אם phone-check.js לא נטען — כשל בטעינת קובץ סטטי לא יחסום עריכה.
+  const phoneOk = v => typeof window.isValidILPhone !== 'function' || window.isValidILPhone(v);
+  const phoneVal = document.getElementById('editPhone').value.trim();
+  const waVal    = document.getElementById('editWhatsapp').value.trim();
+  if (phoneVal && !phoneOk(phoneVal)) {
+    showToast(' מספר הטלפון לא תקין — נא לבדוק את מספר הספרות');
+    document.getElementById('editPhone').focus();
+    return;
+  }
+  if (waVal && !phoneOk(waVal)) {
+    showToast(' מספר ה-WhatsApp לא תקין — נא לבדוק את מספר הספרות');
+    document.getElementById('editWhatsapp').focus();
+    return;
+  }
   const bizTypes = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p =>p.dataset.type);
   const isProNow = bizTypes.includes('pro');
   const isOnlineNow = bizTypes.includes('online');

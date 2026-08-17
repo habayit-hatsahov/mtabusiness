@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@700&display=swap" rel="stylesheet">
 <script src="categories.js"></script>
 <script src="email-domain-check.js"></script>
+<script src="phone-check.js"></script>
 <style>
 :root {
   /* שלב 8, §18+נספח במפרט — פלטת המותג (כחול+צהוב), מחליפה את הניטרלי הקודם.
@@ -1782,6 +1783,15 @@ function confirmSuspectEmail(email, who) {
   const hit = emailDomainHit(email);
   if (!hit) return true;
   return confirm(`הכתובת של ${who} היא ${hit.domain} — כנראה צריך להיות ${hit.suggested}.\n\nאם זו טעות, המייל יסומן "נשלח" אבל לא יגיע לאף אחד. לתקן קודם את הכתובת?\n\nאישור = לאשר בכל זאת · ביטול = עוצר, אתקן קודם`);
+}
+
+// מספר טלפון/WhatsApp עם ספרה עודפת או חסרה (ר' phone-check.js). מחזיר true = אפשר להמשיך.
+// ריק תמיד תקין — שני השדות אופציונליים. ר' docs/PROJECT_CONTEXT.md §204.
+function confirmSuspectPhone(phone, who) {
+  const v = String(phone || '').trim();
+  if (!v || typeof window.isValidILPhone !== 'function' || window.isValidILPhone(v)) return true;
+  const digits = v.replace(/\D/g, '').length;
+  return confirm(`${who} — "${v}" הוא ${digits} ספרות, וזה לא מספר ישראלי תקין.\n\nמספר כזה יוצר בכרטיס כפתור שמוביל ל"המספר לא קיים".\n\nאישור = לשמור בכל זאת · ביטול = עוצר, אתקן קודם`);
 }
 
 // שער (כדורגל) / אולם-יציע (כדורסל) — תווית שדה-המיקום לפי הענף שאומת בפועל. verifiedSport לא קיים
@@ -5428,6 +5438,11 @@ window.saveBizSec2 = async function(id) {
     facebook: document.getElementById('edit_facebook_'+id).value.trim(),
     hours, desc,
   };
+  // אזהרת-מספר-שבור. כאן במפורש confirm ולא חסימה (בשונה מ-business.html/business-dashboard.html):
+  // המנהל הוא מי שמתקן נתונים שגויים, ואסור לחסום אותו — אבל כן צריך שלא יעבור בשקט על מספר
+  // עם ספרה עודפת/חסרה, שיוצר כפתור WhatsApp/התקשר מת בכרטיס. זהה בתפקידו ל-confirmSuspectEmail.
+  if (!confirmSuspectPhone(updates.phone, 'טלפון העסק')) return;
+  if (!confirmSuspectPhone(updates.whatsapp, 'ה-WhatsApp')) return;
   await saveSectionUpdates(id, updates);
 };
 
