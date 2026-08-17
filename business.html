@@ -1305,6 +1305,18 @@
       </div>
     </div>
 
+    <!-- כשל-שליחה (2026-08-17, §215) — עד היום כשל ב-addDoc הציג את מסך *ההצלחה* ומחק את הטיוטה:
+         בעל העסק היה בטוח שנרשם, אצלנו לא הייתה רשומה, ואיש לא ידע. עכשיו: מסך כשל מפורש,
+         הטיוטה נשמרת, ואפשר לנסות שוב בלי למלא הכל מחדש. -->
+    <div class="success-state" id="failState">
+      <div class="form-card">
+        <h3>הבקשה לא נשלחה</h3>
+        <p id="failBody">משהו השתבש בדרך אלינו. הפרטים שמילאתם נשמרו כאן — אפשר לנסות שוב.</p>
+        <button type="button" class="btn-submit" onclick="retrySubmit()">נסה/י לשלוח שוב</button>
+        <a class="success-back-link" href="home.html">חזרה לאתר</a>
+      </div>
+    </div>
+
     <!-- SUCCESS -->
     <div class="success-state" id="successState">
       <div class="form-card">
@@ -1824,21 +1836,45 @@
     document.getElementById('mainCard').querySelectorAll('.step-panel').forEach(p => p.style.display = 'none');
     document.getElementById('stepperBar').style.display = 'none';
     document.getElementById('submittingState').style.display = 'block';
-    localStorage.removeItem('_hb_bizRegDraft');
+    document.getElementById('failState').style.display = 'none';
+    // ⚠️ הטיוטה *לא* נמחקת כאן — רק אחרי שהרשומה באמת נוצרה. קודם היא נמחקה לפני הכתיבה, כך
+    // שכשל הותיר את בעל-העסק בלי הרשומה *וגם* בלי מה שמילא. §215.
 
     (async () => {
       let bizDocRef = null;
-      try {
-        bizDocRef = await addDoc(collection(db, 'businesses'), data);
-        const ownerMemberId = await linkOrCreateOwnerMember(data, bizDocRef.id);
-        await updateDoc(doc(db, 'businesses', bizDocRef.id), { ownerMemberId });
-      } catch(e) { console.error('Firestore save failed:', e.message); }
+      let saveErr = null;
+      // רשת סלולרית שנופלת לשנייה היא הכשל השכיח כאן, והמחיר שלו הוא עסק שלם שלא נרשם —
+      // לכן 3 ניסיונות עם המתנה עולה לפני שמכריזים על כשל. addDoc יוצר מסמך חדש בכל ניסיון,
+      // ולכן חוזרים רק כשהניסיון הקודם *לא* יצר כלום (bizDocRef עדיין null).
+      for (let attempt = 1; attempt <= 3 && !bizDocRef; attempt++) {
+        try {
+          bizDocRef = await addDoc(collection(db, 'businesses'), data);
+        } catch (e) {
+          saveErr = e;
+          console.error(`Firestore save failed (attempt ${attempt}):`, e.code || '', e.message);
+          if (attempt < 3) await new Promise(r => setTimeout(r, 700 * attempt));
+        }
+      }
+      // קישור לרשומת-חבר הוא שלב-המשך: כשל בו לא מבטל הרשמה שכבר נוצרה (המנהל מקשר ידנית)
+      if (bizDocRef) {
+        try {
+          const ownerMemberId = await linkOrCreateOwnerMember(data, bizDocRef.id);
+          await updateDoc(doc(db, 'businesses', bizDocRef.id), { ownerMemberId });
+        } catch (e) { console.error('owner member link failed:', e.message); }
+      }
 
       if (!bizDocRef) {
         document.getElementById('submittingState').style.display = 'none';
-        document.getElementById('successState').style.display = 'block';
+        const failBody = document.getElementById('failBody');
+        if (failBody) {
+          failBody.textContent = navigator.onLine === false
+            ? 'נראה שאין חיבור לאינטרנט. הפרטים שמילאתם נשמרו כאן — נסו שוב כשהחיבור חוזר.'
+            : `משהו השתבש בדרך אלינו${saveErr && saveErr.code ? ` (${saveErr.code})` : ''}. הפרטים שמילאתם נשמרו — אפשר לנסות שוב.`;
+        }
+        document.getElementById('failState').style.display = 'block';
         return;
       }
+      localStorage.removeItem('_hb_bizRegDraft');   // רק עכשיו — הרשומה קיימת בפועל
 
       // "עסק השבוע"/"הטבת השבוע" — רשומת תור נפרדת ב-weekly_interest (מודל הנתונים מ-§2 במסמך),
       // כדי שמסך הניהול "10 עסק השבוע" יוכל לקרוא רשימת מי הביע עניין בלי לסרוק את כל businesses
@@ -2932,11 +2968,18 @@
 
   window.goToBizTerms = goToBizTerms;
 
+  // "נסה/י לשלוח שוב" ממסך-הכשל (§215) — כל שדות הטופס עדיין ב-DOM (הוסתרו, לא נמחקו), ולכן
+  // handleSubmit אוסף שוב בדיוק את אותם נתונים ואת אותם קבצים. אין כאן שכפול של היגיון-שליחה.
+  function retrySubmit() {
+    document.getElementById('failState').style.display = 'none';
+    handleSubmit();
+  }
+
   // ── חשיפה גורפת ל-window — כל onclick/oninput/onchange בטופס קורא לפונקציות האלה בשמן.
   // הפונקציות עצמן מוגדרות (function declarations) בתוך <script type="module">, שמקבל scope
   // נפרד מ-window — נדרשת חשיפה מפורשת אחרת ה-attribute handlers לא מוצאים אותן. ──
   Object.assign(window, {
-    addBenefit, addBranch, addVideoRow, goBack, goNext, handleSubmit,
+    addBenefit, addBranch, addVideoRow, goBack, goNext, handleSubmit, retrySubmit,
     onDiscBuilderInput, onDiscBuilderInputN, removeBenefit, removeBranch,
     selectAlsoCat, selectBizType, selectCat, selectPrimaryTag, selectRedeemMode,
     selectRedeemModeN, selectSecondTag, setSubscriber, setBizFanSport, setBizVerifiedSport,

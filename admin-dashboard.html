@@ -643,10 +643,6 @@ body {
 .qj-btn-delete:hover { background: var(--red, #b91c1c); color: #fff; }
 /* "טופל מבחוץ" — שורה אחרונה תמידית בשיפוט המהיר, ר' handledExternallyRow */
 .qj-row.qj-row-handled { background: var(--nav-bg); }
-/* פירוט שדה-שדה של "עדכונים נגזרים" — ר' leftoverDetail */
-.qj-leftover-line { font-size: 12px; line-height: 1.6; padding: 3px 0; border-top: 1px dashed var(--border); }
-.qj-leftover-line:first-child { border-top: none; }
-.qj-leftover-same { font-size: 11px; font-weight: 700; color: var(--orange, #a35b00); }
 .qj-img-diff { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
 
 /* ── יומן פעילות (שלב 2ג, §1 במפרט) — ציר-זמן, כחול מלא = מנהל אישר/דחה, כחול-בהיר = נגזר-אוטומטית,
@@ -1884,6 +1880,8 @@ function fmtDiffVal(k, v) {
 // ממפה מסמך businesses אמיתי לצורה שה-UI הקיים בקובץ הזה מצפה לה (נבנה במקור סביב שמות-שדה מומצאים)
 function hydrateBiz(id, raw) {
   const branches = raw.branches || [];
+  // מה שבעל-העסק באמת הגיש — בלי שדות-נגזרים ובלי ערך שזהה לקיים. ר' realPendingChangeKeys.
+  const realPending = realPendingChangeKeys(raw);
   const b = {
     ...raw,
     id,
@@ -1901,7 +1899,7 @@ function hydrateBiz(id, raw) {
     hasPhoto: !!(raw.coverPhoto || raw.logo),
     hoursText: raw.hours || '',
     descriptionText: raw.desc || '',
-    hasPendingChange: !!raw.pendingChanges,
+    hasPendingChange: realPending.length > 0,
     city: (branches[0] && branches[0].city) || '',
     region: '', // אין שדה "אזור" בודד על עסק אמיתי — לא קריטי לשלב זה
     likes: (raw.likedBy || []).length,
@@ -1937,9 +1935,12 @@ function hydrateBiz(id, raw) {
     discountFullText: (raw.pendingChanges && 'discountTextFull' in raw.pendingChanges) ? raw.pendingChanges.discountTextFull : (raw.discountTextFull || ''),
     // אותו תיקון (2) גם כאן — הטבה 2/3 חייבות להעדיף בקשה-ממתינה על פני המצב הישן, מאותה סיבה בדיוק
     additionalDiscounts: (raw.pendingChanges && 'additionalDiscounts' in raw.pendingChanges) ? raw.pendingChanges.additionalDiscounts : (raw.additionalDiscounts || []),
-    // דיף שינויים ממתינים — נבנה מהערך הישן על המסמך מול הערך המוצע ב-pendingChanges (אמיתי, לא מוק)
-    pendingChangeDiff: raw.pendingChanges ? Object.fromEntries(
-      Object.keys(raw.pendingChanges).map(k => [k, { old: fmtDiffVal(k, raw[k]), new: fmtDiffVal(k, raw.pendingChanges[k]) }])
+    // דיף שינויים ממתינים — נבנה מהערך הישן על המסמך מול הערך המוצע ב-pendingChanges (אמיתי, לא מוק).
+    // מכיל *רק* את השדות שבעל-העסק הגיש בפועל (realPendingChangeKeys) — שדה-נגזר או ערך זהה-לקיים
+    // אינו "בקשה", ולכן גם null כשאין אף שינוי אמיתי: זה מה שמוריד את העסק מ"בקשות מבעלי עסקים"
+    // (classifyAction/hasPendingChange) במקום להשאיר שם רשומה בלי שום דבר להכריע בו.
+    pendingChangeDiff: realPending.length ? Object.fromEntries(
+      realPending.map(k => [k, { old: fmtDiffVal(k, raw[k]), new: fmtDiffVal(k, raw.pendingChanges[k]) }])
     ) : null,
     changeSubmittedAt: toJsDate(raw.pendingChangesAt),
     isNew: !!raw.isNew,
@@ -5243,9 +5244,10 @@ async function saveSectionUpdates(id, updates) {
     let touched = false;
     Object.keys(updates).forEach(k => { if (k in leftoverPending) { delete leftoverPending[k]; touched = true; } });
     if (touched) {
-      const stillPending = Object.keys(leftoverPending).length > 0;
-      pendingPatch.pendingChanges = stillPending ? leftoverPending : null;
-      if (!stillPending) pendingPatch.pendingChangesAt = null;
+      // prunedPending — אם נשארו רק שאריות טכניות (לא מוצגות בשום מקום) הבקשה נסגרת כאן
+      const kept = prunedPending({ ...b, ...updates }, leftoverPending);
+      pendingPatch.pendingChanges = kept;
+      if (!kept) pendingPatch.pendingChangesAt = null;
     }
   }
   showSaving('שומר...');
@@ -6556,6 +6558,10 @@ const TASK_CLASS_TILES = [
   // קובייה שישית (2026-08-16) — ארכיון: בקשות שנסגרו ידנית ("טופל מבחוץ") ותקלות-מייל שסומנו
   // "טיפלתי". אותו דפוס כמו mailIssues: מחליפה את גוף-הטבלה, לא מסננת את הרשימה המאוחדת.
   { key: 'handled', primary: null, label: 'בקשות שטופלו' },
+  // קובייה שביעית (2026-08-17, §215) — כשל כתיבה בדשבורד של בעל-העסק, כפי שדווח מהדפדפן שלו
+  // דרך ה-Worker (/log-biz-error). בניגוד לחמש הראשונות זו לא "משימה" אלא תקלה טכנית: עד היום
+  // ידענו עליה רק אם בעל-העסק טרח להתלונן ולשלוח צילום-מסך.
+  { key: 'bizErrors', primary: null, label: 'תקלות בדשבורד עסק' },
 ];
 
 // כל עסק/אוהד עם primary פעיל (לא "מאושר · אין פעולה") — מבוסס classifyAction בלבד, לא בדיקה נפרדת
@@ -6634,11 +6640,13 @@ function refreshTaskCenter() {
 // מרוכז כאן כדי ששלושת מקומות-הקריאה (רינדור ראשוני, רענון-קוביות, ספירה) לא יתפצלו בהיגיון.
 function taskCenterTableHtml() {
   if (mailIssuesActive()) return mailIssuesTableHtml(mailFilteredList());
+  if (bizErrorsActive()) return bizErrorsTableHtml(bizErrorFilteredList());
   if (handledActive()) return handledTableHtml(handledFilteredList());
   return taskTableBodyHtml(taskFilteredList());
 }
 function taskCenterCountLabel() {
   if (mailIssuesActive()) return `מציג ${mailFilteredList().length} מתוך ${mailIssueList().length}`;
+  if (bizErrorsActive()) return `מציג ${bizErrorFilteredList().length} מתוך ${bizWriteErrorList().length}`;
   if (handledActive()) return `מציג ${handledFilteredList().length} מתוך ${handledItemsList().length}`;
   return `מציג ${taskFilteredList().length} מתוך ${unifiedTaskItems().length}`;
 }
@@ -6665,6 +6673,8 @@ function taskTilesHtml() {
   const mailBlocking = mailIssues.filter(x => x.sev <= 2).length;      // כבר אושרו — המייל לא הגיע בפועל
   const mailBeforeApprove = mailIssues.filter(x => x.sev === 3).length; // עוד לא אושרו — אפשר למנוע מראש
   const handledItems = handledItemsList();
+  const bizErrors = bizWriteErrorList();
+  const bizErrorBizCount = new Set(bizErrors.map(x => x.id)).size;
   const tile = (t, num, sub) => `
     <div class="class-tile ${taskClassFilter===t.key?'active':''} ${t.key==='pendingBiz'&&taskClassFilter==='all'?'primary':(taskClassFilter===t.key?'primary':'')}" onclick="setTaskClassFilter('${t.key}')">
       <div class="class-tile-top"><span class="class-tile-num">${num}</span><span class="class-tile-label">${t.label}</span></div>
@@ -6680,6 +6690,9 @@ function taskTilesHtml() {
         ? `<div class="class-tile-chips">${mailBlocking ? `<span class="warn-badge">${mailBlocking} לא קיבלו בפועל</span>` : ''}${mailBeforeApprove ? `<span class="treat-badge">${mailBeforeApprove} לתקן לפני אישור</span>` : ''}</div>`
         : `<div class="class-tile-sub">כל מי שאושר קיבל את המייל שלו</div>`)}
       ${tile(TASK_CLASS_TILES[5], handledItems.length, `<div class="class-tile-sub">${handledItems.length ? 'נסגרו ידנית — ארכיון' : 'אין עדיין סגירות ידניות'}</div>`)}
+      ${tile(TASK_CLASS_TILES[6], bizErrors.length ? `<span style="color:#b91c1c">${bizErrors.length}</span>` : 0, bizErrors.length
+        ? `<div class="class-tile-chips"><span class="warn-badge">${bizErrorBizCount} עסקים לא הצליחו לשמור</span></div>`
+        : `<div class="class-tile-sub">אף בעל עסק לא נתקל בשגיאה</div>`)}
     </div>`;
 }
 
@@ -7374,6 +7387,27 @@ const DIFF_FIELD_EXCLUDE = new Set([
   'cat', 'city', 'address', 'discountTypes', 'coverPhotoThumb', 'logoThumb', 'discountBuilder', 'discountText',
 ]);
 
+// ── מקור-אמת יחיד ל"מה בעל-העסק באמת הגיש" (2026-08-17) ────────────────────────────────────
+// המשתמש: "אם בעל העסק לא הגיש שינוי אני לא רוצה שתציג לי שום דבר, רק את מה שהוא הגיש".
+// pendingChanges מכיל גם מה שהמערכת הוסיפה לבד: שדה-נגזר (thumb/כותרת-AI/snapshot/כפילות —
+// DIFF_FIELD_EXCLUDE) ושדה שנשלח מחדש עם ערך זהה לקיים (בעל-העסק פתח כרטיס ולחץ "שמירה").
+// שני אלה אינם בקשה, ולכן הם לא נספרים ולא מוצגים בשום מקום — לא בשיפוט-מהיר, לא בסיווג
+// "בקשה מבעל העסק" (classifyAction) ולא בסינון "שינויים" (hasPendingChange).
+// מקבל מסמך גולמי או עסק מ-hydrateBiz — שניהם מחזיקים את הערך החי ב-o[k] ואת המבוקש ב-pendingChanges.
+function realPendingChangeKeys(o) {
+  const p = o && o.pendingChanges;
+  if (!p) return [];
+  return Object.keys(p).filter(k => !DIFF_FIELD_EXCLUDE.has(k) && fmtDiffVal(k, o[k]) !== fmtDiffVal(k, p[k]));
+}
+// מפת pendingChanges לכתיבה חזרה — או null אם *לא נשארה בה אף בקשה אמיתית*. כיוון שהשאריות
+// הטכניות כבר לא מוצגות, אין דרך בממשק להכריע בהן; להשאיר אותן ב-DB = להשאיר את העסק
+// "עם בקשה ממתינה" לנצח (הבאג של "יש הדברה", ר' PROJECT_CONTEXT.md §206.1/§214). הן יורדות עם
+// ההכרעה האחרונה. שדות-לוויין שהערך שלהם כן צריך להיכתב מטופלים ב-PENDING_COMPANION_FIELDS.
+function prunedPending(b, pending) {
+  if (!pending || !Object.keys(pending).length) return null;
+  return realPendingChangeKeys({ ...b, pendingChanges: pending }).length ? pending : null;
+}
+
 // זהה ל-approvePendingChanges/rejectPendingChanges ב-admin-businesses.html — b.pendingChanges (לא
 // b.pendingChangeDiff, שהוא רק גרסת-תצוגה מפורמטת) מכיל את הערכים הגולמיים האמיתיים לכתיבה בפועל.
 window.approveChanges = async function(id) {
@@ -7421,9 +7455,10 @@ window.approveChangeField = async function(id, field, valueOverride) {
   (PENDING_COMPANION_FIELDS[field] || []).forEach(c => {
     if (c in newPending) { updates[c] = newPending[c]; delete newPending[c]; }
   });
-  const stillPending = Object.keys(newPending).length > 0;
-  updates.pendingChanges = stillPending ? newPending : null;
-  if (!stillPending) updates.pendingChangesAt = null;
+  // prunedPending: אם נשארו רק שאריות טכניות (שלא מוצגות בכלל) — הבקשה נסגרת כאן ולא נתקעת
+  const kept = prunedPending(b, newPending);
+  updates.pendingChanges = kept;
+  if (!kept) updates.pendingChangesAt = null;
   try {
     await updateDoc(doc(db, 'businesses', id), updates);
     Object.assign(b, updates);
@@ -7445,9 +7480,9 @@ window.rejectChangeField = async function(id, field) {
   delete newPending[field];
   // דחיית השדה הראשי מפילה גם את שדות-הלוויין שלו — אחרת נשארת גרסה-ממוזערת/כותרת של שינוי שנדחה
   (PENDING_COMPANION_FIELDS[field] || []).forEach(c => delete newPending[c]);
-  const stillPending = Object.keys(newPending).length > 0;
-  const updates = { pendingChanges: stillPending ? newPending : null };
-  if (!stillPending) updates.pendingChangesAt = null;
+  const kept = prunedPending(b, newPending);   // ר' ההערה ב-approveChangeField
+  const updates = { pendingChanges: kept };
+  if (!kept) updates.pendingChangesAt = null;
   try {
     await updateDoc(doc(db, 'businesses', id), updates);
     Object.assign(b, updates);
@@ -7522,65 +7557,14 @@ function bizPendingChangeItems(b) {
   return items;
 }
 
-// ── שאריות-בקשה "בלתי-נראות" (2026-08-16) ───────────────────────────────────────────────────
-// הבאג שדווח: עסק ("יש הדברה") ביקש תמונות, המנהל אישר — והשורה נשארה תקועה ב"בקשות מבעלי עסקים"
-// בלי שום פריט להכריע בו ב"שיפוט מהיר". הסיבה: pendingChanges מכיל גם שדות-נגזרים שמסוננים
-// מהתצוגה (DIFF_FIELD_EXCLUDE — coverPhotoThumb/logoThumb/discountText/cat/city/address...) וגם
-// שדות שהערך שלהם זהה לקיים (d.old === d.new). classifyAction סופר "יש בקשה" לפי עצם קיום
-// pendingChanges, אז הרשומה נשארה חיה לנצח בלי דרך לסגור אותה מהממשק.
-// הפתרון: לא להסתיר אותן — לתת להן שורה אחת מרוכזת שאפשר לאשר/לנקות, כך ש*כל* בקשה על המסך
-// ניתנת לסגירה. (בנוסף, saveSectionUpdates מנקה אוטומטית שדה ממתין שהמנהל כתב ידנית.)
-function pendingLeftoverFields(b) {
-  if (!b.pendingChanges) return [];
-  const shown = new Set(bizPendingChangeItems(b).map(it => it.field));
-  return Object.keys(b.pendingChanges).filter(k => !shown.has(k));
-}
-window.approvePendingLeftovers = async function(id) {
-  const b = findBiz(id);
-  if (!b || !b.pendingChanges) return;
-  const keys = pendingLeftoverFields(b);
-  if (!keys.length) return;
-  const updates = {};
-  const stillPending = { ...b.pendingChanges };
-  keys.forEach(k => { updates[k] = b.pendingChanges[k]; delete stillPending[k]; });
-  const anyLeft = Object.keys(stillPending).length > 0;
-  updates.pendingChanges = anyLeft ? stillPending : null;
-  if (!anyLeft) updates.pendingChangesAt = null;
-  try {
-    await updateDoc(doc(db, 'businesses', id), updates);
-    Object.assign(b, updates);
-    Object.assign(b, hydrateBiz(id, b));
-    b.healthScore = computeHealthScore(b);
-    await logActivity('businesses', id, {
-      type: 'changeDecision', title: 'אושרו עדכונים נגזרים',
-      detail: keys.map(k => DIFF_FIELD_LABELS_MOCK[k] || k).join(', '),
-      field: keys[0], before: null, after: null,
-    });
-    renderMain();
-  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
-};
-window.rejectPendingLeftovers = async function(id) {
-  const b = findBiz(id);
-  if (!b || !b.pendingChanges) return;
-  const keys = pendingLeftoverFields(b);
-  if (!keys.length) return;
-  const stillPending = { ...b.pendingChanges };
-  keys.forEach(k => delete stillPending[k]);
-  const anyLeft = Object.keys(stillPending).length > 0;
-  const updates = { pendingChanges: anyLeft ? stillPending : null };
-  if (!anyLeft) updates.pendingChangesAt = null;
-  try {
-    await updateDoc(doc(db, 'businesses', id), updates);
-    Object.assign(b, updates);
-    Object.assign(b, hydrateBiz(id, b));
-    await logActivity('businesses', id, {
-      type: 'changeDecision', title: 'נוקו עדכונים נגזרים בלי להחיל',
-      detail: keys.map(k => DIFF_FIELD_LABELS_MOCK[k] || k).join(', '),
-      field: keys[0], before: null, after: null,
-    });
-    renderMain();
-  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
-};
+// ── שאריות-בקשה "בלתי-נראות" — היסטוריה (2026-08-16 → 2026-08-17) ──────────────────────────
+// הבאג המקורי: עסק ("יש הדברה") ביקש תמונות, המנהל אישר — והשורה נשארה תקועה ב"בקשות מבעלי
+// עסקים" בלי שום פריט להכריע בו, כי pendingChanges החזיק גם שדות-נגזרים (DIFF_FIELD_EXCLUDE)
+// וגם שדות שהערך שלהם זהה לקיים. הפתרון דאז היה שורת "X שדות טכניים ממתינים" עם אישור/ניקוי.
+// 2026-08-17 — השורה הוסרה לפי הנחיה מפורשת: "אם בעל העסק לא הגיש שינוי אני לא רוצה שתציג לי
+// שום דבר, רק את מה שהוא הגיש". במקומה: realPendingChangeKeys מגדיר מה נחשב בקשה (וכל המסכים
+// נגזרים ממנו), ו-prunedPending סוגר את השאריות אוטומטית בהכרעה האחרונה — כך שאין יותר
+// שורה תקועה *ולא* שורה טכנית על המסך. approvePendingLeftovers/rejectPendingLeftovers נמחקו.
 
 // שדות-לוויין שנשלחים תמיד ביחד עם השדה הראשי (העלאת תמונה יוצרת גם גרסה ממוזערת; עריכת הטבה
 // יוצרת גם כותרת-AI קצרה ו-snapshot). אישור/דחייה של הראשי מכריע גם אותם — אחרת נשארה שארית
@@ -8016,40 +8000,9 @@ function quickJudgmentHtml(b) {
         ${b.ownerEmail ? `<button class="qj-btn link" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מענה במייל</button>` : ''}
       </div>
     </div>` : '';
-  // שאריות בלתי-נראות (thumb/כותרת-AI/שדה שלא באמת השתנה) — ר' pendingLeftoverFields. בלי השורה
-  // הזו הן מחזיקות את העסק ברשימת הבקשות בלי שום כפתור שסוגר אותן.
-  const leftovers = pendingLeftoverFields(b);
-  // מפרט שדה-שדה עם הערך הישן והמבוקש. השורה המקוצרת הקודמת ("3 שדות טכניים ממתינים") לא נתנה
-  // למנהל שום דרך להבין *מה* בעצם השתנה, ובמיוחד לא לזהות שהערך זהה לקיים — כלומר שבעל-העסק
-  // לא באמת ערך כלום (דווח בפועל על "גולדה אירועים"). NO_CHANGE מסומן במפורש.
-  const leftoverDetail = leftovers.map(k => {
-    const pv = b.pendingChanges[k];
-    const oldStr = fmtDiffVal(k, b[k]);
-    const newStr = fmtDiffVal(k, pv);
-    const same = oldStr === newStr;
-    const shorten = s => { s = String(s); return s.length > 90 ? s.slice(0, 90) + '…' : s; };
-    const isImg = IMAGE_DIFF_FIELDS.has(k);
-    const valHtml = isImg
-      ? `<span class="qj-value-hint">${b[k] ? 'הייתה תמונה' : 'לא הייתה תמונה'} → ${pv ? 'תמונה חדשה' : 'ללא'}</span>`
-      : `<span class="qj-value-hint">"${esc(shorten(oldStr))}" → "${esc(shorten(newStr))}"</span>`;
-    return `<div class="qj-leftover-line"><b>${esc(DIFF_FIELD_LABELS_MOCK[k] || k)}</b>${same ? ' <span class="qj-leftover-same">— זהה לקיים, לא שינוי אמיתי</span>' : ''}<br>${valHtml}</div>`;
-  }).join('');
-  const leftoverAllSame = leftovers.length && leftovers.every(k => fmtDiffVal(k, b[k]) === fmtDiffVal(k, b.pendingChanges[k]));
-  const leftoverRow = leftovers.length ? `
-    <div class="qj-row">
-      <div class="qj-row-label"><div class="qj-row-step">עדכונים נגזרים</div><div class="qj-row-name">⚙️ ${leftovers.length === 1 ? 'שדה טכני אחד ממתין' : `${leftovers.length} שדות טכניים ממתינים`}</div></div>
-      <div class="qj-row-value">
-        ${leftoverDetail}
-        <div class="qj-value-hint" style="margin-top:6px">${leftoverAllSame
-          ? '⚠️ אף אחד מהערכים האלה לא שונה בפועל — כנראה בעל העסק פתח כרטיס ולחץ "שמירה" בלי לשנות כלום, או שהמערכת יצרה מחדש ערך נגזר. אין פה בקשה אמיתית: "ניקוי" מוריד את זה מהמסך.'
-          : 'שדות שנשלחים אוטומטית יחד עם שינוי אחר (גרסה ממוזערת של תמונה, כותרת הטבה מקוצרת שנגזרת מהתיאור, snapshot פנימי) — בעל העסק לא כתב אותם בעצמו.'}</div>
-      </div>
-      <div class="qj-row-actions">
-        <button class="qj-btn primary" onclick="approvePendingLeftovers('${b.id}')">אישור</button>
-        <button class="qj-btn reject" onclick="rejectPendingLeftovers('${b.id}')">ניקוי</button>
-      </div>
-    </div>` : '';
-  const totalCount = items.length + (hasNote ? 1 : 0) + (leftovers.length ? 1 : 0);
+  // אין כאן יותר שורת "שדות טכניים ממתינים" — מוצג רק מה שבעל-העסק הגיש בפועל. ר' ההערה
+  // ההיסטורית ליד realPendingChangeKeys/prunedPending.
+  const totalCount = items.length + (hasNote ? 1 : 0);
   const hasBody = totalCount > 0;
   // §147 — לפני: count/toggle/hint רק כש-hasBody, כך שכרטיס-ריק היה נראה כמו שורת-טקסט בודדת ולא
   // כמו "פיצ'ר קיים" (המשתמש: "אין שיפוט מהיר"). עכשיו תמיד גלוי — כולל ה-hint שמסביר מה זה, בדיוק
@@ -8081,7 +8034,7 @@ function quickJudgmentHtml(b) {
         </div>` : ''}
         <div class="qj-hint">${hint}</div>
       </div>
-      ${(hasBody && isOpen) ? `<div class="qj-body">${items.map(rowHtml).join('')}${leftoverRow}${noteRow}${handledExternallyRow(b)}</div>` : ''}
+      ${(hasBody && isOpen) ? `<div class="qj-body">${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
     </div>`;
 }
 
@@ -8103,10 +8056,8 @@ window.markRequestsHandledExternally = async function(id) {
   const b = findBiz(id);
   if (!b) return;
   const items = bizPendingChangeItems(b);
-  const leftovers = pendingLeftoverFields(b);
   const summaryParts = [
     ...items.map(it => it.label),
-    ...(leftovers.length ? [`${leftovers.length} שדות נגזרים`] : []),
     ...(bizHasUnhandledNote(b) ? ['הודעה מהעסק ("כתבו לנו")'] : []),
   ];
   if (!summaryParts.length) { alert('אין כרגע בקשות פתוחות לעסק הזה.'); return; }
@@ -8169,6 +8120,8 @@ const TREATMENT_LABELS = { details: 'שינוי פרטים', tag: 'בקשת תג
 // מחזיר { primary: string, treatments: string[] } — treatments הם מפתחות (לא טקסט), ר' TREATMENT_LABELS.
 function classifyAction(entity, kind) {
   const treatments = [];
+  // pendingChangeDiff כבר מכיל *רק* שינויים שבעל-העסק הגיש בפועל (ר' realPendingChangeKeys) —
+  // עסק עם שאריות טכניות בלבד אינו "בקשה מבעל העסק" ולא מופיע ברשימה. §214.
   if (entity.pendingChangeDiff) treatments.push('details');
   if (bizHasPendingTagSuggestion(entity)) treatments.push('tag');
   if (bizHasPendingCategoryRequest(entity)) treatments.push('category');
@@ -10331,6 +10284,12 @@ function handledItemsList() {
       type: 'request', kind: 'biz', id: b.id, name: b.name,
       at: h.at ? new Date(h.at) : null, summary: h.summary || '', note: h.note || '',
     }));
+    // §215 — שגיאות-שמירה בדשבורד העסק שסומנו "טיפלתי" נכנסות לאותו ארכיון
+    (b.writeErrorsHandled || []).forEach(h => h && h.key && out.push({
+      type: 'bizError', kind: 'biz', id: b.id, name: b.name,
+      at: h.at ? new Date(h.at) : null,
+      summary: `שגיאת שמירה בדשבורד — ${h.code || ''}`, note: h.note || '',
+    }));
     if (b.mailIssueHandled && b.mailIssueHandled.key) out.push({
       type: 'mail', kind: 'biz', id: b.id, name: b.name,
       at: b.mailIssueHandled.at ? new Date(b.mailIssueHandled.at) : null,
@@ -10365,7 +10324,7 @@ function handledTableHtml(list) {
           <div class="task-table-name">${esc(x.name)}</div>
           <div class="task-table-meta">${x.kind === 'biz' ? 'עסק' : 'אוהד'} · ${esc(x.summary)}${x.note ? ' — ' + esc(x.note) : ''}</div>
         </div>
-        <div class="task-table-badges"><span class="class-badge neutral">${x.type === 'mail' ? 'תקלת מייל — טופלה' : 'בקשה — טופלה מבחוץ'}</span></div>
+        <div class="task-table-badges"><span class="class-badge neutral">${x.type === 'mail' ? 'תקלת מייל — טופלה' : x.type === 'bizError' ? 'שגיאת דשבורד — טופלה' : 'בקשה — טופלה מבחוץ'}</span></div>
         <div class="mi-addr"></div>
         <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
         <div class="mi-actions">
@@ -10374,6 +10333,98 @@ function handledTableHtml(list) {
         </div>
       </div>`).join('')}</div>`;
 }
+
+// ── "תקלות בדשבורד עסק" (2026-08-17, §215) ──────────────────────────────────────────────────
+// המקור: writeErrors[] על מסמך העסק, שנכתב ע"י ה-Worker (/log-biz-error) כשכתיבה מהדשבורד של
+// בעל-העסק נכשלה. למה דרך ה-Worker ולא ישירות: כשהכתיבה נכשלת בעל-העסק לרוב לא יכול לכתוב
+// כלום — זו בדיוק התקלה. עד שזה נבנה, שני עסקים ביום אחד נתקעו ואיש לא ידע עד שהם התלוננו.
+//
+// ⚠️ זו לא "משימה" — אין מה לאשר/לדחות. מה שיש: לראות איזה קוד-שגיאה באמת חזר, לזהות דפוס
+// (אותו קוד אצל כמה עסקים = באג אצלנו, קוד בודד = תקלה מקומית), ולסמן "טיפלתי" כשנסגר.
+const BIZ_ERROR_ACTION_LABELS = {
+  submitChanges: 'שליחת שינויים לאישור',
+  saveMedia: 'שמירת תמונות',
+  acceptTerms: 'אישור תנאים',
+  clearNote: 'ניקוי הודעה',
+  ackNote: 'סימון הודעה כנקראה',
+};
+// חתימת התקלה הבודדת — bizId + חותמת-הזמן המדויקת שנרשמה. יציבה בין רינדורים, ולא מתנגשת בין
+// שתי שגיאות של אותו עסק, בדיוק כמו mailIssueKey.
+function bizWriteErrorKey(bizId, at) { return `${bizId}|${at || ''}`; }
+function bizWriteErrorList() {
+  const out = [];
+  for (const b of MOCK_BUSINESSES) {
+    const handled = new Set((b.writeErrorsHandled || []).map(h => h && h.key).filter(Boolean));
+    (b.writeErrors || []).forEach(err => {
+      if (!err) return;
+      const key = bizWriteErrorKey(b.id, err.at);
+      if (handled.has(key)) return;
+      out.push({
+        id: b.id, name: b.name, key,
+        at: err.at ? new Date(err.at) : null,
+        action: BIZ_ERROR_ACTION_LABELS[err.action] || err.action || 'פעולה לא ידועה',
+        code: err.code || 'unknown',
+        message: err.message || '',
+        detail: err.detail || '',
+        ownerPhone: b.ownerPhone || '', ownerFirst: b.ownerFirst || '', accessToken: b.accessToken || '',
+      });
+    });
+  }
+  return out.sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
+}
+function bizErrorsActive() { return taskClassFilter === 'bizErrors'; }
+function bizErrorFilteredList() {
+  let list = bizWriteErrorList();
+  if (taskEntityFilter === 'fan') list = [];   // תקלות דשבורד שייכות לעסקים בלבד
+  const q = taskSearchQ.trim();
+  if (q) list = list.filter(x => `${x.name} ${x.code} ${x.action}`.includes(q));
+  return list;
+}
+function bizErrorsTableHtml(list) {
+  if (!list.length) {
+    return `<div class="placeholder-note">אף בעל עסק לא נתקל בשגיאת שמירה 🎉 כל כשל כזה נרשם כאן אוטומטית עם קוד השגיאה האמיתי — בלי להמתין לתלונה.</div>`;
+  }
+  // ריכוז לפי קוד — אותו קוד אצל כמה עסקים הוא באג אצלנו, לא תקלה מקומית של מישהו
+  const byCode = {};
+  list.forEach(x => { byCode[x.code] = (byCode[x.code] || 0) + 1; });
+  const codeChips = Object.entries(byCode).sort((a, b) => b[1] - a[1])
+    .map(([code, n]) => `<span class="warn-badge">${esc(code)} ×${n}</span>`).join(' ');
+  return `
+    <div class="mail-issues-note">כשל שמירה אמיתי אצל בעל עסק, כפי שדווח מהדפדפן שלו. ${codeChips} — אותו קוד אצל כמה עסקים מצביע על באג אצלנו ולא על תקלה מקומית.</div>
+    <div class="task-table mail-issues">${list.map(x => `
+      <div class="task-table-row">
+        <div class="task-table-main">
+          <div class="task-table-name">${esc(x.name)}</div>
+          <div class="task-table-meta">${esc(x.action)}${x.message ? ' · ' + esc(x.message.slice(0, 120)) : ''}${x.detail ? ' · ' + esc(x.detail) : ''}</div>
+        </div>
+        <div class="task-table-badges"><span class="warn-badge">${esc(x.code)}</span></div>
+        <div class="mi-addr"></div>
+        <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
+        <div class="mi-actions">
+          <button class="act-btn tiny" onclick="selectTask2('biz','${x.id}')">פתיחת כרטיס העסק</button>
+          ${x.ownerPhone ? `<button class="act-btn tiny" onclick="sendBizWA('${x.id}','${x.ownerPhone}','${escJsAttr(x.ownerFirst)}','${escJsAttr(x.name)}','${x.accessToken}')">וואטסאפ לבעל העסק</button>` : ''}
+          <button class="act-btn tiny" title="מוריד את התקלה הזו מהמסך ושומר אותה תחת &quot;בקשות שטופלו&quot;. שגיאה חדשה אצל אותו עסק עדיין תופיע." onclick="markBizWriteErrorHandled('${x.id}','${escJsAttr(x.key)}','${escJsAttr(x.code)}','${escJsAttr(x.name)}')">✔️ טיפלתי</button>
+        </div>
+      </div>`).join('')}</div>`;
+}
+window.markBizWriteErrorHandled = async function(id, key, code, name) {
+  const note = prompt(`סימון שגיאת השמירה של "${name}" כטופלה.\n\n(${code})\n\nאיך זה טופל? (אופציונלי — נשמר ב"בקשות שטופלו")`, '');
+  if (note === null) return;
+  try {
+    // arrayUnion לא מקבל serverTimestamp() בתוך אובייקט — ISO string, בכוונה (כמו requestsHandledLog)
+    await updateDoc(doc(db, 'businesses', id), {
+      writeErrorsHandled: arrayUnion({
+        key, code, at: new Date().toISOString(),
+        note: (note || '').trim(), by: auth.currentUser ? auth.currentUser.uid : '',
+      }),
+    });
+    await logActivity('businesses', id, {
+      type: 'changeDecision', title: 'שגיאת שמירה בדשבורד סומנה כטופלה',
+      detail: code + ((note || '').trim() ? ` — ${note.trim()}` : ''),
+      field: 'writeErrorsHandled', before: null, after: key,
+    });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
 
 // אותם שני מסנני-רוחב של מרכז המשימות (חיפוש + עסקים/אוהדים) חלים גם כאן. המיונים/התקופה/
 // הקטגוריה לא רלוונטיים לתקלה — המיון כאן תמיד לפי חומרה, וזה מכוון.

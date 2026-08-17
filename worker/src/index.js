@@ -26,6 +26,9 @@ export default {
       if (request.method === 'POST' && url.pathname === '/mint-biz-token') {
         return json(await handleBusinessLogin(await request.json(), env), env, request);
       }
+      if (request.method === 'POST' && url.pathname === '/log-biz-error') {
+        return json(await handleLogBizError(await request.json(), env), env, request);
+      }
       if (request.method === 'POST' && url.pathname === '/upload-biz-media') {
         return json(await handleUploadBizMedia(request, env), env, request);
       }
@@ -131,6 +134,40 @@ async function handleBusinessLogin({ accessToken: bizToken }, env) {
   });
 
   return { customToken, ownerMemberId: matches[0].fields.ownerMemberId || null };
+}
+
+// ── רישום כשל-כתיבה מדשבורד העסק (§215) ─────────────────────────────────────────────────────
+// למה בכלל צד-שרת: כשכתיבה של בעל-עסק נכשלת, לרוב *הוא לא יכול לכתוב כלום* (זו בדיוק התקלה),
+// אז אי אפשר לרשום את השגיאה מהדפדפן שלו ל-Firestore. ה-Worker כותב עם service-account ולכן
+// לא מושפע מ-firestore.rules. עד היום האבחון נשען על צילומי-מסך מבעלי עסקים — שני מקרים ביום
+// אחד ("Dj & music producter" §213, "Casual tattoo" §215) עלו כך, ובשניהם קוד-השגיאה אבד.
+//
+// אימות: אותו accessToken של הדשבורד (בדיוק כמו handleBusinessLogin) — בלעדיו אין רישום.
+// הרשומות נשמרות במערך על מסמך העסק (writeErrors), עד 20 האחרונות, בלי אוסף חדש ובלי שינוי
+// rules — אותו דפוס כמו requestsHandledLog. השדות נחתכים באורך כדי שמסמך לא יתנפח מלוג.
+const WRITE_ERRORS_KEEP = 20;
+async function handleLogBizError({ accessToken: bizToken, action, code, message, detail }, env) {
+  if (!bizToken) return { error: 'invalid_request' };
+
+  const accessToken = await getGoogleAccessToken(env);
+  const matches = await firestoreRunQuery(env, accessToken, 'businesses', 'accessToken', bizToken);
+  if (!matches.length) return { error: 'invalid_token' };
+  const biz = matches[0];
+
+  const cut = (v, n) => String(v == null ? '' : v).slice(0, n);
+  const entry = {
+    at: new Date().toISOString(),
+    action: cut(action, 40) || 'unknown',       // איזו פעולה נכשלה (submitChanges/saveMedia/acceptTerms)
+    code: cut(code, 60) || 'unknown',           // קוד Firebase האמיתי — זה מה שחיפשנו ולא היה
+    message: cut(message, 300),
+    detail: cut(detail, 300),                   // אילו שדות ניסו להישלח, מצב רשת וכו'
+  };
+  const prev = Array.isArray(biz.fields.writeErrors) ? biz.fields.writeErrors : [];
+  await firestorePatch(env, accessToken, `businesses/${biz.id}`, {
+    writeErrors: [...prev, entry].slice(-WRITE_ERRORS_KEEP),
+    lastWriteErrorAt: new Date(),
+  });
+  return { ok: true };
 }
 
 // מחליף את הכתיבה האנונימית הישירה שהייתה קודם ב-login.html (lastCodeResendAt/loginCodeEmailStatus) —

@@ -1829,12 +1829,17 @@ let changedFieldsSet = new Set();
 async function uploadFile(file, path) {
   // גם Storage מזהה את המשתמש דרך אותו Firebase Auth היחיד-לדומיין — העלאה בזהות של החבר במקום
   // בזהות של העסק נדחית ב-storage/unauthorized בדיוק כמו כתיבת Firestore. §213
-  if (!(await ensureBizAuth())) throw new Error('biz_auth_unavailable');
-  const storageRef = ref(await getStorageLazy(), path);
-  // immutable בטוח כי כל נתיב העלאה כבר ייחודי (timestamp/החלפה מלאה) — מונע בדיקת-304 מיותרת
-  // בכל טעינה חוזרת של אותה תמונה (ר' docs/PROJECT_CONTEXT.md).
-  const snap = await uploadBytes(storageRef, file, { cacheControl: 'public, max-age=31536000, immutable' });
-  return await getDownloadURL(snap.ref);
+  // אותו טיפול בכשלים כמו בכתיבת Firestore (withBizAuth): storage/unauthorized → רענון זהות
+  // וניסיון נוסף, תקלה חולפת → עד 3 ניסיונות. העלאה לאותו path מחליפה את הקובץ, כלומר
+  // אידמפוטנטית — אין סיכון לכפילות. §215: בעל-עסק שמעלה 7 קבצים מהטלפון נפל על נפילת-רשת
+  // אחת ואיבד את כל ההגשה.
+  return await withBizAuth(async () => {
+    const storageRef = ref(await getStorageLazy(), path);
+    // immutable בטוח כי כל נתיב העלאה כבר ייחודי (timestamp/החלפה מלאה) — מונע בדיקת-304 מיותרת
+    // בכל טעינה חוזרת של אותה תמונה (ר' docs/PROJECT_CONTEXT.md).
+    const snap = await uploadBytes(storageRef, file, { cacheControl: 'public, max-age=31536000, immutable' });
+    return await getDownloadURL(snap.ref);
+  });
 }
 
 // ── דחיסת תמונה לפני העלאה (canvas) — הקובץ המקורי מהטלפון יכול להיות כמה MB ──────────────────────
@@ -1953,6 +1958,7 @@ async function loadBusiness(token) {
     biz = { id: bizId, ...snap.data() };
     loadDismissedChecklist();
     loadCompletenessDoneAt();
+    loadDraftChanges();   // §215 — עריכה שלא נשלחה (או שנכשלה בשליחה) חוזרת למסך במקום ללכת לאיבוד
 
     // שיבוץ "עסק השבוע · הטבת השבוע" (אם יש) — נקרא פעם אחת בטעינה, לתצוגת סטטוס בלבד
     // (ר' renderWeeklyCard). שליפה חד-פעמית, לא live — עקבי עם שאר loadBusiness (getDoc בודד).
@@ -2003,25 +2009,87 @@ async function ensureBizAuth(force = false) {
   }
 }
 
-// עוטף כל כתיבה של הדשבורד: מוודא זהות-עסק לפני, ואם Firestore בכל זאת דחה על הרשאה — מרענן את
-// הזהות בכפייה ומנסה שוב פעם אחת בלבד. לא יותר, כדי שכשל אמיתי לא ייבלע בלולאת-ניסיונות.
+// ── תקלות חולפות (2026-08-17, §215) ─────────────────────────────────────────────────────────
+// בעלי-עסקים עובדים מהטלפון, לרוב תוך כדי תנועה, ומעלים כמה קבצים ברצף. חיבור סלולרי שנופל
+// לשנייה באמצע כתיבה מחזיר את הקודים האלה — כשל אמיתי-אך-רגעי, שניסיון חוזר פותר. עד עכשיו
+// היה ניסיון אחד בלבד, וכל הפלה כזאת נחתה על בעל-העסק כ"שגיאה" ועל המנהל כעבודה מיותרת.
+const TRANSIENT_WRITE_CODES = new Set([
+  'unavailable', 'deadline-exceeded', 'internal', 'aborted', 'resource-exhausted', 'cancelled',
+  'storage/retry-limit-exceeded', 'storage/unknown', 'storage/server-file-wrong-size',
+]);
+function isTransientWriteError(e) { return !!e && TRANSIENT_WRITE_CODES.has(e.code); }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// עוטף כל כתיבה של הדשבורד:
+//   1. מוודא זהות-עסק *לפני* הכתיבה;
+//   2. permission-denied → מרענן זהות בכפייה ומנסה שוב פעם אחת בלבד (לא לולאה — כשל-הרשאה
+//      אמיתי חייב לצוף ולא להיבלע בניסיונות חוזרים);
+//   3. תקלה חולפת → עד 3 ניסיונות עם המתנה עולה. כתיבה כאן היא תמיד updateDoc עם אותו מטען
+//      בדיוק, כלומר אידמפוטנטית — ניסיון חוזר לא יכול "לשמור פעמיים".
 async function withBizAuth(writeFn) {
   if (!(await ensureBizAuth())) throw new Error('biz_auth_unavailable');
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await writeFn();
+    } catch (e) {
+      lastErr = e;
+      // storage/unauthorized הוא בדיוק אותו כשל-זהות כמו permission-denied, רק בצד ה-Storage
+      if (e && (e.code === 'permission-denied' || e.code === 'storage/unauthorized')) {
+        if (attempt === 1 && await ensureBizAuth(true)) continue;
+        throw e;
+      }
+      if (isTransientWriteError(e) && attempt < 3) { await sleep(600 * attempt); continue; }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+// ── דיווח כשל-כתיבה לצד-השרת (§215) ─────────────────────────────────────────────────────────
+// כשכתיבה נכשלת אי אפשר לרשום את זה ל-Firestore מהדפדפן (זו בדיוק התקלה) — ה-Worker כותב עם
+// service-account. מכאן זה מגיע לקובייה "תקלות בדשבורד עסק" במרכז המשימות, כך שנדע על כשל
+// בלי לחכות לצילום-מסך מבעל-העסק. fire-and-forget: דיווח שנכשל בעצמו לא מפיל שום דבר,
+// ו-keepalive מאפשר לו לצאת גם אם בעל-העסק סוגר את הדף מיד אחרי השגיאה.
+async function reportBizWriteError(action, e, detail) {
   try {
-    return await writeFn();
-  } catch (e) {
-    if (e && e.code === 'permission-denied' && await ensureBizAuth(true)) return await writeFn();
-    throw e;
+    const tok = token || sessionStorage.getItem('hb_lastBizToken');
+    if (!tok) return;
+    await fetch(WORKER_URL + '/log-biz-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
+      body: JSON.stringify({
+        accessToken: tok,
+        action,
+        code: (e && (e.code || e.name)) || 'unknown',
+        message: (e && e.message) || String(e),
+        detail: [detail, navigator.onLine === false ? 'offline' : ''].filter(Boolean).join(' · '),
+      }),
+    });
+  } catch (err) {
+    console.error('reportBizWriteError failed (ignored):', err);
   }
 }
 
 // הודעת-שגיאה שאומרת מה קרה בפועל. "שגיאה — נסה/י שוב" גנרי הוא מה שהסתיר את הבאג הזה: בעל
 // העסק ניסה שוב ושוב באותה זהות שגויה, ואף אחד לא ידע שמדובר בהרשאה ולא בתקלת-רשת.
+//
+// 2026-08-17, סבב שני ("Casual tattoo") — הענף הגנרי כאן בלע את קוד-השגיאה בדיוק כמו שההודעה
+// הישנה בלעה אותו, ולכן דיווח שני לא קידם את האבחון בכלל. עכשיו הקוד האמיתי מוצג בתוך ההודעה:
+// בעל-העסק ממילא שולח צילום-מסך, אז זו הדרך המהירה ביותר לראות מה Firebase באמת החזיר.
+// בונוס אבחוני: אם צילום-מסך עתידי מראה את הנוסח *בלי* קוד — הדפדפן מריץ גרסה ישנה מהמטמון.
 function bizWriteErrorMsg(e) {
-  if (e && (e.message === 'biz_auth_unavailable' || e.code === 'permission-denied')) {
+  // biz_auth_unavailable = לא הצלחנו להנפיק זהות-עסק בכלל; permission-denied/storage-unauthorized =
+  // Firestore/Storage דחו את הכתיבה. שלושתם אותה מחלקה מבחינת בעל-העסק: החיבור, לא התוכן.
+  if (e && (e.message === 'biz_auth_unavailable' || e.code === 'permission-denied' || e.code === 'storage/unauthorized')) {
     return 'החיבור לעסק פג — רענן/י את הדף ונסה/י שוב';
   }
-  return 'שגיאה — נסה/י שוב';
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return 'אין חיבור לאינטרנט — נסה/י שוב כשהחיבור חוזר';
+  }
+  const code = (e && (e.code || e.name)) || 'unknown';
+  return `שגיאה בשליחה — נסה/י שוב (קוד: ${code})`;
 }
 
 // bfcache: Safari-מובייל משחזר את הדף בלי להריץ את הסקריפט מחדש — בדיוק הרגע שבו הזהות כבר
@@ -2156,11 +2224,11 @@ async function renderContactNoteBanner(b) {
       if (Date.now() - ackDate.getTime() >= CONTACT_NOTE_CLEAR_DAYS * 86400000) {
         el.style.display = 'none';
         b.note = ''; b.noteHandled = false; b.noteHandledAt = null; b.noteOwnerAckAt = null;
-        try { await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { note: '', noteHandled: false, noteHandledAt: null, noteOwnerAckAt: null })); } catch (e) { console.error(e); }
+        try { await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { note: '', noteHandled: false, noteHandledAt: null, noteOwnerAckAt: null })); } catch (e) { console.error(e); reportBizWriteError('clearNote', e, ''); }
         return;
       }
     } else {
-      try { await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { noteOwnerAckAt: serverTimestamp() })); b.noteOwnerAckAt = new Date(); } catch (e) { console.error(e); }
+      try { await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { noteOwnerAckAt: serverTimestamp() })); b.noteOwnerAckAt = new Date(); } catch (e) { console.error(e); reportBizWriteError('ackNote', e, ''); }
     }
   }
   el.style.display = 'block';
@@ -2796,6 +2864,39 @@ const COMPLETENESS_CHECKS = [
   { icon: '', label: 'הטבה לחברי הקהילה', weight: 15, section: 'discount', filled: w =>!!(w.hasDiscount && w.discountText) },
   { icon: '', label: '2+ תמונות בגלריה', weight: 15, section: 'media', filled: w =>!!(w.photos && w.photos.filter(p =>p.url).length >= 2) },
 ];
+
+// ── טיוטה שורדת רענון/כשל-שליחה (§215) ──────────────────────────────────────────────────────
+// draftChanges חי בזיכרון בלבד — כלומר כשל בשליחה + סגירת הדף = כל העריכה אבדה, וזה בדיוק מה
+// שקרה פעמיים ביום אחד ("Dj & music producter", "Casual tattoo"): בעל-העסק העלה תמונות, קיבל
+// שגיאה, סגר — והמנהל נשאר לרדוף אחריו שיגיש שוב. עכשיו הטיוטה נשמרת per-עסק ב-localStorage
+// (אותו דפוס בדיוק כמו _hb_completenessDismissed_) ומשוחזרת בטעינה הבאה.
+// הערכים בטיוטה תמיד JSON-בטוחים: קבצים כבר הועלו ל-Storage לפני stageChanges, ומה שנשמר הוא
+// כתובות ומחרוזות — לא אובייקטי File.
+const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;   // טיוטה נשכחת אחרי שבוע, לא צצה מחדש לנצח
+function draftStorageKey() { return '_hb_bizDraft_' + bizId; }
+function saveDraftChanges() {
+  try {
+    if (!bizId) return;
+    if (!Object.keys(draftChanges).length) { localStorage.removeItem(draftStorageKey()); return; }
+    localStorage.setItem(draftStorageKey(), JSON.stringify({ at: Date.now(), draft: draftChanges }));
+  } catch (e) {
+    console.error('saveDraftChanges failed (ignored):', e);   // מכסת-אחסון מלאה לא תפיל עריכה
+  }
+}
+function loadDraftChanges() {
+  try {
+    const raw = localStorage.getItem(draftStorageKey());
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.draft || Date.now() - (parsed.at || 0) > DRAFT_MAX_AGE_MS) {
+      localStorage.removeItem(draftStorageKey());
+      return;
+    }
+    draftChanges = parsed.draft;
+  } catch (e) {
+    console.error('loadDraftChanges failed (ignored):', e);
+  }
+}
 
 // ── שמירת פריטים שסומנו / ידנית — per-עסק, ב-localStorage (תואם ל-_hb_clicks_{id} וכו') ──
 function loadDismissedChecklist() {
@@ -3455,6 +3556,7 @@ function stageChanges(updates, flashZone) {
     return;
   }
   Object.assign(draftChanges, realChanges);
+  saveDraftChanges();
   showToast(' נשמר בטיוטה — טרם נשלח לאישור');
   renderBizView(flashZone);
 }
@@ -3462,6 +3564,16 @@ function stageChanges(updates, flashZone) {
 window.submitAllChanges = async function() {
   if (!Object.keys(draftChanges).length) return false;
   const merged = { ...(biz.pendingChanges || {}), ...draftChanges };
+  // Firestore דוחה כל ערך undefined בכתיבה ("Unsupported field value: undefined") — שגיאה שאינה
+  // permission-denied, ולכן היא נראתה לבעל-העסק בדיוק כמו כשל-הרשאה. שדה שערכו undefined ממילא
+  // אין בו מה לשמור (מקור אפשרי: קלט שנעלם מה-DOM בין העריכה לשליחה, `el?.value` שהחזיר undefined).
+  // מסירים אותו כדי שכל שאר השינויים כן יישלחו, ורושמים לקונסול אילו שדות נפלו — לא בשקט.
+  const undef = Object.keys(merged).filter(k => merged[k] === undefined);
+  if (undef.length) {
+    console.warn('submitAllChanges: dropping undefined fields', undef);
+    undef.forEach(k => delete merged[k]);
+  }
+  if (!Object.keys(merged).length) { showToast('שגיאה — לא נמצא שינוי לשליחה'); return false; }
   try {
     await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), {
       pendingChanges: merged,
@@ -3469,12 +3581,14 @@ window.submitAllChanges = async function() {
     }));
     biz.pendingChanges = merged;
     draftChanges = {};
+    saveDraftChanges();
     showToast(' הבקשה התקבלה!');
     renderBizView();
     return true;
   } catch(e) {
     console.error(e);
     // draftChanges *לא* מתאפס כאן בכוונה — הטיוטה נשארת על המסך כדי שהעריכה לא תאבד בכשל.
+    reportBizWriteError('submitChanges', e, 'שדות: ' + Object.keys(merged).join(','));
     showToast(bizWriteErrorMsg(e));
     return false;
   }
@@ -3483,6 +3597,7 @@ window.submitAllChanges = async function() {
 window.discardAllChanges = function() {
   if (!confirm('לבטל את כל השינויים שטרם נשלחו?')) return;
   draftChanges = {};
+  saveDraftChanges();
   showToast('השינויים שטרם נשלחו בוטלו');
   renderBizView();
 };
@@ -4116,7 +4231,20 @@ window.addVideoRow = function(url = '', label = '') {
   document.getElementById('editVideoList').appendChild(row);
 };
 
+// עוטף את saveMedia: העלאת תמונה יכולה להיכשל (storage/unauthorized, רשת שנפלה באמצע העלאה של
+// 7 קבצים מהטלפון) — ובלי הענף הזה הפונקציה פשוט נדחתה בשקט, הטוסט נשאר על "שומר מדיה..."
+// ובעל-העסק לא ידע שכלום לא נשמר. אותה הודעה בדיוק כמו בשליחה לאישור (bizWriteErrorMsg).
 window.saveMedia = async function() {
+  try {
+    await saveMediaInner();
+  } catch (e) {
+    console.error('saveMedia failed:', e);
+    reportBizWriteError('saveMedia', e, 'העלאת מדיה');
+    showToast(bizWriteErrorMsg(e));
+  }
+};
+
+async function saveMediaInner() {
   showToast('שומר מדיה...');
   const updates = {};
 
@@ -4194,7 +4322,7 @@ window.saveMedia = async function() {
 
   // תמונת ברירת מחדל אוטומטית (Pexels) — כבויה זמנית (2026-07-22): איכות/סגנון התמונות לא
   // היו מספיק טובות. עד שזה ייפתר, עסק בלי תמונה נשאר בלי תמונה — מנהל מכניס ידנית.
-};
+}
 
 // ── TOAST ──
 function showToast(msg) {
@@ -4217,6 +4345,7 @@ window.acceptTermsNow = async function() {
     renderBizView();
   } catch (e) {
     console.error(e);
+    reportBizWriteError('acceptTerms', e, '');
     showToast(bizWriteErrorMsg(e));
     if (cb) cb.checked = false;
   }
