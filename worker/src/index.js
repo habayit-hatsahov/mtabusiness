@@ -417,6 +417,13 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
 // בהרצת-הדקה הבאה — תור גדול מתרוקן תוך כמה דקות, בלי סיכון למכסה בשום תוכנית.
 const MAX_SWEEP_RECIPIENTS = 10;
 
+// BIZ_SEND_GRACE_MS — כמה זמן להמתין אחרי אישור עסק לפני שמותר לשלוח לו מייל-עסק *בודד*.
+// אישור עסק במרכז הניהול כותב את מסמך העסק ואת מסמך החבר המקושר; מאז 18.8 זו כתיבה אטומית אחת
+// (writeBatch), אבל אישור מגרסת-דף ישנה שנשארה פתוחה בטאב, או תיקון ידני של שדה בודד, עדיין
+// יכולים לייצר פער. דקת-חסד מבטיחה שהעסק ייבחן שוב רק כשמצב החבר יציב — ואז לולאת-החברים או
+// רשת-ביטחון ב' למטה שולחות את המייל המאוחד במקום מייל-עסק קצר לבדו.
+const BIZ_SEND_GRACE_MS = 60 * 1000;
+
 async function runEmailSweeps(env) {
   const accessToken = await getGoogleAccessToken(env);
   const templatesDoc = await firestoreGetDoc(env, accessToken, 'settings/messageTemplates');
@@ -451,6 +458,7 @@ async function runEmailSweeps(env) {
         await firestorePatch(env, accessToken, `businesses/${business.id}`, {
           ownerEmailStatus: 'sent',
           ownerEmailSentAt: new Date(),
+          welcomeEmailKind: 'combined',
         });
         handledBusinessIds.add(business.id);
       } else {
@@ -478,19 +486,65 @@ async function runEmailSweeps(env) {
   for (const b of pendingBiz) {
     if (handledBusinessIds.has(b.id)) continue;
     if (processed >= MAX_SWEEP_RECIPIENTS) break;
+
+    // ── רשת-ביטחון א': חלון-חסד אחרי האישור ──────────────────────────────────────────────────
+    // הלולאה הזו רואה מצב-עולם *מאוחר* מזה של לולאת-החברים למעלה (השאילתה שלה רצה עד ~40 שניות
+    // אחריה). עסק שאושר בין שתי השאילתות נמצא כאן כממתין, בזמן שהחבר המקושר שלו עוד לא היה
+    // ממתין למעלה — ואז יוצא מייל-עסק קצר לבדו, והחבר מקבל מייל קוד-כניסה נפרד בדקה הבאה,
+    // במקום מכתב-הפתיחה המאוחד שכל השאר מקבלים. באג-אמת: Kaneti insurance (17.8) ובני שליחויות
+    // (16.8). דילוג של דקה על עסק טרי מחזיר אותו ללולאת-החברים בסריקה הבאה, שם הוא נשלח מאוחד.
+    const approvedAtMs = b.fields.approvedAt ? Date.parse(b.fields.approvedAt) : 0;
+    if (approvedAtMs && Date.now() - approvedAtMs < BIZ_SEND_GRACE_MS) continue;
+
     processed++;
     try {
       const ownerName = `${b.fields.ownerFirst || ''} ${b.fields.ownerLast || ''}`.trim();
+      const dashboardLink = `${SITE_BASE}business-dashboard.html?token=${b.fields.accessToken}`;
+
+      // ── רשת-ביטחון ב': בדיקה חיה של החבר המקושר ─────────────────────────────────────────────
+      // גם אחרי חלון-החסד, ה-snapshot של לולאת-החברים כבר לא מעודכן. קריאה נקודתית אחת כאן
+      // (לא שאילתה) אומרת בוודאות אם החבר עדיין ממתין לקוד — ואם כן, זה בדיוק המקרה של
+      // המייל המאוחד, גם אם הגענו אליו מהצד של העסק ולא מהצד של החבר.
+      const ownerMemberId = b.fields.ownerMemberId || null;
+      const owner = ownerMemberId ? await firestoreGetDoc(env, accessToken, `members/${ownerMemberId}`) : null;
+      const ownerPendingCode = !!owner && owner.fields.status === 'approved'
+        && owner.fields.loginCodeEmailStatus === 'pending' && !!owner.fields.loginCode;
+
+      if (ownerPendingCode) {
+        await sendCombinedWelcomeEmail(env, {
+          toEmail: owner.fields.email || b.fields.ownerEmail,
+          toName: owner.fields.firstName,
+          code: owner.fields.loginCode,
+          businessName: b.fields.name,
+          dashboardLink,
+          tpl: { subject: templates.combinedSubject, body: templates.combinedBody },
+        });
+        await firestorePatch(env, accessToken, `members/${owner.id}`, {
+          loginCodeEmailStatus: 'sent',
+          loginCodeEmailSentAt: new Date(),
+        });
+        await firestorePatch(env, accessToken, `businesses/${b.id}`, {
+          ownerEmailStatus: 'sent',
+          ownerEmailSentAt: new Date(),
+          welcomeEmailKind: 'combined',
+        });
+        continue;
+      }
+
       await sendBusinessApprovedEmail(env, {
         toEmail: b.fields.ownerEmail,
         ownerName,
         businessName: b.fields.name,
-        dashboardLink: `${SITE_BASE}business-dashboard.html?token=${b.fields.accessToken}`,
+        dashboardLink,
         tpl: { subject: templates.bizSubject, body: templates.bizBody },
       });
       await firestorePatch(env, accessToken, `businesses/${b.id}`, {
         ownerEmailStatus: 'sent',
         ownerEmailSentAt: new Date(),
+        // 'bizOnly' = יצא מייל-העסק הקצר לבדו ולא מכתב-הפתיחה המאוחד. נשמר כדי שמרכז תקלות
+        // המייל (admin-dashboard.html) יוכל להצביע על זה בוודאות במקום לנחש מהפרשי-זמנים —
+        // שליחה חוזרת דורסת את ownerEmailSentAt ומטשטשת כל ניחוש כזה.
+        welcomeEmailKind: 'bizOnly',
       });
     } catch (e) {
       await firestorePatch(env, accessToken, `businesses/${b.id}`, {

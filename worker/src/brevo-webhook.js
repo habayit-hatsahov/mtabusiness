@@ -129,10 +129,20 @@ export async function handleBrevoWebhook(request, env) {
 
     // ההתאמה היא לפי כתובת — ולכן אירוע ישן על כתובת שכבר תוקנה פשוט לא מוצא כלום ונזרק,
     // וזה בדיוק ההתנהגות הרצויה (לא נדרוס סטטוס חדש בתוצאה של שליחה ישנה).
-    const [bizList, memberList] = await Promise.all([
+    // חגורה-ושלייקס: מאז 18.8 כל כתובת נשמרת באותיות קטנות (ר' §221), אבל אם Brevo מחזיר את
+    // הכתובת בדיוק כפי שנשלחה — מחפשים גם בצורה הגולמית, כדי שרשומה ישנה שטרם נורמלה לא תישאר
+    // בלי נתוני מסירה בשקט. שאילתה נוספת רק כשהצורות באמת שונות, כלומר כמעט אף פעם.
+    const raw = String(ev.email || '').trim();
+    const alsoRaw = raw && raw !== email;
+    const [bizLower, memberLower, bizRaw, memberRaw] = await Promise.all([
       firestoreRunQuery(env, accessToken, 'businesses', 'ownerEmail', email, 3),
       firestoreRunQuery(env, accessToken, 'members', 'email', email, 3),
+      alsoRaw ? firestoreRunQuery(env, accessToken, 'businesses', 'ownerEmail', raw, 3) : [],
+      alsoRaw ? firestoreRunQuery(env, accessToken, 'members', 'email', raw, 3) : [],
     ]);
+    const dedupe = (a, b) => { const seen = new Set(a.map(x => x.id)); return a.concat(b.filter(x => !seen.has(x.id))); };
+    const bizList = dedupe(bizLower, bizRaw);
+    const memberList = dedupe(memberLower, memberRaw);
 
     // אירוע-מסירה כותב את שדות המסירה; אירוע-מגע כותב *רק* את חותמת הפתיחה/הלחיצה. שני הענפים
     // אף פעם לא נוגעים באותם שדות, ולכן סדר-ההגעה בין delivered ל-opened לא משנה.

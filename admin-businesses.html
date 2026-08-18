@@ -1103,7 +1103,7 @@ import { db, auth, getStorageLazy } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 import {
   collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp,
-  addDoc, query, where, getDocs, getDoc, runTransaction
+  addDoc, query, where, getDocs, getDoc, runTransaction, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import {
   ref, uploadBytes, getDownloadURL
@@ -1274,7 +1274,12 @@ async function generateLoginCode() {
 // ── אישור עסק מאשר אוטומטית את חברות האוהד המקושרת ─────────────────────────
 // עדיפות ל-ownerMemberId (קישור קבוע, לא תלוי בעדכון טלפון/מייל מאוחר) —
 // נתיב legacy לפי מייל נשאר רק לעסקים שטרם קושרו (לפני המיגרציה)
-async function approveLinkedMember(b) {
+//
+// ⚠️ 2026-08-18 — הפונקציה רק *מכינה* את העדכון ולא כותבת אותו. הכתיבה נעשית ב-writeBatch
+// יחד עם מסמך העסק (approveBizWithMemberBatch), כי כתיבה בשני שלבים יצרה פער של כשנייה שבו
+// העסק כבר ממתין למייל והחבר עדיין לא — וסריקת-המיילים ב-Worker (רצה כל דקה) שלחה לבעל העסק
+// את מייל-העסק הקצר לבדו במקום את מכתב-הפתיחה המאוחד. אותו תיקון בדיוק ב-admin-dashboard.html.
+async function prepareLinkedMemberApproval(b) {
   try {
     let memberId = b.ownerMemberId || null;
     if (!memberId) {
@@ -1286,9 +1291,9 @@ async function approveLinkedMember(b) {
     }
     const memberRef = doc(db, 'members', memberId);
     const memberSnap = await getDoc(memberRef);
-    if (!memberSnap.exists()) return;
+    if (!memberSnap.exists()) return null;
     const m = memberSnap.data();
-    if (m.status === 'approved') return;
+    if (m.status === 'approved') return null;
     const counterRef = doc(db, 'counters', 'members');
     const memberNumber = await runTransaction(db, async (tx) => {
       const snap = await tx.get(counterRef);
@@ -1297,19 +1302,39 @@ async function approveLinkedMember(b) {
       return current;
     });
     const loginCode = m.loginCode || await generateLoginCode();
-    await updateDoc(memberRef, {
-      status: 'approved',
-      approvedAt: serverTimestamp(),
-      rejectedAt: null,
-      isBusinessOwner: true,
-      memberNumber,
-      loginCode,
-      loginCodeCreatedAt: serverTimestamp(),
-      loginCodeEmailStatus: 'pending',
-    });
+    return {
+      ref: memberRef,
+      updates: {
+        status: 'approved',
+        approvedAt: serverTimestamp(),
+        rejectedAt: null,
+        isBusinessOwner: true,
+        linkedBusinessId: m.linkedBusinessId || b.id || null,
+        memberNumber,
+        loginCode,
+        loginCodeCreatedAt: serverTimestamp(),
+        loginCodeEmailStatus: 'pending',
+        loginCodeEmailQueuedAt: serverTimestamp(),
+      },
+    };
   } catch (e) {
-    console.error('approveLinkedMember failed', e);
+    console.error('prepareLinkedMemberApproval failed', e);
+    return null;
   }
+}
+
+// אישור עסק + החבר שמאחוריו בכתיבה אטומית אחת (ר' ההערה למעלה)
+async function approveBizWithMemberBatch(id, b) {
+  const memberUpd = b ? await prepareLinkedMemberApproval(b) : null;
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'businesses', id), {
+    status: 'approved',
+    approvedAt: serverTimestamp(),
+    ownerEmailStatus: 'pending',
+    ownerEmailQueuedAt: serverTimestamp(),
+  });
+  if (memberUpd) batch.update(memberUpd.ref, memberUpd.updates);
+  await batch.commit();
 }
 
 // admin guard — session אמיתי (Firebase Auth) + isAdmin:true על רשומת החבר
@@ -2503,9 +2528,8 @@ window.bulkApprove = async function() {
   if (!ids.length) { showToast('אין עסקים ממתינים בבחירה'); return; }
   if (!confirm(`לאשר ${ids.length} עסקים?`)) return;
   await Promise.all(ids.map(async id => {
-    await updateDoc(doc(db, 'businesses', id), { status: 'approved', approvedAt: serverTimestamp(), ownerEmailStatus: 'pending' });
     const b = businesses.find(x => x.id === id);
-    if (b) await approveLinkedMember(b);
+    await approveBizWithMemberBatch(id, b);
   }));
   selectedIds.clear();
   showToast(`✅ ${ids.length} עסקים אושרו`);
@@ -2596,12 +2620,7 @@ window.closeModal = function() {
 
 document.getElementById('confirmBtn').addEventListener('click', async () => {
   const b = businesses.find(x => x.id === pendingId);
-  await updateDoc(doc(db, 'businesses', pendingId), {
-    status: 'approved',
-    approvedAt: serverTimestamp(),
-    ownerEmailStatus: 'pending'
-  });
-  if (b) await approveLinkedMember(b);
+  await approveBizWithMemberBatch(pendingId, b);
   document.getElementById('confirmBtn').textContent = '✓ אושר!';
   document.getElementById('confirmBtn').disabled = true;
   document.getElementById('confirmBtn').style.opacity = '.5';
@@ -3231,7 +3250,7 @@ window.saveSec1 = async function(id) {
     ownerFirst: document.getElementById('editOwnerFirst').value.trim(),
     ownerLast:  document.getElementById('editOwnerLast').value.trim(),
     ownerPhone: document.getElementById('editOwnerPhone').value.trim(),
-    ownerEmail: document.getElementById('editOwnerEmail').value.trim(),
+    ownerEmail: document.getElementById('editOwnerEmail').value.trim().toLowerCase(),   // ר' PROJECT_CONTEXT §221
     note:       document.getElementById('editNote').value.trim(),
   };
   await saveSectionUpdates(id, updates);

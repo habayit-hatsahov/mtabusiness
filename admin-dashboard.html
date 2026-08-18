@@ -1899,6 +1899,7 @@ function hydrateBiz(id, raw) {
     approvedAt: toJsDate(raw.approvedAt),
     rejectedAt: toJsDate(raw.rejectedAt),
     agreedTermsAt: toJsDate(raw.agreedTermsAt),
+    ownerEmailQueuedAt: toJsDate(raw.ownerEmailQueuedAt),       // מתי נכנס לתור השליחה — בסיס למדידת איחור
     ownerEmailSentAt: toJsDate(raw.ownerEmailSentAt),
     ownerEmailDeliveryAt: toJsDate(raw.ownerEmailDeliveryAt),   // מ-webhook המסירה של Brevo, §205
     ownerEmailOpenedAt: toJsDate(raw.ownerEmailOpenedAt),       // פתיחה בפועל, §206
@@ -1982,6 +1983,7 @@ function hydrateFan(id, raw) {
     approvedAt: toJsDate(raw.approvedAt),
     rejectedAt: toJsDate(raw.rejectedAt),
     loginCodeCreatedAt: toJsDate(raw.loginCodeCreatedAt),
+    loginCodeEmailQueuedAt: toJsDate(raw.loginCodeEmailQueuedAt), // מתי נכנס לתור השליחה — בסיס למדידת איחור
     loginCodeEmailSentAt: toJsDate(raw.loginCodeEmailSentAt),
     loginCodeEmailDeliveryAt: toJsDate(raw.loginCodeEmailDeliveryAt),   // מ-webhook המסירה של Brevo, §205
     loginCodeEmailOpenedAt: toJsDate(raw.loginCodeEmailOpenedAt),       // פתיחה בפועל, §206
@@ -5329,7 +5331,8 @@ window.saveBizSec1 = async function(id) {
     ownerFirst: document.getElementById('edit_ownerFirst_'+id).value.trim(),
     ownerLast:  document.getElementById('edit_ownerLast_'+id).value.trim(),
     ownerPhone: document.getElementById('edit_ownerPhone_'+id).value.trim(),
-    ownerEmail: document.getElementById('edit_ownerEmail_'+id).value.trim(),
+    // toLowerCase — הכתובת היא מפתח-התאמה ל-webhook המסירה ולבדיקת-הכפילות (ר' §221)
+    ownerEmail: document.getElementById('edit_ownerEmail_'+id).value.trim().toLowerCase(),
     // אימות "אוהד מכבי" של בעל העסק — נשמר רק לפי הנתיב שנבחר בפועל (מנוי/לא מנוי), כמו בהרשמה האמיתית —
     // אין "היה מנוי בעבר" (שדה שלא קיים בהרשמת בעל עסק, ר' business.html) ואין ערך-צל מהנתיב הלא-נבחר.
     isSubscriber: isSub ? 'yes' : 'no',
@@ -5729,8 +5732,7 @@ window.bulkSetBizStatus = async function(status) {
       await Promise.all(ids.map(async id => {
         const b = bizById(id);
         if (!b || b.status !== 'pending') return;
-        await updateDoc(doc(db, 'businesses', id), { status: 'approved', approvedAt: serverTimestamp(), ownerEmailStatus: 'pending' });
-        await approveLinkedMember(b);
+        await approveBizWithMemberBatch(b);
       }));
     } else {
       await Promise.all(ids.map(id => {
@@ -6240,7 +6242,7 @@ window.saveFanDetails = async function(id) {
     firstName: document.getElementById('fanEditFirst_' + id).value.trim(),
     lastName: document.getElementById('fanEditLast_' + id).value.trim(),
     phone: document.getElementById('fanEditPhone_' + id).value.trim(),
-    email: document.getElementById('fanEditEmail_' + id).value.trim(),
+    email: document.getElementById('fanEditEmail_' + id).value.trim().toLowerCase(),   // ר' §221
     isSubscriber: isSub,
     verifiedSport: isSub ? document.getElementById('fanEditSport_' + id).value : null,
     subscriberSection: isSub ? document.getElementById('fanEditGate_' + id).value.trim() : null,
@@ -7099,9 +7101,15 @@ async function allocateMemberNumber() {
     return current;
   });
 }
-// זהה בדיוק ל-admin-businesses.html approveLinkedMember — מאשר את החבר המקושר לעסק (ownerMemberId
-// עדיף, ownerEmail רק fallback legacy) ומקצה לו מספר חבר+קוד כניסה אם עוד אין
-async function approveLinkedMember(b) {
+// ── אישור עסק + החבר המקושר בכתיבה אטומית אחת (2026-08-18) ──────────────────────────────────
+// עד היום העסק נכתב קודם (ownerEmailStatus:'pending') והחבר המקושר רק אחריו, עם 2-3 קריאות
+// ביניים — פער של כשנייה. סריקת-המיילים ב-Worker רצה כל דקה ושואלת קודם מי מהחברים ממתין ורק
+// בסוף מי מהעסקים; עסק שנתפס בתוך הפער קיבל את מייל-העסק הקצר לבדו, ובעל העסק קיבל מייל
+// קוד-כניסה נפרד — במקום מכתב-הפתיחה המאוחד שכל השאר מקבלים. באג-אמת: Kaneti insurance (17.8)
+// ובני שליחויות (16.8). הפונקציה הזו רק *מכינה* את עדכון החבר; הקורא מצרף אותו ל-writeBatch
+// יחד עם העסק, כך ששני המסמכים הופכים ל-'pending' באותו רגע ואין חלון שבו רק אחד מהם ממתין.
+// ownerMemberId עדיף, ownerEmail רק fallback legacy. מקצה מספר חבר+קוד כניסה אם עוד אין.
+async function prepareLinkedMemberApproval(b) {
   try {
     let memberId = b.ownerMemberId || null;
     if (!memberId) {
@@ -7112,18 +7120,39 @@ async function approveLinkedMember(b) {
       memberId = msnap.docs[0].id;
     }
     const mSnap = await getDoc(doc(db, 'members', memberId));
-    if (!mSnap.exists()) return;
+    if (!mSnap.exists()) return null;
     const m = mSnap.data();
     // loginCodeEmailStatus תמיד חוזר ל-pending (גם לחבר שכבר יש לו קוד) — המשתמש ביקש שהקוד
     // תמיד יישלח מחדש באישור, כדי שיהיה "מול העיניים" גם למי ששכח, לא רק בפעם הראשונה.
-    const updates = { status: 'approved', approvedAt: serverTimestamp(), isBusinessOwner: true, loginCodeEmailStatus: 'pending' };
+    const updates = {
+      status: 'approved', approvedAt: serverTimestamp(), isBusinessOwner: true,
+      loginCodeEmailStatus: 'pending', loginCodeEmailQueuedAt: serverTimestamp(),
+    };
+    // בלי הקישור הזה ה-Worker לא יודע שהחבר הוא בעל-העסק ולעולם לא ישלח מייל מאוחד
+    // (התנאי בסריקה הוא isBusinessOwner && linkedBusinessId). היה חסר כאן לגמרי.
+    if (!m.linkedBusinessId && b.id) updates.linkedBusinessId = b.id;
     if (!m.memberNumber) updates.memberNumber = await allocateMemberNumber();
     if (!m.loginCode) {
       updates.loginCode = await generateLoginCode();
       updates.loginCodeCreatedAt = serverTimestamp();
     }
-    await updateDoc(doc(db, 'members', memberId), updates);
-  } catch (e) { console.error('approveLinkedMember failed', e); }
+    return { ref: doc(db, 'members', memberId), updates };
+  } catch (e) { console.error('prepareLinkedMemberApproval failed', e); return null; }
+}
+
+// אישור עסק אחד + החבר שמאחוריו, בכתיבה אטומית אחת. כל הקריאות האיטיות
+// (getDoc/allocateMemberNumber/generateLoginCode) קורות *לפני* ה-batch, כדי שה-commit עצמו
+// יהיה רגע יחיד ולא חלון שסריקת-המיילים יכולה ליפול לתוכו.
+async function approveBizWithMemberBatch(b) {
+  const memberUpd = await prepareLinkedMemberApproval(b);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'businesses', b.id), {
+    status: 'approved', approvedAt: serverTimestamp(),
+    ownerEmailStatus: 'pending', ownerEmailQueuedAt: serverTimestamp(),
+    ownerVerificationStatus: 'confirmed',
+  });
+  if (memberUpd) batch.update(memberUpd.ref, memberUpd.updates);
+  await batch.commit();
 }
 
 window.approveFan = async function(id) {
@@ -7135,7 +7164,8 @@ window.approveFan = async function(id) {
     const loginCode = await generateLoginCode();
     await updateDoc(doc(db, 'members', id), {
       status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null,
-      memberNumber, loginCode, loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending'
+      memberNumber, loginCode, loginCodeCreatedAt: serverTimestamp(),
+      loginCodeEmailStatus: 'pending', loginCodeEmailQueuedAt: serverTimestamp(),
     });
     await logActivity('members', id, { type: 'status', title: 'האוהד אושר', detail: `"${f.name}" אושר, הוקצה חבר מס' ${memberNumber}`, field: 'status', before: f.status, after: 'approved' });
   } catch (e) { console.error(e); alert('שגיאה באישור: ' + e.message); }
@@ -7207,11 +7237,7 @@ window.approveBiz = async function(id) {
     // אישור העסק מאשר גם את אימות בעל-העסק (בקשה מפורשת, 2026-08-16) — אין מצב שבו העסק מאושר
     // ועדיין "ממתין להחלטה" על מי שמאחוריו. ההחלטה עדיין קיימת כשדה נפרד וניתן לשנות/לבטל אותה
     // מהכרטיס; מה שהשתנה זה שברירת-המחדל של אישור-עסק היא שהאימות אושר יחד איתו.
-    await updateDoc(doc(db, 'businesses', id), {
-      status: 'approved', approvedAt: serverTimestamp(), ownerEmailStatus: 'pending',
-      ownerVerificationStatus: 'confirmed',
-    });
-    await approveLinkedMember(b);
+    await approveBizWithMemberBatch(b);
     await logActivity('businesses', id, { type: 'status', title: 'העסק אושר', detail: `"${b.name}" אושר לאינדקס — אימות בעל העסק אושר יחד איתו`, field: 'status', before: b.status, after: 'approved' });
   } catch (e) { console.error(e); alert('שגיאה באישור: ' + e.message); }
 };
@@ -10153,8 +10179,40 @@ window.resendFailedFromBroadcast = async function(historyId) {
 //   3. stuck      — אושר לפני יותר מ-10 דקות ועדיין 'pending' (ה-cron רץ כל דקה — משהו תקוע)
 //   4. noEmail    — מאושר בלי כתובת מייל בכלל
 //   5. badPending — כתובת שגויה/לא-תקינה אצל מי שעוד לא אושר → לתקן לפני האישור, לא אחריו
+//   6. wrongLetter — בעל עסק שקיבל את מייל-העסק הקצר במקום מכתב-הפתיחה המאוחד (2026-08-18)
+//   7. late        — המייל כן יצא, אבל הרבה אחרי שנכנס לתור (2026-08-18)
+//
+// 6+7 נוספו אחרי שני מקרי-אמת שאף אחת מ-5 התקלות הראשונות לא תפסה, כי בשתיהן המערכת מציגה
+// "נשלח ✅" ונראית תקינה לגמרי: Kaneti insurance (17.8) קיבל שני מיילים קצרים נפרדים במקום
+// מכתב-הפתיחה, ובני שליחויות (16.8) קיבל את מייל-העסק ואת קוד-הכניסה בהפרש של 14.7 שעות.
+// שניהם התגלו רק כי בעל העסק התלונן — בדיוק מה שהפאנל הזה אמור למנוע.
 const MAIL_STUCK_MINUTES = 10;
+// סף האיחור: ה-cron רץ כל דקה, אז כל מה שמעל רבע שעה הוא כבר לא "עומס רגעי" אלא תקלה.
+const MAIL_LATE_MINUTES = 15;
 const MAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// כמה דקות עברו בין הכניסה-לתור לשליחה בפועל. מוחזר 0 כשאין חותמת תור (מסמכים שנוצרו לפני
+// 18.8) — בכוונה: עדיף לא לדעת מאשר להמציא איחור מהפרש מול approvedAt, ששליחה חוזרת דורסת.
+function mailLateMinutes(queuedAt, sentAt) {
+  if (!queuedAt || !sentAt) return 0;
+  const mins = Math.round((sentAt.getTime() - queuedAt.getTime()) / 60000);
+  return mins >= MAIL_LATE_MINUTES ? mins : 0;
+}
+function lateLabel(mins) {
+  if (mins < 60) return mins + ' דקות';
+  const h = Math.floor(mins / 60), m = mins % 60;
+  const hours = h === 1 ? 'שעה' : h === 2 ? 'שעתיים' : h + ' שעות';
+  return hours + (m ? ` ו-${m} דקות` : '');
+}
+// בעל העסק קיבל את מייל-העסק הקצר לבדו (welcomeEmailKind:'bizOnly' נכתב ע"י ה-Worker בזמן
+// השליחה, ר' worker/src/index.js) — ובאמת יש מאחוריו רשומת-חבר, כלומר היה *אמור* לקבל את
+// מכתב-הפתיחה המאוחד. הסתמכות על השדה ולא על הפרשי-זמנים היא מכוונת: שליחה חוזרת דורסת את
+// ownerEmailSentAt, וכל ניחוש מבוסס-זמנים מסמן בטעות גם עסקים שקיבלו את המכתב הנכון.
+function gotWrongWelcomeLetter(b) {
+  if (b.welcomeEmailKind !== 'bizOnly') return null;
+  const f = b.ownerMemberId ? findFan(b.ownerMemberId) : null;
+  return f && f.status === 'approved' ? f : null;
+}
 
 // ── "טיפלתי" על תקלת מייל (2026-08-16, בקשת המשתמש) ─────────────────────────────────────────
 // תקלות מייל הן *מחושבות* מהנתונים, לא רשומות בבסיס-הנתונים — אז אין מה "לסגור". חלק מהן גם לא
@@ -10174,9 +10232,9 @@ function mailIssueList() {
   const out = [];
   const now = Date.now();
 
-  const add = (kind, id, name, email, sev, badge, detail, when, canResend) =>
+  const add = (kind, id, name, email, sev, badge, detail, when, canResend, action) =>
     out.push({ kind, id, name, email: email || '', sev, badge, detail, when: when || null, canResend: !!canResend,
-               key: mailIssueKey(kind, id, badge, email, when) });
+               action: action || '', key: mailIssueKey(kind, id, badge, email, when) });
 
   for (const b of MOCK_BUSINESSES) {
     if (b.status === 'rejected') continue;
@@ -10196,6 +10254,14 @@ function mailIssueList() {
       add('biz', b.id, b.name, '', 2, 'אין כתובת מייל', 'העסק מאושר אבל אין למי לשלוח — צריך להשיג כתובת ולעדכן בכרטיס.', b.approvedAt, false);
     } else if (approved && b.ownerEmailStatus !== 'sent' && b.approvedAt && (now - b.approvedAt.getTime()) > MAIL_STUCK_MINUTES * 60000) {
       add('biz', b.id, b.name, b.ownerEmail, 2, 'תקוע בתור', `אושר ${agoLabel(b.approvedAt)} והמייל עדיין לא יצא. ה-cron רץ כל דקה — כדאי לבדוק את ה-Worker.`, b.approvedAt, true);
+    } else if (approved && gotWrongWelcomeLetter(b)) {
+      add('biz', b.id, b.name, b.ownerEmail, 2, 'קיבל את המייל הלא-נכון',
+        `יצא מייל-העסק הקצר בלבד, בלי מכתב הפתיחה המאוחד (קוד כניסה + מה לעשות עכשיו) שכל שאר בעלי העסקים מקבלים. "שליחה חוזרת" רגילה תשלח שוב את אותו מייל קצר — הכפתור כאן שולח את מכתב הפתיחה המלא.`,
+        b.ownerEmailSentAt, false, 'welcome');
+    } else if (approved && mailLateMinutes(b.ownerEmailQueuedAt, b.ownerEmailSentAt)) {
+      add('biz', b.id, b.name, b.ownerEmail, 2, 'יצא באיחור',
+        `המייל נכנס לתור ויצא בפועל רק ${lateLabel(mailLateMinutes(b.ownerEmailQueuedAt, b.ownerEmailSentAt))} אחר כך. ה-cron רץ כל דקה — עיכוב כזה אומר שהסריקה נתקעה או דילגה, כדאי לבדוק שהעסק אכן קיבל.`,
+        b.ownerEmailSentAt, true);
     } else if (approved && mailUnopenedTooLong(b.ownerEmailStatus, b.ownerEmailDelivery, b.ownerEmailOpenedAt, b.ownerEmailClickedAt, b.ownerEmailSentAt, now)) {
       add('biz', b.id, b.name, b.ownerEmail, 3, 'נמסר ולא נפתח', MAIL_UNOPENED_DETAIL(b.ownerEmailSentAt), b.ownerEmailSentAt, true);
     } else if (!approved && (hit || malformed)) {
@@ -10222,6 +10288,10 @@ function mailIssueList() {
       add('fan', f.id, f.name, '', 2, 'אין כתובת מייל', 'האוהד מאושר אבל אין למי לשלוח את קוד הכניסה.', f.approvedAt, false);
     } else if (approved && f.loginCode && f.loginCodeEmailStatus !== 'sent' && f.approvedAt && (now - f.approvedAt.getTime()) > MAIL_STUCK_MINUTES * 60000) {
       add('fan', f.id, f.name, f.email, 2, 'תקוע בתור', `אושר ${agoLabel(f.approvedAt)} וקוד הכניסה עדיין לא יצא.`, f.approvedAt, true);
+    } else if (approved && mailLateMinutes(f.loginCodeEmailQueuedAt, f.loginCodeEmailSentAt)) {
+      add('fan', f.id, f.name, f.email, 2, 'יצא באיחור',
+        `קוד הכניסה נכנס לתור ויצא בפועל רק ${lateLabel(mailLateMinutes(f.loginCodeEmailQueuedAt, f.loginCodeEmailSentAt))} אחר כך. ה-cron רץ כל דקה — כדאי לבדוק שהמייל אכן התקבל.`,
+        f.loginCodeEmailSentAt, !!f.loginCode);
     } else if (approved && mailUnopenedTooLong(f.loginCodeEmailStatus, f.loginCodeEmailDelivery, f.loginCodeEmailOpenedAt, f.loginCodeEmailClickedAt, f.loginCodeEmailSentAt, now)) {
       add('fan', f.id, f.name, f.email, 3, 'נמסר ולא נפתח', MAIL_UNOPENED_DETAIL(f.loginCodeEmailSentAt), f.loginCodeEmailSentAt, !!f.loginCode);
     } else if (!approved && (hit || malformed)) {
@@ -10264,9 +10334,11 @@ window.unmarkMailIssueHandled = async function(kind, id) {
 function mailIssueRowHtml(x) {
   const sevClass = x.sev === 1 ? 'warn-badge' : x.sev === 2 ? 'warn-badge' : 'treat-badge';
   const openLabel = x.kind === 'biz' ? 'פתיחת כרטיס העסק' : 'פתיחת כרטיס האוהד';
-  const resendBtn = x.canResend
-    ? `<button class="act-btn approve tiny" onclick="event.stopPropagation();${x.kind === 'biz' ? 'requeueBizEmail' : 'requeueFanEmail'}('${x.id}')">שליחה חוזרת</button>`
-    : '';
+  const resendBtn = x.action === 'welcome'
+    ? `<button class="act-btn approve tiny" onclick="event.stopPropagation();requeueWelcomeEmail('${x.id}')">שליחת מכתב הפתיחה</button>`
+    : x.canResend
+      ? `<button class="act-btn approve tiny" onclick="event.stopPropagation();${x.kind === 'biz' ? 'requeueBizEmail' : 'requeueFanEmail'}('${x.id}')">שליחה חוזרת</button>`
+      : '';
   return `
     <div class="task-table-row">
       <div class="task-table-main">
@@ -10471,9 +10543,42 @@ window.requeueBizEmail = async function(id) {
   if (!confirm(`לשלוח שוב את מייל האישור ל"${b.name}"?\n\nאל: ${b.ownerEmail}\n\nהמייל יוצא אוטומטית תוך דקה.`)) return;
   try {
     // מנקה גם את תוצאת-המסירה הקודמת (§205) — אחרת "חזר" ישן נשאר על המסך אחרי שליחה חדשה
-    await updateDoc(doc(db, 'businesses', id), { ownerEmailStatus: 'pending', ownerEmailError: null, ownerEmailDelivery: null, ownerEmailDeliveryAt: null, ownerEmailDeliveryReason: null, ownerEmailOpenedAt: null, ownerEmailClickedAt: null });
+    await updateDoc(doc(db, 'businesses', id), { ownerEmailStatus: 'pending', ownerEmailQueuedAt: serverTimestamp(), ownerEmailError: null, ownerEmailDelivery: null, ownerEmailDeliveryAt: null, ownerEmailDeliveryReason: null, ownerEmailOpenedAt: null, ownerEmailClickedAt: null });
     await logActivity('businesses', id, { type: 'email', title: 'מייל האישור נשלח שוב', detail: `אל ${b.ownerEmail}`, field: 'ownerEmailStatus', before: b.ownerEmailStatus || null, after: 'pending' });
     alert('נכנס לתור — המייל יוצא תוך דקה. הסטטוס בכרטיס יתעדכן ל"נשלח" עם השעה המדויקת.');
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+
+// ── שליחת מכתב-הפתיחה המאוחד לבעל עסק שקיבל את המייל הקצר (2026-08-18) ──────────────────────
+// אי אפשר לעשות את זה עם "שליחה חוזרת" רגילה: היא מחזירה ל-pending רק צד אחד, וה-Worker שולח
+// מאוחד רק כששני הצדדים ממתינים יחד. לכן batch אטומי על שני המסמכים — בדיוק כמו באישור עצמו.
+window.requeueWelcomeEmail = async function(id) {
+  const b = findBiz(id);
+  if (!b) return;
+  if (b.status !== 'approved') { alert('אפשר לשלוח רק לעסק מאושר.'); return; }
+  if (!b.ownerEmail) { alert('אין כתובת מייל לעסק הזה.'); return; }
+  const f = b.ownerMemberId ? findFan(b.ownerMemberId) : null;
+  if (!f || f.status !== 'approved') { alert('אין רשומת חבר מאושרת מאחורי העסק — למכתב המאוחד צריך גם קוד כניסה. אפשר לשלוח "שליחה חוזרת" רגילה במקום.'); return; }
+  if (!f.loginCode) { alert('לבעל העסק אין עדיין קוד כניסה — צריך לאשר אותו כאוהד קודם.'); return; }
+  if (!confirmSuspectEmail(b.ownerEmail, `"${b.name}"`)) return;
+  if (!confirm(`לשלוח ל"${b.name}" את מכתב הפתיחה המלא?\n\nאל: ${b.ownerEmail}\n\nזה המייל המאוחד — קוד הכניסה (${f.loginCode}) + מה לעשות עכשיו + הקישור לדשבורד. יוצא אוטומטית תוך דקה.`)) return;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'businesses', id), {
+      ownerEmailStatus: 'pending', ownerEmailQueuedAt: serverTimestamp(), ownerEmailError: null,
+      ownerEmailDelivery: null, ownerEmailDeliveryAt: null, ownerEmailDeliveryReason: null,
+      ownerEmailOpenedAt: null, ownerEmailClickedAt: null, welcomeEmailKind: null,
+    });
+    batch.update(doc(db, 'members', f.id), {
+      loginCodeEmailStatus: 'pending', loginCodeEmailQueuedAt: serverTimestamp(), loginCodeEmailError: null,
+      loginCodeEmailDelivery: null, loginCodeEmailDeliveryAt: null, loginCodeEmailDeliveryReason: null,
+      loginCodeEmailOpenedAt: null, loginCodeEmailClickedAt: null,
+      isBusinessOwner: true, linkedBusinessId: id,
+    });
+    await batch.commit();
+    await logActivity('businesses', id, { type: 'email', title: 'נשלח מכתב הפתיחה המאוחד', detail: `אל ${b.ownerEmail} — במקום מייל-העסק הקצר`, field: 'ownerEmailStatus', before: b.ownerEmailStatus || null, after: 'pending' });
+    await logActivity('members', f.id, { type: 'email', title: 'נשלח מכתב הפתיחה המאוחד', detail: `אל ${b.ownerEmail} — יחד עם אישור העסק "${b.name}"`, field: 'loginCodeEmailStatus', before: f.loginCodeEmailStatus || null, after: 'pending' });
+    alert('נכנס לתור — מכתב הפתיחה יוצא תוך דקה.');
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
 
@@ -10486,7 +10591,7 @@ window.requeueFanEmail = async function(id) {
   if (!confirmSuspectEmail(f.email, `"${f.name}"`)) return;
   if (!confirm(`לשלוח שוב את מייל קוד הכניסה ל"${f.name}"?\n\nאל: ${f.email}\n\nהמייל יוצא אוטומטית תוך דקה.`)) return;
   try {
-    await updateDoc(doc(db, 'members', id), { loginCodeEmailStatus: 'pending', loginCodeEmailError: null, loginCodeEmailDelivery: null, loginCodeEmailDeliveryAt: null, loginCodeEmailDeliveryReason: null, loginCodeEmailOpenedAt: null, loginCodeEmailClickedAt: null });
+    await updateDoc(doc(db, 'members', id), { loginCodeEmailStatus: 'pending', loginCodeEmailQueuedAt: serverTimestamp(), loginCodeEmailError: null, loginCodeEmailDelivery: null, loginCodeEmailDeliveryAt: null, loginCodeEmailDeliveryReason: null, loginCodeEmailOpenedAt: null, loginCodeEmailClickedAt: null });
     await logActivity('members', id, { type: 'email', title: 'מייל קוד הכניסה נשלח שוב', detail: `אל ${f.email}`, field: 'loginCodeEmailStatus', before: f.loginCodeEmailStatus || null, after: 'pending' });
     alert('נכנס לתור — המייל יוצא תוך דקה.');
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
