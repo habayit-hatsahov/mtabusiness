@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>דמו — שעות פעילות מובנות</title>
+<style>
+:root{
+  --bg:#F6F6F2; --card-bg:#FFFFFF; --border:#E7E7E0;
+  --text:#0A2A66; --text-sm:#6B7A9B; --accent:#0A2A66;
+  --gold:#FFD400; --green:#16A34A; --red:#B4351C; --orange:#B54708;
+  --radius:16px;
+}
+*{box-sizing:border-box}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+body{margin:0;background:var(--bg);color:var(--text);padding:24px 16px 60px;
+  font-family:'Rubik','Segoe UI','Assistant','Arial Hebrew',system-ui,-apple-system,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto}
+h1{font-size:22px;margin:0 0 4px}
+.sub{font-size:13px;color:var(--text-sm);margin-bottom:22px;line-height:1.6}
+.card{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:18px}
+.card-h{font-size:15px;font-weight:800;margin-bottom:4px}
+.card-sub{font-size:12px;color:var(--text-sm);margin-bottom:16px;line-height:1.6}
+.demo-split{display:flex;gap:18px;flex-wrap:wrap}
+.demo-split>*{flex:1;min-width:300px}
+
+/* ── בורר מצב ── */
+.mode-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.mode-btn{flex:1;min-width:120px;padding:11px 12px;border-radius:11px;border:1.5px solid var(--border);
+  background:#fff;font-family:inherit;font-size:12.5px;font-weight:700;color:var(--text-sm);cursor:pointer;transition:all .12s}
+.mode-btn:hover{border-color:var(--accent)}
+.mode-btn.sel{border-color:var(--accent);background:rgba(10,42,102,.05);color:var(--accent)}
+.mode-hint{font-size:11.5px;color:var(--text-sm);line-height:1.55;margin-top:-8px;margin-bottom:16px}
+
+/* ── טבלת הימים ── */
+.day-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.day-row:last-of-type{border-bottom:none}
+.day-name{width:88px;font-size:13px;font-weight:700;flex:none}
+.day-name small{display:block;font-weight:400;font-size:10.5px;color:var(--text-sm)}
+.day-action{width:66px;flex:none;display:flex;align-items:center}
+.toggle{position:relative;width:42px;height:23px;flex:none;cursor:pointer}
+.toggle input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2}
+.toggle .track{position:absolute;inset:0;background:#D8DCE3;border-radius:99px;transition:background .15s}
+.toggle .knob{position:absolute;top:3px;right:3px;width:17px;height:17px;background:#fff;border-radius:50%;
+  transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.toggle input:checked ~ .track{background:var(--green)}
+.toggle input:checked ~ .knob{transform:translateX(-19px)}
+.time-pair{display:flex;align-items:center;gap:6px;flex:1}
+.time-pair select{font-family:inherit;font-size:12.5px;padding:6px 8px;border-radius:8px;
+  border:1.5px solid var(--border);background:#fff;color:var(--text);cursor:pointer;min-width:78px}
+.time-pair select:focus{outline:none;border-color:var(--accent)}
+.time-sep{font-size:12px;color:var(--text-sm)}
+.closed-lbl{font-size:12px;color:var(--text-sm);font-weight:600}
+.day-row.off .time-pair{opacity:.35;pointer-events:none}
+
+/* כפתור הפיצול יושב **בשורת א׳–ה׳ עצמה**, לא מתחת לטבלה — הוא פעולה על השורה הזו ולא על
+   הטופס כולו, ומי שמחפש אותו מחפש אותו שם. */
+.split-link{background:transparent;border:1.5px dashed var(--border);border-radius:8px;
+  padding:5px 8px;font-family:inherit;font-size:10.5px;font-weight:700;color:var(--text-sm);
+  cursor:pointer;white-space:nowrap;flex:none;width:100%;text-align:center}
+.split-link:hover{border-color:var(--accent);color:var(--accent)}
+
+/* מצב "אחר" — טקסט חופשי שהמנהל מתרגם */
+.other-box{margin-top:4px}
+.other-box textarea{width:100%;min-height:78px;resize:vertical;font-family:inherit;font-size:13px;
+  padding:11px 13px;border-radius:11px;border:1.5px solid var(--border);background:#fff;color:var(--text);line-height:1.6}
+.other-box textarea:focus{outline:none;border-color:var(--accent)}
+.approve-note{display:flex;gap:8px;align-items:flex-start;margin-top:10px;padding:10px 12px;
+  border-radius:10px;background:rgba(255,222,0,.1);border:1px solid rgba(255,222,0,.4);
+  font-size:11.5px;line-height:1.55;color:var(--text)}
+.approve-note b{font-weight:800}
+
+/* ── תצוגה מקדימה ── */
+.pv{background:#0A2A66;border-radius:14px;padding:16px 18px;color:#fff}
+.pv-h{font-size:11px;font-weight:700;opacity:.65;margin-bottom:9px;letter-spacing:.02em}
+.pv-line{font-size:13.5px;line-height:1.85}
+.pv-line b{color:var(--gold)}
+/* ── טווח שעות חייב בידוד-כיוון (2026-08-20) ─────────────────────────────────────────────────
+   נמדד בדפדפן: "09:00-18:00" בתוך טקסט עברי מרונדר **הפוך** — "18:00-09:00". זו התנהגות
+   bidi תקנית: המקף בין שני מספרים הוא תו ניטרלי, ובהקשר RTL הוא מקבל את כיוון הסביבה וגורר
+   איתו את סדר המספרים. קורה גם עם מקף רגיל (-) וגם עם en-dash (–).
+   אותו פתרון בדיוק כמו .ltr-value ב-home.html, שכבר קיים שם לטלפון/מייל/אתר. */
+.hrs{direction:ltr;unicode-bidi:isolate;display:inline-block;font-variant-numeric:tabular-nums}
+.pv-empty{font-size:12px;opacity:.5}
+
+.raw{background:#F3F4F6;border-radius:10px;padding:11px 13px;font-size:11.5px;color:var(--text-sm);
+  margin-top:14px;line-height:1.6;font-family:ui-monospace,monospace;direction:ltr;text-align:left;
+  white-space:pre-wrap;word-break:break-all}
+
+/* ── טבלת ההמרה ── */
+table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+th{text-align:right;font-weight:700;color:var(--text-sm);font-size:11px;padding:7px 8px;border-bottom:1.5px solid var(--border)}
+td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border-bottom:none}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700;white-space:nowrap}
+.tag.ok{background:rgba(22,163,74,.12);color:#15803D}
+.tag.warn{background:rgba(181,71,8,.12);color:var(--orange)}
+.tag.no{background:rgba(180,53,28,.1);color:var(--red)}
+.tag.none{background:#EFEFEA;color:var(--text-sm)}
+.mono{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-sm)}
+.filters{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.filters button{padding:6px 13px;border-radius:99px;border:1.5px solid var(--border);background:#fff;
+  font-family:inherit;font-size:11.5px;font-weight:700;color:var(--text-sm);cursor:pointer}
+.filters button.sel{border-color:var(--accent);background:var(--accent);color:#fff}
+
+/* ── קוביית ההנעה: מוצגת לכל 37 העסקים, חודש מהפתיחה הראשונה ── */
+.nudge{border-radius:14px;padding:17px 19px;background:rgba(255,222,0,.09);border:1.5px solid rgba(255,222,0,.45)}
+.nudge-t{font-size:14.5px;font-weight:800;margin-bottom:5px}
+.nudge-b{font-size:12.5px;color:var(--text-sm);line-height:1.6}
+.nudge-inner{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:14px}
+.nudge-was{font-size:11.5px;color:var(--text-sm);margin-bottom:11px;padding-bottom:11px;border-bottom:1px solid var(--border)}
+.nudge-was b{color:var(--text)}
+.nudge-pv{margin-top:13px;padding-top:12px;border-top:1px solid var(--border);font-size:13px}
+.nudge-pv b{color:var(--accent)}
+.nudge-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.btn-main{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 22px;
+  font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.btn-ghost{background:transparent;color:var(--text-sm);border:1.5px solid var(--border);border-radius:10px;
+  padding:9px 18px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.nudge-until{font-size:11px;color:var(--text-sm);margin-right:auto}
+
+/* ── הערה לעסק ── */
+.notice{border-radius:12px;padding:13px 15px;margin-top:14px;background:#FDF3EE;border:1px solid #F3D3C0}
+.notice-t{font-size:13px;font-weight:800;color:var(--orange);margin-bottom:4px}
+.notice-b{font-size:12px;color:var(--orange);line-height:1.55}
+.notice.info{background:rgba(10,42,102,.05);border-color:rgba(10,42,102,.18)}
+.notice.info .notice-t,.notice.info .notice-b{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>שעות פעילות — שדות במקום טקסט חופשי</h1>
+  <div class="sub">
+    דמו מבודד. שום דבר כאן לא נוגע באתר החי — זה קובץ נפרד לבדיקה בלבד.<br>
+    הנתונים בטבלת ההמרה למטה הם <b>אמיתיים</b>, נשלפו מ‑Firestore מ‑37 העסקים המאושרים.
+  </div>
+
+  <!-- ═══ 1. הרכיב ═══ -->
+  <div class="card">
+    <div class="card-h">1 · איך בעל העסק ימלא</div>
+    <div class="card-sub">ברירת המחדל היא הצורה הנפוצה ביותר — א׳‑ה׳ יחד, ושישי ושבת בנפרד.
+      אין מתג לסגירת כל ימי החול (אין עסק כזה); מי שסוגר יום חול בודד לוחץ <b>״יום-יום״</b> וסוגר אותו שם.</div>
+
+    <div class="demo-split">
+      <div>
+        <div class="mode-row" id="modeRow">
+          <button class="mode-btn sel" data-mode="fixed">שעות קבועות</button>
+          <button class="mode-btn" data-mode="other">אחר — אני אכתוב בעצמי</button>
+        </div>
+        <div class="mode-hint" id="modeHint"></div>
+        <div id="editor"></div>
+      </div>
+
+      <div>
+        <div class="pv">
+          <div class="pv-h">כך זה ייראה באתר</div>
+          <div class="pv-line" id="pvLine"></div>
+        </div>
+        <div class="raw" id="rawOut"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 2. ההמרה ═══ -->
+  <div class="card">
+    <div class="card-h">2 · מה יקרה ל‑37 העסקים הקיימים</div>
+    <div class="card-sub">כל עסק והטקסט שהוא מילא היום, מול מה שהממיר מצליח לגזור ממנו.</div>
+    <div class="filters" id="filters"></div>
+    <div style="overflow-x:auto"><table id="convTable"></table></div>
+  </div>
+
+  <!-- ═══ 3. קוביית ההנעה ═══ -->
+  <div class="card">
+    <div class="card-h">3 · הקובייה שכל 37 העסקים יראו</div>
+    <div class="card-sub">
+      מוצגת בראש הדשבורד, <b>חודש מהיום שבו בעל העסק פתח אותה בפעם הראשונה</b> — לא מיום ההשקה,
+      כך שגם מי שנכנס רק בעוד שבועיים מקבל חודש מלא. העריכה עצמה בתוך הקובייה, בלי לחפש כלום.
+    </div>
+
+    <div class="nudge">
+      <div class="nudge-t">⏰ בדקו את שעות הפעילות שלכם</div>
+      <div class="nudge-b">עברנו לשעות מסודרות, כדי שיוצגו נכון ובאותה צורה לכל העסקים.
+        מילאנו עבורכם לפי מה שהיה רשום — שווה לוודא שזה מדויק.</div>
+
+      <div class="nudge-inner">
+        <div class="nudge-was">מה שהיה רשום אצלכם קודם: <b>״א - ה בין 09:30-18:00״</b></div>
+        <div id="nudgeEditor"></div>
+        <div class="nudge-pv">כך זה יוצג באתר: <span id="nudgePv"></span></div>
+      </div>
+
+      <div class="nudge-actions">
+        <button class="btn-main">השעות נכונות — שמירה</button>
+        <button class="btn-ghost">אזכיר לי מאוחר יותר</button>
+        <span class="nudge-until">מוצג עד <b id="nudgeUntil"></b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 4. ההערות ═══ -->
+  <div class="card">
+    <div class="card-h">4 · מה יראה עסק שהשעות שלו לא הומרו</div>
+    <div class="card-sub">שתי הודעות שונות, לפי המצב. עסק אונליין בלי שעות לא יקבל כלום.</div>
+    <div class="demo-split">
+      <div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:7px">עסק שהטקסט שלו לא ניתן להמרה</div>
+        <div class="notice">
+          <div class="notice-t">⏰ צריך לעדכן את שעות הפעילות</div>
+          <div class="notice-b">שינינו את שעות הפעילות לשדות מסודרים, כדי שיוצגו נכון בכל מקום באתר.<br>
+          מה שמילאתם קודם: <b id="noticeOld">"זמין תמיד, המכירה נעשית דרך הוואטספ"</b><br>
+          זה עדיין מוצג ללקוחות — אבל שווה למלא את השדות למטה, ואז זה ייראה מסודר וברור.</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:7px">עסק פיזי שלא מילא שעות בכלל</div>
+        <div class="notice info">
+          <div class="notice-t">⏰ עוד לא מילאתם שעות פעילות</div>
+          <div class="notice-b">יש לכם חנות או מקום שלקוחות מגיעים אליו — שעות פעילות עוזרות להם לדעת מתי לבוא, ומונעות פניות מיותרות.</div>
+        </div>
+        <div style="font-size:12px;font-weight:700;margin:16px 0 7px">עסק אונליין / נותן שירות בלי שעות</div>
+        <div style="font-size:12px;color:var(--text-sm);background:#F3F4F6;border-radius:10px;padding:13px 15px;line-height:1.55">
+          לא מוצגת שום הודעה. <b>5 מתוך 12</b> העסקים בלי שעות הם כאלה — שעות פעילות פשוט לא רלוונטיות להם.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// נתוני-אמת מ-Firestore (37 עסקים מאושרים) — לדמו בלבד, נשלף 2026-08-19
+window.__BIZ__ = [{"n":"שחר גייזר","h":"א - ה בין 09:30-18:00","t":["pro"]},{"n":"Casual tattoo","h":"","t":["physical"]},{"n":"ציקן סטיישן החשמונאים 94","h":"11-16","t":["physical"]},{"n":"גל געש פיננסים","h":"א-ה 08:00-19:00","t":["pro"]},{"n":"DJ Adidor - HYPE","h":"","t":["pro"]},{"n":"שווארמה שמש אירועים","h":"","t":["physical","pro"]},{"n":"KASTEN Diamonds","h":"זמין תמיד , המכירה נעשית דרך הוואטספ והאינסטגרם","t":["pro"]},{"n":"MEL CAKE&MORE","h":"מענה טלפוני בימים א-ה בין השעות 9:00-18:00","t":["online","pro"]},{"n":"יעדים לוגיסטיים בע\"מ","h":"","t":["physical","pro"]},{"n":"מאמא שושה","h":"א-ה 8-21 ו 8-14","t":["physical"]},{"n":"XRAY TLV","h":"להתעדכן באתר החברה","t":["physical","online"]},{"n":"במבי אירועים והפעלות","h":"","t":["pro"]},{"n":"חגי בנימין, משרד עו״ד פלילי","h":"","t":["physical"]},{"n":"יש הדברה","h":"א-ו 6-17","t":["pro"]},{"n":"גבעת גרינהיל","h":"","t":["physical","pro"]},{"n":"Glory Street","h":"","t":["online"]},{"n":"שלומי תכשיטים","h":"א-ה 10:00-19:00","t":["physical"]},{"n":"צ'ומפי","h":"כל השבוע","t":["physical","pro"]},{"n":"יהב מטבחים","h":"א׳-ה׳ 10:00-20:00 ו׳ - 10:00-13:00 שבת סגור","t":["pro"]},{"n":"ספורט אנד פול . אינטקס חולון","h":"א-ה 9-17, ו9-13","t":["physical","online"]},{"n":"עיצוב גינות","h":"24/6","t":["pro"]},{"n":"דור מיגונים","h":"כל ימות השבוע 24 שעות למעט שבתות וחגים","t":["pro"]},{"n":"איה מצברים","h":"24/6","t":["pro"]},{"n":"קבוצת טלניר","h":"","t":["physical"]},{"n":"בני שליחויות אקספרס","h":"7:00-23:00 מראשון עד חמישי שישי מהבוקר עד כניסת שבת ומוצ״ש פתוח עד חצות","t":["pro"]},{"n":"מובי סל - טלפונים","h":"9:00-22:00","t":["physical","pro"]},{"n":"סרף אין בע''מ","h":"א-ה 10:00-19:00 שישי 10:00-15:00","t":["physical","online"]},{"n":"שי משה - צלם אירועים","h":"כל היום חוץ משבת.","t":["pro"]},{"n":"DJ ZANO","h":"א-ה 9:00-24:00","t":["online"]},{"n":"עיצוב שיער קובי","h":"א-ה 9-19, ו 9-14","t":["physical"]},{"n":"אלמי מערכות מיזוג","h":"","t":["pro"]},{"n":"Flain studio","h":"זמין בתיאום מראש — כולל שעות ערב וסופי שבוע.","t":["pro"]},{"n":"חבילות תקשורת לבית - אינטרנט ביתי ואינטרנט עם ערוצי טלויזיה.","h":"9:00-19:00","t":["pro"]},{"n":"Dj & music producter","h":"","t":["pro"]},{"n":"גולדה אירועים","h":"","t":["physical","pro"]},{"n":"Kaneti insurance","h":"א׳-ה׳ 9:00-18:00","t":["pro"]},{"n":"דנון ובניו","h":"א׳-ה׳ 08:00 עד 17:00","t":["physical"]}];
+</script>
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+//  מודל הנתונים המוצע
+//    hoursMode : 'fixed' | 'always' | 'appt'
+//    hoursDays : [{open,close,closed}] × 7, אינדקס 0=ראשון … 6=שבת
+//    hours     : המחרוזת הישנה — נשמרת כמו שהיא, לתאימות ולתצוגה עד שממלאים מחדש
+// ══════════════════════════════════════════════════════════════════════════════
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const DAY_NAMES  = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+const DAY_SHORT  = ['א','ב','ג','ד','ה','ו','ש'];
+
+const state = {
+  mode: 'fixed',
+  split: false,                               // false = א-ה מקובצים
+  otherText: '',                              // מצב 'other' — טקסט חופשי שהמנהל מתרגם
+  days: DAY_NAMES.map((_, i) => ({
+    closed: i === 6,                          // שבת סגור כברירת מחדל
+    open:  '09:00',
+    close: i === 5 ? '14:00' : '18:00',
+  })),
+};
+
+// ── אפשרויות שעה: כל חצי שעה ──────────────────────────────────────────────────
+const TIMES = (() => {
+  const out = [];
+  for (let h = 0; h <= 23; h++) for (const m of ['00','30']) out.push(String(h).padStart(2,'0')+':'+m);
+  out.push('24:00');                          // חצות — מופיע בפועל אצל DJ ZANO
+  return out;
+})();
+
+function timeSelect(val, onChange) {
+  const sel = document.createElement('select');
+  TIMES.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t; o.textContent = t; if (t === val) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.onchange = () => onChange(sel.value);
+  return sel;
+}
+
+// onToggle === null → השורה בלי מתג פתוח/סגור. משמש לשורת א׳–ה׳ המקובצת: אין עסק שסוגר את
+// כל חמשת ימי החול במכה, ומתג כזה רק מזמין לחיצה בטעות שמוחקת את כל השבוע. מי שסוגר יום
+// חול בודד עובר לפיצול וסוגר אותו שם.
+function dayRow(label, sub, d, onToggle, onOpen, onClose, extraEl) {
+  const row = document.createElement('div');
+  row.className = 'day-row' + (d.closed ? ' off' : '');
+
+  const nm = document.createElement('div');
+  nm.className = 'day-name';
+  nm.innerHTML = label + (sub ? '<small>'+sub+'</small>' : '');
+  row.appendChild(nm);
+
+  // עמודת-הפעולה: מתג פתוח/סגור, או — בשורת א׳–ה׳ המקובצת שאין לה מתג — כפתור "יום-יום".
+  // שניהם פעולה על השורה, ולכן יושבים באותו מקום בדיוק (בקשת המשתמש: "שיהיה מעל הסימון
+  // כמו בשישי שבת שהוא גם פעולה").
+  const act = document.createElement('div');
+  act.className = 'day-action';
+  if (onToggle) {
+    const tg = document.createElement('label');
+    tg.className = 'toggle';
+    tg.innerHTML = '<input type="checkbox"'+(d.closed?'':' checked')+'><span class="track"></span><span class="knob"></span>';
+    tg.querySelector('input').onchange = e => onToggle(!e.target.checked);
+    act.appendChild(tg);
+  } else if (extraEl) {
+    act.appendChild(extraEl);
+    extraEl = null;                       // נצרך — לא להוסיף אותו שוב בסוף השורה
+  }
+  row.appendChild(act);
+
+  const pair = document.createElement('div');
+  pair.className = 'time-pair';
+  if (d.closed) {
+    pair.innerHTML = '<span class="closed-lbl">סגור</span>';
+  } else {
+    pair.appendChild(timeSelect(d.open, onOpen));
+    const s = document.createElement('span'); s.className = 'time-sep'; s.textContent = '—';
+    pair.appendChild(s);
+    pair.appendChild(timeSelect(d.close, onClose));
+  }
+  row.appendChild(pair);
+  if (extraEl) row.appendChild(extraEl);
+  return row;
+}
+
+// ctx = { state, editor, hint, pv, raw } — מזהי DOM. שני עותקים חיים על המסף בו-זמנית:
+// הרכיב הראשי בחלק 1, והעותק שבתוך קוביית-ההנעה בחלק 3.
+function splitBtn(ctx) {
+  const st = ctx.state;
+  const btn = document.createElement('button');
+  btn.className = 'split-link';
+  btn.textContent = st.split ? '↩ לאחד' : 'יום-יום';
+  btn.title = st.split ? 'חזרה לשורה אחת לכל ימי החול' : 'שעות שונות לכל יום בנפרד';
+  btn.onclick = () => { st.split = !st.split; renderEditor(ctx); };
+  return btn;
+}
+
+function renderEditor(ctx) {
+  const state = ctx.state;
+  const box = document.getElementById(ctx.editor);
+  box.innerHTML = '';
+  if (ctx.hint) document.getElementById(ctx.hint).textContent = {
+    fixed: 'יום שכבוי = סגור. שישי ושבת נפרדים כי כמעט לכל עסק הם שונים.',
+    other: 'לעסקים שהשעות שלהם לא נכנסות לטבלה — כתבו במילים שלכם, ואנחנו נסדר את זה.',
+  }[state.mode];
+
+  if (state.mode === 'other') {
+    const wrap = document.createElement('div');
+    wrap.className = 'other-box';
+    wrap.innerHTML =
+      '<textarea placeholder="לדוגמה: זמין תמיד בוואטסאפ · פתוח 24 שעות חוץ משבת · לפי תיאום מראש">' +
+      state.otherText + '</textarea>' +
+      '<div class="approve-note"><span>⏳</span><span><b>מה שתכתבו כאן עובר אישור של הצוות</b> לפני שהוא מוצג באתר — ' +
+      'כדי שנוכל לנסח את זה אחיד ולוודא שהוא ברור ללקוחות.</span></div>';
+    wrap.querySelector('textarea').oninput = e => { state.otherText = e.target.value; renderPreview(ctx); };
+    box.appendChild(wrap);
+    renderPreview(ctx);
+    return;
+  }
+
+  if (!state.split) {
+    // שורת א׳–ה׳ המקובצת: בלי מתג (ר' dayRow), ועם כפתור הפיצול בשורה עצמה
+    const wd = state.days[0];
+    box.appendChild(dayRow('ראשון–חמישי', 'חמשת ימי החול', wd, null,
+      v => { for (let i=0;i<5;i++) state.days[i].open  = v; renderPreview(ctx); },
+      v => { for (let i=0;i<5;i++) state.days[i].close = v; renderPreview(ctx); },
+      splitBtn(ctx)));
+    [5,6].forEach(i => box.appendChild(dayRow(DAY_NAMES[i], '', state.days[i],
+      c => { state.days[i].closed = c; renderEditor(ctx); },
+      v => { state.days[i].open  = v; renderPreview(ctx); },
+      v => { state.days[i].close = v; renderPreview(ctx); })));
+  } else {
+    state.days.forEach((d, i) => box.appendChild(dayRow(DAY_NAMES[i], '', d,
+      c => { d.closed = c; renderEditor(ctx); },
+      v => { d.open  = v; renderPreview(ctx); },
+      v => { d.close = v; renderPreview(ctx); },
+      i === 0 ? splitBtn(ctx) : null)));
+  }
+  renderPreview(ctx);
+}
+
+// ── הפיכת המבנה למשפט קריא — מקבץ ימים רצופים בעלי אותן שעות ────────────────
+function hoursToText(st) {
+  if (st.mode === 'other') return st.otherText
+    ? esc(st.otherText) + ' <span style="opacity:.6;font-size:11.5px">(ממתין לאישור הצוות)</span>'
+    : '<span class="pv-empty">— כתבו את השעות בשדה משמאל —</span>';
+  const parts = [];
+  let i = 0;
+  while (i < 7) {
+    const d = st.days[i];
+    let j = i;
+    // שני ימים סגורים מתקבצים תמיד — השעות שנשמרו מאחוריהם לא רלוונטיות ולא מוצגות.
+    // בלי זה "ו סגור · ש סגור" לא היה מתאחד ל-"ו–ש סגור" רק כי ברירות-המחדל שלהם שונות.
+    const same = (a, b) => a.closed && b.closed ? true
+      : (a.closed === b.closed && a.open === b.open && a.close === b.close);
+    while (j + 1 < 7 && same(d, st.days[j+1])) j++;
+    const span = i === j ? DAY_SHORT[i] : DAY_SHORT[i] + '–' + DAY_SHORT[j];
+    parts.push(d.closed ? span + ' סגור'
+      : span + ' <b class="hrs">' + d.open + '–' + d.close + '</b>');
+    i = j + 1;
+  }
+  return parts.join(' · ');
+}
+
+function renderPreview(ctx) {
+  const state = ctx.state;
+  document.getElementById(ctx.pv).innerHTML = hoursToText(state);
+  if (!ctx.raw) return;
+  const payload = state.mode === 'fixed'
+    ? { hoursMode:'fixed', hoursDays: state.days }
+    : { hoursMode:'other', hoursOther: state.otherText };
+  document.getElementById(ctx.raw).textContent = 'נשמר ב-Firestore:\n' + JSON.stringify(payload, null, 1);
+}
+
+const MAIN = { state, editor:'editor', hint:'modeHint', pv:'pvLine', raw:'rawOut' };
+
+document.getElementById('modeRow').onclick = e => {
+  const b = e.target.closest('.mode-btn'); if (!b) return;
+  state.mode = b.dataset.mode;
+  [...document.getElementById('modeRow').querySelectorAll('.mode-btn')].forEach(x => x.classList.toggle('sel', x === b));
+  renderEditor(MAIN);
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  הממיר — אותו קוד בדיוק שירוץ על הנתונים האמיתיים
+// ══════════════════════════════════════════════════════════════════════════════
+const DAY_RE = '[אבגדהוש]';
+const SEP = '(?:\\s*[-–—]\\s*|\\s+עד\\s+)';
+
+function normTime(t) {
+  const m = String(t).trim().match(/^(\d{1,2})[:.]?(\d{2})?$/);
+  if (!m) return null;
+  const hh = +m[1], mm = m[2] ? +m[2] : 0;
+  if (hh > 24 || mm > 59 || (hh === 24 && mm > 0)) return null;
+  return String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
+}
+
+function convert(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return { kind:'empty' };
+  if (!/\d/.test(s)) return { kind:'prose' };
+  const out = [];
+  const timeRe = new RegExp('(\\d{1,2}(?:[:.]\\d{2})?)' + SEP + '(\\d{1,2}(?:[:.]\\d{2})?)', 'g');
+  let tm;
+  while ((tm = timeRe.exec(s))) {
+    const from = normTime(tm[1]), to = normTime(tm[2]);
+    if (!from || !to) continue;
+    const before = s.slice(0, tm.index);
+    const rng = before.match(new RegExp('(' + DAY_RE + ")['׳]?\\s*[-–—]\\s*(" + DAY_RE + ")['׳]?\\s*(?:בין\\s*)?(?:השעות\\s*)?[^\\d]*$"));
+    const one = before.match(new RegExp('(?:^|[\\s,])(' + DAY_RE + ")['׳]?\\s*(?:בין\\s*)?(?:השעות\\s*)?[^\\d]*$"));
+    let days = null;
+    if (rng) {
+      const a = DAY_SHORT.indexOf(rng[1]), b = DAY_SHORT.indexOf(rng[2]);
+      if (a >= 0 && b >= a) { days = []; for (let k = a; k <= b; k++) days.push(k); }
+    } else if (one) {
+      const k = DAY_SHORT.indexOf(one[1]);
+      if (k >= 0) days = [k];
+    }
+    out.push({ days, from, to });
+  }
+  if (!out.length) return { kind:'prose' };
+  // ── החלטת המשתמש (2026-08-20): "שעות בלי ימים = א-ה" ────────────────────────
+  // חל רק כשאין בטקסט שום רמז לימים אחרים. "בני שליחויות" מזכיר שישי ומוצ"ש
+  // במילים ולא באותיות — הנחת א-ה הייתה מוחקת לו מידע אמיתי, ולכן הוא מוחרג.
+  const mentionsMoreDays = /שיש[יא]|שבת|מוצ|שבתות/.test(s);
+  if (out.some(o => !o.days)) {
+    if (mentionsMoreDays) return { kind:'manual', parsed: out, why:'הטקסט מזכיר ימים נוספים במילים' };
+    out.forEach(o => { if (!o.days) o.days = [0,1,2,3,4]; });
+    return { kind:'assumed', parsed: out };
+  }
+  return { kind:'full', parsed: out };
+}
+
+function parsedToDays(parsed) {
+  const days = DAY_NAMES.map(() => ({ closed:true, open:'09:00', close:'18:00' }));
+  // (p.days || []) — במקרה 'manual' הימים נשארים null בכוונה, ר' convert()
+  (parsed || []).forEach(p => (p.days || []).forEach(i => {
+    if (i >= 0 && i < 7) days[i] = { closed:false, open:p.from, close:p.to };
+  }));
+  return days;
+}
+
+// ── טבלת ההמרה ───────────────────────────────────────────────────────────────
+const BIZ = window.__BIZ__ || [];
+const KIND_META = {
+  full:    { tag:'ok',   label:'יומר אוטומטית' },
+  assumed: { tag:'ok',   label:'יומר (א׳–ה׳)' },
+  manual:  { tag:'warn', label:'ידני' },
+  prose:   { tag:'warn', label:'ייכנס ל״אחר״' },
+  empty:   { tag:'none', label:'ריק' },
+};
+let filter = 'all';
+
+function renderTable() {
+  const rows = BIZ.map(b => ({ ...b, res: convert(b.h) }));
+  const counts = {};
+  rows.forEach(r => counts[r.res.kind] = (counts[r.res.kind]||0)+1);
+
+  document.getElementById('filters').innerHTML =
+    ['all','full','assumed','manual','prose','empty']
+      .filter(k => k === 'all' || counts[k])
+      .map(k => '<button data-f="'+k+'" class="'+(filter===k?'sel':'')+'">' +
+        (k==='all' ? 'הכל ('+rows.length+')' : KIND_META[k].label+' ('+counts[k]+')') + '</button>').join('');
+
+  const shown = rows.filter(r => filter === 'all' || r.res.kind === filter);
+  document.getElementById('convTable').innerHTML =
+    '<tr><th>עסק</th><th>סוג</th><th>מה מילא היום</th><th>תוצאה</th><th>מה ייווצר</th></tr>' +
+    shown.map(r => {
+      const m = KIND_META[r.res.kind];
+      const willConvert = r.res.kind === 'full' || r.res.kind === 'assumed';
+      const st = willConvert ? { mode:'fixed', days: parsedToDays(r.res.parsed) } : null;
+      const isPhysical = (r.t||[]).includes('physical');
+      let outCell = '—';
+      if (st) outCell = hoursToText(st);
+      else if (r.res.kind === 'manual') outCell = '<span class="mono">נשאר כפי שהוא + הערה — צריך מילוי ידני</span>';
+      else if (r.res.kind === 'prose') outCell = '<span class="mono">הטקסט נכנס כמו שהוא למצב ״אחר״ — ואתה מנסח</span>';
+      else if (r.res.kind === 'empty') outCell = isPhysical
+        ? '<span class="mono">ריק — הודעה שכדאי למלא</span>'
+        : '<span class="mono">ריק — בלי הודעה (לא פיזי)</span>';
+      return '<tr><td><b>' + r.n.slice(0,24) + '</b></td>' +
+        '<td class="mono">' + (r.t||[]).join(', ') + '</td>' +
+        '<td class="mono">' + (r.h ? r.h.slice(0,46) : '—') + '</td>' +
+        '<td><span class="tag ' + m.tag + '">' + m.label + '</span>' +
+          (r.res.why ? '<div class="mono" style="margin-top:3px">'+r.res.why+'</div>' : '') + '</td>' +
+        '<td>' + outCell + '</td></tr>';
+    }).join('');
+}
+
+document.getElementById('filters').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  filter = b.dataset.f; renderTable();
+};
+
+renderEditor(MAIN);
+renderTable();
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  קוביית ההנעה — עותק חי שני של אותו רכיב
+// ══════════════════════════════════════════════════════════════════════════════
+// דוגמה מייצגת: "שחר גייזר", שהמרנו לו "א - ה בין 09:30-18:00". כך הקובייה נראית לעסק
+// שההמרה אצלו הצליחה — הוא פותח, רואה שעות מוכנות, ורק מאשר או מתקן.
+const nudgeState = {
+  mode: 'fixed', split: false, otherText: '',
+  days: DAY_NAMES.map((_, i) => ({ closed: i >= 5, open: '09:30', close: '18:00' })),
+};
+const NUDGE = { state: nudgeState, editor:'nudgeEditor', hint:null, pv:'nudgePv', raw:null };
+renderEditor(NUDGE);
+
+// "מוצג עד" — חודש מהיום שבו בעל-העסק ראה את הקובייה בפעם הראשונה, לא מיום ההשקה.
+// בפועל: חותמת `hoursNoticeFirstSeen` שנכתבת בפתיחה הראשונה, וההשוואה נעשית מולה.
+const until = new Date(Date.now() + 30 * 864e5);
+document.getElementById('nudgeUntil').textContent =
+  until.toLocaleDateString('he-IL', { day:'numeric', month:'long' });
+</script>
+</body>
+</html>
