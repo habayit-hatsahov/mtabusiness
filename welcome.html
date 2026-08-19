@@ -1039,6 +1039,22 @@ window.previewCardGateBlock = function(id) {
   window.logEvent && window.logEvent('gateBlock', { bizId: id });
   openJoinModal();
 };
+// שלב ב' של תמונת השער — זהה ל-home.html (ר' ההסבר המלא שם). window.* מפורש כי ה-onload
+// שב-HTML לא רואה משתני-מודול (ר' CLAUDE.md).
+window.upgradeCardCover = function (img) {
+  const full = img.dataset.full;
+  if (!full) return;
+  delete img.dataset.full;
+  const pre = new Image();
+  pre.onload = () => { img.src = full; };
+  pre.src = full;
+};
+window.cardCoverFailed = function (img) {
+  const full = img.dataset.full;
+  if (full) { delete img.dataset.full; img.src = full; return; }
+  img.remove();
+};
+
 function previewCardHtml(biz) {
   // זהה בדיוק לשער ב-home.html (bizCardImage) — "יש תמונה" נקבע לפי השדה הראשי בלבד
   // (coverPhoto/logo), לא לפי ה-thumb. thumb משמש רק כ-src מועדף כשהשדה הראשי כבר קיים —
@@ -1046,7 +1062,9 @@ function previewCardHtml(biz) {
   // עדיין "יראה" תמונה כאן, בניגוד לאתר האמיתי.
   const hasCover = looksLikeImageUrl(biz.coverPhoto);
   const hasLogo  = looksLikeImageUrl(biz.logo);
-  const cover = hasCover ? (looksLikeImageUrl(biz.coverPhotoThumb) ? biz.coverPhotoThumb : biz.coverPhoto) : '';
+  const coverFull  = hasCover ? biz.coverPhoto : '';
+  const coverThumb = hasCover && looksLikeImageUrl(biz.coverPhotoThumb) ? biz.coverPhotoThumb : '';
+  const cover = coverThumb || coverFull;
   // הקובץ המלא ולא ה-thumb — ר' ההערה המלאה ב-bizCardImage ב-home.html (התג ב-46px/cover דורש
   // יותר פיקסלים ממה של-thumb 400px באיכות 0.75 יש, ולוגו סובל מדחיסת JPEG יותר מצילום)
   const logo  = hasLogo  ? biz.logo : '';
@@ -1062,8 +1080,10 @@ function previewCardHtml(biz) {
     : (biz.coverPhotoBg
       ? `<span class="biz-card-cover-fill" style="background:${biz.coverPhotoBg}"></span>`
       : `<img src="${cover}" alt="" aria-hidden="true" class="biz-card-cover-bg" loading="lazy" onerror="this.remove()"/>`);
+  // טעינה דו-שלבית לתמונת השער — זהה ל-upgradeCardCover ב-home.html, ר' ההסבר המלא שם
+  const coverUpgrade = coverThumb ? ` data-full="${coverFull}" onload="upgradeCardCover(this)"` : '';
   const imgHtml = hasCover
-    ? `${fillBg}<img src="${cover}" alt="${biz.name}" class="biz-card-cover-img${fitted ? ' fitted' : ''}"${coverStyle} loading="lazy" onerror="this.remove()"/>${hasLogo ? `<div class="biz-card-logo-badge${biz.logoFit === 'contain' ? ' fit' : ''}"><img src="${logo}" alt="" loading="lazy" onerror="this.parentElement.remove()"/></div>` : ''}`
+    ? `${fillBg}<img src="${cover}" alt="${biz.name}" class="biz-card-cover-img${fitted ? ' fitted' : ''}"${coverStyle}${coverUpgrade} loading="lazy" onerror="cardCoverFailed(this)"/>${hasLogo ? `<div class="biz-card-logo-badge${biz.logoFit === 'contain' ? ' fit' : ''}"><img src="${logo}" alt="" loading="lazy" onerror="this.parentElement.remove()"/></div>` : ''}`
     : `<div class="biz-logo">${biz.name}</div>`;
   const likeCount = (biz.likedBy || []).length;
   return `

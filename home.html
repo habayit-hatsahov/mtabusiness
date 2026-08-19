@@ -1754,7 +1754,9 @@ function bizCardImage(biz, eager) {
   // מעדיף את גרסת ה-thumbnail הקטנה (אם קיימת — עסקים שנשמרו/נערכו אחרי 2026-07-14) על פני התמונה
   // המלאה, שהיא בגודל מיועד לגיליון הפנימי, לא לכרטיס הזעיר בפיד. עסק ישן בלי thumb עדיין מציג את
   // התמונה המלאה כרגיל — אין תמונה שבורה, רק פחות מהיר עד שהעסק ישמור מחדש דרך business-dashboard.html.
-  const cover = hasCover ? (looksLikeImageUrl(biz.coverPhotoThumb) ? biz.coverPhotoThumb : biz.coverPhoto) : '';
+  const coverFull  = hasCover ? biz.coverPhoto : '';
+  const coverThumb = hasCover && looksLikeImageUrl(biz.coverPhotoThumb) ? biz.coverPhotoThumb : '';
+  const cover = coverThumb || coverFull;
   // ── הלוגו נלקח מהקובץ המלא, לא מה-thumb (2026-08-16) ───────────────────────────────────────
   // דווח: "הלוגו בציקן סטיישן ממש מטושטש". שני גורמים מצטברים: (1) ה-thumb נדחס ל-400px בצד
   // הארוך באיכות 0.75 — JPEG באיכות כזו הורס דווקא לוגואים (קצוות חדים/טקסט, לא צילום);
@@ -1791,7 +1793,9 @@ function bizCardImage(biz, eager) {
       : (biz.coverPhotoBg
         ? `<span class="biz-card-cover-fill" style="background:${biz.coverPhotoBg}"></span>`
         : `<img ${srcAttr(cover)} alt="" aria-hidden="true" class="biz-card-cover-bg" decoding="async" onerror="this.remove()" />`);
-    return `${fillBg}<img ${srcAttr(cover)} alt="${biz.name}" class="biz-card-cover-img${fitted ? ' fitted' : ''}"${imgStyle} decoding="async" onerror="this.remove()" />${badge}`;
+    // ── טעינה דו-שלבית לתמונת השער (2026-08-19) — ר' ההסבר המלא ב-upgradeCardCover למטה ──────
+    const coverUpgrade = coverThumb ? ` data-full="${coverFull}" onload="upgradeCardCover(this)"` : '';
+    return `${fillBg}<img ${srcAttr(cover)} alt="${biz.name}" class="biz-card-cover-img${fitted ? ' fitted' : ''}"${imgStyle}${coverUpgrade} decoding="async" onerror="cardCoverFailed(this)" />${badge}`;
   }
   return bizLogo({ ...biz, logo });
 }
@@ -1814,6 +1818,32 @@ window.upgradeCardLogo = function (img) {
   const pre = new Image();
   pre.onload = () => { img.src = full; };
   pre.src = full;
+};
+
+// ── שלב ב' של תמונת השער (2026-08-19) ────────────────────────────────────────────────────────
+// דווח בפועל: "התמונה של קסטן ומל ממש מטושטשת". הכרטיס הציג עד היום את ה-thumb **בלבד** —
+// 400px בצד הארוך, איכות 0.75 — ולא שדרג ממנו לעולם. כרטיס במובייל תופס כמעט את כל רוחב המסך
+// (~358px CSS), ובמסך DPR=3 זה ~1070 פיקסלים אמיתיים: מתיחה של פי 2.7 מהקובץ שיש. אצל KASTEN
+// (תמונה לאורך, 730×1280, שה-thumb שלה 228×400, ועם coverPhotoZoom=2.35) המתיחה הגיעה לפי 4.7.
+// אותו תיקון בדיוק כבר נעשה לתג-הלוגו (upgradeCardLogo) — כאן זו אותה תבנית, לאותה סיבה:
+// מציגים קודם את ה-thumb הקל (מופיע מיד, בלי מסגרת ריקה), ומחליפים לקובץ המלא (1280px) רק
+// כשהוא באמת מוכן ברקע — כך החדות מגיעה בלי שום רגע של תמונה חסרה.
+// הרקע המטושטש (.biz-card-cover-bg) נשאר בכוונה על ה-thumb — הוא מטושטש ב-30px ממילא.
+window.upgradeCardCover = function (img) {
+  const full = img.dataset.full;
+  if (!full) return;
+  delete img.dataset.full; // הגנה מלולאה — ה-onload יורה שוב אחרי ההחלפה עצמה
+  const pre = new Image();
+  pre.onload = () => { img.src = full; };
+  pre.src = full;
+};
+
+// כשל בטעינת תמונת השער: אם נכשל דווקא ה-thumb (שלב א') — הקובץ המלא עוד לא נוסה, ולא נכון
+// למחוק את התמונה בגללו. רק כשגם הקובץ שנשאר נכשל היא יורדת, בדיוק כמו קודם.
+window.cardCoverFailed = function (img) {
+  const full = img.dataset.full;
+  if (full) { delete img.dataset.full; img.src = full; return; }
+  img.remove();
 };
 
 function bizLogoFallbackEl(cat, name) {
