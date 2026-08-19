@@ -106,6 +106,12 @@
   // הכיסוי נעשה *רק* מהטיימרים (רשת-הביטחון), לא מכל קריאה ל-_hbHideSplash — אחרת ניווט-חזרה
   // רגיל היה מבזיק צהוב בכל פעם שברכת-השם מוכנה לפני שהכרטיסים הספיקו להיטען.
   window._hbCanReveal = function () {
+    // ── אין רשת בכלל (מצב-טיסה וכו') — לא חושפים, גם אם יש רשימת-עסקים מלאה במטמון ──────────
+    // דווח בפועל (2026-08-19, בדיקת-מכשיר): "הפלטפורמה נפתחת, יש את העסקים, רק לא מוצגות
+    // תמונות". וזה הגיוני — הרשימה עצמה שמורה ב-localStorage, אבל כל התמונות הן כתובות
+    // מרוחקות (Firebase Storage) שלא ייטענו בלי רשת. התוצאה היא בדיוק מה שהמשתמש רצה למנוע:
+    // פלטפורמה שנראית שבורה. מטמון-עסקים לבדו כבר לא מספיק לחשיפה — צריך גם חיבור.
+    if (navigator.onLine === false) return false;
     // השרת ענה במפורש "אין עסקים מאושרים" — זו אמת, לא תקלה, ואסור להיתקע על צהוב בגללה.
     if (window._hbServerSaidEmpty) return true;
     try { return typeof businesses !== 'undefined' && businesses.length > 0; } catch (e) { return false; }
@@ -135,7 +141,13 @@
   // עצמו (gstatic, cross-origin, לא במטמון ה-Service Worker) לא נטען בכלל: אז אין listener חי
   // שיתעורר לבד כשהחיבור יחזור, והדף היה נשאר צהוב עד רענון ידני.
   window.addEventListener('online', function () {
-    if (window._hbWaitingData && !window._hbCanReveal()) location.reload();
+    // תקועים על המסך הצהוב — טעינה מחדש נקייה. (התנאי אינו כולל _hbCanReveal: מרגע
+    // ש-navigator.onLine חזר ל-true הוא כבר מחזיר true, וזה בדיוק המצב שבו צריך לרענן.)
+    if (window._hbWaitingData) { location.reload(); return; }
+    // האפליקציה כבר חשופה, אבל בזמן הניתוק תמונות נכשלו — וה-onerror שלהן *הסיר אותן מה-DOM*.
+    // הן לא יחזרו לבד: renderSections מדלג על סקשן שהרכבו לא השתנה. דווח בפועל (2026-08-19):
+    // "החזרתי את הרשת והתמונות לא חזרו". לכן מרנדרים מחדש בכפייה ברגע שהחיבור חוזר.
+    if (window._hbForceRerender) window._hbForceRerender();
   });
 
   if (window._hbSplashFirstEntry) {
@@ -167,8 +179,13 @@
     // אין טעם לחכות שוב ל-pending.name (שאולי לעולם לא יסומן, למשל אם המודול כלל לא נטען).
     if (force) window._hbForcedOnce = true;
     if (window._hbForcedOnce) force = true;
-    // אין בכלל מה להציג — לא חושפים אפליקציה ריקה. הכיסוי עצמו רק מרשת-הביטחון (ר' ההסבר למעלה).
-    if (!window._hbCanReveal()) { if (force) window._hbCoverIfNoData(); return; }
+    // אין בכלל מה להציג — לא חושפים אפליקציה ריקה. הכיסוי (והכיתוב) עולים מרשת-הביטחון,
+    // או **מיד** כשהדפדפן כבר אומר לנו בוודאות שאין רשת: אין טעם להשאיר את המשתמש מול מסך
+    // צהוב אילם 10 שניות כשאנחנו כבר יודעים מה הבעיה ויכולים לומר לו אותה.
+    if (!window._hbCanReveal()) {
+      if (force || navigator.onLine === false) window._hbCoverIfNoData();
+      return;
+    }
     if (!window._hbSplashFirstEntry) {
       window._hbSplashReady = true;
       if (window._hbWaitingData) window._hbRemoveSplash(); // כיסוי-אין-נתונים שהוצג קודם — הנתונים הגיעו
@@ -1619,6 +1636,17 @@ window.loadFirebaseData = function(data, isPreview) {
 
 // עיגוני סקשנים — נקרא פעם אחת מהמודול (ר' FIREBASE LOADER למטה) ברגע שה-getDoc של
 // settings/sectionAnchors חוזר. אם businesses כבר נטענו, מרנדרים שוב כדי לשלב את הפינים.
+// ── רינדור-מחדש בכפייה של כל הסקשנים ──────────────────────────────────────────────────────
+// _writeSectionIfChanged מדלג במכוון על סקשן שהרכבו לא השתנה — מצוין לרוב המקרים, אבל הורס
+// התאוששות מניתוק-רשת: תמונה שנכשלה הוסרה מה-DOM ע"י ה-onerror שלה, ההרכב (רשימת המזהים)
+// נשאר זהה, ולכן שום רינדור עתידי לא יחזיר אותה. איפוס המפתחות מכריח כתיבה מחדש של ה-HTML,
+// כלומר תגיות <img> חדשות לגמרי שמנסות להיטען שוב. נקרא מאירוע 'online' (ר' מסך-הפתיחה).
+window._hbForceRerender = function () {
+  Object.keys(_lastRenderedOrder).forEach(function (k) { delete _lastRenderedOrder[k]; });
+  renderSections();
+  if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey);
+};
+
 window.loadSectionAnchors = function(rawDoc) {
   sectionAnchorsDoc = rawDoc || {};
   if (businesses.length) { renderSections(); if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey); }
