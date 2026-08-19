@@ -65,6 +65,19 @@
       transition: transform .55s cubic-bezier(.4,0,.2,1);
     }
     .hb-splash img { width: min(240px, 60vw); height: auto; }
+    /* ── הודעת-חיבור על המסך הצהוב (2026-08-19) ────────────────────────────────────────────
+       מוצגת *רק* כשאנחנו תקועים בלי נתונים (ר' _hbCoverIfNoData), אף פעם ברגע-המותג הרגיל.
+       position:absolute בכוונה — כך הלוגו נשאר ממורכז בדיוק באותו מקום, והופעת ההודעה לא
+       מזיזה אותו אפילו פיקסל אחד בכניסה הרגילה שבה היא לעולם לא תופיע. */
+    .hb-splash-note {
+      position: absolute; left: 0; right: 0; bottom: 22%;
+      padding: 0 28px; text-align: center;
+      font-family: 'Rubik', sans-serif; color: #0f1524;
+      opacity: 0; transition: opacity .35s ease;
+    }
+    .hb-splash-note.show { opacity: 1; }
+    .hb-splash-note b { display: block; font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
+    .hb-splash-note span { display: block; margin-top: 6px; font-size: 13px; font-weight: 500; opacity: .68; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -74,11 +87,57 @@
      באותו סשן לא יציג אותו שוב. נשאר על המסך מינימום ~1.5 שניות (גם אם התוכן מוכן מהר יותר,
      כדי שהרגע יורגש ולא יבזיק), ונעלם ברגע שהתוכן האמיתי מוכן מאחוריו — עם רשת ביטחון של 3.5
      שניות למקרה שהנתונים לעולם לא מגיעים (כשל רשת וכו'), כדי לא להשאיר את המשתמש תקוע. -->
-<div class="hb-splash" id="hbSplash"><img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/></div>
+<div class="hb-splash" id="hbSplash"><img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
+  <!-- הכיתוב מוסתר לגמרי (opacity:0) עד שמתברר שאין חיבור — ר' _hbCoverIfNoData -->
+  <div class="hb-splash-note" id="hbSplashNote">
+    <b>נראה שהחיבור לאינטרנט חלש</b>
+    <span>ברגע שהרשת תחזור — הכול ייטען מעצמו</span>
+  </div>
+</div>
 <script>
   window._hbSplashFirstEntry = !sessionStorage.getItem('hb_splash_shown');
   window._hbSplashReady = false;
   window._hbSplashPending = { cards: false, name: false };
+
+  // ── "עדיף מסך צהוב מאשר פלטפורמה בלי עסקים" (2026-08-19, החלטה מפורשת של המשתמש) ─────────
+  // אוהד שנכנס ורואה אינדקס בלי אף עסק לא חושב "אין לי רשת" — הוא חושב שהאתר שלנו שבור, וזו
+  // כבר בעיה מולו, לא רק תקלת-תצוגה. אין לנו מסך "אין חיבור" ייעודי, ולכן ההתנהגות היא: כל עוד
+  // אין בכלל מה להציג — המסך הצהוב נשאר (או חוזר), והאפליקציה נחשפת רק כשיש עסקים על המסך.
+  // הכיסוי נעשה *רק* מהטיימרים (רשת-הביטחון), לא מכל קריאה ל-_hbHideSplash — אחרת ניווט-חזרה
+  // רגיל היה מבזיק צהוב בכל פעם שברכת-השם מוכנה לפני שהכרטיסים הספיקו להיטען.
+  window._hbCanReveal = function () {
+    // השרת ענה במפורש "אין עסקים מאושרים" — זו אמת, לא תקלה, ואסור להיתקע על צהוב בגללה.
+    if (window._hbServerSaidEmpty) return true;
+    try { return typeof businesses !== 'undefined' && businesses.length > 0; } catch (e) { return false; }
+  };
+  window._hbRemoveSplash = function () {
+    window._hbWaitingData = false;
+    var note = document.getElementById('hbSplashNote');
+    if (note) note.classList.remove('show');
+    var el = document.getElementById('hbSplash');
+    if (!el) return;
+    el.classList.add('leaving');
+    setTimeout(function () { el.remove(); }, 560);
+  };
+  window._hbCoverIfNoData = function () {
+    if (window._hbCanReveal()) return;
+    var el = document.getElementById('hbSplash');
+    if (!el) return;
+    el.classList.remove('leaving');
+    el.classList.add('show');
+    // הכיתוב מופיע רק כאן — כלומר רק כשבאמת נתקענו בלי נתונים, אף פעם ברגע-המותג הרגיל.
+    // המסר מכוון להסביר לאוהד שזו בעיית-רשת אצלו ולא אתר שבור אצלנו.
+    var note = document.getElementById('hbSplashNote');
+    if (note) note.classList.add('show');
+    window._hbWaitingData = true;
+  };
+  // הרשת חזרה בזמן שאנחנו תקועים על המסך הצהוב — טוענים מחדש. נחוץ למקרה שה-SDK של Firebase
+  // עצמו (gstatic, cross-origin, לא במטמון ה-Service Worker) לא נטען בכלל: אז אין listener חי
+  // שיתעורר לבד כשהחיבור יחזור, והדף היה נשאר צהוב עד רענון ידני.
+  window.addEventListener('online', function () {
+    if (window._hbWaitingData && !window._hbCanReveal()) location.reload();
+  });
+
   if (window._hbSplashFirstEntry) {
     sessionStorage.setItem('hb_splash_shown', '1');
     window._hbSplashStart = Date.now();
@@ -92,8 +151,10 @@
     // למטה) — פחות סיכוי להגיע בכלל לרשת-הביטחון הזו.
     window._hbSplashTimer = setTimeout(function () { window._hbHideSplash(true); }, 10000);
   } else {
-    var hbSplashElSkip = document.getElementById('hbSplash');
-    if (hbSplashElSkip) hbSplashElSkip.remove();
+    // לא כניסה-ראשונה בטאב: אין רגע-מותג, אבל האלמנט *נשאר* ב-DOM. בלי .show הוא שקוף לגמרי
+    // ו-pointer-events:none — לא רואים ולא מרגישים אותו. הוא נשאר רק כדי שנוכל לכסות איתו אם
+    // יתברר שאין בכלל נתונים להציג (לדוגמה: חזרה לדף הבית בזמן שהחיבור נפל).
+    setTimeout(function () { window._hbCoverIfNoData(); }, 10000);
   }
   // נקרא per-חלק ('cards'/'name') ברגע שהוא מוכן בפועל — המסך נעלם רק כששני החלקים
   // מוכנים (או שרשת-הביטחון מתפרצת), כדי שלא ייחשף מצב-ביניים חצי-ריק.
@@ -102,7 +163,18 @@
     window._hbHideSplash();
   };
   window._hbHideSplash = function (force) {
-    if (window._hbSplashReady || !window._hbSplashFirstEntry) { window._hbSplashReady = true; return; }
+    // רשת-הביטחון כבר התפרצה פעם אחת (10s) אבל לא היה מה להציג — מרגע שהנתונים יגיעו סוף-סוף,
+    // אין טעם לחכות שוב ל-pending.name (שאולי לעולם לא יסומן, למשל אם המודול כלל לא נטען).
+    if (force) window._hbForcedOnce = true;
+    if (window._hbForcedOnce) force = true;
+    // אין בכלל מה להציג — לא חושפים אפליקציה ריקה. הכיסוי עצמו רק מרשת-הביטחון (ר' ההסבר למעלה).
+    if (!window._hbCanReveal()) { if (force) window._hbCoverIfNoData(); return; }
+    if (!window._hbSplashFirstEntry) {
+      window._hbSplashReady = true;
+      if (window._hbWaitingData) window._hbRemoveSplash(); // כיסוי-אין-נתונים שהוצג קודם — הנתונים הגיעו
+      return;
+    }
+    if (window._hbSplashReady) return;
     var p = window._hbSplashPending;
     if (!force && p && !(p.cards && p.name)) return;
     if (window._hbSplashHidePending) return;
@@ -120,10 +192,7 @@
     }
     window._hbSplashReady = true;
     clearTimeout(window._hbSplashTimer);
-    var el = document.getElementById('hbSplash');
-    if (!el) return;
-    el.classList.add('leaving');
-    setTimeout(function () { el.remove(); }, 560);
+    window._hbRemoveSplash();
   };
 </script>
 
@@ -252,6 +321,12 @@
         color: var(--ink); font-family: 'Rubik', sans-serif; font-size: 13.5px;
       }
       .nav-search input::placeholder { color: var(--ink-3); }
+      /* אותו סף-16px כמו בחיפוש-המובייל (ר’ ההסבר המלא ליד .search-bar input) — רלוונטי כאן
+         למסכי-מגע רחבים מ-640px (טאבלט/אייפד לרוחב) שכן מציגים את החיפוש שבהדר. בעכבר
+         (hover:hover) הגודל נשאר 13.5px ועיצוב-הדסקטופ לא משתנה בכלל. */
+      @media (hover: none) and (pointer: coarse) {
+        .nav-search input { font-size: 16px; }
+      }
       .hero .search-bar { display: none; } /* החיפוש הכפול במובייל לא מוצג כשיש חיפוש בהדר */
     }
 
@@ -272,10 +347,16 @@
       padding: 0 12px; height: 34px; gap: 8px;
       border: 1px solid var(--field-line);
     }
+    /* font-size 16px — חובה, לא בחירת-עיצוב. ב-iOS Safari כל <input> עם גופן קטן מ-16px גורם
+       לדפדפן להתקרב (auto-zoom) אוטומטית ברגע הפוקוס, והדף *נשאר* מוגדל גם אחרי הקלדה: כל
+       המסך גדל, הקטגוריות והכרטיסים נחתכים בצדדים, וסרגל-הכותרת יוצא מהמסך. בדיוק זה דווח
+       בפועל (2026-08-19) — "כשעושים חיפוש במובייל המסך נהיה לא פרופורציונלי וגדל". 16px הוא
+       הסף המדויק שמעליו iOS לא מתקרב בכלל. אין דרך אחרת אמינה לכבות את זה (maximum-scale
+       בתגית viewport מתעלמים ממנו ב-iOS מאז גרסה 10, וגם היה פוגע בזום ידני של המשתמש). */
     .search-bar input {
       background: none; border: none; outline: none;
       color: var(--ink); font-family: 'Rubik', sans-serif;
-      font-size: 13.5px; width: 100%;
+      font-size: 16px; width: 100%;
     }
     .search-bar input::placeholder { color: var(--ink-3); }
     .search-icon { color: var(--ink-3); font-size: 15px; }
@@ -1653,10 +1734,19 @@ function bizCardImage(biz, eager) {
   // לוגו רחב (wordmark) נחתך לריבוע-מרכזי קטן ואז *מוגדל* למעלה מהרזולוציה שלו. הקובץ המלא
   // (1280px, איכות 0.82) פותר את שניהם. הוא עדיין עובר lazy-load כרגיל ולא נטען לפני שצריך.
   const logo  = hasLogo  ? biz.logo : '';
+  // ── טעינה דו-שלבית לתג-הלוגו (2026-08-19) ─────────────────────────────────────────────────
+  // ההעדפה לקובץ-המלא (למעלה) פתרה טשטוש — אבל הביאה איתה תופעה חדשה שדווחה בפועל: "פתאום
+  // לא רואים את הלוגו של גולדה". הלוגו של גולדה שוקל 812KB (הכבד ביותר במאגר, פי 7 מה-thumb
+  // שלו) והתג הוא ריבוע *לבן* — כך שכל עוד הקובץ בדרך, מוצג ריבוע לבן ריק שנראה בדיוק כמו
+  // באג. בחיבור סלולרי איטי/מתנתק זה יכול להימשך שניות ארוכות, ובכרטיס "עסקים נבחרים" הוא
+  // אפילו לא lazy — הוא פשוט יושב שם לבן.
+  // הפתרון: מציגים קודם את ה-thumb הקל (מופיע כמעט מיד), ומחליפים לקובץ-המלא ברקע ברגע
+  // שהוא מוכן — החדות הסופית נשמרת בדיוק כפי שהייתה, בלי חלון-לבן באמצע.
+  const logoThumb = hasLogo && looksLikeImageUrl(biz.logoThumb) ? biz.logoThumb : '';
   const srcAttr = url => eager ? `src="${url}"` : `data-src="${url}"`;
   if (cover) {
     const badge = logo
-      ? `<div class="biz-card-logo-badge${biz.logoFit === 'contain' ? ' fit' : ''}"><img ${srcAttr(logo)} alt="${biz.name} — לוגו" decoding="async" onerror="this.parentElement.remove()" /></div>`
+      ? `<div class="biz-card-logo-badge${biz.logoFit === 'contain' ? ' fit' : ''}"><img ${srcAttr(logoThumb || logo)}${logoThumb ? ` data-full="${logo}" onload="upgradeCardLogo(this)"` : ''} alt="${biz.name} — לוגו" decoding="async" onerror="cardLogoFailed(this)" /></div>`
       : '';
     // מיקום-מיקוד נבחר ע"י מנהל באדמין (coverPhotoPosition, "X% Y%") — נגרר על תמונה-4:3 זהה
     // לכרטיס הזה בדיוק, ר' PROJECT_CONTEXT.md §184. ברירת-מחדל 50% 50% = התנהגות-object-position הרגילה.
@@ -1677,6 +1767,26 @@ function bizCardImage(biz, eager) {
   }
   return bizLogo({ ...biz, logo });
 }
+
+// כשל בטעינת תג-הלוגו: אם נכשל דווקא ה-thumb (שלב א’) — עוד יש קובץ-מלא לנסות, ולא נכון
+// למחוק את התג בגללו. רק כשגם הקובץ שנשאר נכשל התג יורד, בדיוק כמו קודם.
+window.cardLogoFailed = function (img) {
+  const full = img.dataset.full;
+  if (full) { delete img.dataset.full; img.src = full; return; }
+  img.parentElement?.remove();
+};
+
+// שלב ב’ של תג-הלוגו — ר’ ההסבר ב-bizCardImage. נקרא מ-onload של ה-thumb (גם כשהוא הגיע
+// דרך ה-lazy observer), מוריד את הקובץ-המלא ברקע ומחליף רק כשהוא באמת מוכן — כך אין רגע אחד
+// שבו התג ריק. window.* מפורש כי ה-onclick/onload ב-HTML לא רואה משתני-מודול (ר’ CLAUDE.md).
+window.upgradeCardLogo = function (img) {
+  const full = img.dataset.full;
+  if (!full) return;
+  delete img.dataset.full; // הגנה מלולאה — ה-onload יורה שוב אחרי ההחלפה עצמה
+  const pre = new Image();
+  pre.onload = () => { img.src = full; };
+  pre.src = full;
+};
 
 function bizLogoFallbackEl(cat, name) {
   const el = document.createElement('div');
@@ -3420,6 +3530,20 @@ function computeDiscountTypesLive(bizTypes, hasCode, redeemMode) {
 }
 
 onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')), snap => {
+  // ── snapshot ריק שהגיע מהמטמון-המקומי (offline) — מתעלמים ממנו לגמרי ─────────────────────
+  // firebase-config.js מפעיל persistentLocalCache, ולכן onSnapshot יורה מיד גם בלי רשת, עם מה
+  // שיש במטמון-המכשיר. אם המטמון עדיין ריק (התקנה טרייה / פינוי-אחסון של iOS / מחיקת נתוני-אתר)
+  // ואין רשת באותו רגע, ה-snapshot הראשון חוזר ריק — ואז, לפני התיקון, קרו שני דברים רעים:
+  // (1) כל הסקשנים הוצגו כ"בקרוב..." והמסך נראה כאילו אין בכלל עסקים — בדיוק מה שדווח
+  //     ב-2026-08-19 ("נכנסתי לאפליקציה ולא היו בכלל עסקים בסקשנים");
+  // (2) גרוע יותר — ה-[] הריק נכתב מיד ל-hb_businesses_cache ודרס שם רשימה תקינה, כך שגם
+  //     הפתיחה *הבאה* התחילה ריקה, גם כשהרשת כבר חזרה. מצב תקוע שמתקן את עצמו רק ברגע
+  //     שהשרת עונה בפועל.
+  // snapshot ריק שהגיע *מהשרת* (metadata.fromCache=false) הוא מידע אמיתי — ממשיך כרגיל.
+  if (snap.empty && snap.metadata.fromCache) return;
+  // הגענו לכאן עם snapshot ריק = השרת עצמו אמר "אין עסקים מאושרים". זו אמת ולא תקלת-רשת, ולכן
+  // מותר לחשוף את הדף (ר' _hbCanReveal ליד מסך-הפתיחה) במקום להיתקע על המסך הצהוב לנצח.
+  if (snap.empty) window._hbServerSaidEmpty = true;
   const data = snap.docs.map(doc => {
     const b = doc.data();
     const bizTypes = b.bizTypes || [];
@@ -3477,7 +3601,9 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
     };
   });
   window.loadFirebaseData(data);
-  try { localStorage.setItem('hb_businesses_cache', JSON.stringify(data)); } catch (e) {}
+  // רק רשימה לא-ריקה נשמרת — ר’ ההסבר למעלה: [] שנדרס על מטמון תקין השאיר את האפליקציה
+  // ריקה גם בפתיחה הבאה. אין מצב שבו כדאי לשמור "אין עסקים" כתמונת-פתיחה למחר.
+  if (data.length) { try { localStorage.setItem('hb_businesses_cache', JSON.stringify(data)); } catch (e) {} }
 }, err => {
   console.error('Firebase load error:', err);
 });
@@ -3498,12 +3624,20 @@ getDoc(doc(db, 'settings', 'sectionAnchors'))
 // נשאר כרגע כרשת-ביטחון נוספת (עד ~3.1s תוספת מרבית, לא מתנגש עם רשת-הביטחון של ה-splash, 10s).
 async function fetchMemberDocWithRetry(memberId) {
   const delays = [0, 400, 900, 1800];
-  let snap;
+  let snap = null;
   for (let i = 0; i < delays.length; i++) {
     if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
-    snap = await getDocFromServer(doc(db, 'members', memberId));
-    if (snap.exists()) return snap;
+    // try/catch סביב כל ניסיון — getDocFromServer *זורק* כשאין רשת (הוא בכוונה לא נוגע במטמון),
+    // וקודם לכן הזריקה הראשונה יצאה מהפונקציה כולה: שלושת הניסיונות החוזרים מעולם לא רצו על
+    // כשל-רשת, רק על "המסמך עוד לא קיים". חיבור שנופל לרגע = ברכה ריקה לצמיתות באותה טעינה.
+    try {
+      snap = await getDocFromServer(doc(db, 'members', memberId));
+      if (snap.exists()) return snap;
+    } catch (e) { /* לניסיון הבא, ואם כולם נכשלו — נופלים למטמון המקומי למטה */ }
   }
+  // אין רשת בכלל (כל הניסיונות זרקו) — getDoc רגיל *כן* רשאי לענות מהמטמון המתמיד המקומי,
+  // וזה עדיף על ברכה ריקה. מחזיר null רק אם גם המטמון לא יודע כלום — הקורא ערוך לזה.
+  if (!snap) { try { snap = await getDoc(doc(db, 'members', memberId)); } catch (e) {} }
   return snap;
 }
 
@@ -3543,10 +3677,12 @@ await new Promise(resolve => {
   try {
     const memberId = auth.currentUser?.uid;
     const snap = await fetchMemberDocWithRetry(memberId);
-    const data = snap.exists() ? snap.data() : {};
+    const data = (snap && snap.exists()) ? snap.data() : {};
     const firstName = data.firstName || '';
     const el = document.getElementById('heroUserName');
-    if (el) el.textContent = firstName || 'חבר';
+    // "חבר" הוא רק גיבוי לכשאין *שום* שם — הוא לא דורס שם אמיתי שכבר הוצג מה-cache המקומי
+    // (ר' ההצגה המיידית למעלה). אחרת ניתוק-רשת רגעי היה מוריד את "שלום, רמי" ל"שלום, חבר".
+    if (el && (firstName || !el.textContent.trim())) el.textContent = firstName || 'חבר';
     // עדכון ה-cache המקומי לביקור הבא (ר' ההצגה המיידית לעיל, לפני ה-auth guard)
     if (firstName) {
       try { localStorage.setItem('hb_greeting_cache', JSON.stringify({ uid: memberId, firstName })); } catch (e) {}
@@ -3555,7 +3691,7 @@ await new Promise(resolve => {
     // כאן, אז אין שאילתה נוספת. כתוב באותו פורמט בדיוק שprofile.html קורא (renderIdentity/hb_profile_cache),
     // כדי שמעבר מ-home.html ל"פרטים אישיים" יראה הכל מיד מה-cache, בלי לחכות לשליפה משלו. בקשה מפורשת
     // של המשתמש: "זה צריך לעלות ברקע שאני נמצא באינדקס".
-    if (snap.exists()) {
+    if (snap && snap.exists()) {
       try {
         localStorage.setItem('hb_profile_cache', JSON.stringify({
           uid: memberId,
