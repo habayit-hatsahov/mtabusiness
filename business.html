@@ -342,6 +342,14 @@
     .upload-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .preview-thumb { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; border: 1px solid var(--card-border); }
     .upload-zone.req-error { border-color: var(--danger); background: rgba(180,53,28,.06); animation: shakeX .4s; }
+    /* ── משוב על התמונה שנבחרה (2026-08-19) ─────────────────────────────────────────────────
+       הכרטיס באינדקס הוא 4:3 קשיח וכל תמונה ביחס אחר נחתכת בו — 24 מתוך 25 העסקים הראשונים
+       נחתכו, חלקם מעל 40%. השורה הזו **לא חוסמת שליחה**: היא רק אומרת לבעל-העסק מה יקרה
+       לתמונה שלו לפני שהוא שולח אותה, כשעוד קל לו להחליף. */
+    .img-check { font-size: 11.5px; line-height: 1.45; margin-top: 6px; padding: 7px 9px; border-radius: 10px; display: none; }
+    .img-check.show { display: block; }
+    .img-check.ok   { background: rgba(46,125,79,.09);  border: 1px solid rgba(46,125,79,.28);  color: #22603C; }
+    .img-check.warn { background: rgba(180,53,28,.07);  border: 1px solid rgba(180,53,28,.25);  color: var(--danger); }
     .upload-remove-btn {
       position: absolute; top: 6px; left: 6px; z-index: 3;
       width: 24px; height: 24px; border-radius: 50%;
@@ -1110,6 +1118,7 @@
               <div class="upload-sub">המקום / המוצר / השירות</div>
             </div>
           </div>
+          <div class="img-check" id="coverImgCheck"></div>
         </div>
         <div class="form-group">
           <label>לוגו <span class="opt">(אם יש לכם)</span></label>
@@ -1124,6 +1133,16 @@
         </div>
       </div>
       <div style="font-size:12px;color:var(--text-sm);margin-top:12px;">התמונה המייצגת היא הדבר הראשון שאוהד רואה מכם — משתדלים מאוד להעלות אחת אמיתית. הלוגו רק אם יש לכם, לא חובה. בלי תמונה מייצגת נציג ללקוחות תמונה כללית עד שתעלו משלכם.</div>
+
+      <div class="cat-hint" style="margin-top:12px;">
+        <strong>איזו תמונה לשלוח?</strong> הכרטיס באינדקס הוא <strong>מלבן לרוחב ביחס 4:3</strong>, וכל תמונה ביחס אחר נחתכת כדי להיכנס אליו.
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;">
+          <div>📐 <strong>יחס 4:3, לרוחב</strong> — תמונה ביחס הזה נכנסת שלמה, בלי שנחתוך ממנה כלום.</div>
+          <div>🔍 <strong>לפחות 1280×960</strong> — מומלץ 1600×1200 ומעלה. תמונה קטנה מזה תיראה מטושטשת.</div>
+          <div>📱 <strong>לא דרך וואטסאפ</strong> — שליחה בוואטסאפ מקטינה ודוחסת את התמונה. שלחו את הקובץ המקורי מהגלריה.</div>
+          <div>✏️ <strong>שולחים לוגו או פלייר?</strong> גם אותו ב-4:3, ובלי טקסט או מספר טלפון בקצוות — הקצוות הם מה שנחתך.</div>
+        </div>
+      </div>
       </div>
 
       <!-- גלריה -->
@@ -1947,7 +1966,7 @@
           if (effectiveCoverFile) {
             const [mainFile, thumbFile] = await Promise.all([
               compressToFile(effectiveCoverFile, 1280, 0.82, effectiveCoverFile.name),
-              compressToFile(effectiveCoverFile, 400, 0.75, 'thumb_' + effectiveCoverFile.name),
+              compressToFile(effectiveCoverFile, 640, 0.80, 'thumb_' + effectiveCoverFile.name),
             ]).catch(() => [effectiveCoverFile, effectiveCoverFile]);
             form.append('cover', mainFile);
             form.append('coverThumb', thumbFile);
@@ -2692,9 +2711,62 @@
       <div class="upload-sub">מומלץ ריבוע, רק אם יש</div>`;
   }
 
+
+  // ── בדיקת התמונה המייצגת מול מסגרת הכרטיס (2026-08-19) ──────────────────────────────────
+  // הכרטיס באינדקס הוא 4:3 קשיח (.biz-card-img), ו-object-fit:cover חותך כל תמונה ביחס אחר.
+  // נמדד על 25 העסקים הראשונים: רק אחד (דנון ובניו, 1280×960) נכנס בלי חיתוך; חמש תמונות
+  // לאורך איבדו 44% ואחת 57%. הבדיקה הזו **לא חוסמת שליחה** — היא רק אומרת מה יקרה, כשעוד
+  // קל להחליף קובץ. הסף 12% נבחר כדי ש-3:2 (יחס נפוץ במצלמות טלפון, 11% חיתוך) יעבור בשקט.
+  const COVER_RATIO = 4 / 3, COVER_MIN_W = 1280, COVER_CROP_TOLERANCE = 12;
+
+  function inspectCoverImage(file) {
+    return new Promise(resolve => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const w = img.naturalWidth, h = img.naturalHeight, ratio = w / h;
+        const kept = ratio > COVER_RATIO ? COVER_RATIO / ratio : ratio / COVER_RATIO;
+        // "קטנה מדי" נמדד על מה שנשאר **אחרי** החיתוך ל-4:3, לא על הקובץ המקורי — אלה שני
+        // דברים שונים. דוגמה אמיתית (MEL): 1280×721 נשמע גדול מספיק, אבל החיתוך ל-4:3 לוקח
+        // ממנה רק 961 פיקסלים רוחב, וזה מה שנמתח על הכרטיס. מדידה על w לבדה הייתה מפספסת את
+        // זה, ומדידה על w **וגם** h הייתה מדווחת "קטנה" על כל תמונה רחבה — כפילות מבלבלת
+        // עם הערת-היחס שממילא כבר מוצגת.
+        const effW = ratio > COVER_RATIO ? Math.round(h * COVER_RATIO) : w;
+        resolve({ w, h, ratio, effW, cropPct: Math.round((1 - kept) * 100), tooSmall: effW < COVER_MIN_W });
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
+
+  function coverCheckMessage(info) {
+    if (!info) return null;
+    const dim = info.w + '×' + info.h;
+    const notes = [];
+    if (info.cropPct >= COVER_CROP_TOLERANCE) {
+      notes.push(info.ratio < 1
+        ? 'התמונה <b>לאורך</b> (' + dim + ') — בכרטיס ייחתך ממנה כ-<b>' + info.cropPct + '%</b>, מלמעלה ומלמטה.'
+        : 'היחס של התמונה (' + dim + ') אינו 4:3 — בכרטיס ייחתך ממנה כ-<b>' + info.cropPct + '%</b>.');
+    }
+    if (info.tooSmall) notes.push('התמונה <b>קטנה מדי</b> לכרטיס (' + dim + ') — היא תיראה מטושטשת. מומלץ <b>1600×1200</b> ומעלה.');
+    if (!notes.length) return { level: 'ok', html: '<b>תמונה מצוינת</b> — ' + dim + ', נכנסת לכרטיס כמעט בלי חיתוך.' };
+    return { level: 'warn', html: notes.join('<br>') + '<br>אפשר לשלוח כך, אבל תמונה <b>ביחס 4:3 ובגודל 1600×1200</b> תיראה הרבה יותר טוב.' };
+  }
+
+  function renderCoverCheck(elId, info) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const msg = coverCheckMessage(info);
+    if (!msg) { el.className = 'img-check'; el.innerHTML = ''; return; }
+    el.className = 'img-check show ' + msg.level;
+    el.innerHTML = msg.html;
+  }
+
   function previewCoverPhoto(input) {
     const file = input.files[0];
     if (!file) return;
+    inspectCoverImage(file).then(info => renderCoverCheck('coverImgCheck', info));
     const reader = new FileReader();
     reader.onload = e => {
       document.getElementById('coverPhotoPreviewWrap').innerHTML = `
@@ -2708,6 +2780,7 @@
 
   function removeCoverPhoto() {
     document.getElementById('bizCoverPhotoFile').value = '';
+    renderCoverCheck('coverImgCheck', null);
     document.getElementById('coverPhotoPreviewWrap').innerHTML = `
       <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5-5 5 5"></path><path d="M12 5v13"></path></svg></div>
       <div class="upload-text">העלה תמונה</div>
@@ -2802,7 +2875,10 @@
           }
           const canvas = document.createElement('canvas');
           canvas.width = width; canvas.height = height;
-          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, width, height);
           resolve(canvas.toDataURL('image/webp', quality));
         };
         img.onerror = reject;
