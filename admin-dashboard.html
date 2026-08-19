@@ -418,6 +418,45 @@ body {
 .cover-pos-box .biz-card-logo-badge.fit { width: auto; box-sizing: border-box; min-width: 34px; max-width: 83px; padding: 2px; }
 .cover-pos-box .biz-card-logo-badge.fit img { width: auto; height: 100%; max-width: 79px; object-fit: contain; }
 
+/* ── אזור העלאה: "+" לחיץ + גרירת קבצים (2026-08-19) ────────────────────────────────────────
+   מחליף את הצמד המסורבל "בחירת קובץ" + כפתור "העלה" שהיה כאן. ההעלאה מתחילה ברגע שנבחר קובץ,
+   בלי לחיצה שנייה. .drag-over כבר היה מוגדר ב-CSS מזמן בלי ששום קוד הפעיל אותו — עכשיו הוא
+   באמת בשימוש (ר' mediaDragOver/mediaDrop). */
+.media-drop {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 46px; padding: 8px 14px; border-radius: 10px;
+  border: 1.5px dashed var(--border-md); background: var(--nav-bg);
+  color: var(--text-sm); font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .12s; text-align: center;
+}
+.media-drop:hover { border-color: var(--accent); color: var(--accent); background: rgba(10,42,102,.04); }
+.media-drop.drag-over { border-color: var(--green); background: rgba(22,163,74,.08); color: var(--green); }
+.media-drop input[type="file"] { display: none; }
+.media-drop-plus { font-size: 19px; line-height: 1; font-weight: 400; }
+
+/* ── בורר תג-הלוגו: שתי תצוגות אמיתיות במקום שני כפתורי-טקסט (2026-08-19) ────────────────────
+   דווח: "יש שם 2 כפתורים מילוי התג והלוגו כולו, זה אף פעם לא עושה משהו". הערך **כן** נשמר
+   ומגיע ל-home.html (biz.logoFit) — אבל שני כפתורי-טקסט לא הראו מה הם עושים, וההבדל בתג של
+   46px לא היה גלוי בלי להסתכל על האינדקס עצמו. עכשיו כל אפשרות מציגה את הלוגו האמיתי בגודל
+   התג האמיתי, בדיוק כמו שהוא ייראה בכרטיס — הבחירה נעשית בעין, לא לפי ניחוש. */
+.logo-fit-row { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+.logo-fit-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  padding: 10px 16px; border-radius: 10px; background: var(--nav-bg);
+  border: 1.5px solid var(--border); cursor: pointer;
+  color: var(--text-sm); font-size: 11px; font-weight: 600; transition: all .12s;
+}
+.logo-fit-opt:hover { border-color: var(--accent); }
+.logo-fit-opt.sel { border-color: var(--green); color: var(--green); background: rgba(22,163,74,.07); }
+.logo-fit-badge {
+  width: 46px; height: 46px; border-radius: 12px; background: #fff;
+  box-shadow: 0 2px 8px rgba(15,23,42,.22);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none;
+}
+.logo-fit-badge img { width: 100%; height: 100%; object-fit: cover; }
+.logo-fit-badge.fit { width: auto; box-sizing: border-box; min-width: 46px; max-width: 112px; padding: 3px; }
+.logo-fit-badge.fit img { width: auto; height: 100%; max-width: 106px; object-fit: contain; }
+
 /* תמונה-קטנה עם כפתור-הורדה צמוד + לייטבוקס בלחיצה (במקום טאב חדש) — זהה בהיגיון ל-admin-businesses.html
    (מוריד דרך פרוקסי כדי לעקוף חסימת CORS על fetch ישיר ל-Firebase Storage). המשתמש דחה במפורש את
    הגרסה הקודמת (<a target="_blank">) — רצה הורדה ישירה מהתמונה עצמה, בלי לצאת מהעמוד בכלל.
@@ -1837,7 +1876,10 @@ function compressImageFile(file, maxDim = 1280, quality = 0.82) {
         }
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/webp', quality));
       };
       img.onerror = reject;
@@ -1853,7 +1895,7 @@ async function uploadImageWithThumb(file, basePath) {
   try {
     const [mainFile, thumbFile] = await Promise.all([
       compressToFile(file, 1280, 0.82, file.name),
-      compressToFile(file, 400, 0.75, 'thumb_' + file.name),
+      compressToFile(file, 640, 0.80, 'thumb_' + file.name),
     ]);
     const [url, thumbUrl] = await Promise.all([
       uploadFile(mainFile, basePath),
@@ -2073,7 +2115,7 @@ function applyCoverPos(id) {
 }
 // logoFit — '' (ברירת מחדל, cover) או 'contain'. ר' ההערה ליד .biz-card-logo-badge.fit ב-home.html
 window.setBizLogoFit = async function(id, fit) {
-  await saveSectionUpdates(id, { logoFit: fit || '' });
+  await saveSectionUpdates(id, { logoFit: fit || '' }, { reopenStep: 5 });
 };
 window.setCoverBg = function(id, color) {
   bizCoverBgEdits[id] = color || '';
@@ -2139,7 +2181,7 @@ window.saveCoverPos = async function(id) {
     // null מנקה את השדה ומחזיר את הכרטיס להתנהגות "מילוי" — לא משאיר ערך ישן תקוע
     coverPhotoZoom: zoom ? Number(zoom.toFixed(2)) : null,
     coverPhotoBg: zoom ? (getCoverBg(id) || '') : '',
-  });
+  }, { reopenStep: 5 });
 };
 
 // ── תמונה-קטנה עם כפתור-הורדה צמוד + לייטבוקס בלחיצה — זהה בהיגיון ל-admin-businesses.html
@@ -5181,6 +5223,30 @@ window.toggleBizSecEdit = function(id, n) {
   if (view) view.style.display = opening ? 'none' : '';
 };
 
+// ── גרירת קבצים לאזור ההעלאה (2026-08-19) ───────────────────────────────────────────────────
+// המחלקה .media-drop.drag-over הייתה מוגדרת ב-CSS מזמן בלי ששום קוד יפעיל אותה — פיצ'ר שתוכנן
+// ולא הושלם. כאן הוא נסגר: אותן שלוש פונקציות העלאה, רק שהקבצים מגיעים מ-dataTransfer.
+// מסננים ל-image/* בלבד כדי שגרירת PDF/וידאו בטעות לא תיפול על השרת עם קובץ שאי אפשר לדחוס.
+window.mediaDragOver = function(e, el) { e.preventDefault(); el.classList.add('drag-over'); };
+window.mediaDragLeave = function(el) { el.classList.remove('drag-over'); };
+window.mediaDrop = function(e, el, id, kind) {
+  e.preventDefault();
+  el.classList.remove('drag-over');
+  const files = [...(e.dataTransfer?.files || [])].filter(f => f.type.startsWith('image/'));
+  if (!files.length) { alert('אפשר לגרור לכאן קבצי תמונה בלבד'); return; }
+  if (kind === 'logo') uploadBizLogo(id, files);
+  else if (kind === 'cover') uploadBizCover(id, files);
+  else uploadBizGalleryPhoto(id, files);
+};
+
+// פותח מחדש שלב שנסגר ע"י renderMain אחרי שמירה (ר' opts.reopenStep ב-saveSectionUpdates).
+// toggleBizSecEdit הוא **טוגל** — קוראים לו רק כשהשלב באמת סגור, אחרת היינו סוגרים אותו בדיוק
+// במקרה שבו רצינו להשאיר אותו פתוח.
+window.reopenBizSecEdit = function(id, n) {
+  const edit = document.getElementById('secEdit' + n + '_' + id);
+  if (edit && !edit.classList.contains('open')) toggleBizSecEdit(id, n);
+};
+
 // ── סימון "נסקר" לכל שלב — בקרה ידנית של המנהל על עסק pending לפני אישור, לא קשור לבריאות פרופיל ──
 // סימון "נסקר" — עכשיו שדה אמיתי (businesses/{id}.reviewedSections, מפה {1:bool,...}) — נכתב מיד בכל טוגל
 window.toggleSecReviewed = async function(id, n, checked) {
@@ -5239,7 +5305,12 @@ function renderMainPreserveScroll() {
   if (!refreshOpenDetailPanel()) renderMain();
 }
 
-async function saveSectionUpdates(id, updates) {
+// ── opts.reopenStep (2026-08-19) ────────────────────────────────────────────────────────────
+// renderMainPreserveScroll בסוף הפונקציה בונה מחדש את כל כרטיס-העסק **במצב-תצוגה** — כלומר כל
+// שמירה בודדת סוגרת למנהל את הטופס שהוא עומד באמצעו. בשלב המדיה זה כאב אמיתי שדווח בפועל
+// ("לא נוח ולא יעיל, אני לא משתמש בזה כמעט"): כל העלאת תמונה דרשה לפתוח את השלב מחדש.
+// opts הוא אופציונלי לגמרי — 15 הקריאות האחרות בקובץ לא מעבירות אותו ומתנהגות בדיוק כמו קודם.
+async function saveSectionUpdates(id, updates, opts) {
   const b = findBiz(id);
   const beforeVals = {};
   if (b) Object.keys(updates).forEach(k => { beforeVals[k] = b[k]; });
@@ -5282,6 +5353,7 @@ async function saveSectionUpdates(id, updates) {
     }
     hideSaving(true);
     renderMainPreserveScroll();
+    if (opts && opts.reopenStep) reopenBizSecEdit(id, opts.reopenStep);
   } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בשמירה: ' + e.message); }
 }
 
@@ -6848,24 +6920,34 @@ function mediaRealEditHtml(b) {
   return `
     <div class="media-manager" id="media_${b.id}">
       <div class="approve-field-label">לוגו</div>
-      <div class="media-slot-row">
+      <div class="media-slot-row" style="align-items:center">
         ${b.logo ? mediaThumbHtml(b.logo, 'logo.png', 'width:56px;height:56px;border-radius:6px;overflow:hidden', 'לוגו', 'contain') : ''}
-        <input type="file" accept="image/*" id="bizLogoFile_${b.id}" style="flex:1">
-        <button class="act-btn approve tiny" onclick="uploadBizLogo('${b.id}')">⬆️ העלה</button>
+        <label class="media-drop" ondragover="mediaDragOver(event,this)" ondragleave="mediaDragLeave(this)" ondrop="mediaDrop(event,this,'${b.id}','logo')">
+          <input type="file" accept="image/*" onchange="uploadBizLogo('${b.id}', this.files)">
+          <span class="media-drop-plus">＋</span><span>${b.logo ? 'החלפת הלוגו' : 'הוספת לוגו'}</span>
+        </label>
         ${b.logo ? `<button class="act-btn reject tiny" onclick="removeBizLogo('${b.id}')">🗑️ הסר</button>` : ''}
       </div>
       ${b.logo ? `
-      <div class="media-slot-row" style="margin-top:8px">
-        <span class="cover-zoom-val" style="min-width:auto">תג הלוגו בכרטיס:</span>
-        <button type="button" class="act-btn tiny${b.logoFit === 'contain' ? '' : ' approve'}" onclick="setBizLogoFit('${b.id}','')">מילוי התג</button>
-        <button type="button" class="act-btn tiny${b.logoFit === 'contain' ? ' approve' : ''}" onclick="setBizLogoFit('${b.id}','contain')">הלוגו כולו</button>
+      <div class="approve-field-label" style="margin-top:12px">איך הלוגו יושב בתג שעל הכרטיס</div>
+      <div class="logo-fit-row">
+        <button type="button" class="logo-fit-opt${b.logoFit === 'contain' ? '' : ' sel'}" onclick="setBizLogoFit('${b.id}','')">
+          <span class="logo-fit-badge"><img src="${esc(bizImageViewUrl(b.logo))}" alt=""></span>
+          <span>ממלא את התג</span>
+        </button>
+        <button type="button" class="logo-fit-opt${b.logoFit === 'contain' ? ' sel' : ''}" onclick="setBizLogoFit('${b.id}','contain')">
+          <span class="logo-fit-badge fit"><img src="${esc(bizImageViewUrl(b.logo))}" alt=""></span>
+          <span>הלוגו כולו</span>
+        </button>
       </div>
-      <div class="media-slot-note">"מילוי התג" מתאים ללוגו <b>אטום וריבועי</b> — הוא ממלא את הריבוע בלי טבעת לבנה מסביב. "הלוגו כולו" מתאים ללוגו <b>רחב או עם רקע שקוף</b> — התג מתרחב לפי צורת הלוגו ולא חותך לו את הצדדים. אפשר לראות את התוצאה בתצוגה המקדימה למטה.</div>` : ''}
+      <div class="media-slot-note">כל אפשרות מציגה את התג <b>בגודל האמיתי שלו בכרטיס</b> — בוחרים לפי מה שנראה טוב. "ממלא את התג" מתאים ללוגו ריבועי ואטום; "הלוגו כולו" ללוגו רחב או עם רקע שקוף, שאחרת נחתך בצדדים.</div>` : ''}
       <div class="approve-field-label" style="margin-top:14px">תמונה מייצגת</div>
       <div class="media-slot-row">
         ${b.coverPhoto ? mediaThumbHtml(b.coverPhotoThumb || b.coverPhoto, 'cover.jpg', 'width:56px;height:56px;border-radius:6px;overflow:hidden', b.name) : ''}
-        <input type="file" accept="image/*" id="bizCoverFile_${b.id}" style="flex:1">
-        <button class="act-btn approve tiny" onclick="uploadBizCover('${b.id}')">⬆️ העלה</button>
+        <label class="media-drop" ondragover="mediaDragOver(event,this)" ondragleave="mediaDragLeave(this)" ondrop="mediaDrop(event,this,'${b.id}','cover')">
+          <input type="file" accept="image/*" onchange="uploadBizCover('${b.id}', this.files)">
+          <span class="media-drop-plus">＋</span><span>${b.coverPhoto ? 'החלפת התמונה' : 'הוספת תמונה מייצגת'}</span>
+        </label>
         ${b.coverPhoto ? `<button class="act-btn reject tiny" onclick="removeBizCover('${b.id}')">🗑️ הסר</button>` : ''}
       </div>
       ${b.coverPhoto ? (() => {
@@ -6904,9 +6986,12 @@ function mediaRealEditHtml(b) {
       <div class="approve-field-label" style="margin-top:14px">גלריית תמונות</div>
       ${photosHtml}
       <div class="media-slot-row" style="margin-top:6px">
-        <input type="file" accept="image/*" id="bizGalleryFile_${b.id}" style="flex:1">
-        <button class="act-btn approve tiny" onclick="uploadBizGalleryPhoto('${b.id}')">⬆️ הוסף לגלריה</button>
+        <label class="media-drop" ondragover="mediaDragOver(event,this)" ondragleave="mediaDragLeave(this)" ondrop="mediaDrop(event,this,'${b.id}','gallery')">
+          <input type="file" accept="image/*" multiple onchange="uploadBizGalleryPhoto('${b.id}', this.files)">
+          <span class="media-drop-plus">＋</span><span>הוספת תמונות לגלריה</span>
+        </label>
       </div>
+      <div class="media-slot-note">אפשר לבחור <b>כמה תמונות בבת אחת</b>, או לגרור אותן לכאן ישירות. ההעלאה מתחילה מיד, והשלב נשאר פתוח.</div>
       <div class="approve-field-label" style="margin-top:14px">סרטונים (קישור YouTube/Vimeo)</div>
       ${videosHtml}
       <div class="media-slot-row" style="margin-top:6px">
@@ -6919,46 +7004,70 @@ function mediaRealEditHtml(b) {
 // showSaving/hideSaving כאן — לפני saveSectionUpdates, כי דחיסה+העלאה ל-Storage הם החלק
 // האיטי-באמת (כמה שניות על תמונה מהטלפון), לא ה-updateDoc עצמו. try/catch נוסף כאן במפורש —
 // לפני התיקון, כשל בהעלאה (רשת/Storage) לא היה נתפס בשום מקום ולא מציג שום שגיאה למנהל בכלל.
-window.uploadBizLogo = async function(id) {
-  const file = document.getElementById('bizLogoFile_' + id)?.files[0];
-  if (!file) { alert('נא לבחור קובץ קודם'); return; }
+// ── העלאה בבחירה אחת (2026-08-19) ───────────────────────────────────────────────────────────
+// היה: <input type="file"> + כפתור "⬆️ העלה" נפרד — כלומר בחירה, ואז לחיצה שנייה. דווח כמסורבל.
+// עכשיו שלוש פונקציות ההעלאה מקבלות FileList ישירות (מ-onchange של ה-input שבתוך אזור ה-"+",
+// או מגרירת קבצים — ר' mediaDrop), ומתחילות מיד. אין יותר כפתור-העלאה.
+window.uploadBizLogo = async function(id, files) {
+  const file = files && files[0];
+  if (!file) return;
   showSaving('מעלה לוגו...');
   try {
     const { url, thumbUrl } = await uploadImageWithThumb(file, `businesses/${id}/logo_${Date.now()}`);
-    await saveSectionUpdates(id, { logo: url, logoThumb: thumbUrl });
+    await saveSectionUpdates(id, { logo: url, logoThumb: thumbUrl }, { reopenStep: 5 });
   } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בהעלאת הלוגו: ' + e.message); }
 };
-window.removeBizLogo = async function(id) { await saveSectionUpdates(id, { logo: '', logoThumb: '' }); };
-window.uploadBizCover = async function(id) {
-  const file = document.getElementById('bizCoverFile_' + id)?.files[0];
-  if (!file) { alert('נא לבחור קובץ קודם'); return; }
+window.removeBizLogo = async function(id) { await saveSectionUpdates(id, { logo: '', logoThumb: '' }, { reopenStep: 5 }); };
+window.uploadBizCover = async function(id, files) {
+  const file = files && files[0];
+  if (!file) return;
   showSaving('מעלה תמונה מייצגת...');
   try {
     const { url, thumbUrl } = await uploadImageWithThumb(file, `businesses/${id}/coverPhoto_${Date.now()}`);
-    await saveSectionUpdates(id, { coverPhoto: url, coverPhotoThumb: thumbUrl });
+    await saveSectionUpdates(id, { coverPhoto: url, coverPhotoThumb: thumbUrl }, { reopenStep: 5 });
   } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בהעלאת התמונה: ' + e.message); }
 };
-window.removeBizCover = async function(id) { await saveSectionUpdates(id, { coverPhoto: '', coverPhotoThumb: '' }); };
-window.uploadBizGalleryPhoto = async function(id) {
-  const file = document.getElementById('bizGalleryFile_' + id)?.files[0];
-  if (!file) { alert('נא לבחור קובץ קודם'); return; }
-  showSaving('מעלה תמונה לגלריה...');
-  try {
+window.removeBizCover = async function(id) { await saveSectionUpdates(id, { coverPhoto: '', coverPhotoThumb: '' }, { reopenStep: 5 }); };
+// ── העלאה מרובה לגלריה (2026-08-19) ─────────────────────────────────────────────────────────
+// היה: קובץ אחד בכל לחיצה, ואחריו הטופס נסגר — כלומר 5 תמונות = 5 סבבים של פתח/בחר/העלה/פתח.
+// עכשיו: בוחרים הכל בבת אחת, מעלים בסדרה עם התקדמות גלויה, ושמירה **אחת** בסוף.
+// חשוב: כשל באמצע לא מפיל את מה שכבר עלה — התמונות שהצליחו נשמרות, והשגיאה מדווחת בנפרד.
+// (העלאה סדרתית ולא מקבילה בכוונה — דחיסה בקנבס + Storage במקביל על 5 קבצים מטלפון הפילה
+// דפדפנים בעבר, וגם ההתקדמות הייתה נעשית חסרת-משמעות.)
+window.uploadBizGalleryPhoto = async function(id, fileList) {
+  const files = [...(fileList || [])];
+  if (!files.length) return;
   const b = findBiz(id);
-  // דחיסה לפני העלאה (כמו קאבר/לוגו) — בלי thumbnail נפרד, זהה ל-business.html בהרשמה (גלריה לא
-  // מוצגת בכרטיס הפיד עצמו, רק בתוך דף העסק) — קובץ מקורי מהטלפון יכול להיות כמה MB, קריטי לביצועים.
-  let uploadFileObj = file;
-  try { uploadFileObj = await compressToFile(file, 1280, 0.82, file.name); }
-  catch (e) { console.error('⚠️ image compression failed, falling back to original file:', e); }
-  const url = await uploadFile(uploadFileObj, `businesses/${id}/gallery_${Date.now()}`);
-  const photos = [...(b.photos || []), { url, name: file.name }];
-  await saveSectionUpdates(id, { photos });
-  } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בהעלאת התמונה: ' + e.message); }
+  const added = [];
+  let uploadErr = null;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      showSaving(files.length > 1 ? `מעלה תמונה ${i + 1} מתוך ${files.length}...` : 'מעלה תמונה לגלריה...');
+      // דחיסה לפני העלאה (כמו קאבר/לוגו) — בלי thumbnail נפרד, זהה ל-business.html בהרשמה (גלריה לא
+      // מוצגת בכרטיס הפיד עצמו, רק בתוך דף העסק) — קובץ מקורי מהטלפון יכול להיות כמה MB.
+      let uploadFileObj = files[i];
+      try { uploadFileObj = await compressToFile(files[i], 1280, 0.82, files[i].name); }
+      catch (e) { console.error('⚠️ image compression failed, falling back to original file:', e); }
+      const url = await uploadFile(uploadFileObj, `businesses/${id}/gallery_${Date.now()}_${i}`);
+      added.push({ url, name: files[i].name });
+    }
+  } catch (e) { console.error(e); uploadErr = e; }
+
+  if (added.length) {
+    await saveSectionUpdates(id, { photos: [...(b.photos || []), ...added] }, { reopenStep: 5 });
+  } else {
+    hideSaving(false);
+  }
+  if (uploadErr) {
+    alert(added.length
+      ? `${added.length} מתוך ${files.length} התמונות הועלו ונשמרו. השאר נכשלו: ${uploadErr.message}`
+      : 'שגיאה בהעלאת התמונה: ' + uploadErr.message);
+  }
 };
 window.removeBizGalleryPhoto = async function(id, idx) {
   const b = findBiz(id);
   const photos = (b.photos || []).filter((_, i) => i !== idx);
-  await saveSectionUpdates(id, { photos });
+  await saveSectionUpdates(id, { photos }, { reopenStep: 5 });
 };
 window.addBizVideo = async function(id) {
   const url = document.getElementById('bizVideoUrl_' + id)?.value.trim();
@@ -6966,12 +7075,12 @@ window.addBizVideo = async function(id) {
   if (!url) { alert('נא להזין קישור'); return; }
   const b = findBiz(id);
   const videos = [...(b.videos || []), { url, label }];
-  await saveSectionUpdates(id, { videos });
+  await saveSectionUpdates(id, { videos }, { reopenStep: 5 });
 };
 window.removeBizVideo = async function(id, idx) {
   const b = findBiz(id);
   const videos = (b.videos || []).filter((_, i) => i !== idx);
-  await saveSectionUpdates(id, { videos });
+  await saveSectionUpdates(id, { videos }, { reopenStep: 5 });
 };
 
 // מגבלת-האמת היא רוחב פיקסלים בפועל (ensureFitsCard), לא ספירת תווים — התווית מציגה "מתאים/חורג"
@@ -7426,6 +7535,9 @@ DIFF_GROUPS.forEach(g => {
 // ר' PROJECT_CONTEXT.md §199), discountText=כותרת נגזרת אוטומטית (AI) מ-discountTextFull.
 const DIFF_FIELD_EXCLUDE = new Set([
   'cat', 'city', 'address', 'discountTypes', 'coverPhotoThumb', 'logoThumb', 'discountBuilder', 'discountText',
+  // changeDecisions = יומן החלטות-המנהל שמוצג לבעל-העסק (ר' withChangeDecision) — נכתב על ידינו,
+  // לא נשלח על ידו, ואין לו שום משמעות כשורת-דיף.
+  'changeDecisions',
 ]);
 
 // ── מקור-אמת יחיד ל"מה בעל-העסק באמת הגיש" (2026-08-17) ────────────────────────────────────
@@ -7478,6 +7590,34 @@ window.togglePendingEditMode = function(id) {
   renderMain();
 };
 
+// ── תיעוד החלטת-המנהל על מסמך העסק (2026-08-20) ─────────────────────────────────────────────
+// בקשה מפורשת: "לאחר שמנהל מבצע פעולה של אישור או דחיה שתפתח להם קוביה חדשה על הפעולה שבוצעה...
+// יש להראות לו מה אושר ומה נדחה מהבקשות שלו, באיזה סטטוס כל אחת."
+//
+// למה לא להסתפק ב-logActivity שכבר נקרא כאן: הוא כותב ל-תת-אוסף `businesses/{id}/activity`,
+// שהוא יומן-ניהול פנימי — בעל-העסק לא קורא אותו כלל (וגם לא אמור; יש שם החלטות ותיעוד שאינם
+// מיועדים לו). `changeDecisions` יושב על מסמך העסק עצמו, שבעל-העסק ממילא מאזין לו ב-onSnapshot,
+// ומכיל בדיוק את מה שצריך להציג לו ולא יותר.
+//
+// ניקוי: הרשומות מסוננות ל-DECISION_KEEP_DAYS **בכל כתיבה**, כך שהמערך לא גדל לנצח ואין צורך
+// במשימת-תחזוקה נפרדת. 30 יום בצד השרת מול 14 יום שמוצגים בדשבורד — מרווח מכוון, כדי שבעל-עסק
+// שלא נכנס שבועיים עדיין ימצא את ההחלטה אם ייכנס באיחור קטן.
+const DECISION_KEEP_DAYS = 30;
+function withChangeDecision(b, field, decision, extra) {
+  const cutoff = Date.now() - DECISION_KEEP_DAYS * 864e5;
+  const prev = (b.changeDecisions || []).filter(d => {
+    const t = Date.parse(d && d.at || '');
+    return t && t > cutoff;
+  });
+  return [...prev, {
+    field,
+    label: DIFF_FIELD_LABELS_MOCK[field] || field,
+    decision,                                  // 'approved' | 'rejected'
+    at: new Date().toISOString(),              // ISO ולא serverTimestamp — Firestore אוסר sentinel בתוך מערך
+    ...(extra || {}),
+  }];
+}
+
 // ── שיפוט-מהיר פר-שדה (שלב 2ב, §7 במפרט) — מחליפות את approveChanges/rejectChanges הגורפות בממשק
 // (אלה נשארות למעלה כ-fallback פנימי, לא מקושרות יותר לשום כפתור). כל שדה נמחק בנפרד מ-pendingChanges
 // (לא כל המפה במכה אחת) — valueOverride כי המנהל יכול לתקן את הערך לפני האישור (השדה הוא קלט, לא טקסט).
@@ -7500,6 +7640,7 @@ window.approveChangeField = async function(id, field, valueOverride) {
   const kept = prunedPending(b, newPending);
   updates.pendingChanges = kept;
   if (!kept) updates.pendingChangesAt = null;
+  updates.changeDecisions = withChangeDecision(b, field, 'approved');
   try {
     await updateDoc(doc(db, 'businesses', id), updates);
     Object.assign(b, updates);
@@ -7524,6 +7665,7 @@ window.rejectChangeField = async function(id, field) {
   const kept = prunedPending(b, newPending);   // ר' ההערה ב-approveChangeField
   const updates = { pendingChanges: kept };
   if (!kept) updates.pendingChangesAt = null;
+  updates.changeDecisions = withChangeDecision(b, field, 'rejected');
   try {
     await updateDoc(doc(db, 'businesses', id), updates);
     Object.assign(b, updates);
