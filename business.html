@@ -14,6 +14,8 @@
   <script src="categories.js"></script>
   <script src="email-domain-check.js"></script>
   <script src="phone-check.js"></script>
+  <script src="hours.js"></script>
+  <script src="social-links.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     ::-webkit-scrollbar { width: 6px; }
@@ -147,7 +149,6 @@
        נכללים: לחיצה עליהם פותחת בורר-קבצים ולא מקלדת, ולכן הם לא מפעילים זום. */
     @media (hover: none) and (pointer: coarse) {
       input, select, textarea { font-size: 16px; }
-      .hours-inputs input[type="time"] { font-size: 16px; }
     }
     textarea { height: auto; padding: 12px 13px; resize: vertical; min-height: 90px; }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -284,20 +285,6 @@
     .weekly-followup.show { display: block; }
     .weekly-followup strong { color: #fff; }
 
-    /* ── HOURS (בלוקים לא-מחוברים בפועל ל-DOM — נשארים בקוד כרשת-ביטחון, ר' toggleHours ב-JS) ── */
-    .hours-toggle-row {
-      display: flex; align-items: center; justify-content: space-between;
-      background: var(--input-bg); border: 1px solid var(--input-border);
-      border-radius: var(--r-field); padding: 14px 16px; margin-bottom: 12px; cursor: pointer;
-    }
-    .hours-toggle-row label { margin: 0; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text); }
-    .hours-table { display: none; }
-    .hours-row { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .day-label { font-size: 13px; font-weight: 700; color: var(--text); }
-    .hours-inputs { display: flex; align-items: center; gap: 8px; }
-    .hours-inputs input[type="time"] { flex: 1; padding: 8px 10px; font-size: 13px; border-radius: 8px; border: 1px solid var(--input-border); }
-    .hours-inputs span { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
-    .closed-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); font-weight: 600; cursor: pointer; flex-shrink: 0; }
     .closed-label input { width: auto; padding: 0; border: none; background: none; width: 14px; height: 14px; }
 
     /* ── CONTACT SECTION / הערות-מידע כלליות ── */
@@ -916,9 +903,10 @@
       <div class="section-subtitle">שעות פעילות <span style="font-weight:400;color:var(--text-muted);font-size:12px">(אופציונלי)</span></div>
 
       <div class="form-group">
-        <label for="bizHours">שעות פעילות</label>
-        <input type="text" id="bizHours" placeholder='למשל: א׳-ה׳ 09:00-19:00, ו׳ 09:00-14:00, שבת סגור' />
-        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">כתוב בחופשיות — הנוסח שנוח לך</div>
+        <label>שעות פעילות</label>
+        <!-- הרכיב נבנה ב-initHoursEditor (hours.js) אחרי טעינת הדף. עד 2026-08-20 (§230)
+             זה היה input טקסט חופשי יחיד, ומשם הגיעו 11 פורמטים שונים ל-37 העסקים. -->
+        <div id="bizHoursBox"></div>
       </div>
       </div>
 
@@ -929,18 +917,25 @@
       <div class="form-group">
         <label for="bizWebsite">אתר אינטרנט</label>
         <div class="social-input"><span class="social-prefix"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"></path></svg></span><input type="url" id="bizWebsite" placeholder="www.example.co.il" inputmode="url" /></div>
+        <div class="field-error" id="err-bizWebsite"></div>
       </div>
 
       <div class="form-row">
         <div class="form-group">
           <label for="bizInstagram">אינסטגרם</label>
           <div class="social-input"><span class="social-prefix">@</span><input type="text" id="bizInstagram" placeholder="username" /></div>
+          <div class="field-error" id="err-bizInstagram"></div>
         </div>
         <div class="form-group">
           <label for="bizFacebook">פייסבוק</label>
-          <div class="social-input"><span class="social-prefix">fb/</span><input type="text" id="bizFacebook" placeholder="pagename" /></div>
+          <div class="social-input"><span class="social-prefix">fb/</span><input type="text" id="bizFacebook" placeholder="pagename או קישור מלא" /></div>
+          <div class="field-error" id="err-bizFacebook"></div>
         </div>
       </div>
+      <!-- §232 — עד 2026-08-20 שלושת השדות האלה היו טקסט חופשי בלי שום ולידציה, ובעלי עסקים
+           מילאו בהם את *שם* העמוד ("ספורט אנד פול", "Mel cake&more"). התוצאה הייתה קישור מת
+           בכרטיס שאיש לא ראה — גם לא בעל העסק, שהתצוגה המקדימה שלו לא פותחת קישורים. -->
+      <div class="cat-hint" style="margin-top:0;">שם המשתמש (<span dir="ltr">username</span>) או הקישור המלא — <strong>לא שם העמוד בעברית</strong>. הכי בטוח: להיכנס לעמוד ולהעתיק את הכתובת משורת הדפדפן.</div>
       <div class="cat-hint" style="margin-top:0;"><strong>שווה למלא אינסטגרם.</strong> אנחנו מתייגים ומפרסמים עסקים מהאינדקס בעמוד שלנו — בלי חשבון, אי אפשר לתייג אתכם.</div>
       </div>
 
@@ -1509,6 +1504,19 @@
     return true;
   }
 
+  // ── §232 — ולידציית שדות-קישור (אתר/אינסטגרם/פייסבוק) דרך social-links.js ──
+  // fail-open: אם המודול לא נטען, כל ערך נחשב תקין — כשל בטעינת קובץ סטטי לא יחסום הרשמה
+  // (אותו עיקרון כמו הגארד על hours.js ב-business-dashboard.html).
+  function linkFieldOk(kind, value) {
+    if (!window.HB_LINKS) return true;
+    return window.HB_LINKS.normalize(kind, value).ok;
+  }
+  function linkFieldMsg(kind) {
+    return kind === 'website'
+      ? 'נא להזין כתובת אתר תקינה, למשל www.example.co.il — או להשאיר ריק'
+      : 'נא להזין שם משתמש או קישור מלא, לא את שם העמוד — או להשאיר ריק';
+  }
+
   // ── שומר-מייל: שגיאת-כתיב בדומיין ─────────────────────────────────────────────────────────
   // כל עוד לא תוקן ולא אושר במפורש "הכתובת שלי נכונה" — לא עוברים את השלב. זו לא קפדנות לשמה:
   // כתובת עם דומיין שגוי היא הכשל היחיד במערכת שלא מייצר שום שגיאה בשום מקום — Brevo מקבל את
@@ -1645,8 +1653,20 @@
 
     if (selectedBizTypes.has('online')) {
       const ws = document.getElementById('bizWebsiteStep2').value.trim();
-      ok = vf('bizWebsiteStep2', ws.length >= 5) && ok;
+      // §232 — לא רק אורך. "אלמוג פט בגוגל" (14 תווים) עבר את הבדיקה הישנה ונשמר כ-websiteOnline,
+      // והפך ל-href שבור בכרטיס. עכשיו נדרשת כתובת שבאמת אפשר לגזור ממנה קישור.
+      ok = vf('bizWebsiteStep2', ws.length >= 5 && linkFieldOk('website', ws),
+              'נא להזין כתובת אתר תקינה, למשל www.example.co.il') && ok;
     }
+
+    // ── §232 — נוכחות דיגיטלית: ריק = תקין (אופציונלי), אבל ערך שהוקלד חייב להיות גזיר
+    // לקישור אמיתי. אותה תבנית בדיוק כמו ולידציית ה-WhatsApp למעלה. fail-open אם
+    // social-links.js לא נטען — כשל בטעינת קובץ סטטי לא יחסום הרשמה.
+    [['bizWebsite', 'website'], ['bizInstagram', 'instagram'], ['bizFacebook', 'facebook']]
+      .forEach(([id, kind]) => {
+        const v = (document.getElementById(id).value || '').trim();
+        ok = vf(id, !v || linkFieldOk(kind, v), linkFieldMsg(kind)) && ok;
+      });
 
     if (selectedBizTypes.has('pro')) {
       const regionGrid = document.getElementById('regionGrid');
@@ -1856,8 +1876,8 @@
       wantsBusinessOfWeek: wantsBusinessOfWeek,
       wantsBenefitOfWeek:  wantsBenefitOfWeek,
 
-      // שעות + רשתות
-      hours:            document.getElementById('bizHours').value.trim(),
+      // שעות (§230 — hoursMode/hoursDays/hoursOther + hours מסונכרן) + רשתות
+      ...hoursPayload(),
       instagram:        document.getElementById('bizInstagram').value.trim(),
       facebook:         document.getElementById('bizFacebook').value.trim(),
       website:          document.getElementById('bizWebsite').value.trim(),
@@ -2600,8 +2620,9 @@
     if (wa) html += sr('WhatsApp', wa);
     const svcEmail = v('bizServiceEmail');
     if (svcEmail) html += sr('מייל שירות', svcEmail);
-    const hours = v('bizHours');
-    if (hours) html += sr('שעות', hours);
+    // toPlain ולא המחרוזת הגולמית — sr() עושה esc, וזו שורת-סיכום טקסטואלית
+    const hoursTxt = window.HB_HOURS ? HB_HOURS.toPlain(hoursPayload()) : (hoursPayload().hours || '');
+    if (hoursTxt) html += sr('שעות', hoursTxt);
     const ig = v('bizInstagram');
     if (ig) html += sr('אינסטגרם', ig);
     const fb = v('bizFacebook');
@@ -2647,37 +2668,34 @@
     document.getElementById('summaryContent').innerHTML = html;
   }
 
-  // ── HOURS ──
-  const DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+  // ── HOURS ── (§230)
+  // מקור-האמת של השדה הוא הרכיב, לא ה-DOM: hoursEditor.getValue() מחזיר את המטען המלא
+  // (hoursMode/hoursDays/hoursOther + hours המסונכרן) בכל מקום שבו נשמר/מוצג.
+  let hoursEditor = null;
 
-  function buildHoursRows() {
-    const container = document.getElementById('hoursRows');
-    if (!container) return;
-    container.innerHTML = DAYS.map((day, i) => `
-      <div class="hours-row">
-        <div class="day-label">${day}</div>
-        <div class="hours-inputs" id="hrs-inputs-${i}">
-          <input type="time" id="hrs-from-${i}" value="09:00" />
-          <span>עד</span>
-          <input type="time" id="hrs-to-${i}" value="18:00" />
-          <label class="closed-label">
-            <input type="checkbox" id="hrs-closed-${i}" onchange="toggleDayClosed(${i})" />
-            סגור
-          </label>
-        </div>
-      </div>
-    `).join('');
+  function initHoursEditor(seedFrom) {
+    const box = document.getElementById('bizHoursBox');
+    if (!box) return;
+    // fail-open אם hours.js לא נטען — כשל בטעינת קובץ סטטי לא יחסום הרשמה, זהה לגארד
+    // על phone-check.js/checkEmailDomain. נופלים חזרה לשדה הטקסט החופשי הישן.
+    if (!window.HB_HOURS) {
+      console.warn('hours.js לא נטען — שעות הפעילות נערכות כטקסט חופשי');
+      box.innerHTML = '<input type="text" id="bizHours" placeholder="למשל: א׳-ה׳ 09:00-19:00, ו׳ 09:00-14:00" />';
+      if (seedFrom && seedFrom.hours) document.getElementById('bizHours').value = seedFrom.hours;
+      return;
+    }
+    hoursEditor = HB_HOURS.mountEditor(box, seedFrom || {});
   }
 
-  function toggleDayClosed(i) {
-    const closed = document.getElementById('hrs-closed-' + i).checked;
-    const from   = document.getElementById('hrs-from-' + i);
-    const to     = document.getElementById('hrs-to-' + i);
-    from.disabled = closed;
-    to.disabled   = closed;
-    from.style.opacity = closed ? '.35' : '1';
-    to.style.opacity   = closed ? '.35' : '1';
+  // המטען שנשמר/מוצג. הנפילה-לאחור קוראת מה-input שinitHoursEditor בנה במצב הזה.
+  function hoursPayload() {
+    if (hoursEditor) return hoursEditor.getValue();
+    const el = document.getElementById('bizHours');
+    return { hours: el ? el.value.trim() : '' };
   }
+
+  initHoursEditor(null);
+
 
   // ── CLEAR ERRORS ON INPUT ──
   document.querySelectorAll('input, select, textarea').forEach(el => {
@@ -2921,7 +2939,7 @@
 
       wantsBusinessOfWeek, wantsBenefitOfWeek,
 
-      hours: v('bizHours'), instagram: v('bizInstagram'), facebook: v('bizFacebook'),
+      ...hoursPayload(), instagram: v('bizInstagram'), facebook: v('bizFacebook'),
       website: v('bizWebsite'), note: v('bizNote'),
       videos: getVideos(),
     };
@@ -3050,7 +3068,7 @@
     if (d.wantsBusinessOfWeek) toggleWeekly('wow');
     if (d.wantsBenefitOfWeek) toggleWeekly('wob');
 
-    document.getElementById('bizHours').value     = d.hours     || '';
+    initHoursEditor(d);   // seed מהטיוטה — כולל המבנה אם כבר נשמר, ואם לא אז מה-hours שנרשם
     document.getElementById('bizInstagram').value = d.instagram || '';
     document.getElementById('bizFacebook').value  = d.facebook  || '';
     document.getElementById('bizWebsite').value   = d.website   || '';
@@ -3096,7 +3114,7 @@
     selectAlsoCat, selectBizType, selectCat, selectPrimaryTag, selectRedeemMode,
     selectRedeemModeN, selectSecondTag, setSubscriber, setBizFanSport, setBizVerifiedSport,
     showStep, toggleAlsoCat,
-    toggleDayClosed, toggleDiscount, toggleNoTagFits, toggleRegion, toggleWeekly,
+    toggleDiscount, toggleNoTagFits, toggleRegion, toggleWeekly,
     updateMinCounter,
   });
 

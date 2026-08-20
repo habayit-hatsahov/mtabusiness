@@ -1409,6 +1409,8 @@
 <!-- script קלאסי-חוסם, בכוונה כאן ולא ב-head (ר' ההערה שם) — צריך לסיים להיטען לפני ה-script
      המיידי למטה שמשתמש ב-window.CATEGORIES, אבל אין שום סיבה שיעכב את מה שמעל (המסך הצהוב). -->
 <script src="categories.js"></script>
+<script src="hours.js"></script>
+<script src="social-links.js"></script>
 <div class="cats-section">
   <div class="cats-scroll" id="catPills">
     <div class="cat-item active" onclick="filterCat('all',this)">
@@ -2770,6 +2772,17 @@ function bizWaLink(raw, text) {
 }
 
 // אייקוני-קו Lucide (2px) לכל התוכן בגיליון העסק — בלי אמוג'ים
+// ── שעות פעילות: מקור-אמת יחיד לתצוגה ──────────────────────────────────────────────────────
+// מעדיף את המבנה (hoursMode/hoursDays/hoursOther) ונופל למחרוזת hours הישנה, ובשני המקרים
+// עוטף את טווחי-השעות בבידוד-כיוון — אותו תפקיד בדיוק כמו .ltr-value לטלפון/מייל/אתר.
+// nl: 'br' (הגיליון הפנימי) | 'dot' (שורת הסניף) — איך לטפל בשורות חדשות בטקסט חופשי.
+// fail-open אם hours.js לא נטען: מציגים את הטקסט הישן כמו קודם, בלי הגנת-הכיוון.
+function hoursHtml(b, nl) {
+  if (window.HB_HOURS) return HB_HOURS.toHtml(b, { nl: nl });
+  const t = (b && b.hours || '').trim();
+  return t ? t.replace(/\n/g, nl === 'dot' ? ' · ' : '<br>') : '';
+}
+
 const SHEET_ICONS = {
   clock:     '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>',
   phone:     '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.1a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>',
@@ -2954,27 +2967,39 @@ function openBiz(id) {
   // פרטים — כל שורה עם אייקון-קו בריבוע, כולל נוכחות-דיגיטלית (אתר/אינסטגרם/פייסבוק) שהצטרפה
   // לרשימה המאוחדת הזו במקום שורת-צ'יפים נפרדת. כל ערך לטיני מקבל dir="ltr" (class="ltr-value")
   // כדי שמספרים/כתובות לא יוצגו הפוך בהקשר RTL.
+  // ⚠️ שעות פעילות **לא** נכללו ב-ltr-value עד 2026-08-20, ולכן "08:00 עד 17:00" הוצג הפוך
+  //    ללקוחות. hoursHtml (hours.js) עושה בדיוק את זה, אבל רק על טווחי-השעות שבתוך המחרוזת —
+  //    עטיפה של כל המחרוזת הייתה הופכת את העברית שסביבם.
   const infoRows = [];
   // עסק אונליין: האתר עולה לראש הרשימה כשורה מלאה (במקום צ'יפ "אתר" קטן בתחתית) — הוא ה"כתובת"
   // שלו. מוצגת הכתובת עצמה בלי https:// ובלי / מיותר, כדי שתיקרא כשם-אתר ולא כ-URL גולמי.
-  const siteRowUrl = (b.online && b.website)
-    ? (b.website.startsWith('http') ? b.website : 'https://' + b.website)
-    : '';
+  // הנרמול עובר דרך social-links.js (§232) — "https://"+value נאיבי הפיק href שבור מכל ערך
+  // שאינו כתובת ("אלמוג פט בגוגל", "z-zol.co.il   www.intex-pool.co.il").
+  // fail-open אם הקובץ לא נטען: חוזרים בדיוק להתנהגות הישנה, כמו הגארד על hours.js.
+  const linkUrl = (kind, raw) => (window.HB_LINKS
+    ? window.HB_LINKS.toUrl(kind, raw)
+    : (raw ? (String(raw).startsWith('http') ? String(raw) : 'https://' + raw) : null));
+  const siteRowUrl = (b.online && b.website) ? (linkUrl('website', b.website) || '') : '';
   if (siteRowUrl) {
     // רק הדומיין — בלי https://, בלי www ובלי הנתיב. כתובת מלאה כמו
     // "https://www.shop.co.il/collections/sale?ref=yz" נשפכה לשתי שורות ונראתה כמו URL גולמי
     // ולא כמו שם-אתר. הקישור עצמו (siteRowUrl) נשאר המלא, רק התצוגה מתקצרת.
-    const siteLabel = b.website.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/[/?#].*$/, '')
-      || b.website;
+    // נגזר מ-siteRowUrl (המנורמל) ולא מ-b.website הגולמי — אחרת ערך כמו
+    // "z-zol.co.il     www.intex-pool.co.il" היה מוצג כתווית כפולה עם רווחים.
+    const siteLabel = siteRowUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/[/?#].*$/, '')
+      || siteRowUrl;
     infoRows.push(`<div class="sheet-info-row site-row">
       <span class="info-icon">${SHEET_ICONS.globe}</span>
       <div class="info-body"><div class="info-label">האתר שלנו</div><a class="ltr-value" href="${siteRowUrl}" target="_blank" rel="noopener">${siteLabel}</a></div>
     </div>`);
   }
-  if (b.hours) {
+  // hoursHtml — מעדיף את השעות המובנות, נופל ל-hours הישן, ובשני המקרים מגן על כיוון
+  // טווחי-השעות (ר' hours.js). היה כאן b.hours.replace(/\n/g,'<br>') גולמי.
+  const hoursRowHtml = hoursHtml(b, 'br');
+  if (hoursRowHtml) {
     infoRows.push(`<div class="sheet-info-row">
       <span class="info-icon">${SHEET_ICONS.clock}</span>
-      <div class="info-body"><div class="info-label">שעות פעילות</div>${b.hours.replace(/\n/g,'<br>')}</div>
+      <div class="info-body"><div class="info-label">שעות פעילות</div>${hoursRowHtml}</div>
     </div>`);
   }
   if (b.isPro && b.regions && b.regions.length) {
@@ -3009,19 +3034,17 @@ function openBiz(id) {
   // הגולמיים (קישור פייסבוק ארוך לא נראה טוב כטקסט-קישור רגיל) — זהה בסגנון לכפתורי הניווט בסניפים.
   const linkItems = [];
   // siteRowUrl — עסק אונליין כבר קיבל את האתר כשורה מלאה בראש הפרטים, אין טעם בצ'יפ כפול כאן
-  if (b.website && !siteRowUrl) {
-    const websiteUrl = b.website.startsWith('http') ? b.website : 'https://'+b.website;
-    linkItems.push(`<a class="sheet-link-chip" href="${websiteUrl}" target="_blank">${SHEET_ICONS.globe}<span>אתר</span></a>`);
-  }
-  if (b.instagram) {
-    const igHandle = b.instagram.trim().replace(/^@/,'');
-    const igUrl = igHandle.startsWith('http') ? igHandle : `https://instagram.com/${igHandle}`;
-    linkItems.push(`<a class="sheet-link-chip" href="${igUrl}" target="_blank">${SHEET_ICONS.instagram}<span>אינסטגרם</span></a>`);
-  }
-  if (b.facebook) {
-    const fbUrl = b.facebook.startsWith('http') ? b.facebook : 'https://'+b.facebook;
-    linkItems.push(`<a class="sheet-link-chip" href="${fbUrl}" target="_blank">${SHEET_ICONS.facebook}<span>פייסבוק</span></a>`);
-  }
+  // ⚠️ צ'יפ מוצג רק כשיש כתובת אמיתית. ערך שהוא שם-עמוד ולא קישור ("ספורט אנד פול",
+  // "איה מצברים") לא מקבל צ'יפ בכלל — קישור מת גרוע יותר מהיעדר קישור, והמנהל רואה את
+  // הערך השבור בדשבורד הניהול ומתקן מול העסק. ר' §232.
+  const linkChip = (kind, raw, icon, label) => {
+    const url = raw ? linkUrl(kind, raw) : null;
+    if (!url) return;
+    linkItems.push(`<a class="sheet-link-chip" href="${url.replace(/"/g,'%22')}" target="_blank" rel="noopener">${icon}<span>${label}</span></a>`);
+  };
+  if (!siteRowUrl) linkChip('website', b.website, SHEET_ICONS.globe, 'אתר');
+  linkChip('instagram', b.instagram, SHEET_ICONS.instagram, 'אינסטגרם');
+  linkChip('facebook', b.facebook, SHEET_ICONS.facebook, 'פייסבוק');
   const linksHtml = linkItems.length ? `<div class="sheet-links-row">${linkItems.join('')}</div>` : '';
 
   const infoSection = document.getElementById('sheetInfoSection');
@@ -3042,7 +3065,7 @@ function openBiz(id) {
           const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(full)}`;
           return `<div class="sheet-branch-card">
             <div class="sheet-branch-address">${full}</div>
-            ${b.hours ? `<div class="sheet-branch-hours">${b.hours.replace(/\n/g,' · ')}</div>` : ''}
+            ${hoursHtml(b, 'dot') ? `<div class="sheet-branch-hours">${hoursHtml(b, 'dot')}</div>` : ''}
             <div class="sheet-branch-nav-row">
               <a class="sheet-branch-nav-link" href="${wazeUrl}" target="_blank">${SHEET_ICONS.navigation}<span>Waze</span></a>
               <a class="sheet-branch-nav-link" href="${mapsUrl}" target="_blank">${SHEET_ICONS.map}<span>מפות</span></a>
@@ -3653,6 +3676,9 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
       photos:       b.photos || [],
       branches:     b.branches || [],
       hours:        b.hours || '',
+      hoursMode:    b.hoursMode || '',
+      hoursDays:    b.hoursDays || null,
+      hoursOther:   b.hoursOther || '',
       website:      b.website || b.websiteOnline || '',
       instagram:    b.instagram || '',
       facebook:     b.facebook || '',

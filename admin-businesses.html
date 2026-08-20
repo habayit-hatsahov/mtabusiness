@@ -8,6 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
   <script src="categories.js"></script>
   <script src="phone-check.js"></script>
+  <script src="hours.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     ::-webkit-scrollbar { width: 6px; }
@@ -30,6 +31,14 @@
       --text-sm:    rgba(255,255,255,0.5);
       --text-muted: rgba(255,255,255,0.32);
       --gray:       var(--text-muted);
+      /* רכיב השעות (hours.js) — התאמה ל-dark theme של המסך הזה, ר' §230 */
+      --hbh-bg:     #1e2b47;
+      --hbh-border: rgba(255,255,255,0.14);
+      --hbh-text:   #FFFFFF;
+      --hbh-muted:  rgba(255,255,255,0.5);
+      --hbh-accent: #FFDE00;
+      --hbh-note-bg:     rgba(255,222,0,.08);
+      --hbh-note-border: rgba(255,222,0,.3);
       --green:      #25D366;
       --green-bg:   rgba(37,211,102,.15);
       --orange:     #d97706;
@@ -1523,6 +1532,28 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+// ── שעות פעילות (§230) ──────────────────────────────────────────────────────────────────────
+// המסך הזה הוא הניהול **הישן** (עדיין מקושר מ-admin.html). הוא קיבל את אותו רכיב מובנה ולא
+// נשאר על טקסט חופשי, כי משעה שלעסק יש מבנה שמור — התצוגה מעדיפה אותו, וכתיבת מחרוזת
+// חופשית כאן הייתה **נכשלת בשקט**: המנהל שומר, ושום דבר לא משתנה על הכרטיס.
+let legacyHoursEditor = null;
+
+function legacyHoursHtml(b) {
+  return window.HB_HOURS ? HB_HOURS.toHtml(b) : esc(b && b.hours || '');
+}
+
+function mountLegacyHoursEditor(b) {
+  const box = document.getElementById('editHoursBox');
+  legacyHoursEditor = null;
+  if (!box) return;
+  if (!window.HB_HOURS) {          // fail-open — כשל בטעינת קובץ סטטי לא יחסום עריכה
+    console.warn('hours.js לא נטען — שעות הפעילות נערכות כטקסט חופשי');
+    box.innerHTML = `<input type="text" id="editHours" value="${esc(b.hours || '')}" placeholder="א׳-ה׳ 09:00-19:00" />`;
+    return;
+  }
+  legacyHoursEditor = HB_HOURS.mountEditor(box, b, { approvalNote: false });
+}
+
 window.openBizSheet = async function(id) {
   const b = businesses.find(x => x.id === id);
   if (!b) return;
@@ -1798,7 +1829,7 @@ window.openBizSheet = async function(id) {
         <div class="detail-item"><div class="lbl">טלפון עסק</div><div class="val">${mDash(b.phone)}</div></div>
         <div class="detail-item"><div class="lbl">WhatsApp</div><div class="val">${mDash(b.whatsapp)}</div></div>
         <div class="detail-item full"><div class="lbl">מייל שירות לקוחות</div><div class="val">${mDash(b.serviceEmail)}</div></div>
-        <div class="detail-item full"><div class="lbl">שעות פעילות</div><div class="val">${mDash(b.hours)}</div></div>
+        <div class="detail-item full"><div class="lbl">שעות פעילות</div><div class="val">${legacyHoursHtml(b) || '<span class="missing">—</span>'}</div></div>
         <div class="detail-item full"><div class="lbl">אתר</div><div class="val">${b.website ? `<a href="${b.website.startsWith('http') ? b.website : 'https://'+b.website}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.website}</a>` : '<span class="missing">—</span>'}</div></div>
         <div class="detail-item"><div class="lbl">אינסטגרם</div><div class="val">${b.instagram ? (() => { const ig = b.instagram; const url = ig.startsWith('http') ? ig : `https://instagram.com/${ig.replace(/^@/,'')}`; const label = ig.startsWith('http') ? '@' + (ig.match(/instagram\.com\/([^?/]+)/)?.[1] || ig) : '@' + ig.replace(/^@/,''); return `<a href="${url}" target="_blank" style="color:var(--blue);text-decoration:underline">${label}</a>`; })() : '<span class="missing">—</span>'}</div></div>
         <div class="detail-item"><div class="lbl">פייסבוק</div><div class="val">${b.facebook ? `<a href="https://facebook.com/${b.facebook}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.facebook}</a>` : '<span class="missing">—</span>'}</div></div>
@@ -1830,7 +1861,7 @@ window.openBizSheet = async function(id) {
         </div>
         <div class="form-row"><label>מייל שירות לקוחות</label><input type="email" id="editServiceEmail" value="${esc(b.serviceEmail)}" placeholder="info@example.co.il" /></div>
         <div class="edit-section-title" style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);">🕐 שעות פעילות</div>
-        <div class="form-row"><label>שעות <span style="font-weight:400;color:#aaa;font-size:11px">(כתוב בחופשיות)</span></label><input type="text" id="editHours" value="${esc(b.hours)}" placeholder="א׳-ה׳ 09:00-19:00, ו׳ 09:00-14:00" /></div>
+        <div class="form-row"><label>שעות</label><div id="editHoursBox"></div></div>
         <div class="edit-section-title" style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);">🔗 נוכחות דיגיטלית</div>
         <div class="form-row"><label>אתר אינטרנט</label><input type="url" id="editWebsite" value="${esc(b.website)}" placeholder="www.example.co.il" /></div>
         <div class="form-row-2">
@@ -2087,6 +2118,8 @@ window.openBizSheet = async function(id) {
     document.getElementById('editLogoPreviewWrap').style.display = 'block';
     document.getElementById('editLogoPlaceholder').style.display = 'none';
   }
+  mountLegacyHoursEditor(b);
+
   editPhotoCount = 0;
   document.getElementById('editPhotoList').innerHTML = '';
   (b.photos || []).forEach(p => {
@@ -3272,6 +3305,7 @@ window.saveSec1 = async function(id) {
 };
 
 window.saveSec2 = async function(id) {
+  const b = businesses.find(x => x.id === id);   // לנפילה-לאחור של השעות (ר' למטה)
   const bizTypes = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p => p.dataset.type);
   const isProNow    = bizTypes.includes('pro');
   const isOnlineNow = bizTypes.includes('online');
@@ -3287,7 +3321,8 @@ window.saveSec2 = async function(id) {
     serviceEmail: document.getElementById('editServiceEmail').value.trim(),
     regions:      isProNow ? [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p => p.textContent.trim()) : [],
     websiteOnline: isOnlineNow ? document.getElementById('editWebsiteOnline').value.trim() : '',
-    hours:        document.getElementById('editHours').value.trim(),
+    // נפילה-לאחור לערך הקיים ולא למחרוזת ריקה — אחרת שמירה בלי hours.js הייתה **מוחקת** שעות
+    ...(legacyHoursEditor ? legacyHoursEditor.getValue() : { hours: document.getElementById('editHours')?.value.trim() ?? (b && b.hours) ?? '' }),
     website:      document.getElementById('editWebsite').value.trim(),
     instagram:    document.getElementById('editInstagram').value.trim(),
     facebook:     document.getElementById('editFacebook').value.trim(),

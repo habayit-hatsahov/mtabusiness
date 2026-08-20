@@ -13,6 +13,8 @@
   <noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet"/></noscript>
   <script src="categories.js"></script>
   <script src="phone-check.js"></script>
+  <script src="hours.js"></script>
+  <script src="social-links.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     ::-webkit-scrollbar { width: 5px; }
@@ -584,6 +586,38 @@
       padding: 2px 14px; border: 1px solid rgba(255,222,0,.4);
     }
     .pending-banner-rows:empty { display: none; }
+
+    /* ── קוביית מיגרציית שעות הפעילות (2026-08-20, §230) ─────────────────────────────────────
+       חד-פעמית: מבקשת מבעל-העסק לאשר/לתקן את השעות שגזרנו לו מהטקסט החופשי שהיה לו.
+       העריכה עצמה **בתוך הקובייה** — בלי לשלוח אותו לחפש את השלב הנכון. */
+    .hrs-mig {
+      border-radius: var(--radius); padding: 16px 17px; margin-bottom: 14px;
+      background: linear-gradient(180deg, rgba(255,222,0,.15), rgba(255,222,0,.06));
+      border: 1.5px solid rgba(255,222,0,.6);
+    }
+    .hrs-mig-t { font-size: 14.5px; font-weight: 800; color: var(--accent); margin-bottom: 5px; display: flex; align-items: center; gap: 7px; }
+    .hrs-mig-b { font-size: 12.5px; color: var(--text-sm); line-height: 1.65; }
+    .hrs-mig-inner { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 13px 15px; margin-top: 13px; }
+    .hrs-mig-was { font-size: 11.5px; color: var(--text-sm); line-height: 1.6; margin-bottom: 12px; padding-bottom: 11px; border-bottom: 1px solid var(--border); }
+    .hrs-mig-was b { color: var(--text); font-weight: 700; }
+    .hrs-mig-pv { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.7; }
+    .hrs-mig-pv .lbl { font-size: 10.5px; color: var(--text-sm); font-weight: 700; display: block; margin-bottom: 3px; }
+    .hrs-mig-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+    .hrs-mig-btn {
+      background: var(--accent); color: #fff; border: none; border-radius: 11px; padding: 11px 22px;
+      font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+    .hrs-mig-btn:disabled { opacity: .55; cursor: default; }
+    .hrs-mig-later {
+      background: transparent; color: var(--text-sm); border: 1.5px solid var(--border); border-radius: 11px;
+      padding: 10px 18px; font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+    }
+    .hrs-mig-later:hover { border-color: var(--accent); color: var(--accent); }
+    /* אישור שמוצג שבוע מרגע הטיפול ואז נעלם לבד (ר' HOURS_DONE_NOTICE_DAYS) */
+    .hrs-mig.done {
+      background: rgba(22,163,74,.07); border-color: rgba(22,163,74,.4);
+    }
+    .hrs-mig.done .hrs-mig-t { color: #15803D; }
 
     /* ── קוביית "מה הוחלט על הבקשות שלך" (2026-08-20) ────────────────────────────────────────
        הבאנר הצהוב מעליה מציג בקשות שעדיין **ממתינות**; זו מציגה את מה שכבר **הוכרע**. ירוק ולא
@@ -1357,6 +1391,11 @@
       <!-- ─── עריכה (ימין ב-RTL) — גוללת ─── -->
       <div class="dash-edit-panel">
         <div class="panel-body">
+          <!-- מיגרציית שעות הפעילות (2026-08-20, §230) — הקובייה יושבת **ראשונה**, מעל באנר
+               הבקשות: זו פעולה חד-פעמית שמבקשים מבעל-העסק לעשות עכשיו, לא סטטוס שמדווחים לו.
+               נעלמת לגמרי אחרי שטופל + שבוע. ר' renderHoursMigrationBanner. -->
+          <div id="hoursMigrationBanner" style="display:none"></div>
+
           <div id="pendingBanner" style="display:none">
             <div class="pending-banner">
               <div class="pending-banner-title">יש לך שינויים שממתינים לאישור מנהל</div>
@@ -1795,6 +1834,10 @@ Object.entries(FIELD_GROUPS).forEach(([group, fields]) => {
 const CONFIRM_ROW_EXCLUDE = new Set([
   'cat', 'city', 'address', 'discountTypes', 'coverPhotoThumb', 'logoThumb', 'changeDecisions',
   'discountBuilder', 'discountText',
+  // שלושת שדות-השעות המובנים מוחרגים בכוונה: hours מסונכרן אליהם תמיד (ר' hours.js),
+  // והוא זה שמופיע בבאנר כשורה אחת קריאה ("א׳-ה׳ 08:00 עד 17:00 → א–ה 08:00-17:00").
+  // בלי ההחרגה בעל-העסק היה רואה גם שורה של מערך-אובייקטים בת 7 איברים.
+  'hoursMode', 'hoursDays', 'hoursOther',
 ]);
 
 // קטגוריות + תגיות — מקור אמת יחיד, זהה ל-home.html ול-categories-demo.html
@@ -2222,6 +2265,7 @@ function renderBizView(flashZone) {
   const pendingRows = buildChangeRows(allPendingChanges);
   document.getElementById('pendingBanner').style.display = pendingRows ? 'block' : 'none';
   document.getElementById('pendingBannerRows').innerHTML = pendingRows;
+  renderHoursMigrationBanner(biz);
   renderDecisionsBanner(biz);
   renderContactNoteBanner(biz);
   renderTermsAckPrompt(biz);
@@ -2237,6 +2281,7 @@ function renderBizView(flashZone) {
     if (editEl) { editEl.classList.add('open'); editEl.classList.remove('locked'); }
     if (viewEl) viewEl.classList.add('hidden-when-edit');
   }
+  mountHoursEditor(w);
   renderCatGrid();
   renderTagsBar();
   renderAlsoCatGrid();
@@ -2355,6 +2400,151 @@ function renderDecisionsBanner(b) {
   el.style.display = 'block';
 }
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//  מיגרציית שעות הפעילות — הקובייה בראש הדשבורד (2026-08-20, §230)
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// שלושה מצבים, לפי מה שבאמת קרה לעסק הזה:
+//   א. עדיין לא טופל  → קובייה עם השעות שגזרנו מהטקסט שלו, מוכנות לאישור או לתיקון **בתוכה**
+//   ב. טופל, פחות משבוע → אישור ירוק "עברנו לשדות מסודרים"
+//   ג. טופל, יותר משבוע → כלום. נעלם לגמרי.
+// "טופל" נקבע בשני מסלולים שווי-ערך: בעל-העסק שמר כאן, **או** המנהל ערך מהאדמין
+// (hoursMigrationBy). זו בקשת המשתמש המפורשת — "גם אם בעל עסק עדכן בעצמו תסמן את זה כטופל".
+const HOURS_DONE_NOTICE_DAYS = 7;    // כמה זמן מוצג האישור אחרי הטיפול, ואז נעלם
+const HOURS_NUDGE_DAYS = 30;         // כמה זמן מוצגת הקובייה, מהפתיחה הראשונה של בעל-העסק
+
+function asDate(v) {
+  if (!v) return null;
+  return v.toDate ? v.toDate() : new Date(v);
+}
+
+let hoursMigEditor = null;
+
+async function renderHoursMigrationBanner(b) {
+  const el = document.getElementById('hoursMigrationBanner');
+  if (!el) return;
+  hoursMigEditor = null;
+  const hide = () => { el.style.display = 'none'; el.innerHTML = ''; };
+  if (!window.HB_HOURS) return hide();      // fail-open, זהה לשאר הגארדים על קבצים סטטיים
+
+  // ── ב/ג. כבר טופל ──────────────────────────────────────────────────────────────────────
+  const doneAt = asDate(b.hoursMigrationDone);
+  if (doneAt) {
+    if (Date.now() - doneAt.getTime() >= HOURS_DONE_NOTICE_DAYS * 86400000) return hide();
+    const byAdmin = b.hoursMigrationBy === 'admin';
+    el.style.display = 'block';
+    el.innerHTML =
+      '<div class="hrs-mig done">' +
+        '<div class="hrs-mig-t"><span>✓</span><span>שעות הפעילות עודכנו</span></div>' +
+        '<div class="hrs-mig-b">' +
+          'עברנו משורת טקסט חופשי ל<b>שדות מסודרים</b>, כדי שהשעות יוצגו נכון ובאותה צורה בכל מקום באתר.' +
+          (byAdmin ? ' הצוות עדכן עבורכם — אם משהו לא מדויק, אפשר לתקן בשלב "פרטים ויצירת קשר".' : '') +
+        '</div>' +
+        '<div class="hrs-mig-inner" style="padding:11px 14px">' +
+          '<span class="lbl" style="font-size:10.5px;color:var(--text-sm);font-weight:700;display:block;margin-bottom:3px">כך זה מוצג ללקוחות</span>' +
+          (hoursHtml(b) || '—') +
+        '</div>' +
+      '</div>';
+    return;
+  }
+
+  // ── א. טרם טופל — האם בכלל להציג לו? ───────────────────────────────────────────────────
+  // עסק בלי שעות בכלל שאינו פיזי לא מקבל כלום: שעות פעילות פשוט לא רלוונטיות לאונליין/נותן
+  // שירות, ו-5 מתוך 12 העסקים בלי שעות הם כאלה (החלטת המשתמש, §229).
+  const seeded = HB_HOURS.seed(b);
+  const isPhysical = (b.bizTypes || []).includes('physical');
+  if (seeded.seeded === 'empty' && !isPhysical) return hide();
+
+  // חותמת הצפייה הראשונה — נכתבת פעם אחת, ומרגעה נספר חלון ההצגה. מהפתיחה הראשונה של
+  // בעל-העסק ולא מיום ההשקה, כך שגם מי שנכנס רק בעוד שבועיים מקבל חלון מלא.
+  let firstSeen = asDate(b.hoursNoticeFirstSeen);
+  if (!firstSeen) {
+    firstSeen = new Date();
+    b.hoursNoticeFirstSeen = firstSeen;
+    try {
+      await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { hoursNoticeFirstSeen: serverTimestamp() }));
+    } catch (e) { console.error(e); reportBizWriteError('hoursNoticeSeen', e, ''); }
+  } else if (Date.now() - firstSeen.getTime() >= HOURS_NUDGE_DAYS * 86400000) {
+    return hide();                          // חלון ההצגה נגמר; המנהל יסגור את השאר מהדשבורד שלו
+  }
+
+  const until = new Date(firstSeen.getTime() + HOURS_NUDGE_DAYS * 86400000)
+    .toLocaleDateString('he-IL', { day: 'numeric', month: 'long' });
+
+  // הניסוח משתנה לפי מה שבאמת קרה — "מילאנו עבורכם" רק כשבאמת מילאנו
+  let title, body, was;
+  if (seeded.seeded === 'converted') {
+    title = 'בדקו את שעות הפעילות שלכם';
+    body = 'עברנו לשעות מסודרות, כדי שיוצגו נכון ובאותה צורה לכל העסקים. <b>מילאנו עבורכם לפי מה שהיה רשום</b> — שווה לוודא שזה מדויק.';
+    was = 'מה שהיה רשום אצלכם: <b>״' + esc(b.hours) + '״</b>';
+  } else if (seeded.seeded === 'other') {
+    title = 'צריך לסדר את שעות הפעילות';
+    body = 'עברנו לשעות מסודרות. מה שמילאתם לא נכנס לטבלה, אז השארנו אותו כמו שהוא — אפשר לעבור ל״שעות קבועות״ ולמלא מסודר, וזה ייראה ברור יותר ללקוחות.';
+    was = 'מה שהיה רשום אצלכם: <b>״' + esc(b.hours) + '״</b>';
+  } else if (seeded.seeded === 'stored') {
+    title = 'אשרו את שעות הפעילות שלכם';
+    body = 'עברנו לשעות מסודרות. אלה השעות שרשומות אצלכם — שווה לוודא שהן מדויקות.';
+    was = '';
+  } else {
+    title = 'עוד לא מילאתם שעות פעילות';
+    body = 'יש לכם מקום שלקוחות מגיעים אליו — שעות פעילות עוזרות להם לדעת מתי לבוא, ומונעות פניות מיותרות.';
+    was = '';
+  }
+
+  el.style.display = 'block';
+  el.innerHTML =
+    '<div class="hrs-mig">' +
+      '<div class="hrs-mig-t"><span>⏰</span><span>' + title + '</span></div>' +
+      '<div class="hrs-mig-b">' + body + '</div>' +
+      '<div class="hrs-mig-inner">' +
+        (was ? '<div class="hrs-mig-was">' + was + '</div>' : '') +
+        '<div id="hoursMigEditor"></div>' +
+        '<div class="hrs-mig-pv"><span class="lbl">כך זה יוצג ללקוחות</span><span id="hoursMigPv"></span></div>' +
+      '</div>' +
+      '<div class="hrs-mig-actions">' +
+        '<button type="button" class="hrs-mig-btn" onclick="saveHoursMigration()">' +
+          (seeded.seeded === 'empty' ? 'שמירת השעות' : 'השעות נכונות — שמירה') + '</button>' +
+        '<button type="button" class="hrs-mig-later" onclick="showToast(\'נזכיר לך בכניסה הבאה\')">אזכיר לי מאוחר יותר</button>' +
+        '<span style="font-size:11px;color:var(--text-sm);margin-right:auto">מוצג עד <b>' + until + '</b></span>' +
+      '</div>' +
+    '</div>';
+
+  const paint = () => {
+    const pv = document.getElementById('hoursMigPv');
+    if (pv) pv.innerHTML = hoursHtml(hoursMigEditor.getValue()) || '—';
+  };
+  hoursMigEditor = HB_HOURS.mountEditor('hoursMigEditor', b, { onChange: paint });
+  paint();
+}
+
+// שמירה מתוך הקובייה. שני דברים נפרדים בכוונה:
+//   1. **תוכן** (hoursMode/hoursDays/hoursOther/hours) → עובר במסלול הרגיל של הדשבורד,
+//      כלומר בקשה לאישור מנהל, בדיוק כמו כל שדה אחר. אם המנהל כבר הריץ את ההמרה ובעל-העסק
+//      רק מאשר — אין דלתא, לא נשלחת בקשה, וזה בסדר גמור.
+//   2. **סימון הטיפול** (hoursMigrationDone) → כתיבה ישירה. זה לא תוכן שמוצג ללקוח אלא
+//      חותמת-מעקב, ואין שום היגיון להעביר אותה דרך אישור מנהל.
+window.saveHoursMigration = async function () {
+  if (!hoursMigEditor) return;
+  const btn = document.querySelector('.hrs-mig-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'שומר…'; }
+  try {
+    stageChanges(hoursMigEditor.getValue());
+    if (Object.keys(draftChanges).length) await submitAllChanges();
+
+    biz.hoursMigrationDone = new Date();
+    biz.hoursMigrationBy = 'owner';
+    await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), {
+      hoursMigrationDone: serverTimestamp(),
+      hoursMigrationBy: 'owner',
+    }));
+    showToast(' שעות הפעילות נשמרו');
+  } catch (e) {
+    console.error(e);
+    reportBizWriteError('hoursMigration', e, '');
+    showToast(bizWriteErrorMsg(e));
+  }
+  renderBizView();
+};
+
 function renderTermsAckPrompt(b) {
   const el = document.getElementById('termsAckPrompt');
   if (!el) return;
@@ -2405,8 +2595,17 @@ async function renderContactNoteBanner(b) {
 // ⚠️ 2026-08-12 — הדגשה-בכתום פר-שדה הוסרה (fieldKeys/changed נשארו כפרמטר בקריאות קיימות אבל
 // לא בשימוש) — המשתמש: "בשלבים אל תציג את הבקשות, ריכזנו אותם למעלה בגלל זה אז תוריד את כל
 // מה שכתום". הבאנר המרוכז (pendingBanner) הוא המקום היחיד עכשיו שמסמן שינוי-ממתין, ר' §195/196.
-function rowHtml(label, v) {
-  return `<div class="info-row"><span class="info-label">${label}</span>${v ? `<span class="info-value">${esc(v)}</span>` : `<span class="info-value missing">לא מולא</span>`}</div>`;
+// isHtml=true → v כבר HTML בטוח שנבנה במקום אחר (היום: שעות הפעילות דרך hoursHtml).
+function rowHtml(label, v, isHtml) {
+  return `<div class="info-row"><span class="info-label">${label}</span>${v ? `<span class="info-value">${isHtml ? v : esc(v)}</span>` : `<span class="info-value missing">לא מולא</span>`}</div>`;
+}
+
+// ── שעות פעילות: מקור-אמת יחיד לתצוגה בכל הדף ──────────────────────────────────────────────
+// מעדיף את המבנה (hoursMode/hoursDays/hoursOther) ונופל למחרוזת hours הישנה, ובשני המקרים
+// עוטף את טווחי-השעות בבידוד-כיוון (ר' hours.js — "08:00 עד 17:00" מרונדר הפוך ב-RTL).
+// fail-open אם hours.js לא נטען: מציגים את הטקסט הישן כמו קודם, בלי הגנת-הכיוון.
+function hoursHtml(b) {
+  return window.HB_HOURS ? HB_HOURS.toHtml(b) : esc(b && b.hours || '');
 }
 // שורת הטבה-נוספת (2/3) מודגשת בצהוב בתצוגת-הסיכום — כדי להבדיל אותן ויזואלית מההטבה הראשית
 // ומזו-לזו, לפי בקשה מפורשת. לא עובר דרך rowHtml כי צריך מחלקה נוספת (highlight).
@@ -2523,7 +2722,7 @@ function renderBizDetailsCard(w) {
         ${rowHtml('טלפון עסק', biz.phone)}
         ${rowHtml('WhatsApp', biz.whatsapp)}
         ${rowHtml('מייל שירות', biz.serviceEmail)}
-        ${rowHtml('שעות פעילות', biz.hours)}
+        ${rowHtml('שעות פעילות', hoursHtml(biz), true)}
         ${rowHtml('אתר', biz.website)}
         ${rowHtml('אינסטגרם', biz.instagram)}
         ${instaMissingHtml}
@@ -2564,7 +2763,10 @@ function renderBizDetailsCard(w) {
         </div>
         <div class="form-group">
           <label class="form-label">שעות פעילות</label>
-          <input type="text" class="form-input" id="editHours" value="${esc(w.hours)}" placeholder="לדוג׳: א׳-ה׳ 9:00-18:00, ו׳ 9:00-14:00" data-pv="hours" />
+          <!-- הרכיב עצמו נבנה ב-mountHoursEditor (hours.js), אחרי שה-HTML הזה כבר ב-DOM.
+               עד 2026-08-20 זה היה input טקסט חופשי יחיד. -->
+          <div id="editHoursBox"></div>
+          <div id="editHoursSeedNote"></div>
           ${tipHtml('hours')}
         </div>
         <div class="form-divider-line"></div>
@@ -3126,7 +3328,7 @@ const COMPLETENESS_CHECKS = [
   { icon: '', label: 'לוגו', weight: 5, section: 'media', filled: w =>looksLikeImageUrl(w.logo) },
   { icon: '', label: 'קטגוריה', weight: 15, section: 'cathours', filled: w =>!!(w.categoryPrimary || w.cat) },
   { icon: '', label: 'טלפון או WhatsApp', weight: 5, section: 'bizdetails', filled: w =>!!(w.phone || w.whatsapp) },
-  { icon: '', label: 'שעות פעילות', weight: 5, section: 'bizdetails', filled: w =>!!w.hours },
+  { icon: '', label: 'שעות פעילות', weight: 5, section: 'bizdetails', filled: w =>window.HB_HOURS ? HB_HOURS.hasHours(w) : !!w.hours },
   { icon: '', label: 'עיר / מיקום', weight: 5, section: 'bizdetails', filled: w =>!!(w.city || (w.branches && w.branches[0] && w.branches[0].city)) },
   { icon: '', label: 'קישור לאתר או רשת חברתית', weight: 5, section: 'bizdetails', filled: w =>!!(w.website || w.websiteOnline || w.instagram || w.facebook) },
   { icon: '', label: 'הטבה לחברי הקהילה', weight: 15, section: 'discount', filled: w =>!!(w.hasDiscount && w.discountText) },
@@ -3281,7 +3483,8 @@ function getPreviewState() {
     w.websiteOnline = document.getElementById('editWebsiteOnline')?.value || '';
     w.serviceEmail = document.getElementById('editServiceEmail')?.value || '';
     w.regions = [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p =>p.textContent.trim());
-    w.hours = document.getElementById('editHours')?.value || '';
+    if (hoursEditor) Object.assign(w, hoursEditor.getValue());
+    else w.hours = document.getElementById('editHours')?.value || '';
     w.website = document.getElementById('editWebsite')?.value || '';
     w.instagram = document.getElementById('editInstagram')?.value || '';
     w.facebook = document.getElementById('editFacebook')?.value || '';
@@ -3394,7 +3597,7 @@ function renderPreview(stateOverride, flashZone) {
   // פרטים — כולל נוכחות-דיגיטלית (אתר/אינסטגרם/פייסבוק) מאוחדת לרשימה אחת, לא עוד שורת-צ'יפים
   // נפרדת. כל ערך לטיני (טלפון/וואטסאפ/מייל) מקבל class="pv-ltr" — זהה לתיקון ה-dir=ltr ב-home.html.
   const infoRows = [];
-  if (w.hours) infoRows.push(`<div class="pv-sheet-info-row${fz('hours')}"><span class="pv-icon">${PV_ICONS.clock}</span><div class="pv-body"><div class="pv-lbl">שעות פעילות</div>${esc(w.hours)}</div></div>`);
+  if (hoursHtml(w)) infoRows.push(`<div class="pv-sheet-info-row${fz('hours')}"><span class="pv-icon">${PV_ICONS.clock}</span><div class="pv-body"><div class="pv-lbl">שעות פעילות</div>${hoursHtml(w)}</div></div>`);
   if (isPro && regions.length) infoRows.push(`<div class="pv-sheet-info-row${fz('regions')}"><span class="pv-icon">${PV_ICONS.mapPin}</span><div class="pv-body"><div class="pv-lbl">אזורי פעילות</div>${regions.map(esc).join(' · ')}</div></div>`);
   if (w.serviceEmail) infoRows.push(`<div class="pv-sheet-info-row${fz('serviceEmail')}"><span class="pv-icon">${PV_ICONS.mail}</span><div class="pv-body"><div class="pv-lbl">מייל שירות</div><span class="pv-ltr">${esc(w.serviceEmail)}</span></div></div>`);
   if (w.phone) infoRows.push(`<div class="pv-sheet-info-row${fz('phone')}"><span class="pv-icon">${PV_ICONS.phone}</span><div class="pv-body"><div class="pv-lbl">טלפון</div>${isPro && w.ownerFirst ? `<span style="color:var(--accent);font-weight:700">${esc(w.ownerFirst)}</span>- ` : ''}<span class="pv-ltr">${esc(w.phone)}</span></div></div>`);
@@ -3407,10 +3610,20 @@ function renderPreview(stateOverride, flashZone) {
   if (pvWaOk) infoRows.push(`<div class="pv-sheet-info-row${fz('whatsapp')}"><span class="pv-icon">${PV_ICONS.whatsapp}</span><div class="pv-body"><div class="pv-lbl">WhatsApp</div><span class="pv-ltr">${esc(w.whatsapp)}</span></div></div>`);
 
   // נוכחות דיגיטלית — כפתורים קטנים עם שם-הפלטפורמה בלבד (לא הקישור הגולמי), זהה ל-home.html
+  // ⚠️ §232 — עד 2026-08-20 שלושת הצ'יפים האלה היו href="#" עם onclick="return false", כלומר
+  // הם נראו תקינים ולא נפתחו *אף פעם*. זו הסיבה שבעלי עסקים לא גילו שמה שמילאו אינו קישור:
+  // התצוגה-המקדימה הראתה להם צ'יפ ירוק גם על "ספורט אנד פול". עכשיו זה קישור אמיתי שנפתח
+  // בדיוק כמו בכרטיס האמיתי, וערך שאינו גזיר לכתובת לא מקבל צ'יפ בכלל — בדיוק כמו ב-home.html.
   const linkItems = [];
-  if (w.website || w.websiteOnline) linkItems.push(`<a class="pv-link-chip${fz('links')}" href="#" onclick="return false;">${PV_ICONS.globe}<span>אתר</span></a>`);
-  if (w.instagram) linkItems.push(`<a class="pv-link-chip${fz('links')}" href="#" onclick="return false;">${PV_ICONS.instagram}<span>אינסטגרם</span></a>`);
-  if (w.facebook) linkItems.push(`<a class="pv-link-chip${fz('links')}" href="#" onclick="return false;">${PV_ICONS.facebook}<span>פייסבוק</span></a>`);
+  const pvLinkUrl = (kind, raw) => (window.HB_LINKS ? window.HB_LINKS.toUrl(kind, raw) : (raw || null));
+  const pvChip = (kind, raw, icon, label) => {
+    const url = raw ? pvLinkUrl(kind, raw) : null;
+    if (!url) return;
+    linkItems.push(`<a class="pv-link-chip${fz('links')}" href="${String(url).replace(/"/g,'%22')}" target="_blank" rel="noopener">${icon}<span>${label}</span></a>`);
+  };
+  pvChip('website', w.website || w.websiteOnline, PV_ICONS.globe, 'אתר');
+  pvChip('instagram', w.instagram, PV_ICONS.instagram, 'אינסטגרם');
+  pvChip('facebook', w.facebook, PV_ICONS.facebook, 'פייסבוק');
   const linksHtml = linkItems.length ? `<div class="pv-links-row">${linkItems.join('')}</div>` : '';
 
   // סניפי הרשת — בלוק נפרד (לא עוד בתוך פרטים), כל הסניפים עם כתובת+שעות (שעות אחידות לעסק)
@@ -3423,7 +3636,7 @@ function renderPreview(stateOverride, flashZone) {
             const full = [br.address, br.city].filter(Boolean).join(', ');
             return `<div class="pv-sheet-branch-card">
               <div class="pv-sheet-branch-address">${esc(full)}</div>
-              ${w.hours ? `<div class="pv-sheet-branch-hours">${esc(w.hours)}</div>` : ''}
+              ${hoursHtml(w) ? `<div class="pv-sheet-branch-hours">${hoursHtml(w)}</div>` : ''}
             </div>`;
           }).join('')}
         </div>` : '';
@@ -3990,6 +4203,40 @@ function collectBranchRows() {
   })).filter(b => b.city || b.address);
 }
 
+// ── רכיב השעות המובנה (hours.js) ────────────────────────────────────────────────────────────
+// נבנה מחדש בכל renderBizView, בדיוק כמו renderCatGrid/renderTagsBar — ה-HTML של הכרטיסים
+// נמחק ונבנה שם מאפס, ולכן שמירת המצב בין רינדורים נעשית דרך w (biz+pendingChanges+draftChanges)
+// ולא בזיכרון של הרכיב.
+let hoursEditor = null;
+
+function mountHoursEditor(w) {
+  const box = document.getElementById('editHoursBox');
+  hoursEditor = null;
+  if (!box) return;
+  // fail-open אם hours.js לא נטען — כשל בטעינת קובץ סטטי לא יחסום עריכה, זהה לגארד על
+  // phone-check.js למטה. נופלים חזרה לשדה הטקסט החופשי הישן.
+  if (!window.HB_HOURS) {
+    console.warn('hours.js לא נטען — שעות הפעילות נערכות כטקסט חופשי');
+    box.innerHTML = `<input type="text" class="form-input" id="editHours" value="${esc(w.hours)}" placeholder="לדוג׳: א׳-ה׳ 9:00-18:00, ו׳ 9:00-14:00" data-pv="hours" />`;
+    return;
+  }
+  hoursEditor = HB_HOURS.mountEditor(box, w, {
+    onChange: () => refreshPreviews(null, 'hours'),
+  });
+
+  // "מילאנו עבורכם" מוצג **רק** כשזה באמת מה שקרה — כלומר כשהמבנה נגזר מהטקסט הישן ועדיין
+  // לא נשמר. אחרת בעל-עסק שכבר אישר את השעות שלו היה רואה את ההודעה שוב בכל כניסה.
+  const note = document.getElementById('editHoursSeedNote');
+  if (!note) return;
+  if (hoursEditor && hoursEditor.seeded === 'converted') {
+    note.innerHTML = `<div class="field-tip">✨ מילאנו עבורכם לפי מה שהיה רשום (<b>${esc(w.hours)}</b>) — שווה לוודא שזה מדויק ולשמור.</div>`;
+  } else if (hoursEditor && hoursEditor.seeded === 'other') {
+    note.innerHTML = `<div class="field-tip">מה שמילאתם קודם לא נכנס לטבלת השעות, אז העברנו אותו כמו שהוא ל״אחר״. אפשר לעבור ל״שעות קבועות״ ולמלא מסודר.</div>`;
+  } else {
+    note.innerHTML = '';
+  }
+}
+
 window.saveBizDetails = function() {
   // ולידציית מספרים — עד 2026-08-17 המסך הזה שמר טלפון/WhatsApp בלי שום בדיקה, ולכן בעל עסק
   // יכול היה להזין מספר עם ספרה עודפת/חסרה ולקבל כפתור WhatsApp מת בכרטיס ("המספר לא קיים").
@@ -4008,6 +4255,23 @@ window.saveBizDetails = function() {
     document.getElementById('editWhatsapp').focus();
     return;
   }
+  // ולידציית קישורים (§232) — אותה תבנית בדיוק כמו בדיקת-המספרים למעלה. עד 2026-08-20 שלושת
+  // השדות האלה נשמרו כטקסט חופשי, ובעלי עסקים מילאו בהם את *שם* העמוד ("ספורט אנד פול"),
+  // מה שהפיק קישור מת בכרטיס. fail-open אם social-links.js לא נטען.
+  const badLink = [['editWebsite', 'website'], ['editWebsiteOnline', 'website'],
+                   ['editInstagram', 'instagram'], ['editFacebook', 'facebook']]
+    .map(([id, kind]) => {
+      const el = document.getElementById(id);
+      const v = (el && el.value || '').trim();
+      if (!el || !v || !window.HB_LINKS) return null;
+      const r = window.HB_LINKS.normalize(kind, v);
+      return r.ok ? null : { el, text: window.HB_LINKS.problemText(kind, v) };
+    }).find(Boolean);
+  if (badLink) {
+    showToast(' ' + badLink.text);
+    badLink.el.focus();
+    return;
+  }
   const bizTypes = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p =>p.dataset.type);
   const isProNow = bizTypes.includes('pro');
   const isOnlineNow = bizTypes.includes('online');
@@ -4023,7 +4287,9 @@ window.saveBizDetails = function() {
     serviceEmail: document.getElementById('editServiceEmail').value.trim(),
     regions: isProNow ? [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p =>p.textContent.trim()) : [],
     websiteOnline: isOnlineNow ? document.getElementById('editWebsiteOnline').value.trim() : '',
-    hours: document.getElementById('editHours').value.trim(),
+    // hoursMode/hoursDays/hoursOther + hours המסונכרן — כולם ביחד מ-toPayload (ר' hours.js).
+    // הנפילה-לאחור היא לשדה הטקסט שmountHoursEditor בונה כשhours.js לא נטען.
+    ...(hoursEditor ? hoursEditor.getValue() : { hours: document.getElementById('editHours')?.value.trim() || '' }),
     website: document.getElementById('editWebsite').value.trim(),
     instagram: document.getElementById('editInstagram').value.trim(),
     facebook: document.getElementById('editFacebook').value.trim(),

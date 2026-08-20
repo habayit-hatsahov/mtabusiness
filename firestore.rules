@@ -175,6 +175,21 @@ service cloud.firestore {
             .hasOnly(['agreedTermsAt'])
         )
 
+        // (ב4) מיגרציית שעות הפעילות (2026-08-20, §230) — בעל עסק מחובר מסמן שראה את הקובייה
+        // ושטיפל בה. חותמות-מעקב בלבד, לא תוכן שמוצג ללקוח: תוכן השעות עצמו
+        // (hoursMode/hoursDays/hoursOther/hours) ממשיך לעבור דרך pendingChanges כמו כל שדה אחר.
+        // hoursNoticeFirstSeen הוא write-once — חלון ההצגה נספר ממנו, ואיפוס שלו היה מאריך
+        // אותו לנצח. hoursMigrationBy מוגבל ל-'owner' כדי שלא ייכתב מכאן "המנהל טיפל".
+        || (
+          request.auth != null && request.auth.uid == businessId &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['hoursNoticeFirstSeen', 'hoursMigrationDone', 'hoursMigrationBy']) &&
+          (!('hoursNoticeFirstSeen' in resource.data) ||
+            request.resource.data.hoursNoticeFirstSeen == resource.data.hoursNoticeFirstSeen) &&
+          (!('hoursMigrationBy' in request.resource.data) ||
+            request.resource.data.hoursMigrationBy == 'owner')
+        )
+
         // (ג) כל חבר מחובר — likedBy/clicks בלבד, על כל עסק (home.html).
         || (
           isSignedInMember() &&
