@@ -3617,7 +3617,7 @@ function bizRowsHtml() {
     const cls = classifyAction(b, 'business');
     const primaryLabel = b.status === 'rejected' ? '✗ נדחה' : cls.primary;
     const badges = [`<span class="class-badge${primaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(primaryLabel)}</span>`]
-      .concat(cls.treatments.map(t => `<span class="treat-badge">${TREATMENT_LABELS[t]}</span>`));
+      .concat(cls.treatments.map(t => treatBadgeHtml(t, b)));
     if (cls.primary === 'כרטיס חסר באינדקס') {
       missingFieldsFor(b).slice(0, 2).forEach(label => badges.push(`<span class="warn-badge">${esc(label)}</span>`));
     }
@@ -4920,7 +4920,7 @@ function bizFullDetailHtml(id, opts) {
   const idPrimaryLabel = b.status === 'rejected' ? '✗ נדחה' : idCls.primary;
   const idBrokenLinks = brokenLinksFor(b);
   const idBadges = [`<span class="class-badge lg${idPrimaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(idPrimaryLabel)}</span>`]
-    .concat(idCls.treatments.map(t => `<span class="treat-badge lg">${TREATMENT_LABELS[t]}</span>`));
+    .concat(idCls.treatments.map(t => treatBadgeHtml(t, b, true)));
   if (idBrokenLinks.length) idBadges.push(`<span class="warn-badge lg">🔗 ${idBrokenLinks.length === 1 ? 'קישור שבור' : idBrokenLinks.length + ' קישורים שבורים'}</span>`);
   const idDates = [
     b.status === 'approved' ? `באינדקס מ-${fmtDate(b.approvedAt || b.registeredAt)}`
@@ -6325,7 +6325,7 @@ function fanRowsHtml() {
     // תואם-handoff (2026-08-04): "טרם נבדק" הוא פיל-סינון בלבד (fanClassPill='unverified'), לא באדג׳
     // על כל שורה — הוסר מכאן כי זה הפך את הרשימה לצפופה/ארוכה-מדי (כמעט כל שורה קיבלה באדג׳ נוסף).
     const badges = [`<span class="class-badge${primaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(primaryLabel)}</span>`]
-      .concat(cls.treatments.map(t => `<span class="treat-badge">${TREATMENT_LABELS[t]}</span>`));
+      .concat(cls.treatments.map(t => treatBadgeHtml(t, f)));
     if (f.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">כפילות אפשרית</span>`);
     else if (f.reviewFlag) badges.push(`<span class="warn-badge">שם לא תואם</span>`);
     if (f.isBusinessOwner) badges.push(`<span class="treat-badge">בעל עסק</span>`);
@@ -6440,7 +6440,7 @@ function fanFullDetailHtml(id, opts) {
   const idCls = classifyAction(f, 'fan');
   const idPrimaryLabel = f.status === 'rejected' ? '✗ נדחה' : idCls.primary;
   const idBadges = [`<span class="class-badge lg${idPrimaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(idPrimaryLabel)}</span>`]
-    .concat(idCls.treatments.map(t => `<span class="treat-badge lg">${TREATMENT_LABELS[t]}</span>`));
+    .concat(idCls.treatments.map(t => treatBadgeHtml(t, f, true)));
   if (f.reviewFlag === 'name_mismatch') idBadges.push(`<span class="warn-badge lg">שם לא תואם</span>`);
   if (f.reviewFlag === 'possible_duplicate') idBadges.push(`<span class="warn-badge lg">כפילות אפשרית</span>`);
   const idDates = [
@@ -7119,16 +7119,7 @@ function taskFilterBarHtml() {
 function taskRow2Html(x) {
   const e = x.entity;
   const key = `${x.kind}:${x.id}`;
-  // "כתבו לנו" מקבל תאריך על הבאדג' עצמו (§235) — ברשימה אין את טקסט ההודעה, אז בלי זה אי
-  // אפשר להבדיל בין פנייה שנכתבה היום לאחת שיושבת שבועיים, בלי לפתוח כל עסק בנפרד. שאר סוגי
-  // הטיפול נשארים תווית-סוג בלבד — אין להם חותמת-זמן משלהם. hover מראה תאריך+שעה מלאים.
-  const treatBadge = t => {
-    const at = t === 'note' ? e.noteAt : null;
-    return at
-      ? `<span class="treat-badge" title="${fmtDateTime(at)}">${TREATMENT_LABELS[t]} · ${fmtDayMonth(at)}</span>`
-      : `<span class="treat-badge">${TREATMENT_LABELS[t]}</span>`;
-  };
-  const badges = [`<span class="class-badge">${x.c.primary}</span>`].concat(x.c.treatments.map(treatBadge));
+  const badges = [`<span class="class-badge">${x.c.primary}</span>`].concat(x.c.treatments.map(t => treatBadgeHtml(t, e)));
   if (x.kind === 'fan' && e.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">דגל בדיקה — כפילות אפשרית</span>`);
   else if (x.kind === 'fan' && e.reviewFlag) badges.push(`<span class="warn-badge">דגל בדיקה — שם לא תואם</span>`);
   if (x.kind === 'biz' && x.c.primary === 'כרטיס חסר באינדקס') {
@@ -8622,6 +8613,21 @@ function bizHasUnhandledNote(b) {
 // תוויות תצוגה לכל סוג "טיפול" ממתין — המפתחות ('details'/'tag'/'category'/'note') זהים בכוונה
 // ל-CHANGES_TYPE_OPTIONS הקיים, כדי שסינון-לפי-סוג ותצוגה ישתמשו באותם מפתחות בדיוק.
 const TREATMENT_LABELS = { details: 'שינוי פרטים', tag: 'בקשת תגית', category: 'בקשת קטגוריה', note: 'כתבו לנו' };
+
+// באדג' "טיפול נדרש" — מקור-אמת יחיד ל-5 המקומות שמציגים אותו (§235): שורת עסק, כרטיס-זהות
+// של עסק, שורת אוהד, כרטיס-זהות של אוהד, ושורת מרכז-המשימות. עד עכשיו כל אחד מהם בנה את אותו
+// span בעצמו, וכל תוספת הייתה צריכה להיכתב 5 פעמים.
+// **רק note נושא תאריך** — הוא היחיד עם חותמת-זמן משלו (noteAt); לשאר הסוגים אין אחת, והם
+// נשארים תווית-סוג נקייה. ברשימות אין את טקסט ההודעה בכלל, ולכן בלי התאריך אי אפשר להבדיל בין
+// פנייה שנכתבה היום לאחת שיושבת שבועיים, בלי לפתוח כל עסק בנפרד. hover = תאריך+שעה מלאים.
+// הודעה שנכתבה לפני 2026-08-21 אין לה noteAt — הבאדג' פשוט חוזר לתווית בלי תאריך.
+function treatBadgeHtml(t, entity, lg) {
+  const at = t === 'note' ? (entity && entity.noteAt) : null;
+  const cls = 'treat-badge' + (lg ? ' lg' : '');
+  return at
+    ? `<span class="${cls}" title="${fmtDateTime(at)}">${TREATMENT_LABELS[t]} · ${fmtDayMonth(at)}</span>`
+    : `<span class="${cls}">${TREATMENT_LABELS[t]}</span>`;
+}
 
 // מקור-אמת יחיד לסיווג הפעולה הנדרשת על עסק/אוהד — כל מסך שצריך "מה המצב פה?" קורא לזה, ולא בונה
 // שוב את אותה בדיקה בעצמו. זה מה שסוגר את באג "5 מול 6" (כמה מקומות חישבו את אותו דבר בנפרד ולא
