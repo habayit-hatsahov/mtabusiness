@@ -6750,11 +6750,16 @@ script קלאסי בשורש, אותה קונבנציה כמו `categories.js`/`
 כל הודעה שנכתבה לפני 2026-08-21 חסרת `noteAt` → **לא מוצגת שורת-תאריך בכלל** (במכוון: עדיף
 מאשר לנחש תאריך מ-`submittedAt` ולהציג מספר שגוי).
 
-### ⚠️ נדרש deploy ידני ל-`firestore.rules`
+### ✅ החוקים נפרסו (2026-08-21)
 
-אין firebase CLI מותקן על המחשב. עד שהחוקים ייפרסו (Console → Firestore → Rules, או
-`npm i -g firebase-tools && firebase deploy --only firestore:rules`), החותמת פשוט לא תיכתב
-מהדשבורד — הפיצ'ר עצמו ימשיך לעבוד.
+הותקן `firebase-tools` (15.28.1) והורץ `firebase deploy --only firestore:rules` —
+`released rules firestore.rules to cloud.firestore`. החותמת נכתבת בפועל מהדשבורד.
+הנפילה-לאחור נשארה בקוד בכוונה: היא לא מפריעה כשהחוקים תקינים, והיא הרשת-ביטחון אם
+`hasOnly` ישתנה שוב בעתיד ויחסום שדה-מעקב.
+
+💡 **הערה לעתיד:** `firebase deploy --only firestore:rules` הוא הנתיב הנכון לפריסת חוקים
+מהמחשב הזה (`.firebaserc` → `habayit-hatsahov`, `firebase.json` כבר מצביע על שני קבצי
+החוקים). **לעולם לא `firebase deploy` בלי `--only`** — הוא ינסה לפרוס גם Hosting.
 
 ### הכותרת של כרטיס "כתבו לנו"
 
