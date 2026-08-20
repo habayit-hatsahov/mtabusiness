@@ -2682,6 +2682,13 @@ function fmtDateTime(d) {
   return d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'});
 }
 function fmtDate(d) { return d.toLocaleDateString('he-IL'); }
+// תאריך קומפקטי לבאדג' ברשימה (§235) — "21.8", ועם שנה ("21.8.25") רק כשהיא לא השנה
+// הנוכחית, כדי שפריט ישן לא ייראה כאילו נכתב לפני שבוע. לא מחליף את fmtDate/fmtDateTime.
+function fmtDayMonth(d) {
+  if (!d) return '';
+  const base = d.getDate() + '.' + (d.getMonth() + 1);
+  return d.getFullYear() === new Date().getFullYear() ? base : base + '.' + String(d.getFullYear()).slice(-2);
+}
 // "כמה זמן עבר" — לשורות ממתינים/רשומים, כדי לראות מיד כמה זמן מישהו כבר מחכה, לא רק את התאריך היבש
 // "לפני 150 ימים" לא ברור בקריאה מהירה (כמה זה בערך?) — פירוק לשבועות/חודשים/שנים לפער גדול,
 // ימים בודדים נשארים מדויקים כי שם זה כן ברור.
@@ -7112,7 +7119,16 @@ function taskFilterBarHtml() {
 function taskRow2Html(x) {
   const e = x.entity;
   const key = `${x.kind}:${x.id}`;
-  const badges = [`<span class="class-badge">${x.c.primary}</span>`].concat(x.c.treatments.map(t => `<span class="treat-badge">${TREATMENT_LABELS[t]}</span>`));
+  // "כתבו לנו" מקבל תאריך על הבאדג' עצמו (§235) — ברשימה אין את טקסט ההודעה, אז בלי זה אי
+  // אפשר להבדיל בין פנייה שנכתבה היום לאחת שיושבת שבועיים, בלי לפתוח כל עסק בנפרד. שאר סוגי
+  // הטיפול נשארים תווית-סוג בלבד — אין להם חותמת-זמן משלהם. hover מראה תאריך+שעה מלאים.
+  const treatBadge = t => {
+    const at = t === 'note' ? e.noteAt : null;
+    return at
+      ? `<span class="treat-badge" title="${fmtDateTime(at)}">${TREATMENT_LABELS[t]} · ${fmtDayMonth(at)}</span>`
+      : `<span class="treat-badge">${TREATMENT_LABELS[t]}</span>`;
+  };
+  const badges = [`<span class="class-badge">${x.c.primary}</span>`].concat(x.c.treatments.map(treatBadge));
   if (x.kind === 'fan' && e.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">דגל בדיקה — כפילות אפשרית</span>`);
   else if (x.kind === 'fan' && e.reviewFlag) badges.push(`<span class="warn-badge">דגל בדיקה — שם לא תואם</span>`);
   if (x.kind === 'biz' && x.c.primary === 'כרטיס חסר באינדקס') {
