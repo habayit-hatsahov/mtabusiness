@@ -2120,6 +2120,9 @@ function hydrateBiz(id, raw) {
     // שינוי (יכולים לכתוב על כל נושא) — לכן מוצגת בנפרד מ"מה מבקשים לשנות". noteHandled מסומן ידנית
     // ע"י המנהל; noteHandledAt משמש לניקוי אוטומטי אחרי כמה ימים שבעל העסק צפה בסטטוס "טופל" (ר' business-dashboard.html).
     note: raw.note || '',
+    // noteAt (§235) — מתי ההודעה נכתבה. קיים רק מ-2026-08-21 ואילך; להודעות ישנות יותר
+    // הוא null, ואז פשוט לא מוצגת שורת-תאריך (עדיף מאשר לנחש תאריך שגוי).
+    noteAt: toJsDate(raw.noteAt),
     noteHandled: !!raw.noteHandled,
     noteHandledAt: toJsDate(raw.noteHandledAt),
     noteOwnerAckAt: toJsDate(raw.noteOwnerAckAt),
@@ -4969,7 +4972,7 @@ function bizFullDetailHtml(id, opts) {
     : '';
   const idNoteBox = !b.note
     ? `<div class="identity-note neutral"><div class="identity-note-h">הערה מהעסק</div><div class="identity-note-v">לא נכתבה הערה בהרשמה</div></div>`
-    : `<div class="identity-note ${b.noteHandled ? 'neutral' : 'warn'}"><div class="identity-note-h">הערה מהעסק${b.noteHandled ? ' (טופלה)' : ''}</div><div class="identity-note-v">"${esc(b.note)}"</div></div>`;
+    : `<div class="identity-note ${b.noteHandled ? 'neutral' : 'warn'}"><div class="identity-note-h">הערה מהעסק${b.noteHandled ? ' (טופלה)' : ''}${b.noteAt ? ' · ' + fmtDateTime(b.noteAt) : ''}</div><div class="identity-note-v">"${esc(b.note)}"</div></div>`;
   const identityCardHtml = `
     <div class="dcard identity-card">
       <div class="identity-top">
@@ -5526,7 +5529,7 @@ window.toggleSecReviewed = async function(id, n, checked) {
 // שזה חשוב"), בלי גם ערך קריא (אובייקט, לא מחרוזת). מדולג בכוונה.
 // שדות-לוויין שלא נרשמים ביומן בנפרד — הם נלווים לשדה ראשי שכן נרשם, ורישום שלהם היה הופך
 // שורת-יומן קריאה ("נערך: שעות פעילות") לרשימה טכנית עם מערך של 7 אובייקטים בתוכה.
-const SAVE_LOG_SKIP_FIELDS = new Set(['noteHandledAt', 'noteOwnerAckAt', 'pendingChangesAt', 'reviewedSections',
+const SAVE_LOG_SKIP_FIELDS = new Set(['noteAt', 'noteHandledAt', 'noteOwnerAckAt', 'pendingChangesAt', 'reviewedSections',
   'hoursMode', 'hoursDays', 'hoursOther', 'hoursMigrationDone', 'hoursMigrationBy']);
 function fmtActivityVal(v) {
   if (v == null || v === '') return '—';
@@ -8287,7 +8290,7 @@ function bizNoteHtml(b) {
   if (!b.note || !b.noteHandled) return '';
   return `
     <details class="note-handled-box">
-      <summary>💬 הודעה מהעסק (טופלה) — לחצו לפתיחה</summary>
+      <summary>💬 הודעה מהעסק (טופלה)${b.noteAt ? ' · נכתבה ' + fmtDateTime(b.noteAt) : ''} — לחצו לפתיחה</summary>
       <div class="approve-longtext" style="margin-top:6px">"${esc(b.note)}"</div>
       <button class="act-btn tiny" style="margin-top:6px" onclick="toggleBizNoteHandled('${b.id}', false)">↩️ בטל סימון "טופל"</button>
     </details>`;
@@ -8465,7 +8468,7 @@ function quickJudgmentHtml(b) {
   };
   const noteRow = hasNote ? `
     <div class="qj-note-row">
-      <div class="qj-note-text"><strong>העסק כתב לנו: </strong>"${esc(b.note)}"</div>
+      <div class="qj-note-text"><strong>העסק כתב לנו${b.noteAt ? ' · ' + fmtDateTime(b.noteAt) : ''}: </strong>"${esc(b.note)}"</div>
       <div class="qj-row-actions">
         <button class="qj-btn" onclick="toggleBizNoteHandled('${b.id}', true)">סימון כטופל</button>
         ${b.ownerPhone ? `<button class="qj-btn link" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מענה בוואטסאפ</button>` : ''}
