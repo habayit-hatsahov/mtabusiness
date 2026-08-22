@@ -1162,8 +1162,13 @@ function compressImageFile(file, maxDim = 1280, quality = 0.82) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        // webp — כ-25-35% קטן יותר מ-JPEG באיכות דומה; דפדפן ישן מאוד שלא תומך נופל בשקט ל-PNG (לא נשבר).
-        resolve(canvas.toDataURL('image/webp', quality));
+        // webp — כ-25-35% קטן יותר מ-JPEG באיכות דומה.
+        // ⚠️ toDataURL מחזיר PNG **בשקט** כשהדפדפן לא יודע לקודד את הטיפוס המבוקש — כך מוגדר בתקן,
+        // ופרמטר ה-quality פשוט מתעלם (PNG הוא חסר-אובדן). זה לא תיאורטי: **6 מתוך 30 התמונות
+        // המייצגות בפרודקשן נשמרו כ-PNG**, אחת מהן 2.2MB — פי ~15 מהמשקל, על אותה תמונה בדיוק.
+        // לכן בודקים מה באמת חזר ונופלים ל-JPEG (נתמך בכל דפדפן) במקום להישאר עם PNG. §240
+        const webp = canvas.toDataURL('image/webp', quality);
+        resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', quality));
       };
       img.onerror = reject;
       img.src = rawDataUrl;
@@ -1176,10 +1181,18 @@ async function compressToFile(file, maxDim, quality, filename) {
 }
 // מעלה גרסה מלאה-אך-דחוסה (1280px) + thumbnail קטן (400px, לכרטיסים בפיד home.html) של אותה תמונה.
 // נראות הכרטיס לא משתנה — רק כמות המידע שיורדת ברשת. נופל בחזרה להעלאת המקור אם הדחיסה נכשלת.
-async function uploadImageWithThumb(file, basePath) {
+// ── תקרת הרזולוציה של התמונה המייצגת (§240) ─────────────────────────────────────────────────
+// הכרטיס באינדקס הוא 4:3 עם object-fit:cover, ובמובייל הוא תופס ~358px CSS — כלומר במסך DPR=3
+// הוא צריך **~1070 פיקסלים אמיתיים לרוחב**. התקרה הישנה (1280 בצד הארוך) נראתה מספיקה, אבל
+// בתמונה **לאורך** הצד הארוך הוא הגובה: 960×1280 נותנת רק 960 פיקסל לרוחב הכרטיס. כלומר
+// הדחיסה שלנו עצמה הורידה תמונות מתחת לסף החדות — 13 מתוך 30 התמונות בפרודקשן, רובן לאורך.
+// 1600 מבטיח ≥1200 לרוחב גם בתמונה לאורך 3:4, במחיר ~100KB לקובץ. תקף לתמונה המייצגת בלבד;
+// לוגו וגלריה נשארים על 1280 (הלוגו מוצג כתג קטן, הגלריה רק בתוך דף העסק).
+const COVER_MAX_DIM = 1600;
+async function uploadImageWithThumb(file, basePath, maxDim = 1280) {
   try {
     const [mainFile, thumbFile] = await Promise.all([
-      compressToFile(file, 1280, 0.82, file.name),
+      compressToFile(file, maxDim, 0.82, file.name),
       compressToFile(file, 640, 0.80, 'thumb_' + file.name),
     ]);
     const [url, thumbUrl] = await Promise.all([
@@ -2751,6 +2764,19 @@ window.approvePendingChanges = async function(id) {
   }
   const updates = { ...changes, pendingChanges: null, pendingChangesAt: null };
   await updateDoc(doc(db, 'businesses', id), updates);
+  // סנכרון פרטי-הבעלים לרשומת החבר — זהה ל-admin-dashboard.html syncOwnerFieldsToMember (ר' ההערה שם):
+  // בלעדיו אישור בקשה לתיקון מייל/טלפון משאיר את רשומת החבר על הערך הישן, ומשם יוצא המייל המאוחד.
+  if (b.ownerMemberId) {
+    const memberPatch = {};
+    if ('ownerFirst' in changes) memberPatch.firstName = changes.ownerFirst;
+    if ('ownerLast'  in changes) memberPatch.lastName  = changes.ownerLast;
+    if ('ownerPhone' in changes) memberPatch.phone     = changes.ownerPhone;
+    if ('ownerEmail' in changes) memberPatch.email     = changes.ownerEmail;
+    if (Object.keys(memberPatch).length) {
+      try { await updateDoc(doc(db, 'members', b.ownerMemberId), memberPatch); }
+      catch (e) { console.warn('owner member sync failed', e); }
+    }
+  }
   showToast('✅ שינויים אושרו ועודכנו!');
   _pendingEditMode = false;
   closeViewSheet();
@@ -3400,7 +3426,7 @@ window.saveSec5 = async function(id) {
 
   const coverPhotoFile = document.getElementById('editCoverPhotoFile').files[0];
   if (coverPhotoFile) {
-    const { url, thumbUrl } = await uploadImageWithThumb(coverPhotoFile, `businesses/${id}/coverPhoto_${Date.now()}`);
+    const { url, thumbUrl } = await uploadImageWithThumb(coverPhotoFile, `businesses/${id}/coverPhoto_${Date.now()}`, COVER_MAX_DIM);
     updates.coverPhoto = url;
     updates.coverPhotoThumb = thumbUrl;
   } else {
@@ -3508,11 +3534,25 @@ function showBizLoadError(err) {
   showToast('⚠️ שגיאה בטעינת נתונים — ' + (err.code || 'בדוק חיבור/הרשאות'));
 }
 
+// ── §244 — טוקן הכניסה לדשבורד יושב ב-bizTokens/{businessId}, לא על מסמך העסק ────────────────
+// מסמך עסק approved קריא ציבורית לגמרי, ולכן טוקן-כניסה שיושב עליו שקול לפרסום סיסמה.
+// כאן (מנהל מחובר, שיש לו הרשאת list על האוסף) טוענים את כל המפה פעם אחת ל-listener נפרד
+// וממזגים חזרה ל-b.accessToken — כך כל מקום שכבר בנה לינק/הודעה מ-b.accessToken ממשיך לעבוד
+// בדיוק כמו קודם, בלי לפזר קריאה-לכל-עסק על פני עשרות מקומות רינדור.
+let BIZ_TOKENS = {};   // businessId → accessToken
+onSnapshot(collection(db, 'bizTokens'), snapshot => {
+  BIZ_TOKENS = Object.fromEntries(snapshot.docs.map(d => [d.id, d.data().accessToken || '']));
+  if (businesses.length) {
+    businesses = businesses.map(b => ({ ...b, accessToken: BIZ_TOKENS[b.id] || '' }));
+    render();
+  }
+}, err => console.error('שגיאה בטעינת טוקני עסקים:', err));
+
 onSnapshot(collection(db, 'businesses'), snapshot => {
   _bizDataLoaded = true;
   clearTimeout(_bizLoadWatchdog);
   businesses = snapshot.docs
-    .map(d => ({ id: d.id, ...d.data() }))
+    .map(d => ({ id: d.id, ...d.data(), accessToken: BIZ_TOKENS[d.id] || '' }))
     .sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0));
   render();
   if (activeTab === 'sections') renderSectionsView();

@@ -42,6 +42,16 @@ service cloud.firestore {
         get(/databases/$(database)/documents/businesses/$(request.auth.uid)).data.ownerMemberId == memberId;
     }
 
+    // "אני החבר שמקושר לעסק הזה?" — בעל-עסק שמחובר כ*חבר* (home/terms/profile,
+    // request.auth.uid = memberId) ומבקש את הטוקן של העסק שלו בלבד. הכיוון ההפוך
+    // מ-isLinkedBusinessOwnerOf שמעל: שם עסק-מחובר קורא מסמך-חבר, כאן חבר-מחובר
+    // קורא את הטוקן של העסק שלו.
+    function isOwnerMemberOf(businessId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+        get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerMemberId == request.auth.uid;
+    }
+
     // ── MEMBERS ──────────────────────────────────────────────────────────
     match /members/{memberId} {
 
@@ -118,7 +128,14 @@ service cloud.firestore {
 
       // מנהל, בעל העסק עצמו, או כל אחד (כולל אנונימי) רק אם המסמך עצמו
       // כבר approved — עסקים מאושרים אמורים להיות ציבוריים; ממתינים/נדחים
-      // מכילים טלפון/מייל/accessToken של הבעלים ונשארים מוגנים.
+      // מכילים טלפון/מייל של הבעלים ונשארים מוגנים.
+      //
+      // ⚠️ קריטי (2026-08-23, §244): המסמך המאושר נקרא **במלואו** ע"י כל אחד, בלי
+      // אימות בכלל — Firestore לא יודע לסנן שדות ברמת ה-rule. לכן **אסור** להחזיר
+      // לכאן שום סוד. accessToken (טוקן-הכניסה לדשבורד העסק) ישב כאן עד היום, מה
+      // שאיפשר לכל אדם לשלוף אותו ב-curl אנונימי ולהיכנס לדשבורד של כל עסק ולערוך
+      // אותו. הוא הועבר ל-bizTokens/{businessId} בתחתית הקובץ. כל שדה-סוד עתידי
+      // (טוקן/קוד/מפתח) חייב לשבת שם ולא כאן.
       allow get: if isAdmin()
         || (request.auth != null && request.auth.uid == businessId)
         || resource.data.status == 'approved';
@@ -213,6 +230,40 @@ service cloud.firestore {
       match /statsDaily/{dateId} {
         allow read, write: if isAdmin();
       }
+    }
+
+    // ── BIZTOKENS — טוקן הכניסה לדשבורד העסק (2026-08-23, §244) ──────────
+    // מסמך אחד לכל עסק, מזהה-המסמך = businessId, שדה יחיד accessToken.
+    // הופרד מ-businesses/{id} בדיוק בגלל ה-get/list הציבורי שמעל: הטוקן הוא
+    // *אישור-כניסה* מלא לדשבורד (ה-Worker מנפיק מולו Firebase custom token עם
+    // uid=businessId), ומסמך עסק מאושר קריא לכולם.
+    //
+    // מי קורא: (1) מנהל — מרכז הניהול בונה איתו לינקים והודעות; (2) העסק המחובר
+    // עצמו; (3) החבר המקושר — "העסק שלי" ב-home/terms/profile.
+    // ה-Worker (service-account) עוקף את החוקים האלה לגמרי, כרגיל.
+    match /bizTokens/{businessId} {
+      allow get: if isAdmin()
+        || (request.auth != null && request.auth.uid == businessId)
+        || isOwnerMemberOf(businessId);
+
+      // אין list לאף אחד חוץ ממנהל — list על האוסף הזה = שליפת כל הטוקנים.
+      allow list: if isAdmin();
+
+      // הרשמת עסק חדש (business.html) היא אנונימית, ולכן גם יצירת הטוקן שלה.
+      // שלוש הגנות מצטברות:
+      // (1) create חל רק כשהמסמך *לא* קיים — אי-אפשר לדרוס טוקן של עסק שכבר יש לו אחד;
+      // (2) מזהה-המסמך חייב להיות של עסק **קיים** שסטטוסו 'pending' — כלומר גם אם מישהו
+      //     ינחש מזהה, הוא לא יכול להנפיק טוקן לעסק מאושר (ולכולם ממילא כבר יש מסמך טוקן);
+      // (3) שדה יחיד ותו לא.
+      // עדכון/מחיקה (רוטציית טוקן) — מנהל בלבד.
+      allow create: if isAdmin()
+        || (
+          request.auth == null &&
+          request.resource.data.keys().hasOnly(['accessToken']) &&
+          exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+          get(/databases/$(database)/documents/businesses/$(businessId)).data.status == 'pending'
+        );
+      allow update, delete: if isAdmin();
     }
 
     // ── WEEKLY_INTEREST (business.html §145 — "עסק השבוע · הטבת השבוע") ───

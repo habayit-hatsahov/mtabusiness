@@ -1,5 +1,5 @@
 import { getGoogleAccessToken } from './jwt.js';
-import { firestoreRunQuery, firestorePatch } from './firestore.js';
+import { firestorePatch, bizIdFromToken } from './firestore.js';
 import { uploadToFirebaseStorage } from './storage.js';
 
 // מקבל FormData עם accessToken + קבצים (fanPhoto/logo גולמיים, cover/coverThumb/gallery/galleryThumb
@@ -14,9 +14,9 @@ export async function handleUploadBizMedia(request, env) {
   if (!bizToken) return { error: 'missing_access_token' };
 
   const googleToken = await getGoogleAccessToken(env);
-  const matches = await firestoreRunQuery(env, googleToken, 'businesses', 'accessToken', bizToken);
-  if (!matches.length) return { error: 'invalid_token' };
-  const bizId = matches[0].id;
+  // §244 — הטוקן עבר ל-bizTokens/{businessId}, ר' bizIdFromToken ב-firestore.js
+  const bizId = await bizIdFromToken(env, googleToken, bizToken);
+  if (!bizId) return { error: 'invalid_token' };
 
   const updates = {};
   const tasks = [];

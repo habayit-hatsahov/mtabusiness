@@ -744,6 +744,13 @@ body {
 .qj-structured { flex-direction: column; align-items: flex-start; gap: 6px; }
 .qj-structured-old, .qj-structured-new { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .qj-value-hint { font-size: 10.5px; font-weight: 600; color: var(--text-sm); flex: none; }
+/* השוואת התמונה המייצגת באישור שינוי (§240) — "היה" ו"מבוקש" זו לצד זו, בגודל שאפשר לשפוט בו.
+   align-items:flex-start כדי ששתי התמונות יתחילו באותו קו גם כשהמידות מתחתן באורך שונה. */
+.qj-cover-cell { display: inline-block; vertical-align: top; }
+.qj-cover-dims { font-size: 10.5px; color: var(--text-sm); margin-top: 4px; text-align: center; min-height: 14px; }
+.qj-dim-bad  { color: #b91c1c; font-weight: 700; }
+.qj-dim-soft { color: #b26b00; font-weight: 700; }
+.qj-dim-ok   { color: #15803d; font-weight: 700; }
 .qj-photo-thumbs { display: flex; gap: 4px; flex-wrap: wrap; }
 .qj-photo-thumbs img { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-md); }
 .qj-row-actions { display: flex; gap: 5px; flex-wrap: wrap; }
@@ -1128,6 +1135,11 @@ body {
 .identity-name-edit input { height: 34px; padding: 0 10px; border: 1px solid var(--border-md); border-radius: 8px; background: var(--card-bg); font-size: 18px; font-weight: 700; min-width: 200px; }
 .identity-contact { margin-top: 9px; font-size: 13.5px; color: var(--text-sm); }
 .identity-contact .k { color: var(--text); }
+/* עריכת טלפון+מייל של בעל העסק ישירות משורת-הקשר (2026-08-22) — אותה תבנית בדיוק כמו עריכת-השם
+   מעליה (.identity-name-edit), רק בגודל-הטקסט של שורת-הקשר ולא של כותרת-השם. */
+.identity-contact-edit { margin-top: 9px; display: none; align-items: center; gap: 6px; flex-wrap: wrap; }
+.identity-contact-edit.open { display: flex; }
+.identity-contact-edit input { height: 32px; padding: 0 10px; border: 1px solid var(--border-md); border-radius: 8px; background: var(--card-bg); font-size: 13.5px; min-width: 175px; }
 .identity-tags { margin-top: 12px; display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
 .identity-actions { display: flex; flex-direction: column; gap: 8px; min-width: 172px; }
 .identity-actions-row { display: flex; gap: 8px; }
@@ -1760,6 +1772,13 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
 import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js';
 
+// ── §244 — טוקן הכניסה לדשבורד יושב ב-bizTokens/{businessId}, לא על מסמך העסק ────────────────
+// מסמך עסק approved קריא ציבורית לגמרי, ולכן טוקן-כניסה שיושב עליו שקול לפרסום סיסמה.
+// כאן (מנהל מחובר, שיש לו הרשאת list על האוסף) טוענים את כל המפה פעם אחת ל-listener נפרד
+// וממזגים חזרה ל-b.accessToken — כך כל מקום שכבר בנה לינק/הודעה מ-b.accessToken ממשיך לעבוד
+// בדיוק כמו קודם, בלי לפזר קריאה-לכל-עסק על פני עשרות מקומות רינדור.
+let BIZ_TOKENS = {};   // businessId → accessToken
+
 let MOCK_BUSINESSES = [];
 let MOCK_FANS = [];
 let WEEKLY_INTEREST = []; // "מי הביע עניין" — אוסף weekly_interest, נכתב אוטומטית מ-business.html §145
@@ -1989,7 +2008,13 @@ function compressImageFile(file, maxDim = 1280, quality = 0.82) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/webp', quality));
+        // webp — כ-25-35% קטן יותר מ-JPEG באיכות דומה.
+        // ⚠️ toDataURL מחזיר PNG **בשקט** כשהדפדפן לא יודע לקודד את הטיפוס המבוקש — כך מוגדר בתקן,
+        // ופרמטר ה-quality פשוט מתעלם (PNG הוא חסר-אובדן). זה לא תיאורטי: **6 מתוך 30 התמונות
+        // המייצגות בפרודקשן נשמרו כ-PNG**, אחת מהן 2.2MB — פי ~15 מהמשקל, על אותה תמונה בדיוק.
+        // לכן בודקים מה באמת חזר ונופלים ל-JPEG (נתמך בכל דפדפן) במקום להישאר עם PNG. §240
+        const webp = canvas.toDataURL('image/webp', quality);
+        resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', quality));
       };
       img.onerror = reject;
       img.src = rawDataUrl;
@@ -2000,10 +2025,18 @@ async function compressToFile(file, maxDim, quality, filename) {
   const dataUrl = await compressImageFile(file, maxDim, quality);
   return dataUrlToFile(dataUrl, filename || file.name);
 }
-async function uploadImageWithThumb(file, basePath) {
+// ── תקרת הרזולוציה של התמונה המייצגת (§240) ─────────────────────────────────────────────────
+// הכרטיס באינדקס הוא 4:3 עם object-fit:cover, ובמובייל הוא תופס ~358px CSS — כלומר במסך DPR=3
+// הוא צריך **~1070 פיקסלים אמיתיים לרוחב**. התקרה הישנה (1280 בצד הארוך) נראתה מספיקה, אבל
+// בתמונה **לאורך** הצד הארוך הוא הגובה: 960×1280 נותנת רק 960 פיקסל לרוחב הכרטיס. כלומר
+// הדחיסה שלנו עצמה הורידה תמונות מתחת לסף החדות — 13 מתוך 30 התמונות בפרודקשן, רובן לאורך.
+// 1600 מבטיח ≥1200 לרוחב גם בתמונה לאורך 3:4, במחיר ~100KB לקובץ. תקף לתמונה המייצגת בלבד;
+// לוגו וגלריה נשארים על 1280 (הלוגו מוצג כתג קטן, הגלריה רק בתוך דף העסק).
+const COVER_MAX_DIM = 1600;
+async function uploadImageWithThumb(file, basePath, maxDim = 1280) {
   try {
     const [mainFile, thumbFile] = await Promise.all([
-      compressToFile(file, 1280, 0.82, file.name),
+      compressToFile(file, maxDim, 0.82, file.name),
       compressToFile(file, 640, 0.80, 'thumb_' + file.name),
     ]);
     const [url, thumbUrl] = await Promise.all([
@@ -2046,6 +2079,7 @@ function hydrateBiz(id, raw) {
   const b = {
     ...raw,
     id,
+    accessToken: BIZ_TOKENS[id] || '',   // §244 — לא מגיע יותר מ-raw
     registeredAt: toJsDate(raw.submittedAt) || new Date(),
     approvedAt: toJsDate(raw.approvedAt),
     rejectedAt: toJsDate(raw.rejectedAt),
@@ -2326,6 +2360,25 @@ function mediaThumbHtml(url, filename, sizeStyle, alt, objectFit) {
       <button type="button" class="thumb-download-btn" title="הורד תמונה" onclick="event.stopPropagation();downloadImage('${safeUrl}','${esc(filename || 'image.jpg')}')">⬇</button>
     </div>`;
 }
+// ── מידות אמיתיות מתחת לתמונה המייצגת במסך האישור (§240) ────────────────────────────────────
+// נמדד מהתמונה שנטענה בפועל (naturalWidth) ולא משדה שמור — כי אין כזה: המידות אף פעם לא נשמרו
+// ב-Firestore, ולתמונה שממתינה לאישור אין בכלל רשומה משלה.
+//
+// "רוחב אפקטיבי" = כמה פיקסלים אמיתיים נמתחים על **רוחב הכרטיס** אחרי החיתוך ל-4:3:
+//   יחס ≥ 4/3 → הגובה הוא האילוץ, ונמתחים h×4/3     |  יחס < 4/3 → הרוחב הוא האילוץ, ונמתחים w
+// הספים: כרטיס במובייל הוא ~358px CSS, כלומר 1070 פיקסלים ב-DPR 3 ו-715 ב-DPR 2. מתחת ל-715
+// התמונה מטושטשת בכל מכשיר, ולא קיים קוד שיתקן את זה — צריך קובץ מקור אחר.
+window.qjStampDims = function (img) {
+  const out = img.closest('.qj-cover-cell') && img.closest('.qj-cover-cell').querySelector('.qj-cover-dims');
+  if (!out) return;
+  const w = img.naturalWidth, h = img.naturalHeight;
+  if (!w || !h) return;
+  const eff = Math.round((w / h) >= 4 / 3 ? h * 4 / 3 : w);
+  const verdict = eff < 715 ? '<span class="qj-dim-bad">❌ מטושטש</span>'
+                : eff < 1070 ? '<span class="qj-dim-soft">⚠️ רך במובייל</span>'
+                : '<span class="qj-dim-ok">✅ חד</span>';
+  out.innerHTML = `${w}×${h} · <b>${eff}px</b> בכרטיס · ${verdict}`;
+};
 window.openImageLightbox = function(url, filename) {
   lightboxCurrentUrl = url;
   lightboxCurrentFilename = filename;
@@ -4958,6 +5011,12 @@ function bizFullDetailHtml(id, opts) {
   const idEmailResendBtn = (b.status === 'approved' && b.ownerEmail)
     ? `<button type="button" class="act-btn approve tiny" style="margin-top:8px" onclick="event.stopPropagation();requeueBizEmail('${b.id}')">שליחה חוזרת</button>`
     : '';
+  // ── תיקון הכתובת מאותו מקום שבו רואים שהיא לא עבדה (2026-08-22, §243) ────────────────────
+  // עד היום, כדי לתקן מייל שגוי היה צריך לגלול לכרטיס "🎫 אימות בעל העסק" ולפתוח שם עריכה —
+  // מסך אחר לגמרי מזה שבו התגלתה הבעיה. הכפתור פותח את אותו עורך-שורת-הקשר שלמעלה בכרטיס,
+  // ולכן אין כאן טופס שני שאפשר לשכוח לסנכרן. מוצג תמיד כשיש סטטוס-מייל, גם כשהוא "נשלח
+  // ונמסר" — בדיוק כמו "שליחה חוזרת" (§206): כתובת שגויה נראית מוצלחת לחלוטין מהצד שלנו.
+  const idEmailFixBtn = `<button type="button" class="act-btn tiny" style="margin-top:8px;margin-right:6px" onclick="event.stopPropagation();toggleBizOwnerContactEdit('${b.id}')">✏️ תיקון כתובת</button>`;
   const idEmailNote = b.status === 'approved'
     ? `<div class="identity-note ${(b.ownerEmailStatus === 'failed' || mailDeliveryFailed(b.ownerEmailDelivery)) ? 'warn' : 'neutral'}"><div class="identity-note-h">מייל אישור</div><div class="identity-note-v">${
         b.ownerEmailStatus === 'sent'
@@ -4965,7 +5024,7 @@ function bizFullDetailHtml(id, opts) {
           : b.ownerEmailStatus === 'failed'
             ? `❌ שליחה נכשלה<br>אל ${esc(b.ownerEmail || '—')}${b.ownerEmailError ? `<br>${esc(String(b.ownerEmailError).slice(0, 200))}` : ''}`
             : `⏳ ממתין לשליחה — יוצא אוטומטית תוך דקה מהאישור${b.ownerEmail ? `<br>אל ${esc(b.ownerEmail)}` : ''}`
-      }${idEmailResendBtn}</div></div>`
+      }${idEmailResendBtn}${idEmailFixBtn}</div></div>`
     : '';
   // §147 — הערת-עסק (b.note) הייתה מוצגת רק בתוך "שיפוט מהיר" (ונעלמת לגמרי אם אין הערה בכלל, או
   // מתכווצת אם כבר טופלה) — המשתמש דיווח שזה "נעלם בשקט". תיבה קבועה כאן בכרטיס-הזהות, תמיד גלויה,
@@ -4995,7 +5054,13 @@ function bizFullDetailHtml(id, opts) {
             <button type="button" class="act-btn approve tiny" onclick="saveBizName('${b.id}')">שמירה</button>
             <button type="button" class="act-btn tiny" onclick="toggleBizNameEdit('${b.id}')">ביטול</button>
           </div>
-          <div class="identity-contact">${esc(bizMetaStr(b))}${b.ownerPhone ? ` · <span class="k">${esc(b.ownerPhone)}</span>` : ''}${b.ownerEmail ? ` · ${esc(b.ownerEmail)}` : ''}</div>
+          <div class="identity-contact" id="idContactViewRow_${b.id}">${esc(bizMetaStr(b))}${b.ownerPhone ? ` · <span class="k">${esc(b.ownerPhone)}</span>` : ''}${b.ownerEmail ? ` · ${esc(b.ownerEmail)}` : ''}<button type="button" class="identity-name-edit-btn" onclick="toggleBizOwnerContactEdit('${b.id}')" title="שינוי טלפון ומייל של בעל העסק">✏️</button></div>
+          <div class="identity-contact-edit" id="idContactEditRow_${b.id}">
+            <input type="tel" id="idOwnerPhoneInput_${b.id}" value="${esc(b.ownerPhone || '')}" placeholder="טלפון בעל העסק">
+            <input type="email" id="idOwnerEmailInput_${b.id}" value="${esc(b.ownerEmail || '')}" placeholder="מייל בעל העסק">
+            <button type="button" class="act-btn approve tiny" onclick="saveBizOwnerContact('${b.id}')">שמירה</button>
+            <button type="button" class="act-btn tiny" onclick="toggleBizOwnerContactEdit('${b.id}')">ביטול</button>
+          </div>
           <div class="identity-tags">${idTagsHtml}</div>
         </div>
         <div class="identity-actions">
@@ -5646,6 +5711,33 @@ window.saveBizName = async function(id) {
   const val = document.getElementById('idNameInput_' + id).value.trim();
   if (!val) { alert('שם העסק לא יכול להיות ריק'); return; }
   await saveSectionUpdates(id, { name: val }); // renderMain בתוך saveSectionUpdates כבר בונה מחדש את הכרטיס במצב-תצוגה עם השם המעודכן
+};
+
+// ── עריכת טלפון+מייל של בעל העסק מכרטיס הזהות (2026-08-22, §243) ────────────────────────────
+// אותה תבנית בדיוק כמו toggleBizNameEdit/saveBizName שמעל. השמירה עוברת ב-saveSectionUpdates
+// (כמו כל עריכת-מנהל אחרת) ולכן מקבלת בחינם גם ניקוי בקשה-ממתינה על אותם שדות וגם יומן-פעילות,
+// ואז מסנכרנת לרשומת החבר — בדיוק כמו saveBizSec1, שאם לא כן ה"מייל המאוחד" ימשיך לצאת לישנה.
+window.toggleBizOwnerContactEdit = function(id) {
+  const viewRow = document.getElementById('idContactViewRow_' + id);
+  const editRow = document.getElementById('idContactEditRow_' + id);
+  if (!viewRow || !editRow) return;
+  const editing = editRow.classList.contains('open');
+  editRow.classList.toggle('open', !editing);
+  viewRow.style.display = editing ? '' : 'none';
+  if (!editing) document.getElementById('idOwnerEmailInput_' + id)?.focus();
+};
+window.saveBizOwnerContact = async function(id) {
+  const b = findBiz(id);
+  if (!b) return;
+  const phone = document.getElementById('idOwnerPhoneInput_' + id).value.trim();
+  // toLowerCase — הכתובת היא מפתח-ההתאמה של webhook המסירה ושל בדיקת-הכפילות, ר' §221
+  const email = document.getElementById('idOwnerEmailInput_' + id).value.trim().toLowerCase();
+  if (email && !/^[^s@]+@[^s@]+.[^s@]{2,}$/.test(email)) { alert('כתובת המייל לא נראית תקינה'); return; }
+  const who = `בעל העסק "${b.name}"`;
+  if (!confirmSuspectEmail(email, who)) return;   // דומיין עם שגיאת-כתיב (gamil/wallla...) — §204
+  if (!confirmSuspectPhone(phone, who)) return;
+  await saveSectionUpdates(id, { ownerPhone: phone, ownerEmail: email });
+  await syncOwnerFieldsToMember(b, { ownerPhone: phone, ownerEmail: email });
 };
 
 // יומן פעילות לעסק/אוהד — תת-אוסף businesses/{id}/activity או members/{id}/activity (לא מערך על
@@ -7316,7 +7408,7 @@ window.uploadBizCover = async function(id, files) {
   if (!file) return;
   showSaving('מעלה תמונה מייצגת...');
   try {
-    const { url, thumbUrl } = await uploadImageWithThumb(file, `businesses/${id}/coverPhoto_${Date.now()}`);
+    const { url, thumbUrl } = await uploadImageWithThumb(file, `businesses/${id}/coverPhoto_${Date.now()}`, COVER_MAX_DIM);
     await saveSectionUpdates(id, { coverPhoto: url, coverPhotoThumb: thumbUrl }, { reopenStep: 5 });
   } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בהעלאת התמונה: ' + e.message); }
 };
@@ -7859,6 +7951,25 @@ function prunedPending(b, pending) {
   return realPendingChangeKeys({ ...b, pendingChanges: pending }).length ? pending : null;
 }
 
+// ── סנכרון פרטי-הבעלים לרשומת החבר המקושרת בעת אישור בקשה (2026-08-22) ─────────────────────
+// כשהמנהל עורך את "אימות בעל העסק" בעצמו (saveBizSec1) הפרטים מסונכרנים זה מכבר ל-members.
+// אישור **בקשה שהגיעה מבעל-העסק** לא עשה זאת — כלומר בעל-עסק שביקש לתקן את המייל שלו וקיבל
+// אישור נשאר עם הכתובת הישנה ברשומת החבר. זה לא ניואנס טכני: ה"מייל המאוחד" (קוד כניסה + לינק
+// לדשבורד) נשלח בפועל לכתובת שברשומת **החבר**, לא ל-ownerEmail — כך שהאישור נראה מוצלח והמייל
+// המשיך לצאת לכתובת הישנה בדיוק. ר' ההערה ב-idEmailNote ו-§221.
+const OWNER_MEMBER_FIELD_MAP = { ownerFirst: 'firstName', ownerLast: 'lastName', ownerPhone: 'phone', ownerEmail: 'email' };
+async function syncOwnerFieldsToMember(b, applied) {
+  if (!b || !b.ownerMemberId || !applied) return;
+  const patch = {};
+  Object.entries(OWNER_MEMBER_FIELD_MAP).forEach(([bizKey, memberKey]) => {
+    if (bizKey in applied) patch[memberKey] = applied[bizKey];
+  });
+  if (!Object.keys(patch).length) return;
+  // כישלון כאן לא מבטל את האישור עצמו (הוא כבר נכתב) — מדווח ולא זורק, זהה ל-saveBizSec1.
+  try { await updateDoc(doc(db, 'members', b.ownerMemberId), patch); }
+  catch (e) { console.warn('owner member sync failed', e); }
+}
+
 // זהה ל-approvePendingChanges/rejectPendingChanges ב-admin-businesses.html — b.pendingChanges (לא
 // b.pendingChangeDiff, שהוא רק גרסת-תצוגה מפורמטת) מכיל את הערכים הגולמיים האמיתיים לכתיבה בפועל.
 window.approveChanges = async function(id) {
@@ -7871,6 +7982,7 @@ window.approveChanges = async function(id) {
       changes[input.dataset.key] = input.value;
     });
     await updateDoc(doc(db, 'businesses', id), { ...changes, pendingChanges: null, pendingChangesAt: null });
+    await syncOwnerFieldsToMember(b, changes);
     pendingEditIds.delete(id);
   } catch (e) { console.error(e); alert('שגיאה באישור השינויים: ' + e.message); }
 };
@@ -7941,6 +8053,7 @@ window.approveChangeField = async function(id, field, valueOverride) {
   updates.changeDecisions = withChangeDecision(b, field, 'approved');
   try {
     await updateDoc(doc(db, 'businesses', id), updates);
+    await syncOwnerFieldsToMember(b, updates);
     Object.assign(b, updates);
     Object.assign(b, hydrateBiz(id, b));
     b.healthScore = computeHealthScore(b);
@@ -8376,7 +8489,33 @@ function quickJudgmentHtml(b) {
       // (דווח בפועל, "יש הדברה" ביקש תמונות). עכשיו: לפני/אחרי כתמונות, בלי קלט-טקסט (עריכה ידנית
       // של URL כזה אף פעם לא הייתה פעולה שפויה ממילא).
       if (IMAGE_DIFF_FIELDS.has(it.field)) {
-        const imgCell = (url, empty) => url
+        // ── התמונה המייצגת נשפטת בגודל הכרטיס האמיתי, לא בתמונונת (§240) ──────────────────────
+        // עד 22.8 גם היא הוצגה כאן ב-96×72 — ובגודל הזה פשוט אי אפשר לשפוט. באג-אמת ("שיגור
+        // ישיר", 22.8): בעל העסק שלח את **אותו פוסטר בדיוק**, מוקטן ומודבק על קנבס 4:3 עם פסים
+        // מטושטשים בצדדים, האישור ניתן בטעות, והפוסטר ירד מ-1254 ל-960 פיקסל. בתמונונת של
+        // 96×72 הפסים בלתי-נראים; ב-220px הם צועקים.
+        //
+        // ⚠️ המסגרת כאן היא 4:3 עם object-fit:cover ואותו object-position של הכרטיס — כלומר זו
+        // *בדיוק* התצוגה שתתקבל באינדקס, כולל מה שייחתך. זה לא קישוט: רוב התמונות במאגר אינן
+        // 4:3, והחיתוך הוא בדיוק מה שהמנהל צריך לראות לפני שהוא מאשר.
+        //
+        // ⚠️ המידות שמתחת הן **תוספת ולא תחליף**, וזה מכוון: הקובץ עם הפסים היה 1280×960 —
+        // מושלם על הנייר ובכל זאת גרוע. שום מספר לא תופס את זה, רק העין. המספרים כאן קיימים
+        // כדי לתפוס את הכשל *השני* — תמונת-מקור קטנה מדי (6 עסקים בפרודקשן, עד 220×220).
+        const isCover = it.field === 'coverPhoto';
+        const pos = esc(b.coverPhotoPosition || '50% 50%');
+        const box = 'width:min(220px,42vw);aspect-ratio:4/3;border-radius:8px;overflow:hidden';
+        const coverCell = (url, empty) => `
+          <div class="qj-cover-cell">
+            ${url
+              ? `<div class="media-thumb-wrap" style="${box}" onclick="openImageLightbox('${esc(url)}','${it.field}.jpg')">
+                   <img src="${esc(bizImageViewUrl(url))}" alt="${esc(it.label)}" onload="qjStampDims(this)"
+                        style="width:100%;height:100%;object-fit:cover;object-position:${pos};display:block">
+                 </div>`
+              : `<div style="${box};display:flex;align-items:center;justify-content:center;background:#f3f4f6;color:#6b7280;font-size:12px">${empty}</div>`}
+            <div class="qj-cover-dims"></div>
+          </div>`;
+        const imgCell = isCover ? coverCell : (url, empty) => url
           ? mediaThumbHtml(url, it.field + '.jpg', 'width:96px;height:72px;border-radius:8px;overflow:hidden', it.label, it.field === 'logo' ? 'contain' : 'cover')
           : `<span class="qj-value-text">${empty}</span>`;
         return `
@@ -10707,9 +10846,23 @@ function mailIssueList() {
   const out = [];
   const now = Date.now();
 
+  // ── בעל עסק נספר פעם אחת בלבד — כשורת החנות (2026-08-22, בקשת המשתמש) ─────────────────────
+  // בעל עסק קיים במערכת פעמיים: מסמך העסק (ownerEmail) ומסמך החבר שמאחוריו (email) — שניהם עם
+  // *אותה כתובת*. כשהכתובת חוזרת/לא נפתחת, שני המסמכים נכשלים באותה צורה ושתי שורות עלו לרשימה,
+  // כך שמונה התקלות הראה 17 במקום 9. זו לא כפילות-תצוגה בלבד: היא גם מכפילה את העבודה, כי טיפול
+  // אחד (תיקון הכתובת) סוגר את שתיהן. לכן שורת האוהד נבלעת בשורת החנות.
+  // שורת אוהד של בעל-עסק נשמרת רק כשלחנות עצמה *אין* תקלה — אחרת המידע היה נעלם לגמרי.
+  const ownerBizOf = new Map();
+  for (const b of MOCK_BUSINESSES) {
+    if (b.status !== 'rejected' && b.ownerMemberId) ownerBizOf.set(b.ownerMemberId, b);
+  }
+  const bizWithIssue = new Set();
+  let curOwnerBiz = null;   // מוגדר בלולאת האוהדים בלבד; מתייג את השורה כ"בעל העסק «X»"
+
   const add = (kind, id, name, email, sev, badge, detail, when, canResend, action) =>
     out.push({ kind, id, name, email: email || '', sev, badge, detail, when: when || null, canResend: !!canResend,
-               action: action || '', key: mailIssueKey(kind, id, badge, email, when) });
+               action: action || '', key: mailIssueKey(kind, id, badge, email, when),
+               ownerBizName: curOwnerBiz ? curOwnerBiz.name : '' });
 
   for (const b of MOCK_BUSINESSES) {
     if (b.status === 'rejected') continue;
@@ -10746,8 +10899,14 @@ function mailIssueList() {
     }
   }
 
+  // כל שורות החנויות כבר בפנים — מכאן והלאה אפשר לדעת על איזו חנות כבר דווח
+  out.forEach(x => { if (x.kind === 'biz') bizWithIssue.add(x.id); });
+
   for (const f of MOCK_FANS) {
     if (f.status === 'rejected') continue;
+    curOwnerBiz = ownerBizOf.get(f.id) || null;
+    // החנות של אותו בעל-עסק כבר מופיעה ברשימה עם אותה כתובת בדיוק — לא לספור פעמיים
+    if (curOwnerBiz && bizWithIssue.has(curOwnerBiz.id)) continue;
     const approved = f.status === 'approved';
     const hit = emailDomainHit(f.email);
     const malformed = f.email && !MAIL_RX.test(f.email);
@@ -10818,7 +10977,7 @@ function mailIssueRowHtml(x) {
     <div class="task-table-row">
       <div class="task-table-main">
         <div class="task-table-name">${esc(x.name)}</div>
-        <div class="task-table-meta">${x.kind === 'biz' ? 'עסק' : 'אוהד'} · ${esc(x.detail)}</div>
+        <div class="task-table-meta">${x.kind === 'biz' ? 'עסק' : x.ownerBizName ? `בעל העסק "${esc(x.ownerBizName)}"` : 'אוהד'} · ${esc(x.detail)}</div>
       </div>
       <div class="task-table-badges"><span class="${sevClass}">${esc(x.badge)}</span></div>
       <div class="mi-addr ${x.sev <= 1 ? 'bad' : ''}">${esc(x.email || '— אין כתובת —')}</div>
@@ -11014,6 +11173,17 @@ window.requeueBizEmail = async function(id) {
   if (!b) return;
   if (b.status !== 'approved') { alert('אפשר לשלוח שוב רק לעסק מאושר.'); return; }
   if (!b.ownerEmail) { alert('אין כתובת מייל לעסק הזה — צריך להוסיף אותה בכרטיס (שלב "אימות בעל העסק").'); return; }
+
+  // ── בעל עסק עם קוד כניסה מקבל תמיד את מכתב-הפתיחה המאוחד (2026-08-22) ─────────────────────
+  // באג-אמת "לארט אופנועים" (20.8): אורן לוי קיבל ב-10:37 את מכתב-הפתיחה המאוחד כמו שצריך,
+  // דווח שלא קיבל, ולחיצה על "שליחה חוזרת" שלחה לו ב-10:45 את **מייל-העסק הקצר** — כלומר
+  // מייל *פחות* טוב מזה שכבר יצא, בלי קוד הכניסה ובלי "מה לעשות עכשיו". הסיבה: השליחה החוזרת
+  // מחזירה ל-pending רק את מסמך העסק, וה-Worker — שרואה שמסמך החבר כבר 'sent' — נופל למייל
+  // הקצר. זה קרה לכמה בעלי עסקים, ובנוסף דרס את welcomeEmailKind ל-'bizOnly' כך שהם הוצגו
+  // כאן בטעות כ"קיבלו את המייל הלא-נכון". לכן: כשיש חבר מאושר עם קוד כניסה — תמיד המאוחד.
+  const owner = b.ownerMemberId ? findFan(b.ownerMemberId) : null;
+  if (owner && owner.status === 'approved' && owner.loginCode) return window.requeueWelcomeEmail(id);
+
   if (!confirmSuspectEmail(b.ownerEmail, `"${b.name}"`)) return;
   if (!confirm(`לשלוח שוב את מייל האישור ל"${b.name}"?\n\nאל: ${b.ownerEmail}\n\nהמייל יוצא אוטומטית תוך דקה.`)) return;
   try {
@@ -11352,6 +11522,16 @@ await new Promise(resolve => {
 
 let _bizLoaded = false, _fanLoaded = false;
 function maybeInitialRender() { if (_bizLoaded && _fanLoaded) renderAll(); }
+
+// §244 — נטען לפני/במקביל לעסקים. אם הוא מגיע אחרי, ה-map מעודכן והעסקים מוזרמים מחדש
+// דרך hydrateBiz, כדי שלינקים לדשבורד לא יישארו ריקים בטעינה הראשונה.
+onSnapshot(collection(db, 'bizTokens'), snapshot => {
+  BIZ_TOKENS = Object.fromEntries(snapshot.docs.map(d => [d.id, d.data().accessToken || '']));
+  if (_bizLoaded) {
+    MOCK_BUSINESSES = MOCK_BUSINESSES.map(b => ({ ...b, accessToken: BIZ_TOKENS[b.id] || '' }));
+    renderAllPreserveScroll();
+  }
+}, err => console.error('שגיאה בטעינת טוקני עסקים:', err));
 
 onSnapshot(collection(db, 'businesses'), snapshot => {
   MOCK_BUSINESSES = snapshot.docs.map(d => hydrateBiz(d.id, d.data()));

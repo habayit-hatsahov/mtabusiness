@@ -75,6 +75,38 @@ export async function firestoreGetDoc(env, accessToken, path) {
   return { id: docIdFromName(doc.name), fields: fieldsToObject(doc.fields) };
 }
 
+// ── טוקן הכניסה לדשבורד העסק — bizTokens/{businessId} (2026-08-23, §244) ────────────────────
+// עד היום accessToken ישב על מסמך העסק עצמו. מסמך של עסק approved קריא **ציבורית לגמרי**
+// (firestore.rules), ולכן כל אדם יכול היה לשלוף את הטוקן ב-curl אנונימי ולהיכנס לדשבורד של כל
+// עסק. הטוקן עבר לאוסף נפרד שקריא רק למנהל/לעסק עצמו/לחבר המקושר.
+//
+// שני הכיוונים מרוכזים כאן בכוונה: כל צרכן ב-Worker חייב לעבור דרכם, כדי שלא ייווצר שוב מצב
+// שבו מקום אחד קורא את הטוקן ממקור אחר וממשיך לעבוד גם כשהמקור הנכון השתנה.
+//
+// ⚠️ נפילה-לאחור זמנית למקום הישן (businesses.accessToken) — ר' LEGACY למטה. בלעדיה היה נוצר
+// חלון שבו הכניסה שבורה: ה-Worker החדש עולה ב-wrangler deploy, אבל אוסף bizTokens עדיין ריק עד
+// שהמיגרציה (mode=copy) רצה — ו-/migrate-biz-tokens עצמו חי רק בתוך ה-Worker החדש, כלומר אי
+// אפשר להריץ אותו לפני ה-deploy. עם הנפילה-לאחור סדר ההרצה נעשה חסין לגמרי: deploy → copy →
+// rules+אתר → cleanup, ובאף שלב אף בעל-עסק לא מאבד גישה.
+// **למחוק אחרי ש-mode=cleanup רץ בהצלחה** — כל עוד היא כאן, טוקן ישן שנשאר על מסמך עסק עדיין
+// עובד, וזו בדיוק הפרצה שסגרנו.
+export async function bizIdFromToken(env, accessToken, bizToken) {
+  if (!bizToken) return null;
+  const rows = await firestoreRunQuery(env, accessToken, 'bizTokens', 'accessToken', bizToken, 1);
+  if (rows.length) return rows[0].id;   // מזהה-המסמך *הוא* ה-businessId
+  // LEGACY
+  const old = await firestoreRunQuery(env, accessToken, 'businesses', 'accessToken', bizToken, 1);
+  return old.length ? old[0].id : null;
+}
+export async function bizTokenFor(env, accessToken, businessId) {
+  if (!businessId) return '';
+  const d = await firestoreGetDoc(env, accessToken, `bizTokens/${businessId}`);
+  if (d && d.fields.accessToken) return d.fields.accessToken;
+  // LEGACY
+  const biz = await firestoreGetDoc(env, accessToken, `businesses/${businessId}`);
+  return (biz && biz.fields.accessToken) || '';
+}
+
 // עדכון חלקי (updateMask) — לא נוגע בשדות שלא נמנים ב-fieldsObj
 export async function firestorePatch(env, accessToken, path, fieldsObj) {
   const maskParams = Object.keys(fieldsObj)

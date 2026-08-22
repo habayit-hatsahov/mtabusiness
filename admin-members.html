@@ -868,22 +868,31 @@ window.openMemberSheet = async function(id) {
   if (m.isBusinessOwner) {
     try {
       let bizData = null;
+      let bizDocId = '';   // §244 — דרוש לשליפת הטוקן מ-bizTokens/{businessId}
       if (m.linkedBusinessId) {
         const bizSnap = await getDoc(doc(db, 'businesses', m.linkedBusinessId));
-        if (bizSnap.exists()) bizData = bizSnap.data();
+        if (bizSnap.exists()) { bizData = bizSnap.data(); bizDocId = bizSnap.id; }
       }
       if (!bizData) {
         const bizQ = query(collection(db, 'businesses'), where('ownerMemberId', '==', m.id));
         const bizSnap = await getDocs(bizQ);
-        if (!bizSnap.empty) bizData = bizSnap.docs[0].data();
+        if (!bizSnap.empty) { bizData = bizSnap.docs[0].data(); bizDocId = bizSnap.docs[0].id; }
       }
       if (!bizData && m.email) {
         const bizQ = query(collection(db, 'businesses'), where('ownerEmail', '==', m.email));
         const bizSnap = await getDocs(bizQ);
-        if (!bizSnap.empty) bizData = bizSnap.docs[0].data();
+        if (!bizSnap.empty) { bizData = bizSnap.docs[0].data(); bizDocId = bizSnap.docs[0].id; }
       }
       if (bizData) {
-        const token = bizData.accessToken;
+        // §244 — הטוקן עבר ל-bizTokens/{businessId}. bizData נשלף כאן בשאילתה, ולכן צריך גם
+        // את מזהה-המסמך שלו — נשמר ב-bizDocId ליד כל השמה של bizData למעלה.
+        let token = '';
+        if (bizDocId) {
+          try {
+            const tokSnap = await getDoc(doc(db, 'bizTokens', bizDocId));
+            if (tokSnap.exists()) token = tokSnap.data().accessToken || '';
+          } catch (e) { console.warn('biz token lookup failed', e); }
+        }
         bizName = bizData.name || 'העסק';
         if (token) {
           bizDashboardLink = `<a href="business-dashboard.html?token=${token}" target="_blank"

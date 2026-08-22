@@ -1,12 +1,13 @@
 import { corsHeaders, handlePreflight, json } from './cors.js';
 import { getGoogleAccessToken, mintFirebaseCustomToken, verifyAdminIdToken } from './jwt.js';
-import { firestoreRunQuery, firestoreGetDoc, firestorePatch } from './firestore.js';
+import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, bizTokenFor } from './firestore.js';
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt } from './ratelimit.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail } from './brevo.js';
 import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
 import { runBackfillThumbnails } from './backfill.js';
+import { runMigrateBizTokens } from './migrate-biz-tokens.js';
 import { sendWebPush } from './push.js';
 import { handleDownloadImage, handleViewImage } from './download.js';
 import { handleUploadBizMedia } from './bizmedia.js';
@@ -46,6 +47,10 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/backfill-thumbnails') {
         return json(await handleBackfillThumbnails(request, env), env, request);
+      }
+      // מיגרציה חד-פעמית §244 — ר' src/migrate-biz-tokens.js לסדר-ההרצה הנכון
+      if (request.method === 'POST' && url.pathname === '/migrate-biz-tokens') {
+        return json(await handleMigrateBizTokens(request, env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/send-test-push') {
         return json(await handleSendTestPush(request, env), env, request);
@@ -125,15 +130,18 @@ async function handleBusinessLogin({ accessToken: bizToken }, env) {
   if (!bizToken) return { error: 'invalid_request' };
 
   const accessToken = await getGoogleAccessToken(env);
-  const matches = await firestoreRunQuery(env, accessToken, 'businesses', 'accessToken', bizToken);
-  if (!matches.length) return { error: 'invalid_token' };
+  // §244 — הטוקן כבר לא על מסמך העסק אלא ב-bizTokens/{businessId}, ר' bizIdFromToken.
+  const bizId = await bizIdFromToken(env, accessToken, bizToken);
+  if (!bizId) return { error: 'invalid_token' };
+  const biz = await firestoreGetDoc(env, accessToken, `businesses/${bizId}`);
+  if (!biz) return { error: 'invalid_token' };
 
   const customToken = await mintFirebaseCustomToken(env, {
-    uid: matches[0].id,
+    uid: bizId,
     claims: { role: 'business_owner' },
   });
 
-  return { customToken, ownerMemberId: matches[0].fields.ownerMemberId || null };
+  return { customToken, ownerMemberId: biz.fields.ownerMemberId || null };
 }
 
 // ── רישום כשל-כתיבה מדשבורד העסק (§215) ─────────────────────────────────────────────────────
@@ -150,9 +158,10 @@ async function handleLogBizError({ accessToken: bizToken, action, code, message,
   if (!bizToken) return { error: 'invalid_request' };
 
   const accessToken = await getGoogleAccessToken(env);
-  const matches = await firestoreRunQuery(env, accessToken, 'businesses', 'accessToken', bizToken);
-  if (!matches.length) return { error: 'invalid_token' };
-  const biz = matches[0];
+  const bizId = await bizIdFromToken(env, accessToken, bizToken);   // §244
+  if (!bizId) return { error: 'invalid_token' };
+  const biz = await firestoreGetDoc(env, accessToken, `businesses/${bizId}`);
+  if (!biz) return { error: 'invalid_token' };
 
   const cut = (v, n) => String(v == null ? '' : v).slice(0, n);
   const entry = {
@@ -305,6 +314,20 @@ async function handleBackfillThumbnails(request, env) {
   return await runBackfillThumbnails(env);
 }
 
+// מיגרציית §244 — אותו סוד ואותו דפוס בדיוק כמו /backfill-thumbnails מעל (ריצה ידנית ב-curl,
+// לא כפתור בדשבורד ולא cron). mode חובה ומפורש — בלי ברירת-מחדל, כדי ש-cleanup לעולם לא יקרה
+// בטעות: הוא זה שמוחק את הטוקן ממסמך העסק.
+async function handleMigrateBizTokens(request, env) {
+  const secret = request.headers.get('x-admin-secret') || '';
+  if (!env.ADMIN_BACKFILL_SECRET || secret !== env.ADMIN_BACKFILL_SECRET) {
+    return { error: 'unauthorized' };
+  }
+  const { mode, dryRun } = await request.json().catch(() => ({}));
+  if (mode !== 'copy' && mode !== 'cleanup') return { error: 'mode must be "copy" or "cleanup"' };
+  const accessToken = await getGoogleAccessToken(env);
+  return await runMigrateBizTokens(env, accessToken, { mode, dryRun: !!dryRun });
+}
+
 // בדיקה ידנית בלבד (curl/Postman) לוודא שצינור ה-Web Push עובד קצה-לקצה — לא כפתור בדשבורד,
 // לא שולח לקהל. סוד ייעודי נפרד (לא ADMIN_BACKFILL_SECRET) כדי לא לגעת בסוד קיים של פיצ'ר אחר.
 async function handleSendTestPush(request, env) {
@@ -396,7 +419,7 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
     try {
       const vars = isFans
         ? { name: r.fields.firstName || '', code: r.fields.loginCode || '', link: `${SITE_BASE}home.html` }
-        : { name: r.fields.ownerFirst || '', business: r.fields.name || '', link: `${SITE_BASE}business-dashboard.html?token=${r.fields.accessToken}` };
+        : { name: r.fields.ownerFirst || '', business: r.fields.name || '', link: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, r.id)}` };   // §244
       await sendBroadcastEmail(env, { toEmail: email, toName: isFans ? (r.fields.firstName || '') : (r.fields.ownerFirst || ''), subject, body, vars });
       results.push({ id: r.id, name, email, status: 'sent' });
     } catch (e) {
@@ -448,7 +471,7 @@ async function runEmailSweeps(env) {
           toName: m.fields.firstName,
           code: m.fields.loginCode,
           businessName: business.fields.name,
-          dashboardLink: `${SITE_BASE}business-dashboard.html?token=${business.fields.accessToken}`,
+          dashboardLink: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, business.id)}`,   // §244
           tpl: { subject: templates.combinedSubject, body: templates.combinedBody },
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
@@ -499,18 +522,23 @@ async function runEmailSweeps(env) {
     processed++;
     try {
       const ownerName = `${b.fields.ownerFirst || ''} ${b.fields.ownerLast || ''}`.trim();
-      const dashboardLink = `${SITE_BASE}business-dashboard.html?token=${b.fields.accessToken}`;
+      const dashboardLink = `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, b.id)}`;   // §244
 
       // ── רשת-ביטחון ב': בדיקה חיה של החבר המקושר ─────────────────────────────────────────────
       // גם אחרי חלון-החסד, ה-snapshot של לולאת-החברים כבר לא מעודכן. קריאה נקודתית אחת כאן
-      // (לא שאילתה) אומרת בוודאות אם החבר עדיין ממתין לקוד — ואם כן, זה בדיוק המקרה של
-      // המייל המאוחד, גם אם הגענו אליו מהצד של העסק ולא מהצד של החבר.
+      // (לא שאילתה) אומרת בוודאות מה מצב החבר — ואם יש לו קוד כניסה, זה בדיוק המקרה של המייל
+      // המאוחד, גם אם הגענו אליו מהצד של העסק ולא מהצד של החבר.
+      //
+      // ⚠️ עד 22.8 התנאי דרש גם loginCodeEmailStatus==='pending', ולכן **כל שליחה חוזרת לעסק**
+      // (שמחזירה ל-pending רק את מסמך העסק) נפלה למייל-העסק הקצר למטה: בעל העסק קיבל מייל
+      // *פחות* טוב מזה שכבר קיבל — בלי קוד הכניסה ובלי "מה לעשות עכשיו". באג-אמת "לארט
+      // אופנועים" (20.8), וזה קרה לעוד בעלי עסקים. הכלל עכשיו: בעל עסק שיש לו קוד כניסה מקבל
+      // תמיד את מכתב-הפתיחה המאוחד, ומייל-העסק הקצר נשאר רק למי שאין מאחוריו רשומת-חבר.
       const ownerMemberId = b.fields.ownerMemberId || null;
       const owner = ownerMemberId ? await firestoreGetDoc(env, accessToken, `members/${ownerMemberId}`) : null;
-      const ownerPendingCode = !!owner && owner.fields.status === 'approved'
-        && owner.fields.loginCodeEmailStatus === 'pending' && !!owner.fields.loginCode;
+      const ownerHasCode = !!owner && owner.fields.status === 'approved' && !!owner.fields.loginCode;
 
-      if (ownerPendingCode) {
+      if (ownerHasCode) {
         await sendCombinedWelcomeEmail(env, {
           toEmail: owner.fields.email || b.fields.ownerEmail,
           toName: owner.fields.firstName,
@@ -519,10 +547,14 @@ async function runEmailSweeps(env) {
           dashboardLink,
           tpl: { subject: templates.combinedSubject, body: templates.combinedBody },
         });
-        await firestorePatch(env, accessToken, `members/${owner.id}`, {
-          loginCodeEmailStatus: 'sent',
-          loginCodeEmailSentAt: new Date(),
-        });
+        // רק כשהחבר באמת המתין — אחרת (שליחה חוזרת של העסק בלבד) אין לדרוס לו את חותמת
+        // השליחה המקורית ואת נתוני המסירה/פתיחה שנצברו עליה.
+        if (owner.fields.loginCodeEmailStatus === 'pending') {
+          await firestorePatch(env, accessToken, `members/${owner.id}`, {
+            loginCodeEmailStatus: 'sent',
+            loginCodeEmailSentAt: new Date(),
+          });
+        }
         await firestorePatch(env, accessToken, `businesses/${b.id}`, {
           ownerEmailStatus: 'sent',
           ownerEmailSentAt: new Date(),

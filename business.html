@@ -1386,7 +1386,7 @@
 
 <script type="module">
   import { db } from './firebase-config.js';
-  import { collection, addDoc, updateDoc, doc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+  import { collection, addDoc, updateDoc, doc, setDoc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
@@ -1446,6 +1446,15 @@
     });
     return memberRef.id;
   }
+
+  // ── תקרת הרזולוציה של התמונה המייצגת (§240) ─────────────────────────────────────────────────
+  // הכרטיס באינדקס הוא 4:3 עם object-fit:cover, ובמובייל הוא תופס ~358px CSS — כלומר במסך DPR=3
+  // הוא צריך **~1070 פיקסלים אמיתיים לרוחב**. התקרה הישנה (1280 בצד הארוך) נראתה מספיקה, אבל
+  // בתמונה **לאורך** הצד הארוך הוא הגובה: 960×1280 נותנת רק 960 פיקסל לרוחב הכרטיס. כלומר
+  // הדחיסה שלנו עצמה הורידה תמונות מתחת לסף החדות — 13 מתוך 30 התמונות בפרודקשן, רובן לאורך.
+  // 1600 מבטיח ≥1200 לרוחב גם בתמונה לאורך 3:4, במחיר ~100KB לקובץ. תקף לתמונה המייצגת בלבד;
+  // לוגו וגלריה נשארים על 1280 (הלוגו מוצג כתג קטן, הגלריה רק בתוך דף העסק).
+  const COVER_MAX_DIM = 1600;
 
   // דחיסה בלבד (בלי העלאה) — התמונות עצמן מועלות מצד-שרת דרך /upload-biz-media (ר' handleSubmit),
   // לא דרך ה-Client SDK. הדחיסה נשארת בצד-לקוח כדי לשמור את גוף-הבקשה קטן ומהיר לשליחה.
@@ -1927,8 +1936,10 @@
       agreedTermsAt:    serverTimestamp(),
     };
 
+    // §244 — הטוקן **לא** נכתב על מסמך העסק אלא ל-bizTokens/{businessId} מיד אחרי היצירה
+    // (ר' למטה, ליד קישור-החבר). מסמך של עסק approved קריא ציבורית לגמרי, ולכן טוקן-כניסה
+    // שיושב עליו שקול לפרסום סיסמה. הוא עדיין נשלח כאן ל-Worker (/upload-biz-media) מהזיכרון.
     const accessToken = crypto.randomUUID();
-    data.accessToken    = accessToken;
     data.pendingChanges = null;
     data.logo           = '';
     data.coverPhoto      = '';
@@ -1971,6 +1982,11 @@
       }
       // קישור לרשומת-חבר הוא שלב-המשך: כשל בו לא מבטל הרשמה שכבר נוצרה (המנהל מקשר ידנית)
       if (bizDocRef) {
+        // §244 — טוקן הכניסה לדשבורד, באוסף נפרד שאינו קריא ציבורית. כשל כאן לא מבטל הרשמה
+        // שכבר נוצרה (בדיוק כמו קישור-החבר מתחת) — המנהל יכול להנפיק טוקן מחדש ממרכז הניהול.
+        try {
+          await setDoc(doc(db, 'bizTokens', bizDocRef.id), { accessToken });
+        } catch (e) { console.error('biz token write failed:', e.message); }
         try {
           const ownerMemberId = await linkOrCreateOwnerMember(data, bizDocRef.id);
           await updateDoc(doc(db, 'businesses', bizDocRef.id), { ownerMemberId });
@@ -2024,7 +2040,7 @@
           if (effectiveLogoFile) form.append('logo', effectiveLogoFile);
           if (effectiveCoverFile) {
             const [mainFile, thumbFile] = await Promise.all([
-              compressToFile(effectiveCoverFile, 1280, 0.82, effectiveCoverFile.name),
+              compressToFile(effectiveCoverFile, COVER_MAX_DIM, 0.82, effectiveCoverFile.name),
               compressToFile(effectiveCoverFile, 640, 0.80, 'thumb_' + effectiveCoverFile.name),
             ]).catch(() => [effectiveCoverFile, effectiveCoverFile]);
             form.append('cover', mainFile);
@@ -2954,7 +2970,13 @@
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/webp', quality));
+          // webp — כ-25-35% קטן יותר מ-JPEG באיכות דומה.
+          // ⚠️ toDataURL מחזיר PNG **בשקט** כשהדפדפן לא יודע לקודד את הטיפוס המבוקש — כך מוגדר בתקן,
+          // ופרמטר ה-quality פשוט מתעלם (PNG הוא חסר-אובדן). זה לא תיאורטי: **6 מתוך 30 התמונות
+          // המייצגות בפרודקשן נשמרו כ-PNG**, אחת מהן 2.2MB — פי ~15 מהמשקל, על אותה תמונה בדיוק.
+          // לכן בודקים מה באמת חזר ונופלים ל-JPEG (נתמך בכל דפדפן) במקום להישאר עם PNG. §240
+          const webp = canvas.toDataURL('image/webp', quality);
+          resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', quality));
         };
         img.onerror = reject;
         img.src = rawDataUrl;

@@ -711,6 +711,23 @@
       position: static; width: 100%; height: auto;
       max-height: 78vh; object-fit: contain; display: block;
     }
+    /* ── "בדיוק כמו בכרטיס" — חיתוך זהה גם בכרטיס הפנימי, לעסקים ברשימה בלבד (2026-08-22) ──
+       ברירת-המחדל היא .natural שמעל: הכרטיס הפנימי מציג את התמונה במלואה. כשהתמונה הראשית היא
+       פלייר לאורך, שתי התצוגות נראות כמו שתי תמונות שונות לגמרי — הכרטיס באינדקס מראה רצועה
+       חתוכה, והכרטיס הפנימי את כל הפלייר. אצל RON MOTORS התבקש במפורש שהשניים יהיו זהים.
+       היחס כאן הוא 4:3 בדיוק כמו .biz-card-img (ולא 26:15 של .sheet-hero) — אותו יחס הוא
+       התנאי לכך שאותו coverPhotoPosition ייתן בדיוק את אותה רצועה. ר' SHEET_CARD_CROP_BIZ_IDS. */
+    .sheet-hero.card-crop { aspect-ratio: 4/3; background: var(--bg); }
+    .sheet-hero.card-crop .sheet-hero-img {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      max-height: none; object-fit: cover; display: block;
+    }
+    /* מצב "כל התמונה" (coverPhotoZoom) — זהה ל-.biz-card-cover-img.fitted שמעל */
+    .sheet-hero.card-crop.fitted .sheet-hero-img {
+      object-fit: contain;
+      transform: scale(var(--cover-zoom, 1));
+      transform-origin: var(--cover-origin, 50% 50%);
+    }
     .sheet-hero-logo-badge {
       position: absolute; bottom: -26px; right: 20px; z-index: 3;
       width: 72px; height: 72px; border-radius: 18px;
@@ -2806,6 +2823,16 @@ function updateLiveClocks() {
 }
 setInterval(updateLiveClocks, 1000);
 
+// ── "החיתוך של הכרטיס" גם בכרטיס הפנימי — רשימת עסקים מפורשת (2026-08-22) ───────────────────
+// ברירת-המחדל בכרטיס הפנימי היא להציג את התמונה הראשית **במלואה** (ר' .sheet-hero.natural).
+// אצל RON MOTORS התמונה הראשית היא פלייר לאורך: בכרטיס באינדקס רואים רצועה חתוכה עם הרכבים,
+// ובכרטיס הפנימי את כל הפלייר — נראה כמו שתי תמונות שונות. התבקש במפורש שהחיתוך יהיה זהה
+// בשני המקומות, **רק אצלו**; שאר העסקים ממשיכים להציג את התמונה במלואה בדיוק כמו קודם.
+// להוספת עסק: להוסיף את מזהה-המסמך שלו ל-Set (המזהה מופיע במרכז הניהול).
+const SHEET_CARD_CROP_BIZ_IDS = new Set([
+  'k9ze75reNJUTQaat802k', // RON MOTORS - קונה ומוכר רכבים
+]);
+
 function openBiz(id) {
   const b = businesses.find(x => x.id === id);
   if (!b) return;
@@ -2821,15 +2848,40 @@ function openBiz(id) {
   const coverUrl = looksLikeImageUrl(b.coverPhoto) ? b.coverPhoto : '';
   const logoUrl  = looksLikeImageUrl(b.logo) ? b.logo : '';
 
+  // ר' SHEET_CARD_CROP_BIZ_IDS למעלה. #bizSheet הוא אלמנט אחד שממוחזר לכל העסקים, ולכן
+  // המחלקות והסגנון-inline נקבעים כאן **בכל פתיחה** — אחרת החיתוך היה נדבק לעסק הבא.
+  const cardCrop  = !!coverUrl && SHEET_CARD_CROP_BIZ_IDS.has(b.id);
+  const cropZoom  = cardCrop ? parseFloat(b.coverPhotoZoom) : NaN;
+  const cropFitted = cropZoom > 0;
+  hero.classList.toggle('card-crop', cardCrop);
+  hero.classList.toggle('fitted', cardCrop && cropFitted);
+  hero.style.background = (cardCrop && b.coverPhotoBg) ? b.coverPhotoBg : '';
+
   const heroPhotos = [];
   if (coverUrl) {
     const img = document.createElement('img');
     img.src = coverUrl; img.alt = b.name; img.className = 'sheet-hero-img';
-    img.style.cursor = 'pointer';
-    img.onclick = () => openLightbox(heroPhotos.indexOf(coverUrl));
+    if (cardCrop) {
+      const cropPos = b.coverPhotoPosition || '50% 50%';
+      if (cropFitted) {
+        img.style.setProperty('--cover-zoom', cropZoom);
+        img.style.setProperty('--cover-origin', cropPos);
+      } else {
+        img.style.objectPosition = cropPos;
+      }
+    }
+    // ── עסק ב-SHEET_CARD_CROP_BIZ_IDS: התמונה **לא** נפתחת בתצוגה-מלאה ──────────────────────
+    // כל הנקודה בחיתוך היא שהחלק שמחוץ לרצועה לא ייראה. אם הלחיצה הייתה פותחת lightbox, הקובץ
+    // המלא היה חוזר במלואו בהקלקה אחת — כלומר החיתוך היה קוסמטי בלבד. לכן כאן אין onclick, אין
+    // סמן-יד, והקובץ גם לא נכנס ל-heroPhotos (ומשם ל-_lightboxPhotos ולסרגל התמוניות שלו).
+    // הגלריה "מהחנות" ממשיכה לעבוד כרגיל — האינדקסים שלה נגזרים מ-heroPhotos.length.
+    if (!cardCrop) {
+      img.style.cursor = 'pointer';
+      img.onclick = () => openLightbox(heroPhotos.indexOf(coverUrl));
+    }
     hero.insertBefore(img, hero.firstChild);
     logo.style.display = 'none';
-    heroPhotos.push(coverUrl);
+    if (!cardCrop) heroPhotos.push(coverUrl);
     // תג-הלוגו הוסר מהתמונה הגדולה בכרטיס הפנימי (בקשה מפורשת, 2026-08-16) — הוא נשאר רק על
     // הכרטיס הקטן באינדקס, ששם הוא באמת מזהה את העסק. כאן הוא הסתיר חלק מהתמונה בלי להוסיף
     // מידע (שם העסק כבר כתוב מתחת). הלוגו עצמו לא נעלם — הוא עובר לגלריה למטה, ר' galleryUrls.
@@ -2847,7 +2899,7 @@ function openBiz(id) {
   }
   // כשיש תמונה — המסגרת מתאימה את עצמה אליה ולא חותכת (ר' .sheet-hero.natural ב-CSS).
   // בלי תמונה נשאר היחס הקבוע 26:15, כי אז מוצגות רק ראשי-התיבות ואין ממה לגזור יחס.
-  hero.classList.toggle('natural', !!(coverUrl || logoUrl));
+  hero.classList.toggle('natural', !cardCrop && !!(coverUrl || logoUrl));
 
   document.getElementById('sheetName').textContent = b.name;
   document.getElementById('sheetDesc').textContent = b.desc || '';
@@ -3933,7 +3985,12 @@ async function initBizNavItem() {
       const bizSnap = await getDoc(doc(db, 'businesses', linkedBusinessId));
       if (bizSnap.exists()) {
         const bizData = bizSnap.data();
-        token = bizData.accessToken || '';
+        // ── §244 — טוקן הכניסה לדשבורד כבר לא על מסמך העסק ────────────────────────────────────────
+        // הוא יושב ב-bizTokens/{businessId}, שקריא רק למנהל/לעסק עצמו/לחבר המקושר — וזה בדיוק
+        // מי שאנחנו כאן (החבר המחובר שה-ownerMemberId של העסק מצביע עליו). קריאה נפרדת אחת,
+        // רק לבעל-עסק, ורק אחרי שכבר ידוע שיש לו עסק מקושר.
+        const tokSnap = await getDoc(doc(db, 'bizTokens', linkedBusinessId)).catch(() => null);
+        token = (tokSnap && tokSnap.exists() ? tokSnap.data().accessToken : '') || '';
         approved = bizData.status === 'approved';
         // "העסק שלי" בתפריט (וגם שיתוף) מוצגים רק לעסק מאושר — עסק pending/rejected עדיין לא
         // עבר את שער האישור הראשוני, זהה בדיוק לגייטינג הקיים ב-profile.html (§36). לפני התיקון

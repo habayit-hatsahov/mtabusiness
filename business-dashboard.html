@@ -1177,6 +1177,18 @@
       position: static; width: 100%; height: auto;
       max-height: 78vh; object-fit: contain; display: block;
     }
+    /* "בדיוק כמו בכרטיס" — מראה של .sheet-hero.card-crop ב-home.html, לעסקים ברשימה בלבד.
+       התצוגה-המקדימה חייבת להראות בדיוק את מה שהאוהד רואה, ר' PV_CARD_CROP_BIZ_IDS למטה. */
+    .pv-sheet-hero.card-crop { aspect-ratio: 4/3; background: var(--card-bg2); }
+    .pv-sheet-hero.card-crop img {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      max-height: none; object-fit: cover; display: block;
+    }
+    .pv-sheet-hero.card-crop.fitted img {
+      object-fit: contain;
+      transform: scale(var(--cover-zoom, 1));
+      transform-origin: var(--cover-origin, 50% 50%);
+    }
     .pv-sheet-hero-logo-badge {
       position: absolute; bottom: -26px; right: 20px; z-index: 3;
       width: 72px; height: 72px; border-radius: 18px;
@@ -2075,8 +2087,13 @@ function compressImageFile(file, maxDim = 1280, quality = 0.82) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        // webp — כ-25-35% קטן יותר מ-JPEG באיכות דומה; דפדפן ישן מאוד שלא תומך נופל בשקט ל-PNG (לא נשבר).
-        resolve(canvas.toDataURL('image/webp', quality));
+        // webp — כ-25-35% קטן יותר מ-JPEG באיכות דומה.
+        // ⚠️ toDataURL מחזיר PNG **בשקט** כשהדפדפן לא יודע לקודד את הטיפוס המבוקש — כך מוגדר בתקן,
+        // ופרמטר ה-quality פשוט מתעלם (PNG הוא חסר-אובדן). זה לא תיאורטי: **6 מתוך 30 התמונות
+        // המייצגות בפרודקשן נשמרו כ-PNG**, אחת מהן 2.2MB — פי ~15 מהמשקל, על אותה תמונה בדיוק.
+        // לכן בודקים מה באמת חזר ונופלים ל-JPEG (נתמך בכל דפדפן) במקום להישאר עם PNG. §240
+        const webp = canvas.toDataURL('image/webp', quality);
+        resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', quality));
       };
       img.onerror = reject;
       img.src = rawDataUrl;
@@ -2090,10 +2107,18 @@ async function compressToFile(file, maxDim, quality, filename) {
 // מעלה גרסה מלאה-אך-דחוסה (1280px, לגיליון הפנימי) + thumbnail קטן (400px, לכרטיסים בפיד home.html) של
 // אותה תמונה. נראות הכרטיס לא משתנה (אותו גודל תצוגה) — רק כמות המידע שיורדת ברשת. אם הדחיסה נכשלת
 // מכל סיבה — נופל בחזרה להעלאת הקובץ המקורי, לא חוסם את השמירה.
-async function uploadImageWithThumb(file, basePath) {
+// ── תקרת הרזולוציה של התמונה המייצגת (§240) ─────────────────────────────────────────────────
+// הכרטיס באינדקס הוא 4:3 עם object-fit:cover, ובמובייל הוא תופס ~358px CSS — כלומר במסך DPR=3
+// הוא צריך **~1070 פיקסלים אמיתיים לרוחב**. התקרה הישנה (1280 בצד הארוך) נראתה מספיקה, אבל
+// בתמונה **לאורך** הצד הארוך הוא הגובה: 960×1280 נותנת רק 960 פיקסל לרוחב הכרטיס. כלומר
+// הדחיסה שלנו עצמה הורידה תמונות מתחת לסף החדות — 13 מתוך 30 התמונות בפרודקשן, רובן לאורך.
+// 1600 מבטיח ≥1200 לרוחב גם בתמונה לאורך 3:4, במחיר ~100KB לקובץ. תקף לתמונה המייצגת בלבד;
+// לוגו וגלריה נשארים על 1280 (הלוגו מוצג כתג קטן, הגלריה רק בתוך דף העסק).
+const COVER_MAX_DIM = 1600;
+async function uploadImageWithThumb(file, basePath, maxDim = 1280) {
   try {
     const [mainFile, thumbFile] = await Promise.all([
-      compressToFile(file, 1280, 0.82, file.name),
+      compressToFile(file, maxDim, 0.82, file.name),
       compressToFile(file, 640, 0.80, 'thumb_' + file.name),
     ]);
     const [url, thumbUrl] = await Promise.all([
@@ -2938,6 +2963,17 @@ function renderCatHoursCard(w) {
         ${alsoCatRowHtml}
       </div>
       <div class="sec-edit-form" id="secEdit-cathours">
+        <!-- ── סדר-השדות בעריכה זהה לסדר בתצוגה הסגורה (2026-08-23, §245) ────────────────────
+             "שם העסק" הוא השורה הראשונה בתצוגה הסגורה, אבל בעריכה הוא ישב **שני**, מתחת ל"סוג
+             עסק". דווח בפועל כ"שם העסק לא מופיע למעלה ואי אפשר לערוך אותו בכלל": בעל-העסק
+             מסתכל לראש הכרטיס, מוצא שם שדה אחר במקום שבו שנייה קודם היה השם, ומסיק שהשורה
+             נעלמה. השדה עצמו היה תקין לגמרי לאורך כל הדרך (נבדק חי — קיים, ממוקד, מקבל
+             הקלדה) — הכשל היה בסדר בלבד. כל שינוי כאן חייב לשמור על ההתאמה לשורות ה-secView. -->
+        <div class="form-group">
+          <label class="form-label">שם העסק</label>
+          <input type="text" class="form-input" id="editName" value="${esc(w.name)}" data-pv="name" />
+          ${tipHtml('name')}
+        </div>
         <div class="form-group">
           <label class="form-label">סוג עסק</label>
           <div class="region-pill-wrap" id="editBizTypeGrid">
@@ -2945,11 +2981,6 @@ function renderCatHoursCard(w) {
             <div class="region-pill${catTypes.includes('online') ? ' selected' : ''}" data-type="online" onclick="toggleBizType(this)">אונליין</div>
             <div class="region-pill${catTypes.includes('pro') ? ' selected' : ''}" data-type="pro" onclick="toggleBizType(this)">בעל מקצוע</div>
           </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">שם העסק</label>
-          <input type="text" class="form-input" id="editName" value="${esc(w.name)}" data-pv="name" />
-          ${tipHtml('name')}
         </div>
         <div class="form-group">
           <label class="form-label">קטגוריה — לחץ/י לבחירה</label>
@@ -3815,11 +3846,30 @@ function renderPreview(stateOverride, flashZone) {
     ? `<div class="pv-section-label${fz('gallery')}">מהחנות</div><div class="pv-sheet-gallery${fz('gallery')}">${pvGalleryUrls.map(p => `<img src="${esc(bizImageViewUrl(p.url))}" alt="${esc(p.name)}" onclick="openImgLightbox(this.src)" />`).join('')}</div>`
     : '';
 
+  // ── "החיתוך של הכרטיס" גם בכרטיס הפנימי — עותק מדויק של SHEET_CARD_CROP_BIZ_IDS ב-home.html.
+  // כשמוסיפים עסק לרשימה שם, חובה להוסיף אותו גם כאן — אחרת התצוגה-המקדימה תראה משהו אחר
+  // ממה שהאוהד רואה בפועל, וזה בדיוק הפער שגרם לבעל-עסק "לתקן" תמונה שלא הייתה שבורה.
+  const PV_CARD_CROP_BIZ_IDS = new Set([
+    'k9ze75reNJUTQaat802k', // RON MOTORS - קונה ומוכר רכבים
+  ]);
+  const pvCardCrop = looksLikeImageUrl(w.coverPhoto) && PV_CARD_CROP_BIZ_IDS.has(bizId);
+  const pvCropZoom = pvCardCrop ? parseFloat(w.coverPhotoZoom) : NaN;
+  const pvCropFitted = pvCropZoom > 0;
+  const pvCropPos = esc(w.coverPhotoPosition || '50% 50%');
+  const pvHeroCls = pvCardCrop ? (' card-crop' + (pvCropFitted ? ' fitted' : ''))
+    : ((looksLikeImageUrl(w.coverPhoto) || looksLikeImageUrl(w.logo)) ? ' natural' : '');
+  const pvHeroStyle = (pvCardCrop && w.coverPhotoBg) ? ` style="background:${esc(w.coverPhotoBg)}"` : '';
+  // עסק ב-PV_CARD_CROP_BIZ_IDS: התמונה לא נפתחת בתצוגה-מלאה — זהה ל-home.html (ר' ההערה שם).
+  const pvHeroImgClick = pvCardCrop ? '' : ' onclick="openImgLightbox(this.src)"';
+  const pvHeroImgStyle = !pvCardCrop ? ''
+    : (pvCropFitted ? ` style="--cover-zoom:${pvCropZoom};--cover-origin:${pvCropPos}"`
+      : ` style="object-position:${pvCropPos}"`);
+
   const fullHtml = `
     <div class="pv-sheet">
-      <div class="pv-sheet-hero${(looksLikeImageUrl(w.coverPhoto) || looksLikeImageUrl(w.logo)) ? ' natural' : ''}${fz('logo')}">
+      <div class="pv-sheet-hero${pvHeroCls}${fz('logo')}"${pvHeroStyle}>
         ${looksLikeImageUrl(w.coverPhoto)
-          ? `<img src="${esc(bizImageViewUrl(w.coverPhoto))}" alt="${esc(w.name)}" onclick="openImgLightbox(this.src)" />`
+          ? `<img src="${esc(bizImageViewUrl(w.coverPhoto))}" alt="${esc(w.name)}"${pvHeroImgStyle}${pvHeroImgClick} />`
           : looksLikeImageUrl(w.logo)
             ? `<img src="${esc(bizImageViewUrl(w.logo))}" alt="${esc(w.name)}" onclick="openImgLightbox(this.src)" />`
             : `<div class="pv-sheet-logo">${pvInitials(w.name)}</div>`
@@ -5227,14 +5277,14 @@ async function saveMediaInner() {
   // אם אין תמונה מייצגת משלה (לא חדשה ולא קיימת) — הלוגו (חדש או קיים) הופך לתמונה המייצגת,
   // כי הוא היחיד שיש. לוגו נשאר ריק במקרה הזה (ר' docs/PROJECT_CONTEXT.md).
   if (coverPhotoFile) {
-    const { url, thumbUrl } = await uploadImageWithThumb(coverPhotoFile, `businesses/${bizId}/coverPhoto_${Date.now()}`);
+    const { url, thumbUrl } = await uploadImageWithThumb(coverPhotoFile, `businesses/${bizId}/coverPhoto_${Date.now()}`, COVER_MAX_DIM);
     updates.coverPhoto = url;
     updates.coverPhotoThumb = thumbUrl;
   } else if (existingCoverUrl) {
     updates.coverPhoto = existingCoverUrl;
     updates.coverPhotoThumb = existingCoverThumbUrl;
   } else if (logoFile) {
-    const { url, thumbUrl } = await uploadImageWithThumb(logoFile, `businesses/${bizId}/coverPhoto_${Date.now()}`);
+    const { url, thumbUrl } = await uploadImageWithThumb(logoFile, `businesses/${bizId}/coverPhoto_${Date.now()}`, COVER_MAX_DIM);
     updates.coverPhoto = url;
     updates.coverPhotoThumb = thumbUrl;
   } else if (existingLogoUrl) {
