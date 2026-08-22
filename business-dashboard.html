@@ -413,6 +413,18 @@
       background: #0d1220; border: 1px solid var(--border-md); border-radius: 20px;
       padding: 12px 16px 20px;
     }
+    .cover-role-note { font-size: 11.5px; line-height: 1.55; color: var(--text-sm); margin: -2px 0 8px; }
+    /* הערת "כך זה ייראה — עדיין לא אושר" מעל הדמו (2026-08-22, §237). שלושה מצבים, ר'
+       renderPreviewApprovalNote: נבחרה-טרם-נשמרה / נשמרה-טרם-נשלחה / נשלחה-ממתינה-לאישור. */
+    .preview-approval-note {
+      /* .dash-preview-panel הוא flex-wrap — בלי flex-basis:100% ההערה הייתה יושבת *לצד*
+         הדמו כעמודה שלישית צרה במקום כשורה מלאה מעליו. */
+      display: none; flex: 0 0 100%; margin-bottom: 2px; padding: 9px 12px; border-radius: 12px;
+      font-size: 12px; line-height: 1.6; text-align: right;
+      background: rgba(214,120,20,.10); border: 1px solid rgba(214,120,20,.35); color: var(--text);
+    }
+    .preview-approval-note.show { display: block; }
+    .preview-approval-note b { font-weight: 800; }
     .demo-frame-label {
       font-size: 10px; font-weight: 800; color: var(--yellow);
       text-transform: uppercase; letter-spacing: .4px;
@@ -825,11 +837,10 @@
     .sec-edit-form.media-form { display: block; }
     .media-form .sec-edit-actions { display: none; }
     .media-form:not(.locked) .sec-edit-actions { display: flex; }
-    .media-form.locked .edit-upload-zone,
-    .media-form.locked .edit-media-thumb { cursor: default; }
+    /* נעול = טרם נלחץ "ערוך". שדה-הקובץ עצמו מנוטרל, אבל האזור *כן* לחיץ (mediaZoneClick) —
+       לחיצה עליו פותחת את העריכה ואת בורר-הקבצים. לכן cursor:pointer ו-hover רגילים נשארים. */
     .media-form.locked .edit-upload-zone input[type="file"],
     .media-form.locked .edit-media-thumb input[type="file"] { pointer-events: none; }
-    .media-form.locked .edit-upload-zone:hover { border-color: var(--border-md); background: rgba(var(--fg-rgb),.03); }
     .media-form.locked .edit-logo-remove,
     .media-form.locked .edit-media-remove,
     .media-form.locked .edit-add-btn { display: none; }
@@ -1514,6 +1525,8 @@
 
       <!-- ─── דמו (שמאל ב-RTL) — קבוע במקום ─── -->
       <div class="dash-preview-panel">
+        <!-- "ככה זה ייראה, אבל עדיין לא אושר" — ר' renderPreviewApprovalNote (§237) -->
+        <div class="preview-approval-note" id="previewApprovalNote"></div>
         <!-- הכרטיס הגדול (המלא) קודם ב-DOM בכוונה: אחד-ליד-השני כשיש מקום (flex-wrap), אבל אם
              נשבר לעמודה (מסך צר) — הכרטיס הגדול נשאר עליון, לפי בקשה מפורשת. -->
         <div class="demo-section">
@@ -3192,9 +3205,10 @@ function renderMediaCard(w) {
         <div class="cover-notice" id="coverNotice"></div>
         <div class="edit-media-pair-row">
           <div class="form-group">
-            <label class="form-label">תמונה מייצגת</label>
+            <label class="form-label">התמונה הראשית של העסק</label>
+            <div class="cover-role-note">זו <b>התמונה המייצגת</b> — הגדולה שאוהד רואה על הכרטיס שלכם באינדקס ובראש עמוד העסק. תמונת אווירה של המקום, של המוצר או של השירות.</div>
             ${tipHtml('coverPhoto')}
-            <div class="edit-upload-zone" id="editCoverPhotoZone">
+            <div class="edit-upload-zone" id="editCoverPhotoZone" onclick="mediaZoneClick(event)">
               <input type="file" id="editCoverPhotoFile" accept="image/*" onchange="previewCoverPhoto(this)" />
               <div id="editCoverPhotoPreviewWrap" class="edit-cover-preview">
                 <img id="editCoverPhotoImg" src="" alt="תמונה מייצגת" />
@@ -3203,8 +3217,8 @@ function renderMediaCard(w) {
               </div>
               <div id="editCoverPhotoPlaceholder">
                 <div class="edit-upload-icon">📷</div>
-                <div class="edit-upload-text">העלה תמונה</div>
-                <div class="edit-upload-sub">המקום / המוצר</div>
+                <div class="edit-upload-text">התמונה הראשית</div>
+                <div class="edit-upload-sub">אווירה של העסק / המוצר</div>
               </div>
             </div>
             <div class="img-check" id="coverImgCheck"></div>
@@ -3214,7 +3228,7 @@ function renderMediaCard(w) {
           <div class="form-group">
             <label class="form-label">לוגו <span style="font-weight:400;color:var(--text-sm)">(אם יש)</span></label>
             ${tipHtml('logo')}
-            <div class="edit-upload-zone" id="editLogoZone">
+            <div class="edit-upload-zone" id="editLogoZone" onclick="mediaZoneClick(event)">
               <input type="file" id="editLogoFile" accept="image/*" onchange="previewLogo(this)" />
               <div id="editLogoPreviewWrap" class="edit-logo-preview">
                 <img id="editLogoImg" src="" alt="לוגו" />
@@ -3897,10 +3911,93 @@ function renderFeedPreview(stateOverride, flashZone) {
 function getLiveDemoState() {
   return { ...biz };
 }
+// ── התמונה הראשית בדמו: מוצגת מיד, מתויגת "עדיין לא אושרה" (2026-08-22, §237) ───────────
+// ⚠️ זה חריג *מכוון ויחיד* לכלל של §195 שמעליי ("הדמו מציג תמיד רק את מה שחי היום").
+// הכלל ההוא נולד מתלונה מדויקת: "זה מבלבל, זה לא מה שמוצג באמת כרגע" — כלומר הבעיה לא הייתה
+// שהשינוי מוצג, אלא שהוא הוצג *בלי שום סימן* שהוא לא חי. כאן, בבקשה מפורשת של המשתמש,
+// התמונה הראשית כן נכנסת לדמו — **תמיד יחד עם הערה שאומרת בדיוק באיזה מצב היא**.
+// כל שאר השדות (שם/תיאור/הטבה/שעות/גלריה) ממשיכים להציג את החי בלבד, בלי שינוי.
+//
+// קריאת ה-DOM כאן זהה מילה-במילה ל-captureLiveMediaEdits: dataset.existingUrl לכתובת קיימת,
+// img.src רק כשהוא data: (קובץ שנבחר וטרם הועלה). קריאה מ-.src במקרה הרגיל הייתה מחזירה את
+// כתובת-הפרוקסי של bizImageViewUrl ומכפילה אותה בכל רינדור — זה היה שורש הבאג של §195.
+// ⚠️ ביצועים — הסיבה ש-blob: ולא data: כאן ────────────────────────────────────────────────
+// previewCoverPhoto שם ב-img.src את ה-data:URL הגולמי של הקובץ שנבחר — לפני דחיסה. תמונה
+// מהטלפון היא כמה MB, כלומר מחרוזת base64 של 5-8 מיליון תווים. הדמו מרונדר דרך innerHTML
+// **בכל הקשה בכל שדה** (setupLivePreview מאזין ל-input), ובשני כרטיסים במקביל — הזרקת
+// מחרוזת כזאת לשם הייתה הופכת כל הקלדה לתקיעה. blob: הוא מזהה קצר לאותם בייטים בדיוק,
+// ו-bizImageViewUrl כבר מכיר אותו ומעביר אותו כמו-שהוא (בדיוק כמו data:).
+// המטמון לפי זהות-ה-File, לא לפי תוכן: השוואת שתי מחרוזות של 6MB בכל רינדור היא בעצמה יקרה.
+let _coverObjFile = null, _coverObjUrl = null;
+function coverObjectUrl(file) {
+  if (file === _coverObjFile) return _coverObjUrl;
+  if (_coverObjUrl) URL.revokeObjectURL(_coverObjUrl);
+  _coverObjFile = file;
+  _coverObjUrl = URL.createObjectURL(file);
+  return _coverObjUrl;
+}
+
+function demoCoverState() {
+  const live = biz.coverPhoto || '';
+  const form = document.getElementById('secEdit-media');
+
+  if (form && !form.classList.contains('locked')) {
+    const wrap = document.getElementById('editCoverPhotoPreviewWrap');
+    const img  = document.getElementById('editCoverPhotoImg');
+    if (!wrap || wrap.style.display === 'none' || !img) return { url: '', state: 'live' };
+    if (img.src.startsWith('data:')) {
+      // קובץ שנבחר וטרם הועלה. ⚠️ הקובץ עדיין יושב ב-input גם *אחרי* שמירה מוצלחת
+      // (saveMediaInner לא מנקה אותו) — ולכן מקור-האמת למצב הוא img.src, לא נוכחות הקובץ.
+      const file = document.getElementById('editCoverPhotoFile')?.files[0];
+      return { url: file ? coverObjectUrl(file) : img.src, state: 'picked' };
+    }
+    const existing = img.dataset.existingUrl || '';
+    if (!existing || existing === live) return { url: live, state: 'live' };
+    return { url: existing, state: coverStageOf(existing) };
+  }
+
+  const merged = { ...biz, ...(biz.pendingChanges || {}), ...draftChanges };
+  const url = merged.coverPhoto || '';
+  if (!url || url === live) return { url: live, state: 'live' };
+  return { url, state: coverStageOf(url) };
+}
+
+// "נשמר אצלי" מול "נשלח וממתין" — אותה הבחנה של §234, שם היא פתרה את "חשבנו שהגשנו".
+function coverStageOf(url) {
+  if (Object.prototype.hasOwnProperty.call(draftChanges, 'coverPhoto') && (draftChanges.coverPhoto || '') === url) return 'draft';
+  if (biz.pendingChanges && biz.pendingChanges.coverPhoto === url) return 'pending';
+  return 'picked';
+}
+
 function refreshPreviews(stateOverride, flashZone) {
   const w = stateOverride || getLiveDemoState();
+  const cover = demoCoverState();
+  if (cover.state !== 'live') {
+    w.coverPhoto = cover.url;
+    w.coverPhotoThumb = '';
+    // הקירוב/המיקום/צבע-המילוי נקבעו ע"י המנהל על התמונה *הישנה*. להחיל אותם על תמונה חדשה
+    // זה להראות חיתוך שלא יקרה. תמונה חדשה מוצגת בברירת-המחדל, בדיוק כמו שהיא תיכנס לאתר.
+    w.coverPhotoZoom = null;
+    w.coverPhotoPosition = '';
+    w.coverPhotoBg = '';
+  }
   renderPreview(w, flashZone);
   renderFeedPreview(w, flashZone);
+  renderPreviewApprovalNote(cover.state);
+}
+
+// שלושה מצבים, ולכל אחד פעולה אחרת שבעל-העסק צריך לעשות (ר' coverStageOf).
+function renderPreviewApprovalNote(state) {
+  const el = document.getElementById('previewApprovalNote');
+  if (!el || !biz) return;
+  if (!state || state === 'live') { el.classList.remove('show'); el.innerHTML = ''; return; }
+  const MSG = {
+    picked:  'כך התמונה שבחרת תיראה לאוהדים. היא <b>עדיין לא נשמרה ולא אושרה</b> — לחצ/י "שמירת השלב", ואז שלח/י לאישור מכרטיס הסיכום בתחתית העמוד.',
+    draft:   'כך התמונה החדשה תיראה לאוהדים. היא <b>נשמרה אצלך אבל עדיין לא נשלחה אלינו</b> — ולכן היא עדיין לא באתר. לשליחה: כרטיס הסיכום בתחתית העמוד.',
+    pending: 'כך התמונה החדשה תיראה לאוהדים. היא <b>נשלחה וממתינה לאישור מנהל</b> — עד שתאושר, באתר עדיין מוצגת התמונה הקודמת.',
+  };
+  el.innerHTML = MSG[state] || MSG.picked;
+  el.classList.add('show');
 }
 
 // כל שדה טופס ממופה לאזור התואם לו על גבי הדמו — כך שבזמן הקלדה
@@ -4174,6 +4271,27 @@ window.sendWriteUs = async function() {
   }
 };
 
+// ── לחיצה על אזור-העלאה בכרטיס המדיה כשהוא עדיין נעול (2026-08-22) ──────────────────────────
+// כרטיס המדיה מוצג *תמיד* במראה עריכה מלא (.sec-edit-form.media-form { display: block }) — עם
+// אייקון מצלמה והכיתוב "העלה תמונה" — אבל עד שלוחצים "ערוך" הוא נעול: שדות-הקובץ מקבלים
+// pointer-events:none, ולאזור עצמו לא היה שום מאזין. כלומר לחיצה על "העלה תמונה" לא עשתה
+// כלום — לא בורר-קבצים, לא הודעה, לא שינוי-מראה.
+//
+// דיווח-אמת (2026-08-22, "צ'ומפי"): "ניסה להעלות תמונה ולא נתן לו". המסמך שלו אכן ריק
+// מתמונות, בלי pendingChanges ובלי writeErrors — כלומר ההעלאה מעולם לא יצאה לדרך, לא נכשלה.
+//
+// עכשיו לחיצה על האזור הנעול פותחת את העריכה *ומיד* את בורר-הקבצים (אנחנו בתוך click אמיתי של
+// המשתמש, כך שקריאה ל-input.click() מותרת). כשהטופס כבר פתוח המאזין לא עושה כלום — שם הקליק
+// שייך ל-input השקוף שמכסה את האזור, והוא זה שפותח את הבורר כמו קודם.
+window.mediaZoneClick = function(evt) {
+  const form = document.getElementById('secEdit-media');
+  if (!form || !form.classList.contains('locked')) return;
+  const zone = evt.currentTarget;
+  toggleSecEdit('media');
+  const input = zone.querySelector('input[type="file"]');
+  if (input) input.click();
+};
+
 // ── INLINE SECTION EDIT ──
 window.toggleSecEdit = function(key) {
   const view = document.getElementById('secView-' + key);
@@ -4233,7 +4351,11 @@ function stageChanges(updates, flashZone) {
   for (const [k, v] of Object.entries(updates)) {
     if (!deepEqual(normForCompare(prev[k], k), normForCompare(v, k))) realChanges[k] = v;
   }
+  // "אין שינוי" חייב להיאמר בקול (2026-08-22). קודם זה חזר בשקט מוחלט, וההודעה האחרונה שנשארה
+  // על המסך הייתה זו של תחילת-הפעולה ("שומר מדיה...") — כלומר בעל-העסק ראה "שומר" ואז כלום,
+  // וזה נראה בדיוק כמו שמירה שנבלעה. עכשיו כל לחיצת "שמירת השלב" מסתיימת בהודעה כלשהי.
   if (!Object.keys(realChanges).length) {
+    showToast('לא נמצא שינוי לשמירה');
     renderBizView();
     return;
   }
@@ -5031,7 +5153,7 @@ window.addPhotoRow = function(url = '', name = '') {
   row.className = 'edit-media-row';
   row.id = 'photoRow-' + idx;
   row.innerHTML = `
-    <div class="edit-media-thumb" id="photoThumb-${idx}">
+    <div class="edit-media-thumb" id="photoThumb-${idx}" onclick="mediaZoneClick(event)">
       
       <input type="file" accept="image/*" onchange="thumbPreview(this, 'photoThumb-${idx}')" />
       ${url ? `<img src="${esc(bizImageViewUrl(url))}" onclick="event.stopPropagation();openImgLightbox(this.src)" />` : '<span class="edit-media-thumb-plus">+</span>'}

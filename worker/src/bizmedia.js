@@ -20,6 +20,10 @@ export async function handleUploadBizMedia(request, env) {
 
   const updates = {};
   const tasks = [];
+  // כל כשל-העלאה נאסף כאן וחוזר ללקוח (2026-08-22). קודם כל catch רשם console.error והפונקציה
+  // החזירה { ok: true } בכל מקרה — כלומר עסק שנרשם עם תמונות יכול היה לקבל 'הבקשה התקבלה'
+  // מלא בלי שאף תמונה נשמרה, ואיש לא ידע על כך: לא הוא, לא המנהל.
+  const failed = [];
 
   const fanPhoto = form.get('fanPhoto');
   if (fanPhoto && fanPhoto.size) {
@@ -27,7 +31,7 @@ export async function handleUploadBizMedia(request, env) {
       fanPhoto.arrayBuffer()
         .then((bytes) => uploadToFirebaseStorage(env, googleToken, `members/proofs/${bizId}_fan`, bytes, fanPhoto.type || 'image/jpeg'))
         .then((url) => { updates.photoProofUrl = url; })
-        .catch((e) => console.error('fan photo upload failed:', e.message))
+        .catch((e) => { console.error('fan photo upload failed:', e.message); failed.push('fanPhoto'); })
     );
   }
 
@@ -37,7 +41,7 @@ export async function handleUploadBizMedia(request, env) {
       logo.arrayBuffer()
         .then((bytes) => uploadToFirebaseStorage(env, googleToken, `businesses/${bizId}/logo_${Date.now()}`, bytes, logo.type || 'image/jpeg'))
         .then((url) => { updates.logo = url; })
-        .catch((e) => console.error('logo upload failed:', e.message))
+        .catch((e) => { console.error('logo upload failed:', e.message); failed.push('logo'); })
     );
   }
 
@@ -47,7 +51,7 @@ export async function handleUploadBizMedia(request, env) {
       cover.arrayBuffer()
         .then((bytes) => uploadToFirebaseStorage(env, googleToken, `businesses/${bizId}/cover_${Date.now()}`, bytes, cover.type || 'image/webp'))
         .then((url) => { updates.coverPhoto = url; })
-        .catch((e) => console.error('cover upload failed:', e.message))
+        .catch((e) => { console.error('cover upload failed:', e.message); failed.push('cover'); })
     );
   }
   const coverThumb = form.get('coverThumb');
@@ -56,7 +60,7 @@ export async function handleUploadBizMedia(request, env) {
       coverThumb.arrayBuffer()
         .then((bytes) => uploadToFirebaseStorage(env, googleToken, `businesses/${bizId}/cover_${Date.now()}_thumb`, bytes, coverThumb.type || 'image/webp'))
         .then((url) => { updates.coverPhotoThumb = url; })
-        .catch((e) => console.error('cover thumb upload failed:', e.message))
+        .catch((e) => { console.error('cover thumb upload failed:', e.message); failed.push('coverThumb'); })
     );
   }
 
@@ -72,6 +76,7 @@ export async function handleUploadBizMedia(request, env) {
           .catch((e) => {
             console.error('gallery photo upload failed:', e.message);
             photos[i] = { url: '', name: f.name };
+            failed.push('gallery[' + i + ']');
           })
       );
     });
@@ -81,9 +86,23 @@ export async function handleUploadBizMedia(request, env) {
   // חשוב במיוחד ל"שולח..." שמוצג ללקוח לפני שרואים "הבקשה התקבלה" (ר' business.html).
   await Promise.all(tasks);
 
+  // תמונת-גלריה שנכשלה נשארה קודם כרשומה ריקה ({ url: '', name }) בתוך photos — היא נספרת
+  // כתמונה בכל מקום שסופר photos.length, אבל אין מה להציג בה. מסננים אותה החוצה.
+  if (updates.photos) updates.photos = updates.photos.filter((ph) => ph && ph.url);
+
   if (Object.keys(updates).length) {
     await firestorePatch(env, googleToken, `businesses/${bizId}`, updates);
   }
 
-  return { ok: true, uploadedFields: Object.keys(updates) };
+  // כשל-העלאה נרשם גם על מסמך העסק עצמו — עד היום זה היה console.error בלוג של ה-Worker
+  // בלבד, שנעלם תוך דקות. ⚠️ השדות האלה עדיין *לא* מוצגים בשום מסך ניהול; הם קיימים כדי
+  // שיהיה מה לשלוף כשעסק מדווח "שלחתי תמונות ואין", ובהמשך אפשר לרנדר אותם באדמין.
+  if (failed.length) {
+    await firestorePatch(env, googleToken, `businesses/${bizId}`, {
+      mediaUploadFailedAt: new Date(),
+      mediaUploadFailed: failed,
+    }).catch((e) => console.error('media failure flag write failed:', e.message));
+  }
+
+  return { ok: failed.length === 0, uploadedFields: Object.keys(updates), failed };
 }
