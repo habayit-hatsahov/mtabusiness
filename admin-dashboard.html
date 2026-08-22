@@ -2433,7 +2433,16 @@ async function fetchOwnerLoginCode(b) {
     code = (memberData && memberData.loginCode) || '';
   } catch (e) { console.warn('ownerLoginCode lookup failed', e); }
   ownerLoginCodeCache[b.id] = code;
-  if (selectedBizDetailId === b.id) renderMain();
+  // ── §246 — הצ'יפ "קוד כניסה" לא הופיע בפתיחה הראשונה של עסק ─────────────────────────────
+  // התנאי כאן היה `if (selectedBizDetailId === b.id) renderMain()` — כלומר הרענון היה קשור
+  // לפאנל של טאב "כל העסקים" בלבד. המשתמש עובד בפועל דרך **מרכז המשימות**, שם הפאנל הוא
+  // `.task-drawer-body` ולא `#bizDetailCol` (אותו פער בדיוק כמו §4319 בקפיצת-הגלילה), ולכן
+  // כשהקוד חזר מהשרת אחרי שהכרטיס כבר צויר — שום דבר לא צייר אותו מחדש, והצ'יפ לא הופיע.
+  // בלחיצה שנייה על אותו עסק הוא כן הופיע, כי אז הוא כבר במטמון בזמן הרינדור — וזה בדיוק
+  // מה שהוכיח שמדובר בתזמון ולא בנתונים או בהרשאות.
+  // refreshOpenDetailPanel מכסה את שלושת סוגי הפאנלים ומחזיר false אם אף אחד לא פתוח.
+  // מותנה ב-code כדי לא לבנות פאנל מחדש כשאין מה להוסיף.
+  if (code && !refreshOpenDetailPanel() && selectedBizDetailId === b.id) renderMain();
 }
 
 // בריאות פרופיל נגזרת מ-4 שדות שבפועל משפיעים על איכות הכרטיס באינדקס — לא נוסחה שרירותית,
