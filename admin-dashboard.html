@@ -173,8 +173,17 @@ body {
 .sidebar-standalone.active { background: var(--accent); color: #fff; font-weight: 600; }
 /* "מרכז נתונים" — הדגשה קבועה בתחתית הסיידבר (2026-08-05, תואם-מוקאפ: פריט-אחרון, כהה תמיד,
    לא רק כשפעיל) — כלי-דוח/ניתוח שונה במהותו משאר פריטי-הניהול, ולכן גם ויזואלית מובחן. */
-.sidebar-standalone.featured { background: var(--accent); color: #fff; font-weight: 600; }
-.sidebar-standalone.featured:hover { background: var(--accent-dark); color: #fff; }
+/* "חזרה לאתר" — <a> אמיתי (קליק-אמצעי/פתיחה-בטאב-חדש עובדים), ולכן צריך לבטל את עיצוב-הקישור
+   הדיפולטי כדי שייראה בדיוק כמו שאר פריטי-הסיידבר. §263 */
+.sidebar-standalone.sidebar-exit { text-decoration: none; color: var(--text-sm); }
+.sidebar-standalone.sidebar-exit:hover { background: var(--bg); color: var(--text); }
+/* §263 — "מרכז נתונים" היה צבוע כחול-מלא **תמיד**, לא רק כשהוא הטאב הפעיל (הוחלט ב-2026-08-05
+   לפי מוקאפ). בפועל זה נקרא כ"כפתור לחוץ כל הזמן": המשתמש — *"מרכז הנתונים לחוץ שם כל הזמן
+   בכחול"*. אי אפשר היה להבדיל בין "אני נמצא כאן" ל"זה סתם מודגש", ושני פריטים נראו פעילים
+   בו-זמנית. עכשיו הוא מתנהג כמו כל שאר פריטי-הסיידבר — כחול רק כש-.active. ההבחנה נשמרת
+   בעדינות: אייקון בצבע-המותג במצב הרגיל, במקום רקע מלא. */
+.sidebar-standalone.featured .ic { color: var(--accent); }
+.sidebar-standalone.featured.active .ic { color: #fff; }
 /* מספר-משימות ליד כל פריט בסיידבר (2026-08-05, בקשת המשתמש: "מספר ליד כל אזור לפי המשימות שיש") —
    אותו chip-צהוב בכל הפריטים, ליד biz-changes-badge/tag-chip; לא רק "כל העסקים" יותר. */
 .sidebar-nav-badge {
@@ -2143,6 +2152,16 @@ function fmtDiffVal(k, v) {
 }
 
 // ממפה מסמך businesses אמיתי לצורה שה-UI הקיים בקובץ הזה מצפה לה (נבנה במקור סביב שמות-שדה מומצאים)
+// ── §263.5 — "עסק השבוע"/"הטבת השבוע" שמורים בשני פורמטים שונים ב-Firestore ─────────────────
+// גרסה מוקדמת של טופס ההרשמה שמרה **מחרוזות עברית** ('כן'/'לא'), והגרסה הנוכחית שומרת boolean.
+// שני הפורמטים חיים זה לצד זה בבסיס-הנתונים בפועל (6 עסקים במחרוזות, 2 ב-boolean).
+// `!!raw.wantsBenefitOfWeek` היה קורא את **'לא' כ-true** — מחרוזת לא-ריקה היא truthy ב-JS.
+// זה לא באג-תצוגה בלבד: הוא הפך תשובת-"לא" מפורשת של בעל-עסק ל"כן" בכל מסך שקורא את השדה.
+// אותה נורמליזציה בדיוק נדרשת ב-business-dashboard.html (הכרטיס שבעל-העסק עצמו רואה).
+function weeklyFlagOn(v) {
+  if (typeof v === 'string') return ['כן', 'yes', 'true'].includes(v.trim().toLowerCase());
+  return v === true;
+}
 function hydrateBiz(id, raw) {
   const branches = raw.branches || [];
   // מה שבעל-העסק באמת הגיש — בלי שדות-נגזרים ובלי ערך שזהה לקיים. ר' realPendingChangeKeys.
@@ -2206,8 +2225,8 @@ function hydrateBiz(id, raw) {
     ownerFanInstagram: raw.fanInstagram || '',
     // עסק השבוע · הטבת השבוע — שתי שאלות עצמאיות מהטופס, ר' "עסק השבוע והטבת השבוע.md";
     // התור/שיבוץ בפועל מתנהל ב-weekly_interest (מסך "10 עסק השבוע"), כאן רק הבעת-העניין הגולמית
-    wantsBusinessOfWeek: !!raw.wantsBusinessOfWeek,
-    wantsBenefitOfWeek: !!raw.wantsBenefitOfWeek,
+    wantsBusinessOfWeek: weeklyFlagOn(raw.wantsBusinessOfWeek),
+    wantsBenefitOfWeek: weeklyFlagOn(raw.wantsBenefitOfWeek),
     // תוקן — 2 באגים אמיתיים היו כאן:
     // (1) discountFullText נפל-בחזרה ל-raw.discountText (הכותרת המקוצרת) כשלא היה discountTextFull —
     //     זה גרם לטופס-העריכה להציג את הכותרת-הקצרה כאילו היא התיאור-המלא, ושמירה "מאשרת" את
@@ -2781,6 +2800,10 @@ const ICO_SECTIONS = `<svg ${ICO_ATTRS}><rect x="3" y="3" width="7" height="7" r
 const ICO_CATS    = `<svg ${ICO_ATTRS}><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>`;
 const ICO_DATA    = `<svg ${ICO_ATTRS}><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>`;
 const ICO_WEEKLY  = `<svg ${ICO_ATTRS}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>`;
+// §263 — "חזרה לאתר" בתחתית הסיידבר. לדשבורד הניהול אין topbar בכלל (רק sidebar+main), ולכן
+// עד עכשיו הדרך היחידה לחזור ל-home.html הייתה עריכה ידנית של ה-URL. חץ-יציאה, לא "בית" — כדי
+// לא להתבלבל עם ICO_HOME שכבר מסמן את "דשבורד ראשי".
+const ICO_EXIT    = `<svg ${ICO_ATTRS}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5"></path><path d="M21 12H9"></path></svg>`;
 const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
 // ── מגבלת אורך אמיתית לכותרת ה-AI — מדידת פיקסלים אמיתית מול רוחב הכרטיס בפועל, לא ספירת תווים גסה.
@@ -2929,7 +2952,7 @@ function sidebarTaskCounts() {
     tags: tagQueueSortedFiltered().length,
     hearts: heartsClassCounts().expiringWeek,
     landing: landingHasUnpublished() ? 1 : 0,
-    weekly: WEEKLY_INTEREST.filter(w => (w.wantsBusinessOfWeek || w.wantsBenefitOfWeek) && w.contactStatus === 'pending').length,
+    weekly: weeklyInterestMerged().filter(w => w.contactStatus === 'pending').length,
   };
 }
 function sidebarBadge(n) { return n ? `<span class="sidebar-nav-badge">${n}</span>` : ''; }
@@ -2953,7 +2976,9 @@ function renderSidebar() {
       <div class="sidebar-standalone ${SECTIONS.some(t=>t.key===activeTab)?'active':''}" onclick="goToTabGroup('section')" title="סקשנים"><span class="ic">${ICO_SECTIONS}</span></div>
       <div class="sidebar-standalone ${CAT_TABS.some(t=>t.key===activeTab)?'active':''}" onclick="goToTabGroup('category')" title="קטגוריות"><span class="ic">${ICO_CATS}</span></div>
       <div class="sidebar-divider"></div>
-      <div class="sidebar-standalone featured ${activeTab===DATA_KEY?'active':''}" onclick="selectTab('${DATA_KEY}')" title="מרכז נתונים"><span class="ic">${ICO_DATA}</span></div>`;
+      <div class="sidebar-standalone featured ${activeTab===DATA_KEY?'active':''}" onclick="selectTab('${DATA_KEY}')" title="מרכז נתונים"><span class="ic">${ICO_DATA}</span></div>
+      <div class="sidebar-divider"></div>
+      <a class="sidebar-standalone sidebar-exit" href="home.html" title="חזרה לאתר"><span class="ic">${ICO_EXIT}</span></a>`;
     return;
   }
   const tc = sidebarTaskCounts();
@@ -2995,7 +3020,11 @@ function renderSidebar() {
     <div class="sidebar-divider"></div>
     <div class="sidebar-standalone featured ${activeTab===DATA_KEY?'active':''}" onclick="selectTab('${DATA_KEY}')">
       <span class="ic">${ICO_DATA}</span><span>מרכז נתונים</span>
-    </div>`;
+    </div>
+    <div class="sidebar-divider"></div>
+    <a class="sidebar-standalone sidebar-exit" href="home.html">
+      <span class="ic">${ICO_EXIT}</span><span>חזרה לאתר</span>
+    </a>`;
 }
 
 window.toggleSidebarCollapsed = function() {
@@ -4996,7 +5025,6 @@ function bizFormSummaryHtml(b) {
           ${field('תמונה מייצגת', b.coverPhoto?'הועלתה':'', !b.coverPhoto)}
           ${field('לוגו', b.logo?'הועלה':'', !b.logo)}
           ${field('גלריה', (b.photos&&b.photos.length)?`${b.photos.length} תמונות`:'', !(b.photos&&b.photos.length))}
-          ${field('סרטונים', (b.videos&&b.videos.length)?`${b.videos.length} סרטונים`:'', !(b.videos&&b.videos.length))}
         </div>
 
         <div class="form-sec-title">שלב 5 · אימות בעל העסק</div>
@@ -5293,8 +5321,7 @@ function bizFullDetailHtml(id, opts) {
   ].filter(Boolean).join('');
   const step5Sub = [
     b.logo ? 'לוגו הועלה' : 'אין לוגו',
-    `${(b.photos||[]).length} בגלריה`,
-    `${(b.videos||[]).length} סרטונים`
+    `${(b.photos||[]).length} בגלריה`
   ].join(' · ');
   // ── סדר/מספור-תצוגה תואם ל-5 השלבים האמיתיים של business.html v2 (§145, 2026-08-04) — שינוי
   // תצוגה+סדר בלבד. ה-id-ים הפנימיים (stepBlock1../secEdit1../toggleBizSecEdit('id',1) וכו') ופונקציות
@@ -7630,7 +7657,7 @@ function mediaRealViewHtml(b) {
       <div class="media-slot cover ${b.coverPhoto?'filled':'missing'}">${b.coverPhoto ? mediaThumbHtml(b.coverPhotoThumb || b.coverPhoto, 'cover.jpg', 'width:100%;height:100%', b.name) : `<span class="media-slot-ic">—</span><span class="media-slot-label">חסרה תמונה</span>`}</div>
       ${galleryThumbs}
     </div>
-    <div class="approve-longtext" style="margin-top:6px">${(b.photos||[]).length} תמונות בגלריה · ${(b.videos||[]).length} סרטונים</div>`;
+    <div class="approve-longtext" style="margin-top:6px">${(b.photos||[]).length} תמונות בגלריה</div>`;
 }
 
 function mediaRealEditHtml(b) {
@@ -7644,11 +7671,6 @@ function mediaRealEditHtml(b) {
              title="המיקום בגלריה — אפשר לכתוב מספר ולעבור ישירות לשם"
              onchange="setBizGalleryPos('${b.id}', ${idx}, this)">
       <button class="act-btn reject tiny" onclick="removeBizGalleryPhoto('${b.id}', ${idx})">🗑️ הסר</button>
-    </div>`).join('');
-  const videosHtml = (b.videos || []).map((v, idx) => `
-    <div class="media-slot-row" style="margin-top:6px">
-      <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.label || v.url)}</span>
-      <button class="act-btn reject tiny" onclick="removeBizVideo('${b.id}', ${idx})">🗑️ הסר</button>
     </div>`).join('');
   return `
     <div class="media-manager" id="media_${b.id}">
@@ -7725,13 +7747,6 @@ function mediaRealEditHtml(b) {
         </label>
       </div>
       <div class="media-slot-note">אפשר לבחור <b>כמה תמונות בבת אחת</b>, או לגרור אותן לכאן ישירות. ההעלאה מתחילה מיד, והשלב נשאר פתוח. <b>המספר בכל שורה הוא סדר ההצגה בדף העסק</b> — כותבים בו את המיקום הרצוי (למשל 1 כדי להעביר לראש הגלריה) והשינוי נשמר מיד.</div>
-      <div class="approve-field-label" style="margin-top:14px">סרטונים (קישור YouTube/Vimeo)</div>
-      ${videosHtml}
-      <div class="media-slot-row" style="margin-top:6px">
-        <input type="text" placeholder="קישור" id="bizVideoUrl_${b.id}" style="flex:1">
-        <input type="text" placeholder="תיאור" id="bizVideoLabel_${b.id}" style="flex:1">
-        <button class="act-btn approve tiny" onclick="addBizVideo('${b.id}')">➕ הוסף</button>
-      </div>
     </div>`;
 }
 // showSaving/hideSaving כאן — לפני saveSectionUpdates, כי דחיסה+העלאה ל-Storage הם החלק
@@ -7820,19 +7835,6 @@ window.setBizGalleryPos = async function(id, from, el) {
   const [moved] = photos.splice(from, 1);
   photos.splice(target, 0, moved);
   await saveSectionUpdates(id, { photos }, { reopenStep: 5 });
-};
-window.addBizVideo = async function(id) {
-  const url = document.getElementById('bizVideoUrl_' + id)?.value.trim();
-  const label = document.getElementById('bizVideoLabel_' + id)?.value.trim();
-  if (!url) { alert('נא להזין קישור'); return; }
-  const b = findBiz(id);
-  const videos = [...(b.videos || []), { url, label }];
-  await saveSectionUpdates(id, { videos }, { reopenStep: 5 });
-};
-window.removeBizVideo = async function(id, idx) {
-  const b = findBiz(id);
-  const videos = (b.videos || []).filter((_, i) => i !== idx);
-  await saveSectionUpdates(id, { videos }, { reopenStep: 5 });
 };
 
 // מגבלת-האמת היא רוחב פיקסלים בפועל (ensureFitsCard), לא ספירת תווים — התווית מציגה "מתאים/חורג"
@@ -8260,7 +8262,7 @@ const DIFF_FIELD_LABELS_MOCK = {
   tags: 'תגיות', tagSecondSuggestion: 'בקשת העסק לתגית שנייה', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'בקשת העסק למופיע גם תחת', alsoCategoryNote: 'הערת העסק לגבי קטגוריה נוספת',
   hours: 'שעות פעילות', website: 'אתר', instagram: 'אינסטגרם', facebook: 'פייסבוק',
   discountText: 'כותרת ההטבה בכרטיס', discountTextFull: 'הטבה', discountCode: 'קוד קופון', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש', discountRedeemMode: 'מקום מימוש ההטבה', discountBuilder: 'הגדרות ההטבה',
-  hasDiscount: 'הטבה פעילה', additionalDiscounts: 'הטבות נוספות', coverPhoto: 'תמונה מייצגת', coverPhotoThumb: 'תמונה מייצגת (תמונה ממוזערת)', logo: 'לוגו', logoThumb: 'לוגו (תמונה ממוזערת)', photos: 'גלריית תמונות', videos: 'סרטונים',
+  hasDiscount: 'הטבה פעילה', additionalDiscounts: 'הטבות נוספות', coverPhoto: 'תמונה מייצגת', coverPhotoThumb: 'תמונה מייצגת (תמונה ממוזערת)', logo: 'לוגו', logoThumb: 'לוגו (תמונה ממוזערת)', photos: 'גלריית תמונות',
   coverPhotoPosition: 'מיקום התמונה על הכרטיס', coverPhotoZoom: 'גודל התמונה על הכרטיס', coverPhotoBg: 'צבע שוליים בכרטיס', logoFit: 'תג הלוגו בכרטיס',
   wantsBusinessOfWeek: 'עסק השבוע', wantsBenefitOfWeek: 'הטבת השבוע',
 };
@@ -8282,7 +8284,7 @@ const DIFF_GROUPS = [
   { domId: 3, display: 1, name: 'העסק', fields: ['bizTypes', 'name', 'categoryPrimary', 'cat', 'categorySecondary', 'tags', 'tagSecondSuggestion', 'noTagFits', 'tagSuggestion', 'alsoUnderCategory', 'alsoCategorySuggestion', 'alsoCategoryNote'] },
   { domId: 2, display: 2, name: 'פרטים ויצירת קשר', fields: ['desc', 'branches', 'city', 'address', 'regions', 'phone', 'whatsapp', 'serviceEmail', 'hours', 'website', 'instagram', 'facebook'] },
   { domId: 4, display: 3, name: 'ההטבות', fields: ['hasDiscount', 'discountText', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountType', 'discountTypes', 'discountBuilder', 'additionalDiscounts', 'wantsBusinessOfWeek', 'wantsBenefitOfWeek'] },
-  { domId: 5, display: 4, name: 'תמונות', fields: ['coverPhoto', 'coverPhotoThumb', 'logo', 'logoThumb', 'photos', 'videos'] },
+  { domId: 5, display: 4, name: 'תמונות', fields: ['coverPhoto', 'coverPhotoThumb', 'logo', 'logoThumb', 'photos'] },
   { domId: 1, display: 5, name: 'אימות בעל העסק', fields: ['ownerFirst', 'ownerLast', 'ownerPhone', 'ownerEmail', 'ownerRelation', 'fanInstagram', 'note'] },
 ];
 const DIFF_FIELD_TO_SECTION = {};   // → domId (jumpToBizSection/changeItemsBySection — לא לשנות משמעות)
@@ -8818,7 +8820,7 @@ window.qjApproveTagFlow = function(id, mode) {
   jumpToBizSection(id, 3);
 };
 // תצוגה קריאה של שדה-מבנה (מערך/אובייקט) בשורת "שיפוט מהיר" — לא JSON.stringify גולמי.
-// photos/videos מקבלים תצוגה ייעודית (תמונות בפועל / קישור+תווית); כל שאר המערכים (סניפים,
+// photos מקבל תצוגה ייעודית (תמונות בפועל); כל שאר המערכים (סניפים,
 // הטבות-נוספות, תגיות, אזורים...) מקבלים סיכום-טקסט קריא. ר' ההערה ב-rowHtml למעלה למה זה קיים.
 // שדות-תמונה שערכם מחרוזת-URL בודדת — מקבלים תצוגת לפני/אחרי כתמונות במקום URL גולמי (ר' rowHtml)
 const IMAGE_DIFF_FIELDS = new Set(['coverPhoto', 'logo', 'coverPhotoThumb', 'logoThumb', 'ownerProofPhotoUrl']);
@@ -8829,9 +8831,6 @@ function qjStructuredPreviewHtml(field, val) {
     // דרך /view-image של ה-Worker — תמונה של עסק שעוד לא אושר חסומה ב-storage.rules ל-<img> רגיל
     // (§193), כך שהתצוגה כאן הייתה ריקה/שבורה בדיוק במקרה שהכי חשוב: בקשת-תמונות של עסק ממתין.
     return `<div class="qj-photo-thumbs">${arr.map(p => p && p.url ? `<img src="${esc(bizImageViewUrl(p.url))}" alt="${esc(p.name||'')}" onclick="openImageLightbox('${esc(p.url)}','${esc(p.name||'photo.jpg')}')" style="cursor:pointer">` : '').join('')}</div>`;
-  }
-  if (field === 'videos') {
-    return `<span class="qj-value-text">${esc(arr.map(v => v.label || v.url).filter(Boolean).join(' · '))}</span>`;
   }
   if (field === 'additionalDiscounts') {
     return `<span class="qj-value-text">${esc(arr.map(d => d && d.text).filter(Boolean).join(' | '))}</span>`;
@@ -9346,6 +9345,10 @@ function tagQueueRowHtml(item) {
   const pool = TAGS_BY_CATEGORY_MOCK[b.catKey] || [];
   const isMapping = tagQueueMapping === b.id;
   const isPickingCat = tagQueueNewCatPicking === b.id;
+  // §263 — isEditingText היה בשימוש למטה בלי הגדרה בכלל: ReferenceError שהפיל את *כל*
+  // tagsManagementHtml() ברגע שהיה ולו בקשת-תגית-חדשה אחת בתור, ולכן "אי אפשר להיכנס לניהול
+  // תגיות". (הסיידבר המשיך לעבוד כי sidebarTaskCounts סופר בלי לרנדר שורות.)
+  const isEditingText = tagSuggestionEditing === b.id;
   const catOptions = CATEGORIES.map(c => `<option value="${c.key}" ${b.catKey===c.key?'selected':''}>${c.icon} ${c.label}${b.catKey===c.key?' (הקטגוריה של העסק)':''}</option>`).join('');
   return `
     <div class="tagmgmt-queue-card">
@@ -9718,7 +9721,7 @@ let weeklyBizNameMaps = {}; // { [scheduleId]: { [תווית-מוצגת]: busine
 
 function weeklyBizPickerHtml(scheduleId, track, alreadyPickedId) {
   const flagKey = track === 'business' ? 'wantsBusinessOfWeek' : 'wantsBenefitOfWeek';
-  const requested = WEEKLY_INTEREST.filter(w => w[flagKey] && w.contactStatus === 'contacted' && bizById(w.businessId)).map(w => bizById(w.businessId));
+  const requested = weeklyInterestMerged().filter(w => w[flagKey] && w.contactStatus === 'contacted' && bizById(w.businessId)).map(w => bizById(w.businessId));
   const requestedIds = new Set(requested.map(b => b.id));
   const already = alreadyPickedId ? bizById(alreadyPickedId) : null;
   const manualPool = MOCK_BUSINESSES.filter(b => b.status === 'approved' && !requestedIds.has(b.id) && b.id !== alreadyPickedId);
@@ -9839,19 +9842,23 @@ const DEFAULT_WEEKLY_FOLLOWUP_SUBJECT = 'נחזור אליכם בקרוב — ע
 const DEFAULT_WEEKLY_FOLLOWUP_MAIL = 'שלום {name},\n\nתודה שסימנתם עניין ב"{business}" עבור עסק השבוע / הטבת השבוע ב-Yellow Zone!\n\nנחזור אליכם בקרוב לתאם שיחה קצרה ולסגור פרטים ותאריך.\n\nבאהבה,\nצוות Yellow Zone 💛';
 
 window.markWeeklyContacted = async function(id) {
-  const w = WEEKLY_INTEREST.find(x => x.id === id);
+  const w = weeklyInterestMerged().find(x => x.id === id);
   if (!w) return;
   try {
-    await updateDoc(doc(db, 'weekly_interest', id), { contactStatus: 'contacted' });
-    await logActivity('weekly_interest', id, { type: 'weeklyContact', title: 'סומן "דיברנו איתם"', field: 'contactStatus', before: w.contactStatus, after: 'contacted' });
+    const realId = await ensureWeeklyInterestId(id);   // §263 — שורה וירטואלית נכתבת עכשיו בפועל
+    if (!realId) return;
+    await updateDoc(doc(db, 'weekly_interest', realId), { contactStatus: 'contacted' });
+    await logActivity('weekly_interest', realId, { type: 'weeklyContact', title: 'סומן "דיברנו איתם"', field: 'contactStatus', before: w.contactStatus, after: 'contacted' });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
 window.declineWeeklyInterest = async function(id) {
-  const w = WEEKLY_INTEREST.find(x => x.id === id);
+  const w = weeklyInterestMerged().find(x => x.id === id);
   if (!w) return;
   try {
-    await updateDoc(doc(db, 'weekly_interest', id), { contactStatus: 'declined' });
-    await logActivity('weekly_interest', id, { type: 'weeklyDecline', title: 'הוסר מהרשימה', field: 'contactStatus', before: w.contactStatus, after: 'declined' });
+    const realId = await ensureWeeklyInterestId(id);
+    if (!realId) return;
+    await updateDoc(doc(db, 'weekly_interest', realId), { contactStatus: 'declined' });
+    await logActivity('weekly_interest', realId, { type: 'weeklyDecline', title: 'הוסר מהרשימה', field: 'contactStatus', before: w.contactStatus, after: 'declined' });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
 window.bulkMarkWeeklyContacted = async function() {
@@ -9863,14 +9870,18 @@ window.bulkDeclineWeekly = async function() {
   selectedWeeklyIds.clear(); renderMain();
 };
 window.bulkWeeklyFollowupMail = function() {
+  const rows = weeklyInterestMerged();
   [...selectedWeeklyIds].forEach(id => {
-    const w = WEEKLY_INTEREST.find(x => x.id === id);
+    const w = rows.find(x => x.id === id);
     const b = w && bizById(w.businessId);
     if (!b || !b.ownerEmail) return;
     const subject = DEFAULT_WEEKLY_FOLLOWUP_SUBJECT;
     const body = DEFAULT_WEEKLY_FOLLOWUP_MAIL.replace(/\{name\}/g, b.ownerFirst || '').replace(/\{business\}/g, b.name);
+    // window.open חייב לרוץ סינכרונית מתוך הקליק — פותחים קודם, ורק אז יוצרים/רושמים ביומן
     window.open(gmailComposeLink(b.ownerEmail, subject, body), '_blank');
-    logActivity('weekly_interest', id, { type: 'email', title: 'נשלח מייל מעקב "נחזור אליכם"', detail: `אל ${b.ownerEmail}`, field: 'channel', before: null, after: 'email' });
+    ensureWeeklyInterestId(id)
+      .then(realId => realId && logActivity('weekly_interest', realId, { type: 'email', title: 'נשלח מייל מעקב "נחזור אליכם"', detail: `אל ${b.ownerEmail}`, field: 'channel', before: null, after: 'email' }))
+      .catch(e => console.error('weekly followup log failed:', e));
   });
 };
 
@@ -9879,6 +9890,56 @@ window.bulkWeeklyFollowupMail = function() {
 // עניין" ממוזג לשורה-אחת-לעסק (weekly_interest ממילא מסמך-אחד-לעסק) עם צ'יפ-פר-מסלול. לוח-השבועות
 // והיסטוריה נשארים 2 רשימות נפרדות אך גלויות-יחד-זו-לצד-זו (לא טאב-מתג, לא מיזוג-שורה-לשורה
 // שהיה דורש איחוד-לוגיקת-עריכה מסוכן — כל שיבוץ עדיין מסמך נפרד ל-track אחד).
+
+// ── §263 — מקור-אמת יחיד ל"מי הביע עניין" ────────────────────────────────────────────────
+// עד עכשיו המסך קרא **רק** מ-weekly_interest. רשומה כזו נכתבת אך ורק בהרשמה הראשונית
+// (business.html §145), ולכן בעל-עסק שסימן את השאלות מאוחר יותר בדשבורד שלו
+// (business-dashboard.html → saveDiscount → stageChanges → אישור מנהל) עדכן רק את
+// wantsBusinessOfWeek/wantsBenefitOfWeek על מסמך העסק — ונעלם מהמסך הזה לגמרי.
+// המיזוג: **מסמך העסק הוא הקובע לגבי מה סומן** (שם זה מתעדכן בכל עריכה), ו-weekly_interest
+// מחזיק רק את *סטטוס-הפנייה*. עסק שהדגל דלוק עליו מופיע תמיד, גם בלי רשומת-תור — ובעל-עסק
+// שהוריד את הסימון יורד מהרשימה גם אם נשארה לו רשומה ישנה.
+function weeklyInterestMerged() {
+  const byBiz = {};
+  WEEKLY_INTEREST.forEach(w => { if (w.businessId) byBiz[w.businessId] = w; });
+  return MOCK_BUSINESSES
+    .filter(b => b.wantsBusinessOfWeek || b.wantsBenefitOfWeek)
+    .map(b => {
+      const w = byBiz[b.id] || null;
+      return {
+        ...(w || {}),
+        id: w ? w.id : 'virtual:' + b.id,
+        virtual: !w,
+        businessId: b.id,
+        wantsBusinessOfWeek: !!b.wantsBusinessOfWeek,
+        wantsBenefitOfWeek: !!b.wantsBenefitOfWeek,
+        requestedAt: (w && w.requestedAt) || b.changeSubmittedAt || b.approvedAt || b.registeredAt || new Date(0),
+        contactStatus: (w && w.contactStatus) || 'pending',
+      };
+    });
+}
+
+// שורה "וירטואלית" = העסק סימן אבל אין לו עדיין רשומת-תור. הפעולה הראשונה עליה (דיברנו/הסרה/
+// מייל-מעקב) יוצרת את הרשומה בפועל ורק אז מעדכנת — המנהל מורשה create מלא (firestore.rules).
+// מחזיר מזהה-מסמך אמיתי, או null אם העסק לא נמצא.
+async function ensureWeeklyInterestId(rowId) {
+  const key = String(rowId);
+  if (!key.startsWith('virtual:')) return key;
+  const bizId = key.slice('virtual:'.length);
+  const existing = WEEKLY_INTEREST.find(w => w.businessId === bizId);
+  if (existing) return existing.id;
+  const b = bizById(bizId);
+  if (!b) return null;
+  const created = await addDoc(collection(db, 'weekly_interest'), {
+    businessId: bizId,
+    wantsBusinessOfWeek: !!b.wantsBusinessOfWeek,
+    wantsBenefitOfWeek: !!b.wantsBenefitOfWeek,
+    requestedAt: serverTimestamp(),
+    contactStatus: 'pending',
+    scheduledWeek: null, scheduledTrack: null, contentStatus: 'missing',
+  });
+  return created.id;
+}
 
 function weeklyInterestRowMergedHtml(w) {
   const b = bizById(w.businessId);
@@ -9906,7 +9967,7 @@ function weeklyInterestRowMergedHtml(w) {
 }
 
 function weeklyInterestListMergedHtml() {
-  const all = WEEKLY_INTEREST.filter(w => (w.wantsBusinessOfWeek || w.wantsBenefitOfWeek) && bizById(w.businessId));
+  const all = weeklyInterestMerged().filter(w => bizById(w.businessId));
   const counts = {
     all: all.length,
     business: all.filter(w => w.wantsBusinessOfWeek).length,
@@ -9960,7 +10021,7 @@ function weeklyInterestListMergedHtml() {
 
 // כותרת-עמוד דינמית + KPI אמיתיים, ממוזגת על 2 המסלולים ביחד.
 function weeklyHeaderHtml() {
-  const allInterest = WEEKLY_INTEREST.filter(w => (w.wantsBusinessOfWeek || w.wantsBenefitOfWeek) && bizById(w.businessId));
+  const allInterest = weeklyInterestMerged().filter(w => bizById(w.businessId));
   const pendingCount = allInterest.filter(w => w.contactStatus === 'pending').length;
   const upcoming = [...weeklyScheduleForTrack('business'), ...weeklyScheduleForTrack('benefit')].filter(s => !isPastWeek(s.weekStart));
   const filledUpcoming = upcoming.filter(s => s.businessId).length;
@@ -9997,7 +10058,7 @@ function weeklyScheduleBlockHtml(track, past) {
 
 // פאנל "דורש פעולה" (כהה-נייבי, אותו סגנון expiring-panel כמו §141) — ממוזג על 2 המסלולים.
 function weeklyActionPanelHtml() {
-  const pending = WEEKLY_INTEREST.filter(w => (w.wantsBusinessOfWeek || w.wantsBenefitOfWeek) && w.contactStatus === 'pending' && bizById(w.businessId))
+  const pending = weeklyInterestMerged().filter(w => w.contactStatus === 'pending' && bizById(w.businessId))
     .sort((a, b) => a.requestedAt - b.requestedAt).slice(0, 3);
   const emptyWeeks = [...weeklyScheduleForTrack('business'), ...weeklyScheduleForTrack('benefit')]
     .filter(s => !isPastWeek(s.weekStart) && !s.businessId)
