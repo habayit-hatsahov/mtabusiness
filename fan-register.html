@@ -348,6 +348,23 @@
           </div>
         </div>
 
+        <!-- ── תאריך לידה — שלושה בוררים, לא input[type=date] (2026-08-24) ────────────────────
+             הבורר הנייטיב נפתח על החודש הנוכחי, וכדי להגיע לשנת לידה צריך לדפדף עשרות שנים
+             אחורה; הוא גם מרשה הקלדה חופשית של תאריך אבסורדי, והפורמט שמוצג משתנה לפי הגדרות
+             המכשיר. הערך המורכב נשמר לשדה מוסתר #birthDate בפורמט YYYY-MM-DD — אותו דפוס בדיוק
+             כמו #fanSport שיושב מוסתר מאחורי כפתורי ה-toggle, כדי ש-vf() והטיוטה ימשיכו לעבוד
+             מול שדה אחד ולא מול שלושה. -->
+        <div class="form-group">
+          <label for="birthDay">תאריך לידה <span class="req">*</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:12px">
+            <select id="birthDay"><option value="">יום</option></select>
+            <select id="birthMonth"><option value="">חודש</option></select>
+            <select id="birthYear"><option value="">שנה</option></select>
+          </div>
+          <input type="hidden" id="birthDate" />
+          <div class="field-error" id="err-birthDate">נא לבחור תאריך לידה תקין</div>
+        </div>
+
         <div class="form-group">
           <label for="phone">מספר טלפון <span class="req">*</span></label>
           <input type="tel" id="phone" placeholder="050-0000000" autocomplete="tel" inputmode="tel" />
@@ -388,9 +405,14 @@
         </select>
         <div class="field-error" id="err-isSubscriber">נא לענות על השאלה</div>
 
-        <div class="sub-block" id="subscriberFields">
+        <!-- ── שאלת הענף — מוצגת לשני המסלולים, מנוי וגם לא-מנוי (2026-08-24) ────────────────
+             עד היום היא ישבה בתוך #subscriberFields, כלומר לא-מנוי לא נשאל בכלל לאיזה ענף הוא
+             אוהד ו-fanSport נשמר אצלו null. הועברה לבלוק עצמאי שמוצג בשני המסלולים; רק התווית
+             מתחלפת (ר' handleSubscriber). שאלת-ההמשך של "שניהם" ושדות המיקום/מספר-המנוי נשארו
+             בתוך #subscriberFields — הן רלוונטיות רק למנוי, כי רק לו יש מספר מנוי לאמת. -->
+        <div class="sub-block" id="sportBlock">
           <div class="form-group">
-            <label>לאיזה ענף אתה מנוי? <span class="req">*</span></label>
+            <label><span id="fanSportLabelText">לאיזה ענף אתה מנוי?</span> <span class="req">*</span></label>
             <div class="toggle-row" id="sportToggleRow" style="flex-wrap:wrap">
               <button type="button" class="toggle-btn" id="sportFootballBtn" onclick="setFanSport('football')">כדורגל</button>
               <button type="button" class="toggle-btn" id="sportBasketballBtn" onclick="setFanSport('basketball')">כדורסל</button>
@@ -404,7 +426,9 @@
             </select>
             <div class="field-error" id="err-fanSport">נא לבחור ענף</div>
           </div>
+        </div>
 
+        <div class="sub-block" id="subscriberFields">
           <div class="sub-block" id="verifiedSportRow">
             <div class="form-group">
               <label>לאיזה ענף תרצה לבצע את האימות? <span class="req">*</span></label>
@@ -629,6 +653,58 @@
     return false;
   }
 
+  // ── תאריך לידה (2026-08-24) ─────────────────────────────────────────────────────────────
+  // input[type=date] מונע פורמט שגוי אבל **לא** מונע תאריך אבסורדי: אפשר להקליד 2090 או 1802
+  // ידנית, וגם הבורר עצמו מרשה את זה. לכן חוץ מ"לא ריק" נבדק גם שהתאריך לא בעתיד ושהשנה
+  // סבירה. גבול-גיל מינימלי לא נקבע כאן — זו החלטה עסקית שלא התבקשה.
+  function birthDateOk(v) {
+    if (!v) return false;
+    const d = new Date(v + 'T00:00:00');
+    if (isNaN(d.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return d <= today;
+  }
+
+  const BIRTH_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+                        'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+
+  // מרכיב את שלושת הבוררים לערך אחד. חשוב: הרכבה תמימה של 31/02 **לא** נכשלת ב-JS אלא
+  // מחליקה ל-3 במרץ — לכן בודקים שהתאריך שחזר זהה בדיוק למה שנבחר, אחרת מאפסים והוולידציה
+  // תתפוס את זה. כך גם 31 בפברואר וגם 30 בפברואר נפסלים בלי טבלת ימים-בחודש.
+  function syncBirthDate() {
+    const d = +document.getElementById('birthDay').value;
+    const m = +document.getElementById('birthMonth').value;
+    const y = +document.getElementById('birthYear').value;
+    const el = document.getElementById('birthDate');
+    if (!d || !m || !y) { el.value = ''; return; }
+    const dt = new Date(y, m - 1, d);
+    el.value = (dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d)
+      ? `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      : '';
+  }
+
+  (function initBirthDateSelects() {
+    const day = document.getElementById('birthDay');
+    const month = document.getElementById('birthMonth');
+    const year = document.getElementById('birthYear');
+    if (!day || !month || !year) return;
+    for (let d = 1; d <= 31; d++) day.add(new Option(String(d), String(d)));
+    BIRTH_MONTHS.forEach((name, i) => month.add(new Option(name, String(i + 1))));
+    // 100 שנה אחורה, מהחדש לישן — רוב הנרשמים בני 20-60, כך הם קרובים לראש הרשימה
+    const thisYear = new Date().getFullYear();
+    for (let y = thisYear; y >= thisYear - 100; y--) year.add(new Option(String(y), String(y)));
+    [day, month, year].forEach(el => el.addEventListener('change', syncBirthDate));
+  })();
+
+  // צובע את שלושת הבוררים עצמם — vf() צובע את #birthDate, שהוא מוסתר ולכן לא נראה למשתמש
+  function markBirthDateError(bad) {
+    ['birthDay', 'birthMonth', 'birthYear'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('error', bad);
+    });
+  }
+
   function runValidation() {
     const fn    = document.getElementById('firstName').value.trim();
     const ln    = document.getElementById('lastName').value.trim();
@@ -639,6 +715,9 @@
     let ok = true;
     ok = vf('firstName', fn.length >= 2) && ok;
     ok = vf('lastName',  ln.length >= 2) && ok;
+    const birthOk = birthDateOk(document.getElementById('birthDate').value);
+    markBirthDateError(!birthOk);
+    ok = vf('birthDate', birthOk) && ok;
     ok = vf('phone',     phoneOk(phone)) && ok;
     const emailFormatOk = vf('email', emailRx.test(email));
     ok = emailFormatOk && ok;
@@ -646,9 +725,11 @@
     if (emailFormatOk) ok = emailTypoOk('email') && ok;
     ok = vf('isSubscriber', isSub !== '') && ok;
 
+    // הענף נדרש בשני המסלולים (2026-08-24) — הבדיקה יצאה מתוך הענף של isSub === 'yes'
+    const fanSportVal = document.getElementById('fanSport').value;
+    if (isSub !== '') ok = vf('fanSport', fanSportVal !== '') && ok;
+
     if (isSub === 'yes') {
-      const fanSportVal = document.getElementById('fanSport').value;
-      ok = vf('fanSport', fanSportVal !== '') && ok;
       if (fanSportVal === 'both') {
         ok = vf('verifiedSport', document.getElementById('verifiedSport').value !== '') && ok;
       }
@@ -712,7 +793,9 @@
     submitBtn.innerHTML = 'שולח... <span class="spinner"></span>';
 
     const isSub = document.getElementById('isSubscriber').value;
-    const fanSportVal = isSub === 'yes' ? document.getElementById('fanSport').value : null;
+    // fanSport נשמר עכשיו בשני המסלולים (2026-08-24) — עד היום הוא אופס ללא-מנוי. verifiedSport
+    // נשאר של המנוי בלבד: הוא אומר "לאיזה ענף הוזן מספר המנוי לאימות", ולזה אין מקבילה ללא-מנוי.
+    const fanSportVal = document.getElementById('fanSport').value || null;
     const verifiedSportVal = isSub === 'yes'
       ? (fanSportVal === 'both' ? document.getElementById('verifiedSport').value : fanSportVal)
       : null;
@@ -720,6 +803,7 @@
     const data = {
       firstName:         document.getElementById('firstName').value.trim(),
       lastName:          document.getElementById('lastName').value.trim(),
+      birthDate:         document.getElementById('birthDate').value,   // 'YYYY-MM-DD', ר' birthDateOk
       phone:             normalizePhone(document.getElementById('phone').value.trim()),
     // ⚠️ toLowerCase — הכתובת היא מפתח-התאמה, לא רק טקסט להצגה: webhook המסירה של Brevo
     // (worker/src/brevo-webhook.js) ובדיקת-הכפילות (/check-member-exists) שניהם משווים מול
@@ -820,6 +904,17 @@
   function handleSubscriber(val) {
     document.getElementById('subscriberFields').classList.toggle('show', val === 'yes');
     document.getElementById('nonSubFields').classList.toggle('show', val === 'no');
+    // שאלת הענף מוצגת בשני המסלולים, ורק התווית מתחלפת: למנוי זו שאלה עובדתית על המנוי שלו,
+    // וללא-מנוי זו בחירת הענף שהוא אוהד. שתיהן נשמרות לאותו שדה (fanSport) — ר' ההערה ב-HTML.
+    document.getElementById('sportBlock').classList.toggle('show', val === 'yes' || val === 'no');
+    document.getElementById('fanSportLabelText').textContent =
+      val === 'no' ? 'בחר סוג ענף' : 'לאיזה ענף אתה מנוי?';
+    // מעבר בין המסלולים אחרי שכבר נבחר "שניהם": שאלת-ההמשך של האימות רלוונטית רק למנוי,
+    // אחרת לא-מנוי היה נתקע עם שדה-חובה מוסתר ש-runValidation דורש.
+    if (val !== 'yes') document.getElementById('verifiedSportRow').classList.remove('show');
+    else if (document.getElementById('fanSport').value === 'both') {
+      document.getElementById('verifiedSportRow').classList.add('show');
+    }
   }
 
   // ── SUBSCRIBER TOGGLE BUTTONS ── (מציגים isSubscriber כשני כפתורים במקום select —
@@ -838,6 +933,14 @@
   function updateSectionField(sport) {
     const labelEl  = document.getElementById('subscriberSectionLabel');
     const selectEl = document.getElementById('subscriberSection');
+    // ── שם הענף גם על שדה מספר המנוי (2026-08-24) ──────────────────────────────────────────
+    // עד היום רק תווית המיקום התחלפה (שער↔אולם/יציע), ושדה המספר נשאר "מספר מנוי" סתם. מי
+    // שבחר "שניהם" ואז בחר ענף לאימות ראה שדה בלי שום סימן לאיזה מנוי הוא שייך — וזו בדיוק
+    // הנקודה שבה אפשר להזין בטעות את המספר של הענף השני.
+    const numLabel = document.querySelector('label[for="subscriberNumber"]');
+    if (numLabel && (sport === 'football' || sport === 'basketball')) {
+      numLabel.innerHTML = `מספר מנוי ב${sport === 'basketball' ? 'כדורסל' : 'כדורגל'} <span class="req">*</span>`;
+    }
     if (sport === 'basketball') {
       labelEl.textContent = 'אולם/יציע';
       selectEl.innerHTML = '<option value="">בחר אולם/יציע...</option>' +
@@ -855,6 +958,10 @@
     document.getElementById('sportBasketballBtn').classList.toggle('on', val === 'basketball');
     document.getElementById('sportBothBtn').classList.toggle('on', val === 'both');
     vf('fanSport', true);
+
+    // ללא-מנוי הבחירה נגמרת כאן: אין לו מספר מנוי לאמת, ולכן לא שאלת-המשך ולא שדות מיקום.
+    // בלי היציאה הזאת, בחירת "שניהם" הייתה פותחת לו שדה-חובה שאין לו שום דרך למלא.
+    if (document.getElementById('isSubscriber').value !== 'yes') return;
 
     const bothRow = document.getElementById('verifiedSportRow');
     if (val === 'both') {
@@ -911,6 +1018,7 @@
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       firstName:         document.getElementById('firstName').value,
       lastName:          document.getElementById('lastName').value,
+      birthDate:         document.getElementById('birthDate').value,
       phone:             document.getElementById('phone').value,
       email:             document.getElementById('email').value,
       isSubscriber:      document.getElementById('isSubscriber').value,
@@ -931,13 +1039,23 @@
 
     document.getElementById('firstName').value = d.firstName || '';
     document.getElementById('lastName').value  = d.lastName  || '';
+    // הטיוטה שומרת את הערך המורכב — מפרקים אותו חזרה לשלושת הבוררים
+    if (d.birthDate) {
+      const [by, bm, bd] = d.birthDate.split('-');
+      document.getElementById('birthYear').value  = String(+by);
+      document.getElementById('birthMonth').value = String(+bm);
+      document.getElementById('birthDay').value   = String(+bd);
+      syncBirthDate();
+    }
     document.getElementById('phone').value     = d.phone     || '';
     document.getElementById('email').value     = d.email     || '';
 
     setSubscriber(d.isSubscriber || '');
-    if (d.isSubscriber === 'yes') {
+    // הענף משוחזר בשני המסלולים (2026-08-24) — קודם התנאי היה isSubscriber === 'yes' בלבד,
+    // ולא-מנוי שחזר מהתקנון היה מאבד את הבחירה שלו. setFanSport יוצא לבד ללא-מנוי.
+    if (d.isSubscriber === 'yes' || d.isSubscriber === 'no') {
       setFanSport(d.fanSport || '');
-      if (d.fanSport === 'both') setVerifiedSport(d.verifiedSport || '');
+      if (d.isSubscriber === 'yes' && d.fanSport === 'both') setVerifiedSport(d.verifiedSport || '');
     }
     document.getElementById('subscriberSection').value = d.subscriberSection || '';
     document.getElementById('subscriberNumber').value  = d.subscriberNumber  || '';

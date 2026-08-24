@@ -80,7 +80,7 @@ service cloud.firestore {
           request.auth == null &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly([
-              'firstName', 'lastName', 'phone', 'email',
+              'firstName', 'lastName', 'birthDate', 'phone', 'email',
               'isSubscriber', 'subscriberSection', 'subscriberNumber',
               'wasSubscriber', 'facebookUrl',
               'isBusinessOwner', 'linkedBusinessId', 'photoProofUrl',
@@ -108,7 +108,19 @@ service cloud.firestore {
           request.auth != null && request.auth.uid == memberId &&
           request.resource.data.diff(resource.data).affectedKeys()
             // lastSeenAt נוסף כאן כתשתית לשלב 7 (שכבת מדידה) — אין עדיין קוד שכותב אליו בפועל
-            .hasOnly(['phone', 'email', 'pushSubscriptions', 'lastSeenAt']) &&
+            .hasOnly(['phone', 'email', 'birthDate', 'pushSubscriptions', 'lastSeenAt']) &&
+          request.resource.data.status == resource.data.status &&
+          (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin)
+        )
+
+        // (ג) בעל-עסק מחובר מעדכן את **תאריך הלידה בלבד** על רשומת החבר המקושרת אליו
+        // (2026-08-24). למה בכלל צריך ענף נפרד: בדשבורד העסק ה-uid הוא businessId ולא memberId,
+        // ולכן ענף (ב) לא חל עליו. תאריך הלידה נשמר על רשומת החבר ולא על מסמך העסק, כי מסמך של
+        // עסק מאושר נקרא **ציבורית במלואו** (ר' §244) ותאריך לידה הוא מידע אישי.
+        // מכוון בקפדנות לשדה אחד: אין כאן דלת לעריכת שם/טלפון/מייל של החבר מצד העסק.
+        || (
+          isLinkedBusinessOwnerOf(memberId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['birthDate']) &&
           request.resource.data.status == resource.data.status &&
           (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin)
         );

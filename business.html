@@ -1204,6 +1204,22 @@
         </div>
       </div>
 
+      <!-- ── תאריך לידה — שלושה בוררים, לא input[type=date] (2026-08-24) ──────────────────────
+           זהה בדיוק ל-fan-register.html: הבורר הנייטיב נפתח על החודש הנוכחי ומרשה הקלדת תאריך
+           אבסורדי. הערך המורכב נשמר לשדה מוסתר #ownerBirthDate בפורמט YYYY-MM-DD.
+           ⚠️ השדה נשמר על **רשומת החבר בלבד** (members/{ownerMemberId}.birthDate) ולא על מסמך
+           העסק — מסמך של עסק מאושר נקרא ציבורית במלואו (ר' §244), ותאריך לידה הוא מידע אישי. -->
+      <div class="form-group">
+        <label for="ownerBirthDay">תאריך לידה <span class="req">*</span></label>
+        <div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:12px">
+          <select id="ownerBirthDay"><option value="">יום</option></select>
+          <select id="ownerBirthMonth"><option value="">חודש</option></select>
+          <select id="ownerBirthYear"><option value="">שנה</option></select>
+        </div>
+        <input type="hidden" id="ownerBirthDate" />
+        <div class="field-error" id="err-ownerBirthDate">נא לבחור תאריך לידה תקין</div>
+      </div>
+
       <div class="form-row">
         <div class="form-group">
           <label for="ownerPhone">טלפון <span class="req">*</span></label>
@@ -1248,9 +1264,13 @@
         <div class="field-error" id="err-bizIsSubscriber">נא לענות</div>
       </div>
 
-      <div id="bizSubscriberFields" style="display:none">
+      <!-- ── שאלת הענף — מוצגת לשני המסלולים, מנוי וגם לא-מנוי (2026-08-24) ────────────────────
+           עד היום היא ישבה בתוך #bizSubscriberFields, כלומר לא-מנוי לא נשאל בכלל לאיזה ענף הוא
+           אוהד ו-fanSport נשמר אצלו null. הועברה לבלוק עצמאי; רק התווית מתחלפת (ר' setSubscriber).
+           שאלת-ההמשך של "שניהם" ושדות השער/מספר-המנוי נשארו בפנים — רק למנוי יש מספר לאמת. -->
+      <div id="bizSportBlock" style="display:none">
         <div class="form-group">
-          <label>לאיזה ענף אתם מנויים? <span class="req">*</span></label>
+          <label><span id="bizFanSportLabelText">לאיזה ענף אתם מנויים?</span> <span class="req">*</span></label>
           <input type="hidden" id="bizFanSport" value="" />
           <div class="verify-choice-row">
             <div class="verify-choice" id="bizSportFootballChoice" onclick="setBizFanSport('football')">כדורגל</div>
@@ -1259,7 +1279,9 @@
           </div>
           <div class="field-error" id="err-bizFanSport">נא לבחור ענף</div>
         </div>
+      </div>
 
+      <div id="bizSubscriberFields" style="display:none">
         <div id="bizVerifiedSportRow" style="display:none">
           <div class="form-group">
             <label>לאיזה ענף תרצו לבצע את האימות? <span class="req">*</span></label>
@@ -1407,16 +1429,23 @@
         body: JSON.stringify({ phone, email })
       });
       const data = await resp.json();
-      return { memberId: data.memberId || null, hasName: !!data.hasName };
+      return { memberId: data.memberId || null, hasName: !!data.hasName, hasBirthDate: !!data.hasBirthDate };
     } catch (e) {
       console.error('business.html: לא ניתן היה לבדוק כפילות מול השרת.', e);
-      return { memberId: null, hasName: false };
+      return { memberId: null, hasName: false, hasBirthDate: true };  // ספק — לא נוגעים בשדה קיים
     }
   }
   async function linkOrCreateOwnerMember(data, bizId) {
-    const { memberId: existingId, hasName } = await findExistingMemberId(data.ownerPhone, data.ownerEmail);
+    const { memberId: existingId, hasName, hasBirthDate } = await findExistingMemberId(data.ownerPhone, data.ownerEmail);
+    // ⚠️ נקרא מה-DOM ולא מ-data בכוונה: data נכתב **כמו שהוא** למסמך העסק, שנקרא ציבורית
+    // במלואו לכל עסק מאושר (§244). תאריך לידה הוא מידע אישי ולכן חי רק על רשומת החבר.
+    const ownerBirthDate = document.getElementById('ownerBirthDate').value;
     if (existingId) {
       const patch = { isBusinessOwner: true, linkedBusinessId: bizId };
+      // תאריך לידה מושלם רק אם אין כזה על הרשומה הקיימת — בדיוק כמו hasName מתחת. טופס ציבורי
+      // ולא-מאומת לעולם לא דורס מידע אישי קיים: ההתאמה היא לפי טלפון/מייל, ואלה יכולים להיות
+      // משותפים לשני אנשים שונים (אירוע אמיתי 2026-07-24, ר' nameConflict ב-firestore.rules).
+      if (!hasBirthDate && ownerBirthDate) patch.birthDate = ownerBirthDate;
       // אם לרשומה הקיימת אין עדיין שם (למשל נוצרה ריקה בעבר) — משלימים מהטופס,
       // בלי לדרוס שם אמיתי קיים (יכול להיות שונה מהבעלים הרשמי, למשל בן-משפחה שנרשם בשם קרוב).
       // hasName מגיע מה-Worker (יש לו גישת-אדמין, קורא ישירות מ-Firestore) — לקוח אנונימי
@@ -1431,10 +1460,12 @@
     const memberRef = await addDoc(collection(db, 'members'), {
       firstName:         data.ownerFirst,
       lastName:          data.ownerLast,
+      birthDate:         ownerBirthDate || null,
       phone:             data.ownerPhone,
       email:             data.ownerEmail,
       isSubscriber:      data.isSubscriber === 'yes',
-      fanSport:          data.isSubscriber === 'yes' ? data.fanSport      : null,
+      // הענף נשמר עכשיו בשני המסלולים (2026-08-24) — עד היום אופס ללא-מנוי
+      fanSport:          data.fanSport || null,
       verifiedSport:     data.isSubscriber === 'yes' ? data.verifiedSport : null,
       subscriberSection: data.isSubscriber === 'yes' ? data.gate   : null,
       subscriberNumber:  data.isSubscriber === 'yes' ? data.subNum : null,
@@ -1766,6 +1797,9 @@
     let ok = true;
     ok = vf('ownerFirst', fn.length >= 2) && ok;
     ok = vf('ownerLast',  ln.length >= 2) && ok;
+    const birthOk = ownerBirthDateOk(document.getElementById('ownerBirthDate').value);
+    markOwnerBirthDateError(!birthOk);
+    ok = vf('ownerBirthDate', birthOk) && ok;
     ok = vf('ownerPhone', phoneOk(phone)) && ok;
     const emailFormatOk = vf('ownerEmail', emailRx.test(email));
     ok = emailFormatOk && ok;
@@ -1773,9 +1807,11 @@
     if (emailFormatOk) ok = emailTypoOk('ownerEmail') && ok;
     ok = vf('bizIsSubscriber', isSub !== '') && ok;
 
+    // הענף נדרש בשני המסלולים (2026-08-24) — הבדיקה יצאה מתוך הענף של isSub === 'yes'
+    const fanSportVal = document.getElementById('bizFanSport').value;
+    if (isSub !== '') ok = vf('bizFanSport', fanSportVal !== '') && ok;
+
     if (isSub === 'yes') {
-      const fanSportVal = document.getElementById('bizFanSport').value;
-      ok = vf('bizFanSport', fanSportVal !== '') && ok;
       if (fanSportVal === 'both') {
         ok = vf('bizVerifiedSport', document.getElementById('bizVerifiedSport').value !== '') && ok;
       }
@@ -1878,9 +1914,13 @@
       ownerRelation:    document.getElementById('ownerRelation').value,
       isSubscriber:     document.getElementById('bizIsSubscriber').value,
       fanSport:         document.getElementById('bizFanSport').value,
-      verifiedSport:    document.getElementById('bizFanSport').value === 'both'
-                           ? document.getElementById('bizVerifiedSport').value
-                           : document.getElementById('bizFanSport').value,
+      // verifiedSport = "לאיזה ענף הוזן מספר המנוי לאימות", ולכן הוא של מנוי בלבד. מאז ששאלת
+      // הענף מוצגת גם ללא-מנוי (2026-08-24) התנאי הזה חייב להיות מפורש: בלעדיו לא-מנוי שבחר
+      // "כדורגל" היה נרשם כאילו אומת בכדורגל, בלי שיש לו מספר מנוי בכלל.
+      verifiedSport:    document.getElementById('bizIsSubscriber').value !== 'yes' ? ''
+                          : (document.getElementById('bizFanSport').value === 'both'
+                              ? document.getElementById('bizVerifiedSport').value
+                              : document.getElementById('bizFanSport').value),
       gate:             document.getElementById('bizGate').value,
       subNum:           document.getElementById('bizSubNum').value.trim(),
       fbUrl:            document.getElementById('bizFbUrl').value.trim(),
@@ -2543,6 +2583,64 @@
     document.getElementById('bizSubscriberFields').style.display = val === true ? 'block' : 'none';
     document.getElementById('bizNonSubFields').style.display = val === false ? 'block' : 'none';
     document.getElementById('err-bizIsSubscriber').style.display = 'none';
+    // שאלת הענף מוצגת בשני המסלולים, ורק התווית מתחלפת: למנוי זו שאלה על המנוי שלו, וללא-מנוי
+    // זו בחירת הענף שהוא אוהד. שתיהן נשמרות לאותו שדה (fanSport) — ר' ההערה ב-HTML.
+    document.getElementById('bizSportBlock').style.display = (val === true || val === false) ? 'block' : 'none';
+    document.getElementById('bizFanSportLabelText').textContent =
+      val === false ? 'בחר סוג ענף' : 'לאיזה ענף אתם מנויים?';
+    // מעבר בין המסלולים אחרי שכבר נבחר "שניהם": שאלת-ההמשך רלוונטית רק למנוי, אחרת לא-מנוי
+    // היה נתקע עם שדה-חובה מוסתר ש-runValidation דורש.
+    if (val !== true) document.getElementById('bizVerifiedSportRow').style.display = 'none';
+    else if (document.getElementById('bizFanSport').value === 'both') {
+      document.getElementById('bizVerifiedSportRow').style.display = 'block';
+    }
+  }
+
+  // ── תאריך לידה (2026-08-24) — זהה ל-fan-register.html, ר' ההערה ליד השדה ב-HTML ──────────
+  function ownerBirthDateOk(v) {
+    if (!v) return false;
+    const d = new Date(v + 'T00:00:00');
+    if (isNaN(d.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return d <= today;
+  }
+
+  const OWNER_BIRTH_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+                              'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+
+  // הרכבה תמימה של 31/02 **לא** נכשלת ב-JS אלא מחליקה ל-3 במרץ — לכן בודקים שהתאריך שחזר
+  // זהה בדיוק למה שנבחר, ומאפסים אחרת. כך נפסלים גם 31 וגם 30 בפברואר בלי טבלת ימים-בחודש.
+  function syncOwnerBirthDate() {
+    const d = +document.getElementById('ownerBirthDay').value;
+    const m = +document.getElementById('ownerBirthMonth').value;
+    const y = +document.getElementById('ownerBirthYear').value;
+    const el = document.getElementById('ownerBirthDate');
+    if (!d || !m || !y) { el.value = ''; return; }
+    const dt = new Date(y, m - 1, d);
+    el.value = (dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d)
+      ? `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      : '';
+  }
+
+  (function initOwnerBirthDateSelects() {
+    const day = document.getElementById('ownerBirthDay');
+    const month = document.getElementById('ownerBirthMonth');
+    const year = document.getElementById('ownerBirthYear');
+    if (!day || !month || !year) return;
+    for (let d = 1; d <= 31; d++) day.add(new Option(String(d), String(d)));
+    OWNER_BIRTH_MONTHS.forEach((name, i) => month.add(new Option(name, String(i + 1))));
+    const thisYear = new Date().getFullYear();
+    for (let y = thisYear; y >= thisYear - 100; y--) year.add(new Option(String(y), String(y)));
+    [day, month, year].forEach(el => el.addEventListener('change', syncOwnerBirthDate));
+  })();
+
+  // צובע את שלושת הבוררים — vf() צובע את #ownerBirthDate, שהוא מוסתר ולכן לא נראה למשתמש
+  function markOwnerBirthDateError(bad) {
+    ['ownerBirthDay', 'ownerBirthMonth', 'ownerBirthYear'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('error', bad);
+    });
   }
 
   // ── ענף (כדורגל/כדורסל/שניהם) — קובע את תווית/רשימת שדה המיקום, ואם "שניהם" נבחר
@@ -2550,6 +2648,14 @@
   function updateBizGateField(sport) {
     const labelEl  = document.getElementById('bizGateLabel');
     const selectEl = document.getElementById('bizGate');
+    // ── שם הענף גם על שדה מספר המנוי (2026-08-24) ──────────────────────────────────────────
+    // עד היום רק תווית המיקום התחלפה (שער↔אולם/יציע), ושדה המספר נשאר "מספר מנוי" סתם. מי
+    // שבחר "שניהם" ואז ענף לאימות ראה שדה בלי סימן לאיזה מנוי הוא שייך — ושם מזינים בטעות את
+    // המספר של הענף השני, והאימות מול המועדון נכשל בלי שאף אחד מבין למה.
+    const numLabel = document.querySelector('label[for="bizSubNum"]');
+    if (numLabel && (sport === 'football' || sport === 'basketball')) {
+      numLabel.innerHTML = `מספר מנוי ב${sport === 'basketball' ? 'כדורסל' : 'כדורגל'} <span class="req">*</span>`;
+    }
     if (sport === 'basketball') {
       labelEl.textContent = 'אולם/יציע';
       selectEl.innerHTML = '<option value="">בחר אולם/יציע...</option>' +
@@ -2567,6 +2673,10 @@
     document.getElementById('bizSportBasketballChoice').classList.toggle('selected', val === 'basketball');
     document.getElementById('bizSportBothChoice').classList.toggle('selected', val === 'both');
     document.getElementById('err-bizFanSport').style.display = 'none';
+
+    // ללא-מנוי הבחירה נגמרת כאן: אין לו מספר מנוי לאמת, ולכן לא שאלת-המשך ולא שדות מיקום.
+    // בלי היציאה הזאת, בחירת "שניהם" הייתה פותחת לו שדה-חובה שאין לו שום דרך למלא.
+    if (document.getElementById('bizIsSubscriber').value !== 'yes') return;
 
     const bothRow     = document.getElementById('bizVerifiedSportRow');
     const locationRow = document.getElementById('bizLocationRow');
@@ -2987,6 +3097,7 @@
   async function saveBizRegDraft() {
     const draft = {
       ownerFirst: v('ownerFirst'), ownerLast: v('ownerLast'),
+      ownerBirthDate: document.getElementById('ownerBirthDate').value,
       ownerPhone: v('ownerPhone'), ownerEmail: v('ownerEmail'),
       ownerRelation: document.getElementById('ownerRelation').value,
       isSubscriber:  document.getElementById('bizIsSubscriber').value,
@@ -3083,13 +3194,23 @@
     document.getElementById('ownerLast').value  = d.ownerLast  || '';
     document.getElementById('ownerPhone').value = d.ownerPhone || '';
     document.getElementById('ownerEmail').value = d.ownerEmail || '';
+    // הטיוטה שומרת את הערך המורכב — מפרקים אותו חזרה לשלושת הבוררים
+    if (d.ownerBirthDate) {
+      const [by, bm, bd] = d.ownerBirthDate.split('-');
+      document.getElementById('ownerBirthYear').value  = String(+by);
+      document.getElementById('ownerBirthMonth').value = String(+bm);
+      document.getElementById('ownerBirthDay').value   = String(+bd);
+      syncOwnerBirthDate();
+    }
     document.getElementById('ownerRelation').value = d.ownerRelation || '';
     document.getElementById('bizIsSubscriber').value = d.isSubscriber || '';
     if (d.isSubscriber === 'yes') setSubscriber(true);
     else if (d.isSubscriber === 'no') setSubscriber(false);
-    if (d.isSubscriber === 'yes') {
+    // הענף משוחזר בשני המסלולים (2026-08-24) — קודם התנאי היה 'yes' בלבד, ולא-מנוי שחזר
+    // מהתקנון היה מאבד את הבחירה שלו. setBizFanSport יוצא לבד ללא-מנוי.
+    if (d.isSubscriber === 'yes' || d.isSubscriber === 'no') {
       setBizFanSport(d.fanSport || '');
-      if (d.fanSport === 'both') setBizVerifiedSport(d.verifiedSport || '');
+      if (d.isSubscriber === 'yes' && d.fanSport === 'both') setBizVerifiedSport(d.verifiedSport || '');
     }
     document.getElementById('bizGate').value   = d.gate   || '';
     document.getElementById('bizSubNum').value = d.subNum || '';

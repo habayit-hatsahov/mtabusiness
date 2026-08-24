@@ -229,13 +229,13 @@ async function handleCheckMemberExists({ phone, email, firstName, lastName }, en
   const emailLower = (email || '').trim().toLowerCase();
   if (emailLower) {
     const byEmail = await firestoreRunQuery(env, accessToken, 'members', 'email', emailLower);
-    if (byEmail.length) return { exists: true, memberId: byEmail[0].id, nameMismatch: nameMismatch(byEmail[0].fields), hasName: !!byEmail[0].fields.firstName };
+    if (byEmail.length) return { exists: true, memberId: byEmail[0].id, nameMismatch: nameMismatch(byEmail[0].fields), hasName: !!byEmail[0].fields.firstName, hasBirthDate: !!byEmail[0].fields.birthDate };
   }
 
   if (phone) {
     for (const candidate of phoneCandidates(phone)) {
       const byPhone = await firestoreRunQuery(env, accessToken, 'members', 'phone', candidate);
-      if (byPhone.length) return { exists: true, memberId: byPhone[0].id, nameMismatch: nameMismatch(byPhone[0].fields), hasName: !!byPhone[0].fields.firstName };
+      if (byPhone.length) return { exists: true, memberId: byPhone[0].id, nameMismatch: nameMismatch(byPhone[0].fields), hasName: !!byPhone[0].fields.firstName, hasBirthDate: !!byPhone[0].fields.birthDate };
     }
   }
 
