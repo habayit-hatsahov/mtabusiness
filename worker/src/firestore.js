@@ -83,28 +83,21 @@ export async function firestoreGetDoc(env, accessToken, path) {
 // שני הכיוונים מרוכזים כאן בכוונה: כל צרכן ב-Worker חייב לעבור דרכם, כדי שלא ייווצר שוב מצב
 // שבו מקום אחד קורא את הטוקן ממקור אחר וממשיך לעבוד גם כשהמקור הנכון השתנה.
 //
-// ⚠️ נפילה-לאחור זמנית למקום הישן (businesses.accessToken) — ר' LEGACY למטה. בלעדיה היה נוצר
-// חלון שבו הכניסה שבורה: ה-Worker החדש עולה ב-wrangler deploy, אבל אוסף bizTokens עדיין ריק עד
-// שהמיגרציה (mode=copy) רצה — ו-/migrate-biz-tokens עצמו חי רק בתוך ה-Worker החדש, כלומר אי
-// אפשר להריץ אותו לפני ה-deploy. עם הנפילה-לאחור סדר ההרצה נעשה חסין לגמרי: deploy → copy →
-// rules+אתר → cleanup, ובאף שלב אף בעל-עסק לא מאבד גישה.
-// **למחוק אחרי ש-mode=cleanup רץ בהצלחה** — כל עוד היא כאן, טוקן ישן שנשאר על מסמך עסק עדיין
-// עובד, וזו בדיוק הפרצה שסגרנו.
+// ⚠️ **אין כאן נפילה-לאחור ל-businesses.accessToken, ולא להוסיף אחת.** בזמן המיגרציה כן הייתה
+// כזו (כדי שלא ייווצר חלון שבו הכניסה שבורה בין ה-deploy לבין mode=copy), והיא נמחקה ב-2026-08-24
+// אחרי ש-mode=cleanup רץ ואומת: 53/53 עסקים `already_clean`, וקריאה ציבורית אנונימית מחזירה
+// אפס מופעים של accessToken. כל נפילה-לאחור כזאת מחזירה בדיוק את הפרצה — טוקן שנשאר בטעות על
+// מסמך עסק ציבורי היה שוב מספיק לכניסה. עסק בלי מסמך ב-bizTokens פשוט אין לו טוקן (ר' RON
+// MOTORS ב-§244) — הפתרון הוא להנפיק לו אחד, לא לקרוא מהמקום הישן.
 export async function bizIdFromToken(env, accessToken, bizToken) {
   if (!bizToken) return null;
   const rows = await firestoreRunQuery(env, accessToken, 'bizTokens', 'accessToken', bizToken, 1);
-  if (rows.length) return rows[0].id;   // מזהה-המסמך *הוא* ה-businessId
-  // LEGACY
-  const old = await firestoreRunQuery(env, accessToken, 'businesses', 'accessToken', bizToken, 1);
-  return old.length ? old[0].id : null;
+  return rows.length ? rows[0].id : null;   // מזהה-המסמך *הוא* ה-businessId
 }
 export async function bizTokenFor(env, accessToken, businessId) {
   if (!businessId) return '';
   const d = await firestoreGetDoc(env, accessToken, `bizTokens/${businessId}`);
-  if (d && d.fields.accessToken) return d.fields.accessToken;
-  // LEGACY
-  const biz = await firestoreGetDoc(env, accessToken, `businesses/${businessId}`);
-  return (biz && biz.fields.accessToken) || '';
+  return (d && d.fields.accessToken) || '';
 }
 
 // עדכון חלקי (updateMask) — לא נוגע בשדות שלא נמנים ב-fieldsObj
