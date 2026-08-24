@@ -322,10 +322,11 @@ async function handleMigrateBizTokens(request, env) {
   if (!env.ADMIN_BACKFILL_SECRET || secret !== env.ADMIN_BACKFILL_SECRET) {
     return { error: 'unauthorized' };
   }
-  const { mode, dryRun } = await request.json().catch(() => ({}));
-  if (mode !== 'copy' && mode !== 'cleanup') return { error: 'mode must be "copy" or "cleanup"' };
+  const { mode, dryRun, onlyId } = await request.json().catch(() => ({}));
+  const MODES = ['copy', 'cleanup', 'mint-missing', 'probe'];
+  if (!MODES.includes(mode)) return { error: 'mode must be one of: ' + MODES.join(', ') };
   const accessToken = await getGoogleAccessToken(env);
-  return await runMigrateBizTokens(env, accessToken, { mode, dryRun: !!dryRun });
+  return await runMigrateBizTokens(env, accessToken, { mode, dryRun: !!dryRun, onlyId: onlyId || '' });
 }
 
 // בדיקה ידנית בלבד (curl/Postman) לוודא שצינור ה-Web Push עובד קצה-לקצה — לא כפתור בדשבורד,
