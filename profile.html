@@ -548,6 +548,13 @@
       </div>
     </div>
     <div class="detail-row">
+      <span class="detail-label">תאריך לידה</span>
+      <div class="detail-value-wrap" id="birthDateRow">
+        <span class="detail-value" id="birthDateDisplay"></span>
+        <button class="edit-btn" onclick="startEdit('birthDate')" title="ערוך">✏️</button>
+      </div>
+    </div>
+    <div class="detail-row">
       <span class="detail-label">טלפון</span>
       <div class="detail-value-wrap" id="phoneRow">
         <span class="detail-value" id="phoneDisplay">050-0000000</span>
@@ -567,6 +574,28 @@
         <span class="detail-value" style="color:var(--accent);">✓ חבר מאושר</span>
         <span id="approvedDateDetail" style="font-size:11px;color:var(--text-muted);display:block;margin-top:2px;"></span>
       </div>
+    </div>
+
+    <!-- ── אימות אוהד (2026-08-24) ────────────────────────────────────────────────────────
+         עד היום האוהד לא ראה בשום מקום את פרטי האימות שלו — לא את הענף, לא את השער ולא את
+         מספר המנוי — למרות שהם מה שקובע את מעמדו באינדקס. הוצג רק למנהל. השורות כאן הן
+         **לתצוגה בלבד**: מספר מנוי/שער אושרו ע"י הצוות ואינם ניתנים לעריכה עצמית, בדיוק
+         כמו בדשבורד בעל העסק. ר' renderIdentity שממלא אותן. -->
+    <div class="detail-row" id="verifyKindRow">
+      <span class="detail-label">אימות אוהד</span>
+      <span class="detail-value" id="verifyKindDisplay"></span>
+    </div>
+    <div class="detail-row" id="verifySportRow" style="display:none;">
+      <span class="detail-label">ענף</span>
+      <span class="detail-value" id="verifySportDisplay"></span>
+    </div>
+    <div class="detail-row" id="verifySeatRow" style="display:none;">
+      <span class="detail-label" id="verifySeatLabel">שער</span>
+      <span class="detail-value" id="verifySeatDisplay"></span>
+    </div>
+    <div class="detail-row" id="verifySubNumRow" style="display:none;">
+      <span class="detail-label">מספר מנוי</span>
+      <span class="detail-value" id="verifySubNumDisplay"></span>
     </div>
   </div>
 
@@ -696,6 +725,18 @@ const bizToken = new URLSearchParams(location.search).get('bizToken');
 const previewMemberId = new URLSearchParams(location.search).get('previewMemberId');
 let memberId;
 
+const BIRTH_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+                      'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+
+// 'YYYY-MM-DD' → '14 במאי 1990'. אותו פורמט תצוגה כמו תאריך האישור מתחת, כדי שלא יהיו שני
+// סגנונות תאריך באותו כרטיס.
+function fmtBirthDate(v) {
+  if (!v) return '';
+  const d = new Date(v + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 // ── מציג את השם/תעודה/פרטים על המסך — קרוא גם לרינדור המיידי מ-cache (למטה) וגם לרינדור האמיתי אחרי fetch ──
 function renderIdentity(m) {
   document.querySelector('.profile-side-panel')?.classList.add('ready');
@@ -718,6 +759,35 @@ function renderIdentity(m) {
     'מאושר מ-' + approvedDate.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
   document.getElementById('phoneDisplay').textContent = m.phone || '';
   document.getElementById('emailDisplay').textContent = m.email || '';
+
+  // ── תאריך לידה + אימות אוהד (2026-08-24) ────────────────────────────────────────────────
+  // רשומות שנוצרו לפני 24/08 אין להן תאריך לידה כלל — מוצגת הזמנה להשלים ולא מקף, כדי
+  // שההזדמנות תהיה גלויה בדיוק במקום שבו החבר כבר עורך את הפרטים שלו.
+  const bdEl = document.getElementById('birthDateDisplay');
+  bdEl.textContent = m.birthDate ? fmtBirthDate(m.birthDate) : 'לא מולא בהרשמה — אפשר להשלים';
+  bdEl.style.color = m.birthDate ? '' : 'var(--text-muted)';
+
+  const sportLabels = { football: 'כדורגל', basketball: 'כדורסל', both: 'כדורגל + כדורסל' };
+  document.getElementById('verifyKindDisplay').textContent =
+    m.isSubscriber ? 'מנוי מכבי תל אביב' : ('לא מנוי' + (m.facebookUrl ? ' · פייסבוק מצורף' : ''));
+
+  const sportRow = document.getElementById('verifySportRow');
+  sportRow.style.display = m.fanSport ? '' : 'none';
+  if (m.fanSport) document.getElementById('verifySportDisplay').textContent = sportLabels[m.fanSport] || m.fanSport;
+
+  // שער/אולם ומספר מנוי קיימים רק למנוי — ללא-מנוי אין מספר לאמת מולו
+  const seatRow = document.getElementById('verifySeatRow');
+  const numRow  = document.getElementById('verifySubNumRow');
+  const showSub = !!(m.isSubscriber && m.subscriberSection);
+  seatRow.style.display = showSub ? '' : 'none';
+  numRow.style.display  = (m.isSubscriber && m.subscriberNumber) ? '' : 'none';
+  if (showSub) {
+    document.getElementById('verifySeatLabel').textContent = m.verifiedSport === 'basketball' ? 'אולם/יציע' : 'שער';
+    document.getElementById('verifySeatDisplay').textContent = m.subscriberSection;
+  }
+  if (m.isSubscriber && m.subscriberNumber) {
+    document.getElementById('verifySubNumDisplay').textContent = m.subscriberNumber;
+  }
 }
 
 // ── הצגה מיידית מה-cache המקומי (הנתונים האחרונים שנטענו בהצלחה), עד שהנתונים העדכניים מגיעים מ-Firestore ──
@@ -875,7 +945,66 @@ async function saveMemberField(updates) {
     } catch (e) {}
   }
 
+  // ── תאריך לידה — עריכה בשלושה בוררים (2026-08-24) ────────────────────────────────────────
+  // שני כללים שמגיעים מהחלטה מפורשת (2026-08-24):
+  // (1) השדה **לא** חובה כאן — רשומות שנוצרו לפני התאריך הזה ריקות, וחסימה הייתה מונעת מהן
+  //     גם לתקן טלפון. חובה קיים רק בטופסי ההרשמה.
+  // (2) אבל מי שכבר יש לו ערך — יכול לשנות אותו, **לא למחוק**. בלי הכלל הזה "לא חובה" היה
+  //     הופך בשקט לאפשרות לרוקן נתון קיים.
+  function saveBirthDate() {
+    const d = +document.getElementById('bdDay').value;
+    const mo = +document.getElementById('bdMonth').value;
+    const y = +document.getElementById('bdYear').value;
+
+    if (!d || !mo || !y) {
+      if (member.birthDate) { showToast('אי אפשר למחוק תאריך שכבר מולא'); return; }
+      renderBirthDateRow();   // לא היה ערך ואין ערך חדש — יציאה שקטה
+      return;
+    }
+    const dt = new Date(y, mo - 1, d);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    // הרכבה תמימה של 31/02 מחליקה ל-3 במרץ — בודקים שהתאריך חזר בדיוק כמו שנבחר
+    if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d || dt > today) {
+      showToast('תאריך לא תקין'); return;
+    }
+    const val = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    member.birthDate = val;
+    saveMemberField({ birthDate: val });
+    renderBirthDateRow();
+    showToast('הפרטים עודכנו ✓');
+  }
+
+  function renderBirthDateRow() {
+    const row = document.getElementById('birthDateRow');
+    const has = !!member.birthDate;
+    row.innerHTML = `
+      <span class="detail-value" id="birthDateDisplay" style="${has ? '' : 'color:var(--text-muted)'}">${
+        has ? fmtBirthDate(member.birthDate) : 'לא מולא בהרשמה — אפשר להשלים'
+      }</span>
+      <button class="edit-btn" onclick="startEdit('birthDate')" title="ערוך">✏️</button>
+    `;
+  }
+
+  function startEditBirthDate() {
+    const cur = member.birthDate ? member.birthDate.split('-').map(Number) : [0, 0, 0];
+    const thisYear = new Date().getFullYear();
+    const opt = (val, text, sel) => `<option value="${val}"${sel ? ' selected' : ''}>${text}</option>`;
+    const days = Array.from({ length: 31 }, (_, i) => opt(i + 1, i + 1, cur[2] === i + 1)).join('');
+    const months = BIRTH_MONTHS.map((n, i) => opt(i + 1, n, cur[1] === i + 1)).join('');
+    const years = Array.from({ length: 101 }, (_, i) => thisYear - i)
+      .map(y => opt(y, y, cur[0] === y)).join('');
+    document.getElementById('birthDateRow').innerHTML = `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:flex-end;">
+        <select class="edit-input" id="bdDay" style="width:auto;">${opt('', 'יום', !cur[2])}${days}</select>
+        <select class="edit-input" id="bdMonth" style="width:auto;">${opt('', 'חודש', !cur[1])}${months}</select>
+        <select class="edit-input" id="bdYear" style="width:auto;">${opt('', 'שנה', !cur[0])}${years}</select>
+        <button class="save-inline-btn" onclick="saveBirthDate()">שמור</button>
+      </div>
+    `;
+  }
+
   function startEdit(field) {
+    if (field === 'birthDate') return startEditBirthDate();
     const isPhone = field === 'phone';
     const rowId    = isPhone ? 'phoneRow'    : 'emailRow';
     const dispId   = isPhone ? 'phoneDisplay' : 'emailDisplay';
@@ -915,6 +1044,7 @@ async function saveMemberField(updates) {
   // חשיפה לגלובל (נדרש כי onclick ב-HTML לא רואה scope של module) — saveCard כבר הוגדר למעלה
   window.startEdit         = startEdit;
   window.saveEdit          = saveEdit;
+  window.saveBirthDate     = saveBirthDate;   // נקרא מ-onclick בשורת העריכה של תאריך הלידה
   window.toggleLocation    = toggleLocation;
   window.requestLocationPermission = requestLocationPermission;
   window.openMenu          = openMenu;

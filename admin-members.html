@@ -472,41 +472,40 @@
     </div>
     <input type="hidden" id="editMemberId" />
 
-    <!-- STEPPER -->
+    <!-- STEPPER — 2026-08-24: היו 3 שלבים, "אימות אוהד" מוזג לתוך "פרטים אישיים".
+         הפרדתם לשני שלבים אילצה מעבר-מסך כדי לראות מנוי/שער/מספר של אותו אדם. -->
     <div class="edit-stepper">
       <div class="edit-step-item active" id="esi-1">
         <div class="edit-step-circle">1</div>
-        <div class="edit-step-label">פרטים<br/>אישיים</div>
+        <div class="edit-step-label">פרטים<br/>ואימות</div>
       </div>
       <div class="edit-step-item" id="esi-2">
         <div class="edit-step-circle">2</div>
-        <div class="edit-step-label">אימות<br/>אוהד</div>
-      </div>
-      <div class="edit-step-item" id="esi-3">
-        <div class="edit-step-circle">3</div>
         <div class="edit-step-label">מסמכים<br/>ומדיה</div>
       </div>
     </div>
 
-    <!-- STEP 1 — פרטים אישיים -->
+    <!-- STEP 1 — פרטים אישיים + אימות אוהד (מוזגו 2026-08-24) -->
     <div class="edit-step-panel active" id="editStep1">
       <div class="edit-section-title">👤 פרטים אישיים</div>
       <div class="form-row-2">
         <div class="form-row" style="margin:0"><label>שם פרטי</label><input type="text" id="editFirstName" /></div>
         <div class="form-row" style="margin:0"><label>שם משפחה</label><input type="text" id="editLastName" /></div>
       </div>
+      <div class="form-row" style="margin-top:14px">
+        <label>תאריך לידה</label>
+        <div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:8px">
+          <select id="editBirthDay"></select>
+          <select id="editBirthMonth"></select>
+          <select id="editBirthYear"></select>
+        </div>
+      </div>
       <div class="form-row-2" style="margin-top:14px">
         <div class="form-row" style="margin:0"><label>טלפון</label><input type="tel" id="editPhone" /></div>
         <div class="form-row" style="margin:0"><label>אימייל</label><input type="email" id="editEmail" /></div>
       </div>
-      <div class="edit-btn-row">
-        <button class="btn btn-approve" onclick="editGoNext(1)" style="flex:1">המשך ←</button>
-      </div>
-    </div>
 
-    <!-- STEP 2 — אימות אוהד -->
-    <div class="edit-step-panel" id="editStep2">
-      <div class="edit-section-title">🛡️ אימות אוהד</div>
+      <div class="edit-section-title" style="margin-top:22px">🛡️ אימות אוהד</div>
       <div class="form-row">
         <label>סטטוס מנוי</label>
         <select id="editIsSubscriber" onchange="editHandleSubscriber(this.value)">
@@ -546,13 +545,12 @@
         </div>
       </div>
       <div class="edit-btn-row">
-        <button class="btn btn-reject" onclick="editGoBack(2)" style="flex:none;padding:10px 18px">→ חזור</button>
-        <button class="btn btn-approve" onclick="editGoNext(2)" style="flex:1">המשך ←</button>
+        <button class="btn btn-approve" onclick="editGoNext(1)" style="flex:1">המשך ←</button>
       </div>
     </div>
 
-    <!-- STEP 3 — מסמכים ומדיה -->
-    <div class="edit-step-panel" id="editStep3">
+    <!-- STEP 2 — מסמכים ומדיה (היה שלב 3 עד מיזוג האימות, 2026-08-24) -->
+    <div class="edit-step-panel" id="editStep2">
       <div class="edit-storage-note">
         💡 תמונות הוכחה ישמרו עם חיבור Firebase Storage. ניתן להזין URL ידני כבר עכשיו.
       </div>
@@ -571,7 +569,7 @@
         <div class="edit-upload-sub">JPG, PNG · עד 5MB</div>
       </div>
       <div class="edit-btn-row">
-        <button class="btn btn-reject" onclick="editGoBack(3)" style="flex:none;padding:10px 18px">→ חזור</button>
+        <button class="btn btn-reject" onclick="editGoBack(2)" style="flex:none;padding:10px 18px">→ חזור</button>
         <button class="btn btn-approve" id="saveEditBtn" style="flex:1">שמור שינויים ✓</button>
       </div>
     </div>
@@ -679,6 +677,40 @@ function fmtDate(v) {
   if (!v) return '';
   const d = toDate(v);
   return d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' });
+}
+
+// ── תאריך לידה (2026-08-24) ────────────────────────────────────────────────────────────────
+// נשמר כמחרוזת 'YYYY-MM-DD' על רשומת החבר. שלושה בוררים ולא input[type=date] — הבורר הנייטיב
+// נפתח על החודש הנוכחי, ולשנת לידה צריך לדפדף עשרות שנים אחורה.
+const BIRTH_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+                      'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+function fmtBirthDate(v) {
+  if (!v) return '';
+  const d = new Date(v + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+(function fillEditBirthSelects() {
+  const day = document.getElementById('editBirthDay');
+  const month = document.getElementById('editBirthMonth');
+  const year = document.getElementById('editBirthYear');
+  if (!day || !month || !year) return;
+  const ty = new Date().getFullYear();
+  day.innerHTML   = '<option value="">יום</option>'   + Array.from({ length: 31 }, (_, i) => `<option value="${i+1}">${i+1}</option>`).join('');
+  month.innerHTML = '<option value="">חודש</option>'  + BIRTH_MONTHS.map((n, i) => `<option value="${i+1}">${n}</option>`).join('');
+  year.innerHTML  = '<option value="">שנה</option>'   + Array.from({ length: 101 }, (_, i) => ty - i).map(y => `<option value="${y}">${y}</option>`).join('');
+})();
+// מחזיר 'YYYY-MM-DD', או null אם לא נבחר תאריך שלם/תקין. המנהל **כן** רשאי לרוקן (בשונה
+// מהאוהד ומבעל העסק) — הוא זה שמתקן נתון שגוי, והבוררים ממילא נטענים מהרשומה בכל פתיחה,
+// כך שעריכת טלפון בלבד לא מוחקת תאריך קיים בטעות.
+function editBirthDateValue() {
+  const d = +document.getElementById('editBirthDay').value;
+  const m = +document.getElementById('editBirthMonth').value;
+  const y = +document.getElementById('editBirthYear').value;
+  if (!d || !m || !y) return null;
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 // מצב שליחת מייל קוד הכניסה — השדות נכתבים בפועל ב-worker/src/index.js (runEmailSweeps/handleResendCode)
 function emailStatusHtml(status, sentAt, err) {
@@ -990,13 +1022,19 @@ window.openMemberSheet = async function(id) {
             ${m.email ? `<a href="https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(m.email)}&su=${encodeURIComponent(getFanMailSubject())}&body=${encodeURIComponent(buildMail(m))}" target="_blank" style="margin-right:8px;font-size:11px;font-weight:700;color:var(--blue);text-decoration:none;">✉️ מייל</a>` : ''}
           </div>
         </div>
+        <div class="detail-item"><div class="lbl">תאריך לידה</div><div class="val">${
+          m.birthDate ? fmtBirthDate(m.birthDate)
+                      : '<span style="color:var(--text-muted);font-style:italic;">לא מולא בהרשמה</span>'
+        }</div></div>
         <div class="detail-item"><div class="lbl">נרשם</div><div class="val">${fmtDate(m.submittedAt)||'—'}</div></div>
         ${m.status==='approved' ? `<div class="detail-item"><div class="lbl">אושר</div><div class="val">${fmtDate(m.approvedAt)||'—'}</div></div>` : ''}
         ${m.status==='approved' && !m.loginCode ? `<div class="detail-item full"><div class="lbl">קוד כניסה</div><div class="val"><span style="color:var(--orange);">אין קוד — לחץ על "🔑 קוד כניסה לחברים מאושרים ללא קוד" למעלה</span></div></div>` : ''}
       </div>
-    </div>
-    <div class="card-section">
-      <div class="card-section-title">🛡️ אימות אוהד</div>
+
+      <!-- ── אימות אוהד — מוזג לתוך הפרטים האישיים (2026-08-24) ──────────────────────────
+           היה card-section נפרד. ההפרדה אילצה גלילה/מעבר כדי לראות מנוי/שער/מספר של אותו
+           אדם שאת הטלפון שלו בדיוק קראת. אותו מיזוג בוצע גם בטופס העריכה (שלב 1). -->
+      <div class="card-section-title" style="margin-top:18px">🛡️ אימות אוהד</div>
       <div style="padding:4px 0 10px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">${authLine}</div>
       ${m.photoProofUrl ? `
         <a href="${m.photoProofUrl}" target="_blank">
@@ -1149,7 +1187,7 @@ window.sendMail = function(id) {
 
 // ── edit modal ────────────────────────────────────────────────────────────────
 function updateEditStepper(step) {
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 2; i++) {   // 2026-08-24: היו 3 שלבים, האימות מוזג לשלב 1
     const si = document.getElementById('esi-' + i);
     si.classList.remove('active','done');
     const circle = si.querySelector('.edit-step-circle');
@@ -1183,6 +1221,11 @@ window.openEditModal = function(id) {
   document.getElementById('editPhone').value     = m.phone     || '';
   document.getElementById('editEmail').value     = m.email     || '';
 
+  const [by, bm, bd] = m.birthDate ? m.birthDate.split('-').map(Number) : ['', '', ''];
+  document.getElementById('editBirthDay').value   = bd || '';
+  document.getElementById('editBirthMonth').value = bm || '';
+  document.getElementById('editBirthYear').value  = by || '';
+
   const isSub = m.isSubscriber===true ? 'yes' : m.isSubscriber===false ? 'no' : '';
   document.getElementById('editIsSubscriber').value = isSub;
   editHandleSubscriber(isSub);
@@ -1199,7 +1242,7 @@ window.openEditModal = function(id) {
   document.getElementById('editModal').classList.add('open');
 };
 
-window.openMediaModal = function(id) { openEditModal(id); showEditStep(3); };
+window.openMediaModal = function(id) { openEditModal(id); showEditStep(2); };   // היה 3 עד מיזוג האימות
 window.closeEditModal = function() { document.getElementById('editModal').classList.remove('open'); };
 
 window.editUpdatePhotoPreview = function(url) {
@@ -1222,6 +1265,7 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
   const updates = {
     firstName:         document.getElementById('editFirstName').value.trim(),
     lastName:          document.getElementById('editLastName').value.trim(),
+    birthDate:         editBirthDateValue(),
     phone:             document.getElementById('editPhone').value.trim(),
     email:             document.getElementById('editEmail').value.trim().toLowerCase(),   // ר' PROJECT_CONTEXT §221
     isSubscriber:      isSub === 'yes',

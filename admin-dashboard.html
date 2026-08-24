@@ -1968,6 +1968,38 @@ function sectionLabelFor(verifiedSport) {
 }
 const SPORT_LABELS = { football: 'כדורגל', basketball: 'כדורסל', both: 'כדורגל+כדורסל' };
 
+// ── תאריך לידה (2026-08-24) ────────────────────────────────────────────────────────────────
+// נשמר כמחרוזת 'YYYY-MM-DD' על רשומת החבר (members), לא על מסמך העסק — מסמך של עסק מאושר
+// נקרא ציבורית במלואו (§244) ותאריך לידה הוא מידע אישי.
+const BIRTH_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+                      'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+function fmtBirthDate(v) {
+  if (!v) return '';
+  const d = new Date(v + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+// האופציות נבנות בתוך מחרוזת-התבנית של הפאנל ולא ממולאות אחרי הרינדור — הפאנל מרונדר מחדש
+// בכל renderMain/refreshOpenDetailPanel, ומילוי מאוחר היה נמחק (ר' §246).
+function birthOptionsHtml(kind, cur) {
+  const o = (v, t, sel) => `<option value="${v}"${sel ? ' selected' : ''}>${t}</option>`;
+  const [y, m, d] = cur ? String(cur).split('-').map(Number) : [0, 0, 0];
+  if (kind === 'day')   return o('', 'יום', !d) + Array.from({ length: 31 }, (_, i) => o(i + 1, i + 1, d === i + 1)).join('');
+  if (kind === 'month') return o('', 'חודש', !m) + BIRTH_MONTHS.map((n, i) => o(i + 1, n, m === i + 1)).join('');
+  const ty = new Date().getFullYear();
+  return o('', 'שנה', !y) + Array.from({ length: 101 }, (_, i) => ty - i).map(v => o(v, v, y === v)).join('');
+}
+// מחזיר 'YYYY-MM-DD' או null. הרכבה תמימה של 31/02 מחליקה ל-3 במרץ, לכן נבדק שהתאריך חזר
+// בדיוק כמו שנבחר. המנהל **כן** רשאי לרוקן — הוא מי שמתקן נתון שגוי, והבוררים נטענים מהרשומה
+// בכל רינדור כך שעריכת טלפון בלבד לא מוחקת תאריך קיים בטעות.
+function composeBirthDate(day, month, year) {
+  const d = +day, m = +month, y = +year;
+  if (!d || !m || !y) return null;
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
 // ── העלאת מדיה אמיתית ל-Firebase Storage — זהה בדיוק ל-admin-businesses.html (uploadFile/
 // compressImageFile/compressToFile/uploadImageWithThumb) — שלב 5 (מדיה) הוא הראשון בדמו שצריך את זה. ──
 async function uploadFile(file, path) {
@@ -6602,8 +6634,23 @@ function fanFullDetailHtml(id, opts) {
         <div class="form-field"><div class="form-field-label">שם פרטי ומשפחה</div><div class="form-field-val">${esc(f.name)}</div></div>
         <div class="form-field"><div class="form-field-label">טלפון</div><div class="form-field-val">${esc(f.phone||'—')}</div></div>
         <div class="form-field"><div class="form-field-label">אימייל</div><div class="form-field-val">${esc(f.email||'—')}</div></div>
+        <div class="form-field"><div class="form-field-label">תאריך לידה</div><div class="form-field-val">${
+          f.birthDate ? esc(fmtBirthDate(f.birthDate)) : '<span style="color:var(--text-muted);font-style:italic">לא מולא בהרשמה</span>'
+        }</div></div>
         <div class="form-field"><div class="form-field-label">מנוי בפועל</div><div class="form-field-val">${f.isSubscriber?'כן':'לא'}</div></div>
         <div class="form-field"><div class="form-field-label">היה מנוי בעבר</div><div class="form-field-val">${f.isSubscriber?'—':(f.wasSubscriber==='yes'?'כן':'לא')}</div></div>
+        <!-- ── פרטי האימות בתוך "פרטי ההרשמה" (2026-08-24) ────────────────────────────────
+             עד היום הם הופיעו **רק** בקוביית "מנוי" שבכרטיס-הזהות למעלה, בעוד שכאן הופיע
+             "מנוי בפועל: כן" בלבד — כלומר מי שקרא את פרטי ההרשמה לא ראה ענף/שער/מספר, וטופס
+             העריכה שמתחת דווקא כן מכיל אותם. הקובייה למעלה נשארת כסיכום-במבט-אחד (אותה החלטה
+             כמו בכרטיס העסק), וכאן יושבים השדות עצמם — בדיוק כמו ששם/טלפון/מייל כבר מופיעים
+             בשני המקומות. -->
+        <div class="form-field"><div class="form-field-label">ענף</div><div class="form-field-val">${
+          f.fanSport ? esc(SPORT_LABELS[f.fanSport] || f.fanSport) : '—'
+        }</div></div>
+        ${f.isSubscriber ? `
+        <div class="form-field"><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val">${esc(f.subscriberSection||'—')}</div></div>
+        <div class="form-field"><div class="form-field-label">מס' מנוי</div><div class="form-field-val">${esc(f.subscriberNumber||'—')}</div></div>` : ''}
         ${f.facebookUrl ? `<div class="form-field"><div class="form-field-label">קישור פייסבוק</div><div class="form-field-val"><a href="${esc(f.facebookUrl)}" target="_blank" rel="noopener">${esc(f.facebookUrl)}</a></div></div>` : ''}
         <div class="form-field full">
           <div class="form-field-label">תמונה בשער אוהדים</div>
@@ -6616,6 +6663,14 @@ function fanFullDetailHtml(id, opts) {
         <div class="form-row-2">
           <div class="form-row" style="margin:0"><label>שם פרטי</label><input type="text" id="fanEditFirst_${f.id}" value="${esc(f.firstName || '')}" /></div>
           <div class="form-row" style="margin:0"><label>שם משפחה</label><input type="text" id="fanEditLast_${f.id}" value="${esc(f.lastName || '')}" /></div>
+        </div>
+        <div class="form-row" style="margin-top:10px">
+          <label>תאריך לידה</label>
+          <div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:8px">
+            <select id="fanEditBirthDay_${f.id}">${birthOptionsHtml('day', f.birthDate)}</select>
+            <select id="fanEditBirthMonth_${f.id}">${birthOptionsHtml('month', f.birthDate)}</select>
+            <select id="fanEditBirthYear_${f.id}">${birthOptionsHtml('year', f.birthDate)}</select>
+          </div>
         </div>
         <div class="form-row-2" style="margin-top:10px">
           <div class="form-row" style="margin:0"><label>טלפון</label><input type="tel" id="fanEditPhone_${f.id}" value="${esc(f.phone || '')}" /></div>
@@ -6710,6 +6765,11 @@ window.saveFanDetails = async function(id) {
   const updates = {
     firstName: document.getElementById('fanEditFirst_' + id).value.trim(),
     lastName: document.getElementById('fanEditLast_' + id).value.trim(),
+    birthDate: composeBirthDate(
+      document.getElementById('fanEditBirthDay_' + id).value,
+      document.getElementById('fanEditBirthMonth_' + id).value,
+      document.getElementById('fanEditBirthYear_' + id).value
+    ),
     phone: document.getElementById('fanEditPhone_' + id).value.trim(),
     email: document.getElementById('fanEditEmail_' + id).value.trim().toLowerCase(),   // ר' §221
     isSubscriber: isSub,

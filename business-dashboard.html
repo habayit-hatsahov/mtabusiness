@@ -1867,6 +1867,31 @@ async function getStorageLazy() {
 
 let biz = null;
 let bizId = null;
+// רשומת החבר המקושרת לבעל העסק (ownerMemberId). נטענת בנפרד ממסמך העסק כי תאריך הלידה יושב
+// שם ולא כאן — ר' ההערה ב-loadBusiness. null אם אין קישור או אם הקריאה נכשלה.
+let ownerMember = null;
+
+const BIRTH_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+                      'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+
+// 'YYYY-MM-DD' → '14 במאי 1990'
+function fmtBirthDate(v) {
+  if (!v) return '';
+  const d = new Date(v + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// האופציות נבנות **בתוך** מחרוזת-התבנית של הכרטיס ולא ממולאות אחרי הרינדור, כי הכרטיס
+// מרונדר מחדש בכל renderBizView — מילוי מאוחר היה נמחק בכל רינדור.
+function birthOptionsHtml(kind, cur) {
+  const o = (v, t, sel) => `<option value="${v}"${sel ? ' selected' : ''}>${t}</option>`;
+  const [y, m, d] = cur ? cur.split('-').map(Number) : [0, 0, 0];
+  if (kind === 'day')   return o('', 'יום', !d) + Array.from({ length: 31 }, (_, i) => o(i + 1, i + 1, d === i + 1)).join('');
+  if (kind === 'month') return o('', 'חודש', !m) + BIRTH_MONTHS.map((n, i) => o(i + 1, n, m === i + 1)).join('');
+  const ty = new Date().getFullYear();
+  return o('', 'שנה', !y) + Array.from({ length: 101 }, (_, i) => ty - i).map(v => o(v, v, y === v)).join('');
+}
 let weeklySchedule = []; // שיבוץ עסק-השבוע/הטבת-השבוע ששייך לעסק הזה (weekly_schedule, ר' loadBusiness)
 let discEditOn = false;
 let discRedeemMode = []; // בחירה מרובה — יכול להיות גם "בחנות" וגם "באתר" בו-זמנית
@@ -2176,6 +2201,20 @@ async function loadBusiness(token) {
     if (!snap.exists()) { showError(); return; }
 
     biz = { id: bizId, ...snap.data() };
+
+    // ── תאריך לידה של בעל העסק (2026-08-24) ──────────────────────────────────────────────
+    // יושב על **רשומת החבר** ולא על מסמך העסק: מסמך של עסק מאושר נקרא ציבורית במלואו (§244),
+    // ותאריך לידה הוא מידע אישי שאין שום סיבה לחשוף. firestore.rules מתיר לבעל-עסק מחובר
+    // לקרוא את רשומת החבר המקושרת אליו (isLinkedBusinessOwnerOf) ולעדכן בה את השדה הזה בלבד.
+    // כשל כאן לא מפיל את הדשבורד — פשוט לא יוצג תאריך.
+    ownerMember = null;
+    if (biz.ownerMemberId) {
+      try {
+        const mSnap = await getDoc(doc(db, 'members', biz.ownerMemberId));
+        if (mSnap.exists()) ownerMember = { id: mSnap.id, ...mSnap.data() };
+      } catch (e) { console.warn('לא ניתן לקרוא את רשומת החבר של בעל העסק:', e.message); }
+    }
+
     loadDismissedChecklist();
     loadCompletenessDoneAt();
     loadDraftChanges();   // §215 — עריכה שלא נשלחה (או שנכשלה בשליחה) חוזרת למסך במקום ללכת לאיבוד
@@ -2774,6 +2813,11 @@ function renderOwnerCard(w) {
       <div class="card-guide">הפרטים האלה מיועדים לצוות בלבד ולא מוצגים לאוהדים באינדקס. הם משמשים אותנו כדי ליצור איתכם קשר ולאמת שהעסק אכן שלכם.</div>
       <div class="info-rows" id="secView-owner">
         ${rowHtml('שם', `${biz.ownerFirst || ''} ${biz.ownerLast || ''}`.trim())}
+        ${ownerMember && ownerMember.birthDate
+            ? rowHtml('תאריך לידה', fmtBirthDate(ownerMember.birthDate))
+            // לא "לא מולא" הגנרי של rowHtml אלא הזמנה מפורשת להשלים — רשומות שנוצרו לפני
+            // 24/08 ריקות, וזו הנקודה שבה בעל העסק כבר עורך ויכול להשלים בלי שנבקש ממנו כלום
+            : `<div class="info-row"><span class="info-label">תאריך לידה</span><span class="info-value missing">לא מולא בהרשמה — אפשר להשלים</span></div>`}
         ${rowHtml('טלפון', biz.ownerPhone)}
         ${rowHtml('אימייל', biz.ownerEmail)}
         ${rowHtml('קרבה לבעל המנוי', RELATION_LABELS[biz.ownerRelation || ''] || biz.ownerRelation)}
@@ -2784,6 +2828,19 @@ function renderOwnerCard(w) {
         <div class="form-group">
           <label class="form-label">שם פרטי</label>
           <input type="text" class="form-input" id="editOwnerFirst" value="${esc(w.ownerFirst)}" />
+        </div>
+        <!-- ── תאריך לידה (2026-08-24) ────────────────────────────────────────────────────
+             חריג מכוון בטופס הזה: כל שאר השדות כאן נאספים ל-draftChanges ונשלחים לאישור מנהל,
+             וזה נשמר **מיד** — הוא לא יושב על מסמך העסק אלא על רשומת החבר, לא מופיע בכרטיס
+             באינדקס ואין מה לאשר בו. ההערה מתחת אומרת את זה למשתמש במפורש. -->
+        <div class="form-group">
+          <label class="form-label">תאריך לידה</label>
+          <div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:8px">
+            <select class="form-input" id="editOwnerBirthDay">${birthOptionsHtml('day', ownerMember && ownerMember.birthDate)}</select>
+            <select class="form-input" id="editOwnerBirthMonth">${birthOptionsHtml('month', ownerMember && ownerMember.birthDate)}</select>
+            <select class="form-input" id="editOwnerBirthYear">${birthOptionsHtml('year', ownerMember && ownerMember.birthDate)}</select>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">נשמר מיד ולא ממתין לאישור — זה פרט אישי שלכם ולא מוצג לאוהדים.</div>
         </div>
         <div class="form-group">
           <label class="form-label">שם משפחה</label>
@@ -4503,7 +4560,43 @@ window.discardAllChanges = function() {
   renderBizView();
 };
 
+// ── תאריך לידה — נשמר מיד על רשומת החבר, לא דרך stageChanges ─────────────────────────────
+// שני כללים מהחלטה מפורשת (2026-08-24): (1) לא חובה כאן — רשומות שנוצרו לפני התאריך הזה ריקות,
+// וחסימה הייתה מונעת מהן גם לתקן טלפון; (2) מי שכבר יש לו ערך יכול לשנות, **לא למחוק**.
+// ⚠️ כשל כתיבה מדווח בקול (showToast) ולא נבלע — כתיבה שנכשלת בשקט היא באג-אמת שקרה כאן בעבר.
+async function saveOwnerBirthDate() {
+  const day = document.getElementById('editOwnerBirthDay');
+  if (!day) return;                       // הטופס לא פתוח
+  const d = +day.value;
+  const m = +document.getElementById('editOwnerBirthMonth').value;
+  const y = +document.getElementById('editOwnerBirthYear').value;
+  const cur = (ownerMember && ownerMember.birthDate) || '';
+
+  if (!d || !m || !y) {
+    if (cur) showToast('אי אפשר למחוק תאריך לידה שכבר מולא');
+    return;
+  }
+  const dt = new Date(y, m - 1, d);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  // הרכבה תמימה של 31/02 מחליקה ל-3 במרץ — בודקים שהתאריך חזר בדיוק כמו שנבחר
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d || dt > today) {
+    showToast('תאריך לידה לא תקין'); return;
+  }
+  const val = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  if (val === cur) return;
+  if (!ownerMember) { showToast('לא ניתן לשמור תאריך לידה — רשומת החבר לא נטענה'); return; }
+
+  try {
+    await updateDoc(doc(db, 'members', ownerMember.id), { birthDate: val });
+    ownerMember.birthDate = val;
+  } catch (e) {
+    console.error('birthDate save failed:', e.code || '', e.message);
+    showToast('שמירת תאריך הלידה נכשלה — נסו שוב');
+  }
+}
+
 window.saveOwner = function() {
+  saveOwnerBirthDate();   // עצמאי מ-stageChanges, ר' ההערה מעל
   stageChanges({
     ownerFirst: document.getElementById('editOwnerFirst').value.trim(),
     ownerLast: document.getElementById('editOwnerLast').value.trim(),
