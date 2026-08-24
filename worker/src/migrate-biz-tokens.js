@@ -106,7 +106,7 @@ async function deleteTokenField(env, accessToken, bizId) {
   if (!resp.ok) throw new Error('field_delete_failed: ' + (await resp.text()));
 }
 
-export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, onlyId }) {
+export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, onlyId, confirm }) {
   const businesses = await listAll(env, accessToken, 'businesses');
   const tokenDocs = await listAll(env, accessToken, 'bizTokens');
   // ⚠️ "יש מסמך" ≠ "יש טוקן". מסמך ב-bizTokens עם accessToken ריק/חסר הוא חסר-טוקן לכל דבר,
@@ -120,12 +120,61 @@ export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, only
 
   const report = { mode, dryRun: !!dryRun, businesses: businesses.length, done: [], skipped: [], failed: [] };
 
-  // ── mode=probe — בדיקת-בריאות קריאה-בלבד לשרשרת-הכניסה של עסק בודד (2026-08-24) ──────────
-  // עונה על "למה בעל-עסק X לא מצליח להיכנס לדשבורד" בקריאה אחת: יש לו מסמך ב-bizTokens? יש בו
-  // ערך? ו-**האם runQuery מוצא את הערך הזה** — כלומר בדיוק המסלול ש-bizIdFromToken עובר בכניסה
-  // (`/mint-biz-token`). מחזיר אורכים ובוליאנים בלבד, לא את הטוקן עצמו.
-  // onlyId = מזהה העסק. שים לב שזה בודק את הטוקן ה**שמור** — אם הבדיקה כאן ירוקה אבל הכניסה
-  // נכשלת, הטוקן שביד בעל-העסק שונה מהשמור (לינק ישן), לא תקלה בצד השרת.
+  // ── mode=rotate — החלפת כל טוקני-הדשבורד (§249, 2026-08-24) ───────────────────────────────
+  // למה בכלל: מי ששלף accessToken בקריאה ציבורית לפני שנסגר (§244) מחזיק אותו לתמיד. רוטציה
+  // הורגת אותו. המחיר נמוך **רק** בזכות מסלול-התפריט: "העסק שלי" שולף את הטוקן העדכני בכל
+  // טעינה ולכן מרפא את עצמו, ונשברים רק לינקים ישנים במייל/סימניות.
+  //
+  // ⚠️ רשת-הביטחון: מדלגים על כל עסק ש**לא** הוכח שיכול להיכנס דרך התפריט — בדיוק אותה שרשרת
+  // שנבדקת ב-login-readiness. עסק pending שהבעלים שלו עדיין לא אושר כחבר אין לו מסלול-תפריט,
+  // ורוטציה הייתה נועלת אותו בחוץ בלי שום דרך חזרה — והוא דווקא כן משתמש בלינק כדי להעלות
+  // תמונות לפני האישור. הוא יקבל טוקן טרי ממילא במייל האישור.
+  //
+  // ⚠️ דורש confirm מפורש — בלעדיו לא רץ. זו הפעולה היחידה כאן שהורסת ערך קיים בלי גיבוי.
+  // ⚠️ הטוקנים החדשים **לא** מוחזרים בתשובה: אין בהם צורך (התפריט מגיש אותם), ואין סיבה
+  // לשפוך 50 מפתחות לתוך לוג של טרמינל.
+  if (mode === 'rotate') {
+    if (confirm !== 'ROTATE-ALL') {
+      return { error: 'rotate דורש confirm:"ROTATE-ALL" מפורש' };
+    }
+    const members = await listAll(env, accessToken, 'members');
+    const byId = new Map(members.map((m) => [m.id, m.fields]));
+    const s = (f, k) => (f && f[k] && f[k].stringValue) || '';
+    const rep = { mode, dryRun: !!dryRun, rotated: [], skipped: [], failed: [] };
+
+    for (const b of businesses) {
+      if (onlyId && b.id !== onlyId) continue;
+      const name = s(b.fields, 'name') || b.id;
+      if (!haveToken.has(b.id)) { rep.skipped.push({ id: b.id, name, why: 'no_token' }); continue; }
+
+      const status = s(b.fields, 'status');
+      const omid = s(b.fields, 'ownerMemberId');
+      const mf = omid ? byId.get(omid) : null;
+      const canEnterViaMenu =
+        status === 'approved' &&
+        !!mf && s(mf, 'status') === 'approved' &&
+        !!(mf.isBusinessOwner && mf.isBusinessOwner.booleanValue) &&
+        s(mf, 'linkedBusinessId') === b.id;
+
+      // עסק שנדחה **כן** מוחלף: הוא לא אמור להחזיק גישה לדשבורד מלכתחילה, ורוטציה אצלו היא
+      // בעצם שלילת-הגישה שהייתה חסרה. אם יאושר בעתיד — מייל האישור בונה לינק מהטוקן העדכני,
+      // אז שום דבר לא הולך לאיבוד. רשת-הביטחון נשארת בדיוק למי שהיא נועדה לו: עסק שעדיין
+      // 'pending' (משתמש בלינק כדי להעלות תמונות לפני האישור, ואין לו עדיין מסלול-תפריט),
+      // ועסק מאושר שמשום מה אין לו מסלול-תפריט — שניהם היו ננעלים בחוץ בלי דרך חזרה.
+      if (!canEnterViaMenu && status !== 'rejected') {
+        rep.skipped.push({ id: b.id, name, status, why: 'no_menu_path — היה ננעל בחוץ' });
+        continue;
+      }
+      try {
+        if (!dryRun) await writeSecretDoc(env, accessToken, 'bizTokens', b.id, 'accessToken', crypto.randomUUID());
+        rep.rotated.push({ id: b.id, name });
+      } catch (e) { rep.failed.push({ id: b.id, name, error: String(e).slice(0, 200) }); }
+    }
+
+    rep.summary = `rotate${dryRun ? ' (יבש)' : ''}: ${rep.rotated.length} הוחלפו · ${rep.skipped.length} דולגו · ${rep.failed.length} נכשלו`;
+    return rep;
+  }
+
   // ── mode=probe-member-code — בדיקת-בריאות לשרשרת-הכניסה של חבר בודד (§248) ────────────────
   // עונה על "למה חבר X לא מצליח להיכנס" בלי להחזיר את הקוד עצמו: יש לו מסמך ב-memberCodes?
   // יש בו ערך? ו-**האם runQuery מוצא אותו** — בדיוק המסלול שעובר memberIdFromLoginCode.
@@ -203,6 +252,14 @@ export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, only
   if (mode === 'login-readiness') {
     const members = await listAll(env, accessToken, 'members');
     const byId = new Map(members.map((m) => [m.id, m.fields]));
+    // ⚠️ קוד הכניסה נבדק מול memberCodes ולא מול members.loginCode — §248 העביר אותו לשם ומחק
+    // אותו ממסמכי החברים. הבדיקה הישנה החזירה 0/50 מיד אחרי §248 ונראתה כמו נפילה מערכתית,
+    // בעוד שבפועל היא פשוט מדדה שדה שכבר לא קיים.
+    const codeIds = new Set(
+      (await listAll(env, accessToken, 'memberCodes'))
+        .filter((d) => d.fields.loginCode && d.fields.loginCode.stringValue)
+        .map((d) => d.id)
+    );
     const s = (f, k) => (f && f[k] && f[k].stringValue) || '';
     const rows = [];
     for (const b of businesses) {
@@ -216,7 +273,7 @@ export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, only
         hasOwnerMember:  !!omid,
         memberExists:    !!mf,
         memberApproved:  !!mf && s(mf, 'status') === 'approved',
-        hasLoginCode:    !!(mf && mf.loginCode && mf.loginCode.stringValue),
+        hasLoginCode:    !!omid && codeIds.has(omid),
         isBusinessOwner: !!(mf && mf.isBusinessOwner && mf.isBusinessOwner.booleanValue),
         linkPointsBack:  !!mf && s(mf, 'linkedBusinessId') === b.id,
       };
@@ -233,6 +290,12 @@ export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, only
     };
   }
 
+  // ── mode=probe — בדיקת-בריאות קריאה-בלבד לשרשרת-הכניסה של עסק בודד (2026-08-24) ──────────
+  // עונה על "למה בעל-עסק X לא מצליח להיכנס לדשבורד" בקריאה אחת: יש לו מסמך ב-bizTokens? יש בו
+  // ערך? ו-**האם runQuery מוצא את הערך הזה** — כלומר בדיוק המסלול ש-bizIdFromToken עובר בכניסה
+  // (`/mint-biz-token`). מחזיר אורכים ובוליאנים בלבד, לא את הטוקן עצמו.
+  // onlyId = מזהה העסק. שים לב שזה בודק את הטוקן ה**שמור** — אם הבדיקה כאן ירוקה אבל הכניסה
+  // נכשלת, הטוקן שביד בעל-העסק שונה מהשמור (לינק ישן), לא תקלה בצד השרת.
   if (mode === 'probe') {
     const target = tokenDocs.find((d) => d.id === onlyId);
     const stored = (target && target.fields.accessToken && target.fields.accessToken.stringValue) || '';
