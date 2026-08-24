@@ -1937,7 +1937,6 @@ let pendingSecondTagSuggestion = ''; // הצעת תגית שנייה ממתינ�
 let selectedAlsoCat = null; // "מופיע גם תחת" — נבחרת/עריכה חיה עכשיו (בדיוק כמו תגית שנייה): הערך המאושר בפועל (alsoUnderCategory), או הבחירה-בעריכה כשהטוגל פתוח
 let pendingAlsoCatSuggestion = ''; // הצעת "מופיע גם תחת" ממתינה לאישור מנהל — מוזנת ל-selectedAlsoCat רק כשפותחים את הטוגל בפועל, לא אוטומטית (אותו עיקרון כמו pendingSecondTagSuggestion)
 let photoCount = 0;
-let videoCount = 0;
 let dismissedChecklistItems = new Set(); // תוויות פריטים שבעל העסק סימן / ידנית — נעלמים לצמיתות (נשמר per-עסק ב-localStorage)
 let completenessDoneAt = {}; // label ->timestamp שבו הפריט הפך למלא (נשמר per-עסק ב-localStorage, לא רק בזיכרון) — משמש לניעלמות אוטומטית אחרי יום
 let draftChanges = {};
@@ -1951,7 +1950,7 @@ const FIELD_GROUPS = {
   cathours: ['bizTypes','name','categoryPrimary','cat','tags','tagSecondSuggestion','noTagFits','tagSuggestion','alsoCategorySuggestion'],
   bizdetails: ['desc','branches','city','address','phone','whatsapp','serviceEmail','regions','hours','website','instagram','facebook'],
   discount: ['hasDiscount','discountText','discountTextFull','discountCode','discountTypes','discountRedeemMode','discountBuilder','additionalDiscounts','wantsBusinessOfWeek','wantsBenefitOfWeek'],
-  media: ['coverPhoto','coverPhotoThumb','logo','logoThumb','photos','videos'],
+  media: ['coverPhoto','coverPhotoThumb','logo','logoThumb','photos'],
 };
 
 // מספר-שלב לכל שדה (1·cathours 2·bizdetails 3·discount 4·media 5·owner, ר' ההערה למעלה) — לשימוש
@@ -2050,7 +2049,7 @@ const FIELD_LABELS = {
   hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTextFull:'תיאור ההטבה', discountCode:'קוד קופון', discountTypes:'איפה ניתן לממש', discountRedeemMode:'מקום מימוש', additionalDiscounts:'הטבות נוספות',
   wantsBusinessOfWeek:'עסק השבוע', wantsBenefitOfWeek:'הטבת השבוע',
   website:'אתר', instagram:'אינסטגרם', facebook:'פייסבוק',
-  coverPhoto:'תמונה מייצגת', coverPhotoThumb:'תמונה מייצגת (ממוזערת)', logo:'לוגו', logoThumb:'לוגו (ממוזער)', photos:'גלריית תמונות', videos:'סרטונים',
+  coverPhoto:'תמונה מייצגת', coverPhotoThumb:'תמונה מייצגת (ממוזערת)', logo:'לוגו', logoThumb:'לוגו (ממוזער)', photos:'גלריית תמונות',
 };
 
 const TIPS = {
@@ -2077,7 +2076,6 @@ function fmtFieldVal(k, v) {
   if (k === 'regions') return (v || []).join(', ') || '—';
   if (k === 'branches') return (v || []).map(b =>[b.city, b.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | ') || '—';
   if (k === 'photos') return v && v.length ? `${v.length} תמונות` : '—';
-  if (k === 'videos') return v && v.length ? `${v.length} סרטונים` : '—';
   if (k === 'logo') return v ? ' יש לוגו' : 'אין לוגו';
   if (k === 'coverPhoto') return v ? ' יש תמונה מייצגת' : 'אין תמונה מייצגת';
   if (k === 'additionalDiscounts') return v && v.length ? v.map(d =>d.text).join(' | ') : '—';
@@ -3174,8 +3172,15 @@ function renderDiscountCard(w) {
   const liveDTypes = biz.hasDiscount ? computeDiscountTypes(biz.bizTypes, toRedeemArr(biz.discountRedeemMode)) : [];
   const liveExtra = biz.additionalDiscounts || [];
 
-  const wow = !!biz.wantsBusinessOfWeek;
-  const wob = !!biz.wantsBenefitOfWeek;
+  // §263.5 — השדות שמורים בשני פורמטים ב-Firestore: מחרוזות עברית ('כן'/'לא') מגרסה מוקדמת
+  // של טופס ההרשמה, ו-boolean מהגרסה הנוכחית. `!!` קרא את **'לא' כ-true** (מחרוזת לא-ריקה
+  // היא truthy) — כלומר בעל-עסק שענה "לא" ראה כאן את ההטבה מסומנת. אותה פונקציה בדיוק
+  // קיימת ב-admin-dashboard.html (weeklyFlagOn) — שתיהן חייבות להסכים.
+  const weeklyFlagOn = v => typeof v === 'string'
+    ? ['כן', 'yes', 'true'].includes(v.trim().toLowerCase())
+    : v === true;
+  const wow = weeklyFlagOn(biz.wantsBusinessOfWeek);
+  const wob = weeklyFlagOn(biz.wantsBenefitOfWeek);
   const wowStatus = wow ? (weeklyTrackStatusText('business') || 'ברשימת ההמתנה, טרם נקבע תור') : 'לא סומן';
   const wobStatus = wob ? (weeklyTrackStatusText('benefit') || 'ברשימת ההמתנה, טרם נקבע תור') : 'לא סומן';
   return `
@@ -3363,11 +3368,6 @@ function renderMediaCard(w) {
           <div id="editPhotoList"></div>
           <button type="button" class="edit-add-btn" onclick="addPhotoRow()">+ הוסף תמונה</button>
         </div>
-        <div class="form-group">
-          <label class="form-label">סרטונים</label>
-          <div id="editVideoList"></div>
-          <button type="button" class="edit-add-btn" onclick="addVideoRow()">+ הוסף סרטון</button>
-        </div>
         <div class="sec-edit-actions">
           <button class="btn-cancel-sec" onclick="toggleSecEdit('media')">ביטול</button>
           <button class="btn-save-sec" onclick="saveMedia()">שמירת השלב</button>
@@ -3528,9 +3528,6 @@ function initMediaForm(w) {
       if (plus) plus.remove();
     } catch (e) { console.error('gallery photo restore failed:', e); }
   });
-  videoCount = 0;
-  document.getElementById('editVideoList').innerHTML = '';
-  (w.videos || []).forEach(v =>addVideoRow(v.url || '', v.label || ''));
 }
 
 // ══════════════════════════════════════════════════════
@@ -5393,21 +5390,6 @@ window.thumbPreview = function(input, thumbId) {
   reader.readAsDataURL(input.files[0]);
 };
 
-// ── MEDIA: VIDEOS ──
-window.addVideoRow = function(url = '', label = '') {
-  const idx = videoCount++;
-  const row = document.createElement('div');
-  row.className = 'edit-media-row';
-  row.id = 'videoRow-' + idx;
-  row.innerHTML = `
-    <div class="edit-media-fields">
-      <input type="url" placeholder="קישור YouTube / Vimeo" value="${esc(url)}" id="videoUrl-${idx}" />
-      <input type="text" placeholder="תיאור (לדוג׳: סרטון מבוא, הדגמת שירות...)" value="${esc(label)}" id="videoLabel-${idx}" />
-    </div>
-    <button type="button" class="edit-media-remove" onclick="document.getElementById('videoRow-${idx}').remove()">✕</button>`;
-  document.getElementById('editVideoList').appendChild(row);
-};
-
 // עוטף את saveMedia: העלאת תמונה יכולה להיכשל (storage/unauthorized, רשת שנפלה באמצע העלאה של
 // 7 קבצים מהטלפון) — ובלי הענף הזה הפונקציה פשוט נדחתה בשקט, הטוסט נשאר על "שומר מדיה..."
 // ובעל-העסק לא ידע שכלום לא נשמר. אותה הודעה בדיוק כמו בשליחה לאישור (bizWriteErrorMsg).
@@ -5487,13 +5469,6 @@ async function saveMediaInner() {
     if (url || name) photosResult.push({ url, name });
   }
   updates.photos = photosResult;
-
-  updates.videos = [...document.querySelectorAll('[id^="videoRow-"]')].map(row =>{
-    const idx = row.id.replace('videoRow-', '');
-    const url = document.getElementById('videoUrl-' + idx)?.value.trim() || '';
-    const label = document.getElementById('videoLabel-' + idx)?.value.trim() || '';
-    return url ? { url, label } : null;
-  }).filter(Boolean);
 
   stageChanges(updates);
 
@@ -5617,13 +5592,13 @@ function slugify(str) {
 }
 window.shareApp = function() {
   const shareData = {
-    text: 'מצאתי קהילה של עסקים של אוהדי מכבי — עסקים, הטבות והמלצות אמיתיות מהקהילה. בואו תצטרפו:',
+    text: '*Yellow Zone* — אוהדי מכבי קונים כחול־צהוב.\n\nכל העסקים של אוהדי מכבי תל אביב במקום אחד: עסקים של אוהדים, הטבות בלעדיות והמלצות אמיתיות.\n\nאוהדים ובעלי עסקים, *כניסה רק לצהובים* — להרשמה כאן:',
     url: location.origin + location.pathname.replace(/[^/]*$/, '') + 'welcome.html',
   };
   document.getElementById('shareSheetTitle').textContent = 'הזמינו חברים';
   document.getElementById('shareSheetSub').textContent = 'שתפו את Yellow Zone עם חברים ובעלי עסקים';
   document.getElementById('shareLinkText').textContent = shareData.url;
-  document.getElementById('shareWhatsappLink').href = `https://wa.me/?text=${encodeURIComponent(shareData.text + ' ' + shareData.url)}`;
+  document.getElementById('shareWhatsappLink').href = `https://wa.me/?text=${encodeURIComponent(shareData.text + '\n' + shareData.url)}`;
   document.getElementById('shareOverlay').classList.add('open');
   document.getElementById('shareOverlay').dataset.context = 'app';
 };
@@ -5638,7 +5613,7 @@ window.shareMyBiz = function(source) {
   document.getElementById('shareSheetTitle').textContent = 'שיתוף העסק';
   document.getElementById('shareSheetSub').textContent = `שתפו את "${biz.name}" עם חברים`;
   document.getElementById('shareLinkText').textContent = shareData.url;
-  document.getElementById('shareWhatsappLink').href = `https://wa.me/?text=${encodeURIComponent(shareData.text + ' ' + shareData.url)}`;
+  document.getElementById('shareWhatsappLink').href = `https://wa.me/?text=${encodeURIComponent(shareData.text + '\n' + shareData.url)}`;
   document.getElementById('shareOverlay').classList.add('open');
   document.getElementById('shareOverlay').dataset.context = source === 'menu' ? 'biz-menu' : 'biz-hero';
 };
