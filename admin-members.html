@@ -604,12 +604,9 @@ async function generateLoginCode() {
     const code = String(Math.floor(100000 + Math.random() * 900000));
     // §248 — הייחודיות נבדקת מול memberCodes. **קריטי:** אחרי cleanup אין יותר loginCode על
     // מסמכי החברים, ובדיקה מול members הייתה חוזרת ריקה תמיד — כלומר כל קוד "ייחודי", ושני
-    // חברים יכולים לקבל אותו קוד. members נבדק גם הוא כל עוד cleanup טרם רץ (LEGACY).
-    const [inCodes, inMembers] = await Promise.all([
-      getDocs(query(collection(db, 'memberCodes'), where('loginCode', '==', code))),
-      getDocs(query(collection(db, 'members'), where('loginCode', '==', code))),
-    ]);
-    if (inCodes.empty && inMembers.empty) return code;
+    // חברים יכולים לקבל אותו קוד — והם היו נכנסים אחד לחשבון של השני.
+    const snap = await getDocs(query(collection(db, 'memberCodes'), where('loginCode', '==', code)));
+    if (snap.empty) return code;
   }
   throw new Error('לא הצלחנו להגריל קוד ייחודי');
 }
@@ -1372,10 +1369,10 @@ window.bulkReject = async function() {
 document.getElementById('memberList').innerHTML = `<div class="empty-state"><div class="icon">⏳</div><p>טוען נתונים...</p></div>`;
 
 // §248 — memberId → loginCode, ממוזג אל m.loginCode כדי שכל מקום קיים שקורא אותו (הצ'יפ,
-// העתקה, מונה "ללא קוד", תבניות וואטסאפ/מייל) ימשיך לעבוד בלי שינוי. LEGACY: נפילה-לאחור
-// לשדה הישן כל עוד cleanup-member-codes טרם רץ. **למחוק אחריו.**
+// העתקה, מונה "ללא קוד", תבניות וואטסאפ/מייל) ימשיך לעבוד בלי שינוי. אין נפילה-לאחור לשדה
+// הישן ולא להוסיף אחת — cleanup מחק אותו מכל מסמכי החברים, והיא הייתה מחזירה את הפרצה.
 let MEMBER_CODES = {};
-const mergeMemberCodes = () => members.map(m => ({ ...m, loginCode: MEMBER_CODES[m.id] || m.loginCode || '' }));
+const mergeMemberCodes = () => members.map(m => ({ ...m, loginCode: MEMBER_CODES[m.id] || '' }));
 
 onSnapshot(collection(db, 'memberCodes'), snap => {
   MEMBER_CODES = Object.fromEntries(snap.docs.map(d => [d.id, d.data().loginCode || '']));

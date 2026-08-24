@@ -2213,9 +2213,10 @@ function hydrateFan(id, raw) {
   return {
     ...raw,
     id,
-    // §248 — המקור הוא MEMBER_CODES. LEGACY: נפילה-לאחור למקום הישן כל עוד cleanup-member-codes
-    // טרם רץ, בדיוק כמו ה-fallback ב-worker/src/firestore.js. **למחוק אחרי cleanup.**
-    loginCode: MEMBER_CODES[id] || raw.loginCode || '',
+    // §248 — MEMBER_CODES הוא המקור **היחיד**. אין נפילה-לאחור ל-raw.loginCode ולא להוסיף אחת:
+    // cleanup רץ ב-2026-08-24 ומחק את השדה מכל מסמכי החברים, והנפילה-לאחור הייתה מחזירה את
+    // הפרצה. חבר שהצ'יפ שלו ריק = אין לו מסמך ב-memberCodes, וצריך להנפיק לו קוד.
+    loginCode: MEMBER_CODES[id] || '',
     name: `${raw.firstName || ''} ${raw.lastName || ''}`.trim() || '—',
     registeredAt: toJsDate(raw.submittedAt) || new Date(),
     approvedAt: toJsDate(raw.approvedAt),
@@ -2475,14 +2476,6 @@ async function fetchOwnerLoginCode(b) {
         const cs = await getDoc(doc(db, 'memberCodes', memberId));
         if (cs.exists()) code = cs.data().loginCode || '';
       }
-    }
-    // LEGACY — כל עוד cleanup-member-codes טרם רץ. **למחוק אחריו.**
-    if (!code && memberId) {
-      if (!memberData) {
-        const s = await getDoc(doc(db, 'members', memberId));
-        if (s.exists()) memberData = s.data();
-      }
-      code = (memberData && memberData.loginCode) || '';
     }
   } catch (e) { console.warn('ownerLoginCode lookup failed', e); }
   ownerLoginCodeCache[b.id] = code;
@@ -7664,14 +7657,11 @@ window.openFanFullCard = function(id) {
 async function generateLoginCode() {
   for (let i = 0; i < 20; i++) {
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    // §248 — הייחודיות נבדקת מול memberCodes. **קריטי:** אחרי cleanup אין יותר loginCode על
-    // מסמכי החברים, ולכן בדיקה מול members הייתה חוזרת ריקה תמיד — כלומר כל קוד היה "ייחודי"
-    // ושני חברים היו יכולים לקבל את אותו קוד. members נבדק גם הוא כל עוד cleanup טרם רץ.
-    const [inCodes, inMembers] = await Promise.all([
-      getDocs(query(collection(db, 'memberCodes'), where('loginCode', '==', code))),
-      getDocs(query(collection(db, 'members'), where('loginCode', '==', code))),   // LEGACY — למחוק אחרי cleanup
-    ]);
-    if (inCodes.empty && inMembers.empty) return code;
+    // §248 — הייחודיות נבדקת מול memberCodes בלבד. **לא להחזיר כאן בדיקה מול members:** אין
+    // שם יותר loginCode אחרי cleanup, כלומר כל קוד היה נראה "ייחודי" ושני חברים היו יכולים
+    // לקבל את אותו קוד — והם היו נכנסים אחד לחשבון של השני.
+    const snap = await getDocs(query(collection(db, 'memberCodes'), where('loginCode', '==', code)));
+    if (snap.empty) return code;
   }
   throw new Error('לא הצלחנו להגריל קוד ייחודי');
 }
@@ -7723,8 +7713,12 @@ async function prepareLinkedMemberApproval(b) {
     // §248 — הקוד נשמר ב-memberCodes ולא על מסמך החבר, ולכן הוא מוחזר לקורא כדי שיצרף אותו
     // לאותו writeBatch. חשוב שיישאר אטומי: אישור עסק+חבר הוא כתיבה אחת, ולא יכול להיווצר מצב
     // שבו החבר אושר אבל הקוד שלו לא נכתב (או להפך).
+    // ⚠️ "כבר יש לו קוד?" נבדק מול memberCodes ולא מול m.loginCode — השדה הזה כבר לא קיים על
+    // מסמך החבר, ובדיקה מולו הייתה מחזירה תמיד "אין", כלומר **הנפקת קוד חדש לחבר שכבר יש לו
+    // קוד** ופסילת הקוד שהוא כבר מחזיק ביד. MEMBER_CODES כבר טעון מה-onSnapshot.
     let codeDoc = null;
-    if (!m.loginCode) {
+    const existingCode = MEMBER_CODES[memberId] || (await getDoc(doc(db, 'memberCodes', memberId))).data()?.loginCode;
+    if (!existingCode) {
       codeDoc = { ref: doc(db, 'memberCodes', memberId), data: { loginCode: await generateLoginCode() } };
       updates.loginCodeCreatedAt = serverTimestamp();
     }
@@ -11646,7 +11640,7 @@ onSnapshot(collection(db, 'businesses'), snapshot => {
 onSnapshot(collection(db, 'memberCodes'), snapshot => {
   MEMBER_CODES = Object.fromEntries(snapshot.docs.map(d => [d.id, d.data().loginCode || '']));
   if (_fanLoaded) {
-    MOCK_FANS = MOCK_FANS.map(f => ({ ...f, loginCode: MEMBER_CODES[f.id] || f.loginCode || '' }));
+    MOCK_FANS = MOCK_FANS.map(f => ({ ...f, loginCode: MEMBER_CODES[f.id] || '' }));
     renderAllPreserveScroll();
   }
 }, err => console.error('שגיאה בטעינת קודי כניסה:', err));

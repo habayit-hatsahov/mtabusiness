@@ -336,7 +336,7 @@ async function handleMigrateBizTokens(request, env) {
   }
   const { mode, dryRun, onlyId } = await request.json().catch(() => ({}));
   const MODES = ['copy', 'cleanup', 'mint-missing', 'probe', 'login-readiness',
-                 'copy-member-codes', 'cleanup-member-codes'];   // §248
+                 'copy-member-codes', 'cleanup-member-codes', 'probe-member-code'];   // §248
   if (!MODES.includes(mode)) return { error: 'mode must be one of: ' + MODES.join(', ') };
   const accessToken = await getGoogleAccessToken(env);
   return await runMigrateBizTokens(env, accessToken, { mode, dryRun: !!dryRun, onlyId: onlyId || '' });

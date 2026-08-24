@@ -1292,11 +1292,8 @@ async function generateLoginCode() {
     const code = String(Math.floor(100000 + Math.random() * 900000));
     // §248 — ר' ההערה המלאה ב-admin-dashboard.html: בדיקה מול members בלבד הייתה מפסיקה
     // לזהות התנגשויות אחרי cleanup, ושני חברים היו יכולים לקבל אותו קוד.
-    const [inCodes, inMembers] = await Promise.all([
-      getDocs(query(collection(db, 'memberCodes'), where('loginCode', '==', code))),
-      getDocs(query(collection(db, 'members'), where('loginCode', '==', code))),
-    ]);
-    if (inCodes.empty && inMembers.empty) return code;
+    const snap = await getDocs(query(collection(db, 'memberCodes'), where('loginCode', '==', code)));
+    if (snap.empty) return code;
   }
   throw new Error('לא הצלחנו להגריל קוד ייחודי');
 }
@@ -1331,7 +1328,10 @@ async function prepareLinkedMemberApproval(b) {
       tx.set(counterRef, { nextNumber: current + 1 });
       return current;
     });
-    const loginCode = m.loginCode || await generateLoginCode();
+    // ⚠️ §248 — "כבר יש לו קוד?" נבדק מול memberCodes ולא מול m.loginCode: השדה כבר לא קיים על
+    // מסמך החבר, ובדיקה מולו הייתה מנפיקה קוד חדש לחבר שכבר יש לו אחד ופוסלת את מה שביד שלו.
+    const existingCode = (await getDoc(doc(db, 'memberCodes', memberRef.id))).data()?.loginCode;
+    const loginCode = existingCode || await generateLoginCode();
     return {
       ref: memberRef,
       // §248 — הקוד נשמר ב-memberCodes ומצורף לאותו writeBatch, כדי שאישור העסק+החבר יישאר
@@ -1595,14 +1595,6 @@ window.openBizSheet = async function(id) {
     if (memberId) {
       const cSnap = await getDoc(doc(db, 'memberCodes', memberId));
       if (cSnap.exists()) ownerLoginCode = cSnap.data().loginCode || '';
-      // LEGACY — כל עוד cleanup-member-codes טרם רץ. **למחוק אחריו.**
-      if (!ownerLoginCode) {
-        if (!memberData) {
-          const mSnap = await getDoc(doc(db, 'members', memberId));
-          if (mSnap.exists()) memberData = mSnap.data();
-        }
-        ownerLoginCode = (memberData && memberData.loginCode) || '';
-      }
     }
   } catch (e) { console.warn('ownerMember lookup failed', e); }
 

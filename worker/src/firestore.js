@@ -105,24 +105,19 @@ export async function bizTokenFor(env, accessToken, businessId) {
 // לזהות-העסק המקושרת (isLinkedBusinessOwnerOf) — כלומר טוקן דשבורד היה שווה-ערך לקוד הכניסה
 // האישי של בעל העסק. הקוד עבר לאוסף שקריא רק למנהל ולחבר עצמו.
 //
-// ⚠️ נפילה-לאחור זמנית ל-members.loginCode — ר' LEGACY למטה. בלעדיה נוצר חלון שבו אף חבר לא
-// יכול להיכנס: ה-Worker החדש עולה ב-deploy, אבל memberCodes ריק עד שהמיגרציה רצה.
-// **למחוק אחרי ש-cleanup-member-codes רץ בהצלחה.**
+// ⚠️ **אין כאן נפילה-לאחור ל-members.loginCode, ולא להוסיף אחת.** בזמן המיגרציה כן הייתה כזו,
+// והיא נמחקה ב-2026-08-24 אחרי ש-cleanup-member-codes רץ ואומת: קריאה של זהות-עסק למסמך החבר
+// מחזירה 24 שדות בלי loginCode, וקריאה ל-memberCodes מחזירה PERMISSION_DENIED. כל נפילה-לאחור
+// כזאת מחזירה בדיוק את הפרצה — קוד שנשאר בטעות על מסמך חבר היה שוב נגיש לזהות-העסק.
 export async function memberIdFromLoginCode(env, accessToken, code) {
   if (!code) return null;
   const rows = await firestoreRunQuery(env, accessToken, 'memberCodes', 'loginCode', String(code), 1);
-  if (rows.length) return rows[0].id;   // מזהה-המסמך *הוא* ה-memberId
-  // LEGACY
-  const old = await firestoreRunQuery(env, accessToken, 'members', 'loginCode', String(code), 1);
-  return old.length ? old[0].id : null;
+  return rows.length ? rows[0].id : null;   // מזהה-המסמך *הוא* ה-memberId
 }
 export async function loginCodeFor(env, accessToken, memberId) {
   if (!memberId) return '';
   const d = await firestoreGetDoc(env, accessToken, `memberCodes/${memberId}`);
-  if (d && d.fields.loginCode) return d.fields.loginCode;
-  // LEGACY
-  const m = await firestoreGetDoc(env, accessToken, `members/${memberId}`);
-  return (m && m.fields.loginCode) || '';
+  return (d && d.fields.loginCode) || '';
 }
 
 // עדכון חלקי (updateMask) — לא נוגע בשדות שלא נמנים ב-fieldsObj

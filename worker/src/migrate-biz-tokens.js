@@ -126,6 +126,29 @@ export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, only
   // (`/mint-biz-token`). מחזיר אורכים ובוליאנים בלבד, לא את הטוקן עצמו.
   // onlyId = מזהה העסק. שים לב שזה בודק את הטוקן ה**שמור** — אם הבדיקה כאן ירוקה אבל הכניסה
   // נכשלת, הטוקן שביד בעל-העסק שונה מהשמור (לינק ישן), לא תקלה בצד השרת.
+  // ── mode=probe-member-code — בדיקת-בריאות לשרשרת-הכניסה של חבר בודד (§248) ────────────────
+  // עונה על "למה חבר X לא מצליח להיכנס" בלי להחזיר את הקוד עצמו: יש לו מסמך ב-memberCodes?
+  // יש בו ערך? ו-**האם runQuery מוצא אותו** — בדיוק המסלול שעובר memberIdFromLoginCode.
+  // חיוני אחרי מחיקת הנפילה-לאחור: מהרגע ההוא אי אפשר לקרוא את הקוד משום מקום חיצוני,
+  // ולכן זו הדרך היחידה לאמת שהכניסה עובדת בלי לחשוף סוד.
+  if (mode === 'probe-member-code') {
+    const codeDocs = await listAll(env, accessToken, 'memberCodes');
+    const target = codeDocs.find((d) => d.id === onlyId);
+    const stored = (target && target.fields.loginCode && target.fields.loginCode.stringValue) || '';
+    const viaQuery = stored
+      ? await firestoreRunQuery(env, accessToken, 'memberCodes', 'loginCode', stored, 1)
+      : [];
+    return {
+      mode,
+      onlyId,
+      codeDocsInCollection: codeDocs.length,
+      docExists: !!target,
+      storedLength: stored.length,
+      queryFoundIds: viaQuery.map((r) => r.id),
+      querySeesItsOwnValue: viaQuery.length > 0 && viaQuery[0].id === onlyId,
+    };
+  }
+
   // ── §248 — קוד הכניסה של חבר יוצא מ-members אל memberCodes/{memberId} (2026-08-24) ────────
   // אותם שני מצבים ואותו סדר-הרצה בדיוק כמו §244, ומאותה סיבה: copy משאיר את הקוד גם על
   // מסמך החבר כדי שלא ייווצר רגע שבו אף אחד לא יכול להיכנס, ורק cleanup סוגר את החור.
