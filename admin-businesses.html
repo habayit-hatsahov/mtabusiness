@@ -1112,7 +1112,7 @@ import { db, auth, getStorageLazy } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 import {
   collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp,
-  addDoc, query, where, getDocs, getDoc, runTransaction, writeBatch
+  addDoc, query, where, getDocs, getDoc, runTransaction, writeBatch, setDoc
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import {
   ref, uploadBytes, getDownloadURL
@@ -1290,8 +1290,13 @@ window.downloadImage = function(url, filename) {
 async function generateLoginCode() {
   for (let i = 0; i < 20; i++) {
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    const snap = await getDocs(query(collection(db, 'members'), where('loginCode', '==', code)));
-    if (snap.empty) return code;
+    // §248 — ר' ההערה המלאה ב-admin-dashboard.html: בדיקה מול members בלבד הייתה מפסיקה
+    // לזהות התנגשויות אחרי cleanup, ושני חברים היו יכולים לקבל אותו קוד.
+    const [inCodes, inMembers] = await Promise.all([
+      getDocs(query(collection(db, 'memberCodes'), where('loginCode', '==', code))),
+      getDocs(query(collection(db, 'members'), where('loginCode', '==', code))),
+    ]);
+    if (inCodes.empty && inMembers.empty) return code;
   }
   throw new Error('לא הצלחנו להגריל קוד ייחודי');
 }
@@ -1329,6 +1334,9 @@ async function prepareLinkedMemberApproval(b) {
     const loginCode = m.loginCode || await generateLoginCode();
     return {
       ref: memberRef,
+      // §248 — הקוד נשמר ב-memberCodes ומצורף לאותו writeBatch, כדי שאישור העסק+החבר יישאר
+      // כתיבה אטומית אחת ולא ייווצר חבר מאושר בלי קוד (או קוד בלי חבר).
+      codeDoc: { ref: doc(db, 'memberCodes', memberRef.id), data: { loginCode } },
       updates: {
         status: 'approved',
         approvedAt: serverTimestamp(),
@@ -1336,7 +1344,6 @@ async function prepareLinkedMemberApproval(b) {
         isBusinessOwner: true,
         linkedBusinessId: m.linkedBusinessId || b.id || null,
         memberNumber,
-        loginCode,
         loginCodeCreatedAt: serverTimestamp(),
         loginCodeEmailStatus: 'pending',
         loginCodeEmailQueuedAt: serverTimestamp(),
@@ -1359,6 +1366,7 @@ async function approveBizWithMemberBatch(id, b) {
     ownerEmailQueuedAt: serverTimestamp(),
   });
   if (memberUpd) batch.update(memberUpd.ref, memberUpd.updates);
+  if (memberUpd && memberUpd.codeDoc) batch.set(memberUpd.codeDoc.ref, memberUpd.codeDoc.data);   // §248
   await batch.commit();
 }
 
@@ -1574,19 +1582,28 @@ window.openBizSheet = async function(id) {
 
   // שליפת קוד הכניסה של האוהד המקושר (עדיפות ל-ownerMemberId האמין, ר' admin-members.html
   // openMemberSheet לאותה לוגיקה בכיוון ההפוך) — כדי להציג אותו יחד עם לינק הדשבורד למעלה בגיליון
+  // §248 — הקוד עבר ל-memberCodes/{memberId}: קודם מזהים את מזהה-החבר, ואז שולפים ממנו.
   let ownerLoginCode = '';
   try {
+    let memberId = b.ownerMemberId || '';
     let memberData = null;
-    if (b.ownerMemberId) {
-      const mSnap = await getDoc(doc(db, 'members', b.ownerMemberId));
-      if (mSnap.exists()) memberData = mSnap.data();
-    }
-    if (!memberData && b.ownerEmail) {
+    if (!memberId && b.ownerEmail) {
       const mQ = query(collection(db, 'members'), where('email', '==', b.ownerEmail));
       const mSnap = await getDocs(mQ);
-      if (!mSnap.empty) memberData = mSnap.docs[0].data();
+      if (!mSnap.empty) { memberId = mSnap.docs[0].id; memberData = mSnap.docs[0].data(); }
     }
-    if (memberData) ownerLoginCode = memberData.loginCode || '';
+    if (memberId) {
+      const cSnap = await getDoc(doc(db, 'memberCodes', memberId));
+      if (cSnap.exists()) ownerLoginCode = cSnap.data().loginCode || '';
+      // LEGACY — כל עוד cleanup-member-codes טרם רץ. **למחוק אחריו.**
+      if (!ownerLoginCode) {
+        if (!memberData) {
+          const mSnap = await getDoc(doc(db, 'members', memberId));
+          if (mSnap.exists()) memberData = mSnap.data();
+        }
+        ownerLoginCode = (memberData && memberData.loginCode) || '';
+      }
+    }
   } catch (e) { console.warn('ownerMember lookup failed', e); }
 
   const ownerName  = `${b.ownerFirst || ''} ${b.ownerLast || ''}`.trim();
@@ -1837,7 +1854,6 @@ window.openBizSheet = async function(id) {
         <div class="detail-item"><div class="lbl">${b.branches.length > 1 ? `סניף ${i+1} — כתובת` : 'כתובת'}</div><div class="val">${mDash(br.address)}</div></div>`).join('') : `
         <div class="detail-item"><div class="lbl">עיר</div><div class="val"><span class="missing">לא מולא</span></div></div>
         <div class="detail-item"><div class="lbl">כתובת</div><div class="val"><span class="missing">לא מולא</span></div></div>`) : ''}
-        ${isOnline ? `<div class="detail-item full"><div class="lbl">אתר אונליין</div><div class="val">${b.websiteOnline ? `<a href="${b.websiteOnline.startsWith('http') ? b.websiteOnline : 'https://'+b.websiteOnline}" target="_blank" style="color:var(--blue);text-decoration:underline">${b.websiteOnline}</a>` : '<span class="missing">לא מולא</span>'}</div></div>` : ''}
         ${isPro ? `<div class="detail-item full"><div class="lbl">אזורי פעילות</div><div class="val">${regHtml}</div></div>` : ''}
         <div class="detail-item"><div class="lbl">טלפון עסק</div><div class="val">${mDash(b.phone)}</div></div>
         <div class="detail-item"><div class="lbl">WhatsApp</div><div class="val">${mDash(b.whatsapp)}</div></div>
@@ -1864,9 +1880,6 @@ window.openBizSheet = async function(id) {
         <div class="form-row-2">
           <div class="form-row" style="margin:0"><label>עיר</label><input type="text" id="editCity" value="${esc(firstBranch?.city)}" /></div>
           <div class="form-row" style="margin:0"><label>כתובת</label><input type="text" id="editAddress" value="${esc(firstBranch?.address)}" placeholder="רחוב + מספר" /></div>
-        </div>
-        <div class="form-row" id="editWebsiteOnlineWrap" style="display:${isOnline ? 'block' : 'none'}">
-          <label>אתר אונליין</label><input type="url" id="editWebsiteOnline" value="${esc(b.websiteOnline)}" placeholder="www.example.co.il" />
         </div>
         <div class="form-row-2" style="margin-top:14px">
           <div class="form-row" style="margin:0"><label>טלפון עסק</label><input type="tel" id="editPhone" value="${esc(b.phone)}" placeholder="03-0000000" /></div>
@@ -2190,9 +2203,7 @@ window.editToggleBizType = function(el) {
   el.classList.toggle('selected');
   const selected = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p => p.dataset.type);
   const regWrap = document.getElementById('editRegionWrap');
-  const webWrap = document.getElementById('editWebsiteOnlineWrap');
   if (regWrap) regWrap.style.display = selected.includes('pro') ? 'block' : 'none';
-  if (webWrap) webWrap.style.display = selected.includes('online') ? 'block' : 'none';
 };
 
 window.closeViewSheet = function() {
@@ -2704,7 +2715,7 @@ window.modalSendMail = function() {
 const PENDING_LABELS = {
   ownerFirst: 'שם פרטי', ownerLast: 'שם משפחה', ownerPhone: 'טלפון בעל העסק', ownerEmail: 'אימייל בעל העסק',
   bizTypes: 'סוג עסק', name: 'שם העסק', desc: 'תיאור', branches: 'סניפים',
-  regions: 'אזורי פעילות', websiteOnline: 'אתר אונליין',
+  regions: 'אזורי פעילות',
   phone: 'טלפון עסק', whatsapp: 'WhatsApp', serviceEmail: 'מייל שירות', city: 'עיר', address: 'כתובת',
   categoryPrimary: 'קטגוריה ראשית', cat: 'קטגוריה ראשית', categorySecondary: 'קטגוריות משניות',
   tags: 'תגיות', tagSecondSuggestion: 'בקשת העסק לתגית שנייה', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'בקשת העסק למופיע גם תחת', alsoCategoryNote: 'הערת העסק לגבי קטגוריה נוספת',
@@ -2717,7 +2728,7 @@ const PENDING_LABELS = {
 const FIELD_TO_STEP = {
   ownerFirst: 1, ownerLast: 1, ownerPhone: 1, ownerEmail: 1, note: 1,
   bizTypes: 2, name: 2, desc: 2, branches: 2, city: 2, address: 2, phone: 2, whatsapp: 2, serviceEmail: 2,
-  regions: 2, websiteOnline: 2, hours: 2, website: 2, instagram: 2, facebook: 2,
+  regions: 2, hours: 2, website: 2, instagram: 2, facebook: 2,
   categoryPrimary: 3, cat: 3, categorySecondary: 3, tags: 3, tagSecondSuggestion: 3, noTagFits: 3, tagSuggestion: 3,
   alsoUnderCategory: 3, alsoCategorySuggestion: 3, alsoCategoryNote: 3,
   hasDiscount: 4, discountText: 4, discountTextFull: 4, discountCode: 4, discountType: 4, discountTypes: 4,
@@ -3334,7 +3345,6 @@ window.saveSec2 = async function(id) {
   const b = businesses.find(x => x.id === id);   // לנפילה-לאחור של השעות (ר' למטה)
   const bizTypes = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p => p.dataset.type);
   const isProNow    = bizTypes.includes('pro');
-  const isOnlineNow = bizTypes.includes('online');
   const updates = {
     bizTypes,
     name:         document.getElementById('editName').value.trim(),
@@ -3346,7 +3356,6 @@ window.saveSec2 = async function(id) {
     whatsapp:     document.getElementById('editWhatsapp').value.trim(),
     serviceEmail: document.getElementById('editServiceEmail').value.trim(),
     regions:      isProNow ? [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p => p.textContent.trim()) : [],
-    websiteOnline: isOnlineNow ? document.getElementById('editWebsiteOnline').value.trim() : '',
     // נפילה-לאחור לערך הקיים ולא למחרוזת ריקה — אחרת שמירה בלי hours.js הייתה **מוחקת** שעות
     ...(legacyHoursEditor ? legacyHoursEditor.getValue() : { hours: document.getElementById('editHours')?.value.trim() ?? (b && b.hours) ?? '' }),
     website:      document.getElementById('editWebsite').value.trim(),

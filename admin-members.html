@@ -583,7 +583,7 @@
 import { db, auth, getStorageLazy } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 import {
-  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc, runTransaction, query, where, getDocs
+  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc, runTransaction, query, where, getDocs, setDoc
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
@@ -602,10 +602,20 @@ async function allocateMemberNumber() {
 async function generateLoginCode() {
   for (let i = 0; i < 20; i++) {
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    const snap = await getDocs(query(collection(db, 'members'), where('loginCode', '==', code)));
-    if (snap.empty) return code;
+    // §248 — הייחודיות נבדקת מול memberCodes. **קריטי:** אחרי cleanup אין יותר loginCode על
+    // מסמכי החברים, ובדיקה מול members הייתה חוזרת ריקה תמיד — כלומר כל קוד "ייחודי", ושני
+    // חברים יכולים לקבל אותו קוד. members נבדק גם הוא כל עוד cleanup טרם רץ (LEGACY).
+    const [inCodes, inMembers] = await Promise.all([
+      getDocs(query(collection(db, 'memberCodes'), where('loginCode', '==', code))),
+      getDocs(query(collection(db, 'members'), where('loginCode', '==', code))),
+    ]);
+    if (inCodes.empty && inMembers.empty) return code;
   }
   throw new Error('לא הצלחנו להגריל קוד ייחודי');
+}
+// §248 — כל מקום שמנפיק קוד חייב לעבור דרך כאן. הקוד לא נכתב יותר על מסמך החבר.
+async function saveLoginCode(memberId, code) {
+  await setDoc(doc(db, 'memberCodes', memberId), { loginCode: code });
 }
 
 window.migrateMemberNumbers = async function() {
@@ -634,7 +644,8 @@ window.migrateLoginCodes = async function() {
   if (!confirm(`ליצור קוד כניסה ל-${approved.length} חברים מאושרים שאין להם קוד?\nלאחר היצירה יש לשלוח לכל אחד את הקוד ידנית (WhatsApp/מייל) מתוך הכרטיס שלו.`)) return;
   for (const m of approved) {
     const loginCode = await generateLoginCode();
-    await updateDoc(doc(db, 'members', m.id), { loginCode, loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending' });
+    await saveLoginCode(m.id, loginCode);   // §248
+    await updateDoc(doc(db, 'members', m.id), { loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending' });
   }
   showToast(`✅ נוצר קוד כניסה ל-${approved.length} חברים — יש לשלוח להם ידנית`);
 };
@@ -1112,12 +1123,12 @@ document.getElementById('confirmApproveBtn').addEventListener('click', async () 
   if (!m) return;
   const memberNumber = m.memberNumber || await allocateMemberNumber();
   const loginCode = m.loginCode || await generateLoginCode();
+  await saveLoginCode(approvingId, loginCode);   // §248
   await updateDoc(doc(db, 'members', approvingId), {
     status: 'approved',
     approvedAt: serverTimestamp(),
     rejectedAt: null,
     memberNumber,
-    loginCode,
     loginCodeCreatedAt: serverTimestamp(),
     loginCodeEmailStatus: 'pending',
   });
@@ -1332,9 +1343,10 @@ window.bulkApprove = async function() {
     const m = members.find(x => x.id === id);
     const memberNumber = m?.memberNumber || await allocateMemberNumber();
     const loginCode = m?.loginCode || await generateLoginCode();
+    await saveLoginCode(id, loginCode);   // §248
     await updateDoc(doc(db, 'members', id), {
       status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null, memberNumber,
-      loginCode, loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending'
+      loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending'
     });
   }
   showToast(`✅ ${pending.length} חברים אושרו — יש לשלוח לכל אחד את קוד הכניסה מהכרטיס שלו`);
@@ -1359,8 +1371,20 @@ window.bulkReject = async function() {
 // ── Firestore ─────────────────────────────────────────────────────────────────
 document.getElementById('memberList').innerHTML = `<div class="empty-state"><div class="icon">⏳</div><p>טוען נתונים...</p></div>`;
 
+// §248 — memberId → loginCode, ממוזג אל m.loginCode כדי שכל מקום קיים שקורא אותו (הצ'יפ,
+// העתקה, מונה "ללא קוד", תבניות וואטסאפ/מייל) ימשיך לעבוד בלי שינוי. LEGACY: נפילה-לאחור
+// לשדה הישן כל עוד cleanup-member-codes טרם רץ. **למחוק אחריו.**
+let MEMBER_CODES = {};
+const mergeMemberCodes = () => members.map(m => ({ ...m, loginCode: MEMBER_CODES[m.id] || m.loginCode || '' }));
+
+onSnapshot(collection(db, 'memberCodes'), snap => {
+  MEMBER_CODES = Object.fromEntries(snap.docs.map(d => [d.id, d.data().loginCode || '']));
+  if (members.length) { members = mergeMemberCodes(); render(); }
+}, err => console.error('שגיאה בטעינת קודי כניסה:', err));
+
 onSnapshot(collection(db, 'members'), snap => {
   members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  members = mergeMemberCodes();
   members.sort((a, b) => toDate(b.submittedAt) - toDate(a.submittedAt));
   render();
 });

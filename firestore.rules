@@ -253,6 +253,27 @@ service cloud.firestore {
     // מי קורא: (1) מנהל — מרכז הניהול בונה איתו לינקים והודעות; (2) העסק המחובר
     // עצמו; (3) החבר המקושר — "העסק שלי" ב-home/terms/profile.
     // ה-Worker (service-account) עוקף את החוקים האלה לגמרי, כרגיל.
+    // ── MEMBER_CODES (§248, 2026-08-24) ──────────────────────────────────
+    // קוד הכניסה של חבר ישב עד היום על members/{id}. הבעיה: Firestore קורא מסמך
+    // **בשלמותו** ואי אפשר להסתיר שדה בודד — ו-members מותר בקריאה גם ל-
+    // isLinkedBusinessOwnerOf, כלומר **זהות-העסק קראה את קוד הכניסה האישי של
+    // הבעלים**. משמעות מעשית: בעל עסק ששולח את לינק הדשבורד שלו לעובד/גרפיקאי
+    // מוסר איתו את הכניסה לחשבון האוהד שלו — וקוד חבר הוא קבוע, אין לו רוטציה
+    // ואי אפשר לקחת אותו בחזרה. אומת חי מול session אמיתי של עסק (2026-08-24).
+    //
+    // ⚠️ אין כאן isLinkedBusinessOwnerOf, וזו כל הנקודה. לא להוסיף.
+    // אותו דפוס בדיוק כמו bizTokens למטה (§244) — כל שדה-סוד יושב באוסף משלו.
+    match /memberCodes/{memberId} {
+      // החבר עצמו רשאי לקרוא את הקוד שלו (הסוד שלו). אין דף שעושה את זה היום,
+      // אבל זו ההרשאה הנכונה והיא לא מוסיפה שום חשיפה.
+      allow get: if isAdmin() || (request.auth != null && request.auth.uid == memberId);
+      // list = שליפת כל הקודים. מנהל בלבד — נדרש גם לבדיקת-ייחודיות ב-generateLoginCode.
+      allow list: if isAdmin();
+      // הקוד מונפק רק באישור חבר, כלומר תמיד ע"י מנהל. ה-Worker כותב עם
+      // service-account ולכן לא עובר דרך החוקים האלה בכלל.
+      allow create, update, delete: if isAdmin();
+    }
+
     match /bizTokens/{businessId} {
       allow get: if isAdmin()
         || (request.auth != null && request.auth.uid == businessId)

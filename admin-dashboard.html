@@ -1778,6 +1778,10 @@ import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/fireba
 // וממזגים חזרה ל-b.accessToken — כך כל מקום שכבר בנה לינק/הודעה מ-b.accessToken ממשיך לעבוד
 // בדיוק כמו קודם, בלי לפזר קריאה-לכל-עסק על פני עשרות מקומות רינדור.
 let BIZ_TOKENS = {};   // businessId → accessToken
+// §248 — memberId → loginCode. אותו דפוס בדיוק כמו BIZ_TOKENS: הקוד מוזרם בחזרה אל f.loginCode
+// ב-hydrateFan, כדי שכל מקום קיים שקורא f.loginCode (צ'יפ, וואטסאפ, מייל, מונים) ימשיך לעבוד
+// בלי שינוי. ר' ההערה ליד ה-onSnapshot בתחתית הקובץ.
+let MEMBER_CODES = {};
 
 let MOCK_BUSINESSES = [];
 let MOCK_FANS = [];
@@ -1943,10 +1947,10 @@ function confirmSuspectPhone(phone, who) {
 // ("ספורט אנד פול", "Mel cake&more"). ב-home.html הצ'יפ פשוט כבר לא מוצג במקרה כזה — כאן,
 // אצל המנהל, הוא דווקא צריך להיות רועש, כי רק המנהל יכול לתקן את זה מול העסק.
 // fail-open אם social-links.js לא נטען: מחזיר רשימה ריקה, בלי אזהרות-שווא.
-const LINK_FIELD_LABELS = { website: 'אתר', websiteOnline: 'אתר החנות', instagram: 'אינסטגרם', facebook: 'פייסבוק' };
+const LINK_FIELD_LABELS = { website: 'אתר', instagram: 'אינסטגרם', facebook: 'פייסבוק' };
 function brokenLinksFor(b) {
   if (!window.HB_LINKS) return [];
-  return [['website', 'website'], ['websiteOnline', 'website'], ['instagram', 'instagram'], ['facebook', 'facebook']]
+  return [['website', 'website'], ['instagram', 'instagram'], ['facebook', 'facebook']]
     .map(([field, kind]) => {
       const raw = String(b[field] || '').trim();
       if (!raw) return null;
@@ -2209,6 +2213,9 @@ function hydrateFan(id, raw) {
   return {
     ...raw,
     id,
+    // §248 — המקור הוא MEMBER_CODES. LEGACY: נפילה-לאחור למקום הישן כל עוד cleanup-member-codes
+    // טרם רץ, בדיוק כמו ה-fallback ב-worker/src/firestore.js. **למחוק אחרי cleanup.**
+    loginCode: MEMBER_CODES[id] || raw.loginCode || '',
     name: `${raw.firstName || ''} ${raw.lastName || ''}`.trim() || '—',
     registeredAt: toJsDate(raw.submittedAt) || new Date(),
     approvedAt: toJsDate(raw.approvedAt),
@@ -2453,16 +2460,30 @@ async function fetchOwnerLoginCode(b) {
   if (ownerLoginCodeCache[b.id] !== undefined) return;
   let code = '';
   try {
+    // §248 — הקוד עבר ל-memberCodes/{memberId}, ולכן קודם מזהים את מזהה-החבר ורק אז שולפים
+    // ממנו את הקוד. MEMBER_CODES כבר טעון ברוב המקרים (onSnapshot), ונשמר כאן גם מסלול-גיבוי
+    // של קריאה ישירה למקרה שהעסק נפתח לפני שה-listener הספיק לחזור.
+    let memberId = b.ownerMemberId || '';
     let memberData = null;
-    if (b.ownerMemberId) {
-      const s = await getDoc(doc(db, 'members', b.ownerMemberId));
-      if (s.exists()) memberData = s.data();
-    }
-    if (!memberData && b.ownerEmail) {
+    if (!memberId && b.ownerEmail) {
       const s = await getDocs(query(collection(db, 'members'), where('email', '==', b.ownerEmail)));
-      if (!s.empty) memberData = s.docs[0].data();
+      if (!s.empty) { memberId = s.docs[0].id; memberData = s.docs[0].data(); }
     }
-    code = (memberData && memberData.loginCode) || '';
+    if (memberId) {
+      code = MEMBER_CODES[memberId] || '';
+      if (!code) {
+        const cs = await getDoc(doc(db, 'memberCodes', memberId));
+        if (cs.exists()) code = cs.data().loginCode || '';
+      }
+    }
+    // LEGACY — כל עוד cleanup-member-codes טרם רץ. **למחוק אחריו.**
+    if (!code && memberId) {
+      if (!memberData) {
+        const s = await getDoc(doc(db, 'members', memberId));
+        if (s.exists()) memberData = s.data();
+      }
+      code = (memberData && memberData.loginCode) || '';
+    }
   } catch (e) { console.warn('ownerLoginCode lookup failed', e); }
   ownerLoginCodeCache[b.id] = code;
   // ── §246 — הצ'יפ "קוד כניסה" לא הופיע בפתיחה הראשונה של עסק ─────────────────────────────
@@ -4836,7 +4857,7 @@ function bizFormSummaryHtml(b) {
       <div class="form-field-label">${label}</div>
       <div class="form-field-val${html ? '' : ' empty'}">${html || 'לא מולא'}</div>
     </div>`;
-  const websiteVal = types.includes('online') ? b.websiteOnline : b.website;
+  const websiteVal = b.website;
   const allDiscounts = [{ text: b.discountFullText, redeemMode: b.discountRedeemMode, code: b.discountCode }]
     .concat(b.additionalDiscounts || []).filter(d => d && d.text);
   const discountsHtml = allDiscounts.length ? allDiscounts.map((d, i) => `
@@ -5135,7 +5156,7 @@ function bizFullDetailHtml(id, opts) {
   const step2Reviewed = !!(b.reviewedSections && b.reviewedSections[2]);
   const step2Sub = [
     typeLabels,
-    isPhysical ? ((b.branches && b.branches.length > 1) ? `${b.branches.length} סניפים` : (branch.city || '—')) : isOnline ? (b.websiteOnline || '—') : isPro ? ((b.regions && b.regions.length) ? b.regions.join(', ') : '—') : ''
+    isPhysical ? ((b.branches && b.branches.length > 1) ? `${b.branches.length} סניפים` : (branch.city || '—')) : isOnline ? (b.website || '—') : isPro ? ((b.regions && b.regions.length) ? b.regions.join(', ') : '—') : ''
   ].filter(Boolean).join(' · ');
   const stepChangedField = (field) => pendingChangeItems.some(x => x.field === field);
   const stepFieldWas = (field) => {
@@ -5326,9 +5347,6 @@ function bizFullDetailHtml(id, opts) {
             <div class="step-field-h">סניפים</div>
             <div id="editBranchesList_${b.id}">${adminBranchRowsHtml(b.id, (b.branches && b.branches.length) ? b.branches : [{ city: branch.city, address: branch.address }])}</div>
             <button type="button" class="act-btn tiny" onclick="addBranchRow('${b.id}')" style="margin-top:4px">+ הוסף סניף</button>
-          </div>
-          <div id="edit_typeOnlineFields_${b.id}" class="step-form-grid" style="display:${types.includes('online')?'grid':'none'};margin-top:14px">
-            <div class="step-field full"><div class="step-field-h">אתר אונליין</div><input type="url" id="edit_websiteOnline_${b.id}" value="${b.websiteOnline||''}" placeholder="shop.example.co.il"></div>
           </div>
           <div id="edit_typeProFields_${b.id}" style="display:${types.includes('pro')?'block':'none'};margin-top:14px">
             <div class="step-field full"><div class="step-field-h">אזורי פעילות</div><div class="edit-check-row" id="edit_proRegions_${b.id}">${proRegionsChecks}</div></div>
@@ -5915,7 +5933,6 @@ window.saveBizSec2 = async function(id) {
     name: document.getElementById('edit_name_'+id).value.trim() || b.name,
     bizTypes: types,
     branches: types.includes('physical') ? collectBranchRowsAdmin(id) : [],
-    websiteOnline: types.includes('online') ? document.getElementById('edit_websiteOnline_'+id).value.trim() : '',
     regions: types.includes('pro') ? Array.from(document.querySelectorAll('.edit-proregion-'+id+':checked')).map(el => el.value) : [],
     phone: document.getElementById('edit_phone_'+id).value.trim(),
     whatsapp: document.getElementById('edit_whatsapp_'+id).value.trim(),
@@ -5937,10 +5954,6 @@ window.saveBizSec2 = async function(id) {
   if (!confirmSuspectPhone(updates.whatsapp, 'ה-WhatsApp')) return;
   // §232 — אותו היגיון בדיוק, על שדות הקישור
   if (!confirmSuspectLink('website', updates.website, 'האתר')) return;
-  // websiteOnline נשכח כאן בסבב הראשון של §232 — והפער נתפס מיד בפועל: בעריכה ידנית נדחפה
-  // לתוכו כתובת *מייל* (info@z-zol.co.il) במקום כתובת אתר, בלי שום אזהרה. brokenLinksFor כן
-  // כלל אותו, אז הבאדג' תפס — אבל רק אחרי השמירה, לא לפניה.
-  if (!confirmSuspectLink('website', updates.websiteOnline, 'אתר החנות')) return;
   if (!confirmSuspectLink('instagram', updates.instagram, 'האינסטגרם')) return;
   if (!confirmSuspectLink('facebook', updates.facebook, 'הפייסבוק')) return;
   await saveSectionUpdates(id, updates);
@@ -6099,10 +6112,8 @@ window.onEditBizTypeChange = function(id) {
   const isOnline   = onlineCb.checked;
   const isPro      = proCb.checked;
   const physicalEl = document.getElementById('edit_typePhysicalFields_'+id);
-  const onlineEl   = document.getElementById('edit_typeOnlineFields_'+id);
   const proEl      = document.getElementById('edit_typeProFields_'+id);
   if (physicalEl) physicalEl.style.display = isPhysical ? 'block' : 'none';
-  if (onlineEl) onlineEl.style.display = isOnline ? 'grid' : 'none';
   if (proEl) proEl.style.display = isPro ? 'block' : 'none';
   // 🐛 באג-אמת שנמצא (2026-08-08, המשתמש: "בוחר עוד סוג עסק וזה משתנה אבל לא מופיע"): ה-checkbox
   // עצמו מוסתר לגמרי (`.biz-type-card input { display:none }`, ר' CSS) — הסימון הוויזואלי היחיד
@@ -6884,9 +6895,10 @@ window.bulkSetFanStatus = async function(status) {
         if (!f || f.status !== 'pending') return;
         const memberNumber = await allocateMemberNumber();
         const loginCode = await generateLoginCode();
+        await saveLoginCode(id, loginCode);   // §248 — הקוד לאוסף הנפרד, לא על מסמך החבר
         await updateDoc(doc(db, 'members', id), {
           status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null,
-          memberNumber, loginCode, loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending'
+          memberNumber, loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending'
         });
       }));
     } else {
@@ -7652,10 +7664,20 @@ window.openFanFullCard = function(id) {
 async function generateLoginCode() {
   for (let i = 0; i < 20; i++) {
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    const snap = await getDocs(query(collection(db, 'members'), where('loginCode', '==', code)));
-    if (snap.empty) return code;
+    // §248 — הייחודיות נבדקת מול memberCodes. **קריטי:** אחרי cleanup אין יותר loginCode על
+    // מסמכי החברים, ולכן בדיקה מול members הייתה חוזרת ריקה תמיד — כלומר כל קוד היה "ייחודי"
+    // ושני חברים היו יכולים לקבל את אותו קוד. members נבדק גם הוא כל עוד cleanup טרם רץ.
+    const [inCodes, inMembers] = await Promise.all([
+      getDocs(query(collection(db, 'memberCodes'), where('loginCode', '==', code))),
+      getDocs(query(collection(db, 'members'), where('loginCode', '==', code))),   // LEGACY — למחוק אחרי cleanup
+    ]);
+    if (inCodes.empty && inMembers.empty) return code;
   }
   throw new Error('לא הצלחנו להגריל קוד ייחודי');
+}
+// §248 — כתיבת קוד כניסה לאוסף הנפרד. כל מקום שמנפיק קוד חייב לעבור דרך כאן.
+async function saveLoginCode(memberId, code) {
+  await setDoc(doc(db, 'memberCodes', memberId), { loginCode: code });
 }
 // זהה בדיוק ל-admin-members.html allocateMemberNumber
 async function allocateMemberNumber() {
@@ -7698,11 +7720,15 @@ async function prepareLinkedMemberApproval(b) {
     // (התנאי בסריקה הוא isBusinessOwner && linkedBusinessId). היה חסר כאן לגמרי.
     if (!m.linkedBusinessId && b.id) updates.linkedBusinessId = b.id;
     if (!m.memberNumber) updates.memberNumber = await allocateMemberNumber();
+    // §248 — הקוד נשמר ב-memberCodes ולא על מסמך החבר, ולכן הוא מוחזר לקורא כדי שיצרף אותו
+    // לאותו writeBatch. חשוב שיישאר אטומי: אישור עסק+חבר הוא כתיבה אחת, ולא יכול להיווצר מצב
+    // שבו החבר אושר אבל הקוד שלו לא נכתב (או להפך).
+    let codeDoc = null;
     if (!m.loginCode) {
-      updates.loginCode = await generateLoginCode();
+      codeDoc = { ref: doc(db, 'memberCodes', memberId), data: { loginCode: await generateLoginCode() } };
       updates.loginCodeCreatedAt = serverTimestamp();
     }
-    return { ref: doc(db, 'members', memberId), updates };
+    return { ref: doc(db, 'members', memberId), updates, codeDoc };
   } catch (e) { console.error('prepareLinkedMemberApproval failed', e); return null; }
 }
 
@@ -7718,6 +7744,7 @@ async function approveBizWithMemberBatch(b) {
     ownerVerificationStatus: 'confirmed',
   });
   if (memberUpd) batch.update(memberUpd.ref, memberUpd.updates);
+  if (memberUpd && memberUpd.codeDoc) batch.set(memberUpd.codeDoc.ref, memberUpd.codeDoc.data);   // §248
   await batch.commit();
 }
 
@@ -7728,9 +7755,10 @@ window.approveFan = async function(id) {
   try {
     const memberNumber = await allocateMemberNumber();
     const loginCode = await generateLoginCode();
+    await saveLoginCode(id, loginCode);   // §248 — הקוד לאוסף הנפרד, לא על מסמך החבר
     await updateDoc(doc(db, 'members', id), {
       status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null,
-      memberNumber, loginCode, loginCodeCreatedAt: serverTimestamp(),
+      memberNumber, loginCodeCreatedAt: serverTimestamp(),
       loginCodeEmailStatus: 'pending', loginCodeEmailQueuedAt: serverTimestamp(),
     });
     await logActivity('members', id, { type: 'status', title: 'האוהד אושר', detail: `"${f.name}" אושר, הוקצה חבר מס' ${memberNumber}`, field: 'status', before: f.status, after: 'approved' });
@@ -7942,7 +7970,7 @@ const DIFF_FIELD_LABELS_MOCK = {
   ownerFirst: 'שם פרטי', ownerLast: 'שם משפחה', ownerPhone: 'טלפון בעל העסק', ownerEmail: 'אימייל בעל העסק',
   ownerRelation: 'קרבה לבעל המנוי', fanInstagram: 'אינסטגרם אימות', note: 'הערה מהעסק',
   bizTypes: 'סוג עסק', name: 'שם העסק', desc: 'תיאור', branches: 'סניפים',
-  regions: 'אזורי פעילות', websiteOnline: 'אתר אונליין',
+  regions: 'אזורי פעילות',
   phone: 'טלפון עסק', whatsapp: 'WhatsApp', serviceEmail: 'מייל שירות', city: 'עיר', address: 'כתובת',
   categoryPrimary: 'קטגוריה ראשית', cat: 'קטגוריה ראשית', categorySecondary: 'קטגוריות משניות',
   tags: 'תגיות', tagSecondSuggestion: 'בקשת העסק לתגית שנייה', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'בקשת העסק למופיע גם תחת', alsoCategoryNote: 'הערת העסק לגבי קטגוריה נוספת',
@@ -7968,7 +7996,7 @@ const DIFF_FIELD_LABELS_MOCK = {
 // Object.keys(pendingChanges) שתלוי בסדר-כתיבה בפיירסטור.
 const DIFF_GROUPS = [
   { domId: 3, display: 1, name: 'העסק', fields: ['bizTypes', 'name', 'categoryPrimary', 'cat', 'categorySecondary', 'tags', 'tagSecondSuggestion', 'noTagFits', 'tagSuggestion', 'alsoUnderCategory', 'alsoCategorySuggestion', 'alsoCategoryNote'] },
-  { domId: 2, display: 2, name: 'פרטים ויצירת קשר', fields: ['desc', 'branches', 'city', 'address', 'websiteOnline', 'regions', 'phone', 'whatsapp', 'serviceEmail', 'hours', 'website', 'instagram', 'facebook'] },
+  { domId: 2, display: 2, name: 'פרטים ויצירת קשר', fields: ['desc', 'branches', 'city', 'address', 'regions', 'phone', 'whatsapp', 'serviceEmail', 'hours', 'website', 'instagram', 'facebook'] },
   { domId: 4, display: 3, name: 'ההטבות', fields: ['hasDiscount', 'discountText', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountType', 'discountTypes', 'discountBuilder', 'additionalDiscounts', 'wantsBusinessOfWeek', 'wantsBenefitOfWeek'] },
   { domId: 5, display: 4, name: 'תמונות', fields: ['coverPhoto', 'coverPhotoThumb', 'logo', 'logoThumb', 'photos', 'videos'] },
   { domId: 1, display: 5, name: 'אימות בעל העסק', fields: ['ownerFirst', 'ownerLast', 'ownerPhone', 'ownerEmail', 'ownerRelation', 'fanInstagram', 'note'] },
@@ -11612,6 +11640,16 @@ onSnapshot(collection(db, 'businesses'), snapshot => {
   // רק שינויים-מבחוץ. ר' ההערה ב-renderAllPreserveScroll למעלה, זה שורש-הבאג האמיתי לקפיצת-הגלילה.
   if (_fanLoaded) renderAllPreserveScroll(); else maybeInitialRender();
 }, err => console.error('שגיאה בטעינת עסקים מ-Firestore:', err));
+
+// §248 — נטען לפני/במקביל לחברים. אם הוא מגיע אחרי, ה-map מעודכן והחברים מוזרמים מחדש דרך
+// hydrateFan, כדי שהצ'יפ "קוד כניסה" לא יישאר ריק בטעינה הראשונה. זהה ל-onSnapshot של bizTokens.
+onSnapshot(collection(db, 'memberCodes'), snapshot => {
+  MEMBER_CODES = Object.fromEntries(snapshot.docs.map(d => [d.id, d.data().loginCode || '']));
+  if (_fanLoaded) {
+    MOCK_FANS = MOCK_FANS.map(f => ({ ...f, loginCode: MEMBER_CODES[f.id] || f.loginCode || '' }));
+    renderAllPreserveScroll();
+  }
+}, err => console.error('שגיאה בטעינת קודי כניסה:', err));
 
 onSnapshot(collection(db, 'members'), snapshot => {
   MOCK_FANS = snapshot.docs.map(d => hydrateFan(d.id, d.data()));

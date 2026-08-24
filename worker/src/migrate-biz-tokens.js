@@ -66,6 +66,32 @@ async function writeTokenDoc(env, accessToken, bizId, token) {
   if (!resp.ok) throw new Error('token_write_failed: ' + (await resp.text()));
 }
 
+// כתיבה/מחיקה גנריות של שדה-סוד יחיד — משמשות את מיגרציית §248 (memberCodes). זהות בהתנהגות
+// ל-writeTokenDoc/deleteTokenField מעל, רק פרמטריות: אותו טריק updateMask, ואותה מחיקת-שדה
+// (השדה נמנה ב-updateMask אבל לא מופיע ב-fields — הדרך של Firestore REST למחוק שדה).
+async function writeSecretDoc(env, accessToken, collectionId, docId, field, value) {
+  const resp = await fetch(
+    `${BASE(env.FIREBASE_PROJECT_ID)}/${collectionId}/${docId}?updateMask.fieldPaths=${field}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { [field]: { stringValue: value } } }),
+    }
+  );
+  if (!resp.ok) throw new Error('secret_write_failed: ' + (await resp.text()));
+}
+async function deleteFieldOn(env, accessToken, collectionId, docId, field) {
+  const resp = await fetch(
+    `${BASE(env.FIREBASE_PROJECT_ID)}/${collectionId}/${docId}?updateMask.fieldPaths=${field}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: {} }),
+    }
+  );
+  if (!resp.ok) throw new Error('field_delete_failed: ' + (await resp.text()));
+}
+
 // מחיקת שדה בודד: השדה נמנה ב-updateMask אבל **לא** מופיע ב-fields — זו הדרך של Firestore REST
 // למחוק שדה. firestorePatch הרגיל לא יודע לעשות את זה (הוא בונה את שניהם מאותו אובייקט).
 async function deleteTokenField(env, accessToken, bizId) {
@@ -100,6 +126,90 @@ export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, only
   // (`/mint-biz-token`). מחזיר אורכים ובוליאנים בלבד, לא את הטוקן עצמו.
   // onlyId = מזהה העסק. שים לב שזה בודק את הטוקן ה**שמור** — אם הבדיקה כאן ירוקה אבל הכניסה
   // נכשלת, הטוקן שביד בעל-העסק שונה מהשמור (לינק ישן), לא תקלה בצד השרת.
+  // ── §248 — קוד הכניסה של חבר יוצא מ-members אל memberCodes/{memberId} (2026-08-24) ────────
+  // אותם שני מצבים ואותו סדר-הרצה בדיוק כמו §244, ומאותה סיבה: copy משאיר את הקוד גם על
+  // מסמך החבר כדי שלא ייווצר רגע שבו אף אחד לא יכול להיכנס, ורק cleanup סוגר את החור.
+  // cleanup מדלג על חבר שאין לו עותק — לא מוחקים קוד לפני שיש לו עותק. שניהם idempotent.
+  if (mode === 'copy-member-codes' || mode === 'cleanup-member-codes') {
+    const members = await listAll(env, accessToken, 'members');
+    const codeDocs = await listAll(env, accessToken, 'memberCodes');
+    const haveCode = new Map(
+      codeDocs
+        .filter((d) => d.fields.loginCode && d.fields.loginCode.stringValue)
+        .map((d) => [d.id, d.fields.loginCode.stringValue])
+    );
+    const rep = { mode, dryRun: !!dryRun, members: members.length, done: [], skipped: [], failed: [] };
+
+    for (const m of members) {
+      if (onlyId && m.id !== onlyId) continue;
+      const code = m.fields.loginCode && m.fields.loginCode.stringValue;
+      const name = `${(m.fields.firstName && m.fields.firstName.stringValue) || ''} ${(m.fields.lastName && m.fields.lastName.stringValue) || ''}`.trim() || m.id;
+
+      if (mode === 'copy-member-codes') {
+        if (!code) { rep.skipped.push({ id: m.id, name, why: 'no_login_code' }); continue; }
+        if (haveCode.get(m.id) === code) { rep.skipped.push({ id: m.id, name, why: 'already_copied' }); continue; }
+        try {
+          if (!dryRun) await writeSecretDoc(env, accessToken, 'memberCodes', m.id, 'loginCode', code);
+          rep.done.push({ id: m.id, name });
+        } catch (e) { rep.failed.push({ id: m.id, name, error: String(e).slice(0, 200) }); }
+        continue;
+      }
+
+      if (!code) { rep.skipped.push({ id: m.id, name, why: 'already_clean' }); continue; }
+      if (!haveCode.has(m.id)) {
+        rep.skipped.push({ id: m.id, name, why: 'no_copy_in_memberCodes — הרץ copy-member-codes קודם' });
+        continue;
+      }
+      try {
+        if (!dryRun) await deleteFieldOn(env, accessToken, 'members', m.id, 'loginCode');
+        rep.done.push({ id: m.id, name });
+      } catch (e) { rep.failed.push({ id: m.id, name, error: String(e).slice(0, 200) }); }
+    }
+
+    rep.summary = `${mode}${dryRun ? ' (יבש)' : ''}: ${rep.done.length} בוצעו · ${rep.skipped.length} דולגו · ${rep.failed.length} נכשלו`;
+    return rep;
+  }
+
+  // ── mode=login-readiness — האם כל בעל-עסק יכול להיכנס דרך התפריט באתר (2026-08-24) ────────
+  // הכניסה דרך "העסק שלי" ב-home.html היא **מסלול מרפא-את-עצמו**: היא שולפת את הטוקן העדכני
+  // מ-bizTokens בכל טעינה, ולכן היא לא נשברת מרוטציית טוקנים — בשונה מלינק ישן במייל/סימנייה.
+  // אבל היא תלויה בשרשרת שלמה, ומספיק שחוליה אחת חסרה כדי שפריט-התפריט **פשוט לא יופיע, בשקט**
+  // (הקריאה ל-bizTokens שם עטופה ב-catch). כאן נבדקות כל החוליות בבת-אחת, לכל העסקים.
+  // זול במכוון: שלוש שליפות-אוסף וצירוף בזיכרון, ולא קריאה-לכל-עסק — כדי לא להיחתך בתקרת
+  // קריאות-הרשת של Workers כמו ש-copy/cleanup נחתכו.
+  if (mode === 'login-readiness') {
+    const members = await listAll(env, accessToken, 'members');
+    const byId = new Map(members.map((m) => [m.id, m.fields]));
+    const s = (f, k) => (f && f[k] && f[k].stringValue) || '';
+    const rows = [];
+    for (const b of businesses) {
+      const status = s(b.fields, 'status');
+      if (status !== 'approved') continue;
+      const name = s(b.fields, 'name') || b.id;
+      const omid = s(b.fields, 'ownerMemberId');
+      const mf = omid ? byId.get(omid) : null;
+      const checks = {
+        hasToken:        haveToken.has(b.id),
+        hasOwnerMember:  !!omid,
+        memberExists:    !!mf,
+        memberApproved:  !!mf && s(mf, 'status') === 'approved',
+        hasLoginCode:    !!(mf && mf.loginCode && mf.loginCode.stringValue),
+        isBusinessOwner: !!(mf && mf.isBusinessOwner && mf.isBusinessOwner.booleanValue),
+        linkPointsBack:  !!mf && s(mf, 'linkedBusinessId') === b.id,
+      };
+      const missing = Object.keys(checks).filter((k) => !checks[k]);
+      rows.push({ id: b.id, name, ok: missing.length === 0, missing });
+    }
+    const broken = rows.filter((r) => !r.ok);
+    return {
+      mode,
+      approvedBusinesses: rows.length,
+      canEnterViaMenu: rows.length - broken.length,
+      broken,
+      summary: `${rows.length - broken.length}/${rows.length} בעלי עסקים יכולים להיכנס דרך התפריט`,
+    };
+  }
+
   if (mode === 'probe') {
     const target = tokenDocs.find((d) => d.id === onlyId);
     const stored = (target && target.fields.accessToken && target.fields.accessToken.stringValue) || '';

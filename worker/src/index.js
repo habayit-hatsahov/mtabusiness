@@ -1,6 +1,7 @@
 import { corsHeaders, handlePreflight, json } from './cors.js';
 import { getGoogleAccessToken, mintFirebaseCustomToken, verifyAdminIdToken } from './jwt.js';
-import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, bizTokenFor } from './firestore.js';
+import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, bizTokenFor,
+         memberIdFromLoginCode, loginCodeFor } from './firestore.js';
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt } from './ratelimit.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail } from './brevo.js';
@@ -96,10 +97,13 @@ async function handleMemberLogin({ phone, code }, request, env) {
 
   const accessToken = await getGoogleAccessToken(env);
   const candidates = phoneCandidates(phone);
-  const matches = await firestoreRunQuery(env, accessToken, 'members', 'loginCode', String(code));
-  const match = matches.find(
-    (m) => candidates.includes(normalizePhoneDigits(m.fields.phone)) && m.fields.status === 'approved'
-  );
+  // §248 — הקוד כבר לא על מסמך החבר אלא ב-memberCodes/{memberId}, ר' memberIdFromLoginCode.
+  // הטלפון והסטטוס עדיין נבדקים על מסמך החבר עצמו — הקוד לבדו לעולם לא מספיק לכניסה.
+  const codeMemberId = await memberIdFromLoginCode(env, accessToken, code);
+  const codeMember = codeMemberId ? await firestoreGetDoc(env, accessToken, `members/${codeMemberId}`) : null;
+  const match = (codeMember &&
+    candidates.includes(normalizePhoneDigits(codeMember.fields.phone)) &&
+    codeMember.fields.status === 'approved') ? codeMember : null;
 
   if (match) {
     const customToken = await mintFirebaseCustomToken(env, {
@@ -186,10 +190,18 @@ async function handleResendCode({ phone }, env) {
 
   const accessToken = await getGoogleAccessToken(env);
   const candidates = phoneCandidates(phone);
+  // §248 — התנאי "יש לו קוד" נבדק עכשיו מול memberCodes ולא מול השדה על מסמך החבר. בלי זה,
+  // אחרי cleanup אף חבר לא היה נמצא כאן ו"שליחה חוזרת" הייתה מפסיקה לעבוד בשקט מוחלט —
+  // הפונקציה מחזירה ok:true בכוונה גם כשלא נמצא, כדי לא לחשוף אילו מספרים רשומים.
   let found = null;
   for (const c of candidates) {
     const matches = await firestoreRunQuery(env, accessToken, 'members', 'phone', c);
-    found = matches.find((m) => m.fields.status === 'approved' && m.fields.loginCode);
+    for (const m of matches) {
+      if (m.fields.status !== 'approved') continue;
+      if (!(await loginCodeFor(env, accessToken, m.id))) continue;
+      found = m;
+      break;
+    }
     if (found) break;
   }
 
@@ -323,7 +335,8 @@ async function handleMigrateBizTokens(request, env) {
     return { error: 'unauthorized' };
   }
   const { mode, dryRun, onlyId } = await request.json().catch(() => ({}));
-  const MODES = ['copy', 'cleanup', 'mint-missing', 'probe'];
+  const MODES = ['copy', 'cleanup', 'mint-missing', 'probe', 'login-readiness',
+                 'copy-member-codes', 'cleanup-member-codes'];   // §248
   if (!MODES.includes(mode)) return { error: 'mode must be one of: ' + MODES.join(', ') };
   const accessToken = await getGoogleAccessToken(env);
   return await runMigrateBizTokens(env, accessToken, { mode, dryRun: !!dryRun, onlyId: onlyId || '' });
@@ -419,7 +432,7 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
     }
     try {
       const vars = isFans
-        ? { name: r.fields.firstName || '', code: r.fields.loginCode || '', link: `${SITE_BASE}home.html` }
+        ? { name: r.fields.firstName || '', code: await loginCodeFor(env, accessToken, r.id), link: `${SITE_BASE}home.html` }   // §248
         : { name: r.fields.ownerFirst || '', business: r.fields.name || '', link: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, r.id)}` };   // §244
       await sendBroadcastEmail(env, { toEmail: email, toName: isFans ? (r.fields.firstName || '') : (r.fields.ownerFirst || ''), subject, body, vars });
       results.push({ id: r.id, name, email, status: 'sent' });
@@ -470,7 +483,7 @@ async function runEmailSweeps(env) {
         await sendCombinedWelcomeEmail(env, {
           toEmail: m.fields.email,
           toName: m.fields.firstName,
-          code: m.fields.loginCode,
+          code: await loginCodeFor(env, accessToken, m.id),   // §248
           businessName: business.fields.name,
           dashboardLink: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, business.id)}`,   // §244
           tpl: { subject: templates.combinedSubject, body: templates.combinedBody },
@@ -489,7 +502,7 @@ async function runEmailSweeps(env) {
         await sendLoginCodeEmail(env, {
           toEmail: m.fields.email,
           toName: m.fields.firstName,
-          code: m.fields.loginCode,
+          code: await loginCodeFor(env, accessToken, m.id),   // §248
           tpl: { subject: templates.loginSubject, body: templates.loginBody },
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
@@ -537,13 +550,17 @@ async function runEmailSweeps(env) {
       // תמיד את מכתב-הפתיחה המאוחד, ומייל-העסק הקצר נשאר רק למי שאין מאחוריו רשומת-חבר.
       const ownerMemberId = b.fields.ownerMemberId || null;
       const owner = ownerMemberId ? await firestoreGetDoc(env, accessToken, `members/${ownerMemberId}`) : null;
-      const ownerHasCode = !!owner && owner.fields.status === 'approved' && !!owner.fields.loginCode;
+      // §248 — הקוד נשלף מ-memberCodes ולא מהשדה על מסמך החבר. קריטי כאן: הקוד הזה הוא **התנאי**
+      // לבחירה בין המכתב המאוחד למייל-העסק הקצר, ולא רק ערך שמוצג. אחרי cleanup, קריאה מהשדה
+      // הישן הייתה מחזירה ריק ומחזירה את הבאג של §239 — בעל עסק עם קוד שמקבל את המכתב הקצר.
+      const ownerCode = owner ? await loginCodeFor(env, accessToken, owner.id) : '';
+      const ownerHasCode = !!owner && owner.fields.status === 'approved' && !!ownerCode;
 
       if (ownerHasCode) {
         await sendCombinedWelcomeEmail(env, {
           toEmail: owner.fields.email || b.fields.ownerEmail,
           toName: owner.fields.firstName,
-          code: owner.fields.loginCode,
+          code: ownerCode,
           businessName: b.fields.name,
           dashboardLink,
           tpl: { subject: templates.combinedSubject, body: templates.combinedBody },
