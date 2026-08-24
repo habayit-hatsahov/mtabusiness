@@ -843,6 +843,7 @@
     .media-form.locked .edit-media-thumb input[type="file"] { pointer-events: none; }
     .media-form.locked .edit-logo-remove,
     .media-form.locked .edit-media-remove,
+    .media-form.locked .edit-media-pos-input,
     .media-form.locked .edit-add-btn { display: none; }
     .media-form.locked .edit-media-fields input { pointer-events: none; background: transparent; border-color: transparent; padding-right: 0; }
     .btn-cancel-sec {
@@ -1060,7 +1061,14 @@
       overflow: hidden; display: flex; align-items: center; justify-content: center;
       font-size: 18px; color: var(--accent);
     }
-    .edit-media-thumb input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    /* z-index:1 — בדיוק כמו ה-input של .edit-upload-zone (ר' ההערה ב-.edit-img-enlarge למעלה).
+       בלי זה ה-<img> נצבע *מעל* ה-input ובולע את הקליק: ב-addPhotoRow ה-input נוצר ראשון והתמונה
+       אחריו, שניהם position:absolute בלי z-index — ולכן סדר-ה-DOM מכריע והתמונה מנצחת.
+       באג-אמת (2026-08-24, "צ'ומפי" — 12 תמונות בגלריה): "ניסה כמה פעמים להעלות ולא נשמר לו",
+       בלי שום עקבה אצלנו (אין writeErrors, אין pendingChanges, אין קובץ חדש ב-Storage) — כי שום
+       העלאה לא יצאה לדרך. תמונת-גלריה קיימת פשוט לא הייתה ניתנת להחלפה, וגם mediaZoneClick של
+       §236 לא נורה כי ה-onclick שעל התמונה עצר את הבועה. ר' §255. */
+    .edit-media-thumb input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; z-index: 1; }
     .edit-media-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
     /* "+" ברור בריבוע-ההעלאה הריק — לפי בקשה מפורשת (2026-08-12): לפני זה הריבוע היה ריק לגמרי,
        שום סימן שצריך ללחוץ שם כדי להעלות תמונה. pointer-events:none — הלחיצה עצמה תמיד מגיעה
@@ -1084,12 +1092,36 @@
     @media (hover: none) and (pointer: coarse) {
       .form-input,
       .edit-media-fields input,
+      .edit-media-pos-input,
       input[id^="photoUrl-"] { font-size: 16px !important; }
     }
     .edit-media-remove {
       width: 28px; height: 28px; flex-shrink: 0; background: rgba(var(--fg-rgb),.08); border: none; border-radius: 6px;
       cursor: pointer; color: var(--text-sm); font-size: 14px; display: flex; align-items: center; justify-content: center;
     }
+    /* ── §257 — סידור תמונות הגלריה ───────────────────────────────────────────────────────
+       עד עכשיו הסדר בגלריה היה סדר-ההעלאה בלבד, ולא הייתה שום דרך לשנות אותו חוץ ממחיקה
+       והעלאה מחדש. **כתיבת מיקום ולא גרירה ולא חצים:** הדשבורד נבדק ותוקן במובייל (§145),
+       וגרירה במסך-מגע בתוך רשימה שנגללת היא בדיוק מה שנשבר שם; וחצים דרשו 7 לחיצות כדי
+       להעביר תמונה 8 לראש הגלריה (בקשת המשתמש, 2026-08-24). כותבים 1 — וזהו. */
+    .edit-media-pos-input {
+      width: 46px; flex-shrink: 0; padding: 6px 4px; text-align: center;
+      font-family: 'Rubik', sans-serif; font-size: 13px; font-weight: 800; color: var(--text);
+      border: 1.5px solid var(--border-md); border-radius: 8px; background: var(--nav-bg); outline: none;
+    }
+    .edit-media-pos-input:focus { border-color: var(--yellow); }
+    /* בלי השורה הזאת שדה-המספר נראה כמו עוד שדה-קלט של התמונה (ליד "שם / תיאור"), ולא כמו
+       הפקד שמזיז אותה — בעל-העסק לא היה מנחש שאפשר לכתוב בו. */
+    .order-hint {
+      font-size: 11.5px; color: var(--text-sm); line-height: 1.65;
+      background: rgba(var(--fg-rgb),.04); border: 1px solid var(--border-md);
+      border-radius: 9px; padding: 8px 11px; margin: 8px 0 10px;
+    }
+    .order-hint b { color: var(--text); font-weight: 700; }
+    /* מוסתרת כשאין בכלל תמונות (אין מה לסדר) וכשהטופס נעול (השדה עצמו מוסתר אז).
+       :has לא נתמך? ההסבר פשוט יוצג תמיד — כיוון-כשל בטוח, לא היעלמות שקטה. */
+    .form-group:has(#editPhotoList:empty) .order-hint { display: none; }
+    .media-form.locked .order-hint { display: none; }
     .edit-add-btn {
       width: 100%; padding: 9px; border: 2px dashed var(--border-md); border-radius: 10px; background: transparent;
       font-family: 'Rubik', sans-serif; font-size: 13px; font-weight: 700; color: var(--accent); cursor: pointer;
@@ -3327,6 +3359,7 @@ function renderMediaCard(w) {
         <div class="form-group">
           <label class="form-label">תמונות גלריה</label>
           ${tipHtml('photos')}
+          <div class="order-hint">🔢 <b>אפשר לסדר את התמונות</b> — המספר שבכל שורה הוא מקומה בגלריה. כתבו בו מספר אחר כדי להזיז אותה (<b>1</b> = ראשונה).</div>
           <div id="editPhotoList"></div>
           <button type="button" class="edit-add-btn" onclick="addPhotoRow()">+ הוסף תמונה</button>
         </div>
@@ -5288,18 +5321,62 @@ window.addPhotoRow = function(url = '', name = '') {
     <div class="edit-media-thumb" id="photoThumb-${idx}" onclick="mediaZoneClick(event)">
       
       <input type="file" accept="image/*" onchange="thumbPreview(this, 'photoThumb-${idx}')" />
-      ${url ? `<img src="${esc(bizImageViewUrl(url))}" onclick="event.stopPropagation();openImgLightbox(this.src)" />` : '<span class="edit-media-thumb-plus">+</span>'}
+      ${/* בלי onclick: התמונונת הזאת היא *כפתור העלאה*, וה-input השקוף שמעליה (z-index:1) הוא
+           שמקבל את הקליק. ההגדלה לא אבדה — הגלריה מוצגת ממילא בגודל מלא בתצוגה המקדימה
+           ("מהחנות"), שם כל תמונה נפתחת ב-openImgLightbox. */''}
+      ${url ? `<img src="${esc(bizImageViewUrl(url))}" alt="" />` : '<span class="edit-media-thumb-plus">+</span>'}
     </div>
     <div class="edit-media-fields">
       <input type="text" placeholder="שם / תיאור (לדוג׳: תפריט, חזית, מוצר...)" value="${esc(name)}" id="photoName-${idx}" />
       <input type="url" placeholder="קישור תמונה (URL) — אופציונלי" value="${esc(url)}" id="photoUrl-${idx}" style="font-size:11px;color:var(--text-sm)" />
     </div>
+    <input type="number" class="edit-media-pos-input" data-pos min="1"
+           title="המיקום בגלריה — אפשר לכתוב מספר ולעבור ישירות לשם"
+           onchange="setPhotoRowPos(${idx}, this)">
     <button type="button" class="edit-media-remove" onclick="removePhotoRow(${idx})">✕</button>`;
   document.getElementById('editPhotoList').appendChild(row);
+  refreshPhotoOrder();
 };
+
+// ── §257 — סידור התמונות ────────────────────────────────────────────────────────────────────
+// אין כאן שום מערך-סדר נפרד: הסדר **הוא** סדר ה-DOM. גם saveMedia וגם captureLiveMediaEdits
+// קוראים את השורות דרך querySelectorAll('#editPhotoList [id^="photoRow-"]'), שמחזיר תמיד סדר-מסמך —
+// ולכן הזזת שורה בפועל היא כל מה שצריך. (ה-idx ב-id הוא מונה-יצירה, לא מיקום, והוא נשאר כפי שהוא.)
+//
+// המיקום הנוכחי נמדד מה-DOM ולא מ-idx: אחרי הזזה אחת ה-idx כבר לא שווה למיקום, וחישוב ממנו
+// היה מזיז את התמונה הלא-נכונה בפעם השנייה.
+window.setPhotoRowPos = function(idx, el) {
+  const list = document.getElementById('editPhotoList');
+  const row = document.getElementById('photoRow-' + idx);
+  if (!list || !row) return;
+  const rows = [...list.querySelectorAll('[id^="photoRow-"]')];
+  const cur = rows.indexOf(row);
+  const raw = parseInt(el && el.value, 10);
+  // קלט לא-תקין או "אותו מיקום" — refreshPhotoOrder מחזיר את המספר המוצג למצב האמיתי
+  if (!Number.isFinite(raw)) { refreshPhotoOrder(); return; }
+  const target = Math.min(Math.max(raw, 1), rows.length) - 1;
+  if (target === cur) { refreshPhotoOrder(); return; }
+  // מסירים את השורה מהרשימה ואז שותלים לפני מי שנמצא ביעד — כך היעד הוא המיקום הסופי בפועל.
+  // undefined = הוספה בסוף (insertBefore(row, null)).
+  const others = rows.filter(r => r !== row);
+  list.insertBefore(row, others[target] || null);
+  refreshPhotoOrder();
+  refreshPreviews(null, 'gallery');
+};
+
+// המספרים נגזרים מהמיקום בפועל אחרי כל שינוי — הוספה, הסרה, הזזה או שחזור-טיוטה.
+function refreshPhotoOrder() {
+  const rows = [...document.querySelectorAll('#editPhotoList [id^="photoRow-"]')];
+  rows.forEach((row, i) => {
+    const pos = row.querySelector('[data-pos]');
+    if (pos) { pos.value = i + 1; pos.max = rows.length; }
+  });
+}
+window.refreshPhotoOrder = refreshPhotoOrder;
 
 window.removePhotoRow = function(idx) {
   document.getElementById('photoRow-' + idx)?.remove();
+  refreshPhotoOrder();
   refreshPreviews(null, 'gallery');
 };
 

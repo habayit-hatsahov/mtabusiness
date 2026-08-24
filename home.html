@@ -773,6 +773,27 @@
       object-fit: cover; border-radius: 12px;
       scroll-snap-align: start; cursor: pointer;
     }
+    /* ── §256 — חיצי גלריה ─────────────────────────────────────────────────────────────
+       הגלריה היא רצועת-גלילה אופקית עם פס-גלילה מוסתר (scrollbar-width:none). במגע זה עובד —
+       מחליקים באצבע. **בדפדפן עם עכבר לא הייתה שום דרך להזיז אותה**: אין פס-גלילה לגרור,
+       וגלגלת העכבר גוללת את הדף אנכית, לא את הרצועה. מי שיש לו יותר מ-3 תמונות פשוט לא ידע
+       שיש עוד. החיצים מופיעים רק כשיש באמת גלישה, וכל אחד נעלם בקצה שלו. */
+    .sheet-gallery-wrap { position: relative; }
+    .sheet-gal-nav {
+      position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+      width: 32px; height: 32px; border-radius: 50%; padding: 0; line-height: 1;
+      background: rgba(255,255,255,.95); border: 1px solid rgba(10,42,102,.14);
+      color: var(--ink); font-size: 19px; cursor: pointer;
+      box-shadow: 0 2px 10px rgba(10,42,102,.18);
+      display: none; align-items: center; justify-content: center;
+      direction: ltr; /* אותו טעם כמו .img-lightbox-nav — שהדפדפן לא יהפוך את ‹ › בהקשר RTL */
+    }
+    .sheet-gal-nav.show { display: flex; }
+    .sheet-gal-nav:active { transform: translateY(-50%) scale(.9); }
+    /* מיקום פיזי ולא לוגי, בדיוק כמו .img-lightbox-nav: הימני חוזר לתחילת הרצועה (ב-RTL שם היא
+       מתחילה), השמאלי מתקדם קדימה. */
+    .sheet-gal-nav.back { right: 2px; }
+    .sheet-gal-nav.fwd  { left: 2px; }
 
     /* ── LIGHTBOX ── */
     /* מציג-התמונות (לייטבוקס) — עבר מרקע כהה לרקע בהיר (בקשה מפורשת, 2026-08-16). הכהה היה
@@ -3014,6 +3035,9 @@ function openBiz(id) {
   if (galleryUrls.length) {
     gallery.innerHTML = galleryUrls.map((url, i) => `<img src="${url}" loading="lazy" onclick="openLightbox(${heroPhotos.length + i})" />`).join('');
     gallerySection.style.display = 'block';
+    // rAF — ברגע הזה הגיליון עדיין נפתח, ו-clientWidth יכול להיות 0. הרוחב של כל תמונה קבוע
+    // ב-CSS (104px) ולכן scrollWidth לא תלוי בטעינת התמונות עצמן, רק בפריסה של המכל.
+    requestAnimationFrame(updateSheetGalleryNav);
   } else { gallery.innerHTML = ''; gallerySection.style.display = 'none'; }
 
   // פרטים — כל שורה עם אייקון-קו בריבוע, כולל נוכחות-דיגיטלית (אתר/אינסטגרם/פייסבוק) שהצטרפה
@@ -3335,6 +3359,31 @@ async function sToggleCombinedRedeem(btn, id, code, siteUrl) {
 let _lightboxPhotos = [];
 let _lightboxIndex = 0;
 
+// ── §256 — ניווט הגלריה בחיצים ────────────────────────────────────────────────────────────
+// ב-RTL scrollLeft מתחיל ב-0 בקצה הימני ויורד לשליליים ככל שגוללים שמאלה, ולכן ההשוואות כאן
+// על הערך המוחלט — כך אותו קוד נכון גם ב-LTR (למקרה שדף כלשהו יוצג כך) בלי ענף נפרד.
+function updateSheetGalleryNav() {
+  const el = document.getElementById('sheetGallery');
+  const back = document.getElementById('sheetGalBack');
+  const fwd = document.getElementById('sheetGalFwd');
+  if (!el || !back || !fwd) return;
+  const max = el.scrollWidth - el.clientWidth;
+  const pos = Math.abs(el.scrollLeft);
+  // סף של 4px ולא 0 — גלילה חלקה עוצרת על ערכים שבריריים (‎-311.5), ובלי הסף החץ היה נשאר
+  // דלוק בקצה בלי שיש לאן לגלול.
+  const overflows = max > 4;
+  back.classList.toggle('show', overflows && pos > 4);
+  fwd.classList.toggle('show', overflows && pos < max - 4);
+}
+// dir: -1 חזרה לתחילת הרצועה · 1 קדימה. הסימן נגזר מכיוון-הכתיבה בפועל, לא מקובע.
+function scrollSheetGallery(dir) {
+  const el = document.getElementById('sheetGallery');
+  if (!el) return;
+  const sign = getComputedStyle(el).direction === 'rtl' ? -1 : 1;
+  el.scrollBy({ left: sign * dir * Math.max(el.clientWidth * 0.8, 120), behavior: 'smooth' });
+}
+window.addEventListener('resize', updateSheetGalleryNav);
+
 function openLightbox(index) {
   _lightboxIndex = index;
   renderLightbox();
@@ -3414,7 +3463,11 @@ document.addEventListener('DOMContentLoaded', () => {
       <div id="sheetCouponArea"></div>
       <div id="sheetGallerySection" style="display:none">
         <div class="sheet-section-label">מהחנות</div>
-        <div class="sheet-gallery" id="sheetGallery"></div>
+        <div class="sheet-gallery-wrap">
+          <button class="sheet-gal-nav back" id="sheetGalBack" onclick="scrollSheetGallery(-1)" aria-label="תמונות קודמות">›</button>
+          <div class="sheet-gallery" id="sheetGallery" onscroll="updateSheetGalleryNav()"></div>
+          <button class="sheet-gal-nav fwd" id="sheetGalFwd" onclick="scrollSheetGallery(1)" aria-label="תמונות נוספות">‹</button>
+        </div>
       </div>
       <div id="sheetInfoSection"></div>
       <div id="sheetBranchesSection"></div>

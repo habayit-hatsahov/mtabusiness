@@ -1302,7 +1302,8 @@ body {
 
 /* ── מרכז המשימות (דשבורד ראשי בלבד, 2026-08-05 §156) — טבלה ברוחב-מלא + drawer צף, לא split ── */
 .task-table { background: var(--card-bg); border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.09); overflow: hidden; }
-.task-table-row { display: grid; grid-template-columns: minmax(200px,1.4fr) 230px 150px 110px 130px; gap: 12px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--border); cursor: pointer; transition: background .12s; }
+.task-table-row { display: grid; grid-template-columns: minmax(200px,1.4fr) 230px 150px 110px 152px; gap: 12px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--border); cursor: pointer; transition: background .12s; }
+.task-table-acts { display: flex; flex-direction: column; gap: 5px; align-items: stretch; }
 .task-table-row:first-child { border-top: none; }
 .task-table-row:hover { background: rgba(var(--accent-rgb),.03); }
 .task-table-row.active { background: rgba(var(--accent-rgb),.07); }
@@ -1318,6 +1319,40 @@ body {
 .task-table-wait { font-size: 12px; font-weight: 600; color: var(--text-sm); }
 .task-table-row .act-btn.primary-yellow { background: var(--accent-cta); color: var(--accent-cta-ink); border: none; font-weight: 800; }
 .task-table-row .act-btn.primary-yellow:hover { background: var(--accent-cta-hover); }
+/* §252 — "✔️ טופל" לכרטיס חסר. ירוק-רך בכוונה ולא אדום/צהוב: זו לא דחייה ולא אישור-תוכן,
+   אלא "ראיתי, זה בסדר ככה" — ולכן גם לא מתחרה ויזואלית בכפתור הפעולה הראשי שמעליו. */
+.task-table-row .act-btn.task-accept-gaps { border-color: rgba(22,163,74,.45); color: #15803d; font-weight: 700; }
+.task-table-row .act-btn.task-accept-gaps:hover { background: rgba(22,163,74,.09); }
+
+/* ── §257 — סדר הגלריה בטופס העריכה (מרכז הניהול) ─────────────────────────────────────────
+   חיצים ולא גרירה, מאותה סיבה כמו בדשבורד של בעל-העסק: המסך נבדק במובייל, וגרירה בתוך רשימה
+   שנגללת נשברת שם. המספר הוא המיקום בפועל בגלריה שהאוהד רואה. */
+.gal-pos-input {
+  flex: none; width: 46px; padding: 5px 6px; text-align: center;
+  font-family: 'Rubik', sans-serif; font-size: 13px; font-weight: 800; color: var(--text);
+  border: 1px solid var(--border-md); border-radius: 7px; background: var(--card-bg);
+}
+.gal-pos-input:focus { outline: none; border-color: var(--accent-cta); }
+
+/* ── §253 — רצועת "הצטרפות" (בראש הדשבורד הראשי / כל העסקים / כל האוהדים) ──────────────
+   רצועה אחת דקה, לא רשת-קוביות: בדשבורד הראשי כבר יש שורת-KPI + 7 קוביות-סיווג מעל
+   מרכז המשימות, וקוביות נוספות הפכו את המסך ללא-קריא (בקשת המשתמש, 2026-08-24). */
+.joins-card {
+  display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap;
+  background: var(--card-bg); border-radius: 12px; box-shadow: 0 1px 3px rgba(16,24,40,.09);
+  padding: 9px 14px; margin-bottom: 14px;
+}
+.joins-title { font-weight: 800; font-size: 13px; color: var(--text); }
+.joins-period { width: auto; min-width: 158px; }
+.joins-stat { display: inline-flex; align-items: baseline; gap: 6px; }
+.joins-sum-num { font-size: 18px; font-weight: 800; color: var(--text); }
+.joins-sum-ent { font-size: 12px; font-weight: 600; color: var(--text-sm); }
+.joins-brk { font-size: 11px; color: var(--text-sm); white-space: nowrap; }
+/* נדחפת לקצה הרצועה — הערת-שוליים, לא נתון שמתחרה במספרים */
+.joins-note { margin-inline-start: auto; font-size: 11px; color: var(--text-sm); cursor: help; }
+@media (max-width: 700px) {
+  .joins-note { margin-inline-start: 0; }
+}
 
 /* ── תקלות מייל (§204) — קובייה חמישית במרכז המשימות; אותו שלד-טבלה, עם עמודת-כתובת במקום עמודת-הסקירה ── */
 .mail-issues-note { font-size: 11.5px; color: var(--text-sm); margin: 0 0 8px; line-height: 1.7; }
@@ -2120,6 +2155,10 @@ function hydrateBiz(id, raw) {
     // את הפרצה. עסק שהלינקים שלו ריקים = אין לו מסמך ב-bizTokens, וצריך להנפיק לו טוקן.
     accessToken: BIZ_TOKENS[id] || '',
     registeredAt: toJsDate(raw.submittedAt) || new Date(),
+    // §253 — הנפילה-לאחור ל-new Date() למעלה נחוצה למיון/הצגה, אבל היא הופכת רשומה בלי
+    // submittedAt ל"נרשם היום" — מה שהיה מזייף את טבלת ההצטרפות-לפי-יום. הדגל הזה מאפשר
+    // לספירה היומית לדלג עליה במקום להמציא לה תאריך.
+    registeredAtKnown: !!toJsDate(raw.submittedAt),
     approvedAt: toJsDate(raw.approvedAt),
     rejectedAt: toJsDate(raw.rejectedAt),
     agreedTermsAt: toJsDate(raw.agreedTermsAt),
@@ -2141,6 +2180,8 @@ function hydrateBiz(id, raw) {
     hoursMigrationDone: raw.hoursMigrationDone || null,
     hoursMigrationBy: raw.hoursMigrationBy || '',
     hoursAnomalyOk: raw.hoursAnomalyOk || false,
+    // §252 — "ראיתי, זה בסדר ככה" למד-בריאות-הפרופיל: { at, fields[] }. ר' cardGapsAcceptedFor.
+    cardGapsAccepted: raw.cardGapsAccepted || null,
     descriptionText: raw.desc || '',
     hasPendingChange: realPending.length > 0,
     city: (branches[0] && branches[0].city) || '',
@@ -2219,6 +2260,7 @@ function hydrateFan(id, raw) {
     loginCode: MEMBER_CODES[id] || '',
     name: `${raw.firstName || ''} ${raw.lastName || ''}`.trim() || '—',
     registeredAt: toJsDate(raw.submittedAt) || new Date(),
+    registeredAtKnown: !!toJsDate(raw.submittedAt), // ר' ההערה ב-hydrateBiz (§253)
     approvedAt: toJsDate(raw.approvedAt),
     rejectedAt: toJsDate(raw.rejectedAt),
     loginCodeCreatedAt: toJsDate(raw.loginCodeCreatedAt),
@@ -2505,6 +2547,49 @@ function computeHealthScore(b) {
 function missingFieldsFor(b) {
   return HEALTH_CHECKLIST.filter(c => !c.test(b)).map(c => c.label);
 }
+
+// ── §252 — "סמן טופל" לכרטיס חסר ────────────────────────────────────────────────────────────
+// 3 מתוך 4 השדות ב-HEALTH_CHECKLIST אינם חובה על העסק בפועל (הטבה / שעות / תיאור): עסק שבחר
+// לא להגדיר הטבה נשאר "כרטיס חסר באינדקס" לנצח וממלא את מרכז-המשימות בפריטים שאין עליהם מה
+// להחליט. הסימון כאן אומר "ראיתי, זה בסדר ככה" — הוא **לא** משנה שום נתון של העסק ולא את
+// healthScore, רק מוריד אותו מרשימת-המשימות ומעביר אותו לארכיון "בקשות שטופלו".
+//
+// נשמרת רשימת השדות שהיו חסרים ברגע הסימון: אם *נוסף* חסר חדש אחר כך (למשל התמונה המייצגת
+// נמחקה) — הסימון כבר לא מכסה אותו והעסק חוזר לרשימה מעצמו. אותו עיקרון בדיוק כמו "טופל מבחוץ":
+// סוגר את מה שהיה פתוח באותו רגע, לא משתיק את העסק לתמיד.
+function cardGapsAcceptedFor(b) {
+  const acc = b && b.cardGapsAccepted;
+  if (!acc || !Array.isArray(acc.fields)) return null;
+  return missingFieldsFor(b).every(f => acc.fields.includes(f)) ? acc : null;
+}
+
+window.acceptCardGaps = async function(id) {
+  const b = findBiz(id);
+  if (!b) return;
+  const missing = missingFieldsFor(b);
+  if (!missing.length) { alert('הכרטיס של העסק הזה כבר מלא — אין מה לסמן.'); return; }
+  try {
+    await updateDoc(doc(db, 'businesses', id), { cardGapsAccepted: { at: new Date().toISOString(), fields: missing } });
+    await logActivity('businesses', id, {
+      type: 'changeDecision', title: 'כרטיס חסר סומן "טופל"',
+      detail: `אושר להישאר כך: ${missing.join(', ')}`,
+      field: 'cardGapsAccepted', before: null, after: missing.join(', '),
+    });
+  } catch (e) { console.error(e); alert('שגיאה בסימון: ' + e.message); }
+};
+
+window.reopenCardGaps = async function(id) {
+  const b = findBiz(id);
+  if (!b) return;
+  try {
+    await updateDoc(doc(db, 'businesses', id), { cardGapsAccepted: null });
+    await logActivity('businesses', id, {
+      type: 'changeDecision', title: 'כרטיס חסר הוחזר לטיפול',
+      detail: `חסר כרגע: ${missingFieldsFor(b).join(', ') || '—'}`,
+      field: 'cardGapsAccepted', before: 'סומן כטופל', after: null,
+    });
+  } catch (e) { console.error(e); alert('שגיאה בהחזרה לטיפול: ' + e.message); }
+};
 
 // ── בקרת סקירה לעסק חדש (לפני אישור) — שונה במפורש מבריאות פרופיל: זו סימון ידני של המנהל
 // ("עברתי על השלב הזה ווידאתי שהוא נכון"), לא בדיקה אוטומטית של "יש תוכן בשדה".
@@ -4118,7 +4203,7 @@ function heartsFilterBarHtml() {
       <div class="filter-toolbar-row">
         <div style="font-size:15px;font-weight:700">לבבות לפי עסק</div>
         <div style="flex:1"></div>
-        <input class="filter-search-input" type="search" placeholder="🔍 חיפוש עסק" value="${esc(heartsSearch)}" oninput="filterHeartsRows(this.value)" style="width:180px">
+        <input class="filter-search-input" type="search" id="heartsSearchInput" placeholder="🔍 חיפוש עסק" value="${esc(heartsSearch)}" oninput="filterHeartsRows(this.value)" style="width:180px">
         <select class="filter-select" onchange="setHeartsSort(this.value)">
           <option value="mostShown" ${heartsSort==='mostShown'?'selected':''}>מיון: הכי הרבה מוצגים</option>
           <option value="mostReal" ${heartsSort==='mostReal'?'selected':''}>מיון: הכי הרבה אמיתיים</option>
@@ -4271,7 +4356,7 @@ function dataCenterHtml() {
       </div>
     </div>
     <div class="filter-toolbar-row" style="margin-bottom:10px">
-      <input class="filter-search-input" type="search" placeholder="🔍 חיפוש עסק או קטגוריה" value="${esc(dataSearch)}" oninput="filterDataRows(this.value)">
+      <input class="filter-search-input" type="search" id="dataSearchInput" placeholder="🔍 חיפוש עסק או קטגוריה" value="${esc(dataSearch)}" oninput="filterDataRows(this.value)">
       <select class="filter-select" onchange="setDataCategoryFilter(this.value)">
         <option value="all">כל הקטגוריות</option>
         ${CATEGORIES.map(c => `<option value="${c.key}" ${dataCategoryFilter===c.key?'selected':''}>${c.icon} ${c.label}</option>`).join('')}
@@ -5612,6 +5697,9 @@ window.toggleBizSecEdit = function(id, n) {
   if (n === 2 && opening) mountAdminHoursEditor(id);
   edit.classList.toggle('open', opening);
   if (view) view.style.display = opening ? 'none' : '';
+  // §258 — כל פתיחה/סגירה ידנית מעדכנת את ה-state, כדי שבנייה-מחדש תשחזר בדיוק את מה שהמנהל
+  // השאיר פתוח. restoreOpenBizSteps קוראת לפונקציה הזו בעצמה, ולכן ה-add כאן אידמפוטנטי.
+  if (opening) openBizSteps.add(id + ':' + n); else openBizSteps.delete(id + ':' + n);
 };
 
 // ── גרירת קבצים לאזור ההעלאה (2026-08-19) ───────────────────────────────────────────────────
@@ -5673,23 +5761,59 @@ function fmtActivityVal(v) {
 // הפתרון האמיתי: לא להרוס את ה-container הגלילי בכלל. refreshOpenDetailPanel() מעדכן ישירות רק את
 // ה-innerHTML *של מה שבתוך* הפאנל הפתוח (.task-drawer-body / bizDetailCol / fanDetailCol עצמם) —
 // ה-container שיש לו overflow/scrollTop נשאר אותו אלמנט DOM בדיוק, אז אין בכלל "קפיצה" לתקן.
+// blur() מפורש לפני ההחלפה — מניע אפשרי-נוסף (אלמנט ממוקד שנהרס יכול לגרור גלילה-לתצוגה
+// בחלק מהדפדפנים) — לא אומת כשורש-הבעיה בפועל (השורש האמיתי היה onSnapshot נפרד, ר' renderAllPreserveScroll
+// למטה), אבל נשאר כהגנה זולה ובטוחה.
+//
+// 🐛 §254 — הבלור הזה היה **גורף** (`document.activeElement.blur()` על כל אלמנט ממוקד בעמוד), וזה
+// היה שורש הבאג "החיפוש נעצר אחרי האות הראשונה": ב"כל העסקים" הקלדת אות אחת → refreshBizList →
+// העסק שהיה מסומן כבר לא ברשימה המסוננת → הפאנל מצויר מחדש → bizFullDetailHtml יורה
+// fetchOwnerLoginCode (קריאה אסינכרונית לשרת) → כשהיא חוזרת היא קוראת ל-refreshOpenDetailPanel →
+// blur() הרג את הפוקוס בשדה-החיפוש, שנמצא בכלל **מחוץ** לפאנל שהוחלף. האותיות הבאות פשוט לא
+// נכנסו לשום מקום, והמנהל היה צריך ללחוץ שוב על השדה. עכשיו מבליירים רק אם האלמנט הממוקד באמת
+// יושב בתוך ה-container שעומד להימחק.
+function blurIfInside(container) {
+  const a = document.activeElement;
+  if (a && a !== document.body && container.contains(a)) a.blur();
+}
+// ── §258 — "אחרי כל הזזת תמונה זה סוגר את החלון" ─────────────────────────────────────────────
+// השלב הפתוח (secEditN_id.open) היה **מצב-DOM בלבד**, ולכן כל בנייה-מחדש של הכרטיס איבדה אותו.
+// saveSectionUpdates פתר את זה לעצמו עם opts.reopenStep — אבל refreshOpenDetailPanel נקראת
+// משלושה מקומות, ורק אחד מהם הוא נתיב-השמירה שלנו:
+//   · fetchOwnerLoginCode (חזרה אסינכרונית מהשרת)
+//   · renderMainPreserveScroll — נתיב השמירה, ורק הוא קרא ל-reopenBizSecEdit אחריו
+//   · renderAllPreserveScroll — ה-**onSnapshot הגלובלי**, שרץ עצמאית על כל שינוי מסמך
+// ה-onSnapshot מופעל גם ע"י הכתיבה-העצמית-של-המנהל, והתזמון שלו לא מובטח: כשהוא נוחת *אחרי*
+// ה-reopen שלנו, הוא בונה את הכרטיס מחדש במצב-תצוגה והשלב נסגר — בדיוק מה שדווח.
+// התיקון: הסט הזה הוא מקור-האמת, ו-restoreOpenBizSteps() רץ בסוף **כל** בנייה-מחדש. מכאן זה
+// לא משנה איזה נתיב ניצח את המרוץ.
+const openBizSteps = new Set(); // "bizId:n"
+function restoreOpenBizSteps() {
+  openBizSteps.forEach(key => {
+    const [id, num] = key.split(':');
+    const edit = document.getElementById('secEdit' + num + '_' + id);
+    if (edit && !edit.classList.contains('open')) toggleBizSecEdit(id, Number(num));
+  });
+}
+
 function refreshOpenDetailPanel() {
-  // blur() מפורש לפני ההחלפה — מניע אפשרי-נוסף (אלמנט ממוקד שנהרס יכול לגרור גלילה-לתצוגה
-  // בחלק מהדפדפנים) — לא אומת כשורש-הבעיה בפועל (השורש האמיתי היה onSnapshot נפרד, ר' renderAllPreserveScroll
-  // למטה), אבל נשאר כהגנה זולה ובטוחה.
-  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   const drawerBody = document.querySelector('.task-drawer-body');
   if (drawerBody && typeof selectedTaskKey !== 'undefined' && selectedTaskKey) {
+    blurIfInside(drawerBody);
     drawerBody.innerHTML = taskDetailHtml2(selectedTaskKey);
+    restoreOpenBizSteps();
     return true;
   }
   const bizCol = document.getElementById('bizDetailCol');
   if (bizCol && typeof selectedBizDetailId !== 'undefined' && selectedBizDetailId) {
+    blurIfInside(bizCol);
     bizCol.innerHTML = bizFullDetailHtml(selectedBizDetailId);
+    restoreOpenBizSteps();
     return true;
   }
   const fanCol = document.getElementById('fanDetailCol');
   if (fanCol && typeof selectedFanDetailId !== 'undefined' && selectedFanDetailId) {
+    blurIfInside(fanCol);
     fanCol.innerHTML = fanFullDetailHtml(selectedFanDetailId);
     return true;
   }
@@ -6267,7 +6391,9 @@ function bizBulkBarHtml() {
 // manualPickerListHtml, ר' ההערות שם: "אותם סינונים בדיוק") — רק הוסתרו מ"כל העסקים" עצמו
 // לבקשת המשתמש (2026-08-04, "תוריד את זה"), דרך opts.advanced=false. עדיין מוצגים בהקשר-השידור.
 function bizFilterBarHtml(opts) {
-  const o = Object.assign({ advanced: true, selectAll: true }, opts || {});
+  // searchId נמסר רק מ"כל העסקים" — הפונקציה נקראת גם פעמיים בו-זמנית במרכז ההודעות
+  // (singleSenderBodyHtml + broadcastAudPicker), ושם id זהה היה נכפל ב-DOM. ר' §254.
+  const o = Object.assign({ advanced: true, selectAll: true, searchId: '' }, opts || {});
   const advancedActiveCount = (bizStatusFilter!=='all'?1:0) + (bizCategoryFilter!=='all'?1:0) + (bizTypeFilter!=='all'?1:0) + (bizReviewFilter!=='all'?1:0) + (bizHealthFilter!=='all'?1:0) + (bizDateRangeFilter!=='all'?1:0);
   const hasActiveFilters = (o.advanced && advancedActiveCount > 0) || bizSearch.trim() || bizSort !== 'waitingLongest' || bizClassPill !== 'all';
   const counts = bizClassCounts();
@@ -6275,7 +6401,7 @@ function bizFilterBarHtml(opts) {
   return `
     <div class="filter-toolbar">
       <div class="filter-toolbar-row">
-        <input class="filter-search-input" type="search" placeholder="🔍 חיפוש עסק, עיר או קטגוריה" value="${bizSearch}" oninput="filterBizRows(this.value)">
+        <input class="filter-search-input" type="search" ${o.searchId ? `id="${o.searchId}"` : ''} placeholder="🔍 חיפוש עסק, עיר או קטגוריה" value="${esc(bizSearch)}" oninput="filterBizRows(this.value)">
         <select class="filter-select" onchange="setBizSort(this.value)">
           <option value="waitingLongest" ${bizSort==='waitingLongest'?'selected':''}>מיון: הממתין הכי הרבה זמן</option>
           <option value="reviewedAsc" ${bizSort==='reviewedAsc'?'selected':''}>מיון: הכי פחות שלבים נסקרו</option>
@@ -6384,9 +6510,10 @@ function bizListHtml() {
       </div>
     </div>
     ${notConnectedBannerHtml()}
+    ${joinsOverviewHtml({ scope: 'biz' })}
     <div class="task-split ${bizMobileShowDetail?'mobile-show-detail':''}" id="bizSplit">
       <div class="task-list-col dcard" id="bizListCol">
-        ${bizFilterBarHtml({ advanced: false, selectAll: false })}
+        ${bizFilterBarHtml({ advanced: false, selectAll: false, searchId: 'bizSearchInput' })}
         ${bizBulkBarHtml()}
         <div class="task-list-rows" id="bizListRows">${bizRowsHtml()}</div>
       </div>
@@ -6928,7 +7055,8 @@ window.setFanStatusFilter = function(status) { fanStatusFilter = status; renderM
 // בורר-הסטטוס/תאריך הישנים לא נמחקו — עברו ל"עוד סינונים" מקופל, אותו עיקרון כמו bizFilterBarHtml.
 let fanAdvancedOpen = false;
 window.toggleFanAdvanced = function() { fanAdvancedOpen = !fanAdvancedOpen; renderMain(); };
-function fanFilterBarHtml() {
+function fanFilterBarHtml(opts) {
+  const o = Object.assign({ searchId: '' }, opts || {}); // ר' ההערה ב-bizFilterBarHtml (§254)
   const advancedActiveCount = (fanStatusFilter!=='all'?1:0) + (fanDateRangeFilter!=='all'?1:0);
   const hasActiveFilters = advancedActiveCount > 0 || fanSearch.trim() || fanSort !== 'waitingTime' || fanVerifyTypeFilter !== 'all' || fanClassPill !== 'all';
   const counts = fanClassCounts();
@@ -6936,7 +7064,7 @@ function fanFilterBarHtml() {
   return `
     <div class="filter-toolbar">
       <div class="filter-toolbar-row">
-        <input class="filter-search-input" type="search" placeholder="🔍 חיפוש לפי שם, טלפון או מייל" value="${fanSearch}" oninput="filterFanRows(this.value)">
+        <input class="filter-search-input" type="search" ${o.searchId ? `id="${o.searchId}"` : ''} placeholder="🔍 חיפוש לפי שם, טלפון או מייל" value="${esc(fanSearch)}" oninput="filterFanRows(this.value)">
         <button class="filter-pill ${fanAdvancedOpen?'active':''}" onclick="toggleFanAdvanced()">⚙️ עוד סינונים${advancedActiveCount ? ` <span class="biz-changes-badge">${advancedActiveCount}</span>` : ''}</button>
         ${hasActiveFilters ? `<button class="filter-clear" onclick="clearFanFilters()">נקה סינון</button>` : ''}
       </div>
@@ -7033,9 +7161,10 @@ function fanListHtml() {
       </div>
     </div>
     ${notConnectedBannerHtml()}
+    ${joinsOverviewHtml({ scope: 'fan' })}
     <div class="task-split ${fanMobileShowDetail?'mobile-show-detail':''}" id="fanSplit">
       <div class="task-list-col dcard" id="fanListCol">
-        ${fanFilterBarHtml()}
+        ${fanFilterBarHtml({ searchId: 'fanSearchInput' })}
         ${fanBulkBarHtml()}
         <div class="task-list-rows" id="fanListRows">${fanRowsHtml()}</div>
       </div>
@@ -7046,6 +7175,133 @@ function fanListHtml() {
 // ══════════════════════════════════════════════════════════════════
 // דשבורד ראשי (Home) — שורת מדדים, מרכז משימות (Master-Detail), בריאות פרופיל
 // ══════════════════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════════════════
+// §253 — הצטרפות לאורך זמן (רצועה אחת בראש 3 המסכים)
+// ══════════════════════════════════════════════════════════════════
+// היו רק מספרים מצטברים ("46 עסקים", "+3 השבוע") — לא היה שום מקום שממנו רואים את הקצב עצמו,
+// ולא כמה מתוך מי שנרשם באמת נכנס לאינדקס. שתי השאלות ("כמה הצטרפו" ו"והאם נרשמו") מוצגות
+// יחד: מספר ההרשמות בתקופה + הפילוח מאושר/ממתין/נדחה שלה, באותה שורה.
+//
+// **קובייה אחת, לא רשת** (החלטת המשתמש, 2026-08-24): הגרסאות הקודמות היו טבלה יומית ואז 5
+// תיבות-סיכום — שתיהן ירדו, "זה סתם יותר מדי קוביות בדשבורד הראשי". מה שנשאר: רצועה אחת
+// דקה עם **בורר תקופה** אחד, שממנו נבחרות כל האפשרויות (היום · אתמול · 7/30/90 ימים ·
+// השבוע · שבוע שעבר · החודש · חודש שעבר · 3/12 חודשים · סה״כ). הפירוט תקופה-אחר-תקופה
+// שייך ל"מרכז נתונים" ייעודי שייבנה בהמשך, לא לראש מסך-עבודה.
+//
+// מקור-האמת הוא registeredAt (=submittedAt) על מסמך העסק/החבר עצמו — אין אוסף אגרגציה, ואין
+// צורך באחד: ~50 עסקים + ~50 חברים נסרקים בזיכרון בלי עלות. רשומה בלי submittedAt נופלת
+// ב-hydrate ל-new Date() ולכן הייתה נספרת כ"נרשמה היום" — registeredAtKnown מוציא אותה
+// מכל תקופה, והכמות שלה מדווחת לצד הרצועה כדי שהפער יהיה גלוי ולא שקט.
+
+function joinsStartOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+// ראשון = תחילת השבוע (getDay()===0), לא שני — זה השבוע הישראלי, ו"שבוע שעבר" חייב להתאים
+// למה שהמנהל רואה בלוח השנה שלו.
+function joinsStartOfWeek(d) { const x = joinsStartOfDay(d); x.setDate(x.getDate() - x.getDay()); return x; }
+function joinsStartOfMonth(d) { const x = joinsStartOfDay(d); x.setDate(1); return x; }
+function joinsBucketStart(d, groupBy) {
+  return groupBy === 'month' ? joinsStartOfMonth(d) : groupBy === 'week' ? joinsStartOfWeek(d) : joinsStartOfDay(d);
+}
+function joinsBucketKey(d, groupBy) {
+  const b = joinsBucketStart(d, groupBy);
+  return b.getFullYear() + '-' + String(b.getMonth() + 1).padStart(2, '0') + '-' + String(b.getDate()).padStart(2, '0');
+}
+// i דליים אחורה מ-start (שכבר מיושר לתחילת-תקופה). setMonth בטוח כאן כי היום-בחודש הוא תמיד 1.
+function joinsBucketBack(start, groupBy, i) {
+  const x = new Date(start);
+  if (groupBy === 'month') x.setMonth(x.getMonth() - i);
+  else if (groupBy === 'week') x.setDate(x.getDate() - 7 * i);
+  else x.setDate(x.getDate() - i);
+  return x;
+}
+// תקופה בודדת, n דליים אחורה (0 = הנוכחית)
+function joinsInBucketAgo(list, groupBy, n) {
+  const key = joinsBucketKey(joinsBucketBack(joinsBucketStart(new Date(), groupBy), groupBy, n), groupBy);
+  return list.filter(x => x.registeredAtKnown && x.registeredAt && joinsBucketKey(x.registeredAt, groupBy) === key);
+}
+// n הדליים האחרונים כולל הנוכחי (n=1 → התקופה הנוכחית בלבד)
+function joinsLastBuckets(list, groupBy, n) {
+  const from = joinsBucketBack(joinsBucketStart(new Date(), groupBy), groupBy, n - 1);
+  return list.filter(x => x.registeredAtKnown && x.registeredAt && x.registeredAt >= from);
+}
+
+const joinsPl = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+// "והאם נרשמו" — לא מספיק לדעת ש-4 עסקים הצטרפו השבוע; השאלה היא כמה מהם באמת עלו לאינדקס.
+function joinsBreakdown(list) {
+  const c = k => list.filter(x => x.status === k).length;
+  return [
+    c('approved') ? '✓ ' + joinsPl(c('approved'), 'אושר', 'אושרו') : '',
+    c('pending') ? '⏳ ' + joinsPl(c('pending'), 'ממתין', 'ממתינים') : '',
+    c('rejected') ? '✗ ' + joinsPl(c('rejected'), 'נדחה', 'נדחו') : '',
+  ].filter(Boolean).join(' · ');
+}
+// גרסה מקוצרת לרצועה — סמל+מספר בלבד; המילים המלאות נשארות ב-title, בלי לאבד מידע.
+function joinsBrkMini(list) {
+  const c = k => list.filter(x => x.status === k).length;
+  const parts = [c('approved') ? '✓ ' + c('approved') : '', c('pending') ? '⏳ ' + c('pending') : '', c('rejected') ? '✗ ' + c('rejected') : ''].filter(Boolean);
+  return parts.length ? `<span class="joins-brk" title="${joinsBreakdown(list)}">${parts.join(' ')}</span>` : '';
+}
+
+// כל אפשרויות הזמן בבורר אחד. g = רזולוציית-הדלי, mode: 'ago' דלי בודד אחורה · 'last' N דליים
+// אחרונים כולל הנוכחי · 'all' הכל (לא חלון-זמן, ולכן גם רשומות בלי תאריך נכללות בו).
+const JOINS_PERIODS = [
+  { key: 'today',     grp: 'לפי יום',   label: 'היום',                g: 'day',   mode: 'ago',  n: 0 },
+  { key: 'yesterday', grp: 'לפי יום',   label: 'אתמול',               g: 'day',   mode: 'ago',  n: 1 },
+  { key: 'last7',     grp: 'לפי יום',   label: '7 הימים האחרונים',    g: 'day',   mode: 'last', n: 7 },
+  { key: 'last30',    grp: 'לפי יום',   label: '30 הימים האחרונים',   g: 'day',   mode: 'last', n: 30 },
+  { key: 'last90',    grp: 'לפי יום',   label: '90 הימים האחרונים',   g: 'day',   mode: 'last', n: 90 },
+  { key: 'thisWeek',  grp: 'לפי שבוע',  label: 'השבוע',               g: 'week',  mode: 'ago',  n: 0 },
+  { key: 'lastWeek',  grp: 'לפי שבוע',  label: 'שבוע שעבר',           g: 'week',  mode: 'ago',  n: 1 },
+  { key: 'last4w',    grp: 'לפי שבוע',  label: '4 השבועות האחרונים',  g: 'week',  mode: 'last', n: 4 },
+  { key: 'last12w',   grp: 'לפי שבוע',  label: '12 השבועות האחרונים', g: 'week',  mode: 'last', n: 12 },
+  { key: 'thisMonth', grp: 'לפי חודש',  label: 'החודש',               g: 'month', mode: 'ago',  n: 0 },
+  { key: 'lastMonth', grp: 'לפי חודש',  label: 'חודש שעבר',           g: 'month', mode: 'ago',  n: 1 },
+  { key: 'last3m',    grp: 'לפי חודש',  label: '3 החודשים האחרונים',  g: 'month', mode: 'last', n: 3 },
+  { key: 'last12m',   grp: 'לפי חודש',  label: '12 החודשים האחרונים', g: 'month', mode: 'last', n: 12 },
+  { key: 'all',       grp: 'הכל',       label: 'סה״כ במערכת',                     mode: 'all' },
+];
+function joinsPeriodFor(key) { return JOINS_PERIODS.find(p => p.key === key) || JOINS_PERIODS[0]; }
+function joinsPeriodList(list, p) {
+  if (p.mode === 'all') return list;
+  return p.mode === 'ago' ? joinsInBucketAgo(list, p.g, p.n) : joinsLastBuckets(list, p.g, p.n);
+}
+
+let joinsPeriodKey = 'today';
+window.setJoinsPeriod = function(v) { if (JOINS_PERIODS.some(p => p.key === v)) joinsPeriodKey = v; renderMain(); };
+
+// scope: 'both' (הדשבורד הראשי) | 'biz' ("כל העסקים") | 'fan' ("כל האוהדים") — בשני המסכים
+// הייעודיים מוצגת רק הישות של אותו עמוד; השנייה לא שייכת לשם.
+function joinsOverviewHtml(opts) {
+  const o = Object.assign({ scope: 'both' }, opts || {});
+  const withBiz = o.scope !== 'fan';
+  const withFans = o.scope !== 'biz';
+  const p = joinsPeriodFor(joinsPeriodKey);
+  const bizNoDate = MOCK_BUSINESSES.filter(b => !b.registeredAtKnown).length;
+  const fanNoDate = MOCK_FANS.filter(f => !f.registeredAtKnown).length;
+  const stat = (list, one, many) => `
+      <span class="joins-stat">
+        <span class="joins-sum-num">${list.length}</span>
+        <span class="joins-sum-ent">${list.length === 1 ? one : many}</span>
+        ${joinsBrkMini(list)}
+      </span>`;
+  // ההערה על רשומות בלי תאריך רלוונטית רק לחלון-זמן — ב"סה״כ במערכת" אף אחת לא הוצאה.
+  const noDateNote = p.mode !== 'all' && ((withBiz && bizNoDate) || (withFans && fanNoDate))
+    ? `<span class="joins-note" title="לרשומות האלה אין תאריך הרשמה שמור, ולכן הן לא משויכות לשום תקופה. הן כן נספרות ב״סה״כ במערכת״.">⚠️ ${[(withBiz && bizNoDate) ? joinsPl(bizNoDate, 'עסק', 'עסקים') : '', (withFans && fanNoDate) ? joinsPl(fanNoDate, 'אוהד', 'אוהדים') : ''].filter(Boolean).join(' · ')} בלי תאריך</span>`
+    : '';
+  const groups = [...new Set(JOINS_PERIODS.map(x => x.grp))];
+  return `
+    <div class="joins-card">
+      <span class="joins-title">📈 הצטרפות</span>
+      <select class="filter-select joins-period" onchange="setJoinsPeriod(this.value)">
+        ${groups.map(grp => `<optgroup label="${grp}">${JOINS_PERIODS.filter(x => x.grp === grp)
+          .map(x => `<option value="${x.key}" ${x.key === p.key ? 'selected' : ''}>${x.label}</option>`).join('')}</optgroup>`).join('')}
+      </select>
+      ${withBiz ? stat(joinsPeriodList(MOCK_BUSINESSES, p), 'עסק', 'עסקים') : ''}
+      ${withFans ? stat(joinsPeriodList(MOCK_FANS, p), 'אוהד', 'אוהדים') : ''}
+      ${noDateNote}
+    </div>`;
+}
 
 // זמן טיפול ממוצע אמיתי — הפרש registeredAt→approvedAt על כל האוהדים+העסקים שכבר אושרו בפועל
 function avgHandlingTimeLabel() {
@@ -7236,7 +7492,7 @@ function taskTilesHtml() {
       ${tile(TASK_CLASS_TILES[0], countOf('עסק ממתין לאישור'), `<div class="class-tile-sub">${oldestPendingBiz ? `הוותיק ביותר ממתין ${agoLabel(taskWaitDate(oldestPendingBiz))}` : 'אין ממתינים כרגע'}</div>`)}
       ${tile(TASK_CLASS_TILES[1], countOf('אוהד ממתין לאישור'), `<div class="class-tile-sub">${flaggedFans ? `⚠️ ${flaggedFans} עם דגל בדיקה` : ''}</div>`)}
       ${tile(TASK_CLASS_TILES[2], requestsItems.length, `<div class="class-tile-chips"><span class="treat-badge">שינוי פרטים ${tCount('details')}</span><span class="treat-badge">תגית ${tCount('tag')}</span><span class="treat-badge">קטגוריה ${tCount('category')}</span><span class="treat-badge">כתבו לנו ${tCount('note')}</span></div>`)}
-      ${tile(TASK_CLASS_TILES[3], countOf('כרטיס חסר באינדקס'), `<div class="class-tile-chips"><span class="warn-badge">חסרים פרטים בכרטיס</span></div>`)}
+      ${tile(TASK_CLASS_TILES[3], countOf('כרטיס חסר באינדקס'), `<div class="class-tile-chips"><span class="warn-badge">חסרים פרטים בכרטיס</span></div><div class="class-tile-sub">שדה שלא חובה על העסק? "✔️ טופל" בשורה מוריד אותו מכאן</div>`)}
       ${tile(TASK_CLASS_TILES[4], mailBlocking ? `<span style="color:#b91c1c">${mailIssues.length}</span>` : mailIssues.length, mailIssues.length
         ? `<div class="class-tile-chips">${mailBlocking ? `<span class="warn-badge">${mailBlocking} לא קיבלו בפועל</span>` : ''}${mailBeforeApprove ? `<span class="treat-badge">${mailBeforeApprove} לתקן לפני אישור</span>` : ''}</div>`
         : `<div class="class-tile-sub">כל מי שאושר קיבל את המייל שלו</div>`)}
@@ -7251,7 +7507,7 @@ function taskFilterBarHtml() {
   return `
     <div class="filter-toolbar-row">
       <div style="position:relative; flex:1; min-width:210px; max-width:330px">
-        <input type="search" class="filter-select" style="width:100%" placeholder="חיפוש לפי שם עסק, בעל עסק, אוהד או עיר" value="${esc(taskSearchQ)}" oninput="setTaskSearchQ(this.value)">
+        <input type="search" id="taskSearchInput" class="filter-select" style="width:100%" placeholder="חיפוש לפי שם עסק, בעל עסק, אוהד או עיר" value="${esc(taskSearchQ)}" oninput="setTaskSearchQ(this.value)">
       </div>
       <select class="filter-select" onchange="setTaskSort2(this.value)">
         <option value="longestWaiting" ${taskSort2==='longestWaiting'?'selected':''}>מיון: הממתין הכי הרבה זמן</option>
@@ -7303,6 +7559,11 @@ function taskRow2Html(x) {
     : `<div class="task-table-review-lbl">לא רלוונטי לאוהד</div>`;
   const openLabel = x.kind === 'fan' ? 'כרטיס אוהד' : (x.c.primary === 'עסק ממתין לאישור' ? 'פתיחה וסקירה' : 'פתיחה');
   const primaryBtn = x.c.primary === 'עסק ממתין לאישור' ? 'primary-yellow' : '';
+  // §252 — "✔️ טופל" ישירות מהשורה, בלי לפתוח את הכרטיס: זה בדיוק המקרה שבו אין מה להחליט בפנים
+  // (השדה החסר אינו חובה על העסק), והמנהל רק רוצה לנקות את הרשימה. מוצג רק לסיווג הזה.
+  const acceptGapsBtn = (x.kind === 'biz' && x.c.primary === 'כרטיס חסר באינדקס')
+    ? `<button class="act-btn tiny task-accept-gaps" title="מוריד את העסק מרשימת המשימות בלי לשנות לו שום נתון — לשימוש כשהשדה החסר לא חובה עליו. נשמר תחת &quot;בקשות שטופלו&quot; וניתן להחזרה." onclick="event.stopPropagation();acceptCardGaps('${x.id}')">✔️ טופל</button>`
+    : '';
   return `
     <div class="task-table-row ${selectedTaskKey===key?'active':''}" onclick="selectTask2('${x.kind}','${x.id}')">
       <div class="task-table-main">
@@ -7312,7 +7573,7 @@ function taskRow2Html(x) {
       <div class="task-table-badges">${badges.join('')}</div>
       ${reviewCol}
       <div class="task-table-wait">${taskWaitLabel(x)}</div>
-      <div><button class="act-btn ${primaryBtn} tiny" onclick="event.stopPropagation();selectTask2('${x.kind}','${x.id}')">${openLabel}</button></div>
+      <div class="task-table-acts"><button class="act-btn ${primaryBtn} tiny" onclick="event.stopPropagation();selectTask2('${x.kind}','${x.id}')">${openLabel}</button>${acceptGapsBtn}</div>
     </div>`;
 }
 
@@ -7368,10 +7629,15 @@ function mediaRealViewHtml(b) {
 }
 
 function mediaRealEditHtml(b) {
+  // §257 — סדר הגלריה. המספר הוא המיקום בפועל בדף העסק (b.photos נקרא שם כמערך, לפי סדר).
+  const photoCount = (b.photos || []).length;
   const photosHtml = (b.photos || []).map((p, idx) => `
     <div class="media-slot-row" style="margin-top:6px">
       ${mediaThumbHtml(p.url, p.name, 'width:56px;height:56px;border-radius:6px;overflow:hidden', b.name)}
       <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name || '')}</span>
+      <input type="number" class="gal-pos-input" value="${idx + 1}" min="1" max="${photoCount}"
+             title="המיקום בגלריה — אפשר לכתוב מספר ולעבור ישירות לשם"
+             onchange="setBizGalleryPos('${b.id}', ${idx}, this)">
       <button class="act-btn reject tiny" onclick="removeBizGalleryPhoto('${b.id}', ${idx})">🗑️ הסר</button>
     </div>`).join('');
   const videosHtml = (b.videos || []).map((v, idx) => `
@@ -7453,7 +7719,7 @@ function mediaRealEditHtml(b) {
           <span class="media-drop-plus">＋</span><span>הוספת תמונות לגלריה</span>
         </label>
       </div>
-      <div class="media-slot-note">אפשר לבחור <b>כמה תמונות בבת אחת</b>, או לגרור אותן לכאן ישירות. ההעלאה מתחילה מיד, והשלב נשאר פתוח.</div>
+      <div class="media-slot-note">אפשר לבחור <b>כמה תמונות בבת אחת</b>, או לגרור אותן לכאן ישירות. ההעלאה מתחילה מיד, והשלב נשאר פתוח. <b>המספר בכל שורה הוא סדר ההצגה בדף העסק</b> — כותבים בו את המיקום הרצוי (למשל 1 כדי להעביר לראש הגלריה) והשינוי נשמר מיד.</div>
       <div class="approve-field-label" style="margin-top:14px">סרטונים (קישור YouTube/Vimeo)</div>
       ${videosHtml}
       <div class="media-slot-row" style="margin-top:6px">
@@ -7529,6 +7795,25 @@ window.uploadBizGalleryPhoto = async function(id, fileList) {
 window.removeBizGalleryPhoto = async function(id, idx) {
   const b = findBiz(id);
   const photos = (b.photos || []).filter((_, i) => i !== idx);
+  await saveSectionUpdates(id, { photos }, { reopenStep: 5 });
+};
+// ── §257 — סדר הגלריה ───────────────────────────────────────────────────────────────────────
+// עד עכשיו הסדר בדף העסק היה סדר-ההעלאה בלבד, בלי שום דרך לשנות אותו חוץ ממחיקה והעלאה מחדש.
+// **כתיבת מיקום ולא חצים** (בקשת המשתמש, 2026-08-24): "להעביר תמונה 8 לתמונה 1 זה המון לחיצות" —
+// עם חצים זה 7 הזזות, כלומר 7 כתיבות ל-Firestore ו-7 בניות-מחדש של הכרטיס. כאן זו פעולה אחת.
+// splice-out + splice-in (ולא החלפת-שכנים) — העברה למקום רחוק חייבת להסיט את כל מי שביניהם
+// במקום להחליף עם היעד, אחרת התמונה שהייתה שם הייתה קופצת לסוף.
+window.setBizGalleryPos = async function(id, from, el) {
+  const b = findBiz(id);
+  if (!b) return;
+  const photos = [...(b.photos || [])];
+  const restore = () => { if (el) el.value = from + 1; };
+  const raw = parseInt(el && el.value, 10);
+  if (!Number.isFinite(raw)) { restore(); return; }
+  const target = Math.min(Math.max(raw, 1), photos.length) - 1;
+  if (target === from) { restore(); return; }
+  const [moved] = photos.splice(from, 1);
+  photos.splice(target, 0, moved);
   await saveSectionUpdates(id, { photos }, { reopenStep: 5 });
 };
 window.addBizVideo = async function(id) {
@@ -8881,7 +9166,9 @@ function classifyAction(entity, kind) {
     primary = kind === 'fan' ? 'אוהד ממתין לאישור' : 'עסק ממתין לאישור';
   } else if (kind !== 'fan' && treatments.length > 0) {
     primary = 'בקשה מבעל העסק';
-  } else if (kind !== 'fan' && entity.status === 'approved' && typeof entity.healthScore === 'number' && entity.healthScore < 100) {
+  } else if (kind !== 'fan' && entity.status === 'approved' && typeof entity.healthScore === 'number' && entity.healthScore < 100 && !cardGapsAcceptedFor(entity)) {
+    // §252 — cardGapsAcceptedFor: המנהל סימן "ראיתי, זה בסדר ככה". healthScore עצמו לא משתנה
+    // (המד בכרטיס ממשיך להציג את האמת), רק ההגדרה "זו משימה פתוחה" מתבטלת.
     primary = 'כרטיס חסר באינדקס';
   } else {
     primary = 'מאושר · אין פעולה';
@@ -11105,6 +11392,16 @@ function handledItemsList() {
       at: h.at ? new Date(h.at) : null,
       summary: `שגיאת שמירה בדשבורד — ${h.code || ''}`, note: h.note || '',
     }));
+    // §252 — מוצג רק כשהסימון עדיין *מכסה* את כל מה שחסר היום (cardGapsAcceptedFor). אם נפתח חסר
+    // חדש, העסק כבר חזר לרשימה הראשית — ואז אסור שהוא יופיע גם כאן כאילו הוא סגור.
+    // גם התנאי "עדיין באמת חסר משהו": עסק שהשלים בינתיים את השדה הוא פשוט כרטיס מלא —
+    // אין סיבה שימשיך להופיע בארכיון כפריט שנסגר ידנית.
+    const gapsAcc = missingFieldsFor(b).length ? cardGapsAcceptedFor(b) : null;
+    if (gapsAcc) out.push({
+      type: 'cardGaps', kind: 'biz', id: b.id, name: b.name,
+      at: gapsAcc.at ? new Date(gapsAcc.at) : null,
+      summary: `כרטיס חסר — אושר להישאר כך (${(gapsAcc.fields || []).join(', ')})`, note: '',
+    });
     if (b.mailIssueHandled && b.mailIssueHandled.key) out.push({
       type: 'mail', kind: 'biz', id: b.id, name: b.name,
       at: b.mailIssueHandled.at ? new Date(b.mailIssueHandled.at) : null,
@@ -11129,7 +11426,7 @@ function handledFilteredList() {
 }
 function handledTableHtml(list) {
   if (!list.length) {
-    return `<div class="placeholder-note">עדיין לא נסגרה כאן שום בקשה ידנית. סגירה ידנית נעשית מתוך כרטיס העסק — "שיפוט מהיר" → "טופל מבחוץ", או מ"תקלות מייל" → "✔️ טיפלתי".</div>`;
+    return `<div class="placeholder-note">עדיין לא נסגרה כאן שום בקשה ידנית. סגירה ידנית נעשית מתוך כרטיס העסק — "שיפוט מהיר" → "טופל מבחוץ", מ"תקלות מייל" → "✔️ טיפלתי", או מקוביית "כרטיס חסר באינדקס" → "✔️ טופל".</div>`;
   }
   return `
     <div class="mail-issues-note">ארכיון בלבד — פריטים שנסגרו ידנית ולא ע"י אישור/דחייה במערכת. בקשה חדשה מאותו עסק תיפתח כרגיל ברשימה הראשית.</div>
@@ -11139,12 +11436,13 @@ function handledTableHtml(list) {
           <div class="task-table-name">${esc(x.name)}</div>
           <div class="task-table-meta">${x.kind === 'biz' ? 'עסק' : 'אוהד'} · ${esc(x.summary)}${x.note ? ' — ' + esc(x.note) : ''}</div>
         </div>
-        <div class="task-table-badges"><span class="class-badge neutral">${x.type === 'mail' ? 'תקלת מייל — טופלה' : x.type === 'bizError' ? 'שגיאת דשבורד — טופלה' : 'בקשה — טופלה מבחוץ'}</span></div>
+        <div class="task-table-badges"><span class="class-badge neutral">${x.type === 'mail' ? 'תקלת מייל — טופלה' : x.type === 'bizError' ? 'שגיאת דשבורד — טופלה' : x.type === 'cardGaps' ? 'כרטיס חסר — סומן טופל' : 'בקשה — טופלה מבחוץ'}</span></div>
         <div class="mi-addr"></div>
         <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
         <div class="mi-actions">
           <button class="act-btn tiny" onclick="selectTask2('${x.kind}','${x.id}')">${x.kind === 'biz' ? 'פתיחת כרטיס העסק' : 'פתיחת כרטיס האוהד'}</button>
           ${x.type === 'mail' ? `<button class="act-btn tiny" onclick="unmarkMailIssueHandled('${x.kind}','${x.id}')">↩️ החזרה לטיפול</button>` : ''}
+          ${x.type === 'cardGaps' ? `<button class="act-btn tiny" onclick="reopenCardGaps('${x.id}')">↩️ החזרה לטיפול</button>` : ''}
         </div>
       </div>`).join('')}</div>`;
 }
@@ -11339,6 +11637,7 @@ window.requeueFanEmail = async function(id) {
 function homeTabHtml() {
   return `
     ${homeStatsHtml()}
+    ${joinsOverviewHtml({ scope: 'both' })}
     ${hoursMigrationPanelHtml()}
     ${hoursReviewPanelHtml()}
     <div class="section-h2-row">
@@ -11513,7 +11812,32 @@ window.runHoursMigration = async function () {
   renderMain();
 };
 
+// §254, רשת-ביטחון שנייה: renderMain() בונה את **כל** גוף-הטאב מחדש, ולכן כל קורא שלו באמצע
+// הקלדה הורג את שדה-החיפוש — כולל ה-onSnapshot הגלובליים (renderAllPreserveScroll נופל ל-renderMain
+// כשאין פאנל-פרטים פתוח, וזה בדיוק המצב בדשבורד הראשי). במקום לצוד כל קורא בנפרד, המצב נשמר
+// ומוחזר בנקודה אחת — מכסה גם קוראים עתידיים. רק שדות-חיפוש עם id מוכר, כדי לא "להחזיר" פוקוס
+// לשדה-עריכה שהמשתמש בכלל סגר.
+const SEARCH_INPUT_IDS = ['bizSearchInput', 'fanSearchInput', 'taskSearchInput', 'heartsSearchInput', 'dataSearchInput'];
+function captureSearchFocus() {
+  const a = document.activeElement;
+  if (!a || a.tagName !== 'INPUT' || !SEARCH_INPUT_IDS.includes(a.id)) return null;
+  return { id: a.id, start: a.selectionStart, end: a.selectionEnd };
+}
+function restoreSearchFocus(st) {
+  if (!st) return;
+  const el = document.getElementById(st.id);
+  if (!el) return;
+  el.focus();
+  // setSelectionRange זורק על חלק מסוגי-ה-input; type=search תקין, אבל עוטפים בכל זאת כדי
+  // ששחזור-הסמן לעולם לא יפיל את הרינדור עצמו.
+  try { el.setSelectionRange(st.start, st.end); } catch (e) {}
+}
 function renderMain() {
+  const focusState = captureSearchFocus();
+  renderMainInner();
+  restoreSearchFocus(focusState);
+}
+function renderMainInner() {
   const wrap = document.getElementById('tabContent');
   if (!activeTab) {
     wrap.innerHTML = `<div class="placeholder-note">👈 בחר פריט מהתפריט בצד כדי להתחיל</div>`;
