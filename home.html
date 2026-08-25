@@ -907,6 +907,14 @@
       border-radius: var(--r-card); padding: 14px; margin-top: 22px;
     }
     .redeem-card + .redeem-card { margin-top: 10px; }
+    /* §272 — כשיש יותר מהטבה אחת, לכל כרטיס-מימוש יש תווית שאומרת *לאיזו הטבה* הוא שייך.
+       בלעדיה שני כרטיסים שכותרתם "מימוש בחנות" נראים כמו כפילות ולא כמו שתי הטבות נפרדות. */
+    .redeem-benefit-tag {
+      font-size: 11px; font-weight: 700; color: var(--ink-3);
+      margin-bottom: 10px; padding-bottom: 9px; border-bottom: 1px solid var(--line);
+      line-height: 1.45;
+    }
+    .redeem-benefit-tag b { color: var(--ink); font-weight: 800; }
     .redeem-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .redeem-text { flex: 1; min-width: 0; }
     .redeem-title { font-size: 15px; font-weight: 800; color: var(--ink); }
@@ -956,6 +964,32 @@
       background: var(--ink); color: #fff; font-size: 14px; font-weight: 800; text-decoration: none;
     }
     .coupon-site-btn:active { filter: brightness(1.15); }
+
+    /* ── מסגרת-מימוש לתעודת החבר — מקבילה מדויקת לקוביית קוד-הקופון (§271) ──────────────────
+       עד עכשיו הקופון ישב בקוביה מקווקוות עם תווית ("קוד קופון") ואילו התעודה+הפס-הכחול פשוט
+       "נשפכו" אל תוך הכרטיס הלבן בלי גבול. בכרטיס מאוחד זה נראה כמו יחידה אחת ארוכה במקום שני
+       ערוצי-מימוש מקבילים, ובכרטיס-חנות בלבד לא היה שום דבר שמסמן "זה מה שמציגים". עכשיו לכל
+       ערוץ-מימוש יש קוביה משלו עם תווית-הוראה קטנה למעלה. */
+    .member-box2 {
+      margin-top: 10px; background: var(--acc-soft); border: 1px dashed #EAAA08;
+      border-radius: var(--r-card); padding: 14px; text-align: center; animation: popIn .25s ease;
+    }
+    .member-label2 { font-size: 11px; font-weight: 700; color: #8A6A00; }
+    /* התווית כבר יושבת מעל — ה-margin המקורי של mini-card-wrap (14px) היה מרחיק אותה מהתעודה */
+    .member-box2 .mini-card-wrap { margin-top: 10px; }
+
+    /* ── יצירת קשר בתוך מסגרת המימוש — לנותני שירות בלבד ──────────────────────────────────
+       אצל נותן שירות המימוש לא קורה בקופה אלא בשיחה/הודעה, ולכן דרכי-ההתקשרות הן *הפעולה
+       הבאה* של הכרטיס — בדיוק כמו "לרכישה באתר" אצל הקופון — ולא רק שורת-מידע בהמשך הגיליון. */
+    .redeem-contact-label { font-size: 11px; font-weight: 700; color: #8A6A00; margin-top: 13px; }
+    .redeem-contact-row { display: flex; gap: 8px; margin-top: 7px; }
+    .redeem-contact-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+      height: 40px; border-radius: 12px; text-decoration: none;
+      background: var(--ink); color: #fff; font-size: 13.5px; font-weight: 800;
+    }
+    .redeem-contact-btn:active { filter: brightness(1.15); }
+    .redeem-contact-btn.alt { background: #fff; border: 1px solid #EAAA08; color: var(--ink); }
 
     /* ── פס תוקף — תעודה וקופון כאחד, מציג את שם העסק שמולו מאמתים + שעון חי.
        הפריסה: כותרת+שם העסק לימין, ולמטה שורת-בסיס מופרדת בקו דק שבה המותג לימין והשעון
@@ -2952,8 +2986,10 @@ function openBiz(id) {
       <div class="sheet-benefit-type">${primaryTypeLine}</div>`;
     document.getElementById('sheetBenefitSecondary').innerHTML = extraBenefits.map(d => {
       const eTypes = d.redeemTypes && d.redeemTypes.length ? d.redeemTypes : [];
-      let line = eTypes.map(t => DISC_TYPE_LABELS[t]).filter(Boolean).join(' · ');
-      if (d.code && eTypes.includes('online')) line += ` · קוד: ${d.code}`;
+      const line = eTypes.map(t => DISC_TYPE_LABELS[t]).filter(Boolean).join(' · ');
+      // §272 — הקוד עצמו **לא** מוצג כאן יותר כטקסט גולמי ("· קוד: XXX"). לכל הטבה נוספת יש
+      // עכשיו כרטיס-מימוש משלה עם קוביית-קופון וכפתור-העתקה, בדיוק כמו להטבה הראשית; חשיפת
+      // הקוד ברשימה עקפה את כל זרימת-הפתיחה והציגה אותו בלי כפתור-העתקה ובלי מדידה.
       return `<div class="sheet-benefit-secondary">
         <div class="sheet-benefit-text">${d.text}</div>
         ${line ? `<div class="sheet-benefit-type">${line}</div>` : ''}
@@ -2966,12 +3002,6 @@ function openBiz(id) {
     // isPro/online) כדי לא להציג "הגיעו לחנות"/קוד-קופון לעסק שבפועל לא תומך בזה בכלל. משתמש ב-dTypes
     // שכבר חושב למעלה (ר' primaryTypeLine) — אותו מקור-אמת בדיוק, לא כפילות.
     const area = document.getElementById('sheetCouponArea');
-    let areaHtml = '';
-    // שני ערוצי-המימוש של אותה הטבה ראשית. כששניהם פעילים זו *הטבה אחת בשתי דרכים*, ולכן
-    // כרטיס אחד (§217) — לא שני כרטיסים שנראים כמו שתי הטבות נפרדות. הטבות שונות באמת
-    // מנוהלות ב-additionalDiscounts ומוצגות בנפרד למעלה.
-    const hasStoreRedeem = (b.isPhysical || b.isPro) && (dTypes.includes('physical') || dTypes.includes('sale'));
-    const hasOnlineRedeem = dTypes.includes('online') && !!b.coupon;
     const siteUrl = b.website ? (b.website.startsWith('http') ? b.website : 'https://' + b.website) : '';
     const isProOnly = b.isPro && !b.isPhysical;
     const storeTitle = isProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות';
@@ -2979,9 +3009,70 @@ function openBiz(id) {
       : isProOnly ? 'הציגו את תעודת החבר בפגישה או בשיחה עם נותן השירות'
       : 'הציגו את תעודת החבר בקופה, הצוות יאשר את ההטבה';
 
-    if (hasStoreRedeem && hasOnlineRedeem) {
-      areaHtml += `
+    // ── §271 — כל ערוץ-מימוש בקוביה משלו ──────────────────────────────────────────────
+    // התווית שמעל התעודה, במקביל ל"קוד קופון" שמעל הקופון. היא הוראת-הפעולה עצמה ("מה עושים
+    // עם זה"), ולכן היא ניסוחית לפי סוג העסק — בדיוק כמו storeDesc.
+    const memberBoxLabel = (b.isPhysical && b.isPro) ? 'הציגו תעודה זו בחנות או מול נותן השירות'
+      : isProOnly ? 'הציגו תעודה זו לנותן השירות'
+      : 'הציגו תעודה זו בחנות';
+    // נותן שירות — המימוש מתחיל בשיחה/הודעה ולא בקופה, ולכן דרכי-ההתקשרות יושבות *בתוך* מסגרת
+    // המימוש כפעולה הבאה, במקביל ל"לרכישה באתר" של הקופון. שורות הטלפון/WhatsApp בהמשך הגיליון
+    // נשארות — שם הן מידע על העסק, כאן הן הצעד הבא במימוש. bizWaLink מחזיר null למספר שבור
+    // (§204) ולכן אסור לבנות את ה-href ידנית.
+    const redeemWaHref = b.isPro ? bizWaLink(b.whatsapp) : null;
+    const redeemContactHtml = (b.isPro && (redeemWaHref || b.phone)) ? `
+            <div class="redeem-contact-label">צרו קשר</div>
+            <div class="redeem-contact-row">
+              ${redeemWaHref ? `<a class="redeem-contact-btn" href="${redeemWaHref}" target="_blank" rel="noopener" onclick="sLogRedeem('contactWhatsapp')">${SHEET_ICONS.whatsapp}<span>WhatsApp</span></a>` : ''}
+              ${b.phone ? `<a class="redeem-contact-btn alt" href="tel:${b.phone}" onclick="sLogRedeem('contactPhone')">${SHEET_ICONS.phone}<span>התקשרו</span></a>` : ''}
+            </div>` : '';
+
+    // ── §272 — כרטיס-מימוש לכל הטבה, לא רק לראשית ─────────────────────────────────────
+    // עד עכשיו רק ההטבה הראשית קיבלה כרטיס-מימוש; הטבות נוספות הוצגו ככרטיסי-טקסט בלבד, עם
+    // "· קוד: XXX" חשוף כטקסט. עכשיו כל הטבה היא **יחידת-מימוש** משלה, עם אותה לוגיקת שלושת
+    // הענפים בדיוק (מאוחד / חנות / אונליין) לפי הערוצים שנבחרו *לה*.
+    //
+    // ⚠️ הקוד והכתובת **לא** מוזרקים לתוך onclick כמחרוזות (כפי שהיה): קוד שמכיל גרש היה שובר
+    //    את המאפיין ומשתיק את הכפתור. במקום זה כל יחידה נשמרת ב-window._hbRedeemUnits והכפתור
+    //    מעביר רק אינדקס מספרי.
+    const redeemUnits = [
+      { text: b.discountFull || b.discount, types: dTypes, code: b.coupon || '' },
+      ...extraBenefits.map(d => ({
+        text: d.text,
+        types: (d.redeemTypes && d.redeemTypes.length) ? d.redeemTypes : [],
+        code: d.code || '',
+      })),
+    ].map(u => ({ ...u, bizId: b.id, site: siteUrl }));
+    window._hbRedeemUnits = redeemUnits;
+    const multiBenefit = redeemUnits.length > 1;
+    // כפתורי "צרו קשר" מופיעים **פעם אחת בלבד**, בכרטיס-החנות הראשון. אצל נותן שירות עם שלוש
+    // הטבות, שלושה זוגות כפתורי WhatsApp/טלפון זהים הם רעש, לא עזרה.
+    let contactShown = false;
+
+    let areaHtml = '';
+    redeemUnits.forEach((u, i) => {
+      const uid = `${b.id}-${i}`;
+      // אותה לוגיקה בדיוק של ההטבה הראשית — פיזי/נותן-שירות הם אותו סוג-כרטיס (תעודת חבר),
+      // ואונליין דורש קוד בפועל. תלוי גם בסוג העסק, כדי לא להציע "הגיעו לחנות" לעסק אונליין בלבד.
+      const hasStore = (b.isPhysical || b.isPro) && (u.types.includes('physical') || u.types.includes('sale'));
+      const hasOnline = u.types.includes('online') && !!u.code;
+      if (!hasStore && !hasOnline) return;
+      // התווית מוצגת רק כשיש יותר מהטבה אחת — אחרת שני כרטיסים בשם "מימוש בחנות" נראים ככפילות
+      const unitTag = multiBenefit
+        ? `<div class="redeem-benefit-tag">${i === 0 ? 'ההטבה הראשית' : 'הטבה נוספת'} · <b>${u.text}</b></div>`
+        : '';
+      const contactHere = (hasStore && !contactShown && redeemContactHtml) ? (contactShown = true, redeemContactHtml) : '';
+      const memberBox = hidden => `
+          <div class="member-box2" id="sheetMemberBox-${uid}"${hidden ? ' style="display:none;"' : ''}>
+            <div class="member-label2">${memberBoxLabel}</div>
+            <div class="mini-card-wrap" id="sheetMemberCard-${uid}"></div>
+            ${contactHere}
+          </div>`;
+      if (hasStore && hasOnline) {
+        // הטבה אחת בשתי דרכים = כרטיס אחד (§217), לא שני כרטיסים שנראים כמו שתי הטבות
+        areaHtml += `
         <div class="redeem-card">
+          ${unitTag}
           <div class="redeem-top">
             <div class="redeem-text">
               <div class="redeem-title">מימוש ההטבה</div>
@@ -2989,15 +3080,16 @@ function openBiz(id) {
             </div>
             <div class="redeem-icon-sq">${SHEET_ICONS.tag}</div>
           </div>
-          <button class="redeem-toggle-btn" onclick="sToggleCombinedRedeem(this,'${b.id}','${b.coupon}','${siteUrl}')">פתיחה</button>
-          <div id="sCombinedReveal-${b.id}" style="display:none;">
-            <div id="sCouponReveal-${b.id}"></div>
-            <div class="mini-card-wrap" id="sheetMemberCard"></div>
+          <button class="redeem-toggle-btn" data-cta="למימוש ההטבה" onclick="sToggleCombinedRedeem(this,'${uid}',${i})">למימוש ההטבה</button>
+          <div id="sCombinedReveal-${uid}" style="display:none;">
+            <div id="sCouponReveal-${uid}"></div>
+            ${memberBox(false)}
           </div>
         </div>`;
-    } else if (hasStoreRedeem) {
-      areaHtml += `
+      } else if (hasStore) {
+        areaHtml += `
         <div class="redeem-card">
+          ${unitTag}
           <div class="redeem-top">
             <div class="redeem-text">
               <div class="redeem-title">${storeTitle}</div>
@@ -3005,15 +3097,15 @@ function openBiz(id) {
             </div>
             <div class="redeem-icon-sq">${SHEET_ICONS.lock}</div>
           </div>
-          <button class="redeem-toggle-btn" onclick="toggleMemberCard(this)">פתיחה</button>
-          <div class="mini-card-wrap" id="sheetMemberCard" style="display:none;"></div>
+          <button class="redeem-toggle-btn" data-cta="לקבלת ההטבה" onclick="toggleMemberCard(this,'${uid}')">לקבלת ההטבה</button>
+          ${memberBox(true)}
         </div>`;
-    } else if (hasOnlineRedeem) {
-      // אונליין בלבד — בלי פס-התוקף (הקוביה הכחולה). הוא כלי-אימות מול אדם שמסתכל על המסך,
-      // ובקנייה אונליין אין מול מי להציג אותו.
-      const showValidity = false;
-      areaHtml += `
+      } else {
+        // אונליין בלבד — בלי פס-התוקף (הקוביה הכחולה). הוא כלי-אימות מול אדם שמסתכל על המסך,
+        // ובקנייה אונליין אין מול מי להציג אותו.
+        areaHtml += `
         <div class="redeem-card">
+          ${unitTag}
           <div class="redeem-top">
             <div class="redeem-text">
               <div class="redeem-title">מימוש באתר</div>
@@ -3021,10 +3113,11 @@ function openBiz(id) {
             </div>
             <div class="redeem-icon-sq">${SHEET_ICONS.tag}</div>
           </div>
-          <button class="redeem-toggle-btn" onclick="sRevealCouponPanel(this,'${b.id}','${b.coupon}',${showValidity},'${siteUrl}')">פתיחה</button>
-          <div id="sCouponReveal-${b.id}" style="display:none;"></div>
+          <button class="redeem-toggle-btn" data-cta="לקבלת קוד הקופון" onclick="sRevealCouponPanel(this,'${uid}',${i},false)">לקבלת קוד הקופון</button>
+          <div id="sCouponReveal-${uid}" style="display:none;"></div>
         </div>`;
-    }
+      }
+    });
     area.innerHTML = areaHtml;
   } else {
     document.getElementById('sheetBenefitWrap').style.display = 'none';
@@ -3261,6 +3354,7 @@ const COUPON_COPY_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="n
 const COUPON_DONE_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 function sCopyCoupon(btn, code) {
   navigator.clipboard?.writeText(code).catch(()=>{});
+  sLogRedeem('couponCopy');
   if (btn.classList.contains('copied')) return;
   btn.classList.add('copied');
   btn.innerHTML = COUPON_DONE_SVG;
@@ -3297,33 +3391,52 @@ function sCouponBoxHtml(code, siteUrl, compact) {
           <div class="coupon-code2 ltr-value">${code}</div>
           <button class="coupon-copy-icon" title="העתקת הקוד" aria-label="העתקת הקוד" onclick="sCopyCoupon(this,'${code}')">${COUPON_COPY_SVG}</button>
         </div>
-        ${siteUrl ? `<a class="coupon-site-btn" href="${siteUrl}" target="_blank" rel="noopener">${SHEET_ICONS.globe}<span>מעבר לאתר</span></a>` : ''}
+        ${siteUrl ? `<a class="coupon-site-btn" href="${siteUrl}" target="_blank" rel="noopener" onclick="sLogRedeem('siteClick')">${SHEET_ICONS.globe}<span>לרכישה באתר</span></a>` : ''}
       </div>`;
 }
-// מדידת חשיפות-קופון — נשמרה מהגרסה הקודמת, פתיחת הפאנל היא הפעולה הנספרת
+// מדידת חשיפות-קופון — מונה מקומי היסטורי. ⚠️ הוא נשמר ב-localStorage של המכשיר בלבד ו**אף אחד
+// לא קורא אותו** (אין צרכן בשום קובץ). הוא נשאר כאן רק כדי לא לשנות התנהגות קיימת; המדידה
+// האמיתית היא sLogRedeem למטה, שנכתבת ל-Firestore ומוצגת במרכז-הנתונים.
 function sBumpCouponReveal(id) {
   const key = '_hb_couponReveals_' + id;
   localStorage.setItem(key, parseInt(localStorage.getItem(key) || 0) + 1);
 }
 
+// ── §275 — מדידת מימוש-הטבה ────────────────────────────────────────────────────────────────
+// נמדדת ה**פעולה** ולא "איזה כרטיס נפתח": העתקת-קוד / מעבר-לאתר / פתיחת-תעודה / יצירת-קשר.
+// זה סיגנל עדין יותר מפתיחת-כרטיס, והוא עובד גם כשההטבה מאוחדת (§217) — בדיוק מה שפיצול
+// הכרטיס היה אמור לתת ולא נתן. נכתב ל-collection 'events' הקיים (type='benefitRedeem'),
+// לא לשדה חדש על מסמך העסק — כך שאין נתיב-כתיבה חדש לאוהדים ואין שינוי בהרשאות על businesses.
+// _openBizId הוא העסק שהגיליון שלו פתוח כרגע (נקבע ב-openBiz), אותו מקור בדיוק כמו bizContact.
+function sLogRedeem(channel) {
+  if (!_openBizId) return;
+  window.logEvent && window.logEvent('benefitRedeem', { bizId: _openBizId, channel });
+}
+window.sLogRedeem = sLogRedeem;
+
 // כרטיס-מימוש אונליין בלבד: קוד + כפתור לאתר. פס-התוקף מוצג כאן רק אם העסק הוא *גם* פיזי/
 // נותן-שירות (showValidity) — בקנייה אונליין אין מול מי להציג אותו.
-function sRevealCouponPanel(btn, id, code, showValidity, siteUrl) {
-  const box = document.getElementById('sCouponReveal-' + id);
-  if (!box) return;
+// §272 — uid הוא `${bizId}-${unitIdx}` (יחידת-מימוש אחת), ו-unitIdx הוא האינדקס ב-
+// window._hbRedeemUnits. הקוד/הכתובת נקראים משם ולא מוזרקים ל-onclick — קוד עם גרש היה
+// שובר את המאפיין ומשתיק את הכפתור בשקט.
+function sRevealCouponPanel(btn, uid, unitIdx, showValidity) {
+  const box = document.getElementById('sCouponReveal-' + uid);
+  const u = (window._hbRedeemUnits || [])[unitIdx];
+  if (!box || !u) return;
 
   const isOpen = btn.classList.contains('is-open');
   if (isOpen) {
     box.style.display = 'none';
     btn.classList.remove('is-open');
-    btn.textContent = 'פתיחה';
+    btn.textContent = btn.dataset.cta || 'פתיחה';
     return;
   }
 
   if (!box.innerHTML) {
-    sBumpCouponReveal(id);
+    sBumpCouponReveal(u.bizId);
+    sLogRedeem('couponReveal');
     const bizName = document.getElementById('sheetName').textContent || '';
-    box.innerHTML = sCouponBoxHtml(code, siteUrl) + (showValidity ? window.validityStripHtml(bizName) : '');
+    box.innerHTML = sCouponBoxHtml(u.code, u.site) + (showValidity ? window.validityStripHtml(bizName) : '');
     updateLiveClocks();
   }
 
@@ -3337,24 +3450,29 @@ function sRevealCouponPanel(btn, id, code, showValidity, siteUrl) {
 // כרטיסים נפרדים — כאילו מדובר בשתי הטבות. עכשיו כרטיס אחד שפותח את שניהם יחד: קוד הקופון
 // לקנייה באתר, ומתחתיו תעודת-החבר + פס-התוקף להצגה בחנות. הטבות *שונות* ממשיכות להיות
 // רשומות בנפרד (additionalDiscounts) — ההבחנה היא בין ערוצי-מימוש להטבות נפרדות.
-async function sToggleCombinedRedeem(btn, id, code, siteUrl) {
-  const wrap = document.getElementById('sCombinedReveal-' + id);
-  if (!wrap) return;
+async function sToggleCombinedRedeem(btn, uid, unitIdx) {
+  const wrap = document.getElementById('sCombinedReveal-' + uid);
+  const u = (window._hbRedeemUnits || [])[unitIdx];
+  if (!wrap || !u) return;
 
   if (btn.classList.contains('is-open')) {
     wrap.style.display = 'none';
     btn.classList.remove('is-open');
-    btn.textContent = 'פתיחה';
+    btn.textContent = btn.dataset.cta || 'פתיחה';
     return;
   }
 
-  const couponBox = document.getElementById('sCouponReveal-' + id);
+  const couponBox = document.getElementById('sCouponReveal-' + uid);
   if (couponBox && !couponBox.innerHTML) {
-    sBumpCouponReveal(id);
-    couponBox.innerHTML = sCouponBoxHtml(code, siteUrl, true);
+    sBumpCouponReveal(u.bizId);
+    couponBox.innerHTML = sCouponBoxHtml(u.code, u.site, true);
   }
+  // כרטיס מאוחד — **שניהם** נחשפים בלחיצה אחת, ולכן שתי הפעולות נרשמות. ההבחנה בין
+  // "הלך לאתר" ל"הציג בחנות" נגזרת מהפעולה הבאה (couponCopy/siteClick), לא מהפתיחה.
+  sLogRedeem('couponReveal');
+  sLogRedeem('cardOpen');
   // תעודת החבר נטענת מ-Firestore — אותו רנדרר בדיוק של הכרטיס הפיזי, בלי שכפול היגיון
-  const cardBox = document.getElementById('sheetMemberCard');
+  const cardBox = document.getElementById('sheetMemberCard-' + uid);
   if (cardBox && !cardBox.innerHTML && window.renderMemberCard) {
     await window.renderMemberCard(cardBox);
   }
@@ -4092,19 +4210,27 @@ async function loadMemberCardData() {
   return _memberCardData;
 }
 
-window.toggleMemberCard = async function(btn) {
-  const box = document.getElementById('sheetMemberCard');
-  if (!box) return;
+window.toggleMemberCard = async function(btn, uid) {
+  // §271 — מה שנפתח/נסגר הוא המסגרת המקווקוות (sheetMemberBox), שמכילה גם את התווית וגם
+  // (אצל נותן שירות) את כפתורי יצירת-הקשר. sheetMemberCard נשאר היעד של renderMemberCard בלבד.
+  // §272 — uid מזהה את יחידת-המימוש (הטבה בודדת). ה-fallback לשמות בלי-סיומת נשמר כדי שדף
+  // שלא עודכן / קריאה ישנה לא ייפלו בשקט.
+  const sfx = uid ? '-' + uid : '';
+  const inner = document.getElementById('sheetMemberCard' + sfx) || document.getElementById('sheetMemberCard');
+  const box = document.getElementById('sheetMemberBox' + sfx) || document.getElementById('sheetMemberBox') || inner;
+  if (!box || !inner) return;
 
   const isOpen = btn.classList.contains('is-open');
   if (isOpen) {
     box.style.display = 'none';
     btn.classList.remove('is-open');
-    btn.textContent = 'פתיחה';
+    btn.textContent = btn.dataset.cta || 'פתיחה';
     return;
   }
 
-  await window.renderMemberCard(box);
+  await window.renderMemberCard(inner);
+  // §275 — הפונקציה הזו חיה ב-<script type="module">, ולכן sLogRedeem נגיש דרך window בלבד
+  window.sLogRedeem && window.sLogRedeem('cardOpen');
 
   box.style.display = 'block';
   btn.classList.add('is-open');

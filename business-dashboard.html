@@ -1313,6 +1313,14 @@
       border-radius: 12px; padding: 11px; margin-top: 14px;
     }
     .pv-redeem-card + .pv-redeem-card { margin-top: 8px; }
+    /* §272 — תווית שאומרת לאיזו הטבה שייך הכרטיס, מוצגת רק כשיש יותר מהטבה אחת.
+       מקבילה ל-.redeem-benefit-tag ב-home.html, בקנה-מידה של התצוגה-המקדימה. */
+    .pv-redeem-benefit-tag {
+      font-size: 10px; font-weight: 700; color: var(--text-sm);
+      margin-bottom: 8px; padding-bottom: 7px; border-bottom: 1px solid var(--border);
+      line-height: 1.45;
+    }
+    .pv-redeem-benefit-tag b { color: var(--text); font-weight: 800; }
     .pv-redeem-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
     .pv-redeem-title { font-size: 12.5px; font-weight: 800; color: var(--text); }
     .pv-redeem-desc { font-size: 11px; font-weight: 500; color: var(--text-sm); margin-top: 3px; line-height: 1.45; }
@@ -3859,33 +3867,64 @@ function renderPreview(stateOverride, flashZone) {
   // מימוש ההטבה — כרטיס לכל אופן-מימוש שההטבה הראשית *בפועל* נבחרה עבורו (w.discountTypes, ניתן
   // לבחור כמה יחד), זהה במבנה ל-home.html (.redeem-card). תמיד-סגור בפריוויו (להמחשה בלבד, לא
   // אינטראקטיבי — אין כאן תעודת-חבר/קופון אמיתיים להציג)
-  const dTypes2 = w.discountTypes || [];
+  // §272 — כרטיס-מימוש **לכל הטבה**, לא רק לראשית — זהה במבנה ל-`openBiz()` ב-home.html.
+  // ⚠️ כשמשנים ענף כאן — לשנות גם שם. אין מודול משותף; ההיגיון משוכפל, ובדיוק הכפילות הזו
+  // יצרה את הפער של §271 (בעל-עסק ראה שני כרטיסים במקום אחד מאוחד).
+  //
+  // §275 — ערוצי-המימוש **לתצוגה** מחושבים כאן ב-pvRedeemTypes, שזהה בדיוק ל-
+  // computeDiscountTypesLive ב-home.html, כולל הענף שחסר ב-computeDiscountTypes המקומית
+  // ("יש קוד קופון ואין discountRedeemMode → אונליין"). זה סוגר את פער-התצוגה של §271 בלי
+  // לגעת ב-computeDiscountTypes עצמה, שמזינה גם **נתיבי-כתיבה** ל-Firestore (~3722, ~5206).
+  const pvRedeemTypes = (bizTypes, hasCode, redeemMode) => {
+    const arr = Array.isArray(redeemMode) ? redeemMode : (redeemMode ? [redeemMode] : []);
+    if (arr.length) return arr;
+    if (hasCode) return ['online'];
+    return [((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
+  };
+  const pvIsProOnly = isPro && !isPhysical;
+  const pvHasBenefit = !!(w.hasDiscount && w.discountText);
+  const pvExtras = (w.additionalDiscounts || []).filter(d => d && d.text);
+  const pvUnits = !pvHasBenefit ? [] : [
+    { text: w.discountTextFull || w.discountText, code: w.discountCode || '',
+      types: pvRedeemTypes(w.bizTypes, !!w.discountCode, w.discountRedeemMode) },
+    ...pvExtras.map(d => ({ text: d.text, code: d.code || '',
+      types: pvRedeemTypes(w.bizTypes, !!d.code, d.redeemMode) })),
+  ];
+  const pvMulti = pvUnits.length > 1;
   let redeemHtml = '';
-  if (w.hasDiscount && w.discountText && (isPhysical || isPro) && (dTypes2.includes('physical') || dTypes2.includes('sale'))) {
-    const isProOnly = isPro && !isPhysical;
-    const title = isProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות';
-    const desc = (isPhysical && isPro) ? 'הציגו את תעודת החבר בקופה או מול נותן השירות, לאימות ההטבה'
-      : isProOnly ? 'הציגו את תעודת החבר בפגישה או בשיחה עם נותן השירות'
-      : 'הציגו את תעודת החבר בקופה, הצוות יאשר את ההטבה';
+  pvUnits.forEach((u, i) => {
+    const hasStore = (isPhysical || isPro) && (u.types.includes('physical') || u.types.includes('sale'));
+    const hasOnline = u.types.includes('online') && !!u.code;
+    if (!hasStore && !hasOnline) return;
+    const tag = pvMulti
+      ? `<div class="pv-redeem-benefit-tag">${i === 0 ? 'ההטבה הראשית' : 'הטבה נוספת'} · <b>${esc(u.text)}</b></div>`
+      : '';
+    let title, desc, icon, cta;
+    if (hasStore && hasOnline) {
+      title = 'מימוש ההטבה';
+      desc = `אותה הטבה בשתי הדרכים — קוד קופון לקנייה באתר, ותעודת החבר ${pvIsProOnly ? 'מול נותן השירות' : 'בחנות'}`;
+      icon = PV_ICONS.tag; cta = 'למימוש ההטבה';
+    } else if (hasStore) {
+      title = pvIsProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות';
+      desc = (isPhysical && isPro) ? 'הציגו את תעודת החבר בקופה או מול נותן השירות, לאימות ההטבה'
+        : pvIsProOnly ? 'הציגו את תעודת החבר בפגישה או בשיחה עם נותן השירות'
+        : 'הציגו את תעודת החבר בקופה, הצוות יאשר את ההטבה';
+      icon = PV_ICONS.lock; cta = 'לקבלת ההטבה';
+    } else {
+      title = 'מימוש באתר';
+      desc = 'קוד קופון לשימוש בקנייה אונליין';
+      icon = PV_ICONS.tag; cta = 'לקבלת קוד הקופון';
+    }
     redeemHtml += `
         <div class="pv-redeem-card${fz('discount')}">
+          ${tag}
           <div class="pv-redeem-top">
             <div><div class="pv-redeem-title">${title}</div><div class="pv-redeem-desc">${desc}</div></div>
-            <div class="pv-redeem-icon-sq">${PV_ICONS.lock}</div>
+            <div class="pv-redeem-icon-sq">${icon}</div>
           </div>
-          <div class="pv-redeem-btn">פתיחה</div>
+          <div class="pv-redeem-btn">${cta}</div>
         </div>`;
-  }
-  if (w.hasDiscount && dTypes2.includes('online') && w.discountCode) {
-    redeemHtml += `
-        <div class="pv-redeem-card${fz('discount')}">
-          <div class="pv-redeem-top">
-            <div><div class="pv-redeem-title">מימוש באתר</div><div class="pv-redeem-desc">קוד קופון לשימוש בקנייה אונליין</div></div>
-            <div class="pv-redeem-icon-sq">${PV_ICONS.tag}</div>
-          </div>
-          <div class="pv-redeem-btn">פתיחה</div>
-        </div>`;
-  }
+  });
 
   const discRedeemText = computeDiscountTypes(types, w.discountRedeemMode).map(t =>DISCOUNT_TYPE_LABELS_PLAIN[t]).filter(Boolean).join(' · ');
 

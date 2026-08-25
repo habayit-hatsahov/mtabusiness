@@ -1528,7 +1528,16 @@ body {
 
 /* מרכז נתונים — טאב "עסקים" בלבד, נתון-אמת בלבד (פריט 4 האחרון, §3 במפרט) */
 .data-tbl { background: var(--card-bg); border: none; border-radius: 14px 14px 0 0; box-shadow: 0 1px 3px rgba(16,24,40,.09); overflow: hidden; }
-.data-row { display: grid; grid-template-columns: minmax(150px,1.3fr) 90px 90px 120px minmax(160px,1fr); gap: 10px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--border-md); font-size: 12.5px; }
+/* §275 — נוספה עמודת "מימושים" (העמודה הרביעית). היא רחבה מהשאר כי מתחת למספר יושב פירוק
+   לפי ערוץ ("העתיקו קוד 12 · עברו לאתר 5"), ו-align-items עבר ל-start כדי שהפירוק לא ידחוף
+   את שאר העמודות למרכז. */
+.data-row { display: grid; grid-template-columns: minmax(150px,1.3fr) 80px 80px minmax(150px,1.1fr) 110px minmax(140px,1fr); gap: 10px; align-items: start; padding: 12px 20px; border-top: 1px solid var(--border-md); font-size: 12.5px; }
+.data-redeem-brk { font-size: 11px; color: var(--text-muted); font-weight: 500; margin-top: 3px; line-height: 1.5; }
+/* שורת סיכום-הערוצים מעל הטבלה — סה"כ לכל הפלטפורמה, לא פר-עסק */
+.redeem-kpi-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.redeem-kpi { background: var(--card-bg); border-radius: 12px; box-shadow: 0 1px 3px rgba(16,24,40,.09); padding: 10px 16px; min-width: 104px; }
+.redeem-kpi-num { font-size: 18px; font-weight: 800; color: var(--text); }
+.redeem-kpi-lbl { font-size: 11.5px; color: var(--text-sm); margin-top: 2px; }
 .data-row:first-child { border-top: none; }
 .data-row.data-head { font-size: 11px; font-weight: 800; color: var(--text-sm); background: var(--nav-bg); }
 .data-name { font-weight: 700; }
@@ -4337,7 +4346,41 @@ function heartsCenterHtml() {
 // עמודת "עדכון אחרון" מהדמו הוחלפה ב"באינדקס מאז" (approvedAt||registeredAt) כי אין שדה updatedAt
 // אמיתי לעסק; זה תחליף כן מבחינת המשמעות (זמן-בפועל אמיתי) ולא המצאה. עיגונים מחושבים בזמן-אמת
 // מ-state (כבר טעון מ-Firestore, ר' sectionAnchors) — לא שדה שמור בנפרד.
-let dataSort = 'clicks'; // 'clicks' | 'likes' | 'anchors' | 'newest'
+// ── §275 — מדידת מימוש-הטבה ────────────────────────────────────────────────────────────
+// נטען מ-collection 'events' (type='benefitRedeem') בכניסה למרכז-הנתונים בלבד — **לא** ב-
+// onSnapshot גלובלי: זו קריאה חד-פעמית, והמסך הזה נצפה לעיתים רחוקות. שאילתת שוויון-בודד
+// אינה דורשת אינדקס מורכב.
+// ⚠️ אין כאן אגרגציה בשרת — נספרות רשומות-אירוע גולמיות בצד הלקוח. כשהנפח יגדל צריך לעבור
+// ל-statsDaily (הקולקציה כבר מוגדרת ב-firestore.rules וממתינה ל-Worker).
+const REDEEM_CHANNEL_LABELS = {
+  cardOpen: 'פתחו תעודה', couponReveal: 'חשפו קוד', couponCopy: 'העתיקו קוד',
+  siteClick: 'עברו לאתר', contactWhatsapp: 'פנו בוואטסאפ', contactPhone: 'התקשרו',
+};
+let redeemStats = null;      // { [bizId]: { total, ch: {channel: n} } } | null = טרם נטען
+let redeemStatsError = null;
+async function loadRedeemStats() {
+  if (redeemStats || redeemStatsError) return;
+  try {
+    const snap = await getDocs(query(collection(db, 'events'), where('type', '==', 'benefitRedeem')));
+    const acc = {};
+    snap.forEach(d => {
+      const e = d.data();
+      if (!e.bizId) return;
+      const row = acc[e.bizId] || (acc[e.bizId] = { total: 0, ch: {} });
+      row.total++;
+      const c = e.channel || 'unknown';
+      row.ch[c] = (row.ch[c] || 0) + 1;
+    });
+    redeemStats = acc;
+  } catch (err) {
+    console.error('loadRedeemStats failed:', err);
+    redeemStatsError = err?.code || err?.message || 'שגיאה לא ידועה';
+  }
+  renderMain();
+}
+const redeemFor = id => (redeemStats && redeemStats[id]) || { total: 0, ch: {} };
+
+let dataSort = 'clicks'; // 'clicks' | 'likes' | 'anchors' | 'newest' | 'redeem'
 let dataSearch = '';
 let dataCategoryFilter = 'all';
 window.setDataSort = function(v) { dataSort = v; renderMain(); };
@@ -4369,12 +4412,19 @@ function dataCenterHtml() {
     }
     return true;
   });
-  const rows = filtered.map(b => ({ b, anchors: anchoredForBiz(b.id) })).sort((x, y) => {
+  const rows = filtered.map(b => ({ b, anchors: anchoredForBiz(b.id), redeem: redeemFor(b.id) })).sort((x, y) => {
     if (dataSort === 'likes') return (y.b.likesOverride ?? y.b.likes ?? 0) - (x.b.likesOverride ?? x.b.likes ?? 0);
     if (dataSort === 'anchors') return y.anchors.total - x.anchors.total;
     if (dataSort === 'newest') return y.b.registeredAt - x.b.registeredAt;
+    if (dataSort === 'redeem') return y.redeem.total - x.redeem.total;
     return (y.b.clicks || 0) - (x.b.clicks || 0);
   });
+  // §275 — סיכום מימושים לכל הערוצים יחד, ל-KPI שבראש המסך
+  const redeemTotals = rows.reduce((acc, r) => {
+    acc.total += r.redeem.total;
+    Object.entries(r.redeem.ch).forEach(([c, n]) => { acc.ch[c] = (acc.ch[c] || 0) + n; });
+    return acc;
+  }, { total: 0, ch: {} });
   return `
     <div class="msg-content-head">
       <div style="flex:1;min-width:230px">
@@ -4387,8 +4437,16 @@ function dataCenterHtml() {
         <div><div class="msg-kpi-num">${totalClicks.toLocaleString('he-IL')}</div><div class="msg-kpi-label">סה״כ לחיצות</div></div>
         <div class="msg-kpi-sep"></div>
         <div><div class="msg-kpi-num">${totalHearts.toLocaleString('he-IL')}</div><div class="msg-kpi-label">סה״כ לבבות</div></div>
+        <div class="msg-kpi-sep"></div>
+        <div><div class="msg-kpi-num">${redeemStats ? redeemTotals.total.toLocaleString('he-IL') : '—'}</div><div class="msg-kpi-label">פעולות מימוש</div></div>
       </div>
     </div>
+    ${redeemStatsError
+      ? `<div class="placeholder-note">לא ניתן לטעון את נתוני המימוש: ${esc(redeemStatsError)}</div>`
+      : !redeemStats
+        ? `<div class="placeholder-note">טוען נתוני מימוש…</div>`
+        : `<div class="redeem-kpi-row">${Object.entries(REDEEM_CHANNEL_LABELS).map(([k, lbl]) =>
+            `<div class="redeem-kpi"><div class="redeem-kpi-num">${(redeemTotals.ch[k] || 0).toLocaleString('he-IL')}</div><div class="redeem-kpi-lbl">${lbl}</div></div>`).join('')}</div>`}
     <div class="filter-toolbar-row" style="margin-bottom:10px">
       <input class="filter-search-input" type="search" id="dataSearchInput" placeholder="🔍 חיפוש עסק או קטגוריה" value="${esc(dataSearch)}" oninput="filterDataRows(this.value)">
       <select class="filter-select" onchange="setDataCategoryFilter(this.value)">
@@ -4400,15 +4458,16 @@ function dataCenterHtml() {
         <option value="likes" ${dataSort==='likes'?'selected':''}>מיון: הכי הרבה לבבות</option>
         <option value="anchors" ${dataSort==='anchors'?'selected':''}>מיון: הכי הרבה מיקומים מעוגנים</option>
         <option value="newest" ${dataSort==='newest'?'selected':''}>מיון: הכי חדשים</option>
+        <option value="redeem" ${dataSort==='redeem'?'selected':''}>מיון: הכי הרבה מימושים</option>
       </select>
       <div style="flex:1"></div>
       <div style="font-size:12px;color:var(--text-sm)">מציג ${rows.length} מתוך ${approved.length} עסקים באינדקס</div>
     </div>
     <div class="data-tbl">
       <div class="data-row data-head">
-        <div>עסק</div><div>לחיצות</div><div>לבבות</div><div>באינדקס מאז</div><div>מיקומים מעוגנים</div>
+        <div>עסק</div><div>לחיצות</div><div>לבבות</div><div>מימושים</div><div>באינדקס מאז</div><div>מיקומים מעוגנים</div>
       </div>
-      ${rows.map(({ b, anchors }) => {
+      ${rows.map(({ b, anchors, redeem }) => {
         const catLabel = (CATEGORIES.find(c => c.key === b.catKey) || {}).label || '';
         const shownLikes = b.likesOverride ?? b.likes ?? 0;
         return `
@@ -4416,6 +4475,10 @@ function dataCenterHtml() {
           <div><div class="data-name">${esc(b.name)}</div><div class="data-cat">${esc(catLabel)}</div></div>
           <div class="data-val strong">${(b.clicks || 0).toLocaleString('he-IL')}</div>
           <div class="data-val">${shownLikes.toLocaleString('he-IL')}</div>
+          <div class="data-val${redeem.total ? ' strong' : ''}">${redeemStats ? redeem.total.toLocaleString('he-IL') : '—'}${
+            redeem.total ? `<div class="data-redeem-brk">${Object.entries(redeem.ch)
+              .sort((a, c) => c[1] - a[1])
+              .map(([k, n]) => `${REDEEM_CHANNEL_LABELS[k] || k} ${n}`).join(' · ')}</div>` : ''}</div>
           <div class="data-val">${fmtDate(b.approvedAt || b.registeredAt)}</div>
           <div class="data-val">${anchors.label}</div>
         </div>`;
@@ -5507,19 +5570,22 @@ function bizFullDetailHtml(id, opts) {
               (b.hasDiscount && !b.discountFullText && (b.discountText || b.aiShortTitle)
                 ? `<div class="step-field-hint" style="font-size:11.5px;color:var(--warn,#a35b00);margin-bottom:4px">⚠️ אין תיאור מלא שמור לעסק הזה — יש רק כותרת קצרה בכרטיס: "${esc(b.discountText || b.aiShortTitle)}". מלאו כאן תיאור מלא אמיתי (לא להעתיק את הקצר).</div>`
                 : '')
-              + `<textarea id="edit_discount_${b.id}" rows="3" placeholder="פרטי ההטבה לחברי המועדון...">${b.discountFullText||''}</textarea>`
+              // ⚠️ esc() חובה: תוכן-הטבה שמכיל < או & נבלע ע"י פרסר-ה-HTML, התיבה נפתחת עם *פחות*
+              // ממה ששמור, ואז "שמירת השלב" כותבת את החסר בחזרה ל-Firestore ומוחקת תוכן אמיתי
+              // לצמיתות — בעוד שהכותרת שורדת (היא מגיעה מ-b.aiShortTitle ולא מה-DOM). ר' §273.
+              + `<textarea id="edit_discount_${b.id}" rows="3" placeholder="פרטי ההטבה לחברי המועדון...">${esc(b.discountFullText||'')}</textarea>`
             , true)}
             <div class="step-field full"><div class="step-field-h">מקום מימוש — הטבה 1 (ניתן לבחור כמה)</div><div>${redeemChecks('1', b.discountRedeemMode)}</div>${couponWrap('1', b.discountCode, toRedeemArr(b.discountRedeemMode).includes('online'))}</div>
           </div>
           <details class="edit-optional" ${(b.additionalDiscounts && b.additionalDiscounts[0]) ? 'open' : ''} style="margin-top:14px">
             <summary>+ הוסף עוד הטבה (הטבה 2)</summary>
-            <textarea id="edit_disc2_text_${b.id}" rows="2" placeholder="טקסט הטבה 2...">${d2.text}</textarea>
+            <textarea id="edit_disc2_text_${b.id}" rows="2" placeholder="טקסט הטבה 2...">${esc(d2.text)}</textarea>
             <div style="margin-top:8px">${redeemChecks('2', d2.redeemMode)}</div>
             ${couponWrap('2', d2.code, toRedeemArr(d2.redeemMode).includes('online'))}
           </details>
           <details class="edit-optional" ${(b.additionalDiscounts && b.additionalDiscounts[1]) ? 'open' : ''}>
             <summary>+ הוסף עוד הטבה (הטבה 3)</summary>
-            <textarea id="edit_disc3_text_${b.id}" rows="2" placeholder="טקסט הטבה 3...">${d3.text}</textarea>
+            <textarea id="edit_disc3_text_${b.id}" rows="2" placeholder="טקסט הטבה 3...">${esc(d3.text)}</textarea>
             <div style="margin-top:8px">${redeemChecks('3', d3.redeemMode)}</div>
             ${couponWrap('3', d3.code, toRedeemArr(d3.redeemMode).includes('online'))}
           </details>
@@ -11943,6 +12009,10 @@ function renderMainInner() {
   }
   if (activeTab === DATA_KEY) {
     wrap.innerHTML = dataCenterHtml();
+    // §275 — טעינה עצלה של נתוני-המימוש: רק כשנכנסים למסך הזה, ופעם אחת בלבד. loadRedeemStats
+    // קוראת ל-renderMain בסיום, ולכן היא מצוירת שוב עם הנתונים; היא יוצאת מיד אם כבר נטען,
+    // כך שאין לולאת-רינדור.
+    loadRedeemStats();
     return;
   }
   const tab = tabMeta(activeTab);
