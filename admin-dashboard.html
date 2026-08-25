@@ -4352,9 +4352,15 @@ function heartsCenterHtml() {
 // אינה דורשת אינדקס מורכב.
 // ⚠️ אין כאן אגרגציה בשרת — נספרות רשומות-אירוע גולמיות בצד הלקוח. כשהנפח יגדל צריך לעבור
 // ל-statsDaily (הקולקציה כבר מוגדרת ב-firestore.rules וממתינה ל-Worker).
-const REDEEM_CHANNEL_LABELS = {
-  cardOpen: 'פתחו תעודה', couponReveal: 'חשפו קוד', couponCopy: 'העתיקו קוד',
-  siteClick: 'עברו לאתר', contactWhatsapp: 'פנו בוואטסאפ', contactPhone: 'התקשרו',
+// §276 — 'open' = פתיחת כרטיס-מימוש, **אחד ללחיצה**. שאר הערוצים הם ה*פעולות* שנעשו אחרי
+// הפתיחה, והם הסיגנל האמיתי ("כמה באמת הלכו לממש" מול "כמה רק הציצו").
+// cardOpen/couponReveal הם שמות **היסטוריים** מהגרסה הראשונה, שבה פתיחת כרטיס-מאוחד רשמה
+// שתי פעולות ולכן לחיצה אחת נספרה כ-2. הם ממופים ל-open כדי שאירועים ישנים לא ייעלמו —
+// אבל אירוע-מאוחד ישן עדיין תורם 2. אין תיקון-למפרע: events אסורים לעדכון/מחיקה ב-rules.
+const REDEEM_LEGACY_OPEN = { cardOpen: 1, couponReveal: 1 };
+const REDEEM_ACTION_LABELS = {
+  couponCopy: 'העתיקו קוד', siteClick: 'עברו לאתר',
+  contactWhatsapp: 'פנו בוואטסאפ', contactPhone: 'התקשרו',
 };
 let redeemStats = null;      // { [bizId]: { total, ch: {channel: n} } } | null = טרם נטען
 let redeemStatsError = null;
@@ -4366,10 +4372,12 @@ async function loadRedeemStats() {
     snap.forEach(d => {
       const e = d.data();
       if (!e.bizId) return;
-      const row = acc[e.bizId] || (acc[e.bizId] = { total: 0, ch: {} });
-      row.total++;
+      const row = acc[e.bizId] || (acc[e.bizId] = { opens: 0, ch: {} });
       const c = e.channel || 'unknown';
-      row.ch[c] = (row.ch[c] || 0) + 1;
+      // פתיחות נספרות לעמודה הראשית; פעולות-המשך נספרות לפירוק. שתי ספירות נפרדות, כדי
+      // שלחיצה אחת לעולם לא תיראה כשתי פעולות.
+      if (c === 'open' || REDEEM_LEGACY_OPEN[c]) row.opens++;
+      else row.ch[c] = (row.ch[c] || 0) + 1;
     });
     redeemStats = acc;
   } catch (err) {
@@ -4378,7 +4386,7 @@ async function loadRedeemStats() {
   }
   renderMain();
 }
-const redeemFor = id => (redeemStats && redeemStats[id]) || { total: 0, ch: {} };
+const redeemFor = id => (redeemStats && redeemStats[id]) || { opens: 0, ch: {} };
 
 let dataSort = 'clicks'; // 'clicks' | 'likes' | 'anchors' | 'newest' | 'redeem'
 let dataSearch = '';
@@ -4416,15 +4424,15 @@ function dataCenterHtml() {
     if (dataSort === 'likes') return (y.b.likesOverride ?? y.b.likes ?? 0) - (x.b.likesOverride ?? x.b.likes ?? 0);
     if (dataSort === 'anchors') return y.anchors.total - x.anchors.total;
     if (dataSort === 'newest') return y.b.registeredAt - x.b.registeredAt;
-    if (dataSort === 'redeem') return y.redeem.total - x.redeem.total;
+    if (dataSort === 'redeem') return y.redeem.opens - x.redeem.opens;
     return (y.b.clicks || 0) - (x.b.clicks || 0);
   });
-  // §275 — סיכום מימושים לכל הערוצים יחד, ל-KPI שבראש המסך
+  // §275 — סיכום כלל-פלטפורמה ל-KPI שבראש המסך. opens ופעולות נספרים בנפרד (§276).
   const redeemTotals = rows.reduce((acc, r) => {
-    acc.total += r.redeem.total;
+    acc.opens += r.redeem.opens;
     Object.entries(r.redeem.ch).forEach(([c, n]) => { acc.ch[c] = (acc.ch[c] || 0) + n; });
     return acc;
-  }, { total: 0, ch: {} });
+  }, { opens: 0, ch: {} });
   return `
     <div class="msg-content-head">
       <div style="flex:1;min-width:230px">
@@ -4438,14 +4446,14 @@ function dataCenterHtml() {
         <div class="msg-kpi-sep"></div>
         <div><div class="msg-kpi-num">${totalHearts.toLocaleString('he-IL')}</div><div class="msg-kpi-label">סה״כ לבבות</div></div>
         <div class="msg-kpi-sep"></div>
-        <div><div class="msg-kpi-num">${redeemStats ? redeemTotals.total.toLocaleString('he-IL') : '—'}</div><div class="msg-kpi-label">פעולות מימוש</div></div>
+        <div><div class="msg-kpi-num">${redeemStats ? redeemTotals.opens.toLocaleString('he-IL') : '—'}</div><div class="msg-kpi-label">פתיחות מימוש</div></div>
       </div>
     </div>
     ${redeemStatsError
       ? `<div class="placeholder-note">לא ניתן לטעון את נתוני המימוש: ${esc(redeemStatsError)}</div>`
       : !redeemStats
         ? `<div class="placeholder-note">טוען נתוני מימוש…</div>`
-        : `<div class="redeem-kpi-row">${Object.entries(REDEEM_CHANNEL_LABELS).map(([k, lbl]) =>
+        : `<div class="redeem-kpi-row">${Object.entries(REDEEM_ACTION_LABELS).map(([k, lbl]) =>
             `<div class="redeem-kpi"><div class="redeem-kpi-num">${(redeemTotals.ch[k] || 0).toLocaleString('he-IL')}</div><div class="redeem-kpi-lbl">${lbl}</div></div>`).join('')}</div>`}
     <div class="filter-toolbar-row" style="margin-bottom:10px">
       <input class="filter-search-input" type="search" id="dataSearchInput" placeholder="🔍 חיפוש עסק או קטגוריה" value="${esc(dataSearch)}" oninput="filterDataRows(this.value)">
@@ -4465,7 +4473,7 @@ function dataCenterHtml() {
     </div>
     <div class="data-tbl">
       <div class="data-row data-head">
-        <div>עסק</div><div>לחיצות</div><div>לבבות</div><div>מימושים</div><div>באינדקס מאז</div><div>מיקומים מעוגנים</div>
+        <div>עסק</div><div>לחיצות</div><div>לבבות</div><div>פתיחות מימוש</div><div>באינדקס מאז</div><div>מיקומים מעוגנים</div>
       </div>
       ${rows.map(({ b, anchors, redeem }) => {
         const catLabel = (CATEGORIES.find(c => c.key === b.catKey) || {}).label || '';
@@ -4475,10 +4483,10 @@ function dataCenterHtml() {
           <div><div class="data-name">${esc(b.name)}</div><div class="data-cat">${esc(catLabel)}</div></div>
           <div class="data-val strong">${(b.clicks || 0).toLocaleString('he-IL')}</div>
           <div class="data-val">${shownLikes.toLocaleString('he-IL')}</div>
-          <div class="data-val${redeem.total ? ' strong' : ''}">${redeemStats ? redeem.total.toLocaleString('he-IL') : '—'}${
-            redeem.total ? `<div class="data-redeem-brk">${Object.entries(redeem.ch)
+          <div class="data-val${redeem.opens ? ' strong' : ''}">${redeemStats ? redeem.opens.toLocaleString('he-IL') : '—'}${
+            Object.keys(redeem.ch).length ? `<div class="data-redeem-brk">${Object.entries(redeem.ch)
               .sort((a, c) => c[1] - a[1])
-              .map(([k, n]) => `${REDEEM_CHANNEL_LABELS[k] || k} ${n}`).join(' · ')}</div>` : ''}</div>
+              .map(([k, n]) => `${REDEEM_ACTION_LABELS[k] || k} ${n}`).join(' · ')}</div>` : ''}</div>
           <div class="data-val">${fmtDate(b.approvedAt || b.registeredAt)}</div>
           <div class="data-val">${anchors.label}</div>
         </div>`;

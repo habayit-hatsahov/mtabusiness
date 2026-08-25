@@ -3075,12 +3075,12 @@ function openBiz(id) {
           ${unitTag}
           <div class="redeem-top">
             <div class="redeem-text">
-              <div class="redeem-title">מימוש ההטבה</div>
+              <div class="redeem-title">${isProOnly ? 'מימוש מול נותן השירות או באתר' : 'מימוש בחנות או באתר'}</div>
               <div class="redeem-desc">אותה הטבה בשתי הדרכים — קוד קופון לקנייה באתר, ותעודת החבר ${isProOnly ? 'מול נותן השירות' : 'בחנות'}</div>
             </div>
             <div class="redeem-icon-sq">${SHEET_ICONS.tag}</div>
           </div>
-          <button class="redeem-toggle-btn" data-cta="למימוש ההטבה" onclick="sToggleCombinedRedeem(this,'${uid}',${i})">למימוש ההטבה</button>
+          <button class="redeem-toggle-btn" data-cta="לקבלת ההטבה" onclick="sToggleCombinedRedeem(this,'${uid}',${i})">לקבלת ההטבה</button>
           <div id="sCombinedReveal-${uid}" style="display:none;">
             <div id="sCouponReveal-${uid}"></div>
             ${memberBox(false)}
@@ -3434,7 +3434,7 @@ function sRevealCouponPanel(btn, uid, unitIdx, showValidity) {
 
   if (!box.innerHTML) {
     sBumpCouponReveal(u.bizId);
-    sLogRedeem('couponReveal');
+    sLogRedeem('open');
     const bizName = document.getElementById('sheetName').textContent || '';
     box.innerHTML = sCouponBoxHtml(u.code, u.site) + (showValidity ? window.validityStripHtml(bizName) : '');
     updateLiveClocks();
@@ -3467,10 +3467,11 @@ async function sToggleCombinedRedeem(btn, uid, unitIdx) {
     sBumpCouponReveal(u.bizId);
     couponBox.innerHTML = sCouponBoxHtml(u.code, u.site, true);
   }
-  // כרטיס מאוחד — **שניהם** נחשפים בלחיצה אחת, ולכן שתי הפעולות נרשמות. ההבחנה בין
-  // "הלך לאתר" ל"הציג בחנות" נגזרת מהפעולה הבאה (couponCopy/siteClick), לא מהפתיחה.
-  sLogRedeem('couponReveal');
-  sLogRedeem('cardOpen');
+  // §276 — **אירוע פתיחה אחד ללחיצה אחת.** קודם נרשמו כאן שתי פעולות (couponReveal+cardOpen)
+  // כי אכן שניהם נחשפים יחד — אבל בטבלה זה נקרא "2 מימושים" על לחיצה אחת, וזה פשוט לא נכון.
+  // ההבחנה בין "הלך לאתר" ל"הציג בחנות" נגזרת מהפעולה **הבאה** (couponCopy/siteClick), שהיא
+  // ממילא הסיגנל האמיתי — לא מהפתיחה.
+  sLogRedeem('open');
   // תעודת החבר נטענת מ-Firestore — אותו רנדרר בדיוק של הכרטיס הפיזי, בלי שכפול היגיון
   const cardBox = document.getElementById('sheetMemberCard-' + uid);
   if (cardBox && !cardBox.innerHTML && window.renderMemberCard) {
@@ -4230,7 +4231,7 @@ window.toggleMemberCard = async function(btn, uid) {
 
   await window.renderMemberCard(inner);
   // §275 — הפונקציה הזו חיה ב-<script type="module">, ולכן sLogRedeem נגיש דרך window בלבד
-  window.sLogRedeem && window.sLogRedeem('cardOpen');
+  window.sLogRedeem && window.sLogRedeem('open');
 
   box.style.display = 'block';
   btn.classList.add('is-open');
