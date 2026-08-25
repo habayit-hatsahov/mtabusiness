@@ -480,7 +480,6 @@
   function openMenu() {
     document.getElementById('menuOverlay').classList.add('open');
     document.body.style.overflow = 'hidden';
-    updateLocationMenuLabel();
   }
   function closeMenu() {
     document.getElementById('menuOverlay').classList.remove('open');
@@ -554,61 +553,11 @@
     }
   }
 
-  function updateLocationMenuLabel() {
-    const granted = localStorage.getItem('locationAllowed') === 'true';
-    const label = document.getElementById('menuLocationLabel');
-    const icon = document.getElementById('menuLocationIcon');
-    const city = document.getElementById('menuLocationCity');
-    const hint = document.getElementById('menuLocationHint');
-    if (label) label.textContent = granted ? 'עדכון מיקום' : 'הפעלת הרשאת מיקום';
-    if (icon) icon.textContent = granted ? '🔄' : '📍';
-    if (city) city.textContent = granted ? (localStorage.getItem('hb_locationCityName') || '') : '';
-    if (hint) hint.style.display = 'none';
-  }
-
-  function fetchLocationCityName(lat, lng) {
-    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=he`)
-      .then(r => r.json())
-      .then(data => {
-        const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || '';
-        localStorage.setItem('hb_locationCityName', city || 'מיקום נוכחי');
-        updateLocationMenuLabel();
-      })
-      .catch(() => { localStorage.setItem('hb_locationCityName', 'מיקום נוכחי'); updateLocationMenuLabel(); });
-  }
-
-  function showMenuLocationError(labelText, hintText) {
-    const label = document.getElementById('menuLocationLabel');
-    const hint = document.getElementById('menuLocationHint');
-    if (label) label.textContent = labelText;
-    if (hint) { hint.textContent = hintText; hint.style.display = 'block'; }
-    setTimeout(updateLocationMenuLabel, 6000);
-  }
-
-  function requestLocationPermission() {
-    const alreadyGranted = localStorage.getItem('locationAllowed') === 'true';
-    const label = document.getElementById('menuLocationLabel');
-    if (label) label.textContent = 'מאתר מיקום...';
-    navigator.geolocation?.getCurrentPosition(
-      pos => {
-        localStorage.setItem('locationAllowed', 'true');
-        if (alreadyGranted) fetchLocationCityName(pos.coords.latitude, pos.coords.longitude);
-        else location.href = 'home.html#near';
-      },
-      err => {
-        localStorage.setItem('locationAllowed', 'false');
-        if (err && err.code === 1) showMenuLocationError('🔒 הדפדפן חוסם מיקום', 'לחצו על סמל המנעול ליד שורת הכתובת, אשרו מיקום לאתר, ונסו שוב');
-        else showMenuLocationError('⚠️ המיקום נכשל', 'נסו שוב בעוד רגע');
-      }
-    );
-  }
-
   window.openMenu               = openMenu;
   window.closeMenu              = closeMenu;
   window.openContactSheet       = openContactSheet;
   window.closeContactSheet      = closeContactSheet;
   window.copyContactEmail       = copyContactEmail;
-  window.requestLocationPermission = requestLocationPermission;
   window.shareApp               = shareApp;
   window.shareMyBiz             = shareMyBiz;
   window.closeShareSheet        = closeShareSheet;
@@ -749,16 +698,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/></svg>
       </span>
       <span class="menu-item-label">שתפו את העסק שלכם עם חברים</span>
-    </button>
-    <button class="menu-item" onclick="requestLocationPermission()">
-      <span class="menu-item-icon" id="menuLocationIcon">📍</span>
-      <span style="display:flex; flex-direction:column; gap:2px; min-width:0;">
-        <span style="display:flex; align-items:center; gap:6px;">
-          <span class="menu-item-label" id="menuLocationLabel">הפעלת הרשאת מיקום</span>
-          <span id="menuLocationCity" style="font-size:12px; color:var(--accent); font-weight:600;"></span>
-        </span>
-        <span id="menuLocationHint" style="display:none; font-size:11px; font-weight:500; color:var(--text-muted); line-height:1.4;"></span>
-      </span>
     </button>
   </div>
   <a class="menu-promo" href="https://instagram.com/Yellowzone.mta" target="_blank">

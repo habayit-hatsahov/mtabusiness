@@ -1594,33 +1594,6 @@ document.getElementById('catPills').insertAdjacentHTML('beforeend', window.CATEG
     <div class="cards-scroll" id="onlineBizScroll"></div>
   </div>
 
-  <div class="section" id="nearSection" style="display:none">
-    <div class="section-header">
-      <div class="section-title">קרוב אליך</div>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <div id="nearLocationTag" style="display:none; align-items:center; gap:5px; background:var(--surface); border:1px solid rgba(255,222,0,0.25); border-radius:20px; padding:4px 10px; cursor:pointer;" onclick="changeLocation()">
-          <span style="font-size:11px;">📍</span>
-          <span id="nearLocationName" style="font-size:12px; color:var(--accent); font-weight:600;"></span>
-          <span id="nearLocationAction" style="font-size:10px; color:rgba(var(--fg-rgb),0.35);">עדכון מיקום</span>
-        </div>
-        <a class="see-all" onclick="filterCat('near',null)">הכל<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></a>
-        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,1)" aria-label="הקודם"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
-        <button class="scroll-arrow-btn" onclick="scrollCardsRow(this,-1)" aria-label="הבא"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></button>
-      </div>
-    </div>
-    <div class="cards-scroll" id="nearBizScroll"></div>
-    <div id="nearBizEmpty" style="display:none; padding: 0 16px;">
-      <div style="background:var(--surface-2); border:1px solid rgba(255,222,0,0.2); border-radius:12px; padding:14px 16px; display:flex; align-items:center; gap:10px;">
-        <span style="font-size:20px;">📍</span>
-        <div style="flex:1;">
-          <div id="nearEmptyTitle" style="color:var(--text); font-size:13px; font-weight:700;">אפשר מיקום לראות עסקים קרובים</div>
-          <div id="nearEmptySub" style="color:rgba(var(--fg-rgb),0.45); font-size:12px; margin-top:2px;">נראה לך עסקים ממוינים לפי מרחק ממך</div>
-        </div>
-        <button id="nearEmptyBtn" onclick="requestOrRefreshLocation(false)" style="background:#FFDE00;color:#0f1524;border:none;border-radius:20px;padding:7px 14px;font-family:'Rubik',sans-serif;font-size:12px;font-weight:900;cursor:pointer;white-space:nowrap;flex-shrink:0;">אפשר מיקום</button>
-      </div>
-    </div>
-  </div>
-
   <div class="section">
     <div class="section-header">
       <div class="section-title">כל העסקים</div>
@@ -1654,7 +1627,6 @@ document.getElementById('catPills').insertAdjacentHTML('beforeend', window.CATEG
 <script>
 // ── DATA ────────────────────────────────────────────────────────────────────
 let businesses = [];
-let lastNearBusinesses = null;
 // עיגוני סקשנים/קטגוריות ידניים (settings/sectionAnchors) — נטען פעם אחת ב-loadSectionAnchors
 // (למטה, קרוב ל-loadFirebaseData), לא onSnapshot: אין צורך ברי-אקטיביות מיידית לביקור בודד,
 // זהה ברוח לעירבוב היומי שגם הוא מחושב פעם אחת לטעינה. {} = עדיין לא נטען / אין עיגונים בכלל.
@@ -1694,7 +1666,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // isPreview=true — רינדור מיידי מ-cache מקומי (ר' ה-module script), רק מציג כרטיסים.
-// פעולות חד-פעמיות (מיקום/גלילה) ממתינות לנתונים האמיתיים כדי לא לרוץ פעמיים.
+// פעולות חד-פעמיות (פתיחת עסק מקישור-שיתוף) ממתינות לנתונים האמיתיים כדי לא לרוץ פעמיים.
 window.loadFirebaseData = function(data, isPreview) {
   businesses = data;
   renderSections();
@@ -1702,7 +1674,6 @@ window.loadFirebaseData = function(data, isPreview) {
   if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey);
   if (isPreview) return;
   refreshSheetIfOpen();
-  initLocation();
   // קישור-שיתוף לעסק בודד (?biz=<id>, ר' shareBiz) — פותח את העסק אוטומטית בכניסה, פעם אחת
   // בלבד (לא בכל רענון-נתונים חי, אחרת סגירה ידנית של הגיליון תיפתח מחדש עם ה-snapshot הבא).
   if (!_sharedBizOpened) {
@@ -1713,9 +1684,6 @@ window.loadFirebaseData = function(data, isPreview) {
       ? businesses.find(b => b.id === sharedBizParam || slugify(b.name) === sharedBizParam)
       : null;
     if (sharedBiz) openBiz(sharedBiz.id);
-  }
-  if (location.hash === '#near') {
-    document.getElementById('nearBizScroll')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 };
 
@@ -2269,7 +2237,6 @@ function renderCatFeedContent(cat) {
   else if (cat === 'loved')   { filtered = businesses.filter(b => (b.likedBy||[]).length > 0).sort((a,b)=>(b.likedBy||[]).length-(a.likedBy||[]).length); title = 'הכי אהובים'; }
   else if (cat === 'myLoved') { const myId = currentMemberId(); filtered = myId ? businesses.filter(b => (b.likedBy||[]).includes(myId)) : []; title = 'העסקים שאהבתי'; }
   else if (cat === 'online')  { filtered = _dailySectionOrder.online || [];   title = 'קניה אונליין'; }
-  else if (cat === 'near')    { filtered = lastNearBusinesses || businesses;      title = 'קרוב אליך'; }
   else if (cat === 'everyone'){ filtered = _dailySectionOrder.everyone || businesses; title = 'כל העסקים'; }
   else {
     filtered = businesses.filter(b => mapCatKey(b.cat) === cat || (b.alsoUnderCategory && mapCatKey(b.alsoUnderCategory) === cat));
@@ -2360,171 +2327,10 @@ function runSearch(val) {
   observeLazyImages(document.getElementById('catFeedGrid'));
 }
 
-// ── LOCATION ──────────────────────────────────────────────────────────────────
-function showNearEmpty() {
-  document.getElementById('nearBizScroll').style.display = 'none';
-  document.getElementById('nearBizEmpty').style.display = 'block';
-}
-
-function checkGeoPermissionState() {
-  if (!navigator.permissions?.query) return Promise.resolve(null);
-  return navigator.permissions.query({ name: 'geolocation' }).then(s => s.state).catch(() => null);
-}
-
-// "קרוב אליך" מוסתר לגמרי (display:none בסטטי-HTML) כל עוד אין הרשאת מיקום — אין טעם
-// להציג סקשן ריק/CTA בתוך הפיד, כי יש כבר דרך ברורה לבקש מיקום מההמבורגר
-// ("📍 הפעלת הרשאת מיקום"). מופיע לבד ברגע שיש מיקום בפועל (ר' applyLocation).
-function initLocation() {
-  const saved = localStorage.getItem('locationAllowed');
-  if (saved === 'true') {
-    navigator.geolocation?.getCurrentPosition(pos => applyLocation(pos), err => handleLocationError(err));
-  }
-}
-
-// שני מצבים אפשריים כשאין נתוני מיקום: "עוד לא ביקשנו" (ברירת מחדל, כפתור מזמין)
-// ו"הדפדפן חוסם" (כבר נדחה בעבר ברמת הדפדפן — JS לא יכול לבקש הרשאה שוב, צריך לאשר ידנית)
-function showNearEmpty() {
-  document.getElementById('nearBizScroll').style.display = 'none';
-  document.getElementById('nearBizEmpty').style.display = 'block';
-  document.getElementById('nearEmptyTitle').textContent = 'אפשר מיקום לראות עסקים קרובים';
-  document.getElementById('nearEmptySub').textContent = 'נראה לך עסקים ממוינים לפי מרחק ממך';
-  document.getElementById('nearEmptyBtn').textContent = 'אפשר מיקום';
-}
-
-function showNearBlocked() {
-  document.getElementById('nearBizScroll').style.display = 'none';
-  document.getElementById('nearBizEmpty').style.display = 'block';
-  document.getElementById('nearEmptyTitle').textContent = 'הדפדפן חוסם את הגישה למיקום';
-  document.getElementById('nearEmptySub').textContent = 'יש ללחוץ על סמל המנעול 🔒 ליד שורת הכתובת, לאפשר מיקום לאתר הזה, ואז ללחוץ כאן שוב';
-  document.getElementById('nearEmptyBtn').textContent = 'נסה שוב';
-}
-
-function handleLocationError(err) {
-  localStorage.setItem('locationAllowed', 'false');
-  // הסקשן נשאר מוסתר (ברירת המחדל) — אין CTA להציג בתוך הפיד, ר' הערה ב-initLocation.
-}
-
-// נקודת כניסה משותפת לבקשת/רענון מיקום — מהתגית ליד "קרוב אליך", מההמבורגר, ומכפתור מצב-ריק
-// closeMenuAfter=true (מההמבורגר): הפעולה (בקשת ההרשאה בדפדפן) קורית עוד לפני שסוגרים את התפריט —
-// סוגרים וגוללים לסקשן רק אחרי שהיא הסתיימה, כדי שהמעבר למסך הבית יקרה עם תוצאה מוכנה, לא כשלב ביניים
-function requestOrRefreshLocation(scrollAfter, closeMenuAfter, onSettled) {
-  if (!navigator.geolocation) { if (closeMenuAfter) closeMenu(); onSettled?.(); return; }
-  if (closeMenuAfter) setMenuLocationLoading();
-  navigator.geolocation.getCurrentPosition(
-    pos => {
-      localStorage.setItem('locationAllowed', 'true');
-      applyLocation(pos);
-      updateLocationMenuLabel();
-      if (closeMenuAfter) closeMenu();
-      if (scrollAfter) document.getElementById('nearSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      onSettled?.();
-    },
-    err => {
-      handleLocationError(err);
-      // מטופל מההמבורגר — לא סוגרים/גוללים; מציגים הסבר מה לעשות ישר בפריט התפריט, בלי לגרום למשתמש לצאת
-      if (closeMenuAfter) {
-        if (err && err.code === 1) showMenuLocationError('🔒 הדפדפן חוסם מיקום', 'לחצו על סמל המנעול ליד שורת הכתובת, אשרו מיקום לאתר, ונסו שוב');
-        else showMenuLocationError('⚠️ המיקום נכשל', 'נסו שוב בעוד רגע');
-      } else {
-        updateLocationMenuLabel();
-      }
-      onSettled?.();
-    }
-  );
-}
-
-function setMenuLocationLoading() {
-  const label = document.getElementById('menuLocationLabel');
-  if (label) label.textContent = 'מאתר מיקום...';
-}
-
-// מציג הסבר קצר + פעולה מתקנת בתוך פריט ההמבורגר עצמו (בלי לנווט/לסגור), וחוזר אוטומטית למצב רגיל אחרי כמה שניות
-function showMenuLocationError(labelText, hintText) {
-  const label = document.getElementById('menuLocationLabel');
-  const hint = document.getElementById('menuLocationHint');
-  if (label) label.textContent = labelText;
-  if (hint) { hint.textContent = hintText; hint.style.display = 'block'; }
-  setTimeout(updateLocationMenuLabel, 6000);
-}
-
-function updateLocationMenuLabel() {
-  const granted = localStorage.getItem('locationAllowed') === 'true';
-  const label = document.getElementById('menuLocationLabel');
-  const icon = document.getElementById('menuLocationIcon');
-  const city = document.getElementById('menuLocationCity');
-  const hint = document.getElementById('menuLocationHint');
-  if (label) label.textContent = granted ? 'עדכון מיקום' : 'הפעלת הרשאת מיקום';
-  if (icon) icon.textContent = granted ? '🔄' : '📍';
-  if (city) city.textContent = granted ? (localStorage.getItem('hb_locationCityName') || '') : '';
-  if (hint) hint.style.display = 'none';
-}
-
-// מרחק-קשת אמיתי בק"מ בין 2 נק' geo (לא הפרש-מעלות שטוח — מעלת-אורך "שווה" מרחק שונה לפי קו-הרוחב)
-function haversineKm(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-function applyLocation(pos) {
-  document.getElementById('nearSection').style.display = 'block';
-  const { latitude: lat, longitude: lng } = pos.coords;
-  const nearbyAll = businesses
-    .filter(b => b.lat && b.lng)
-    .map(b => ({ ...b, dist: haversineKm(lat, lng, b.lat, b.lng) }))
-    .sort((a,b) => a.dist - b.dist);
-  lastNearBusinesses = nearbyAll.length ? nearbyAll : null;
-  const nearby = nearbyAll.slice(0,6);
-  const scroll = document.getElementById('nearBizScroll');
-  document.getElementById('nearBizEmpty').style.display = 'none';
-  scroll.style.display = 'flex';
-  scroll.innerHTML = nearby.length ? nearby.map(b => buildCard(b)).join('') : businesses.map(b => buildCard(b)).join('');
-  observeLazyImages(scroll);
-  showLocationTag(lat, lng);
-}
-
-function showLocationTag(lat, lng) {
-  const tag = document.getElementById('nearLocationTag');
-  const nameEl = document.getElementById('nearLocationName');
-  if (!tag || !nameEl) return;
-  fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=he`)
-    .then(r => r.json())
-    .then(data => {
-      const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || '';
-      setLocationCityName(city || 'מיקום נוכחי');
-      tag.style.display = 'flex';
-    })
-    .catch(() => {
-      setLocationCityName('מיקום נוכחי');
-      tag.style.display = 'flex';
-    });
-}
-
-// שם העיר האחרון שידוע — משותף בין תגית "קרוב אליך" לבין ההמבורגר, נשמר ל-localStorage
-// כדי שההמבורגר יראה עיר גם אם נפתח לפני שהתבצע reverse-geocode בטעינה הנוכחית
-function setLocationCityName(name) {
-  localStorage.setItem('hb_locationCityName', name);
-  const nameEl = document.getElementById('nearLocationName');
-  if (nameEl) nameEl.textContent = name;
-  const menuCity = document.getElementById('menuLocationCity');
-  if (menuCity) menuCity.textContent = name;
-}
-
-function changeLocation() {
-  const actionEl = document.getElementById('nearLocationAction');
-  if (actionEl) actionEl.textContent = 'מרענן...';
-  requestOrRefreshLocation(false, false, () => {
-    if (actionEl) actionEl.textContent = 'עדכון מיקום';
-  });
-}
-
 // ── תפריט מלא (המבורגר) ──
 function openMenu() {
   document.getElementById('menuOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
-  updateLocationMenuLabel();
   const installItem = document.getElementById('menuInstallItem');
   if (installItem) installItem.style.display = pwaIsStandalone() ? 'none' : 'flex';
   if (window.updatePushMenuItem) updatePushMenuItem();
@@ -2768,10 +2574,6 @@ function copyContactEmail(event) {
 
 function showHome() {
   filterCat('all', document.querySelector('.cat-item'));
-}
-
-function bnRequestLocation() {
-  requestOrRefreshLocation(true, true);
 }
 
 // ── BIZ SHEET ─────────────────────────────────────────────────────────────────
@@ -3682,16 +3484,6 @@ document.addEventListener('DOMContentLoaded', () => {
       </span>
       <span class="menu-item-label">שתפו את העסק שלכם עם חברים</span>
     </button>
-    <button class="menu-item" onclick="bnRequestLocation()">
-      <span class="menu-item-icon" id="menuLocationIcon">📍</span>
-      <span style="display:flex; flex-direction:column; gap:2px; min-width:0;">
-        <span style="display:flex; align-items:center; gap:6px;">
-          <span class="menu-item-label" id="menuLocationLabel">הפעלת הרשאת מיקום</span>
-          <span id="menuLocationCity" style="font-size:12px; color:var(--accent); font-weight:600;"></span>
-        </span>
-        <span id="menuLocationHint" style="display:none; font-size:11px; font-weight:500; color:rgba(var(--fg-rgb),0.5); line-height:1.4;"></span>
-      </span>
-    </button>
   </div>
   <a class="menu-promo" href="https://instagram.com/Yellowzone.mta" target="_blank">
     <span class="menu-promo-icon">
@@ -3893,7 +3685,6 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
       profession:   b.profession || '',
       ownerFirst:   b.ownerFirst || '',
       regions:      b.regions || [],
-      lat:          null, lng: null,
       phone:        b.bizPhone || b.phone || '',
       whatsapp:     b.whatsapp || '',
       serviceEmail: b.serviceEmail || '',
