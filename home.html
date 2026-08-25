@@ -390,6 +390,18 @@
     .search-bar input::placeholder { color: var(--ink-3); }
     .search-icon { color: var(--ink-3); font-size: 15px; }
 
+    /* כפתור ✕ לניקוי מהיר — מוצג רק כשיש טקסט בתיבה (ר' syncSearchInputs). קיים בשתי
+       תיבות החיפוש (ההדר במסך רחב, ה-hero במובייל), ומנקה את שתיהן יחד עם התצוגה. */
+    .search-clear {
+      display: none; align-items: center; justify-content: center;
+      flex: none; width: 22px; height: 22px; padding: 0; margin-inline-start: 2px;
+      background: #E4E4DC; border: none; border-radius: 50%;
+      color: var(--ink-2); cursor: pointer; -webkit-tap-highlight-color: transparent;
+    }
+    .search-clear.show { display: flex; }
+    .search-clear:hover { background: #D6D6CC; color: var(--ink); }
+    .search-clear:active { transform: scale(.9); }
+
     /* ══ CATEGORIES — אריחים עם גלילה אופקית ══ */
     .cats-section {
       background: var(--surface);
@@ -1451,7 +1463,10 @@
     </div>
     <div class="nav-search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-      <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInputDesktop" oninput="handleSearch(this.value)"/>
+      <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInputDesktop" oninput="handleSearch(this.value)" onkeydown="if(event.key==='Escape')clearSearch()"/>
+      <button type="button" class="search-clear" id="searchClearDesktop" onclick="clearSearch()" aria-label="ניקוי החיפוש" title="ניקוי החיפוש">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
     </div>
     <div class="nav-logo" onclick="showHome(); window.scrollTo({top:0,behavior:'smooth'})">
       <img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
@@ -1484,7 +1499,10 @@
   </svg><br>מה מחפשים היום?</div>
   <div class="search-bar">
     <span class="search-icon">🔍</span>
-    <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInput" oninput="handleSearch(this.value)"/>
+    <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInput" oninput="handleSearch(this.value)" onkeydown="if(event.key==='Escape')clearSearch()"/>
+    <button type="button" class="search-clear" id="searchClearHero" onclick="clearSearch()" aria-label="ניקוי החיפוש" title="ניקוי החיפוש">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
   </div>
 </div>
 
@@ -1671,7 +1689,7 @@ window.loadFirebaseData = function(data, isPreview) {
   businesses = data;
   renderSections();
   window._hbMarkReady && window._hbMarkReady('cards');
-  if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey);
+  refreshOpenFeed();
   if (isPreview) return;
   refreshSheetIfOpen();
   // קישור-שיתוף לעסק בודד (?biz=<id>, ר' shareBiz) — פותח את העסק אוטומטית בכניסה, פעם אחת
@@ -1697,12 +1715,12 @@ window.loadFirebaseData = function(data, isPreview) {
 window._hbForceRerender = function () {
   Object.keys(_lastRenderedOrder).forEach(function (k) { delete _lastRenderedOrder[k]; });
   renderSections();
-  if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey);
+  refreshOpenFeed();
 };
 
 window.loadSectionAnchors = function(rawDoc) {
   sectionAnchorsDoc = rawDoc || {};
-  if (businesses.length) { renderSections(); if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey); }
+  if (businesses.length) { renderSections(); refreshOpenFeed(); }
 };
 
 // עיגון בתוקף? (מזהה זהה ל-admin-dashboard.html effectiveAnchorBizId — אין קרון
@@ -2179,6 +2197,12 @@ let _homeScrollY = 0;
 // את הגריד הזה גם כשמגיעים נתונים חדשים (למשל לייק) בזמן שהוא פתוח, ר' renderCatFeedContent().
 let _currentCatFeedKey = null;
 
+// טקסט החיפוש הפעיל ('' = אין חיפוש). **הכלל: יש טקסט בתיבה ⟺ מוצגות "תוצאות חיפוש".**
+// אין מצב-ביניים — ניווט לקטגוריה/לדף הבית מנקה את התיבה, וניקוי התיבה מחזיר לדף הבית.
+// לפני 2026-08-26 המשתנה לא היה קיים, ו-snapshot מ-Firestore (שנוצר, בין השאר, מעצם הלחיצה
+// על עסק — clicks+1) דרס את תוצאות-החיפוש בתוכן הקטגוריה שנפתחה קודם. ר' PROJECT_CONTEXT.md §278.
+let _searchQuery = '';
+
 // חיצי גלילה בהדר-סקשן (רק במסך רחב, ר' .scroll-arrow-btn) — מזיז בדיוק 4 כרטיסים שלמים,
 // לא את כל רוחב-התצוגה (~4.5 כרטיסים, ר' .cards-scroll padding). כך חצי-הכרטיס שהציץ בקצה
 // לפני הלחיצה הופך לכרטיס מלא בסט החדש, וחצי-כרטיס חדש מציץ בקצה השני — לא נשאר שריד
@@ -2196,7 +2220,17 @@ function scrollCardsRow(btn, dir) {
   row.scrollBy({ left: dir * step, behavior: 'smooth' });
 }
 
+// מרענן את מה שפתוח כרגע ב-catFeed כשמגיעים נתונים חדשים: חיפוש פעיל מורץ מחדש (התוצאות
+// נשארות מדורגות ומעודכנות), אחרת מרונדרים מחדש את הקטגוריה/סקשן הפתוח. אחד מהם לכל היותר.
+function refreshOpenFeed() {
+  if (_searchQuery) runSearch(_searchQuery);
+  else if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey);
+}
+
 function filterCat(cat, el) {
+  // כל ניווט מפורש (קטגוריה / חזרה לדף הבית) יוצא ממצב-חיפוש ומנקה את התיבה — אחרת נשאר
+  // טקסט בתיבה בזמן שמוצג משהו אחר לגמרי, והתו הבא שמוקלד מצטרף אליו.
+  if (_searchQuery) { _searchQuery = ''; syncSearchInputs(''); }
   document.querySelectorAll('.cat-item').forEach(c => c.classList.remove('active'));
   if (el) el.classList.add('active');
 
@@ -2279,15 +2313,48 @@ function normalizeSearchText(s) {
 
 let _searchDebounce = null;
 function handleSearch(val) {
+  // התיבה השנייה וכפתור ה-✕ מתעדכנים מיד, בלי debounce — הם משקפים את מה שכתוב, לא תוצאות.
+  syncSearchInputs(val);
   clearTimeout(_searchDebounce);
+  // מחיקת התו האחרון מחזירה לדף הבית מיידית; רק חיפוש בפועל ממתין ל-debounce.
+  if (!val.trim()) { runSearch(''); return; }
   _searchDebounce = setTimeout(() => runSearch(val), 120);
+}
+
+// שתי תיבות החיפוש (ההדר ממסך 640px, ה-hero מתחתיו) — רק אחת גלויה בכל רגע, אבל שתיהן
+// קיימות ב-DOM תמיד. משאירים אותן זהות כדי שסיבוב-מכשיר/שינוי-רוחב לא יחשוף תיבה עם טקסט אחר.
+function syncSearchInputs(val) {
+  ['searchInput', 'searchInputDesktop'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value !== val) el.value = val;
+  });
+  ['searchClearHero', 'searchClearDesktop'].forEach(id => {
+    document.getElementById(id)?.classList.toggle('show', !!val);
+  });
+}
+
+// ✕ / Escape — ניקוי בלחיצה אחת: מרוקן את שתי התיבות, חוזר לדף הבית, ומשאיר את הפוקוס
+// בתיבה הגלויה כדי שאפשר להקליד חיפוש חדש מיד בלי לחיצה נוספת.
+function clearSearch() {
+  clearTimeout(_searchDebounce);
+  runSearch('');
+  const visible = ['searchInputDesktop', 'searchInput']
+    .map(id => document.getElementById(id))
+    .find(el => el && el.offsetParent !== null);
+  visible?.focus();
 }
 
 function runSearch(val) {
   if (!val.trim()) {
+    _searchQuery = '';
+    syncSearchInputs('');
     filterCat('all', document.querySelector('.cat-item'));
     return;
   }
+  _searchQuery = val;
+  // תוצאות-חיפוש הן תצוגה בפני עצמה, לא קטגוריה — איפוס המפתח מונע מ-refreshOpenFeed לדרוס
+  // אותן בתוכן הקטגוריה שנפתחה קודם ברגע שמגיע snapshot מ-Firestore (ר' ההערה ליד _searchQuery).
+  _currentCatFeedKey = null;
   const qNorm = normalizeSearchText(val);
   const words = qNorm.split(' ').filter(Boolean);
 
@@ -2318,7 +2385,14 @@ function runSearch(val) {
     .sort((a, b) => b.score - a.score)
     .map(x => x.b);
 
-  document.getElementById('mainFeed').style.display = 'none';
+  // רק במעבר *לתוך* מצב-חיפוש: שומרים את מיקום-הגלילה בדף הבית (כדי שניקוי החיפוש יחזיר
+  // בדיוק לשם, כמו יציאה מקטגוריה) וקופצים לראש התוצאות. ברענון חי של חיפוש פעיל אין קפיצה.
+  const mainFeedEl = document.getElementById('mainFeed');
+  if (mainFeedEl.style.display !== 'none') {
+    _homeScrollY = window.scrollY;
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }
+  mainFeedEl.style.display = 'none';
   document.getElementById('catFeed').style.display = 'block';
   document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">תוצאות חיפוש</div>`;
   document.getElementById('catFeedGrid').innerHTML = results.length
