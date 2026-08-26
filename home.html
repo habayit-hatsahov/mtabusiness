@@ -751,14 +751,34 @@
       transform: scale(var(--cover-zoom, 1));
       transform-origin: var(--cover-origin, 50% 50%);
     }
+    /* תג-הלוגו בכרטיס הפנימי — הוחזר (2026-08-26, בקשה מפורשת): נמצא **על** התמונה
+       הראשית, בפינה ימין-למטה. בעבר הוא ריחף מתחת למסגרת (bottom שלילי) — אבל ל-.sheet-hero
+       יש overflow:hidden, ולכן bottom שלילי היה נקטם. המידות ואופן-המילוי (cover כברירת-מחדל,
+       ‎.fit ללוגו רחב/שקוף) זהים ל-.biz-card-logo-badge שמעל, כדי שאותו לוגו ייראה אותו דבר
+       בכרטיס הקטן באינדקס ובכרטיס הפנימי. pointer-events:none — כדי שהתג לא יבלע את
+       הקליק שפותח את התמונה בתצוגה-מלאה (ר' openLightbox ב-openBiz). */
     .sheet-hero-logo-badge {
-      position: absolute; bottom: -26px; right: 20px; z-index: 3;
-      width: 72px; height: 72px; border-radius: 18px;
-      background: #fff; border: none;
-      box-shadow: 0 8px 20px rgba(10,42,102,.22);
+      position: absolute; bottom: 12px; right: 12px; z-index: 3;
+      width: 80px; height: 80px; border-radius: 18px;
+      background: #fff; border: none; pointer-events: none;
+      box-shadow: 0 4px 14px rgba(10,42,102,.28);
       display: flex; align-items: center; justify-content: center; overflow: hidden;
     }
-    .sheet-hero-logo-badge img { width: 100%; height: 100%; object-fit: contain; padding: 5px; }
+    .sheet-hero-logo-badge img { width: 100%; height: 100%; object-fit: cover; padding: 0; }
+    /* ── logoFit='contain' — התג מתרחב לפי יחס הלוגו (זהה ל-.biz-card-logo-badge.fit שמעל) */
+    .sheet-hero-logo-badge.fit { width: auto; box-sizing: border-box; min-width: 80px; max-width: 156px; padding: 4px; }
+    .sheet-hero-logo-badge.fit img { width: auto; height: 100%; max-width: 148px; object-fit: contain; }
+    /* ── לוגו רחב — **לא** גדל יחד עם השאר (2026-08-26, בקשה מפורשת) ─────────────────────────
+       התג הריבועי הוגדל מ-64 ל-80 (13.3% מרוחב-המסגרת 600px — בדיוק היחס של התג בכרטיס הקטן,
+       46 מתוך ~358). אבל ללוגו **רחב** ההגדלה הזו לא נותנת כלום: הרוחב שלו כבר נעצר ב-156px
+       (max-width), ולכן object-fit:contain פשוט מוסיף עוד לובן מלמעלה ומלמטה — הלוגו עצמו
+       נשאר באותו גודל בדיוק בתוך קופסה גבוהה יותר. דווח בפועל על XRAY TLV ("מספיק גדול").
+       הסף: תקרת-הרוחב נכנסת לפעולה כשהיחס > 156/80 = 1.95. המחלקה נקבעת ב-JS מ-naturalWidth/
+       naturalHeight האמיתיים (ר' openBiz) ולא מרשימת-עסקים קשיחה, כדי שלוגו שיוחלף מחר ייבחן
+       מחדש מעצמו. נמדד מול 6 העסקים עם logoFit='contain' בפרודקשן: XRAY TLV (5.06), מיטנטו
+       (4.83) ואיציק דנה (2.73) נשארים 64; Ld Cleaning (1.50), Glory Street (1.00) ו-KASTEN
+       Diamonds (0.80) גדלים ל-80 יחד עם כל השאר — הם לא "רחבים כמו XRAY". */
+    .sheet-hero-logo-badge.fit.wide { height: 64px; min-width: 64px; }
     .sheet-hero-like {
       position: absolute; top: 10px; right: 10px; z-index: 2;
       background: rgba(255,255,255,.78); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -2832,9 +2852,27 @@ function openBiz(id) {
     hero.insertBefore(img, hero.firstChild);
     logo.style.display = 'none';
     if (!cardCrop) heroPhotos.push(coverUrl);
-    // תג-הלוגו הוסר מהתמונה הגדולה בכרטיס הפנימי (בקשה מפורשת, 2026-08-16) — הוא נשאר רק על
-    // הכרטיס הקטן באינדקס, ששם הוא באמת מזהה את העסק. כאן הוא הסתיר חלק מהתמונה בלי להוסיף
-    // מידע (שם העסק כבר כתוב מתחת). הלוגו עצמו לא נעלם — הוא עובר לגלריה למטה, ר' galleryUrls.
+    // ── תג-הלוגו על התמונה הראשית — הוחזר (2026-08-26, בקשה מפורשת) ────────────────────────
+    // הוסר ב-2026-08-16 ("מסתיר חלק מהתמונה") והוחזר עכשיו לבקשת המשתמש, בפינה ימין-למטה.
+    // רק כשיש **גם** תמונה ראשית וגם לוגו: אם הלוגו עצמו הוא התמונה הגדולה (הענף למטה) אין
+    // טעם בתג שמציג אותה תמונה פעמיים. logoFit ו-cardLogoFailed זהים לתג שבכרטיס הקטן —
+    // cardLogoFailed מסיר את parentElement, כלומר את התג כולו, אם קובץ-הלוגו לא נטען.
+    if (logoUrl) {
+      const badge = document.createElement('div');
+      badge.className = 'sheet-hero-logo-badge' + (b.logoFit === 'contain' ? ' fit' : '');
+      const bimg = document.createElement('img');
+      bimg.alt = b.name + ' — לוגו';
+      bimg.decoding = 'async';
+      bimg.onerror = () => window.cardLogoFailed(bimg);
+      // ר' .sheet-hero-logo-badge.fit.wide ב-CSS: לוגו רחב נעצר ממילא בתקרת-הרוחב, ולכן
+      // ההגדלה ל-80 רק מוסיפה לו לובן. היחס נמדד מהקובץ עצמו, ולא מרשימת-עסקים קשיחה.
+      bimg.onload = () => {
+        if (bimg.naturalHeight && bimg.naturalWidth / bimg.naturalHeight > 156 / 80) badge.classList.add('wide');
+      };
+      bimg.src = logoUrl; // אחרי ה-handlers — קובץ שכבר ב-cache יורה onload מיד
+      badge.appendChild(bimg);
+      hero.appendChild(badge);
+    }
   } else if (logoUrl) {
     const img = document.createElement('img');
     img.src = logoUrl; img.alt = b.name; img.className = 'sheet-hero-img';
@@ -3918,6 +3956,10 @@ window._likeFirestoreToggle = async function(id, memberId, liked) {
 };
 
 window._recordView = function(id) {
+  // §281 — מנהל לא מנפח לעסק את מונה הלחיצות. הדגל נקבע ב-initBizNavItem אחרי קריאת מסמך
+  // החבר; עד שהיא חוזרת הוא undefined, אבל זה קורה בטעינת הדף — הרבה לפני הקליק הראשון.
+  // אירועי ה-events עצמם ממשיכים להירשם: אותם *אפשר* לסנן בדיעבד לפי memberId, את המונה לא.
+  if (window._hbIsAdmin === true) return;
   updateDoc(doc(db, 'businesses', id), { clicks: increment(1) }).catch(() => {});
 };
 
@@ -4027,6 +4069,10 @@ async function initBizNavItem() {
         isBizOwner = d.isBusinessOwner === true;
         linkedBusinessId = d.linkedBusinessId || '';
         isAdminMember = d.isAdmin === true;
+        // §281 — נחשף גלובלית כדי ש-_recordView יוכל **לא** לספור לחיצות של מנהל. עמודת
+        // "לחיצות" במרכז הנתונים היא מונה בודד על מסמך העסק, בלי זיהוי מי לחץ — כלומר אי
+        // אפשר לנקות ממנה בדיעבד, וכל בדיקה של המנהל מנפחת לעסק את המספר לתמיד.
+        window._hbIsAdmin = isAdminMember;
       }
       console.debug('[initBizNavItem]', { memberId, docExists: snap.exists(), isAdminMember, isBizOwner, linkedBusinessId });
     } else {
