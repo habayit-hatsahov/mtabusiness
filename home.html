@@ -890,6 +890,11 @@
       margin-top: 14px; padding-top: 14px;
       border-top: 1px solid var(--line);
       text-wrap: pretty;
+      /* §279 — בעלי העסקים כותבים את התיאור בפסקאות (textarea בדשבורד), ו-HTML מוחק ירידות-שורה
+         כברירת מחדל: 29 מתוך 50 העסקים נשמרו עם \n בתיאור וכולם הוצגו כגוש-טקסט אחד רצוף.
+         pre-line שומר על שבירות-השורה שהוקלדו, ועדיין מכווץ רווחים כפולים ומאפשר גלישה
+         רגילה (בניגוד ל-pre, שהיה יוצר גלילה אופקית). */
+      white-space: pre-line;
     }
 
     .sheet-benefit-heading {
@@ -901,7 +906,9 @@
       border-radius: var(--r-card); padding: 14px;
     }
     .sheet-benefit-tag { font-size: 11px; font-weight: 700; letter-spacing: .03em; color: var(--ink-3); margin-bottom: 4px; }
-    .sheet-benefit-text  { font-size: 17px; font-weight: 800; color: var(--ink); line-height: 1.35; }
+    /* white-space: pre-line — ר' ההערה ב-.sheet-desc. הטבה מרובת-שורות ("50% על משקפי שמש /
+       50% על משקפי ראייה / 25% על עדשות מגע") נכתבת שורה-לשורה בדשבורד והוצגה כשורה אחת. */
+    .sheet-benefit-text  { font-size: 17px; font-weight: 800; color: var(--ink); line-height: 1.35; white-space: pre-line; }
     .sheet-benefit-type  { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; }
     /* הטבות נוספות — כרטיסים לבנים שקטים, נפרדים מהקופסה הצהובה של ההטבה הראשית */
     .sheet-benefit-secondary-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
@@ -926,7 +933,7 @@
       margin-bottom: 10px; padding-bottom: 9px; border-bottom: 1px solid var(--line);
       line-height: 1.45;
     }
-    .redeem-benefit-tag b { color: var(--ink); font-weight: 800; }
+    .redeem-benefit-tag b { color: var(--ink); font-weight: 800; white-space: pre-line; }
     .redeem-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .redeem-text { flex: 1; min-width: 0; }
     .redeem-title { font-size: 15px; font-weight: 800; color: var(--ink); }
@@ -2668,26 +2675,17 @@ function sheetLikeHtml(b) {
   return `<div class="sheet-hero-like ${liked ? 'liked' : ''}" onclick="event.stopPropagation();toggleLike('${b.id}')">${heartIconSvg(13)}${count > 0 ? `<span>${count}</span>` : ''}</div>`;
 }
 
-function bizTypeLine(b) {
-  if (b.isPro) return 'בעל מקצוע / נותן שירות';
-  if (b.isPhysical && b.online) return 'חנות פיזית + אונליין';
-  if (b.online) return 'חנות אונליין';
-  if (b.isPhysical) return 'חנות פיזית';
-  return '';
-}
-
-function bizTypeTagClass(b) {
-  return (b.online && !b.isPhysical && !b.isPro) ? 'online' : 'physical';
-}
-
-// קטגוריה מופיעה פעם אחת בלבד — צ'יפ עם מסגרת מיד אחרי סוג-העסק, בלי אייקון ובלי "מופיע גם תחת"
+// §279 — צ'יפ "סוג עסק" ("חנות פיזית" / "חנות אונליין" / "בעל מקצוע") הוסר מהכרטיס הפנימי לפי
+// בקשה מפורשת. הוא לא הוסיף לאוהד מידע: איך מממשים את ההטבה כבר כתוב במפורש בכרטיסי-המימוש
+// למטה ("מימוש בחנות" / "מימוש באתר"), והצ'יפ רק דחף את הקטגוריה והתגיות הצידה.
+// יחד איתו נמחקו bizTypeLine()/bizTypeTagClass() — לא היו להן קוראים אחרים בשום קובץ.
+// מחלקות ה-CSS ‎.sheet-tag.online/.physical נשארו במקומן בכוונה.
+// קטגוריה מופיעה פעם אחת בלבד — צ'יפ עם מסגרת בראש השורה, בלי אייקון ובלי "מופיע גם תחת"
 function renderSheetMeta(b) {
   const cat     = mapCatKey(b.cat);
   const catTxt  = catLabel(cat);
   const tags    = (b.tags || []).slice(0,2);
-  const typeTxt = bizTypeLine(b);
   document.getElementById('sheetMeta').innerHTML = `
-    ${typeTxt ? `<span class="sheet-tag ${bizTypeTagClass(b)}">${typeTxt}</span>` : ''}
     ${catTxt ? `<span class="sheet-tag cat">${catTxt}</span>` : ''}
     ${tags.map(t => `<span class="sheet-tag tag">${t}</span>`).join('')}`;
   document.getElementById('sheetHeroLikeWrap').innerHTML = sheetLikeHtml(b);
@@ -2720,6 +2718,18 @@ async function toggleLike(id) {
 // fan-register.html) ולמסכי-הניהול, שם הוא fail-open. שינוי כאן — לעדכן שם, ולהיפך.
 // ר' docs/PROJECT_CONTEXT.md §204.
 const IL_PHONE_RX = /^0(?:[57]\d{8}|[23489]\d{7})$/;
+
+// ── כתובת אתר מנורמלת — מקור-אמת אחד לכל הקובץ ────────────────────────────────────────
+// עוטף את social-links.js (§232). הנרמול היה עד עכשיו const **מקומי בתוך openBiz**, ולכן כפתור
+// "לרכישה באתר" של הקופון — שנבנה קודם לכן באותה פונקציה — נשאר עם 'https://' + value נאיבי
+// ולא תוקן ב-§232. אצל "ספורט אנד פול" שדה האתר מכיל **שתי כתובות באותה שורה**
+// ("z-zol.co.il     www.intex-pool.co.il"), ה-href שנוצר הכיל רווחים והכפתור לא נפתח כלל —
+// בעוד ששורת "האתר שלנו" באותו גיליון כן עבדה, כי היא עברה נרמול. §279.
+// fail-open אם social-links.js לא נטען: חוזרים בדיוק להתנהגות הישנה, כמו הגארד על hours.js.
+function bizLinkUrl(kind, raw) {
+  if (window.HB_LINKS) return window.HB_LINKS.toUrl(kind, raw);
+  return raw ? (String(raw).startsWith('http') ? String(raw) : 'https://' + raw) : null;
+}
 function bizWaLink(raw, text) {
   let d = String(raw == null ? '' : raw).replace(/\D/g, '');
   if (d.indexOf('972') === 0 && d.length > 9) d = '0' + d.slice(3);
@@ -2878,7 +2888,7 @@ function openBiz(id) {
     // isPro/online) כדי לא להציג "הגיעו לחנות"/קוד-קופון לעסק שבפועל לא תומך בזה בכלל. משתמש ב-dTypes
     // שכבר חושב למעלה (ר' primaryTypeLine) — אותו מקור-אמת בדיוק, לא כפילות.
     const area = document.getElementById('sheetCouponArea');
-    const siteUrl = b.website ? (b.website.startsWith('http') ? b.website : 'https://' + b.website) : '';
+    const siteUrl = bizLinkUrl('website', b.website) || '';
     const isProOnly = b.isPro && !b.isPhysical;
     const storeTitle = isProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות';
     const storeDesc = (b.isPhysical && b.isPro) ? 'הציגו את תעודת החבר בקופה או מול נותן השירות, לאימות ההטבה'
@@ -3030,9 +3040,7 @@ function openBiz(id) {
   // הנרמול עובר דרך social-links.js (§232) — "https://"+value נאיבי הפיק href שבור מכל ערך
   // שאינו כתובת ("אלמוג פט בגוגל", "z-zol.co.il   www.intex-pool.co.il").
   // fail-open אם הקובץ לא נטען: חוזרים בדיוק להתנהגות הישנה, כמו הגארד על hours.js.
-  const linkUrl = (kind, raw) => (window.HB_LINKS
-    ? window.HB_LINKS.toUrl(kind, raw)
-    : (raw ? (String(raw).startsWith('http') ? String(raw) : 'https://' + raw) : null));
+  const linkUrl = bizLinkUrl;
   const siteRowUrl = (b.online && b.website) ? (linkUrl('website', b.website) || '') : '';
   if (siteRowUrl) {
     // רק הדומיין — בלי https://, בלי www ובלי הנתיב. כתובת מלאה כמו
