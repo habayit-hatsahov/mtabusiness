@@ -25,6 +25,12 @@
       });
     }
   </script>
+  <!-- ⏱️ (§280) שלושת המארחים שהשליחה תלויה בהם. בלי זה ה-DNS+TLS שלהם נפתחים רק ברגע
+       הלחיצה על "שלח" — כלומר בדיוק בתוך זמן-ההמתנה של הנרשם. במדידה חיה הקריאה הראשונה
+       לוורקר לקחה 731ms מול ~300ms כשהחיבור כבר חם. -->
+  <link rel="preconnect" href="https://habayit-hatsahov-worker.yellowzone.workers.dev" crossorigin />
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
   <noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/></noscript>
@@ -213,6 +219,17 @@
     }
     .btn-submit:hover { filter: brightness(.96); }
     .btn-submit:disabled { opacity: .6; cursor: not-allowed; }
+
+    /* מצב-שליחה מתחת לכפתור — המשוב היחיד שיש לנרשם כשהרשת לא עונה (ר' §280) */
+    .submit-status {
+      display: none; margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+      font-size: 13px; font-weight: 600; line-height: 1.6;
+      background: rgba(37,99,235,.08); border: 1px solid rgba(37,99,235,.3); color: #1e40af;
+    }
+    .submit-status.show { display: block; }
+    .submit-status.err {
+      background: rgba(217,119,6,.1); border-color: rgba(217,119,6,.35); color: #b45309;
+    }
 
     /* ── SUCCESS ── */
     .success-state {
@@ -482,6 +499,7 @@
       <button type="submit" class="btn-submit" id="submitBtn">
         שלח בקשת הצטרפות
       </button>
+      <div class="submit-status" id="submitStatus"></div>
 
     </form>
 
@@ -509,18 +527,29 @@
   // ── זיהוי הרשמה כפולה — אם כבר קיימת רשומת חבר עם אותו טלפון/מייל (למשל נרשם כבר
   // כבעל עסק ומקבל רשומת חבר אוטומטית), מעדכנים אותה במקום ליצור כפולה. הבדיקה עצמה
   // עברה לשרת (ה-Worker, /check-member-exists) — לא עוד שאילתה ישירה וחשופה על members ──
+  // ⏱️ AbortController (§280): בלי גבול-זמן ה-fetch הזה יכול להישאר תלוי לנצח על חיבור גרוע —
+  // והוא רץ *בתוך* השליחה, כלומר כל מסך ההרשמה תקוע מאחוריו בלי שום שגיאה. הבדיקה עצמה היא
+  // nice-to-have שכשלון שלה כבר מטופל כ-fail-open (מחזירים null, מנהל יצליב ידנית) — עדיף
+  // לוותר עליה אחרי 8 שניות מאשר לתקוע את הנרשם.
   async function findExistingMemberId(phone, email, firstName, lastName) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
     try {
       const resp = await fetch(WORKER_URL + '/check-member-exists', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, email, firstName, lastName })
+        body: JSON.stringify({ phone, email, firstName, lastName }),
+        signal: ctl.signal
       });
       const data = await resp.json();
-      return { memberId: data.memberId || null, nameMismatch: !!data.nameMismatch };
+      return { memberId: data.memberId || null, nameMismatch: !!data.nameMismatch, ok: true };
     } catch (e) {
       console.error('fan-register.html: לא ניתן היה לבדוק כפילות מול השרת.', e);
-      return { memberId: null, nameMismatch: false };
+      // ok:false — הבדיקה לא באמת רצה. חשוב לחימום למטה: תוצאה כזאת לא נשמרת לשימוש חוזר,
+      // אחרת כשלון רגעי בזמן המילוי היה מבטל את בדיקת-הכפילות של השליחה עצמה.
+      return { memberId: null, nameMismatch: false, ok: false };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -751,9 +780,26 @@
   const form      = document.getElementById('registrationForm');
   const success   = document.getElementById('successState');
   const submitBtn = document.getElementById('submitBtn');
+  const statusEl  = document.getElementById('submitStatus');
+
+  // ── מצב-שליחה גלוי (§280) ────────────────────────────────────────────────────────────────
+  // התקלה שדווחה: הכפתור הופך ל"שולח... ⟳" וממתין לשתי פעולות-רשת, ו-addDoc נפתר **רק** כשהשרת
+  // מאשר את הכתיבה. בחיבור גרוע/מנותק אף אחת מהן לא נכשלת — הן פשוט לא חוזרות, ולכן אין catch,
+  // אין alert, ואין דרך לצאת: ספינר נצחי. מכאן והלאה השתיקה הזאת מוחלפת במשוב אמיתי.
+  function setSubmitStatus(msg, kind) {
+    if (!msg) { statusEl.className = 'submit-status'; statusEl.textContent = ''; return; }
+    statusEl.className = 'submit-status show' + (kind ? ' ' + kind : '');
+    statusEl.textContent = msg;
+  }
+
+  function resetSubmitBtn() {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = 'שלח בקשת הצטרפות';
+  }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    setSubmitStatus('');
 
     if (!runValidation()) {
       const firstErr = document.querySelector('#mainCard .error, #mainCard .field-error[style*="block"], #mainCard .field-warn.show');
@@ -794,7 +840,31 @@
       submittedAt:       serverTimestamp(),
     };
 
+    // אין רשת בכלל — יוצאים מיד עם הודעה ברורה במקום להיכנס להמתנה שלא תיגמר. חייב לקרות
+    // **לפני** addDoc: מרגע שהכתיבה נכנסה לתור-המקומי של Firestore היא תסונכרן בהמשך בכל מקרה,
+    // ולחיצה חוזרת אחריה כבר יוצרת רשומה כפולה. הטיוטה נשמרת כדי שהטופס לא ילך לאיבוד.
+    if (navigator.onLine === false) {
+      resetSubmitBtn();
+      saveRegDraft();
+      setSubmitStatus('אין חיבור לאינטרנט כרגע — הבקשה לא נשלחה. הפרטים שמילאת נשמרו כאן, בדוק/י את החיבור ולחץ/י שוב על השליחה.', 'err');
+      statusEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     let memberDocRef = null;
+
+    // שעוני-משוב. במכוון **לא** קוטעים את הכתיבה עצמה: Firestore כבר מחזיק את המוטציה בתור
+    // המקומי, וקטיעה + ניסיון חוזר של הנרשם = שתי רשומות. לכן ממשיכים לחכות, אבל מפסיקים לשתוק.
+    const slowTimer = setTimeout(() => {
+      submitBtn.innerHTML = 'עדיין שולח... <span class="spinner"></span>';
+      setSubmitStatus('החיבור איטי — ממשיכים לנסות לשלוח. אין צורך ללחוץ שוב, ואל תסגור/י את הדף.');
+    }, 12000);
+
+    const stuckTimer = setTimeout(() => {
+      setSubmitStatus('השליחה עדיין לא הושלמה, כנראה בגלל חיבור לא יציב. אין צורך למלא את הטופס מחדש — הפרטים נשמרו במכשיר ויישלחו אוטומטית ברגע שהחיבור יחזור. אם לא יתקבל מייל תוך יום, אפשר לפנות אלינו.', 'err');
+      statusEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 35000);
+
     try {
       // תמיד יוצרים רשומת-pending חדשה — לעולם לא דורסים רשומה קיימת מטופס
       // ציבורי לא-מאומת. אירוע אמיתי (2026-08-12): הרשמת-בדיקה עם המייל של המנהל
@@ -803,7 +873,12 @@
       // של חבר קיים יכול "לדרוס" את הטלפון שלו לטלפון שבשליטתו. אם ה-Worker מוצא
       // התאמת טלפון/מייל לרשומה קיימת — מסמנים דגל להצלבה ידנית ע"י מנהל
       // (admin-dashboard.html, "כל האוהדים") במקום לגעת ברשומה הקיימת בכלל.
-      const { memberId: existingId } = await findExistingMemberId(data.phone, data.email, data.firstName, data.lastName);
+      // אם החימום כבר רץ על אותם פרטים בדיוק — אוספים את התוצאה המוכנה במקום לצאת שוב לרשת.
+      // ok:false (הבדיקה נכשלה/נקטעה בזמן המילוי) מריץ אותה מחדש — לא "חוסכים" בדיקה שלא קרתה.
+      const warmed = dedupKey === dedupKeyFor(data) ? await dedupPromise : null;
+      const { memberId: existingId } = (warmed && warmed.ok)
+        ? warmed
+        : await findExistingMemberId(data.phone, data.email, data.firstName, data.lastName);
       if (existingId) {
         data.reviewFlag   = 'possible_duplicate';
         data.reviewFlagAt = serverTimestamp();
@@ -812,12 +887,18 @@
       memberDocRef = await addDoc(collection(db, 'members'), data);
     } catch (err) {
       console.error('Firebase error:', err);
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = 'שלח בקשת הצטרפות';
-      alert('אירעה שגיאה בשליחה, נסה שוב.');
+      clearTimeout(slowTimer);
+      clearTimeout(stuckTimer);
+      resetSubmitBtn();
+      saveRegDraft();
+      setSubmitStatus('אירעה שגיאה בשליחה והבקשה לא נקלטה. הפרטים שמילאת נשמרו כאן — אפשר לנסות לשלוח שוב.', 'err');
+      statusEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
 
+    clearTimeout(slowTimer);
+    clearTimeout(stuckTimer);
+    setSubmitStatus('');
     localStorage.removeItem(DRAFT_KEY);
     form.style.display = 'none';
     success.style.display = 'block';
@@ -826,7 +907,17 @@
     if (proofFile && memberDocRef) {
       uploadFile(proofFile, `members/proofs/${memberDocRef.id}_fan`)
         .then(url => updateDoc(memberDocRef, { photoProofUrl: url }))
-        .catch(e => console.error('❌ proof photo upload failed:', e.code, e.message));
+        .catch(e => {
+          console.error('❌ proof photo upload failed:', e.code, e.message);
+          // עד §280 הכישלון הזה היה שקט לגמרי (console בלבד): האוהד רואה "הבקשה התקבלה!",
+          // ובפועל מגיע לצוות בלי הוכחת-אהדה — כלומר מועמד לדחייה על לא-עוול-בכפו, ואף אחד
+          // משני הצדדים לא יודע שהתמונה בכלל לא הגיעה. לפחות שהוא יֵדע ויוכל לשלוח אותה אחרת.
+          const note = document.createElement('div');
+          note.className = 'submit-status show err';
+          note.style.textAlign = 'right';
+          note.textContent = 'שימו לב: תמונת ההוכחה לא הועלתה בגלל תקלה. הבקשה עצמה נקלטה — נא לשלוח לנו את התמונה בתשובה למייל שתקבלו, כדי שנוכל לאמת את החברות.';
+          success.appendChild(note);
+        });
     }
   });
 
@@ -940,6 +1031,42 @@
     });
   }
   attachClearErrors(document);
+
+  // ── חימום בדיקת-הכפילות (§280) ───────────────────────────────────────────────────────────
+  // הבדיקה הזאת היא הליכה-חזרה לרשת (~300ms חם, 731ms קר במדידה חיה) שרצה **בתוך** זמן-ההמתנה
+  // של הנרשם — אף שכל מה שהיא צריכה ידוע כבר ברגע שהוא סיים למלא את פרטי הזיהוי. לכן היא נורית
+  // מראש, בזמן שהוא ממשיך למלא את שאר הטופס, והשליחה רק אוספת תוצאה שכבר מוכנה.
+  // המפתח כולל את כל 4 השדות: שינוי בכל אחד מהם מבטל את החימום, כך שלעולם לא תיעשה שימוש
+  // בתשובה ששייכת לפרטים אחרים.
+  let dedupKey = null, dedupPromise = null;
+
+  function dedupKeyFor(v) { return [v.phone, v.email, v.firstName, v.lastName].join('|'); }
+
+  function currentDedupInputs() {
+    return {
+      phone:     normalizePhone(document.getElementById('phone').value.trim()),
+      email:     document.getElementById('email').value.trim().toLowerCase(),
+      firstName: document.getElementById('firstName').value.trim(),
+      lastName:  document.getElementById('lastName').value.trim(),
+    };
+  }
+
+  function warmDedupCheck() {
+    const v = currentDedupInputs();
+    // רק על פרטים שנראים שלמים — אחרת מפציצים את הוורקר בכל הקלדה חלקית
+    if (v.firstName.length < 2 || v.lastName.length < 2) return;
+    if (!emailRx.test(v.email) || !phoneOk(document.getElementById('phone').value.trim())) return;
+    const key = dedupKeyFor(v);
+    if (key === dedupKey) return;
+    dedupKey = key;
+    dedupPromise = findExistingMemberId(v.phone, v.email, v.firstName, v.lastName);
+  }
+
+  // 'change' על input טקסט נורה ביציאה מהשדה — בדיוק הרגע שבו הערך סופי
+  ['firstName', 'lastName', 'phone', 'email'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', warmDedupCheck);
+  });
 
   // ── טיוטת טופס — נשמרת לפני מעבר לתקנון, כדי לא לאבד מה שמולא ──
   const DRAFT_KEY = '_hb_regDraft';
