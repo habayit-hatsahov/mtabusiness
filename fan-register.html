@@ -930,9 +930,19 @@
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const storageRef = ref(await getStorageLazy(), path);
+        // ── ⚠️ §290 — contentType מפורש. זה היה השורש של storage/unauthorized ────────────────
+        // כשמעבירים ל-uploadBytes אובייקט מטא-דאטה **בלי** contentType, ה-SDK נופל ל-`file.type`,
+        // ואם גם הוא ריק נשלח `application/octet-stream`. אז `isImage()` ב-storage.rules
+        // (`contentType.matches('image/.*')`) מחזיר false, והכתיבה נדחית ב-403 — שה-SDK מתרגם
+        // ל-`storage/unauthorized`, כלומר **הודעה שנשמעת כמו בעיית הרשאות ואינה כזו**.
+        // מתי file.type ריק? קובץ שהגיע משיתוף/אפליקציה ולא מגלריית התמונות, HEIC בחלק
+        // מגרסאות iOS, וכל מקרה שבו הדחיסה נכשלה ונפלנו-לאחור לקובץ המקורי.
+        // זה גם מסביר למה העלאה ידנית דרך REST עם `Content-Type: image/png` החזירה 200
+        // באותו רגע שבו הטופס נכשל: ההבדל היחיד בין שתי הבקשות היה הכותרת הזאת.
+        const contentType = /^image\//.test(file.type || '') ? file.type : 'image/jpeg';
         // immutable בטוח כי כל נתיב העלאה כבר ייחודי (timestamp/החלפה מלאה) — מונע בדיקת-304 מיותרת
         // בכל טעינה חוזרת של אותה תמונה (ר' docs/PROJECT_CONTEXT.md).
-        const snap = await uploadBytes(storageRef, file, { cacheControl: 'public, max-age=31536000, immutable' });
+        const snap = await uploadBytes(storageRef, file, { contentType, cacheControl: 'public, max-age=31536000, immutable' });
         return await getDownloadURL(snap.ref);
       } catch (e) {
         lastErr = e;
@@ -1330,11 +1340,16 @@
       // והיא הופכת ל-✓ או לכרטיס-השגיאה. המשתמש: "אם אני משתמש רגיל כבר יצאתי מהדף".
       const upNote = document.createElement('div');
       upNote.className = 'proof-status';
-      upNote.innerHTML = '<span class="spinner"></span><span>מעלים את תמונת האימות… רק רגע, אל תסגור/י את הדף.</span>';
+      // §290 — בלי "אל תסגור/י את הדף". המשתמש: *"זה לא נראה טוב שרושמים לו לא לסגור כי
+      // מאמתים את התמונה שלו"* — צודק: זו הוראה מלחיצה שמטילה עליו אחריות על תקלה שלנו,
+      // בדיוק ברגע שבו אמרנו לו שהכל הסתדר. שורת-המצב נשארת (היא זו שמונעת את החלון-השקט
+      // שבו הכל "נראה גמור"), אבל בניסוח שקט שרק מדווח מה קורה.
+      upNote.innerHTML = '<span class="spinner"></span><span>שומרים את תמונת האימות…</span>';
       success.appendChild(upNote);
 
       compressProofToFile(proofFile)
         .then(f => {
+          window.__lastProofFile = { size: f.size, type: f.type };   // לאבחון בכשל, ר' §290
           // הדחיסה נכשלה **וגם** המקור חוצה את התקרה של storage.rules — ההעלאה תידחה בוודאות.
           // עדיף להגיד את זה מיד מאשר להריץ העלאה ארוכה שסופה ידוע מראש.
           if (f.size > PROOF_MAX_BYTES) throw Object.assign(new Error('too-large'), { code: 'file-too-large' });
@@ -1343,7 +1358,7 @@
         .then(url => updateDoc(memberDocRef, { photoProofUrl: url }))
         .then(() => {
           upNote.className = 'proof-status ok';
-          upNote.innerHTML = '<span>✓</span><span>תמונת האימות נשלחה. זהו — סיימת.</span>';
+          upNote.innerHTML = '<span>✓</span><span>תמונת האימות נשמרה.</span>';
         })
         .catch(e => {
           console.error('❌ proof photo upload failed:', e.code, e.message);
@@ -1355,7 +1370,14 @@
           // ⚠️ הכתובת מוצגת גם כטקסט מלא ולא רק כקישור: `mailto:` לא תמיד רשום כ-handler
           // ואז לחיצה עליו פשוט לא עושה כלום — קרה בפועל למנהל עצמו (ר' gmailComposeLink
           // ב-admin-dashboard.html). מי שאצלו הכפתור מת עדיין רואה למי לכתוב.
-          logEvent('formError', { blockId: 'fanRegister', channel: 'proof-upload:' + (e.code || 'unknown') });
+          // §290 — האירוע נושא עכשיו גם את **המאפיינים של הקובץ**, לא רק את הקוד. שלושת
+          // הסבבים הקודמים בזבזו זמן על ניחוש בין "הרשאות", "גודל" ו-"סוג-קובץ", כשכל
+          // שלושתם מחזירים בדיוק את אותו `storage/unauthorized`. ≤50 תווים (firestore.rules).
+          const fInfo = (window.__lastProofFile || {});
+          logEvent('formError', {
+            blockId: 'fanRegister',
+            channel: `pu:${(e.code || '?').replace('storage/', '')}|${Math.round((fInfo.size || 0) / 1024)}k|${(fInfo.type || 'none').replace('image/', '')}`,
+          });
           const fullName = `${document.getElementById('firstName').value.trim()} ${document.getElementById('lastName').value.trim()}`.trim();
           const subj = encodeURIComponent(`תמונת אימות — ${fullName}`);
           const body = encodeURIComponent(`היי,\nנרשמתי ל-Yellow Zone בשם ${fullName} ותמונת האימות לא נשלחה בגלל תקלה.\nמצרף/ת אותה כאן.\n`);

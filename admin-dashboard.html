@@ -2139,7 +2139,10 @@ function composeBirthDate(day, month, year) {
 // compressImageFile/compressToFile/uploadImageWithThumb) — שלב 5 (מדיה) הוא הראשון בדמו שצריך את זה. ──
 async function uploadFile(file, path) {
   const storageRef = ref(await getStorageLazy(), path);
-  const snap = await uploadBytes(storageRef, file, { cacheControl: 'public, max-age=31536000, immutable' });
+  // §290 — contentType מפורש: בלעדיו ה-SDK נופל ל-file.type, ואם הוא ריק נשלח
+  // application/octet-stream ו-isImage() ב-storage.rules דוחה ב-403 ("storage/unauthorized").
+  const contentType = /^image\//.test(file.type || '') ? file.type : 'image/jpeg';
+  const snap = await uploadBytes(storageRef, file, { contentType, cacheControl: 'public, max-age=31536000, immutable' });
   return await getDownloadURL(snap.ref);
 }
 function fileToDataUrl(file) {
