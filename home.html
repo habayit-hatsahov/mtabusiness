@@ -3956,6 +3956,10 @@ window._likeFirestoreToggle = async function(id, memberId, liked) {
 };
 
 window._recordView = function(id) {
+  // §281 — מנהל לא מנפח לעסק את מונה הלחיצות. הדגל נקבע ב-initBizNavItem אחרי קריאת מסמך
+  // החבר; עד שהיא חוזרת הוא undefined, אבל זה קורה בטעינת הדף — הרבה לפני הקליק הראשון.
+  // אירועי ה-events עצמם ממשיכים להירשם: אותם *אפשר* לסנן בדיעבד לפי memberId, את המונה לא.
+  if (window._hbIsAdmin === true) return;
   updateDoc(doc(db, 'businesses', id), { clicks: increment(1) }).catch(() => {});
 };
 
@@ -4074,6 +4078,10 @@ async function initBizNavItem() {
         isBizOwner = d.isBusinessOwner === true;
         linkedBusinessId = d.linkedBusinessId || '';
         isAdminMember = d.isAdmin === true;
+        // §281 — נחשף גלובלית כדי ש-_recordView יוכל **לא** לספור לחיצות של מנהל. עמודת
+        // "לחיצות" במרכז הנתונים היא מונה בודד על מסמך העסק, בלי זיהוי מי לחץ — כלומר אי
+        // אפשר לנקות ממנה בדיעבד, וכל בדיקה של המנהל מנפחת לעסק את המספר לתמיד.
+        window._hbIsAdmin = isAdminMember;
       }
       console.debug('[initBizNavItem]', { memberId, docExists: snap.exists(), isAdminMember, isBizOwner, linkedBusinessId });
     } else {
