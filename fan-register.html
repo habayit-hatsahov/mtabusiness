@@ -307,7 +307,11 @@
     }
     @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     .success-state h3 { font-size: 22px; font-weight: 800; color: var(--text); }
-    .success-state p  { color: var(--text-muted); font-size: 14px; line-height: 1.7; margin-top: 10px; }
+    /* §287 — 1.7 על טקסט של 4-5 פסקאות פרס את מסך ההצלחה על מסך שלם, והשורות נראו מנותקות
+       זו מזו. הפסקאות מופרדות עכשיו במרווח מפורש (.sb-p) ולא בשורה ריקה שהפכה ל-<br/> כפול. */
+    .success-state p  { color: var(--text-muted); font-size: 14px; line-height: 1.5; margin-top: 8px; }
+    .success-state .sb-p { display: block; }
+    .success-state .sb-p + .sb-p { margin-top: 9px; }
 
     /* ── ERRORS ── */
     .field-error {
@@ -533,6 +537,7 @@
           <div class="sub-block" id="routeBlock">
             <div>
               <label style="margin-bottom:8px">איך הכי נוח לך לאמת? <span class="req">*</span></label>
+              <div class="hint" style="margin:-4px 0 8px">מספיק לבחור אחד מהרשימה.</div>
               <div class="route-list">
 
                 <div class="route" id="route-subNumber" onclick="pickRoute('subNumber', event)">
@@ -556,7 +561,7 @@
                     <div class="route-radio"></div>
                     <div class="route-text">
                       <div class="route-title">צילום מסך של המנוי — ללא ברקוד</div>
-                      <div class="route-sub">מ-Wallet, מאפליקציית מכבי, או מהאזור האישי באתר.</div>
+                      <div class="route-sub">מהארנק הדיגיטלי, מאפליקציית מכבי, או מהאזור האישי באתר.</div>
                     </div>
                   </div>
                   <div class="route-body">
@@ -594,7 +599,7 @@
                         <input type="text" id="seatNumber" inputmode="numeric" />
                       </div>
                     </div>
-                    <div class="hint">בלי לחפש מספרים — פשוט מה שכתוב על הכרטיס או בוולט.</div>
+                    <div class="hint">בלי לחפש מספרים — פשוט מה שכתוב על הכרטיס או בארנק הדיגיטלי.</div>
                     <div class="field-error" id="err-seatDetails">נא למלא את כל שדות המושב</div>
                   </div>
                 </div>
@@ -647,13 +652,13 @@
                     <div class="route-radio"></div>
                     <div class="route-text">
                       <div class="route-title">אף אחת מהאפשרויות לא מתאימה לי</div>
-                      <div class="route-sub">כתבו לנו במילים שלכם — ניצור קשר ונמצא דרך.</div>
+                      <div class="route-sub">כתבו לנו במילים שלכם.</div>
                     </div>
                   </div>
                   <div class="route-body">
                     <label for="verifyNote">איך נוכל לאמת אותך?</label>
                     <textarea id="verifyNote" placeholder="לדוגמה: אני מנוי כבר 12 שנה דרך אבא שלי, הכרטיס על שמו..."></textarea>
-                    <div class="hint">אנחנו מעדיפים שתכתוב/י לנו על פני שתנחש/י מספר — בקשה עם הסבר תמיד עדיפה על שדה שמולא בכאילו.</div>
+                    <div class="hint">כמה מילים על החברות שלך במכבי — זה מספיק לנו כדי להתחיל.</div>
                     <div class="field-error" id="err-manual">נא לכתוב כמה מילים (לפחות 10 תווים)</div>
                   </div>
                 </div>
@@ -811,59 +816,98 @@
   //   3. אייפון מעלה HEIC. הוא עובר את `isImage()`, אבל כרום **לא יודע להציג אותו** — כלומר
   //      המנהל היה רואה ריבוע ריק במקום הראיה. הקנבס ממיר ל-webp/jpeg ופותר גם את זה.
   // 1600 בצד הארוך: הראיה צריכה להיות **קריאה** (שם, מספר, שורה) — לא רק "לא כבדה". §240.
-  function fileToDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-  function dataUrlToFile(dataUrl, filename) {
-    const [meta, b64] = dataUrl.split(',');
-    const mime = meta.match(/:(.*?);/)[1];
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new File([bytes], filename, { type: mime });
-  }
-  function compressProofFile(file, maxDim = 1600, quality = 0.82) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      fileToDataUrl(file).then(rawDataUrl => {
-        img.onload = () => {
-          let { width, height } = img;
-          if (width > maxDim || height > maxDim) {
-            const scale = maxDim / Math.max(width, height);
-            width = Math.round(width * scale);
-            height = Math.round(height * scale);
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = width; canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(img, 0, 0, width, height);
-          // ⚠️ toDataURL מחזיר PNG **בשקט** כשהדפדפן לא יודע לקודד את הטיפוס המבוקש, ו-quality
-          // מתעלם (PNG חסר-אובדן). קרה בפועל ל-6 מ-30 התמונות המייצגות, אחת מהן 2.2MB. §240
-          const webp = canvas.toDataURL('image/webp', quality);
-          resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', quality));
-        };
-        img.onerror = reject;
-        img.src = rawDataUrl;
-      }).catch(reject);
-    });
-  }
-  // נופל-לאחור לקובץ המקורי אם הדחיסה נכשלה (פורמט שהדפדפן לא מפענח) — עדיף לנסות להעלות
-  // 12MB מאשר לא לנסות בכלל. רק אם גם המקור חוצה את 15MB אין מה לעשות, וזה נאמר לנרשם.
-  async function compressProofToFile(file) {
+  //
+  // ── §287: לעמוד בכל תמונה, לא רק בתמונה טיפוסית ─────────────────────────────────────────
+  // כל מסלולי האימות החדשים נשענים על תמונה, ולכן הנתיב הזה חייב לעבוד על מה שאנשים באמת
+  // מעלים. ארבעה כשלים שהגרסה הקודמת (FileReader→dataURL→Image→toDataURL) לא שרדה:
+  //   1. **זיכרון.** dataURL מנפח כל קובץ ב-33% ומחזיק אותו כמחרוזת. קובץ 25MB הופך ל-~33MB
+  //      מחרוזת + עוד עותק בתמונה עצמה — טאב במובייל פשוט נהרג. עכשיו: createImageBitmap
+  //      (בלי עותק ביניים בכלל) ואחריו objectURL. אין יותר base64 בשום מקום בנתיב.
+  //   2. **פורמט.** HEIC/HEIF של אייפון: createImageBitmap מפענח אותו ב-Safari, ורק אם גם
+  //      זה נכשל יורדים לנפילות-לאחור. TIFF/BMP נתמכים דרך אותו מסלול.
+  //   3. **תקרת קנבס.** ב-iOS Safari קנבס מעל ~16.7M פיקסלים מצויר **ריק, בלי שגיאה** —
+  //      כלומר היינו מעלים תמונה לבנה. הפאנורמה/48MP מוקטנת מראש מתחת לתקרה.
+  //   4. **תוצאה שעדיין כבדה.** אין הנחה ש-1600px מספיק: מקודדים, מודדים, ואם עדיין מעל
+  //      התקרה — סבב נוסף בממד/איכות נמוכים יותר, עד שנכנס.
+  const PROOF_MAX_BYTES     = 14 * 1024 * 1024;  // מרווח ביטחון מתחת ל-15MB של storage.rules
+  const PROOF_CANVAS_PIXELS = 16 * 1024 * 1024;  // תקרת הציור המעשית ב-iOS Safari
+
+  // מחזיר { source, cleanup } — source הוא ImageBitmap או HTMLImageElement, שניהם מקובלים
+  // ב-drawImage. cleanup חייב לרוץ רק **אחרי** הציור (revoke מוקדם שובר את drawImage).
+  async function decodeProofImage(file) {
+    if (typeof createImageBitmap === 'function') {
+      // imageOrientation — בלי זה תמונת אייפון שצולמה לאורך מגיעה מסובבת ב-90°, כי הסיבוב
+      // יושב ב-EXIF ולא בפיקסלים. הדגל לא נתמך בכל דפדפן, ולכן ניסיון שני בלעדיו.
+      try { return { source: await createImageBitmap(file, { imageOrientation: 'from-image' }), cleanup: () => {} }; } catch (_) {}
+      try { return { source: await createImageBitmap(file), cleanup: () => {} }; } catch (_) {}
+    }
+    const url = URL.createObjectURL(file);
     try {
-      const dataUrl = await compressProofFile(file);
-      const out = dataUrlToFile(dataUrl, file.name.replace(/\.[^.]+$/, '') + (dataUrl.startsWith('data:image/webp') ? '.webp' : '.jpg'));
-      return out.size < file.size ? out : file;   // תמונה כבר-קטנה לא "מתנפחת" בקידוד מחדש
+      const img = await new Promise((res, rej) => {
+        const el = new Image();
+        el.onload = () => res(el);
+        el.onerror = () => rej(new Error('decode-failed'));
+        el.src = url;
+      });
+      return { source: img, cleanup: () => URL.revokeObjectURL(url) };
+    } catch (e) {
+      URL.revokeObjectURL(url);
+      throw e;
+    }
+  }
+
+  function encodeCanvas(canvas, quality) {
+    return new Promise(resolve => {
+      // toBlob ולא toDataURL: אין מחרוזת base64 בזיכרון, וגם `type` בתשובה אומר מה באמת יצא.
+      // ⚠️ הדפדפן מחזיר PNG **בשקט** כשהוא לא יודע לקודד את הטיפוס המבוקש, ואז quality מתעלם
+      // (PNG חסר-אובדן). קרה בפועל ל-6 מ-30 התמונות המייצגות, אחת מהן 2.2MB — ר' §240.
+      canvas.toBlob(b => {
+        if (b && b.type === 'image/webp') return resolve(b);
+        canvas.toBlob(b2 => resolve(b2), 'image/jpeg', quality);
+      }, 'image/webp', quality);
+    });
+  }
+
+  function drawScaled(source, maxDim) {
+    let w = source.width, h = source.height;
+    if (!w || !h) throw new Error('zero-size');
+    let scale = Math.min(1, maxDim / Math.max(w, h));
+    // תקרת הפיקסלים גוברת על maxDim — היא מגבלה של הדפדפן, לא בחירה שלנו
+    if (w * scale * h * scale > PROOF_CANVAS_PIXELS) scale = Math.sqrt(PROOF_CANVAS_PIXELS / (w * h));
+    w = Math.max(1, Math.round(w * scale));
+    h = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(source, 0, 0, w, h);
+    return canvas;
+  }
+
+  // מחזיר תמיד קובץ להעלאה. נופל-לאחור למקור אם אי אפשר לפענח — עדיף לנסות מאשר לא לנסות.
+  async function compressProofToFile(file) {
+    let handle = null;
+    try {
+      handle = await decodeProofImage(file);
+      // שלושה סבבים: ההנחה ש-1600 תמיד מספיק היא בדיוק סוג ההנחה שמייצרת כשל שקט
+      for (const [maxDim, quality] of [[1600, 0.82], [1200, 0.75], [900, 0.7]]) {
+        const blob = await encodeCanvas(drawScaled(handle.source, maxDim), quality);
+        if (!blob) continue;
+        if (blob.size <= PROOF_MAX_BYTES) {
+          const ext = blob.type === 'image/webp' ? '.webp' : '.jpg';
+          const out = new File([blob], file.name.replace(/\.[^.]+$/, '') + ext, { type: blob.type });
+          // תמונה שכבר קטנה לא "מתנפחת" בקידוד מחדש
+          return out.size < file.size ? out : file;
+        }
+        console.warn(`דחיסה ב-${maxDim}px נתנה ${(blob.size / 1048576).toFixed(1)}MB — מנסה קטן יותר`);
+      }
+      throw new Error('still-too-large');
     } catch (e) {
       console.warn('compressProofToFile נכשל, מעלה את המקור:', e?.message || e);
       return file;
+    } finally {
+      try { handle?.cleanup?.(); handle?.source?.close?.(); } catch (_) {}
     }
   }
 
@@ -1067,7 +1111,15 @@
   const successBodyEl  = document.getElementById('successBody');
   function renderSuccessMsg(title, body) {
     successTitleEl.textContent = title;
-    successBodyEl.innerHTML = body.split('\n').map(l => l || '<br/>').join('<br/>');
+    // §287 — שורה ריקה בטקסט המנוהל התפרשה כ-<br/> נוסף, ויחד עם line-height 1.7 נוצרו
+    // פערים ענקיים בין השורות. עכשיו: שורה ריקה = גבול-פסקה עם מרווח קבוע (.sb-p),
+    // ירידת-שורה בודדת נשארת <br/>. הטקסט עצמו מגיע כמו שהוא — לא נוגעים בתוכן.
+    successBodyEl.innerHTML = body
+      .split(/\n\s*\n/)
+      .map(p => p.trim())
+      .filter(Boolean)
+      .map(p => `<span class="sb-p">${p.split('\n').join('<br/>')}</span>`)
+      .join('');
   }
   (function loadSuccessMsg() {
     const defTitle = 'הבקשה התקבלה!';
@@ -1258,7 +1310,12 @@
       // הדחיסה רצה כאן ולא לפני השליחה בכוונה: היא לוקחת זמן על תמונה גדולה, ואין שום סיבה
       // להוסיף אותו לזמן ההמתנה של הנרשם. הבקשה כבר נקלטה, המסך כבר מציג הצלחה.
       compressProofToFile(proofFile)
-        .then(f => uploadFile(f, `members/proofs/${memberDocRef.id}_fan`))
+        .then(f => {
+          // הדחיסה נכשלה **וגם** המקור חוצה את התקרה של storage.rules — ההעלאה תידחה בוודאות.
+          // עדיף להגיד את זה מיד מאשר להריץ העלאה ארוכה שסופה ידוע מראש.
+          if (f.size > PROOF_MAX_BYTES) throw Object.assign(new Error('too-large'), { code: 'file-too-large' });
+          return uploadFile(f, `members/proofs/${memberDocRef.id}_fan`);
+        })
         .then(url => updateDoc(memberDocRef, { photoProofUrl: url }))
         .catch(e => {
           console.error('❌ proof photo upload failed:', e.code, e.message);

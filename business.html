@@ -1334,6 +1334,7 @@
                ש-29 מהם הזינו ערך מומצא. ר' ההערה המקבילה ב-fan-register.html. -->
           <div class="form-group" style="margin-top:14px">
             <label style="margin-bottom:8px">איך הכי נוח לכם לאמת? <span class="req">*</span></label>
+            <div class="hint" style="margin:-4px 0 8px">מספיק לבחור אחד מהרשימה.</div>
             <input type="hidden" id="bizVerifyRoute" value="" />
             <div class="route-list">
 
@@ -1358,7 +1359,7 @@
                   <div class="route-radio"></div>
                   <div class="route-text">
                     <div class="route-title">צילום מסך של המנוי — ללא ברקוד</div>
-                    <div class="route-sub">מ-Wallet, מאפליקציית מכבי, או מהאזור האישי באתר.</div>
+                    <div class="route-sub">מהארנק הדיגיטלי, מאפליקציית מכבי, או מהאזור האישי באתר.</div>
                   </div>
                 </div>
                 <div class="route-body">
@@ -1396,7 +1397,7 @@
                       <input type="text" id="bizSeatNumber" inputmode="numeric" />
                     </div>
                   </div>
-                  <div class="hint">בלי לחפש מספרים — פשוט מה שכתוב על הכרטיס או בוולט.</div>
+                  <div class="hint">בלי לחפש מספרים — פשוט מה שכתוב על הכרטיס או בארנק הדיגיטלי.</div>
                   <div class="field-error" id="err-bizSeatDetails">נא למלא את כל שדות המושב</div>
                 </div>
               </div>
@@ -1445,7 +1446,7 @@
                   <div class="route-radio"></div>
                   <div class="route-text">
                     <div class="route-title">אף אחת מהאפשרויות לא מתאימה לי</div>
-                    <div class="route-sub">כתבו לנו במילים שלכם — ניצור קשר ונמצא דרך.</div>
+                    <div class="route-sub">כתבו לנו במילים שלכם.</div>
                   </div>
                 </div>
                 <div class="route-body">
@@ -1686,6 +1687,77 @@
   async function compressToFile(file, maxDim, quality, filename) {
     const dataUrl = await compressImageFile(file, maxDim, quality);
     return dataUrlToFile(dataUrl, filename || file.name);
+  }
+
+  // ── §287 — נתיב נפרד ועמיד לתמונת האימות ──────────────────────────────────────────────────
+  // זהה ל-fan-register.html; ר' שם את ההסבר המלא על ארבעת הכשלים (זיכרון/HEIC/תקרת-קנבס/
+  // תוצאה-שעדיין-כבדה). **בכוונה לא שונה `compressImageFile` המשותף** — הוא משרת גם לוגו,
+  // תמונה מייצגת וגלריה, ושינוי שלו היה נוגע בשלושה נתיבים יציבים בשביל תיקון של אחד.
+  const PROOF_MAX_BYTES     = 14 * 1024 * 1024;
+  const PROOF_CANVAS_PIXELS = 16 * 1024 * 1024;
+
+  async function decodeProofImage(file) {
+    if (typeof createImageBitmap === 'function') {
+      try { return { source: await createImageBitmap(file, { imageOrientation: 'from-image' }), cleanup: () => {} }; } catch (_) {}
+      try { return { source: await createImageBitmap(file), cleanup: () => {} }; } catch (_) {}
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((res, rej) => {
+        const el = new Image();
+        el.onload = () => res(el);
+        el.onerror = () => rej(new Error('decode-failed'));
+        el.src = url;
+      });
+      return { source: img, cleanup: () => URL.revokeObjectURL(url) };
+    } catch (e) { URL.revokeObjectURL(url); throw e; }
+  }
+
+  function encodeProofCanvas(canvas, quality) {
+    return new Promise(resolve => {
+      canvas.toBlob(b => {
+        if (b && b.type === 'image/webp') return resolve(b);
+        canvas.toBlob(b2 => resolve(b2), 'image/jpeg', quality);
+      }, 'image/webp', quality);
+    });
+  }
+
+  function drawProofScaled(source, maxDim) {
+    let w = source.width, h = source.height;
+    if (!w || !h) throw new Error('zero-size');
+    let scale = Math.min(1, maxDim / Math.max(w, h));
+    if (w * scale * h * scale > PROOF_CANVAS_PIXELS) scale = Math.sqrt(PROOF_CANVAS_PIXELS / (w * h));
+    w = Math.max(1, Math.round(w * scale));
+    h = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(source, 0, 0, w, h);
+    return canvas;
+  }
+
+  async function compressProofToFile(file) {
+    let handle = null;
+    try {
+      handle = await decodeProofImage(file);
+      for (const [maxDim, quality] of [[1600, 0.82], [1200, 0.75], [900, 0.7]]) {
+        const blob = await encodeProofCanvas(drawProofScaled(handle.source, maxDim), quality);
+        if (!blob) continue;
+        if (blob.size <= PROOF_MAX_BYTES) {
+          const ext = blob.type === 'image/webp' ? '.webp' : '.jpg';
+          const out = new File([blob], file.name.replace(/\.[^.]+$/, '') + ext, { type: blob.type });
+          return out.size < file.size ? out : file;
+        }
+      }
+      throw new Error('still-too-large');
+    } catch (e) {
+      console.warn('compressProofToFile נכשל, שולח את המקור:', e?.message || e);
+      return file;
+    } finally {
+      try { handle?.cleanup?.(); handle?.source?.close?.(); } catch (_) {}
+    }
   }
 
   // ── STEPPER STATE ──
@@ -2304,10 +2376,9 @@
           // האימות של בעל-העסק בכל ארבעת המסלולים, כלומר הקובץ הכי חשוב בטופס — ותמונת
           // אייפון של 15MB+ בגוף ה-FormData היא בדיוק מה שמפיל את הבקשה לוורקר.
           // נפילה-לאחור למקור אם הדחיסה נכשלה (פורמט שהדפדפן לא מפענח).
-          if (fanPhotoFile) {
-            const proof = await compressToFile(fanPhotoFile, 1600, 0.82, fanPhotoFile.name).catch(() => fanPhotoFile);
-            form.append('fanPhoto', proof.size < fanPhotoFile.size ? proof : fanPhotoFile);
-          }
+          // §287 — compressProofToFile ולא compressToFile: הנתיב העמיד (createImageBitmap,
+          // בלי base64, תקרת-קנבס, וסבבים חוזרים אם התוצאה עדיין כבדה). ר' ההגדרה למעלה.
+          if (fanPhotoFile) form.append('fanPhoto', await compressProofToFile(fanPhotoFile));
           if (effectiveLogoFile) form.append('logo', effectiveLogoFile);
           if (effectiveCoverFile) {
             const [mainFile, thumbFile] = await Promise.all([
