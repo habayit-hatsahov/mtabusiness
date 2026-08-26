@@ -798,7 +798,31 @@ function openJoinModal() {
   const f = document.getElementById('joinFrame');
   const wide = window.matchMedia('(min-width: 760px)').matches;
   const wantedSrc = wide ? 'fan-register.html?embed=1' : 'fan-register.html';
-  if (f.getAttribute('src') !== wantedSrc) f.src = wantedSrc;
+
+  // ── §286 — פתיחה חוזרת אחרי הרשמה מוצלחת ─────────────────────────────────────────────────
+  // התנאי `src !== wantedSrc` נועד לא לטעון מחדש טופס שכבר פתוח (כדי לא לאבד מה שהוקלד בו
+  // אם המודאל נסגר בטעות) — אבל אחרי שליחה מוצלחת ה-iframe מציג את **מסך ההצלחה**, והכתובת
+  // לא השתנתה. התוצאה: לחיצה חוזרת על "להרשמה" החזירה את "הבקשה התקבלה" במקום טופס נקי,
+  // ולא הייתה שום דרך לרשום אדם נוסף (בן משפחה, חבר) בלי לרענן את כל הדף. דווח בפועל.
+  //
+  // הזיהוי הוא same-origin לתוך ה-iframe (אותו מנגנון כמו embedGoLogin ב-fan-register).
+  // ⚠️ **לא** offsetParent: הבדיקה הזאת רצה לפני ש-.open נוסף לאוברליי, כלומר בזמן שה-iframe
+  // עצמו עדיין מוסתר — ואז offsetParent של *כל* אלמנט בתוכו הוא null, והזיהוי תמיד נכשל.
+  // getComputedStyle על האלמנט עצמו מחזיר את ה-display שלו בלי קשר לכך שההורה מוסתר:
+  // `.success-state` הוא display:none כברירת מחדל, והקוד מציב block בהצלחה.
+  let alreadySubmitted = false;
+  try {
+    const s = f.contentDocument?.getElementById('successState');
+    alreadySubmitted = !!s && f.contentWindow.getComputedStyle(s).display !== 'none';
+  } catch (_) {}
+
+  // ה-cache-buster הכרחי: השמה של אותה כתובת בדיוק ל-src לא מבטיחה ניווט מחדש בכל דפדפן.
+  // ההשוואה למטה מתעלמת ממנו, כדי שטופס שכבר פתוח וממולא ימשיך לא להיטען מחדש.
+  const currentBase = (f.getAttribute('src') || '').replace(/[?&]r=\d+/, '');
+  if (currentBase !== wantedSrc || alreadySubmitted) {
+    f.src = wantedSrc + (wantedSrc.includes('?') ? '&' : '?') + 'r=' + Date.now();
+  }
+
   document.getElementById('joinOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
