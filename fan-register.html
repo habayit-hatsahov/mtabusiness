@@ -243,6 +243,15 @@
     }
     .warn-box.neutral { background: #F1F1EC; border-color: #E0E0DA; color: #4A5570; }
 
+    /* ── מצב ההעלאה (§288) — מוצג מיד, כדי שלא יהיה חלון-זמן שקט שבו הכל "נראה גמור" ── */
+    .proof-status {
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+      margin-top: 14px; padding: 11px 13px; border-radius: var(--r-field);
+      background: var(--input-bg); border: 1px solid var(--input-border);
+      font-size: 12.5px; font-weight: 600; color: var(--blue-mid); line-height: 1.45;
+    }
+    .proof-status.ok { background: #E8F6ED; border-color: #B7E0C4; color: #166534; }
+
     /* ── כשל העלאת התמונה (§285) — הודעה שנותנת פעולה, לא הבטחה שנחזור אליו ── */
     .proof-fail-note {
       margin-top: 14px; text-align: right;
@@ -561,7 +570,7 @@
                     <div class="route-radio"></div>
                     <div class="route-text">
                       <div class="route-title">צילום מסך של המנוי — ללא ברקוד</div>
-                      <div class="route-sub">מהארנק הדיגיטלי, מאפליקציית מכבי, או מהאזור האישי באתר.</div>
+                      <div class="route-sub">מהמנוי בארנק הדיגיטלי, מאפליקציית מכבי, או מהאזור האישי באתר.</div>
                     </div>
                   </div>
                   <div class="route-body">
@@ -1309,6 +1318,16 @@
     if (proofFile && memberDocRef) {
       // הדחיסה רצה כאן ולא לפני השליחה בכוונה: היא לוקחת זמן על תמונה גדולה, ואין שום סיבה
       // להוסיף אותו לזמן ההמתנה של הנרשם. הבקשה כבר נקלטה, המסך כבר מציג הצלחה.
+      // ── §288 — ההעלאה מדווחת על עצמה מהשנייה הראשונה ─────────────────────────────────────
+      // עד עכשיו מסך ההצלחה נראה "גמור", וההעלאה רצה מאחוריו בשקט: דחיסה + עד 3 ניסיונות עם
+      // המתנה עולה = כמה שניות טובות. מי שסגר את הדף בינתיים (וזו התנהגות סבירה לגמרי — כתוב
+      // לו "הבקשה התקבלה") לא ראה לא הצלחה ולא כישלון. עכשיו יש שורת-מצב **לפני** שמתחילים,
+      // והיא הופכת ל-✓ או לכרטיס-השגיאה. המשתמש: "אם אני משתמש רגיל כבר יצאתי מהדף".
+      const upNote = document.createElement('div');
+      upNote.className = 'proof-status';
+      upNote.innerHTML = '<span class="spinner"></span><span>מעלים את תמונת האימות… רק רגע, אל תסגור/י את הדף.</span>';
+      success.appendChild(upNote);
+
       compressProofToFile(proofFile)
         .then(f => {
           // הדחיסה נכשלה **וגם** המקור חוצה את התקרה של storage.rules — ההעלאה תידחה בוודאות.
@@ -1317,8 +1336,13 @@
           return uploadFile(f, `members/proofs/${memberDocRef.id}_fan`);
         })
         .then(url => updateDoc(memberDocRef, { photoProofUrl: url }))
+        .then(() => {
+          upNote.className = 'proof-status ok';
+          upNote.innerHTML = '<span>✓</span><span>תמונת האימות נשלחה. זהו — סיימת.</span>';
+        })
         .catch(e => {
           console.error('❌ proof photo upload failed:', e.code, e.message);
+          upNote.remove();
           // ── §285 — האחריות עוברת אלינו, והנרשם מקבל פעולה ─────────────────────────────────
           // עד עכשיו כתבנו לו "שלח לנו את התמונה בתשובה למייל שתקבל": זה מטיל עליו לחכות למייל
           // שאולי יגיע ואולי לא, ומשאיר אותו בלי שום דבר לעשות עכשיו. עכשיו הוא יוזם — כפתור

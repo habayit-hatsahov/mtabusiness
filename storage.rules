@@ -68,9 +68,23 @@ service firebase.storage {
     match /members/proofs/{fileName} {
       allow read: if isAdmin();
 
-      allow write: if isImage() && underSizeLimit() && (
-        isAdmin() || request.auth == null
-      );
+      // ── §288: תנאי-ההרשאה הוסר — הוא היה **הסיבה** ל-storage/unauthorized ──────────────────
+      // הניסוח הקודם היה `isAdmin() || request.auth == null`, כלומר: מותר למנהל, ומותר
+      // לאורח לגמרי-לא-מחובר — ו**אסור לכל מי שביניהם**. מי נופל שם? כל חבר שכבר התחבר
+      // פעם לאתר: הכניסה עושה signInWithCustomToken (welcome.html/profile.html), הסשן
+      // נשמר ב-IndexedDB של הדומיין, ו-firebase-config.js מאתחל getAuth() בכל דף —
+      // כולל טופס ההרשמה. ה-SDK מצרף את הטוקן להעלאה, request.auth כבר לא null,
+      // והכתיבה נדחית. **דטרמיניסטי, בכל מכשיר ובכל גודל תמונה.**
+      //
+      // נמדד בפועל (§288): 3 אירועי formError עם `storage/unauthorized` — גם ממובייל וגם
+      // מדסקטופ — בזמן שהעלאה אנונימית דרך REST לאותו נתיב בדיוק החזירה 200. ההבדל היחיד
+      // בין שתי הבקשות היה הטוקן.
+      //
+      // למה בטוח להסיר: הנתיב הזה **כבר** פתוח לכתיבה אנונימית — זו הזרימה המתוכננת (אורח
+      // שנרשם). הוספת "גם מחובר" לא מרחיבה את החשיפה ולו במעט; היא רק מפסיקה להעניש
+      // דווקא את מי שכן התחבר. ההגנה האמיתית כאן היא `allow read: if isAdmin()` למעלה —
+      // ההוכחות נשארות קריאות למנהל בלבד. isImage()+underSizeLimit() נשמרים כמו שהם.
+      allow write: if isImage() && underSizeLimit();
     }
 
     // ── תמונות-קוביה בתוכן דף הנחיתה (landing/tiles/{fileName}) — שלב 6 ──────
