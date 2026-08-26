@@ -201,6 +201,47 @@
     .sub-block { margin-top: 12px; display: none; flex-direction: column; gap: 12px; }
     .sub-block.show { display: flex; }
 
+    /* ── בורר מסלול האימות (§284) ────────────────────────────────────────────────────────────
+       החליף שדה-חובה יחיד ("מספר מנוי") בבחירה בין כמה דרכי-אימות. כרטיסים אנכיים ולא
+       toggle-row אופקי כמו שאר הבוררים בדף: יש שישה מסלולים, ולכל אחד שורת-הסבר שצריכה
+       מקום. אופקי היה מכריח תווית של מילה אחת — וזה בדיוק מה שגורם לבחור מסלול לא-מתאים
+       ואז להמציא נתונים (49% מהמנויים הזינו 00000/12345 כשהשדה היה חובה גורפת). */
+    .route-list { display: flex; flex-direction: column; gap: 9px; }
+    .route {
+      border: 1px solid var(--input-border); border-radius: var(--r-field);
+      background: var(--card-bg); cursor: pointer; overflow: hidden;
+      transition: border-color .12s, background .12s;
+    }
+    .route:hover { border-color: var(--text); }
+    .route.on { border-color: var(--yellow); background: #FFFDF2; box-shadow: 0 0 0 2px rgba(255,212,0,.3); }
+    .route-head { display: flex; align-items: flex-start; gap: 10px; padding: 12px 13px; }
+    .route-radio {
+      width: 19px; height: 19px; flex: none; margin-top: 1px; border-radius: 50%;
+      border: 2px solid var(--input-border); background: var(--card-bg);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .route.on .route-radio { border-color: var(--yellow-dark); }
+    .route.on .route-radio::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--yellow-dark); }
+    .route-text { flex: 1; min-width: 0; }
+    .route-title { font-size: 13.5px; font-weight: 700; color: var(--text); line-height: 1.35; }
+    .route-sub { font-size: 11.5px; font-weight: 400; color: var(--text-muted); margin-top: 3px; line-height: 1.5; }
+    .route-body { display: none; padding: 0 13px 14px; border-top: 1px dashed var(--card-border); margin-top: 2px; }
+    .route.on .route-body { display: block; padding-top: 13px; }
+    .route-body label { margin-bottom: 6px; }
+    .route-body textarea { min-height: 86px; resize: vertical; line-height: 1.55; }
+
+    .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .hint { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; line-height: 1.55; }
+    .warn-box {
+      display: flex; gap: 8px; align-items: flex-start;
+      background: #FFF1EC; border: 1px solid #FFD3C4; border-radius: 9px;
+      padding: 9px 11px; font-size: 11.5px; color: #8A2E12; line-height: 1.5; margin-bottom: 10px;
+    }
+    .warn-box.neutral { background: #F1F1EC; border-color: #E0E0DA; color: #4A5570; }
+    .check-row { display: flex; align-items: flex-start; gap: 9px; margin-top: 10px; }
+    .check-row input[type="checkbox"] { width: 18px; height: 18px; flex: none; margin-top: 1px; accent-color: var(--yellow-dark); }
+    .check-row label { font-size: 12.5px; font-weight: 500; color: var(--text); margin: 0; line-height: 1.5; }
+
     /* ── TERMS ── */
     .terms-row {
       font-size: 12.5px; color: var(--text-muted); line-height: 1.6;
@@ -433,7 +474,7 @@
           <div class="sub-block" id="verifiedSportRow">
             <div class="form-group">
               <label>לאיזה ענף תרצה לבצע את האימות? <span class="req">*</span></label>
-              <div style="font-size:11px;color:var(--text-muted);margin:-4px 0 6px;">לאימות נדרש להזין רק מספר מנוי אחד — בחר/י ענף אחד להזנת הפרטים</div>
+              <div style="font-size:11px;color:var(--text-muted);margin:-4px 0 6px;">מספיק לאמת ענף אחד — בחר/י את הענף שנוח לך להביא עליו פרטים</div>
               <div class="toggle-row" id="verifiedSportToggleRow">
                 <button type="button" class="toggle-btn" id="verifiedFootballBtn" onclick="setVerifiedSport('football')">כדורגל</button>
                 <button type="button" class="toggle-btn" id="verifiedBasketballBtn" onclick="setVerifiedSport('basketball')">כדורסל</button>
@@ -447,22 +488,164 @@
             </div>
           </div>
 
+          <!-- ── מיקום הישיבה — נשאר שדה חובה בכל מסלול אימות ─────────────────────────────────
+               זה הפרט היחיד שכל מנוי יודע בעל-פה בלי לחפש בשום מקום, ולכן הוא לא חלק
+               מהבחירה בין המסלולים אלא מעליה. -->
           <div class="sub-block" id="locationRow">
-            <div class="form-row">
-              <div class="form-group">
-                <label for="subscriberSection"><span id="subscriberSectionLabel">שער</span> <span class="req">*</span></label>
-                <select id="subscriberSection">
-                  <option value="">בחר שער...</option>
-                  <option>1</option><option>2</option><option>7</option>
-                  <option>8</option><option>11</option><option>13</option>
-                </select>
-                <div class="field-error" id="err-subscriberSection">נא לבחור מיקום</div>
+            <div class="form-group">
+              <label for="subscriberSection"><span id="subscriberSectionLabel">שער</span> <span class="req">*</span></label>
+              <select id="subscriberSection">
+                <option value="">בחר שער...</option>
+                <option>1</option><option>2</option><option>7</option>
+                <option>8</option><option>11</option><option>13</option>
+              </select>
+              <div class="hint" id="subscriberSectionHint">השער שבו את/ה יושב/ת בבלומפילד.</div>
+              <div class="field-error" id="err-subscriberSection">נא לבחור מיקום</div>
+            </div>
+          </div>
+
+          <!-- ── בורר מסלול האימות (§284) ─────────────────────────────────────────────────────
+               עד היום היה כאן שדה-חובה יחיד: "מספר מנוי". מדידה על 59 המנויים הרשומים הראתה
+               ש-29 מהם (49%) הזינו ערך מומצא — 00000, 12345 (=ה-placeholder שהיה בשדה), 11111 —
+               כלומר השדה לא סינן אף אחד, רק חסם אוהדים אמיתיים שלא מוצאים את המספר, ואיש
+               לא בדק אותו מול שום רשימה. הפתרון: כמה דרכים לאמת, והנרשם בוחר את הנוחה לו.
+               verifyMethod + verifyTrust נשמרים על הרשומה — תג האמינות **לא** מוצג בממשק
+               (החלטת המשתמש), אבל הנתון נאסף כדי שאפשר יהיה להציג/לסנן לפיו בעתיד. -->
+          <div class="sub-block" id="routeBlock">
+            <div>
+              <label style="margin-bottom:8px">איך הכי נוח לך לאמת? <span class="req">*</span></label>
+              <div class="route-list">
+
+                <div class="route" id="route-subNumber" onclick="pickRoute('subNumber', event)">
+                  <div class="route-head">
+                    <div class="route-radio"></div>
+                    <div class="route-text">
+                      <div class="route-title">מספר מנוי</div>
+                      <div class="route-sub">אם המספר זמין לך — הדרך הכי מהירה.</div>
+                    </div>
+                  </div>
+                  <div class="route-body">
+                    <label for="subscriberNumber">מספר המנוי</label>
+                    <input type="text" id="subscriberNumber" inputmode="numeric" />
+                    <div class="hint">מופיע על כרטיס המנוי, באזור האישי באתר מכבי ובמייל אישור החידוש.</div>
+                    <div class="field-error" id="err-subscriberNumber">נא להזין את מספר המנוי (ספרות בלבד). אם זה באמת המספר שלך — בחר/י למטה "אף אחת מהאפשרויות לא מתאימה לי" וכתוב/כתבי לנו.</div>
+                  </div>
+                </div>
+
+                <div class="route" id="route-passScreenshot" onclick="pickRoute('passScreenshot', event)">
+                  <div class="route-head">
+                    <div class="route-radio"></div>
+                    <div class="route-text">
+                      <div class="route-title">צילום מסך של המנוי</div>
+                      <div class="route-sub">מ-Wallet, מאפליקציית מכבי, או מהאזור האישי באתר.</div>
+                    </div>
+                  </div>
+                  <div class="route-body">
+                    <div class="warn-box">
+                      <span>⚠️</span>
+                      <div><b>חשוב: הסתר/י את הברקוד / QR</b> לפני הצילום — אצבע, פתק או טשטוש. אנחנו לא צריכים אותו, והוא מה שמאפשר כניסה למגרש.</div>
+                    </div>
+                    <label for="passFile">התמונה</label>
+                    <input type="file" id="passFile" accept="image/*" />
+                    <div class="hint">שיהיו קריאים: השם המלא והענף. אפשר לחתוך את שאר הפרטים.</div>
+                    <div class="check-row">
+                      <input type="checkbox" id="barcodeHidden" />
+                      <label for="barcodeHidden">אישרתי שהברקוד מוסתר בתמונה</label>
+                    </div>
+                    <div class="field-error" id="err-passFile">נא לצרף תמונה ולאשר שהברקוד מוסתר</div>
+                  </div>
+                </div>
+
+                <div class="route" id="route-seatDetails" onclick="pickRoute('seatDetails', event)">
+                  <div class="route-head">
+                    <div class="route-radio"></div>
+                    <div class="route-text">
+                      <div class="route-title">פרטי המושב</div>
+                      <div class="route-sub" id="seatRouteSub">גוש, שורה וכיסא — כפי שמופיע במנוי.</div>
+                    </div>
+                  </div>
+                  <div class="route-body">
+                    <div class="form-row-3">
+                      <div id="seatBlockCol">
+                        <label for="seatBlock">גוש</label>
+                        <input type="text" id="seatBlock" inputmode="numeric" />
+                      </div>
+                      <div>
+                        <label for="seatRow">שורה</label>
+                        <input type="text" id="seatRow" inputmode="numeric" />
+                      </div>
+                      <div>
+                        <label for="seatNumber">כיסא</label>
+                        <input type="text" id="seatNumber" inputmode="numeric" />
+                      </div>
+                    </div>
+                    <div class="hint">בלי לחפש מספרים — פשוט מה שכתוב על הכרטיס או בוולט.</div>
+                    <div class="field-error" id="err-seatDetails">נא למלא את כל שדות המושב</div>
+                  </div>
+                </div>
+
+                <div class="route" id="route-purchaseEmail" onclick="pickRoute('purchaseEmail', event)">
+                  <div class="route-head">
+                    <div class="route-radio"></div>
+                    <div class="route-text">
+                      <div class="route-title">אישור רכישה או חידוש מנוי</div>
+                      <div class="route-sub">צילום מסך של המייל שקיבלת ממכבי. חיפוש "מכבי" בתיבה.</div>
+                    </div>
+                  </div>
+                  <div class="route-body">
+                    <label for="emailFile">צילום המסך</label>
+                    <input type="file" id="emailFile" accept="image/*" />
+                    <div class="hint">שיהיו קריאים: השם והעונה. אפשר להסתיר פרטי תשלום — אנחנו לא צריכים אותם.</div>
+                    <div class="field-error" id="err-purchaseEmail">נא לצרף צילום מסך</div>
+                  </div>
+                </div>
+
+                <div class="route" id="route-standsPhoto" onclick="pickRoute('standsPhoto', event)">
+                  <div class="route-head">
+                    <div class="route-radio"></div>
+                    <div class="route-text">
+                      <div class="route-title">תמונה מהיציע + פרופיל פייסבוק</div>
+                      <div class="route-sub">אם אף אחת מהדרכים למעלה לא זמינה לך.</div>
+                    </div>
+                  </div>
+                  <div class="route-body">
+                    <div class="warn-box neutral">
+                      <span>🕐</span>
+                      <div>המסלול הזה עובר בדיקה ידנית, לוקח יותר זמן, ולא תמיד נוכל לאשר אותו. אם יש לך אחת מהאפשרויות למעלה — היא תקצר את התהליך.</div>
+                    </div>
+                    <label for="standsFile">תמונה ביציעי מכבי ת"א</label>
+                    <input type="file" id="standsFile" accept="image/*" />
+                    <div class="hint">סלפי מהיציע, כרטיס כניסה, תמונה ממשחק.</div>
+                    <div class="form-group" style="margin-top:11px">
+                      <label for="standsFacebookUrl">קישור לפרופיל הפייסבוק שלך</label>
+                      <input type="url" id="standsFacebookUrl" placeholder="https://facebook.com/..." inputmode="url" />
+                    </div>
+                    <div class="field-error" id="err-standsPhoto">נא לצרף תמונה וקישור פייסבוק תקין</div>
+                  </div>
+                </div>
+
+                <!-- ── שסתום הביטחון ────────────────────────────────────────────────────────
+                     בלי מסלול כזה, אוהד אמיתי שאף אחת מהדרכים לא זמינה לו נשאר עם בחירה בין
+                     לנטוש לבין להמציא — וזה בדיוק מה שייצר את 29 המספרים המזויפים. -->
+                <div class="route" id="route-manual" onclick="pickRoute('manual', event)">
+                  <div class="route-head">
+                    <div class="route-radio"></div>
+                    <div class="route-text">
+                      <div class="route-title">אף אחת מהאפשרויות לא מתאימה לי</div>
+                      <div class="route-sub">כתבו לנו במילים שלכם — ניצור קשר ונמצא דרך.</div>
+                    </div>
+                  </div>
+                  <div class="route-body">
+                    <label for="verifyNote">איך נוכל לאמת אותך?</label>
+                    <textarea id="verifyNote" placeholder="לדוגמה: אני מנוי כבר 12 שנה דרך אבא שלי, הכרטיס על שמו..."></textarea>
+                    <div class="hint">אנחנו מעדיפים שתכתוב/י לנו על פני שתנחש/י מספר — בקשה עם הסבר תמיד עדיפה על שדה שמולא בכאילו.</div>
+                    <div class="field-error" id="err-manual">נא לכתוב כמה מילים (לפחות 10 תווים)</div>
+                  </div>
+                </div>
+
               </div>
-              <div class="form-group">
-                <label for="subscriberNumber">מספר מנוי <span class="req">*</span></label>
-                <input type="text" id="subscriberNumber" placeholder="12345" inputmode="numeric" />
-                <div class="field-error" id="err-subscriberNumber">נא להזין מספר מנוי</div>
-              </div>
+              <input type="hidden" id="verifyRoute" value="" />
+              <div class="field-error" id="err-verifyRoute">נא לבחור דרך אימות אחת</div>
             </div>
           </div>
         </div>
@@ -560,7 +743,9 @@
       referrer: (document.referrer.split('/')[2] || '').slice(0, 50) || null,
       device: w <= 700 ? 'mobile' : 'desktop',
       blockId: e.blockId ?? null,
-      channel: null,
+      // ⚠️ 50 תווים ב-firestore.rules — ערך ארוך יותר מפיל את **כל** האירוע ב-permission-denied,
+      // בדיוק כמו שקרה ל-referrer (§281). קודי-שגיאה של Firebase קצרים, אבל חותכים ליתר ביטחון.
+      channel: e.channel ? String(e.channel).slice(0, 50) : null,
       createdAt: serverTimestamp(),
     }).catch(err => console.error('logEvent failed:', type, err));
   }
@@ -780,7 +965,11 @@
         ok = vf('verifiedSport', document.getElementById('verifiedSport').value !== '') && ok;
       }
       ok = vf('subscriberSection', document.getElementById('subscriberSection').value !== '') && ok;
-      ok = vf('subscriberNumber',  document.getElementById('subscriberNumber').value.trim().length >= 3) && ok;
+      // ── §284 — נדרש רק המסלול שנבחר, לא שדה קבוע לכולם ──────────────────────────────────
+      // זה כל ההבדל מהמצב הקודם: "מספר מנוי" היה חובה גורפת, ומי שלא ידע אותו המציא ערך.
+      const routeVal = document.getElementById('verifyRoute').value;
+      ok = vf('verifyRoute', routeVal !== '') && ok;
+      if (routeVal) ok = vfRoute(routeVal) && ok;
     }
     if (isSub === 'no') {
       ok = vf('wasSubscriber', document.getElementById('wasSubscriber').value !== '') && ok;
@@ -877,13 +1066,30 @@
       fanSport:          fanSportVal,
       verifiedSport:     verifiedSportVal,
       subscriberSection: isSub === 'yes' ? document.getElementById('subscriberSection').value : null,
-      subscriberNumber:  isSub === 'yes' ? document.getElementById('subscriberNumber').value.trim() : null,
       wasSubscriber:     isSub === 'no'  ? document.getElementById('wasSubscriber').value : null,
-      facebookUrl:       isSub === 'no'  ? document.getElementById('facebookUrl').value.trim() : null,
       photoProofUrl:     '',
       status:            'pending',
       submittedAt:       serverTimestamp(),
     };
+
+    // ── §284 — שדות האימות לפי המסלול שנבחר ────────────────────────────────────────────────
+    // כל שדה שלא שייך למסלול הנבחר נכתב null במפורש ולא "נשאר ריק": הנרשם עשוי היה למלא
+    // מסלול אחד, להתחרט ולעבור לשני, ובלי האיפוס היו נשמרות שאריות משני מסלולים — והמנהל
+    // היה רואה נתונים שהנרשם עצמו כבר זנח.
+    const routeVal = isSub === 'yes' ? document.getElementById('verifyRoute').value : null;
+    // ללא-מנוי אין בורר: המסלול שלו הוא תמיד תמונת-יציע + פייסבוק, ונרשם ככזה כדי שהמנהל
+    // יראה מסלול אחיד לכל הרשומות ולא "ריק = לא-מנוי".
+    data.verifyMethod      = isSub === 'no' ? 'standsPhoto' : (routeVal || null);
+    // ⚠️ נאסף ולא מוצג — אין תג-אמינות בשום ממשק (החלטת המשתמש, §284). נשמר כדי שאפשר יהיה
+    // לסנן/למיין לפיו בעתיד בלי לחזור ולתשאל 60 אוהדים קיימים.
+    data.verifyTrust       = isSub === 'no' ? 'low' : (routeVal ? ROUTES[routeVal].trust : null);
+    data.subscriberNumber  = routeVal === 'subNumber'   ? _v('subscriberNumber') : null;
+    data.seatBlock         = routeVal === 'seatDetails' ? (_v('seatBlock') || null) : null;
+    data.seatRow           = routeVal === 'seatDetails' ? (_v('seatRow')   || null) : null;
+    data.seatNumber        = routeVal === 'seatDetails' ? (_v('seatNumber')|| null) : null;
+    data.verifyNote        = routeVal === 'manual'      ? _v('verifyNote') : null;
+    data.facebookUrl       = isSub === 'no' ? _v('facebookUrl')
+                           : (routeVal === 'standsPhoto' ? _v('standsFacebookUrl') : null);
 
     // אין רשת בכלל — יוצאים מיד עם הודעה ברורה במקום להיכנס להמתנה שלא תיגמר. חייב לקרות
     // **לפני** addDoc: מרגע שהכתיבה נכנסה לתור-המקומי של Firestore היא תסונכרן בהמשך בכל מקרה,
@@ -891,6 +1097,9 @@
     if (navigator.onLine === false) {
       resetSubmitBtn();
       saveRegDraft();
+      // §284 — נרשם גם כשאין רשת: האירוע יסונכרן כשהחיבור יחזור, וכך "ניסה ולא הצליח"
+      // מגיע למרכז הניהול גם במקרה שבו הנרשם עצמו ויתר ולא ניסה שוב.
+      logEvent('formError', { blockId: 'fanRegister', channel: 'offline' });
       setSubmitStatus('אין חיבור לאינטרנט כרגע — הבקשה לא נשלחה. הפרטים שמילאת נשמרו כאן, בדוק/י את החיבור ולחץ/י שוב על השליחה.', 'err');
       statusEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
@@ -936,6 +1145,11 @@
       clearTimeout(stuckTimer);
       resetSubmitBtn();
       saveRegDraft();
+      // ── §284 — "ניסה להירשם ונכשל" ────────────────────────────────────────────────────────
+      // עד היום כשל כאן היה גלוי רק לנרשם עצמו (הודעה על המסך + console). מי שנתקל בו ולא
+      // התלונן — פשוט לא היה קיים בשום מקום, ולכן גם לא היה אפשר לדעת שיש בעיה. הקוד עצמו
+      // (permission-denied / unavailable / ...) הוא מה שמבדיל בין באג אצלנו לתקלת-רשת אצלו.
+      logEvent('formError', { blockId: 'fanRegister', channel: err?.code || 'unknown' });
       setSubmitStatus('אירעה שגיאה בשליחה והבקשה לא נקלטה. הפרטים שמילאת נשמרו כאן — אפשר לנסות לשלוח שוב.', 'err');
       statusEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
@@ -952,7 +1166,13 @@
     // memberId מקשר את האירוע לרשומה עצמה, כך שאפשר לחבר משפך↔רשומת-אוהד.
     logEvent('formSubmit', { blockId: 'fanRegister', memberId: memberDocRef ? memberDocRef.id : null });
 
-    const proofFile = document.getElementById('fansPhoto')?.files[0];
+    // ── §284 — קובץ ההוכחה מגיע עכשיו מארבעה מקורות אפשריים, לפי המסלול ────────────────────
+    // כולם נשמרים לאותו שדה photoProofUrl ולאותו נתיב-Storage: מה שמבדיל ביניהם הוא
+    // verifyMethod שכבר נשמר על הרשומה. שדה נפרד לכל סוג-ראיה היה מכריח את מרכז הניהול
+    // לבדוק ארבעה שדות כדי להציג תמונה אחת.
+    const PROOF_INPUT = { passScreenshot: 'passFile', purchaseEmail: 'emailFile', standsPhoto: 'standsFile' };
+    const proofInputId = isSub === 'no' ? 'fansPhoto' : PROOF_INPUT[routeVal];
+    const proofFile = proofInputId ? document.getElementById(proofInputId)?.files[0] : null;
     if (proofFile && memberDocRef) {
       uploadFile(proofFile, `members/proofs/${memberDocRef.id}_fan`)
         .then(url => updateDoc(memberDocRef, { photoProofUrl: url }))
@@ -1000,6 +1220,25 @@
 
   // ── ענף (כדורגל/כדורסל/שניהם) — קובע את תווית/רשימת שדה המיקום, ואם "שניהם" נבחר
   // פותח שאלת-המשך לבחירת הענף היחיד שישמש בפועל לאימות (מספר מנוי אחד בלבד) ──
+  // ── תצורת המגרש לפי ענף (§284) ────────────────────────────────────────────────────────────
+  // כל תווית תלוית-ענף מרוכזת כאן, כדי שהוספת אולם/ענף בעתיד תהיה שינוי בטבלה אחת.
+  // ההבדל המהותי: בבלומפילד יש **גוש** ובמנורה אין — אוהד כדורסל שמחפש "גוש" פשוט לא ימצא
+  // אותו על הכרטיס, ושדה-חובה שאי אפשר למלא הוא בדיוק המקום שבו ממציאים ערך.
+  const VENUE = {
+    football: {
+      sectionLabel: 'שער', sectionPlaceholder: 'בחר שער...',
+      hint: 'השער שבו את/ה יושב/ת בבלומפילד.',
+      options: ['1', '2', '7', '8', '11', '13'],
+      hasBlock: true, seatSub: 'גוש, שורה וכיסא — כפי שמופיע במנוי.',
+    },
+    basketball: {
+      sectionLabel: 'אולם/יציע', sectionPlaceholder: 'בחר אולם/יציע...',
+      hint: 'האזור/היציע שבו את/ה יושב/ת במנורה מבטחים.',
+      options: Array.from({ length: 12 }, (_, i) => String(i + 1)),
+      hasBlock: false, seatSub: 'שורה וכיסא — כפי שמופיע במנוי.',
+    },
+  };
+
   function updateSectionField(sport) {
     const labelEl  = document.getElementById('subscriberSectionLabel');
     const selectEl = document.getElementById('subscriberSection');
@@ -1009,16 +1248,102 @@
     // הנקודה שבה אפשר להזין בטעות את המספר של הענף השני.
     const numLabel = document.querySelector('label[for="subscriberNumber"]');
     if (numLabel && (sport === 'football' || sport === 'basketball')) {
-      numLabel.innerHTML = `מספר מנוי ב${sport === 'basketball' ? 'כדורסל' : 'כדורגל'} <span class="req">*</span>`;
+      numLabel.textContent = `מספר המנוי ב${sport === 'basketball' ? 'כדורסל' : 'כדורגל'}`;
     }
-    if (sport === 'basketball') {
-      labelEl.textContent = 'אולם/יציע';
-      selectEl.innerHTML = '<option value="">בחר אולם/יציע...</option>' +
-        Array.from({ length: 12 }, (_, i) => `<option>${i + 1}</option>`).join('');
-    } else {
-      labelEl.textContent = 'שער';
-      selectEl.innerHTML = '<option value="">בחר שער...</option>' +
-        ['1', '2', '7', '8', '11', '13'].map(n => `<option>${n}</option>`).join('');
+    const v = VENUE[sport];
+    if (!v) return;
+    labelEl.textContent = v.sectionLabel;
+    document.getElementById('subscriberSectionHint').textContent = v.hint;
+    document.getElementById('seatRouteSub').textContent = v.seatSub;
+    document.getElementById('seatBlockCol').style.display = v.hasBlock ? '' : 'none';
+    // שמירת הבחירה הקיימת בהחלפת-ענף, אם היא עדיין חוקית באולם החדש
+    const prev = selectEl.value;
+    selectEl.innerHTML = `<option value="">${v.sectionPlaceholder}</option>` +
+      v.options.map(n => `<option>${n}</option>`).join('');
+    if (v.options.includes(prev)) selectEl.value = prev;
+  }
+
+  // ── בורר מסלול האימות (§284) ──────────────────────────────────────────────────────────────
+  // ROUTES הוא מקור-האמת היחיד: גם רשימת המסלולים לרינדור, גם ה-verifyTrust שנשמר, וגם
+  // מיפוי המסלול→שדות-החובה שלו. verifyTrust נאסף ולא מוצג — אין תג אמינות בממשק.
+  const ROUTES = {
+    subNumber:      { trust: 'medium' },
+    passScreenshot: { trust: 'high'   },
+    seatDetails:    { trust: 'medium' },
+    purchaseEmail:  { trust: 'high'   },
+    standsPhoto:    { trust: 'low'    },
+    manual:         { trust: 'low'    },
+  };
+
+  // ── שגיאת-מסלול ──────────────────────────────────────────────────────────────────────────
+  // ⚠️ אי אפשר להשתמש ב-vf() הרגיל כאן: הוא עושה `if (!el) return true`, כלומר מסלול
+  // שהשגיאה שלו לא תלויה בשדה-קלט בודד (מושב/פייסבוק+תמונה) היה **עובר בשקט** תמיד.
+  // לכן טבלה מפורשת: איזה div-שגיאה להציג ואילו שדות לצבוע.
+  const ROUTE_ERR = {
+    subNumber:      { errId: 'err-subscriberNumber', fields: ['subscriberNumber'] },
+    passScreenshot: { errId: 'err-passFile',         fields: ['passFile'] },
+    seatDetails:    { errId: 'err-seatDetails',      fields: ['seatBlock', 'seatRow', 'seatNumber'] },
+    purchaseEmail:  { errId: 'err-purchaseEmail',    fields: ['emailFile'] },
+    standsPhoto:    { errId: 'err-standsPhoto',      fields: ['standsFile', 'standsFacebookUrl'] },
+    manual:         { errId: 'err-manual',           fields: ['verifyNote'] },
+  };
+
+  function vfRoute(r) {
+    const cfg = ROUTE_ERR[r];
+    if (!cfg) return false;
+    const ok = routeComplete(r);
+    document.getElementById(cfg.errId).style.display = ok ? 'none' : 'block';
+    cfg.fields.forEach(f => {
+      const el = document.getElementById(f);
+      // שדה שמוסתר בענף הנוכחי (גוש בכדורסל) לא נצבע — הוא גם לא נדרש ב-routeComplete
+      if (el && el.offsetParent !== null) el.classList.toggle('error', !ok);
+    });
+    return ok;
+  }
+
+  function pickRoute(r, ev) {
+    // קליק בתוך גוף-כרטיס שכבר פתוח הוא אינטראקציה עם שדה, לא בחירה מחדש
+    if (ev && ev.target.closest && ev.target.closest('.route-body') && document.getElementById('verifyRoute').value === r) return;
+    document.getElementById('verifyRoute').value = r;
+    Object.keys(ROUTES).forEach(k => {
+      document.getElementById('route-' + k).classList.toggle('on', k === r);
+      const err = document.getElementById(ROUTE_ERR[k].errId);
+      if (err) err.style.display = 'none';
+      ROUTE_ERR[k].fields.forEach(f => document.getElementById(f)?.classList.remove('error'));
+    });
+    document.getElementById('err-verifyRoute').style.display = 'none';
+  }
+
+  const _v = id => (document.getElementById(id)?.value || '').trim();
+  const _hasFile = id => !!document.getElementById(id)?.files?.length;
+
+  // ── תקינות מספר-מנוי (§284) ───────────────────────────────────────────────────────────────
+  // לא "ולידציה מחמירה לשם היופי" — זו תגובה למדידה: מתוך 59 המנויים הרשומים, 29 הזינו ערך
+  // מומצא. הפילוח: 15×אפסים, 8×12345 (=ה-placeholder שהיה בשדה!), 5×ספרה חוזרת, 1×אחר.
+  // שתי המשפחות היחידות שנחסמות הן בדיוק אלה שנצפו בפועל — ספרה חוזרת ורצף עוקב. מספר
+  // אמיתי שבמקרה נראה כך יופנה למסלול "אף אחת מהאפשרויות", שם הוא יכול פשוט לכתוב אותו.
+  function subNumberOk(n) {
+    if (!/^\d{3,}$/.test(n)) return false;
+    if (/^(\d)\1*$/.test(n)) return false;                       // 000 / 11111 / 55555
+    let asc = true, desc = true;
+    for (let i = 1; i < n.length; i++) {
+      if (+n[i] !== +n[i - 1] + 1) asc = false;
+      if (+n[i] !== +n[i - 1] - 1) desc = false;
+    }
+    return !(asc || desc);                                       // 12345 / 4321
+  }
+
+  // מה נחשב "מולא" בכל מסלול. משמש גם לוולידציה וגם לבניית הרשומה.
+  function routeComplete(r) {
+    const sport = document.getElementById('verifiedSport').value;
+    switch (r) {
+      case 'subNumber':      return subNumberOk(_v('subscriberNumber'));
+      case 'passScreenshot': return _hasFile('passFile') && document.getElementById('barcodeHidden').checked;
+      case 'seatDetails':    return (!VENUE[sport]?.hasBlock || !!_v('seatBlock')) && !!_v('seatRow') && !!_v('seatNumber');
+      case 'purchaseEmail':  return _hasFile('emailFile');
+      case 'standsPhoto':    return _hasFile('standsFile') && /^https?:\/\/.+\..+/.test(_v('standsFacebookUrl'));
+      case 'manual':         return _v('verifyNote').length >= 10;
+      default:               return false;
     }
   }
 
@@ -1039,13 +1364,20 @@
       document.getElementById('verifiedSport').value = '';
       document.getElementById('verifiedFootballBtn').classList.remove('on');
       document.getElementById('verifiedBasketballBtn').classList.remove('on');
-      document.getElementById('locationRow').classList.remove('show');
+      showVerifyFields(false);
     } else {
       bothRow.classList.remove('show');
       document.getElementById('verifiedSport').value = val;
       updateSectionField(val);
-      document.getElementById('locationRow').classList.toggle('show', val !== '');
+      showVerifyFields(val !== '');
     }
+  }
+
+  // מיקום-הישיבה ובורר-המסלול נפתחים תמיד יחד, ורק אחרי שידוע ענף-האימות — כי שניהם
+  // תלויי-ענף (תוויות השער/הגוש). מרוכז בפונקציה אחת כדי ששלושת מקומות-הקריאה לא יתפצלו.
+  function showVerifyFields(on) {
+    document.getElementById('locationRow').classList.toggle('show', on);
+    document.getElementById('routeBlock').classList.toggle('show', on);
   }
 
   function setVerifiedSport(val) {
@@ -1054,7 +1386,7 @@
     document.getElementById('verifiedBasketballBtn').classList.toggle('on', val === 'basketball');
     vf('verifiedSport', true);
     updateSectionField(val);
-    document.getElementById('locationRow').classList.toggle('show', val !== '');
+    showVerifyFields(val !== '');
   }
 
   // ── EMBED MODE — "כבר רשום? כניסה" בתוך ה-iframe מפעיל את מנגנון-ההתחברות האמיתי
@@ -1134,6 +1466,14 @@
       subscriberNumber:  document.getElementById('subscriberNumber').value,
       wasSubscriber:     document.getElementById('wasSubscriber').value,
       facebookUrl:       document.getElementById('facebookUrl').value,
+      // §284 — בלי אלה, מעבר לתקנון וחזרה היה מאפס את בחירת מסלול-האימות ואת מה שמולא בו.
+      // קבצים לא נשמרים בטיוטה (אי אפשר) — ולכן מסלול שמבוסס-תמונה יידרש לצרף שוב.
+      verifyRoute:       document.getElementById('verifyRoute').value,
+      seatBlock:         document.getElementById('seatBlock').value,
+      seatRow:           document.getElementById('seatRow').value,
+      seatNumber:        document.getElementById('seatNumber').value,
+      verifyNote:        document.getElementById('verifyNote').value,
+      standsFacebookUrl: document.getElementById('standsFacebookUrl').value,
     }));
   }
 
@@ -1167,6 +1507,13 @@
     document.getElementById('subscriberNumber').value  = d.subscriberNumber  || '';
     document.getElementById('wasSubscriber').value     = d.wasSubscriber     || '';
     document.getElementById('facebookUrl').value       = d.facebookUrl       || '';
+    // §284 — קודם ממלאים את השדות ורק אז pickRoute, כדי שהוא יפתח כרטיס שכבר יש בו תוכן
+    document.getElementById('seatBlock').value         = d.seatBlock         || '';
+    document.getElementById('seatRow').value           = d.seatRow           || '';
+    document.getElementById('seatNumber').value        = d.seatNumber        || '';
+    document.getElementById('verifyNote').value        = d.verifyNote        || '';
+    document.getElementById('standsFacebookUrl').value = d.standsFacebookUrl || '';
+    if (d.verifyRoute && ROUTES[d.verifyRoute]) pickRoute(d.verifyRoute);
   }
   restoreRegDraft();
 
@@ -1177,6 +1524,9 @@
   window.setVerifiedSport     = setVerifiedSport;
   window.embedGoLogin         = embedGoLogin;
   window.saveRegDraft         = saveRegDraft;
+  // §284 — נקרא מ-onclick על כרטיסי המסלולים. בלי החשיפה המפורשת הזאת הוא פשוט לא קיים
+  // ל-onclick (module scope), והבורר "לא מגיב" בלי שום שגיאה בקונסול.
+  window.pickRoute            = pickRoute;
 </script>
 
 </body>

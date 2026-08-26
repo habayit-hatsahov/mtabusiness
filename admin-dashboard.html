@@ -2063,6 +2063,46 @@ function sectionLabelFor(verifiedSport) {
 }
 const SPORT_LABELS = { football: 'כדורגל', basketball: 'כדורסל', both: 'כדורגל+כדורסל' };
 
+// ── מסלולי אימות אוהד (§284) ────────────────────────────────────────────────────────────────
+// עד §284 היה מסלול אחד בלבד — "מספר מנוי" כשדה-חובה גורף — ומדידה על 59 המנויים הרשומים
+// הראתה ש-29 מהם הזינו ערך מומצא (00000/12345/11111). עכשיו הנרשם בוחר איך לאמת, ולכן מרכז
+// הניהול חייב להראות **באיזה מסלול** נבחר, אחרת "מס' מנוי: —" נראה כמו רשומה חסרה במקום
+// כמו אוהד שאימת בדרך אחרת.
+const VERIFY_METHOD_LABELS = {
+  subNumber:      'מספר מנוי',
+  passScreenshot: 'צילום מסך של המנוי',
+  seatDetails:    'פרטי מושב',
+  purchaseEmail:  'אישור רכישה/חידוש במייל',
+  standsPhoto:    'תמונה מהיציע + פייסבוק',
+  manual:         'בקשה ידנית (טקסט חופשי)',
+};
+
+// ⚠️ נפילה-לאחור ל-60 הרשומות שנוצרו **לפני** §284 ואין להן verifyMethod בכלל. בלי זה כל
+// האוהדים הקיימים היו מוצגים כ"אימות: —" ביום שהמסך הזה עולה.
+function fanVerifyMethod(f) {
+  if (f.verifyMethod) return f.verifyMethod;
+  if (f.isSubscriber) return f.subscriberNumber ? 'subNumber' : null;
+  return 'standsPhoto';
+}
+function fanVerifyMethodLabel(f) {
+  const m = fanVerifyMethod(f);
+  if (!m) return 'לא תועד (הרשמה ישנה)';
+  return VERIFY_METHOD_LABELS[m] || m;
+}
+
+// הערך שהנרשם מסר בפועל במסלול שבחר — מה שהמנהל צריך לקרוא כדי להחליט. מסלולי-תמונה
+// מחזירים '' כי הראיה שלהם היא הקובץ עצמו, שכבר מוצג בנפרד בכרטיס.
+function fanVerifyValue(f) {
+  switch (fanVerifyMethod(f)) {
+    case 'subNumber':   return f.subscriberNumber || '—';
+    case 'seatDetails': return [
+      f.seatBlock ? 'גוש ' + f.seatBlock : '', f.seatRow ? 'שורה ' + f.seatRow : '', f.seatNumber ? 'כיסא ' + f.seatNumber : '',
+    ].filter(Boolean).join(' · ') || '—';
+    case 'manual':      return f.verifyNote || '—';
+    default:            return '';
+  }
+}
+
 // ── תאריך לידה (2026-08-24) ────────────────────────────────────────────────────────────────
 // נשמר כמחרוזת 'YYYY-MM-DD' על רשומת החבר (members), לא על מסמך העסק — מסמך של עסק מאושר
 // נקרא ציבורית במלואו (§244) ותאריך לידה הוא מידע אישי.
@@ -7098,8 +7138,17 @@ function fanFullDetailHtml(id, opts) {
   const idLoginNote = `<div class="identity-note neutral"><div class="identity-note-h">קוד כניסה</div><div class="identity-note-v">${(f.status === 'approved' && f.loginCode) ? esc(f.loginCode) : 'ייווצר אוטומטית באישור'}</div></div>`;
   const idBizNote = linkedBiz ? `<div class="identity-note neutral"><div class="identity-note-h">בעל עסק</div><div class="identity-note-v">${linkedBiz.accessToken ? `<a href="business-dashboard.html?token=${linkedBiz.accessToken}" target="_blank">🏪 ${esc(linkedBiz.name)}</a>` : esc(linkedBiz.name)}</div></div>` : '';
   const idSubNote = f.isSubscriber
-    ? `<div class="identity-note neutral"><div class="identity-note-h">מנוי</div><div class="identity-note-v">${f.fanSport ? SPORT_LABELS[f.fanSport] + ' · ' : ''}${sectionLabelFor(f.verifiedSport)} ${esc(f.subscriberSection||'—')} · מס' ${esc(f.subscriberNumber||'—')}</div></div>`
+    ? `<div class="identity-note neutral"><div class="identity-note-h">מנוי</div><div class="identity-note-v">${f.fanSport ? SPORT_LABELS[f.fanSport] + ' · ' : ''}${sectionLabelFor(f.verifiedSport)} ${esc(f.subscriberSection||'—')}</div></div>`
     : `<div class="identity-note warn"><div class="identity-note-h">מנוי</div><div class="identity-note-v">לא מנוי כרגע${f.wasSubscriber === 'yes' ? ' (היה מנוי בעבר)' : ''}</div></div>`;
+  // ── קוביית האימות (§284) ───────────────────────────────────────────────────────────────────
+  // המסלול הוא הדבר הראשון שהמנהל צריך לדעת לפני שהוא מסתכל על הערך עצמו: "48213" ו-"גוש 12
+  // שורה 4" הם ראיות מסוגים שונים לגמרי, ו"אין ערך" במסלול-תמונה זה תקין ולא חוסר.
+  // מסלול ידני ומסלול-היציע מסומנים warn כי שניהם דורשים החלטה אנושית, לא רק קריאה.
+  const idVerifyMethod = fanVerifyMethod(f);
+  const idVerifyValue = fanVerifyValue(f);
+  const idVerifyNote = `<div class="identity-note ${(idVerifyMethod === 'manual' || idVerifyMethod === 'standsPhoto' || !idVerifyMethod) ? 'warn' : 'neutral'}"><div class="identity-note-h">מסלול אימות</div><div class="identity-note-v">${esc(fanVerifyMethodLabel(f))}${
+    idVerifyValue ? `<br>${esc(String(idVerifyValue).slice(0, 160))}` : ''
+  }${(idVerifyMethod === 'passScreenshot' || idVerifyMethod === 'purchaseEmail' || idVerifyMethod === 'standsPhoto') && !f.photoProofUrl ? '<br>⚠️ הראיה לא הועלתה' : ''}</div></div>`;
   // אותו אישור-שליחה כמו בכרטיס העסק (ר' ההערה ב-bizFullDetailHtml): תאריך+שעה מדויקים וכתובת
   // היעד בפועל, כדי שכתובת שגויה תיתפס בעין — "נשלח" לבדו לא אומר שהמייל הגיע לאן שצריך.
   // כפתור "שליחה חוזרת" זמין תמיד כשיש כתובת — לא רק כשהמערכת זיהתה תקלה. ר' ההערה המקבילה
@@ -7127,7 +7176,7 @@ function fanFullDetailHtml(id, opts) {
         </div>
         ${(idWaBtn || idMailBtn) ? `<div class="identity-actions-row">${idWaBtn}${idMailBtn}</div>` : ''}
       </div>
-      <div class="identity-notes">${emailWarnNote(f.email)}${idLoginNote}${idBizNote}${idSubNote}${idEmailNote}</div>
+      <div class="identity-notes">${emailWarnNote(f.email)}${idLoginNote}${idBizNote}${idSubNote}${idVerifyNote}${idEmailNote}</div>
     </div>`;
 
   // כרטיס "פרטי ההרשמה" נפרד (2026-08-04, תואם-handoff — קודם היה טקסט-חופשי בתוך approve-card, לא
@@ -7158,11 +7207,21 @@ function fanFullDetailHtml(id, opts) {
           f.fanSport ? esc(SPORT_LABELS[f.fanSport] || f.fanSport) : '—'
         }</div></div>
         ${f.isSubscriber ? `
-        <div class="form-field"><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val">${esc(f.subscriberSection||'—')}</div></div>
-        <div class="form-field"><div class="form-field-label">מס' מנוי</div><div class="form-field-val">${esc(f.subscriberNumber||'—')}</div></div>` : ''}
+        <div class="form-field"><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val">${esc(f.subscriberSection||'—')}</div></div>` : ''}
+        <!-- ── §284 — מה נבחר ומה נמסר בפועל ─────────────────────────────────────────────
+             שדה "מס' מנוי" הקבוע הוחלף בזוג מסלול+ערך: מסלול-תמונה לא מוסר ערך טקסטואלי
+             בכלל, ו"—" בשדה קבוע היה נקרא כמו רשומה חסרה. -->
+        <div class="form-field"><div class="form-field-label">מסלול אימות</div><div class="form-field-val">${esc(fanVerifyMethodLabel(f))}</div></div>
+        ${fanVerifyValue(f) ? `<div class="form-field${fanVerifyMethod(f) === 'manual' ? ' full' : ''}"><div class="form-field-label">${
+          fanVerifyMethod(f) === 'subNumber' ? "מס' מנוי" : fanVerifyMethod(f) === 'seatDetails' ? 'מושב' : 'מה שנכתב לנו'
+        }</div><div class="form-field-val" style="white-space:pre-line">${esc(fanVerifyValue(f))}</div></div>` : ''}
         ${f.facebookUrl ? `<div class="form-field"><div class="form-field-label">קישור פייסבוק</div><div class="form-field-val"><a href="${esc(f.facebookUrl)}" target="_blank" rel="noopener">${esc(f.facebookUrl)}</a></div></div>` : ''}
         <div class="form-field full">
-          <div class="form-field-label">תמונה בשער אוהדים</div>
+          <div class="form-field-label">${
+            fanVerifyMethod(f) === 'passScreenshot' ? 'צילום המנוי'
+            : fanVerifyMethod(f) === 'purchaseEmail' ? 'אישור הרכישה/החידוש'
+            : 'תמונה בשער אוהדים'
+          }</div>
           ${f.photoProofUrl
             ? `<a href="${esc(bizImageViewUrl(f.photoProofUrl))}" target="_blank" rel="noopener" class="fan-proof-photo" style="background-image:url('${esc(bizImageViewUrl(f.photoProofUrl))}')" title="לחצו להגדלה"></a>`
             : `<div class="fan-proof-photo empty">לא הועלתה תמונת הוכחה</div>`}
@@ -7747,6 +7806,9 @@ const TASK_CLASS_TILES = [
   // דרך ה-Worker (/log-biz-error). בניגוד לחמש הראשונות זו לא "משימה" אלא תקלה טכנית: עד היום
   // ידענו עליה רק אם בעל-העסק טרח להתלונן ולשלוח צילום-מסך.
   { key: 'bizErrors', primary: null, label: 'תקלות בדשבורד עסק' },
+  // קובייה שמינית (§284) — הצלבות בין הצהרות-אימות של אוהדים + הרשמות שנכשלו בפועל.
+  // אותו דפוס כמו mailIssues/bizErrors: מחליפה את גוף-הטבלה ולא מסננת את הרשימה המאוחדת.
+  { key: 'regIssues', primary: null, label: 'תקלות הרשמה' },
 ];
 
 // כל עסק/אוהד עם primary פעיל (לא "מאושר · אין פעולה") — מבוסס classifyAction בלבד, לא בדיקה נפרדת
@@ -7826,12 +7888,14 @@ function refreshTaskCenter() {
 function taskCenterTableHtml() {
   if (mailIssuesActive()) return mailIssuesTableHtml(mailFilteredList());
   if (bizErrorsActive()) return bizErrorsTableHtml(bizErrorFilteredList());
+  if (regIssuesActive()) return regIssuesTableHtml(regIssueFilteredList());
   if (handledActive()) return handledTableHtml(handledFilteredList());
   return taskTableBodyHtml(taskFilteredList());
 }
 function taskCenterCountLabel() {
   if (mailIssuesActive()) return `מציג ${mailFilteredList().length} מתוך ${mailIssueList().length}`;
   if (bizErrorsActive()) return `מציג ${bizErrorFilteredList().length} מתוך ${bizWriteErrorList().length}`;
+  if (regIssuesActive()) return `מציג ${regIssueFilteredList().length} מתוך ${regIssueList().length}`;
   if (handledActive()) return `מציג ${handledFilteredList().length} מתוך ${handledItemsList().length}`;
   return `מציג ${taskFilteredList().length} מתוך ${unifiedTaskItems().length}`;
 }
@@ -7860,6 +7924,12 @@ function taskTilesHtml() {
   const handledItems = handledItemsList();
   const bizErrors = bizWriteErrorList();
   const bizErrorBizCount = new Set(bizErrors.map(x => x.id)).size;
+  // §284 — ההצלבות זמינות מיד (מחושבות מ-MOCK_FANS), כשלי-השליחה רק אחרי שהאירועים נטענו.
+  // הקובייה לא טוענת אותם מעצמה בכוונה: היא מרונדרת בכל רענון של מרכז המשימות, וקריאה
+  // ל-Firestore משם הייתה יוצאת גם למי שלא נכנס לקובייה הזאת בכלל.
+  const regIssues = regIssueList();
+  const regClashCount = regIssues.filter(x => x.kind !== 'failed').length;
+  const regFailCount = regIssues.filter(x => x.kind === 'failed').length;
   const tile = (t, num, sub) => `
     <div class="class-tile ${taskClassFilter===t.key?'active':''} ${t.key==='pendingBiz'&&taskClassFilter==='all'?'primary':(taskClassFilter===t.key?'primary':'')}" onclick="setTaskClassFilter('${t.key}')">
       <div class="class-tile-top"><span class="class-tile-num">${num}</span><span class="class-tile-label">${t.label}</span></div>
@@ -7878,6 +7948,9 @@ function taskTilesHtml() {
       ${tile(TASK_CLASS_TILES[6], bizErrors.length ? `<span style="color:#b91c1c">${bizErrors.length}</span>` : 0, bizErrors.length
         ? `<div class="class-tile-chips"><span class="warn-badge">${bizErrorBizCount} עסקים לא הצליחו לשמור</span></div>`
         : `<div class="class-tile-sub">אף בעל עסק לא נתקל בשגיאה</div>`)}
+      ${tile(TASK_CLASS_TILES[7], regIssues.length ? `<span style="color:#b91c1c">${regIssues.length}</span>` : 0, regIssues.length
+        ? `<div class="class-tile-chips">${regClashCount ? `<span class="warn-badge">${regClashCount} הצלבות</span>` : ''}${regFailCount ? `<span class="warn-badge">${regFailCount} הרשמות נכשלו</span>` : ''}</div>`
+        : `<div class="class-tile-sub">אין התנגשויות ואף הרשמה לא נכשלה</div>`)}
     </div>`;
 }
 
@@ -11932,6 +12005,173 @@ function bizErrorsTableHtml(list) {
         </div>
       </div>`).join('')}</div>`;
 }
+
+// ══ תקלות הרשמה (§284) ══════════════════════════════════════════════════════════════════════
+// שתי משפחות שונות באותה קובייה, כי שתיהן עונות על אותה שאלה — "מי ניסה להצטרף ומשהו
+// לא בסדר בבקשה שלו":
+//   1. **הצלבה** בין הצהרות של שני אוהדים. זו הבדיקה האוטומטית האמיתית **היחידה** שיש
+//      למערכת: אף מסלול אימות לא נבדק מול רשימת-מנויים של המועדון (אין לנו כזו), אבל
+//      התנגשות בין שתי הצהרות היא ראיה מוצקה שלפחות אחת מהן שגויה — ואת זה אפשר לחשב.
+//   2. **כשל שליחה בפועל** — אירוע formError שנרשם ברגע שההרשמה נכשלה אצל הנרשם. עד §284
+//      כשל כזה היה גלוי רק לנרשם עצמו; מי שלא התלונן פשוט לא היה קיים בשום מקום.
+//
+// ⚠️ נטישה (פתח את הטופס ולא שלח) **לא** מוצגת כשורה אלא כמשפט-סיכום בלבד: היא מודדת גם
+// כל מי שרק הציץ, ולערבב אותה עם כשלים אמיתיים היה מייצר רשימה שאי אפשר לעבוד איתה.
+
+// אותה בדיקת-תקינות כמו בטופס ההרשמה (fan-register.html, subNumberOk) — 29 מ-59 המנויים
+// הרשומים הזינו ערך מומצא כשהשדה היה חובה גורפת, והם צריכים להופיע כאן כדי שיהיה אפשר
+// לחזור אליהם ולאמת מחדש.
+function isJunkSubNumber(n) {
+  const s = String(n || '').trim();
+  if (!s) return false;
+  if (!/^\d+$/.test(s)) return true;
+  if (/^(\d)\1*$/.test(s)) return true;
+  let asc = true, desc = true;
+  for (let i = 1; i < s.length; i++) {
+    if (+s[i] !== +s[i - 1] + 1) asc = false;
+    if (+s[i] !== +s[i - 1] - 1) desc = false;
+  }
+  return asc || desc;
+}
+
+// מפתח-מושב מלא. חייב שורה **וגם** כיסא — בלעדיהם "שער 7" לבדו משותף למאות אוהדים
+// וכל השער היה נספר כהתנגשות אחת ענקית.
+function fanSeatKey(f) {
+  if (!f.seatRow || !f.seatNumber) return null;
+  return [f.verifiedSport || '?', f.subscriberSection || '?', f.seatBlock || '-', f.seatRow, f.seatNumber].join('|');
+}
+
+function regClashList() {
+  const out = [];
+  const bySeat = {}, byNum = {}, byJunk = {};
+  MOCK_FANS.forEach(f => {
+    if (f.status === 'rejected') return;   // רשומה שנדחתה כבר טופלה — לא תקלה פתוחה
+    const sk = fanSeatKey(f);
+    if (sk) (bySeat[sk] = bySeat[sk] || []).push(f);
+    const n = String(f.subscriberNumber || '').trim();
+    if (!n) return;
+    if (isJunkSubNumber(n)) (byJunk[n] = byJunk[n] || []).push(f);
+    else (byNum[n] = byNum[n] || []).push(f);
+  });
+  const newest = list => list.map(f => f.registeredAt).filter(Boolean).sort((a, b) => b - a)[0] || null;
+  // ── ⚠️ הגנה מפני "מחק את הכפילות" (אירוע אמיתי 2026-08-26) ────────────────────────────────
+  // אדיר אילן הופיע פעמיים ברשימה ונראה כמו רישום כפול. הוא **לא**: הוא רשם שני עסקים
+  // שונים (גולדה אירועים + שווארמה שמש אירועים) בהפרש 9 דקות, ולכל עסק נוצרה רשומת-חבר
+  // משלו — שני העסקים approved וכל אחד מצביע בחזרה על ה-ownerMemberId שלו. מחיקת אחת
+  // מהרשומות הייתה מנתקת עסק חי מהבעלים שלו ומשביתה לו את הכניסה לדשבורד.
+  // לכן: שתי רשומות עם אותו טלפון + linkedBusinessId שונה מסומנות במפורש כאותו אדם.
+  const sameOwnerNote = list => {
+    const byPhone = {};
+    list.forEach(f => { if (f.phone) (byPhone[f.phone] = byPhone[f.phone] || []).push(f); });
+    const multi = Object.values(byPhone).filter(g => g.length > 1
+      && new Set(g.map(x => x.linkedBusinessId).filter(Boolean)).size > 1);
+    return multi.length
+      ? ` ⚠️ ${multi[0][0].name} הוא אותו אדם עם ${multi[0].length} רשומות — אחת לכל עסק שרשם. לא למחוק.`
+      : '';
+  };
+  Object.entries(bySeat).forEach(([k, list]) => {
+    if (list.length < 2) return;
+    const f = list[0];
+    out.push({
+      kind: 'seatClash', key: 'seat|' + k, at: newest(list), fans: list,
+      title: `${list.length} אוהדים על אותו מושב`,
+      detail: `${sectionLabelFor(f.verifiedSport)} ${f.subscriberSection || '—'}${f.seatBlock ? ' · גוש ' + f.seatBlock : ''} · שורה ${f.seatRow} · כיסא ${f.seatNumber}${sameOwnerNote(list)}`,
+      badge: 'התנגשות מושב',
+    });
+  });
+  Object.entries(byNum).forEach(([n, list]) => {
+    if (list.length < 2) return;
+    out.push({
+      kind: 'numberClash', key: 'num|' + n, at: newest(list), fans: list,
+      title: `${list.length} אוהדים עם אותו מספר מנוי`,
+      detail: `מס' ${n}${sameOwnerNote(list)}`,
+      badge: 'מספר מנוי כפול',
+    });
+  });
+  Object.entries(byJunk).forEach(([n, list]) => {
+    out.push({
+      kind: 'junkNumber', key: 'junk|' + n, at: newest(list), fans: list,
+      title: list.length > 1 ? `${list.length} אוהדים עם מספר מנוי מומצא` : 'מספר מנוי מומצא',
+      detail: `נשמר "${n}" — כמעט בוודאות לא מספר אמיתי. נרשם לפני שהטופס אפשר לבחור מסלול אימות אחר.${sameOwnerNote(list)}`,
+      badge: 'ערך לא אמיתי',
+    });
+  });
+  return out;
+}
+
+// כשלי-שליחה מתוך collection 'events'. אותו מקור בדיוק של פאנל "פלטפורמה" (§281) —
+// נטען פעם אחת ל-30 יום ומשמש את שניהם.
+function regFailureList() {
+  return (platformEvents || [])
+    .filter(e => e.type === 'formError')
+    .map(e => ({
+      kind: 'failed', key: 'err|' + e.sessionId + '|' + (e.at ? e.at.getTime() : 0), at: e.at, fans: [],
+      title: e.blockId === 'bizForm' ? 'הרשמת עסק נכשלה' : 'הרשמת אוהד נכשלה',
+      detail: `קוד השגיאה: ${e.channel || 'לא ידוע'} · ${e.device === 'mobile' ? 'מובייל' : 'דסקטופ'}`,
+      badge: e.channel || 'שגיאה',
+    }))
+    .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
+}
+
+// כמה פתחו את הטופס ולא שלחו — מוצג כמשפט-סיכום בלבד, ר' ההערה למעלה.
+function regAbandonStats() {
+  const opened = {}, submitted = new Set();
+  (platformEvents || []).forEach(e => {
+    if (!e.sessionId) return;
+    if (e.type === 'formOpen' && (e.blockId === 'fanRegister' || e.blockId === 'joinModal')) opened[e.sessionId] = true;
+    if (e.type === 'formSubmit' && e.blockId === 'fanRegister') submitted.add(e.sessionId);
+  });
+  const openedIds = Object.keys(opened);
+  return { opened: openedIds.length, abandoned: openedIds.filter(s => !submitted.has(s)).length };
+}
+
+function regIssueList() {
+  return [...regClashList(), ...regFailureList()]
+    .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
+}
+function regIssuesActive() { return taskClassFilter === 'regIssues'; }
+function regIssueFilteredList() {
+  let list = regIssueList();
+  if (taskEntityFilter === 'biz') list = list.filter(x => x.kind === 'failed');  // הצלבות שייכות לאוהדים
+  const q = taskSearchQ.trim();
+  if (q) list = list.filter(x => `${x.title} ${x.detail} ${x.fans.map(f => f.name).join(' ')}`.includes(q));
+  return list;
+}
+
+function regIssuesTableHtml(list) {
+  // האירועים נטענים עצלנית (אותה קריאה של פאנל "פלטפורמה") — עד שהם מגיעים מוצגות
+  // ההצלבות בלבד, עם אמירה מפורשת שחלק מהנתונים עוד בדרך.
+  if (platformEvents === null && !platformStatsError) loadPlatformStats();
+  const ab = regAbandonStats();
+  const loadingNote = platformEvents === null && !platformStatsError
+    ? '<div class="mail-issues-note">טוען כשלי-שליחה מתוך המדידה… ההצלבות למטה כבר מלאות.</div>'
+    : platformStatsError
+      ? `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(platformStatsError)}) — מוצגות הצלבות בלבד.</div>`
+      : `<div class="mail-issues-note">הצלבה אוטומטית בין הצהרות האוהדים + כשלי שליחה אמיתיים מ-30 הימים האחרונים.${
+          ab.opened ? ` בנוסף: ${ab.opened} פתחו את טופס ההרשמה ו-${ab.abandoned} מהם לא שלחו — נטישה, לא בהכרח תקלה, ולכן לא מופיעה כשורות.` : ''
+        }</div>`;
+  if (!list.length) {
+    return `${loadingNote}<div class="placeholder-note">אין תקלות הרשמה 🎉 אין שני אוהדים על אותו מושב, אין מספר מנוי כפול או מומצא, ואף הרשמה לא נכשלה.</div>`;
+  }
+  return `
+    ${loadingNote}
+    <div class="task-table mail-issues">${list.map(x => `
+      <div class="task-table-row">
+        <div class="task-table-main">
+          <div class="task-table-name">${esc(x.title)}</div>
+          <div class="task-table-meta">${esc(x.detail)}${
+            x.fans.length ? ' · ' + x.fans.map(f => esc(f.name) + (f.status === 'pending' ? ' (ממתין)' : '')).join(' · ') : ''
+          }</div>
+        </div>
+        <div class="task-table-badges"><span class="warn-badge">${esc(x.badge)}</span></div>
+        <div class="mi-addr"></div>
+        <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
+        <div class="mi-actions">
+          ${x.fans.map(f => `<button class="act-btn tiny" onclick="selectTask2('fan','${f.id}')">${esc(f.name)}</button>`).join('')}
+        </div>
+      </div>`).join('')}</div>`;
+}
+
 window.markBizWriteErrorHandled = async function(id, key, code, name) {
   const note = prompt(`סימון שגיאת השמירה של "${name}" כטופלה.\n\n(${code})\n\nאיך זה טופל? (אופציונלי — נשמר ב"בקשות שטופלו")`, '');
   if (note === null) return;
