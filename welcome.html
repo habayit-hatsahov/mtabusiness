@@ -903,7 +903,12 @@ window.logEvent = function(type, extra) {
     memberId: localStorage.getItem('hb_memberId') || null,
     sessionId: _hbSessionId(),
     path: location.pathname,
-    referrer: document.referrer || null,
+    // ⚠️ §281 — **המארח בלבד**, לא ה-URL המלא. firestore.rules אוכפת referrer.size() <= 50,
+    // ו-document.referrer הוא כתובת מלאה: כל הגעה מקישור עם נתיב (קבוצת פייסבוק, מייל,
+    // חיפוש עם פרמטרים) חצתה את הגבול ו**כל האירוע נדחה** ב-permission-denied — כלומר אותן
+    // כניסות פשוט נעלמו מהמדידה. אומת חי: referrer באורך 74 תווים → permission-denied.
+    // המארח גם ממילא הוא מה שרוצים ב"מקורות תנועה", לא הנתיב המלא.
+    referrer: (document.referrer.split('/')[2] || '').slice(0, 50) || null,
     device: window.innerWidth <= 700 ? 'mobile' : 'desktop',
     blockId: e.blockId ?? null,
     channel: e.channel ?? null,

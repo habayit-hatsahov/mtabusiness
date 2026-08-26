@@ -1545,6 +1545,26 @@ body {
 .data-val { color: var(--text-sm); }
 .data-val.strong { font-weight: 700; color: var(--text); }
 
+/* §281 — פאנל "פלטפורמה": כניסות ומשפך-הרשמה מתוך collection 'events' (עד היום נאסף ולא הוצג) */
+.plat-panel { background: var(--card-bg); border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.09); padding: 15px 18px 16px; margin-bottom: 12px; }
+.plat-title { font-size: 13.5px; font-weight: 800; }
+.plat-sub { font-size: 11.5px; color: var(--text-sm); line-height: 1.65; margin-top: 3px; }
+.plat-note { font-size: 11.5px; line-height: 1.65; color: var(--text-sm); background: rgba(255,212,0,.1); border-radius: 10px; padding: 9px 12px; margin-top: 10px; }
+.plat-note b { color: var(--text); }
+.plat-sect { font-size: 12px; font-weight: 800; color: var(--text); margin: 14px 0 6px; }
+.plat-funnel { display: flex; flex-wrap: wrap; gap: 8px; }
+.plat-step { flex: 1 1 148px; background: var(--nav-bg); border-radius: 12px; padding: 10px 14px; }
+.plat-step-num { font-size: 18px; font-weight: 800; color: var(--text); }
+.plat-step-lbl { font-size: 11.5px; color: var(--text-sm); margin-top: 2px; line-height: 1.5; }
+.plat-step-rate { font-size: 11px; font-weight: 700; color: var(--accent); margin-top: 4px; }
+.plat-tbl { border: 1px solid var(--border-md); border-radius: 12px; overflow-x: auto; }
+.plat-day-row { display: grid; grid-template-columns: minmax(104px,1.2fr) 76px 76px 76px 76px; gap: 10px; min-width: 430px; padding: 8px 14px; border-top: 1px solid var(--border-md); font-size: 12.5px; color: var(--text-sm); }
+.plat-day-row.head { font-size: 11px; font-weight: 800; border-top: none; background: var(--nav-bg); }
+.plat-day-row b { color: var(--text); }
+.plat-src { display: flex; flex-wrap: wrap; gap: 6px; }
+.plat-src-chip { background: var(--nav-bg); border-radius: 999px; padding: 5px 12px; font-size: 11.5px; color: var(--text-sm); }
+.plat-src-chip b { color: var(--text); }
+
 /* ── עסק השבוע · הטבת השבוע — 3 חלקים ── */
 .wk-live-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
 .wk-live-grid.single { grid-template-columns: 1fr; max-width: 360px; }
@@ -4388,6 +4408,233 @@ async function loadRedeemStats() {
 }
 const redeemFor = id => (redeemStats && redeemStats[id]) || { opens: 0, ch: {} };
 
+// ── §281 — פאנל "פלטפורמה": כניסות ומשפך-הרשמה ──────────────────────────────────────────
+// collection 'events' נאסף מאז §110 אבל **מעולם לא הוצג** — המסך הזה הראה רק נתונים שמקורם
+// במסמכי העסק (לחיצות/לבבות) ובמימושים. שני חורים סגרו את המעגל עכשיו:
+//   1. `formSubmit` לא נרשם משום מקום — נוסף ל-fan-register.html ול-business.html.
+//   2. `referrer` נשלח כ-URL מלא בזמן ש-firestore.rules אוכפת 50 תווים — כל הגעה מקישור עם
+//      נתיב נדחתה ב-permission-denied, כלומר **האירוע כולו** אבד. עכשיו נשלח המארח בלבד.
+//
+// שאילתה אחת בלבד: טווח על createdAt + orderBy על אותו שדה — לא דורש אינדקס מורכב ולא שאילתה
+// נפרדת לכל סוג-אירוע. הקיבוץ בצד הלקוח. כשהנפח יגדל זה יעבור ל-statsDaily (כבר מוגדר
+// ב-firestore.rules וממתין ל-Worker) — אותה הערה בדיוק כמו ב-loadRedeemStats.
+const PLATFORM_WINDOW_DAYS = 30;
+const PLATFORM_EVENT_LIMIT = 5000;
+// היום שבו formSubmit התחיל להיאסף. בלי התאריך הזה המשפך נראה כמו אסון ("נפתחו 300, נשלחו 4")
+// בזמן שפשוט לא הייתה מדידה — ולכן הוא מוצג במפורש על המסך.
+const SUBMIT_MEASURE_START = '2026-08-26';
+
+let platformStats = null, platformStatsError = null;
+
+const platDayKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+async function loadPlatformStats() {
+  if (platformStats || platformStatsError) return;
+  try {
+    const since = new Date(Date.now() - PLATFORM_WINDOW_DAYS * 864e5);
+    const snap = await getDocs(query(
+      collection(db, 'events'),
+      where('createdAt', '>=', since),
+      orderBy('createdAt', 'desc'),
+      limit(PLATFORM_EVENT_LIMIT)
+    ));
+
+    const a = {
+      scanned: snap.size,
+      truncated: snap.size >= PLATFORM_EVENT_LIMIT,
+      oldest: null,
+      landing: 0, home: 0,
+      landingSessions: new Set(), homeSessions: new Set(),
+      fanOpen: 0, fanSubmit: 0, bizOpen: 0, bizSubmit: 0, loginOpen: 0,
+      device: { mobile: 0, desktop: 0 },
+      sources: {}, direct: 0,
+      byDay: {},
+    };
+    const todayKey = platDayKey(new Date());
+    a.today = { landing: 0, home: 0, fanSubmit: 0, bizSubmit: 0, fanOpen: 0 };
+
+    snap.forEach(docSnap => {
+      const e = docSnap.data();
+      const dt = e.createdAt && e.createdAt.toDate ? e.createdAt.toDate() : null;
+      if (dt && (!a.oldest || dt < a.oldest)) a.oldest = dt;
+      const key = dt ? platDayKey(dt) : null;
+      const day = key ? (a.byDay[key] || (a.byDay[key] = { landing: 0, home: 0, fanSubmit: 0, bizSubmit: 0 })) : null;
+
+      const p = (e.path || '').toLowerCase();
+      // index.html הוא redirect לדף הנחיתה, ולכן נספר איתו ולא כדף נפרד
+      const isLanding = p.includes('welcome') || p.includes('index') || p === '/' || p === '';
+      const isHome    = p.includes('home');
+
+      if (e.type === 'pageView') {
+        // דף שאינו נחיתה/בית לא נספר בכלל. היום אין כזה (רק welcome/home רושמים pageView),
+        // אבל אם יתווסף — בלי היציאה הזאת הוא היה מזליג ל"מקורות תנועה"/"מובייל" בלי שיופיע
+        // באף אחד משני מוני-הכניסות, ו"כניסה ישירה" (שחושב בחיסור) היה יוצא שלילי.
+        if (!isLanding && !isHome) return;
+        if (e.device === 'mobile' || e.device === 'desktop') a.device[e.device]++;
+        const src = e.referrer || null;
+        // נספר במפורש ולא בחיסור — חיסור נשבר בשקט בכל פעם שמישהו מוסיף pageView חדש
+        if (src) a.sources[src] = (a.sources[src] || 0) + 1; else a.direct++;
+        if (isLanding) {
+          a.landing++; if (e.sessionId) a.landingSessions.add(e.sessionId);
+          if (day) day.landing++; if (key === todayKey) a.today.landing++;
+        } else if (isHome) {
+          a.home++; if (e.sessionId) a.homeSessions.add(e.sessionId);
+          if (day) day.home++; if (key === todayKey) a.today.home++;
+        }
+      } else if (e.type === 'formOpen') {
+        // joinModal = נפתח מתוך welcome.html; fanRegister = כניסה ישירה לדף ההרשמה
+        if (e.blockId === 'joinModal' || e.blockId === 'fanRegister') {
+          a.fanOpen++; if (key === todayKey) a.today.fanOpen++;
+        } else if (e.blockId === 'bizForm') a.bizOpen++;
+        else if (e.blockId === 'loginModal') a.loginOpen++;
+      } else if (e.type === 'formSubmit') {
+        if (e.blockId === 'bizForm') {
+          a.bizSubmit++; if (day) day.bizSubmit++; if (key === todayKey) a.today.bizSubmit++;
+        } else {
+          a.fanSubmit++; if (day) day.fanSubmit++; if (key === todayKey) a.today.fanSubmit++;
+        }
+      }
+    });
+
+    platformStats = a;
+  } catch (err) {
+    console.error('loadPlatformStats failed:', err);
+    platformStatsError = err?.code || err?.message || 'שגיאה לא ידועה';
+  }
+  renderMain();
+}
+
+const platPct = (n, of) => of > 0 ? Math.round((n / of) * 100) + '%' : '—';
+
+function platformStatsHtml() {
+  if (platformStatsError) {
+    return `<div class="plat-panel"><div class="plat-title">🌐 פלטפורמה — כניסות ומשפך הרשמה</div>
+      <div class="plat-sub">לא ניתן לטעון את נתוני האירועים: ${esc(platformStatsError)}</div></div>`;
+  }
+  if (!platformStats) {
+    return `<div class="plat-panel"><div class="plat-title">🌐 פלטפורמה — כניסות ומשפך הרשמה</div>
+      <div class="plat-sub">טוען נתוני כניסות…</div></div>`;
+  }
+  const a = platformStats;
+
+  // 7 הימים האחרונים, כולל היום, גם ימים בלי אף אירוע (חור ברצף הוא נתון בפני עצמו)
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const key = platDayKey(d);
+    days.push({ d, key, v: a.byDay[key] || { landing: 0, home: 0, fanSubmit: 0, bizSubmit: 0 } });
+  }
+
+  const topSources = Object.entries(a.sources).sort((x, y) => y[1] - x[1]).slice(0, 8);
+  const devTotal = a.device.mobile + a.device.desktop;
+
+  return `
+  <div class="plat-panel">
+    <div class="plat-title">🌐 פלטפורמה — כניסות ומשפך הרשמה</div>
+    <div class="plat-sub">
+      ${PLATFORM_WINDOW_DAYS} הימים האחרונים · ${a.scanned.toLocaleString('he-IL')} אירועים נסרקו${
+        a.oldest ? ` · מאז ${fmtDate(a.oldest)}` : ''}${
+        a.truncated ? ` · <b style="color:var(--orange)">הוצגו ${PLATFORM_EVENT_LIMIT.toLocaleString('he-IL')} האירועים האחרונים בלבד</b>` : ''}
+    </div>
+
+    <div class="plat-sect">כניסות</div>
+    <div class="plat-funnel">
+      <div class="plat-step">
+        <div class="plat-step-num">${a.landing.toLocaleString('he-IL')}</div>
+        <div class="plat-step-lbl">כניסות לדף הנחיתה</div>
+        <div class="plat-step-rate">${a.landingSessions.size.toLocaleString('he-IL')} מבקרים · היום ${a.today.landing}</div>
+      </div>
+      <div class="plat-step">
+        <div class="plat-step-num">${a.home.toLocaleString('he-IL')}</div>
+        <div class="plat-step-lbl">כניסות לדף הבית (אינדקס)</div>
+        <div class="plat-step-rate">${a.homeSessions.size.toLocaleString('he-IL')} מבקרים · היום ${a.today.home}</div>
+      </div>
+      <div class="plat-step">
+        <div class="plat-step-num">${devTotal ? platPct(a.device.mobile, devTotal) : '—'}</div>
+        <div class="plat-step-lbl">מהכניסות במובייל</div>
+        <div class="plat-step-rate">דסקטופ ${devTotal ? platPct(a.device.desktop, devTotal) : '—'}</div>
+      </div>
+      <div class="plat-step">
+        <div class="plat-step-num">${a.loginOpen.toLocaleString('he-IL')}</div>
+        <div class="plat-step-lbl">פתחו את חלון הכניסה</div>
+        <div class="plat-step-rate">חבר קיים שמנסה להתחבר</div>
+      </div>
+    </div>
+
+    <div class="plat-sect">משפך הרשמה — אוהדים</div>
+    <div class="plat-funnel">
+      <div class="plat-step">
+        <div class="plat-step-num">${a.fanOpen.toLocaleString('he-IL')}</div>
+        <div class="plat-step-lbl">פתחו את טופס ההרשמה</div>
+        <div class="plat-step-rate">היום ${a.today.fanOpen}</div>
+      </div>
+      <div class="plat-step">
+        <div class="plat-step-num">${a.fanSubmit.toLocaleString('he-IL')}</div>
+        <div class="plat-step-lbl">שלחו בקשת הצטרפות</div>
+        <div class="plat-step-rate">היום ${a.today.fanSubmit}</div>
+      </div>
+      <div class="plat-step">
+        <div class="plat-step-num">${platPct(a.fanSubmit, a.fanOpen)}</div>
+        <div class="plat-step-lbl">שיעור השלמה</div>
+        <div class="plat-step-rate">מפתיחת הטופס ועד שליחה</div>
+      </div>
+      <div class="plat-step">
+        <div class="plat-step-num">${Math.max(0, a.fanOpen - a.fanSubmit).toLocaleString('he-IL')}</div>
+        <div class="plat-step-lbl">פתחו ולא שלחו</div>
+        <div class="plat-step-rate">נטישה באמצע הטופס</div>
+      </div>
+    </div>
+
+    <div class="plat-sect">משפך הרשמה — עסקים</div>
+    <div class="plat-funnel">
+      <div class="plat-step">
+        <div class="plat-step-num">${a.bizOpen.toLocaleString('he-IL')}</div>
+        <div class="plat-step-lbl">פתחו את טופס העסקים</div>
+      </div>
+      <div class="plat-step">
+        <div class="plat-step-num">${a.bizSubmit.toLocaleString('he-IL')}</div>
+        <div class="plat-step-lbl">שלחו בקשת הצטרפות</div>
+      </div>
+      <div class="plat-step">
+        <div class="plat-step-num">${platPct(a.bizSubmit, a.bizOpen)}</div>
+        <div class="plat-step-lbl">שיעור השלמה</div>
+      </div>
+      <div class="plat-step">
+        <div class="plat-step-num">${Math.max(0, a.bizOpen - a.bizSubmit).toLocaleString('he-IL')}</div>
+        <div class="plat-step-lbl">פתחו ולא שלחו</div>
+      </div>
+    </div>
+
+    <div class="plat-sect">7 הימים האחרונים</div>
+    <div class="plat-tbl">
+      <div class="plat-day-row head"><div>יום</div><div>דף נחיתה</div><div>דף הבית</div><div>בקשות אוהד</div><div>בקשות עסק</div></div>
+      ${days.map(({ d, v }) => `
+        <div class="plat-day-row">
+          <div><b>${fmtDate(d)}</b></div>
+          <div>${v.landing.toLocaleString('he-IL')}</div>
+          <div>${v.home.toLocaleString('he-IL')}</div>
+          <div>${v.fanSubmit ? `<b>${v.fanSubmit}</b>` : '0'}</div>
+          <div>${v.bizSubmit ? `<b>${v.bizSubmit}</b>` : '0'}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="plat-sect">מקורות תנועה</div>
+    ${topSources.length
+      ? `<div class="plat-src">${topSources.map(([src, n]) =>
+          `<div class="plat-src-chip"><b>${esc(src)}</b> ${n.toLocaleString('he-IL')}</div>`).join('')}
+         <div class="plat-src-chip">כניסה ישירה ${a.direct.toLocaleString('he-IL')}</div></div>`
+      : `<div class="plat-sub">אין עדיין הגעות עם מקור מזוהה — כל הכניסות היו ישירות (הקלדת כתובת, סימנייה, או אפליקציה שלא מעבירה מקור).</div>`}
+
+    <div class="plat-note">
+      <b>מה חשוב לדעת לפני שמסיקים מסקנות:</b><br>
+      · <b>שליחות הטופס נמדדות רק מ-${SUBMIT_MEASURE_START}</b> — לפני התאריך הזה האירוע לא נרשם בכלל, ולכן "שיעור השלמה" של ימים קודמים יופיע כאפס גם אם בפועל נרשמו אוהדים. את מספר ההרשמות האמיתי רואים ב"כל האוהדים", לפי תאריך ההגשה.<br>
+      · <b>כניסות לדף הנחיתה נספרות לאורחים בלבד</b> — חבר עם התחברות תקפה מועבר אוטומטית לדף הבית עוד לפני שנרשמת כניסה.<br>
+      · <b>עד ${SUBMIT_MEASURE_START} חלק מהכניסות אבדו:</b> כתובת המקור נשלחה במלואה בזמן שחוקי האבטחה מגבילים ל-50 תווים, וכל הגעה מקישור ארוך (קבוצת פייסבוק, מייל, חיפוש) נדחתה יחד עם כל האירוע. תוקן — נשמר המארח בלבד.<br>
+      · "מבקרים" = דפדפן+טאב ייחודי (session), לא אדם. אותו אדם בשני מכשירים נספר פעמיים.
+    </div>
+  </div>`;
+}
+
 let dataSort = 'clicks'; // 'clicks' | 'likes' | 'anchors' | 'newest' | 'redeem'
 let dataSearch = '';
 let dataCategoryFilter = 'all';
@@ -4455,6 +4702,7 @@ function dataCenterHtml() {
         ? `<div class="placeholder-note">טוען נתוני מימוש…</div>`
         : `<div class="redeem-kpi-row">${Object.entries(REDEEM_ACTION_LABELS).map(([k, lbl]) =>
             `<div class="redeem-kpi"><div class="redeem-kpi-num">${(redeemTotals.ch[k] || 0).toLocaleString('he-IL')}</div><div class="redeem-kpi-lbl">${lbl}</div></div>`).join('')}</div>`}
+    ${platformStatsHtml()}
     <div class="filter-toolbar-row" style="margin-bottom:10px">
       <input class="filter-search-input" type="search" id="dataSearchInput" placeholder="🔍 חיפוש עסק או קטגוריה" value="${esc(dataSearch)}" oninput="filterDataRows(this.value)">
       <select class="filter-select" onchange="setDataCategoryFilter(this.value)">
@@ -4507,10 +4755,8 @@ function dataFutureRoadmapHtml() {
 
       <div style="font-size:12px;font-weight:800;color:var(--text);margin:10px 0 4px">🌐 פלטפורמה (שימוש, כניסות, דף נחיתה)</div>
       <div class="roadmap-list">
-        · כניסות לדף הנחיתה/לאתר — סה״כ ולפי יום (מגמה) — <b>pageView כבר נאסף</b> ב-events (welcome.html+home.html), רק לא מסוכם/מוצג<br>
-        · מקורות תנועה (וואטסאפ קהילה / כניסה ישירה / אינסטגרם / מייל) — <b>referrer כבר נאסף</b> בכל pageView<br>
-        · מובייל מול דסקטופ — <b>device כבר נאסף</b> בכל event<br>
-        · משפך דף-הנחיתה (כניסה → קליק-עסק → נחסמו-להתחבר → פתחו-טופס → שלחו-בקשה) — landingBlockClick/gateBlock/formOpen <b>כבר נאספים</b>; formSubmit חסר (דורש postMessage מ-fan-register.html/business.html)<br>
+        · <s>כניסות לדף הנחיתה/לאתר, מקורות תנועה, מובייל מול דסקטופ, ומשפך פתחו-טופס→שלחו-בקשה</s> — <b>✅ נבנה (§281)</b>, מוצג בפאנל "פלטפורמה" למעלה<br>
+        · שלב "נחסמו-להתחבר" במשפך (gateBlock) — <b>כבר נאסף</b>, עדיין לא מוצג בפאנל<br>
         · ביצועי-בלוקים בדף-הנחיתה (איזה כפתור מביא הכי הרבה הרשמות) — <b>landingBlockClick עם blockId כבר נאסף</b>, רק לא מסוכם פר-בלוק<br>
         · זמן שהייה ממוצע, עומק-גלילה — לא נאסף כלל, דורש קוד חדש<br>
         · שינויים לא-מפורסמים בתוכן דף הנחיתה — נגזר ישירות מ-settings/landingContentDraft הקיים, לא דורש events בכלל
@@ -12021,6 +12267,8 @@ function renderMainInner() {
     // קוראת ל-renderMain בסיום, ולכן היא מצוירת שוב עם הנתונים; היא יוצאת מיד אם כבר נטען,
     // כך שאין לולאת-רינדור.
     loadRedeemStats();
+    // §281 — אותו דפוס בדיוק: טעינה עצלה, פעם אחת, וקריאה ל-renderMain בסיום
+    loadPlatformStats();
     return;
   }
   const tab = tabMeta(activeTab);

@@ -524,6 +524,51 @@
 
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
+  // ── שכבת מדידה (§281) — `formSubmit` היה חסר בכל המערכת ──────────────────────────────────
+  // `welcome.html` רושם `formOpen` כשנפתח מודאל ההרשמה, אבל את השליחה עצמה לא רשם אף אחד —
+  // ולכן לא הייתה שום דרך לענות "כמה פתחו את הטופס מול כמה באמת שלחו", והפער הזה מתועד
+  // ב-admin-dashboard.html עצמו. sessionStorage משותף בין העמוד-ההורה ל-iframe (same-origin,
+  // אותו טאב), ולכן ה-sessionId כאן זהה לזה של `formOpen` ושני האירועים מצטרפים לאותו משפך.
+  // הפונקציה זהה לזו שב-home.html/welcome.html (המערכת מכפילה אותה במקום מודול משותף).
+  function _hbSessionId() {
+    let id = sessionStorage.getItem('hb_session_id');
+    if (!id) {
+      id = 'hb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem('hb_session_id', id);
+    }
+    return id;
+  }
+
+  function logEvent(type, extra) {
+    const e = extra || {};
+    // רוחב החלון **העליון**: בתוך המודאל ה-iframe צר מהמסך, ולכן מדידה מקומית הייתה מסווגת
+    // גולש דסקטופ כ"מובייל". same-origin ולכן הגישה מותרת; try ליתר ביטחון.
+    let w = window.innerWidth;
+    try { if (window.top && window.top !== window) w = window.top.innerWidth; } catch (_) {}
+    // כשלון מדידה לעולם לא יפיל הרשמה — catch שקט בכוונה
+    addDoc(collection(db, 'events'), {
+      type,
+      bizId: null,
+      memberId: e.memberId ?? null,
+      sessionId: _hbSessionId(),
+      path: location.pathname,
+      // ⚠️ §281 — **המארח בלבד**, לא ה-URL המלא. firestore.rules אוכפת referrer.size() <= 50,
+      // ו-document.referrer הוא כתובת מלאה: כל הגעה מקישור עם נתיב (קבוצת פייסבוק, מייל,
+      // חיפוש עם פרמטרים) חצתה את הגבול ו**כל האירוע נדחה** ב-permission-denied — כלומר אותן
+      // כניסות פשוט נעלמו מהמדידה. אומת חי: referrer באורך 74 תווים → permission-denied.
+      // המארח גם ממילא הוא מה שרוצים ב"מקורות תנועה", לא הנתיב המלא.
+      referrer: (document.referrer.split('/')[2] || '').slice(0, 50) || null,
+      device: w <= 700 ? 'mobile' : 'desktop',
+      blockId: e.blockId ?? null,
+      channel: null,
+      createdAt: serverTimestamp(),
+    }).catch(err => console.error('logEvent failed:', type, err));
+  }
+
+  // כניסה ישירה לדף (לא דרך המודאל) — כאן אין `formOpen` מ-welcome.html, ובלעדיו השליחה
+  // תיראה כאילו הגיעה משום מקום. בתוך iframe **לא** רושמים, כדי לא לספור פתיחה פעמיים.
+  if (window.top === window) logEvent('formOpen', { blockId: 'fanRegister' });
+
   // ── זיהוי הרשמה כפולה — אם כבר קיימת רשומת חבר עם אותו טלפון/מייל (למשל נרשם כבר
   // כבעל עסק ומקבל רשומת חבר אוטומטית), מעדכנים אותה במקום ליצור כפולה. הבדיקה עצמה
   // עברה לשרת (ה-Worker, /check-member-exists) — לא עוד שאילתה ישירה וחשופה על members ──
@@ -902,6 +947,10 @@
     localStorage.removeItem(DRAFT_KEY);
     form.style.display = 'none';
     success.style.display = 'block';
+
+    // §281 — נרשם רק אחרי ש-addDoc הצליח בפועל, כלומר "בקשה שנקלטה" ולא "ניסיון לחיצה".
+    // memberId מקשר את האירוע לרשומה עצמה, כך שאפשר לחבר משפך↔רשומת-אוהד.
+    logEvent('formSubmit', { blockId: 'fanRegister', memberId: memberDocRef ? memberDocRef.id : null });
 
     const proofFile = document.getElementById('fansPhoto')?.files[0];
     if (proofFile && memberDocRef) {

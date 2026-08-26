@@ -1396,6 +1396,42 @@
   import { db } from './firebase-config.js';
   import { collection, addDoc, updateDoc, doc, setDoc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
+  // ── שכבת מדידה (§281) — טופס העסקים לא נמדד כלל ─────────────────────────────────────────
+  // עד היום לא נרשם כאן שום אירוע: לא פתיחה ולא שליחה, ולכן "כמה עסקים התחילו להירשם מול כמה
+  // סיימו" פשוט לא היה קיים כנתון. אותה פונקציה בדיוק כמו ב-home.html/welcome.html/fan-register.html.
+  function _hbSessionId() {
+    let id = sessionStorage.getItem('hb_session_id');
+    if (!id) {
+      id = 'hb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem('hb_session_id', id);
+    }
+    return id;
+  }
+
+  function logEvent(type, extra) {
+    const e = extra || {};
+    // כשלון מדידה לעולם לא יפיל הרשמה — catch שקט בכוונה
+    addDoc(collection(db, 'events'), {
+      type,
+      bizId: e.bizId ?? null,
+      memberId: null,
+      sessionId: _hbSessionId(),
+      path: location.pathname,
+      // ⚠️ §281 — **המארח בלבד**, לא ה-URL המלא. firestore.rules אוכפת referrer.size() <= 50,
+      // ו-document.referrer הוא כתובת מלאה: כל הגעה מקישור עם נתיב (קבוצת פייסבוק, מייל,
+      // חיפוש עם פרמטרים) חצתה את הגבול ו**כל האירוע נדחה** ב-permission-denied — כלומר אותן
+      // כניסות פשוט נעלמו מהמדידה. אומת חי: referrer באורך 74 תווים → permission-denied.
+      // המארח גם ממילא הוא מה שרוצים ב"מקורות תנועה", לא הנתיב המלא.
+      referrer: (document.referrer.split('/')[2] || '').slice(0, 50) || null,
+      device: window.innerWidth <= 700 ? 'mobile' : 'desktop',
+      blockId: e.blockId ?? null,
+      channel: null,
+      createdAt: serverTimestamp(),
+    }).catch(err => console.error('logEvent failed:', type, err));
+  }
+
+  logEvent('formOpen', { blockId: 'bizForm' });
+
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
   // ── "חזרה לאתר" — מוצג רק כשמגיעים מ"הוסף עסק" בהמבורגר (business.html?ctx=menu),
@@ -2032,6 +2068,10 @@
         return;
       }
       localStorage.removeItem('_hb_bizRegDraft');   // רק עכשיו — הרשומה קיימת בפועל
+
+      // §281 — אחרי ש-addDoc הצליח בפועל (הענף הזה לא נגיש כש-bizDocRef ריק), כלומר
+      // "בקשה שנקלטה" ולא "ניסיון לחיצה". bizId מקשר את האירוע לרשומת העסק עצמה.
+      logEvent('formSubmit', { blockId: 'bizForm', bizId: bizDocRef.id });
 
       // "עסק השבוע"/"הטבת השבוע" — רשומת תור נפרדת ב-weekly_interest (מודל הנתונים מ-§2 במסמך),
       // כדי שמסך הניהול "10 עסק השבוע" יוכל לקרוא רשימת מי הביע עניין בלי לסרוק את כל businesses
