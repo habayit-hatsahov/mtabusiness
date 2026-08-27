@@ -2074,6 +2074,19 @@ function sectionLabelFor(verifiedSport) {
 }
 const SPORT_LABELS = { football: 'כדורגל', basketball: 'כדורסל', both: 'כדורגל+כדורסל' };
 
+// ── ענף האימות (2026-08-27) ───────────────────────────────────────────────────────────────
+// הנרשם שמנוי בשני הענפים בוחר בטופס **על איזה מהם** הוא מאמת, וזה קובע מה בכלל אפשר
+// לצפות לראות: בכדורסל (מנורה מבטחים) אין "גוש", ולכן פרטי-מושב בלי גוש הם רשומה תקינה
+// ולא מילוי חלקי. עד היום הבחירה הזאת השתקפה רק בתווית שדה-המיקום (שער↔אולם/יציע) —
+// כלומר המנהל לא יכול היה לדעת אותה בלי לפענח תווית. עכשיו היא תא משלה.
+function verifiedSportCellHtml(verifiedSport, fanSport) {
+  const v = verifiedSport || (fanSport && fanSport !== 'both' ? fanSport : null);
+  const note = fanSport === 'both' ? ' <span style="opacity:.6">(מתוך שניהם)</span>' : '';
+  return `<div><div class="form-field-label">ענף האימות</div><div class="form-field-val${v ? '' : ' empty'}">${
+    v ? esc(SPORT_LABELS[v] || v) + note : '—'
+  }</div></div>`;
+}
+
 // ── מסלולי אימות אוהד (§284) ────────────────────────────────────────────────────────────────
 // עד §284 היה מסלול אחד בלבד — "מספר מנוי" כשדה-חובה גורף — ומדידה על 59 המנויים הרשומים
 // הראתה ש-29 מהם הזינו ערך מומצא (00000/12345/11111). עכשיו הנרשם בוחר איך לאמת, ולכן מרכז
@@ -2117,6 +2130,7 @@ function ownerAsFan(b) {
   return {
     verifyMethod:     b.ownerVerifyRoute || (b.ownerIsSubscriber ? null : 'standsPhoto'),
     isSubscriber:     b.ownerIsSubscriber,
+    verifiedSport:    b.ownerVerifiedSport,
     subscriberNumber: b.ownerSubscriberNumber,
     seatBlock:        b.ownerSeatBlock,
     seatRow:          b.ownerSeatRow,
@@ -2134,8 +2148,12 @@ const PHOTO_ROUTES = new Set(['passScreenshot', 'purchaseEmail', 'standsPhoto'])
 function fanVerifyValue(f) {
   switch (fanVerifyMethod(f)) {
     case 'subNumber':   return f.subscriberNumber || '—';
+    // בכדורסל אין "גוש" (מנורה מבטחים) והשדה כלל לא מוצג בטופס — בלי ההבחנה הזאת רשומה
+    // תקינה של מנוי כדורסל נראית למנהל כמו מילוי חלקי של מנוי כדורגל.
     case 'seatDetails': return [
-      f.seatBlock ? 'גוש ' + f.seatBlock : '', f.seatRow ? 'שורה ' + f.seatRow : '', f.seatNumber ? 'כיסא ' + f.seatNumber : '',
+      f.seatBlock ? 'גוש ' + f.seatBlock
+        : (f.verifiedSport === 'basketball' ? 'ללא גוש (כדורסל)' : ''),
+      f.seatRow ? 'שורה ' + f.seatRow : '', f.seatNumber ? 'כיסא ' + f.seatNumber : '',
     ].filter(Boolean).join(' · ') || '—';
     case 'manual':      return f.verifyNote || '—';
     default:            return '';
@@ -5842,9 +5860,11 @@ function bizFullDetailHtml(id, opts) {
       <div class="owner-verify-photo">${ownerVerifPhotoHtml}</div>
       <div class="owner-verify-info">
         <div class="owner-verify-grid">
+          <div><div class="form-field-label">ענף</div><div class="form-field-val${!b.ownerFanSport ? ' empty' : ''}">${b.ownerFanSport ? esc(SPORT_LABELS[b.ownerFanSport] || b.ownerFanSport) : '—'}</div></div>
+          ${b.ownerIsSubscriber ? verifiedSportCellHtml(b.ownerVerifiedSport, b.ownerFanSport) : ''}
+          <div><div class="form-field-label">${sectionLabelFor(b.ownerVerifiedSport)}</div><div class="form-field-val${!b.ownerSubscriberSection?' empty':''}">${b.ownerSubscriberSection?esc(b.ownerSubscriberSection):'—'}</div></div>
           <div><div class="form-field-label">מסלול האימות</div><div class="form-field-val${!ownerRoute?' empty':''}">${esc(fanVerifyMethodLabel(ownerAsFan(b)))}</div></div>
           ${ownerVerifValue ? `<div><div class="form-field-label">${esc(VERIFY_VALUE_LABELS[ownerRoute] || 'מה נמסר')}</div><div class="form-field-val">${esc(ownerVerifValue)}</div></div>` : ''}
-          <div><div class="form-field-label">${sectionLabelFor(b.ownerVerifiedSport)}</div><div class="form-field-val${!b.ownerSubscriberSection?' empty':''}">${b.ownerSubscriberSection?esc(b.ownerSubscriberSection):'—'}</div></div>
           <div><div class="form-field-label">קרבה לבעל המנוי</div><div class="form-field-val">${esc(RELATION_LABELS_MOCK[b.ownerRelation]||'—')}</div></div>
           <!-- §299 — תקנון וזמן-האישור עברו לכאן מכרטיס-הזהות. שניהם חלק מההחלטה עצמה:
                "טרם אושר תקנון" הוא חסם לאישור, ו"ממתין 9 ימים" הוא הדחיפות שלה. כשהם ישבו
@@ -7323,10 +7343,11 @@ function fanFullDetailHtml(id, opts) {
                  (למנוי הוא חסר-משמעות, ו-"—" בשדה קבוע נקרא כמו רשומה חסרה). -->
             <div><div class="form-field-label">מנוי בפועל</div><div class="form-field-val${f.isSubscriber ? '' : ' empty'}">${f.isSubscriber ? 'כן' : 'לא'}</div></div>
             ${f.isSubscriber ? '' : `<div><div class="form-field-label">היה מנוי בעבר</div><div class="form-field-val${f.wasSubscriber === 'yes' ? '' : ' empty'}">${f.wasSubscriber === 'yes' ? 'כן' : 'לא'}</div></div>`}
+            <div><div class="form-field-label">ענף</div><div class="form-field-val${!f.fanSport ? ' empty' : ''}">${f.fanSport ? esc(SPORT_LABELS[f.fanSport] || f.fanSport) : '—'}</div></div>
+            ${f.isSubscriber ? verifiedSportCellHtml(f.verifiedSport, f.fanSport) : ''}
+            ${f.isSubscriber ? `<div><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val${!f.subscriberSection ? ' empty' : ''}">${esc(f.subscriberSection || '—')}</div></div>` : ''}
             <div><div class="form-field-label">מסלול האימות</div><div class="form-field-val${!idVerifyMethod ? ' empty' : ''}">${esc(fanVerifyMethodLabel(f))}</div></div>
             ${idVerifyValue ? `<div><div class="form-field-label">${esc(VERIFY_VALUE_LABELS[idVerifyMethod] || 'מה נמסר')}</div><div class="form-field-val" style="white-space:pre-line">${esc(idVerifyValue)}</div></div>` : ''}
-            <div><div class="form-field-label">ענף</div><div class="form-field-val${!f.fanSport ? ' empty' : ''}">${f.fanSport ? esc(SPORT_LABELS[f.fanSport] || f.fanSport) : '—'}</div></div>
-            ${f.isSubscriber ? `<div><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val${!f.subscriberSection ? ' empty' : ''}">${esc(f.subscriberSection || '—')}</div></div>` : ''}
           </div>
           ${f.facebookUrl ? `<div class="owner-verify-fb"><span class="form-field-label">פייסבוק</span><a href="${esc(f.facebookUrl)}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
           <!-- §300 — השורה כבר לא חוזרת על "לא מנוי / היה בעבר": הם תאים ברשת למעלה.
