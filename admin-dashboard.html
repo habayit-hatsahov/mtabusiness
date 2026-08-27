@@ -1870,7 +1870,7 @@ body {
 import { db, auth, getStorageLazy } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 import {
-  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc, runTransaction, query, where, getDocs, writeBatch, setDoc, addDoc, orderBy, limit, getCountFromServer, arrayUnion
+  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc, runTransaction, query, where, getDocs, writeBatch, setDoc, addDoc, orderBy, limit, getCountFromServer, arrayUnion, deleteField
 } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
 import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js';
 
@@ -4587,6 +4587,12 @@ async function loadPlatformStats() {
         at, type: e.type, path: (e.path || '').toLowerCase(), blockId: e.blockId || null,
         memberId: e.memberId || null, sessionId: e.sessionId || null,
         device: e.device || null, referrer: e.referrer || null,
+        // ── 🔴 §302 — `channel` ו-`bizId` **לא נטענו כאן מעולם** ────────────────────────
+        // זה הפך את כל §296 לקוד מת בפועל: המסווג קורא `e.channel`, קיבל `undefined`,
+        // וכל כשל־תמונה הוצג כ"הרשמת אוהד נכשלה · קוד השגיאה: לא ידוע" — בדיוק ההפך
+        // ממה ש-§296 בא לתקן, ובדיוק מה שהמשתמש דיווח: *"אין לי פרטים בתקלות הרשמה"*.
+        // **הלקח: תיקון־תצוגה שנשען על שדה חדש חייב לוודא שהשדה עובר את שכבת הטעינה.**
+        channel: e.channel || null, bizId: e.bizId || null,
       });
     });
     platformEvents = rows;
@@ -8070,7 +8076,10 @@ function taskTilesHtml() {
   // כי היא לא בדקה היא גרועה יותר מקריאה אחת מיותרת. loadPlatformStats ממילא ממוזערת
   // (30 יום, נטענת פעם אחת לסשן ומשותפת עם פאנל "פלטפורמה"), והמשתמש כאן הוא מנהל יחיד.
   if (platformEvents === null && !platformStatsError) loadPlatformStats();
-  const regIssues = regIssueList();
+  // §302 — המונה סופר **פתוחים בלבד**. שורה שסומנה "טיפלתי" נשארת ברשימה (לביטול) אבל
+  // אינה מתריעה יותר — אחרת "טיפלתי" לא היה מנקה כלום והכפתור היה חסר-משמעות.
+  const regIssues = regIssueOpenList();
+  const regHandledCount = regIssueList().length - regIssues.length;
   const regFailCount = regIssues.filter(x => x.kind === 'failed').length;
   const regPhotoCount = regIssues.filter(x => x.kind === 'photoFailed').length;
   const regClashCount = regIssues.length - regFailCount - regPhotoCount;
@@ -8096,10 +8105,10 @@ function taskTilesHtml() {
         ? `<div class="class-tile-chips"><span class="warn-badge">${bizErrorBizCount} עסקים לא הצליחו לשמור</span></div>`
         : `<div class="class-tile-sub">אף בעל עסק לא נתקל בשגיאה</div>`)}
       ${tile(TASK_CLASS_TILES[7], regIssues.length ? `<span style="color:#b91c1c">${regIssues.length}</span>` : (regEventsPending ? '…' : 0), regIssues.length
-        ? `<div class="class-tile-chips">${regClashCount ? `<span class="warn-badge">${regClashCount} הצלבות</span>` : ''}${regFailCount ? `<span class="warn-badge">${regFailCount} הרשמות נכשלו</span>` : ''}${regPhotoCount ? `<span class="warn-badge">${regPhotoCount} תמונות לא עלו</span>` : ''}</div>`
+        ? `<div class="class-tile-chips">${regClashCount ? `<span class="warn-badge">${regClashCount} הצלבות</span>` : ''}${regFailCount ? `<span class="warn-badge">${regFailCount} הרשמות נכשלו</span>` : ''}${regPhotoCount ? `<span class="warn-badge">${regPhotoCount} תמונות לא עלו</span>` : ''}${regHandledCount ? `<span class="treat-badge">${regHandledCount} טופלו</span>` : ''}</div>`
         : regEventsPending
           ? `<div class="class-tile-sub">בודק כשלי-שליחה מ-30 הימים האחרונים…</div>`
-          : `<div class="class-tile-sub">אין התנגשויות, אף הרשמה לא נכשלה ואף תמונה לא אבדה</div>`)}
+          : `<div class="class-tile-sub">${regHandledCount ? `אין תקלות פתוחות · ${regHandledCount} טופלו` : 'אין התנגשויות, אף הרשמה לא נכשלה ואף תמונה לא אבדה'}</div>`)}
     </div>`;
 }
 
@@ -12318,6 +12327,26 @@ function classifyRegError(e) {
   };
 }
 
+// ── §302 — "טיפלתי" לשורת תקלה ──────────────────────────────────────────────────────────
+// אירועי `events` הם `allow update: if false` — אי אפשר לסמן את האירוע עצמו. הסימון נשמר
+// במסמך settings אחד (מנהל בלבד לפי הכלל הכללי `match /settings/{docId}`), לפי מפתח-השורה.
+// למה לפי מפתח ולא על רשומת האוהד: כשל שני של אותו אדם הוא תקלה חדשה שצריך לראות שוב.
+let handledRegIssues = {};
+window.markRegIssueHandled = async function(key, title) {
+  const note = prompt(`סימון "${title}" כטופל.\n\nמה נעשה? (אופציונלי)`, '');
+  if (note === null) return;
+  try {
+    await setDoc(doc(db, 'settings', 'handledRegIssues'), {
+      [key]: { at: new Date().toISOString(), note: (note || '').trim(), by: auth.currentUser ? auth.currentUser.uid : '' },
+    }, { merge: true });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+window.unmarkRegIssueHandled = async function(key) {
+  try {
+    await setDoc(doc(db, 'settings', 'handledRegIssues'), { [key]: deleteField() }, { merge: true });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+
 // כשלי-שליחה מתוך collection 'events'. אותו מקור בדיוק של פאנל "פלטפורמה" (§281) —
 // נטען פעם אחת ל-30 יום ומשמש את שניהם.
 function regFailureList() {
@@ -12325,10 +12354,33 @@ function regFailureList() {
     .filter(e => e.type === 'formError')
     .map(e => {
       const c = classifyRegError(e);
+      const key = 'err|' + e.sessionId + '|' + (e.at ? e.at.getTime() : 0);
+      // ── §302 — מהאירוע אל האדם ───────────────────────────────────────────────────────
+      // עד עכשיו השורה אמרה "מישהו במובייל נכשל ב-05:22" ונעצרה שם. המשתמש: *"אין לי
+      // פרטים בתקלות הרשמה בדשבורד"*. הרשומה קיימת אצלנו במלואה — רק לא חיברנו אליה.
+      // ⚠️ נפילה-לאחור לאירועים שנרשמו **לפני** §302 ואין להם memberId/bizId: ה-`formSubmit`
+      // מאותו סשן כן נושא אותו. בלי זה כל התקלות ההיסטוריות היו נשארות בלי שם לנצח, והתיקון
+      // היה מתחיל לעבוד רק מהכשל הבא. אותו סשן = אותה הרשמה, זו הצלבה בטוחה.
+      const paired = (e.memberId || e.bizId) ? null
+        : (platformEvents || []).find(s => s.type === 'formSubmit' && s.sessionId === e.sessionId && s.blockId === e.blockId);
+      const memberId = e.memberId || (paired ? paired.memberId : null);
+      const bizId    = e.bizId    || (paired ? paired.bizId    : null);
+      const fan = memberId ? MOCK_FANS.find(f => f.id === memberId) : null;
+      const biz = bizId ? MOCK_BUSINESSES.find(x => x.id === bizId) : null;
+      // ⚠️ מזהה שקיים אך אין לו רשומה = ההרשמה עצמה נכשלה אחרי שהמזהה כבר נוצר (ר' ההערה
+      // ב-fan-register). זו מסקנה שונה לגמרי מ"אין מזהה", ולכן היא נאמרת במפורש.
+      const missing = (memberId && !fan) ? ' · ⚠️ הרשומה לא נוצרה' : '';
+      const who = fan ? `${fan.name}${fan.phone ? ' · ' + fan.phone : ''}`
+                : biz ? `${biz.name}${biz.ownerPhone ? ' · ' + biz.ownerPhone : ''}`
+                : '';
+      const h = handledRegIssues[key];
       return {
-        kind: c.kind, key: 'err|' + e.sessionId + '|' + (e.at ? e.at.getTime() : 0), at: e.at, fans: [],
+        kind: c.kind, key, at: e.at,
+        fans: fan ? [{ id: fan.id, name: fan.name, status: fan.status }] : [],
+        bizRef: biz ? { id: biz.id, name: biz.name } : null,
+        handled: h || null,
         title: c.title,
-        detail: `${c.detail} · ${e.device === 'mobile' ? 'מובייל' : 'דסקטופ'}`,
+        detail: `${who ? who + ' · ' : ''}${c.detail} · ${e.device === 'mobile' ? 'מובייל' : 'דסקטופ'}${missing}`,
         badge: c.badge,
       };
     })
@@ -12348,9 +12400,14 @@ function regAbandonStats() {
 }
 
 function regIssueList() {
+  // §302 — מה שטופל יורד לתחתית הרשימה ולא נמחק ממנה. הסתרה מלאה הייתה "מנקה" יפה אבל
+  // גם מוחקת את הדרך לבטל סימון שגוי; המונה בקובייה כבר סופר רק את הפתוחים, וזה מה
+  // שהמשתמש באמת רצה לנקות.
   return [...regClashList(), ...regFailureList()]
-    .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
+    .sort((a, b) => (a.handled ? 1 : 0) - (b.handled ? 1 : 0)
+                 || (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
+function regIssueOpenList() { return regIssueList().filter(x => !x.handled); }
 function regIssuesActive() { return taskClassFilter === 'regIssues'; }
 function regIssueFilteredList() {
   let list = regIssueList();
@@ -12392,11 +12449,18 @@ function regIssuesTableHtml(list) {
             x.fans.length ? ' · ' + x.fans.map(f => esc(f.name) + (f.status === 'pending' ? ' (ממתין)' : '')).join(' · ') : ''
           }</div>
         </div>
-        <div class="task-table-badges"><span class="warn-badge">${esc(x.badge)}</span></div>
+        <div class="task-table-badges"><span class="${x.handled ? 'treat-badge' : 'warn-badge'}">${x.handled ? '✔️ טופל' : esc(x.badge)}</span></div>
         <div class="mi-addr"></div>
         <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
+        <!-- §302 — פעולות בשורה: פתיחת הכרטיס של מי שנכשל, וסימון "טיפלתי".
+             המשתמש: *"תן לי אופציה לסמן טיפלתי או לפתוח כרטיס עסק כדי לנקות שם את מה שיש"*.
+             הכפתור מוצג רק כשבאמת יש למי לפתוח — כפתור מת גרוע מכפתור חסר. -->
         <div class="mi-actions">
-          ${x.fans.map(f => `<button class="act-btn tiny" onclick="selectTask2('fan','${f.id}')">${esc(f.name)}</button>`).join('')}
+          ${x.fans.map(f => `<button class="act-btn tiny" onclick="selectTask2('fan','${f.id}')">פתיחת ${esc(f.name)}</button>`).join('')}
+          ${x.bizRef ? `<button class="act-btn tiny" onclick="selectTask2('biz','${x.bizRef.id}')">פתיחת ${esc(x.bizRef.name)}</button>` : ''}
+          ${x.handled
+            ? `<button class="act-btn tiny" onclick="unmarkRegIssueHandled('${esc(x.key)}')" title="${esc(x.handled.note || '')}">↺ החזרה לפתוח</button>`
+            : `<button class="act-btn approve tiny" onclick="markRegIssueHandled('${esc(x.key)}','${escJsAttr(x.title)}')">✔️ טיפלתי</button>`}
         </div>
       </div>`).join('')}</div>`;
 }
@@ -12919,6 +12983,15 @@ onSnapshot(doc(db, 'settings', 'landingContent'), snap => {
   maybeInitLandingWorking();
   if (activeTab === LANDING_KEY && landingWorking) landingRefreshChrome();
 }, err => console.error('שגיאה בטעינת תוכן דף הנחיתה מ-Firestore:', err));
+
+// §302 — סימוני "טיפלתי" של תקלות הרשמה. onSnapshot ולא קריאה חד-פעמית, כדי שסימון
+// ייראה מיד באותו מסך בלי רענון (אותו דפוס כמו שאר מסמכי settings כאן).
+onSnapshot(doc(db, 'settings', 'handledRegIssues'), snap => {
+  handledRegIssues = snap.exists() ? (snap.data() || {}) : {};
+  // ⚠️ refreshTaskCenter ולא שם מומצא — נתפס בבדיקה: `renderTasks` לא קיים בקובץ בכלל,
+  // והקריאה הייתה נכשלת בשקט (typeof הגן עליה) כך שסימון לא היה מתרענן עד רענון-דף.
+  if (regIssuesActive()) refreshTaskCenter();
+}, err => console.error('שגיאה בטעינת סימוני תקלות הרשמה:', err));
 
 onSnapshot(doc(db, 'settings', 'landingContentDraft'), snap => {
   landingDraftDoc = snap.exists() ? snap.data() : null;
