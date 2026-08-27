@@ -896,6 +896,8 @@ body {
   padding: 4px 8px; border-radius: 6px; cursor: pointer; line-height: 1.5;
 }
 .mfmt-btn:hover { background: rgba(var(--accent-rgb),.12); border-color: rgba(var(--accent-rgb),.35); }
+/* מצב פעיל — מה שכבר מופעל על הפסקה/השורה שהסמן בה (mailFmtSyncBar) */
+.mfmt-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .mfmt-btn b, .mfmt-btn i { font-size: 13px; }
 .mfmt-sep { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--border-md); }
 .mfmt-lbl { font-size: 11.5px; color: var(--text-muted); font-weight: 600; }
@@ -11239,10 +11241,11 @@ const MAIL_FMT_SIZES = [['big', 'כותרת גדולה'], ['mid', 'כותרת'],
 
 function mailToolbarHtml(targetId, tplId, currentBody) {
   const call = (action, val) => `mailFmt('${targetId}','${action}','${val || ''}','${tplId || ''}')`;
-  const btn = (action, label, title) => `<button type="button" class="mfmt-btn" title="${title}" onclick="${call(action)}">${label}</button>`;
+  // data-mfmt הוא הידית של mailFmtSyncBar לסימון הכפתורים הפעילים על הפסקה/שורה הנוכחית
+  const btn = (action, label, title) => `<button type="button" class="mfmt-btn" data-mfmt="${action}" title="${title}" onclick="${call(action)}">${label}</button>`;
   const fontKey = mailFontKey(currentBody || '');
   return `
-    <div class="mail-fmt-bar">
+    <div class="mail-fmt-bar" id="mfmtBar_${targetId}">
       ${btn('bold', '<b>B</b>', 'מודגש — עוטף את הטקסט המסומן בכוכביות')}
       ${btn('italic', '<i>I</i>', 'נטוי')}
       <span class="mfmt-sep"></span>
@@ -11269,9 +11272,24 @@ function mailFmtHintHtml() {
 // ── פעולות העריכה ─────────────────────────────────────────────────────────────────────────
 // כולן עובדות ישירות על ה-textarea ומחזירות את הפוקוס והסימון, ואז מרעננות רק את קופסת-התצוגה
 // (לא renderMain — הוא היה בונה מחדש את השדה מהערך השמור ומוחק כל מה שנכתב ועוד לא נשמר).
-function mailFmtSet(ta, value, selStart, selEnd) {
-  ta.value = value;
+//
+// **כל פעולה חייבת לכבד בחירה מרובה.** הגרסה הראשונה של הסרגל טיפלה רק בפסקה שהסמן בה,
+// ולכן "סמן הכל ← מרכוז" מרכז פסקה אחת מתוך עשר — המשתמש דיווח על זה מיד. הכלל עכשיו:
+// כפתור-פסקה חל על **כל** הפסקאות שהבחירה נוגעת בהן, כפתור-שורה על כל השורות, וסימון-תוך-שורה
+// על כל שורה בבחירה בנפרד. הביטול הוא "אם כולן כבר מסומנות — הסר מכולן", כמו בכל עורך.
+//
+// mailFmtReplace מחליף טווח דרך execCommand ולא ב-ta.value=: השמה ישירה **מוחקת את היסטוריית
+// ה-Undo של הדפדפן**, כלומר Ctrl+Z אחרי לחיצה על כפתור לא היה מחזיר כלום. יש נפילה-לאחור
+// להשמה ישירה אם הפקודה לא נתמכת.
+function mailFmtReplace(ta, start, end, text, selStart, selEnd) {
   ta.focus();
+  ta.setSelectionRange(start, end);
+  let ok = false;
+  try { ok = document.execCommand(text === '' ? 'delete' : 'insertText', false, text); } catch (e) { ok = false; }
+  if (!ok || ta.value.slice(start, start + text.length) !== text) {
+    const v = ta.value;
+    ta.value = v.slice(0, start) + text + v.slice(end);
+  }
   ta.setSelectionRange(selStart, selEnd == null ? selStart : selEnd);
 }
 // גבולות הפסקה שהסמן נמצא בה (פסקה = בלוק בין שורות ריקות, בדיוק כמו החלוקה ב-mail-format.js)
@@ -11280,60 +11298,145 @@ function mailFmtParaRange(v, pos) {
   const after = v.indexOf('\n\n', pos);
   return [before === -1 ? 0 : before + 2, after === -1 ? v.length : after];
 }
+// טווח **כל** הפסקאות שהבחירה נוגעת בהן. סוף-הבחירה נמדד לפי התו האחרון שאינו רווח/שורה
+// ריקה: גרירה עד סוף שורה גוררת איתה כמעט תמיד גם את המעבר-שורה שאחריה, ובלי הקיצוץ הזה
+// הפסקה הבאה הייתה מסומנת בלי שהמשתמש נגע בה.
+function mailFmtParaSpan(v, s, e) {
+  const start = mailFmtParaRange(v, s)[0];
+  let last = e;
+  while (last > s && /\s/.test(v[last - 1])) last--;
+  return [start, mailFmtParaRange(v, Math.max(start, last > s ? last - 1 : e))[1]];
+}
 function mailFmtLineRange(v, s, e) {
   const start = v.lastIndexOf('\n', Math.max(0, s - 1)) + 1;
-  const end = v.indexOf('\n', e);
+  const end = v.indexOf('\n', e > s ? e - 1 : e);
   return [start, end === -1 ? v.length : end];
 }
-// עטיפה/הסרה של סימון-תוך-שורה. בלי טקסט מסומן — מכניס את שני הסימנים ומציב את הסמן ביניהם.
-// רווחים בקצוות הבחירה נשארים *מחוץ* לסימון: לחיצה-כפולה על מילה גוררת ברוב הדפדפנים גם את
-// הרווח שאחריה, ובלי זה הכוכבית הייתה נוחתת אחרי הרווח (*מילה *) במקום צמודה למילה.
+// ── סימון-תוך-שורה (מודגש/נטוי) ───────────────────────────────────────────────────────────
+// חוצה-שורות מטופל שורה-שורה ולא כעטיפה אחת גדולה, כי המנוע מרנדר כל שורה בנפרד: `*א\nב*`
+// לא היה מודגש בכלל — כוכבית בודדת בכל שורה, ושתיהן היו מגיעות לנמען כתו מילולי.
+function mfmtWrapOne(text, mark) {
+  const lead = text.match(/^\s*/)[0], trail = text.match(/\s*$/)[0];
+  const core = text.slice(lead.length, text.length - trail.length);
+  return lead + mark + core + mark + trail;
+}
+function mfmtIsWrapped(text, mark) {
+  const core = text.trim();
+  return core.length > mark.length * 2 && core.startsWith(mark) && core.endsWith(mark);
+}
+function mfmtUnwrapOne(text, mark) {
+  const lead = text.match(/^\s*/)[0], trail = text.match(/\s*$/)[0];
+  const core = text.slice(lead.length, text.length - trail.length);
+  return lead + core.slice(mark.length, -mark.length) + trail;
+}
 function mailFmtWrap(ta, mark) {
   const v = ta.value, s0 = ta.selectionStart, e0 = ta.selectionEnd;
   const raw = v.slice(s0, e0);
-  if (!raw.trim()) return mailFmtSet(ta, v.slice(0, s0) + mark + mark + v.slice(e0), s0 + mark.length);
+  // בלי בחירה — שני הסימנים והסמן ביניהם
+  if (!raw.trim()) return mailFmtReplace(ta, s0, e0, mark + mark, s0 + mark.length);
+  // רווחים בקצוות הבחירה נשארים *מחוץ* לסימון: לחיצה-כפולה על מילה גוררת ברוב הדפדפנים גם
+  // את הרווח שאחריה, ובלי זה הכוכבית הייתה נוחתת אחרי הרווח (*מילה *) במקום צמודה למילה.
   const s = s0 + raw.match(/^\s*/)[0].length, e = e0 - raw.match(/\s*$/)[0].length;
   const sel = v.slice(s, e);
-  const wrapped = sel.length > mark.length * 2 && sel.startsWith(mark) && sel.endsWith(mark);
-  const inner = wrapped ? sel.slice(mark.length, -mark.length) : mark + sel + mark;
-  mailFmtSet(ta, v.slice(0, s) + inner + v.slice(e), s, s + inner.length);
+  const lines = sel.split('\n');
+  const filled = lines.filter(l => l.trim());
+  const allWrapped = filled.length > 0 && filled.every(l => mfmtIsWrapped(l, mark));
+  const next = lines.length === 1
+    ? (allWrapped ? mfmtUnwrapOne(sel, mark) : mfmtWrapOne(sel, mark))
+    : lines.map(l => (!l.trim() ? l : allWrapped ? mfmtUnwrapOne(l, mark) : mfmtIsWrapped(l, mark) ? l : mfmtWrapOne(l, mark))).join('\n');
+  mailFmtReplace(ta, s, e, next, s, s + next.length);
 }
+// ── סימוני-פסקה ({center}/{big}/{mid}/{small}) ────────────────────────────────────────────
 const MFMT_MARKS_RX = /^(?:[ \t]*\{(?:center|big|mid|small)\})+[ \t]*/;
-// סימון-פסקה ({center}/{big}/{mid}/{small}) — group הוא קבוצת-סימונים שרק אחד מהם יכול להיות
-// פעיל (הגדלים), כדי ש"כותרת גדולה" תחליף את "קטן" ולא תצטבר איתו.
+function mfmtParaMarks(para) {
+  const m = para.match(MFMT_MARKS_RX);
+  return m ? (m[0].match(/\{(\w+)\}/g) || []).map(x => x.slice(1, -1)) : [];
+}
+function mfmtParaBody(para) {
+  const m = para.match(MFMT_MARKS_RX);
+  return m ? para.slice(m[0].length) : para;
+}
+// group הוא קבוצת-סימונים שרק אחד מהם יכול להיות פעיל (הגדלים), כדי ש"כותרת גדולה" תחליף
+// את "קטן" ולא תצטבר איתו. חל על כל הפסקאות בבחירה — אם לכולן כבר יש הסימון, הוא מוסר מכולן.
 function mailFmtToggleMark(ta, mark, group) {
-  const v = ta.value, [s, e] = mailFmtParaRange(v, ta.selectionStart);
-  const para = v.slice(s, e), m = para.match(MFMT_MARKS_RX);
-  const had = m ? m[0].includes('{' + mark + '}') : false;
-  let marks = m ? (m[0].match(/\{(\w+)\}/g) || []).map(x => x.slice(1, -1)) : [];
-  marks = marks.filter(x => (group ? !group.includes(x) : x !== mark));
-  if (!had) marks.push(mark);
-  marks.sort((a, b) => (a === 'center' ? 0 : 1) - (b === 'center' ? 0 : 1)); // סדר קבוע בטקסט הגולמי
-  const next = marks.map(x => `{${x}}`).join('') + (m ? para.slice(m[0].length) : para);
-  const caret = s + next.length;
-  mailFmtSet(ta, v.slice(0, s) + next + v.slice(e), caret);
+  const v = ta.value, [s, e] = mailFmtParaSpan(v, ta.selectionStart, ta.selectionEnd);
+  const paras = v.slice(s, e).split('\n\n');
+  const filled = paras.filter(p => p.trim());
+  const allHave = filled.length > 0 && filled.every(p => mfmtParaMarks(p).includes(mark));
+  const next = paras.map(p => {
+    if (!p.trim()) return p;
+    let marks = mfmtParaMarks(p).filter(x => (group ? !group.includes(x) : x !== mark));
+    if (!allHave) marks.push(mark);
+    marks.sort((a, b) => (a === 'center' ? 0 : 1) - (b === 'center' ? 0 : 1)); // סדר קבוע בטקסט הגולמי
+    return marks.map(x => `{${x}}`).join('') + mfmtParaBody(p);
+  }).join('\n\n');
+  mailFmtReplace(ta, s, e, next, s, s + next.length);
 }
 // תחילית-שורה (רשימה/תיבת-הדגשה) על כל השורות המסומנות. אם *כולן* כבר מסומנות — מסיר.
 function mailFmtToggleLinePrefix(ta, prefix, rx) {
   const v = ta.value, [s, e] = mailFmtLineRange(v, ta.selectionStart, ta.selectionEnd);
   const lines = v.slice(s, e).split('\n');
-  const on = lines.every(l => !l.trim() || rx.test(l));
-  const next = lines.map(l => (!l.trim() ? l : on ? l.replace(rx, '') : rx.test(l) ? l : prefix + l)).join('\n');
-  mailFmtSet(ta, v.slice(0, s) + next + v.slice(e), s, s + next.length);
+  const filled = lines.filter(l => l.trim());
+  const on = filled.length > 0 && filled.every(l => rx.test(l));
+  // שורה עם סימון-פסקה ({center} וכו) שומרת עליו בתחילתה — התחילית נכנסת אחריו, אחרת
+  // הסימון היה הופך לחלק מהטקסט של הפריט ומודפס לנמען.
+  const next = lines.map(l => {
+    if (!l.trim()) return l;
+    const m = l.match(MFMT_MARKS_RX), head = m ? m[0] : '', body = m ? l.slice(m[0].length) : l;
+    if (on) return head + body.replace(rx, '');
+    return head + (rx.test(body) ? body : prefix + body);
+  }).join('\n');
+  mailFmtReplace(ta, s, e, next, s, s + next.length);
 }
-// בלוק שחייב לשבת בפסקה משל עצמו (קו מפריד, {link}) — נשתל עם שורה ריקה משני צדדיו
+// בלוק שחייב לשבת בפסקה משל עצמו (קו מפריד, {link}) — נשתל עם שורה ריקה משני צדדיו,
+// אחרי הבחירה הנוכחית (לא במקומה — בחירה קיימת אף פעם לא נמחקת בלחיצה על כפתור).
 function mailFmtInsertBlock(ta, text) {
   const v = ta.value, pos = ta.selectionEnd;
-  const before = v.slice(0, pos).replace(/\s*$/, ''), after = v.slice(pos).replace(/^\s*/, '');
-  const head = before ? before + '\n\n' : '';
-  mailFmtSet(ta, head + text + (after ? '\n\n' + after : '\n'), head.length + text.length);
+  const start = pos - v.slice(0, pos).match(/\s*$/)[0].length;
+  const end = pos + v.slice(pos).match(/^\s*/)[0].length;
+  const block = (start > 0 ? '\n\n' : '') + text + (end < v.length ? '\n\n' : '\n');
+  const caret = start + block.length - (end < v.length ? 2 : 1);
+  mailFmtReplace(ta, start, end, block, caret);
 }
-// הגופן הוא מאפיין של המכתב כולו ולכן יושב בשורה הראשונה (ר' ההסבר ב-mail-format.js)
+// הגופן הוא מאפיין של המכתב כולו ולכן יושב בשורה הראשונה (ר' ההסבר ב-mail-format.js).
+// מוחלף רק הקידומת ולא כל הטקסט — כדי לא לזרוק את הסמן ואת ה-Undo על כל המכתב.
 function mailFmtSetFont(ta, key) {
-  const stripped = ta.value.replace(/^[ \t]*\{font:[^}\n]*\}[ \t]*(\r?\n)*/i, '');
-  const next = key && key !== 'default' ? `{font:${key}}\n\n${stripped}` : stripped;
-  mailFmtSet(ta, next, next.length - stripped.length + Math.min(ta.selectionStart, stripped.length));
+  const v = ta.value;
+  const oldLen = (v.match(/^[ \t]*\{font:[^}\n]*\}[ \t]*(\r?\n)*/i) || [''])[0].length;
+  const next = key && key !== 'default' ? `{font:${key}}\n\n` : '';
+  const caret = Math.max(next.length, ta.selectionStart + next.length - oldLen);
+  mailFmtReplace(ta, 0, oldLen, next, caret);
 }
+// ── סנכרון מצב-הכפתורים ───────────────────────────────────────────────────────────────────
+// בלי זה אי אפשר לדעת מה כבר מופעל על הפסקה שהסמן בה, וכפתור-מתג בלי מצב-פעיל הוא ניחוש.
+// selectionchange גלובלי ולא מאזין פר-שדה: הסרגל נבנה מחדש בכל renderMain, ומאזין שמוצמד
+// לאלמנט היה מת בשקט בכל רינדור.
+function mailFmtSyncBar(ta) {
+  const bar = ta && ta.id ? document.getElementById('mfmtBar_' + ta.id) : null;
+  if (!bar) return;
+  const v = ta.value;
+  const [ps, pe] = mailFmtParaSpan(v, ta.selectionStart, ta.selectionEnd);
+  const paras = v.slice(ps, pe).split('\n\n').filter(p => p.trim());
+  const [ls, le] = mailFmtLineRange(v, ta.selectionStart, ta.selectionEnd);
+  const lines = v.slice(ls, le).split('\n').filter(l => l.trim());
+  const hasMark = (k) => paras.length > 0 && paras.every(p => mfmtParaMarks(p).includes(k));
+  const hasPrefix = (rx) => lines.length > 0 && lines.every(l => rx.test(mfmtParaBody(l)));
+  bar.querySelectorAll('[data-mfmt]').forEach(b => {
+    const a = b.dataset.mfmt;
+    let on = false;
+    if (a === 'center' || a === 'big' || a === 'mid' || a === 'small') on = hasMark(a);
+    else if (a === 'bullet') on = hasPrefix(/^[ \t]*[-•][ \t]+/);
+    else if (a === 'quote') on = hasPrefix(/^[ \t]*>[ \t]+/);
+    else return;
+    b.classList.toggle('on', on);
+  });
+  const sel = bar.querySelector('.mfmt-select');
+  if (sel) sel.value = mailFontKey(v);
+}
+document.addEventListener('selectionchange', () => {
+  const el = document.activeElement;
+  if (el && el.tagName === 'TEXTAREA') mailFmtSyncBar(el);
+});
 window.mailFmt = function(targetId, action, value, tplId) {
   const ta = document.getElementById(targetId);
   if (!ta) return;
@@ -11347,6 +11450,7 @@ window.mailFmt = function(targetId, action, value, tplId) {
   else if (action === 'hr') mailFmtInsertBlock(ta, '---');
   else if (action === 'link') mailFmtInsertBlock(ta, '{link}');
   else if (action === 'font') mailFmtSetFont(ta, value);
+  mailFmtSyncBar(ta);
   if (tplId) updateTemplatePreview(tplId); else updateBroadcastPreview();
 };
 
