@@ -1226,6 +1226,13 @@ body {
 .owner-verify-photo { flex: 0 0 232px; background: #101828; position: relative; min-height: 180px; display: flex; align-items: center; justify-content: center; }
 .owner-verify-photo img { width: 100%; height: 100%; min-height: 180px; object-fit: cover; }
 .owner-verify-photo-empty { color: #98A2B3; font-size: 12px; font-weight: 600; padding: 20px; text-align: center; }
+/* §294 — "המסלול דורש תמונה ואין" הוא ממצא, לא היעדר-מידע: הוא חייב להיראות אחרת
+   מ"במסלול הזה אין תמונה", אחרת המנהל מאשר בלי לשים לב שהראיה חסרה. */
+.owner-verify-photo-empty.warn { color: #FDB022; }
+/* §294 — התמונה נפתחת ב-lightbox הקיים של הדשבורד (openImageLightbox), לא בטאב חדש.
+   ⚠️ לא נבנה כאן lightbox שני: הדשבורד כבר מחזיק אחד (#lightboxImg), כולל כפתור הורדה
+   ומעבר דרך /view-image — שנדרש כדי לראות תמונות של עסק pending. */
+.owner-verify-photo img.zoomable { cursor: zoom-in; }
 .owner-verify-info { flex: 1 1 300px; min-width: 0; padding: 16px 18px; display: flex; flex-direction: column; gap: 13px; }
 .owner-verify-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(118px,1fr)); gap: 13px; }
 .owner-verify-fb { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding-top: 13px; border-top: 1px solid var(--border-md); }
@@ -2077,6 +2084,14 @@ const VERIFY_METHOD_LABELS = {
   manual:         'בקשה ידנית (טקסט חופשי)',
 };
 
+// §294 — התווית של **הערך** שנמסר, לא של המסלול. "מסלול: פרטי מושב · פרטי מושב: גוש 3…"
+// היה חוזר על עצמו; שלושת המסלולים שיש להם ערך-טקסט מקבלים כאן תווית ייעודית.
+const VERIFY_VALUE_LABELS = {
+  subNumber:   'מספר המנוי',
+  seatDetails: 'המושב',
+  manual:      'מה נכתב',
+};
+
 // ⚠️ נפילה-לאחור ל-60 הרשומות שנוצרו **לפני** §284 ואין להן verifyMethod בכלל. בלי זה כל
 // האוהדים הקיימים היו מוצגים כ"אימות: —" ביום שהמסך הזה עולה.
 function fanVerifyMethod(f) {
@@ -2089,6 +2104,26 @@ function fanVerifyMethodLabel(f) {
   if (!m) return 'לא תועד (הרשמה ישנה)';
   return VERIFY_METHOD_LABELS[m] || m;
 }
+
+// ── §294 — בעל עסק עובר דרך אותן פונקציות בדיוק ─────────────────────────────────────────
+// מסמך העסק שומר את אותם נתונים בשמות אחרים (verifyRoute/subNum/gate). במקום להעתיק את
+// טבלת-ההכרעה לכרטיס העסק — ושתי עותקות היו נפרדות זו מזו ביום הראשון — מתרגמים כאן פעם
+// אחת לשמות של רשומת-אוהד, וכל השאר משותף. שינוי במסלולים יתפוס בשני המסכים יחד.
+function ownerAsFan(b) {
+  return {
+    verifyMethod:     b.ownerVerifyRoute || (b.ownerIsSubscriber ? null : 'standsPhoto'),
+    isSubscriber:     b.ownerIsSubscriber,
+    subscriberNumber: b.ownerSubscriberNumber,
+    seatBlock:        b.ownerSeatBlock,
+    seatRow:          b.ownerSeatRow,
+    seatNumber:       b.ownerSeatNumber,
+    verifyNote:       b.ownerVerifyNote,
+  };
+}
+
+// המסלולים שהראיה שלהם היא **קובץ**. משמש גם את כרטיס האימות של העסק, כדי להבדיל בין
+// "לא נדרשת תמונה במסלול הזה" לבין "נדרשת ולא הועלתה" — שתי מסקנות הפוכות למנהל.
+const PHOTO_ROUTES = new Set(['passScreenshot', 'purchaseEmail', 'standsPhoto']);
 
 // הערך שהנרשם מסר בפועל במסלול שבחר — מה שהמנהל צריך לקרוא כדי להחליט. מסלולי-תמונה
 // מחזירים '' כי הראיה שלהם היא הקובץ עצמו, שכבר מוצג בנפרד בכרטיס.
@@ -2310,6 +2345,16 @@ function hydrateBiz(id, raw) {
     ownerSubscriberNumber: raw.subNum || null,
     ownerFacebookUrl: raw.fbUrl || '',
     ownerProofPhotoUrl: raw.photoProofUrl || '',
+    // ── §294 — מסלול האימות של בעל העסק ─────────────────────────────────────────────────
+    // §284 החליף את "מספר מנוי" בשישה מסלולי-אימות, ו-business.html שומר אותם על מסמך העסק
+    // (verifyRoute/seat*/verifyNote). **המיפוי כאן מעולם לא עודכן**, ולכן כרטיס האימות במרכז
+    // הניהול המשיך להציג את המודל הישן — מספר מנוי שכבר לא נמסר. דווח בפועל: "בדשבורד ניהול
+    // לא רואים את הבחירה של האימות, רואים עדיין מספר מנוי הישן".
+    ownerVerifyRoute: raw.verifyRoute || null,
+    ownerSeatBlock: raw.seatBlock || null,
+    ownerSeatRow: raw.seatRow || null,
+    ownerSeatNumber: raw.seatNumber || null,
+    ownerVerifyNote: raw.verifyNote || null,
     // סדר-השלבים החדש בטופס (business.html, 08/2026) — קרבה לבעל המנוי ואינסטגרם-אימות (מסלול "לא מנוי")
     ownerRelation: raw.ownerRelation || '',
     ownerFanInstagram: raw.fanInstagram || '',
@@ -5741,17 +5786,27 @@ function bizFullDetailHtml(id, opts) {
     : ownerVerifStatus === 'info_requested'
     ? `<div class="owner-verify-state wait">⏳ התבקש מידע נוסף מבעל העסק — ממתינים לתשובה</div>`
     : `<div class="owner-verify-state wait">⏳ עדיין לא התקבלה החלטה — אישור העסק יאשר גם את האימות אוטומטית</div>`;
-  const ownerVerifPhotoHtml = b.ownerIsSubscriber
-    ? `<div class="owner-verify-photo-empty">מנוי מכבי — לא נדרשת תמונה</div>`
-    : b.ownerProofPhotoUrl
-      ? `<img src="${esc(bizImageViewUrl(b.ownerProofPhotoUrl))}" alt="תמונה בשער אוהדים">`
-      : `<div class="owner-verify-photo-empty">לא הועלתה תמונה</div>`;
+  // ── §294 — התמונה נקבעת לפי **המסלול**, לא לפי "מנוי כן/לא" ─────────────────────────────
+  // הניסוח הקודם היה `ownerIsSubscriber ? 'מנוי מכבי — לא נדרשת תמונה' : …` — נכון לפני §284,
+  // שגוי מאז: שלושה מהמסלולים (צילום מנוי / אישור רכישה / תמונה מהיציע) פתוחים גם למנויים
+  // ודורשים קובץ. התוצאה בפועל: מנוי שהעלה תמונת-אימות — **התמונה שלו לא הוצגה כלל**, והמנהל
+  // ראה "לא נדרשת תמונה" מעל ראיה שכן קיימת. דווח: "העליתי גם תמונה באימות וגם לא רואים אותו".
+  const ownerRoute = ownerAsFan(b).verifyMethod;
+  const ownerVerifValue = fanVerifyValue(ownerAsFan(b));
+  const ownerVerifPhotoHtml = b.ownerProofPhotoUrl
+    ? `<img src="${esc(bizImageViewUrl(b.ownerProofPhotoUrl))}" alt="ראיית האימות של בעל העסק"
+           class="zoomable" title="לחצו להגדלה"
+           onclick="openImageLightbox('${esc(b.ownerProofPhotoUrl)}','proof-${esc(b.id)}.jpg')">`
+    : PHOTO_ROUTES.has(ownerRoute)
+      ? `<div class="owner-verify-photo-empty warn">⚠️ המסלול דורש תמונה — לא הועלתה</div>`
+      : `<div class="owner-verify-photo-empty">במסלול הזה אין תמונה</div>`;
   const ownerVerifCardHtml = `
     <div class="owner-verify-card">
       <div class="owner-verify-photo">${ownerVerifPhotoHtml}</div>
       <div class="owner-verify-info">
         <div class="owner-verify-grid">
-          <div><div class="form-field-label">מספר מנוי</div><div class="form-field-val${!b.ownerSubscriberNumber?' empty':''}">${b.ownerSubscriberNumber?esc(b.ownerSubscriberNumber):'לא נמסר'}</div></div>
+          <div><div class="form-field-label">מסלול האימות</div><div class="form-field-val${!ownerRoute?' empty':''}">${esc(fanVerifyMethodLabel(ownerAsFan(b)))}</div></div>
+          ${ownerVerifValue ? `<div><div class="form-field-label">${esc(VERIFY_VALUE_LABELS[ownerRoute] || 'מה נמסר')}</div><div class="form-field-val">${esc(ownerVerifValue)}</div></div>` : ''}
           <div><div class="form-field-label">${sectionLabelFor(b.ownerVerifiedSport)}</div><div class="form-field-val${!b.ownerSubscriberSection?' empty':''}">${b.ownerSubscriberSection?esc(b.ownerSubscriberSection):'—'}</div></div>
           <div><div class="form-field-label">קרבה לבעל המנוי</div><div class="form-field-val">${esc(RELATION_LABELS_MOCK[b.ownerRelation]||'—')}</div></div>
         </div>
@@ -7226,7 +7281,11 @@ function fanFullDetailHtml(id, opts) {
             : 'תמונה בשער אוהדים'
           }</div>
           ${f.photoProofUrl
-            ? `<a href="${esc(bizImageViewUrl(f.photoProofUrl))}" target="_blank" rel="noopener" class="fan-proof-photo" style="background-image:url('${esc(bizImageViewUrl(f.photoProofUrl))}')" title="לחצו להגדלה"></a>`
+            // §294 — נפתח ב-lightbox של הדשבורד במקום בטאב חדש. המשתמש: *"שהיא תקפוץ בתוך
+            // החלון של הדשבורד לא בטאב חדש אין צורך"* — טאב חדש מוציא את המנהל מההקשר,
+            // הוא מאבד את הגיליון הפתוח ואת מיקום-הגלילה בשביל הצצה של שתי שניות.
+            ? `<div class="fan-proof-photo" style="background-image:url('${esc(bizImageViewUrl(f.photoProofUrl))}')" title="לחצו להגדלה"
+                    onclick="openImageLightbox('${esc(f.photoProofUrl)}','proof-${esc(f.id)}.jpg')"></div>`
             : `<div class="fan-proof-photo empty">לא הועלתה תמונת הוכחה</div>`}
         </div>
       </div>

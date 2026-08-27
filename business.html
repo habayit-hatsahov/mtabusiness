@@ -1517,7 +1517,10 @@
          "הבקשה התקבלה" מוצג בזמן שההעלאה עדיין תלויה ועומדת בדפדפן (ר' successState למטה להיסטוריה). -->
     <div class="success-state" id="submittingState">
       <div class="form-card">
-        <div class="success-upload-status show"><span class="spinner-sm"></span><span>שולח את הבקשה שלכם...</span></div>
+        <!-- §294 — הטקסט מתחלף לפי השלב (submittingNote). ספינר יחיד שלא משתנה דקה שלמה
+             נקרא כמו "נתקע", וזה בדיוק מה שקרה: בעל-עסק שההרשמה שלו כן נקלטה היה בטוח
+             שהיא לא. הטקסט הזה הוא מה שמבדיל בין "עובד" ל"מת". -->
+        <div class="success-upload-status show"><span class="spinner-sm"></span><span id="submittingNote">שולח את הבקשה שלכם...</span></div>
       </div>
     </div>
 
@@ -1736,6 +1739,22 @@
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(source, 0, 0, w, h);
     return canvas;
+  }
+
+  // §294 — שלב-השליחה מדווח על עצמו. ר' ההערה ב-#submittingNote.
+  function setSubmittingNote(msg) {
+    const el = document.getElementById('submittingNote');
+    if (el) el.textContent = msg;
+  }
+
+  // גבול-זמן קשיח סביב הבטחה. **כל await ברשת כאן חייב אחד** — כשל-רשת אמיתי במובייל אינו
+  // Promise שנדחה אלא Promise שלא חוזר, וכל מסך שממתין לו נתקע איתו (ר' §294, §280).
+  function withTimeout(p, ms, name) {
+    let t;
+    return Promise.race([
+      p.finally(() => clearTimeout(t)),
+      new Promise((_, rej) => { t = setTimeout(() => rej(Object.assign(new Error('timeout'), { name: name || 'TimeoutError' })), ms); }),
+    ]);
   }
 
   async function compressProofToFile(file) {
@@ -2368,7 +2387,12 @@
       // פתוח, ולכן דרשה beforeunload guard+באנר-אזהרה גלוי). "הבקשה התקבלה" מוצג רק *אחרי* שה-fetch
       // חוזר, כדי שלא יהיה בכלל חלון-זמן שבו ההצלחה מוצגת וההעלאה עדיין תלויה-ועומדת.
       if (hasMediaToUpload) {
+        // ── ⚠️ §294 — כל שלב המדיה חסום בזמן, לא רק ה-fetch ─────────────────────────────────
+        // הדחיסה שרצה כאן (createImageBitmap/canvas על עד 8 קבצים) היא await לא-חסום בדיוק
+        // כמו ה-fetch. תקרה חיצונית אחת מכסה את שניהם, כדי שלא נסגור חור אחד ונשאיר את השני.
         try {
+          await withTimeout((async () => {
+          setSubmittingNote('מעלים את התמונות…');
           const form = new FormData();
           form.append('accessToken', accessToken);
           // ⚠️ §285 — עד היום `fanPhoto` היה **הקובץ היחיד כאן שנשלח גולמי**: הלוגו, התמונה
@@ -2392,12 +2416,33 @@
             const compressed = await compressToFile(file, 1280, 0.82, file.name).catch(() => file);
             form.append('gallery', compressed);
           }
-          const resp = await fetch(WORKER_URL + '/upload-biz-media', { method: 'POST', body: form });
+          // ── ⚠️ §294 — גבול-זמן. זה היה השורש של "מסך תקוע" ──────────────────────────────
+          // דווח בפועל: ההרשמה נקלטה, אבל המסך נשאר על "שולח את הבקשה שלכם…" עם ספינר —
+          // *"הבעל עסק היה חושב שהוא לא נרשם"*. ה-fetch הזה רץ בלי AbortController, ולכן
+          // חיבור סלולרי שנתקע באמצע העלאת FormData אינו נכשל ואינו חוזר — הוא פשוט תלוי,
+          // ואיתו כל המסך. **מסך ההצלחה כבר הוכרע (השורה למטה) — הוא רק חיכה לזה.**
+          //
+          // 90 שניות ולא פחות: זו העלאה אמיתית של עד 5 תמונות גלריה + קאבר + לוגו + ראיה,
+          // ובמובייל סלולרי איטי היא לוקחת זמן. עדיף לחכות מדי מאשר לוותר על תמונות שכן
+          // היו עולות. חריגה = ההרשמה תקינה, והתמונות מקבלות את כרטיס-המייל שלמטה.
+          // ⚠️ feature-detect ולא שימוש ישיר: `AbortSignal.timeout` לא קיים ב-iOS Safari 15
+          // ומטה, ושם קריאה ישירה הייתה זורקת TypeError **לפני** ה-fetch — כלומר שוברת
+          // העלאות תקינות במכשירים ישנים בדיוק בשם התיקון. התקרה החיצונית מכסה גם אותם.
+          const resp = await fetch(WORKER_URL + '/upload-biz-media', {
+            method: 'POST', body: form,
+            signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(90000) : undefined,
+          });
           const result = await resp.json();
           if (!result.ok) { console.error('upload-biz-media failed:', result); mediaUploadFailed = true; }
+          })(), 120000, 'MediaPhaseTimeout');
         } catch (e) {
-          console.error('upload-biz-media request failed:', e.message);
+          console.error('upload-biz-media request failed:', e.name, e.message);
           mediaUploadFailed = true;
+          // ── §294 — הכשל נמדד ─────────────────────────────────────────────────────────────
+          // עד עכשיו כשל בהעלאת תמונות של עסק היה console.error בלבד: מי שנתקל בו ולא התלונן
+          // לא היה קיים בשום מקום. `TimeoutError` מבדיל "נתקע" מ"נדחה", וזו ההבחנה שבזבזה
+          // כאן סבב שלם. ≤50 תווים (firestore.rules) — שדה חורג מוחק את כל האירוע בשקט.
+          logEvent('formError', { blockId: 'bizForm', channel: `bm:${(e.name || 'err').slice(0, 24)}` });
         }
       }
 
