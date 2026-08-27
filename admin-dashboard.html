@@ -5504,8 +5504,9 @@ function bizFullDetailHtml(id, opts) {
   const o = Object.assign({ backFn: 'bizBackToList' }, opts || {});
   initEditTagsState(id); // מכין את בורר התגיות של שלב 3 מראש, כי הוא מרונדר תמיד (גם אם מוסתר)
 
-  // קוד כניסה — זהה למה שנוסף היום ב-admin-businesses.html. לינק-דשבורד/תקנון/סטטוס-מייל עברו
-  // לתצוגה ישירה בכרטיס-הזהות למטה (idDashBtn/idTermsNote/idEmailNote) — לא chip-ים נפרדים יותר.
+  // קוד כניסה — זהה למה שנוסף היום ב-admin-businesses.html. לינק-דשבורד וסטטוס-המייל עברו
+  // לתצוגה ישירה בכרטיס-הזהות למטה (idDashBtn/idEmailNote) — לא chip-ים נפרדים יותר.
+  // (התקנון עבר משם הלאה לכרטיס האימות, §299.)
   if (ownerLoginCodeCache[b.id] === undefined) fetchOwnerLoginCode(b);
   const ownerLoginCode = ownerLoginCodeCache[b.id];
 
@@ -5622,10 +5623,11 @@ function bizFullDetailHtml(id, opts) {
   const idWaBtn = b.ownerPhone ? `<button class="btn-id-wa" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">וואטסאפ</button>` : '';
   const idMailBtn = b.ownerEmail ? `<button class="btn-id-mail" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מייל</button>` : '';
   const idDashBtn = b.accessToken ? `<a href="business-dashboard.html?token=${b.accessToken}" target="_blank" class="btn-id-dash">פתיחת דשבורד העסק</a>` : '';
-  const idSubNote = b.ownerIsSubscriber
-    ? `<div class="identity-note neutral"><div class="identity-note-h">מנוי מאומת</div><div class="identity-note-v">${b.ownerFanSport ? SPORT_LABELS[b.ownerFanSport] + ' · ' : ''}${sectionLabelFor(b.ownerVerifiedSport)} ${esc(b.ownerSubscriberSection||'—')} · מס' מנוי ${esc(b.ownerSubscriberNumber||'—')}</div></div>`
-    : `<div class="identity-note warn"><div class="identity-note-h">מנוי לא מאומת</div><div class="identity-note-v">אומת בתמונה בשער + פייסבוק — דורש בדיקה ידנית</div></div>`;
-  const idTermsNote = `<div class="identity-note neutral"><div class="identity-note-h">תקנון</div><div class="identity-note-v">${b.agreedTermsAt ? `אושר ${fmtDate(b.agreedTermsAt)}` : 'טרם אושר'}</div></div>`;
+  // ── §299 — "מנוי מאומת" ו"תקנון" ירדו מכרטיס-הזהות ──────────────────────────────────────
+  // המשתמש: *"מנוי מאומת תוריד, משם כל הפרטים יש באימות. תקנון וזמן האישור תוסיף באימות."*
+  // "מנוי מאומת" היה שכפול מלא של כרטיס האימות שמתחת (ענף/שער/מס' מנוי), ומאז §284 הוא גם
+  // הציג את המודל הישן. תקנון וזמן-האישור עברו לשורת-ההקשר של כרטיס האימות — שם הם באמת
+  // נחוצים: שניהם חלק מההחלטה אם לאשר, ולא מטא-דאטה נפרד.
   // אישור-שליחה מלא: מתי בדיוק (תאריך+שעה) ולאיזו כתובת בפועל. עד עכשיו הופיע רק "נשלח עם לינק
   // לדשבורד" — בלי זמן ובלי יעד. אחרי המקרה של "יהב מטבחים" (2026-08-15): הכתובת הייתה
   // yardenyv@gamil.com (שגיאת-כתיב בדומיין, לא gmail) — Brevo מקבל את הבקשה ומחזיר הצלחה, אנחנו
@@ -5696,7 +5698,14 @@ function bizFullDetailHtml(id, opts) {
           ${idDashBtn}
         </div>
       </div>
-      <div class="identity-notes">${emailWarnNote(b.ownerEmail)}${idBrokenLinksBox}${idSubNote}${idTermsNote}${idEmailNote}${idNoteBox}</div>
+      <!-- §299 — הקוביות הקבועות ירדו. מה שנשאר ולמה:
+           · emailWarnNote / idBrokenLinksBox — מופיעות **רק כשיש בעיה**, כלומר אינן רעש קבוע.
+           · idEmailNote — נושאת את כפתורי "שליחה חוזרת" ו"תיקון כתובת", שהוצבו כאן אחרי שני
+             מקרים אמיתיים (§206 "יעדים לוגיסטיים", §243 כתובת שגויה). הסרתה הייתה מוחקת
+             פעולות, לא רק תצוגה.
+           · idNoteBox — נשארת במפורש לבקשת המשתמש: *"הערה מהעסק אפשר להשאיר, זה חשוב לדעת
+             האם כתב לנו או לא"*. היא מוצגת גם כשאין הערה, בדיוק בשביל השאלה הזאת. -->
+      <div class="identity-notes">${emailWarnNote(b.ownerEmail)}${idBrokenLinksBox}${idEmailNote}${idNoteBox}</div>
     </div>`;
 
   const anchorCardHtml = b.status === 'approved' ? `
@@ -5831,6 +5840,17 @@ function bizFullDetailHtml(id, opts) {
           ${ownerVerifValue ? `<div><div class="form-field-label">${esc(VERIFY_VALUE_LABELS[ownerRoute] || 'מה נמסר')}</div><div class="form-field-val">${esc(ownerVerifValue)}</div></div>` : ''}
           <div><div class="form-field-label">${sectionLabelFor(b.ownerVerifiedSport)}</div><div class="form-field-val${!b.ownerSubscriberSection?' empty':''}">${b.ownerSubscriberSection?esc(b.ownerSubscriberSection):'—'}</div></div>
           <div><div class="form-field-label">קרבה לבעל המנוי</div><div class="form-field-val">${esc(RELATION_LABELS_MOCK[b.ownerRelation]||'—')}</div></div>
+          <!-- §299 — תקנון וזמן-האישור עברו לכאן מכרטיס-הזהות. שניהם חלק מההחלטה עצמה:
+               "טרם אושר תקנון" הוא חסם לאישור, ו"ממתין 9 ימים" הוא הדחיפות שלה. כשהם ישבו
+               כקוביות נפרדות למעלה הם נקראו כמו מטא-דאטה טכני ולא כמו שיקול. -->
+          <div><div class="form-field-label">תקנון</div><div class="form-field-val${b.agreedTermsAt ? '' : ' empty'}">${
+            b.agreedTermsAt ? `אושר ${fmtDate(b.agreedTermsAt)}` : '⚠️ טרם אושר'
+          }</div></div>
+          <div><div class="form-field-label">${b.status === 'approved' ? 'אושר' : b.status === 'rejected' ? 'נדחה' : 'ממתין'}</div><div class="form-field-val">${
+            b.status === 'approved' ? esc(fmtDate(b.approvedAt || b.registeredAt))
+              : b.status === 'rejected' ? esc(fmtDate(b.rejectedAt || b.registeredAt))
+              : esc(agoLabel(b.registeredAt))
+          }</div></div>
         </div>
         ${b.ownerFacebookUrl ? `<div class="owner-verify-fb"><span class="form-field-label">פייסבוק</span><a href="${esc(b.ownerFacebookUrl)}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
         <div class="owner-verify-hint">אין רשימת מנויים להצלבה — ההחלטה מבוססת על התמונה ועל הפרופיל בלבד.</div>
