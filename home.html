@@ -4077,7 +4077,8 @@ async function initBizNavItem() {
   try {
     if (memberId) {
       const snap = await fetchMemberDocWithRetry(memberId);
-      if (snap.exists()) {
+      // snap עלול להיות null (כל הניסיונות זרקו וגם המטמון ריק) — .exists() על null זורק
+      if (snap && snap.exists()) {
         const d = snap.data();
         isBizOwner = d.isBusinessOwner === true;
         linkedBusinessId = d.linkedBusinessId || '';
@@ -4087,7 +4088,20 @@ async function initBizNavItem() {
         // אפשר לנקות ממנה בדיעבד, וכל בדיקה של המנהל מנפחת לעסק את המספר לתמיד.
         window._hbIsAdmin = isAdminMember;
       }
-      console.debug('[initBizNavItem]', { memberId, docExists: snap.exists(), isAdminMember, isBizOwner, linkedBusinessId });
+      // לא הצלחנו לקרוא את מסמך החבר — נופלים למטמון שנכתב בטעינה הקודמת.
+      // בלי זה, נפילת-רשת רגעית = "דשבורד ניהול"/"העסק שלי" נעלמים מהתפריט בלי שום סימן (דווח בפועל 2026-08-27).
+      if (!snap || !snap.exists()) {
+        try {
+          const c = JSON.parse(localStorage.getItem('hb_profile_cache') || 'null');
+          if (c && c.uid === memberId) {
+            isBizOwner = c.isBusinessOwner === true;
+            linkedBusinessId = c.linkedBusinessId || '';
+            isAdminMember = c.isAdmin === true;
+            window._hbIsAdmin = isAdminMember;
+          }
+        } catch (e) {}
+      }
+      console.debug('[initBizNavItem]', { memberId, docExists: !!(snap && snap.exists()), isAdminMember, isBizOwner, linkedBusinessId });
     } else {
       console.debug('[initBizNavItem] no memberId (auth.currentUser is empty)');
     }

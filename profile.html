@@ -665,6 +665,30 @@ window.signOutUser = async function() {
   location.href = 'welcome.html';
 };
 
+// ── חשיפת פונקציות ה-UI לגלובל — מוקדם ככל האפשר (2026-08-27) ─────────────────
+// דווח בפועל: "נכנסתי לפרטים אישיים ואי אפשר ללחוץ בכלל על התפריט, זה תקוע".
+// השורש: כל ההשמות האלה ישבו בהמשך המודול, **אחרי** ה-auth guard וטעינת מסמך החבר.
+// כל זריקה או תקיעה שם (רשת שנופלת לרגע, getDocFromServer שזורק) עוצרת את המודול
+// באמצע — ואז onclick ב-HTML קורא לפונקציה שמעולם לא נחשפה על window. הדף נראה
+// תקין לגמרי, פשוט שום כפתור לא מגיב, וחזרה לדף הבית "מסדרת" כי שם רץ מודול אחר.
+// הפונקציות עצמן מוגדרות בהמשך הקובץ כ-function declarations — hoisting הופך אותן לזמינות כאן.
+window.openMenu                = openMenu;
+window.closeMenu               = closeMenu;
+window.openContactSheet        = openContactSheet;
+window.closeContactSheet       = closeContactSheet;
+window.copyContactEmail        = copyContactEmail;
+window.shareApp                = shareApp;
+window.shareMyBiz              = shareMyBiz;
+window.closeShareSheet         = closeShareSheet;
+window.copyShareLink           = copyShareLink;
+window.installPWA              = installPWA;
+window.dismissInstallBanner    = dismissInstallBanner;
+window.closeManualInstallSheet = closeManualInstallSheet;
+window.dismissInAppBanner      = dismissInAppBanner;
+window.startEdit               = startEdit;
+window.saveEdit                = saveEdit;
+window.saveBirthDate           = saveBirthDate;
+
 // ── SAVE CARD ────────────────────────────────────────────────────────────
 // מוגדר מוקדם (כמו signOutUser למעלה) כדי שהכפתור יעבוד גם לפני שה-Auth guard למטה מסתיים.
 // בנייד (iOS בפרט) ל-<a download> על data-URI אין תמיכה אמינה — קודם מנסים navigator.share
@@ -847,24 +871,45 @@ if (bizToken) {
 // לפנות לשרת, וגורם ל"דשבורד ניהול"/"העסק שלי" להיעדר מהתפריט עד רענון ידני.
 async function fetchMemberDocWithRetry(id) {
   const delays = [0, 400, 900, 1800];
-  let snap;
+  let snap = null;
   for (let i = 0; i < delays.length; i++) {
     if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
-    snap = await getDocFromServer(doc(db, 'members', id));
-    if (snap.exists()) return snap;
+    // try/catch סביב כל ניסיון (זהה ל-home.html) — getDocFromServer *זורק* כשאין רשת, ועד
+    // עכשיו הזריקה יצאה מהפונקציה ומשם מהמודול כולו (top-level await) — כל מה שאחריה
+    // פשוט לא רץ. זה השורש של "התפריט תקוע" ושל "דשבורד ניהול לא מופיע".
+    try {
+      snap = await getDocFromServer(doc(db, 'members', id));
+      if (snap.exists()) return snap;
+    } catch (e) { /* לניסיון הבא, ואם כולם נכשלו — נופלים למטמון המקומי למטה */ }
   }
+  // אין רשת בכלל — getDoc רגיל *כן* רשאי לענות מהמטמון המתמיד המקומי.
+  if (!snap) { try { snap = await getDoc(doc(db, 'members', id)); } catch (e) {} }
   return snap;
 }
 
 let member;
+// האם הנתונים הגיעו בפועל מהשרת — רק אז מותר לדרוס איתם את המטמון המקומי (למטה)
+let memberFromServer = false;
 if (memberId) {
-  const memberSnap = await fetchMemberDocWithRetry(memberId);
-  const data = memberSnap.exists() ? memberSnap.data() : {};
+  const memberSnap = await fetchMemberDocWithRetry(memberId).catch(() => null);
+  // memberSnap עלול להיות null (אין רשת וגם המטמון ריק) — .exists() על null זורק והורג את כל המודול.
+  let data = (memberSnap && memberSnap.exists()) ? memberSnap.data() : null;
+  // לא הצלחנו לקרוא כלום — משתמשים במטמון המקומי שנכתב בטעינה הקודמת (או ע"י home.html).
+  // בלי זה, נפילת-רשת רגעית מורידה את "דשבורד ניהול"/"העסק שלי" מהתפריט בלי שום סימן.
+  if (!data && !bizToken && !previewMemberId) {
+    try {
+      const c = JSON.parse(localStorage.getItem('hb_profile_cache') || 'null');
+      if (c && c.uid === memberId) { data = c; }
+    } catch (e) {}
+  }
+  memberFromServer = !!(memberSnap && memberSnap.exists());
+  data = data || {};
   member = {
     firstName:    data.firstName || '',
     lastName:     data.lastName  || '',
     memberId:     data.memberNumber || 0,
-    approvedDate: data.approvedAt?.toDate() || new Date(),
+    // מהמטמון זה מחרוזת ISO (approvedDate) ולא Timestamp של Firestore (approvedAt)
+    approvedDate: data.approvedAt?.toDate() || (data.approvedDate ? new Date(data.approvedDate) : new Date()),
     isSubscriber: data.isSubscriber === true || data.isSubscriber === 'yes',
     subscriberSection: data.subscriberSection || null,
     verifiedSport: data.verifiedSport || null,
@@ -893,8 +938,10 @@ if (member.isBusinessOwner) {
     // קישור קבוע (linkedBusinessId) — לא תלוי בטלפון הנוכחי, לא שביר לעריכות מאוחרות.
     // שאילתת ownerPhone הישנה הוסרה — כל 50 העסקים הקיימים כבר קושרו במיגרציה (ר' PROJECT_CONTEXT סעיף 16)
     let biz = null;
-    const bizSnap = await getDoc(doc(db, 'businesses', member.linkedBusinessId));
-    if (bizSnap.exists()) biz = bizSnap.data();
+    // .catch מפורש: זריקה כאן (רשת/permission) הייתה הורגת את כל המודול — ואיתו גם
+    // רינדור הפרטים ושאר הדף (top-level await במודול). עדיף "העסק שלי" חסר מעל דף מת.
+    const bizSnap = await getDoc(doc(db, 'businesses', member.linkedBusinessId)).catch(() => null);
+    if (bizSnap && bizSnap.exists()) biz = bizSnap.data();
     if (biz) {
       // ── §244 — טוקן הכניסה לדשבורד כבר לא על מסמך העסק ────────────────────────────────────────
       // זהה ל-home.html — ר' ההערה המלאה שם.
@@ -934,7 +981,9 @@ async function saveMemberField(updates) {
 
   // עדכון ה-cache המקומי לנתונים הטריים — כדי שבכניסה הבאה יהיה מה להציג מיידית (ר' renderIdentity לעיל).
   // רק בגישה הרגילה: bizToken/previewMemberId מציגים פרופיל של מישהו *אחר*, אסור לשמור אותו כ"הפרופיל שלי".
-  if (!bizToken && !previewMemberId) {
+  // memberFromServer — כשהקריאה נכשלה והצגנו מהמטמון (או בלי כלום), אסור לכתוב בחזרה —
+  // אחרת טעינה אחת בלי רשת מוחקת את המטמון התקין ומנציחה רשומה ריקה.
+  if (!bizToken && !previewMemberId && memberFromServer) {
     try {
       localStorage.setItem('hb_profile_cache', JSON.stringify({ ...member, uid: memberId, approvedDate: member.approvedDate.toISOString() }));
     } catch (e) {}
@@ -1036,15 +1085,7 @@ async function saveMemberField(updates) {
     showToast('הפרטים עודכנו ✓');
   }
 
-  // חשיפה לגלובל (נדרש כי onclick ב-HTML לא רואה scope של module) — saveCard כבר הוגדר למעלה
-  window.startEdit         = startEdit;
-  window.saveEdit          = saveEdit;
-  window.saveBirthDate     = saveBirthDate;   // נקרא מ-onclick בשורת העריכה של תאריך הלידה
-  window.openMenu          = openMenu;
-  window.closeMenu         = closeMenu;
-  window.openContactSheet  = openContactSheet;
-  window.closeContactSheet = closeContactSheet;
-  window.copyContactEmail  = copyContactEmail;
+  // החשיפה לגלובל של כל אלה הועברה לראש המודול (ר' ההערה שם) — היא חייבת לרוץ לפני ה-auth guard
 
   // ── תפריט מלא (המבורגר) ──
   function openMenu() {
@@ -1137,9 +1178,6 @@ async function saveMemberField(updates) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
     }
   }
-  window.installPWA = installPWA;
-  window.dismissInstallBanner = dismissInstallBanner;
-  window.closeManualInstallSheet = closeManualInstallSheet;
 
   // ── PWA — התרעה כשהדף נפתח בתוך דפדפן פנימי (וואטסאפ/אינסטגרם/פייסבוק) ──
   function pwaInAppBrowserName() {
@@ -1166,7 +1204,6 @@ async function saveMemberField(updates) {
     document.getElementById('pwaInAppBanner')?.classList.add('show');
   }
   maybeShowInAppBanner();
-  window.dismissInAppBanner = dismissInAppBanner;
 
   // ── שיתוף — הזמנת חברים לדף ההרשמה, וגם שיתוף העסק-של-בעל-העסק (אותה תשתית, ר' home.html) ──
   function shareApp() {
@@ -1211,10 +1248,6 @@ async function saveMemberField(updates) {
       setTimeout(() => { btn.textContent = original; }, 1500);
     }
   }
-  window.shareApp = shareApp;
-  window.shareMyBiz = shareMyBiz;
-  window.closeShareSheet = closeShareSheet;
-  window.copyShareLink = copyShareLink;
 
   // ── צור קשר — מציג אפשרויות שונות לאוהד/בעל עסק ──
   function openContactSheet() {

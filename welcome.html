@@ -26,7 +26,12 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
 <script>
   // חבר עם session פעיל מוחבא עד שנדע בוודאות אם יש לו session תקף — כמו landing-demo.html הקיים
-  if (localStorage.getItem('hb_memberId')) document.documentElement.classList.add('lp-checking');
+  // ?guest=1 — צפייה בדף הנחיתה כ"אורח" גם כשיש session תקף, בלי להתנתק.
+  // נולד מצורך אמיתי: כדי לבדוק הרשמה הייתי חייב להתנתק, וההתנתקות הפילה את
+  // דשבורד הניהול בטאב השני (getAuth משותף לכל הדומיין). טופס ההרשמה עצמו לא מבצע signIn,
+  // לכן שהייה על הדף הזה במצב הזה בטוחה לגמרי ל-session הקיים.
+  window._hbForceGuest = new URLSearchParams(location.search).get('guest') === '1';
+  if (localStorage.getItem('hb_memberId') && !window._hbForceGuest) document.documentElement.classList.add('lp-checking');
   // רענון/כניסה חוזרת תמיד מתחילה מלמעלה — זהה לדפוס ב-home.html (לא סומכים על שחזור-גלילה של הדפדפן)
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   window.addEventListener('pageshow', function () { window.scrollTo(0, 0); });
@@ -873,7 +878,7 @@ window.applyMemberUI = function(isMember, name) {
     ? 'זה רק טעימה — כל האינדקס מחכה לכם בפנים'
     : 'הגישה המלאה לאינדקס זמינה לאוהדים מאושרים בלבד';
 };
-(function initState() { window.applyMemberUI(!!localStorage.getItem('hb_memberId'), ''); })();
+(function initState() { window.applyMemberUI(!window._hbForceGuest && !!localStorage.getItem('hb_memberId'), ''); })();
 </script>
 
 <!-- ══ נתונים אמיתיים מ-Firestore (קריאה בלבד, ציבורי) + התחברות אוהד קיים דרך ה-Worker ══ -->
@@ -901,7 +906,7 @@ await new Promise(resolve => {
   const unsub = onAuthStateChanged(auth, async user => {
     unsub();
     const storedId = localStorage.getItem('hb_memberId');
-    if (user && storedId && user.uid === storedId) { location.href = 'home.html'; return; }
+    if (!window._hbForceGuest && user && storedId && user.uid === storedId) { location.href = 'home.html'; return; }
     if (storedId && (!user || user.uid !== storedId)) {
       ['hb_uid', 'hb_phone', 'hb_memberId'].forEach(k => localStorage.removeItem(k));
       window.applyMemberUI(false, '');
