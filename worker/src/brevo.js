@@ -158,10 +158,28 @@ async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent }
   if (!resp.ok) throw new Error('brevo_send_failed: ' + (await resp.text()));
 }
 
-// html->text גס, רק להסרת תגיות עצמן (לא escape — הטקסט כבר-לא-מקודד, עובר ישירות ל-textContent
-// שממילא לא מפרש HTML). מספיק ל-alt-text, לא מטרתו לשמר מבנה עשיר.
+// html->text גס, לגרסת הטקסט-החלופי שנשלחת לצד ה-HTML (textContent). מספיק ל-alt-text, לא
+// מטרתו לשמר מבנה עשיר.
+// §306 — קישורים מומרים ל-"טקסט (כתובת)" *לפני* הסרת התגיות. קודם ה-href נמחק יחד עם התגית,
+// ולכן "אינסטגרם"/"פייסבוק" הופיעו שם כמילים מתות בלי שום דרך להגיע אליהן. כשהטקסט של
+// הקישור הוא כבר הכתובת עצמה (כפתור הכניסה מציג "yellowzone.co.il") לא כופלים אותה.
 function stripHtml(html) {
-  return html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+  const withLinks = html.replace(/<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href, text) => {
+    const label = text.replace(/<[^>]+>/g, '').trim();
+    const bare = href.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    return !label || label === bare || label === href ? href : `${label} (${href})`;
+  });
+  return withLinks
+    .replace(/<br\s*\/?>/gi, '\n')
+    // סוגרי-בלוק -> שורה. בלעדיהם תיבת-הקוד והכפתור (טבלאות) נדבקו לפסקה שאחריהם.
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/(div|tr|table|td)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    // ההזחה של ה-HTML הפכה לרווחים מובילים בכל שורה, ושורות ריקות התרבו בין הטבלאות.
+    .split('\n').map((line) => line.trim()).join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 // tpl אופציונלי — override מ-settings/messageTemplates (Firestore), נערך ב-admin-messages.html.
