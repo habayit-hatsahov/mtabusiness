@@ -821,6 +821,10 @@ body {
   background-size: cover; background-position: center; cursor: pointer;
 }
 .fan-proof-photo.empty { display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600; color: var(--text-muted); cursor: default; }
+/* §297 — <img> ממלא את התיבה במקום background-image (ר' ההערה ב-markFanProofBroken) */
+.fan-proof-photo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+/* "יש תמונה ולא נטענת" הוא ממצא, לא היעדר — חייב להיראות אחרת מ"לא הועלתה" */
+.fan-proof-photo.broken { text-align: center; line-height: 1.5; color: #b45309; padding: 8px; }
 .decision-progress-bars { display: flex; gap: 3px; }
 .decision-progress-bar { width: 16px; height: 4px; border-radius: 99px; background: rgba(255,255,255,.25); }
 .decision-progress-bar.done { background: var(--accent-cta); }
@@ -2618,6 +2622,30 @@ window.qjStampDims = function (img) {
                 : '<span class="qj-dim-ok">✅ חד</span>';
   out.innerHTML = `${w}×${h} · <b>${eff}px</b> בכרטיס · ${verdict}`;
 };
+// ── §297 — תמונה שלא נטענת אומרת את זה ────────────────────────────────────────────────────
+// עד היום `<img>` שנכשל השאיר ריבוע ריק, והמנהל לא ידע אם אין ראיה או שיש והיא לא מוצגת —
+// שתי מסקנות הפוכות. הכי סביר: קובץ בפורמט שהדפדפן לא מציג (HEIC של אייפון), אבל זה תופס
+// כל כשל-טעינה — קישור פג, קובץ שנמחק, או ה-Worker שלא הגיב. ההורדה עדיין אפשרית, כי
+// הקובץ עצמו תקין; רק הדפדפן לא יודע לצייר אותו.
+// אותו רעיון בכרטיס האוהד. שם התיבה קטנה (190×118), ולכן הטקסט קצר.
+window.markFanProofBroken = function(img) {
+  if (!img || !img.parentElement || img.dataset.brokenHandled) return;
+  img.dataset.brokenHandled = '1';
+  const box = img.parentElement;
+  box.classList.add('empty', 'broken');
+  box.innerHTML = '⚠️ יש תמונה אך היא לא נטענת<br>(פורמט שהדפדפן לא מציג?)';
+};
+
+window.markProofImageBroken = function(img) {
+  if (!img || img.dataset.brokenHandled) return;
+  img.dataset.brokenHandled = '1';
+  const box = document.createElement('div');
+  box.className = 'owner-verify-photo-empty warn';
+  box.innerHTML = '⚠️ יש תמונה אך היא לא נטענת<br><span style="font-weight:600;font-size:11px;opacity:.85">'
+    + 'כנראה פורמט שהדפדפן לא מציג (HEIC). נסו להוריד אותה.</span>';
+  img.replaceWith(box);
+};
+
 window.openImageLightbox = function(url, filename) {
   lightboxCurrentUrl = url;
   lightboxCurrentFilename = filename;
@@ -5796,7 +5824,8 @@ function bizFullDetailHtml(id, opts) {
   const ownerVerifPhotoHtml = b.ownerProofPhotoUrl
     ? `<img src="${esc(bizImageViewUrl(b.ownerProofPhotoUrl))}" alt="ראיית האימות של בעל העסק"
            class="zoomable" title="לחצו להגדלה"
-           onclick="openImageLightbox('${esc(b.ownerProofPhotoUrl)}','proof-${esc(b.id)}.jpg')">`
+           onclick="openImageLightbox('${esc(b.ownerProofPhotoUrl)}','proof-${esc(b.id)}.jpg')"
+           onerror="markProofImageBroken(this)">`
     : PHOTO_ROUTES.has(ownerRoute)
       ? `<div class="owner-verify-photo-empty warn">⚠️ המסלול דורש תמונה — לא הועלתה</div>`
       : `<div class="owner-verify-photo-empty">במסלול הזה אין תמונה</div>`;
@@ -7284,8 +7313,12 @@ function fanFullDetailHtml(id, opts) {
             // §294 — נפתח ב-lightbox של הדשבורד במקום בטאב חדש. המשתמש: *"שהיא תקפוץ בתוך
             // החלון של הדשבורד לא בטאב חדש אין צורך"* — טאב חדש מוציא את המנהל מההקשר,
             // הוא מאבד את הגיליון הפתוח ואת מיקום-הגלילה בשביל הצצה של שתי שניות.
-            ? `<div class="fan-proof-photo" style="background-image:url('${esc(bizImageViewUrl(f.photoProofUrl))}')" title="לחצו להגדלה"
-                    onclick="openImageLightbox('${esc(f.photoProofUrl)}','proof-${esc(f.id)}.jpg')"></div>`
+            // §297 — <img> ולא background-image: על רקע-CSS אין אירוע onerror, ולכן קובץ
+            // שהדפדפן לא יודע להציג (HEIC) היה משאיר ריבוע ריק בלי שום דרך לדעת שזה קרה.
+            ? `<div class="fan-proof-photo" title="לחצו להגדלה"
+                    onclick="openImageLightbox('${esc(f.photoProofUrl)}','proof-${esc(f.id)}.jpg')"><img
+                    src="${esc(bizImageViewUrl(f.photoProofUrl))}" alt="תמונת הוכחה"
+                    onerror="markFanProofBroken(this)"></div>`
             : `<div class="fan-proof-photo empty">לא הועלתה תמונת הוכחה</div>`}
         </div>
       </div>
