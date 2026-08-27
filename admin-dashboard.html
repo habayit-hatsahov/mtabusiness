@@ -815,16 +815,9 @@ body {
 .decision-progress-row { display: flex; align-items: center; gap: 10px; }
 .decision-progress-text { font-size: 12.5px; color: #C9D6EE; flex: 1; line-height: 1.5; }
 .decision-hint-text { font-size: 12.5px; color: #C9D6EE; line-height: 1.55; margin-bottom: 13px; }
-/* תמונת-הוכחה של אוהד — כרטיס "פרטי ההרשמה" (תואם-handoff, 2026-08-04) */
-.fan-proof-photo {
-  display: block; width: 190px; height: 118px; border-radius: 10px; background-color: var(--nav-bg);
-  background-size: cover; background-position: center; cursor: pointer;
-}
-.fan-proof-photo.empty { display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600; color: var(--text-muted); cursor: default; }
-/* §297 — <img> ממלא את התיבה במקום background-image (ר' ההערה ב-markFanProofBroken) */
-.fan-proof-photo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
-/* "יש תמונה ולא נטענת" הוא ממצא, לא היעדר — חייב להיראות אחרת מ"לא הועלתה" */
-.fan-proof-photo.broken { text-align: center; line-height: 1.5; color: #b45309; padding: 8px; }
+/* §298 — .fan-proof-photo נמחקה. תמונת-ההוכחה של האוהד עברה לכרטיס "אימות האוהד",
+   שמשתמש באותן מחלקות של כרטיס האימות של בעל העסק (.owner-verify-*) — כדי ששני
+   המסכים לא יוכלו להיראות שונה בלי ששמים לב. */
 .decision-progress-bars { display: flex; gap: 3px; }
 .decision-progress-bar { width: 16px; height: 4px; border-radius: 99px; background: rgba(255,255,255,.25); }
 .decision-progress-bar.done { background: var(--accent-cta); }
@@ -1242,6 +1235,13 @@ body {
 .owner-verify-fb { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding-top: 13px; border-top: 1px solid var(--border-md); }
 .owner-verify-fb a { font-size: 12.5px; font-weight: 600; color: var(--accent); }
 .owner-verify-hint { background: var(--nav-bg); border-radius: 9px; padding: 9px 11px; font-size: 12px; color: var(--text-sm); line-height: 1.5; }
+/* §298 — במסך צר הכרטיס גולש לשתי שורות, ואז `flex: 0 0 232px` השאיר את התמונה ברוחב
+   קבוע עם שטח מת לצידה. ברוחב מלא היא גם נקראת טוב יותר — וזו הראיה שהמנהל בא לראות.
+   חל על שני הכרטיסים (אוהד ובעל-עסק) כי הם חולקים את אותן מחלקות. */
+@media (max-width: 640px) {
+  .owner-verify-photo { flex: 1 1 100%; min-height: 210px; }
+  .owner-verify-photo img { min-height: 210px; }
+}
 /* שורת-הסטטוס הנוכחי של אימות בעל העסק — נוספה אחרי בלבול-אמת בין באדג' "ממתין להחלטה" בכותרת
    לבין כפתור בניסוח-עבר ("אימות אושר") בתוך הכרטיס. ר' ההערה ליד ownerVerifStateLine. */
 .owner-verify-state { border-radius: 9px; padding: 9px 11px; font-size: 12.5px; font-weight: 700; line-height: 1.5; }
@@ -2627,15 +2627,8 @@ window.qjStampDims = function (img) {
 // שתי מסקנות הפוכות. הכי סביר: קובץ בפורמט שהדפדפן לא מציג (HEIC של אייפון), אבל זה תופס
 // כל כשל-טעינה — קישור פג, קובץ שנמחק, או ה-Worker שלא הגיב. ההורדה עדיין אפשרית, כי
 // הקובץ עצמו תקין; רק הדפדפן לא יודע לצייר אותו.
-// אותו רעיון בכרטיס האוהד. שם התיבה קטנה (190×118), ולכן הטקסט קצר.
-window.markFanProofBroken = function(img) {
-  if (!img || !img.parentElement || img.dataset.brokenHandled) return;
-  img.dataset.brokenHandled = '1';
-  const box = img.parentElement;
-  box.classList.add('empty', 'broken');
-  box.innerHTML = '⚠️ יש תמונה אך היא לא נטענת<br>(פורמט שהדפדפן לא מציג?)';
-};
-
+// §298 — markFanProofBroken נמחקה: כרטיס האוהד משתמש עכשיו באותו markProofImageBroken
+// של כרטיס העסק, כי שני הכרטיסים חולקים את אותו מבנה.
 window.markProofImageBroken = function(img) {
   if (!img || img.dataset.brokenHandled) return;
   img.dataset.brokenHandled = '1';
@@ -7222,20 +7215,11 @@ function fanFullDetailHtml(id, opts) {
   ].filter(Boolean).join(' · ');
   const idWaBtn = f.phone ? `<button class="btn-id-wa" onclick="sendFanWA('${f.id}','${f.phone}','${escJsAttr(f.name)}','${f.loginCode||''}')">וואטסאפ</button>` : '';
   const idMailBtn = f.email ? `<button class="btn-id-mail" onclick="sendFanMail('${f.id}','${f.email}','${escJsAttr(f.name)}','${f.loginCode||''}')">מייל</button>` : '';
-  const idLoginNote = `<div class="identity-note neutral"><div class="identity-note-h">קוד כניסה</div><div class="identity-note-v">${(f.status === 'approved' && f.loginCode) ? esc(f.loginCode) : 'ייווצר אוטומטית באישור'}</div></div>`;
   const idBizNote = linkedBiz ? `<div class="identity-note neutral"><div class="identity-note-h">בעל עסק</div><div class="identity-note-v">${linkedBiz.accessToken ? `<a href="business-dashboard.html?token=${linkedBiz.accessToken}" target="_blank">🏪 ${esc(linkedBiz.name)}</a>` : esc(linkedBiz.name)}</div></div>` : '';
-  const idSubNote = f.isSubscriber
-    ? `<div class="identity-note neutral"><div class="identity-note-h">מנוי</div><div class="identity-note-v">${f.fanSport ? SPORT_LABELS[f.fanSport] + ' · ' : ''}${sectionLabelFor(f.verifiedSport)} ${esc(f.subscriberSection||'—')}</div></div>`
-    : `<div class="identity-note warn"><div class="identity-note-h">מנוי</div><div class="identity-note-v">לא מנוי כרגע${f.wasSubscriber === 'yes' ? ' (היה מנוי בעבר)' : ''}</div></div>`;
-  // ── קוביית האימות (§284) ───────────────────────────────────────────────────────────────────
-  // המסלול הוא הדבר הראשון שהמנהל צריך לדעת לפני שהוא מסתכל על הערך עצמו: "48213" ו-"גוש 12
-  // שורה 4" הם ראיות מסוגים שונים לגמרי, ו"אין ערך" במסלול-תמונה זה תקין ולא חוסר.
-  // מסלול ידני ומסלול-היציע מסומנים warn כי שניהם דורשים החלטה אנושית, לא רק קריאה.
+  // §298 — קוביות "מנוי" ו"מסלול אימות" הוסרו מכרטיס-הזהות. הנתונים עצמם עברו לכרטיס
+  // "אימות האוהד" שמתחת (fanVerifyCardHtml), שבנוי בדיוק כמו כרטיס האימות של בעל העסק.
   const idVerifyMethod = fanVerifyMethod(f);
   const idVerifyValue = fanVerifyValue(f);
-  const idVerifyNote = `<div class="identity-note ${(idVerifyMethod === 'manual' || idVerifyMethod === 'standsPhoto' || !idVerifyMethod) ? 'warn' : 'neutral'}"><div class="identity-note-h">מסלול אימות</div><div class="identity-note-v">${esc(fanVerifyMethodLabel(f))}${
-    idVerifyValue ? `<br>${esc(String(idVerifyValue).slice(0, 160))}` : ''
-  }${(idVerifyMethod === 'passScreenshot' || idVerifyMethod === 'purchaseEmail' || idVerifyMethod === 'standsPhoto') && !f.photoProofUrl ? '<br>⚠️ הראיה לא הועלתה' : ''}</div></div>`;
   // אותו אישור-שליחה כמו בכרטיס העסק (ר' ההערה ב-bizFullDetailHtml): תאריך+שעה מדויקים וכתובת
   // היעד בפועל, כדי שכתובת שגויה תיתפס בעין — "נשלח" לבדו לא אומר שהמייל הגיע לאן שצריך.
   // כפתור "שליחה חוזרת" זמין תמיד כשיש כתובת — לא רק כשהמערכת זיהתה תקלה. ר' ההערה המקבילה
@@ -7258,17 +7242,71 @@ function fanFullDetailHtml(id, opts) {
         <div style="flex:1;min-width:220px">
           <div class="identity-badges">${idBadges.join('')}</div>
           <div class="identity-name">${esc(f.name)}</div>
-          <div class="identity-contact">${f.phone ? `<span class="k">${esc(f.phone)}</span>` : ''}${f.phone && f.email ? ' · ' : ''}${f.email ? esc(f.email) : ''}</div>
+          <!-- §298 — קוד הכניסה עלה לשורת-הקשר, ליד הטלפון והמייל, וקובייתו הוסרה.
+               המשתמש: *"רק את הקוד תשים ליד המייל והשם למעלה ותוריד את הקוביה שלו"*.
+               הוא הפרט שהמנהל הכי מרבה להקריא בטלפון — קובייה שלמה בשבילו הייתה בזבוז
+               שורה, והוא ממילא נקרא יחד עם השם והמייל. מוצג רק כשהוא באמת קיים: לפני
+               האישור אין קוד, ו"ייווצר באישור" ליד הטלפון היה נקרא כאילו זה הקוד. -->
+          <div class="identity-contact">${f.phone ? `<span class="k">${esc(f.phone)}</span>` : ''}${f.phone && f.email ? ' · ' : ''}${f.email ? esc(f.email) : ''}${
+            (f.status === 'approved' && f.loginCode) ? `${(f.phone || f.email) ? ' · ' : ''}קוד כניסה <span class="k">${esc(f.loginCode)}</span>` : ''
+          }</div>
           <div class="identity-dates">${idDates}</div>
         </div>
         ${(idWaBtn || idMailBtn) ? `<div class="identity-actions-row">${idWaBtn}${idMailBtn}</div>` : ''}
       </div>
-      <div class="identity-notes">${emailWarnNote(f.email)}${idLoginNote}${idBizNote}${idSubNote}${idVerifyNote}${idEmailNote}</div>
+      <!-- §298 — שלוש קוביות הוסרו: "קוד כניסה" (עלה לשורת-הקשר למעלה), "מנוי" ו"מסלול
+           אימות". המשתמש: *"למעלה לא צריך קוביה של מנוי, ולא מסלול אימות כי הכל רשום
+           למטה"*. שתיהן היו שכפול של כרטיס האימות שמתחת, וכפילות בכרטיס-הזהות גובה מחיר
+           אמיתי: היא דוחפת למטה את מה שכן ייחודי לו (בעל-עסק מקושר, מצב מייל-הקוד).
+           נשארות רק קוביות שאין להן מקום אחר. -->
+      <div class="identity-notes">${emailWarnNote(f.email)}${idBizNote}${idEmailNote}</div>
     </div>`;
 
   // כרטיס "פרטי ההרשמה" נפרד (2026-08-04, תואם-handoff — קודם היה טקסט-חופשי בתוך approve-card, לא
   // כרטיס-grid משלו). אותו טופס-עריכה בדיוק (fanView/fanEdit/toggleFanEdit/saveFanDetails) — רק המבנה
   // מסביבו השתנה. "🏪 בעל עסק" (היה שדה כפול) הוסר — כבר מוצג ב-idBizNote בכרטיס-הזהות.
+  // ── §298 — כרטיס "אימות האוהד" ──────────────────────────────────────────────────────────
+  // המשתמש: *"תעשה שהאימות בדשבורד ניהול של האוהד יהיה כמו האימות של בעל העסק, שיש מקום
+  // לתמונה והכל קריא ויפה."* — אותן מחלקות CSS בדיוק (owner-verify-*), לא העתק מעוצב-דומה:
+  // כך שינוי עיצוב אחד יתפוס בשני המסכים, ואי אפשר שהם ייראו שונה בלי ששמים לב.
+  //
+  // ⚠️ הראיה קובעת את הפריסה: תמונה בעמודה שמאלית קבועה (232px) על רקע כהה, והנתונים לידה.
+  // קודם התמונה הייתה שדה-רשת ברוחב מלא בתוך "פרטי ההרשמה" — כלומר הדבר היחיד שהמנהל
+  // באמת צריך להסתכל עליו נראה כמו עוד שורת-טקסט.
+  const fanPhotoRequired = PHOTO_ROUTES.has(idVerifyMethod);
+  const fanVerifyPhotoHtml = f.photoProofUrl
+    // §294 — lightbox ולא טאב חדש. §297 — <img> ולא background-image (על רקע-CSS אין onerror,
+    // ולכן קובץ שהדפדפן לא מציג היה משאיר ריבוע ריק בלי שום דרך לזהות שזה קרה).
+    ? `<img src="${esc(bizImageViewUrl(f.photoProofUrl))}" alt="ראיית האימות של האוהד"
+           class="zoomable" title="לחצו להגדלה"
+           onclick="openImageLightbox('${esc(f.photoProofUrl)}','proof-${esc(f.id)}.jpg')"
+           onerror="markProofImageBroken(this)">`
+    : fanPhotoRequired
+      ? `<div class="owner-verify-photo-empty warn">⚠️ המסלול דורש תמונה — לא הועלתה</div>`
+      : `<div class="owner-verify-photo-empty">במסלול הזה אין תמונה</div>`;
+
+  const fanVerifyCardHtml = `
+    <div class="dcard">
+      <div class="steps-head"><div class="steps-head-title">אימות האוהד</div></div>
+      <div class="owner-verify-card">
+        <div class="owner-verify-photo">${fanVerifyPhotoHtml}</div>
+        <div class="owner-verify-info">
+          <div class="owner-verify-grid">
+            <div><div class="form-field-label">מסלול האימות</div><div class="form-field-val${!idVerifyMethod ? ' empty' : ''}">${esc(fanVerifyMethodLabel(f))}</div></div>
+            ${idVerifyValue ? `<div><div class="form-field-label">${esc(VERIFY_VALUE_LABELS[idVerifyMethod] || 'מה נמסר')}</div><div class="form-field-val" style="white-space:pre-line">${esc(idVerifyValue)}</div></div>` : ''}
+            <div><div class="form-field-label">ענף</div><div class="form-field-val${!f.fanSport ? ' empty' : ''}">${f.fanSport ? esc(SPORT_LABELS[f.fanSport] || f.fanSport) : '—'}</div></div>
+            ${f.isSubscriber ? `<div><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val${!f.subscriberSection ? ' empty' : ''}">${esc(f.subscriberSection || '—')}</div></div>` : ''}
+          </div>
+          ${f.facebookUrl ? `<div class="owner-verify-fb"><span class="form-field-label">פייסבוק</span><a href="${esc(f.facebookUrl)}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
+          <div class="owner-verify-hint">${
+            f.isSubscriber
+              ? 'אין רשימת מנויים להצלבה — ההחלטה מבוססת על הראיה שנמסרה ועל הפרופיל בלבד.'
+              : `לא מנוי כרגע${f.wasSubscriber === 'yes' ? ' · היה מנוי בעבר' : ''} — האימות נשען על התמונה מהיציע והפרופיל בפייסבוק.`
+          }</div>
+        </div>
+      </div>
+    </div>`;
+
   const registrationCardHtml = `
     <div class="dcard registration-card">
       <div class="steps-head">
@@ -7290,37 +7328,9 @@ function fanFullDetailHtml(id, opts) {
              העריכה שמתחת דווקא כן מכיל אותם. הקובייה למעלה נשארת כסיכום-במבט-אחד (אותה החלטה
              כמו בכרטיס העסק), וכאן יושבים השדות עצמם — בדיוק כמו ששם/טלפון/מייל כבר מופיעים
              בשני המקומות. -->
-        <div class="form-field"><div class="form-field-label">ענף</div><div class="form-field-val">${
-          f.fanSport ? esc(SPORT_LABELS[f.fanSport] || f.fanSport) : '—'
-        }</div></div>
-        ${f.isSubscriber ? `
-        <div class="form-field"><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val">${esc(f.subscriberSection||'—')}</div></div>` : ''}
-        <!-- ── §284 — מה נבחר ומה נמסר בפועל ─────────────────────────────────────────────
-             שדה "מס' מנוי" הקבוע הוחלף בזוג מסלול+ערך: מסלול-תמונה לא מוסר ערך טקסטואלי
-             בכלל, ו"—" בשדה קבוע היה נקרא כמו רשומה חסרה. -->
-        <div class="form-field"><div class="form-field-label">מסלול אימות</div><div class="form-field-val">${esc(fanVerifyMethodLabel(f))}</div></div>
-        ${fanVerifyValue(f) ? `<div class="form-field${fanVerifyMethod(f) === 'manual' ? ' full' : ''}"><div class="form-field-label">${
-          fanVerifyMethod(f) === 'subNumber' ? "מס' מנוי" : fanVerifyMethod(f) === 'seatDetails' ? 'מושב' : 'מה שנכתב לנו'
-        }</div><div class="form-field-val" style="white-space:pre-line">${esc(fanVerifyValue(f))}</div></div>` : ''}
-        ${f.facebookUrl ? `<div class="form-field"><div class="form-field-label">קישור פייסבוק</div><div class="form-field-val"><a href="${esc(f.facebookUrl)}" target="_blank" rel="noopener">${esc(f.facebookUrl)}</a></div></div>` : ''}
-        <div class="form-field full">
-          <div class="form-field-label">${
-            fanVerifyMethod(f) === 'passScreenshot' ? 'צילום המנוי'
-            : fanVerifyMethod(f) === 'purchaseEmail' ? 'אישור הרכישה/החידוש'
-            : 'תמונה בשער אוהדים'
-          }</div>
-          ${f.photoProofUrl
-            // §294 — נפתח ב-lightbox של הדשבורד במקום בטאב חדש. המשתמש: *"שהיא תקפוץ בתוך
-            // החלון של הדשבורד לא בטאב חדש אין צורך"* — טאב חדש מוציא את המנהל מההקשר,
-            // הוא מאבד את הגיליון הפתוח ואת מיקום-הגלילה בשביל הצצה של שתי שניות.
-            // §297 — <img> ולא background-image: על רקע-CSS אין אירוע onerror, ולכן קובץ
-            // שהדפדפן לא יודע להציג (HEIC) היה משאיר ריבוע ריק בלי שום דרך לדעת שזה קרה.
-            ? `<div class="fan-proof-photo" title="לחצו להגדלה"
-                    onclick="openImageLightbox('${esc(f.photoProofUrl)}','proof-${esc(f.id)}.jpg')"><img
-                    src="${esc(bizImageViewUrl(f.photoProofUrl))}" alt="תמונת הוכחה"
-                    onerror="markFanProofBroken(this)"></div>`
-            : `<div class="fan-proof-photo empty">לא הועלתה תמונת הוכחה</div>`}
-        </div>
+        <!-- §298 — שדות האימות (ענף/שער/מסלול/ערך/פייסבוק/תמונה) עברו מכאן לכרטיס
+             "אימות האוהד" שמתחת. הם היו פזורים כאן כשדות-רשת רגילים, והתמונה ישבה
+             כשדה בודד ברוחב מלא — כלומר הראיה, שהיא כל העניין, נראתה כמו עוד שורה. -->
       </div>
       <div id="fanEdit_${f.id}" class="sec-edit-form" style="padding:0 24px 20px">
         <div class="form-row-2">
@@ -7370,9 +7380,12 @@ function fanFullDetailHtml(id, opts) {
         </div>
       </div>
     </div>`;
+  // §298 — כרטיס האימות **לפני** פרטי ההרשמה: זו ההחלטה שהמנהל בא לקבל, והפרטים האישיים
+  // הם רקע לה. אותו סדר בדיוק כמו בגיליון העסק.
   const fanMainTabHtml = `
     ${fanQjCardHtml}
     ${identityCardHtml}
+    ${fanVerifyCardHtml}
     ${registrationCardHtml}`;
   return `
     <button class="act-btn task-back-btn" onclick="${o.backFn}()">→ חזרה</button>
