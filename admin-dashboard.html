@@ -7987,11 +7987,19 @@ function taskTilesHtml() {
   const bizErrors = bizWriteErrorList();
   const bizErrorBizCount = new Set(bizErrors.map(x => x.id)).size;
   // §284 — ההצלבות זמינות מיד (מחושבות מ-MOCK_FANS), כשלי-השליחה רק אחרי שהאירועים נטענו.
-  // הקובייה לא טוענת אותם מעצמה בכוונה: היא מרונדרת בכל רענון של מרכז המשימות, וקריאה
-  // ל-Firestore משם הייתה יוצאת גם למי שלא נכנס לקובייה הזאת בכלל.
+  // ── §296 — ההחלטה הזו התהפכה ──────────────────────────────────────────────────────────
+  // §284 בחר **לא** לטעון את האירועים מהקובייה, כדי לחסוך קריאת-Firestore ממי שלא נכנס
+  // אליה. המשתמש: *"חשוב לי לדעת על כל כשל כזה בדשבורד ניהול הכללי"* — וקובייה שמראה 0
+  // כי היא לא בדקה היא גרועה יותר מקריאה אחת מיותרת. loadPlatformStats ממילא ממוזערת
+  // (30 יום, נטענת פעם אחת לסשן ומשותפת עם פאנל "פלטפורמה"), והמשתמש כאן הוא מנהל יחיד.
+  if (platformEvents === null && !platformStatsError) loadPlatformStats();
   const regIssues = regIssueList();
-  const regClashCount = regIssues.filter(x => x.kind !== 'failed').length;
   const regFailCount = regIssues.filter(x => x.kind === 'failed').length;
+  const regPhotoCount = regIssues.filter(x => x.kind === 'photoFailed').length;
+  const regClashCount = regIssues.length - regFailCount - regPhotoCount;
+  // ⚠️ §296 — האירועים נטענים עצלנית, ולכן עד שהם מגיעים אסור להכריז "אף הרשמה לא נכשלה".
+  // זו הייתה **הכרזת-שלום שקרית**: הקובייה הראתה 0 ירוק בדיוק כשעוד לא היה לה מושג.
+  const regEventsPending = platformEvents === null && !platformStatsError;
   const tile = (t, num, sub) => `
     <div class="class-tile ${taskClassFilter===t.key?'active':''} ${t.key==='pendingBiz'&&taskClassFilter==='all'?'primary':(taskClassFilter===t.key?'primary':'')}" onclick="setTaskClassFilter('${t.key}')">
       <div class="class-tile-top"><span class="class-tile-num">${num}</span><span class="class-tile-label">${t.label}</span></div>
@@ -8010,9 +8018,11 @@ function taskTilesHtml() {
       ${tile(TASK_CLASS_TILES[6], bizErrors.length ? `<span style="color:#b91c1c">${bizErrors.length}</span>` : 0, bizErrors.length
         ? `<div class="class-tile-chips"><span class="warn-badge">${bizErrorBizCount} עסקים לא הצליחו לשמור</span></div>`
         : `<div class="class-tile-sub">אף בעל עסק לא נתקל בשגיאה</div>`)}
-      ${tile(TASK_CLASS_TILES[7], regIssues.length ? `<span style="color:#b91c1c">${regIssues.length}</span>` : 0, regIssues.length
-        ? `<div class="class-tile-chips">${regClashCount ? `<span class="warn-badge">${regClashCount} הצלבות</span>` : ''}${regFailCount ? `<span class="warn-badge">${regFailCount} הרשמות נכשלו</span>` : ''}</div>`
-        : `<div class="class-tile-sub">אין התנגשויות ואף הרשמה לא נכשלה</div>`)}
+      ${tile(TASK_CLASS_TILES[7], regIssues.length ? `<span style="color:#b91c1c">${regIssues.length}</span>` : (regEventsPending ? '…' : 0), regIssues.length
+        ? `<div class="class-tile-chips">${regClashCount ? `<span class="warn-badge">${regClashCount} הצלבות</span>` : ''}${regFailCount ? `<span class="warn-badge">${regFailCount} הרשמות נכשלו</span>` : ''}${regPhotoCount ? `<span class="warn-badge">${regPhotoCount} תמונות לא עלו</span>` : ''}</div>`
+        : regEventsPending
+          ? `<div class="class-tile-sub">בודק כשלי-שליחה מ-30 הימים האחרונים…</div>`
+          : `<div class="class-tile-sub">אין התנגשויות, אף הרשמה לא נכשלה ואף תמונה לא אבדה</div>`)}
     </div>`;
 }
 
@@ -12161,17 +12171,90 @@ function regClashList() {
   return out;
 }
 
+// ── §296 — פענוח קוד-השגיאה לשפה של מנהל ────────────────────────────────────────────────────
+// ה-channel נבנה קצר בכוונה (תקרת 50 תווים ב-firestore.rules), ולכן הוא נראה כמו
+// `pu:unauthorized|64k|jpeg`. עד עכשיו הוא הוצג **כמו שהוא**, ומנהל שראה את זה לא ידע אם
+// מדובר בבאג אצלנו, בקובץ של הנרשם, או ברשת שלו — כלומר "יש תקלה" בלי מה לעשות איתה.
+const UPLOAD_ERR_LABELS = {
+  // ⚠️ אחרי §293 `unauthorized` **אינו** מעיד על באג אצלנו. החוק שנשאר בנתיב הזה הוא
+  // `isImage() && underSizeLimit()` בלבד, ולכן 403 כאן אומר: הקובץ אינו תמונה (PDF/מסמך
+  // שנבחר בטעות) או שהוא מעל 15MB. תווית "באג אצלנו" הייתה שולחת לחפש במקום הלא-נכון —
+  // וזה בדיוק מה שקרה לנו בארבעה סבבים.
+  unauthorized:            'הקובץ נדחה — כנראה אינו תמונה או מעל 15MB',
+  unknown:                 'השרת דחה את ההעלאה',
+  'file-too-large':        'הקובץ גדול מדי גם אחרי דחיסה',
+  'upload-timeout':        'ההעלאה לא הסתיימה בזמן',
+  'download-url-dead':     'הועלה אך הקישור לא נטען',
+  canceled:                'ההעלאה בוטלה (סגירת דף?)',
+  'retry-limit-exceeded':  'נכשל אחרי 3 ניסיונות',
+  'quota-exceeded':        'חריגה ממכסת האחסון',
+};
+const MEDIA_ERR_LABELS = {
+  TimeoutError:      'ההעלאה נתקעה ונקטעה',
+  MediaPhaseTimeout: 'ההעלאה נתקעה ונקטעה',
+  AbortError:        'ההעלאה נקטעה',
+  TypeError:         'הבקשה לא יצאה (רשת/דפדפן)',
+};
+
+// מבדיל בין שני דברים שנראו עד היום זהים — וההבדל ביניהם הוא **מה המנהל צריך לעשות**:
+//   הרשמה נכשלה   → אין רשומה בכלל. הנרשם איננו. זו התקלה החמורה.
+//   התמונה לא עלתה → הרשומה קיימת ותקינה, חסרה רק הראיה. צריך לבקש אותה במייל.
+// עד §296 שניהם הוצגו כ"הרשמה נכשלה", כלומר המנהל היה מחפש נרשם שלא קיים — או גרוע מזה,
+// מתעלם מרשומה שכן נקלטה כי הניח שהיא אבודה.
+function classifyRegError(e) {
+  const ch = e.channel || '';
+  const isBiz = e.blockId === 'bizForm';
+  const who = isBiz ? 'עסק' : 'אוהד';
+
+  // §290 ואילך: `pu:<code>|<KB>k|<type>`. §288 ומטה: `proof-upload:storage/<code>`.
+  if (ch.startsWith('pu:') || ch.startsWith('proof-upload:')) {
+    const [rawCode, kb, type] = ch.replace(/^pu:|^proof-upload:/, '').replace('storage/', '').split('|');
+    const parts = [UPLOAD_ERR_LABELS[rawCode] || rawCode || 'סיבה לא ידועה'];
+    if (kb) parts.push(kb.replace(/k$/, '') + 'KB');
+    if (type) parts.push(type);
+    return {
+      kind: 'photoFailed',
+      title: `תמונת האימות של ${who} לא עלתה — ההרשמה כן נקלטה`,
+      detail: parts.join(' · '),
+      badge: 'תמונה חסרה',
+    };
+  }
+
+  // §294: `bm:<name>` — מדיה של עסק (לוגו/תמונה מייצגת/גלריה/ראיה) דרך ה-Worker.
+  if (ch.startsWith('bm:')) {
+    const name = ch.slice(3);
+    return {
+      kind: 'photoFailed',
+      title: 'תמונות העסק לא עלו — ההרשמה כן נקלטה',
+      detail: MEDIA_ERR_LABELS[name] || name || 'סיבה לא ידועה',
+      badge: 'תמונות חסרות',
+    };
+  }
+
+  return {
+    kind: 'failed',
+    title: `הרשמת ${who} נכשלה — אין רשומה`,
+    detail: ch === 'offline' ? 'לא היה חיבור לאינטרנט אצל הנרשם' : `קוד השגיאה: ${ch || 'לא ידוע'}`,
+    // התג הוא תווית-מצב, לא קוד. `permission-denied` בתג לא אומר למנהל כלום שהוא לא כבר
+    // רואה בשורת-הפירוט — והוא זה שנקרא ראשון.
+    badge: 'הרשמה נכשלה',
+  };
+}
+
 // כשלי-שליחה מתוך collection 'events'. אותו מקור בדיוק של פאנל "פלטפורמה" (§281) —
 // נטען פעם אחת ל-30 יום ומשמש את שניהם.
 function regFailureList() {
   return (platformEvents || [])
     .filter(e => e.type === 'formError')
-    .map(e => ({
-      kind: 'failed', key: 'err|' + e.sessionId + '|' + (e.at ? e.at.getTime() : 0), at: e.at, fans: [],
-      title: e.blockId === 'bizForm' ? 'הרשמת עסק נכשלה' : 'הרשמת אוהד נכשלה',
-      detail: `קוד השגיאה: ${e.channel || 'לא ידוע'} · ${e.device === 'mobile' ? 'מובייל' : 'דסקטופ'}`,
-      badge: e.channel || 'שגיאה',
-    }))
+    .map(e => {
+      const c = classifyRegError(e);
+      return {
+        kind: c.kind, key: 'err|' + e.sessionId + '|' + (e.at ? e.at.getTime() : 0), at: e.at, fans: [],
+        title: c.title,
+        detail: `${c.detail} · ${e.device === 'mobile' ? 'מובייל' : 'דסקטופ'}`,
+        badge: c.badge,
+      };
+    })
     .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
 
@@ -12194,7 +12277,9 @@ function regIssueList() {
 function regIssuesActive() { return taskClassFilter === 'regIssues'; }
 function regIssueFilteredList() {
   let list = regIssueList();
-  if (taskEntityFilter === 'biz') list = list.filter(x => x.kind === 'failed');  // הצלבות שייכות לאוהדים
+  // §296 — 'photoFailed' נוסף ליד 'failed'. בלי זה כשלי-תמונה היו נעלמים בשקט בסינון הזה,
+  // כלומר בדיוק הדבר שהמשתמש ביקש לראות היה מוסתר ע"י סינון שנראה תמים.
+  if (taskEntityFilter === 'biz') list = list.filter(x => x.kind === 'failed' || x.kind === 'photoFailed');
   const q = taskSearchQ.trim();
   if (q) list = list.filter(x => `${x.title} ${x.detail} ${x.fans.map(f => f.name).join(' ')}`.includes(q));
   return list;
@@ -12213,7 +12298,12 @@ function regIssuesTableHtml(list) {
           ab.opened ? ` בנוסף: ${ab.opened} פתחו את טופס ההרשמה ו-${ab.abandoned} מהם לא שלחו — נטישה, לא בהכרח תקלה, ולכן לא מופיעה כשורות.` : ''
         }</div>`;
   if (!list.length) {
-    return `${loadingNote}<div class="placeholder-note">אין תקלות הרשמה 🎉 אין שני אוהדים על אותו מושב, אין מספר מנוי כפול או מומצא, ואף הרשמה לא נכשלה.</div>`;
+    // §296 — "אין תקלות 🎉" רק כשבאמת בדקנו. כשהאירועים עוד בדרך זו הכרזה שאין לה כיסוי.
+    return `${loadingNote}<div class="placeholder-note">${
+      platformEvents === null && !platformStatsError
+        ? 'ההצלבות נקיות. כשלי-השליחה מ-30 הימים האחרונים עדיין נטענים…'
+        : 'אין תקלות הרשמה 🎉 אין שני אוהדים על אותו מושב, אין מספר מנוי כפול או מומצא, אף הרשמה לא נכשלה ואף תמונה לא אבדה בדרך.'
+    }</div>`;
   }
   return `
     ${loadingNote}
