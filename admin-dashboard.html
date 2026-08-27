@@ -882,6 +882,30 @@ body {
   background: var(--nav-bg); color: var(--text); font-family: 'Heebo', sans-serif; font-size: 13px;
   line-height: 1.7; margin-bottom: 10px; resize: vertical;
 }
+/* ── סרגל העיצוב של גוף המייל (§311) — יושב צמוד מעל ה-textarea, ולכן חולק איתו רדיוס-פינות
+   (הסרגל מעוגל למעלה, ה-textarea למטה) כדי שייראו כיחידה אחת ולא כשתי קופסאות. ── */
+.mail-fmt-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+  padding: 6px 8px; border: 1.5px solid var(--border-md); border-bottom: none;
+  border-radius: 8px 8px 0 0; background: var(--bg-main);
+}
+.mail-fmt-bar + .broadcast-body-input { border-radius: 0 0 8px 8px; margin-bottom: 4px; }
+.mfmt-btn {
+  border: 1px solid transparent; background: transparent; color: var(--text);
+  font-family: 'Heebo', sans-serif; font-size: 12px; font-weight: 600;
+  padding: 4px 8px; border-radius: 6px; cursor: pointer; line-height: 1.5;
+}
+.mfmt-btn:hover { background: rgba(var(--accent-rgb),.12); border-color: rgba(var(--accent-rgb),.35); }
+.mfmt-btn b, .mfmt-btn i { font-size: 13px; }
+.mfmt-sep { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--border-md); }
+.mfmt-lbl { font-size: 11.5px; color: var(--text-muted); font-weight: 600; }
+.mfmt-select {
+  height: 26px; border: 1px solid var(--border-md); border-radius: 6px; background: var(--card-bg);
+  color: var(--text); font-family: 'Heebo', sans-serif; font-size: 12px; padding: 0 4px; cursor: pointer;
+}
+.mail-fmt-hint { font-size: 11px; color: var(--text-muted); margin: 0 0 10px; line-height: 1.9; }
+.mail-fmt-hint code { background: rgba(var(--accent-rgb),.08); color: var(--accent); padding: 1px 5px; border-radius: 5px; font-family: monospace; }
+
 .broadcast-actions { display: flex; gap: 10px; margin-bottom: 8px; }
 .broadcast-test-row { display: flex; gap: 8px; margin-bottom: 10px; }
 .broadcast-test-row input { flex: 1; max-width: 280px; height: 34px; padding: 0 10px; border: 1px solid var(--border-md); border-radius: 8px; background: var(--card-bg); font-size: 12.5px; }
@@ -1886,6 +1910,9 @@ import {
   collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc, runTransaction, query, where, getDocs, writeBatch, setDoc, addDoc, orderBy, limit, getCountFromServer, arrayUnion, deleteField
 } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
 import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js';
+// מנוע העיצוב של גוף המייל — אותו קובץ בדיוק שהוורקר מייבא (worker/src/brevo.js), כדי שהתצוגה
+// המקדימה במרכז ההודעות תהיה מה שנשלח בפועל ולא חיקוי שלו. ר' ההערה בראש mail-format.js.
+import { MAIL_FONTS, mailFontKey, renderMailHtml, footerHtml as mailFooterHtml } from './mail-format.js';
 
 // ── §244 — טוקן הכניסה לדשבורד יושב ב-bizTokens/{businessId}, לא על מסמך העסק ────────────────
 // מסמך עסק approved קריא ציבורית לגמרי, ולכן טוקן-כניסה שיושב עליו שקול לפרסום סיסמה.
@@ -11177,81 +11204,151 @@ window.resetTemplateItem = function(id) {
 };
 
 function templateFieldHtml(item, f) {
-  const val = esc(tplFieldValue(item, f));
+  const raw = tplFieldValue(item, f);
+  const val = esc(raw);
   const preview = item.group === 'auto' ? ` oninput="updateTemplatePreview('${item.id}')"` : '';
+  // סרגל העיצוב רק על גוף מייל שהוורקר מרנדר (group='auto'). תבניות WhatsApp/מייל-ידני נפתחות
+  // ב-Gmail/וואטסאפ כטקסט גולמי, וטקסטי-האתר (תקנון/הצלחה) אינם מייל בכלל — שם הסימונים היו
+  // מוצגים לנמען כתווים מיותרים. ר' האזהרה ליד mailToolbarHtml.
+  const bar = item.group === 'auto' && f.type === 'textarea' ? mailToolbarHtml('tplField_' + f.key, item.id, raw) : '';
   return f.type === 'textarea'
-    ? `<div class="approve-field-label" style="margin-top:10px">${f.label}</div><textarea class="broadcast-body-input" id="tplField_${f.key}" rows="${f.rows||8}"${preview}>${val}</textarea>`
+    ? `<div class="approve-field-label" style="margin-top:10px">${f.label}</div>${bar}<textarea class="broadcast-body-input" id="tplField_${f.key}" rows="${f.rows||8}"${preview}>${val}</textarea>${bar ? mailFmtHintHtml() : ''}`
     : `<div class="approve-field-label" style="margin-top:10px">${f.label}</div><input class="chain-select" type="text" id="tplField_${f.key}" value="${val}"${preview}>`;
 }
 
-// ── תצוגה מקדימה אמיתית לתבניות האוטומטיות (login/biz/combined) — מראה בדיוק את העיצוב הממותג
-// (תיבת-קוד/כפתור/לוגו) שהוורקר בונה בפועל ב-worker/src/brevo.js (richBodyHtml/codeBoxHtml/
-// linkButtonHtml/brandHeaderHtml). קוד מוכפל בכוונה (אין שיתוף-קוד בין Worker ל-admin) — כל שינוי
-// עיצוב שם צריך להשתקף גם כאן כדי שהתצוגה תישאר נאמנה למה שנשלח בפועל.
-const TPL_LOGO_URL = 'https://yellowzone.co.il/images/yellowzone-mark-square.png';
-const TPL_LOGO_HORIZONTAL_URL = 'https://yellowzone.co.il/images/yellowzone-logo-horizontal.png';
-const TPL_INSTAGRAM_URL = 'https://instagram.com/Yellowzone.mta';
-const TPL_FACEBOOK_URL = 'https://www.facebook.com/share/1C5yYf44z6/?mibextid=wwXIfr';
-// כפתור-הכניסה מציג את כתובת האתר — זהה ל-loginButtonHtml בוורקר.
-function tplLoginButtonHtml() {
-  return `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:16px auto"><tr><td style="background:#FFDE00;border-radius:14px"><a href="https://yellowzone.co.il" style="display:inline-block;color:#16130a;text-decoration:none;padding:11px 28px;text-align:center;line-height:1.35"><span style="font-size:12px;font-weight:700">לכניסה לחצו</span><br><span style="font-size:18px;font-weight:900;direction:ltr;unicode-bidi:isolate">yellowzone.co.il</span></a></td></tr></table>`;
+// ── תצוגה מקדימה אמיתית של המייל ──────────────────────────────────────────────────────────
+// עד §311 היה כאן עותק-מראה מלא של מנוע-העיצוב של הוורקר ("קוד מוכפל בכוונה"), וכל תוספת-עיצוב
+// הייתה חייבת להיכתב פעמיים כדי שהתצוגה לא תשקר. עכשיו שני הצדדים מייבאים את mail-format.js —
+// renderMailHtml כאן ו-renderMailHtml שם הם אותה פונקציה, ולכן התצוגה **היא** המייל.
+// mailPreviewDocHtml בונה את מה שנשלח בפועל: גוף המכתב + הפוטר שמתווסף ריכוזית ב-sendBrevoEmail.
+function mailPreviewDocHtml(body, vars, linkLabel) {
+  const html = renderMailHtml(body, vars, { linkLabel, padding: '16px 24px', extraStyle: 'background:#fff' });
+  return `<div style="background:#fff">${html}<div style="padding:0 18px 16px">${mailFooterHtml(html)}</div></div>`;
 }
-// קוד + כפתור-כניסה כיחידה אחת — זהה ל-codeBoxHtml/codeBlockHtml בוורקר.
-function tplCodeBlockHtml(code, withButton = true) {
-  const box = `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:20px auto"><tr><td style="width:260px;background:#FFDE00;border-radius:20px;padding:22px 20px;text-align:center"><div style="font-size:38px;font-weight:900;letter-spacing:8px;color:#0A2A66;line-height:1.15;direction:ltr;unicode-bidi:isolate">${esc(code)}</div></td></tr></table>`;
-  return box + (withButton ? tplLoginButtonHtml() : '');
+
+// ── סרגל העיצוב של גוף המייל (§311) ───────────────────────────────────────────────────────
+// הכפתורים כותבים סימונים לתוך הטקסט עצמו (*מודגש*, - פריט, {center}, {big}...) — mail-format.js
+// הופך אותם ל-HTML. למה לא עורך WYSIWYG: ההסבר המלא בראש mail-format.js — בקצרה, הגוף נשמר
+// כטקסט חופשי, עובר escape לפני הרינדור (הגנת XSS) ונשלח גם כגרסת-טקסט-חלופית; עורך שמייצר
+// HTML היה שובר את שלושתם ומוצג ללקוח כתגיות מילוליות.
+//
+// ⚠️ הסרגל מוצג **רק** על שדות שהוורקר מרנדר: השידור ההמוני וגוף המיילים האוטומטיים. הוא לא
+// מוצג על "נמענים נבחרים" ועל תבניות ה-WhatsApp — אלה נפתחים ב-Gmail/וואטסאפ כטקסט גולמי, ושם
+// הסימונים היו מגיעים לנמען ככוכביות וסוגריים מסולסלים במקום עיצוב.
+const MAIL_FMT_SIZES = [['big', 'כותרת גדולה'], ['mid', 'כותרת'], ['small', 'קטן']];
+
+function mailToolbarHtml(targetId, tplId, currentBody) {
+  const call = (action, val) => `mailFmt('${targetId}','${action}','${val || ''}','${tplId || ''}')`;
+  const btn = (action, label, title) => `<button type="button" class="mfmt-btn" title="${title}" onclick="${call(action)}">${label}</button>`;
+  const fontKey = mailFontKey(currentBody || '');
+  return `
+    <div class="mail-fmt-bar">
+      ${btn('bold', '<b>B</b>', 'מודגש — עוטף את הטקסט המסומן בכוכביות')}
+      ${btn('italic', '<i>I</i>', 'נטוי')}
+      <span class="mfmt-sep"></span>
+      ${MAIL_FMT_SIZES.map(([k, l]) => btn(k, l, 'גודל הכתב של הפסקה — לחיצה נוספת מבטלת')).join('')}
+      <span class="mfmt-sep"></span>
+      ${btn('center', '⇔ מרכוז', 'ממרכז את הפסקה — לחיצה נוספת מבטלת')}
+      ${btn('bullet', '• רשימה', 'הופך את השורות המסומנות לרשימת נקודות')}
+      ${btn('quote', '▎הדגשה', 'תיבת הדגשה צהובה')}
+      ${btn('hr', '— קו מפריד', 'קו מפריד בין חלקי המכתב')}
+      ${btn('link', '🔗 כפתור', 'מוסיף את {link} כפסקה נפרדת — הופך לכפתור צהוב ממותג')}
+      <span class="mfmt-sep"></span>
+      <span class="mfmt-lbl">גופן</span>
+      <select class="mfmt-select" onchange="mailFmt('${targetId}','font',this.value,'${tplId || ''}')">
+        ${MAIL_FONTS.map(f => `<option value="${f.key}" ${f.key === fontKey ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}
+      </select>
+    </div>`;
 }
-// שורת "עקבו אחרינו" + הפוטר הקבוע — נוספים לכל מייל יוצא ב-sendBrevoEmail, ולכן מוצגים גם כאן
-// כדי שהתצוגה-המקדימה תהיה מה שבאמת נשלח (הם לא חלק מגוף התבנית הנערכת).
-// זהה ל-socialRowHtml בוורקר. inBody=true כשהיא מוצגת בתוך גוף המכתב ({social}).
-function tplSocialRowHtml(inBody) {
-  const links = [
-    TPL_INSTAGRAM_URL && `<a href="${TPL_INSTAGRAM_URL}" style="color:#0A2A66;font-weight:700;text-decoration:underline">אינסטגרם</a>`,
-    TPL_FACEBOOK_URL && `<a href="${TPL_FACEBOOK_URL}" style="color:#0A2A66;font-weight:700;text-decoration:underline">פייסבוק</a>`,
-  ].filter(Boolean);
-  if (!links.length) return '';
-  const frame = inBody ? 'text-align:center;margin:24px 0'
-    : 'text-align:center;margin-top:26px;padding-top:18px;border-top:1px solid #eee';
-  return `<div style="${frame}"><div style="font-size:13px;color:#555;margin-bottom:10px">לחצו למעקב אחרינו</div>`
-    + `<div style="font-size:15px">${links.join(' <span style="color:#ccc">·</span> ')}</div></div>`;
+// שורת-העזרה יושבת **מתחת** לתיבת הטקסט ולא בין הסרגל לתיבה: הסרגל בנוי כהמשך-מסגרת של התיבה
+// (בלי מסגרת תחתונה, פינות מעוגלות רק למעלה), וכל דבר שנדחף ביניהם משאיר אותו קופסה פתוחה באוויר.
+function mailFmtHintHtml() {
+  return `<div class="mail-fmt-hint">אפשר גם להקליד ידנית: <code>*מודגש*</code> · <code>_נטוי_</code> · <code>- פריט</code> · <code>&gt; הדגשה</code> · <code>---</code> · <code>{center}</code> <code>{big}</code> <code>{mid}</code> <code>{small}</code> בתחילת פסקה</div>`;
 }
-// socialInBody — התבנית כוללת {social}, ולכן הפוטר לא חוזר עליה.
-function tplFooterHtml(socialInBody) {
-  const social = socialInBody ? '' : tplSocialRowHtml(false);
-  return social + `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px;line-height:1.6">אם המייל הזה נחת בתיקיית הספאם/קידומים, נשמח שתסמנו אותו כ"לא ספאם" — כך מיילים עתידיים יגיעו ישר לתיבה הראשית.<br>Yellow Zone · תל אביב, ישראל</div>`;
+
+// ── פעולות העריכה ─────────────────────────────────────────────────────────────────────────
+// כולן עובדות ישירות על ה-textarea ומחזירות את הפוקוס והסימון, ואז מרעננות רק את קופסת-התצוגה
+// (לא renderMain — הוא היה בונה מחדש את השדה מהערך השמור ומוחק כל מה שנכתב ועוד לא נשמר).
+function mailFmtSet(ta, value, selStart, selEnd) {
+  ta.value = value;
+  ta.focus();
+  ta.setSelectionRange(selStart, selEnd == null ? selStart : selEnd);
 }
-function tplLinkButtonHtml(link, label) {
-  return `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:16px auto"><tr><td style="background:#FFDE00;border-radius:14px"><a href="${esc(link)}" style="display:inline-block;color:#16130a;font-weight:900;text-decoration:none;padding:12px 28px;font-size:15px">${esc(label)}</a></td></tr></table>`;
+// גבולות הפסקה שהסמן נמצא בה (פסקה = בלוק בין שורות ריקות, בדיוק כמו החלוקה ב-mail-format.js)
+function mailFmtParaRange(v, pos) {
+  const before = v.lastIndexOf('\n\n', Math.max(0, pos - 1));
+  const after = v.indexOf('\n\n', pos);
+  return [before === -1 ? 0 : before + 2, after === -1 ? v.length : after];
 }
-function tplBrandHeaderHtml() {
-  return `<div style="text-align:left;margin:0 0 18px 0"><img src="${TPL_LOGO_HORIZONTAL_URL}" height="26" alt="Yellow Zone" /></div>`;
+function mailFmtLineRange(v, s, e) {
+  const start = v.lastIndexOf('\n', Math.max(0, s - 1)) + 1;
+  const end = v.indexOf('\n', e);
+  return [start, end === -1 ? v.length : end];
 }
-function tplBoundedColumnHtml(innerHtml) {
-  return `<div style="max-width:480px;margin:0 auto;text-align:right">${innerHtml}</div>`;
+// עטיפה/הסרה של סימון-תוך-שורה. בלי טקסט מסומן — מכניס את שני הסימנים ומציב את הסמן ביניהם.
+// רווחים בקצוות הבחירה נשארים *מחוץ* לסימון: לחיצה-כפולה על מילה גוררת ברוב הדפדפנים גם את
+// הרווח שאחריה, ובלי זה הכוכבית הייתה נוחתת אחרי הרווח (*מילה *) במקום צמודה למילה.
+function mailFmtWrap(ta, mark) {
+  const v = ta.value, s0 = ta.selectionStart, e0 = ta.selectionEnd;
+  const raw = v.slice(s0, e0);
+  if (!raw.trim()) return mailFmtSet(ta, v.slice(0, s0) + mark + mark + v.slice(e0), s0 + mark.length);
+  const s = s0 + raw.match(/^\s*/)[0].length, e = e0 - raw.match(/\s*$/)[0].length;
+  const sel = v.slice(s, e);
+  const wrapped = sel.length > mark.length * 2 && sel.startsWith(mark) && sel.endsWith(mark);
+  const inner = wrapped ? sel.slice(mark.length, -mark.length) : mark + sel + mark;
+  mailFmtSet(ta, v.slice(0, s) + inner + v.slice(e), s, s + inner.length);
 }
-// הדגשה בסגנון וואטסאפ — *מילה* הופך ל-<b>מילה</b>, זהה ל-applyBold ב-worker/src/brevo.js
-function tplApplyBold(escapedText) {
-  return escapedText.replace(/\*(.+?)\*/g, '<b>$1</b>');
+const MFMT_MARKS_RX = /^(?:[ \t]*\{(?:center|big|mid|small)\})+[ \t]*/;
+// סימון-פסקה ({center}/{big}/{mid}/{small}) — group הוא קבוצת-סימונים שרק אחד מהם יכול להיות
+// פעיל (הגדלים), כדי ש"כותרת גדולה" תחליף את "קטן" ולא תצטבר איתו.
+function mailFmtToggleMark(ta, mark, group) {
+  const v = ta.value, [s, e] = mailFmtParaRange(v, ta.selectionStart);
+  const para = v.slice(s, e), m = para.match(MFMT_MARKS_RX);
+  const had = m ? m[0].includes('{' + mark + '}') : false;
+  let marks = m ? (m[0].match(/\{(\w+)\}/g) || []).map(x => x.slice(1, -1)) : [];
+  marks = marks.filter(x => (group ? !group.includes(x) : x !== mark));
+  if (!had) marks.push(mark);
+  marks.sort((a, b) => (a === 'center' ? 0 : 1) - (b === 'center' ? 0 : 1)); // סדר קבוע בטקסט הגולמי
+  const next = marks.map(x => `{${x}}`).join('') + (m ? para.slice(m[0].length) : para);
+  const caret = s + next.length;
+  mailFmtSet(ta, v.slice(0, s) + next + v.slice(e), caret);
 }
-// קישורים לחיצים בטקסט חופשי, זהה ל-linkifyUrls ב-worker/src/brevo.js
-function tplLinkifyUrls(text) {
-  return text.replace(/(https?:\/\/[^\s<]+|(?:www\.)?[a-zA-Z0-9-]+\.(?:com|co\.il|net|org|io)(?:\/[^\s<]*)?)/g, (match) => {
-    const href = match.startsWith('http') ? match : `https://${match}`;
-    return `<a href="${href}" style="color:#16130a;font-weight:700;text-decoration:underline">${match}</a>`;
-  });
+// תחילית-שורה (רשימה/תיבת-הדגשה) על כל השורות המסומנות. אם *כולן* כבר מסומנות — מסיר.
+function mailFmtToggleLinePrefix(ta, prefix, rx) {
+  const v = ta.value, [s, e] = mailFmtLineRange(v, ta.selectionStart, ta.selectionEnd);
+  const lines = v.slice(s, e).split('\n');
+  const on = lines.every(l => !l.trim() || rx.test(l));
+  const next = lines.map(l => (!l.trim() ? l : on ? l.replace(rx, '') : rx.test(l) ? l : prefix + l)).join('\n');
+  mailFmtSet(ta, v.slice(0, s) + next + v.slice(e), s, s + next.length);
 }
-function tplRichBodyHtml(bodyTemplate, vars, linkLabel) {
-  const paras = (bodyTemplate || '').split('\n\n');
-  const hasLoginButton = paras.some(p => p.trim() === '{login_link}');
-  return paras.map(para => {
-    const trimmed = para.trim();
-    if (trimmed === '{code}' && vars.code) return tplCodeBlockHtml(vars.code, !hasLoginButton);
-    if (trimmed === '{link}' && vars.link) return tplLinkButtonHtml(vars.link, linkLabel || 'כניסה');
-    if (trimmed === '{login_link}') return tplLoginButtonHtml();
-    if (trimmed === '{social}') return tplSocialRowHtml(true);
-    return `<p style="margin:0 0 16px 0">${tplLinkifyUrls(tplApplyBold(esc(applyBroadcastVars(para, vars)))).replace(/\n/g, '<br>')}</p>`;
-  }).join('');
+// בלוק שחייב לשבת בפסקה משל עצמו (קו מפריד, {link}) — נשתל עם שורה ריקה משני צדדיו
+function mailFmtInsertBlock(ta, text) {
+  const v = ta.value, pos = ta.selectionEnd;
+  const before = v.slice(0, pos).replace(/\s*$/, ''), after = v.slice(pos).replace(/^\s*/, '');
+  const head = before ? before + '\n\n' : '';
+  mailFmtSet(ta, head + text + (after ? '\n\n' + after : '\n'), head.length + text.length);
 }
+// הגופן הוא מאפיין של המכתב כולו ולכן יושב בשורה הראשונה (ר' ההסבר ב-mail-format.js)
+function mailFmtSetFont(ta, key) {
+  const stripped = ta.value.replace(/^[ \t]*\{font:[^}\n]*\}[ \t]*(\r?\n)*/i, '');
+  const next = key && key !== 'default' ? `{font:${key}}\n\n${stripped}` : stripped;
+  mailFmtSet(ta, next, next.length - stripped.length + Math.min(ta.selectionStart, stripped.length));
+}
+window.mailFmt = function(targetId, action, value, tplId) {
+  const ta = document.getElementById(targetId);
+  if (!ta) return;
+  const sizes = MAIL_FMT_SIZES.map(([k]) => k);
+  if (action === 'bold') mailFmtWrap(ta, '*');
+  else if (action === 'italic') mailFmtWrap(ta, '_');
+  else if (sizes.includes(action)) mailFmtToggleMark(ta, action, sizes);
+  else if (action === 'center') mailFmtToggleMark(ta, 'center', null);
+  else if (action === 'bullet') mailFmtToggleLinePrefix(ta, '- ', /^[ \t]*[-•][ \t]+/);
+  else if (action === 'quote') mailFmtToggleLinePrefix(ta, '> ', /^[ \t]*>[ \t]+/);
+  else if (action === 'hr') mailFmtInsertBlock(ta, '---');
+  else if (action === 'link') mailFmtInsertBlock(ta, '{link}');
+  else if (action === 'font') mailFmtSetFont(ta, value);
+  if (tplId) updateTemplatePreview(tplId); else updateBroadcastPreview();
+};
 
 const AUTO_TPL_SAMPLE_VARS = {
   login: { name: 'ישראל ישראלי', code: '123456', link: 'https://yellowzone.co.il/welcome.html' },
@@ -11288,9 +11385,7 @@ function autoTemplatePreviewHtml(item) {
           <div class="broadcast-preview-meta">מ־ Yellow Zone</div>
           <div class="broadcast-preview-subject">${esc(applyBroadcastVars(subject, vars))}</div>
         </div>
-        <div dir="rtl" style="font-family:Arial,sans-serif;padding:16px 24px;background:#fff">
-          ${tplBoundedColumnHtml(tplBrandHeaderHtml() + tplRichBodyHtml(body, vars, AUTO_TPL_LINK_LABEL[item.id]))}${tplFooterHtml(body.split('\n\n').some(p => p.trim() === '{social}'))}
-        </div>
+        ${mailPreviewDocHtml(body, vars, AUTO_TPL_LINK_LABEL[item.id])}
       </div>
       <div class="broadcast-preview-note">נתוני-דוגמה בלבד, שום מייל לא נשלח. {code} / {link} / {login_link} / {social} מקבלים את העיצוב הממותג רק כשהם בפסקה נפרדת (שורה ריקה משני הצדדים). {social} בגוף מבטל אוטומטית את שורת הרשתות בפוטר</div>
     </div>`;
@@ -11564,6 +11659,9 @@ function applyBroadcastVars(text, vars) {
 // מעטפת-מייל מדומה (§149, תואם-handoff: "כך המייל ייראה אצל X" + כותרת מ/אל + נושא+גוף בתוך
 // "מייל" לבן עם מסגרת) — במקום קופסת-טקסט-שטוחה. אותם נתונים בדיוק (broadcastVarsFor/
 // applyBroadcastVars), רק העיצוב השתנה.
+// §311 — הגוף עבר מטקסט-שטוח (esc + <br>) לרינדור האמיתי דרך mail-format.js, אותו קוד שהוורקר
+// מריץ. קודם התצוגה לא הראתה אפילו את *מודגש* ואת תיבת-הקוד שכבר היו קיימים, ועם סרגל העיצוב
+// אי אפשר לעצב מכתב מול תצוגה ששונה ממנו.
 function broadcastPreviewHtml(subject, body, audience, isFans) {
   if (!audience.length) return `<div class="broadcast-preview-empty">אין נמענים לתצוגה מקדימה</div>`;
   const first = audience[0];
@@ -11572,12 +11670,12 @@ function broadcastPreviewHtml(subject, body, audience, isFans) {
   return `
     <div class="broadcast-preview">
       <div class="broadcast-preview-label">כך המייל ייראה אצל ${esc(first.name)}</div>
-      <div class="broadcast-preview-envelope">
-        <div class="broadcast-preview-head">
+      <div class="broadcast-preview-envelope" style="padding:0;overflow:hidden">
+        <div class="broadcast-preview-head" style="padding:12px 16px">
           <div class="broadcast-preview-meta">מ־ Yellow Zone · אל ${esc(toEmail)}</div>
           <div class="broadcast-preview-subject">${esc(applyBroadcastVars(subject, vars))}</div>
         </div>
-        <div class="broadcast-preview-body">${esc(applyBroadcastVars(body, vars)).replace(/\n/g,'<br>')}</div>
+        ${mailPreviewDocHtml(body, vars, vars.code ? 'כניסה לאתר' : 'כניסה לאזור העסק שלי')}
       </div>
       <div class="broadcast-preview-note">המשתנים הוחלפו בנתונים של הנמען הראשון בקהל</div>
     </div>`;
@@ -11780,7 +11878,9 @@ function broadcastTabHtml() {
     <div class="approve-field-label" style="margin-top:14px">נושא ההודעה</div>
     <input type="text" id="broadcastSubject" class="chain-select" value="${esc(broadcastDraft.subject)}" oninput="updateBroadcastPreview()" />
     <div class="approve-field-label">גוף ההודעה</div>
+    ${mailToolbarHtml('broadcastBody', '', broadcastDraft.body)}
     <textarea id="broadcastBody" class="broadcast-body-input" rows="12" oninput="updateBroadcastPreview()">${esc(broadcastDraft.body)}</textarea>
+    ${mailFmtHintHtml()}
     <div class="tpl-vars-box">${varsHint} יוחלפו אוטומטית לכל נמען. מייל בלבד (וואטסאפ נשאר ידני).</div>
     <div class="broadcast-test-row">
       <input type="email" id="broadcastTestEmail" placeholder="כתובת מייל לבדיקה" value="${esc(CURRENT_ADMIN.email)}">
