@@ -498,10 +498,18 @@
       display: flex; align-items: center; justify-content: center;
       margin: 0 auto 18px; box-shadow: 0 8px 24px rgba(255,212,0,.35);
       animation: popIn .5s cubic-bezier(.17,.67,.46,1.5);
+      overflow: hidden;   /* §295 — חותך את פינות הסימן הריבועי לעיגול, בדיוק כמו ב-fan-register */
     }
+    /* §295 — הלוגו במקום הווי הגנרי. הרקע הצהוב נשאר כנפילה-לאחור אם התמונה לא נטענת. */
+    .success-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
     @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     .success-state h3 { font-size: 22px; font-weight: 800; color: var(--text); }
-    .success-state p  { color: var(--text-muted); font-size: 14px; line-height: 1.7; margin-top: 10px; }
+    /* §295 — אותו תיקון כמו §287 ב-fan-register: 1.7 על טקסט של כמה פסקאות פרס את המסך
+       והשורות נראו מנותקות זו מזו. הפסקאות מופרדות במרווח מפורש (.sb-p) ולא בשורה ריקה
+       שהפכה ל-<br/> כפול. */
+    .success-state p  { color: var(--text-muted); font-size: 14px; line-height: 1.5; margin-top: 8px; }
+    .success-state .sb-p { display: block; }
+    .success-state .sb-p + .sb-p { margin-top: 9px; }
     .success-back-link {
       display: none; margin-top: 20px; background: var(--acc-soft);
       color: var(--text); border: 1px solid var(--acc-line);
@@ -509,20 +517,18 @@
       font-size: 15px; font-weight: 800; text-decoration: none;
     }
 
-    /* ── מצב-שליחה (submittingState) — תמונות/לוגו/קאבר מועלים מצד-שרת (Worker /upload-biz-media,
-       ר' handleSubmit) *לפני* שמוצג "הבקשה התקבלה", כדי שלא יהיה חלון-זמן שבו ההצלחה כבר מוצגת
-       אבל ההעלאה עדיין תלויה-ועומדת בדפדפן (סגירת-דף באותו רגע = תמונות אבודות בלי סימן). מאז
-       שההעלאה עברה לשרת, סגירת-דף אחרי שהבקשה הזו כבר נשלחה לא פוגעת בכלום. */
-    .success-upload-status {
-      display: none; margin-top: 16px; padding: 10px 14px; border-radius: 10px;
-      background: var(--acc-soft); border: 1px solid var(--acc-line);
-      font-size: 12.5px; font-weight: 700; color: var(--text);
-      align-items: center; justify-content: center; gap: 8px;
-    }
-    .success-upload-status.show { display: flex; }
-    .success-upload-status .spinner-sm {
+    /* ── §295 — מסך-הביניים (submittingState) בוטל ──────────────────────────────────────────
+       הוא נבנה כדי שלא יהיה חלון-זמן שבו "הבקשה התקבלה" מוצג בזמן שההעלאה עדיין תלויה. הכלל
+       הזה נשאר נכון — ההמתנה עדיין קורית לפני מסך ההצלחה — אבל היא עברה אל **הכפתור**, ולא
+       למסך שלם שמחליף את הטופס ומדווח על שלבים פנימיים. המשתמש: *"זה לא נראה טוב שזה חושב
+       לאחר ההגשה"*. צודק: החלפת-מסך לספינר קוראת כמו תקלה, וכפתור-בהמתנה קורא כמו עבודה.
+       ⚠️ `.spinner-sm` חייב להיות עצמאי ולא צאצא של המסך שנמחק — הוא משמש עכשיו בכפתור. */
+    .spinner-sm {
+      display: inline-block; vertical-align: -2px; margin-inline-start: 7px;
       width: 13px; height: 13px; border-radius: 50%; flex: none;
-      border: 2px solid rgba(0,0,0,.15); border-top-color: var(--text);
+      /* הכפתור צהוב עם טקסט כהה — ספינר לבן היה נעלם בתוכו. currentColor נוסע עם הכפתור
+         שהוא יושב בו, כך שגם כפתור-הניסיון-החוזר (רקע אחר) מקבל ניגודיות נכונה. */
+      border: 2px solid rgba(0,0,0,.18); border-top-color: currentColor;
       animation: spin .7s linear infinite;
     }
 
@@ -1513,16 +1519,8 @@
       </div>
     </div>
 
-    <!-- SUBMITTING — התמונות מועלות מצד-שרת (Worker) לפני שמוצגת הצלחה, כדי שלא יהיה חלון-זמן שבו
-         "הבקשה התקבלה" מוצג בזמן שההעלאה עדיין תלויה ועומדת בדפדפן (ר' successState למטה להיסטוריה). -->
-    <div class="success-state" id="submittingState">
-      <div class="form-card">
-        <!-- §294 — הטקסט מתחלף לפי השלב (submittingNote). ספינר יחיד שלא משתנה דקה שלמה
-             נקרא כמו "נתקע", וזה בדיוק מה שקרה: בעל-עסק שההרשמה שלו כן נקלטה היה בטוח
-             שהיא לא. הטקסט הזה הוא מה שמבדיל בין "עובד" ל"מת". -->
-        <div class="success-upload-status show"><span class="spinner-sm"></span><span id="submittingNote">שולח את הבקשה שלכם...</span></div>
-      </div>
-    </div>
+    <!-- §295 — מסך-הביניים (submittingState) הוסר. ההמתנה יושבת עכשיו על הכפתור עצמו,
+         והטופס נשאר על המסך עד שיש תשובה. ר' ההערה ב-CSS ליד .spinner-sm. -->
 
     <!-- כשל-שליחה (2026-08-17, §215) — עד היום כשל ב-addDoc הציג את מסך *ההצלחה* ומחק את הטיוטה:
          בעל העסק היה בטוח שנרשם, אצלנו לא הייתה רשומה, ואיש לא ידע. עכשיו: מסך כשל מפורש,
@@ -1531,7 +1529,7 @@
       <div class="form-card">
         <h3>הבקשה לא נשלחה</h3>
         <p id="failBody">משהו השתבש בדרך אלינו. הפרטים שמילאתם נשמרו כאן — אפשר לנסות שוב.</p>
-        <button type="button" class="btn-submit" onclick="retrySubmit()">נסה/י לשלוח שוב</button>
+        <button type="button" class="btn-submit" id="retryBtn" onclick="retrySubmit()">נסה/י לשלוח שוב</button>
         <a class="success-back-link" href="home.html">חזרה לאתר</a>
       </div>
     </div>
@@ -1539,7 +1537,7 @@
     <!-- SUCCESS -->
     <div class="success-state" id="successState">
       <div class="form-card">
-      <div class="success-icon"><svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#0A2A66" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
+      <div class="success-icon"><img src="images/yellowzone-mark-square.png" alt="Yellow Zone"></div>
       <h3 id="successTitle">הבקשה התקבלה!</h3>
       <p id="successBody"></p>
       <!-- מוצג רק כשהעלאת התמונות נכשלה בפועל (ר' handleSubmit/upload-biz-media) — ההרשמה עצמה
@@ -1741,10 +1739,31 @@
     return canvas;
   }
 
-  // §294 — שלב-השליחה מדווח על עצמו. ר' ההערה ב-#submittingNote.
-  function setSubmittingNote(msg) {
-    const el = document.getElementById('submittingNote');
-    if (el) el.textContent = msg;
+  // ── §295 — ההמתנה יושבת על הכפתור ───────────────────────────────────────────────────────
+  // מטפל בשני הכפתורים שיכולים להיות המקור לשליחה — הראשי וזה של "נסה/י שוב" ממסך-הכשל —
+  // כי אחרי כשל הטופס כבר מוסתר, ואם רק הראשי היה מקבל מצב-המתנה, ניסיון חוזר היה חוזר
+  // בדיוק לתסמין שתיקנו: מסך בלי שום סימן שמשהו קורה.
+  // התווית המקורית נשמרת ב-dataset ולא מקודדת כאן, כדי ששינוי ניסוח ב-HTML לא ייעלם בשחזור.
+  // §295 — הורדת הטופס מהמסך. רוכזה לפונקציה אחת כי היא נקראת משני מקומות (הצלחה/כשל)
+  // ובשניהם חייבת לרדת גם שורת-השלבים — אחרת נשאר stepper מרחף מעל מסך-הצלחה.
+  function hideFormPanels() {
+    document.getElementById('mainCard').querySelectorAll('.step-panel').forEach(p => p.style.display = 'none');
+    const bar = document.getElementById('stepperBar');
+    if (bar) bar.style.display = 'none';
+  }
+
+  function setSubmitBusy(busy) {
+    for (const btn of [document.getElementById('submitBtn'), document.getElementById('retryBtn')]) {
+      if (!btn) continue;
+      if (busy) {
+        if (!btn.dataset.label) btn.dataset.label = btn.textContent.trim();
+        btn.disabled = true;
+        btn.innerHTML = 'שולח...<span class="spinner-sm"></span>';
+      } else {
+        btn.disabled = false;
+        if (btn.dataset.label) btn.textContent = btn.dataset.label;
+      }
+    }
   }
 
   // גבול-זמן קשיח סביב הבטחה. **כל await ברשת כאן חייב אחד** — כשל-רשת אמיתי במובייל אינו
@@ -2143,7 +2162,17 @@
   const successBodyEl  = document.getElementById('successBody');
   function renderSuccessMsg(title, body) {
     successTitleEl.textContent = title;
-    successBodyEl.innerHTML = body.split('\n').map(l => l || '<br/>').join('<br/>');
+    // ── §295 — הרווחים הענקיים בין השורות ─────────────────────────────────────────────────
+    // הניסוח הקודם, `.map(l => l || '<br/>').join('<br/>')`, הפך כל שורה ריקה לשני `<br/>`
+    // ברצף — ועל גבי line-height 1.7 הפסקאות נראו מנותקות זו מזו. אותו באג בדיוק תוקן
+    // ב-fan-register ב-§287. עכשיו: שורה ריקה = גבול-פסקה עם מרווח קבוע (.sb-p), וירידת-שורה
+    // בודדת נשארת <br/>. הטקסט עצמו מגיע כמו שהוא — לא נוגעים בתוכן שהמנהל כתב.
+    successBodyEl.innerHTML = body
+      .split(/\n\s*\n/)
+      .map(p => p.trim())
+      .filter(Boolean)
+      .map(p => `<span class="sb-p">${p.split('\n').join('<br/>')}</span>`)
+      .join('');
   }
   (function loadSuccessMsg() {
     const defTitle = 'הבקשה התקבלה!';
@@ -2304,10 +2333,13 @@
     const hasMediaToUpload = !!(fanPhotoFile || effectiveCoverFile || effectiveLogoFile || galleryFiles.length);
     let mediaUploadFailed = false;   // ר' סוף handleSubmit — נקבע מתשובת /upload-biz-media
 
-    document.getElementById('mainCard').querySelectorAll('.step-panel').forEach(p => p.style.display = 'none');
-    document.getElementById('stepperBar').style.display = 'none';
-    document.getElementById('submittingState').style.display = 'block';
-    document.getElementById('failState').style.display = 'none';
+    // ── §295 — הטופס **לא** מוסתר כאן ─────────────────────────────────────────────────────
+    // קודם השלב הזה החליף את הטופס במסך-ספינר. המשתמש: *"זה לא נראה טוב שזה חושב לאחר
+    // ההגשה"* — צודק: החלפת-מסך לספינר קוראת כמו תקלה. עכשיו הטופס נשאר, הכפתור עובר
+    // למצב-המתנה, והמסך מתחלף **פעם אחת בלבד** — להצלחה או לכשל, כשיש תשובה.
+    // ⚠️ מסך-הכשל **לא** מוסתר כאן אלא רק כשיש תשובה. הסתרה מיידית בניסיון-חוזר הייתה
+    // משאירה את בעל-העסק מול מסך ריק (הטופס כבר מוסתר מהכשל הקודם) — ר' retrySubmit.
+    setSubmitBusy(true);
     // ⚠️ הטיוטה *לא* נמחקת כאן — רק אחרי שהרשומה באמת נוצרה. קודם היא נמחקה לפני הכתיבה, כך
     // שכשל הותיר את בעל-העסק בלי הרשומה *וגם* בלי מה שמילא. §215.
 
@@ -2340,7 +2372,9 @@
       }
 
       if (!bizDocRef) {
-        document.getElementById('submittingState').style.display = 'none';
+        // §295 — רק עכשיו הטופס יורד מהמסך, כשיש תשובה סופית.
+        setSubmitBusy(false);
+        hideFormPanels();
         const failBody = document.getElementById('failBody');
         if (failBody) {
           failBody.textContent = navigator.onLine === false
@@ -2392,7 +2426,9 @@
         // כמו ה-fetch. תקרה חיצונית אחת מכסה את שניהם, כדי שלא נסגור חור אחד ונשאיר את השני.
         try {
           await withTimeout((async () => {
-          setSubmittingNote('מעלים את התמונות…');
+          // §295 — אין כאן יותר דיווח-שלב לנרשם. §294 הוסיף "מעלים את התמונות…" כדי
+          // שספינר-דומם לא ייקרא כמו תקלה; המשתמש דחה את זה — חשיפת שלבים פנימיים אחרי
+          // שלחצת "שלח" נראית כמו מערכת שמתלבטת. הכפתור-בהמתנה עושה את אותה עבודה בשקט.
           const form = new FormData();
           form.append('accessToken', accessToken);
           // ⚠️ §285 — עד היום `fanPhoto` היה **הקובץ היחיד כאן שנשלח גולמי**: הלוגו, התמונה
@@ -2462,7 +2498,10 @@
           ' (yellowzonemta@gmail.com) — או העלו אותן בעצמכם מהדשבורד האישי שייפתח לכם אחרי האישור.';
         warnEl.style.display = 'block';
       }
-      document.getElementById('submittingState').style.display = 'none';
+      // §295 — החלפת-המסך היחידה בזרימה המוצלחת: מהטופס ישירות למסך ההצלחה.
+      setSubmitBusy(false);
+      hideFormPanels();
+      document.getElementById('failState').style.display = 'none';
       document.getElementById('successState').style.display = 'block';
     })();
   }
@@ -3727,7 +3766,10 @@
   // "נסה/י לשלוח שוב" ממסך-הכשל (§215) — כל שדות הטופס עדיין ב-DOM (הוסתרו, לא נמחקו), ולכן
   // handleSubmit אוסף שוב בדיוק את אותם נתונים ואת אותם קבצים. אין כאן שכפול של היגיון-שליחה.
   function retrySubmit() {
-    document.getElementById('failState').style.display = 'none';
+    // §295 — מסך-הכשל **נשאר** על המסך בזמן הניסיון החוזר, וכפתור "נסה/י שוב" הוא זה
+    // שעובר למצב-המתנה (setSubmitBusy מטפל בשניהם). קודם הוא הוסתר מיד, והטופס כבר היה
+    // מוסתר גם הוא — כלומר בעל-העסק נשאר מול מסך ריק בלי שום סימן שמשהו קורה.
+    // handleSubmit מסתיר אותו בעצמו כשיש תשובה.
     handleSubmit();
   }
 
