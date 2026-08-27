@@ -735,9 +735,9 @@
 </footer>
 
 <script type="module">
-  import { db, getStorageLazy } from './firebase-config.js';
+  import { db, getStorageLazy, firebaseConfig } from './firebase-config.js';
   import { collection, addDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
-  import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+  import { ref, uploadBytes } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
@@ -925,25 +925,65 @@
     }
   }
 
+  // טוקן-ההורדה חייב להיות בלתי-ניתן-לניחוש — הוא ההגנה היחידה על התמונה בכתובת עצמה.
+  // crypto.randomUUID קיים בכל דפדפן מודרני ב-https, ויש נפילה-לאחור ל-getRandomValues
+  // (ולא ל-Math.random) כדי שגם במקרה-קצה הטוקן יישאר אקראי אמיתי.
+  function randomToken() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+  }
+
+  // בדיקה שהכתובת באמת מגישה תמונה. נעשית דרך Image ולא דרך fetch בכוונה — Image לא כפוף
+  // ל-CORS לצורך onload/onerror, ולכן התוצאה חד-משמעית בכל דפדפן. גבול-זמן חובה: כשל-רשת
+  // כאן הוא Promise שלא נדחה אלא פשוט לא חוזר, וזה בדיוק מה שמקפיא מסכים (ר' PROJECT_CONTEXT).
+  function urlLoadsAsImage(url, ms = 8000) {
+    return new Promise(resolve => {
+      const img = new Image();
+      const done = (ok) => { clearTimeout(t); img.onload = img.onerror = null; resolve(ok); };
+      const t = setTimeout(() => done(false), ms);
+      img.onload = () => done(true);
+      img.onerror = () => done(false);
+      img.src = url;
+    });
+  }
+
   async function uploadFile(file, path) {
     let lastErr;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const storageRef = ref(await getStorageLazy(), path);
-        // ── ⚠️ §290 — contentType מפורש. זה היה השורש של storage/unauthorized ────────────────
-        // כשמעבירים ל-uploadBytes אובייקט מטא-דאטה **בלי** contentType, ה-SDK נופל ל-`file.type`,
-        // ואם גם הוא ריק נשלח `application/octet-stream`. אז `isImage()` ב-storage.rules
-        // (`contentType.matches('image/.*')`) מחזיר false, והכתיבה נדחית ב-403 — שה-SDK מתרגם
-        // ל-`storage/unauthorized`, כלומר **הודעה שנשמעת כמו בעיית הרשאות ואינה כזו**.
-        // מתי file.type ריק? קובץ שהגיע משיתוף/אפליקציה ולא מגלריית התמונות, HEIC בחלק
-        // מגרסאות iOS, וכל מקרה שבו הדחיסה נכשלה ונפלנו-לאחור לקובץ המקורי.
-        // זה גם מסביר למה העלאה ידנית דרך REST עם `Content-Type: image/png` החזירה 200
-        // באותו רגע שבו הטופס נכשל: ההבדל היחיד בין שתי הבקשות היה הכותרת הזאת.
+        // ── §290 — contentType מפורש. ⚠️ תיקון עובדתי: זה **לא** היה השורש ─────────────────
+        // §290 הציג את השורה הזו כשורש של storage/unauthorized. §291 הפריך זאת — השורש הוא
+        // getDownloadURL (ר' ההערה מיד למטה). השורה נשארת כי היא נכונה מעצם בנייתה: בלי
+        // contentType מפורש ה-SDK נופל ל-`file.type`, ואם גם הוא ריק נשלח
+        // `application/octet-stream`, ואז `isImage()` ב-storage.rules באמת ידחה את הכתיבה.
+        // file.type ריק קורה בקובץ משיתוף/אפליקציה (לא מהגלריה), ב-HEIC בחלק מגרסאות iOS,
+        // ובכל מקרה שבו הדחיסה נכשלה ונפלנו-לאחור למקור. זו הגנה מראש, לא תיקון-באג.
         const contentType = /^image\//.test(file.type || '') ? file.type : 'image/jpeg';
         // immutable בטוח כי כל נתיב העלאה כבר ייחודי (timestamp/החלפה מלאה) — מונע בדיקת-304 מיותרת
         // בכל טעינה חוזרת של אותה תמונה (ר' docs/PROJECT_CONTEXT.md).
-        const snap = await uploadBytes(storageRef, file, { contentType, cacheControl: 'public, max-age=31536000, immutable' });
-        return await getDownloadURL(snap.ref);
+        // ── ⚠️ §291 — הטוקן מונפק כאן, ובכוונה **בלי** getDownloadURL ─────────────────────
+        // getDownloadURL הוא פעולת **קריאה**, ו-`allow read: if isAdmin()` בנתיב הזה חוסם
+        // אותה לכל מי שאינו מנהל. כלומר ההעלאה עצמה הצליחה תמיד — ומיד אחריה נפלה שורת
+        // ה-getDownloadURL עם `storage/unauthorized`, שנשמע כמו כישלון-העלאה ואינו כזה.
+        // (אומת: לכל אירוע-כשל יש קובץ תקין ב-Storage, חצי שנייה לפני האירוע.)
+        // הפתרון: מנפיקים את טוקן-ההורדה בעצמנו כ-customMetadata ובונים את אותה כתובת
+        // בדיוק שה-SDK היה מחזיר. אין ויתור על אבטחה: הכתובת עובדת רק עם הטוקן המדויק
+        // (נבדק — טוקן שגוי או חסר מחזיר 403), וקריאה דרך ה-SDK נשארת למנהל בלבד.
+        const dlToken = randomToken();
+        await uploadBytes(storageRef, file, {
+          contentType,
+          cacheControl: 'public, max-age=31536000, immutable',
+          customMetadata: { firebaseStorageDownloadTokens: dlToken },
+        });
+        const url = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/${encodeURIComponent(path)}?alt=media&token=${dlToken}`;
+        // הכתובת נבנית אצלנו ולא מוחזרת מהשרת, ולכן היא **נבדקת** לפני שהיא נכתבת לרשומה.
+        // בלי זה, תקלה עתידית בצד השרת הייתה מייצרת בדיוק את הכשל שכבר עברנו: הכל "נראה
+        // הצליח", והתמונה פשוט לא שם. עדיף להיכשל בגלוי (הנרשם מקבל את כרטיס-המייל) מאשר
+        // לשמור כתובת מתה שאיש לא יבחין בה עד שמנהל ינסה לפתוח אותה.
+        if (!(await urlLoadsAsImage(url))) throw Object.assign(new Error('url-dead'), { code: 'download-url-dead' });
+        return url;
       } catch (e) {
         lastErr = e;
         console.error(`uploadFile failed (attempt ${attempt}):`, e.code || '', e.message);
