@@ -107,6 +107,7 @@ function richBodyHtml(bodyTemplate, vars, linkLabel) {
     if (trimmed === '{code}' && vars.code) return codeBlockHtml(vars.code, !hasLoginButton);
     if (trimmed === '{link}' && vars.link) return linkButtonHtml(vars.link, linkLabel || 'כניסה');
     if (trimmed === '{login_link}') return loginButtonHtml();
+    if (trimmed === '{social}') return socialRowHtml(true);
     return `<p style="margin:0 0 16px 0">${linkifyUrls(applyBold(escapeHtml(applyVars(para, vars)))).replace(/\n/g, '<br>')}</p>`;
   }).join('');
 }
@@ -116,20 +117,25 @@ function richBodyHtml(bodyTemplate, vars, linkLabel) {
 // שורת "לא ספאם" — עידוד לנמען לשפר את המוניטין של הדומיין (Gmail/ספאם-פילטרים לומדים ממי שמסמן ידנית).
 // שורת "עקבו אחרינו" — בפוטר ולא בגוף תבנית מסוימת, כדי שכל מייל יוצא (קוד כניסה, אישור עסק,
 // שידור המוני) יישא אותה בלי שצריך לזכור להוסיף ידנית. קישור ריק פשוט לא מוצג.
-function socialRowHtml() {
+function socialRowHtml(inBody = false) {
   const links = [
     INSTAGRAM_URL && `<a href="${INSTAGRAM_URL}" style="color:#0A2A66;font-weight:700;text-decoration:underline">אינסטגרם</a>`,
     FACEBOOK_URL && `<a href="${FACEBOOK_URL}" style="color:#0A2A66;font-weight:700;text-decoration:underline">פייסבוק</a>`,
   ].filter(Boolean);
   if (!links.length) return '';
-  return `<div style="text-align:center;margin-top:26px;padding-top:18px;border-top:1px solid #eee">
+  // data-social-row הוא הסמן שלפיו footerHtml יודע שהשורה כבר הוצגה בגוף המכתב.
+  const frame = inBody
+    ? 'text-align:center;margin:24px 0'
+    : 'text-align:center;margin-top:26px;padding-top:18px;border-top:1px solid #eee';
+  return `<div data-social-row style="${frame}">
     <div style="font-size:13px;color:#555;margin-bottom:10px">תרשמו למעקב אחרינו</div>
     <div style="font-size:15px">${links.join(' <span style="color:#ccc">·</span> ')}</div>
   </div>`;
 }
 
-function footerHtml() {
-  return socialRowHtml() + `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px;line-height:1.6">
+function footerHtml(bodyHtml) {
+  const socialInBody = String(bodyHtml || '').includes('data-social-row');
+  return (socialInBody ? '' : socialRowHtml()) + `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px;line-height:1.6">
     אם המייל הזה נחת בתיקיית הספאם/קידומים, נשמח שתסמנו אותו כ"לא ספאם" — כך מיילים עתידיים יגיעו ישר לתיבה הראשית.<br>
     Yellow Zone · תל אביב, ישראל
   </div>`;
@@ -138,7 +144,7 @@ function footerHtml() {
 async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent }) {
   // כל מייל יוצא (גם תבניות-מנהל וגם ברירת-המחדל הקבועה) מקבל את אותו פוטר וגרסת-טקסט-חלופית —
   // ריכוזי כאן ולא בכל קורא-קריאה, כדי שלא יישכח פעם אחת מתוך 4 (ר' "מסירות מייל ל-Gmail" בתיעוד).
-  const finalHtml = htmlContent + footerHtml();
+  const finalHtml = htmlContent + footerHtml(htmlContent);
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {

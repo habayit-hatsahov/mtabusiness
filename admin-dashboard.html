@@ -10933,7 +10933,7 @@ const MESSAGE_TEMPLATE_ITEMS = [
     ],
     defaults: {
       loginSubject: 'אתם בפנים — קוד הכניסה שלכם ל-Yellow Zone',
-      loginBody: 'היי {name}, ברוכים הבאים ל-Yellow Zone\n\nאישרנו אתכם. אתם מהאוהדים הראשונים ש-Yellow Zone נפתחת בשבילם.\n\nזה קוד הכניסה האישי שלכם:\n\n{code}\n\nנכנסים איתו יחד עם מספר הטלפון שאיתו נרשמתם:\n\n{login_link}\n\nמה מחכה לכם בפנים: כל העסקים של אוהדי מכבי ת"א, וההטבות שכל אחד מהם נותן לחברי Yellow Zone.\n\nאנחנו רק בהתחלה, ומה שתגידו ישפיע. משהו לא עובד או שיש לכם רעיון? פשוט תשיבו למייל הזה.\n\nתפיצו, תשתפו וביחד נבנה קהילה חזקה\nקונים כחול - צהוב\nרמי, Yellow Zone',
+      loginBody: 'היי {name}, ברוכים הבאים ל-Yellow Zone\n\nאישרנו אתכם. אתם מהאוהדים הראשונים ש-Yellow Zone נפתחת בשבילם.\n\nזה קוד הכניסה האישי שלכם:\n\n{code}\n\nנכנסים איתו יחד עם מספר הטלפון שאיתו נרשמתם:\n\n{login_link}\n\nמה מחכה לכם בפנים: כל העסקים של אוהדי מכבי ת"א, וההטבות שכל אחד מהם נותן לחברי Yellow Zone.\n\nאנחנו רק בהתחלה, ומה שתגידו ישפיע. משהו לא עובד או שיש לכם רעיון? פשוט תשיבו למייל הזה.\n\nתפיצו, תשתפו וביחד נבנה קהילה חזקה\n\n{social}\n\nקונים כחול - צהוב\nרמי, Yellow Zone',
     },
   },
   {
@@ -11203,12 +11203,21 @@ function tplCodeBlockHtml(code, withButton = true) {
 }
 // שורת "עקבו אחרינו" + הפוטר הקבוע — נוספים לכל מייל יוצא ב-sendBrevoEmail, ולכן מוצגים גם כאן
 // כדי שהתצוגה-המקדימה תהיה מה שבאמת נשלח (הם לא חלק מגוף התבנית הנערכת).
-function tplFooterHtml() {
+// זהה ל-socialRowHtml בוורקר. inBody=true כשהיא מוצגת בתוך גוף המכתב ({social}).
+function tplSocialRowHtml(inBody) {
   const links = [
     TPL_INSTAGRAM_URL && `<a href="${TPL_INSTAGRAM_URL}" style="color:#0A2A66;font-weight:700;text-decoration:underline">אינסטגרם</a>`,
     TPL_FACEBOOK_URL && `<a href="${TPL_FACEBOOK_URL}" style="color:#0A2A66;font-weight:700;text-decoration:underline">פייסבוק</a>`,
   ].filter(Boolean);
-  const social = links.length ? `<div style="text-align:center;margin-top:26px;padding-top:18px;border-top:1px solid #eee"><div style="font-size:13px;color:#555;margin-bottom:10px">תרשמו למעקב אחרינו</div><div style="font-size:15px">${links.join(' <span style="color:#ccc">·</span> ')}</div></div>` : '';
+  if (!links.length) return '';
+  const frame = inBody ? 'text-align:center;margin:24px 0'
+    : 'text-align:center;margin-top:26px;padding-top:18px;border-top:1px solid #eee';
+  return `<div style="${frame}"><div style="font-size:13px;color:#555;margin-bottom:10px">תרשמו למעקב אחרינו</div>`
+    + `<div style="font-size:15px">${links.join(' <span style="color:#ccc">·</span> ')}</div></div>`;
+}
+// socialInBody — התבנית כוללת {social}, ולכן הפוטר לא חוזר עליה.
+function tplFooterHtml(socialInBody) {
+  const social = socialInBody ? '' : tplSocialRowHtml(false);
   return social + `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px;line-height:1.6">אם המייל הזה נחת בתיקיית הספאם/קידומים, נשמח שתסמנו אותו כ"לא ספאם" — כך מיילים עתידיים יגיעו ישר לתיבה הראשית.<br>Yellow Zone · תל אביב, ישראל</div>`;
 }
 function tplLinkButtonHtml(link, label) {
@@ -11239,6 +11248,7 @@ function tplRichBodyHtml(bodyTemplate, vars, linkLabel) {
     if (trimmed === '{code}' && vars.code) return tplCodeBlockHtml(vars.code, !hasLoginButton);
     if (trimmed === '{link}' && vars.link) return tplLinkButtonHtml(vars.link, linkLabel || 'כניסה');
     if (trimmed === '{login_link}') return tplLoginButtonHtml();
+    if (trimmed === '{social}') return tplSocialRowHtml(true);
     return `<p style="margin:0 0 16px 0">${tplLinkifyUrls(tplApplyBold(esc(applyBroadcastVars(para, vars)))).replace(/\n/g, '<br>')}</p>`;
   }).join('');
 }
@@ -11279,10 +11289,10 @@ function autoTemplatePreviewHtml(item) {
           <div class="broadcast-preview-subject">${esc(applyBroadcastVars(subject, vars))}</div>
         </div>
         <div dir="rtl" style="font-family:Arial,sans-serif;padding:16px 24px;background:#fff">
-          ${tplBoundedColumnHtml(tplBrandHeaderHtml() + tplRichBodyHtml(body, vars, AUTO_TPL_LINK_LABEL[item.id]))}${tplFooterHtml()}
+          ${tplBoundedColumnHtml(tplBrandHeaderHtml() + tplRichBodyHtml(body, vars, AUTO_TPL_LINK_LABEL[item.id]))}${tplFooterHtml(body.split('\n\n').some(p => p.trim() === '{social}'))}
         </div>
       </div>
-      <div class="broadcast-preview-note">נתוני-דוגמה בלבד, שום מייל לא נשלח. {code}/{link} מקבלים את העיצוב הממותג רק כשהם בפסקה נפרדת (שורה ריקה משני הצדדים)</div>
+      <div class="broadcast-preview-note">נתוני-דוגמה בלבד, שום מייל לא נשלח. {code} / {link} / {login_link} / {social} מקבלים את העיצוב הממותג רק כשהם בפסקה נפרדת (שורה ריקה משני הצדדים). {social} בגוף מבטל אוטומטית את שורת הרשתות בפוטר</div>
     </div>`;
 }
 window.updateTemplatePreview = function(id) {
