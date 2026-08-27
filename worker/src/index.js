@@ -212,6 +212,9 @@ async function handleResendCode({ phone }, env) {
     if (!lastSent || Date.now() - lastSent.getTime() >= cooldownMs) {
       await firestorePatch(env, accessToken, `members/${found.id}`, {
         loginCodeEmailStatus: 'pending',
+        // §306 — מבדיל בין "שכחתי קוד" לאישור ראשוני. הסריקה בוחרת לפיו את התבנית,
+        // ומאפסת אותו אחרי השליחה כדי שאישור-מחדש עתידי יקבל שוב את מכתב-הפתיחה.
+        loginCodeEmailKind: 'resend',
         lastCodeResendAt: new Date(),
       });
     }
@@ -500,15 +503,23 @@ async function runEmailSweeps(env) {
         });
         handledBusinessIds.add(business.id);
       } else {
+        // §306 — שני מכתבים נפרדים: אישור ראשוני מול "שכחתי קוד". נפילה-לאחור לתבנית
+        // הראשית אם השדות החדשים עוד לא נשמרו ב-Firestore (מסמך התבניות נערך ידנית).
+        const isResend = m.fields.loginCodeEmailKind === 'resend';
+        const loginTpl = isResend
+          ? { subject: templates.resendSubject || templates.loginSubject, body: templates.resendBody || templates.loginBody }
+          : { subject: templates.loginSubject, body: templates.loginBody };
         await sendLoginCodeEmail(env, {
           toEmail: m.fields.email,
           toName: m.fields.firstName,
           code: await loginCodeFor(env, accessToken, m.id),   // §248
-          tpl: { subject: templates.loginSubject, body: templates.loginBody },
+          tpl: loginTpl,
+          kind: isResend ? 'resend' : 'welcome',
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
           loginCodeEmailStatus: 'sent',
           loginCodeEmailSentAt: new Date(),
+          loginCodeEmailKind: null,
         });
       }
     } catch (e) {
