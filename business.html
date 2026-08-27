@@ -785,6 +785,10 @@
           </div>
         </div>
         <div class="field-error" id="err-bizType">נא לבחור סוג עסק</div>
+        <!-- §301 — לחיצה שלישית הייתה `return` שקט: הכרטיס לא נבחר ושום דבר לא הוסבר.
+             זה הדבר שנראה הכי "מבולבל" בטופס. עכשיו יש משוב, והוא נעלם לבד אחרי 4 שניות
+             כי זו תגובה לפעולה ולא שגיאת-טופס שצריך לתקן. -->
+        <div class="field-error" id="bizTypeLimitNote" style="display:none">אפשר לבחור עד 2 סוגים. כדי לבחור אחר — הסירו קודם אחד מהמסומנים.</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:8px;">הבחירה קובעת אילו שדות נבקש בשלב הבא.</div>
       </div>
 
@@ -2271,7 +2275,12 @@
       name:             document.getElementById('bizName').value.trim(),
       desc:             document.getElementById('bizDesc').value.trim(),
       branches:         selectedBizTypes.has('physical') ? getBranches() : [],
-      regions:          [...document.querySelectorAll('#regionGrid .region-chip.selected')].map(c => c.textContent.trim()),
+      // §301 — מותנה ב-'pro', בדיוק כמו `branches` שמותנה ב-'physical'. syncBizTypeUI כבר
+      // מנקה את הצ'יפים בהסרת המסלול, אבל התנאי כאן הוא ההגנה האמיתית: הוא לא תלוי בכך
+      // שמישהו זכר לנקות. **זה היה הבאג** — סניפים היו מוגנים ואזורים לא.
+      regions:          selectedBizTypes.has('pro')
+                          ? [...document.querySelectorAll('#regionGrid .region-chip.selected')].map(c => c.textContent.trim())
+                          : [],
       phone:            normalizePhone(document.getElementById('bizPhone').value.trim()),
       whatsapp:         normalizePhone(document.getElementById('bizWhatsapp').value.trim()),
       serviceEmail:     document.getElementById('bizServiceEmail').value.trim(),
@@ -2519,16 +2528,51 @@
   let selectedBizTypes = new Set();
   const bizTypeLabels = { physical: 'חנות פיזית', online: 'אונליין', pro: 'בעל מקצוע / נותן שירות' };
 
+  // ── §301 — בחירת סוג-עסק: לחיצה משנה **רק את הקבוצה**, וכל השאר נגזר ממנה ────────────────
+  // המשתמש: *"אם בוחרים עוד אחד ואז מסירים, זה מתחיל להתבלבל."* שלושה כשלים אמיתיים היו כאן,
+  // וכולם נבעו מאותו שורש: הפונקציה **הראתה והסתירה** אזורים בטופס, אבל אף פעם לא ניקתה את
+  // מה שכבר נבחר בתוכם. הסתרה אינה ביטול.
+  //
+  //   1. אזורי-שירות (מסלול "בעל מקצוע"): הצ'יפים נשארו מסומנים ב-DOM אחרי הסרת המסלול,
+  //      ובשליחה הם נאספו **בלי שום תנאי** (בניגוד לסניפים, שכן היו מוגנים) — כלומר עסק
+  //      שהתחרט נשלח עם אזורי-שירות שהוא כבר לא סימן.
+  //   2. "בחנות הפיזית" כדרך-מימוש: נשאר מסומן בהטבה גם אחרי שהוסרה החנות הפיזית — הטבה
+  //      שנממשת במקום שלא קיים.
+  //   3. הלחיצה השלישית (תקרת שני סוגים) לא עשתה **כלום** — בלי סימן, בלי הודעה. זה הדבר
+  //      שנראה הכי "מבולבל": לוחצים והמסך לא מגיב.
   function selectBizType(type) {
+    const card = document.querySelector(`.biz-type-card[data-type="${type}"]`);
     if (selectedBizTypes.has(type)) {
       selectedBizTypes.delete(type);
-      document.querySelector(`.biz-type-card[data-type="${type}"]`).classList.remove('selected');
     } else {
-      if (selectedBizTypes.size >= 2) return;
+      if (selectedBizTypes.size >= 2) return flashBizTypeLimit();
       selectedBizTypes.add(type);
-      document.querySelector(`.biz-type-card[data-type="${type}"]`).classList.add('selected');
     }
+    if (card) card.classList.toggle('selected', selectedBizTypes.has(type));
+    // הלחיצה הצליחה — הסיבה שבגללה הוצגה הודעת-התקרה כבר לא קיימת. בלי זה היא נשארת על
+    // המסך עד שהטיימר גומר, כלומר מאשימה את המשתמש בדיוק אחרי שהוא פינה מקום.
+    hideBizTypeLimit();
+    syncBizTypeUI();
+  }
 
+  // ההודעה מוצגת רק כשבאמת נחסמה לחיצה, ונעלמת לבד — היא משוב לפעולה, לא שגיאת-טופס.
+  let bizTypeLimitTimer = null;
+  function flashBizTypeLimit() {
+    const el = document.getElementById('bizTypeLimitNote');
+    if (!el) return;
+    el.style.display = 'block';
+    clearTimeout(bizTypeLimitTimer);
+    bizTypeLimitTimer = setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+  function hideBizTypeLimit() {
+    clearTimeout(bizTypeLimitTimer);
+    const el = document.getElementById('bizTypeLimitNote');
+    if (el) el.style.display = 'none';
+  }
+
+  // כל מה שתלוי בסוגי-העסק נגזר כאן מחדש, בכל שינוי. **אין נתיב שמעדכן חלק מזה בנפרד** —
+  // זו הייתה הסיבה שהסרה השאירה שאריות: כל ענף טיפל בהצגה שלו ואף אחד לא טיפל בביטול.
+  function syncBizTypeUI() {
     const hasPhysical = selectedBizTypes.has('physical');
     const hasOnline   = selectedBizTypes.has('online');
     const hasPro      = selectedBizTypes.has('pro');
@@ -2543,14 +2587,57 @@
     document.getElementById('bizPhone-opt').style.display = isOnlineOnly ? 'inline' : 'none';
     document.getElementById('bizPhone-req').style.display = isOnlineOnly ? 'none' : 'inline';
 
-    const tagEl = document.getElementById('bizTypeTag');
-    if (selectedBizTypes.size) { tagEl.style.display = 'inline-block'; tagEl.textContent = [...selectedBizTypes].map(t => bizTypeLabels[t]).join(' + '); }
-    else { tagEl.style.display = 'none'; }
+    // ── ניקוי מה שכבר לא רלוונטי ─────────────────────────────────────────────────────────
+    // אזורי-שירות שייכים אך ורק למסלול "בעל מקצוע". בלי זה הם נשארים מסומנים מתחת למסך
+    // ונשלחים בפועל. גם הודעת-השגיאה שלהם מנוקה — אחרת היא נשארת תלויה על אזור מוסתר.
+    if (!hasPro) {
+      document.querySelectorAll('#regionGrid .region-chip.selected').forEach(c => c.classList.remove('selected'));
+      const regionErr = document.getElementById('err-bizRegions');
+      if (regionErr) regionErr.style.display = 'none';
+      document.getElementById('regionGrid')?.classList.remove('error-highlight');
+    }
+    // "בחנות הפיזית" בלי חנות פיזית היא סתירה. מנוקה מכל ההטבות, לא רק מהראשונה — הן
+    // מחזיקות מצב נפרד (discRedeemMode / redeemMode2 / redeemMode3), וניקוי חלקי היה
+    // משאיר בדיוק את אותו באג בהטבה השנייה.
+    if (!hasPhysical) {
+      dropRedeemMode('physical');
+    }
 
+    const tagEl = document.getElementById('bizTypeTag');
+    // ⚠️ הטקסט מנוקה ולא רק מוסתר: תג מוסתר שמחזיק ערך ישן הוא בדיוק סוג-השארית שגרם
+    // לבאג הזה מלכתחילה. אם משהו יציג אותו שוב בעתיד, הוא יציג ריק ולא בחירה שכבר בוטלה.
+    if (selectedBizTypes.size) { tagEl.style.display = 'inline-block'; tagEl.textContent = [...selectedBizTypes].map(t => bizTypeLabels[t]).join(' + '); }
+    else { tagEl.style.display = 'none'; tagEl.textContent = ''; }
+
+    // הודעת "בחרו סוג" מנוקה כשיש בחירה, ו**חוזרת להיות רלוונטית** כשמסירים הכל — לכן
+    // ההסתרה מותנית. קודם היא רק הוסתרה ולעולם לא הוחזרה, כך שמי שהסיר את הכל ראה טופס
+    // תקין-למראה בלי בחירה בכלל.
     const err = document.getElementById('err-bizType');
     if (err && selectedBizTypes.size > 0) {
       err.style.display = 'none';
       document.getElementById('bizTypeGrid').classList.remove('error-highlight');
+    }
+  }
+
+  // מסיר דרך-מימוש מכל ההטבות ומרנדר מחדש רק את מה שבאמת השתנה.
+  // ⚠️ אם ההטבה נשארת בלי אף דרך-מימוש — נופלים ל-'sale', שתקף לכל סוג עסק. רשימה ריקה
+  // הייתה מפילה את הוולידציה על שדה שהמשתמש לא נגע בו.
+  function dropRedeemMode(key) {
+    const i = discRedeemMode.indexOf(key);
+    if (i !== -1) {
+      discRedeemMode.splice(i, 1);
+      if (!discRedeemMode.length) discRedeemMode.push('sale');
+      renderRedeemModeGrid();
+      onDiscBuilderInput();
+    }
+    for (const n of [2, 3]) {
+      const mode = getRedeemModeN(n);
+      const j = mode.indexOf(key);
+      if (j === -1) continue;
+      mode.splice(j, 1);
+      if (!mode.length) mode.push('sale');
+      renderRedeemModeGridN(n);
+      onDiscBuilderInputN(n);
     }
   }
 
