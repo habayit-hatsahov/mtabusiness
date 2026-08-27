@@ -1054,7 +1054,9 @@
 
   // ── §297 — קובץ בעייתי נתפס ברגע הבחירה, לא אחרי השליחה ─────────────────────────────────
   // ארבעת הקלטים הם ארבעת מסלולי-האימות (§284). הבדיקה עצמה במודול משותף עם business.html.
-  attachImageGuard(['fansPhoto', 'passFile', 'emailFile', 'standsFile']);
+  // §304 — אבן-הדרך נספרת רק על קובץ שעבר את הבדיקה: "ניסה לבחור והקובץ נדחה" הוא
+  // בדיוק ההפך מ"התקדם", והיה מסתיר את הצניחה שאנחנו מחפשים.
+  attachImageGuard(['fansPhoto', 'passFile', 'emailFile', 'standsFile'], null, () => markStep('proof'));
 
   // ══ §303 — פאנל העזרה ═══════════════════════════════════════════════════════════════════
   // אוהד שלא מצליח להירשם הוא היום בלתי-נראה לגמרי: אין רשומה, אין אירוע, אין שם. הפאנל
@@ -1069,7 +1071,27 @@
     if (!el || !el.id || !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
     if (el.closest('#helpOverlay')) return;      // שדות הפאנל עצמו אינם "המקום שנתקעתי בו"
     helpLastField = el.id;
+    // §304 — נגיעה באחד משדות הזהות = חצה את אבן-הדרך הראשונה
+    if (['firstName', 'lastName', 'phone', 'email'].includes(el.id)) markStep('identity');
   });
+
+  // ══ §304 — איפה עוזבים ══════════════════════════════════════════════════════════════════
+  // 72% פותחים ולא שולחים, **בלי אף אירוע כשל** — כלומר אין לנו מושג אם התחרטו או נתקעו,
+  // ואיפה. כל אבן-דרך נרשמת **פעם אחת** ברגע שנחצתה, ומכאן נגזר משפך: כמה הגיעו לכל שלב
+  // מול כמה שלחו בסוף. הצניחה בין שני שלבים היא התשובה.
+  //
+  // ⚠️ **בכוונה לא נמדד ב-unload/beforeunload.** כתיבה בזמן סגירת-דף אינה אמינה, ודווקא
+  // אצל מי שסוגר מהר — הנוטש, כלומר בדיוק מי שאנחנו מנסים למדוד — היא תיכשל הכי הרבה.
+  // מדידה מתקדמת תוך-כדי היא הדרך היחידה שנתונים על נוטשים באמת מגיעים.
+  //
+  // ⚠️ אבני-דרך ולא שדה-שדה: 15 אירועים לכל נרשם היו מציפים את המדידה בלי להוסיף דיוק.
+  // ארבעה שלבים מספיקים כדי לדעת **באיזה חלק של הטופס** נעצרים.
+  const _stepsSeen = new Set();
+  function markStep(id) {
+    if (_stepsSeen.has(id)) return;
+    _stepsSeen.add(id);
+    logEvent('formStep', { blockId: 'fanRegister', channel: id });
+  }
 
   const HELP_OPENERS = {
     question:   'מלאו שלושה פרטים ונחזור אליכם. אין צורך למלא את טופס ההרשמה מחדש — מה שמילאתם נשמר.',
@@ -1713,6 +1735,10 @@
     document.getElementById('subNoBtn').classList.toggle('on', val === 'no');
     handleSubscriber(val);
     vf('isSubscriber', true); // בחירה ידנית — מנקה שגיאה קודמת אם הייתה
+    // §304 — ⚠️ ללא-מנוי אין בורר-מסלול בכלל (המסלול שלו קבוע: תמונה מהיציע). בלי השורה
+    // הזאת הוא היה נראה במשפך כמי ש"לא הגיע לשלב האימות", וזו מסקנה שגויה לחלוטין.
+    markStep('subscriber');
+    if (val === 'no') markStep('route');
   }
 
   // ── ענף (כדורגל/כדורסל/שניהם) — קובע את תווית/רשימת שדה המיקום, ואם "שניהם" נבחר
@@ -1802,6 +1828,7 @@
     // קליק בתוך גוף-כרטיס שכבר פתוח הוא אינטראקציה עם שדה, לא בחירה מחדש
     if (ev && ev.target.closest && ev.target.closest('.route-body') && document.getElementById('verifyRoute').value === r) return;
     document.getElementById('verifyRoute').value = r;
+    markStep('route');   // §304 — בחר מסלול-אימות
     Object.keys(ROUTES).forEach(k => {
       document.getElementById('route-' + k).classList.toggle('on', k === r);
       const err = document.getElementById(ROUTE_ERR[k].errId);

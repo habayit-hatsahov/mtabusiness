@@ -12410,6 +12410,52 @@ function regAbandonStats() {
   return { opened: openedIds.length, abandoned: openedIds.filter(s => !submitted.has(s)).length };
 }
 
+// ── §304 — משפך ההרשמה: איפה עוזבים ─────────────────────────────────────────────────────
+// "72% נטשו" הוא מספר שאי אפשר לפעול לפיו. הצניחה **בין שני שלבים סמוכים** היא כן:
+// היא מצביעה על החלק בטופס שעוצר אנשים. נספרים סשנים ייחודיים, לא אירועים — אדם שנגע
+// בשדה חמש פעמים הוא עדיין אדם אחד.
+const FAN_FUNNEL_STEPS = [
+  { key: 'opened',     label: 'פתחו את הטופס' },
+  { key: 'identity',   label: 'התחילו למלא פרטים' },
+  { key: 'subscriber', label: 'ענו אם הם מנויים' },
+  { key: 'route',      label: 'הגיעו לשלב האימות' },
+  { key: 'proof',      label: 'בחרו תמונת אימות' },
+  { key: 'submitted',  label: 'שלחו בפועל' },
+];
+function fanFunnelStats() {
+  const S = {}; FAN_FUNNEL_STEPS.forEach(s => S[s.key] = new Set());
+  (platformEvents || []).forEach(e => {
+    if (!e.sessionId) return;
+    if (e.type === 'formOpen' && (e.blockId === 'fanRegister' || e.blockId === 'joinModal')) S.opened.add(e.sessionId);
+    if (e.type === 'formSubmit' && e.blockId === 'fanRegister') S.submitted.add(e.sessionId);
+    if (e.type === 'formStep' && e.blockId === 'fanRegister' && S[e.channel]) S[e.channel].add(e.sessionId);
+  });
+  // ⚠️ סשן ששלח נספר גם בכל השלבים שלפניו, גם אם האירוע עצמו חסר (נרשם לפני §304, או
+  // אבד ברשת). בלי זה המשפך היה מציג "שלחו יותר ממה שהגיעו לשלב האימות" — מספר שנראה
+  // כמו באג ומאבד את אמון הקורא.
+  const order = FAN_FUNNEL_STEPS.map(s => s.key);
+  for (let i = order.length - 1; i > 0; i--)
+    for (const id of S[order[i]]) S[order[i - 1]].add(id);
+  return FAN_FUNNEL_STEPS.map((s, i) => {
+    const n = S[s.key].size;
+    const prev = i ? S[order[i - 1]].size : n;
+    return { ...s, n, dropped: i ? prev - n : 0, pct: prev ? Math.round(n / prev * 100) : 0 };
+  });
+}
+function fanFunnelHtml() {
+  const rows = fanFunnelStats();
+  if (!rows[0].n) return '';
+  // השלב עם הצניחה הגדולה ביותר מסומן — הוא התשובה לשאלה "איפה עוזבים".
+  const worst = rows.slice(1).reduce((a, b) => (b.dropped > a.dropped ? b : a), rows[1] || rows[0]);
+  return `<div class="mail-issues-note" style="line-height:1.9">
+    <b>משפך ההרשמה — איפה עוזבים</b> (30 יום, סשנים ייחודיים)<br>
+    ${rows.map((r, i) => `${esc(r.label)}: <b>${r.n}</b>${
+      i ? ` <span style="opacity:.7">(${r.pct}% מהשלב הקודם${r.dropped ? `, ${r.dropped} עזבו` : ''})</span>` : ''
+    }${(i && r === worst && r.dropped) ? ' <span class="warn-badge">הנשירה הגדולה</span>' : ''}`).join('<br>')}
+    <br><span style="opacity:.7">שלב נמדד פעם אחת לכל סשן, בזמן אמת — לא בסגירת הדף (כתיבה ברגע סגירה אינה אמינה, ודווקא אצל מי שסוגר מהר).</span>
+  </div>`;
+}
+
 function regIssueList() {
   // §302 — מה שטופל יורד לתחתית הרשימה ולא נמחק ממנה. הסתרה מלאה הייתה "מנקה" יפה אבל
   // גם מוחקת את הדרך לבטל סימון שגוי; המונה בקובייה כבר סופר רק את הפתוחים, וזה מה
@@ -12509,9 +12555,11 @@ function regIssuesTableHtml(list) {
     ? '<div class="mail-issues-note">טוען כשלי-שליחה מתוך המדידה… ההצלבות למטה כבר מלאות.</div>'
     : platformStatsError
       ? `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(platformStatsError)}) — מוצגות הצלבות בלבד.</div>`
+      // §304 — המשפט "X נטשו" נשאר כסיכום, ומתחתיו המשפך שאומר **איפה** הם עזבו.
+      // "72% נטשו" הוא מספר שאי אפשר לפעול לפיו; הצניחה בין שני שלבים סמוכים כן.
       : `<div class="mail-issues-note">הצלבה אוטומטית בין הצהרות האוהדים + כשלי שליחה אמיתיים מ-30 הימים האחרונים.${
           ab.opened ? ` בנוסף: ${ab.opened} פתחו את טופס ההרשמה ו-${ab.abandoned} מהם לא שלחו — נטישה, לא בהכרח תקלה, ולכן לא מופיעה כשורות.` : ''
-        }</div>`;
+        }</div>${fanFunnelHtml()}`;
   if (!list.length) {
     // §296 — "אין תקלות 🎉" רק כשבאמת בדקנו. כשהאירועים עוד בדרך זו הכרזה שאין לה כיסוי.
     return `${loadingNote}<div class="placeholder-note">${

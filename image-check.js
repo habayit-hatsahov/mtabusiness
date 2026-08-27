@@ -88,8 +88,12 @@ export async function checkImageFile(file) {
  * @param {string[]} ids            מזהי אלמנטי input[type=file]
  * @param {(id:string)=>Element|null} [errorSlot]  איפה לשים את הודעת השגיאה. ברירת מחדל:
  *                                  אלמנט חדש מיד אחרי הקלט.
+ * @param {(id:string)=>void} [onValid]  נקרא **רק** אחרי שקובץ עבר את הבדיקה. קיים כדי
+ *                                  שמדידת-התקדמות (§304) תספור "בחר תמונה" ולא "ניסה
+ *                                  לבחור" — מאזין `change` חיצוני היה יורה גם על קובץ
+ *                                  פסול, כי הבדיקה כאן אסינכרונית ומנקה את הקלט אחריה.
  */
-export function attachImageGuard(ids, errorSlot) {
+export function attachImageGuard(ids, errorSlot, onValid) {
   for (const id of ids) {
     const input = document.getElementById(id);
     if (!input || input.dataset.imgGuard) continue;
@@ -113,7 +117,7 @@ export function attachImageGuard(ids, errorSlot) {
       // תמונה גדולה לוקחת מאות מ"ש לפענוח — בלי השורה הזאת נראה כאילו כלום לא קרה.
       show('בודקים את הקובץ…', false);
       const bad = await checkImageFile(file);
-      if (!bad) return show('');
+      if (!bad) { show(''); if (onValid) { try { onValid(id); } catch (_) {} } return; }
       input.value = '';
       show(IMAGE_CHECK_MESSAGES[bad], true);
     });
