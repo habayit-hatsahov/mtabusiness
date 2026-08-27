@@ -13126,6 +13126,32 @@ await new Promise(resolve => {
   });
 });
 
+// ── שמירה על תוקף הזהות אחרי הטעינה ────────────────────────────────────────────────────────
+// הגארד למעלה רץ פעם אחת בלבד. כל האתר חולק getAuth() יחיד (firebase-config.js) וההזדהות
+// נשמרת ב-IndexedDB לכל הדומיין — כלומר סשן שפג, יציאה, או כניסה כמשתמש אחר **בטאב אחר**
+// משנים את הזהות גם בטאב הזה, בלי שום סימן על המסך. התוצאה: הדף נראה תקין לחלוטין וכל
+// כתיבה נדחית ב-permission-denied, שהמשתמש רואה כ"לא נשמר, יש שגיאה" בלי שום רמז לסיבה.
+// לכן ההאזנה נמשכת, ושינוי-זהות חוסם את המסך בהודעה מפורשת במקום להיכשל בשקט.
+onAuthStateChanged(auth, user => {
+  if (user && user.uid === CURRENT_ADMIN.uid) return;
+  if (document.getElementById('adminSessionLostOverlay')) return;
+  const who = user ? 'המערכת מזהה עכשיו משתמש אחר' : 'החיבור שלך למערכת פג';
+  const box = document.createElement('div');
+  box.id = 'adminSessionLostOverlay';
+  box.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(8,12,20,.92);display:flex;align-items:center;justify-content:center;padding:24px;font-family:inherit';
+  box.innerHTML = `
+    <div dir="rtl" style="max-width:420px;background:#fff;border-radius:16px;padding:26px;text-align:center">
+      <div style="font-size:19px;font-weight:900;color:#101828;margin-bottom:10px">${who}</div>
+      <div style="font-size:14px;color:#475467;line-height:1.6;margin-bottom:18px">
+        שינויים שתבצע מכאן <b>לא יישמרו</b>. יש להתחבר מחדש כדי להמשיך.
+      </div>
+      <button style="background:#FFDE00;color:#16130a;font-weight:900;border:none;border-radius:12px;
+                     padding:12px 26px;font-size:15px;cursor:pointer"
+              onclick="location.reload()">רענון והתחברות מחדש</button>
+    </div>`;
+  document.body.appendChild(box);
+});
+
 let _bizLoaded = false, _fanLoaded = false;
 function maybeInitialRender() { if (_bizLoaded && _fanLoaded) renderAll(); }
 
