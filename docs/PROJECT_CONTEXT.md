@@ -11355,3 +11355,57 @@ allow create: if <whitelist + תקרות + status=='new'>
 **חוקים:** `'formStep'` נוסף לרשימת הטיפוסים המותרים. נפרס — ruleset `2044d082`; גלגול-לאחור: `6a461db2`.
 
 `sw.js`: v35 → **v36**.
+
+---
+
+## 305. ✅ תמונת כרטיס-השיתוף — הלוגו המלא במקום ה-Z החתוך (2026-08-27)
+
+**הדיווח.** המשתמש הכין פוסט בפייסבוק עם הקישור, והכרטיס שנוצר הראה **Z ענק וחתוך** במקום הלוגו.
+בקשתו: *"את התמונה פה ללוגו של YELLOWZONE הגדול עם כל המילה"*.
+
+### השורש
+
+`og:image` מ-§266 היה `images/yellowzone-mark-square.png` — **1080×1080, ריבוע**. פייסבוק וּוואטסאפ
+מציגים את כרטיס-הקישור ביחס **1.91:1**, ולכן הם חותכים מרובע את החלק העליון והתחתון ומגדילים את
+מה שנשאר. הסימן הריבועי (Z בלבד, בלי המילה) הפך לרסיס-Z מוגדל. זו לא תקלה בתמונה — זו תמונה
+ביחס-גובה-רוחב שגוי לשימוש הזה.
+
+### התיקון
+
+נוצר נכס חדש **`images/og-cover.png`** — 1200×630 (בדיוק 1.91:1), רקע `#FFCE00` (הצהוב של המותג,
+נדגם מ-`yellowzone-mark-square.png`) והלוגו האופקי `images/yellowzone-logo-horizontal.png` ממורכז
+ברוחב 1000px. אין חיתוך בשום משטח, והמילה **YellowZone** נקראית במלואה.
+
+> הפס הצהוב שבתוך ה-Z מתמזג עם הרקע ונראה כחריץ — בדיוק כמו בסימן הריבועי המקורי. מכוון.
+
+**התגיות עודכנו בשלושת הדפים** — `index.html`, `home.html`, `welcome.html` (אין ביניהם מקור-אמת
+משותף, ר' §268):
+
+```html
+<meta property="og:image"        content="https://yellowzone.co.il/images/og-cover.png?v=2"/>
+<meta property="og:image:width"  content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:type"   content="image/png"/>
+<meta property="og:image:alt"    content="Yellow Zone"/>
+<meta name="twitter:card"        content="summary_large_image"/>
+<meta name="twitter:image"       content="https://yellowzone.co.il/images/og-cover.png?v=2"/>
+```
+
+`twitter:card=summary_large_image` נוסף כי בלעדיו טוויטר/X מציג כרטיס-מוקטן עם תמונה ריבועית —
+אותה בעיה בדיוק, במשטח אחר.
+
+### ⚠️ מטמון הסורקים — הפריסה לבדה לא מספיקה
+
+פייסבוק וּוואטסאפ שומרים את תגיות-ה-OG **לפי כתובת**, לשבועות. אחרי הפריסה:
+
+1. **פייסבוק** — [Sharing Debugger](https://developers.facebook.com/tools/debug/), להזין את הכתובת
+   וללחוץ **Scrape Again**. לעשות זאת לשלוש הכתובות: `yellowzone.co.il`, `/welcome.html`, `/home.html`.
+2. **וואטסאפ** — אין כלי-רענון. הקישור הישן יציג את הכרטיס הישן עוד זמן-מה; שליחה בצ'אט חדש או
+   הוספת `?x=1` לכתובת מייצרת כרטיס טרי לבדיקה.
+
+`sw.js` **לא** עודכן — הוא רשת-תחילה (ר' ההערה בשורה 28), והסורקים ממילא אינם עוברים דרכו.
+
+השימושים האחרים ב-`yellowzone-mark-square.png` (אייקון-הצלחה בטפסים, לוגו במיילים של Brevo,
+`TPL_LOGO_URL`) **נשארו** — שם המסגרת ריבועית והתמונה נכונה.
+
+**סטטוס:** הקוד והנכס מוכנים ב-ריפו. ⏳ ממתין ל-push + Scrape Again בפייסבוק.
