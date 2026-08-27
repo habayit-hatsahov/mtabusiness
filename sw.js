@@ -2,7 +2,7 @@
 // שינוי אחר שינוי. הניווטים כאן הם network-first עם timeout של 1.5 שניות (ר' fetch למטה),
 // ובמובייל סלולרי זה נופל למטמון בקלות — כלומר מכשיר יכול היה להמשיך להריץ HTML ישן
 // לאורך כל סבבי התיקון, ולהיכשל מסיבה שכבר תוקנה. שינוי השם מפנה את המטמון הישן.
-const CACHE_NAME = 'yz-shell-v23';
+const CACHE_NAME = 'yz-shell-v24';
 const PRECACHE_URLS = ['home.html', 'manifest.json', 'firebase-config.js'];
 
 self.addEventListener('install', event => {

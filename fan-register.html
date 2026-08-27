@@ -243,14 +243,9 @@
     }
     .warn-box.neutral { background: #F1F1EC; border-color: #E0E0DA; color: #4A5570; }
 
-    /* ── מצב ההעלאה (§288) — מוצג מיד, כדי שלא יהיה חלון-זמן שקט שבו הכל "נראה גמור" ── */
-    .proof-status {
-      display: flex; align-items: center; justify-content: center; gap: 9px;
-      margin-top: 14px; padding: 11px 13px; border-radius: var(--r-field);
-      background: var(--input-bg); border: 1px solid var(--input-border);
-      font-size: 12.5px; font-weight: 600; color: var(--blue-mid); line-height: 1.45;
-    }
-    .proof-status.ok { background: #E8F6ED; border-color: #B7E0C4; color: #166534; }
+    /* §288 הוסיף כאן .proof-status — שורת-מצב על מסך ההצלחה. §292 ביטל אותה: ההעלאה כבר
+       לא רצה מאחורי המסך אלא לפני השליחה, ולכן אין על מה לדווח שם. הכלל שנשאר: מסך ההצלחה
+       הוא סופי — כל דבר שממשיך לרוץ אחריו הוא באג-חוויה, לא פיצ'ר. */
 
     /* ── כשל העלאת התמונה (§285) — הודעה שנותנת פעולה, לא הבטחה שנחזור אליו ── */
     .proof-fail-note {
@@ -736,7 +731,7 @@
 
 <script type="module">
   import { db, getStorageLazy, firebaseConfig } from './firebase-config.js';
-  import { collection, addDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+  import { collection, doc, addDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
   import { ref, uploadBytes } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
@@ -946,6 +941,26 @@
       img.onerror = () => done(false);
       img.src = url;
     });
+  }
+
+  // דחיסה + בדיקת-תקרה + העלאה, כיחידה אחת. הופרד מגוף השליחה כדי שנתיב-ההמתנה יישאר קריא.
+  async function uploadProof(file, memberId) {
+    const f = await compressProofToFile(file);
+    window.__lastProofFile = { size: f.size, type: f.type };   // לאבחון בכשל, ר' §290
+    // הדחיסה נכשלה **וגם** המקור חוצה את התקרה של storage.rules — ההעלאה תידחה בוודאות.
+    // עדיף להיכשל מיד מאשר להריץ העלאה ארוכה שסופה ידוע מראש.
+    if (f.size > PROOF_MAX_BYTES) throw Object.assign(new Error('too-large'), { code: 'file-too-large' });
+    return uploadFile(f, `members/proofs/${memberId}_fan`);
+  }
+
+  // גבול-זמן קשיח. מרגע ש-§292 הכניס את ההעלאה אל תוך נתיב-ההמתנה של השליחה, העלאה שלא
+  // חוזרת (ולא נכשלת) מקפיאה את **ההרשמה עצמה** — וזה בדיוק סוג הכשל השקט שכבר עבר עלינו.
+  function withTimeout(p, ms, code) {
+    let t;
+    return Promise.race([
+      p.finally(() => clearTimeout(t)),
+      new Promise((_, rej) => { t = setTimeout(() => rej(Object.assign(new Error('timeout'), { code })), ms); }),
+    ]);
   }
 
   async function uploadFile(file, path) {
@@ -1302,6 +1317,51 @@
       return;
     }
 
+    // ── §292 — התמונה עולה **לפני** השליחה, לא אחריה ────────────────────────────────────────
+    // עד עכשיו ההרשמה נגמרה, מסך ההצלחה עלה, ורק אז רצה מאחוריו שורת-מצב "שומרים את תמונת
+    // האימות…". המשתמש: *"אי אפשר שהפעולה הזאת תקרה לפני השליחה? זה לא מקצועי"* — צודק.
+    // הצלחה שממשיכה לעבוד אינה הצלחה, ומי שסגר את הדף (התנהגות סבירה — נאמר לו שהכל הסתדר)
+    // איבד את התמונה. עכשיו הכל קורה בזמן שהנרשם ממתין ממילא, ומה שהוא רואה בסוף הוא סופי.
+    //
+    // מזהה הרשומה נוצר מקומית — doc() מייצר מזהה **בלי לפנות לרשת ובלי ליצור מסמך** — כדי
+    // שנתיב-התמונה יהיה ידוע לפני שהמסמך קיים. storage.rules לא דורשות שמסמך החבר יהיה קיים
+    // (בניגוד לנתיב העסקים, שכן בודק status=='pending'), ולכן הסדר הזה חוקי.
+    const memberRef = doc(collection(db, 'members'));
+
+    // ── §284 — קובץ ההוכחה מגיע מארבעה מקורות אפשריים, לפי המסלול ──────────────────────────
+    // כולם נשמרים לאותו שדה photoProofUrl ולאותו נתיב-Storage: מה שמבדיל ביניהם הוא
+    // verifyMethod שכבר נשמר על הרשומה. שדה נפרד לכל סוג-ראיה היה מכריח את מרכז הניהול
+    // לבדוק ארבעה שדות כדי להציג תמונה אחת.
+    const PROOF_INPUT = { passScreenshot: 'passFile', purchaseEmail: 'emailFile', standsPhoto: 'standsFile' };
+    const proofInputId = isSub === 'no' ? 'fansPhoto' : PROOF_INPUT[routeVal];
+    const proofFile = proofInputId ? document.getElementById(proofInputId)?.files[0] : null;
+    let proofError = null;
+
+    if (proofFile) {
+      submitBtn.innerHTML = 'מעלה את התמונה... <span class="spinner"></span>';
+      try {
+        data.photoProofUrl = await withTimeout(uploadProof(proofFile, memberRef.id), 45000, 'upload-timeout');
+      } catch (err) {
+        // ⚠️ כשל בתמונה **אינו** עוצר את ההרשמה. הרשומה שווה יותר מהתמונה, ויש נתיב-גיבוי
+        // (כרטיס-המייל במסך ההצלחה). ההפך — נרשם שנחסם בגלל תמונה — הוא אובדן מוחלט.
+        console.error('❌ proof photo upload failed:', err.code, err.message);
+        proofError = err;
+        data.photoProofUrl = '';
+        // נרשם **כאן** ולא במסך ההצלחה: אחרת כשל-תמונה שאחריו נכשלה גם השליחה עצמה לא היה
+        // נמדד כלל, וזה בדיוק המקרה שהכי חשוב לראות. אם שניהם נכשלו — יירשמו שני אירועים,
+        // וזו התמונה הנכונה.
+        // §290 — האירוע נושא גם את **מאפייני הקובץ**, לא רק את הקוד: שלושה סבבים בוזבזו על
+        // ניחוש בין "הרשאות", "גודל" ו-"סוג-קובץ", כשכולם מחזירים אותו `storage/unauthorized`.
+        // ≤50 תווים (firestore.rules) — שדה חורג מוחק את כל האירוע בשקט.
+        const fInfo = (window.__lastProofFile || {});
+        logEvent('formError', {
+          blockId: 'fanRegister',
+          channel: `pu:${(err.code || '?').replace('storage/', '')}|${Math.round((fInfo.size || 0) / 1024)}k|${(fInfo.type || 'none').replace('image/', '')}`,
+        });
+      }
+      submitBtn.innerHTML = 'שולח... <span class="spinner"></span>';
+    }
+
     let memberDocRef = null;
 
     // שעוני-משוב. במכוון **לא** קוטעים את הכתיבה עצמה: Firestore כבר מחזיק את המוטציה בתור
@@ -1335,7 +1395,10 @@
         data.reviewFlagAt = serverTimestamp();
         data.duplicateOfId = existingId;
       }
-      memberDocRef = await addDoc(collection(db, 'members'), data);
+      // setDoc על מזהה שנוצר מראש, במקום addDoc — התמונה כבר בפנים ב-data, ואין יותר
+      // כתיבה שנייה (updateDoc) שיכולה להיכשל בנפרד ולהשאיר רשומה בלי קישור לתמונה.
+      await setDoc(memberRef, data);
+      memberDocRef = memberRef;
     } catch (err) {
       console.error('Firebase error:', err);
       clearTimeout(slowTimer);
@@ -1359,77 +1422,34 @@
     form.style.display = 'none';
     success.style.display = 'block';
 
-    // §281 — נרשם רק אחרי ש-addDoc הצליח בפועל, כלומר "בקשה שנקלטה" ולא "ניסיון לחיצה".
+    // §281 — נרשם רק אחרי שהכתיבה הצליחה בפועל, כלומר "בקשה שנקלטה" ולא "ניסיון לחיצה".
     // memberId מקשר את האירוע לרשומה עצמה, כך שאפשר לחבר משפך↔רשומת-אוהד.
     logEvent('formSubmit', { blockId: 'fanRegister', memberId: memberDocRef ? memberDocRef.id : null });
 
-    // ── §284 — קובץ ההוכחה מגיע עכשיו מארבעה מקורות אפשריים, לפי המסלול ────────────────────
-    // כולם נשמרים לאותו שדה photoProofUrl ולאותו נתיב-Storage: מה שמבדיל ביניהם הוא
-    // verifyMethod שכבר נשמר על הרשומה. שדה נפרד לכל סוג-ראיה היה מכריח את מרכז הניהול
-    // לבדוק ארבעה שדות כדי להציג תמונה אחת.
-    const PROOF_INPUT = { passScreenshot: 'passFile', purchaseEmail: 'emailFile', standsPhoto: 'standsFile' };
-    const proofInputId = isSub === 'no' ? 'fansPhoto' : PROOF_INPUT[routeVal];
-    const proofFile = proofInputId ? document.getElementById(proofInputId)?.files[0] : null;
-    if (proofFile && memberDocRef) {
-      // הדחיסה רצה כאן ולא לפני השליחה בכוונה: היא לוקחת זמן על תמונה גדולה, ואין שום סיבה
-      // להוסיף אותו לזמן ההמתנה של הנרשם. הבקשה כבר נקלטה, המסך כבר מציג הצלחה.
-      // ── §288 — ההעלאה מדווחת על עצמה מהשנייה הראשונה ─────────────────────────────────────
-      // עד עכשיו מסך ההצלחה נראה "גמור", וההעלאה רצה מאחוריו בשקט: דחיסה + עד 3 ניסיונות עם
-      // המתנה עולה = כמה שניות טובות. מי שסגר את הדף בינתיים (וזו התנהגות סבירה לגמרי — כתוב
-      // לו "הבקשה התקבלה") לא ראה לא הצלחה ולא כישלון. עכשיו יש שורת-מצב **לפני** שמתחילים,
-      // והיא הופכת ל-✓ או לכרטיס-השגיאה. המשתמש: "אם אני משתמש רגיל כבר יצאתי מהדף".
-      const upNote = document.createElement('div');
-      upNote.className = 'proof-status';
-      // §290 — בלי "אל תסגור/י את הדף". המשתמש: *"זה לא נראה טוב שרושמים לו לא לסגור כי
-      // מאמתים את התמונה שלו"* — צודק: זו הוראה מלחיצה שמטילה עליו אחריות על תקלה שלנו,
-      // בדיוק ברגע שבו אמרנו לו שהכל הסתדר. שורת-המצב נשארת (היא זו שמונעת את החלון-השקט
-      // שבו הכל "נראה גמור"), אבל בניסוח שקט שרק מדווח מה קורה.
-      upNote.innerHTML = '<span class="spinner"></span><span>שומרים את תמונת האימות…</span>';
-      success.appendChild(upNote);
-
-      compressProofToFile(proofFile)
-        .then(f => {
-          window.__lastProofFile = { size: f.size, type: f.type };   // לאבחון בכשל, ר' §290
-          // הדחיסה נכשלה **וגם** המקור חוצה את התקרה של storage.rules — ההעלאה תידחה בוודאות.
-          // עדיף להגיד את זה מיד מאשר להריץ העלאה ארוכה שסופה ידוע מראש.
-          if (f.size > PROOF_MAX_BYTES) throw Object.assign(new Error('too-large'), { code: 'file-too-large' });
-          return uploadFile(f, `members/proofs/${memberDocRef.id}_fan`);
-        })
-        .then(url => updateDoc(memberDocRef, { photoProofUrl: url }))
-        .then(() => {
-          upNote.className = 'proof-status ok';
-          upNote.innerHTML = '<span>✓</span><span>תמונת האימות נשמרה.</span>';
-        })
-        .catch(e => {
-          console.error('❌ proof photo upload failed:', e.code, e.message);
-          upNote.remove();
-          // ── §285 — האחריות עוברת אלינו, והנרשם מקבל פעולה ─────────────────────────────────
-          // עד עכשיו כתבנו לו "שלח לנו את התמונה בתשובה למייל שתקבל": זה מטיל עליו לחכות למייל
-          // שאולי יגיע ואולי לא, ומשאיר אותו בלי שום דבר לעשות עכשיו. עכשיו הוא יוזם — כפתור
-          // מייל עם הנושא והגוף כבר מוכנים (השם בפנים, כדי שנדע לשייך את התמונה לבקשה).
-          // ⚠️ הכתובת מוצגת גם כטקסט מלא ולא רק כקישור: `mailto:` לא תמיד רשום כ-handler
-          // ואז לחיצה עליו פשוט לא עושה כלום — קרה בפועל למנהל עצמו (ר' gmailComposeLink
-          // ב-admin-dashboard.html). מי שאצלו הכפתור מת עדיין רואה למי לכתוב.
-          // §290 — האירוע נושא עכשיו גם את **המאפיינים של הקובץ**, לא רק את הקוד. שלושת
-          // הסבבים הקודמים בזבזו זמן על ניחוש בין "הרשאות", "גודל" ו-"סוג-קובץ", כשכל
-          // שלושתם מחזירים בדיוק את אותו `storage/unauthorized`. ≤50 תווים (firestore.rules).
-          const fInfo = (window.__lastProofFile || {});
-          logEvent('formError', {
-            blockId: 'fanRegister',
-            channel: `pu:${(e.code || '?').replace('storage/', '')}|${Math.round((fInfo.size || 0) / 1024)}k|${(fInfo.type || 'none').replace('image/', '')}`,
-          });
-          const fullName = `${document.getElementById('firstName').value.trim()} ${document.getElementById('lastName').value.trim()}`.trim();
-          const subj = encodeURIComponent(`תמונת אימות — ${fullName}`);
-          const body = encodeURIComponent(`היי,\nנרשמתי ל-Yellow Zone בשם ${fullName} ותמונת האימות לא נשלחה בגלל תקלה.\nמצרף/ת אותה כאן.\n`);
-          const note = document.createElement('div');
-          note.className = 'proof-fail-note';
-          note.innerHTML =
-            '<div class="proof-fail-title">התמונה לא עלתה — אבל הבקשה שלך נקלטה</div>' +
-            '<div class="proof-fail-body">כדי שנוכל לאמת אותך, שלח/י לנו אותה במייל. אין צורך למלא את הטופס שוב.</div>' +
-            `<a class="proof-fail-btn" href="mailto:yellowzonemta@gmail.com?subject=${subj}&body=${body}">שליחת התמונה במייל</a>` +
-            '<div class="proof-fail-mail">yellowzonemta@gmail.com</div>';
-          success.appendChild(note);
-        });
+    // ── §292 — מסך ההצלחה סופי ─────────────────────────────────────────────────────────────
+    // כשההעלאה הצליחה אין כאן **שום דבר**: אין שורת-מצב, אין ספינר, אין "✓ נשמרה". התמונה
+    // כבר בתוך הרשומה עוד לפני שהמסך הזה עלה, ולכן דיווח עליה כאן היה רק רעש. הכרטיס למטה
+    // מופיע אך ורק בכשל אמיתי — וגם אז, אחרי שהבקשה כבר נקלטה.
+    if (proofError) {
+      // ── §285 — האחריות עוברת אלינו, והנרשם מקבל פעולה ───────────────────────────────────
+      // עד §285 כתבנו לו "שלח לנו את התמונה בתשובה למייל שתקבל": זה מטיל עליו לחכות למייל
+      // שאולי יגיע ואולי לא, ומשאיר אותו בלי שום דבר לעשות עכשיו. עכשיו הוא יוזם — כפתור
+      // מייל עם הנושא והגוף כבר מוכנים (השם בפנים, כדי שנדע לשייך את התמונה לבקשה).
+      // ⚠️ הכתובת מוצגת גם כטקסט מלא ולא רק כקישור: `mailto:` לא תמיד רשום כ-handler
+      // ואז לחיצה עליו פשוט לא עושה כלום — קרה בפועל למנהל עצמו (ר' gmailComposeLink
+      // ב-admin-dashboard.html). מי שאצלו הכפתור מת עדיין רואה למי לכתוב.
+      // (האירוע עצמו כבר נרשם ברגע הכשל, למעלה — כאן נשארת רק ההצגה לנרשם.)
+      const fullName = `${data.firstName} ${data.lastName}`.trim();
+      const subj = encodeURIComponent(`תמונת אימות — ${fullName}`);
+      const body = encodeURIComponent(`היי,\nנרשמתי ל-Yellow Zone בשם ${fullName} ותמונת האימות לא נשלחה בגלל תקלה.\nמצרף/ת אותה כאן.\n`);
+      const note = document.createElement('div');
+      note.className = 'proof-fail-note';
+      note.innerHTML =
+        '<div class="proof-fail-title">התמונה לא עלתה — אבל הבקשה שלך נקלטה</div>' +
+        '<div class="proof-fail-body">כדי שנוכל לאמת אותך, שלח/י לנו אותה במייל. אין צורך למלא את הטופס שוב.</div>' +
+        `<a class="proof-fail-btn" href="mailto:yellowzonemta@gmail.com?subject=${subj}&body=${body}">שליחת התמונה במייל</a>` +
+        '<div class="proof-fail-mail">yellowzonemta@gmail.com</div>';
+      success.appendChild(note);
     }
   });
 
