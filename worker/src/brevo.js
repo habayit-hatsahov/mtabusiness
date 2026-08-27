@@ -128,7 +128,7 @@ function socialRowHtml(inBody = false) {
     ? 'text-align:center;margin:24px 0'
     : 'text-align:center;margin-top:26px;padding-top:18px;border-top:1px solid #eee';
   return `<div data-social-row style="${frame}">
-    <div style="font-size:13px;color:#555;margin-bottom:10px">תרשמו למעקב אחרינו</div>
+    <div style="font-size:13px;color:#555;margin-bottom:10px">לחצו למעקב אחרינו</div>
     <div style="font-size:15px">${links.join(' <span style="color:#ccc">·</span> ')}</div>
   </div>`;
 }
