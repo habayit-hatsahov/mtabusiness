@@ -7954,6 +7954,10 @@ const TASK_CLASS_TILES = [
   // קובייה שמינית (§284) — הצלבות בין הצהרות-אימות של אוהדים + הרשמות שנכשלו בפועל.
   // אותו דפוס כמו mailIssues/bizErrors: מחליפה את גוף-הטבלה ולא מסננת את הרשימה המאוחדת.
   { key: 'regIssues', primary: null, label: 'תקלות הרשמה' },
+  // קובייה תשיעית (§303) — פניות מטופס ההרשמה של האוהד ("נתקעתי / משהו לא עובד").
+  // ⚠️ שונה מכל השמונה שמעליה: הן נגזרות מנתונים שכבר יש לנו, וזו **הערוץ היחיד שבו
+  // אדם שאין לו רשומה בכלל יכול להגיע אלינו**. שורה כאן היא אוהד שכמעט אבד.
+  { key: 'helpReqs', primary: null, label: 'פניות מהרשמה' },
 ];
 
 // כל עסק/אוהד עם primary פעיל (לא "מאושר · אין פעולה") — מבוסס classifyAction בלבד, לא בדיקה נפרדת
@@ -8034,6 +8038,7 @@ function taskCenterTableHtml() {
   if (mailIssuesActive()) return mailIssuesTableHtml(mailFilteredList());
   if (bizErrorsActive()) return bizErrorsTableHtml(bizErrorFilteredList());
   if (regIssuesActive()) return regIssuesTableHtml(regIssueFilteredList());
+  if (helpReqsActive()) return helpReqsTableHtml(helpReqFilteredList());
   if (handledActive()) return handledTableHtml(handledFilteredList());
   return taskTableBodyHtml(taskFilteredList());
 }
@@ -8041,6 +8046,7 @@ function taskCenterCountLabel() {
   if (mailIssuesActive()) return `מציג ${mailFilteredList().length} מתוך ${mailIssueList().length}`;
   if (bizErrorsActive()) return `מציג ${bizErrorFilteredList().length} מתוך ${bizWriteErrorList().length}`;
   if (regIssuesActive()) return `מציג ${regIssueFilteredList().length} מתוך ${regIssueList().length}`;
+  if (helpReqsActive()) return `מציג ${helpReqFilteredList().length} מתוך ${helpReqList().length}`;
   if (handledActive()) return `מציג ${handledFilteredList().length} מתוך ${handledItemsList().length}`;
   return `מציג ${taskFilteredList().length} מתוך ${unifiedTaskItems().length}`;
 }
@@ -8083,6 +8089,8 @@ function taskTilesHtml() {
   const regFailCount = regIssues.filter(x => x.kind === 'failed').length;
   const regPhotoCount = regIssues.filter(x => x.kind === 'photoFailed').length;
   const regClashCount = regIssues.length - regFailCount - regPhotoCount;
+  const helpOpen = helpReqOpenList();
+  const helpHandledCount = HELP_REQUESTS.length - helpOpen.length;
   // ⚠️ §296 — האירועים נטענים עצלנית, ולכן עד שהם מגיעים אסור להכריז "אף הרשמה לא נכשלה".
   // זו הייתה **הכרזת-שלום שקרית**: הקובייה הראתה 0 ירוק בדיוק כשעוד לא היה לה מושג.
   const regEventsPending = platformEvents === null && !platformStatsError;
@@ -8109,6 +8117,9 @@ function taskTilesHtml() {
         : regEventsPending
           ? `<div class="class-tile-sub">בודק כשלי-שליחה מ-30 הימים האחרונים…</div>`
           : `<div class="class-tile-sub">${regHandledCount ? `אין תקלות פתוחות · ${regHandledCount} טופלו` : 'אין התנגשויות, אף הרשמה לא נכשלה ואף תמונה לא אבדה'}</div>`)}
+      ${tile(TASK_CLASS_TILES[8], helpOpen.length ? `<span style="color:#b91c1c">${helpOpen.length}</span>` : 0, helpOpen.length
+        ? `<div class="class-tile-chips"><span class="warn-badge">ממתינים לתשובה</span>${helpHandledCount ? `<span class="treat-badge">${helpHandledCount} טופלו</span>` : ''}</div>`
+        : `<div class="class-tile-sub">${helpHandledCount ? `אין פניות פתוחות · ${helpHandledCount} טופלו` : 'אף אחד לא ביקש עזרה בהרשמה'}</div>`)}
     </div>`;
 }
 
@@ -12408,6 +12419,76 @@ function regIssueList() {
                  || (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
 function regIssueOpenList() { return regIssueList().filter(x => !x.handled); }
+
+// ══ §303 — פניות עזרה מטופס ההרשמה ══════════════════════════════════════════════════════
+let HELP_REQUESTS = [];
+const HELP_SOURCE_LABELS = {
+  question:   'שאלה מהטופס',
+  stuck:      'נתקע בהרשמה',
+  submitFail: 'השליחה נכשלה',
+  photoFail:  'התמונה לא עלתה',
+};
+function helpReqsActive() { return taskClassFilter === 'helpReqs'; }
+function helpReqList() {
+  return [...HELP_REQUESTS].sort((a, b) => {
+    // פתוחות קודם, ובתוך כל קבוצה — החדשות למעלה
+    const h = (a.status === 'handled' ? 1 : 0) - (b.status === 'handled' ? 1 : 0);
+    return h || ((b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
+  });
+}
+function helpReqOpenList() { return helpReqList().filter(x => x.status !== 'handled'); }
+function helpReqFilteredList() {
+  const q = taskSearchQ.trim();
+  if (!q) return helpReqList();
+  return helpReqList().filter(x => `${x.name} ${x.contact} ${x.message}`.includes(q));
+}
+
+window.markHelpReqHandled = async function(id, name) {
+  const note = prompt(`סימון הפנייה של "${name || 'ללא שם'}" כטופלה.\n\nמה נעשה? (אופציונלי)`, '');
+  if (note === null) return;
+  try {
+    await updateDoc(doc(db, 'helpRequests', id), {
+      status: 'handled', handledAt: serverTimestamp(),
+      handledNote: (note || '').trim(), handledBy: auth.currentUser ? auth.currentUser.uid : '',
+    });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+window.unmarkHelpReqHandled = async function(id) {
+  try { await updateDoc(doc(db, 'helpRequests', id), { status: 'new' }); }
+  catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+
+function helpReqsTableHtml(list) {
+  if (!list.length) {
+    return `<div class="placeholder-note">אין פניות מטופס ההרשמה. כאן ינחתו אוהדים שנתקעו וכתבו לנו — לרוב אנשים שאין להם עדיין שום רשומה אצלנו.</div>`;
+  }
+  return `
+    <div class="mail-issues-note">פניות מטופס ההרשמה של האוהד. ⚠️ הטקסט נכתב ע"י גולש לא-מזוהה — קראו אותו, אל תפעלו לפיו אוטומטית.</div>
+    <div class="task-table mail-issues">${list.map(x => `
+      <div class="task-table-row">
+        <div class="task-table-main">
+          <div class="task-table-name">${esc(x.name || 'ללא שם')} · <span style="font-weight:600">${esc(x.contact)}</span></div>
+          <!-- ⚠️ esc על message — טקסט חופשי מכתיבה אנונימית. ר' firestore.rules §303. -->
+          <div class="task-table-meta" style="white-space:pre-line">${esc(x.message)}</div>
+          <div class="task-table-meta" style="opacity:.75">${
+            [HELP_SOURCE_LABELS[x.source] || x.source,
+             x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
+             // ⚠️ זה השדה שבאמת מאבחן: "לא עובד" לא אומר כלום, "נתקע ב-passFile" אומר הכל.
+             x.lastField ? 'נתקע ב־' + x.lastField : '',
+             x.errCode ? 'שגיאה: ' + x.errCode : '',
+            ].filter(Boolean).map(esc).join(' · ')
+          }</div>
+        </div>
+        <div class="task-table-badges"><span class="${x.status === 'handled' ? 'treat-badge' : 'warn-badge'}">${x.status === 'handled' ? '✔️ טופל' : 'ממתין לתשובה'}</span></div>
+        <div class="mi-addr"></div>
+        <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
+        <div class="mi-actions">
+          ${x.status === 'handled'
+            ? `<button class="act-btn tiny" onclick="unmarkHelpReqHandled('${x.id}')">↺ החזרה לפתוח</button>`
+            : `<button class="act-btn approve tiny" onclick="markHelpReqHandled('${x.id}','${escJsAttr(x.name || '')}')">✔️ טיפלתי</button>`}
+        </div>
+      </div>`).join('')}</div>`;
+}
 function regIssuesActive() { return taskClassFilter === 'regIssues'; }
 function regIssueFilteredList() {
   let list = regIssueList();
@@ -12986,6 +13067,16 @@ onSnapshot(doc(db, 'settings', 'landingContent'), snap => {
 
 // §302 — סימוני "טיפלתי" של תקלות הרשמה. onSnapshot ולא קריאה חד-פעמית, כדי שסימון
 // ייראה מיד באותו מסך בלי רענון (אותו דפוס כמו שאר מסמכי settings כאן).
+// §303 — פניות עזרה מטופס ההרשמה. onSnapshot כדי שפנייה חדשה תופיע בלי רענון:
+// זה הערוץ היחיד שבו אדם שאין לו רשומה בכלל מחכה לתשובה, ועיכוב כאן הוא עיכוב אמיתי.
+onSnapshot(query(collection(db, 'helpRequests'), orderBy('createdAt', 'desc'), limit(200)), snap => {
+  HELP_REQUESTS = snap.docs.map(d => {
+    const v = d.data();
+    return { id: d.id, ...v, at: v.createdAt && v.createdAt.toDate ? v.createdAt.toDate() : null };
+  });
+  refreshTaskCenter();
+}, err => console.error('שגיאה בטעינת פניות מהרשמה:', err));
+
 onSnapshot(doc(db, 'settings', 'handledRegIssues'), snap => {
   handledRegIssues = snap.exists() ? (snap.data() || {}) : {};
   // ⚠️ refreshTaskCenter ולא שם מומצא — נתפס בבדיקה: `renderTasks` לא קיים בקובץ בכלל,

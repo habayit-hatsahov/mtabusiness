@@ -465,6 +465,56 @@ service cloud.firestore {
           (request.resource.data.channel is string && request.resource.data.channel.size() <= 50));
     }
 
+    // ── §303 — בקשות עזרה מטופס ההרשמה ("נתקעתי / משהו לא עובד") ─────────────────────────
+    // אוהד שלא מצליח להירשם הוא היום **בלתי-נראה לגמרי**: אין רשומה, אין אירוע, אין שם.
+    // האוסף הזה הוא הדרך היחידה שלו להגיד "הייתי כאן ולא הצלחתי". נכתב מ-fan-register.html
+    // ע"י גולש **לא מחובר** — ולכן מאומת שדה-שדה בדיוק כמו events, ולא "כל אחד יכול לכתוב".
+    //
+    // ⚠️ `message` הוא שדה-טקסט חופשי הפתוח לכתיבה אנונימית — משטח-הזרקה/ספאם היחיד מסוגו
+    // בפרויקט. שלוש ההגנות: תקרת 1000 תווים, `status` נעול ל-'new' (אי אפשר להיוולד "מטופל"
+    // ולעקוף את תשומת-לב המנהל), ואפס קריאה פומבית. **התצוגה במרכז הניהול חייבת לברוח
+    // (esc) את הטקסט** — הוא נכתב ע"י גורם לא מזוהה.
+    match /helpRequests/{reqId} {
+      allow read: if isAdmin();
+      // update — כדי שהמנהל יסמן "טיפלתי" על הבקשה עצמה. delete נשאר חסום: פנייה של אדם
+      // אמיתי לא נמחקת בלחיצה, בדיוק כמו events.
+      allow update: if isAdmin();
+      allow delete: if false;
+
+      allow create: if
+        request.resource.data.keys().hasOnly([
+          'name', 'contact', 'message', 'source', 'device', 'lastField',
+          'errCode', 'path', 'sessionId', 'memberId', 'status', 'createdAt'
+        ]) &&
+        request.resource.data.keys().hasAll(['contact', 'message', 'status', 'createdAt']) &&
+        request.resource.data.createdAt == request.time &&
+        // 'new' בלבד ביצירה — הסטטוס משתנה רק ע"י מנהל, דרך allow update למעלה
+        request.resource.data.status == 'new' &&
+        // ⚠️ contact הוא **חובה ולא-ריק**: פנייה בלי דרך לחזור אליה היא פנייה מבוזבזת.
+        // זו בדיוק ההחלטה של המשתמש ("כן צריך") — ונאכפת כאן ולא רק בטופס, כי ולידציה
+        // בצד-לקוח לבדה אינה אכיפה.
+        request.resource.data.contact is string &&
+        request.resource.data.contact.size() > 0 && request.resource.data.contact.size() <= 120 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 && request.resource.data.message.size() <= 1000 &&
+        (!('name' in request.resource.data) || request.resource.data.name == null ||
+          (request.resource.data.name is string && request.resource.data.name.size() <= 80)) &&
+        (!('source' in request.resource.data) || request.resource.data.source == null ||
+          request.resource.data.source in ['stuck', 'question', 'photoFail', 'submitFail']) &&
+        (!('device' in request.resource.data) || request.resource.data.device == null ||
+          request.resource.data.device in ['mobile', 'desktop']) &&
+        (!('lastField' in request.resource.data) || request.resource.data.lastField == null ||
+          (request.resource.data.lastField is string && request.resource.data.lastField.size() <= 60)) &&
+        (!('errCode' in request.resource.data) || request.resource.data.errCode == null ||
+          (request.resource.data.errCode is string && request.resource.data.errCode.size() <= 60)) &&
+        (!('path' in request.resource.data) || request.resource.data.path == null ||
+          (request.resource.data.path is string && request.resource.data.path.size() <= 200)) &&
+        (!('sessionId' in request.resource.data) || request.resource.data.sessionId == null ||
+          (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 100)) &&
+        (!('memberId' in request.resource.data) || request.resource.data.memberId == null ||
+          (request.resource.data.memberId is string && request.resource.data.memberId.size() <= 100));
+    }
+
     // statsDaily — אגרגציה יומית כלל-פלטפורמה (מקביל ל-businesses/{id}/statsDaily למעלה).
     // ייכתב בפועל רק ע"י ה-Worker (service-account, עוקף rules) בשלב האגרגציה העתידי.
     match /statsDaily/{dateId} {
