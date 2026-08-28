@@ -2117,7 +2117,11 @@ function sectionLabelFor(verifiedSport) {
 // §318 — יציע עליון/תחתון. קיים בכדורסל בלבד (במנורה מבטחים יש שתי טבעות), ורשומות שנרשמו
 // לפני §318 פשוט אין להן ערך — מחזיר '' ולא "—", כדי שהקורא יוכל להשמיט את השדה לגמרי.
 const TIER_LABELS = { upper: 'עליון', lower: 'תחתון' };
-function tierLabel(f) { return TIER_LABELS[f && f.subscriberTier] || ''; }
+function sectionWithTier(section, tier) {
+  const t = TIER_LABELS[tier] || '';
+  if (!section) return t;
+  return t ? section + ' · ' + t : section;
+}
 const SPORT_LABELS = { football: 'כדורגל', basketball: 'כדורסל', both: 'כדורגל+כדורסל' };
 
 // ── ענף האימות (2026-08-27) ───────────────────────────────────────────────────────────────
@@ -2422,7 +2426,7 @@ function hydrateBiz(id, raw) {
     // הניהול המשיך להציג את המודל הישן — מספר מנוי שכבר לא נמסר. דווח בפועל: "בדשבורד ניהול
     // לא רואים את הבחירה של האימות, רואים עדיין מספר מנוי הישן".
     ownerVerifyRoute: raw.verifyRoute || null,
-    ownerSubscriberTier: raw.subscriberTier || null, // §318
+    ownerSubscriberTier: raw.tier || null, // §318/§319 — מסמך העסק שומר `tier` (כמו `gate`), לא `subscriberTier`
     ownerSeatArea: raw.seatArea || null,              // §318
     ownerSeatBlock: raw.seatBlock || null,
     ownerSeatRow: raw.seatRow || null,
@@ -5585,7 +5589,7 @@ function bizFormSummaryHtml(b) {
           ${field('אימייל', b.ownerEmail, !b.ownerEmail)}
           ${field('קרבה לבעל המנוי', RELATION_LABELS_MOCK[b.ownerRelation]||b.ownerRelation||'', !b.ownerRelation)}
           ${field('מנוי מכבי', b.ownerIsSubscriber?'כן':'לא · אימות ידני', false)}
-          ${field(sectionLabelFor(b.ownerVerifiedSport) + ' / מספר מנוי', b.ownerIsSubscriber?[b.ownerSubscriberSection,b.ownerSubscriberNumber].filter(Boolean).join(' / '):'', !b.ownerIsSubscriber)}
+          ${field(sectionLabelFor(b.ownerVerifiedSport) + ' / מספר מנוי', b.ownerIsSubscriber?[sectionWithTier(b.ownerSubscriberSection, b.ownerSubscriberTier),b.ownerSubscriberNumber].filter(Boolean).join(' / '):'', !b.ownerIsSubscriber)}
         </div>
 
         <div class="form-sec-title">סיכום ושליחה</div>
@@ -5817,7 +5821,7 @@ function bizFullDetailHtml(id, opts) {
   // ── שלב 1 — בעל העסק, ראשון להומר לסגנון step-block (§131, "שלב אחד בכל פעם"). שלבים 3-5 עדיין בסגנון-הישן.
   const step1Sub = [
     ([b.ownerFirst, b.ownerLast].filter(Boolean).join(' ') || '—'),
-    b.ownerIsSubscriber ? `מנוי · ${sectionLabelFor(b.ownerVerifiedSport)} ${b.ownerSubscriberSection || '—'}` : 'לא מנוי',
+    b.ownerIsSubscriber ? `מנוי · ${sectionLabelFor(b.ownerVerifiedSport)} ${sectionWithTier(b.ownerSubscriberSection, b.ownerSubscriberTier) || '—'}` : 'לא מנוי',
     b.ownerRelation ? `קרבה: ${RELATION_LABELS_MOCK[b.ownerRelation] || b.ownerRelation}` : ''
   ].filter(Boolean).join(' · ');
   // ── שלב 2 — פרטי העסק (הכי גדול מבין ה-5). stepChangedField/stepFieldWas/stepFieldHtml משותפים
@@ -5937,7 +5941,7 @@ function bizFullDetailHtml(id, opts) {
         <div class="owner-verify-grid">
           <div><div class="form-field-label">ענף</div><div class="form-field-val${!b.ownerFanSport ? ' empty' : ''}">${b.ownerFanSport ? esc(SPORT_LABELS[b.ownerFanSport] || b.ownerFanSport) : '—'}</div></div>
           ${b.ownerIsSubscriber ? verifiedSportCellHtml(b.ownerVerifiedSport, b.ownerFanSport) : ''}
-          <div><div class="form-field-label">${sectionLabelFor(b.ownerVerifiedSport)}</div><div class="form-field-val${!b.ownerSubscriberSection?' empty':''}">${b.ownerSubscriberSection?esc(b.ownerSubscriberSection):'—'}</div></div>
+          <div><div class="form-field-label">${sectionLabelFor(b.ownerVerifiedSport)}</div><div class="form-field-val${!b.ownerSubscriberSection?' empty':''}">${b.ownerSubscriberSection?esc(sectionWithTier(b.ownerSubscriberSection, b.ownerSubscriberTier)):'—'}</div></div>
           <div><div class="form-field-label">מסלול האימות</div><div class="form-field-val${!ownerRoute?' empty':''}">${esc(fanVerifyMethodLabel(ownerAsFan(b)))}</div></div>
           ${ownerVerifValue ? `<div><div class="form-field-label">${esc(VERIFY_VALUE_LABELS[ownerRoute] || 'מה נמסר')}</div><div class="form-field-val">${esc(ownerVerifValue)}</div></div>` : ''}
           <div><div class="form-field-label">קרבה לבעל המנוי</div><div class="form-field-val">${esc(RELATION_LABELS_MOCK[b.ownerRelation]||'—')}</div></div>
@@ -6177,6 +6181,11 @@ function bizFullDetailHtml(id, opts) {
               </select>
             </div>
             <div class="step-field"><div class="step-field-h" id="edit_ownerSectionLabel_${b.id}">${sectionLabelFor(b.ownerVerifiedSport)}</div><input type="text" id="edit_ownerSection_${b.id}" value="${b.ownerSubscriberSection||''}" placeholder="${sectionLabelFor(b.ownerVerifiedSport)}"></div>
+            <div class="step-field"><div class="step-field-h">יציע (כדורסל)</div><select id="edit_ownerTier_${b.id}">
+              <option value=""${!b.ownerSubscriberTier?' selected':''}>—</option>
+              <option value="upper"${b.ownerSubscriberTier==='upper'?' selected':''}>עליון</option>
+              <option value="lower"${b.ownerSubscriberTier==='lower'?' selected':''}>תחתון</option>
+            </select></div>
             <div class="step-field"><div class="step-field-h">מספר מנוי</div><input type="text" id="edit_ownerNumber_${b.id}" value="${b.ownerSubscriberNumber||''}" placeholder="מס' מנוי"></div>
           </div>
           <div id="edit_ownerNoSubFields_${b.id}" style="display:${!b.ownerIsSubscriber?'block':'none'};margin-top:10px">
@@ -6574,6 +6583,7 @@ window.saveBizSec1 = async function(id) {
     isSubscriber: isSub ? 'yes' : 'no',
     verifiedSport: isSub ? document.getElementById('edit_ownerSport_'+id).value : null,
     gate:   isSub ? (document.getElementById('edit_ownerSection_'+id).value.trim() || null) : null,
+    tier:   isSub ? (document.getElementById('edit_ownerTier_'+id).value || null) : null, // §319
     subNum: isSub ? (document.getElementById('edit_ownerNumber_'+id).value.trim() || null) : null,
     fbUrl:  isSub ? '' : document.getElementById('edit_ownerFbUrl_'+id).value.trim(),
     photoProofUrl: isSub ? '' : document.getElementById('edit_ownerProofUrl_'+id).value.trim(),
@@ -7420,7 +7430,7 @@ function fanFullDetailHtml(id, opts) {
             ${f.isSubscriber ? '' : `<div><div class="form-field-label">היה מנוי בעבר</div><div class="form-field-val${f.wasSubscriber === 'yes' ? '' : ' empty'}">${f.wasSubscriber === 'yes' ? 'כן' : 'לא'}</div></div>`}
             <div><div class="form-field-label">ענף</div><div class="form-field-val${!f.fanSport ? ' empty' : ''}">${f.fanSport ? esc(SPORT_LABELS[f.fanSport] || f.fanSport) : '—'}</div></div>
             ${f.isSubscriber ? verifiedSportCellHtml(f.verifiedSport, f.fanSport) : ''}
-            ${f.isSubscriber ? `<div><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val${!f.subscriberSection ? ' empty' : ''}">${esc(f.subscriberSection || '—')}${tierLabel(f) ? ' · ' + esc(tierLabel(f)) : ''}</div></div>` : ''}
+            ${f.isSubscriber ? `<div><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val${!f.subscriberSection ? ' empty' : ''}">${esc(sectionWithTier(f.subscriberSection, f.subscriberTier) || '—')}</div></div>` : ''}
             <div><div class="form-field-label">מסלול האימות</div><div class="form-field-val${!idVerifyMethod ? ' empty' : ''}">${esc(fanVerifyMethodLabel(f))}</div></div>
             ${idVerifyValue ? `<div><div class="form-field-label">${esc(VERIFY_VALUE_LABELS[idVerifyMethod] || 'מה נמסר')}</div><div class="form-field-val" style="white-space:pre-line">${esc(idVerifyValue)}</div></div>` : ''}
           </div>
@@ -12577,7 +12587,7 @@ function regClashList() {
     out.push({
       kind: 'seatClash', key: 'seat|' + k, at: newest(list), fans: list,
       title: `${list.length} אוהדים על אותו מושב`,
-      detail: `${sectionLabelFor(f.verifiedSport)} ${f.subscriberSection || '—'}${tierLabel(f) ? ' ' + tierLabel(f) : ''}${f.seatArea ? ' · אזור ' + f.seatArea : ''}${f.seatBlock ? ' · גוש ' + f.seatBlock : ''} · שורה ${f.seatRow} · כיסא ${f.seatNumber}${sameOwnerNote(list)}`,
+      detail: `${sectionLabelFor(f.verifiedSport)} ${sectionWithTier(f.subscriberSection, f.subscriberTier) || '—'}${f.seatArea ? ' · אזור ' + f.seatArea : ''}${f.seatBlock ? ' · גוש ' + f.seatBlock : ''} · שורה ${f.seatRow} · כיסא ${f.seatNumber}${sameOwnerNote(list)}`,
       badge: 'התנגשות מושב',
     });
   });
