@@ -145,12 +145,41 @@ window.heroToggleForgot = function () {
     document.getElementById('heroForgotMsg').classList.remove('show');
   }
 };
-function heroNotReadyYet(elId) {
-  const el = document.getElementById(elId);
-  if (el) { el.textContent = 'עוד רגע — הדף מסיים להיטען. נסו שוב בעוד שנייה.'; el.classList.add('show'); }
+// §313 — לחיצה לפני שהמודול נטען **לא** מבקשת מהמשתמש לחכות. היא נכנסת לתור: הכפתור נכנס
+// למצב "בודק..." בדיוק כרגיל, והמודול משחזר את הלחיצה ברגע שהוא מוכן. מבחינת האוהד אין
+// מצב-ביניים בכלל — הוא לוחץ, והוא נכנס. שומר-הזמן כאן הוא אותו גבול-זמן של הכניסה עצמה,
+// כדי שמודול שלא מגיע לעולם (CDN חסום) לא ישאיר כפתור תקוע — בדיוק הבאג של §312.
+window.HB_LOGIN_TIMEOUT_MS = 8000;
+window.HB_TIMEOUT_MSG = 'החיבור נקטע — זו לא תקלה בקוד שלכם. רעננו את הדף ונסו שוב.';
+function heroQueueUntilReady(flag, btnId, errId, busyText) {
+  window[flag] = true;
+  clearTimeout(window['_hbWatch_' + flag]);
+  window['_hbWatch_' + flag] = setTimeout(function () {
+    if (!window[flag]) return;                    // המודול הספיק לשחזר — הכל בסדר
+    window[flag] = false;
+    window.heroResetLoginBtn();
+    const err = document.getElementById(errId);
+    if (err) { err.textContent = window.HB_TIMEOUT_MSG; err.classList.add('show'); }
+  }, window.HB_LOGIN_TIMEOUT_MS);
+  const b = document.getElementById(btnId);
+  if (b) { b.disabled = true; b.textContent = busyText; }
 }
-window.heroLogin = function () { heroNotReadyYet('heroLoginErr'); };
-window.heroRequestResend = function () { heroNotReadyYet('heroForgotMsg'); };
+window.heroLogin = function () {
+  // אותה ולידציה של המודול (DOM טהור) — שדה ריק נענה מיד ולא "בודק" לחינם
+  const err = document.getElementById('heroLoginErr');
+  const show = (m) => { err.textContent = m; err.classList.add('show'); };
+  if (!document.getElementById('heroPhoneInput').value.trim()) return show('נא להזין מספר טלפון');
+  if (document.getElementById('heroCodeInput').value.trim().length !== 6) return show('נא להזין קוד בן 6 ספרות');
+  err.classList.remove('show');
+  heroQueueUntilReady('_hbPendingLogin', 'heroLoginBtn', 'heroLoginErr', 'בודק...');
+};
+window.heroRequestResend = function () {
+  const m = document.getElementById('heroForgotMsg');
+  if (!document.getElementById('heroForgotPhoneInput').value.trim()) {
+    m.textContent = 'נא להזין מספר טלפון'; m.classList.add('show'); return;
+  }
+  heroQueueUntilReady('_hbPendingResend', 'heroForgotBtn', 'heroForgotMsg', 'שולח...');
+};
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -1071,8 +1100,10 @@ function heroNormalizePhoneDigits(raw) {
 // בלי זה, המתנה שנתקעת משאירה את הכפתור על "בודק..." לנצח. **שני** ה-await מסוכנים באותה
 // מידה: ה-fetch לוורקר, וגם signInWithCustomToken — שנשען על IndexedDB ויודע להיתקע במובייל
 // גם כשהרשת מצוינת. אצל אוהד אמיתי (28.8) ההבטחה התעוררה מעצמה רק אחרי שעה וחצי.
-const HERO_TIMEOUT_MS = 15000;
-const HERO_TIMEOUT_MSG = 'החיבור נקטע — זו לא תקלה בקוד שלכם. רעננו את הדף ונסו שוב.';
+// §313 — 8 שניות, ו**דדליין אחד משותף** לשני ה-await ולא 8 לכל אחד: ההמתנה הגרועה ביותר
+// שהאוהד רואה היא 8 שניות סה"כ. הוורקר נמדד 0.54–0.71 שנ', כלומר פי-11 מרווח.
+const HERO_TIMEOUT_MS = window.HB_LOGIN_TIMEOUT_MS || 8000;
+const HERO_TIMEOUT_MSG = window.HB_TIMEOUT_MSG;
 function heroWithTimeout(promise, ms) {
   let t;
   return Promise.race([
@@ -1089,6 +1120,7 @@ window.heroLogin = async function() {
   const btn = document.getElementById('heroLoginBtn');
   btn.disabled = true; btn.textContent = 'בודק...';
   const ac = new AbortController();
+  const deadline = Date.now() + HERO_TIMEOUT_MS;
   const abortTimer = setTimeout(() => ac.abort(), HERO_TIMEOUT_MS);
   try {
     const resp = await fetch(WORKER_URL + '/mint-member-token', {
@@ -1098,7 +1130,8 @@ window.heroLogin = async function() {
     const data = await resp.json();
     clearTimeout(abortTimer);
     if (data.customToken) {
-      const cred = await heroWithTimeout(signInWithCustomToken(auth, data.customToken), HERO_TIMEOUT_MS);
+      // מה שנשאר מהדדליין המשותף — לא עוד 8 שניות מלאות
+      const cred = await heroWithTimeout(signInWithCustomToken(auth, data.customToken), Math.max(1500, deadline - Date.now()));
       localStorage.setItem('hb_phone', heroNormalizePhoneDigits(phoneRaw));
       localStorage.setItem('hb_memberId', cred.user.uid);
       heroGoHome();
@@ -1138,6 +1171,11 @@ window.heroRequestResend = async function() {
   msgEl.classList.add('show');
   btn.disabled = false; btn.textContent = 'שלחו לי קוד למייל';
 };
+
+// §313 — שחזור לחיצה שנכנסה לתור לפני שהמודול היה מוכן. זה המקום הראשון שבו מותר: מכאן
+// והלאה heroLogin/heroRequestResend הן כבר הגרסאות האמיתיות ולא אלה שבראש הדף.
+if (window._hbPendingLogin)  { window._hbPendingLogin = false;  clearTimeout(window._hbWatch__hbPendingLogin);  window.heroLogin(); }
+if (window._hbPendingResend) { window._hbPendingResend = false; clearTimeout(window._hbWatch__hbPendingResend); window.heroRequestResend(); }
 
 // ── תצוגה חיה — עסקים מאושרים אמיתיים, אותו markup/CSS מדויק של כרטיס-עסק מ-home.html ──
 const HEART_ICON_PATH = 'M12,21.35 L10.55,20.03 C5.4,15.36 2,12.27 2,8.5 C2,5.41 4.42,3 7.5,3 C9.24,3 10.91,3.81 12,5.08 C13.09,3.81 14.76,3 16.5,3 C19.58,3 22,5.41 22,8.5 C22,12.27 18.6,15.36 13.45,20.03 L12,21.35 Z';
