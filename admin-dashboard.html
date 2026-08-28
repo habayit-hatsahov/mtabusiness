@@ -2114,6 +2114,10 @@ function confirmSuspectLink(kind, value, who) {
 function sectionLabelFor(verifiedSport) {
   return verifiedSport === 'basketball' ? 'אולם/יציע' : 'שער';
 }
+// §318 — יציע עליון/תחתון. קיים בכדורסל בלבד (במנורה מבטחים יש שתי טבעות), ורשומות שנרשמו
+// לפני §318 פשוט אין להן ערך — מחזיר '' ולא "—", כדי שהקורא יוכל להשמיט את השדה לגמרי.
+const TIER_LABELS = { upper: 'עליון', lower: 'תחתון' };
+function tierLabel(f) { return TIER_LABELS[f && f.subscriberTier] || ''; }
 const SPORT_LABELS = { football: 'כדורגל', basketball: 'כדורסל', both: 'כדורגל+כדורסל' };
 
 // ── ענף האימות (2026-08-27) ───────────────────────────────────────────────────────────────
@@ -2174,6 +2178,8 @@ function ownerAsFan(b) {
     isSubscriber:     b.ownerIsSubscriber,
     verifiedSport:    b.ownerVerifiedSport,
     subscriberNumber: b.ownerSubscriberNumber,
+    subscriberTier:   b.ownerSubscriberTier,   // §318
+    seatArea:         b.ownerSeatArea,         // §318
     seatBlock:        b.ownerSeatBlock,
     seatRow:          b.ownerSeatRow,
     seatNumber:       b.ownerSeatNumber,
@@ -2193,6 +2199,7 @@ function fanVerifyValue(f) {
     // בכדורסל אין "גוש" (מנורה מבטחים) והשדה כלל לא מוצג בטופס — בלי ההבחנה הזאת רשומה
     // תקינה של מנוי כדורסל נראית למנהל כמו מילוי חלקי של מנוי כדורגל.
     case 'seatDetails': return [
+      f.seatArea ? 'אזור ' + f.seatArea : '',   // §318 — כדורגל בלבד
       f.seatBlock ? 'גוש ' + f.seatBlock
         : (f.verifiedSport === 'basketball' ? 'ללא גוש (כדורסל)' : ''),
       f.seatRow ? 'שורה ' + f.seatRow : '', f.seatNumber ? 'כיסא ' + f.seatNumber : '',
@@ -2415,6 +2422,8 @@ function hydrateBiz(id, raw) {
     // הניהול המשיך להציג את המודל הישן — מספר מנוי שכבר לא נמסר. דווח בפועל: "בדשבורד ניהול
     // לא רואים את הבחירה של האימות, רואים עדיין מספר מנוי הישן".
     ownerVerifyRoute: raw.verifyRoute || null,
+    ownerSubscriberTier: raw.subscriberTier || null, // §318
+    ownerSeatArea: raw.seatArea || null,              // §318
     ownerSeatBlock: raw.seatBlock || null,
     ownerSeatRow: raw.seatRow || null,
     ownerSeatNumber: raw.seatNumber || null,
@@ -7411,7 +7420,7 @@ function fanFullDetailHtml(id, opts) {
             ${f.isSubscriber ? '' : `<div><div class="form-field-label">היה מנוי בעבר</div><div class="form-field-val${f.wasSubscriber === 'yes' ? '' : ' empty'}">${f.wasSubscriber === 'yes' ? 'כן' : 'לא'}</div></div>`}
             <div><div class="form-field-label">ענף</div><div class="form-field-val${!f.fanSport ? ' empty' : ''}">${f.fanSport ? esc(SPORT_LABELS[f.fanSport] || f.fanSport) : '—'}</div></div>
             ${f.isSubscriber ? verifiedSportCellHtml(f.verifiedSport, f.fanSport) : ''}
-            ${f.isSubscriber ? `<div><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val${!f.subscriberSection ? ' empty' : ''}">${esc(f.subscriberSection || '—')}</div></div>` : ''}
+            ${f.isSubscriber ? `<div><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val${!f.subscriberSection ? ' empty' : ''}">${esc(f.subscriberSection || '—')}${tierLabel(f) ? ' · ' + esc(tierLabel(f)) : ''}</div></div>` : ''}
             <div><div class="form-field-label">מסלול האימות</div><div class="form-field-val${!idVerifyMethod ? ' empty' : ''}">${esc(fanVerifyMethodLabel(f))}</div></div>
             ${idVerifyValue ? `<div><div class="form-field-label">${esc(VERIFY_VALUE_LABELS[idVerifyMethod] || 'מה נמסר')}</div><div class="form-field-val" style="white-space:pre-line">${esc(idVerifyValue)}</div></div>` : ''}
           </div>
@@ -7489,6 +7498,11 @@ function fanFullDetailHtml(id, opts) {
           </div>
           <div></div>
           <div class="form-row" style="margin:0"><label id="fanEditGateLabel_${f.id}">${sectionLabelFor(f.verifiedSport)}</label><input type="text" id="fanEditGate_${f.id}" value="${esc(f.subscriberSection || '')}" /></div>
+          <div class="form-row" style="margin:0"><label>יציע (כדורסל)</label><select id="fanEditTier_${f.id}">
+            <option value=""${!f.subscriberTier ? ' selected' : ''}>—</option>
+            <option value="upper"${f.subscriberTier === 'upper' ? ' selected' : ''}>עליון</option>
+            <option value="lower"${f.subscriberTier === 'lower' ? ' selected' : ''}>תחתון</option>
+          </select></div>
           <div class="form-row" style="margin:0"><label>מס' מנוי</label><input type="text" id="fanEditSubNum_${f.id}" value="${esc(f.subscriberNumber || '')}" /></div>
         </div>
         <div id="fanEditNoSubFields_${f.id}" style="display:${f.isSubscriber ? 'none' : 'block'};margin-top:10px">
@@ -7575,6 +7589,7 @@ window.saveFanDetails = async function(id) {
     isSubscriber: isSub,
     verifiedSport: isSub ? document.getElementById('fanEditSport_' + id).value : null,
     subscriberSection: isSub ? document.getElementById('fanEditGate_' + id).value.trim() : null,
+    subscriberTier:    isSub ? (document.getElementById('fanEditTier_' + id).value || null) : null, // §318
     subscriberNumber: isSub ? document.getElementById('fanEditSubNum_' + id).value.trim() : null,
     wasSubscriber: isSub ? null : document.getElementById('fanEditWasSub_' + id).value,
     facebookUrl: isSub ? null : document.getElementById('fanEditFbUrl_' + id).value.trim(),
@@ -12522,7 +12537,10 @@ function isJunkSubNumber(n) {
 // וכל השער היה נספר כהתנגשות אחת ענקית.
 function fanSeatKey(f) {
   if (!f.seatRow || !f.seatNumber) return null;
-  return [f.verifiedSport || '?', f.subscriberSection || '?', f.seatBlock || '-', f.seatRow, f.seatNumber].join('|');
+  return [
+    f.verifiedSport || '?', f.subscriberSection || '?', f.subscriberTier || '-',
+    f.seatArea || '-', f.seatBlock || '-', f.seatRow, f.seatNumber,
+  ].join('|');
 }
 
 function regClashList() {
@@ -12559,7 +12577,7 @@ function regClashList() {
     out.push({
       kind: 'seatClash', key: 'seat|' + k, at: newest(list), fans: list,
       title: `${list.length} אוהדים על אותו מושב`,
-      detail: `${sectionLabelFor(f.verifiedSport)} ${f.subscriberSection || '—'}${f.seatBlock ? ' · גוש ' + f.seatBlock : ''} · שורה ${f.seatRow} · כיסא ${f.seatNumber}${sameOwnerNote(list)}`,
+      detail: `${sectionLabelFor(f.verifiedSport)} ${f.subscriberSection || '—'}${tierLabel(f) ? ' ' + tierLabel(f) : ''}${f.seatArea ? ' · אזור ' + f.seatArea : ''}${f.seatBlock ? ' · גוש ' + f.seatBlock : ''} · שורה ${f.seatRow} · כיסא ${f.seatNumber}${sameOwnerNote(list)}`,
       badge: 'התנגשות מושב',
     });
   });

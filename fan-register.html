@@ -243,6 +243,8 @@
     .route-body textarea { min-height: 78px; resize: vertical; line-height: 1.45; }
 
     .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; }
+    .form-row-seat { display: flex; flex-wrap: wrap; gap: 9px; }
+    .form-row-seat > div { flex: 1 1 88px; min-width: 0; }
     .hint { font-size: 11.5px; color: var(--text-muted); margin-top: 5px; line-height: 1.4; }
     .warn-box {
       display: flex; gap: 7px; align-items: flex-start;
@@ -623,6 +625,16 @@
               <div class="hint" id="subscriberSectionHint">השער שבו את/ה יושב/ת בבלומפילד.</div>
               <div class="field-error" id="err-subscriberSection">נא לבחור מיקום</div>
             </div>
+            <div class="form-group" id="subscriberTierRow" style="display:none">
+              <label for="subscriberTier">יציע <span class="req">*</span></label>
+              <select id="subscriberTier">
+                <option value="">עליון או תחתון...</option>
+                <option value="upper">עליון</option>
+                <option value="lower">תחתון</option>
+              </select>
+              <div class="hint">באולם יש שתי טבעות — זה מה שמבדיל בין שני מושבים באותה שורה ובאותו מספר.</div>
+              <div class="field-error" id="err-subscriberTier">נא לבחור עליון או תחתון</div>
+            </div>
           </div>
 
           <!-- ── בורר מסלול האימות (§284) ─────────────────────────────────────────────────────
@@ -647,7 +659,11 @@
                     </div>
                   </div>
                   <div class="route-body">
-                    <div class="form-row-3">
+                    <div class="form-row-seat">
+                      <div id="seatAreaCol">
+                        <label for="seatArea">אזור</label>
+                        <input type="text" id="seatArea" />
+                      </div>
                       <div id="seatBlockCol">
                         <label for="seatBlock">גוש</label>
                         <input type="text" id="seatBlock" inputmode="numeric" />
@@ -1439,6 +1455,10 @@
         ok = vf('verifiedSport', document.getElementById('verifiedSport').value !== '') && ok;
       }
       ok = vf('subscriberSection', document.getElementById('subscriberSection').value !== '') && ok;
+      // §318 — רק כשהשדה באמת מוצג. בכדורגל הוא מוסתר, ובדיקה גורפת הייתה חוסמת כל מנוי כדורגל.
+      if (document.getElementById('subscriberTierRow').style.display !== 'none') {
+        ok = vf('subscriberTier', document.getElementById('subscriberTier').value !== '') && ok;
+      }
       // ── §284 — נדרש רק המסלול שנבחר, לא שדה קבוע לכולם ──────────────────────────────────
       // זה כל ההבדל מהמצב הקודם: "מספר מנוי" היה חובה גורפת, ומי שלא ידע אותו המציא ערך.
       const routeVal = document.getElementById('verifyRoute').value;
@@ -1548,6 +1568,9 @@
       fanSport:          fanSportVal,
       verifiedSport:     verifiedSportVal,
       subscriberSection: isSub === 'yes' ? document.getElementById('subscriberSection').value : null,
+      // §318 — 'upper'/'lower'/null. נשמר כשדה משלו (ולא מודבק לתוך subscriberSection) כדי
+      // שמפתח-המושב במרכז הניהול יוכל להבדיל בין שתי הטבעות בלי לפרסר מחרוזת.
+      subscriberTier:    isSub === 'yes' ? (document.getElementById('subscriberTier').value || null) : null,
       wasSubscriber:     isSub === 'no'  ? document.getElementById('wasSubscriber').value : null,
       photoProofUrl:     '',
       status:            'pending',
@@ -1566,6 +1589,7 @@
     // לסנן/למיין לפיו בעתיד בלי לחזור ולתשאל 60 אוהדים קיימים.
     data.verifyTrust       = isSub === 'no' ? 'low' : (routeVal ? ROUTES[routeVal].trust : null);
     data.subscriberNumber  = routeVal === 'subNumber'   ? _v('subscriberNumber') : null;
+    data.seatArea          = routeVal === 'seatDetails' ? (_v('seatArea')  || null) : null;
     data.seatBlock         = routeVal === 'seatDetails' ? (_v('seatBlock') || null) : null;
     data.seatRow           = routeVal === 'seatDetails' ? (_v('seatRow')   || null) : null;
     data.seatNumber        = routeVal === 'seatDetails' ? (_v('seatNumber')|| null) : null;
@@ -1777,13 +1801,19 @@
       sectionLabel: 'שער', sectionPlaceholder: 'בחר שער...',
       hint: 'השער שבו את/ה יושב/ת בבלומפילד.',
       options: ['1', '2', '7', '8', '11', '13'],
-      hasBlock: true, seatSub: 'גוש, שורה וכיסא — כפי שמופיע במנוי בארנק הדיגיטלי.',
+      // §318 — אזור נוסף כשדה הראשון בפרטי המושב: כך זה כתוב על המנוי (אזור → גוש → שורה → כיסא).
+      hasArea: true, hasBlock: true, hasTier: false,
+      seatSub: 'אזור, גוש, שורה וכיסא — כפי שמופיע במנוי בארנק הדיגיטלי.',
     },
     basketball: {
       sectionLabel: 'אולם/יציע', sectionPlaceholder: 'בחר אולם/יציע...',
       hint: 'האזור/היציע שבו את/ה יושב/ת במנורה מבטחים.',
       options: Array.from({ length: 12 }, (_, i) => String(i + 1)),
-      hasBlock: false, seatSub: 'שורה וכיסא — כפי שמופיע במנוי בארנק הדיגיטלי.',
+      // §318 — hasTier: באולם יש טבעת עליונה ותחתונה, ובלעדיה **אותו** אולם+שורה+כיסא מתקבל
+      // פעמיים בצדק גמור. ר' fanSeatKey ב-admin-dashboard.html — בלי היציע שתי הרשומות
+      // האלה מדווחות כ"התנגשות מושב" שגויה.
+      hasArea: false, hasBlock: false, hasTier: true,
+      seatSub: 'שורה וכיסא — כפי שמופיע במנוי בארנק הדיגיטלי.',
     },
   };
 
@@ -1804,6 +1834,11 @@
     document.getElementById('subscriberSectionHint').textContent = v.hint;
     document.getElementById('seatRouteSub').textContent = v.seatSub;
     document.getElementById('seatBlockCol').style.display = v.hasBlock ? '' : 'none';
+    document.getElementById('seatAreaCol').style.display   = v.hasArea  ? '' : 'none';
+    // החלפת ענף מנקה בחירה שאינה קיימת בענף החדש — אחרת "עליון" היה נשמר על מנוי כדורגל
+    const tierRow = document.getElementById('subscriberTierRow');
+    tierRow.style.display = v.hasTier ? '' : 'none';
+    if (!v.hasTier) document.getElementById('subscriberTier').value = '';
     // שמירת הבחירה הקיימת בהחלפת-ענף, אם היא עדיין חוקית באולם החדש
     const prev = selectEl.value;
     selectEl.innerHTML = `<option value="">${v.sectionPlaceholder}</option>` +
@@ -1829,7 +1864,7 @@
   const ROUTE_ERR = {
     subNumber:      { errId: 'err-subscriberNumber', fields: ['subscriberNumber'] },
     passScreenshot: { errId: 'err-passFile',         fields: ['passFile'] },
-    seatDetails:    { errId: 'err-seatDetails',      fields: ['seatBlock', 'seatRow', 'seatNumber'] },
+    seatDetails:    { errId: 'err-seatDetails',      fields: ['seatArea', 'seatBlock', 'seatRow', 'seatNumber'] },
     purchaseEmail:  { errId: 'err-purchaseEmail',    fields: ['emailFile'] },
     standsPhoto:    { errId: 'err-standsPhoto',      fields: ['standsFile', 'standsFacebookUrl'] },
   };
@@ -1886,7 +1921,9 @@
     switch (r) {
       case 'subNumber':      return subNumberOk(_v('subscriberNumber'));
       case 'passScreenshot': return _hasFile('passFile');
-      case 'seatDetails':    return (!VENUE[sport]?.hasBlock || !!_v('seatBlock')) && !!_v('seatRow') && !!_v('seatNumber');
+      case 'seatDetails':    return (!VENUE[sport]?.hasArea  || !!_v('seatArea'))
+                                 && (!VENUE[sport]?.hasBlock || !!_v('seatBlock'))
+                                 && !!_v('seatRow') && !!_v('seatNumber');
       case 'purchaseEmail':  return _hasFile('emailFile');
       case 'standsPhoto':    return _hasFile('standsFile') && /^https?:\/\/.+\..+/.test(_v('standsFacebookUrl'));
       default:               return false;
@@ -2009,12 +2046,14 @@
       fanSport:          document.getElementById('fanSport').value,
       verifiedSport:     document.getElementById('verifiedSport').value,
       subscriberSection: document.getElementById('subscriberSection').value,
+      subscriberTier:    document.getElementById('subscriberTier').value,
       subscriberNumber:  document.getElementById('subscriberNumber').value,
       wasSubscriber:     document.getElementById('wasSubscriber').value,
       facebookUrl:       document.getElementById('facebookUrl').value,
       // §284 — בלי אלה, מעבר לתקנון וחזרה היה מאפס את בחירת מסלול-האימות ואת מה שמולא בו.
       // קבצים לא נשמרים בטיוטה (אי אפשר) — ולכן מסלול שמבוסס-תמונה יידרש לצרף שוב.
       verifyRoute:       document.getElementById('verifyRoute').value,
+      seatArea:          document.getElementById('seatArea').value,
       seatBlock:         document.getElementById('seatBlock').value,
       seatRow:           document.getElementById('seatRow').value,
       seatNumber:        document.getElementById('seatNumber').value,
@@ -2049,11 +2088,13 @@
       if (d.isSubscriber === 'yes' && d.fanSport === 'both') setVerifiedSport(d.verifiedSport || '');
     }
     document.getElementById('subscriberSection').value = d.subscriberSection || '';
+    document.getElementById('subscriberTier').value     = d.subscriberTier    || '';
     document.getElementById('subscriberNumber').value  = d.subscriberNumber  || '';
     document.getElementById('wasSubscriber').value     = d.wasSubscriber     || '';
     document.getElementById('facebookUrl').value       = d.facebookUrl       || '';
     // §284 — קודם ממלאים את השדות ורק אז pickRoute, כדי שהוא יפתח כרטיס שכבר יש בו תוכן
-    document.getElementById('seatBlock').value         = d.seatBlock         || '';
+    document.getElementById('seatArea').value          = d.seatArea          || '';
+    document.getElementById('seatBlock').value          = d.seatBlock         || '';
     document.getElementById('seatRow').value           = d.seatRow           || '';
     document.getElementById('seatNumber').value        = d.seatNumber        || '';
     document.getElementById('standsFacebookUrl').value = d.standsFacebookUrl || '';
