@@ -2117,6 +2117,11 @@ function sectionLabelFor(verifiedSport) {
 // §318 — יציע עליון/תחתון. קיים בכדורסל בלבד (במנורה מבטחים יש שתי טבעות), ורשומות שנרשמו
 // לפני §318 פשוט אין להן ערך — מחזיר '' ולא "—", כדי שהקורא יוכל להשמיט את השדה לגמרי.
 const TIER_LABELS = { upper: 'עליון', lower: 'תחתון' };
+function normSocialHref(u) {
+  const s = String(u || '').trim();
+  if (!s) return '';
+  return /^https?:///i.test(s) ? s : 'https://' + s.replace(/^/+/, '');
+}
 function sectionWithTier(section, tier) {
   const t = TIER_LABELS[tier] || '';
   if (!section) return t;
@@ -5958,6 +5963,7 @@ function bizFullDetailHtml(id, opts) {
           }</div></div>
         </div>
         ${b.ownerFacebookUrl ? `<div class="owner-verify-fb"><span class="form-field-label">פייסבוק</span><a href="${esc(b.ownerFacebookUrl)}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
+        ${b.ownerFanInstagram ? `<div class="owner-verify-fb"><span class="form-field-label">אינסטגרם</span><a href="${esc(normSocialHref(b.ownerFanInstagram))}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
         <div class="owner-verify-hint">אין רשימת מנויים להצלבה — ההחלטה מבוססת על התמונה ועל הפרופיל בלבד.</div>
         ${ownerVerifStateLine}
         <div class="owner-verify-actions">
@@ -6188,10 +6194,13 @@ function bizFullDetailHtml(id, opts) {
             </select></div>
             <div class="step-field"><div class="step-field-h">מספר מנוי</div><input type="text" id="edit_ownerNumber_${b.id}" value="${b.ownerSubscriberNumber||''}" placeholder="מס' מנוי"></div>
           </div>
+          <!-- §321 — הסושיאל יצא מהבלוק המוסתר: גם בעל-עסק שהוא מנוי מחזיק קישור -->
+          <div class="step-form-grid" style="margin-top:10px">
+            <div class="step-field full"><div class="step-field-h">קישור פייסבוק</div><input type="url" id="edit_ownerFbUrl_${b.id}" value="${b.ownerFacebookUrl||''}" placeholder="https://facebook.com/..."></div>
+            <div class="step-field full"><div class="step-field-h">קישור אינסטגרם</div><input type="text" id="edit_ownerInstagram_${b.id}" value="${b.ownerFanInstagram||''}" placeholder="instagram.com/..."></div>
+          </div>
           <div id="edit_ownerNoSubFields_${b.id}" style="display:${!b.ownerIsSubscriber?'block':'none'};margin-top:10px">
             <div class="step-form-grid">
-              <div class="step-field full"><div class="step-field-h">קישור פייסבוק</div><input type="url" id="edit_ownerFbUrl_${b.id}" value="${b.ownerFacebookUrl||''}" placeholder="https://facebook.com/..."></div>
-              <div class="step-field full"><div class="step-field-h">קישור אינסטגרם (אופציונלי)</div><input type="text" id="edit_ownerInstagram_${b.id}" value="${b.ownerFanInstagram||''}" placeholder="instagram.com/..."></div>
               <div class="step-field full"><div class="step-field-h">URL לתמונה בשער אוהדים (תמונת הוכחה)</div><input type="url" id="edit_ownerProofUrl_${b.id}" value="${b.ownerProofPhotoUrl||''}" placeholder="https://..." oninput="updateOwnerProofPreview('${b.id}', this.value)"></div>
             </div>
             <div id="edit_ownerProofPreview_${b.id}" style="margin-top:8px;${b.ownerProofPhotoUrl?'':'display:none;'}">
@@ -6585,9 +6594,9 @@ window.saveBizSec1 = async function(id) {
     gate:   isSub ? (document.getElementById('edit_ownerSection_'+id).value.trim() || null) : null,
     tier:   isSub ? (document.getElementById('edit_ownerTier_'+id).value || null) : null, // §319
     subNum: isSub ? (document.getElementById('edit_ownerNumber_'+id).value.trim() || null) : null,
-    fbUrl:  isSub ? '' : document.getElementById('edit_ownerFbUrl_'+id).value.trim(),
+    fbUrl:  document.getElementById('edit_ownerFbUrl_'+id).value.trim(), // §321 — ר' ההערה בצד האוהד
     photoProofUrl: isSub ? '' : document.getElementById('edit_ownerProofUrl_'+id).value.trim(),
-    fanInstagram: isSub ? '' : document.getElementById('edit_ownerInstagram_'+id).value.trim(),
+    fanInstagram: document.getElementById('edit_ownerInstagram_'+id).value.trim(), // §321
     ownerRelation: document.getElementById('edit_ownerRelation_'+id).value,
   };
   await saveSectionUpdates(id, updates);
@@ -7435,6 +7444,7 @@ function fanFullDetailHtml(id, opts) {
             ${idVerifyValue ? `<div><div class="form-field-label">${esc(VERIFY_VALUE_LABELS[idVerifyMethod] || 'מה נמסר')}</div><div class="form-field-val" style="white-space:pre-line">${esc(idVerifyValue)}</div></div>` : ''}
           </div>
           ${f.facebookUrl ? `<div class="owner-verify-fb"><span class="form-field-label">פייסבוק</span><a href="${esc(f.facebookUrl)}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
+          ${f.instagramUrl ? `<div class="owner-verify-fb"><span class="form-field-label">אינסטגרם</span><a href="${esc(normSocialHref(f.instagramUrl))}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
           <!-- §300 — השורה כבר לא חוזרת על "לא מנוי / היה בעבר": הם תאים ברשת למעלה.
                נשאר רק מה שהיא באמת אומרת — על מה ההחלטה נשענת. -->
           <div class="owner-verify-hint">${
@@ -7516,12 +7526,14 @@ function fanFullDetailHtml(id, opts) {
           <div class="form-row" style="margin:0"><label>מס' מנוי</label><input type="text" id="fanEditSubNum_${f.id}" value="${esc(f.subscriberNumber || '')}" /></div>
         </div>
         <div id="fanEditNoSubFields_${f.id}" style="display:${f.isSubscriber ? 'none' : 'block'};margin-top:10px">
-          <div class="form-row" style="margin:0 0 10px">
+          <div class="form-row" style="margin:0">
             <label>היה מנוי בעבר?</label>
             <select id="fanEditWasSub_${f.id}"><option value="yes" ${f.wasSubscriber==='yes'?'selected':''}>כן</option><option value="no" ${f.wasSubscriber!=='yes'?'selected':''}>לא</option></select>
           </div>
-          <div class="form-row" style="margin:0"><label>קישור פייסבוק</label><input type="text" id="fanEditFbUrl_${f.id}" value="${esc(f.facebookUrl || '')}" /></div>
         </div>
+        <!-- §321 — מחוץ ל-fanEditNoSubFields: גם מנוי מחזיק קישור סושיאל, ר' ההערה ב-saveFanDetails -->
+        <div class="form-row" style="margin:10px 0 0"><label>קישור פייסבוק</label><input type="text" id="fanEditFbUrl_${f.id}" value="${esc(f.facebookUrl || '')}" /></div>
+        <div class="form-row" style="margin:10px 0 0"><label>קישור אינסטגרם</label><input type="text" id="fanEditInstagram_${f.id}" value="${esc(f.instagramUrl || '')}" /></div>
         <div class="edit-btn-row" style="margin-top:12px">
           <button class="btn btn-reject" onclick="toggleFanEdit('${f.id}')" style="flex:none;padding:10px 18px">ביטול</button>
           <button class="btn btn-approve" onclick="saveFanDetails('${f.id}')" style="flex:1">💾 שמור</button>
@@ -7602,7 +7614,9 @@ window.saveFanDetails = async function(id) {
     subscriberTier:    isSub ? (document.getElementById('fanEditTier_' + id).value || null) : null, // §318
     subscriberNumber: isSub ? document.getElementById('fanEditSubNum_' + id).value.trim() : null,
     wasSubscriber: isSub ? null : document.getElementById('fanEditWasSub_' + id).value,
-    facebookUrl: isSub ? null : document.getElementById('fanEditFbUrl_' + id).value.trim(),
+    // §321 — ללא תנאי isSub. הניסוח הקודם (`isSub ? null : ...`) מחק את הקישור של כל מנוי.
+    facebookUrl: document.getElementById('fanEditFbUrl_' + id).value.trim() || null,
+    instagramUrl: document.getElementById('fanEditInstagram_' + id).value.trim() || null,
   };
   const changedFields = f0 ? Object.keys(updates).filter(k => f0[k] !== updates[k]) : [];
   showSaving('שומר...');

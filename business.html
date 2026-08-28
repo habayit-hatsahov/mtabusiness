@@ -1486,6 +1486,12 @@
             </div>
             <div class="field-error" id="err-bizVerifyRoute">נא לבחור דרך אימות אחת</div>
           </div>
+
+          <div class="form-group" style="margin-top:14px">
+            <label for="bizSocialUrl">פייסבוק או אינסטגרם</label>
+            <input type="url" id="bizSocialUrl" placeholder="https://facebook.com/... או https://instagram.com/..." inputmode="url" />
+            <div class="hint">לא חובה — אבל עוזר לנו מאוד. פרופיל <b>פתוח</b> שאפשר להציץ בו מזרז את האישור ומגדיל את הסיכוי שנאשר. פרופיל סגור לא עוזר לנו.</div>
+          </div>
         </div>
       </div>
 
@@ -1699,6 +1705,7 @@
       seatNumber:        data.seatNumber || null,
       verifyNote:        data.verifyNote || null,
       facebookUrl:       data.fbUrl || null,
+      instagramUrl:      data.fanInstagram || null,
       isBusinessOwner:   true,
       linkedBusinessId:  bizId,
       status:            'pending',
@@ -2298,11 +2305,14 @@
       seatRow:          _bv('bizVerifyRoute') === 'seatDetails' ? _bv('bizSeatRow') : '',
       seatNumber:       _bv('bizVerifyRoute') === 'seatDetails' ? _bv('bizSeatNumber') : '',
       verifyNote:       _bv('bizVerifyRoute') === 'manual'      ? _bv('bizVerifyNote') : '',
-      // לא-מנוי ממלא את bizFbUrl הישן; מנוי במסלול-היציע ממלא את זה שבתוך הכרטיס
+      // לא-מנוי ממלא את bizFbUrl הישן; מנוי במסלול-היציע ממלא את זה שבתוך הכרטיס;
+      // §321 — וכל שאר המנויים יכולים עכשיו לצרף קישור אופציונלי (bizSocialUrl).
       fbUrl:            document.getElementById('bizIsSubscriber').value === 'no'
                           ? document.getElementById('bizFbUrl').value.trim()
-                          : (_bv('bizVerifyRoute') === 'standsPhoto' ? _bv('bizStandsFbUrl') : ''),
-      fanInstagram:     document.getElementById('bizFanInstagram')?.value.trim() || '',
+                          : (_bv('bizVerifyRoute') === 'standsPhoto' ? _bv('bizStandsFbUrl')
+                             : (_bizSocial().fb)),
+      fanInstagram:     document.getElementById('bizFanInstagram')?.value.trim()
+                          || _bizSocial().insta,
 
       // פרטי העסק
       bizTypes:         [...selectedBizTypes],
@@ -3229,6 +3239,15 @@
     return !(asc || desc);
   }
 
+  // §321 — מפצל את הקישור האופציונלי לשדה שמתאים לו. מרכז הניהול מציג "פייסבוק · פתיחה ←",
+  // ותווית שקרית על קישור אינסטגרם גרועה מאין-שדה. רלוונטי למנוי בלבד (ללא-מנוי ממלא
+  // שדות ייעודיים משלו, ר' bizNonSubFields).
+  function _bizSocial() {
+    const v = document.getElementById('bizIsSubscriber').value === 'yes'
+      ? (document.getElementById('bizSocialUrl')?.value.trim() || '') : '';
+    return /instagram.com/i.test(v) ? { fb: '', insta: v } : { fb: v, insta: '' };
+  }
+
   function bizRouteComplete(r) {
     const sport = document.getElementById('bizVerifiedSport').value;
     switch (r) {
@@ -3702,6 +3721,7 @@
       verifiedSport: document.getElementById('bizVerifiedSport').value,
       gate:   document.getElementById('bizGate').value,
       tier:   document.getElementById('bizTier').value,
+      socialUrl: document.getElementById('bizSocialUrl').value,
       subNum: v('bizSubNum'),
       fbUrl:  v('bizFbUrl'),
       fanInstagram: v('bizFanInstagram'),
@@ -3815,6 +3835,7 @@
     }
     document.getElementById('bizGate').value   = d.gate   || '';
     document.getElementById('bizTier').value   = d.tier   || '';
+    document.getElementById('bizSocialUrl').value = d.socialUrl || '';
     document.getElementById('bizSubNum').value = d.subNum || '';
     document.getElementById('bizFbUrl').value  = d.fbUrl  || '';
     // §284 — קודם ממלאים את השדות ורק אז pickBizRoute, כדי שייפתח כרטיס שכבר יש בו תוכן
