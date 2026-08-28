@@ -41,6 +41,14 @@
     ::-webkit-scrollbar-track { background: transparent; }
 
     :root {
+      /* §314 — הצהרה מפורשת שהדף הוא מצב-בהיר יחיד. בלעדיה, טלפון שמוגדר במצב-כהה מקבל
+         פקדים נייטיביים בצבעי-המערכת — כולל את **חלונית הבחירה של <select>**, שנפתחת ע"י
+         מערכת-ההפעלה ולא נצבעת ע"י ה-CSS של הדף. באנדרואיד רבים מתעלמים שם מ-background
+         של option אך מכבדים את color, והתוצאה היא טקסט כחול-כהה (var(--text)) על רקע כהה —
+         כלומר בורר שנראה **ריק לגמרי**. בדיוק מה שדווח (28.8): אוהד פתח את תאריך הלידה
+         ו"לא הוצגו מספרים", ניסה כמה פעמים, ובסוף הצליח. שאר הנרשמים לא נתקלו בזה — מה
+         שמתיישב עם תלות בהגדרת-המכשיר ולא בקוד. */
+      color-scheme: light;
       /* ══ עיצוב דו-גוני צהוב+כחול, מצב יחיד — זהה ל-home.html/profile.html (ר' PROJECT_CONTEXT.md סעיף 69-70).
          העדכון הנוכחי (§82) מיישר את הדף לפריימים "Yellow Zone Screens.dc.html" מסכים 4-5 —
          ר' demo-redesign-fan-register.html למקור-האמת הוויזואלי שאושר. ══ */
@@ -500,6 +508,24 @@
           </div>
           <input type="hidden" id="birthDate" />
           <div class="field-error" id="err-birthDate">נא לבחור תאריך לידה תקין</div>
+          <!-- §314 — המספרים נכתבים לבוררים **כאן**, בסקריפט קלאסי שרץ בזמן הפרסור, ולא
+               ב-<script type="module"> שבתחתית הדף שממתין להורדת firebase מ-gstatic. בורר
+               ריק הוא לא כמו כפתור מת: המשתמש *פותח* אותו, רואה רשימה ריקה, ומסיק שהאתר
+               שבור. זה DOM טהור בלי שום תלות, ולכן אין סיבה שיחכה למודול. -->
+          <script>
+            window.HB_BIRTH_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני',
+                                      'יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+            (function () {
+              var day = document.getElementById('birthDay'),
+                  month = document.getElementById('birthMonth'),
+                  year = document.getElementById('birthYear');
+              if (!day || !month || !year || day.options.length > 1) return;
+              for (var d = 1; d <= 31; d++) day.add(new Option(String(d), String(d)));
+              window.HB_BIRTH_MONTHS.forEach(function (name, i) { month.add(new Option(name, String(i + 1))); });
+              var thisYear = new Date().getFullYear();
+              for (var y = thisYear; y >= thisYear - 100; y--) year.add(new Option(String(y), String(y)));
+            })();
+          </script>
         </div>
 
         <div class="form-group">
@@ -1334,7 +1360,9 @@
     return d <= today;
   }
 
-  const BIRTH_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+  // §314 — מקור-אמת אחד: הרשימה נכתבת בסקריפט הקלאסי שליד הבוררים עצמם (ר' ההערה שם).
+  // הנפילה-לאחור נשארת למקרה שהבלוק ההוא יוסר/יישבר, כדי שהטופס לא יישאר בלי חודשים.
+  const BIRTH_MONTHS = window.HB_BIRTH_MONTHS || ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
                         'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
   // מרכיב את שלושת הבוררים לערך אחד. חשוב: הרכבה תמימה של 31/02 **לא** נכשלת ב-JS אלא
@@ -1357,11 +1385,15 @@
     const month = document.getElementById('birthMonth');
     const year = document.getElementById('birthYear');
     if (!day || !month || !year) return;
-    for (let d = 1; d <= 31; d++) day.add(new Option(String(d), String(d)));
-    BIRTH_MONTHS.forEach((name, i) => month.add(new Option(name, String(i + 1))));
-    // 100 שנה אחורה, מהחדש לישן — רוב הנרשמים בני 20-60, כך הם קרובים לראש הרשימה
-    const thisYear = new Date().getFullYear();
-    for (let y = thisYear; y >= thisYear - 100; y--) year.add(new Option(String(y), String(y)));
+    // §314 — בדרך כלל הבוררים כבר מלאים (הסקריפט הקלאסי שלידם רץ בזמן הפרסור). ממלאים כאן
+    // רק אם משום מה הם ריקים, כדי שלא ייווצרו כפילויות.
+    if (day.options.length <= 1) {
+      for (let d = 1; d <= 31; d++) day.add(new Option(String(d), String(d)));
+      BIRTH_MONTHS.forEach((name, i) => month.add(new Option(name, String(i + 1))));
+      // 100 שנה אחורה, מהחדש לישן — רוב הנרשמים בני 20-60, כך הם קרובים לראש הרשימה
+      const thisYear = new Date().getFullYear();
+      for (let y = thisYear; y >= thisYear - 100; y--) year.add(new Option(String(y), String(y)));
+    }
     [day, month, year].forEach(el => el.addEventListener('change', syncBirthDate));
   })();
 
