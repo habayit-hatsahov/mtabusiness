@@ -66,9 +66,56 @@ export async function handleDownloadImage(request, env) {
 // לצרף אימות לבקשה, אז גם מנהל/בעל-עסק מחוברים רואים תמונה שבורה עד שהעסק מאושר (ואז storage.rules
 // כבר מתירים read פומבי, ר' storage.rules:46-48). ה-<img> צריך להצביע ל-Worker כאן, לא ל-Storage
 // ישירות — הוא זה שמביא את הקובץ בצד-שרת עם הרשאת ה-service-account.
-export async function handleViewImage(request, env) {
+// ── §317 — קאש ב-edge ────────────────────────────────────────────────────────────────────
+// עד היום התגובה חזרה עם `Cache-Control: private, max-age=3600`, ושתי בעיות נבעו מזה:
+//  1. **`private` מונע קאש ב-edge**, ותגובה שחוזרת מ-Worker ממילא אינה נשמרת אוטומטית —
+//     נמדד בפועל: שתי בקשות רצופות, ואין אפילו כותרת `CF-Cache-Status`. כלומר כל צפייה
+//     בתמונה עלתה קריאת-KV לטוקן + הבאה מלאה מ-GCS, גם אם אותה תמונה נצפתה לפני שנייה.
+//  2. שעה אחת בדפדפן זה קצר מדי למסך שנפתח עשרות פעמים ביום.
+// התיקון: Cache API מפורש (`caches.default`) + `public`. מפתח-הקאש הוא כתובת-הבקשה המלאה,
+// שכוללת את נתיב-האובייקט ב-Storage — בלתי-ניתן לניחוש, בדיוק כמו מודל-האבטחה של כתובות
+// ההורדה של Firebase עצמן. **יום אחד ולא שנה** בכוונה: תמונה של עסק שנדחה/נמחק לא תישאר
+// בקאש לזמן בלתי-מוגבל.
+const VIEW_IMAGE_TTL = 86400;
+const VIEW_MAX_WIDTH = 1600;
+
+// ── §317 — `?w=` : הקטנה בזמן ריצה ──────────────────────────────────────────────────────
+// מרכז הניהול מציג את תמונות הגלריה בריבוע של 72px, אבל טען עד היום את **המקור המלא**:
+// 168 תמונות, 49MB בסך הכל, ממוצע 299KB, ולעסק אחד 11.8MB בגיליון בודד. לתמונה המייצגת
+// יש coverPhotoThumb — לגלריה מעולם לא נוצרה ממוזערת.
+// במקום הגירה של 168 קבצים: אותו env.IMAGES שכבר משמש את runBackfillThumbnails (src/
+// backfill.js), רק בזמן-ריצה. התוצאה נשמרת ב-edge לפי הכתובת המלאה — כולל ה-`w` — ולכן
+// כל מידה מחושבת פעם אחת בלבד לכל העולם.
+// ⚠️ נפילה-לאחור מכוונת: פורמט ש-Images לא יודע לפענח (HEIC של אייפון, למשל) מחזיר את
+// המקור כמו שהוא, בדיוק כמו קודם. הקטנה היא אופטימיזציה — היא לא רשאית להפוך תמונה
+// שנטענה היום לתמונה שבורה.
+async function resizeOrOriginal(env, upstream, width) {
+  const contentType = upstream.headers.get('Content-Type') || 'application/octet-stream';
+  if (!width || !env.IMAGES) return { body: upstream.body, contentType };
+  // clone() **לפני** הקריאה: גוף התגובה הוא stream חד-פעמי, ובלי העותק הזה נתיב-הנפילה-לאחור
+  // מקבל stream שכבר נקרא ונופל על "This ReadableStream is disturbed" — כלומר דווקא התמונות
+  // שה-resize לא הצליח עליהן היו נשברות לגמרי במקום לחזור למקור.
+  const fallback = upstream.clone();
+  try {
+    // format/quality שייכים ל-output(), לא ל-transform(), ו-format הוא MIME מלא.
+    const out = await env.IMAGES.input(upstream.body)
+      .transform({ width, fit: 'scale-down' })
+      .output({ format: 'image/webp', quality: 78 });
+    return { body: out.response().body, contentType: 'image/webp' };
+  } catch (e) {
+    console.warn('view-image resize failed, serving original:', String(e));
+    return { body: fallback.body, contentType };
+  }
+}
+
+export async function handleViewImage(request, env, ctx) {
   const url = new URL(request.url);
   const imgUrl = url.searchParams.get('url') || '';
+  const width = Math.min(Math.max(parseInt(url.searchParams.get('w') || '0', 10) || 0, 0), VIEW_MAX_WIDTH);
+
+  const cache = caches.default;
+  const hit = await cache.match(request);
+  if (hit) return hit;
 
   let upstream;
   try {
@@ -79,11 +126,16 @@ export async function handleViewImage(request, env) {
   if (!upstream) return new Response('Invalid or disallowed url', { status: 400 });
   if (!upstream.ok) return new Response('View failed: upstream status ' + upstream.status, { status: 502 });
 
-  return new Response(upstream.body, {
+  const { body, contentType } = await resizeOrOriginal(env, upstream, width);
+  const resp = new Response(body, {
     status: 200,
     headers: {
-      'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
-      'Cache-Control': 'private, max-age=3600',
+      'Content-Type': contentType,
+      'Cache-Control': `public, max-age=${VIEW_IMAGE_TTL}`,
     },
   });
+  // clone() לפני ההחזרה — הגוף הוא stream שניתן לקריאה פעם אחת בלבד. waitUntil כדי
+  // שהכתיבה לקאש לא תעכב את התגובה למשתמש.
+  if (ctx && ctx.waitUntil) ctx.waitUntil(cache.put(request, resp.clone()));
+  return resp;
 }

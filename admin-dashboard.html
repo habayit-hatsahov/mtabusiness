@@ -2650,16 +2650,19 @@ let lightboxCurrentFilename = '';
 // storage.rules:46-48) — Worker /view-image מביא אותה בצד-שרת עם הרשאת ה-service-account (עוקף
 // את הרוב דרך GCS ישיר, ר' worker/src/download.js) ומחזיר inline. משמש לכל תצוגת-תמונה כאן
 // (thumbnail/lightbox) — לא רק ל-downloadImage שכבר עבר דרך /download-image.
-function bizImageViewUrl(url) {
-  return url ? (WORKER_URL + '/view-image?url=' + encodeURIComponent(url)) : '';
+// §317 — width אופציונלי: מבקש מה-Worker להחזיר גרסה מוקטנת (ר' resizeOrOriginal ב-
+// worker/src/download.js). בלי הפרמטר ההתנהגות זהה לחלוטין למה שהיה — המקור המלא.
+function bizImageViewUrl(url, width) {
+  if (!url) return '';
+  return WORKER_URL + '/view-image?url=' + encodeURIComponent(url) + (width ? '&w=' + width : '');
 }
 function mediaThumbHtml(url, filename, sizeStyle, alt, objectFit) {
   if (!url) return '';
   const safeUrl = esc(url);
-  const viewUrl = esc(bizImageViewUrl(url));
+  const viewUrl = esc(bizImageViewUrl(url, 288));
   return `
     <div class="media-thumb-wrap" style="${sizeStyle}" onclick="openImageLightbox('${safeUrl}','${esc(filename || 'image.jpg')}')">
-      <img src="${viewUrl}" alt="${esc(alt || '')}" onerror="markBizImageBroken(this)" style="width:100%;height:100%;object-fit:${objectFit || 'cover'};display:block;">
+      <img src="${viewUrl}" alt="${esc(alt || '')}" loading="lazy" decoding="async" onerror="markBizImageBroken(this)" style="width:100%;height:100%;object-fit:${objectFit || 'cover'};display:block;">
       <button type="button" class="thumb-download-btn" title="הורד תמונה" onclick="event.stopPropagation();downloadImage('${safeUrl}','${esc(filename || 'image.jpg')}')">⬇</button>
     </div>`;
 }
@@ -6470,7 +6473,7 @@ async function saveSectionUpdates(id, updates, opts) {
     const fields = Object.keys(updates).filter(k => !SAVE_LOG_SKIP_FIELDS.has(k));
     if (fields.length) {
       const summary = fields.map(k => DIFF_FIELD_LABELS_MOCK[k] || k).join(', ');
-      await logActivity('businesses', id, {
+      logActivity('businesses', id, {
         type: 'adminEdit', title: `נערך: ${summary}`,
         detail: fields.map(k => `${DIFF_FIELD_LABELS_MOCK[k] || k}: "${fmtActivityVal(beforeVals[k])}" → "${fmtActivityVal(updates[k])}"`).join(' · '),
         field: fields[0], before: beforeVals[fields[0]] ?? null, after: updates[fields[0]] ?? null,
@@ -8790,7 +8793,7 @@ window.approveBiz = async function(id) {
     // ועדיין "ממתין להחלטה" על מי שמאחוריו. ההחלטה עדיין קיימת כשדה נפרד וניתן לשנות/לבטל אותה
     // מהכרטיס; מה שהשתנה זה שברירת-המחדל של אישור-עסק היא שהאימות אושר יחד איתו.
     await approveBizWithMemberBatch(b);
-    await logActivity('businesses', id, { type: 'status', title: 'העסק אושר', detail: `"${b.name}" אושר לאינדקס — אימות בעל העסק אושר יחד איתו`, field: 'status', before: b.status, after: 'approved' });
+    logActivity('businesses', id, { type: 'status', title: 'העסק אושר', detail: `"${b.name}" אושר לאינדקס — אימות בעל העסק אושר יחד איתו`, field: 'status', before: b.status, after: 'approved' });
   } catch (e) { console.error(e); alert('שגיאה באישור: ' + e.message); }
 };
 window.rejectBiz = async function(id) {
@@ -8800,7 +8803,7 @@ window.rejectBiz = async function(id) {
     const wasApproved = b.status === 'approved';
     if (wasApproved) await updateDoc(doc(db, 'businesses', id), { status: 'pending', approvedAt: null });
     else await updateDoc(doc(db, 'businesses', id), { status: 'rejected', rejectedAt: serverTimestamp() });
-    await logActivity('businesses', id, {
+    logActivity('businesses', id, {
       type: 'status', title: wasApproved ? 'העסק הוחזר לממתין' : 'העסק נדחה',
       detail: `"${b.name}" ${wasApproved ? 'הוחזר לסטטוס ממתין' : 'נדחה'}`,
       field: 'status', before: b.status, after: wasApproved ? 'pending' : 'rejected',
@@ -13317,6 +13320,14 @@ function renderAllPreserveScroll() {
   if (!refreshOpenDetailPanel()) renderMain();
 }
 
+// §317 — כמה onSnapshot שנוחתים באותו tick מצטמצמים לרינדור אחד בפריים הבא.
+let _renderAllQueued = false;
+function queueRenderAllPreserveScroll() {
+  if (_renderAllQueued) return;
+  _renderAllQueued = true;
+  requestAnimationFrame(() => { _renderAllQueued = false; renderAllPreserveScroll(); });
+}
+
 // admin guard — session אמיתי (Firebase Auth) + isAdmin:true על רשומת החבר, זהה ל-admin-businesses.html/admin-members.html
 await new Promise(resolve => {
   const unsub = onAuthStateChanged(auth, async user => {
@@ -13365,7 +13376,7 @@ onSnapshot(collection(db, 'bizTokens'), snapshot => {
   BIZ_TOKENS = Object.fromEntries(snapshot.docs.map(d => [d.id, d.data().accessToken || '']));
   if (_bizLoaded) {
     MOCK_BUSINESSES = MOCK_BUSINESSES.map(b => ({ ...b, accessToken: BIZ_TOKENS[b.id] || '' }));
-    renderAllPreserveScroll();
+    queueRenderAllPreserveScroll();
   }
 }, err => console.error('שגיאה בטעינת טוקני עסקים:', err));
 
@@ -13374,7 +13385,7 @@ onSnapshot(collection(db, 'businesses'), snapshot => {
   _bizLoaded = true;
   // renderAllPreserveScroll (לא renderAll) — ה-listener הזה גם רץ בגלל הכתיבה-העצמית-של-המנהל, לא
   // רק שינויים-מבחוץ. ר' ההערה ב-renderAllPreserveScroll למעלה, זה שורש-הבאג האמיתי לקפיצת-הגלילה.
-  if (_fanLoaded) renderAllPreserveScroll(); else maybeInitialRender();
+  if (_fanLoaded) queueRenderAllPreserveScroll(); else maybeInitialRender();
 }, err => console.error('שגיאה בטעינת עסקים מ-Firestore:', err));
 
 // §248 — נטען לפני/במקביל לחברים. אם הוא מגיע אחרי, ה-map מעודכן והחברים מוזרמים מחדש דרך
@@ -13383,14 +13394,14 @@ onSnapshot(collection(db, 'memberCodes'), snapshot => {
   MEMBER_CODES = Object.fromEntries(snapshot.docs.map(d => [d.id, d.data().loginCode || '']));
   if (_fanLoaded) {
     MOCK_FANS = MOCK_FANS.map(f => ({ ...f, loginCode: MEMBER_CODES[f.id] || '' }));
-    renderAllPreserveScroll();
+    queueRenderAllPreserveScroll();
   }
 }, err => console.error('שגיאה בטעינת קודי כניסה:', err));
 
 onSnapshot(collection(db, 'members'), snapshot => {
   MOCK_FANS = snapshot.docs.map(d => hydrateFan(d.id, d.data()));
   _fanLoaded = true;
-  if (_bizLoaded) renderAllPreserveScroll(); else maybeInitialRender();
+  if (_bizLoaded) queueRenderAllPreserveScroll(); else maybeInitialRender();
 }, err => console.error('שגיאה בטעינת אוהדים מ-Firestore:', err));
 
 // עסק השבוע · הטבת השבוע — 2 אוספים, לא חוסמים את הרינדור הראשוני (תורים קטנים, לא קריטיים כמו עסקים/אוהדים)

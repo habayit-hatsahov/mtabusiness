@@ -9,8 +9,7 @@ import { uploadToFirebaseStorage } from './storage.js';
 // (compressToFile ב-business.html/business-dashboard.html): 400px, WebP, איכות ~0.75.
 const THUMB_SIZE = 400;
 const THUMB_QUALITY = 75;
-const THUMB_FORMAT = 'webp';
-const THUMB_CONTENT_TYPE = 'image/webp';
+const THUMB_CONTENT_TYPE = 'image/webp'; // משמש גם כ-format ל-output() וגם כ-Content-Type בהעלאה
 
 function hasImage(url) {
   return !!url && typeof url === 'string' && !/\.html?(\?|#|$)/i.test(url);
@@ -21,9 +20,13 @@ async function makeThumbUrl(env, accessToken, sourceUrl, bizId, fieldName) {
   if (!sourceResp.ok) throw new Error(`source_fetch_failed_${sourceResp.status}`);
   const sourceBytes = await sourceResp.arrayBuffer();
 
+  // §317 — `format`/`quality` שייכים ל-output(), לא ל-transform(), ו-format הוא MIME מלא
+  // ('image/webp' ולא 'webp'). החתימה הקודמת נפלה ב-`TypeError: Cannot read properties of
+  // undefined (reading 'font')` — נמדד בפועל ב-wrangler tail כשאותה חתימה נוסתה ב-/view-image.
+  // הכלי הזה הוא ריצה ידנית חד-פעמית ולכן אף פעם לא הורץ מאז; הוא היה נכשל על כל עסק.
   const transformed = await env.IMAGES.input(sourceBytes)
-    .transform({ width: THUMB_SIZE, height: THUMB_SIZE, fit: 'scale-down', quality: THUMB_QUALITY, format: THUMB_FORMAT })
-    .output();
+    .transform({ width: THUMB_SIZE, height: THUMB_SIZE, fit: 'scale-down' })
+    .output({ format: THUMB_CONTENT_TYPE, quality: THUMB_QUALITY });
   const thumbBytes = await transformed.response().arrayBuffer();
 
   return uploadToFirebaseStorage(

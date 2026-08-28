@@ -17,7 +17,7 @@ import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js'
 const SITE_BASE = 'https://yellowzone.co.il/';
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return handlePreflight(env, request);
 
     const url = new URL(request.url);
@@ -71,7 +71,7 @@ export default {
         return handleDownloadImage(request, env);
       }
       if (request.method === 'GET' && url.pathname === '/view-image') {
-        return handleViewImage(request, env);
+        return handleViewImage(request, env, ctx); // ctx — נדרש ל-cache.put, ר' §317
       }
       return json({ error: 'not_found' }, env, request, 404);
     } catch (e) {
