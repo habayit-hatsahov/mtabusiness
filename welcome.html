@@ -36,6 +36,122 @@
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   window.addEventListener('pageshow', function () { window.scrollTo(0, 0); });
 </script>
+
+<!-- §312 — כל פונקציה שמחוברת ל-onclick חייבת להיות מוגדרת **כאן**, לפני שהכפתורים נראים.
+     הבאג האמיתי: "להרשמה כאוהד" ו"התחברות עם קוד" מצוירים בערך בשורה 570, אבל ההגדרות שלהם
+     ישבו בסקריפט שבתחתית העמוד — ובאמצע יושב script חוסם-פרסור של categories.js. כלומר יש
+     חלון של שניות במובייל שבו הכרטיס נראה מוכן ולחיץ לגמרי, אבל לחיצה זורקת ReferenceError
+     ופשוט לא קורה כלום. אוהד אמיתי נתקע ככה (28.8), לחץ ארוך מרוב תסכול, וקיבל חלון חיפוש
+     של Google Lens במקום התחברות. אותה משפחת באג של §310.
+     גופי הפונקציות ניגשים ל-DOM רק בזמן הלחיצה, ולכן מיקומן כאן בטוח לחלוטין. -->
+<script>
+// ── מודאלים ──────────────────────────────────────────────────────────────────
+function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow = ''; }
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  ['joinOverlay', 'loginOverlay'].forEach(id => document.getElementById(id).classList.remove('open'));
+  document.body.style.overflow = '';
+});
+
+// אותו מנגנון בדיוק כמו landing-demo.html: בדסקטופ טוענים fan-register.html?embed=1
+// (מסתיר הדר/הירו עצמאיים כי הפאנל הצהוב החיצוני כבר נותן את המיתוג), במובייל את הדף המלא.
+function openJoinModal() {
+  window.logEvent && window.logEvent('formOpen', { blockId: 'joinModal' });
+  const f = document.getElementById('joinFrame');
+  const wide = window.matchMedia('(min-width: 760px)').matches;
+  const wantedSrc = wide ? 'fan-register.html?embed=1' : 'fan-register.html';
+
+  // ── §286 — פתיחה חוזרת אחרי הרשמה מוצלחת ─────────────────────────────────────────────────
+  // התנאי `src !== wantedSrc` נועד לא לטעון מחדש טופס שכבר פתוח (כדי לא לאבד מה שהוקלד בו
+  // אם המודאל נסגר בטעות) — אבל אחרי שליחה מוצלחת ה-iframe מציג את **מסך ההצלחה**, והכתובת
+  // לא השתנתה. התוצאה: לחיצה חוזרת על "להרשמה" החזירה את "הבקשה התקבלה" במקום טופס נקי,
+  // ולא הייתה שום דרך לרשום אדם נוסף (בן משפחה, חבר) בלי לרענן את כל הדף. דווח בפועל.
+  //
+  // הזיהוי הוא same-origin לתוך ה-iframe (אותו מנגנון כמו embedGoLogin ב-fan-register).
+  // ⚠️ **לא** offsetParent: הבדיקה הזאת רצה לפני ש-.open נוסף לאוברליי, כלומר בזמן שה-iframe
+  // עצמו עדיין מוסתר — ואז offsetParent של *כל* אלמנט בתוכו הוא null, והזיהוי תמיד נכשל.
+  // getComputedStyle על האלמנט עצמו מחזיר את ה-display שלו בלי קשר לכך שההורה מוסתר:
+  // `.success-state` הוא display:none כברירת מחדל, והקוד מציב block בהצלחה.
+  let alreadySubmitted = false;
+  try {
+    const s = f.contentDocument?.getElementById('successState');
+    alreadySubmitted = !!s && f.contentWindow.getComputedStyle(s).display !== 'none';
+  } catch (_) {}
+
+  // ה-cache-buster הכרחי: השמה של אותה כתובת בדיוק ל-src לא מבטיחה ניווט מחדש בכל דפדפן.
+  // ההשוואה למטה מתעלמת ממנו, כדי שטופס שכבר פתוח וממולא ימשיך לא להיטען מחדש.
+  const currentBase = (f.getAttribute('src') || '').replace(/[?&]r=\d+/, '');
+  if (currentBase !== wantedSrc || alreadySubmitted) {
+    f.src = wantedSrc + (wantedSrc.includes('?') ? '&' : '?') + 'r=' + Date.now();
+  }
+
+  document.getElementById('joinOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function openLoginModal() {
+  window.logEvent && window.logEvent('formOpen', { blockId: 'loginModal' });
+  // §312 — איפוס מצב הכפתור בכל פתיחה. בלי זה, ניסיון קודם שנתקע השאיר את הכפתור disabled עם
+  // הכיתוב "בודק...", וכל פתיחה מחדש של המודאל החזירה **כפתור מת** — כך תקלה רגעית אחת נעלה את
+  // הכניסה עד רענון מלא של הדף. קרה בפועל לאוהד ב-28.8: הוא פתח את המודאל שלוש פעמים נוספות,
+  // בכל פעם קיבל את אותו כפתור מת, ואיבד שעה וחצי.
+  window.heroResetLoginBtn();
+  document.getElementById('loginOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => document.getElementById('heroPhoneInput')?.focus(), 200);
+}
+function scrollToPreview() { document.getElementById('previewSection').scrollIntoView({behavior:'smooth', block:'start'}); }
+function previewScrollCards(dir) { document.getElementById('previewCardsScroll').scrollBy({left: dir * 260, behavior: 'smooth'}); }
+// מציג את אותו אוברליי צהוב (.lp-splash) שכבר בנוי ל-lp-checking גם כשעוברים
+// ל-home.html דרך פעולה יזומה (לא רק בבדיקת session פסיבית בטעינת הדף) — כדי שלא
+// יהיה רגע ריק/לבן בין הניווט לטעינת הדף החדש (בקשה מפורשת של המשתמש).
+function heroGoHome() {
+  document.documentElement.classList.add('lp-checking');
+  // דיחוי קטן וקריטי: בלי זה location.href רץ באותו tick שבו נוסף lp-checking, והדפדפן
+  // (בעיקר במובייל) לא מספיק לצייר אפילו פריים אחד עם ה-splash לפני שהניווט כבר מתחיל —
+  // בפועל המשתמש לא רואה אותו בכלל, קופץ ישר ל-home.html. setTimeout קצר נותן לדפדפן
+  // הזדמנות אמיתית לצייר לפני שהעמוד מתחיל להיפרק.
+  setTimeout(function () { location.href = 'home.html'; }, 60);
+}
+function goToRealHome() { heroGoHome(); }
+window.shareLandingPage = async function() {
+  const shareData = {
+    title: 'Yellow Zone — קונים כחול-צהוב',
+    text: 'מצאתי אינדקס עסקים והטבות של אוהדי מכבי — עסקים, הטבות והמלצות אמיתיות מהאוהדים. בואו תצטרפו:',
+    url: location.href.split('?')[0].split('#')[0],
+  };
+  if (navigator.share) { try { await navigator.share(shareData); } catch (e) {} return; }
+  window.open(`https://wa.me/?text=${encodeURIComponent(shareData.text + ' ' + shareData.url)}`, '_blank');
+  navigator.clipboard?.writeText(shareData.url).catch(()=>{});
+};
+
+// ── מצב-ביניים: המודאל נפתח לפני שהמודול נטען ─────────────────────────────────────────
+// openLoginModal מוגדר כבר עכשיו, אבל heroLogin/heroRequestResend חיים ב-script type=module
+// שממתין להורדת firebase מ-gstatic. בלי המעטפת הזאת רק הזזנו את אותו באג פנימה: הכפתור
+// "התחברו" היה מת בשקט. עכשיו הוא **אומר** למה, והמודול דורס את ההגדרות ברגע שהוא מוכן.
+window.heroResetLoginBtn = function () {
+  const b = document.getElementById('heroLoginBtn');
+  if (b) { b.disabled = false; b.textContent = 'התחברו'; }
+  const f = document.getElementById('heroForgotBtn');
+  if (f) { f.disabled = false; f.textContent = 'שלחו לי קוד למייל'; }
+  document.getElementById('heroLoginErr')?.classList.remove('show');
+};
+window.heroHideErr = function () { document.getElementById('heroLoginErr')?.classList.remove('show'); };
+window.heroToggleForgot = function () {
+  const panel = document.getElementById('heroForgotPanel');
+  panel.classList.toggle('show');
+  if (panel.classList.contains('show')) {
+    const phone = document.getElementById('heroPhoneInput').value.trim();
+    if (phone) document.getElementById('heroForgotPhoneInput').value = phone;
+    document.getElementById('heroForgotMsg').classList.remove('show');
+  }
+};
+function heroNotReadyYet(elId) {
+  const el = document.getElementById(elId);
+  if (el) { el.textContent = 'עוד רגע — הדף מסיים להיטען. נסו שוב בעוד שנייה.'; el.classList.add('show'); }
+}
+window.heroLogin = function () { heroNotReadyYet('heroLoginErr'); };
+window.heroRequestResend = function () { heroNotReadyYet('heroForgotMsg'); };
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
@@ -792,80 +908,6 @@ button { font-family: inherit; }
 </div>
 
 <script>
-// ── מודאלים ──────────────────────────────────────────────────────────────────
-function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow = ''; }
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
-  ['joinOverlay', 'loginOverlay'].forEach(id => document.getElementById(id).classList.remove('open'));
-  document.body.style.overflow = '';
-});
-
-// אותו מנגנון בדיוק כמו landing-demo.html: בדסקטופ טוענים fan-register.html?embed=1
-// (מסתיר הדר/הירו עצמאיים כי הפאנל הצהוב החיצוני כבר נותן את המיתוג), במובייל את הדף המלא.
-function openJoinModal() {
-  window.logEvent && window.logEvent('formOpen', { blockId: 'joinModal' });
-  const f = document.getElementById('joinFrame');
-  const wide = window.matchMedia('(min-width: 760px)').matches;
-  const wantedSrc = wide ? 'fan-register.html?embed=1' : 'fan-register.html';
-
-  // ── §286 — פתיחה חוזרת אחרי הרשמה מוצלחת ─────────────────────────────────────────────────
-  // התנאי `src !== wantedSrc` נועד לא לטעון מחדש טופס שכבר פתוח (כדי לא לאבד מה שהוקלד בו
-  // אם המודאל נסגר בטעות) — אבל אחרי שליחה מוצלחת ה-iframe מציג את **מסך ההצלחה**, והכתובת
-  // לא השתנתה. התוצאה: לחיצה חוזרת על "להרשמה" החזירה את "הבקשה התקבלה" במקום טופס נקי,
-  // ולא הייתה שום דרך לרשום אדם נוסף (בן משפחה, חבר) בלי לרענן את כל הדף. דווח בפועל.
-  //
-  // הזיהוי הוא same-origin לתוך ה-iframe (אותו מנגנון כמו embedGoLogin ב-fan-register).
-  // ⚠️ **לא** offsetParent: הבדיקה הזאת רצה לפני ש-.open נוסף לאוברליי, כלומר בזמן שה-iframe
-  // עצמו עדיין מוסתר — ואז offsetParent של *כל* אלמנט בתוכו הוא null, והזיהוי תמיד נכשל.
-  // getComputedStyle על האלמנט עצמו מחזיר את ה-display שלו בלי קשר לכך שההורה מוסתר:
-  // `.success-state` הוא display:none כברירת מחדל, והקוד מציב block בהצלחה.
-  let alreadySubmitted = false;
-  try {
-    const s = f.contentDocument?.getElementById('successState');
-    alreadySubmitted = !!s && f.contentWindow.getComputedStyle(s).display !== 'none';
-  } catch (_) {}
-
-  // ה-cache-buster הכרחי: השמה של אותה כתובת בדיוק ל-src לא מבטיחה ניווט מחדש בכל דפדפן.
-  // ההשוואה למטה מתעלמת ממנו, כדי שטופס שכבר פתוח וממולא ימשיך לא להיטען מחדש.
-  const currentBase = (f.getAttribute('src') || '').replace(/[?&]r=\d+/, '');
-  if (currentBase !== wantedSrc || alreadySubmitted) {
-    f.src = wantedSrc + (wantedSrc.includes('?') ? '&' : '?') + 'r=' + Date.now();
-  }
-
-  document.getElementById('joinOverlay').classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-function openLoginModal() {
-  window.logEvent && window.logEvent('formOpen', { blockId: 'loginModal' });
-  document.getElementById('loginOverlay').classList.add('open');
-  document.body.style.overflow = 'hidden';
-  setTimeout(() => document.getElementById('heroPhoneInput')?.focus(), 200);
-}
-function scrollToPreview() { document.getElementById('previewSection').scrollIntoView({behavior:'smooth', block:'start'}); }
-function previewScrollCards(dir) { document.getElementById('previewCardsScroll').scrollBy({left: dir * 260, behavior: 'smooth'}); }
-// מציג את אותו אוברליי צהוב (.lp-splash) שכבר בנוי ל-lp-checking גם כשעוברים
-// ל-home.html דרך פעולה יזומה (לא רק בבדיקת session פסיבית בטעינת הדף) — כדי שלא
-// יהיה רגע ריק/לבן בין הניווט לטעינת הדף החדש (בקשה מפורשת של המשתמש).
-function heroGoHome() {
-  document.documentElement.classList.add('lp-checking');
-  // דיחוי קטן וקריטי: בלי זה location.href רץ באותו tick שבו נוסף lp-checking, והדפדפן
-  // (בעיקר במובייל) לא מספיק לצייר אפילו פריים אחד עם ה-splash לפני שהניווט כבר מתחיל —
-  // בפועל המשתמש לא רואה אותו בכלל, קופץ ישר ל-home.html. setTimeout קצר נותן לדפדפן
-  // הזדמנות אמיתית לצייר לפני שהעמוד מתחיל להיפרק.
-  setTimeout(function () { location.href = 'home.html'; }, 60);
-}
-function goToRealHome() { heroGoHome(); }
-window.shareLandingPage = async function() {
-  const shareData = {
-    title: 'Yellow Zone — קונים כחול-צהוב',
-    text: 'מצאתי אינדקס עסקים והטבות של אוהדי מכבי — עסקים, הטבות והמלצות אמיתיות מהאוהדים. בואו תצטרפו:',
-    url: location.href.split('?')[0].split('#')[0],
-  };
-  if (navigator.share) { try { await navigator.share(shareData); } catch (e) {} return; }
-  window.open(`https://wa.me/?text=${encodeURIComponent(shareData.text + ' ' + shareData.url)}`, '_blank');
-  navigator.clipboard?.writeText(shareData.url).catch(()=>{});
-};
-
 // ── מצב "חבר קיים" מול "אורח" ──────────────────────────────────────────────
 window.applyMemberUI = function(isMember, name) {
   document.getElementById('headerActions').style.display = isMember ? 'none' : 'flex';
@@ -1012,7 +1054,8 @@ function setTitleKeepYellowWord(el, text) {
 })();
 
 // ── התחברות — טלפון+קוד, מאומת מול Firestore בצד-שרת דרך ה-Worker (זהה ל-landing-demo.html) ──
-window.heroHideErr = () => document.getElementById('heroLoginErr').classList.remove('show');
+// heroHideErr/heroToggleForgot/heroResetLoginBtn מוגדרים ב-script המוקדם שבראש הדף (§312) —
+// הם DOM טהור ואינם תלויים ב-firebase, ולכן חייבים להיות זמינים עוד לפני שהמודול הזה נטען.
 function heroShowErr(msg) {
   const el = document.getElementById('heroLoginErr');
   el.textContent = msg; el.classList.add('show');
@@ -1023,6 +1066,21 @@ function heroNormalizePhoneDigits(raw) {
   if (!d.startsWith('0'))  d = '0' + d;
   return d;
 }
+// §312 — כל המתנה לרשת כאן חסומה בזמן (הכלל של §280, שנאכף כבר ב-fan-register/business/
+// business-dashboard — והכניסה של האוהד כאן הייתה הנתיב האחרון שנשאר בלעדיו).
+// בלי זה, המתנה שנתקעת משאירה את הכפתור על "בודק..." לנצח. **שני** ה-await מסוכנים באותה
+// מידה: ה-fetch לוורקר, וגם signInWithCustomToken — שנשען על IndexedDB ויודע להיתקע במובייל
+// גם כשהרשת מצוינת. אצל אוהד אמיתי (28.8) ההבטחה התעוררה מעצמה רק אחרי שעה וחצי.
+const HERO_TIMEOUT_MS = 15000;
+const HERO_TIMEOUT_MSG = 'החיבור נקטע — זו לא תקלה בקוד שלכם. רעננו את הדף ונסו שוב.';
+function heroWithTimeout(promise, ms) {
+  let t;
+  return Promise.race([
+    promise.finally(() => clearTimeout(t)),
+    new Promise((_, reject) => { t = setTimeout(() => reject(new Error('hb_timeout')), ms); }),
+  ]);
+}
+const heroIsTimeout = (e) => !!e && (e.name === 'AbortError' || e.message === 'hb_timeout');
 window.heroLogin = async function() {
   const phoneRaw = document.getElementById('heroPhoneInput').value.trim();
   const code = document.getElementById('heroCodeInput').value.trim();
@@ -1030,36 +1088,31 @@ window.heroLogin = async function() {
   if (code.length !== 6) return heroShowErr('נא להזין קוד בן 6 ספרות');
   const btn = document.getElementById('heroLoginBtn');
   btn.disabled = true; btn.textContent = 'בודק...';
+  const ac = new AbortController();
+  const abortTimer = setTimeout(() => ac.abort(), HERO_TIMEOUT_MS);
   try {
     const resp = await fetch(WORKER_URL + '/mint-member-token', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: phoneRaw, code })
+      body: JSON.stringify({ phone: phoneRaw, code }), signal: ac.signal
     });
     const data = await resp.json();
+    clearTimeout(abortTimer);
     if (data.customToken) {
-      const cred = await signInWithCustomToken(auth, data.customToken);
+      const cred = await heroWithTimeout(signInWithCustomToken(auth, data.customToken), HERO_TIMEOUT_MS);
       localStorage.setItem('hb_phone', heroNormalizePhoneDigits(phoneRaw));
       localStorage.setItem('hb_memberId', cred.user.uid);
       heroGoHome();
       return;
     }
-    btn.disabled = false; btn.textContent = 'התחברו';
+    window.heroResetLoginBtn();
     if (data.error === 'pending') heroShowErr('הבקשה שלכם עדיין ממתינה לאישור — ברגע שתאושר תישלח אליכם הודעת מייל עם קוד כניסה.');
     else if (data.error === 'rejected') heroShowErr('הבקשה שלכם נדחתה. לפרטים צרו קשר עם הצוות.');
     else if (data.error === 'too_many_attempts') heroShowErr('יותר מדי ניסיונות — נסו שוב בעוד כמה דקות.');
     else heroShowErr('מספר טלפון או קוד שגויים');
   } catch (e) {
-    btn.disabled = false; btn.textContent = 'התחברו';
-    heroShowErr('שגיאה — נסו שוב');
-  }
-};
-window.heroToggleForgot = function() {
-  const panel = document.getElementById('heroForgotPanel');
-  panel.classList.toggle('show');
-  if (panel.classList.contains('show')) {
-    const phone = document.getElementById('heroPhoneInput').value.trim();
-    if (phone) document.getElementById('heroForgotPhoneInput').value = phone;
-    document.getElementById('heroForgotMsg').classList.remove('show');
+    clearTimeout(abortTimer);
+    window.heroResetLoginBtn();
+    heroShowErr(heroIsTimeout(e) ? HERO_TIMEOUT_MSG : 'שגיאה — נסו שוב');
   }
 };
 window.heroRequestResend = async function() {
@@ -1068,13 +1121,20 @@ window.heroRequestResend = async function() {
   if (!phoneRaw) { msgEl.textContent = 'נא להזין מספר טלפון'; msgEl.classList.add('show'); return; }
   const btn = document.getElementById('heroForgotBtn');
   btn.disabled = true; btn.textContent = 'שולח...';
+  // §312 — גם כאן היה fetch בלי גבול-זמן, ובדיוק לכפתור הזה פונה מי שכבר נתקע פעם אחת.
+  const ac = new AbortController();
+  const abortTimer = setTimeout(() => ac.abort(), HERO_TIMEOUT_MS);
+  let timedOut = false;
   try {
     await fetch(WORKER_URL + '/resend-login-code', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: phoneRaw })
+      body: JSON.stringify({ phone: phoneRaw }), signal: ac.signal
     });
-  } catch (e) {}
-  msgEl.textContent = 'אם המספר קיים במערכת המאושרת — הקוד יישלח למייל שנרשם בהקדם.';
+  } catch (e) { timedOut = heroIsTimeout(e); }
+  clearTimeout(abortTimer);
+  msgEl.textContent = timedOut
+    ? HERO_TIMEOUT_MSG
+    : 'אם המספר קיים במערכת המאושרת — הקוד יישלח למייל שנרשם בהקדם.';
   msgEl.classList.add('show');
   btn.disabled = false; btn.textContent = 'שלחו לי קוד למייל';
 };
