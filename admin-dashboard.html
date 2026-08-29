@@ -5285,6 +5285,23 @@ window.onLandingLayoutChange = function() {
   renderMain();
 };
 
+// ── §327 — גבול-זמן לפרסום ─────────────────────────────────────────────────────────────────
+// דווח בפועל (2026-08-29): *"יש בעיה בשמירה, העכבר הופך לסימן אדום וזה נתקע"*.
+// השורש: `setDoc` של Firestore **לא נכשל** כשהחיבור לא יציב — הוא מכניס את הכתיבה לתור
+// מקומי וה-Promise פשוט לא חוזר לעולם. ה-`finally` שמאפס את landingPublishing אף פעם לא
+// רץ, הכפתור נשאר disabled עם `cursor: not-allowed` (ר' .slot-btn[disabled]), ואין שום
+// הודעה — כי לא הייתה שגיאה. אותו דפוס בדיוק כמו §280/§312/§313: **כל await ברשת חייב גבול**.
+//
+// ⚠️ הניסוח בהודעה אינו "הפרסום נכשל": הכתיבה עשויה עדיין להשלים כשהחיבור יחזור, ולומר
+// "נכשל" היה גורם לפרסום כפול או לוויתור על שינוי שכן נשמר.
+function landingWithTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(label)), ms); }),
+  ]);
+}
+
 window.publishLandingContent = async function() {
   if (!landingWorking || landingPublishing || !landingHasUnpublished()) return;
   landingPublishing = true;
@@ -5294,17 +5311,25 @@ window.publishLandingContent = async function() {
     const payload = landingClone(landingWorking);
     payload.updatedAt = serverTimestamp();
     payload.updatedBy = CURRENT_ADMIN.name;
-    await setDoc(doc(db, 'settings', 'landingContent'), payload);
-    await deleteDoc(doc(db, 'settings', 'landingContentDraft')).catch(() => {});
-    await logActivity('settings', 'landingContent', {
+    await landingWithTimeout(
+      setDoc(doc(db, 'settings', 'landingContent'), payload), 15000, 'publish-timeout');
+    // מכאן ואילך הפרסום עצמו כבר הצליח. ניקוי-הטיוטה ורישום-הפעילות הם ניקוי-אחריו בלבד,
+    // ולכן הם לא מפילים את הפרסום ולא תוקעים את הכפתור אם הם נתקעים בעצמם.
+    await landingWithTimeout(
+      deleteDoc(doc(db, 'settings', 'landingContentDraft')), 8000, 'draft-timeout').catch(() => {});
+    await landingWithTimeout(logActivity('settings', 'landingContent', {
       type: 'landingPublish',
       title: 'פורסם תוכן חדש לדף הנחיתה',
       detail: changedBlocks.length ? changedBlocks.join(', ') : 'ללא שינוי בבלוקים',
       source: 'admin',
-    });
+    }), 8000, 'activity-timeout').catch(() => {});
   } catch (e) {
     console.error('פרסום תוכן דף הנחיתה נכשל:', e);
-    alert('הפרסום נכשל — נסו שוב.');
+    // הקוד האמיתי בתוך ההודעה — אותו לקח כמו bizWriteErrorMsg ב-business-dashboard.html:
+    // "נסו שוב" גנרי הוא בדיוק מה שהסתיר את הבאג הזה עד היום.
+    alert(e && e.message === 'publish-timeout'
+      ? 'לא התקבל אישור מהשרת תוך 15 שניות. ייתכן שהפרסום יושלם לבד כשהחיבור יתייצב — רעננו את הדף ובדקו לפני שמפרסמים שוב.'
+      : `הפרסום נכשל — נסו שוב. (קוד: ${(e && (e.code || e.message)) || 'unknown'})`);
   } finally {
     landingPublishing = false;
     renderMain();
@@ -5392,7 +5417,12 @@ function landingEditorHtml() {
       </div>
       <div class="lct-field">
         <label for="lctInHeroSlogan">סלוגן</label>
-        <input type="text" id="lctInHeroSlogan" maxlength="60" value="${esc(w.heroSlogan)}" oninput="onLandingTextFieldInput('heroSlogan')">
+        <!-- §327 — הועלה מ-60. הסלוגן הפך לשורת שלושה חלקים מופרדים ב-"•" ("קונים כחול־צהוב •
+             הטבות … • ההצטרפות חינם …"), ו-60 תווים קטעו אותה באמצע — בפועל נשמר ל-Firestore
+             טקסט עם רווח כפול במקום החלק החסר. אין מגבלת-אורך על השדה ב-firestore.rules;
+             60 היה מגבלת-הטופס בלבד. welcome.html שובר את השורה בגבולות ה-"•", ולכן שורה
+             ארוכה יותר נשארת קריאה גם במובייל. -->
+        <input type="text" id="lctInHeroSlogan" maxlength="120" value="${esc(w.heroSlogan)}" oninput="onLandingTextFieldInput('heroSlogan')">
       </div>
       <div class="lct-hint">הכותרת נקראת ראשונה במובייל — עד 6 מילים עובד הכי טוב.</div>`;
   }

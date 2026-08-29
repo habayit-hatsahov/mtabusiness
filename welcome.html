@@ -356,14 +356,32 @@ button { font-family: inherit; }
   font-size: 52px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink);
   line-height: 1.15; max-width: 900px; margin: 0 auto;
 }
+/* ── §327 — הסלוגן הוא שורת-חלקים מופרדים ב-"•", לא מחרוזת אחת ─────────────────────────────
+   flex + wrap במקום טקסט זורם: כשאין מקום, השורה נשברת **בגבול ה-"•"** ולא באמצע ביטוי.
+   ההבדל במובייל הוא בין "קונים כחול־צהוב • הטבות בעסקים / של אוהדים • ההצטרפות חינם"
+   לבין שלוש שורות נקיות. הפיצול עצמו נעשה ב-HB_renderSlogan (סקריפט קלאסי ליד ההירו).
+   ⚠️ אם המודול/הסקריפט לא רץ, נשאר טקסט רגיל בתוך flex — עדיין קריא, רק בלי שבירה חכמה. */
 .lp-hero-slogan {
   margin-top: 16px; font-size: 17px; font-weight: 800; letter-spacing: .1em;
   color: rgba(10,42,102,.78);
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 2px 10px;
 }
+.lp-slogan-dot { opacity: .45; font-weight: 700; }
 @media (max-width: 760px) {
   .lp-hero { padding: 34px 18px 32px; }
   .lp-hero h1 { font-size: 30px; }
-  .lp-hero-slogan { font-size: 13.5px; }
+  /* letter-spacing .1em על מחרוזת של ~60 תווים מוסיף רוחב של כמעט 6 תווים — זה לבדו חלק
+     ניכר מבעיית-האורך במובייל. .02em שומר על האופי המרווח בלי לשלם את המחיר. */
+  .lp-hero-slogan { font-size: 13px; letter-spacing: .02em; gap: 1px 8px; }
+
+  /* ── §327 — לגרום לאריח הראשון "להציץ" מתחת לקיפול (בקשת המשתמש) ──────────────────────
+     במובייל האריחים נערמים לטור, ומי שלא גולל רואה רק את מה שנכנס למסך. אריח שמציץ הוא
+     הרמז הוויזואלי היחיד שיש עוד תוכן למטה — בלעדיו המסך הראשון נראה כמו סוף הדף.
+     קיצוץ במרווחים בלבד, **בלי לגעת בגודל כרטיס ההרשמה** — הוא ה-CTA הראשי ולא רוצים
+     להקטין אותו כדי להרוויח פיקסלים. ⚠️ הרווח המדויק תלוי באורך הכותרת (h1), שנערכת
+     מ-Firestore: כותרת קצרה יותר = שורה אחת פחות = ~35px נוספים. */
+  .lp-hero { padding-bottom: 20px; }
+  .reg-card-wrap { margin-top: 18px; }
 }
 
 /* ══ REGISTRATION CARD ══ */
@@ -486,13 +504,30 @@ button { font-family: inherit; }
   border: none; cursor: pointer;
 }
 @media (max-width: 760px) {
-  .img-cards-row { flex-direction: column; padding: 28px 16px 4px; }
+  /* §327 — padding-top קוצץ מ-28 ל-14: כל פיקסל כאן הוא פיקסל שהאריח הראשון מציץ בו. */
+  .img-cards-row { flex-direction: column; padding: 14px 16px 4px; }
   /* flex:1 1 0 (מוגדר למעלה) מפזר רוחב בפריסת-שורה של דסקטופ — אבל כאן flex-direction הופך
      ל-column, אז אותו flex-basis:0 מנסה לפזר גובה במקום, בלי שום מקום-גדילה (הקונטיינר לא
      stretched לגובה קבוע) — כל אריח קורס ל-0px גובה. flex:none משאיר את aspect-ratio לקבוע
      את הגובה מהרוחב (100% stretched כברירת-מחדל ב-column), בלי מעורבות של אלגוריתם ה-flex. */
   .img-card { aspect-ratio: 4/3; flex: none; }
   .img-card-title { font-size: 20px; }
+
+  /* ── §327 — היפוך סדר האריחים במובייל (בקשת המשתמש, 2026-08-29) ─────────────────────────
+     בדסקטופ שני האריחים יושבים זה לצד זה ונראים יחד, ולכן הסדר כמעט לא משנה. במובייל הם
+     נערמים לטור — ומי שלא גולל רואה **רק את הראשון**. האריח שהיה ראשון הוא זה שמפנה
+     לרישום-עסק, כלומר לאורח שהגיע לדף נחיתה לאוהדים הוצע קודם כול לרשום עסק. עכשיו
+     "כל ההטבות במקום אחד" ראשון — ההצעה שרלוונטית לרוב המוחלט של המבקרים.
+
+     ⚠️ **שמות ה-id הפוכים למה שהם עושים, ואל תתקנו את זה בטעות:**
+       · #cardFans  = "כל העסקים כחול צהוב" → קישור ל-business.html (רישום עסק), blockId tile1
+       · #cardBiz   = "כל ההטבות במקום אחד" → גלילה לתצוגת האינדקס,      blockId tile2
+
+     ⚠️ **היפוך ויזואלי בלבד (order), לא שינוי ב-DOM ולא ב-blockId.** tile1/tile2 נשארים
+     מחוברים לאותו תוכן בדיוק, ולכן הנתונים ההיסטוריים (26–29.8: tile1=8, tile2=21) נשארים
+     ברי-השוואה מול מה שייאסף מכאן. החלפת המשמעות של blockId הייתה שוברת את הרצף בשקט. */
+  #cardBiz  { order: 1; }
+  #cardFans { order: 2; }
 }
 
 /* ══ LIVE PREVIEW ══ */
@@ -779,6 +814,37 @@ button { font-family: inherit; }
       if (t) t.style.visibility = '';
       if (s) s.style.visibility = '';
     }, 1200);
+
+    // ── §327 — פיצול הסלוגן לחלקים לפי "•" ────────────────────────────────────────────────
+    // ⚠️ הערך מגיע מ-Firestore כ**טקסט בלבד** (settings/landingContent.heroSlogan), ולכן אי
+    // אפשר לשים בו HTML — המנהל עורך מחרוזת אחת עם "•" והדף הוא זה שמרנדר אותה כפריטים.
+    // כך שבירת-השורה במובייל נופלת תמיד על גבול-הפרדה ולא באמצע ביטוי.
+    //
+    // ⚠️ **סקריפט קלאסי ולא מודול** (§314): הסלוגן הוא טקסט שנראה מיד, ואין שום סיבה
+    // שהצורה שלו תמתין להורדת firebase מ-gstatic. חשוף ל-window כדי שהמודול יקרא לאותה
+    // פונקציה בדיוק כשמגיע הערך מ-Firestore — מקור-אמת אחד לרינדור.
+    window.HB_renderSlogan = function (el, text) {
+      if (!el) return;
+      var parts = String(text == null ? '' : text).split('•')
+        .map(function (p) { return p.trim(); }).filter(Boolean);
+      if (!parts.length) return;                 // ערך ריק/פגום — משאירים את מה שכבר מוצג
+      el.textContent = '';
+      parts.forEach(function (p, i) {
+        if (i) {
+          var dot = document.createElement('span');
+          dot.className = 'lp-slogan-dot';
+          dot.setAttribute('aria-hidden', 'true');   // מפריד ויזואלי, לא תוכן להקראה
+          dot.textContent = '•';
+          el.appendChild(dot);
+        }
+        var item = document.createElement('span');
+        item.className = 'lp-slogan-item';
+        item.textContent = p;                    // textContent ולא innerHTML — הערך נערך ע"י מנהל
+        el.appendChild(item);
+      });
+    };
+    window.HB_renderSlogan(document.querySelector('.lp-hero-slogan'),
+                           (document.querySelector('.lp-hero-slogan') || {}).textContent);
   </script>
 
   <div class="reg-card-wrap" id="guestRegBlock">
@@ -1322,7 +1388,9 @@ function setTitleKeepYellowWord(el, text) {
     if (!snap.exists()) return;
     const c = snap.data();
     if (c.heroTitle) document.getElementById('heroTitle').textContent = c.heroTitle;
-    if (c.heroSlogan) document.querySelector('.lp-hero-slogan').textContent = c.heroSlogan;
+    // §327 — דרך HB_renderSlogan ולא textContent: הערך מ-Firestore הוא שורת-חלקים מופרדת
+    // ב-"•", וההשמה הישירה הייתה מוחקת את מבנה הפריטים ומחזירה מחרוזת אחת שנשברת באמצע ביטוי.
+    if (c.heroSlogan) window.HB_renderSlogan(document.querySelector('.lp-hero-slogan'), c.heroSlogan);
     if (Array.isArray(c.tiles)) {
       [document.getElementById('cardFans'), document.getElementById('cardBiz')].forEach((card, i) => {
         const t = c.tiles[i];
