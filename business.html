@@ -1603,11 +1603,19 @@
   }
 
   function logEvent(type, extra) {
-  // §315 — בדיקות מקומיות לא נספרות במדידה. logEvent שומר את location.pathname בלבד, בלי
-  // המארח, ולכן אירוע שנוצר מ-localhost:5502 נראה במשפך ובמקורות-התנועה בדיוק כמו אוהד
-  // אמיתי — ואי אפשר להפריד אותם בדיעבד. קרה בפועל: 22 אירועי-בדיקה נכתבו לפרודקשן
-  // ב-28.8 (ר' §314) ונמחקו ידנית.
-  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
+  // §315+§324 — **רשימת-היתר של מארחים, לא רשימת-חסימה.** §315 חסם את localhost בלבד, אחרי
+  // ש-22 אירועי-בדיקה נכתבו לפרודקשן ונמחקו ידנית. §324 גילה שזה לא הספיק: יש עותק חי ומלא
+  // של האתר על mtabusiness.netlify.app (אותו ריפו, פריסת Netlify מקבילה לצד GitHub Pages),
+  // עם אותו firebase-config — כלומר הוא כותב לאותו Firestore פרודקשן, ואירוע משם נראה במשפך
+  // בדיוק כמו אוהד אמיתי. בפועל 60 סשני-בוט משם היו 26% מ'הכניסות' בארבעה ימים.
+  //
+  // רשימת-חסימה לא יכולה לצפות את המארח הבא (deploy-preview, fork, שיקוף), ולכן ההיגיון
+  // התהפך: מודדים **רק** מהדומיין החי, וכל השאר שקט. logEvent שומר את location.pathname
+  // בלבד ולא את המארח, ולכן אי אפשר להפריד אירועים כאלה בדיעבד — רק למנוע אותם מראש.
+  //
+  // ⚠️ אם הדומיין ישתנה, המדידה תשתתק **בלי שום שגיאה**. השורה הזאת חייבת להתעדכן בכל
+  // מעבר-דומיין, בארבעת העותקים (home / welcome / fan-register / business).
+  if (!['yellowzone.co.il', 'www.yellowzone.co.il'].includes(location.hostname)) return;
     const e = extra || {};
     // כשלון מדידה לעולם לא יפיל הרשמה — catch שקט בכוונה
     addDoc(collection(db, 'events'), {
@@ -1632,6 +1640,32 @@
   }
 
   logEvent('formOpen', { blockId: 'bizForm' });
+
+  // ── §324 — אבני-דרך בטופס העסק ────────────────────────────────────────────────────────
+  // עד היום הקובץ הזה רשם רק formOpen ו-formSubmit, ובין שני המספרים האלה שכבו חמישה שלבים
+  // שלא נמדדו כלל. במדידה של 26–29.8: 26 סשנים פתחו את הטופס, ארבעה שלחו (15%), ולא הייתה
+  // שום דרך לדעת באיזה מחמשת השלבים נעצרו ה-22 האחרים. אותו מנגנון בדיוק כמו markStep
+  // ב-fan-register.html (§284), כדי ששני המשפכים ייקראו אותו דבר.
+  //
+  // ⚠️ כל אבן-דרך נרשמת **פעם אחת** בלבד. בלי זה "חזרה" וכפתורי "עריכה" מכרטיס הסיכום היו
+  // סופרים את אותו אדם שוב ושוב, והמשפך היה מציג יותר מגיעים לשלב 4 מאשר לשלב 2.
+  //
+  // ⚠️ בכוונה **לא** נמדד ב-unload: כתיבה בזמן סגירת-דף אינה אמינה, ודווקא אצל הנוטש —
+  // בדיוק מי שאנחנו מנסים למדוד — היא נכשלת הכי הרבה. אותו נימוק כמו בטופס האוהד.
+  const _stepsSeen = new Set();
+  function markStep(id) {
+    if (_stepsSeen.has(id)) return;
+    _stepsSeen.add(id);
+    logEvent('formStep', { blockId: 'bizForm', channel: id });
+  }
+
+  // 'start' = נגע בפועל בשלב 1, להבדיל מ-formOpen שהוא רק "הדף נטען". הפער בין שניהם הוא
+  // הנטישה הכי שקטה שיש — מי שראה את הטופס והסתובב בלי להקליד תו אחד.
+  // capture:true — מאזין אחד על המכל תופס input מכל שדה בשלב 1, בלי לרשום מאזין לכל אחד
+  // בנפרד. בורר סוג-העסק והקטגוריה הם רשתות-לחיצה ולא שדות-קלט, ולכן צריכים click בנפרד.
+  document.getElementById('step1')?.addEventListener('input', () => markStep('start'), { capture: true, once: true });
+  document.getElementById('bizTypeGrid')?.addEventListener('click', () => markStep('start'), { once: true });
+  document.getElementById('categoryGrid')?.addEventListener('click', () => markStep('start'), { once: true });
 
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
@@ -1871,6 +1905,12 @@
     document.getElementById('step' + n).classList.add('active');
     updateStepper(n);
     currentStep = n;
+    // §324 — "הגיע לשלב n". רק מ-2 ומעלה: שלב 1 פעיל כבר ב-HTML ולעולם לא עובר כאן בטעינה
+    // הראשונה, ולכן 'step1' היה נרשם רק למי שחזר אליו מכרטיס הסיכום — מספר שנראה במשפך
+    // כמו קריסה ואינו כזה. המקבילה של "הגיע לשלב 1" היא formOpen, ושל "התחיל למלא" היא 'start'.
+    // ⚠️ טיוטה משוחזרת (restoreDraft) קופצת ישר ל-showStep(5) ותסמן רק את 'step5'. זה נכון —
+    // הוא באמת לא עבר עכשיו בשלבים 2–4 — אבל צריך לזכור את זה כשקוראים את המשפך.
+    if (n >= 2) markStep('step' + n);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 

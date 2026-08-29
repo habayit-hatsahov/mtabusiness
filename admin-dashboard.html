@@ -12790,43 +12790,103 @@ function regAbandonStats() {
 // "72% נטשו" הוא מספר שאי אפשר לפעול לפיו. הצניחה **בין שני שלבים סמוכים** היא כן:
 // היא מצביעה על החלק בטופס שעוצר אנשים. נספרים סשנים ייחודיים, לא אירועים — אדם שנגע
 // בשדה חמש פעמים הוא עדיין אדם אחד.
-const FAN_FUNNEL_STEPS = [
-  { key: 'opened',     label: 'פתחו את הטופס' },
-  { key: 'identity',   label: 'התחילו למלא פרטים' },
-  { key: 'subscriber', label: 'ענו אם הם מנויים' },
-  { key: 'route',      label: 'הגיעו לשלב האימות' },
-  { key: 'proof',      label: 'בחרו תמונת אימות' },
-  { key: 'submitted',  label: 'שלחו בפועל' },
-];
-function fanFunnelStats() {
-  const S = {}; FAN_FUNNEL_STEPS.forEach(s => S[s.key] = new Set());
+// §324 — שני משפכים, מפרט אחד. עד כה הקוד הזה ידע רק את טופס האוהד; business.html קיבל
+// אבני-דרך זהות (markStep) ולכן ההיגיון הופרד מהתוכן במקום להיות משוכפל. blockId הוא מה
+// שמבדיל בין השניים, וזה בדיוק השדה שכבר עובר בשכבת הטעינה.
+const FAN_FUNNEL = {
+  title: 'משפך הרשמת האוהדים — איפה עוזבים',
+  // joinModal = נפתח מתוך welcome.html; fanRegister = כניסה ישירה לדף ההרשמה
+  openBlocks: ['fanRegister', 'joinModal'],
+  block: 'fanRegister',
+  steps: [
+    { key: 'opened',     label: 'פתחו את הטופס' },
+    { key: 'identity',   label: 'התחילו למלא פרטים' },
+    { key: 'subscriber', label: 'ענו אם הם מנויים' },
+    { key: 'route',      label: 'הגיעו לשלב האימות' },
+    // §324 — **לא שלב-חובה**: רק חלק ממסלולי-האימות כוללים קובץ בכלל. הדגל מוציא אותו
+    // משרשרת הגלגול-לאחור למטה, אחרת המסך טוען שכולם צירפו תמונה.
+    { key: 'proof',      label: 'בחרו תמונת אימות', optional: true },
+    { key: 'submitted',  label: 'שלחו בפועל' },
+  ],
+};
+// §324 — עד לשינוי הזה היו לטופס העסק רק formOpen ו-formSubmit, ובין 26 פותחים ל-4 שולחים
+// (26–29.8) שכבו חמישה שלבים בלי שום מדידה. התוויות זהות לכותרות ב-business.html בכוונה.
+const BIZ_FUNNEL = {
+  title: 'משפך הרשמת העסקים — איפה עוזבים',
+  openBlocks: ['bizForm'],
+  block: 'bizForm',
+  steps: [
+    { key: 'opened',    label: 'פתחו את הטופס' },
+    { key: 'start',     label: 'התחילו למלא' },
+    { key: 'step2',     label: '2 · פרטים ויצירת קשר' },
+    { key: 'step3',     label: '3 · ההטבות' },
+    { key: 'step4',     label: '4 · תמונות' },
+    { key: 'step5',     label: '5 · אימות ושליחה' },
+    { key: 'submitted', label: 'שלחו בפועל' },
+  ],
+};
+
+function funnelStats(spec) {
+  const S = {}; spec.steps.forEach(s => S[s.key] = new Set());
   (platformEvents || []).forEach(e => {
     if (!e.sessionId) return;
-    if (e.type === 'formOpen' && (e.blockId === 'fanRegister' || e.blockId === 'joinModal')) S.opened.add(e.sessionId);
-    if (e.type === 'formSubmit' && e.blockId === 'fanRegister') S.submitted.add(e.sessionId);
-    if (e.type === 'formStep' && e.blockId === 'fanRegister' && S[e.channel]) S[e.channel].add(e.sessionId);
+    if (e.type === 'formOpen' && spec.openBlocks.includes(e.blockId)) S.opened.add(e.sessionId);
+    if (e.type === 'formSubmit' && e.blockId === spec.block) S.submitted.add(e.sessionId);
+    if (e.type === 'formStep' && e.blockId === spec.block && S[e.channel]) S[e.channel].add(e.sessionId);
   });
   // ⚠️ סשן ששלח נספר גם בכל השלבים שלפניו, גם אם האירוע עצמו חסר (נרשם לפני §304, או
   // אבד ברשת). בלי זה המשפך היה מציג "שלחו יותר ממה שהגיעו לשלב האימות" — מספר שנראה
   // כמו באג ומאבד את אמון הקורא.
-  const order = FAN_FUNNEL_STEPS.map(s => s.key);
-  for (let i = order.length - 1; i > 0; i--)
-    for (const id of S[order[i]]) S[order[i - 1]].add(id);
-  return FAN_FUNNEL_STEPS.map((s, i) => {
+  //
+  // 🔴 §324 — הגלגול רץ **רק על שלבי-החובה**. 'proof' אופציונלי (רק חלק ממסלולי-האימות
+  // כוללים קובץ), וגלגול לתוכו הציג "בחרו תמונת אימות: 26" בזמן שבפועל **אפס** נרשמים
+  // צירפו תמונה — לא רק מספר שגוי, אלא בדיוק ההיפך מהמסקנה הנכונה (מסלול-התמונה אינו
+  // בשימוש כלל). נתפס בהרצת הפונקציה מול נתוני-אמת מהפרודקשן, לא בקריאת קוד.
+  const chain = spec.steps.filter(s => !s.optional).map(s => s.key);
+  for (let i = chain.length - 1; i > 0; i--)
+    for (const id of S[chain[i]]) S[chain[i - 1]].add(id);
+  // כל שלב מושווה לשלב-**החובה** שלפניו: שלב אופציונלי אינו בסיס-השוואה למי שבא אחריו,
+  // אחרת "שלחו בפועל" היה מחולק באפס ברגע שאיש לא צירף תמונה.
+  let prevKey = null;
+  return spec.steps.map(s => {
     const n = S[s.key].size;
-    const prev = i ? S[order[i - 1]].size : n;
-    return { ...s, n, dropped: i ? prev - n : 0, pct: prev ? Math.round(n / prev * 100) : 0 };
+    const prev = prevKey ? S[prevKey].size : n;
+    const row = {
+      ...s, n,
+      dropped: (prevKey && !s.optional) ? prev - n : 0,
+      pct: prev ? Math.round(n / prev * 100) : 0,
+    };
+    if (!s.optional) prevKey = s.key;
+    return row;
   });
 }
-function fanFunnelHtml() {
-  const rows = fanFunnelStats();
+
+// ── §324 — מאיזה תאריך בכלל קיימות אבני-דרך לטופס הזה ────────────────────────────────────
+// **מחושב מהנתונים ולא קבוע קשיח** (בניגוד ל-SUBMIT_MEASURE_START): תאריך קשיח מתיישן
+// ברגע שמישהו שוכח לעדכן אותו אחרי פריסה, ואז המשפך משקר בשקט. בלי ההערה הזאת, טופס
+// שאבני-הדרך שלו טרם נאספו מציג את **גלגול-האחורה** כאילו כולם הגיעו לשלב האחרון.
+function stepMeasureNote(spec) {
+  const evs = (platformEvents || []).filter(e => e.type === 'formStep' && e.blockId === spec.block && e.at);
+  if (!evs.length) return ' <span class="warn-badge">אבני-הדרך טרם נאספו — רק "פתחו" ו"שלחו" אמיתיים כאן</span>';
+  const first  = Math.min(...evs.map(e => e.at.getTime()));
+  const oldest = Math.min(...(platformEvents || []).filter(e => e.at).map(e => e.at.getTime()));
+  // הפרש של פחות מיממה מקצה-החלון = המדידה קדמה לחלון, ואין מה להעיר
+  if (first - oldest < 864e5) return '';
+  return ` <span style="opacity:.7">(אבני-הדרך נמדדות מ-${new Date(first).toLocaleDateString('he-IL')})</span>`;
+}
+
+function funnelHtml(spec) {
+  const rows = funnelStats(spec);
   if (!rows[0].n) return '';
   // השלב עם הצניחה הגדולה ביותר מסומן — הוא התשובה לשאלה "איפה עוזבים".
   const worst = rows.slice(1).reduce((a, b) => (b.dropped > a.dropped ? b : a), rows[1] || rows[0]);
   return `<div class="mail-issues-note" style="line-height:1.9">
-    <b>משפך ההרשמה — איפה עוזבים</b> (30 יום, סשנים ייחודיים)<br>
+    <b>${esc(spec.title)}</b> (30 יום, סשנים ייחודיים)${stepMeasureNote(spec)}<br>
     ${rows.map((r, i) => `${esc(r.label)}: <b>${r.n}</b>${
-      i ? ` <span style="opacity:.7">(${r.pct}% מהשלב הקודם${r.dropped ? `, ${r.dropped} עזבו` : ''})</span>` : ''
+      !i ? ''
+        : r.optional
+          ? ` <span style="opacity:.7">(${r.pct}% ממי שהגיע לשלב הקודם — שלב לא-חובה, ולכן אינו נספר כנשירה)</span>`
+          : ` <span style="opacity:.7">(${r.pct}% מהשלב הקודם${r.dropped ? `, ${r.dropped} עזבו` : ''})</span>`
     }${(i && r === worst && r.dropped) ? ' <span class="warn-badge">הנשירה הגדולה</span>' : ''}`).join('<br>')}
     <br><span style="opacity:.7">שלב נמדד פעם אחת לכל סשן, בזמן אמת — לא בסגירת הדף (כתיבה ברגע סגירה אינה אמינה, ודווקא אצל מי שסוגר מהר).</span>
   </div>`;
@@ -13026,7 +13086,7 @@ function regIssuesTableHtml(list) {
       // "72% נטשו" הוא מספר שאי אפשר לפעול לפיו; הצניחה בין שני שלבים סמוכים כן.
       : `<div class="mail-issues-note">הצלבה אוטומטית בין הצהרות האוהדים + כשלי שליחה אמיתיים מ-30 הימים האחרונים.${
           ab.opened ? ` בנוסף: ${ab.opened} פתחו את טופס ההרשמה ו-${ab.abandoned} מהם לא שלחו — נטישה, לא בהכרח תקלה, ולכן לא מופיעה כשורות.` : ''
-        }</div>${fanFunnelHtml()}`;
+        }</div>${funnelHtml(FAN_FUNNEL)}${funnelHtml(BIZ_FUNNEL)}`;
   if (!list.length) {
     // §296 — "אין תקלות 🎉" רק כשבאמת בדקנו. כשהאירועים עוד בדרך זו הכרזה שאין לה כיסוי.
     return `${loadingNote}<div class="placeholder-note">${
