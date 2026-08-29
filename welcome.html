@@ -486,6 +486,21 @@ button { font-family: inherit; }
 .img-card:hover { box-shadow: 0 22px 54px rgba(10,42,102,.30); }
 .img-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 42%; }
 .img-card-noimg { position: absolute; inset: 0; background: linear-gradient(135deg, var(--ink), #123a8c); }
+/* ── §332 — הכיסוי והטקסט מופיעים רק כשהתמונה מוכנה ──────────────────────────────────────
+   העוצמה (90% בראש) **נשארת** — רנדור השוואתי מול 55%/80% הראה שהיא הנכונה: מתחתיה הטקסט
+   הלבן קריא מעל תצלום עמוס, ומעליה התמונה עדיין נראית. הבעיה מעולם לא הייתה הכרטיס הטעון.
+   הבעיה היא הכרטיס **הריק**: 90% כחול על כרטיס בלי תמונה = לוח נייבי אטום, וזה מה שהמשתמש
+   תיאר כ"מסך כחול" (אומת בשני צילומי מסך, §331).
+   עכשיו עד שהתמונה מגיעה הכרטיס הוא פשוט משטח קרם נקי בצבע רקע-הדף, בלי לוח כחול ובלי
+   טקסט לבן מרחף על כלום. ר' הסקריפט ליד האריחים למנגנון. */
+/* ⚠️ .img-card-pill הוא **אח** של .img-card-content ולא ילד שלו — בלי לכלול אותו כאן
+   הכפתור הצהוב היה נשאר מרחף לבדו על כרטיס ריק. */
+.img-card-overlay, .img-card-content, .img-card-pill {
+  opacity: 0; transition: opacity .28s ease;
+}
+.img-card.img-ready .img-card-overlay,
+.img-card.img-ready .img-card-content,
+.img-card.img-ready .img-card-pill { opacity: 1; }
 .img-card-overlay {
   position: absolute; inset: 0;
   background: linear-gradient(to bottom, rgba(10,42,102,.9) 0%, rgba(10,42,102,.7) 40%, rgba(10,42,102,.22) 66%, rgba(10,42,102,0) 82%);
@@ -502,6 +517,15 @@ button { font-family: inherit; }
 }
 @media (max-width: 760px) {
   .img-cards-row { flex-direction: column; padding: 28px 16px 4px; }
+
+  /* ── §332 — "כל ההטבות" ראשון במובייל (בקשת המשתמש) ──────────────────────────────────
+     ניסיון ראשון ב-§327 בוטל: התצלום היה 352KB מדומיין זר, והכרטיס הריק שלו נצבע כחול
+     אטום מזמן ומול העיניים. הפעם הוזז **רק אחרי** שהסיבה טופלה — תמונה מקומית של 156KB
+     ושכבת-כיסוי שלא מצוירת לפני שיש תמונה.
+     ⚠️ היפוך ויזואלי בלבד (order): tile1/tile2 נשארים מחוברים לאותו תוכן, כדי שהמדידה
+     ההיסטורית תישאר ברת-השוואה. #cardFans = רישום-עסק, #cardBiz = אינדקס (שמות הפוכים). */
+  #cardBiz  { order: 1; }
+  #cardFans { order: 2; }
   /* flex:1 1 0 (מוגדר למעלה) מפזר רוחב בפריסת-שורה של דסקטופ — אבל כאן flex-direction הופך
      ל-column, אז אותו flex-basis:0 מנסה לפזר גובה במקום, בלי שום מקום-גדילה (הקונטיינר לא
      stretched לגובה קבוע) — כל אריח קורס ל-0px גובה. flex:none משאיר את aspect-ratio לקבוע
@@ -875,12 +899,14 @@ button { font-family: inherit; }
     <span class="img-card-pill">לרישום עסק<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></span>
   </a>
   <button class="img-card" id="cardBiz" onclick="window.logEvent && window.logEvent('landingBlockClick',{blockId:'tile2'});scrollToPreview()">
-    <!-- §328 — ⚠️ 352KB, ומעל הקיפול. זו תמונה **שהועלתה דרך מרכז הניהול** ולא נכס בריפו,
-         ולכן אי אפשר לדחוס אותה כאן — הדחיסה צריכה לקרות בנתיב-ההעלאה של הקוביות (ר' הלקח
-         החוזר: כל נתיב-העלאה חייב להיבדק בנפרד שהוא דוחס). fetchpriority=high כי המשתמש
-         מחכה לה על המסך הראשון. -->
-    <img src="https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/landing%2Ftiles%2Ftile_1785698804102_1.webp?alt=media&token=8c6864ea-c838-4c2d-aab5-8255c480a679" alt="קהל אוהדי מכבי"
-         fetchpriority="high" decoding="async"/>
+    <!-- §332 — היה webp של 352KB **מ-Firebase Storage**, כלומר גם כבד וגם מדומיין אחר: DNS+TLS
+         נפרדים לפני שההורדה בכלל מתחילה, ובלי מטמון של ה-Service Worker. עכשיו נכס מקומי
+         בן 156KB — אותו מקור כמו שאר הדף, נשמר במטמון, ונטען כמו האיור שלידו.
+         ⚠️ המחיר: התמונה עברה מ"מנוהלת במרכז הניהול" ל"נכס בקוד". החלפה שלה דורשת דחיפה —
+         בדיוק כמו האיור של הקובייה השנייה. ⚠️ `settings/landingContent.tiles[1].img` עודכן
+         גם הוא, אחרת הוא היה דורס את זה חזרה ל-webp הכבד (הלקח של §329). -->
+    <img src="images/landing/benefits-crowd.jpg" alt="קהל אוהדי מכבי"
+         width="900" height="506" fetchpriority="high" decoding="async"/>
     <div class="img-card-overlay"></div>
     <div class="img-card-content">
       <div class="img-card-title">כל ההטבות במקום אחד</div>
@@ -889,6 +915,29 @@ button { font-family: inherit; }
     <span class="img-card-pill">לאינדקס<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></span>
   </button>
 </div>
+<!-- ── §332 — סימון "התמונה מוכנה" ──────────────────────────────────────────────────────────
+     ⚠️ **סקריפט קלאסי, וצמוד לאריחים** — לא במודול שבתחתית הדף. אם הוא היה שם, כרטיס שהמודול
+     לא הגיע אליו (רשת איטית, gstatic חסום, §322) היה נשאר **לנצח בלי טקסט וכפתור**. כאן זה
+     DOM טהור בלי שום תלות, שרץ בזמן הפרסור. -->
+<script>
+  (function () {
+    var cards = document.querySelectorAll('.img-cards-row .img-card');
+    for (var i = 0; i < cards.length; i++) (function (card) {
+      var img = card.querySelector('img');
+      var show = function () { card.classList.add('img-ready'); };
+      // ⚠️ **רשת-ביטחון של שנייה וחצי, ולא בגלל פרנויה:** התוכן חבוי ב-opacity:0 עד שהתמונה
+      // נוחתת. תמונה שנכשלת בשקט (404, חסימת-רשת, מטמון פגום) הייתה מוחקת את הכותרת ואת
+      // הכפתור מהעמוד לגמרי. עדיף כיסוי כחול על כרטיס ריק מאשר קובייה בלי טקסט שאי אפשר
+      // להבין מה היא. אותו עיקרון כמו שער-ה-auth ב-welcome: כישלון חייב גבול-זמן.
+      var safety = setTimeout(show, 1500);
+      var done = function () { clearTimeout(safety); show(); };
+      if (!img) { done(); return; }
+      if (img.complete && img.naturalWidth > 0) { done(); return; }   // כבר במטמון
+      img.addEventListener('load', done);
+      img.addEventListener('error', done);   // גם כישלון — לא משאירים כרטיס בלי טקסט
+    })(cards[i]);
+  })();
+</script>
 
 <!-- ══ תצוגה חיה + פיד אמיתי ══ -->
 <section class="lp-preview-section" id="previewSection">
