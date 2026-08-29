@@ -6,8 +6,14 @@
 // תמונות חדשות, מנגנון img-ready) ה-PWA של המשתמש המשיך להגיש HTML ישן — הרשת שלו איטית
 // מ-1.5 שניות, ולכן הניווט נופל למטמון בכל פתיחה. הפרשי-התנהגות בין ספארי (חדש) ל-PWA
 // (ישן) על אותו מכשיר הם החתימה של זה בדיוק. שינוי השם מוחק את כל המטמון הישן ב-activate.
-const CACHE_NAME = 'yz-shell-v37';
-const PRECACHE_URLS = ['home.html', 'manifest.json', 'firebase-config.js'];
+// §336 — v38. **חוק: כל שינוי ב-HTML מחייב העלאת המספר הזה.** בלי זה `reg.update()` שנוסף
+// ב-§336 לא מוצא הבדל ב-sw.js, ה-activate לא רץ, המטמון הישן לא נמחק — וכל מנגנון כפיית
+// העדכון הופך לחסר-תועלת. זה הצומת היחיד שבו "שכחתי להעלות גרסה" נכשל בשקט.
+const CACHE_NAME = 'yz-shell-v38';
+// הגופנים נכנסים ל-precache: הם נדרשים לציור הראשון של דף-הנחיתה (§336, אירוח עצמי),
+// ובלעדיהם הביקור הראשון-אחרי-התקנה עדיין משלם על הורדתם.
+const PRECACHE_URLS = ['home.html', 'manifest.json', 'firebase-config.js',
+                       'fonts/rubik-hebrew.woff2', 'fonts/rubik-latin.woff2'];
 
 self.addEventListener('install', event => {
   event.waitUntil(

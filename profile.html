@@ -1175,7 +1175,23 @@ async function saveMemberField(updates) {
       navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
       if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
     } else {
-      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+      // §336 — כפיית בדיקת-עדכון ל-Service Worker. ההסבר המלא ב-home.html באותו סעיף:
+      // PWA מותקן יכול להיתקע על גרסה ישנה ללא הגבלת זמן (ניווט איטי נופל למטמון, ו-iOS
+      // הורג את הרענון-ברקע בסגירה). בלי באנר ובלי רענון-כפוי — העדכון נכנס בפתיחה הבאה.
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then(reg => {
+          if (!reg) return;
+          reg.update().catch(() => {});
+          let last = 0;
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            const now = Date.now();
+            if (now - last < 30 * 60 * 1000) return;
+            last = now;
+            reg.update().catch(() => {});
+          });
+        }).catch(() => {});
+      });
     }
   }
 

@@ -2533,7 +2533,35 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
     if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
   } else {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    // ── §336 — כפיית בדיקת-עדכון, בלי שום ממשק ────────────────────────────────────────────
+    // הבעיה שדווחה: משתמש עם PWA מותקן נשאר על גרסה ישנה **ללא הגבלת זמן**, בלי לדעת.
+    // שני גורמים חוברים: (1) ניווט איטי מ-1.5 שניות נופל למטמון, ו-iOS הורג את הרענון-ברקע
+    // כשסוגרים את האפליקציה — אז המטמון לא מתעדכן ובפתיחה הבאה אותו סיפור; (2) אייפון עם
+    // PWA מותקן כמעט לא בודק עדכוני Service Worker מיוזמתו.
+    //
+    // `update()` מכריח בדיקה של sw.js. אם הוא השתנה — skipWaiting+clients.claim משתלטים
+    // מיד, וה-activate מוחק את כל המטמונים הישנים. הניווט **הבא** חייב לצאת לרשת.
+    //
+    // ⚠️ **בכוונה בלי באנר "יש גרסה חדשה" ובלי רענון-כפוי** (החלטת המשתמש): הוא עדיין
+    // משנה דברים בתדירות גבוהה, והתראה בכל שינוי הייתה מטרד. העדכון נכנס בשקט לפתיחה הבאה.
+    //
+    // ⚠️ **תלוי בכך ש-CACHE_NAME ב-sw.js עולה כשה-HTML משתנה** — אחרת אין מה לזהות.
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then(reg => {
+        if (!reg) return;
+        reg.update().catch(() => {});
+        // חזרה לחזית = ההזדמנות הטובה ביותר לתפוס עדכון ב-PWA שכמעט אף פעם לא נסגר.
+        // מווסת לפעם ב-30 דקות כדי לא לבזבז בקשה בכל החלפת-אפליקציה.
+        let last = 0;
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState !== 'visible') return;
+          const now = Date.now();
+          if (now - last < 30 * 60 * 1000) return;
+          last = now;
+          reg.update().catch(() => {});
+        });
+      }).catch(() => {});
+    });
   }
 }
 
