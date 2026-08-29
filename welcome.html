@@ -813,7 +813,17 @@ button { font-family: inherit; }
   <h1 id="heroTitle" style="visibility:hidden">כל העסקים של אוהדי מכבי תל אביב, במקום אחד</h1>
   <div class="lp-hero-slogan" style="visibility:hidden">אוהדי מכבי קונים כחול־צהוב</div>
   <script>
+    // ── 🔴 §334 — "הכותרת קופצת ומהדהדת" ──────────────────────────────────────────────────
+    // דווח בפועל. השורש: **שני מנגנוני-חשיפה נלחמו על אותם אלמנטים.**
+    // הטיימר הזה חשף אחרי 1200ms **ללא תנאי**, בזמן שהמודול (למטה) מסתיר אותם שוב ואז חושף
+    // בעצמו — אחרי ש-Firestore מחזיר את הטקסט שפורסם, או אחרי 700ms כרשת-ביטחון.
+    //   · מודול שהגיע אחרי 1200ms  → נראה ← נעלם ← חוזר. זה ה"הדהוד".
+    //   · מודול שהגיע לפני שהתשובה חזרה → נחשף הטקסט הקבוע, ואז מוחלף בטקסט מ-Firestore
+    //     מול העיניים. זו ה"קפיצה".
+    // עכשיו זו **רשת-ביטחון בלבד**: היא יורה רק אם המודול לא לקח אחריות (למשל gstatic חסום
+    // או שער-auth תקוע, §322) — ואז הטקסט הקבוע שב-HTML הוא ממילא הדבר הנכון להציג.
     setTimeout(function () {
+      if (window._hbHeroOwned) return;   // המודול אחראי על החשיפה — לא נוגעים
       var t = document.getElementById('heroTitle'), s = document.querySelector('.lp-hero-slogan');
       if (t) t.style.visibility = '';
       if (s) s.style.visibility = '';
@@ -1418,6 +1428,9 @@ function setTitleKeepYellowWord(el, text) {
   // שהכותרת לא נשארת מוסתרת אם Firestore איטי/נכשל.
   const heroTitleEl = document.getElementById('heroTitle');
   const heroSloganEl = document.querySelector('.lp-hero-slogan');
+  // §334 — מסמן שהאחריות על החשיפה עברה לכאן, כדי שהטיימר הקלאסי (1200ms) לא יחשוף
+  // במקביל ויגרום לרצף נראה←נעלם←חוזר. ר' ההערה המלאה שם.
+  window._hbHeroOwned = true;
   if (heroTitleEl) heroTitleEl.style.visibility = 'hidden';
   if (heroSloganEl) heroSloganEl.style.visibility = 'hidden';
   const revealHero = () => {
