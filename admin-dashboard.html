@@ -4649,10 +4649,18 @@ const redeemFor = id => (redeemStats && redeemStats[id]) || { opens: 0, ch: {} }
 // כך שמעבר בין "היום" ל"30 יום" הוא מיידי ובלי אף קריאה נוספת ל-Firestore.
 // כשהנפח יגדל זה יעבור ל-statsDaily (כבר מוגדר ב-firestore.rules וממתין ל-Worker).
 const PLATFORM_WINDOW_DAYS = 30;
-const PLATFORM_EVENT_LIMIT = 5000;
+// §326 — הועלה מ-5,000. `scrollDepth` מוסיף עד שלושה אירועים לכל סשן-נחיתה, ובקצב של
+// 26–29.8 (≈40 נחיתות ביום) זה מקפיץ את החלון של 30 יום מעל התקרה הישנה — כלומר הפאנל
+// היה מתחיל לחתוך אירועים ולהציג משפך שגוי. ⚠️ החיתוך הזה **שקט** מבחינת נכונות המספרים:
+// יש באנר "נשלפו X האחרונים בלבד", אבל המספרים עצמם ממשיכים להיראות תקינים לגמרי.
+const PLATFORM_EVENT_LIMIT = 15000;
 // היום שבו formSubmit התחיל להיאסף. בלי התאריך הזה המשפך נראה כמו אסון ("נפתחו 300, נשלחו 4")
 // בזמן שפשוט לא הייתה מדידה — ולכן הוא מוצג במפורש על המסך.
 const SUBMIT_MEASURE_START = '2026-08-26';
+// §326 — היום שבו `scrollDepth` התחיל להיאסף. אותו תפקיד בדיוק כמו SUBMIT_MEASURE_START:
+// בלעדיו טווח שמתחיל מוקדם יותר מציג "0% ראו את כרטיס ההרשמה" — מספר שנראה כמו אסון
+// ובפועל אומר רק שלא הייתה מדידה. ⚠️ לעדכן לתאריך הפריסה בפועל.
+const DEPTH_MEASURE_START = '2026-08-29';
 const PLATFORM_RANGES = [
   { d: 1,  label: 'היום' },
   { d: 2,  label: 'יומיים אחרונים' },
@@ -4729,6 +4737,8 @@ function computePlatformStats(days, includeAdmins) {
     device: { mobile: 0, desktop: 0 },
     sources: {}, direct: 0,
     adminHidden: 0, inRange: 0,
+    // §326 — עומק-גלילה בדף הנחיתה, סשנים ייחודיים לכל אבן-דרך
+    depth: { regCard: new Set(), preview: new Set(), final: new Set() },
   };
 
   (platformEvents || []).forEach(e => {
@@ -4753,6 +4763,10 @@ function computePlatformStats(days, includeAdmins) {
       if (e.referrer) a.sources[e.referrer] = (a.sources[e.referrer] || 0) + 1; else a.direct++;
       if (isLanding) { a.landing++; if (e.sessionId) a.landingSessions.add(e.sessionId); }
       else           { a.home++;    if (e.sessionId) a.homeSessions.add(e.sessionId); }
+    } else if (e.type === 'scrollDepth') {
+      // §326 — **לפי סשן ולא לפי אירוע.** אבן-דרך נורית פעם אחת לסשן ממילא, אבל ספירת
+      // אירועים הייתה שוברת את המונוטוניות ברגע שמישהו יפתח את הדף פעמיים באותו טאב.
+      if (e.sessionId && a.depth[e.blockId]) a.depth[e.blockId].add(e.sessionId);
     } else if (e.type === 'formOpen') {
       // joinModal = נפתח מתוך welcome.html; fanRegister = כניסה ישירה לדף ההרשמה
       if (e.blockId === 'joinModal' || e.blockId === 'fanRegister') a.fanOpen++;
@@ -4848,6 +4862,33 @@ function platformStatsHtml() {
       ${platRow('פתחו את חלון הכניסה', a.loginOpen.toLocaleString('he-IL'), '',
         'לחצו על "כניסה" בדף הנחיתה — חבר קיים שמנסה להתחבר, לא נרשם חדש.')}
     </div>
+
+    <div class="plat-sect">עד לאן מגיעים בדף הנחיתה</div>
+    ${(() => {
+      // §326 — הבסיס הוא **סשני-נחיתה**, לא צפיות: השאלה היא "כמה אנשים הגיעו לכל נקודה",
+      // וצפייה חוזרת באותו סשן אינה אדם נוסף.
+      const base = a.landingSessions.size;
+      const d = a.depth;
+      // ⚠️ הסתייגות אמיתית ולא נימוס: `scrollDepth` נמדד רק מ-§326 ואילך. בטווח שמתחיל
+      // לפני הפריסה, כל הסשנים הישנים ייראו כאילו "לא ראו כלום" — כלומר משפך מפחיד לגמרי
+      // שכולו ארטיפקט. אותו לקח בדיוק כמו SUBMIT_MEASURE_START ב-§281.
+      if (!base || (d.regCard.size + d.preview.size + d.final.size) === 0) {
+        return `<div class="plat-sub">אין עדיין נתוני גלילה בטווח הזה. המדידה התחילה ב-${DEPTH_MEASURE_START} — טווח שמתחיל לפני התאריך הזה יציג נתונים חלקיים.</div>`;
+      }
+      return `
+        ${platBar('נחתו בדף', base, base)}
+        ${platBar('ראו את כרטיס ההרשמה', d.regCard.size, base, platPct(d.regCard.size, base))}
+        ${platBar('הגיעו לתצוגת העסקים', d.preview.size, base, platPct(d.preview.size, base))}
+        ${platBar('הגיעו לסוף הדף', d.final.size, base, platPct(d.final.size, base))}
+        <div class="plat-funnel-help">
+          <b>ראו את כרטיס ההרשמה</b> — ה-CTA הראשי בראש הדף. אם המספר הזה נמוך, הכפתור לא נראה
+          כלל ומדובר בבעיית פריסה ולא בבעיית שכנוע.<br>
+          <b>הגיעו לתצוגת העסקים / לסוף הדף</b> — גללו והמשיכו. מי שגלל עד הסוף ולא נרשם
+          <b>כן</b> ראה את ההצעה ובחר לא — וזו בעיה אחרת לגמרי.<br>
+          נמדד מ-${DEPTH_MEASURE_START}, לפי סשנים ייחודיים ולא לפי צפיות. אבן-דרך נספרת ברגע
+          ש-35% מהאלמנט נראו על המסך.
+        </div>`;
+    })()}
 
     <div class="plat-sect">משפך הרשמה — אוהדים</div>
     ${platFunnel(a.fanOpen, a.fanSubmit,
