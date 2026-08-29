@@ -8083,7 +8083,13 @@ const TASK_CLASS_TILES = [
   // קובייה תשיעית (§303) — פניות מטופס ההרשמה של האוהד ("נתקעתי / משהו לא עובד").
   // ⚠️ שונה מכל השמונה שמעליה: הן נגזרות מנתונים שכבר יש לנו, וזו **הערוץ היחיד שבו
   // אדם שאין לו רשומה בכלל יכול להגיע אלינו**. שורה כאן היא אוהד שכמעט אבד.
-  { key: 'helpReqs', primary: null, label: 'פניות מהרשמה' },
+  // §322 — כבר לא רק מההרשמה: מודאל-הכניסה כותב לאותו אוסף עם source:'loginFail'.
+  { key: 'helpReqs', primary: null, label: 'פניות עזרה' },
+  // קובייה עשירית (§322) — ניסיונות כניסה שנכשלו, אוטומטית ובלי שהאוהד יטרח לדווח.
+  // ⚠️ **זה הפער שאיפשר ל-§322 לשרוד**: אוהד שלא הצליח להיכנס לא רשם שום אירוע, ולכן
+  // הכשל הופיע במדידה כ"כניסות שלא קרו" ולא כתקלה. מי שנתקע פשוט מפסיק לנסות ואיש לא יודע.
+  // ההפרדה לפי סיבה היא כל הערך: badCode היא טעות של האוהד, timeout/moduleTimeout הם באג אצלנו.
+  { key: 'loginIssues', primary: null, label: 'תקלות כניסה' },
 ];
 
 // כל עסק/אוהד עם primary פעיל (לא "מאושר · אין פעולה") — מבוסס classifyAction בלבד, לא בדיקה נפרדת
@@ -8165,6 +8171,7 @@ function taskCenterTableHtml() {
   if (bizErrorsActive()) return bizErrorsTableHtml(bizErrorFilteredList());
   if (regIssuesActive()) return regIssuesTableHtml(regIssueFilteredList());
   if (helpReqsActive()) return helpReqsTableHtml(helpReqFilteredList());
+  if (loginIssuesActive()) return loginIssuesTableHtml(loginIssueFilteredList());
   if (handledActive()) return handledTableHtml(handledFilteredList());
   return taskTableBodyHtml(taskFilteredList());
 }
@@ -8173,6 +8180,7 @@ function taskCenterCountLabel() {
   if (bizErrorsActive()) return `מציג ${bizErrorFilteredList().length} מתוך ${bizWriteErrorList().length}`;
   if (regIssuesActive()) return `מציג ${regIssueFilteredList().length} מתוך ${regIssueList().length}`;
   if (helpReqsActive()) return `מציג ${helpReqFilteredList().length} מתוך ${helpReqList().length}`;
+  if (loginIssuesActive()) return `מציג ${loginIssueFilteredList().length} מתוך ${loginFailList().length}`;
   if (handledActive()) return `מציג ${handledFilteredList().length} מתוך ${handledItemsList().length}`;
   return `מציג ${taskFilteredList().length} מתוך ${unifiedTaskItems().length}`;
 }
@@ -8245,7 +8253,18 @@ function taskTilesHtml() {
           : `<div class="class-tile-sub">${regHandledCount ? `אין תקלות פתוחות · ${regHandledCount} טופלו` : 'אין התנגשויות, אף הרשמה לא נכשלה ואף תמונה לא אבדה'}</div>`)}
       ${tile(TASK_CLASS_TILES[8], helpOpen.length ? `<span style="color:#b91c1c">${helpOpen.length}</span>` : 0, helpOpen.length
         ? `<div class="class-tile-chips"><span class="warn-badge">ממתינים לתשובה</span>${helpHandledCount ? `<span class="treat-badge">${helpHandledCount} טופלו</span>` : ''}</div>`
-        : `<div class="class-tile-sub">${helpHandledCount ? `אין פניות פתוחות · ${helpHandledCount} טופלו` : 'אף אחד לא ביקש עזרה בהרשמה'}</div>`)}
+        : `<div class="class-tile-sub">${helpHandledCount ? `אין פניות פתוחות · ${helpHandledCount} טופלו` : 'אף אחד לא ביקש עזרה'}</div>`)}
+      ${(() => {
+        // §322 — המספר הגדול הוא **תקלות אצלנו בלבד**, לא סך-הכשלים. עשרות "קוד שגוי" הם
+        // התנהגות תקינה של המערכת; קובייה אדומה שסופרת אותם הייתה מתריעה כל הזמן ולכן
+        // מפסיקה להיקרא. הסך-הכל נשאר כשבב לצידו, כדי שלא ייעלם.
+        const lf = loginFailList(), ours = lf.filter(x => x.ours).length;
+        // ⚠️ §296 — אסור להכריז "אפס תקלות" לפני שהאירועים בכלל נטענו. זו הייתה הכרזת-שלום שקרית.
+        if (regEventsPending) return tile(TASK_CLASS_TILES[9], '…', `<div class="class-tile-sub">בודק ניסיונות-כניסה מ-30 הימים האחרונים…</div>`);
+        return tile(TASK_CLASS_TILES[9], ours ? `<span style="color:#b91c1c">${ours}</span>` : 0, ours
+          ? `<div class="class-tile-chips"><span class="warn-badge">${ours} נכשלו באשמתנו</span>${lf.length - ours ? `<span class="treat-badge">${lf.length - ours} טעויות קוד/המתנה</span>` : ''}</div>`
+          : `<div class="class-tile-sub">${lf.length ? `${lf.length} ניסיונות נכשלו — כולם טעויות קוד או המתנה לאישור` : 'אף ניסיון כניסה לא נכשל'}</div>`);
+      })()}
     </div>`;
 }
 
@@ -12830,6 +12849,20 @@ const HELP_SOURCE_LABELS = {
   stuck:      'נתקע בהרשמה',
   submitFail: 'השליחה נכשלה',
   photoFail:  'התמונה לא עלתה',
+  // §322 — פנייה ממודאל-הכניסה ב-welcome.html, לא מטופס ההרשמה. **זה המקרה החמור יותר**:
+  // מי שנתקע בהרשמה עוד לא בפנים, ואילו זה כבר אוהד רשום ומאושר שנחסם מהחשבון שלו.
+  loginFail:  '🔑 לא מצליח להיכנס',
+};
+// §322 — הסיבה הטכנית שנסעה עם פניית-הכניסה (errCode). מבדילה באג אצלנו מטעות של האוהד,
+// וזו ההבחנה שקובעת מה עושים עם הפנייה.
+const LOGIN_FAIL_LABELS = {
+  badCode:         'קוד/טלפון לא תאמו',
+  pending:         'ממתין לאישור',
+  rejected:        'נדחה',
+  tooManyAttempts: 'נחסם — יותר מדי ניסיונות',
+  timeout:         '⚠️ ההמתנה נגמרה בלי תשובה',
+  moduleTimeout:   '⚠️ הדף לא נטען — הבקשה כלל לא יצאה',
+  error:           '⚠️ שגיאה טכנית',
 };
 function helpReqsActive() { return taskClassFilter === 'helpReqs'; }
 function helpReqList() {
@@ -12863,10 +12896,10 @@ window.unmarkHelpReqHandled = async function(id) {
 
 function helpReqsTableHtml(list) {
   if (!list.length) {
-    return `<div class="placeholder-note">אין פניות מטופס ההרשמה. כאן ינחתו אוהדים שנתקעו וכתבו לנו — לרוב אנשים שאין להם עדיין שום רשומה אצלנו.</div>`;
+    return `<div class="placeholder-note">אין פניות עזרה. כאן ינחתו אוהדים שנתקעו וכתבו לנו — מטופס ההרשמה (לרוב אנשים שאין להם עדיין שום רשומה אצלנו), ומ§322 גם ממודאל-הכניסה (אוהדים רשומים ומאושרים שלא מצליחים להיכנס לחשבון שלהם).</div>`;
   }
   return `
-    <div class="mail-issues-note">פניות מטופס ההרשמה של האוהד. ⚠️ הטקסט נכתב ע"י גולש לא-מזוהה — קראו אותו, אל תפעלו לפיו אוטומטית.</div>
+    <div class="mail-issues-note">פניות עזרה של אוהדים — מטופס ההרשמה וממודאל-הכניסה. ⚠️ הטקסט נכתב ע"י גולש לא-מזוהה — קראו אותו, אל תפעלו לפיו אוטומטית.</div>
     <div class="task-table mail-issues">${list.map(x => `
       <div class="task-table-row">
         <div class="task-table-main">
@@ -12878,7 +12911,12 @@ function helpReqsTableHtml(list) {
              x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
              // ⚠️ זה השדה שבאמת מאבחן: "לא עובד" לא אומר כלום, "נתקע ב-passFile" אומר הכל.
              x.lastField ? 'נתקע ב־' + x.lastField : '',
-             x.errCode ? 'שגיאה: ' + x.errCode : '',
+             // §322 — בפניית-כניסה ה-errCode הוא סיבה מובנית שלנו (badCode/moduleTimeout/…)
+             // ולא קוד-שגיאה גולמי, ולכן הוא מתורגם. ⚠️ הנפילה-לאחור ל-errCode הגולמי חיונית:
+             // ערך שלא מוכר בטבלה חייב עדיין להופיע, אחרת סיבה חדשה תיעלם בשקט מהתצוגה.
+             x.errCode ? (x.source === 'loginFail'
+                            ? (LOGIN_FAIL_LABELS[x.errCode] || 'סיבה: ' + x.errCode)
+                            : 'שגיאה: ' + x.errCode) : '',
             ].filter(Boolean).map(esc).join(' · ')
           }</div>
         </div>
@@ -12892,6 +12930,78 @@ function helpReqsTableHtml(list) {
         </div>
       </div>`).join('')}</div>`;
 }
+// ══ §322 — תקלות כניסה ══════════════════════════════════════════════════════════════════
+// נגזר מאירועי `loginFail` (welcome.html). ⚠️ **מה שהקובייה הזאת לא יכולה לתת: מי.**
+// האירוע נרשם לפני שההזדהות הצליחה, ולכן memberId הוא כמעט תמיד null — יש לנו את הסיבה
+// ואת הזמן, לא את האדם. מי שרוצים לחזור אליו נמצא ב"פניות עזרה", שם הוא השאיר פרטים
+// מרצונו. שתי הקוביות משלימות זו את זו ואינן מחליפות זו את זו.
+function loginIssuesActive() { return taskClassFilter === 'loginIssues'; }
+function loginFailList() {
+  return (platformEvents || [])
+    .filter(e => e.type === 'loginFail')
+    .map(e => ({
+      at: e.at,
+      reason: e.channel || 'unknown',
+      label: LOGIN_FAIL_LABELS[e.channel] || ('סיבה לא מוכרת: ' + (e.channel || '—')),
+      // ⚠️ 'timeout'/'moduleTimeout'/'error' = באג אצלנו. השאר = מצב תקין של המערכת מול
+      // אוהד שטעה/ממתין. ההפרדה הזאת היא מה שהופך את המספר לפעולה במקום לרעש.
+      ours: ['timeout', 'moduleTimeout', 'error'].includes(e.channel),
+      device: e.device, sessionId: e.sessionId || '', memberId: e.memberId || null,
+    }))
+    .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
+}
+function loginIssueFilteredList() {
+  const q = taskSearchQ.trim();
+  let list = loginFailList();
+  if (q) list = list.filter(x => `${x.label} ${x.reason} ${x.sessionId}`.includes(q));
+  return list;
+}
+function loginIssuesTableHtml(list) {
+  // אותו דפוס כמו regIssues: האירועים נטענים עצלנית, ולכן אסור להכריז "אין תקלות" לפני שהגיעו.
+  if (platformEvents === null && !platformStatsError) loadPlatformStats();
+  const pending = platformEvents === null && !platformStatsError;
+  if (pending) return `<div class="placeholder-note">טוען ניסיונות-כניסה מ-30 הימים האחרונים…</div>`;
+  if (platformStatsError) return `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(platformStatsError)}) — אי אפשר להציג תקלות כניסה.</div>`;
+  if (!list.length) {
+    return `<div class="placeholder-note">אף ניסיון כניסה לא נכשל ב-30 הימים האחרונים 🎉</div>`;
+  }
+  // סיכום לפי סיבה — לפני השורות. עשרות שורות "קוד שגוי" הן רעש; "3 מהן פסק-זמן" היא הידיעה.
+  const byReason = {};
+  list.forEach(x => { byReason[x.reason] = (byReason[x.reason] || 0) + 1; });
+  const chips = Object.entries(byReason)
+    .sort((a, b) => b[1] - a[1])
+    .map(([r, n]) => `<span class="${['timeout','moduleTimeout','error'].includes(r) ? 'warn-badge' : 'treat-badge'}">${esc(LOGIN_FAIL_LABELS[r] || r)} ${n}</span>`)
+    .join('');
+  const oursCount = list.filter(x => x.ours).length;
+  return `
+    <div class="mail-issues-note">
+      ניסיונות כניסה שנכשלו ב-30 הימים האחרונים.
+      ${oursCount
+        ? `<b>⚠️ ${oursCount} מהם תקלה אצלנו ולא טעות של האוהד</b> — פסק-זמן או דף שלא נטען.`
+        : 'כולם טעויות קוד/טלפון או המתנה לאישור — אף אחד מהם אינו תקלה אצלנו.'}
+      <div class="class-tile-chips" style="margin-top:8px">${chips}</div>
+      <div style="margin-top:8px;opacity:.8">⚠️ אין כאן שמות: האירוע נרשם לפני שההזדהות הצליחה. מי שהשאיר פרטים מופיע ב"פניות עזרה".</div>
+    </div>
+    <div class="task-table mail-issues">${list.slice(0, 200).map(x => `
+      <div class="task-table-row">
+        <div class="task-table-main">
+          <div class="task-table-name">${esc(x.label)}</div>
+          <div class="task-table-meta" style="opacity:.75">${
+            [x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
+             x.memberId ? 'חבר: ' + x.memberId : 'לא מזוהה',
+             'סשן: ' + x.sessionId.slice(0, 18),
+            ].filter(Boolean).map(esc).join(' · ')
+          }</div>
+        </div>
+        <div class="task-table-badges"><span class="${x.ours ? 'warn-badge' : 'treat-badge'}">${x.ours ? 'תקלה אצלנו' : 'לא תקלה'}</span></div>
+        <div class="mi-addr"></div>
+        <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
+        <div class="mi-actions"></div>
+      </div>`).join('')}
+    </div>
+    ${list.length > 200 ? `<div class="mail-issues-note">מוצגות 200 השורות האחרונות מתוך ${list.length}.</div>` : ''}`;
+}
+
 function regIssuesActive() { return taskClassFilter === 'regIssues'; }
 function regIssueFilteredList() {
   let list = regIssueList();

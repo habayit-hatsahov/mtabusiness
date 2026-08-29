@@ -455,7 +455,15 @@ service cloud.firestore {
           'formStep',
           // §275 — מדידת מימוש-הטבה. channel נושא את הפעולה עצמה:
           // cardOpen | couponReveal | couponCopy | siteClick | contactWhatsapp | contactPhone
-          'benefitRedeem'
+          'benefitRedeem',
+          // ── §322 — ניסיון כניסה שנכשל ──────────────────────────────────────────────────
+          // עד היום אוהד שלא הצליח להיכנס היה **בלתי-נראה לחלוטין**: אין אירוע, אין מונה,
+          // אין שום מקום שבו זה מופיע. הכשל נראה במדידה כ"כניסה שלא קרתה" ולא כתקלה, ולכן
+          // §322 (await חוסם שהשאיר אוהדים בחוץ) שרד בלי שאיש ידע. channel נושא את הסיבה:
+          // badCode | pending | rejected | tooManyAttempts | timeout | moduleTimeout | error
+          // ⚠️ `timeout`/`moduleTimeout` הם היחידים שמעידים על באג אצלנו ולא על טעות של
+          // האוהד — ולכן הם חייבים להיות ערך נפרד ולא להתמזג ל"שגיאה".
+          'loginFail'
         ] &&
         request.resource.data.device in ['mobile', 'desktop'] &&
         request.resource.data.createdAt == request.time &&
@@ -508,8 +516,11 @@ service cloud.firestore {
         request.resource.data.message.size() > 0 && request.resource.data.message.size() <= 1000 &&
         (!('name' in request.resource.data) || request.resource.data.name == null ||
           (request.resource.data.name is string && request.resource.data.name.size() <= 80)) &&
+        // §322 — 'loginFail' נוסף: הפאנל הזה חי עכשיו גם במודאל-הכניסה ב-welcome.html, לא רק
+        // בטופס ההרשמה. אוהד **שכבר רשום ומאושר** ולא מצליח להיכנס הוא מקרה גרוע יותר מנרשם
+        // שנתקע — הוא כבר בפנים, ואין לו שום דרך אחרת להגיע אלינו.
         (!('source' in request.resource.data) || request.resource.data.source == null ||
-          request.resource.data.source in ['stuck', 'question', 'photoFail', 'submitFail']) &&
+          request.resource.data.source in ['stuck', 'question', 'photoFail', 'submitFail', 'loginFail']) &&
         (!('device' in request.resource.data) || request.resource.data.device == null ||
           request.resource.data.device in ['mobile', 'desktop']) &&
         (!('lastField' in request.resource.data) || request.resource.data.lastField == null ||

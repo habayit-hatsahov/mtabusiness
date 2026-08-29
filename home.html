@@ -3888,7 +3888,28 @@ try {
 } catch (e) {}
 
 // auth guard — session אמיתי (Firebase Auth, custom token מונפק ב-welcome.html) + חייב להיות תואם בפועל ל-hb_memberId, לא רק "שניהם קיימים בנפרד" (ר' PROJECT_CONTEXT.md סעיף 12/4d — פער ישן שגרם ל-permission-denied שקט)
+// §322 — אותו באג בדיוק שנתפס ב-welcome.html, בדף שהאוהד נוחת בו **מיד אחרי הכניסה**:
+// await ברמת-המודול חוסם את ההגדרה של כל מה שמתחתיו. אם onAuthStateChanged לא נורה
+// (IndexedDB תקוע — §312), או אם getIdToken() למטה תלוי (קריאת-רשת שהייתה בלי גבול-זמן),
+// כל הדף מת. מבחינת האוהד זה נראה זהה ל"לא הצלחתי להיכנס" — הוא הזין קוד נכון, הועבר לכאן,
+// ונשאר מול מסך ריק. רשת-הביטחון של ה-splash (10s) רק מסירה את מסך-הפתיחה — היא לא מריצה
+// שורה אחת מהמודול החסום, ולכן חושפת דף **ריק** במקום דף תקוע. זה לא היה גיבוי אמיתי.
+//
+// שני הבדלים מ-welcome.html, בכוונה:
+// 1. **6 שניות ולא 3** — כאן אין כפתור שממתין, ויש ערך אמיתי בלתת ל-auth להתאושש לבד.
+// 2. **פסק-זמן ≠ "אין session"**. פסק-זמן אומר "לא הצלחנו לקבוע", וזה לא אותו דבר כמו
+//    "המשתמש מנותק". לכן: אם יש hb_memberId שמור — ממשיכים בזהירות ונותנים לדף להיטען
+//    (חוקי Firestore הם שומר-האמת בצד השרת, הגארד כאן הוא UX). אם אין — welcome.html כרגיל.
+const HB_AUTH_GATE_MS = 6000;
 await new Promise(resolve => {
+  let opened = false;
+  const openGate = () => { if (opened) return; opened = true; resolve(); };
+  setTimeout(() => {
+    if (opened) return;
+    if (!localStorage.getItem('hb_memberId')) { location.href = 'welcome.html'; return; }
+    console.warn('auth gate timed out — ממשיך עם hb_memberId שמור');
+    openGate();
+  }, HB_AUTH_GATE_MS);
   const unsub = onAuthStateChanged(auth, async user => {
     unsub();
     const storedId = localStorage.getItem('hb_memberId');
@@ -3902,8 +3923,15 @@ await new Promise(resolve => {
     // נכשלות עם "Missing or insufficient permissions" גם על מסמך-החבר-של-עצמו — נראה שה-ID
     // token עוד לא "מוכן" בפועל ל-SDK הפנימי של Firestore באותו רגע. getIdToken() מפורש כאן
     // מכריח את ה-SDK לוודא/לרענן טוקן תקף לפני שממשיכים לכל קריאת-Firestore אחרת בדף.
-    try { await user.getIdToken(); } catch (e) { console.error('getIdToken failed:', e); }
-    resolve();
+    // §322 — עם גבול-זמן: זו קריאת-רשת, ו-try/catch לא מציל מהבטחה שפשוט לא חוזרת.
+    // הכישלון כאן הוא רך ממילא (fetchMemberDocWithRetry למטה מנסה שוב), אז עדיף להמשיך.
+    try {
+      await Promise.race([
+        user.getIdToken(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('hb_idtoken_timeout')), 4000)),
+      ]);
+    } catch (e) { console.error('getIdToken failed:', e); }
+    openGate();
   });
 });
 
@@ -3951,7 +3979,13 @@ await new Promise(resolve => {
 
 // lastSeenAt (שלב 7, §3 במפרט) — נכתב פה כי זה בדיוק המקום שכבר קורא/כותב על מסמך החבר-המחובר
 // בכל טעינה של home.html. fire-and-forget, לא חוסם שום דבר.
-updateDoc(doc(db, 'members', auth.currentUser.uid), { lastSeenAt: serverTimestamp() }).catch(() => {});
+// §322 — `?.` ובדיקה, לא קישוט. מאז שהשער למעלה חסום-בזמן, אפשר להגיע לכאן גם כש-auth
+// עדיין לא הוכרע ו-currentUser הוא null. השורה הזאת זורקת אז **בזמן חישוב הארגומנט** —
+// לפני שנוצרה בכלל הבטחה — ולכן ה-.catch() שבסוף לא תופס כלום. זריקה ברמת-המודול עוצרת את
+// כל מה שמתחתיה, כלומר בדיוק אותו נזק שהשער בא למנוע: תעודת-החבר, הלבבות ו-logEvent
+// נשארים לא-מוגדרים. נתפס בבדיקה חיה, לא בקריאת-קוד.
+const _hbSeenUid = auth.currentUser?.uid;
+if (_hbSeenUid) updateDoc(doc(db, 'members', _hbSeenUid), { lastSeenAt: serverTimestamp() }).catch(() => {});
 
 window._likeFirestoreToggle = async function(id, memberId, liked) {
   await updateDoc(doc(db, 'businesses', id), {
