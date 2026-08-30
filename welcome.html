@@ -171,7 +171,13 @@ window.HB_LOGIN_HELP_SUBS = {
   pending:       'הבקשה שלכם עדיין ממתינה לאישור. אם היא ממתינה כבר הרבה זמן — כתבו לנו ונזרז.',
   rejected:      'ספרו לנו מה קרה ונבדוק את זה מולכם.',
   tooManyAttempts: 'יותר מדי ניסיונות. אם אינכם מצליחים להיכנס בכלל — כתבו לנו ונטפל בזה.',
+  // §350 — 'timeout' התפצל לשניים. הוא נשאר כאן כנפילה-לאחור בלבד: אירועים היסטוריים
+  // נושאים אותו, ואסור שפנייה ישנה תאבד את הניסוח שלה. קוד חדש לא פולט אותו יותר.
   timeout:       'החיבור נקטע מהצד שלנו — זו לא תקלה אצלכם. השאירו פרטים ונחזור אליכם.',
+  fetchTimeout:  'החיבור נקטע מהצד שלנו — זו לא תקלה אצלכם. השאירו פרטים ונחזור אליכם.',
+  // ⚠️ ניסוח שונה במכוון: כאן הכניסה **הצליחה** בשרת ורק ההשלמה מתעכבת. "נכשלתם" יהיה שקר,
+  // והפנייה שתגיע מכאן היא של מי שכנראה כבר נכנס — המנהל צריך לדעת את זה לפני שהוא עונה.
+  authTimeout:   'הכניסה אושרה אצלנו וההשלמה התעכבה במכשיר שלכם. אם לא נכנסתם תוך דקה — כתבו לנו.',
   moduleTimeout: 'משהו לא נטען כמו שצריך מהצד שלנו — זו לא תקלה אצלכם. השאירו פרטים ונחזור אליכם.',
   error:         'משהו השתבש מהצד שלנו. השאירו פרטים ונחזור אליכם.',
 };
@@ -1634,6 +1640,10 @@ function heroNormalizePhoneDigits(raw) {
 // שהאוהד רואה היא 8 שניות סה"כ. הוורקר נמדד 0.54–0.71 שנ', כלומר פי-11 מרווח.
 const HERO_TIMEOUT_MS = window.HB_LOGIN_TIMEOUT_MS || 8000;
 const HERO_TIMEOUT_MSG = window.HB_TIMEOUT_MSG;
+// §350 — הודעה נפרדת ל-authTimeout. לא ניסוח יפה יותר לאותו דבר: זה מצב **שונה**. הקוד
+// התקבל, הטוקן הונפק, והכניסה כבר בדרך — ולכן "נסו שוב, ואם זה חוזר רעננו את הדף" הוא
+// לא רק לא-מדויק אלא מזיק: רענון מוחק את המאזין שאמור להעביר אותם ל-home.html.
+const HERO_AUTH_TIMEOUT_MSG = 'הקוד התקבל והכניסה כבר בדרך — היא פשוט לוקחת יותר מהרגיל. השאירו את הדף פתוח, נעביר אתכם ברגע שזה ייסגר.';
 function heroWithTimeout(promise, ms) {
   let t;
   return Promise.race([
@@ -1652,6 +1662,13 @@ window.heroLogin = async function() {
   const ac = new AbortController();
   const deadline = Date.now() + HERO_TIMEOUT_MS;
   const abortTimer = setTimeout(() => ac.abort(), HERO_TIMEOUT_MS);
+  // §350 — באיזה משני השלבים נגמר הזמן. עד היום שניהם נרשמו כ-'timeout' יחיד, וזה בדיוק
+  // המיזוג ש-§322 הזהיר מפניו — רמה אחת עמוק יותר. ההבחנה אינה אקדמית: ב-30.8 נרשמו כאן
+  // שלושה 'timeout' רצופים, ונדרש סבב אבחון שלם רק כדי לקבוע שהוורקר בכלל לא היה מעורב.
+  //   fetchTimeout — הוורקר לא ענה. תקלה אצלנו או ברשת, ונבדקת מול הוורקר.
+  //   authTimeout  — הוורקר **כן** ענה והטוקן כבר בידינו; רק Firebase Auth בצד הלקוח לא סגר
+  //                  בזמן. אין מה לחפש בשרת, והאוהד בדרך כלל ייכנס מעצמו כמה שניות אחר כך.
+  let stage = 'fetch';
   try {
     const resp = await fetch(WORKER_URL + '/mint-member-token', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1660,6 +1677,8 @@ window.heroLogin = async function() {
     const data = await resp.json();
     clearTimeout(abortTimer);
     if (data.customToken) {
+      // מכאן והלאה הטוקן כבר בידינו — כל כשל הוא בצד הלקוח בלבד (ר' ההערה על stage למעלה).
+      stage = 'auth';
       // §322 — הכניסה נחשבת מוצלחת ברגע ש-auth מדווח על משתמש, ולא רק כשההבטחה של
       // signInWithCustomToken חוזרת. אלה שני דברים שונים: ב-§312 אצל אוהד אמיתי מצב-ההזדהות
       // כבר היה תקין וההבטחה עצמה התעוררה רק אחרי שעה וחצי. הקוד הישן המתין להבטחה בלבד,
@@ -1671,14 +1690,35 @@ window.heroLogin = async function() {
       // הופכת ל-unhandled rejection ומרעישה בקונסול. מי שמפסיד במרוץ פשוט לא מכריע כלום.
       const viaCall = signInWithCustomToken(auth, data.customToken).then(c => c.user.uid);
       viaCall.catch(() => {});
-      const uid = await heroWithTimeout(
-        Promise.race([viaCall, viaState]),
-        Math.max(1500, deadline - Date.now())
-      ).finally(() => { try { offState && offState(); } catch (_) {} });
-      localStorage.setItem('hb_phone', heroNormalizePhoneDigits(phoneRaw));
-      localStorage.setItem('hb_memberId', uid);
-      heroGoHome();
-      return;
+      const settled = Promise.race([viaCall, viaState]);
+      settled.catch(() => {});
+      // סיום-הכניסה במקום אחד, משותף למסלול הרגיל ולרשת-ההצלה שמתחתיו. הפיצול לשני עותקים
+      // הוא בדיוק הדרך שבה נולד "localStorage נכתב אבל בלי הפניה" — אוהד מחובר שנשאר תקוע.
+      const finishLogin = (uid) => {
+        try { offState && offState(); } catch (_) {}
+        localStorage.setItem('hb_phone', heroNormalizePhoneDigits(phoneRaw));
+        localStorage.setItem('hb_memberId', uid);
+        heroGoHome();
+      };
+      try {
+        finishLogin(await heroWithTimeout(settled, Math.max(1500, deadline - Date.now())));
+        return;
+      } catch (err) {
+        // ── §350 — רשת-הצלה לאיחור ────────────────────────────────────────────────────────
+        // §322 תיקן את ההצלחה-שמאחרת **בתוך** 8 השניות (המרוץ למעלה). מה שנשאר פתוח הוא
+        // הרגע שאחרי: ב-30.8 הטוקן הונפק בכל שלושת הניסיונות ו-signInWithCustomToken נסגר
+        // כדקה אחר כך — כלומר האוהד היה מחובר בפועל בזמן שהמסך אמר לו "החיבור נקטע".
+        //
+        // מה שהציל את המקרה ההוא היה **במקרה** ה-onAuthStateChanged של שער-הכניסה, שמפנה
+        // ל-home.html — אבל רק בתנאי `storedId && user.uid === storedId`. לאוהד שנכנס בפעם
+        // הראשונה במכשיר הזה אין hb_memberId כלל, ולכן אצלו אותו תרחיש נגמר במחובר-שתקוע-
+        // על-מסך-שגיאה, בלי שום דרך חזרה. זו הסיבה שהמאזין **לא** מנותק כאן.
+        //
+        // ⚠️ ההפניה תתרחש גם אם האוהד כבר התחיל להקליד שוב — וזו ההתנהגות הנכונה: הוא מחובר.
+        // זה בדיוק מה שכבר קורה היום למי שיש לו hb_memberId, רק שעכשיו זה עקבי לכולם.
+        settled.then(finishLogin, () => { try { offState && offState(); } catch (_) {} });
+        throw err;
+      }
     }
     window.heroResetLoginBtn();
     // §322 — סיבה מובחנת לכל ענף. **ההפרדה היא כל הערך:** 'badCode' הוא טעות של האוהד,
@@ -1700,9 +1740,13 @@ window.heroLogin = async function() {
     // 'timeout' ≠ 'error': הראשון אומר שההמתנה נגמרה בלי תשובה (הכשל של §322 עצמו),
     // השני שקיבלנו תשובה שבורה. שתי בעיות שונות לגמרי, ואסור שיתמזגו לשורה אחת.
     const isT = heroIsTimeout(e);
-    window.logEvent && window.logEvent('loginFail', { channel: isT ? 'timeout' : 'error', blockId: window._hbEnvTag });
-    window.heroShowLoginHelp && window.heroShowLoginHelp(isT ? 'timeout' : 'error');
-    heroShowErr(isT ? HERO_TIMEOUT_MSG : 'שגיאה — נסו שוב');
+    // §350 — 'timeout' התפצל ל-fetchTimeout/authTimeout (ר' ההערה על stage בראש הפונקציה).
+    const reason = isT ? (stage === 'auth' ? 'authTimeout' : 'fetchTimeout') : 'error';
+    window.logEvent && window.logEvent('loginFail', { channel: reason, blockId: window._hbEnvTag });
+    window.heroShowLoginHelp && window.heroShowLoginHelp(reason);
+    // §350 — ההודעה חייבת להתפצל יחד עם הסיבה, אחרת רשת-ההצלה נלחמת בטקסט של עצמה:
+    // HERO_TIMEOUT_MSG מורה "רעננו את הדף", ורענון **הורג** את המאזין שעומד להכניס אותם.
+    heroShowErr(!isT ? 'שגיאה — נסו שוב' : stage === 'auth' ? HERO_AUTH_TIMEOUT_MSG : HERO_TIMEOUT_MSG);
   }
 };
 window.heroRequestResend = async function() {
