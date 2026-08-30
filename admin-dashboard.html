@@ -13192,7 +13192,30 @@ const LOGIN_FAIL_LABELS = {
   authTimeout:     '⚠️ הטוקן הונפק — Firebase Auth לא סגר בזמן במכשיר',
   moduleTimeout:   '⚠️ הדף לא נטען — הבקשה כלל לא יצאה',
   error:           '⚠️ שגיאה טכנית',
+  // ── §353 — הערוצים של רשת-ההצלה בשלב ה-fetch ────────────────────────────────────────────
+  // ⚠️ **התקרה הקשיחה היא הכשל החמור ביותר בקובץ הזה**: לא "הספינר ירד אחרי 8 שניות" אלא
+  // 35 שניות בלי שום תשובה. בלי השורה הזאת הוא היה מוצג כ"סיבה לא מוכרת" ומסומן "לא תקלה" —
+  // כלומר נספר כטעות של האוהד. זו בדיוק המלכודת שההערה של §350 מתחת מזהירה מפניה.
+  fetchHardAbort:  '🔴 הבקשה לא חזרה כלל — גם אחרי 35 שניות',
+  lateError:       '⚠️ הבקשה נכשלה אחרי שהספינר כבר ירד',
+  lateAuthTimeout: '⚠️ הטוקן הונפק מאוחר — Firebase Auth לא סגר גם אחרי 35 שניות',
+  lateAuthError:   '⚠️ הטוקן הונפק מאוחר וההזדהות נכשלה',
 };
+// §353 — תשובה שהגיעה **אחרי** שפסק-הזמן כבר הוריד את הספינר נושאת קידומת 'late:'.
+// הסיבה עצמה זהה ('late:badCode' הוא badCode), ולכן התווית נגזרת מהבסיס ורק מסומנת
+// כמאוחרת — אחרת היו נוצרות כאן ארבע שורות כפולות שאומרות בדיוק את אותו דבר.
+const hbLoginFailBase = (ch) => String(ch || '').replace(/^late:/, '');
+// §353 — **מקור-אמת יחיד ל"תקלה אצלנו"**. עד היום אותה הבחנה הייתה כתובה בשתי רשימות
+// נפרדות (`ours` בשורות, ורשימת ה-warn-badge בשבבי-הסיכום), והן כבר הספיקו להיפרד: §350
+// הוסיף את fetchTimeout/authTimeout רק לראשונה, ולכן שני הערוצים החמורים האלה הוצגו בשבב
+// ירוק של "מצב תקין". רשימה אחת לשניהם מונעת את הסחיפה הזאת מלחזור.
+const HB_LOGIN_FAIL_OURS = ['timeout', 'fetchTimeout', 'authTimeout', 'moduleTimeout', 'error',
+                            'fetchHardAbort', 'lateError', 'lateAuthTimeout', 'lateAuthError'];
+function hbLoginFailLabel(ch) {
+  const base = hbLoginFailBase(ch);
+  const label = LOGIN_FAIL_LABELS[base] || ('סיבה לא מוכרת: ' + (ch || '—'));
+  return String(ch || '').indexOf('late:') === 0 ? label + ' (תשובה מאוחרת)' : label;
+}
 function helpReqsActive() { return taskClassFilter === 'helpReqs'; }
 function helpReqList() {
   return [...HELP_REQUESTS].sort((a, b) => {
@@ -13244,7 +13267,9 @@ function helpReqsTableHtml(list) {
              // ולא קוד-שגיאה גולמי, ולכן הוא מתורגם. ⚠️ הנפילה-לאחור ל-errCode הגולמי חיונית:
              // ערך שלא מוכר בטבלה חייב עדיין להופיע, אחרת סיבה חדשה תיעלם בשקט מהתצוגה.
              x.errCode ? (x.source === 'loginFail'
-                            ? (LOGIN_FAIL_LABELS[x.errCode] || 'סיבה: ' + x.errCode)
+                            // §353 — דרך אותה פונקציה כמו טבלת התקלות, כדי שערוץ חדש
+                            // (fetchHardAbort ו-late:*) יקבל תווית גם כאן ולא רק שם.
+                            ? hbLoginFailLabel(x.errCode)
                             : 'שגיאה: ' + x.errCode) : '',
             ].filter(Boolean).map(esc).join(' · ')
           }</div>
@@ -13300,13 +13325,16 @@ function loginFailList() {
     .map(e => ({
       at: e.at,
       reason: e.channel || 'unknown',
-      label: LOGIN_FAIL_LABELS[e.channel] || ('סיבה לא מוכרת: ' + (e.channel || '—')),
+      label: hbLoginFailLabel(e.channel),
       // ⚠️ 'timeout'/'moduleTimeout'/'error' = באג אצלנו. השאר = מצב תקין של המערכת מול
       // אוהד שטעה/ממתין. ההפרדה הזאת היא מה שהופך את המספר לפעולה במקום לרעש.
       // §350 — **הרשימה הזאת חייבת לגדול יחד עם כל ערוץ חדש.** ערוץ שלא מופיע כאן מסומן
       // אוטומטית "לא תקלה" ונבלע בין טעויות-הקוד — כלומר פיצול שנועד לחשוף באג היה מסתיר
       // אותו במקום. אותה מלכודת בדיוק כמו רשימת-ההיתר של `type` ב-firestore.rules (§326).
-      ours: ['timeout', 'fetchTimeout', 'authTimeout', 'moduleTimeout', 'error'].includes(e.channel),
+      // §353 — נבדק על **הבסיס** ולא על הערוץ הגולמי, אחרת 'late:' היה עוקף את הרשימה כולה.
+      // ⚠️ 'late:badCode' **אינו** תקלה אצלנו: זו טעות של האוהד שהתשובה עליה פשוט איחרה.
+      // מה שכן נכנס הוא רק הכשלים שהם שלנו — התקרה הקשיחה וכשלי ההזדהות המאוחרים.
+      ours: HB_LOGIN_FAIL_OURS.includes(hbLoginFailBase(e.channel)),
       device: e.device, sessionId: e.sessionId || '', memberId: e.memberId || null,
       // §338 — טביעת-הסביבה שנוסעת ב-blockId מ-welcome.html: 'pwa|idb-ok|sw-v40'.
       // בלעדיה שלוש תקלות שונות לגמרי (PWA נעול על HTML ישן / IndexedDB תקוע / רשת איטית)
@@ -13336,7 +13364,9 @@ function loginIssuesTableHtml(list) {
   list.forEach(x => { byReason[x.reason] = (byReason[x.reason] || 0) + 1; });
   const chips = Object.entries(byReason)
     .sort((a, b) => b[1] - a[1])
-    .map(([r, n]) => `<span class="${['timeout','moduleTimeout','error'].includes(r) ? 'warn-badge' : 'treat-badge'}">${esc(LOGIN_FAIL_LABELS[r] || r)} ${n}</span>`)
+    // §353 — אותה רשימה בדיוק כמו `ours` בשורות (ר' ההערה על HB_LOGIN_FAIL_OURS). לפני כן
+    // זו הייתה רשימה שנייה ועצמאית, שכבר פספסה את fetchTimeout/authTimeout של §350.
+    .map(([r, n]) => `<span class="${HB_LOGIN_FAIL_OURS.includes(hbLoginFailBase(r)) ? 'warn-badge' : 'treat-badge'}">${esc(hbLoginFailLabel(r))} ${n}</span>`)
     .join('');
   const oursCount = list.filter(x => x.ours).length;
   return `
