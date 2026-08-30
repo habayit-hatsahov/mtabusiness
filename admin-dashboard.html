@@ -13077,6 +13077,35 @@ function helpReqsTableHtml(list) {
 // האירוע נרשם לפני שההזדהות הצליחה, ולכן memberId הוא כמעט תמיד null — יש לנו את הסיבה
 // ואת הזמן, לא את האדם. מי שרוצים לחזור אליו נמצא ב"פניות עזרה", שם הוא השאיר פרטים
 // מרצונו. שתי הקוביות משלימות זו את זו ואינן מחליפות זו את זו.
+// §338 — פענוח טביעת-הסביבה של welcome.html ('pwa|idb-ok|sw-v40') לעברית קריאה.
+// ⚠️ מוצג **רק** בשורות loginFail. blockId משמש משמעות אחרת לגמרי בשאר סוגי-האירועים
+// (joinModal / regCard / bizForm), ולכן אסור להריץ את הפענוח הזה עליהם.
+//
+// מה כל חלק עונה עליו:
+//   pwa/web     — האם זה מהאפליקציה המותקנת. ב-iOS יש לה מיכל-אחסון נפרד מספארי לגמרי,
+//                 ולכן "נכשל באפליקציה והצליח בדפדפן" הוא לא סתירה אלא רמז (§338).
+//   idb-stuck   — IndexedDB לא נפתח תוך 2.5 שניות. זה השורש של §312/§322: גם
+//                 signInWithCustomToken וגם onAuthStateChanged נשענים עליו ונתקעים שניהם.
+//   מטמון vNN   — גרסת ה-Service Worker שהגישה בפועל את הדף. נמוכה מזו שב-sw.js = המכשיר
+//                 מריץ HTML ישן, וייתכן שהוא נכשל מסיבה שכבר תוקנה.
+const HB_ENV_PART_LABELS = {
+  pwa: 'מהאפליקציה', web: 'מהדפדפן',
+  'idb-ok': null,                      // תקין — לא מרעישים את השורה
+  'idb-slow': 'אחסון איטי',
+  'idb-stuck': '⚠️ IndexedDB תקוע',
+  'idb-blocked': '⚠️ IndexedDB חסום',
+  'idb-err': 'אחסון שגה', 'idb-no': 'אין IndexedDB',
+  'sw-none': 'בלי מטמון', 'sw-no': 'בלי CacheStorage', 'sw-err': 'מטמון שגה',
+  probing: 'הגישוש לא הספיק',
+};
+function hbEnvLabel(env) {
+  return String(env).split('|').map(p => {
+    if (p in HB_ENV_PART_LABELS) return HB_ENV_PART_LABELS[p];
+    if (p.indexOf('sw-') === 0) return 'מטמון ' + p.slice(3);
+    return p;                          // ערך שלא מוכר לנו — מוצג כמו שהוא, לא נבלע
+  }).filter(Boolean).join(' · ');
+}
+
 function loginIssuesActive() { return taskClassFilter === 'loginIssues'; }
 function loginFailList() {
   return (platformEvents || [])
@@ -13089,13 +13118,18 @@ function loginFailList() {
       // אוהד שטעה/ממתין. ההפרדה הזאת היא מה שהופך את המספר לפעולה במקום לרעש.
       ours: ['timeout', 'moduleTimeout', 'error'].includes(e.channel),
       device: e.device, sessionId: e.sessionId || '', memberId: e.memberId || null,
+      // §338 — טביעת-הסביבה שנוסעת ב-blockId מ-welcome.html: 'pwa|idb-ok|sw-v40'.
+      // בלעדיה שלוש תקלות שונות לגמרי (PWA נעול על HTML ישן / IndexedDB תקוע / רשת איטית)
+      // נראות כאן שורה זהה, ודורשות שלושה תיקונים שונים. ריק באירועים שנרשמו לפני §338.
+      env: e.blockId || '',
     }))
     .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
 function loginIssueFilteredList() {
   const q = taskSearchQ.trim();
   let list = loginFailList();
-  if (q) list = list.filter(x => `${x.label} ${x.reason} ${x.sessionId}`.includes(q));
+  // §338 — env נכלל בחיפוש כדי שאפשר יהיה לבודד "pwa" או "idb-stuck" בשאילתה אחת.
+  if (q) list = list.filter(x => `${x.label} ${x.reason} ${x.sessionId} ${x.env}`.includes(q));
   return list;
 }
 function loginIssuesTableHtml(list) {
@@ -13130,6 +13164,9 @@ function loginIssuesTableHtml(list) {
           <div class="task-table-name">${esc(x.label)}</div>
           <div class="task-table-meta" style="opacity:.75">${
             [x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
+             // §338 — הסביבה קודמת לסשן: בכשל 'timeout'/'moduleTimeout' זו השורה שאומרת
+             // אם המכשיר הזה בכלל הריץ קוד עדכני, ולכן היא המידע הראשון שרוצים לראות.
+             x.env ? hbEnvLabel(x.env) : '',
              x.memberId ? 'חבר: ' + x.memberId : 'לא מזוהה',
              'סשן: ' + x.sessionId.slice(0, 18),
             ].filter(Boolean).map(esc).join(' · ')
