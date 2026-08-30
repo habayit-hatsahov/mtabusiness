@@ -4710,12 +4710,52 @@ const REDEEM_ACTION_LABELS = {
   couponCopy: 'העתיקו קוד', siteClick: 'עברו לאתר',
   contactWhatsapp: 'פנו בוואטסאפ', contactPhone: 'התקשרו',
 };
+// ── §352 — כל המתנת-רשת במסך הזה חסומה בזמן ────────────────────────────────────────────
+// הכלל של §280/§312/§313 ("כל await ברשת חייב גבול-זמן") נאכף עד היום רק בדפים של האוהד
+// ובעל-העסק. שתי הטעינות כאן היו הנתיבים האחרונים בלעדיו — והן דווקא הכבדות באתר: עד
+// 10,000 מסמכים כל אחת. `getDocs` **לא** מקבל AbortSignal, ולכן מרוץ מול טיימר: ההבטחה
+// עצמה ממשיכה ברקע (אין דרך לבטל אותה), אבל המסך מפסיק לחכות לה.
+// ⚠️ בלעדיו, בקשה שנתקעת משאירה "טוען…" לנצח — כלומר בדיוק התסמין של §351 (פאנל שלא
+// נפתח), רק בלי אף שורה בקונסול שתסגיר את הסיבה. שם שורת הקונסול פתרה תוך שנייה.
+// 20 שניות ולא 8 כמו בכניסת האוהד: שם זה round-trip יחיד לוורקר (נמדד 0.54–0.71 שנ'),
+// כאן זו הזרמה של אלפי מסמכים. סף קצר מדי היה מייצר פסק-זמן שקרי על רשת איטית-אך-תקינה.
+const STATS_TIMEOUT_MS = 20000;
+function statsWithTimeout(promise, ms = STATS_TIMEOUT_MS) {
+  let t;
+  return Promise.race([
+    promise.finally(() => clearTimeout(t)),
+    new Promise((_, reject) => { t = setTimeout(() => reject(new Error('hb_timeout')), ms); }),
+  ]);
+}
+// 'hb_timeout' הוא מזהה פנימי — אסור שיגיע למסך כמו שהוא. ר' §351: המסך הזה כבר הציג
+// שגיאת-מנוע גולמית שאיש לא ידע לקרוא, וזה מה שהפך באג בן-שורה לסבב-אבחון שלם.
+const statsErrLabel = (err) => err?.message === 'hb_timeout'
+  ? `הבקשה לא חזרה תוך ${STATS_TIMEOUT_MS / 1000} שניות`
+  : (err?.code || err?.message || 'שגיאה לא ידועה');
+
+// §352 — תקרה לשאילתת המימושים. עד עכשיו היא הייתה **חסרת גבול לחלוטין**: כל אירוע
+// benefitRedeem מאז ומעולם, בלי limit ובלי חלון-תאריכים, בזמן שהשאילתה שלידה כן מוגבלת.
+// ⚠️ אין כאן orderBy **בכוונה**: `where('type','==') + orderBy('createdAt')` דורש אינדקס
+// מורכב שאינו קיים, והוספתו הייתה מפילה את השאילתה עד לבנייתו — בדיוק סוג ה"תיקון" שהפיל
+// את §326. בלי orderBy הסדר הוא לפי מזהה-המסמך, כלומר בחיתוך מתקבלת **דגימה** ולא
+// "האחרונים" — ולכן החיתוך חייב להופיע על המסך ולא רק להתקיים בקוד.
+const REDEEM_EVENT_LIMIT = 10000;
 let redeemStats = null;      // { [bizId]: { total, ch: {channel: n} } } | null = טרם נטען
 let redeemStatsError = null;
+let redeemTruncated = false;
+let redeemLoading = false;
 async function loadRedeemStats() {
-  if (redeemStats || redeemStatsError) return;
+  // §352 — גארד-בו-זמנית. renderMain נקראת מכמה onSnapshot באותו tick, ובלי הדגל הזה יצאו
+  // שאילתות זהות במקביל — נצפה בפועל ב-§351, שם אותה שגיאה הודפסה ארבע פעמים. בשאילתה של
+  // 10,000 מסמכים זה פי-4 בקריאות ובזמן, על נתונים זהים לחלוטין.
+  if (redeemStats || redeemStatsError || redeemLoading) return;
+  redeemLoading = true;
   try {
-    const snap = await getDocs(query(collection(db, 'events'), where('type', '==', 'benefitRedeem')));
+    const snap = await statsWithTimeout(getDocs(query(
+      collection(db, 'events'),
+      where('type', '==', 'benefitRedeem'),
+      limit(REDEEM_EVENT_LIMIT)
+    )));
     const acc = {};
     snap.forEach(d => {
       const e = d.data();
@@ -4728,12 +4768,16 @@ async function loadRedeemStats() {
       else row.ch[c] = (row.ch[c] || 0) + 1;
     });
     redeemStats = acc;
+    redeemTruncated = snap.size >= REDEEM_EVENT_LIMIT;
   } catch (err) {
     console.error('loadRedeemStats failed:', err);
-    redeemStatsError = err?.code || err?.message || 'שגיאה לא ידועה';
+    redeemStatsError = statsErrLabel(err);
   }
+  redeemLoading = false;
   renderMain();
 }
+// §352 — פסק-זמן שאין ממנו דרך חזרה גרוע מהמתנה: הוא הופך תקלה חולפת למסך מת עד רענון.
+window.retryRedeemStats = function() { redeemStatsError = null; renderMain(); };
 const redeemFor = id => (redeemStats && redeemStats[id]) || { opens: 0, ch: {} };
 
 // ── §281 — פאנל "פלטפורמה": כניסות ומשפך-הרשמה ──────────────────────────────────────────
@@ -4781,22 +4825,28 @@ const PLATFORM_RANGES = [
 let platformEvents = null;          // מערך גולמי מצומצם | null = טרם נטען
 let platformTruncated = false;
 let platformStatsError = null;
+let platformLoading = false;        // §352 — גארד-בו-זמנית, ר' ההערה ב-loadRedeemStats
 let platformRange = 7;
 let platformIncludeAdmins = false;  // ברירת מחדל: **בלי** הצפיות של המנהלים עצמם
 
 window.setPlatformRange = function(v) { platformRange = +v || 7; renderMain(); };
 window.setPlatformIncludeAdmins = function(on) { platformIncludeAdmins = !!on; renderMain(); };
+// §352 — כאן זה קריטי יותר מאשר במימושים: ב-platformEvents תלויים גם קוביית "תקלות הרשמה"
+// וגם רשימת "תקלות כניסה" במרכז המשימות, לא רק הפאנל הזה. פסק-זמן בלי דרך חזרה היה מכבה
+// את שלושתם עד רענון ידני — בדיוק התסמין של §351.
+window.retryPlatformStats = function() { platformStatsError = null; renderMain(); };
 
 async function loadPlatformStats() {
-  if (platformEvents || platformStatsError) return;
+  if (platformEvents || platformStatsError || platformLoading) return;
+  platformLoading = true;
   try {
     const since = new Date(Date.now() - PLATFORM_WINDOW_DAYS * 864e5);
-    const snap = await getDocs(query(
+    const snap = await statsWithTimeout(getDocs(query(
       collection(db, 'events'),
       where('createdAt', '>=', since),
       orderBy('createdAt', 'desc'),
       limit(PLATFORM_EVENT_LIMIT)
-    ));
+    )));
     const rows = [];
     snap.forEach(docSnap => {
       const e = docSnap.data();
@@ -4818,8 +4868,9 @@ async function loadPlatformStats() {
     platformTruncated = snap.size >= PLATFORM_EVENT_LIMIT;
   } catch (err) {
     console.error('loadPlatformStats failed:', err);
-    platformStatsError = err?.code || err?.message || 'שגיאה לא ידועה';
+    platformStatsError = statsErrLabel(err);
   }
+  platformLoading = false;
   renderMain();
 }
 
@@ -4928,7 +4979,8 @@ function platFunnel(openN, submitN, openHelp, submitHelp) {
 function platformStatsHtml() {
   const head = `<div class="plat-title">🌐 פלטפורמה — כניסות ומשפך הרשמה</div>`;
   if (platformStatsError) {
-    return `<div class="plat-panel">${head}<div class="plat-sub">לא ניתן לטעון את נתוני האירועים: ${esc(platformStatsError)}</div></div>`;
+    return `<div class="plat-panel">${head}<div class="plat-sub">לא ניתן לטעון את נתוני האירועים: ${esc(platformStatsError)}</div>
+      <div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatformStats()">נסה שוב</button></div></div>`;
   }
   if (!platformEvents) {
     return `<div class="plat-panel">${head}<div class="plat-sub">טוען נתוני כניסות…</div></div>`;
@@ -5090,10 +5142,12 @@ function dataCenterHtml() {
       </div>
     </div>
     ${redeemStatsError
-      ? `<div class="placeholder-note">לא ניתן לטעון את נתוני המימוש: ${esc(redeemStatsError)}</div>`
+      ? `<div class="placeholder-note">לא ניתן לטעון את נתוני המימוש: ${esc(redeemStatsError)}
+          <div style="margin-top:8px"><button class="act-btn tiny" onclick="retryRedeemStats()">נסה שוב</button></div></div>`
       : !redeemStats
         ? `<div class="placeholder-note">טוען נתוני מימוש…</div>`
-        : `<div class="redeem-kpi-row">${Object.entries(REDEEM_ACTION_LABELS).map(([k, lbl]) =>
+        : `${redeemTruncated ? `<div class="placeholder-note" style="color:var(--orange)">⚠️ נשלפו ${REDEEM_EVENT_LIMIT.toLocaleString('he-IL')} אירועי מימוש בלבד — המספרים כאן חלקיים. השליפה מסודרת לפי מזהה-המסמך ולא לפי תאריך, ולכן זו דגימה ולא "האחרונים".</div>` : ''}
+          <div class="redeem-kpi-row">${Object.entries(REDEEM_ACTION_LABELS).map(([k, lbl]) =>
             `<div class="redeem-kpi"><div class="redeem-kpi-num">${(redeemTotals.ch[k] || 0).toLocaleString('he-IL')}</div><div class="redeem-kpi-lbl">${lbl}</div></div>`).join('')}</div>`}
     ${platformStatsHtml()}
     <div class="filter-toolbar-row" style="margin-bottom:10px">
@@ -13273,7 +13327,7 @@ function loginIssuesTableHtml(list) {
   if (platformEvents === null && !platformStatsError) loadPlatformStats();
   const pending = platformEvents === null && !platformStatsError;
   if (pending) return `<div class="placeholder-note">טוען ניסיונות-כניסה מ-30 הימים האחרונים…</div>`;
-  if (platformStatsError) return `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(platformStatsError)}) — אי אפשר להציג תקלות כניסה.</div>`;
+  if (platformStatsError) return `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(platformStatsError)}) — אי אפשר להציג תקלות כניסה.<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatformStats()">נסה שוב</button></div></div>`;
   if (!list.length) {
     return `<div class="placeholder-note">אף ניסיון כניסה לא נכשל ב-30 הימים האחרונים 🎉</div>`;
   }
@@ -13336,7 +13390,7 @@ function regIssuesTableHtml(list) {
   const loadingNote = platformEvents === null && !platformStatsError
     ? '<div class="mail-issues-note">טוען כשלי-שליחה מתוך המדידה… ההצלבות למטה כבר מלאות.</div>'
     : platformStatsError
-      ? `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(platformStatsError)}) — מוצגות הצלבות בלבד.</div>`
+      ? `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(platformStatsError)}) — מוצגות הצלבות בלבד.<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatformStats()">נסה שוב</button></div></div>`
       // §304 — המשפט "X נטשו" נשאר כסיכום, ומתחתיו המשפך שאומר **איפה** הם עזבו.
       // "72% נטשו" הוא מספר שאי אפשר לפעול לפיו; הצניחה בין שני שלבים סמוכים כן.
       : `<div class="mail-issues-note">הצלבה אוטומטית בין הצהרות האוהדים + כשלי שליחה אמיתיים מ-30 הימים האחרונים.${
