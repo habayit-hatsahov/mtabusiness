@@ -1275,6 +1275,17 @@ body {
 .owner-verify-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(118px,1fr)); gap: 13px; }
 .owner-verify-fb { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding-top: 13px; border-top: 1px solid var(--border-md); }
 .owner-verify-fb a { font-size: 12.5px; font-weight: 600; color: var(--accent); }
+/* §340 — שתי תוספות לשורת הפרופיל החברתי: מאיפה בטופס הערך הגיע, ומה קורה כשהוא בכלל לא
+   כתובת. שתיהן טקסט-משנה ולא צ'יפ — הן מלוות את הקישור, לא מתחרות בו. */
+.owner-verify-fb .social-src { font-size: 11.5px; color: var(--text-muted); }
+/* §342 — הערך הגולמי הוא הדבר הראשי בשורה; "פתיחה ←" נלווה אליו. שבירת-מילים חיונית:
+   כתובת פייסבוק ארוכה בתא-רשת צר גלשה מחוץ לכרטיס. */
+.social-val { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.social-val .social-raw { font-weight: 600; overflow-wrap: anywhere; direction: ltr; text-align: right; unicode-bidi: plaintext; }
+.social-val a { font-size: 12.5px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.social-val .social-bad { font-size: 12px; font-weight: 600; color: var(--orange); white-space: nowrap; }
+.social-val .social-src { font-size: 11.5px; color: var(--text-muted); }
+.owner-verify-fb .social-bad { font-size: 12.5px; font-weight: 600; color: var(--orange); }
 .owner-verify-hint { background: var(--nav-bg); border-radius: 9px; padding: 9px 11px; font-size: 12px; color: var(--text-sm); line-height: 1.5; }
 /* §298 — במסך צר הכרטיס גולש לשתי שורות, ואז `flex: 0 0 232px` השאיר את התמונה ברוחב
    קבוע עם שטח מת לצידה. ברוחב מלא היא גם נקראת טוב יותר — וזו הראיה שהמנהל בא לראות.
@@ -2124,6 +2135,88 @@ function normSocialHref(u) {
   if (!s) return '';
   return /^https?:///i.test(s) ? s : 'https://' + s.replace(/^/+/, '');
 }
+// ── §340 — קישור-פרופיל שהוא לא קישור ────────────────────────────────────────────────────
+// שדות הפייסבוק/אינסטגרם של אוהד ושל בעל-עסק הם טקסט חופשי, וחלקם נשמרים **בלי שום ולידציה**
+// (השדה האופציונלי "פייסבוק או אינסטגרם" ב-fan-register.html, וגם שדות העריכה כאן במרכז
+// הניהול). בפועל נרשמים מקלידים את *שם* הפרופיל ולא כתובת. עד עכשיו הערך הגולמי נדחף היישר
+// ל-href — ומחרוזת בלי סכימה היא כתובת **יחסית**, ולכן "פתיחה ←" הובילה אל
+// yellowzone.co.il/<מה שהוקלד>, כלומר 404 מהאתר שלנו. זה נקרא למנהל כמו תקלה במרכז הניהול
+// במקום כמו נתון-רישום שגוי, ולכן גם לא היה שום סיכוי שיתוקן מול האוהד.
+//
+// הנרמול עובר עכשיו דרך social-links.js (HB_LINKS) — בדיוק אותו מנוע שכבר מנרמל את קישורי
+// העסק (§232) — ומה שאי-אפשר לגזור ממנו כתובת מוצג כטקסט מסומן ולא כקישור מת. הערך הגולמי
+// לא נדרס אף פעם: הנרמול הוא בזמן רינדור בלבד, וגם כשהוא נכשל המנהל רואה בדיוק מה נכתב.
+// fail-open אם הקובץ לא נטען — נפילה-לאחור ל-normSocialHref, שלפחות אינו יחסי.
+// §342 — **הערך הגולמי מוצג תמיד, והקישור הוא תוספת לידו.**
+// המשתמש, מול הכרטיס: *"זה כמו לחצן לפייסבוק, לא רואים בכלל מה האוהד מילא"* — צודק. עד
+// עכשיו השורה הציגה רק "פתיחה ←", כלומר הנתון עצמו היה בלתי-נראה: אי-אפשר היה לדעת אם
+// האוהד מסר כתובת מלאה, שם-משתמש, או את שמו בעברית — ואלה שלוש רמות-אמינות שונות לגמרי.
+// עכשיו מה שהוא כתב מופיע כטקסט, ו-"פתיחה ←" נלווה אליו רק כשיש מה לפתוח.
+function socialProofValHtml(kind, raw, allowGuess) {
+  const n   = window.HB_LINKS ? window.HB_LINKS.normalize(kind, raw) : null;
+  const guessed = !!(n && n.confidence === 'guessed');
+  const url = n ? ((n.ok && (allowGuess !== false || !guessed)) ? n.url : '') : normSocialHref(raw);
+  const rawHtml = `<span class="social-raw">${esc(raw)}</span>`;
+  if (!url) {
+    // §345 — שתי סיבות שונות לגמרי לכך שאין קישור, ולמנהל הן מחייבות פעולה שונה:
+    // שם-משתמש הוא מצביע שאפשר לחפש בשתי הרשתות (הטופס מקבל אותו בכוונה, ופשוט מסרב
+    // לנחש לאיזו רשת הוא שייך); טקסט חופשי הוא לא-כלום. "לא כתובת" על שניהם היה קובר
+    // את ההבדל ושולח את המנהל לחפש דווקא במקרה שאין בו מה לחפש.
+    const looksLikeHandle = !!(n && n.ok && guessed);
+    return rawHtml + `<span class="social-bad">${looksLikeHandle ? 'שם משתמש — לחיפוש בפייסבוק/אינסטגרם' : 'לא כתובת — אין מה לפתוח'}</span>`;
+  }
+  // 'guessed' = הוקלד שם-משתמש בלבד והורכבה ממנו כתובת. חייב להיאמר במפורש שזו השלמה שלנו
+  // ולא מה שהאוהד מסר — אחרת פרופיל שגוי ייראה כמו ראיה שהוא עצמו סיפק.
+  return rawHtml + `<a href="${esc(url)}" target="_blank" rel="noopener">פתיחה ←</a>` +
+         (guessed ? `<span class="social-src">(כתובת שהושלמה מהשם)</span>` : '');
+}
+
+// תא ברשת האימות. המשתמש: *"תכניס את זה לאימות שלא יהיה ככה בנפרד, שנדע מאיפה זה נכנס"* —
+// הפרופיל הוא חלק מהאימות ולא נספח מתחתיו, ומקור-השדה יושב בתווית עצמה.
+function socialProofCellHtml(kind, label, value, srcShort, allowGuess) {
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return '';
+  const head = srcShort ? `${label} · ${srcShort}` : label;
+  return `<div><div class="form-field-label">${esc(head)}</div>` +
+         `<div class="form-field-val social-val">${socialProofValHtml(kind, raw, allowGuess)}</div></div>`;
+}
+
+// שורה (כרטיס בעל-העסק) — אותו תוכן בדיוק, פריסה אחרת.
+function socialProofRowHtml(kind, label, value, srcNote, allowGuess) {
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return '';
+  return `<div class="owner-verify-fb"><span class="form-field-label">${esc(label)}</span>` +
+         `<span class="social-val">${socialProofValHtml(kind, raw, allowGuess)}</span>` +
+         (srcNote ? `<span class="social-src">${esc(srcNote)}</span>` : '') + `</div>`;
+}
+
+// ── §340 — באיזה שלב בטופס נמסר הפייסבוק ─────────────────────────────────────────────────
+// facebookUrl הוא שדה אחד שמתמלא **משלושה מקומות שונים** ב-fan-register.html:
+//   1. לא-מנוי → "קישור לפרופיל הפייסבוק שלך", שדה חובה (נבדק http + facebook).
+//   2. מנוי שבחר במסלול "תמונה מהיציע + פייסבוק" → standsFacebookUrl (נבדק שנראה ככתובת).
+//   3. מנוי בכל מסלול אחר → השדה האופציונלי "פייסבוק או אינסטגרם" — בלי ולידציה בכלל.
+// ההבדל מכריע להחלטה: ב-1 וב-2 הפרופיל הוא **חלק מהראיה**, וב-3 הוא תוספת רשות שאין עליה
+// שום התחייבות. עד עכשיו שלושתם נראו זהה — שורת "פייסבוק" אחת — ולא היה איך לדעת מהיכן הוא
+// הגיע. הנתון כבר קיים ברשומה (isSubscriber + verifyMethod); הוא פשוט לא הוצג.
+// §343 — מאיזה שדה בטופס הגיע הפרופיל. תווית קצרה, יושבת בתווית התא ברשת האימות.
+// 'verifyRoute' כבר לא נכתב (§342 — השדה ירד ממסלול היציע), אבל נשאר כאן בשביל רשומות
+// שנכתבו איתו.
+const PROFILE_SOURCE_SHORT = {
+  nonSubRequired: 'שדה חובה, לא-מנוי',
+  verifyRoute:    'מתוך מסלול האימות',
+  optional:       'שדה רשות',
+};
+function fanProfileSourceShort(f) {
+  const src = f.profileSource || f.facebookUrlSource;   // facebookUrlSource — שם קודם, §340-§342
+  if (src) return PROFILE_SOURCE_SHORT[src] || src;
+  // ⚠️ נפילה-לאחור לרשומות שנוצרו לפני §343 (כל האוהדים הקיימים). הגזירה נכונה למסלולים
+  // כפי שהיו, ואי-אפשר לדעת ממנה יותר — לכן היא מסומנת ולא מוצגת כאילו תועדה.
+  if (!f.verifyMethod) return 'הרשמה ישנה';
+  const g = !f.isSubscriber ? PROFILE_SOURCE_SHORT.nonSubRequired
+          : f.verifyMethod === 'standsPhoto' ? PROFILE_SOURCE_SHORT.verifyRoute
+          : PROFILE_SOURCE_SHORT.optional;
+  return g + ' (משוער)';
+}
 function sectionWithTier(section, tier) {
   const t = TIER_LABELS[tier] || '';
   if (!section) return t;
@@ -2154,7 +2247,11 @@ const VERIFY_METHOD_LABELS = {
   passScreenshot: 'צילום מסך של המנוי',
   seatDetails:    'פרטי מושב',
   purchaseEmail:  'אישור רכישה/חידוש במייל',
-  standsPhoto:    'תמונה מהיציע + פייסבוק',
+  // §342 — היה 'תמונה מהיציע + פייסבוק'. שדה הפייסבוק ירד מהמסלול ב-fan-register.html
+  // (הוא הופיע פעמיים באותו מסך), והראיה במסלול היא התמונה בלבד.
+  // ⚠️ business.html **עדיין** אוסף פרופיל בתוך המסלול הזה — התווית משותפת לשני הכרטיסים,
+  // ולכן היא מנוסחת כשם-מסלול נייטרלי. הפרופיל של בעל-העסק מוצג בשורה משלו ממילא.
+  standsPhoto:    'תמונה מהיציע',
   manual:         'בקשה ידנית (טקסט חופשי)',
 };
 
@@ -6046,8 +6143,8 @@ function bizFullDetailHtml(id, opts) {
               : esc(agoLabel(b.registeredAt))
           }</div></div>
         </div>
-        ${b.ownerFacebookUrl ? `<div class="owner-verify-fb"><span class="form-field-label">פייסבוק</span><a href="${esc(b.ownerFacebookUrl)}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
-        ${b.ownerFanInstagram ? `<div class="owner-verify-fb"><span class="form-field-label">אינסטגרם</span><a href="${esc(normSocialHref(b.ownerFanInstagram))}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
+        ${socialProofRowHtml('facebook',  'פייסבוק',  b.ownerFacebookUrl,  '')}   <!-- §342 — מציג עכשיו גם את הערך הגולמי -->
+        ${socialProofRowHtml('instagram', 'אינסטגרם', b.ownerFanInstagram, '')}
         <div class="owner-verify-hint">אין רשימת מנויים להצלבה — ההחלטה מבוססת על התמונה ועל הפרופיל בלבד.</div>
         ${ownerVerifStateLine}
         <div class="owner-verify-actions">
@@ -7526,9 +7623,20 @@ function fanFullDetailHtml(id, opts) {
             ${f.isSubscriber ? `<div><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val${!f.subscriberSection ? ' empty' : ''}">${esc(sectionWithTier(f.subscriberSection, f.subscriberTier) || '—')}</div></div>` : ''}
             <div><div class="form-field-label">מסלול האימות</div><div class="form-field-val${!idVerifyMethod ? ' empty' : ''}">${esc(fanVerifyMethodLabel(f))}</div></div>
             ${idVerifyValue ? `<div><div class="form-field-label">${esc(VERIFY_VALUE_LABELS[idVerifyMethod] || 'מה נמסר')}</div><div class="form-field-val" style="white-space:pre-line">${esc(idVerifyValue)}</div></div>` : ''}
+            <!-- §342 — הפרופיל הוא **תא ברשת האימות**, לא שורה נספחת מתחתיה. הוא אחד
+                 הנתונים שעליהם ההחלטה נשענת (ולא-מנוי — הנתון המרכזי שלה), והפרדה ממנה
+                 גרמה לו להיקרא כמו מטא-דאטה. התווית נושאת את מקור-השדה. -->
+            ${socialProofCellHtml('facebook',  'פייסבוק',  f.facebookUrl,  fanProfileSourceShort(f))}
+            ${socialProofCellHtml('instagram', 'אינסטגרם', f.instagramUrl, fanProfileSourceShort(f))}
+            <!-- §345 — מה שהנרשם הקליד מילה-במילה, כשהוא **לא** זה שכבר מוצג למעלה. שני
+                 המקרים שמגיעים לכאן: שם-משתמש עירום בשדה-החובה של לא-מנוי (מתקבל, אבל לא
+                 ידוע לאיזו רשת הוא שייך), וטקסט חופשי בשדה-הרשות של מנוי (שאינו חוסם).
+                 allowGuess=false — הטופס מסרב לנחש רשת מערך עמום, והתצוגה מסרבת באותה
+                 מידה: קישור שנפתח יפה אל האדם הלא-נכון גרוע מטקסט שדורש חיפוש. -->
+            ${socialProofCellHtml('facebook', 'כפי שנמסר',
+                (f.profileRaw && f.profileRaw !== f.facebookUrl && f.profileRaw !== f.instagramUrl) ? f.profileRaw : '',
+                fanProfileSourceShort(f) + ' · לא זוהתה רשת', false)}
           </div>
-          ${f.facebookUrl ? `<div class="owner-verify-fb"><span class="form-field-label">פייסבוק</span><a href="${esc(f.facebookUrl)}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
-          ${f.instagramUrl ? `<div class="owner-verify-fb"><span class="form-field-label">אינסטגרם</span><a href="${esc(normSocialHref(f.instagramUrl))}" target="_blank" rel="noopener">פתיחה ←</a></div>` : ''}
           <!-- §300 — השורה כבר לא חוזרת על "לא מנוי / היה בעבר": הם תאים ברשת למעלה.
                נשאר רק מה שהיא באמת אומרת — על מה ההחלטה נשענת. -->
           <div class="owner-verify-hint">${
@@ -7702,6 +7810,12 @@ window.saveFanDetails = async function(id) {
     facebookUrl: document.getElementById('fanEditFbUrl_' + id).value.trim() || null,
     instagramUrl: document.getElementById('fanEditInstagram_' + id).value.trim() || null,
   };
+  // §340 — אותה אזהרה בדיוק שכבר עומדת על שדות-הקישור של העסק. נתיב-העריכה הזה הוא הדרך
+  // השנייה שבה ערך-שאינו-כתובת נכנס לרשומת אוהד (הראשונה, הטופס, נחסמה בצד הנרשם), והוא
+  // מסוכן יותר: מנהל שמתקן ידנית קישור שבור עלול להקליד את שם-הפרופיל בדיוק כמו שהאוהד עשה.
+  // אזהרה ולא חסימה — למנהל מותר לשמור ערך חלקי בכוונה, ובלבד שהוא יודע מה קורה לו בכרטיס.
+  if (!confirmSuspectLink('facebook',  updates.facebookUrl,  'הפייסבוק של האוהד')) return;
+  if (!confirmSuspectLink('instagram', updates.instagramUrl, 'האינסטגרם של האוהד')) return;
   const changedFields = f0 ? Object.keys(updates).filter(k => f0[k] !== updates[k]) : [];
   showSaving('שומר...');
   try {

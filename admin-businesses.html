@@ -1610,13 +1610,26 @@ window.openBizSheet = async function(id) {
   const typeStr    = types.map(t => BIZ_TYPE_LABELS[t]).filter(Boolean).join(' · ');
   const metaStr    = [typeStr, firstBranch?.city].filter(Boolean).join(' · ') || (isOnline ? 'אונליין' : '—');
 
+  // §340 — ר' ההערה ליד verHtml למטה.
+  const fbLinkOrText = raw => {
+    const v = String(raw || '').trim();
+    if (!v) return 'ללא קישור פייסבוק';
+    const low = v.toLowerCase();
+    return (low.startsWith('http://') || low.startsWith('https://'))
+      ? `<a href="${v}" target="_blank" style="color:inherit">פייסבוק ↗</a>`
+      : `פייסבוק: ${v} (לא כתובת)`;
+  };
   const m     = v => v ? v : '<span class="missing">לא מולא</span>';
   const mDash = v => v ? v : '<span class="missing">—</span>';
 
   const verHtml = b.isSubscriber === 'yes'
     ? `<span class="ver-tag subscriber">מנוי · שער ${b.gate || '—'} · מס׳ ${b.subNum || '—'}</span>`
     : b.isSubscriber === 'no'
-    ? `<span class="ver-tag photo">לא מנוי · ${b.fbUrl ? `<a href="${b.fbUrl}" target="_blank" style="color:inherit">פייסבוק ↗</a>` : 'ללא קישור פייסבוק'}</span>`
+    // §340 — ערך שאינו מתחיל ב-http הוא כתובת **יחסית**: "פייסבוק ↗" הובילה עד היום אל
+    // yellowzone.co.il/<מה שהוקלד> = 404 מהאתר שלנו, ונקרא כמו תקלה שלנו ולא כמו נתון שגוי.
+    // מי שהקליד שם-פרופיל במקום קישור מוצג כטקסט. (המסך המלא — admin-dashboard.html —
+    // מנרמל דרך social-links.js; כאן, במסך הישן, די בגארד הזה.)
+    ? `<span class="ver-tag photo">לא מנוי · ${fbLinkOrText(b.fbUrl)}</span>`
     : '<span class="missing">לא נענה</span>';
 
   // אתחול מצב בורר קטגוריה/תגיות/הטבה לעסק הנוכחי (ר' PROJECT_CONTEXT.md §8)
