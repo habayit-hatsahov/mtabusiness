@@ -1599,7 +1599,7 @@
         <div class="help-entry">
           <a class="help-entry-link" href="mailto:yellowzonemta@gmail.com?subject=%D7%A2%D7%96%D7%A8%D7%94%20%D7%91%D7%94%D7%A8%D7%A9%D7%9E%D7%AA%20%D7%A2%D7%A1%D7%A7">צריכים עזרה? כתבו לנו</a>
         </div>
-        <a class="success-back-link" href="home.html">חזרה לאתר</a>
+        <a class="success-back-link" id="failBackLink" href="home.html">חזרה לאתר</a>
       </div>
     </div>
 
@@ -1707,13 +1707,31 @@
 
   const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
 
-  // ── "חזרה לאתר" — מוצג רק כשמגיעים מ"הוסף עסק" בהמבורגר (business.html?ctx=menu),
-  // כדי לפתור מסך-ללא-מוצא באפליקציה המותקנת (PWA standalone, אין UI דפדפן לחזור).
-  if (new URLSearchParams(location.search).get('ctx') === 'menu') {
-    document.getElementById('backToSiteLink')?.classList.add('show');
-    document.getElementById('successBackLink').style.display = 'inline-block';
-    document.body.classList.add('has-back-btn');
-  }
+  // ── "חזרה לאתר" — קיים בכל מסלולי-הכניסה לטופס, לא רק בהמבורגר (§354) ──────────────────
+  // עד כאן הכפתור הוצג **רק** ב-?ctx=menu, כפתרון למסך-ללא-מוצא ב-PWA. אבל המסלול שדרכו
+  // מגיעים רוב הנרשמים הוא דף הנחיתה, ושם כל חמשת הקישורים הם target="_blank": טאב חדש
+  // בלי היסטוריה, כלומר גם כפתור-החזרה של הדפדפן מת. דווח בפועל: "נכנסתי לטופס ואני תקוע
+  // בו". אותו מבוי-סתום היה גם במסך ההצלחה ובמסך הכישלון — successBackLink הוצג רק
+  // ב-ctx=menu, ו-failBackLink בכלל לא היה בעל מזהה ולכן לא הוצג אף פעם.
+  //
+  // ⚠️ היעד נגזר מהמצב בפועל ולא מהנחה: home.html הוא דף-חבר עם auth guard שמקפיץ
+  // ל-welcome.html בלי hb_memberId — כלומר "חזרה לאתר" קשיחה ל-home.html הייתה מקפיצה
+  // בעל-עסק שאינו חבר מחובר דרך דף שהוא לא ביקש.
+  const backCtx = new URLSearchParams(location.search).get('ctx');
+  const BACK_HREF =
+      backCtx === 'fan'     ? 'fan-register.html'   // מהפוטר של טופס האוהד
+    : backCtx === 'landing' ? 'welcome.html'        // מדף הנחיתה
+    : backCtx === 'menu'    ? 'home.html'           // מ"הוסיפו עסק" בהמבורגר
+    : (localStorage.getItem('hb_memberId') ? 'home.html' : 'welcome.html');
+
+  ['backToSiteLink', 'successBackLink', 'failBackLink'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.href = BACK_HREF;
+    if (id === 'backToSiteLink') el.classList.add('show');
+    else el.style.display = 'inline-block';
+  });
+  document.body.classList.add('has-back-btn');
 
   // ── קישור/יצירת רשומת חבר לבעל העסק ──
   async function findExistingMemberId(phone, email) {
@@ -3913,8 +3931,9 @@
   async function goToBizTerms(event) {
     event.preventDefault();
     await saveBizRegDraft();
-    const fromMenu = new URLSearchParams(location.search).get('ctx') === 'menu';
-    location.href = 'terms.html?doc=biz' + (fromMenu ? '&ctx=menu' : '');
+    // §354 — כל ערכי ה-ctx נשמרים ביציאה לתקנון, לא רק 'menu'. terms.html מחזיר אותם
+    // כלשונם ל-business.html?resume=1, וזה מה שמשמר את "חזרה לאתר" אחרי סיבוב בתקנון.
+    location.href = 'terms.html?doc=biz' + (backCtx ? '&ctx=' + encodeURIComponent(backCtx) : '');
     return false;
   }
 
