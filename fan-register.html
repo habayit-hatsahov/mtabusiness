@@ -816,9 +816,9 @@
            ⚠️ input[type=date] עדיין **לא** בשימוש, מאותה סיבה כמו ב-2026-08-24: הבורר הנייטיב
            נפתח על החודש הנוכחי וצריך לדפדף עשרות שנים אחורה כדי להגיע לשנת לידה. -->
       <div class="form-card">
-        <div class="section-title"><span class="badge">🎂</span>עוד פרט אחד ונסיים</div>
+        <div class="section-title"><span class="badge">🎂</span>עוד פרט קטן — ואפשר לשלוח</div>
         <div class="form-group">
-          <label for="birthDateText">תאריך לידה <span class="req">*</span></label>
+          <label for="birthDateText">תאריך לידה <span class="opt">(רשות)</span></label>
           <!-- dir=ltr — ערך לטיני/מספרי בדף RTL; בלעדיו הסלאשים והספרות מסתדרים הפוך בזמן
                ההקלדה. אותו כלל כמו ltr-value בכרטיסי העסק. -->
           <!-- ⚠️ autocomplete="off" ולא "bday" בכוונה: מילוי-אוטומטי של bday מגיע בפורמט
@@ -833,8 +833,8 @@
                (התאריך אומר **מתי**, לא מי), הוא מבטיח פיצ'ר שלא קיים: אין שום הטבת
                יום-הולדת במערכת. birthDate נקרא רק לתצוגה במרכז הניהול, בפרופיל ובדשבורד
                העסק — אין אף נתיב שמשתמש ביום/חודש למשהו. הנוסח החדש אומר רק את מה שנכון. -->
-          <div class="hint">נשמר אצלנו בלבד — לא מוצג באתר ולא מועבר לאף עסק.</div>
-          <div class="field-error" id="err-birthDate">נא להזין תאריך לידה תקין</div>
+          <div class="hint">לא חובה. נשמר אצלנו בלבד — לא מוצג באתר ולא מועבר לאף עסק.</div>
+          <div class="field-error" id="err-birthDate">התאריך לא תקין — אפשר לתקן, או להשאיר את השדה ריק</div>
           <!-- §314 — הסלאשים והכתיבה ל-#birthDate נעשים **כאן**, בסקריפט קלאסי שרץ בזמן
                הפרסור, ולא במודול שבתחתית הדף שממתין להורדת firebase מ-gstatic. שדה שמסרב
                לקבל הקלדה נקרא למשתמש בדיוק כמו אתר שבור — אותו לקח בדיוק כמו הבוררים
@@ -863,6 +863,11 @@
                 }
               };
               vis.addEventListener('input', window.HB_syncBirthDate);
+              // §346 — אבן-דרך חמישית. §304 קבע בכוונה ארבע ("לא שדה-שדה"), וזו חריגה
+              // מכוונת ממנה: מרגע שהשדה הוא רשות, אותו אירוע נותן **שני** מספרים שאין
+              // בלעדיו — כמה מגיעים לכרטיס האחרון, וכמה בכלל טורחים למלא אותו. השני הוא
+              // תנאי להחלטה אם להסיר את השדה לגמרי: פילוח על 20% מהנרשמים אינו פילוח.
+              vis.addEventListener('input', function () { window.HB_markBirthStep && window.HB_markBirthStep(); });
             })();
           </script>
         </div>
@@ -1207,6 +1212,9 @@
     _stepsSeen.add(id);
     logEvent('formStep', { blockId: 'fanRegister', channel: id });
   }
+  // §346 — נקרא מהסקריפט הקלאסי שליד שדה התאריך (הוא רץ גם אם המודול תקוע, ר' §325).
+  // ⚠️ חשיפה מפורשת ל-window — כל פונקציה שנקראת מחוץ למודול חייבת אותה (§310).
+  window.HB_markBirthStep = () => markStep('birth');
 
   const HELP_OPENERS = {
     question:   'מלאו שלושה פרטים ונחזור אליכם. אין צורך למלא את טופס ההרשמה מחדש — מה שמילאתם נשמר.',
@@ -1498,7 +1506,16 @@
     let ok = true;
     ok = vf('firstName', fn.length >= 2) && ok;
     ok = vf('lastName',  ln.length >= 2) && ok;
-    const birthOk = birthDateOk(document.getElementById('birthDate').value);
+    // ── §346 — תאריך הלידה הוא **רשות** ─────────────────────────────────────────────────────
+    // המשתמש: *"בוא נקצר את הטופס, אני רוצה המרה גבוהה"*. השדה נאסף לפילוח משתמשים ולא
+    // לשום פיצ'ר פעיל (אין הטבת יום-הולדת, ר' §327), ולכן אין שום דבר שנשבר כשהוא ריק:
+    // profile.html כבר מציג "לא מולא בהרשמה — אפשר להשלים" ומאפשר להשלימו בלחיצה.
+    //
+    // ⚠️ ריק עובר — אבל **מולא-חלקית נעצר**. הבחנה זו נמדדת על השדה הגלוי ולא על המוסתר:
+    // "12/0" משאיר את #birthDate ריק לגמרי, ובלי הבדיקה הזאת הוא היה נשלח כאילו הנרשם
+    // בחר לדלג — כלומר מי שכן טרח למלא היה מאבד את הנתון בלי שאיש יידע.
+    const birthTyped = (document.getElementById('birthDateText').value || '').trim();
+    const birthOk    = !birthTyped || birthDateOk(document.getElementById('birthDate').value);
     markBirthDateError(!birthOk);
     ok = vf('birthDate', birthOk) && ok;
     ok = vf('phone',     phoneOk(phone)) && ok;
