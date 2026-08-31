@@ -434,7 +434,7 @@ service cloud.firestore {
 
       allow create: if
         request.resource.data.keys().hasOnly([
-          'type', 'bizId', 'memberId', 'sessionId', 'path', 'referrer', 'device', 'blockId', 'channel', 'createdAt'
+          'type', 'bizId', 'memberId', 'sessionId', 'path', 'referrer', 'device', 'blockId', 'channel', 'phone', 'createdAt'
         ]) &&
         request.resource.data.keys().hasAll(['type', 'sessionId', 'device', 'createdAt']) &&
         request.resource.data.type in [
@@ -488,7 +488,16 @@ service cloud.firestore {
         (!('blockId' in request.resource.data) || request.resource.data.blockId == null ||
           (request.resource.data.blockId is string && request.resource.data.blockId.size() <= 50)) &&
         (!('channel' in request.resource.data) || request.resource.data.channel == null ||
-          (request.resource.data.channel is string && request.resource.data.channel.size() <= 50));
+          (request.resource.data.channel is string && request.resource.data.channel.size() <= 50)) &&
+        // ── §355 — הטלפון שהוקלד בניסיון-כניסה שנכשל ─────────────────────────────────────
+        // הפער שזה סוגר: `loginFail` נרשם **לפני** שההזדהות הצליחה, ולכן memberId הוא כמעט
+        // תמיד null — היו לנו הסיבה והזמן ולעולם לא האדם. הטלפון הוא הדבר היחיד שהאוהד כן
+        // הקליד, והוא מה שמאפשר לחזור אל מי שנתקע במקום רק לספור אותו.
+        // ⚠️ אין קריאה פומבית לאוסף (allow read: isAdmin למעלה) — זה מידע מזהה, לא מדד.
+        // ⚠️ hasOnly הוא רשימת-היתר: **הכלל הזה חייב להיפרס לפני ש-welcome.html עולה עם
+        // השדה**, אחרת כל אירוע loginFail יידחה בשקט — אותה מלכודת של §326/§281.
+        (!('phone' in request.resource.data) || request.resource.data.phone == null ||
+          (request.resource.data.phone is string && request.resource.data.phone.size() <= 20));
     }
 
     // ── §303 — בקשות עזרה מטופס ההרשמה ("נתקעתי / משהו לא עובד") ─────────────────────────

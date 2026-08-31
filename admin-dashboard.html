@@ -3283,6 +3283,21 @@ function agoLabel(d) {
   const years = Math.round(days / 365);
   return `לפני ${years === 1 ? 'שנה' : years + ' שנים'}`;
 }
+// §355 — חתימת-זמן לשורות-תקלה. `agoLabel` נבנה לתורים שמודדים בימים ("ממתין 3 שבועות"),
+// ובתקלות-כניסה הוא מחזיר "היום" לכל מה שקרה בשמונה השעות האחרונות — כלומר בדיוק בשורות
+// שבהן רוצים לדעת **מתי**, כדי להצליב מול שיחה עם האוהד או מול פריסה שיצאה בשעה מסוימת.
+// ⚠️ ההשוואה היא לפי יום-לוח ולא לפי הפרש-שעות: אתמול ב-23:50 הוא "אתמול" גם כשעברו 20 דקות.
+function agoTimeLabel(d) {
+  if (!d) return '—';
+  const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  const now = new Date();
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const yest = new Date(now); yest.setDate(yest.getDate() - 1);
+  if (sameDay(d, now))  return 'היום ' + hm;
+  if (sameDay(d, yest)) return 'אתמול ' + hm;
+  const date = d.getDate() + '.' + (d.getMonth() + 1) + (d.getFullYear() !== now.getFullYear() ? '.' + d.getFullYear() : '');
+  return date + ' ' + hm;
+}
 function daysLeft(date) { return Math.ceil((date - new Date()) / DAY_MS); }
 function isExpired(anchor) { return anchor.mode === 'temp' && anchor.until && new Date() > anchor.until; }
 // התאריך שבו קורה משהו למיקום הזה: לעיגון זמני זה מועד הפקיעה. לעיגון קבוע זה תאריך ההחלפה
@@ -4862,6 +4877,10 @@ async function loadPlatformStats() {
         // ממה ש-§296 בא לתקן, ובדיוק מה שהמשתמש דיווח: *"אין לי פרטים בתקלות הרשמה"*.
         // **הלקח: תיקון־תצוגה שנשען על שדה חדש חייב לוודא שהשדה עובר את שכבת הטעינה.**
         channel: e.channel || null, bizId: e.bizId || null,
+        // §355 — בלי השורה הזאת הטלפון שנכתב ב-welcome.html מגיע ל-loginFailList כ-undefined,
+        // בדיוק כמו ש-`channel` לא נטען מעולם והפך את §296 לקוד מת. **שדה חדש בכתיבה = שורה
+        // חדשה גם כאן**, אחרת התיקון עובד בייצור ולא על המסך.
+        phone: e.phone || null,
       });
     });
     platformEvents = rows;
@@ -8323,36 +8342,59 @@ let taskSort2 = 'longestWaiting'; // 'longestWaiting' | 'leastReviewed' | 'mostR
 let taskPeriodFilter = 'all';   // 'all' | '7' | '30' | '90' | 'over2w'
 let taskCategoryFilter = 'all';
 let selectedTaskKey = null;     // "biz:ID" / "fan:ID" — הכרטיס הפתוח כרגע ב-drawer (null = סגור)
+// §356 — איזה סוג-תקלה מוצג בתוך קוביית "תקלות ופניות". 'all' = הרשימה המאוחדת, שהיא
+// **ברירת המחדל בכוונה**: הבקשה של המשתמש הייתה לראות מיד שיש מה לבדוק, ורשימה שמתחילה
+// על סוג מסוים היא בדיוק החזרה למצב שבו צריך לעבור סוג-סוג.
+let taskIssueKind = 'all';      // 'all' | 'mail' | 'reg' | 'login' | 'help' | 'bizErrors'
 
 const TASK_CLASS_TILES = [
   { key: 'pendingBiz', primary: 'עסק ממתין לאישור', label: 'עסקים ממתינים לאישור' },
   { key: 'pendingFan', primary: 'אוהד ממתין לאישור', label: 'אוהדים ממתינים לאישור' },
   { key: 'requests',   primary: 'בקשה מבעל העסק',   label: 'בקשות מבעלי עסקים' },
   { key: 'incomplete', primary: 'כרטיס חסר באינדקס', label: 'כרטיס חסר באינדקס' },
-  // קובייה חמישית — לא מבוססת classifyAction כמו הארבע שמעליה, אלא על mailIssueList() (§204).
-  // כשהיא נבחרת, גוף-הטבלה מוחלף ברשימת-התקלות במקום ברשימת-המשימות המאוחדת.
-  { key: 'mailIssues', primary: null, label: 'תקלות מייל' },
-  // קובייה שישית (2026-08-16) — ארכיון: בקשות שנסגרו ידנית ("טופל מבחוץ") ותקלות-מייל שסומנו
-  // "טיפלתי". אותו דפוס כמו mailIssues: מחליפה את גוף-הטבלה, לא מסננת את הרשימה המאוחדת.
+  // ── §356 — קובייה אחת לכל התקלות ──────────────────────────────────────────────────────
+  // עד היום היו כאן **חמש** קוביות-תקלה נפרדות (מייל / דשבורד עסק / הרשמה / פניות עזרה /
+  // כניסה). כל אחת נולדה בזמנה מסיבה טובה, והתוצאה המצטברת הייתה שורת-קוביות שאי אפשר
+  // לסרוק במבט אחד: המשתמש היה צריך לעבור עליהן אחת-אחת כדי לדעת אם יש בכלל מה לעשות.
+  //
+  // המבנה החדש: **מספר אחד** = סך הפתוחות שדורשות אותנו, ומתחתיו שבב לכל סוג עם המספר
+  // שלו. הסוגים לא מוזגו ולא אבדו — הם הפכו ל**תת-בורר** (`taskIssueKind`) בתוך הקובייה
+  // הזאת, וכל רשימה ממשיכה להתרנדר בדיוק ע"י אותה פונקציה כמו קודם.
+  { key: 'issues', primary: null, label: 'תקלות ופניות' },
+  // קובייה אחרונה (2026-08-16) — ארכיון: בקשות שנסגרו ידנית ("טופל מבחוץ") וכל תקלה שסומנה
+  // "טיפלתי". אותו דפוס כמו 'issues': מחליפה את גוף-הטבלה, לא מסננת את הרשימה המאוחדת.
   { key: 'handled', primary: null, label: 'בקשות שטופלו' },
-  // קובייה שביעית (2026-08-17, §215) — כשל כתיבה בדשבורד של בעל-העסק, כפי שדווח מהדפדפן שלו
-  // דרך ה-Worker (/log-biz-error). בניגוד לחמש הראשונות זו לא "משימה" אלא תקלה טכנית: עד היום
-  // ידענו עליה רק אם בעל-העסק טרח להתלונן ולשלוח צילום-מסך.
-  { key: 'bizErrors', primary: null, label: 'תקלות בדשבורד עסק' },
-  // קובייה שמינית (§284) — הצלבות בין הצהרות-אימות של אוהדים + הרשמות שנכשלו בפועל.
-  // אותו דפוס כמו mailIssues/bizErrors: מחליפה את גוף-הטבלה ולא מסננת את הרשימה המאוחדת.
-  { key: 'regIssues', primary: null, label: 'תקלות הרשמה' },
-  // קובייה תשיעית (§303) — פניות מטופס ההרשמה של האוהד ("נתקעתי / משהו לא עובד").
-  // ⚠️ שונה מכל השמונה שמעליה: הן נגזרות מנתונים שכבר יש לנו, וזו **הערוץ היחיד שבו
-  // אדם שאין לו רשומה בכלל יכול להגיע אלינו**. שורה כאן היא אוהד שכמעט אבד.
-  // §322 — כבר לא רק מההרשמה: מודאל-הכניסה כותב לאותו אוסף עם source:'loginFail'.
-  { key: 'helpReqs', primary: null, label: 'פניות עזרה' },
-  // קובייה עשירית (§322) — ניסיונות כניסה שנכשלו, אוטומטית ובלי שהאוהד יטרח לדווח.
-  // ⚠️ **זה הפער שאיפשר ל-§322 לשרוד**: אוהד שלא הצליח להיכנס לא רשם שום אירוע, ולכן
-  // הכשל הופיע במדידה כ"כניסות שלא קרו" ולא כתקלה. מי שנתקע פשוט מפסיק לנסות ואיש לא יודע.
-  // ההפרדה לפי סיבה היא כל הערך: badCode היא טעות של האוהד, timeout/moduleTimeout הם באג אצלנו.
-  { key: 'loginIssues', primary: null, label: 'תקלות כניסה' },
 ];
+
+// ── §356 — ששת סוגי-התקלה שבתוך הקובייה המאוחדת ─────────────────────────────────────────
+// כל ערך כאן היה עד §356 קובייה בפני עצמה. ⚠️ **הרשימה הזאת היא מקור-האמת היחיד** לשבבים
+// בקובייה, לבורר מעל הטבלה, ולספירה הכוללת — כדי שסוג-תקלה חדש לא יצטרך להיזכר בשלושה
+// מקומות ולהישכח באחד מהם (אותה מלכודת של רשימת-ההיתר `type` ב-firestore.rules, §326).
+//
+// `open`   — מה נספר בשבב: **פתוחות בלבד**, אחרת "טיפלתי" לא מנקה כלום (§302/§355).
+// `urgent` — מה נכנס למספר הגדול והאדום. לא כל תקלה פתוחה דורשת אותנו: "קוד שגוי" בכניסה
+//            הוא התנהגות תקינה של המערכת, ו-49 שורות כאלה היו הופכות את המספר לרעש קבוע
+//            שמפסיקים לקרוא. המספר הגדול הוא **"כמה דברים אני חייב לבדוק"**, לא "כמה קרו".
+const ISSUE_KINDS = [
+  { key: 'mail',      label: 'מייל',          open: () => mailIssueList(),
+    urgent: l => l.filter(x => x.sev <= 2).length },
+  { key: 'reg',       label: 'הרשמה',         open: () => regIssueOpenList(),      urgent: l => l.length },
+  { key: 'login',     label: 'כניסה',         open: () => loginFailOpenList(),
+    urgent: l => l.filter(x => x.ours).length },
+  { key: 'help',      label: 'פניות עזרה',    open: () => helpReqOpenList(),       urgent: l => l.length },
+  { key: 'bizErrors', label: 'דשבורד עסק',    open: () => bizWriteErrorList(),     urgent: l => l.length },
+];
+function issueKindCounts() {
+  const out = {};
+  let openTotal = 0, urgentTotal = 0;
+  ISSUE_KINDS.forEach(k => {
+    const list = k.open() || [];
+    const urgent = k.urgent(list);
+    out[k.key] = { open: list.length, urgent };
+    openTotal += list.length; urgentTotal += urgent;
+  });
+  return { byKind: out, openTotal, urgentTotal };
+}
 
 // כל עסק/אוהד עם primary פעיל (לא "מאושר · אין פעולה") — מבוסס classifyAction בלבד, לא בדיקה נפרדת
 function unifiedTaskItems() {
@@ -8408,7 +8450,148 @@ function taskFilteredList() {
   });
 }
 
-window.setTaskClassFilter = function(key) { taskClassFilter = (taskClassFilter === key ? 'all' : key); refreshTaskCenter(); };
+window.setTaskClassFilter = function(key) {
+  taskClassFilter = (taskClassFilter === key ? 'all' : key);
+  // §356 — יציאה מהקובייה מאפסת את תת-הבורר. בלי זה חזרה אליה הייתה נוחתת על הסוג האחרון
+  // שנבחר לפני חצי שעה, כלומר על רשימה חלקית שנראית כמו "אין תקלות".
+  if (taskClassFilter !== 'issues') taskIssueKind = 'all';
+  refreshTaskCenter();
+};
+// §356 — בחירת סוג מתוך הקובייה. גם משבב בקובייה עצמה (`kind`) וגם מהבורר שמעל הטבלה.
+window.setTaskIssueKind = function(kind) {
+  taskClassFilter = 'issues';
+  taskIssueKind = (taskIssueKind === kind ? 'all' : kind);
+  refreshTaskCenter();
+};
+
+// ── §356 — הבורר שמעל הטבלה ─────────────────────────────────────
+// המספר על כל לחצן הוא **הפתוחות** בסוג הזה, ובאדום רק מה שדורש אותנו (ר' ISSUE_KINDS).
+// לחצן עם 0 נשאר מוצג ולא נעלם: היעדר-תקלות הוא מידע, ובורר שמשנה את הצורה שלו
+// בכל רענון מאבד את זיכרון-השריר של מי שעובד בו כל יום.
+function issueKindPickerHtml() {
+  const c = issueKindCounts();
+  const sel = k => taskIssueKind === k ? ' style="border-color:var(--accent);color:var(--accent)"' : '';
+  const num = (n, urgent) => n ? ' <b' + (urgent ? ' style="color:#ff5c5c"' : '') + '>' + n + '</b>' : ' 0';
+  const btn = (k, label, n, urgent) =>
+    '<button class="act-btn tiny"' + sel(k) + ' onclick="setTaskIssueKind(' + "'" + k + "'" + ')">' +
+    esc(label) + num(n, urgent) + '</button>';
+  return '<div class="filter-toolbar-row" style="margin-bottom:10px;gap:6px">' +
+    btn('all', 'הכל', c.openTotal, c.urgentTotal) +
+    ISSUE_KINDS.map(k => btn(k.key, k.label, c.byKind[k.key].open, c.byKind[k.key].urgent)).join('') +
+    '</div>';
+}
+
+// ── §356 — הרשימה המאוחדת ────────────────────────────────────────
+// חמישה מקורות שונים לגמרי מנורמלים לשורה אחת. ⚠️ **זו תצוגת-מיון, לא שולחן-עבודה**:
+// היא עונה על "יש משהו לבדוק, ואיפה", ולכן היא נושאת רק את הפעולות המשותפות לכל הסוגים —
+// פתיחת הכרטיס וסימון "טיפלתי". הפעולות הייחודיות (שליחה חוזרת של מייל, פתיחת כל אוהד
+// בהצלבה, המשפכים) נשארות ברשימה של הסוג עצמו, שנמצאת במרחק לחיצה אחת בבורר.
+// שכפול שלהן לכאן היה מייצר עותק שני שיסחף מהמקור — בדיוק הדפוס של §353.
+function unifiedIssueList() {
+  const out = [];
+  const q1 = s => "'" + s + "'";
+
+  mailIssueList().forEach(x => out.push({
+    kind: 'mail', at: x.when, urgent: x.sev <= 2,
+    who: x.name, title: x.badge,
+    meta: [x.email, x.ownerBizName ? 'בעל העסק «' + x.ownerBizName + '»' : '', x.detail].filter(Boolean).join(' · '),
+    entity: { kind: x.kind, id: x.id },
+    markJs: 'markMailIssueHandled(' + [q1(x.kind), q1(x.id), q1(escJsAttr(x.key)),
+             q1(escJsAttr(x.badge)), q1(escJsAttr(x.name))].join(',') + ')',
+  }));
+
+  regIssueOpenList().forEach(x => out.push({
+    kind: 'reg', at: x.at, urgent: true,
+    who: x.fans.length ? x.fans.map(f => f.name).join(' · ') : (x.bizRef ? x.bizRef.name : '—'),
+    title: x.title, meta: x.detail,
+    entity: x.fans.length ? { kind: 'fan', id: x.fans[0].id } : (x.bizRef ? { kind: 'biz', id: x.bizRef.id } : null),
+    markJs: 'markRegIssueHandled(' + [q1(esc(x.key)), q1(escJsAttr(x.title))].join(',') + ')',
+  }));
+
+  loginFailOpenList().forEach(x => out.push({
+    kind: 'login', at: x.at, urgent: x.ours,
+    who: x.fan ? x.fan.name : (x.phone || 'לא מזוהה'),
+    title: x.label,
+    meta: [x.phone && x.fan ? x.phone : '',
+           x.phone && !x.fan ? 'המספר הזה לא רשום אצלנו' : '',
+           x.fan && x.fan.status && x.fan.status !== 'approved'
+             ? 'הרשומה שלו ' + (x.fan.status === 'pending' ? 'ממתינה לאישור' : 'נדחתה') : '',
+           x.env ? hbEnvLabel(x.env) : ''].filter(Boolean).join(' · '),
+    entity: x.fan ? { kind: 'fan', id: x.fan.id } : null,
+    markJs: 'markLoginIssueHandled(' + [q1(esc(x.key)),
+             q1(escJsAttr((x.fan ? x.fan.name + ' · ' : '') + (x.phone || x.label)))].join(',') + ')',
+  }));
+
+  helpReqOpenList().forEach(x => out.push({
+    kind: 'help', at: x.at, urgent: true,
+    who: (x.name || 'ללא שם') + ' · ' + x.contact,
+    title: HELP_SOURCE_LABELS[x.source] || x.source || 'פנייה',
+    // ⚠️ טקסט חופשי מכתיבה אנונימית — מוברח ברינדור (ר' firestore.rules §303).
+    meta: x.message, entity: null,
+    markJs: 'markHelpReqHandled(' + [q1(x.id), q1(escJsAttr(x.name || ''))].join(',') + ')',
+  }));
+
+  bizWriteErrorList().forEach(x => out.push({
+    kind: 'bizErrors', at: x.at, urgent: true,
+    who: x.name, title: 'שגיאת שמירה — ' + x.action,
+    meta: [x.code, x.message].filter(Boolean).join(' · '),
+    entity: { kind: 'biz', id: x.id },
+    markJs: 'markBizWriteErrorHandled(' + [q1(x.id), q1(escJsAttr(x.key)),
+             q1(escJsAttr(x.code)), q1(escJsAttr(x.name))].join(',') + ')',
+  }));
+
+  // ⚠️ **הדחוף קודם, ובתוך כל קבוצה החדש קודם.** מיון לפי זמן בלבד היה קובר תקלה
+  // שדורשת אותנו מתחת לעשרים "קוד שגוי" שנרשמו אחריה — וזו בדיוק הערימה שהמיזוג בא לפרק.
+  return out.sort((a, b) =>
+    (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0) ||
+    ((b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0)));
+}
+function unifiedIssueFilteredList() {
+  let list = unifiedIssueList();
+  // סינון עסקים/אוהדים — שורה בלי ישות (פניית עזרה של מי שאין לו רשומה) יורדת בשני
+  // המצבים, כי היא איננה אף אחד מהם. זו הסיבה ש-'הכל' הוא ברירת-המחדל.
+  if (taskEntityFilter !== 'all') list = list.filter(x => x.entity && x.entity.kind === taskEntityFilter);
+  const q = taskSearchQ.trim();
+  if (q) list = list.filter(x => (x.who + ' ' + x.title + ' ' + x.meta).includes(q));
+  return list;
+}
+const ISSUE_KIND_LABELS = { mail: 'מייל', reg: 'הרשמה', login: 'כניסה', help: 'פניית עזרה', bizErrors: 'דשבורד עסק' };
+function unifiedIssuesTableHtml(list) {
+  // אותה זהירות כמו בשתי הרשימות שנשענות על המדידה: האירועים נטענים עצלנית,
+  // ואסור להכריז "אין תקלות" לפני שהגיעו (§296).
+  if (platformEvents === null && !platformStatsError) loadPlatformStats();
+  const pending = platformEvents === null && !platformStatsError;
+  if (!list.length) {
+    return '<div class="placeholder-note">' + (pending
+      ? 'אין תקלות במיילים ובהצלבות. כשלי ההרשמה והכניסה מ-30 הימים האחרונים עדיין נטענים…'
+      : 'אין תקלות פתוחות 🎉 אף מייל לא נכשל, אף הרשמה לא נתקעה, אף כניסה לא נכשלה באשמתנו ואף אחד לא ביקש עזרה.') + '</div>';
+  }
+  const urgent = list.filter(x => x.urgent).length;
+  return '<div class="mail-issues-note">' +
+      'כל התקלות והפניות הפתוחות במקום אחד, הדחוף קודם. ' +
+      (urgent ? '<b>⚠️ ' + urgent + ' מהן דורשות אותנו</b> — השאר טעויות של המשתמש או המתנה.'
+              : 'אף אחת מהן אינה תקלה אצלנו — כולן טעויות משתמש או המתנה לאישור.') +
+      ' לפעולות הייחודיות לכל סוג (שליחה חוזרת של מייל, המשפכים, פירוט ההצלבות) — בחרו את הסוג בבורר למעלה.' +
+    '</div>' +
+    '<div class="task-table mail-issues">' + list.map(x =>
+      '<div class="task-table-row">' +
+        '<div class="task-table-main">' +
+          '<div class="task-table-name">' + esc(x.who) + '</div>' +
+          '<div class="task-table-meta">' + esc(x.title) + '</div>' +
+          (x.meta ? '<div class="task-table-meta" style="opacity:.75;white-space:pre-line">' + esc(x.meta) + '</div>' : '') +
+        '</div>' +
+        '<div class="task-table-badges"><span class="' + (x.urgent ? 'warn-badge' : 'treat-badge') + '">' +
+          esc(ISSUE_KIND_LABELS[x.kind] || x.kind) + '</span></div>' +
+        '<div class="mi-addr"></div>' +
+        '<div class="task-table-wait">' + agoTimeLabel(x.at) + '</div>' +
+        '<div class="mi-actions">' +
+          (x.entity ? '<button class="act-btn tiny" onclick="selectTask2(' + "'" + x.entity.kind + "','" + x.entity.id + "'" + ')">' +
+            (x.entity.kind === 'biz' ? 'פתיחת כרטיס העסק' : 'פתיחת כרטיס האוהד') + '</button>' : '') +
+          '<button class="act-btn approve tiny" onclick="' + x.markJs + '">✔️ טיפלתי</button>' +
+        '</div>' +
+      '</div>').join('') +
+    '</div>';
+}
 window.setTaskEntityFilter = function(v) { taskEntityFilter = v; refreshTaskCenter(); };
 window.setTaskSearchQ = function(v) { taskSearchQ = v; refreshTaskCenter(); };
 window.setTaskSort2 = function(v) { taskSort2 = v; refreshTaskCenter(); };
@@ -8429,20 +8612,30 @@ function refreshTaskCenter() {
 // שלוש "תצוגות" חולקות את אותו גוף-טבלה: הרשימה המאוחדת, תקלות-מייל, וארכיון-הטופלו.
 // מרוכז כאן כדי ששלושת מקומות-הקריאה (רינדור ראשוני, רענון-קוביות, ספירה) לא יתפצלו בהיגיון.
 function taskCenterTableHtml() {
-  if (mailIssuesActive()) return mailIssuesTableHtml(mailFilteredList());
-  if (bizErrorsActive()) return bizErrorsTableHtml(bizErrorFilteredList());
-  if (regIssuesActive()) return regIssuesTableHtml(regIssueFilteredList());
-  if (helpReqsActive()) return helpReqsTableHtml(helpReqFilteredList());
-  if (loginIssuesActive()) return loginIssuesTableHtml(loginIssueFilteredList());
+  // §356 — קובייה אחת, שש תצוגות. הבורר מצויר תמיד מעל, וכל תצוגת-סוג נשארת **בדיוק אותה
+  // פונקציה** שרינדרה את הקובייה הנפרדת שלה עד היום — כולל ההערות, המשפכים והכפתורים
+  // הייחודיים לה. שום היגיון-תקלות לא שוכפל כאן.
+  if (issuesActive()) {
+    return issueKindPickerHtml() + (
+      mailIssuesActive()  ? mailIssuesTableHtml(mailFilteredList())
+      : bizErrorsActive() ? bizErrorsTableHtml(bizErrorFilteredList())
+      : regIssuesActive() ? regIssuesTableHtml(regIssueFilteredList())
+      : helpReqsActive()  ? helpReqsTableHtml(helpReqFilteredList())
+      : loginIssuesActive() ? loginIssuesTableHtml(loginIssueFilteredList())
+      : unifiedIssuesTableHtml(unifiedIssueFilteredList()));
+  }
   if (handledActive()) return handledTableHtml(handledFilteredList());
   return taskTableBodyHtml(taskFilteredList());
 }
 function taskCenterCountLabel() {
+  if (issuesActive() && taskIssueKind === 'all') return `מציג ${unifiedIssueFilteredList().length} מתוך ${unifiedIssueList().length}`;
   if (mailIssuesActive()) return `מציג ${mailFilteredList().length} מתוך ${mailIssueList().length}`;
   if (bizErrorsActive()) return `מציג ${bizErrorFilteredList().length} מתוך ${bizWriteErrorList().length}`;
-  if (regIssuesActive()) return `מציג ${regIssueFilteredList().length} מתוך ${regIssueList().length}`;
+  // §355 — "מתוך" נספר על **הפתוחים**, כי הרשימה מציגה רק אותם. ספירה מול הרשימה המלאה
+  // הייתה מציגה "מציג 3 מתוך 11" ונקראת כאילו סינון מסתיר 8 שורות, במקום שהן טופלו.
+  if (regIssuesActive()) return `מציג ${regIssueFilteredList().length} מתוך ${regIssueOpenList().length}`;
   if (helpReqsActive()) return `מציג ${helpReqFilteredList().length} מתוך ${helpReqList().length}`;
-  if (loginIssuesActive()) return `מציג ${loginIssueFilteredList().length} מתוך ${loginFailList().length}`;
+  if (loginIssuesActive()) return `מציג ${loginIssueFilteredList().length} מתוך ${loginFailOpenList().length}`;
   if (handledActive()) return `מציג ${handledFilteredList().length} מתוך ${handledItemsList().length}`;
   return `מציג ${taskFilteredList().length} מתוך ${unifiedTaskItems().length}`;
 }
@@ -8465,12 +8658,7 @@ function taskTilesHtml() {
   const pendingBizItems = all.filter(x => x.c.primary === 'עסק ממתין לאישור');
   const oldestPendingBiz = pendingBizItems.slice().sort((a,b)=>taskWaitDate(a)-taskWaitDate(b))[0];
   const flaggedFans = all.filter(x => x.kind==='fan' && x.c.primary==='אוהד ממתין לאישור' && x.entity.reviewFlag).length;
-  const mailIssues = mailIssueList();
-  const mailBlocking = mailIssues.filter(x => x.sev <= 2).length;      // כבר אושרו — המייל לא הגיע בפועל
-  const mailBeforeApprove = mailIssues.filter(x => x.sev === 3).length; // עוד לא אושרו — אפשר למנוע מראש
   const handledItems = handledItemsList();
-  const bizErrors = bizWriteErrorList();
-  const bizErrorBizCount = new Set(bizErrors.map(x => x.id)).size;
   // §284 — ההצלבות זמינות מיד (מחושבות מ-MOCK_FANS), כשלי-השליחה רק אחרי שהאירועים נטענו.
   // ── §296 — ההחלטה הזו התהפכה ──────────────────────────────────────────────────────────
   // §284 בחר **לא** לטעון את האירועים מהקובייה, כדי לחסוך קריאת-Firestore ממי שלא נכנס
@@ -8480,13 +8668,8 @@ function taskTilesHtml() {
   if (platformEvents === null && !platformStatsError) loadPlatformStats();
   // §302 — המונה סופר **פתוחים בלבד**. שורה שסומנה "טיפלתי" נשארת ברשימה (לביטול) אבל
   // אינה מתריעה יותר — אחרת "טיפלתי" לא היה מנקה כלום והכפתור היה חסר-משמעות.
-  const regIssues = regIssueOpenList();
-  const regHandledCount = regIssueList().length - regIssues.length;
-  const regFailCount = regIssues.filter(x => x.kind === 'failed').length;
-  const regPhotoCount = regIssues.filter(x => x.kind === 'photoFailed').length;
-  const regClashCount = regIssues.length - regFailCount - regPhotoCount;
-  const helpOpen = helpReqOpenList();
-  const helpHandledCount = HELP_REQUESTS.length - helpOpen.length;
+  // §356 — המונים הפרטניים שהיו כאן (מייל/דשבורד/הרשמה/פניות/כניסה) ירדו עם חמש
+  // הקוביות שהם שירתו. issueKindCounts() מחשב אותם מ-ISSUE_KINDS, מקור-אמת אחד.
   // ⚠️ §296 — האירועים נטענים עצלנית, ולכן עד שהם מגיעים אסור להכריז "אף הרשמה לא נכשלה".
   // זו הייתה **הכרזת-שלום שקרית**: הקובייה הראתה 0 ירוק בדיוק כשעוד לא היה לה מושג.
   const regEventsPending = platformEvents === null && !platformStatsError;
@@ -8501,32 +8684,34 @@ function taskTilesHtml() {
       ${tile(TASK_CLASS_TILES[1], countOf('אוהד ממתין לאישור'), `<div class="class-tile-sub">${flaggedFans ? `⚠️ ${flaggedFans} עם דגל בדיקה` : ''}</div>`)}
       ${tile(TASK_CLASS_TILES[2], requestsItems.length, `<div class="class-tile-chips"><span class="treat-badge">שינוי פרטים ${tCount('details')}</span><span class="treat-badge">תגית ${tCount('tag')}</span><span class="treat-badge">קטגוריה ${tCount('category')}</span><span class="treat-badge">כתבו לנו ${tCount('note')}</span></div>`)}
       ${tile(TASK_CLASS_TILES[3], countOf('כרטיס חסר באינדקס'), `<div class="class-tile-chips"><span class="warn-badge">חסרים פרטים בכרטיס</span></div><div class="class-tile-sub">שדה שלא חובה על העסק? "✔️ טופל" בשורה מוריד אותו מכאן</div>`)}
-      ${tile(TASK_CLASS_TILES[4], mailBlocking ? `<span style="color:#b91c1c">${mailIssues.length}</span>` : mailIssues.length, mailIssues.length
-        ? `<div class="class-tile-chips">${mailBlocking ? `<span class="warn-badge">${mailBlocking} לא קיבלו בפועל</span>` : ''}${mailBeforeApprove ? `<span class="treat-badge">${mailBeforeApprove} לתקן לפני אישור</span>` : ''}</div>`
-        : `<div class="class-tile-sub">כל מי שאושר קיבל את המייל שלו</div>`)}
-      ${tile(TASK_CLASS_TILES[5], handledItems.length, `<div class="class-tile-sub">${handledItems.length ? 'נסגרו ידנית — ארכיון' : 'אין עדיין סגירות ידניות'}</div>`)}
-      ${tile(TASK_CLASS_TILES[6], bizErrors.length ? `<span style="color:#b91c1c">${bizErrors.length}</span>` : 0, bizErrors.length
-        ? `<div class="class-tile-chips"><span class="warn-badge">${bizErrorBizCount} עסקים לא הצליחו לשמור</span></div>`
-        : `<div class="class-tile-sub">אף בעל עסק לא נתקל בשגיאה</div>`)}
-      ${tile(TASK_CLASS_TILES[7], regIssues.length ? `<span style="color:#b91c1c">${regIssues.length}</span>` : (regEventsPending ? '…' : 0), regIssues.length
-        ? `<div class="class-tile-chips">${regClashCount ? `<span class="warn-badge">${regClashCount} הצלבות</span>` : ''}${regFailCount ? `<span class="warn-badge">${regFailCount} הרשמות נכשלו</span>` : ''}${regPhotoCount ? `<span class="warn-badge">${regPhotoCount} תמונות לא עלו</span>` : ''}${regHandledCount ? `<span class="treat-badge">${regHandledCount} טופלו</span>` : ''}</div>`
-        : regEventsPending
-          ? `<div class="class-tile-sub">בודק כשלי-שליחה מ-30 הימים האחרונים…</div>`
-          : `<div class="class-tile-sub">${regHandledCount ? `אין תקלות פתוחות · ${regHandledCount} טופלו` : 'אין התנגשויות, אף הרשמה לא נכשלה ואף תמונה לא אבדה'}</div>`)}
-      ${tile(TASK_CLASS_TILES[8], helpOpen.length ? `<span style="color:#b91c1c">${helpOpen.length}</span>` : 0, helpOpen.length
-        ? `<div class="class-tile-chips"><span class="warn-badge">ממתינים לתשובה</span>${helpHandledCount ? `<span class="treat-badge">${helpHandledCount} טופלו</span>` : ''}</div>`
-        : `<div class="class-tile-sub">${helpHandledCount ? `אין פניות פתוחות · ${helpHandledCount} טופלו` : 'אף אחד לא ביקש עזרה'}</div>`)}
       ${(() => {
-        // §322 — המספר הגדול הוא **תקלות אצלנו בלבד**, לא סך-הכשלים. עשרות "קוד שגוי" הם
-        // התנהגות תקינה של המערכת; קובייה אדומה שסופרת אותם הייתה מתריעה כל הזמן ולכן
-        // מפסיקה להיקרא. הסך-הכל נשאר כשבב לצידו, כדי שלא ייעלם.
-        const lf = loginFailList(), ours = lf.filter(x => x.ours).length;
-        // ⚠️ §296 — אסור להכריז "אפס תקלות" לפני שהאירועים בכלל נטענו. זו הייתה הכרזת-שלום שקרית.
-        if (regEventsPending) return tile(TASK_CLASS_TILES[9], '…', `<div class="class-tile-sub">בודק ניסיונות-כניסה מ-30 הימים האחרונים…</div>`);
-        return tile(TASK_CLASS_TILES[9], ours ? `<span style="color:#b91c1c">${ours}</span>` : 0, ours
-          ? `<div class="class-tile-chips"><span class="warn-badge">${ours} נכשלו באשמתנו</span>${lf.length - ours ? `<span class="treat-badge">${lf.length - ours} טעויות קוד/המתנה</span>` : ''}</div>`
-          : `<div class="class-tile-sub">${lf.length ? `${lf.length} ניסיונות נכשלו — כולם טעויות קוד או המתנה לאישור` : 'אף ניסיון כניסה לא נכשל'}</div>`);
+        // ── §356 — קובייה אחת במקום חמש ──────────────────────────────────────────────
+        // **המספר הגדול הוא "כמה דברים אני חייב לבדוק", לא "כמה תקלות קרו".** ההבחנה
+        // הזאת נולדה ב-§322 בקוביית הכניסה (עשרות "קוד שגוי" הם התנהגות תקינה של המערכת,
+        // וקובייה אדומה שסופרת אותם מתריעה כל הזמן ולכן מפסיקים לקרוא אותה) — וכאן היא
+        // מוחלת על כל חמשת הסוגים דרך ISSUE_KINDS.urgent.
+        //
+        // השבבים הם **גם תצוגה וגם בורר**: לחיצה על שבב נכנסת ישר לסוג שלו. לכן
+        // stopPropagation — בלעדיו הלחיצה הייתה מבעבעת ל-onclick של הקובייה ומחזירה
+        // את הבורר ל'הכל', כלומר בדיוק ההפך ממה שנלחץ.
+        const c = issueKindCounts();
+        // ⚠️ §296 — אסור להכריז "אפס תקלות" לפני שהאירועים בכלל נטענו: שניים מחמשת
+        // הסוגים (הרשמה, כניסה) נשענים על המדידה, והיא נטענת עצלנית.
+        if (regEventsPending) return tile(TASK_CLASS_TILES[4], '…', `<div class="class-tile-sub">בודק תקלות מ-30 הימים האחרונים…</div>`);
+        const chips = ISSUE_KINDS.map(k => {
+          const n = c.byKind[k.key];
+          return `<span class="${n.urgent ? 'warn-badge' : 'treat-badge'}" style="cursor:pointer" onclick="event.stopPropagation();setTaskIssueKind('${k.key}')">${k.label} ${n.open}</span>`;
+        }).join('');
+        return tile(TASK_CLASS_TILES[4],
+          c.urgentTotal ? `<span style="color:#b91c1c">${c.urgentTotal}</span>` : 0,
+          `<div class="class-tile-chips">${chips}</div>` +
+          `<div class="class-tile-sub">${
+            c.urgentTotal ? 'דורשות אותנו — לחצו על סוג כדי להיכנס אליו'
+            : c.openTotal ? `${c.openTotal} פתוחות, אף אחת אינה תקלה אצלנו`
+            : 'אין תקלות פתוחות באף ערוץ'
+          }</div>`);
       })()}
+      ${tile(TASK_CLASS_TILES[5], handledItems.length, `<div class="class-tile-sub">${handledItems.length ? 'נסגרו ידנית — ארכיון' : 'אין עדיין סגירות ידניות'}</div>`)}
     </div>`;
 }
 
@@ -12661,7 +12846,11 @@ function mailIssueRowHtml(x) {
 }
 
 // הקובייה "תקלות מייל" פעילה — אז גוף-הטבלה הוא רשימת-התקלות, לא רשימת-המשימות המאוחדת
-function mailIssuesActive() { return taskClassFilter === 'mailIssues'; }
+// §356 — ⚠️ **ששת ה-Active() האלה נשארו בשמם ובמשמעותם** ורק מקור-האמת שלהם השתנה: הם
+// שואלים עכשיו את תת-הבורר במקום את הקובייה. כך כל מקומות-הקריאה הקיימים (רינדור, גארדים
+// של onSnapshot, טעינה עצלנית) המשיכו לעבוד בלי לגעת בהם.
+function issuesActive() { return taskClassFilter === 'issues'; }
+function mailIssuesActive() { return issuesActive() && taskIssueKind === 'mail'; }
 function handledActive() { return taskClassFilter === 'handled'; }
 
 // ── ארכיון "בקשות שטופלו" (2026-08-16) ───────────────────────────────────────────────────────
@@ -12704,6 +12893,24 @@ function handledItemsList() {
       summary: f.mailIssueHandled.badge || 'תקלת מייל', note: f.mailIssueHandled.note || '',
     });
   }
+  // ── §355 — הסגירות שאין להן ישות ────────────────────────────────────────────────────
+  // תקלת-הרשמה ותקלת-כניסה נגזרות מאירוע ולא מרשומת עסק/אוהד, ולכן הסימון שלהן יושב
+  // במסמך settings ולא על ישות. עד היום הן פשוט **לא הגיעו לארכיון בכלל** — מה שהיה בסדר
+  // כל עוד השורה נשארה גלויה במקומה, והופך לאיבוד-מידע ברגע שהיא יורדת מהמסך (ר'
+  // regIssueFilteredList/loginFailOpenList). ⚠️ אין להן id של ישות, ולכן כפתור "פתיחת
+  // כרטיס" **אסור** שיירונדר להן — כפתור מת גרוע מכפתור חסר (§302).
+  const settingsArchive = (map, type, fallbackLabel) => {
+    Object.entries(map || {}).forEach(([key, h]) => {
+      if (!h) return;
+      out.push({
+        type, kind: '', id: '', name: h.title || key,
+        at: h.at ? new Date(h.at) : null,
+        summary: fallbackLabel, note: h.note || '', settingsKey: key,
+      });
+    });
+  };
+  settingsArchive(handledRegIssues, 'regIssue', 'תקלת הרשמה');
+  settingsArchive(handledLoginIssues, 'loginIssue', 'תקלת כניסה');
   return out.sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
 function handledFilteredList() {
@@ -12715,7 +12922,7 @@ function handledFilteredList() {
 }
 function handledTableHtml(list) {
   if (!list.length) {
-    return `<div class="placeholder-note">עדיין לא נסגרה כאן שום בקשה ידנית. סגירה ידנית נעשית מתוך כרטיס העסק — "שיפוט מהיר" → "טופל מבחוץ", מ"תקלות מייל" → "✔️ טיפלתי", או מקוביית "כרטיס חסר באינדקס" → "✔️ טופל".</div>`;
+    return `<div class="placeholder-note">עדיין לא נסגרה כאן שום בקשה ידנית. סגירה ידנית נעשית מתוך כרטיס העסק — "שיפוט מהיר" → "טופל מבחוץ", מ"תקלות מייל"/"תקלות הרשמה"/"תקלות כניסה" → "✔️ טיפלתי", או מקוביית "כרטיס חסר באינדקס" → "✔️ טופל".</div>`;
   }
   return `
     <div class="mail-issues-note">ארכיון בלבד — פריטים שנסגרו ידנית ולא ע"י אישור/דחייה במערכת. בקשה חדשה מאותו עסק תיפתח כרגיל ברשימה הראשית.</div>
@@ -12723,15 +12930,25 @@ function handledTableHtml(list) {
       <div class="task-table-row">
         <div class="task-table-main">
           <div class="task-table-name">${esc(x.name)}</div>
-          <div class="task-table-meta">${x.kind === 'biz' ? 'עסק' : 'אוהד'} · ${esc(x.summary)}${x.note ? ' — ' + esc(x.note) : ''}</div>
+          <div class="task-table-meta">${x.kind ? (x.kind === 'biz' ? 'עסק · ' : 'אוהד · ') : ''}${esc(x.summary)}${x.note ? ' — ' + esc(x.note) : ''}</div>
         </div>
-        <div class="task-table-badges"><span class="class-badge neutral">${x.type === 'mail' ? 'תקלת מייל — טופלה' : x.type === 'bizError' ? 'שגיאת דשבורד — טופלה' : x.type === 'cardGaps' ? 'כרטיס חסר — סומן טופל' : 'בקשה — טופלה מבחוץ'}</span></div>
+        <div class="task-table-badges"><span class="class-badge neutral">${
+          x.type === 'mail' ? 'תקלת מייל — טופלה'
+          : x.type === 'bizError' ? 'שגיאת דשבורד — טופלה'
+          : x.type === 'cardGaps' ? 'כרטיס חסר — סומן טופל'
+          : x.type === 'regIssue' ? 'תקלת הרשמה — טופלה'
+          : x.type === 'loginIssue' ? 'תקלת כניסה — טופלה'
+          : 'בקשה — טופלה מבחוץ'}</span></div>
         <div class="mi-addr"></div>
         <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
         <div class="mi-actions">
-          <button class="act-btn tiny" onclick="selectTask2('${x.kind}','${x.id}')">${x.kind === 'biz' ? 'פתיחת כרטיס העסק' : 'פתיחת כרטיס האוהד'}</button>
+          <!-- §355 — הכפתור מותנה בקיום מזהה-ישות: לתקלת הרשמה/כניסה אין כרטיס לפתוח,
+               ו-selectTask2 עם מזהה ריק היה פותח מגירה ריקה. כפתור מת גרוע מכפתור חסר. -->
+          ${x.id ? `<button class="act-btn tiny" onclick="selectTask2('${x.kind}','${x.id}')">${x.kind === 'biz' ? 'פתיחת כרטיס העסק' : 'פתיחת כרטיס האוהד'}</button>` : ''}
           ${x.type === 'mail' ? `<button class="act-btn tiny" onclick="unmarkMailIssueHandled('${x.kind}','${x.id}')">↩️ החזרה לטיפול</button>` : ''}
           ${x.type === 'cardGaps' ? `<button class="act-btn tiny" onclick="reopenCardGaps('${x.id}')">↩️ החזרה לטיפול</button>` : ''}
+          ${x.type === 'regIssue' ? `<button class="act-btn tiny" onclick="unmarkRegIssueHandled('${esc(x.settingsKey)}')">↩️ החזרה לטיפול</button>` : ''}
+          ${x.type === 'loginIssue' ? `<button class="act-btn tiny" onclick="unmarkLoginIssueHandled('${esc(x.settingsKey)}')">↩️ החזרה לטיפול</button>` : ''}
         </div>
       </div>`).join('')}</div>`;
 }
@@ -12774,7 +12991,7 @@ function bizWriteErrorList() {
   }
   return out.sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
-function bizErrorsActive() { return taskClassFilter === 'bizErrors'; }
+function bizErrorsActive() { return issuesActive() && taskIssueKind === 'bizErrors'; }
 function bizErrorFilteredList() {
   let list = bizWriteErrorList();
   if (taskEntityFilter === 'fan') list = [];   // תקלות דשבורד שייכות לעסקים בלבד
@@ -12986,13 +13203,37 @@ window.markRegIssueHandled = async function(key, title) {
   if (note === null) return;
   try {
     await setDoc(doc(db, 'settings', 'handledRegIssues'), {
-      [key]: { at: new Date().toISOString(), note: (note || '').trim(), by: auth.currentUser ? auth.currentUser.uid : '' },
+      // §355 — `title` נשמר יחד עם הסימון, ולא רק ה-note. מרגע שהשורה יורדת מהמסך (ר'
+      // regIssueFilteredList) הארכיון הוא המקום היחיד שבו רואים אותה, ומפתח-שורה גולמי
+      // ('err|hb_x9k2|1756…') אינו תיאור של כלום. ⚠️ סימונים שנוצרו לפני §355 אינם נושאים
+      // אותו, ולכן הארכיון חייב ליפול-לאחור למפתח במקום להציג שורה ריקה.
+      [key]: { at: new Date().toISOString(), title: String(title || '').slice(0, 200), note: (note || '').trim(), by: auth.currentUser ? auth.currentUser.uid : '' },
     }, { merge: true });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
 window.unmarkRegIssueHandled = async function(key) {
   try {
     await setDoc(doc(db, 'settings', 'handledRegIssues'), { [key]: deleteField() }, { merge: true });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+
+// ── §355 — "טיפלתי" על תקלת כניסה ────────────────────────────────────────────────────────
+// אותו מנגנון בדיוק כמו תקלות ההרשמה, ומאותה סיבה: `events` הוא `allow update: if false`,
+// ולכן אי אפשר לסמן את האירוע עצמו והסימון נשמר במסמך settings לפי חתימת-השורה.
+// למה לפי חתימה ולא לפי אדם: ניסיון-כניסה שני שנכשל הוא תקלה חדשה שצריך לראות שוב.
+let handledLoginIssues = {};
+window.markLoginIssueHandled = async function(key, title) {
+  const note = prompt('סימון תקלת הכניסה של "' + title + '" כטופלה.' + '\n\n' + 'מה נעשה? (אופציונלי — נשמר ב"בקשות שטופלו")', '');
+  if (note === null) return;
+  try {
+    await setDoc(doc(db, 'settings', 'handledLoginIssues'), {
+      [key]: { at: new Date().toISOString(), title: String(title || '').slice(0, 200), note: (note || '').trim(), by: auth.currentUser ? auth.currentUser.uid : '' },
+    }, { merge: true });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+window.unmarkLoginIssueHandled = async function(key) {
+  try {
+    await setDoc(doc(db, 'settings', 'handledLoginIssues'), { [key]: deleteField() }, { merge: true });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
 
@@ -13216,7 +13457,7 @@ function hbLoginFailLabel(ch) {
   const label = LOGIN_FAIL_LABELS[base] || ('סיבה לא מוכרת: ' + (ch || '—'));
   return String(ch || '').indexOf('late:') === 0 ? label + ' (תשובה מאוחרת)' : label;
 }
-function helpReqsActive() { return taskClassFilter === 'helpReqs'; }
+function helpReqsActive() { return issuesActive() && taskIssueKind === 'help'; }
 function helpReqList() {
   return [...HELP_REQUESTS].sort((a, b) => {
     // פתוחות קודם, ובתוך כל קבוצה — החדשות למעלה
@@ -13318,7 +13559,31 @@ function hbEnvLabel(env) {
   }).filter(Boolean).join(' · ');
 }
 
-function loginIssuesActive() { return taskClassFilter === 'loginIssues'; }
+function loginIssuesActive() { return issuesActive() && taskIssueKind === 'login'; }
+
+// ── §355 — מהאירוע אל האדם ──────────────────────────────────────────────────────────────
+// עד עכשיו הכותרת של הקובייה הזאת אמרה במפורש "מה שהיא לא יכולה לתת: מי". עכשיו היא כן:
+// welcome.html שולח את הטלפון שהוקלד, וממנו נגזרת גם רשומת החבר עצמה. ⚠️ שלוש הבחנות
+// שהשורה חייבת לשמור, כי הן מובילות לשלוש פעולות שונות לגמרי:
+//   טלפון + נמצא חבר   → יש למי לחזור, והסטטוס שלו (ממתין/נדחה) לרוב כבר מסביר את הכשל.
+//   טלפון בלי חבר      → הוקלד מספר שאינו רשום אצלנו. זו טעות של המקליד, לא באג.
+//   בלי טלפון בכלל     → אירוע שנרשם לפני §355, או כשל שקרה **לפני** שהטופס נשלח
+//                        (moduleTimeout — הדף בכלל לא נטען). "לא מזוהה" ולא "לא רשום".
+// ההשוואה על 9 הספרות האחרונות: 0501234567 / 972-50-1234567 / 050-123-4567 הם אותו אדם,
+// ורשומות החברים נשמרו לאורך השנה בשלושת הפורמטים.
+function hbPhoneKey(p) {
+  const d = String(p || '').replace(/[^0-9]/g, '');
+  return d.length >= 9 ? d.slice(-9) : '';
+}
+function hbFanByPhone(phone) {
+  const k = hbPhoneKey(phone);
+  if (!k) return null;
+  return MOCK_FANS.find(f => hbPhoneKey(f.phone) === k) || null;
+}
+// חתימת השורה — סשן + חותמת-הזמן המדויקת, אותו דפוס כמו regIssue/mailIssueKey. לפי כשל
+// בודד ולא לפי אדם: ניסיון-כניסה שני שנכשל הוא תקלה חדשה שצריך לראות שוב.
+function loginIssueKey(sessionId, at) { return 'login|' + (sessionId || '') + '|' + (at ? at.getTime() : 0); }
+
 function loginFailList() {
   return (platformEvents || [])
     .filter(e => e.type === 'loginFail')
@@ -13336,6 +13601,11 @@ function loginFailList() {
       // מה שכן נכנס הוא רק הכשלים שהם שלנו — התקרה הקשיחה וכשלי ההזדהות המאוחרים.
       ours: HB_LOGIN_FAIL_OURS.includes(hbLoginFailBase(e.channel)),
       device: e.device, sessionId: e.sessionId || '', memberId: e.memberId || null,
+      // §355 — הטלפון שהוקלד, והחבר שמאחוריו אם יש כזה (ר' ההערה על hbFanByPhone).
+      phone: e.phone || null,
+      fan: e.phone ? hbFanByPhone(e.phone) : null,
+      handled: handledLoginIssues[loginIssueKey(e.sessionId, e.at)] || null,
+      key: loginIssueKey(e.sessionId, e.at),
       // §338 — טביעת-הסביבה שנוסעת ב-blockId מ-welcome.html: 'pwa|idb-ok|sw-v40'.
       // בלעדיה שלוש תקלות שונות לגמרי (PWA נעול על HTML ישן / IndexedDB תקוע / רשת איטית)
       // נראות כאן שורה זהה, ודורשות שלושה תיקונים שונים. ריק באירועים שנרשמו לפני §338.
@@ -13343,11 +13613,18 @@ function loginFailList() {
     }))
     .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
+// §355 — "טיפלתי" **מפנה את השורה**, לא רק צובע אותה. זו הייתה הבקשה המפורשת של המשתמש
+// ("טיפלתי לא מפנה את השורה"): רשימה שבה כל מה שנסגר נשאר על המסך חוזרת להיות אותה ערימה
+// שממנה ברחנו, והכפתור מאבד את המשמעות שלו. הפריט לא נמחק — הוא עובר לקוביית "בקשות
+// שטופלו", ומשם אפשר להחזיר אותו לפתוח.
+function loginFailOpenList() { return loginFailList().filter(x => !x.handled); }
 function loginIssueFilteredList() {
   const q = taskSearchQ.trim();
-  let list = loginFailList();
+  let list = loginFailOpenList();
   // §338 — env נכלל בחיפוש כדי שאפשר יהיה לבודד "pwa" או "idb-stuck" בשאילתה אחת.
-  if (q) list = list.filter(x => `${x.label} ${x.reason} ${x.sessionId} ${x.env}`.includes(q));
+  // §355 — הטלפון והשם נכללים, כי מעכשיו זו הדרך הטבעית לחפש כאן: אוהד מתקשר, מקלידים
+  // את המספר שלו, ורואים מיד אם ומתי הוא נכשל.
+  if (q) list = list.filter(x => `${x.label} ${x.reason} ${x.sessionId} ${x.env} ${x.phone || ''} ${x.fan ? x.fan.name : ''}`.includes(q));
   return list;
 }
 function loginIssuesTableHtml(list) {
@@ -13369,6 +13646,7 @@ function loginIssuesTableHtml(list) {
     .map(([r, n]) => `<span class="${HB_LOGIN_FAIL_OURS.includes(hbLoginFailBase(r)) ? 'warn-badge' : 'treat-badge'}">${esc(hbLoginFailLabel(r))} ${n}</span>`)
     .join('');
   const oursCount = list.filter(x => x.ours).length;
+  const withPhone = list.filter(x => x.phone).length;
   return `
     <div class="mail-issues-note">
       ניסיונות כניסה שנכשלו ב-30 הימים האחרונים.
@@ -13376,34 +13654,60 @@ function loginIssuesTableHtml(list) {
         ? `<b>⚠️ ${oursCount} מהם תקלה אצלנו ולא טעות של האוהד</b> — פסק-זמן או דף שלא נטען.`
         : 'כולם טעויות קוד/טלפון או המתנה לאישור — אף אחד מהם אינו תקלה אצלנו.'}
       <div class="class-tile-chips" style="margin-top:8px">${chips}</div>
-      <div style="margin-top:8px;opacity:.8">⚠️ אין כאן שמות: האירוע נרשם לפני שההזדהות הצליחה. מי שהשאיר פרטים מופיע ב"פניות עזרה".</div>
+      <div style="margin-top:8px;opacity:.8">${
+        // §355 — המשפט הזה אמר עד עכשיו "אין כאן שמות". עכשיו יש, אבל **רק מ-§355 והלאה**:
+        // אירועים ישנים נרשמו בלי טלפון וימשיכו להופיע בלי, ולכן ההסבר נגזר מהנתונים בפועל
+        // ולא נכתב כקביעה. שורה בלי טלפון היא כשל שקרה לפני שהטופס בכלל נשלח (moduleTimeout).
+        withPhone
+          ? `${withPhone} מתוך ${list.length} השורות נושאות את הטלפון שהוקלד — אפשר לחזור אליהם ישירות.${list.length - withPhone ? ' בשאר אין טלפון: או שהכשל קרה לפני שהטופס נשלח, או שהאירוע נרשם לפני שהמדידה הזאת נוספה.' : ''}`
+          : 'אין כאן טלפונים: כל השורות נרשמו לפני שהמדידה הזאת נוספה, או שהכשל קרה עוד לפני שהטופס נשלח. מי שהשאיר פרטים מופיע ב"פניות עזרה".'
+      }</div>
     </div>
     <div class="task-table mail-issues">${list.slice(0, 200).map(x => `
       <div class="task-table-row">
         <div class="task-table-main">
-          <div class="task-table-name">${esc(x.label)}</div>
+          <!-- §355 — **מי קודם למה.** כל עוד השורה נפתחה בסיבה ("פסק-זמן"), התקלות נראו
+               כמו לוג-שרת ולא כמו אנשים שממתינים לשיחה. הטלפון הוא הפעולה, הסיבה היא ההסבר. -->
+          <div class="task-table-name">${
+            x.fan ? esc(x.fan.name) : x.phone ? esc(x.phone) : 'לא מזוהה'
+          }${x.phone && x.fan ? ` · <span style="font-weight:600;direction:ltr;display:inline-block">${esc(x.phone)}</span>` : ''}</div>
+          <div class="task-table-meta">${esc(x.label)}${
+            // ⚠️ סטטוס שאינו "מאושר" הוא לרוב **ההסבר עצמו** לכשל ולא נתון-לוואי: אוהד
+            // שממתין לאישור ונכשל ב-'pending' אינו תקלה אלא תור שתלוי בנו.
+            x.fan && x.fan.status && x.fan.status !== 'approved'
+              ? ' · ⚠️ הרשומה שלו ' + (x.fan.status === 'pending' ? 'ממתינה לאישור' : 'נדחתה') : ''
+          }${x.phone && !x.fan ? ' · ⚠️ המספר הזה לא רשום אצלנו' : ''}</div>
           <div class="task-table-meta" style="opacity:.75">${
             [x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
              // §338 — הסביבה קודמת לסשן: בכשל 'timeout'/'moduleTimeout' זו השורה שאומרת
              // אם המכשיר הזה בכלל הריץ קוד עדכני, ולכן היא המידע הראשון שרוצים לראות.
              x.env ? hbEnvLabel(x.env) : '',
-             x.memberId ? 'חבר: ' + x.memberId : 'לא מזוהה',
+             x.memberId ? 'חבר: ' + x.memberId : '',
              'סשן: ' + x.sessionId.slice(0, 18),
             ].filter(Boolean).map(esc).join(' · ')
           }</div>
         </div>
         <div class="task-table-badges"><span class="${x.ours ? 'warn-badge' : 'treat-badge'}">${x.ours ? 'תקלה אצלנו' : 'לא תקלה'}</span></div>
         <div class="mi-addr"></div>
-        <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
-        <div class="mi-actions"></div>
+        <!-- §355 — חתימת-זמן ולא "היום": כל הכשלים של היום-ואתמול נראו כאן שורה זהה, ודווקא
+             בהם צריך להצליב מול שעת-פריסה או מול שיחה עם האוהד. -->
+        <div class="task-table-wait">${agoTimeLabel(x.at)}</div>
+        <div class="mi-actions">
+          ${x.fan ? `<button class="act-btn tiny" onclick="selectTask2('fan','${x.fan.id}')">פתיחת ${esc(x.fan.name)}</button>` : ''}
+          <button class="act-btn approve tiny" onclick="markLoginIssueHandled('${esc(x.key)}','${escJsAttr((x.fan ? x.fan.name + ' · ' : '') + (x.phone || x.label))}')">✔️ טיפלתי</button>
+        </div>
       </div>`).join('')}
     </div>
     ${list.length > 200 ? `<div class="mail-issues-note">מוצגות 200 השורות האחרונות מתוך ${list.length}.</div>` : ''}`;
 }
 
-function regIssuesActive() { return taskClassFilter === 'regIssues'; }
+function regIssuesActive() { return issuesActive() && taskIssueKind === 'reg'; }
 function regIssueFilteredList() {
-  let list = regIssueList();
+  // §355 — **שורה שסומנה "טיפלתי" יורדת מהמסך.** §302 השאיר אותה ברשימה כדי שאפשר יהיה
+  // לבטל את הסימון, והתוצאה הייתה שהכפתור לא ניקה כלום: המשתמש דיווח *"טיפלתי לא מפנה
+  // את השורה"*. הביטול לא אבד — הוא עבר לקוביית "בקשות שטופלו", יחד עם כל שאר הסגירות
+  // הידניות במערכת, במקום להישאר תלוי על השורה שהוא אמור להעלים.
+  let list = regIssueOpenList();
   // §296 — 'photoFailed' נוסף ליד 'failed'. בלי זה כשלי-תמונה היו נעלמים בשקט בסינון הזה,
   // כלומר בדיוק הדבר שהמשתמש ביקש לראות היה מוסתר ע"י סינון שנראה תמים.
   if (taskEntityFilter === 'biz') list = list.filter(x => x.kind === 'failed' || x.kind === 'photoFailed');
@@ -13444,7 +13748,9 @@ function regIssuesTableHtml(list) {
             x.fans.length ? ' · ' + x.fans.map(f => esc(f.name) + (f.status === 'pending' ? ' (ממתין)' : '')).join(' · ') : ''
           }</div>
         </div>
-        <div class="task-table-badges"><span class="${x.handled ? 'treat-badge' : 'warn-badge'}">${x.handled ? '✔️ טופל' : esc(x.badge)}</span></div>
+        <!-- §355 — הרשימה כאן היא **פתוחים בלבד** (regIssueOpenList), ולכן הענף "טופל"
+             שהיה כאן הוא קוד מת. הסגירות עברו לקוביית "בקשות שטופלו", ומשם גם מבטלים. -->
+        <div class="task-table-badges"><span class="warn-badge">${esc(x.badge)}</span></div>
         <div class="mi-addr"></div>
         <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
         <!-- §302 — פעולות בשורה: פתיחת הכרטיס של מי שנכשל, וסימון "טיפלתי".
@@ -13453,9 +13759,7 @@ function regIssuesTableHtml(list) {
         <div class="mi-actions">
           ${x.fans.map(f => `<button class="act-btn tiny" onclick="selectTask2('fan','${f.id}')">פתיחת ${esc(f.name)}</button>`).join('')}
           ${x.bizRef ? `<button class="act-btn tiny" onclick="selectTask2('biz','${x.bizRef.id}')">פתיחת ${esc(x.bizRef.name)}</button>` : ''}
-          ${x.handled
-            ? `<button class="act-btn tiny" onclick="unmarkRegIssueHandled('${esc(x.key)}')" title="${esc(x.handled.note || '')}">↺ החזרה לפתוח</button>`
-            : `<button class="act-btn approve tiny" onclick="markRegIssueHandled('${esc(x.key)}','${escJsAttr(x.title)}')">✔️ טיפלתי</button>`}
+          <button class="act-btn approve tiny" onclick="markRegIssueHandled('${esc(x.key)}','${escJsAttr(x.title)}')">✔️ טיפלתי</button>
         </div>
       </div>`).join('')}</div>`;
 }
@@ -14025,11 +14329,19 @@ onSnapshot(query(collection(db, 'helpRequests'), orderBy('createdAt', 'desc'), l
   refreshTaskCenter();
 }, err => console.error('שגיאה בטעינת פניות מהרשמה:', err));
 
+// §355 — סימוני "טיפלתי" של תקלות כניסה. onSnapshot מאותה סיבה כמו למטה: הסימון מוריד
+// שורה מהמסך, וסימון שלא מתרענן היה נראה כאילו הכפתור לא עשה כלום.
+onSnapshot(doc(db, 'settings', 'handledLoginIssues'), snap => {
+  handledLoginIssues = snap.exists() ? (snap.data() || {}) : {};
+  if (issuesActive() || handledActive()) refreshTaskCenter();
+}, err => console.error('שגיאה בטעינת סימוני תקלות כניסה:', err));
+
 onSnapshot(doc(db, 'settings', 'handledRegIssues'), snap => {
   handledRegIssues = snap.exists() ? (snap.data() || {}) : {};
   // ⚠️ refreshTaskCenter ולא שם מומצא — נתפס בבדיקה: `renderTasks` לא קיים בקובץ בכלל,
   // והקריאה הייתה נכשלת בשקט (typeof הגן עליה) כך שסימון לא היה מתרענן עד רענון-דף.
-  if (regIssuesActive()) refreshTaskCenter();
+  // §355 — גם כשהארכיון פתוח: הסימון מוסיף שורה שם, לא רק מוריד אחת מכאן.
+  if (issuesActive() || handledActive()) refreshTaskCenter();
 }, err => console.error('שגיאה בטעינת סימוני תקלות הרשמה:', err));
 
 onSnapshot(doc(db, 'settings', 'landingContentDraft'), snap => {
