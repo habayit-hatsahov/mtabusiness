@@ -192,6 +192,46 @@ window.HB_LOGIN_HELP_SUBS = {
   lateAuthError:   'הכניסה אושרה אצלנו אבל ההשלמה במכשיר נכשלה. השאירו פרטים ונטפל בזה.',
   error:         'משהו השתבש מהצד שלנו. השאירו פרטים ונחזור אליכם.',
 };
+
+// ── §359 — כשלי-רשת רצופים: מתי להפסיק להגיד "נסו שוב" ─────────────────────────────────────
+// המקרה שזה נולד ממנו: אוהד מאושר (0526624053) ניסה חמש פעמים ב-1.9, בשני טעינות-דף
+// נפרדות, וכל חמשת הניסיונות מתו בשלב ה-fetch. הוורקר עצמו נמדד 0.6–0.9 שנ' באותן דקות,
+// ו**אירועי ה-loginFail שלו עצמם נכתבו ל-Firestore בהצלחה** — כלומר האינטרנט שלו תקין
+// לגמרי, ורק הכתובת `*.workers.dev` אינה נגישה אצלו (אושר: הדפדפן שלו מציג "לא ניתן לגשת
+// לאתר הזה" על הכתובת הישירה). סינון-תוכן סלולרי חוסם את הסיומת הגנרית הזאת לרוחב.
+//
+// 🔑 מה שהכשיל אותו לא היה המנגנון אלא **הטקסט**: HERO_FETCH_TIMEOUT_MSG אומר "השאירו את
+// הדף פתוח... נעביר אתכם בעוד רגע", וזו הבטחה שלעולם לא תתממש כשהכתובת חסומה. ההודעה
+// הנכונה לניסיון הראשון היא בדיוק ההודעה השגויה לניסיון השלישי — ולכן הפיצול הוא לפי
+// **מספר הכשלים הרצופים**, לא לפי סוג הכשל.
+//
+// ⚠️ המונה ב-localStorage ולא בזיכרון-הדף: שני הכישלונות הראשונים שלו היו בשני סשנים
+// שונים (11:36 ו-12:06). מונה שנמחק ברענון היה מגיע ל-2 רק אם האוהד מתעקש באותה טעינה,
+// כלומר בדיוק לא אצל מי שמנסה שוב מחר.
+window.HB_NETFAIL_KEY = 'hb_netfail';
+// רשימת-ההיתר של "הבקשה לא הגיעה לשרת". ⚠️ 'authTimeout'/'lateAuth*' **אינם** כאן במכוון:
+// בהם הוורקר כן ענה והטוקן כבר הונפק — לספור אותם כחסימת-רשת היה שולח את מי שכבר מחובר
+// להחליף רשת. 'error' דווקא כן: כתובת שנחסמת מיידית נכשלת בתוך 8 השניות ולא אחריהן.
+window.HB_NET_REASONS = ['fetchTimeout', 'fetchHardAbort', 'lateError', 'error', 'timeout', 'moduleTimeout'];
+window.hbNetFailCount = function () {
+  const n = parseInt(localStorage.getItem(window.HB_NETFAIL_KEY) || '0', 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+// נקודת-העדכון **היחידה** של המונה, ומכאן שגם ההחלטה "האם זו חסימה" נגזרת פעם אחת בלבד.
+// כל תשובה שהגיעה מהוורקר (badCode/pending/late:*) מאפסת: היא ההוכחה שהכתובת כן נגישה.
+window.hbBumpNetFail = function (reason) {
+  const base = String(reason || '').replace(/^late:/, '');
+  if (!window.HB_NET_REASONS.includes(base)) { try { localStorage.removeItem(window.HB_NETFAIL_KEY); } catch (_) {} return 0; }
+  const n = window.hbNetFailCount() + 1;
+  try { localStorage.setItem(window.HB_NETFAIL_KEY, String(n)); } catch (_) {}
+  return n;
+};
+window.HB_NETFAIL_ESCALATE_AT = 2;
+// ⚠️ הניסוח מודה שהבעיה **אצלם** — היפוך מכוון של "זו לא תקלה אצלכם" שבשאר ההודעות.
+// זו לא האשמה אלא הדבר היחיד שנותן להם מה לעשות: מי שמאמין שהתקלה אצלנו פשוט מחכה.
+window.HB_NET_BLOCKED_MSG = 'הבקשה שלנו לא יוצאת מהרשת שלכם — הקוד עצמו כנראה תקין. מה שעוזר: לעבור מ-Wi-Fi לרשת הסלולרית (או להיפך), או לפתוח את הדף בדפדפן אחר. אם גם זה לא עוזר — כתבו לנו כאן ונכניס אתכם ידנית.';
+window.HB_LOGIN_HELP_BLOCKED = 'ניסיתם כמה פעמים והבקשה לא מגיעה אלינו בכלל — כמעט תמיד זו חסימה ברשת שלכם ולא הקוד. נסו רשת אחרת או דפדפן אחר, ואם זה לא עוזר השאירו פרטים ונכניס אתכם ידנית.';
+
 // מסמן את הכניסה כדחופה אחרי כשל אמיתי, ומעדכן את הניסוח. לא פותח את הפאנל בכפייה —
 // האוהד שעדיין רוצה לנסות שוב לא צריך טופס שקופץ לו על המסך.
 window.heroShowLoginHelp = function (reason) {
@@ -204,6 +244,12 @@ window.heroShowLoginHelp = function (reason) {
   // (אותה גזירה בדיוק כמו hbLoginFailBase ב-admin-dashboard.html.)
   const base = String(reason || '').replace(/^late:/, '');
   if (sub && window.HB_LOGIN_HELP_SUBS[base]) sub.textContent = window.HB_LOGIN_HELP_SUBS[base];
+  // §359 — הסלמה גוברת על הניסוח הרגיל, ודווקא כאן: `fetchTimeout` אומר "זו לא תקלה אצלכם,
+  // השאירו פרטים", וזה מדויק בכשל הראשון ומטעה בשלישי. הבדיקה על **המונה**, כלומר על
+  // ההיסטוריה, ולא על הכשל הבודד שהוא היחיד שהערוץ יודע לתאר.
+  if (sub && window.HB_NET_REASONS.includes(base) && window.hbNetFailCount() >= window.HB_NETFAIL_ESCALATE_AT) {
+    sub.textContent = window.HB_LOGIN_HELP_BLOCKED;
+  }
   window._hbLoginFailReason = reason || '';
 };
 window.openLoginHelp = function () {
@@ -237,6 +283,16 @@ function heroQueueUntilReady(flag, btnId, errId, busyText) {
     window.heroResetLoginBtn();
     const err = document.getElementById(errId);
     if (err) { err.textContent = window.HB_TIMEOUT_MSG; err.classList.add('show'); }
+    // §359 — גם המסלול הזה נספר כחסימת-רשת, למרות שהכתובת החסומה היא אחרת (ה-CDN של
+    // המודול ולא הוורקר): מבחינת האוהד זה אותו כשל בדיוק, ו"החליפו רשת" הוא אותו פתרון.
+    // ⚠️ ה-bump כאן ולא רק בענפי heroLogin — מי שהמודול לא נטען אצלו כלל **לעולם** לא
+    // מגיע לשם, כלומר בלי השורה הזאת החסימה הכי קשה הייתה היחידה שלא נספרת.
+    const modNetN = window.hbBumpNetFail('moduleTimeout');
+    // ⚠️ החלפת-הטקסט מוגבלת למסלול-הכניסה, באותו תנאי בדיוק של פאנל-העזרה שלוש שורות
+    // מתחת: HB_NET_BLOCKED_MSG מדבר על "הקוד עצמו תקין", ובמסלול "שכחתי את הקוד" עוד אין
+    // קוד — הודעה שמתייחסת לשדה שלא מולא היא בדיוק סוג הבלבול שהתיקון הזה בא להסיר.
+    const modBlocked = modNetN >= window.HB_NETFAIL_ESCALATE_AT && errId === 'heroLoginErr';
+    if (err && modBlocked) err.textContent = window.HB_NET_BLOCKED_MSG;
     // §322 — **זה בדיוק המסלול שהשאיר אוהד בחוץ בלי שאיש ידע.** 'moduleTimeout' נפרד
     // מ-'timeout': כאן המודול עצמו לא הגיע, כלומר שום בקשה לא יצאה לוורקר — לעומת 'timeout'
     // שבו הבקשה יצאה ולא חזרה. אבחון שונה לגמרי, ולכן ערך שונה.
@@ -245,6 +301,7 @@ function heroQueueUntilReady(flag, btnId, errId, busyText) {
     // פאנל-העזרה, שהוא הערוץ היחיד שלא תלוי בשום דבר שלנו.
     window.logEvent && window.logEvent('loginFail', { channel: 'moduleTimeout', blockId: window._hbEnvTag });
     if (errId === 'heroLoginErr') window.heroShowLoginHelp && window.heroShowLoginHelp('moduleTimeout');
+    if (modBlocked) window.openLoginHelp && window.openLoginHelp();
   }, window.HB_LOGIN_TIMEOUT_MS);
   const b = document.getElementById(btnId);
   if (b) { b.disabled = true; b.textContent = busyText; }
@@ -1711,7 +1768,14 @@ const heroIsTimeout = (e) => !!e && (e.name === 'AbortError' || e.message === 'h
 // על רשימת שדות סגורה, ושדה חורג **מוחק את כל האירוע בשקט** (§281). התקרה שם היא 50 תווים —
 // והתג הארוך ביותר האפשרי ('pwa|idb-blocked|sw-none' = 23) בתוספת סיומת-הזמן נשאר סביב 30.
 // slice(0,50) הוא חגורה נוספת: שדה חורג לא מייצר שגיאה אלא אירוע שנעלם.
-const heroEnvTagAt = (t0) => `${window._hbEnvTag}|${((Date.now() - t0) / 1000).toFixed(1)}s`.slice(0, 50);
+// §359 — `xN` = כמה כשלי-רשת רצופים **קדמו** לאירוע הזה (נקרא לפני ה-bump, ר' סדר-הקריאות
+// בענפי הכשל). זה מה שמבדיל בפאנל בין "נכשל פעם אחת ונכנס" לבין "חמש פעמים ולא נכנס" —
+// אותה הבחנה שנדרשה ידנית ב-1.9 כדי לזהות שיש כאן אדם תקוע ולא רעש. נוסע ב-`blockId`
+// באותה חגורה בדיוק: 'pwa|idb-blocked|sw-none|35.0s|x9' = 33 תווים, מתחת ל-50 של ה-rules.
+const heroEnvTagAt = (t0) => {
+  const n = (window.hbNetFailCount && window.hbNetFailCount()) || 0;
+  return `${window._hbEnvTag}|${((Date.now() - t0) / 1000).toFixed(1)}s${n ? '|x' + n : ''}`.slice(0, 50);
+};
 window.heroLogin = async function() {
   const phoneRaw = document.getElementById('heroPhoneInput').value.trim();
   const code = document.getElementById('heroCodeInput').value.trim();
@@ -1739,6 +1803,10 @@ window.heroLogin = async function() {
   const finishLogin = (uid) => {
     localStorage.setItem('hb_phone', heroNormalizePhoneDigits(phoneRaw));
     localStorage.setItem('hb_memberId', uid);
+    // §359 — האיפוס חייב לשבת **כאן**, בנקודת-הסיום היחידה של §350, ולא בענף ההצלחה
+    // ה"רגיל": כניסה שהגיעה מרשת-ההצלה המאוחרת עוברת רק דרך הפונקציה הזאת, ובלי זה מי
+    // שנכנס בזכותה היה נושא מונה-חסימה דולף לכניסה הבאה שלו.
+    try { localStorage.removeItem(window.HB_NETFAIL_KEY); } catch (_) {}
     heroGoHome();
   };
 
@@ -1819,6 +1887,10 @@ window.heroLogin = async function() {
     // הפוכות בכוונה: כשל אמיתי קרה וחייב להיספר, אבל כתיבה למסך של ניסיון שכבר נזנח דורסת
     // את הניסיון שרץ עכשיו — כולל heroResetLoginBtn, שהיה מפעיל כפתור באמצע "בודק...".
     window.logEvent && window.logEvent('loginFail', { channel: failReason, blockId: heroEnvTagAt(t0), phone: heroNormalizePhoneDigits(phoneRaw) });
+    // §359 — **מאפס**, וזה כל התפקיד שלו כאן: הגענו לשורה הזאת רק בזכות תשובה שהוורקר
+    // החזיר, כלומר הכתובת נגישה. בלי האיפוס, אוהד שנחסם אתמול והצליח היום היה ממשיך
+    // לראות "הרשת שלכם חוסמת" על טעות-קוד רגילה. מעל הגארד כמו ה-logEvent, מאותה סיבה.
+    window.hbBumpNetFail(failReason);
     if (!isCurrentAttempt()) return;
     window.heroResetLoginBtn();
     window.heroShowLoginHelp && window.heroShowLoginHelp(failReason);
@@ -1837,13 +1909,26 @@ window.heroLogin = async function() {
     // שלו, כלומר הרבה אחרי שהאוהד כבר לחץ שוב — ובלעדיו הוא היה מוחק הודעה נכונה של הניסיון
     // החדש ומחזיר את הכפתור מ"בודק..." באמצע בקשה חיה.
     window.logEvent && window.logEvent('loginFail', { channel: reason, blockId: heroEnvTagAt(t0), phone: heroNormalizePhoneDigits(phoneRaw) });
+    // §359 — מעל הגארד יחד עם ה-logEvent ומאותה סיבה: המונה הוא היסטוריה, ומי שלחץ שוב
+    // בזמן שהניסיון הקודם עוד רץ הוא **בדיוק** מי שנחסם. גארד מעליו היה מאבד את הספירה
+    // אצל הנחסמים בלבד — אותה מלכודת של §353, שלב אחד קדימה.
+    const netN = window.hbBumpNetFail(reason);
     if (isCurrentAttempt()) {
       window.heroResetLoginBtn();
       window.heroShowLoginHelp && window.heroShowLoginHelp(reason);
       // §350/§353 — ההודעה חייבת להתפצל יחד עם הסיבה, אחרת רשת-ההצלה נלחמת בטקסט של עצמה:
       // HB_TIMEOUT_MSG מורה "רעננו את הדף", ורענון **הורג** גם את המאזין של שלב ה-auth וגם
       // את הבקשה של שלב ה-fetch — כלומר בדיוק את שתי רשתות-ההצלה שעומדות להכניס אותם.
-      heroShowErr(!isT ? 'שגיאה — נסו שוב' : stage === 'auth' ? HERO_AUTH_TIMEOUT_MSG : HERO_FETCH_TIMEOUT_MSG);
+      //
+      // §359 — ומעל הכל: אחרי כשל-רשת שני רצוף, "השאירו את הדף פתוח... נעביר אתכם בעוד רגע"
+      // הופך להבטחה שלא תתממש. אין רשת-הצלה לבקשה שלא יוצאת מהמכשיר, ולכן ההודעה עוברת
+      // ממה-אנחנו-עושים למה-**הם**-יכולים-לעשות. הפאנל נפתח בכפייה כאן ורק כאן: הכלל
+      // "לא לקפוץ למי שרוצה לנסות שוב" תקף כשניסיון נוסף עוד יכול להצליח, וכאן הוא לא.
+      const blocked = netN >= window.HB_NETFAIL_ESCALATE_AT;
+      heroShowErr(blocked ? window.HB_NET_BLOCKED_MSG
+                : !isT ? 'שגיאה — נסו שוב'
+                : stage === 'auth' ? HERO_AUTH_TIMEOUT_MSG : HERO_FETCH_TIMEOUT_MSG);
+      if (blocked) window.openLoginHelp && window.openLoginHelp();
     }
     // ── §353 — רשת-ההצלה של שלב ה-fetch ──────────────────────────────────────────────────
     // מגיעים לכאן רק אם 8 השניות נגמרו לפני שהוורקר ענה. הבקשה עצמה עדיין חיה (התקרה
@@ -1880,6 +1965,8 @@ window.heroLogin = async function() {
             const authReason = authIsT ? 'lateAuthTimeout' : 'lateAuthError';
             // מעל הגארד, מאותה סיבה כמו בשני הענפים שמתחת.
             window.logEvent && window.logEvent('loginFail', { channel: authReason, blockId: heroEnvTagAt(t0), phone: heroNormalizePhoneDigits(phoneRaw) });
+            // §359 — מאפס: הטוקן הונפק, כלומר הוורקר נגיש והחסימה אינה הסיפור כאן.
+            window.hbBumpNetFail(authReason);
             if (!isCurrentAttempt()) return;
             // ⚠️ הניסוח מודה במפורש שהכניסה **אושרה בשרת** — הטוקן הונפק, ורק ההשלמה
             // במכשיר לא נסגרה. "טלפון או קוד שגויים" כאן היה שקר שגורר את האוהד לבדוק
@@ -1900,6 +1987,8 @@ window.heroLogin = async function() {
         // מעל ה-logEvent הערוץ הזה היה אוסף אפס בדיוק במקרים שנועד למדוד.
         const lateChannel = 'late:' + lateReason;
         window.logEvent && window.logEvent('loginFail', { channel: lateChannel, blockId: heroEnvTagAt(t0), phone: heroNormalizePhoneDigits(phoneRaw) });
+        // §359 — מאפס: התשובה אמנם איחרה, אבל היא **הגיעה** מהוורקר. הכתובת נגישה.
+        window.hbBumpNetFail(lateReason);
         // ניסיון מיושן שותק **על המסך בלבד** — בקשה חדשה מחזיקה עכשיו את התצוגה.
         if (!isCurrentAttempt()) return;
         // הערוץ המלא ולא הבסיס: errCode על פניית-העזרה חייב להגיד בדיוק מה נרשם במדידה,
@@ -1923,9 +2012,16 @@ window.heroLogin = async function() {
         // גרם לבקשה שנפלה אחרי 10 שניות להגיע ל"פניות עזרה" כ"לא חזרה גם אחרי 35 שניות".
         const hardReason = heroIsTimeout(lateErr) ? 'fetchHardAbort' : 'lateError';
         window.logEvent && window.logEvent('loginFail', { channel: hardReason, blockId: heroEnvTagAt(t0), phone: heroNormalizePhoneDigits(phoneRaw) });
+        // §359 — הענף הזה הוא **הכשל הכי מובהק** של כתובת חסומה: הבקשה לא חזרה כלל, לא
+        // בזמן ולא באיחור. מעל הגארד מאותה סיבה שההערה למעלה מפרטת — מי שהמתין 35 שניות
+        // כמעט בוודאות כבר לחץ שוב, ובלי זה דווקא הנחסמים לא היו נספרים.
+        const hardNetN = window.hbBumpNetFail(hardReason);
         if (!isCurrentAttempt()) return;
-        heroShowErr('לא הצלחנו להשלים את הכניסה. נסו שוב — ואם זה חוזר, פנו אלינו מכאן.');
+        const hardBlocked = hardNetN >= window.HB_NETFAIL_ESCALATE_AT;
+        heroShowErr(hardBlocked ? window.HB_NET_BLOCKED_MSG
+                  : 'לא הצלחנו להשלים את הכניסה. נסו שוב — ואם זה חוזר, פנו אלינו מכאן.');
         window.heroShowLoginHelp && window.heroShowLoginHelp(hardReason);
+        if (hardBlocked) window.openLoginHelp && window.openLoginHelp();
       });
     }
   }
