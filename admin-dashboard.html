@@ -8372,15 +8372,18 @@ const TASK_CLASS_TILES = [
 // מקומות ולהישכח באחד מהם (אותה מלכודת של רשימת-ההיתר `type` ב-firestore.rules, §326).
 //
 // `open`   — מה נספר בשבב: **פתוחות בלבד**, אחרת "טיפלתי" לא מנקה כלום (§302/§355).
-// `urgent` — מה נכנס למספר הגדול והאדום. לא כל תקלה פתוחה דורשת אותנו: "קוד שגוי" בכניסה
-//            הוא התנהגות תקינה של המערכת, ו-49 שורות כאלה היו הופכות את המספר לרעש קבוע
-//            שמפסיקים לקרוא. המספר הגדול הוא **"כמה דברים אני חייב לבדוק"**, לא "כמה קרו".
+// `urgent` — מה נכנס למספר הגדול והאדום. §358: **כל מה שפתוח**, בכל הסוגים.
+//            עד §358 הוא היה תת-קבוצה (מייל sev<=2, כניסה `ours` בלבד), כדי ש-49 "קוד שגוי"
+//            לא יהפכו את המספר לרעש. ⚠️ **המשתמש ביטל את ההבחנה במפורש** ("הכל דורש אותנו"):
+//            שני שבבים שהראו "5" מול מספר גדול "5" היו בלתי-ניתנים ליישוב במבט.
+//            ההבחנה עצמה לא אבדה — היא נשארה **בשורות**: תג "תקלה אצלנו"/"לא תקלה" בכל שורת
+//            כניסה, ודירוג-החומרה בכל שורת מייל. היא כבר לא מסננת את המונה.
 const ISSUE_KINDS = [
   { key: 'mail',      label: 'מייל',          open: () => mailIssueList(),
-    urgent: l => l.filter(x => x.sev <= 2).length },
+    urgent: l => l.length },
   { key: 'reg',       label: 'הרשמה',         open: () => regIssueOpenList(),      urgent: l => l.length },
   { key: 'login',     label: 'כניסה',         open: () => loginFailOpenList(),
-    urgent: l => l.filter(x => x.ours).length },
+    urgent: l => l.length },
   { key: 'help',      label: 'פניות עזרה',    open: () => helpReqOpenList(),       urgent: l => l.length },
   { key: 'bizErrors', label: 'דשבורד עסק',    open: () => bizWriteErrorList(),     urgent: l => l.length },
 ];
@@ -8706,8 +8709,9 @@ function taskTilesHtml() {
           c.urgentTotal ? `<span style="color:#b91c1c">${c.urgentTotal}</span>` : 0,
           `<div class="class-tile-chips">${chips}</div>` +
           `<div class="class-tile-sub">${
-            c.urgentTotal ? 'דורשות אותנו — לחצו על סוג כדי להיכנס אליו'
-            : c.openTotal ? `${c.openTotal} פתוחות, אף אחת אינה תקלה אצלנו`
+            // §358 — `urgentTotal === openTotal` מאז שההבחנה בוטלה, ולכן הענף
+            // "אף אחת אינה תקלה אצלנו" הפך לקוד מת ונמחק.
+            c.openTotal ? 'פתוחות — לחצו על סוג כדי להיכנס אליו'
             : 'אין תקלות פתוחות באף ערוץ'
           }</div>`);
       })()}
