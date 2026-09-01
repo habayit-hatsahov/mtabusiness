@@ -71,6 +71,44 @@
     return /^https?:\/\//i.test(tok) || DOMAIN_RE.test(tok);
   }
 
+  // ── כתובת שנכתבה בסדר הפוך — "drorchen.facebook.com" (2026-09-02, §362) ──────────────
+  // אוהד שנרשם באימות-ללא-מנוי הזין את השם **לפני** דומיין הרשת במקום אחריו. הערך הזה עובר
+  // כל בדיקה מבנית שיש כאן: שלוש תוויות מופרדות בנקודה, סיומת .com מוכרת — ולכן preferDomain
+  // הכריע "דומיין", DOMAIN_RE התאים, ונבנתה הכתובת https://drorchen.facebook.com/ עם
+  // confidence **'exact'**, רמת-הביטחון הגבוהה ביותר שהמנוע הזה יודע לתת.
+  //
+  // ⚠️ זה הכישלון ההפוך בדיוק ממה שהקובץ הזה מבטיח בכותרת שלו. לא רק שהוצג קישור מת — הוא
+  // הוצג **בלי שום סימן**: בכרטיס במרכז הניהול הוא נראה כמו אוהד שהדביק כתובת מלאה ותקינה,
+  // בעוד ששם-משתמש עירום, שהוא ראיה חלשה *פחות*, מסומן במפורש "(כתובת שהושלמה מהשם)".
+  // גם ההערה הרכה בטופס שתקה, כי מבחינתה הערך היה תקין לגמרי.
+  //
+  // הזיהוי ודאי ואינו ניחוש: תת-דומיין של facebook.com/instagram.com שאינו אחד מהמארחים
+  // האמיתיים שלהן פשוט אינו קיים ב-DNS, והדפדפן ייפול על שגיאת-רשת תמיד. אין כאן שאלה של
+  // "אולי הפרופיל נמחק" — הכתובת עצמה לא קיימת.
+  var NET_HOSTS = {
+    facebook:  ['facebook.com', 'fb.com', 'fb.me'],
+    instagram: ['instagram.com', 'instagr.am'],
+  };
+  // המארחים האמיתיים של הרשתות. כל תת-דומיין אחר תחתיהן אינו קיים.
+  var REAL_SUBHOSTS = ['www', 'm', 'web', 'mobile', 'touch', 'free', 'business',
+                       'l', 'lm', 'developers', 'help', 'upload', 'about'];
+
+  function reversedNetworkHost(s) {
+    var host = String(s).replace(/^https?:\/\//i, '').split(/[/?#]/)[0].toLowerCase();
+    for (var k in NET_HOSTS) {
+      var list = NET_HOSTS[k];
+      for (var i = 0; i < list.length; i++) {
+        var d = list[i];
+        if (host === d) return null;                                  // הדומיין עצמו — תקין
+        if (host.slice(-(d.length + 1)) !== '.' + d) continue;
+        var prefix = host.slice(0, -(d.length + 1));
+        if (REAL_SUBHOSTS.indexOf(prefix) !== -1) return null;        // www.facebook.com וכו'
+        return { network: k, domain: d, prefix: prefix };
+      }
+    }
+    return null;
+  }
+
   function result(ok, url, confidence, reason, raw) {
     return { ok: ok, url: url, confidence: confidence, reason: reason, raw: raw };
   }
@@ -79,7 +117,9 @@
   // מחזיר { ok, url, confidence:'exact'|'guessed'|null, reason, raw }
   //   exact   — הערך עצמו הוא כתובת/דומיין, רק הושלם לו https
   //   guessed — הערך הוא handle בלבד, והורכבה ממנו כתובת הפרופיל
-  //   reason  — 'empty' | 'ok' | 'picked_first' | 'handle' | 'not_a_link' | 'bad_url'
+  //   reason  — 'empty' | 'ok' | 'picked_first' | 'handle' | 'not_a_link' | 'bad_url' | 'reversed'
+  //   suggest — רק כש-reason==='reversed': הכתובת כפי שהיא כנראה אמורה להיראות, כטקסט להצגה
+  //             לנרשם. **לא** כתובת לפתיחה, ולעולם לא נשמרת אוטומטית.
   function normalize(kind, raw) {
     var s = String(raw == null ? '' : raw).trim();
     if (!s) return result(false, null, null, 'empty', s);
@@ -99,6 +139,20 @@
     }
 
     s = s.replace(/^@/, '');
+
+    // §362 — סדר הפוך. חייב להיבדק **לפני** ענף ה-http, כי "https://drorchen.facebook.com"
+    // סובל מאותה תקלה בדיוק ו-new URL היה מקבל אותו בלי הנד עפעף.
+    //
+    // ⚠️ **לא נגזר מכאן קישור אוטומטית.** "drorchen" הוא כמעט בוודאות שם-המשתמש, אבל
+    // "כמעט" מוביל לפרופיל של אדם אחר לגמרי שהמנהל מאשר לפיו בלי לדעת — בדיוק מה ש-§345
+    // אוסר. ההצעה מוחזרת ב-`suggest` כטקסט להצגה בלבד: מי שמאשר אותה הוא הנרשם, בהקלדה.
+    var rev = reversedNetworkHost(s);
+    if (rev) {
+      var bad = result(false, null, null, 'reversed', raw);
+      // תת-דומיין מרובה-תוויות ("a.b.facebook.com") — לא ברור מה מתוכו השם, ולא מציעים ניחוש.
+      bad.suggest = rev.prefix.indexOf('.') === -1 ? rev.domain + '/' + rev.prefix : null;
+      return bad;
+    }
 
     if (/^https?:\/\//i.test(s)) {
       try {
@@ -142,6 +196,10 @@
     var r = normalize(kind, raw);
     if (r.ok || r.reason === 'empty') return null;
     var what = kind === 'facebook' ? 'עמוד הפייסבוק' : kind === 'instagram' ? 'פרופיל האינסטגרם' : 'האתר';
+    if (r.reason === 'reversed') {
+      return 'נראה שהסדר התהפך — השם צריך לבוא **אחרי** הדומיין' +
+             (r.suggest ? ', כלומר ' + r.suggest : '') + '.';
+    }
     if (r.reason === 'bad_url') return 'הכתובת של ' + what + ' לא תקינה.';
     return 'זה נראה כמו שם ולא כמו כתובת. הדביקו את הקישור המלא ל' + what + ' (מתחיל ב-https://), לא את השם.';
   }
