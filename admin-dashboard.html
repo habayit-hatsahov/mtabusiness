@@ -1267,6 +1267,8 @@ body {
 /* §294 — "המסלול דורש תמונה ואין" הוא ממצא, לא היעדר-מידע: הוא חייב להיראות אחרת
    מ"במסלול הזה אין תמונה", אחרת המנהל מאשר בלי לשים לב שהראיה חסרה. */
 .owner-verify-photo-empty.warn { color: #FDB022; }
+/* §361 — מאיפה הגיעה הראיה, כשהיא לא יושבת על רשומת החבר עצמה. */
+.proof-src { margin-top: 6px; font-size: 11px; font-weight: 600; color: #98A2B3; text-align: center; }
 /* §294 — התמונה נפתחת ב-lightbox הקיים של הדשבורד (openImageLightbox), לא בטאב חדש.
    ⚠️ לא נבנה כאן lightbox שני: הדשבורד כבר מחזיק אחד (#lightboxImg), כולל כפתור הורדה
    ומעבר דרך /view-image — שנדרש כדי לראות תמונות של עסק pending. */
@@ -1312,6 +1314,11 @@ body {
 .form-field-label { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 2px; }
 .form-field-val { font-size: 13.5px; font-weight: 600; line-height: 1.6; }
 .form-field-val.empty { color: var(--text-muted); font-weight: 500; }
+/* שדה-רשות שלא מולא — נאמר במפורש במקום להיעלם מהכרטיס. הסיבה ("לא נשאל" מול "דילג")
+   קטנה ודהויה יותר מהקביעה עצמה: היא הקשר, לא הנתון. */
+.opt-empty { font-style: italic; color: var(--text-muted); font-weight: 500; }
+.opt-empty.warn { font-style: normal; color: var(--orange); font-weight: 700; }
+.opt-empty-why { font-size: 11.5px; opacity: .72; font-style: normal; }
 .only-missing [data-empty="false"] { display: none; }
 .form-discounts { display: flex; flex-direction: column; gap: 9px; padding-bottom: 16px; }
 .form-discount-box { border: 1px solid var(--border-md); border-radius: 10px; padding: 11px 13px; }
@@ -2345,6 +2352,42 @@ function fmtBirthDate(v) {
   const d = new Date(v + 'T00:00:00');
   if (isNaN(d.getTime())) return '';
   return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+// ── שדות-רשות: "לא מולא" מול "לא נשאל" ─────────────────────────────────────────────────
+// המשתמש: *"אני רוצה לראות בהרשמה של אוהד את השדות הלא חובה ולדעת האם מילא או לא"*.
+// עד היום שדה-רשות ריק פשוט **לא הופיע בכלל** בכרטיס (socialProofCellHtml מחזיר '' על ערך
+// ריק), ותאריך לידה ריק הופיע כ"לא מולא בהרשמה" — משפט שנכון רק לחלק מהרשומות.
+//
+// ⚠️ ההבחנה הקריטית: רוב האוהדים הקיימים ריקים כי **השדה לא היה קיים כשהם נרשמו**, לא כי
+// הם דילגו עליו. שני השדות נוספו לטופס בתאריכים שונים, ואין מילוי רטרואקטיבי (§346):
+//   תאריך לידה           → 2026-08-24 (commit 5bc171a)
+//   פרופיל חברתי (רשות)  → 2026-08-29 (commit e8fa124 — שדה-הרשות של מנוי בלבד)
+// "לא מולא" על רשומה מיוני קורא כמו בחירה של הנרשם, וזו מסקנה שגויה שהמנהל עלול להחליט
+// לפיה. לכן ההבחנה נגזרת מתאריך ההרשמה שעל הרשומה עצמה, ולא מניחים.
+const FIELD_LIVE_SINCE = {
+  birthDate: new Date('2026-08-24T13:13:00+03:00'),
+  socialOpt: new Date('2026-08-29T00:00:00+03:00'),
+};
+// גוף-התא של שדה-רשות ריק. בלי תאריך הרשמה ידוע (registeredAtKnown=false, ר' §253) לא
+// מניחים לאיזה צד לנטות — נאמר "לא מולא" יבש בלי לטעון שהוא נשאל או לא.
+function optionalFieldEmptyHtml(f, key) {
+  const since = FIELD_LIVE_SINCE[key];
+  const at = (f && f.registeredAtKnown) ? f.registeredAt : null;
+  if (!at || !since) return '<span class="opt-empty">לא מולא</span>';
+  return at < since
+    ? '<span class="opt-empty">לא נשאל בהרשמה <span class="opt-empty-why">(השדה נוסף לטופס אחרי שהוא נרשם)</span></span>'
+    : '<span class="opt-empty">לא מולא <span class="opt-empty-why">(נשאל ודילג — שדה רשות)</span></span>';
+}
+// ── תא הפרופיל החברתי כשאין בו כלום ────────────────────────────────────────────────────
+// מוצג **רק** כשאין פייסבוק, אין אינסטגרם ואין profileRaw — כלומר הנרשם לא מסר שום פרופיל.
+// אצל לא-מנוי זה שדה חובה (§342), ולכן חוסר שם הוא חריגה ולא בחירה: מסומן כאזהרה.
+function socialProofEmptyCellHtml(f) {
+  const required = !f.isSubscriber;
+  const body = required
+    ? '<span class="opt-empty warn">חסר — במסלול הזה הפרופיל הוא שדה חובה</span>'
+    : optionalFieldEmptyHtml(f, 'socialOpt');
+  return '<div><div class="form-field-label">פרופיל חברתי · ' + (required ? 'שדה חובה, לא-מנוי' : 'שדה רשות') + '</div>' +
+         '<div class="form-field-val empty">' + body + '</div></div>';
 }
 // האופציות נבנות בתוך מחרוזת-התבנית של הפאנל ולא ממולאות אחרי הרינדור — הפאנל מרונדר מחדש
 // בכל renderMain/refreshOpenDetailPanel, ומילוי מאוחר היה נמחק (ר' §246).
@@ -7696,13 +7739,31 @@ function fanFullDetailHtml(id, opts) {
   // קודם התמונה הייתה שדה-רשת ברוחב מלא בתוך "פרטי ההרשמה" — כלומר הדבר היחיד שהמנהל
   // באמת צריך להסתכל עליו נראה כמו עוד שורת-טקסט.
   const fanPhotoRequired = PHOTO_ROUTES.has(idVerifyMethod);
-  const fanVerifyPhotoHtml = f.photoProofUrl
+  // ── §361 — הראיה של בעל-עסק יושבת על מסמך העסק, לא על רשומת החבר ────────────────────────
+  // דיווח-אמת (אייל דבשה, 2026-09-02): *"התמונה שלו לא נקלטה באימות"*. היא כן נקלטה.
+  //
+  // מי שנרשם דרך business.html שולח את ראיית-האימות ל-/upload-biz-media, והוורקר
+  // (worker/src/bizmedia.js) כותב `photoProofUrl` ב-firestorePatch **למסמך העסק בלבד**.
+  // linkOrCreateOwnerMember — שרץ קודם לכן, לפני שההעלאה בכלל התחילה — אינו כותב את השדה
+  // לרשומת החבר כלל, ובמסלול "חבר קיים" הוא נוגע רק ב-isBusinessOwner/linkedBusinessId.
+  // התוצאה: **לכל בעל-עסק** כרטיס-האוהד הכריז "לא הועלתה" בזמן שהתמונה קיימת ומוצגת יפה
+  // בכרטיס-העסק שלו, שני מסכים שקוראים אותו שם-שדה משני אוספים שונים.
+  //
+  // ⚠️ התיקון הוא **נפילה-לאחור בקריאה, לא שכפול של הכתובת לרשומת החבר.** שכפול היה יוצר
+  // שני עותקים שמתפצלים ברגע שמנהל מחליף את התמונה מאחד המסכים — בדיוק הכשל של
+  // "עסק השבוע" (מיזוג-בקריאה, לא נתיב-כתיבה שלישי). המקור נשאר אחד: מסמך העסק.
+  const linkedBizProof = (!f.photoProofUrl && linkedBiz && linkedBiz.ownerProofPhotoUrl) ? linkedBiz.ownerProofPhotoUrl : '';
+  const fanProofUrl = f.photoProofUrl || linkedBizProof;
+  const fanVerifyPhotoHtml = fanProofUrl
     // §294 — lightbox ולא טאב חדש. §297 — <img> ולא background-image (על רקע-CSS אין onerror,
     // ולכן קובץ שהדפדפן לא מציג היה משאיר ריבוע ריק בלי שום דרך לזהות שזה קרה).
-    ? `<img src="${esc(bizImageViewUrl(f.photoProofUrl))}" alt="ראיית האימות של האוהד"
+    ? `<img src="${esc(bizImageViewUrl(fanProofUrl))}" alt="ראיית האימות של האוהד"
            class="zoomable" title="לחצו להגדלה"
-           onclick="openImageLightbox('${esc(f.photoProofUrl)}','proof-${esc(f.id)}.jpg')"
-           onerror="markProofImageBroken(this)">`
+           onclick="openImageLightbox('${esc(fanProofUrl)}','proof-${esc(f.id)}.jpg')"
+           onerror="markProofImageBroken(this)">${linkedBizProof
+             // נאמר במפורש מאיפה היא הגיעה: המנהל צריך לדעת שהיא **אינה** על רשומת החבר,
+             // אחרת מחיקת העסק תעלים לו ראיה שהוא חשב שהיא שלו.
+             ? '<div class="proof-src">מתוך רשומת העסק המקושר</div>' : ''}`
     : fanPhotoRequired
       ? `<div class="owner-verify-photo-empty warn">⚠️ המסלול דורש תמונה — לא הועלתה</div>`
       : `<div class="owner-verify-photo-empty">במסלול הזה אין תמונה</div>`;
@@ -7737,6 +7798,11 @@ function fanFullDetailHtml(id, opts) {
             ${socialProofCellHtml('facebook', 'כפי שנמסר',
                 (f.profileRaw && f.profileRaw !== f.facebookUrl && f.profileRaw !== f.instagramUrl) ? f.profileRaw : '',
                 fanProfileSourceShort(f) + ' · לא זוהתה רשת', false)}
+            <!-- ── שדה-רשות ריק הוא נתון, לא היעדר-נתון ────────────────────────────────
+                 שלושת התאים שמעל מחזירים מחרוזת ריקה כשאין להם ערך, ולכן אוהד שלא מסר
+                 שום פרופיל נראה בדיוק כמו אוהד שהשדה לא הוצג לו בכלל — בשני המקרים אין
+                 שורה. זה בדיוק מה שהמשתמש ביקש להפריד. התא הזה נכנס רק כששלושתם ריקים. -->
+            ${(!f.facebookUrl && !f.instagramUrl && !f.profileRaw) ? socialProofEmptyCellHtml(f) : ''}
           </div>
           <!-- §300 — השורה כבר לא חוזרת על "לא מנוי / היה בעבר": הם תאים ברשת למעלה.
                נשאר רק מה שהיא באמת אומרת — על מה ההחלטה נשענת. -->
@@ -7760,7 +7826,9 @@ function fanFullDetailHtml(id, opts) {
         <div class="form-field"><div class="form-field-label">טלפון</div><div class="form-field-val">${esc(f.phone||'—')}</div></div>
         <div class="form-field"><div class="form-field-label">אימייל</div><div class="form-field-val">${esc(f.email||'—')}</div></div>
         <div class="form-field"><div class="form-field-label">תאריך לידה</div><div class="form-field-val">${
-          f.birthDate ? esc(fmtBirthDate(f.birthDate)) : '<span style="color:var(--text-muted);font-style:italic">לא מולא בהרשמה</span>'
+          // "לא מולא בהרשמה" נאמר עד עכשיו גם על מי שנרשם ביוני, חודשיים לפני שהשדה
+          // בכלל נוסף לטופס — כלומר טען שהוא דילג על שאלה שמעולם לא נשאל.
+          f.birthDate ? esc(fmtBirthDate(f.birthDate)) : optionalFieldEmptyHtml(f, 'birthDate')
         }</div></div>
         <!-- §300 — "מנוי בפועל" ו"היה מנוי בעבר" עברו לכרטיס "אימות האוהד".
              המשתמש: *"אם מנוי בפועל או היה מנוי בעבר — זה בקטע של האימות צריך להיות"*.

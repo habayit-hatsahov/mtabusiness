@@ -558,6 +558,19 @@
       animation: spin .7s linear infinite;
     }
 
+    /* §361 — שורת-ההמתנה מתחת לכפתור השליחה, ואזהרת-ההרשמה-הכפולה. שתיהן ריקות ומוסתרות
+       עד שיש מה לומר בהן (:empty), כדי שלא יישאר מרווח מת מתחת לכפתור. */
+    .submit-wait:empty { display: none; }
+    .submit-wait {
+      margin-top: 12px; padding: 11px 13px; border-radius: 12px;
+      font-size: 13px; line-height: 1.6; text-align: right;
+      background: rgba(255,212,0,.10);
+      border: 1px solid rgba(255,212,0,.32);
+    }
+    .submit-wait.err {
+      background: rgba(214,120,20,.10); border-color: rgba(214,120,20,.35);
+    }
+
     .back-to-site {
       display: none; position: fixed; top: 14px; right: 14px; z-index: 500;
       width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
@@ -1559,6 +1572,19 @@
         </button>
       </div>
 
+      <!-- ── §361 — מה קורה בזמן ההמתנה ────────────────────────────────────────────────
+           דיווח-אמת (שבתאי לנקרי, 2026-09-02): *"לוקח זמן עד שזה נשלח, לחצתי שוב"* —
+           והתוצאה הייתה **שתי רשומות עסק**. הכפתור אמנם נחסם (btn.disabled) ולכן לחיצה
+           שנייה עליו לא עושה כלום, אבל זה בדיוק העניין: מסך ששותק דקה שלמה נקרא כתקלה,
+           ואז נוטשים ומתחילים מחדש. ההמתנה כאן אמיתית — כתיבת המסמך בלי גבול-זמן ואחריה
+           העלאת עד 8 תמונות דרך הוורקר (תקרה של 120 שניות) — ולכן התשובה היא לומר את זה,
+           לא לקצר בכוח.
+           ⚠️ זו **לא** חזרה של דיווח-השלבים ש-§295 הסיר במפורש ("מעלים את התמונות…"):
+           שם נחשפו שלבים פנימיים מיד עם הלחיצה, וזה נקרא כמו מערכת שמתלבטת. כאן אין מילה
+           עד 12 שניות, והמשפט אינו מתאר שלב אלא עונה על השאלה היחידה שנשאלת בפועל —
+           "זה תקוע? ללחוץ שוב?". אותו דפוס בדיוק כמו slowTimer/stuckTimer ב-fan-register. -->
+      <div class="submit-wait" id="submitWait"></div>
+
     </div>
 
     <!-- ── §348 — עזרה בהרשמה, לא עזרה באימות ───────────────────────────────────────────
@@ -1894,6 +1920,87 @@
     if (help) help.style.display = 'none';
   }
 
+  // ══ §361 — הרשמה כפולה: מה קורה בזמן ההמתנה, ומה קורה אחריה ═══════════════════════════
+  // שני חלקים לאותו דיווח. הראשון מדבר אל מי שעדיין ממתין, השני אל מי שכבר ויתר וחזר.
+
+  // ── (1) שורת-ההמתנה ────────────────────────────────────────────────────────────────────
+  // מה שהמשתמש רואה היום מרגע הלחיצה הוא כפתור "שולח..." ותו לא — ואת זה הוא רואה בין
+  // שנייה אחת לשתי דקות, בלי שום דרך להבדיל בין השתיים. תקציב-הזמן האמיתי של השליחה:
+  //   addDoc               — **בלי גבול-זמן בכלל**. Firestore לא דוחה כתיבה על רשת גרועה,
+  //                          הוא מחזיק אותה בתור המקומי עד שהיא מגיעה לשרת. זה מכוון
+  //                          (קטיעה + ניסיון חוזר = שתי רשומות), אבל זה גם אומר שאין תקרה.
+  //   linkOrCreateOwnerMember — fetch ל-/check-member-exists + כתיבה ל-members.
+  //   שלב המדיה            — עד 90 שניות ל-fetch, 120 לשלב כולו (§294).
+  // כלומר "שולח..." של דקה הוא התנהגות **תקינה** של הטופס הזה, ובעל-העסק אינו יכול לדעת
+  // זאת. שתי המדרגות (12 ש' / 40 ש') הן אותן מדרגות בדיוק כמו ב-fan-register.html.
+  let waitTimers = [];
+  function setSubmitWait(msg, cls) {
+    const el = document.getElementById('submitWait');
+    if (!el) return;
+    el.className = 'submit-wait' + (cls ? ' ' + cls : '');
+    el.innerHTML = msg || '';
+  }
+  function startSubmitWaitTimers() {
+    clearSubmitWaitTimers();
+    waitTimers.push(setTimeout(() => setSubmitWait(
+      'החיבור איטי — ממשיכים לשלוח. <strong>הכול תקין</strong>, רק אל תסגרו את הדף.'
+    ), 12000));
+    // ⚠️ 40 שניות ולא 35 כמו באוהד: כאן שלב-המדיה עוד לפנינו, והוא לבדו לוקח עשרות שניות
+    // בהעלאה סלולרית של קאבר+לוגו+גלריה. הודעה חמורה מדי מוקדם מדי היא בדיוק מה שגורם
+    // לנטישה שאנחנו מנסים למנוע.
+    // ⚠️ ההודעה **אינה** מזהירה מפני הרשמה כפולה. המשתמש: *"זה לא טוב גם לרשום כזה דבר"* —
+    // צודק: אזהרה כזאת מסבירה לבעל-העסק חולשה במערכת שלנו במקום לתקן אותה, ומטילה עליו
+    // אחריות שהיא שלנו. הכפילות נמנעת בקוד (ר' המזהה היציב למטה), ולכן אין מה להזהיר.
+    waitTimers.push(setTimeout(() => setSubmitWait(
+      'השליחה עדיין רצה — העלאת התמונות בחיבור סלולרי לוקחת לפעמים דקה ויותר. ' +
+      'אין צורך לעשות כלום, רק להשאיר את הדף פתוח. ' +
+      'אם נראה לכם שמשהו נתקע — כתבו לנו ל-yellowzonemta@gmail.com ונאתר את הבקשה.'
+    , 'err'), 40000));
+  }
+  function clearSubmitWaitTimers() {
+    waitTimers.forEach(clearTimeout);
+    waitTimers = [];
+  }
+
+  // ── (2) מזהה-מסמך יציב — שתי שליחות נכתבות לאותו מסמך ─────────────────────────────────
+  // המשתמש: *"אי אפשר שזה לא יקרה? זה לא טוב גם לרשום כזה דבר"* — צודק בשתי הרמות. אזהרה
+  // שמסבירה לבעל-העסק שהמערכת שלנו תיצור לו שתי רשומות היא הודאה בחולשה במקום תיקון שלה,
+  // וגם הכרטיס שעצר אותו ושאל היה מטיל עליו החלטה שהיא שלנו. עכשיו זה פשוט **לא קורה**.
+  //
+  // המנגנון: `addDoc` מגריל מזהה חדש בכל קריאה, ולכן שתי שליחות = שני מסמכים, תמיד.
+  // במקומו `doc(collection(...))` מייצר מזהה **מקומית, בלי לפנות לרשת ובלי ליצור מסמך**
+  // (אותו דפוס בדיוק כמו §292 ב-fan-register), הוא נשמר כאן מיד, ו-`setDoc` כותב אליו.
+  // שליחה חוזרת מאותו דפדפן, על אותו עסק, מכוונת לאותו מזהה — ולכן:
+  //   • הכתיבה הראשונה עדיין בתור המקומי  → Firestore ממזג את שתיהן. מסמך אחד.
+  //   • הכתיבה הראשונה כבר נקלטה בשרת     → ר' טיפול ב-permission-denied ליד ה-setDoc.
+  // בשני המקרים נוצרת רשומה אחת, בלי שבעל-העסק ידע שקרה כאן משהו.
+  //
+  // ⚠️ **חייב להיות מוגבל בזמן ובשם-העסק.** בעל-עסק אחד יכול להירשם עם שני עסקים שונים
+  // באמת — יש כזה בפרודקשן (אדיר אילן: "שווארמה שמש אירועים" ו"גולדה אירועים", אותו טלפון
+  // ואותו מייל, 1.7). מזהה משותף לפי טלפון בלבד היה גורם לעסק השני **לדרוס את הראשון** —
+  // נזק חמור בהרבה מרשומה כפולה. לכן ההתאמה דורשת גם את שם-העסק, וגם חלון של 24 שעות.
+  const BIZ_PENDING_KEY = '_hb_bizPending';
+  const REUSE_WINDOW_MS = 24 * 60 * 60 * 1000;
+  // ⚠️ ה-`\s` כאן נבלע פעם אחת בכתיבה ונחת כ-`/s+/g` — רג'קס תקין שמסיר את האות s
+  // בלבד, בלי שגיאה ובלי ש-`node --check` יתלונן (§355). נתפס רק כי יש בדיקת-הרצה על
+  // "שם עם רווחים כפולים". אם עורכים את השורה — לוודא בפלט של הקובץ עצמו, לא בקוד המייצר.
+  const normName = v => String(v || '').trim().replace(/[\s]+/g, ' ').toLowerCase();
+
+  function priorSubmission(phone, email, name) {
+    try {
+      const d = JSON.parse(localStorage.getItem(BIZ_PENDING_KEY) || 'null');
+      if (!d || !d.id || !d.at || (Date.now() - d.at) > REUSE_WINDOW_MS) return null;
+      // טלפון **או** מייל — בעל-עסק שממלא מחדש עלול לתקן אחד מהם (זו לעיתים סיבת המילוי
+      // מחדש). שם-העסק הוא מה שקובע שמדובר באותו עסק, ולכן הוא נדרש בהתאמה מדויקת.
+      if (d.phone !== phone && d.email !== email) return null;
+      if (normName(d.name) !== normName(name)) return null;
+      return d;
+    } catch { return null; }
+  }
+  function rememberPending(rec) {
+    try { localStorage.setItem(BIZ_PENDING_KEY, JSON.stringify(rec)); } catch {}
+  }
+
   function setSubmitBusy(busy) {
     for (const btn of [document.getElementById('submitBtn'), document.getElementById('retryBtn')]) {
       if (!btn) continue;
@@ -1916,6 +2023,41 @@
       p.finally(() => clearTimeout(t)),
       new Promise((_, rej) => { t = setTimeout(() => rej(Object.assign(new Error('timeout'), { name: name || 'TimeoutError' })), ms); }),
     ]);
+  }
+
+  // ── §361ב — בניית גוף-ההעלאה, מופרדת מהשליחה שלו ──────────────────────────────────────
+  // כל הבלוק הזה היה עד היום **בתוך** שלב-המדיה, כלומר רץ רק אחרי שכל כתיבות ה-Firestore
+  // הסתיימו. הוא לא צריך מהן כלום — אין כאן מזהה-עסק ואין טוקן (`accessToken` מתווסף
+  // בשלב השליחה, כי רק הוא תלוי בכתיבה שקדמה לו). לכן הוא הוצא לכאן ומופעל בלחיצה.
+  // התוכן עצמו לא שונה בכלל: אותן קריאות דחיסה, אותם שמות-שדות, אותה נפילה-לאחור.
+  async function buildMediaForm({ fanPhotoFile, effectiveLogoFile, effectiveCoverFile, galleryFiles }) {
+    const form = new FormData();
+    // ⚠️ §285 — עד היום `fanPhoto` היה **הקובץ היחיד כאן שנשלח גולמי**: הלוגו, התמונה
+    // המייצגת והגלריה כולם עוברים compressToFile, והוא לא. מאז §284 הוא נושא את ראיית
+    // האימות של בעל-העסק בכל ארבעת המסלולים, כלומר הקובץ הכי חשוב בטופס — ותמונת
+    // אייפון של 15MB+ בגוף ה-FormData היא בדיוק מה שמפיל את הבקשה לוורקר.
+    // §287 — compressProofToFile ולא compressToFile: הנתיב העמיד (createImageBitmap,
+    // בלי base64, תקרת-קנבס, וסבבים חוזרים אם התוצאה עדיין כבדה).
+    if (fanPhotoFile) form.append('fanPhoto', await compressProofToFile(fanPhotoFile));
+    if (effectiveLogoFile) form.append('logo', effectiveLogoFile);
+    if (effectiveCoverFile) {
+      const [mainFile, thumbFile] = await Promise.all([
+        compressToFile(effectiveCoverFile, COVER_MAX_DIM, 0.82, effectiveCoverFile.name),
+        compressToFile(effectiveCoverFile, 640, 0.80, 'thumb_' + effectiveCoverFile.name),
+      ]).catch(() => [effectiveCoverFile, effectiveCoverFile]);
+      form.append('cover', mainFile);
+      form.append('coverThumb', thumbFile);
+    }
+    // ⚠️ §361ב — הגלריה נשארת **בטור, במכוון**. `Promise.all` על חמש תמונות היה מקצר
+    // מעט (פענוח התמונה ו-FileReader רצים מחוץ לתהליכון הראשי, ולכן כן נשזרים) — אבל הוא
+    // מחזיק חמש תמונות מפוענחות בזיכרון **בו-זמנית**. תמונת אייפון 4000×3000 היא ~48MB
+    // כבִּיטמַפ, וחמש כאלה הן ~240MB בטלפון בינוני. §287 כבר תיעד כשל-זיכרון בדיוק בנתיב
+    // הדחיסה הזה, וזה בדיוק סוג הכשל שנראה רק במכשיר של מישהו אחר. הרווח לא שווה את זה.
+    for (const file of galleryFiles) {
+      const compressed = await compressToFile(file, 1280, 0.82, file.name).catch(() => file);
+      form.append('gallery', compressed);
+    }
+    return form;
   }
 
   async function compressProofToFile(file) {
@@ -2509,7 +2651,20 @@
     // §244 — הטוקן **לא** נכתב על מסמך העסק אלא ל-bizTokens/{businessId} מיד אחרי היצירה
     // (ר' למטה, ליד קישור-החבר). מסמך של עסק approved קריא ציבורית לגמרי, ולכן טוקן-כניסה
     // שיושב עליו שקול לפרסום סיסמה. הוא עדיין נשלח כאן ל-Worker (/upload-biz-media) מהזיכרון.
-    const accessToken = crypto.randomUUID();
+    //
+    // §361 — **המזהה והטוקן נגזרים משליחה קודמת אם הייתה כזאת.** `crypto.randomUUID()` כאן
+    // ו-`addDoc` למטה היו שניהם מגרילים ערך חדש בכל לחיצה, וזה מה שהפך שליחה חוזרת לעסק
+    // שני. עכשיו שניהם נשלפים מ-`_hb_bizPending` כשמדובר באותו עסק ואותו בעלים תוך 24 שעות.
+    // ⚠️ גם הטוקן, לא רק המזהה: `bizTokens/{id}` אינו ניתן לעדכון ע"י אורח (firestore.rules
+    // מתיר לאורח `create` בלבד), ולכן טוקן חדש בשליחה חוזרת פשוט לא היה נכתב — ואז
+    // /upload-biz-media היה מחזיר `invalid_token` וכל התמונות היו נופלות בשקט.
+    const prior = priorSubmission(data.ownerPhone, data.ownerEmail, data.name);
+    const bizId       = prior ? prior.id          : doc(collection(db, 'businesses')).id;
+    const accessToken = prior ? prior.accessToken : crypto.randomUUID();
+    // נשמר **לפני** הכתיבה ולא אחריה: אם הדף ייסגר באמצע, זה מה שיחבר את הניסיון הבא לאותו
+    // מסמך. doc() מייצר מזהה מקומית בלי לפנות לרשת ובלי ליצור מסמך (אותו דפוס כמו §292).
+    if (!prior) rememberPending({ id: bizId, accessToken, at: Date.now(),
+                                  name: data.name, phone: data.ownerPhone, email: data.ownerEmail });
     data.pendingChanges = null;
     data.logo           = '';
     data.coverPhoto      = '';
@@ -2535,6 +2690,22 @@
     const hasMediaToUpload = !!(fanPhotoFile || effectiveCoverFile || effectiveLogoFile || galleryFiles.length);
     let mediaUploadFailed = false;   // ר' סוף handleSubmit — נקבע מתשובת /upload-biz-media
 
+    // ── §361ב — הדחיסה מתחילה **בלחיצה**, לא אחרי חמש נסיעות-רשת ──────────────────────────
+    // המשתמש: *"יש אפשרות לנסות גם לצמצם את הזמן של הנשלח?"*. הדחיסה של עד 8 תמונות
+    // (createImageBitmap + canvas) היא הרכיב היחיד בשליחה שהוא **מעבד טהור, בלי שום רשת**,
+    // ולכן הוא גם היחיד שאינו תלוי בכלום — לא במזהה העסק, לא בטוקן, לא בשום תשובה מהשרת.
+    // עד היום הוא רץ אחרי כל כתיבות ה-Firestore, כלומר טור שלם שאין שום סיבה שיהיה טור:
+    // הטלפון עמד בטל בזמן הרשת, והרשת עמדה בטלה בזמן הדחיסה.
+    // עכשיו הוא מתחיל כאן ורץ **במקביל** לכתיבת המסמך ולטוקן.
+    //
+    // ⚠️ `.catch` ריק נדרש **מיד**: הבטחה שנדחית לפני שמישהו ממתין לה מפילה
+    // `unhandledrejection` בקונסול. הוא לא בולע את הכשל — `mediaFormPromise` המקורית
+    // נשארת דחויה, וה-`await` עליה בשלב המדיה יזרוק בדיוק כמו קודם ויסומן mediaUploadFailed.
+    const mediaFormPromise = hasMediaToUpload ? buildMediaForm({
+      fanPhotoFile, effectiveLogoFile, effectiveCoverFile, galleryFiles,
+    }) : null;
+    if (mediaFormPromise) mediaFormPromise.catch(() => {});
+
     // ── §295 — הטופס **לא** מוסתר כאן ─────────────────────────────────────────────────────
     // קודם השלב הזה החליף את הטופס במסך-ספינר. המשתמש: *"זה לא נראה טוב שזה חושב לאחר
     // ההגשה"* — צודק: החלפת-מסך לספינר קוראת כמו תקלה. עכשיו הטופס נשאר, הכפתור עובר
@@ -2542,39 +2713,89 @@
     // ⚠️ מסך-הכשל **לא** מוסתר כאן אלא רק כשיש תשובה. הסתרה מיידית בניסיון-חוזר הייתה
     // משאירה את בעל-העסק מול מסך ריק (הטופס כבר מוסתר מהכשל הקודם) — ר' retrySubmit.
     setSubmitBusy(true);
+    // §361 — מתחילים לספור מכאן: זו הנקודה שאחריה בעל-העסק רואה "שולח..." ותו לא.
+    startSubmitWaitTimers();
     // ⚠️ הטיוטה *לא* נמחקת כאן — רק אחרי שהרשומה באמת נוצרה. קודם היא נמחקה לפני הכתיבה, כך
     // שכשל הותיר את בעל-העסק בלי הרשומה *וגם* בלי מה שמילא. §215.
 
     (async () => {
       let bizDocRef = null;
       let saveErr = null;
+      // §361 — לתיעוד/לוג בלבד. ⚠️ **אף החלטה לא נשענת עליו**: הוא הסקה מקוד-שגיאה, ואילו
+      // ההחלטות למטה נשענות על `prior` שהוא עובדה. הסיבה: אם בעל-העסק ישלח שוב בלי לשנות
+      // דבר, `affectedKeys()` יכול לצאת ריק, הכתיבה תאושר, וה-flag הזה יישאר false — כלומר
+      // הוא אינו מדד אמין ל"כבר קיים". `prior` נכון בשני המקרים.
+      let alreadyExisted = false;
+      const bizRef = doc(db, 'businesses', bizId);
       // רשת סלולרית שנופלת לשנייה היא הכשל השכיח כאן, והמחיר שלו הוא עסק שלם שלא נרשם —
-      // לכן 3 ניסיונות עם המתנה עולה לפני שמכריזים על כשל. addDoc יוצר מסמך חדש בכל ניסיון,
-      // ולכן חוזרים רק כשהניסיון הקודם *לא* יצר כלום (bizDocRef עדיין null).
+      // לכן 3 ניסיונות עם המתנה עולה לפני שמכריזים על כשל.
+      // §361 — `setDoc` על מזהה קבוע ולא `addDoc`: הלולאה הזאת עצמה הייתה מסוכנת קודם, כי
+      // ניסיון שנדחה אחרי שהכתיבה כבר הגיעה לשרת היה מייצר מסמך שני בניסיון הבא. עכשיו
+      // שלושת הניסיונות מכוונים לאותו מסמך, ולכן הם אידמפוטנטיים.
       for (let attempt = 1; attempt <= 3 && !bizDocRef; attempt++) {
         try {
-          bizDocRef = await addDoc(collection(db, 'businesses'), data);
+          await setDoc(bizRef, data);
+          bizDocRef = bizRef;
         } catch (e) {
+          // ── permission-denied על מזהה שאנחנו יצרנו = **המסמך כבר קיים** ────────────────
+          // `setDoc` על מסמך קיים נשפט כ-update, ו-firestore.rules מתירה לאורח לעדכן חמישה
+          // שדות בלבד (ownerMemberId/photoProofUrl/logo/coverPhoto/photos) — ולכן כתיבה
+          // מלאה נדחית. אפשר להסיק מזה קיום **רק** כי המזהה נוצר אצלנו ונשמר מקומית: על
+          // מזהה חדש חוק ה-create דורש `status == 'pending'` בלבד, ואנחנו תמיד כותבים אותו,
+          // כך שדחייה שם הייתה באמת תקלת-הרשאות. `prior` הוא בדיוק התנאי הזה.
+          // זהו הענף שסוגר את המקרה שדווח: הכתיבה הראשונה נקלטה, בעל-העסק ויתר ושלח שוב,
+          // והשנייה נדחית — והוא רואה מסך הצלחה תקין על הרשומה האחת שקיימת.
+          if (e.code === 'permission-denied' && prior) {
+            console.warn('§361 — המסמך כבר קיים משליחה קודמת; ממשיכים אליו.');
+            bizDocRef = bizRef;
+            alreadyExisted = true;
+            break;
+          }
           saveErr = e;
           console.error(`Firestore save failed (attempt ${attempt}):`, e.code || '', e.message);
           if (attempt < 3) await new Promise(r => setTimeout(r, 700 * attempt));
         }
       }
       // קישור לרשומת-חבר הוא שלב-המשך: כשל בו לא מבטל הרשמה שכבר נוצרה (המנהל מקשר ידנית)
+      // §361 — ⚠️ **שני השלבים האלה רצים תמיד, גם בשליחה חוזרת, כי שניהם אידמפוטנטיים** —
+      // וזו הבדיקה שהכריעה כאן, לא הנחה:
+      //   bizTokens  — `setDoc` על מסמך קיים הוא update, ו-firestore.rules מתירה לאורח
+      //                `create` בלבד; כלומר כתיבה חוזרת נדחית לתוך ה-catch הקיים ולא מזיקה.
+      //   קישור-החבר — `/check-member-exists` (worker/src/index.js) מחפש לפי מייל ואז לפי
+      //                טלפון, ו-business.html קורא לו **בלי שם** ולכן nameMismatch לא נדלק.
+      //                החבר שנוצר בשליחה הראשונה נושא בדיוק את הטלפון והמייל האלה, ולכן
+      //                השנייה **מוצאת אותו ומקשרת** במקום ליצור חבר שני.
+      // הרווח: אם השליחה הראשונה מתה **אחרי** יצירת המסמך ולפני השלבים האלה, השנייה
+      // משלימה אותם — במקום להשאיר עסק בלי טוקן-כניסה ובלי בעלים מקושר.
+      // §361ב — קישור-הבעלים **אינו** מחכה כאן יותר. הוא שלוש נסיעות-רשת (fetch לוורקר
+      // שמריץ שתי שאילתות Firestore, כתיבה ל-members, ואז ownerMemberId על מסמך העסק),
+      // ואף אחת מהן אינה נדרשת לשלב המדיה: /upload-biz-media מזהה את העסק לפי הטוקן בלבד
+      // ונוגע רק בשדות התמונות. עד היום הן ישבו **לפני** ההעלאה ודחפו אותה בכמה שניות,
+      // בלי שום סיבה. עכשיו הן רצות במקביל אליה, וההמתנה משותפת.
+      // ⚠️ עדיין **ממתינים** לו לפני מסך ההצלחה (ר' Promise.all בסוף) — §292: מסך הצלחה
+      // אינו מסך אם משהו עוד רץ מאחוריו.
+      let ownerLinkPromise = null;
       if (bizDocRef) {
         // §244 — טוקן הכניסה לדשבורד, באוסף נפרד שאינו קריא ציבורית. כשל כאן לא מבטל הרשמה
         // שכבר נוצרה (בדיוק כמו קישור-החבר מתחת) — המנהל יכול להנפיק טוקן מחדש ממרכז הניהול.
+        // ⚠️ **זה כן נשאר בטור, ובכוונה:** `firestore.rules` מתנה יצירת bizTokens ב-
+        // `exists(businesses/{id}) && status == 'pending'`, כלומר הוא חייב לרוץ אחרי כתיבת
+        // המסמך; ו-/upload-biz-media מזהה את העסק דרכו, כלומר הוא חייב לרוץ לפני ההעלאה.
         try {
           await setDoc(doc(db, 'bizTokens', bizDocRef.id), { accessToken });
         } catch (e) { console.error('biz token write failed:', e.message); }
-        try {
-          const ownerMemberId = await linkOrCreateOwnerMember(data, bizDocRef.id);
-          await updateDoc(doc(db, 'businesses', bizDocRef.id), { ownerMemberId });
-        } catch (e) { console.error('owner member link failed:', e.message); }
+        ownerLinkPromise = (async () => {
+          try {
+            const ownerMemberId = await linkOrCreateOwnerMember(data, bizDocRef.id);
+            await updateDoc(doc(db, 'businesses', bizDocRef.id), { ownerMemberId });
+          } catch (e) { console.error('owner member link failed:', e.message); }
+        })();
       }
 
       if (!bizDocRef) {
         // §295 — רק עכשיו הטופס יורד מהמסך, כשיש תשובה סופית.
+        clearSubmitWaitTimers();
+        setSubmitWait('');
         setSubmitBusy(false);
         hideFormPanels();
         const failBody = document.getElementById('failBody');
@@ -2591,14 +2812,27 @@
         return;
       }
       localStorage.removeItem('_hb_bizRegDraft');   // רק עכשיו — הרשומה קיימת בפועל
+      // ⚠️ `_hb_bizPending` **לא** נמחק כאן, בכוונה, בשונה מהטיוטה: הוא לא "טיוטה שהוגשה"
+      // אלא הכתובת של המסמך שנוצר, וזה בדיוק מה שצריך לשרוד את 24 השעות הבאות כדי ששליחה
+      // חוזרת תגיע אליו ולא לחדש. הוא נשמר ממילא **לפני** הכתיבה (ר' priorSubmission),
+      // כי הרגע המסוכן — שבו בעל-העסק מוותר וסוגר — הוא בזמן ההמתנה ולא אחריה.
+      // שורת-ההמתנה עוברת ממשפט-הרגעה לדיווח-מצב אמיתי: הרשומה כבר אצלנו, מה שנשאר הן
+      // התמונות. זה נכון עובדתית ולכן אינו "חשיפת שלב פנימי" — זו התשובה ל"מה עוד רץ".
+      clearSubmitWaitTimers();
+      if (hasMediaToUpload) setSubmitWait('הפרטים נקלטו אצלנו ✓ — מסיימים להעלות את התמונות. אל תסגרו את הדף.');
+      else setSubmitWait('');
 
-      // §281 — אחרי ש-addDoc הצליח בפועל (הענף הזה לא נגיש כש-bizDocRef ריק), כלומר
+      // §281 — אחרי שהכתיבה הצליחה בפועל (הענף הזה לא נגיש כש-bizDocRef ריק), כלומר
       // "בקשה שנקלטה" ולא "ניסיון לחיצה". bizId מקשר את האירוע לרשומת העסק עצמה.
-      logEvent('formSubmit', { blockId: 'bizForm', bizId: bizDocRef.id });
+      // §361 — התנאי הוא `!prior` ולא `!alreadyExisted`: `prior` הוא **עובדה** (הייתה שליחה
+      // קודמת לאותו עסק מהדפדפן הזה), ואילו `alreadyExisted` הוא **הסקה** מקוד-שגיאה. שתי
+      // הכתיבות כאן הן ספירה/תור ולא נתוני-עסק, וכפל בהן מזיק: הראשונה מנפחת את משפך
+      // ההרשמה במרכז הניהול, השנייה מכניסה את אותו עסק פעמיים לתור "עסק השבוע".
+      if (!prior) logEvent('formSubmit', { blockId: 'bizForm', bizId: bizDocRef.id });
 
       // "עסק השבוע"/"הטבת השבוע" — רשומת תור נפרדת ב-weekly_interest (מודל הנתונים מ-§2 במסמך),
       // כדי שמסך הניהול "10 עסק השבוע" יוכל לקרוא רשימת מי הביע עניין בלי לסרוק את כל businesses
-      if (wantsBusinessOfWeek || wantsBenefitOfWeek) {
+      if ((wantsBusinessOfWeek || wantsBenefitOfWeek) && !prior) {
         addDoc(collection(db, 'weekly_interest'), {
           businessId:          bizDocRef.id,
           wantsBusinessOfWeek: wantsBusinessOfWeek,
@@ -2631,29 +2865,12 @@
           // §295 — אין כאן יותר דיווח-שלב לנרשם. §294 הוסיף "מעלים את התמונות…" כדי
           // שספינר-דומם לא ייקרא כמו תקלה; המשתמש דחה את זה — חשיפת שלבים פנימיים אחרי
           // שלחצת "שלח" נראית כמו מערכת שמתלבטת. הכפתור-בהמתנה עושה את אותה עבודה בשקט.
-          const form = new FormData();
+          // §361ב — הדחיסה כבר רצה מאז הלחיצה (ר' mediaFormPromise). ברוב המקרים היא
+          // הסתיימה בזמן שהמסמך והטוקן נכתבו, וה-`await` הזה חוזר מיד. אם לא — ממתינים
+          // לשארית בלבד. ⚠️ ה-await נשאר **בתוך** withTimeout בכוונה: דחיסה שנתקעת חייבת
+          // להיחסם בזמן בדיוק כמו קודם (§294), והעובדה שהיא התחילה מוקדם לא משנה זאת.
+          const form = await mediaFormPromise;
           form.append('accessToken', accessToken);
-          // ⚠️ §285 — עד היום `fanPhoto` היה **הקובץ היחיד כאן שנשלח גולמי**: הלוגו, התמונה
-          // המייצגת והגלריה כולם עוברים compressToFile, והוא לא. מאז §284 הוא נושא את ראיית
-          // האימות של בעל-העסק בכל ארבעת המסלולים, כלומר הקובץ הכי חשוב בטופס — ותמונת
-          // אייפון של 15MB+ בגוף ה-FormData היא בדיוק מה שמפיל את הבקשה לוורקר.
-          // נפילה-לאחור למקור אם הדחיסה נכשלה (פורמט שהדפדפן לא מפענח).
-          // §287 — compressProofToFile ולא compressToFile: הנתיב העמיד (createImageBitmap,
-          // בלי base64, תקרת-קנבס, וסבבים חוזרים אם התוצאה עדיין כבדה). ר' ההגדרה למעלה.
-          if (fanPhotoFile) form.append('fanPhoto', await compressProofToFile(fanPhotoFile));
-          if (effectiveLogoFile) form.append('logo', effectiveLogoFile);
-          if (effectiveCoverFile) {
-            const [mainFile, thumbFile] = await Promise.all([
-              compressToFile(effectiveCoverFile, COVER_MAX_DIM, 0.82, effectiveCoverFile.name),
-              compressToFile(effectiveCoverFile, 640, 0.80, 'thumb_' + effectiveCoverFile.name),
-            ]).catch(() => [effectiveCoverFile, effectiveCoverFile]);
-            form.append('cover', mainFile);
-            form.append('coverThumb', thumbFile);
-          }
-          for (const file of galleryFiles) {
-            const compressed = await compressToFile(file, 1280, 0.82, file.name).catch(() => file);
-            form.append('gallery', compressed);
-          }
           // ── ⚠️ §294 — גבול-זמן. זה היה השורש של "מסך תקוע" ──────────────────────────────
           // דווח בפועל: ההרשמה נקלטה, אבל המסך נשאר על "שולח את הבקשה שלכם…" עם ספינר —
           // *"הבעל עסק היה חושב שהוא לא נרשם"*. ה-fetch הזה רץ בלי AbortController, ולכן
@@ -2703,7 +2920,18 @@
           ' (yellowzonemta@gmail.com) — או העלו אותן בעצמכם מהדשבורד האישי שייפתח לכם אחרי האישור.';
         warnEl.style.display = 'block';
       }
+      // §361ב — סוגרים את מה שרץ במקביל. ה-catch כבר בתוך ownerLinkPromise, ולכן זה לא
+      // יכול לזרוק; ההמתנה כאן היא רק כדי שמסך ההצלחה לא יעלה בזמן שהקישור עוד באוויר.
+      // ⚠️ גם גבול-זמן: קישור תקוע לא יחזיק את מסך ההצלחה לנצח — הרשומה כבר קיימת,
+      // והמנהל יכול לקשר ידנית (זו כבר נפילת-הגיבוי המתועדת של השלב הזה).
+      if (ownerLinkPromise) {
+        await withTimeout(ownerLinkPromise, 20000, 'OwnerLinkTimeout')
+          .catch(e => console.error('owner link wait:', e.name));
+      }
+
       // §295 — החלפת-המסך היחידה בזרימה המוצלחת: מהטופס ישירות למסך ההצלחה.
+      clearSubmitWaitTimers();
+      setSubmitWait('');
       setSubmitBusy(false);
       hideFormPanels();
       document.getElementById('failState').style.display = 'none';
