@@ -3975,11 +3975,16 @@ await new Promise(resolve => {
   const unsub = onAuthStateChanged(auth, async user => {
     unsub();
     const storedId = localStorage.getItem('hb_memberId');
-    if (!user || !storedId || user.uid !== storedId) {
+    // §360 — ר' ההערה המלאה ב-welcome.html. `user === null` אינו הוכחה שהוא התנתק, ולכן הוא
+    // כבר לא מוחק את הזיהוי מהמכשיר. המחיקה נשארה **רק** לזהות שונה בפועל.
+    // ההפניה ל-welcome.html נשארת בשני המקרים: בלי auth כל קריאה אישית ל-Firestore תיכשל
+    // ממילא. ההבדל הוא שעכשיו הטלפון שלו מחכה לו מלא בטופס בצד השני, ולא מסך ריק.
+    if (storedId && user && user.uid !== storedId) {
       ['hb_uid', 'hb_phone', 'hb_memberId'].forEach(k => localStorage.removeItem(k));
       location.href = 'welcome.html';
       return;
     }
+    if (!user || !storedId) { location.href = 'welcome.html'; return; }
     // בכניסה טרייה-לגמרי (מיד אחרי signInWithCustomToken ב-welcome.html + ניווט-דף-מלא) נצפה
     // (2026-08-13, המשתמש דיווח חי): auth.currentUser כבר קיים אבל קריאות-Firestore הראשונות
     // נכשלות עם "Missing or insufficient permissions" גם על מסמך-החבר-של-עצמו — נראה שה-ID

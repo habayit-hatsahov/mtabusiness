@@ -1382,6 +1382,16 @@ window.applyMemberUI = function(isMember, name) {
     ? 'זה רק טעימה — כל האינדקס מחכה לכם בפנים'
     : 'הגישה המלאה לאינדקס זמינה לאוהדים מאושרים בלבד';
 };
+// §360 — מילוי הטלפון הידוע בטופס הכניסה. מוגדר כאן (סקריפט קלאסי, לפני המודול) כדי שיהיה
+// על window לפני ששער-ה-auth קורא לו — אותה מלכודת היקף של §310/§312.
+// לא דורס ערך שהמשתמש כבר הקליד, ולא גונב לו את הפוקוס.
+window._hbPrefillKnownPhone = function() {
+  try {
+    const p = localStorage.getItem('hb_phone');
+    const el = document.getElementById('heroPhoneInput');
+    if (p && el && !el.value.trim()) el.value = p;
+  } catch (_) {}
+};
 (function initState() { window.applyMemberUI(!window._hbForceGuest && !!localStorage.getItem('hb_memberId'), ''); })();
 </script>
 
@@ -1610,9 +1620,24 @@ await new Promise(resolve => {
   onAuthStateChanged(auth, async user => {
     const storedId = localStorage.getItem('hb_memberId');
     if (!window._hbForceGuest && user && storedId && user.uid === storedId) { location.href = 'home.html'; return; }
-    if (storedId && (!user || user.uid !== storedId)) {
+    // ── §360 — `null` אינו הוכחה שהוא התנתק ──────────────────────────────────────────────
+    // המשתמש דיווח על אוהד שנתבקש קוד למרות שכבר נכנס. הענף הזה מחק את הזיהוי מהמכשיר בכל
+    // פעם ש-onAuthStateChanged החזיר `user === null` — וזה **לא** אומר "התנתק": Firebase
+    // שומר את הסשן ב-IndexedDB, וכשהוא לא נגיש (מצב פרטי, Lockdown, WebView) ה-SDK נופל
+    // לאחסון-בזיכרון ומדווח null על מי שמעולם לא יצא. והמחיקה בלתי-הפיכה: גם אם ה-auth
+    // מתאושש שנייה אחר כך, כבר אין ממה להתאושש.
+    // ⚠️ זו בדיוק ההבחנה ש-§322 עשה לענף השני ("פסק-זמן ≠ אין session") ולא לזה.
+    // התנתקות אמיתית **כן** ממשיכה למחוק — `signOutUser` ב-profile.html מוחק את שלושת
+    // המפתחות במפורש. לכן storedId שקיים מול user=null הוא תמיד חריגה, לעולם לא יציאה מכוונת.
+    if (storedId && user && user.uid !== storedId) {
+      // זהות אחרת נכנסה במכשיר הזה — הזיהוי הישן באמת כבר לא שייך לו. כאן המחיקה נכונה.
       ['hb_uid', 'hb_phone', 'hb_memberId'].forEach(k => localStorage.removeItem(k));
       window.applyMemberUI(false, '');
+    } else if (storedId && !user) {
+      // שומרים את הזיהוי, מציגים טופס כניסה, וממלאים לו את הטלפון מראש — כך שנשאר לו להקיש
+      // קוד בלבד, במקום להתחיל מאפס ולחשוב שההרשמה שלו נעלמה.
+      window.applyMemberUI(false, '');
+      window._hbPrefillKnownPhone && window._hbPrefillKnownPhone();
     }
     openGate();
   });
