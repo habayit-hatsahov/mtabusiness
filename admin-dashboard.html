@@ -13863,15 +13863,26 @@ function regIssuesTableHtml(list) {
       // "72% נטשו" הוא מספר שאי אפשר לפעול לפיו; הצניחה בין שני שלבים סמוכים כן.
       : `<div class="mail-issues-note">הצלבה אוטומטית בין הצהרות האוהדים + כשלי שליחה אמיתיים מ-30 הימים האחרונים.${
           ab.opened ? ` בנוסף: ${ab.opened} פתחו את טופס ההרשמה ו-${ab.abandoned} מהם לא שלחו — נטישה, לא בהכרח תקלה, ולכן לא מופיעה כשורות.` : ''
-        }</div>${funnelHtml(FAN_FUNNEL)}${funnelHtml(BIZ_FUNNEL)}`;
+        }</div>`;
+  // §365 — המשפכים נפרדו מ-loadingNote ועברו אחרי השורות, מקופלים. ⚠️ הם עדיין מוצגים
+  // גם כשאין אף תקלה — שם הם התוכן היחיד, ואין מה להסתיר מאחוריו.
+  const funnels = (platformEvents === null || platformStatsError) ? '' :
+    `<details style="margin-top:14px">
+       <summary style="cursor:pointer;font-size:12px;font-weight:800;color:var(--text-sm);padding:6px 0">
+         📉 משפכי הנטישה — איפה עוזבים בטופס (${ab.opened} פתחו, ${ab.abandoned} לא שלחו)
+       </summary>
+       ${funnelHtml(FAN_FUNNEL)}${funnelHtml(BIZ_FUNNEL)}
+     </details>`;
   if (!list.length) {
     // §296 — "אין תקלות 🎉" רק כשבאמת בדקנו. כשהאירועים עוד בדרך זו הכרזה שאין לה כיסוי.
     return `${loadingNote}<div class="placeholder-note">${
       platformEvents === null && !platformStatsError
         ? 'ההצלבות נקיות. כשלי-השליחה מ-30 הימים האחרונים עדיין נטענים…'
         : 'אין תקלות הרשמה 🎉 אין שני אוהדים על אותו מושב, אין מספר מנוי כפול או מומצא, אף הרשמה לא נכשלה ואף תמונה לא אבדה בדרך.'
-    }</div>`;
+    }</div>${funnels}`;
   }
+  // §365 — סדר: הודעה קצרה → **השורות** → המשפכים המקופלים. מי שנכנס מקוביית התקלות
+  // רוצה לראות מה לטפל בו, לא אחוזי-נטישה.
   return `
     ${loadingNote}
     <div class="task-table mail-issues">${list.map(x => `
@@ -13895,7 +13906,7 @@ function regIssuesTableHtml(list) {
           ${x.bizRef ? `<button class="act-btn tiny" onclick="selectTask2('biz','${x.bizRef.id}')">פתיחת ${esc(x.bizRef.name)}</button>` : ''}
           <button class="act-btn approve tiny" onclick="markRegIssueHandled('${esc(x.key)}','${escJsAttr(x.title)}')">✔️ טיפלתי</button>
         </div>
-      </div>`).join('')}</div>`;
+      </div>`).join('')}</div>${funnels}`;
 }
 
 window.markBizWriteErrorHandled = async function(id, key, code, name) {
