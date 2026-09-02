@@ -440,7 +440,7 @@ window._hbEnvTag = 'probing';
 <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin/>
 <!-- הוורקר — גם מודאל-ההרשמה (iframe של fan-register.html) וגם מנגנון-הכניסה פונים אליו.
      חיבור פתוח מראש חוסך את ה-DNS+TLS מזמן-ההמתנה של המשתמש (§280). -->
-<link rel="preconnect" href="https://habayit-hatsahov-worker.yellowzone.workers.dev" crossorigin/>
+<link rel="preconnect" href="https://api.yellowzone.co.il" crossorigin/>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js"/>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore-lite.js"/>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js"/>
@@ -1413,7 +1413,30 @@ const firebaseConfig = {
 const app  = initializeApp(firebaseConfig);
 const db   = getFirestore(app);
 const auth = getAuth(app);
-const WORKER_URL = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
+// ── §364 — הכתובת עברה לדומיין שלנו, עם נפילה-לאחור לישנה ────────────────────────────────
+// למה: §359 הוכיח שהרשת הסלולרית של אוהד מאושר חוסמת את `*.workers.dev` — סיומת ציבורית
+// משותפת שמופיעה ברשימות סינון-תוכן. הוא נכשל 5 פעמים, ונכנס מיד כשעבר ל-Wi-Fi.
+// `api.yellowzone.co.il` הוא שם שאינו על אף רשימה כזאת.
+//
+// ⚠️ **הישנה נשארת חיה בכוונה, ולא נמחקת.** החלפה מלאה הופכת תקלה של אדם אחד לתקלה של
+// כולם: אם הכתובת החדשה תיפול, כל האוהדים ננעלים בחוץ בבת אחת. שתי הכתובות מגישות את
+// אותו וורקר בדיוק (נמדד: 0.57–0.71 שנ' מול 0.58–0.77 — זהה), ולכן הגיבוי חינמי.
+const HB_API_PRIMARY  = 'https://api.yellowzone.co.il';
+const HB_API_FALLBACK = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
+// ⚠️ **רק כשל-רשת מפעיל את הגיבוי — לא תשובה שהתקבלה.** `fetch` נדחה רק כשלא הייתה תשובה
+// בכלל (DNS/חיבור/TLS); סטטוס 4xx/5xx נחשב הצלחה ועובר הלאה כרגיל. ניסיון חוזר על תשובה
+// תקינה היה שולח את הבקשה פעמיים ומכפיל את מונה-הניסיונות בוורקר (`recordAttempt`).
+//
+// ⚠️ **AbortError אינו כשל-רשת אלא החלטה שלנו** (פסק-הזמן/התקרה של §353). ניסיון חוזר עליו
+// היה מבטל בדיוק את הגבול שהצבנו ומחזיר את הבאג של §280 — await בלי גבול, שכבה אחת פנימה.
+const hbApiFetch = (path, opts) =>
+  fetch(HB_API_PRIMARY + path, opts).catch(err => {
+    if (err && err.name === 'AbortError') throw err;
+    // נוסע ב-blockId כ-'|fb' (ר' heroEnvTagAt). בלעדיו נפילה-לאחור היא בדיוק הדבר שהכי
+    // חשוב לדעת עליו — "הכתובת החדשה לא עונה" — והיחיד שאין לו שום עקבות במדידה.
+    window._hbApiFellBack = true;
+    return fetch(HB_API_FALLBACK + path, opts);
+  });
 
 // ── שכבת מדידה (שלב 7, §3 במפרט) — זהה ל-home.html, מותאם ל-firestore-lite (בלי onSnapshot,
 // אבל addDoc/serverTimestamp נתמכים). חשוף כ-window. כי cardFans/cardBiz/openJoinModal וכו'
@@ -1797,9 +1820,13 @@ const heroIsTimeout = (e) => !!e && (e.name === 'AbortError' || e.message === 'h
 // בענפי הכשל). זה מה שמבדיל בפאנל בין "נכשל פעם אחת ונכנס" לבין "חמש פעמים ולא נכנס" —
 // אותה הבחנה שנדרשה ידנית ב-1.9 כדי לזהות שיש כאן אדם תקוע ולא רעש. נוסע ב-`blockId`
 // באותה חגורה בדיוק: 'pwa|idb-blocked|sw-none|35.0s|x9' = 33 תווים, מתחת ל-50 של ה-rules.
+// §364 — `fb` = הבקשה נפלה-לאחור ל-workers.dev, כלומר **הכתובת החדשה לא ענתה**. זו העדות
+// היחידה לכך; בלעדיה `api.yellowzone.co.il` היה יכול להיות מת שבוע ואיש לא היה יודע, כי
+// הגיבוי מסתיר את הכשל בהצלחה. 'web|idb-ok|sw-v52|8.0s|x2|fb' = 30 תווים, מתחת ל-50.
 const heroEnvTagAt = (t0) => {
   const n = (window.hbNetFailCount && window.hbNetFailCount()) || 0;
-  return `${window._hbEnvTag}|${((Date.now() - t0) / 1000).toFixed(1)}s${n ? '|x' + n : ''}`.slice(0, 50);
+  const fb = window._hbApiFellBack ? '|fb' : '';
+  return `${window._hbEnvTag}|${((Date.now() - t0) / 1000).toFixed(1)}s${n ? '|x' + n : ''}${fb}`.slice(0, 50);
 };
 window.heroLogin = async function() {
   const phoneRaw = document.getElementById('heroPhoneInput').value.trim();
@@ -1869,7 +1896,11 @@ window.heroLogin = async function() {
   // מעבר ל-35 שניות אין יותר על מה להגן: אף אחד לא ממתין כל כך, וההמתנה עצמה הופכת לדליפה.
   const ac = new AbortController();
   const hardAbortTimer = setTimeout(() => ac.abort(), HERO_HARD_ABORT_MS);
-  const pending = fetch(WORKER_URL + '/mint-member-token', {
+  // §364 — hbApiFetch: הכתובת שלנו קודם, ונפילה-לאחור ל-workers.dev רק על כשל-רשת אמיתי.
+  // ⚠️ `.then(r => r.json())` נשאר **מחוץ** לגיבוי במכוון: תשובה שהתקבלה ולא נפרסה פירושה
+  // ששרת כן ענה, ובקשה חוזרת עליה הייתה מכפילה את `recordAttempt` של הוורקר ומקרבת את
+  // האוהד לחסימת "יותר מדי ניסיונות" — עונש על תקלה שלנו.
+  const pending = hbApiFetch('/mint-member-token', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone: phoneRaw, code }), signal: ac.signal
   }).then(r => r.json()).finally(() => clearTimeout(hardAbortTimer));
@@ -2062,7 +2093,9 @@ window.heroRequestResend = async function() {
   const abortTimer = setTimeout(() => ac.abort(), HERO_TIMEOUT_MS);
   let timedOut = false;
   try {
-    await fetch(WORKER_URL + '/resend-login-code', {
+    // §364 — גם כאן דרך hbApiFetch: לכפתור הזה פונה מי שכבר לא הצליח להיכנס, כלומר בדיוק
+    // מי שסביר שהכתובת הראשית חסומה אצלו. נתיב-מילוט שנשען על הכתובת שנחסמה אינו מילוט.
+    await hbApiFetch('/resend-login-code', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone: phoneRaw }), signal: ac.signal
     });
