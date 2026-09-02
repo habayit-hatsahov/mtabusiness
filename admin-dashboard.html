@@ -2658,6 +2658,10 @@ function hydrateFan(id, raw) {
     registeredAt: toJsDate(raw.submittedAt) || new Date(),
     registeredAtKnown: !!toJsDate(raw.submittedAt), // ר' ההערה ב-hydrateBiz (§253)
     approvedAt: toJsDate(raw.approvedAt),
+    // §367 — נכתב ב-home.html בכל טעינה מאז 2.8.26, ומעולם לא נקרא במרכז הניהול.
+    // בלעדיו אי אפשר לענות על "כמה אישרתי ולא נכנסו" — השאלה שמצדיקה או שוללת את כל
+    // העבודה על כניסה עם גוגל.
+    lastSeenAt: toJsDate(raw.lastSeenAt),
     rejectedAt: toJsDate(raw.rejectedAt),
     loginCodeCreatedAt: toJsDate(raw.loginCodeCreatedAt),
     loginCodeEmailQueuedAt: toJsDate(raw.loginCodeEmailQueuedAt), // מתי נכנס לתור השליחה — בסיס למדידת איחור
@@ -5061,6 +5065,23 @@ const platPct = (n, of) => of > 0 ? Math.round((n / of) * 100) + '%' : '—';
 // ── תצוגה (2026-08-26, בקשת המשתמש) ──────────────────────────────────────────────────────
 // הוחלף מרשת-ריבועים לשורות: ריבועים מכריחים את ההסבר להיות זעיר ומצומצם, ובפועל 12 ריבועים
 // זהים זה לצד זה נקראים כמו קיר-מספרים בלי היררכיה. שורה נותנת מקום אמיתי למשפט-הסבר.
+// ── §367 — כמה אוהדים אושרו ולא נכנסו מעולם ───────────────────────────────
+// המשתמש: *"תבדוק כמה אישרתי שלא נכנסו"*. זה המחיר בפועל של "טלפון + קוד" בכניסה
+// הראשונה: אוהד שאישרת, שהונפק לו קוד, ושמעולם לא הגיע פנימה.
+//
+// ⚠️ **תקרת-אמינות שחייבת להיאמר במסך ולא רק כאן:** `lastSeenAt` נכתב רק מ-2.8.26.
+// אוהד שנכנס לפני התאריך הזה ולא חזר מאז ייספר כ"לא נכנס". לכן השורה הראשונה היא
+// **גבול עליון** בלבד, והשנייה — שמוגבלת למי שאושר אחרי שהמדידה כבר רצה — היא המספר
+// שאפשר להסתמך עליו. מספר יחיד בלי הסייג הזה היה שקר שקט.
+const HB_SEEN_SINCE = new Date('2026-08-02T00:00:00Z');
+function fanEntryStats() {
+  const approved = (MOCK_FANS || []).filter(f => f.status === 'approved');
+  const never = approved.filter(f => !f.lastSeenAt);
+  const clean = approved.filter(f => f.approvedAt && f.approvedAt >= HB_SEEN_SINCE);
+  const cleanNever = clean.filter(f => !f.lastSeenAt);
+  return { approved: approved.length, never: never.length, clean: clean.length, cleanNever: cleanNever.length };
+}
+
 function platRow(name, num, sub, help) {
   return `<div class="plat-row">
     <div class="plat-row-name">${name}</div>
@@ -5125,6 +5146,21 @@ function platformStatsHtml() {
       <span>להציג גם צפיות של מנהלים${a.adminHidden ? ` (${a.adminHidden.toLocaleString('he-IL')} אירועים בטווח)` : ''}</span>
     </label>
 
+    ${(() => {
+      // §367 — נגזר מ-MOCK_FANS ולא מהאירועים, ולכן מדויק גם כשהמדידה חלקית או קטומה.
+      const fe = fanEntryStats();
+      if (!fe.approved) return '';
+      const pct = Math.round(fe.never / fe.approved * 100);
+      return `<div class="plat-sect">אוהדים מאושרים</div>
+      <div class="plat-rows">
+        ${platRow('אושרו ולא נכנסו מעולם', fe.never.toLocaleString('he-IL'),
+          `${pct}% מתוך ${fe.approved.toLocaleString('he-IL')} מאושרים`,
+          '⚠️ <b>גבול עליון.</b> הנתון (lastSeenAt) נכתב רק מ-2.8.26, ולכן אוהד שנכנס לפני כן ולא חזר מאז נספר כאן בטעות. השורה מתחת מסננת את זה.')}
+        ${platRow('מתוכם — אושרו מ-2.8.26 ואילך', fe.cleanNever.toLocaleString('he-IL'),
+          `מתוך ${fe.clean.toLocaleString('he-IL')} שאושרו מאז`,
+          'כאן אין סייג היסטורי: כל אוהד בקבוצה הזאת אושר אחרי שהמדידה כבר רצה, ולכן "לא נכנס" אומר <b>באמת לא נכנס</b>. זה המספר שאפשר להסתמך עליו.')}
+      </div>`;
+    })()}
     <div class="plat-sect">כניסות</div>
     <div class="plat-rows">
       ${platRow('דף הנחיתה', a.landing.toLocaleString('he-IL'),
@@ -5327,7 +5363,7 @@ function dataFutureRoadmapHtml() {
 
       <div style="font-size:12px;font-weight:800;color:var(--text);margin:14px 0 4px">👥 אוהדים</div>
       <div class="roadmap-list">
-        · נכנסו ב-30 יום / לא נכנסו מאז האישור — <b>lastSeenAt כבר נכתב</b> בכל טעינת home.html, רק לא מסונן/מוצג<br>
+        · <b>✅ §367 — "אושרו ולא נכנסו מעולם" מוצג עכשיו</b> בראש פאנל הפלטפורמה (גבול-עליון + מספר נקי מ-2.8.26). "נכנסו ב-30 יום" עדיין לא נבנה<br>
         · האוהדים הכי פעילים (כניסות+לחיצות פר-אוהד, לא רק לבבות) — pageView/bizClick <b>כבר נאספים עם memberId</b>, רק לא מקובצים פר-אוהד<br>
         · יחס-מעורבות (לב לכל 100 לחיצות, פנייה לכל 100 לחיצות, % אוהדים פעילים) — נגזר מנתונים-קיימים אחרי שיש אגרגציה
       </div>
