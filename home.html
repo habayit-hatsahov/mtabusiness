@@ -4037,8 +4037,18 @@ await new Promise(resolve => {
 // מזהים ולא ב-`node --check`, שמעולם לא יתלונן על קבוע שלא קיים — זו בדיוק הדרך
 // שבה §340 שבר בלוק שלם. בלי נפילה-לאחור ל-workers.dev במכוון: קישור חשבון הוא
 // פעולה שאפשר לחזור עליה, בניגוד לכניסה עצמה (§364), והכתובת הישנה היא בדיוק זו שמסוננת.
-const HB_API_PRIMARY  = 'https://api.yellowzone.co.il';
-const HB_API_FALLBACK = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
+// ── §374 — ושלישית, אצל ספק אחר ─────────────────────────────────────────
+// §373 (למטה) צדק שצריך את שתיהן — אבל שתיהן על **קלאודפלייר**. שובל צרפתי
+// נכשל בשתיהן באותה דקה (3 שורות `loginFail` שכולן נשאו `fb`, כלומר הגיבוי
+// פעל וגם הוא נפל), בזמן שהאתר מ-GitHub Pages והמדידה ל-Firestore עבדו לו.
+// 🔑 **גיבוי חייב להיות ברשת אחרת, לא בשם אחר על אותה רשת.**
+// ⚠️ **זהו עותק שני של השרשרת** (המקור: welcome.html). כל שינוי כאן חייב
+// להיעשות בשני הקבצים — שני עותקים של אותה לוגיקה נפרדים תמיד (§353/§357).
+const HB_API_HOSTS = [
+  'https://api.yellowzone.co.il',                             // קלאודפלייר
+  'https://habayit-hatsahov-worker.yellowzone.workers.dev',   // קלאודפלייר
+  'https://habayit-hatsahov.web.app/api',                     // גוגל (§374)
+];
 // ── §373 — שתי הכתובות, וזה לא עודף ─────────────────────────────────────
 // §372 ויתר על הנפילה-לאחור כאן, בנימוק ש"קישור חשבון הוא פעולה שאפשר לחזור
 // עליה" וש-`api.yellowzone.co.il` היא הכתובת הזמינה. **זו הייתה טעות, והיא נפלה
@@ -4052,12 +4062,16 @@ const HB_API_FALLBACK = 'https://habayit-hatsahov-worker.yellowzone.workers.dev'
 // ⚠️ **רק כשל-רשת מפעיל את הגיבוי, לא תשובה שהתקבלה** (זהה ל-welcome.html):
 // `fetch` נדחה רק כשלא היתה תשובה בכלל. סטטוס 4xx/5xx הוא תשובה תקינה,
 // וניסיון חוזר עליה היה שולח את אותה פעולה פעמיים.
-const hbApiFetch = (path, opts) =>
-  fetch(HB_API_PRIMARY + path, opts).catch(err => {
-    if (err && err.name === 'AbortError') throw err;
-    console.warn('api.yellowzone.co.il unreachable — falling back to workers.dev');
-    return fetch(HB_API_FALLBACK + path, opts);
-  });
+const hbApiFetch = (path, opts) => {
+  const tryHost = (i) =>
+    fetch(HB_API_HOSTS[i] + path, opts).catch(err => {
+      if (err && err.name === 'AbortError') throw err;
+      if (i + 1 >= HB_API_HOSTS.length) throw err;
+      console.warn('§374 — ' + HB_API_HOSTS[i] + ' unreachable, trying ' + HB_API_HOSTS[i + 1]);
+      return tryHost(i + 1);
+    });
+  return tryHost(0);
+};
 const HB_GOOGLE_CLIENT_ID = '459607487972-esu70diuu360tg1ji15o1n1tikf3npnb.apps.googleusercontent.com';
 
 function openGoogleLinkSheet() {

@@ -1413,30 +1413,56 @@ const firebaseConfig = {
 const app  = initializeApp(firebaseConfig);
 const db   = getFirestore(app);
 const auth = getAuth(app);
-// ── §364 — הכתובת עברה לדומיין שלנו, עם נפילה-לאחור לישנה ────────────────────────────────
-// למה: §359 הוכיח שהרשת הסלולרית של אוהד מאושר חוסמת את `*.workers.dev` — סיומת ציבורית
-// משותפת שמופיעה ברשימות סינון-תוכן. הוא נכשל 5 פעמים, ונכנס מיד כשעבר ל-Wi-Fi.
-// `api.yellowzone.co.il` הוא שם שאינו על אף רשימה כזאת.
+// ── §374 — שלוש כתובות על שתי רשתות שונות ────────────────────────────────────────────────
+// §364 הניח שהבעיה היא **השם** `workers.dev` (סיומת גנרית שעל רשימות סינון), ולכן הוסיף שם
+// משלנו. שובל צרפתי (2.9, 10:31–10:32) הפריך את ההנחה: שלוש שורות `loginFail` רצופות
+// שכולן נשאו `fb` — כלומר הכתובת החדשה נכשלה, נפלנו לישנה, **וגם היא נכשלה**. שתיהן יושבות
+// על קלאודפלייר (188.114.96/97.7 מול 104.21/172.67), וכל מה שכן עבד אצלו באותן שניות —
+// האתר מ-GitHub Pages, והמדידה שנכתבה ל-Firestore — אינו קלאודפלייר.
 //
-// ⚠️ **הישנה נשארת חיה בכוונה, ולא נמחקת.** החלפה מלאה הופכת תקלה של אדם אחד לתקלה של
-// כולם: אם הכתובת החדשה תיפול, כל האוהדים ננעלים בחוץ בבת אחת. שתי הכתובות מגישות את
-// אותו וורקר בדיוק (נמדד: 0.57–0.71 שנ' מול 0.58–0.77 — זהה), ולכן הגיבוי חינמי.
-const HB_API_PRIMARY  = 'https://api.yellowzone.co.il';
-const HB_API_FALLBACK = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
-// ⚠️ **רק כשל-רשת מפעיל את הגיבוי — לא תשובה שהתקבלה.** `fetch` נדחה רק כשלא הייתה תשובה
+// 🔑 **גיבוי חייב להיות ברשת אחרת, לא בשם אחר על אותה רשת.** שתי הכתובות הראשונות נופלות
+// יחד כשהנתיב אל קלאודפלייר חסום. השלישית יושבת אצל גוגל — **הרשת היחידה שיש עליה הוכחה
+// מהמכשיר החסום עצמו**: שלוש שורות הכשל שלו נכתבו ל-Firestore בדיוק בשניות שבהן קלאודפלייר
+// לא ענתה. היא מתווך דק שמעביר לאותו וורקר (`functions/index.js`) — **לא מימוש שני של
+// לוגיקת הכניסה**, כדי שלא תיוולד סחיפה בין שני עותקים (§353/§357).
+//
+// ⚠️ **הסדר הוא הסדר**: נוסים אחת-אחת ולא במקביל. שלוש בקשות בו-זמנית היו מכפילות את
+// `recordAttempt` בוורקר ומקרבות את האוהד לחסימת "יותר מדי ניסיונות" — עונש על תקלה שלנו.
+// הקפיצות נכנסות בתוך חלון-ההצלה של §353 (8 שנ' ספינר, 35 שנ' תקרה), ולכן הספים לא משתנים.
+const HB_API_HOSTS = [
+  'https://api.yellowzone.co.il',                             // קלאודפלייר — השם שלנו (§364)
+  'https://habayit-hatsahov-worker.yellowzone.workers.dev',   // קלאודפלייר — הישנה
+  'https://habayit-hatsahov.web.app/api',                     // 🔑 גוגל — רשת אחרת לגמרי (§374)
+];
+// ⚠️ **רק כשל-רשת מקדם לכתובת הבאה — לא תשובה שהתקבלה.** `fetch` נדחה רק כשלא הייתה תשובה
 // בכלל (DNS/חיבור/TLS); סטטוס 4xx/5xx נחשב הצלחה ועובר הלאה כרגיל. ניסיון חוזר על תשובה
 // תקינה היה שולח את הבקשה פעמיים ומכפיל את מונה-הניסיונות בוורקר (`recordAttempt`).
 //
 // ⚠️ **AbortError אינו כשל-רשת אלא החלטה שלנו** (פסק-הזמן/התקרה של §353). ניסיון חוזר עליו
 // היה מבטל בדיוק את הגבול שהצבנו ומחזיר את הבאג של §280 — await בלי גבול, שכבה אחת פנימה.
-const hbApiFetch = (path, opts) =>
-  fetch(HB_API_PRIMARY + path, opts).catch(err => {
-    if (err && err.name === 'AbortError') throw err;
-    // נוסע ב-blockId כ-'|fb' (ר' heroEnvTagAt). בלעדיו נפילה-לאחור היא בדיוק הדבר שהכי
-    // חשוב לדעת עליו — "הכתובת החדשה לא עונה" — והיחיד שאין לו שום עקבות במדידה.
-    window._hbApiFellBack = true;
-    return fetch(HB_API_FALLBACK + path, opts);
-  });
+//
+// 🔑 **`st` הוא מצב פר-ניסיון, וזה תיקון של באג אמיתי מ-§364.** קודם זה היה
+// `window._hbApiFellBack = true` שלא התאפס אף פעם — כלומר נפילה-לאחור אחת צבעה את **כל**
+// האירועים הבאים באותו סשן ב-`fb`, גם אם הכתובת הראשית ענתה מצוין אחר כך. שדה-אבחון
+// שמערבב "קרה פעם בסשן" עם "קרה עכשיו" הוא בדיוק הכשל של §353, ועם שלוש כתובות הוא כבר
+// לא רק לא-מדויק אלא מסתיר את ההבחנה היחידה שחשובה: **איזו** כתובת ענתה.
+const hbApiFetch = (path, opts, st) => {
+  const state = st || {};
+  state.via = 0;
+  const tryHost = (i) =>
+    fetch(HB_API_HOSTS[i] + path, opts).catch(err => {
+      if (err && err.name === 'AbortError') throw err;
+      if (i + 1 >= HB_API_HOSTS.length) throw err;
+      state.via = i + 1;
+      return tryHost(i + 1);
+    });
+  return tryHost(0);
+};
+// §374 — נחשף ל-window **בכוונה**: §370 בונה את הכניסה עם גוגל, והיא פונה לאותו וורקר
+// (`/google-login`). קריאה ישירה ל-`WORKER_URL` שם הייתה יורשת את החסימה במלואה — מסלול
+// כניסה חדש ונוצץ שנכשל אצל בדיוק אותם אוהדים. **כל קריאת-כניסה עוברת דרך כאן.**
+// (ר' feedback_module_scope_onclick: מה שנקרא מחוץ למודול חייב חשיפה מפורשת.)
+window.hbApiFetch = hbApiFetch;
 
 // ── שכבת מדידה (שלב 7, §3 במפרט) — זהה ל-home.html, מותאם ל-firestore-lite (בלי onSnapshot,
 // אבל addDoc/serverTimestamp נתמכים). חשוף כ-window. כי cardFans/cardBiz/openJoinModal וכו'
@@ -1820,12 +1846,17 @@ const heroIsTimeout = (e) => !!e && (e.name === 'AbortError' || e.message === 'h
 // בענפי הכשל). זה מה שמבדיל בפאנל בין "נכשל פעם אחת ונכנס" לבין "חמש פעמים ולא נכנס" —
 // אותה הבחנה שנדרשה ידנית ב-1.9 כדי לזהות שיש כאן אדם תקוע ולא רעש. נוסע ב-`blockId`
 // באותה חגורה בדיוק: 'pwa|idb-blocked|sw-none|35.0s|x9' = 33 תווים, מתחת ל-50 של ה-rules.
-// §364 — `fb` = הבקשה נפלה-לאחור ל-workers.dev, כלומר **הכתובת החדשה לא ענתה**. זו העדות
-// היחידה לכך; בלעדיה `api.yellowzone.co.il` היה יכול להיות מת שבוע ואיש לא היה יודע, כי
-// הגיבוי מסתיר את הכשל בהצלחה. 'web|idb-ok|sw-v52|8.0s|x2|fb' = 30 תווים, מתחת ל-50.
-const heroEnvTagAt = (t0) => {
+// §364/§374 — `fb`/`fb2` = **איזו כתובת סיפקה את התוצאה הסופית** (תשובה, או הכשל האחרון):
+// בלי סימן = הראשית, `fb` = הגיבוי ב-workers.dev, `fb2` = הכתובת השלישית אצל גוגל. זו העדות
+// היחידה לכך שכתובת קודמת לא ענתה — בלעדיה `api.yellowzone.co.il` היה יכול להיות מת שבוע
+// ואיש לא היה יודע, כי הגיבוי מסתיר את הכשל בהצלחה.
+// ⚠️ **הערך נגזר ממצב פר-ניסיון (`st.via`) ולא מדגל גלובלי**, ר' ההערה על `hbApiFetch`:
+// עד §374 הדגל היה דביק לכל הסשן והפך את הסימן הזה לחסר-משמעות מהאירוע השני והלאה.
+// 'web|idb-ok|sw-v58|11.5s|x3|fb2' = 31 תווים, מתחת ל-50 של ה-rules.
+const heroEnvTagAt = (t0, st) => {
   const n = (window.hbNetFailCount && window.hbNetFailCount()) || 0;
-  const fb = window._hbApiFellBack ? '|fb' : '';
+  const via = (st && st.via) || 0;
+  const fb = via === 0 ? '' : via === 1 ? '|fb' : '|fb' + via;
   return `${window._hbEnvTag}|${((Date.now() - t0) / 1000).toFixed(1)}s${n ? '|x' + n : ''}${fb}`.slice(0, 50);
 };
 window.heroLogin = async function() {
@@ -1836,6 +1867,10 @@ window.heroLogin = async function() {
   const btn = document.getElementById('heroLoginBtn');
   btn.disabled = true; btn.textContent = 'בודק...';
   const t0 = Date.now();
+  // §374 — מצב פר-ניסיון: `api.via` אומר איזו מבין שלוש הכתובות סיפקה את התוצאה. נוצר כאן
+  // ולא ברמת המודול **בכוונה** — התשובות המאוחרות של §353 קוראות אותו הרבה אחרי שניסיון
+  // חדש כבר התחיל, ומשתנה גלובלי היה נותן להן את הערך של הניסיון האחר (הבאג של §364).
+  const api = { via: 0 };
   const deadline = t0 + HERO_TIMEOUT_MS;
   const myAttempt = ++heroLoginSeq;   // §353, ר' ההערה על heroLoginSeq
   // §353 — "הניסיון הזה הוא עדיין זה שהאוהד ממתין לו". כל כתיבה למסך עוברת דרכו; המדידה לא.
@@ -1896,14 +1931,14 @@ window.heroLogin = async function() {
   // מעבר ל-35 שניות אין יותר על מה להגן: אף אחד לא ממתין כל כך, וההמתנה עצמה הופכת לדליפה.
   const ac = new AbortController();
   const hardAbortTimer = setTimeout(() => ac.abort(), HERO_HARD_ABORT_MS);
-  // §364 — hbApiFetch: הכתובת שלנו קודם, ונפילה-לאחור ל-workers.dev רק על כשל-רשת אמיתי.
+  // §364/§374 — hbApiFetch: שלוש כתובות בסדר קבוע, וקידום לבאה רק על כשל-רשת אמיתי.
   // ⚠️ `.then(r => r.json())` נשאר **מחוץ** לגיבוי במכוון: תשובה שהתקבלה ולא נפרסה פירושה
   // ששרת כן ענה, ובקשה חוזרת עליה הייתה מכפילה את `recordAttempt` של הוורקר ומקרבת את
   // האוהד לחסימת "יותר מדי ניסיונות" — עונש על תקלה שלנו.
   const pending = hbApiFetch('/mint-member-token', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone: phoneRaw, code }), signal: ac.signal
-  }).then(r => r.json()).finally(() => clearTimeout(hardAbortTimer));
+  }, api).then(r => r.json()).finally(() => clearTimeout(hardAbortTimer));
   pending.catch(() => {});
 
   try {
@@ -1942,7 +1977,7 @@ window.heroLogin = async function() {
     // §353 — **המדידה נרשמת תמיד, המסך מתעדכן רק אם זה עדיין הניסיון הנוכחי.** שתי החלטות
     // הפוכות בכוונה: כשל אמיתי קרה וחייב להיספר, אבל כתיבה למסך של ניסיון שכבר נזנח דורסת
     // את הניסיון שרץ עכשיו — כולל heroResetLoginBtn, שהיה מפעיל כפתור באמצע "בודק...".
-    window.logEvent && window.logEvent('loginFail', { channel: failReason, blockId: heroEnvTagAt(t0), phone: heroNormalizePhoneDigits(phoneRaw) });
+    window.logEvent && window.logEvent('loginFail', { channel: failReason, blockId: heroEnvTagAt(t0, api), phone: heroNormalizePhoneDigits(phoneRaw) });
     // §359 — **מאפס**, וזה כל התפקיד שלו כאן: הגענו לשורה הזאת רק בזכות תשובה שהוורקר
     // החזיר, כלומר הכתובת נגישה. בלי האיפוס, אוהד שנחסם אתמול והצליח היום היה ממשיך
     // לראות "הרשת שלכם חוסמת" על טעות-קוד רגילה. מעל הגארד כמו ה-logEvent, מאותה סיבה.
@@ -1964,7 +1999,7 @@ window.heroLogin = async function() {
     // ⚠️ הגארד הזה נדרש **במיוחד** כאן: פסק-הזמן של ניסיון ישן יורה 8 שניות אחרי הלחיצה
     // שלו, כלומר הרבה אחרי שהאוהד כבר לחץ שוב — ובלעדיו הוא היה מוחק הודעה נכונה של הניסיון
     // החדש ומחזיר את הכפתור מ"בודק..." באמצע בקשה חיה.
-    window.logEvent && window.logEvent('loginFail', { channel: reason, blockId: heroEnvTagAt(t0), phone: heroNormalizePhoneDigits(phoneRaw) });
+    window.logEvent && window.logEvent('loginFail', { channel: reason, blockId: heroEnvTagAt(t0, api), phone: heroNormalizePhoneDigits(phoneRaw) });
     // §359 — מעל הגארד יחד עם ה-logEvent ומאותה סיבה: המונה הוא היסטוריה, ומי שלחץ שוב
     // בזמן שהניסיון הקודם עוד רץ הוא **בדיוק** מי שנחסם. גארד מעליו היה מאבד את הספירה
     // אצל הנחסמים בלבד — אותה מלכודת של §353, שלב אחד קדימה.
@@ -2020,7 +2055,7 @@ window.heroLogin = async function() {
             // התפצלו: המדידה אמרה 'lateAuthError' ופניית-העזרה נשאה 'authTimeout'.
             const authReason = authIsT ? 'lateAuthTimeout' : 'lateAuthError';
             // מעל הגארד, מאותה סיבה כמו בשני הענפים שמתחת.
-            window.logEvent && window.logEvent('loginFail', { channel: authReason, blockId: heroEnvTagAt(t0), phone: heroNormalizePhoneDigits(phoneRaw) });
+            window.logEvent && window.logEvent('loginFail', { channel: authReason, blockId: heroEnvTagAt(t0, api), phone: heroNormalizePhoneDigits(phoneRaw) });
             // §359 — מאפס: הטוקן הונפק, כלומר הוורקר נגיש והחסימה אינה הסיפור כאן.
             window.hbBumpNetFail(authReason);
             if (!isCurrentAttempt()) return;
@@ -2042,7 +2077,7 @@ window.heroLogin = async function() {
         // המתין — כלומר דווקא כאן הסיכוי שהוא לחץ שוב הוא הגבוה ביותר, ואילו הגארד היה
         // מעל ה-logEvent הערוץ הזה היה אוסף אפס בדיוק במקרים שנועד למדוד.
         const lateChannel = 'late:' + lateReason;
-        window.logEvent && window.logEvent('loginFail', { channel: lateChannel, blockId: heroEnvTagAt(t0), phone: heroNormalizePhoneDigits(phoneRaw) });
+        window.logEvent && window.logEvent('loginFail', { channel: lateChannel, blockId: heroEnvTagAt(t0, api), phone: heroNormalizePhoneDigits(phoneRaw) });
         // §359 — מאפס: התשובה אמנם איחרה, אבל היא **הגיעה** מהוורקר. הכתובת נגישה.
         window.hbBumpNetFail(lateReason);
         // ניסיון מיושן שותק **על המסך בלבד** — בקשה חדשה מחזיקה עכשיו את התצוגה.
@@ -2067,7 +2102,7 @@ window.heroLogin = async function() {
         // ערוץ אחד, משתנה אחד — ר' ההערה על authReason למעלה. קיבוע 'fetchHardAbort' כאן
         // גרם לבקשה שנפלה אחרי 10 שניות להגיע ל"פניות עזרה" כ"לא חזרה גם אחרי 35 שניות".
         const hardReason = heroIsTimeout(lateErr) ? 'fetchHardAbort' : 'lateError';
-        window.logEvent && window.logEvent('loginFail', { channel: hardReason, blockId: heroEnvTagAt(t0), phone: heroNormalizePhoneDigits(phoneRaw) });
+        window.logEvent && window.logEvent('loginFail', { channel: hardReason, blockId: heroEnvTagAt(t0, api), phone: heroNormalizePhoneDigits(phoneRaw) });
         // §359 — הענף הזה הוא **הכשל הכי מובהק** של כתובת חסומה: הבקשה לא חזרה כלל, לא
         // בזמן ולא באיחור. מעל הגארד מאותה סיבה שההערה למעלה מפרטת — מי שהמתין 35 שניות
         // כמעט בוודאות כבר לחץ שוב, ובלי זה דווקא הנחסמים לא היו נספרים.

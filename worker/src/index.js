@@ -17,6 +17,25 @@ import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js'
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
+// ── §374 — מי הלקוח, כשהבקשה הגיעה דרך הכתובת השלישית ────────────────────────────────────
+// §364 העביר את ה-API ל-`api.yellowzone.co.il` והשאיר את `workers.dev` כגיבוי — **ושתיהן
+// על קלאודפלייר**. אוהד שהנתיב שלו לקלאודפלייר חסום (שובל צרפתי, 2.9 10:31) נכשל בשתיהן
+// באותה דקה. הכתובת השלישית יושבת אצל גוגל (`functions/index.js`) ומעבירה לכאן.
+//
+// ⚠️ **בלי הפונקציה הזאת מגבלת-הקצב מתמוטטת.** `CF-Connecting-IP` של בקשה שעברה במתווך הוא
+// של **המתווך**, כלומר כל האוהדים שנכנסים דרכו נראים כתובת אחת — ואחרי 30 ניסיונות ב-15
+// דקות (`IP_LIMIT` ב-ratelimit.js) כולם נחסמים ביחד, בדיוק אלה שכבר לא הצליחו להיכנס.
+//
+// ⚠️ **הכותרת נאמנת רק כשהסוד המשותף תואם.** בלי הבדיקה הזאת כל אחד היה יכול לשלוח
+// `X-YZ-Client-IP` מזויף ולעקוף את מכסת-ה-IP לגמרי. מכסת-הטלפון (8 ל-15 דק') אינה תלויה
+// בזה ונשארת ההגנה האמיתית מפני ניחוש קוד — אבל זו לא סיבה לוותר על השנייה.
+function clientIp(request, env) {
+  const secret = env.PROXY_SECRET;
+  const real = request.headers.get('X-YZ-Client-IP');
+  if (secret && real && request.headers.get('X-YZ-Proxy-Secret') === secret) return real;
+  return request.headers.get('CF-Connecting-IP') || 'unknown';
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return handlePreflight(env, request);
@@ -103,7 +122,7 @@ export default {
 async function handleMemberLogin({ phone, code }, request, env) {
   if (!phone || !code || String(code).length !== 6) return { error: 'invalid_request' };
 
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const ip = clientIp(request, env);
   const normPhone = normalizePhoneDigits(phone);
 
   if (await isRateLimited(env.RATE_LIMIT_KV, normPhone, ip)) {
@@ -398,7 +417,7 @@ async function handleCheckBizExists({ phone, email, name }, request, env) {
   if (!name || (!phone && !email)) return { error: 'invalid_request' };
 
   // מכסת-IP: הנקודה חושפת ביט על צירוף שם+טלפון/מייל, וזה מספיק כדי להצדיק תקרה.
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const ip = clientIp(request, env);
   if (await ipIsRateLimited(env.RATE_LIMIT_KV, 'bizexists', ip)) return { error: 'too_many_attempts' };
   await ipRecordAttempt(env.RATE_LIMIT_KV, 'bizexists', ip);
 
@@ -451,7 +470,7 @@ async function handleShortenBenefit({ text, count }, request, env) {
   // count — כמה חלופות ניסוח לבקש בקריאה אחת (מסך המנהל מבקש 3 לבחירה); ברירת מחדל 1, זהה להתנהגות הקיימת
   const n = Math.max(1, Math.min(5, parseInt(count, 10) || 1));
 
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const ip = clientIp(request, env);
   if (await ipIsRateLimited(env.RATE_LIMIT_KV, 'shorten', ip)) return { error: 'too_many_attempts' };
   await ipRecordAttempt(env.RATE_LIMIT_KV, 'shorten', ip);
 
@@ -474,7 +493,7 @@ async function handleSuggestFallbackImages({ tag }, request, env) {
   if (!tag || typeof tag !== 'string' || !tag.trim()) return { error: 'invalid_request' };
   if (tag.length > 100) return { error: 'invalid_request' };
 
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const ip = clientIp(request, env);
   if (await ipIsRateLimited(env.RATE_LIMIT_KV, 'fallback-img', ip)) return { error: 'too_many_attempts' };
   await ipRecordAttempt(env.RATE_LIMIT_KV, 'fallback-img', ip);
 
