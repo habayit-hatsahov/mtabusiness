@@ -4037,7 +4037,27 @@ await new Promise(resolve => {
 // מזהים ולא ב-`node --check`, שמעולם לא יתלונן על קבוע שלא קיים — זו בדיוק הדרך
 // שבה §340 שבר בלוק שלם. בלי נפילה-לאחור ל-workers.dev במכוון: קישור חשבון הוא
 // פעולה שאפשר לחזור עליה, בניגוד לכניסה עצמה (§364), והכתובת הישנה היא בדיוק זו שמסוננת.
-const HB_API_PRIMARY = 'https://api.yellowzone.co.il';
+const HB_API_PRIMARY  = 'https://api.yellowzone.co.il';
+const HB_API_FALLBACK = 'https://habayit-hatsahov-worker.yellowzone.workers.dev';
+// ── §373 — שתי הכתובות, וזה לא עודף ─────────────────────────────────────
+// §372 ויתר על הנפילה-לאחור כאן, בנימוק ש"קישור חשבון הוא פעולה שאפשר לחזור
+// עליה" וש-`api.yellowzone.co.il` היא הכתובת הזמינה. **זו הייתה טעות, והיא נפלה
+// תוך דקות:** המשתמש נכשל ב-Wi-Fi והצליח בסלולר — ההפך המדויק מ-§359,
+// שם הסלולר חסם את workers.dev וה-Wi-Fi עבד.
+//
+// 🔑 **המסקנה: אף אחת משתי הכתובות אינה נגישה מכל רשת.** זו בדיוק הסיבה
+// ש-§364 השאיר את הישנה כרשת-גיבוי ולא מחק אותה — וכל קריאה חדשה ל-API
+// חייבת את שתיהן, בלי קשר לכמה הפעולה הספציפית חשובה.
+//
+// ⚠️ **רק כשל-רשת מפעיל את הגיבוי, לא תשובה שהתקבלה** (זהה ל-welcome.html):
+// `fetch` נדחה רק כשלא היתה תשובה בכלל. סטטוס 4xx/5xx הוא תשובה תקינה,
+// וניסיון חוזר עליה היה שולח את אותה פעולה פעמיים.
+const hbApiFetch = (path, opts) =>
+  fetch(HB_API_PRIMARY + path, opts).catch(err => {
+    if (err && err.name === 'AbortError') throw err;
+    console.warn('api.yellowzone.co.il unreachable — falling back to workers.dev');
+    return fetch(HB_API_FALLBACK + path, opts);
+  });
 const HB_GOOGLE_CLIENT_ID = '459607487972-esu70diuu360tg1ji15o1n1tikf3npnb.apps.googleusercontent.com';
 
 function openGoogleLinkSheet() {
@@ -4069,7 +4089,7 @@ async function hbOnGoogleCredential(res) {
     const u = window._auth?.currentUser;
     if (!u) { hbGoogleMsg('נראה שהחיבור שלכם פג. רעננו את הדף ונסו שוב.', 'warn'); return; }
     const memberIdToken = await u.getIdToken();
-    const resp = await fetch(HB_API_PRIMARY + '/google-link', {
+    const resp = await hbApiFetch('/google-link', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken: res.credential, memberIdToken }),
     });
