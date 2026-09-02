@@ -25,12 +25,27 @@ export async function handleUploadBizMedia(request, env) {
   // מלא בלי שאף תמונה נשמרה, ואיש לא ידע על כך: לא הוא, לא המנהל.
   const failed = [];
 
+  // ── §382 — ראיית-האימות לא נוגעת יותר במסמך הציבורי ──────────────────────────────────────
+  // שני שינויים, ורק הראשון הוא התיקון האמיתי:
+  //
+  //   1. 🔑 **הכתובת עוברת ל-`bizProofs/{bizId}`** במקום לשדה `photoProofUrl` על מסמך העסק.
+  //      מסמך של עסק מאושר נקרא **ציבורית במלואו**, ולכן כתובת ההורדה — שנושאת טוקן שעוקף
+  //      את חוקי ה-Storage — הייתה זמינה לכל אחד בקריאה אנונימית אחת. נמדד: 2 מתוך 56.
+  //
+  //   2. **שם-הקובץ אקראי** במקום `${bizId}_fan`. ⚠️ זו הגנה משלימה בלבד ו**לא** התיקון:
+  //      `bizId` הוא מזהה של מסמך ציבורי, ולכן הנתיב הישן היה ניחוש טריוויאלי — אבל גם נתיב
+  //      אקראי לא היה עוזר כל עוד הכתובת המלאה יושבת על מסמך ציבורי. ר' §293, שעשה בדיוק
+  //      את אותו צעד בצד האוהד — ונעצר שם, בלי לחצות לצד העסקים.
+  //
+  // ⚠️ **קבצים ישנים נשארים בנתיב הישן.** הכתובת שלהם יורדת מהמסמך הציבורי במיגרציה,
+  // אבל הקובץ עצמו עדיין נשלף בניחוש `members/proofs/{bizId}_fan` עד שיימחק ידנית.
   const fanPhoto = form.get('fanPhoto');
   if (fanPhoto && fanPhoto.size) {
+    const proofPath = `members/proofs/${bizId}_${crypto.randomUUID()}`;
     tasks.push(
       fanPhoto.arrayBuffer()
-        .then((bytes) => uploadToFirebaseStorage(env, googleToken, `members/proofs/${bizId}_fan`, bytes, fanPhoto.type || 'image/jpeg'))
-        .then((url) => { updates.photoProofUrl = url; })
+        .then((bytes) => uploadToFirebaseStorage(env, googleToken, proofPath, bytes, fanPhoto.type || 'image/jpeg'))
+        .then((url) => firestorePatch(env, googleToken, `bizProofs/${bizId}`, { photoProofUrl: url, at: new Date() }))
         .catch((e) => { console.error('fan photo upload failed:', e.message); failed.push('fanPhoto'); })
     );
   }

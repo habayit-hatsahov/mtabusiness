@@ -1970,7 +1970,22 @@
   // onGalleryFilesPicked שמחזיקים מצב משלהם (gallerySelectedFiles), וניקוי הקלט לבדו לא
   // היה מנקה אותו. שם יש ממילא תצוגה-מקדימה מיידית, כלומר קובץ שלא נפענח נראה שבור על
   // המסך של בעל-העסק עוד לפני השליחה. ר' PROJECT_CONTEXT §297 ("מה נשאר פתוח").
-  attachImageGuard(['bizFanPhoto', 'bizPassFile', 'bizEmailFile']);   // §347 — bizStandsFile הוסר
+  // §381 — הדחיסה של ראיית-האימות מתחילה **ברגע הבחירה**, לא בלחיצה על "שלח". §361ב כבר
+  // הקדים אותה מ"אחרי חמש נסיעות-רשת" ל"ברגע הלחיצה"; זה הצעד הבא באותו כיוון, והוא חינם:
+  // הדחיסה היא מעבד טהור בלי שום תלות ברשת, במזהה או בטוקן, והקובץ כבר יושב אצלנו.
+  // ⚠️ **רק על קובץ שעבר את הבדיקה** — הגארד מרוקן קלט פסול, ואין טעם לדחוס מה שיימחק.
+  const bizProofCompressed = new WeakMap();   // File → Promise<File>
+  function startBizProofCompress(inputId) {
+    const file = document.getElementById(inputId)?.files?.[0];
+    if (!file || bizProofCompressed.has(file)) return;
+    const p = compressProofToFile(file);
+    // §290 — אותו חלון-אבחון שקיים בנתיב האוהד: כשראיית-אימות לא מגיעה, ההבדל בין "הקובץ
+    // יצא 300KB webp" ל"הדחיסה נפלה והמקור 12MB נשלח גולמי" הוא ההבדל בין שני באגים שונים.
+    p.then(f => { window.__lastBizProofFile = { size: f.size, type: f.type }; })
+     .catch(() => {});   // אין ממתין עדיין — בלי זה unhandledrejection בקונסול
+    bizProofCompressed.set(file, p);
+  }
+  attachImageGuard(['bizFanPhoto', 'bizPassFile', 'bizEmailFile'], null, startBizProofCompress);   // §347 — bizStandsFile הוסר
 
   // §295 — הורדת הטופס מהמסך. רוכזה לפונקציה אחת כי היא נקראת משני מקומות (הצלחה/כשל)
   // ובשניהם חייבת לרדת גם שורת-השלבים — אחרת נשאר stepper מרחף מעל מסך-הצלחה.
@@ -2141,6 +2156,21 @@
   // הסתיימו. הוא לא צריך מהן כלום — אין כאן מזהה-עסק ואין טוקן (`accessToken` מתווסף
   // בשלב השליחה, כי רק הוא תלוי בכתיבה שקדמה לו). לכן הוא הוצא לכאן ומופעל בלחיצה.
   // התוכן עצמו לא שונה בכלל: אותן קריאות דחיסה, אותם שמות-שדות, אותה נפילה-לאחור.
+  // ── §381 — ראיית-האימות נוסעת בבקשה משלה ─────────────────────────────────────────────────
+  // עד היום כל שמונת הקבצים נסעו בגוף multipart **אחד**. המשמעות: חמש תמונות גלריה איטיות
+  // מפילות איתן גם את ראיית-האימות — הקובץ היחיד שבלעדיו אי אפשר לאשר את בעל-העסק בכלל.
+  // זה בדיוק מה שקרה בנתיב האוהד (§381/upload-timeout), רק שכאן המחיר גדול יותר: הכל-או-כלום.
+  // עכשיו שתי בקשות במקביל, וכל אחת עומדת בפני עצמה. הוורקר כבר מטפל בכל סלוט בנפרד
+  // ו-firestorePatch כותב רק את השדות שהגיעו, ולכן אין כאן שום התנגשות.
+  // ⚠️ הגלריה חייבת להישאר **בבקשה אחת** — הוורקר כותב `photos` כמערך שלם, ושתי בקשות
+  // שנושאות חלק מהתמונות היו דורסות זו את זו.
+  async function buildProofForm(fanPhotoFile) {
+    const form = new FormData();
+    // §381 — אם הדחיסה כבר רצה מאז הבחירה, זה מחזיר מיד. אחרת דוחסים כאן, כמו קודם.
+    form.append('fanPhoto', await (bizProofCompressed.get(fanPhotoFile) || compressProofToFile(fanPhotoFile)));
+    return form;
+  }
+
   async function buildMediaForm({ fanPhotoFile, effectiveLogoFile, effectiveCoverFile, galleryFiles }) {
     const form = new FormData();
     // ⚠️ §285 — עד היום `fanPhoto` היה **הקובץ היחיד כאן שנשלח גולמי**: הלוגו, התמונה
@@ -2153,7 +2183,7 @@
     // ⚠️ **תיקון §376: ההערה למעלה לא הייתה נכונה — הלוגו גם הוא נשלח גולמי.** ארבעה סלוטים,
     // ושניים מהם עקפו דחיסה בזמן שההערה הכריזה שרק אחד עושה זאת. הערה שמתארת את הקוד
     // כפי שהתכוונו שיהיה, ולא כפי שהוא, מסתירה את הבאג טוב יותר מהיעדר הערה.
-    if (fanPhotoFile) form.append('fanPhoto', await compressProofToFile(fanPhotoFile));
+    // §381 — fanPhoto יצא מכאן לבקשה משלו (ר' buildProofForm למעלה).
     if (effectiveLogoFile) form.append('logo', await compressLogoToFile(effectiveLogoFile));
     if (effectiveCoverFile) {
       const [mainFile, thumbFile] = await Promise.all([
@@ -2820,10 +2850,15 @@
     // ⚠️ `.catch` ריק נדרש **מיד**: הבטחה שנדחית לפני שמישהו ממתין לה מפילה
     // `unhandledrejection` בקונסול. הוא לא בולע את הכשל — `mediaFormPromise` המקורית
     // נשארת דחויה, וה-`await` עליה בשלב המדיה יזרוק בדיוק כמו קודם ויסומן mediaUploadFailed.
-    const mediaFormPromise = hasMediaToUpload ? buildMediaForm({
+    // §381 — שתי הבטחות ולא אחת: ראיית-האימות מוכנה לשליחה ברגע שהיא לבדה נדחסה, בלי
+    // להמתין לגלריה. ברוב המקרים היא כבר נדחסה מזמן (מאז בחירת הקובץ) וזה חוזר מיד.
+    const hasRestMedia = !!(effectiveCoverFile || effectiveLogoFile || galleryFiles.length);
+    const proofFormPromise = fanPhotoFile ? buildProofForm(fanPhotoFile) : null;
+    const mediaFormPromise = hasRestMedia ? buildMediaForm({
       fanPhotoFile, effectiveLogoFile, effectiveCoverFile, galleryFiles,
     }) : null;
     if (mediaFormPromise) mediaFormPromise.catch(() => {});
+    if (proofFormPromise) proofFormPromise.catch(() => {});
 
     // ── §295 — הטופס **לא** מוסתר כאן ─────────────────────────────────────────────────────
     // קודם השלב הזה החליף את הטופס במסך-ספינר. המשתמש: *"זה לא נראה טוב שזה חושב לאחר
@@ -3026,8 +3061,15 @@
         // ── ⚠️ §294 — כל שלב המדיה חסום בזמן, לא רק ה-fetch ─────────────────────────────────
         // הדחיסה שרצה כאן (createImageBitmap/canvas על עד 8 קבצים) היא await לא-חסום בדיוק
         // כמו ה-fetch. תקרה חיצונית אחת מכסה את שניהם, כדי שלא נסגור חור אחד ונשאיר את השני.
-        try {
-          await withTimeout((async () => {
+        // ── §381 — שתי בקשות במקביל, כל אחת נכשלת (או מצליחה) בפני עצמה ──────────────────
+        // `sendMediaForm` הוא בדיוק מה שהיה כאן קודם, רק שעכשיו הוא נקרא פעמיים: פעם על
+        // ראיית-האימות ופעם על שאר התמונות. `Promise.all` על שתיהן מחזיר כשל רק במה שבאמת
+        // נכשל — ולכן גלריה שנתקעה כבר לא מוחקת את הראיה שכן עלתה.
+        // ⚠️ במקביל ולא בטור: אותם בייטים בסך הכל, ואותו origin (HTTP/2 מרבב אותן על אותו
+        // חיבור). טור היה מוסיף את זמן הראיה לזמן הגלריה בלי שום תמורה.
+        const sendMediaForm = async (formPromise, tag) => {
+          try {
+            await withTimeout((async () => {
           // §295 — אין כאן יותר דיווח-שלב לנרשם. §294 הוסיף "מעלים את התמונות…" כדי
           // שספינר-דומם לא ייקרא כמו תקלה; המשתמש דחה את זה — חשיפת שלבים פנימיים אחרי
           // שלחצת "שלח" נראית כמו מערכת שמתלבטת. הכפתור-בהמתנה עושה את אותה עבודה בשקט.
@@ -3035,7 +3077,7 @@
           // הסתיימה בזמן שהמסמך והטוקן נכתבו, וה-`await` הזה חוזר מיד. אם לא — ממתינים
           // לשארית בלבד. ⚠️ ה-await נשאר **בתוך** withTimeout בכוונה: דחיסה שנתקעת חייבת
           // להיחסם בזמן בדיוק כמו קודם (§294), והעובדה שהיא התחילה מוקדם לא משנה זאת.
-          const form = await mediaFormPromise;
+          const form = await formPromise;
           form.append('accessToken', accessToken);
           // ── ⚠️ §294 — גבול-זמן. זה היה השורש של "מסך תקוע" ──────────────────────────────
           // דווח בפועל: ההרשמה נקלטה, אבל המסך נשאר על "שולח את הבקשה שלכם…" עם ספינר —
@@ -3049,15 +3091,36 @@
           // ⚠️ feature-detect ולא שימוש ישיר: `AbortSignal.timeout` לא קיים ב-iOS Safari 15
           // ומטה, ושם קריאה ישירה הייתה זורקת TypeError **לפני** ה-fetch — כלומר שוברת
           // העלאות תקינות במכשירים ישנים בדיוק בשם התיקון. התקרה החיצונית מכסה גם אותם.
-          const resp = await hbApiFetch('/upload-biz-media', {
-            method: 'POST', body: form,
-            signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(90000) : undefined,
-          });
+          // ── §381 — ניסיון חוזר אחד על כשל-רשת ─────────────────────────────────────────────
+          // נמדד בפועל: "סטנדאפ" קיבל `bm:TypeError` — כלומר `Failed to fetch`, הבקשה
+          // **מעולם לא עזבה את הדפדפן**. זה לא פסק-זמן ולא דחייה מהשרת: החיבור נפל בזמן
+          // שהגוף נשלח. `hbApiFetch` כבר מנסה שלוש כתובות, אבל שלושתן נבדקות ברצף תוך
+          // שברירי-שנייה — ונפילה רגעית של הרשת מפילה את שלושתן יחד.
+          //
+          // ⚠️ **רק כשל-רשת, ורק פעם אחת.** ניסיון חוזר על תשובה שהתקבלה (4xx/5xx) היה
+          // מעלה את אותן תמונות פעמיים; `AbortError` הוא החלטה שלנו (גבול-הזמן) וניסיון
+          // חוזר עליו מחזיר בדיוק את "המסך התקוע" שהוא נועד למנוע — אותו נימוק בדיוק
+          // שכתוב ב-hbApiFetch. שתי הצורות האלה מוחרגות במפורש.
+          let resp;
+          for (let attempt = 1; ; attempt++) {
+            try {
+              resp = await hbApiFetch('/upload-biz-media', {
+                method: 'POST', body: form,
+                signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(90000) : undefined,
+              });
+              break;
+            } catch (netErr) {
+              const isNetwork = netErr && netErr.name !== 'AbortError' && netErr.name !== 'TimeoutError';
+              if (!isNetwork || attempt >= 2) throw netErr;
+              console.warn(`§381 — הבקשה (${tag}) לא יצאה (${netErr.name}); מנסה שוב בעוד 2.5 שניות`);
+              await new Promise(r => setTimeout(r, 2500));
+            }
+          }
           const result = await resp.json();
-          if (!result.ok) { console.error('upload-biz-media failed:', result); mediaUploadFailed = true; }
+          if (!result.ok) { console.error(`upload-biz-media (${tag}) failed:`, result); mediaUploadFailed = true; }
           })(), 120000, 'MediaPhaseTimeout');
         } catch (e) {
-          console.error('upload-biz-media request failed:', e.name, e.message);
+          console.error(`upload-biz-media (${tag}) request failed:`, e.name, e.message);
           mediaUploadFailed = true;
           // ── §294 — הכשל נמדד ─────────────────────────────────────────────────────────────
           // עד עכשיו כשל בהעלאת תמונות של עסק היה console.error בלבד: מי שנתקל בו ולא התלונן
@@ -3066,8 +3129,16 @@
           // §302 — bizId נוסע עם הכשל, כדי שמרכז הניהול יוכל לפתוח את כרטיס העסק ישירות
           // מהשורה. כאן הרשומה **ודאי קיימת** (ההעלאה רצה רק אחרי addDoc מוצלח), בניגוד
           // לנתיב האוהד שבו המזהה נוצר מראש.
-          logEvent('formError', { blockId: 'bizForm', bizId: bizDocRef.id, channel: `bm:${(e.name || 'err').slice(0, 24)}` });
+          // §381 — התג נכנס לערוץ. בלעדיו "bm:TimeoutError" לא אומר אם אבדה ראיית-האימות
+          // (חוסם אישור של בעל-עסק) או תמונת גלריה (מטרד). ≤50 תווים, ר' firestore.rules.
+          logEvent('formError', { blockId: 'bizForm', bizId: bizDocRef.id, channel: `bm:${tag}:${(e.name || 'err').slice(0, 18)}` });
         }
+        };
+
+        await Promise.all([
+          proofFormPromise ? sendMediaForm(proofFormPromise, 'proof') : null,
+          mediaFormPromise ? sendMediaForm(mediaFormPromise, 'rest')  : null,
+        ].filter(Boolean));
       }
 
       showMediaWarnIfNeeded();

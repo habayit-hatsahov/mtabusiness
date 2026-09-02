@@ -1949,6 +1949,9 @@ import { MAIL_FONTS, mailFontKey, renderMailHtml, footerHtml as mailFooterHtml }
 // וממזגים חזרה ל-b.accessToken — כך כל מקום שכבר בנה לינק/הודעה מ-b.accessToken ממשיך לעבוד
 // בדיוק כמו קודם, בלי לפזר קריאה-לכל-עסק על פני עשרות מקומות רינדור.
 let BIZ_TOKENS = {};   // businessId → accessToken
+// §382 — businessId → כתובת ראיית-האימות של בעל העסק. אותו דפוס בדיוק כמו BIZ_TOKENS,
+// ומאותה סיבה: השדה ירד ממסמך העסק (שנקרא ציבורית) לאוסף שקריא למנהל בלבד.
+let BIZ_PROOFS = {};
 // §248 — memberId → loginCode. אותו דפוס בדיוק כמו BIZ_TOKENS: הקוד מוזרם בחזרה אל f.loginCode
 // ב-hydrateFan, כדי שכל מקום קיים שקורא f.loginCode (צ'יפ, וואטסאפ, מייל, מונים) ימשיך לעבוד
 // בלי שינוי. ר' ההערה ליד ה-onSnapshot בתחתית הקובץ.
@@ -2591,7 +2594,11 @@ function hydrateBiz(id, raw) {
     ownerSubscriberSection: raw.gate || null,
     ownerSubscriberNumber: raw.subNum || null,
     ownerFacebookUrl: raw.fbUrl || '',
-    ownerProofPhotoUrl: raw.photoProofUrl || '',
+    // ── §382 — הכתובת מגיעה מ-bizProofs, ורק אז מהשדה הישן ─────────────────────────────
+    // ⚠️ הנפילה-לאחור ל-`raw.photoProofUrl` היא **זמנית ומכוונת**: היא מה שמחזיק את שתי
+    // הרשומות שנוצרו לפני המעבר, כדי שראיה קיימת לא תיעלם מהמסך ברגע הפריסה. היא יורדת
+    // אחרי המיגרציה. הסדר חשוב — האוסף החדש קודם, אחרת ערך ישן ידרוס עדכון של המנהל.
+    ownerProofPhotoUrl: BIZ_PROOFS[id] || raw.photoProofUrl || '',
     // ── §294 — מסלול האימות של בעל העסק ─────────────────────────────────────────────────
     // §284 החליף את "מספר מנוי" בשישה מסלולי-אימות, ו-business.html שומר אותם על מסמך העסק
     // (verifyRoute/seat*/verifyNote). **המיפוי כאן מעולם לא עודכן**, ולכן כרטיס האימות במרכז
@@ -2676,7 +2683,7 @@ function hydrateFan(id, raw) {
     loginCodeEmailDeliveryAt: toJsDate(raw.loginCodeEmailDeliveryAt),   // מ-webhook המסירה של Brevo, §205
     loginCodeEmailOpenedAt: toJsDate(raw.loginCodeEmailOpenedAt),       // פתיחה בפועל, §206
     loginCodeEmailClickedAt: toJsDate(raw.loginCodeEmailClickedAt),     // לחיצה על קישור במייל, §206
-    hasProofPhoto: !!raw.photoProofUrl,
+    hasProofPhoto: !!(BIZ_PROOFS[id] || raw.photoProofUrl),   // §382
     isBusinessOwner: !!raw.isBusinessOwner,
     linkedBusinessId: raw.linkedBusinessId || null,
     reviewFlag: raw.reviewFlag || null,
@@ -7059,11 +7066,26 @@ window.saveBizSec1 = async function(id) {
     tier:   isSub ? (document.getElementById('edit_ownerTier_'+id).value || null) : null, // §319
     subNum: isSub ? (document.getElementById('edit_ownerNumber_'+id).value.trim() || null) : null,
     fbUrl:  document.getElementById('edit_ownerFbUrl_'+id).value.trim(), // §321 — ר' ההערה בצד האוהד
-    photoProofUrl: isSub ? '' : document.getElementById('edit_ownerProofUrl_'+id).value.trim(),
+    // ── §382 — שני תיקונים בשורה אחת ─────────────────────────────────────────────────────
+    // 1. **הכתובת יורדת מהמסמך הציבורי.** `''` נכתב במפורש ולא מושמט: זו גם המיגרציה עצמה —
+    //    פתיחה ושמירה של עסק ותיק מנקה את השדה החשוף. הערך האמיתי נכתב ל-bizProofs למטה.
+    // 2. ⚠️ **`isSub ? '' : …` היה מוחק ראיית-אימות של כל בעל-עסק שהוא מנוי, בכל שמירה.**
+    //    התנאי נכתב כשמנוי לא נדרש לתמונה — ומאז §284/§294 שלושה מסלולים פתוחים גם למנויים
+    //    ודורשים קובץ. כלומר שמירה שגרתית של המנהל מחקה ראיה קיימת, בלי סימן ובלי שגיאה.
+    //    בדיוק הדפוס של "תנאי בשמירה מחק נתונים בשקט" (§321).
+    photoProofUrl: '',
     fanInstagram: document.getElementById('edit_ownerInstagram_'+id).value.trim(), // §321
     ownerRelation: document.getElementById('edit_ownerRelation_'+id).value,
   };
   await saveSectionUpdates(id, updates);
+  // §382 — הכתובת עצמה נכתבת לאוסף שקריא למנהל בלבד. setDoc({merge:true}) ולא updateDoc:
+  // לרוב העסקים אין עדיין מסמך כזה, ו-updateDoc היה נכשל על מסמך שאינו קיים.
+  // ⚠️ בלי תנאי על isSubscriber — ר' ההערה למעלה.
+  try {
+    await setDoc(doc(db, 'bizProofs', id),
+      { photoProofUrl: document.getElementById('edit_ownerProofUrl_'+id).value.trim(), at: serverTimestamp() },
+      { merge: true });
+  } catch (e) { console.error('שמירת ראיית-האימות של בעל העסק נכשלה:', e.code || '', e.message); }
   // סנכרון לרשומת החבר המקושרת — זהה ל-admin-businesses.html saveSec1 (מונע פער טלפון/מייל/שם מול הרשומה שדרכה בעל העסק נכנס)
   if (b.ownerMemberId) {
     try {
@@ -14586,6 +14608,17 @@ onSnapshot(collection(db, 'bizTokens'), snapshot => {
     queueRenderAllPreserveScroll();
   }
 }, err => console.error('שגיאה בטעינת טוקני עסקים:', err));
+
+// §382 — ראיות-האימות של בעלי-עסק. אותו דפוס בדיוק כמו bizTokens למעלה, ומאותה סיבה:
+// אם האוסף מגיע אחרי העסקים, הם מוזרמים מחדש דרך hydrateBiz כדי שהתמונה לא תיעלם
+// בטעינה הראשונה ותיראה כאילו "לא הועלתה".
+onSnapshot(collection(db, 'bizProofs'), snapshot => {
+  BIZ_PROOFS = Object.fromEntries(snapshot.docs.map(d => [d.id, d.data().photoProofUrl || '']));
+  if (_bizLoaded) {
+    MOCK_BUSINESSES = MOCK_BUSINESSES.map(b => ({ ...b, ownerProofPhotoUrl: BIZ_PROOFS[b.id] || b.ownerProofPhotoUrl || '' }));
+    queueRenderAllPreserveScroll();
+  }
+}, err => console.error('שגיאה בטעינת ראיות-אימות של עסקים:', err));
 
 onSnapshot(collection(db, 'businesses'), snapshot => {
   MOCK_BUSINESSES = snapshot.docs.map(d => hydrateBiz(d.id, d.data()));

@@ -990,7 +990,7 @@
   import { db, getStorageLazy } from './firebase-config.js';
   import { attachImageGuard } from './image-check.js';
   import { collection, doc, addDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
-  import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+  import { ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
   const WORKER_URL = 'https://api.yellowzone.co.il';   // §364 — היה workers.dev, נחסם ע"י סינון סלולרי. ר' PROJECT_CONTEXT §359/§364
 
@@ -1205,7 +1205,12 @@
   // ארבעת הקלטים הם ארבעת מסלולי-האימות (§284). הבדיקה עצמה במודול משותף עם business.html.
   // §304 — אבן-הדרך נספרת רק על קובץ שעבר את הבדיקה: "ניסה לבחור והקובץ נדחה" הוא
   // בדיוק ההפך מ"התקדם", והיה מסתיר את הצניחה שאנחנו מחפשים.
-  attachImageGuard(['fansPhoto', 'passFile', 'emailFile'], null, () => markStep('proof'));   // §344 — standsFile הוסר
+  // §381 — הקריאה הזאת היא גם נקודת-הפתיחה של ההעלאה עצמה: הקובץ עבר את הבדיקה, ואין שום
+  // סיבה לחכות איתו עד שהנרשם ילחץ "שלח". ר' startProofUpload.
+  attachImageGuard(['fansPhoto', 'passFile', 'emailFile'], null, (id) => {   // §344 — standsFile הוסר
+    markStep('proof');
+    startProofUpload(id);
+  });
 
   // ══ §303 — פאנל העזרה ═══════════════════════════════════════════════════════════════════
   // אוהד שלא מצליח להירשם הוא היום בלתי-נראה לגמרי: אין רשומה, אין אירוע, אין שם. הפאנל
@@ -1342,16 +1347,80 @@
     }
   };
 
+  // ══ §381 — התמונה מתחילה לעלות ברגע שנבחרה, לא בלחיצה על "שלח" ═══════════════════════════
+  // התקלה שנמדדה (2026-09-02): שגיא ניניו-סתר צירף צילום-מנוי, ההעלאה חרגה מ-45 שניות
+  // במובייל, וההרשמה נשמרה בלי התמונה. הוא כתב בפנייה *"העלתי צילום מסך של המנוי, לא יודע
+  // למה לא עלה"* — והמנהל ראה בכרטיס "המסלול דורש תמונה — לא הועלתה" בלי לדעת למה.
+  // הקוד השמור באירוע היה `upload-timeout`. שלושה כשלים נפרדים הצטלבו שם:
+  //
+  //   1. **ההעלאה התחילה מאוחר מדי.** §292 העביר אותה אל תוך זמן-ההמתנה של השליחה — צודק
+  //      מול "מסך-הצלחה שממשיך לעבוד ברקע", אבל התוצאה היא שנסיעת-הרשת הכבדה ביותר בטופס
+  //      מתחילה בדיוק ברגע שבו הנרשם כבר יושב מול ספינר. הקובץ נבחר דקה לפני כן, והרשת
+  //      עמדה בטלה כל אותה דקה. עכשיו ההעלאה מתחילה ברגע שהקובץ עבר את בדיקת-הבחירה
+  //      (§297) ורצה **במקביל** לשאר מילוי הטופס; ברוב המקרים היא תסתיים לפני הלחיצה.
+  //
+  //   2. **תקציב-זמן אחד לשלושה ניסיונות.** `uploadFile` ניסה שלוש פעמים, ולאף ניסיון בודד
+  //      לא היה גבול משלו — כלומר ניסיון ראשון ש**נתקע** (לא נכשל — נתקע) בלע את התקציב
+  //      של שלושתם, והנרשם חיכה 45 שניות בשביל כלום. לולאת-הניסיונות הידנית הוסרה לטובת
+  //      `uploadBytesResumable`, שמנהל ניסיונות-חוזרים בעצמו ברמת המקטע ולא הקובץ השלם —
+  //      וגם מדווח התקדמות, כך שאפשר להראות אחוזים במקום ספינר אילם.
+  //
+  //   3. 🔑 **פסק-זמן עוצר את ההמתנה, לא את ההעלאה.** זה הלקח היקר כאן, ואותו לקח בדיוק
+  //      כבר עלה ב-§350: `uploadBytes` המשיך לרוץ אחרי שהפסקנו להקשיב, ולגמרי ייתכן
+  //      שהבייטים **נחתו** ב-bucket — ואנחנו זרקנו את הכתובת שלהם והכרזנו כשל. מכאן ואילך,
+  //      לפני שמכריזים כשל, **בודקים בפועל אם הקובץ הגיע** (`getDownloadURL` על אותו נתיב,
+  //      בכמה סבבים). המשימה בכוונה **אינה** מבוטלת — ביטול היה מוחק בדיוק את מה שאנחנו
+  //      מנסים להציל. תמונה שעלתה לא נזרקת יותר לעולם.
+  //
+  // ⚠️ אין דרך לצרף את התמונה לרשומה בדיעבד: `allow update` על members הוא למנהל בלבד
+  // (firestore.rules), ולכן ההכרעה חייבת ליפול לפני הכתיבה. זו הסיבה שההצלה יושבת כאן
+  // ולא במסך ההצלחה.
+  const PROOF_DEADLINE_MS = 45000;   // דד-ליין מוחלט מרגע שההעלאה התחילה (לא מרגע השליחה)
+  const PROOF_URL_MS      = 12000;   // getDownloadURL אחרי העלאה שהצליחה
+  const PROOF_RESCUE_MS   = 12000;   // חלון ה"אולי בכל זאת הגיע" אחרי חריגה
+  const PROOF_RESCUE_GAP  = 2500;    // כל כמה זמן לבדוק בתוך החלון הזה
+
+  // ⚠️ המזהה נוצר **פעם אחת לטעינת דף** ולא בכל לחיצת-שליחה. `doc()` מייצר מזהה מקומית,
+  // בלי רשת ובלי ליצור מסמך (§292), ולכן זה חינם — ושתי תועלות: נתיב-התמונה ידוע כבר ברגע
+  // בחירת הקובץ (בלי זה אי אפשר להתחיל להעלות מוקדם), וניסיון-שליחה חוזר אחרי כשל כותב
+  // לאותו מזהה במקום לייצר רשומה שנייה.
+  const memberRef = doc(collection(db, 'members'));
+
+  // ההעלאה שרצה ברקע מאז בחירת הקובץ. `file` נשמר כדי לזהות שהנרשם לא החליף תמונה בינתיים.
+  let proofUpload = null;
+
+  // נקרא מ-attachImageGuard, אך ורק על קובץ שכבר **עבר** את בדיקת-הבחירה — אין טעם להתחיל
+  // להעלות קובץ שהבדיקה עומדת לרוקן מהשדה.
+  function startProofUpload(inputId) {
+    const file = document.getElementById(inputId)?.files?.[0];
+    if (!file) return;
+    if (proofUpload && proofUpload.inputId === inputId && proofUpload.file === file) return;   // אותו קובץ — כבר בדרך
+    // §293 — הסיומת האקראית היא מה שהופך את הנתיב לבלתי-ניתן-לניחוש. `_fan` הקבוע הקודם
+    // היה נגזר ישירות ממזהה החבר, ולכן מי שהכיר את המזהה הכיר גם את הנתיב.
+    // ⚠️ התחילית `{memberId}_` נשארת — היא מה שמאפשר למנהל למצוא את הקובץ בקונסולה לפי
+    // מזהה הרשומה כשמשהו בכל זאת השתבש (`list` מותר למנהל בלבד, ר' storage.rules).
+    const rec = {
+      inputId, file,
+      path: `members/proofs/${memberRef.id}_${randomToken()}`,
+      startedAt: Date.now(),
+      progress: 0,
+    };
+    rec.promise = uploadProof(file, rec.path, rec.startedAt + PROOF_DEADLINE_MS, p => { rec.progress = p; })
+      .finally(() => { rec.done = true; });
+    // ⚠️ נדרש **מיד**: הבטחה שנדחית לפני שמישהו ממתין לה מפילה unhandledrejection בקונסול.
+    // הוא לא בולע כלום — ה-await בשליחה עדיין יקבל את אותה דחייה מ-rec.promise.
+    rec.promise.catch(() => {});
+    proofUpload = rec;
+  }
+
   // דחיסה + בדיקת-תקרה + העלאה, כיחידה אחת. הופרד מגוף השליחה כדי שנתיב-ההמתנה יישאר קריא.
-  async function uploadProof(file, memberId) {
+  async function uploadProof(file, path, deadlineAt, onProgress) {
     const f = await compressProofToFile(file);
     window.__lastProofFile = { size: f.size, type: f.type };   // לאבחון בכשל, ר' §290
     // הדחיסה נכשלה **וגם** המקור חוצה את התקרה של storage.rules — ההעלאה תידחה בוודאות.
     // עדיף להיכשל מיד מאשר להריץ העלאה ארוכה שסופה ידוע מראש.
     if (f.size > PROOF_MAX_BYTES) throw Object.assign(new Error('too-large'), { code: 'file-too-large' });
-    // §293 — הסיומת האקראית היא מה שהופך את הנתיב לבלתי-ניתן-לניחוש. `_fan` הקבוע הקודם
-    // היה נגזר ישירות ממזהה החבר, ולכן מי שהכיר את המזהה הכיר גם את הנתיב.
-    return uploadFile(f, `members/proofs/${memberId}_${randomToken()}`);
+    return uploadFile(f, path, deadlineAt, onProgress);
   }
 
   // גבול-זמן קשיח. מרגע ש-§292 הכניס את ההעלאה אל תוך נתיב-ההמתנה של השליחה, העלאה שלא
@@ -1364,10 +1433,17 @@
     ]);
   }
 
-  async function uploadFile(file, path) {
-    let lastErr;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
+  // §381 — בדיקה חוזרת אם הקובץ בכל זאת נחת. `object-not-found` חוזר מיד, ולכן סבב כזה זול.
+  async function findLandedUpload(storageRef, windowMs) {
+    const until = Date.now() + windowMs;
+    for (;;) {
+      try { return await withTimeout(getDownloadURL(storageRef), 6000, 'rescue-timeout'); } catch (_) {}
+      if (Date.now() + PROOF_RESCUE_GAP >= until) return null;
+      await new Promise(r => setTimeout(r, PROOF_RESCUE_GAP));
+    }
+  }
+
+  async function uploadFile(file, path, deadlineAt, onProgress) {
         const storageRef = ref(await getStorageLazy(), path);
         // ── §290 — contentType מפורש. ⚠️ תיקון עובדתי: זה **לא** היה השורש ─────────────────
         // §290 הציג את השורה הזו כשורש של storage/unauthorized. §291 הפריך זאת — השורש הוא
@@ -1392,18 +1468,37 @@
         //
         // §293: חוזרים ל-getDownloadURL הסטנדרטי, והבעיה נפתרת בצד החוקים (`allow get`)
         // יחד עם שם-קובץ בלתי-ניתן-לניחוש. ר' storage.rules ו-PROJECT_CONTEXT §293.
-        const snap = await uploadBytes(storageRef, file, {
+        //
+        // ── §381 — uploadBytesResumable, ולולאת-הניסיונות הידנית ירדה ─────────────────────
+        // הקודם היה `uploadBytes` בתוך לולאה של שלושה ניסיונות **בלי גבול-זמן לניסיון**.
+        // שני חסרונות שנמדדו: ניסיון תקוע בלע את התקציב של שלושתם, וכל ניסיון חוזר שלח את
+        // הקובץ **מההתחלה** — כלומר בחיבור גרוע, בדיוק המקרה שבו הוא נדרש, הוא גם הכי יקר.
+        // המשימה המתחדשת מנסה שוב ברמת המקטע, ובנוסף מדווחת התקדמות אמיתית — וזה מה שמאפשר
+        // להחליף ספינר אילם באחוזים.
+        const task = uploadBytesResumable(storageRef, file, {
           contentType,
           cacheControl: 'public, max-age=31536000, immutable',
         });
-        return await getDownloadURL(snap.ref);
-      } catch (e) {
-        lastErr = e;
-        console.error(`uploadFile failed (attempt ${attempt}):`, e.code || '', e.message);
-        if (attempt < 3) await new Promise(r => setTimeout(r, 700 * attempt));
-      }
-    }
-    throw lastErr;
+        if (onProgress) {
+          task.on('state_changed', s => { if (s.totalBytes) onProgress(s.bytesTransferred / s.totalBytes); },
+                  () => {});   // ⚠️ בלי מאזין-שגיאה כאן, דחייה של המשימה נספרת כלא-מטופלת
+        }
+        try {
+          // ⚠️ Promise.resolve — UploadTask הוא thenable ולא Promise, ואין לו `.finally`
+          // ש-withTimeout משתמש בו. בלי העטיפה זו TypeError בכל העלאה.
+          await withTimeout(Promise.resolve(task), Math.max(1000, deadlineAt - Date.now()), 'upload-timeout');
+          return await withTimeout(getDownloadURL(storageRef), PROOF_URL_MS, 'url-timeout');
+        } catch (e) {
+          console.error('uploadFile failed:', e.code || '', e.message);
+          // 🔑 **לא מבטלים את המשימה.** `task.cancel()` היה מוחק את מה שכבר הועלה — כלומר
+          // הורס בדיוק את מה שההצלה הבאה מנסה למצוא. משאירים אותה לרוץ ובודקים אם נחתה.
+          const rescued = await findLandedUpload(storageRef, PROOF_RESCUE_MS);
+          if (rescued) {
+            console.warn('§381 — ההעלאה חרגה מהזמן, אבל הקובץ הגיע ל-bucket. הכתובת שוחזרה.');
+            return rescued;
+          }
+          throw e;
+        }
   }
 
   // ── VALIDATION HELPERS ──
@@ -1773,7 +1868,7 @@
     // מזהה הרשומה נוצר מקומית — doc() מייצר מזהה **בלי לפנות לרשת ובלי ליצור מסמך** — כדי
     // שנתיב-התמונה יהיה ידוע לפני שהמסמך קיים. storage.rules לא דורשות שמסמך החבר יהיה קיים
     // (בניגוד לנתיב העסקים, שכן בודק status=='pending'), ולכן הסדר הזה חוקי.
-    const memberRef = doc(collection(db, 'members'));
+    // §381 — `memberRef` עלה לרמת המודול: נתיב-התמונה נדרש כבר ברגע בחירת הקובץ, לא כאן.
 
     // ── §284 — קובץ ההוכחה מגיע מארבעה מקורות אפשריים, לפי המסלול ──────────────────────────
     // כולם נשמרים לאותו שדה photoProofUrl ולאותו נתיב-Storage: מה שמבדיל ביניהם הוא
@@ -1787,9 +1882,27 @@
     let proofError = null;
 
     if (proofFile) {
-      submitBtn.innerHTML = 'מעלה את התמונה... <span class="spinner"></span>';
+      // ── §381 — ברוב המקרים אין כאן שום המתנה ───────────────────────────────────────────
+      // ההעלאה רצה מאז שהקובץ נבחר. אם הנרשם המשיך למלא את הטופס אחריה — היא כבר הסתיימה,
+      // וה-await חוזר מיד. אם לא, ממתינים לשארית בלבד, עם אחוזים במקום ספינר אילם.
+      //
+      // ⚠️ נפילה-לאחור להעלאה-מכאן היא **חובה ולא קישוט**: אם `image-check.js` לא נטען,
+      // `attachImageGuard` לא רץ מעולם ואיתו גם startProofUpload. בלי השורה הזאת כשל
+      // בטעינת קובץ סטטי היה מפיל בשקט את כל תמונות-האימות של האתר.
+      const live = (proofUpload && proofUpload.inputId === proofInputId && proofUpload.file === proofFile)
+        ? proofUpload
+        : (startProofUpload(proofInputId), proofUpload);
+      // ⚠️ רק כשבאמת ממתינים. העלאה שכבר הסתיימה הבהבה כאן "מעלה את התמונה..." לחלקיק
+      // שנייה — הודעה שמתארת עבודה שכבר נגמרה היא בדיוק סוג הרעש ש-§292 בא להוריד.
+      if (!live.done) submitBtn.innerHTML = 'מעלה את התמונה... <span class="spinner"></span>';
+      // מד-ההתקדמות מתעורר רק אם באמת ממתינים — העלאה שכבר הסתיימה לא מהבהבת מספרים לרגע.
+      const pct = setInterval(() => {
+        if (live && live.progress > 0 && live.progress < 1) {
+          submitBtn.innerHTML = `מעלה את התמונה... ${Math.round(live.progress * 100)}% <span class="spinner"></span>`;
+        }
+      }, 400);
       try {
-        data.photoProofUrl = await withTimeout(uploadProof(proofFile, memberRef.id), 45000, 'upload-timeout');
+        data.photoProofUrl = await live.promise;
       } catch (err) {
         // ⚠️ כשל בתמונה **אינו** עוצר את ההרשמה. הרשומה שווה יותר מהתמונה, ויש נתיב-גיבוי
         // (כרטיס-המייל במסך ההצלחה). ההפך — נרשם שנחסם בגלל תמונה — הוא אובדן מוחלט.
@@ -1815,6 +1928,8 @@
           memberId: memberRef.id,
           channel: `pu:${(err.code || '?').replace('storage/', '')}|${Math.round((fInfo.size || 0) / 1024)}k|${(fInfo.type || 'none').replace('image/', '')}`,
         });
+      } finally {
+        clearInterval(pct);
       }
       submitBtn.innerHTML = 'שולח... <span class="spinner"></span>';
     }
