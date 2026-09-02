@@ -650,9 +650,10 @@
 </div><!-- end profile-split -->
 </div>
 
-<!-- §371 — ספריית הזהות של גוגל. async/defer, ולכן הציור למטה ממתין לה.
-     ⚠️ הדף אנוש לחלוטין אם הספרייה לא נטענת — הכרטיס פשוט לא מוצג. -->
+<!-- §377 — חיבור חשבון Google. הספרייה של גוגל + המודול המשותף (google-link.js).
+     ⚠️ שניהם לא-חוסמים: דף שלא הצליח לטעון אותם מאבד את פריט-התפריט בלבד. -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="google-link.js"></script>
 
 <footer class="site-footer">
   <img class="site-footer-logo" src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
@@ -1024,11 +1025,19 @@ async function saveMemberField(updates) {
 
   // ── HERO + CARD + DETAILS ──────────────────────────────────────────────────
   renderIdentity(member);
-  // §371 — כאן ולא מוקדם יותר: רק בשלב הזה ידוע אם לחבר כבר מקושר חשבון גוגל.
-  // ציור מוקדם יותר היה מראה כפתור "חברו חשבון" למי שכבר מחובר, ומחליף אותו
-  // אחרי רגע — הבהוב שנראה כמו תקלה.
+  // §377 — כאן ולא מוקדם יותר: רק בשלב הזה ידוע אם לחבר כבר מקושר חשבון גוגל.
+  // ⚠️ יוצא מוקדם ב-bizToken/previewMemberId ובחוסר-התאמת uid: בשני המצבים האלה
+  // המזוהה **אינו** החבר שמוצג על המסך, וקישור היה כותב על הרשומה הלא-נכונה.
   // ⚠️ עטוף ב-try: זריקה כאן היא ברמת-המודול ותעצור את כל מה שמתחתיה — בדיוק §322.
-  try { initGoogleLink(member); } catch (e) { console.error('google link init failed:', e); }
+  try {
+    if (!bizToken && !previewMemberId && auth.currentUser && auth.currentUser.uid === memberId) {
+      window.hbGoogleLink?.init({
+        apiFetch: hbApiFetch,
+        getIdToken: () => auth.currentUser?.getIdToken() || null,
+        googleEmail: member.googleEmail || '',
+      });
+    }
+  } catch (e) { console.error('google link init failed:', e); }
 
   // עדכון ה-cache המקומי לנתונים הטריים — כדי שבכניסה הבאה יהיה מה להציג מיידית (ר' renderIdentity לעיל).
   // רק בגישה הרגילה: bizToken/previewMemberId מציגים פרופיל של מישהו *אחר*, אסור לשמור אותו כ"הפרופיל שלי".
@@ -1340,101 +1349,8 @@ async function saveMemberField(updates) {
   }
 
   // ── TOAST ────────────────────────────────────────────────────────────────
-  // ══ §371 — חיבור חשבון גוגל לרשומת החבר ══════════════════════════════
-  // הנתיב החזק של §370: שתי הוכחות זהות — אחת מגוגל, ואחת שלנו (הוא כבר מחובר
-  // בדף הזה, אחרת לא היה מגיע אליו). לכן כאן מותר גם לחבר חשבון שהמייל שלו
-  // שונה מהמייל שעל הרשומה — בניגוד ל-/google-attach שבהרשמה.
-  const HB_GOOGLE_CLIENT_ID = '459607487972-esu70diuu360tg1ji15o1n1tikf3npnb.apps.googleusercontent.com';
-
-  function googleMsg(text, kind) {
-    const el = document.getElementById('googleLinkMsg');
-    if (!el) return;
-    el.style.display = 'block';
-    el.innerHTML = text;
-    el.style.background = kind === 'ok' ? '#E8F6EE' : '#FEF3C7';
-    el.style.border = '1px solid ' + (kind === 'ok' ? '#BFE5CE' : '#FCD98B');
-  }
-
-  // מצב "כבר מחובר" — בלי כפתור. ⚠️ לא מציגים כפתור "נתק" בשלב הזה:
-  // ניתוק של מי ששכח את הקוד משאיר אותו בחוץ, וזה בדיוק הבאג שבאנו לפתור.
-  function renderGoogleLinked(email) {
-    const row = document.getElementById('googleLinkRow');
-    if (!row) return;
-    row.style.display = 'flex';
-    document.getElementById('googleLinkTitle').textContent = '✅ חשבון Google מחובר';
-    document.getElementById('googleLinkSub').innerHTML =
-      '<span dir="ltr" style="font-weight:700">' + (email || '').replace(/[<>&]/g, '') + '</span><br>' +
-      'מעכשיו אפשר להיכנס בלחיצה אחת מכל דפדפן, בלי קוד.';
-    document.getElementById('googleBtnHost').innerHTML = '';
-  }
-
-  async function onGoogleLinkCredential(res) {
-    googleMsg('מחבר…', 'ok');
-    try {
-      // ⚠️ הטוקן שלנו נלקח **עכשיו** ולא נשמר מקודם: הוא קצר-מועד, ועמוד
-      // שפתוח שעה היה שולח טוקן שפג ומקבל "לא מחובר" ללא שום סיבה נראית.
-      const u = auth.currentUser;
-      if (!u) { googleMsg('נראה שהחיבור שלך פג. רענן את הדף ונסה שוב.', 'warn'); return; }
-      const memberIdToken = await u.getIdToken();
-      const resp = await hbApiFetch('/google-link', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: res.credential, memberIdToken }),
-      });
-      const out = await resp.json();
-      if (out.ok) {
-        renderGoogleLinked(out.email);
-        googleMsg('✅ החשבון חובר. בפעם הבאה תוכל להיכנס עם Google בלי קוד.', 'ok');
-        showToast('חשבון Google חובר');
-        return;
-      }
-      // כל שגיאה מקבלת משפט שאומר **מה לעשות**, לא קוד באנגלית.
-      const MSGS = {
-        google_already_linked: 'חשבון ה-Google הזה כבר מקושר לאוהד אחר. אם זה בטעות — כתבו לנו.',
-        invalid_google_token:  'האימות מול Google לא הצליח. נסו שוב.',
-        not_signed_in:         'נראה שהחיבור שלכם פג. רעננו את הדף ונסו שוב.',
-        member_not_found:      'לא מצאנו את הרשומה שלכם. כתבו לנו ונטפל בזה.',
-      };
-      googleMsg('⚠️ ' + (MSGS[out.error] || 'משהו השתבש. נסו שוב בעוד רגע.'), 'warn');
-    } catch (e) {
-      console.error('google link failed:', e);
-      googleMsg('⚠️ החיבור לא השלים. בדקו את החיבור לאינטרנט ונסו שוב.', 'warn');
-    }
-  }
-
-  // ⚠️ הספרייה נטענת async — בלי המתנה הכפתור פשוט לא מצויר, וזה נראה
-  // כמו "הפיצ׳ר לא עובד" ולא כמו תזמון. אחרי כ-6 שניות מוותרים בשקט:
-  // הכרטיס לא מוצג בכלל, ולא מוצג כרטיס ריק עם כותרת ובלי כפתור.
-  function renderGoogleLinkButton(tries) {
-    tries = tries || 0;
-    const host = document.getElementById('googleBtnHost');
-    if (!host) return;
-    if (window.google && google.accounts && google.accounts.id) {
-      const row = document.getElementById('googleLinkRow');
-      row.style.display = 'flex';
-      document.getElementById('googleLinkSub').textContent =
-        'חברו פעם אחת — ומאז תוכלו להיכנס בלחיצה אחת מכל דפדפן, בלי קוד.';
-      google.accounts.id.initialize({
-        client_id: HB_GOOGLE_CLIENT_ID, callback: onGoogleLinkCredential, auto_select: false,
-      });
-      google.accounts.id.renderButton(host, {
-        theme: 'outline', size: 'large', shape: 'pill', text: 'continue_with', locale: 'he', width: 260,
-      });
-      return;
-    }
-    if (tries > 40) return;
-    setTimeout(() => renderGoogleLinkButton(tries + 1), 150);
-  }
-
-  // ⚠️ רק בנתיב החבר הרגיל. בתצוגת bizToken (app מבודד) או בתצוגה-מקדימה של
-  // מנהל ה-uid המחובר **אינו** החבר שמוצג על המסך — וקישור שם היה קושר את חשבון
-  // הגוגל לרשומה הלא-נכונה. בדיוק סוג באג-הזהות שאנחנו באים למנוע.
-  function initGoogleLink(m) {
-    if (bizToken || previewMemberId) return;
-    if (!auth.currentUser || auth.currentUser.uid !== memberId) return;
-    if (m && m.googleEmail) { renderGoogleLinked(m.googleEmail); return; }
-    renderGoogleLinkButton(0);
-  }
-  window._hbInitGoogleLink = initGoogleLink;
+  // §377 — ההיגיון עבר ל-google-link.js, המשותף לדפים שנושאים את התפריט הצדדי.
+  // הכרטיס שישב כאן ב"פרטים אישיים" הוסר כבר ב-§372 לבקשת המשתמש.
 
   function showToast(msg) {
     const t = document.getElementById('toast');
@@ -1479,6 +1395,12 @@ async function saveMemberField(updates) {
     <button class="menu-item" onclick="openContactSheet()">
       <span class="menu-item-icon">📞</span>
       <span class="menu-item-label">צור קשר</span>
+    </button>
+    <!-- §377 — חיבור חשבון Google. מוסתר; מוצג רק למי שעדיין לא חיבר (hbGoogleLink.init). -->
+    <button class="menu-item" id="menuGoogleItem" style="display:none" type="button"
+            onclick="try{closeMenu()}catch(e){}; openGoogleLinkSheet()">
+      <span class="menu-item-icon">🔗</span>
+      <span class="menu-item-label">חברו חשבון Google — כניסה בלי קוד</span>
     </button>
     <a class="menu-item" id="menuBizItem" href="#" style="display:none">
       <span class="menu-item-icon">🏪</span>

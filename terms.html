@@ -367,6 +367,11 @@
   </div>
 </div>
 
+<!-- §377 — חיבור חשבון Google. הספרייה של גוגל + המודול המשותף (google-link.js).
+     ⚠️ שניהם לא-חוסמים: דף שלא הצליח לטעון אותם מאבד את פריט-התפריט בלבד. -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="google-link.js"></script>
+
 <footer class="site-footer">
   <img class="site-footer-logo" src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
   <div class="site-footer-line"><a class="site-footer-link site-footer-highlight" href="https://instagram.com/Yellowzone.mta" target="_blank"><span dir="ltr">Yellowzone.mta <svg class="footer-ig-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></span></a> · <a class="site-footer-link" href="terms.html">תקנון ומדיניות לאוהדים</a></div>
@@ -589,6 +594,24 @@
       const { doc, getDoc, getDocFromServer } = await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js');
       const { onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js');
 
+      // §377 — terms.html מעולם לא קרא לוורקר, ולכן אין בו רשימת-כתובות. הועתקה
+      // מ-home.html (§374). 🔴 זו ההופעה השביעית של אותה רשימה — היא צריכה לעבור
+      // לקובץ משותף, ר' התיעוד של §377.
+      const HB_API_HOSTS = [
+        'https://api.yellowzone.co.il',
+        'https://habayit-hatsahov-worker.yellowzone.workers.dev',
+        'https://habayit-hatsahov.web.app/api',
+      ];
+      const hbApiFetch = (path, opts) => {
+        const tryHost = (i) =>
+          fetch(HB_API_HOSTS[i] + path, opts).catch(err => {
+            if (err && err.name === 'AbortError') throw err;
+            if (i + 1 >= HB_API_HOSTS.length) throw err;
+            return tryHost(i + 1);
+          });
+        return tryHost(0);
+      };
+
       const storedId = localStorage.getItem('hb_memberId');
       if (!storedId) return;
 
@@ -620,6 +643,15 @@
         }
         if (snap.exists()) {
           const d = snap.data();
+          // §377 — כאן, כי מכאן והלאה יש `return` מוקדם למי שאינו בעל-עסק, והפריט
+          // אמור להופיע לכל חבר מחובר ולא רק לבעלי-עסק.
+          try {
+            window.hbGoogleLink?.init({
+              apiFetch: hbApiFetch,
+              getIdToken: () => auth.currentUser?.getIdToken() || null,
+              googleEmail: d.googleEmail || '',
+            });
+          } catch (e) { console.error('google link init failed:', e); }
           isBizOwner = d.isBusinessOwner === true;
           linkedBusinessId = d.linkedBusinessId || '';
           isAdminMember = d.isAdmin === true;
@@ -690,6 +722,12 @@
       <span class="menu-item-icon">👤</span>
       <span class="menu-item-label">פרטים אישיים</span>
     </a>
+    <!-- §377 — חיבור חשבון Google. מוסתר; מוצג רק למי שעדיין לא חיבר (hbGoogleLink.init). -->
+    <button class="menu-item" id="menuGoogleItem" style="display:none" type="button"
+            onclick="try{closeMenu()}catch(e){}; openGoogleLinkSheet()">
+      <span class="menu-item-icon">🔗</span>
+      <span class="menu-item-label">חברו חשבון Google — כניסה בלי קוד</span>
+    </button>
     <a class="menu-item" id="menuBizItem" href="#" style="display:none">
       <span class="menu-item-icon">🏪</span>
       <span class="menu-item-label">העסק שלי</span>
