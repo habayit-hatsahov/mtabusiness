@@ -4269,6 +4269,39 @@ function tagCatalogFilterBarHtml() {
     </div>`;
 }
 
+// ── §366 — כפילות הרשמה של עסק ────────────────────────────────────────────────────────
+// לאוהדים יש `reviewFlag: 'possible_duplicate'` שנכתב ע"י הטופס (fan-register.html);
+// לעסקים לא היה שום דבר. שבתאי לנקרי נרשם פעמיים, שתי הרשומות ישבו זו לצד זו ברשימה,
+// ואיש לא ידע — המשתמש גילה את זה רק כי הוא במקרה שם לב לשם.
+//
+// ⚠️ מחושב **בקריאה**, לא נכתב לשום מקום: מרכז הניהול ממילא טוען את כל העסקים, והדגל
+// הוא נגזרת של הנתונים ולא עובדה חדשה. שדה שנכתב היה מצריך מיגרציה לכל הרשומות הקיימות
+// ונתיב-כתיבה שלישי שיישאר לא-מסונכרן — בדיוק הלקח של "עסק השבוע".
+//
+// ⚠️ **לא כל שני עסקים של אותו בעלים הם כפילות.** אדיר אילן רשום עם "שווארמה שמש
+// אירועים" ו"גולדה אירועים" על אותו טלפון ואותו מייל, ושניהם אמיתיים. לכן מסמנים רק
+// שני דפוסים שבאמת מעידים על תאונה:
+//   1. **אותו בעלים + אותו שם-עסק** — זה המקרה של שבתאי, ואין לו שום פירוש תמים.
+//   2. **אותו בעלים + הוגשו בתוך שעתיים זו מזו** — חתימת ה"שלחתי שוב", גם אם השם
+//      הוקלד קצת אחרת בפעם השנייה.
+const DUP_WINDOW_MS = 2 * 60 * 60 * 1000;
+function bizDuplicateOf(b) {
+  if (!b) return null;
+  const norm = v => String(v == null ? '' : v).trim().replace(/[\s]+/g, ' ').toLowerCase();
+  const email = norm(b.ownerEmail), phone = String(b.ownerPhone || '').replace(/[^0-9]/g, '');
+  if (!email && !phone) return null;
+  const at = b.registeredAt ? b.registeredAt.getTime() : null;
+  return (MOCK_BUSINESSES || []).find(o => {
+    if (!o || o.id === b.id) return null;
+    const sameOwner = (email && norm(o.ownerEmail) === email) ||
+                      (phone && String(o.ownerPhone || '').replace(/[^0-9]/g, '') === phone);
+    if (!sameOwner) return false;
+    if (norm(o.name) === norm(b.name)) return true;
+    const oAt = o.registeredAt ? o.registeredAt.getTime() : null;
+    return at && oAt && Math.abs(at - oAt) <= DUP_WINDOW_MS;
+  }) || null;
+}
+
 function bizRowsHtml() {
   const shown = bizFilteredList();
   if (!shown.length) return `<div class="placeholder-note">לא נמצאו עסקים</div>`;
@@ -4284,6 +4317,9 @@ function bizRowsHtml() {
     if (cls.primary === 'כרטיס חסר באינדקס') {
       missingFieldsFor(b).slice(0, 2).forEach(label => badges.push(`<span class="warn-badge">${esc(label)}</span>`));
     }
+    // §366 — הדגל צריך להיות גלוי **ברשימה**, לא רק בכרטיס: מי שסורק את הממתינים רואה
+    // שתי שורות דומות ואין לו סימן שהן קשורות.
+    if (bizDuplicateOf(b)) badges.push(`<span class="warn-badge">כפילות אפשרית</span>`);
     const sel = selectedBizIds.has(b.id);
     const active = b.id === selectedBizDetailId;
     const metaBits = [
@@ -6102,11 +6138,23 @@ function bizFullDetailHtml(id, opts) {
   const idNoteBox = !b.note
     ? `<div class="identity-note neutral"><div class="identity-note-h">הערה מהעסק</div><div class="identity-note-v">לא נכתבה הערה בהרשמה</div></div>`
     : `<div class="identity-note ${b.noteHandled ? 'neutral' : 'warn'}"><div class="identity-note-h">הערה מהעסק${b.noteHandled ? ' (טופלה)' : ''}${b.noteAt ? ' · ' + fmtDateTime(b.noteAt) : ''}</div><div class="identity-note-v">"${esc(b.note)}"</div></div>`;
+  // ── §366 — "יש עוד רשומה כמו זו" ──────────────────────────────────────────────────────
+  // ⚠️ תיבה ולא רק באדג': הבאדג' ברשימה אומר *שיש* כפילות, אבל ההחלטה נעשית כאן — ולכן
+  // כאן צריך להופיע **מי** העסק השני, מתי הוגש ומה הסטטוס שלו, עם קישור אליו. בלי זה
+  // המנהל יודע שיש בעיה ולא יודע איפה.
+  // ⚠️ המילה היא "אפשרית" ולא "כפילות": שני עסקים של אותו בעלים הם לפעמים אמיתיים
+  // (אדיר אילן), וזה שיפוט של אדם ולא של הקוד. הטקסט אומר מה נמצא, לא מה לעשות.
+  const idDupBiz = bizDuplicateOf(b);
+  const idDupBox = idDupBiz
+    ? `<div class="identity-note warn"><div class="identity-note-h">כפילות אפשרית</div><div class="identity-note-v">${
+        esc(idDupBiz.name || 'עסק ללא שם')} · ${
+        idDupBiz.status === 'approved' ? 'מאושר' : idDupBiz.status === 'rejected' ? 'נדחה' : 'ממתין'} · הוגש ${fmtDate(idDupBiz.registeredAt)}<br><a href="#" onclick="event.preventDefault();selectBizDetail('${esc(idDupBiz.id)}')">פתחו את הרשומה השנייה</a><br><span style="opacity:.75">אותו בעלים. אם זה באמת עסק נוסף — אין מה לעשות; אם זו אותה בקשה שנשלחה פעמיים — מחקו אחת.</span></div></div>`
+    : '';
   const identityCardHtml = `
     <div class="dcard identity-card">
       <div class="identity-top">
         <div style="flex:1;min-width:220px">
-          <div class="identity-badges">${idBadges.join('')}</div>
+          <div class="identity-badges">${idBadges.join('')}${idDupBiz ? '<span class="warn-badge lg">כפילות אפשרית</span>' : ''}</div>
           <div class="identity-dates">${idDates}</div>
           <div class="identity-name-row" id="idNameViewRow_${b.id}">
             <div class="identity-name">${esc(b.name)}</div>
@@ -6138,7 +6186,7 @@ function bizFullDetailHtml(id, opts) {
              פעולות, לא רק תצוגה.
            · idNoteBox — נשארת במפורש לבקשת המשתמש: *"הערה מהעסק אפשר להשאיר, זה חשוב לדעת
              האם כתב לנו או לא"*. היא מוצגת גם כשאין הערה, בדיוק בשביל השאלה הזאת. -->
-      <div class="identity-notes">${emailWarnNote(b.ownerEmail)}${idBrokenLinksBox}${idEmailNote}${idNoteBox}</div>
+      <div class="identity-notes">${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${idEmailNote}${idNoteBox}</div>
     </div>`;
 
   const anchorCardHtml = b.status === 'approved' ? `
