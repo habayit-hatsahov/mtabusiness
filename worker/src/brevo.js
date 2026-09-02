@@ -12,10 +12,35 @@ import {
 // אוהדים יוכלו להשיב למייל שלהם, כדי לאפשר שיתופי-פעולה שמתחילים מתגובה חופשית.
 const REPLY_TO = 'yellowzonemta@gmail.com';
 
-async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent }) {
+// ══ §389 — "אפשר גם בלי הקוד" למי שחיבר חשבון Google ═════════════════════════════════════
+// 🔑 **למה זה חייב להיות בקוד ולא בתבנית שהמנהל עורך:** המשפט נכון רק לחלק מהנמענים, ותבנית
+// סטטית אינה יודעת להתנות. יתרה מזו — `tpl.body` **דורס את גוף המכתב במלואו**, ולכן משפט
+// שהיה נכתב בתבנית ברירת-המחדל שבקוד לא היה מופיע לעולם אצל מי שיש לו תבנית מותאמת (וזה
+// המצב בפועל). בקשת המשתמש הייתה מפורשת: *"חשוב שאני עורך שאני לא אגע בזה"*.
+//
+// ⚠️ **בלי אימוג'ים** — §306: סימן אחד (☰) נקרא כאימוג'י אצל נמען ושבר משפט שלם.
+// ⚠️ **בלי כפתור** — §306 שוב: אין כפתור-פעולה במכתב מלבד מה שכבר קיים בתבנית.
+function esc(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function googleNoteHtml(googleEmail) {
+  if (!googleEmail) return '';
+  return `
+    <div dir="rtl" style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#555;
+                          background:#F6F6F2;border:1px solid #E7E7E0;border-radius:12px;
+                          padding:14px 16px;margin:20px auto 0;max-width:520px;text-align:right">
+      <b style="color:#0A2A66">אפשר גם בלי הקוד</b><br>
+      בעמוד הכניסה יש כפתור "להמשיך עם Google". החשבון ${esc(googleEmail)} כבר מקושר לחשבון שלכם,
+      ולכן אפשר להיכנס איתו בלחיצה אחת — מכל מכשיר, בלי להקליד קוד.
+    </div>`;
+}
+
+async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent, googleEmail }) {
   // כל מייל יוצא (גם תבניות-מנהל וגם ברירת-המחדל הקבועה) מקבל את אותו פוטר וגרסת-טקסט-חלופית —
   // ריכוזי כאן ולא בכל קורא-קריאה, כדי שלא יישכח פעם אחת מתוך 4 (ר' "מסירות מייל ל-Gmail" בתיעוד).
-  const finalHtml = htmlContent + footerHtml(htmlContent);
+  // §389 — הערת-הגוגל נוספת כאן **מאותו נימוק בדיוק**: מיקום אחד, ולא ארבעה שאפשר לשכוח אחד מהם.
+  // היא נכנסת **לפני** הפוטר ואחרי גוף המכתב, ו-`footerHtml` ממשיך לקבל את הגוף המקורי בלבד.
+  const finalHtml = htmlContent + googleNoteHtml(googleEmail) + footerHtml(htmlContent);
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
@@ -68,7 +93,7 @@ function stripHtml(html) {
 // tpl אופציונלי — override מ-settings/messageTemplates (Firestore), נערך במרכז ההודעות.
 // כשקיים, מחליף גם את הנושא וגם את גוף ההודעה — טקסט חופשי דרך renderMailHtml, כולל תיבת-קוד/
 // כפתור ממותגים אם {code}/{link} יושבים על שורה נפרדת משלהם, וכל סימוני-העיצוב של סרגל הכתיבה.
-export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind = 'welcome' }) {
+export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind = 'welcome', googleEmail = '' }) {
   // בניגוד לבעלי-עסקים, לאוהד אין accessToken אישי (הכניסה היא תמיד טלפון+קוד) — אז {link} כאן
   // הוא כתובת האתר הכללית, זהה לכל אוהד, לא קישור-קסם מותאם-אישית.
   const vars = { name: toName || '', code, link: 'https://yellowzone.co.il/welcome.html' };
@@ -91,6 +116,7 @@ export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind
     replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
+    googleEmail,
   });
 }
 
@@ -115,6 +141,8 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
     replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
+    // §389 — **בכוונה בלי googleEmail**: המכתב הזה עוסק בדשבורד העסק (טוקן נפרד, §244)
+    // ולא בכניסת החבר, והערה על "כניסה בלי קוד" הייתה מפנה לדלת אחרת מזו שהמכתב מדבר עליה.
   });
 }
 
@@ -135,7 +163,7 @@ export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, 
 }
 
 // מייל מאוחד — כשבעל עסק מאושר גם כאוהד וגם כבעל עסק באותה פעולה
-export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl }) {
+export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl, googleEmail = '' }) {
   const vars = { name: toName || '', code, business: businessName, link: dashboardLink };
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
@@ -158,5 +186,6 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
     replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
+    googleEmail,
   });
 }

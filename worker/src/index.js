@@ -679,6 +679,7 @@ async function runEmailSweeps(env) {
           businessName: business.fields.name,
           dashboardLink: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, business.id)}`,   // §244
           tpl: { subject: templates.combinedSubject, body: templates.combinedBody },
+          googleEmail: m.fields.googleEmail || '',   // §389
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
           loginCodeEmailStatus: 'sent',
@@ -703,6 +704,8 @@ async function runEmailSweeps(env) {
           code: await loginCodeFor(env, accessToken, m.id),   // §248
           tpl: loginTpl,
           kind: isResend ? 'resend' : 'welcome',
+          googleEmail: m.fields.googleEmail || '',   // §389 — נשלח גם ב'שכחתי קוד', ושם זה
+          // אפילו יותר שימושי: מי שמבקש קוד ויש לו גוגל מקבל תזכורת שהוא לא צריך אותו.
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
           loginCodeEmailStatus: 'sent',
