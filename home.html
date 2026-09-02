@@ -1698,6 +1698,9 @@ document.getElementById('catPills').insertAdjacentHTML('beforeend', window.CATEG
   </div>
 </div>
 
+<!-- §372 — ספריית הזהות של גוגל. async/defer; הציור ממתין לה (hbRenderGoogleButton). -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
 <footer class="site-footer">
   <img class="site-footer-logo" src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
   <div class="site-footer-line"><a class="site-footer-link site-footer-highlight" href="https://instagram.com/Yellowzone.mta" target="_blank"><span dir="ltr">Yellowzone.mta <svg class="footer-ig-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></span></a> · <a class="site-footer-link" href="terms.html">תקנון ומדיניות לאוהדים</a></div>
@@ -3650,6 +3653,13 @@ document.addEventListener('DOMContentLoaded', () => {
       <span class="menu-item-icon">📞</span>
       <span class="menu-item-label">צור קשר</span>
     </button>
+    <!-- §372 — חיבור חשבון Google. מוסתר כברירת מחדל ומוצג רק למי שעדיין לא חיבר
+         (ר' hbInitGoogleLink). בתפריט ולא בתוך "פרטים אישיים" — בקשת המשתמש: התפריט
+         נגיש מכל דף, וכרטיס שקבור בהגדרות לא נראה ע"י מי שצריך אותו. -->
+    <button class="menu-item" id="menuGoogleItem" style="display:none" onclick="closeMenu(); openGoogleLinkSheet()">
+      <span class="menu-item-icon">🔗</span>
+      <span class="menu-item-label">חברו חשבון Google — כניסה בלי קוד</span>
+    </button>
     <a class="menu-item" id="menuBizItem" href="#" style="display:none">
       <span class="menu-item-icon">🏪</span>
       <span class="menu-item-label">העסק שלי</span>
@@ -3684,6 +3694,23 @@ document.addEventListener('DOMContentLoaded', () => {
 </div><!-- end menu-drawer -->
 </div>
 <!-- ══ CONTACT SHEET ══ -->
+<!-- §372 — גיליון חיבור Google. מאמץ את .contact-overlay/.contact-sheet הקיימים כדי לא
+     לייצר שפת-עיצוב שנייה לאותו תפקיד. -->
+<div class="contact-overlay" id="googleOverlay" onclick="if(event.target===this)closeGoogleLinkSheet()">
+  <div class="contact-sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeGoogleLinkSheet()">✕</button>
+    <div class="contact-sheet-title">🔗 כניסה בלי קוד</div>
+    <div class="contact-sheet-sub">חברו את חשבון Google שלכם — פעם אחת, וזהו.</div>
+    <div style="font-size:13.5px;line-height:1.7;margin:14px 0 4px;color:var(--ink-2,#3A4C7A)">
+      מהרגע הזה תיכנסו בלחיצה אחת <b>מכל דפדפן ומכל מכשיר</b>, בלי לחפש קוד ובלי לזכור אותו.<br>
+      קוד הכניסה שלכם ממשיך לעבוד כרגיל — זו רק דרך נוספת.
+    </div>
+    <div id="googleBtnHost" style="display:flex;justify-content:center;margin:16px 0 6px"></div>
+    <div id="googleLinkMsg" style="display:none;font-size:13px;line-height:1.6;border-radius:12px;padding:10px 12px;margin-bottom:6px"></div>
+  </div>
+</div>
+
 <div class="contact-overlay" id="contactOverlay" onclick="if(event.target===this)closeContactSheet()">
   <div class="contact-sheet">
     <div class="sheet-handle"></div>
@@ -4002,6 +4029,99 @@ await new Promise(resolve => {
   });
 });
 
+// ══ §372 — חיבור חשבון Google מהתפריט ═══════════════════════════════════════════════════
+// הנתיב החזק של §370: שתי הוכחות זהות — אחת מגוגל, ואחת שלנו (הוא כבר מחובר לדף הזה).
+// ⚠️ החשיפה ל-window נעשית **מיד**, לפני כל await בקובץ. הכפתור בתפריט קורא ל-onclick,
+// והוא מצויר לפני שהמודול מסיים — בדיוק המלכודת של §310/§312, שבה כפתור-כניסה נשאר מת.
+// ⚠️ home.html מעולם לא קרא לוורקר, ולכן אין בו כתובת-API מוגדרת. נתפס בבדיקת
+// מזהים ולא ב-`node --check`, שמעולם לא יתלונן על קבוע שלא קיים — זו בדיוק הדרך
+// שבה §340 שבר בלוק שלם. בלי נפילה-לאחור ל-workers.dev במכוון: קישור חשבון הוא
+// פעולה שאפשר לחזור עליה, בניגוד לכניסה עצמה (§364), והכתובת הישנה היא בדיוק זו שמסוננת.
+const HB_API_PRIMARY = 'https://api.yellowzone.co.il';
+const HB_GOOGLE_CLIENT_ID = '459607487972-esu70diuu360tg1ji15o1n1tikf3npnb.apps.googleusercontent.com';
+
+function openGoogleLinkSheet() {
+  document.getElementById('googleOverlay')?.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  hbRenderGoogleButton(0);
+}
+function closeGoogleLinkSheet() {
+  document.getElementById('googleOverlay')?.classList.remove('open');
+  document.body.style.overflow = '';
+}
+window.openGoogleLinkSheet  = openGoogleLinkSheet;
+window.closeGoogleLinkSheet = closeGoogleLinkSheet;
+
+function hbGoogleMsg(text, kind) {
+  const el = document.getElementById('googleLinkMsg');
+  if (!el) return;
+  el.style.display = 'block';
+  el.innerHTML = text;
+  el.style.background = kind === 'ok' ? '#E8F6EE' : '#FEF3C7';
+  el.style.border = '1px solid ' + (kind === 'ok' ? '#BFE5CE' : '#FCD98B');
+}
+
+async function hbOnGoogleCredential(res) {
+  hbGoogleMsg('מחבר…', 'ok');
+  try {
+    // ⚠️ הטוקן שלנו נלקח **עכשיו**: הוא קצר-מועד, ועמוד שפתוח שעה היה שולח טוקן שפג
+    // ומקבל "לא מחובר" בלי שום סיבה נראית.
+    const u = window._auth?.currentUser;
+    if (!u) { hbGoogleMsg('נראה שהחיבור שלכם פג. רעננו את הדף ונסו שוב.', 'warn'); return; }
+    const memberIdToken = await u.getIdToken();
+    const resp = await fetch(HB_API_PRIMARY + '/google-link', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: res.credential, memberIdToken }),
+    });
+    const out = await resp.json();
+    if (out.ok) {
+      hbGoogleMsg('✅ מעולה — החשבון חובר. בפעם הבאה פשוט לחצו "המשך עם Google".', 'ok');
+      const item = document.getElementById('menuGoogleItem');
+      if (item) item.style.display = 'none';
+      const host = document.getElementById('googleBtnHost');
+      if (host) host.innerHTML = '';
+      return;
+    }
+    const MSGS = {
+      google_already_linked: 'חשבון ה-Google הזה כבר מקושר לאוהד אחר. אם זו טעות — כתבו לנו.',
+      invalid_google_token:  'האימות מול Google לא הצליח. נסו שוב.',
+      not_signed_in:         'נראה שהחיבור שלכם פג. רעננו את הדף ונסו שוב.',
+      member_not_found:      'לא מצאנו את הרשומה שלכם. כתבו לנו ונטפל בזה.',
+    };
+    hbGoogleMsg('⚠️ ' + (MSGS[out.error] || 'משהו השתבש. נסו שוב בעוד רגע.'), 'warn');
+  } catch (e) {
+    console.error('google link failed:', e);
+    hbGoogleMsg('⚠️ החיבור לא הושלם. בדקו את החיבור לאינטרנט ונסו שוב.', 'warn');
+  }
+}
+
+// ⚠️ הספרייה נטענת async. בלי ההמתנה הכפתור פשוט לא מצויר, וזה נראה כמו "לא עובד"
+// ולא כמו תזמון. אחרי ~6 שניות נאמר את זה במפורש במקום להשאיר גיליון ריק.
+function hbRenderGoogleButton(tries) {
+  tries = tries || 0;
+  const host = document.getElementById('googleBtnHost');
+  if (!host || host.childElementCount) return;
+  if (window.google && google.accounts && google.accounts.id) {
+    google.accounts.id.initialize({
+      client_id: HB_GOOGLE_CLIENT_ID, callback: hbOnGoogleCredential, auto_select: false,
+    });
+    google.accounts.id.renderButton(host, {
+      theme: 'filled_blue', size: 'large', shape: 'pill', text: 'continue_with', locale: 'he', width: 260,
+    });
+    return;
+  }
+  if (tries > 40) { hbGoogleMsg('⚠️ לא הצלחנו לטעון את הכניסה של Google. בדקו את החיבור ונסו שוב.', 'warn'); return; }
+  setTimeout(() => hbRenderGoogleButton(tries + 1), 150);
+}
+
+// מוצג **רק למי שחסר** — בקשת המשתמש. מי שכבר חיבר לא רואה את הפריט בכלל.
+function hbInitGoogleLink(googleEmail) {
+  if (googleEmail) return;
+  const item = document.getElementById('menuGoogleItem');
+  if (item) item.style.display = 'flex';
+}
+window.hbInitGoogleLink = hbInitGoogleLink;
+
 // שם פרטי בברכת הבית — נשלף מהחבר המחובר בפועל (לא placeholder קבוע). auth.currentUser.uid, לא hb_memberId — ר' הערה למעלה
 (async () => {
   try {
@@ -4009,6 +4129,8 @@ await new Promise(resolve => {
     const snap = await fetchMemberDocWithRetry(memberId);
     const data = (snap && snap.exists()) ? snap.data() : {};
     const firstName = data.firstName || '';
+    // §372 — אותו מסמך, בלי קריאה נוספת. מציג את פריט-התפריט רק למי שעדיין לא חיבר.
+    try { hbInitGoogleLink(data.googleEmail || ''); } catch (e) { console.error('google menu init failed:', e); }
     const el = document.getElementById('heroUserName');
     // "חבר" הוא רק גיבוי לכשאין *שום* שם — הוא לא דורס שם אמיתי שכבר הוצג מה-cache המקומי
     // (ר' ההצגה המיידית למעלה). אחרת ניתוק-רשת רגעי היה מוריד את "שלום, רמי" ל"שלום, חבר".
