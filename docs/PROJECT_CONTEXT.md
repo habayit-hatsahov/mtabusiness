@@ -16437,17 +16437,33 @@ Firestore ו-tokeninfo מדומים) — כולן עוברות. מתוכן **9 �
 לקבל `welcome.html` עם שתי כתובות בלבד. (הבאמפ מכסה גם את `home.html`/`profile.html`
 של §371–§372. ⚠️ שני קומיטים של הסשן המקביל סחפו לתוכם עריכות sw.js שלי בדרך — v55→v56→v57, ולכן המספר כאן הוא v58.)
 
-### 🔴 טרם בוצע — נדרשות פעולות בחשבון
+### ✅ נפרס ואומת בפרודקשן (2026-09-02)
 
-1. **`firebase deploy --only functions,hosting`** — הכתובת השלישית לא קיימת עד שזה ירוץ.
-   דורש חשבון Blaze (הפונקציה לא תיפרס בלעדיו). **עד אז השרשרת מתנהגת בדיוק כמו §364:**
-   שתי הכתובות הראשונות, ואם שתיהן נופלות — כשל, בלי רגרסיה.
-2. **הסוד המשותף, אותו ערך בשני המקומות:** `firebase functions:secrets:set PROXY_SECRET`
-   ו-`wrangler secret put PROXY_SECRET`. ⚠️ ב-PowerShell **לא** להעביר את הערך ב-pipe —
-   הוא מוסיף CRLF לסוד (ר' [[feedback_powershell_secret_and_json_traps]]).
-   ⚠️ בלי הסוד בוורקר, `clientIp` נופל בחזרה ל-`CF-Connecting-IP` ומגבלת-הקצב מתמוטטת
-   לכל מי שעובר במתווך.
-3. **`wrangler deploy`** — לתיקון של `clientIp`.
+| שלב | תוצאה |
+|---|---|
+| `PROXY_SECRET` | 32 בתים אקראיים, נכתבו לקובץ אחד **בלי CRLF** ומשם לשני הצדדים: Secret Manager (version 1) + `wrangler secret put`. אותם בתים בדיוק |
+| `wrangler deploy` | ✅ הוורקר חי עם `clientIp()` · `workers.dev` מחזיר 200 תוך ~1 שנ' |
+| `firebase deploy` | ✅ `yzApiProxy` ב-`europe-west1`, Node 22, gen 2 · Hosting release הושלם |
+| **הכתובת השלישית** | ✅ `POST habayit-hatsahov.web.app/api/mint-member-token` → **200 `invalid_credentials` תוך 0.85 שנ'** |
+| CORS | ✅ preflight → 204 עם `Access-Control-Allow-Origin: https://yellowzone.co.il` **מהוורקר** · Origin לא מורשה מקבל את הדומיין המותר ולא את שלו |
+| אין עותק אתר | ✅ שורש ה-Hosting וכל נתיב שאינו `/api` מפנים ל-`yellowzone.co.il` |
+
+⚠️ **שתי מלכודות שנתפסו בפריסה עצמה:**
+
+1. **`Error: User code failed to load. Cannot determine backend specification. Timeout
+   after 10000.`** — נראה כמו שגיאה בקוד ואינו. הקוד נטען מקומית תוך 346ms. השורש:
+   `firebase-functions` 6 מול ה-Node המקומי בשלב הגילוי. **עלה ל-7.3.2 ו-`engines` ל-22**
+   (Node 20 הוצא משימוש ב-30.4 ומפסיק להיפרס ב-30.10). **הבדיקה שהפרידה בין השניים:
+   `node -e "require('./index.js')"` — טעינה מקומית מצליחה = הבעיה בכלי, לא בקוד.**
+2. **`firebase deploy` דיווח "Deploy complete" חלקי ו-Hosting **לא** שוחרר.** ההרצה
+   נעצרה על `could not set up cleanup policy`, אחרי שהקבצים כבר הועלו — כלומר
+   `web.app` המשיך להחזיר **"Site Not Found"** בזמן שהפלט נראה כמעט מוצלח.
+   נפתר ב-`firebase functions:artifacts:setpolicy --location europe-west1 --force`
+   ואז `firebase deploy --only hosting`. 🔑 **פריסה שנעצרה על אזהרה נלווית משאירה
+   מצב חלקי — תמיד לאמת בקריאה אמיתית לכתובת, לא לפי פלט ה-CLI.**
+
+⚠️ **נשאר לפרוס: ה-HTML עצמו.** GitHub Pages מתעדכן רק ב-`git push`. עד אז הדפדפנים
+ממשיכים לקבל `welcome.html`/`home.html` עם שתי כתובות בלבד.
 
 ### פתוח
 
