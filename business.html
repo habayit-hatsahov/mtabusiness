@@ -1731,7 +1731,41 @@
   document.getElementById('bizTypeGrid')?.addEventListener('click', () => markStep('start'), { once: true });
   document.getElementById('categoryGrid')?.addEventListener('click', () => markStep('start'), { once: true });
 
-  const WORKER_URL = 'https://api.yellowzone.co.il';   // §364 — היה workers.dev, נחסם ע"י סינון סלולרי. ר' PROJECT_CONTEXT §359/§364
+  // ── §375 — טופס ההרשמה עבר לרשימת הכתובות של §374 ────────────────────────────────────────
+  // §374 הוסיף שלוש כתובות ונפילה-לאחור ל-welcome.html ול-home.html — **וטופס ההרשמה נשאר
+  // מאחור על כתובת יחידה.** זה הקובץ שהכי אסור לו: `/upload-biz-media` נושא את כל התמונות
+  // של העסק, והכשל שלו **שקט לחלוטין** מנקודת מבטו של הנרשם — הוא רואה "הבקשה התקבלה"
+  // (ההרשמה עצמה כבר נכתבה ל-Firestore לפני שלב המדיה) ומאבד לוגו, תמונה מייצגת, גלריה
+  // וראיית-אימות בבת אחת. נמדד בפועל היום: מרכז הניהול הציג "⚠️ לא נטענה" לשני עסקים
+  // חדשים, וה-DNS של הרשת החזיר NXDOMAIN על `api.yellowzone.co.il` בזמן ש-8.8.8.8 ו-1.1.1.1
+  // פתרו אותה כרגיל (ר' §373/§374ב — שרתי-השמות הישנים עוד חיים).
+  //
+  // 🔑 הרשימה זהה ל-welcome.html **בכוונה, כולל הסדר**: הכתובת השלישית יושבת אצל גוגל ולא
+  // אצל קלאודפלייר, כי §374 הוכיח ששתי הראשונות נופלות יחד כשהנתיב לקלאודפלייר חסום.
+  const HB_API_HOSTS = [
+    'https://api.yellowzone.co.il',                             // קלאודפלייר — השם שלנו (§364)
+    'https://habayit-hatsahov-worker.yellowzone.workers.dev',   // קלאודפלייר — הישנה
+    'https://habayit-hatsahov.web.app/api',                     // 🔑 גוגל — רשת אחרת לגמרי (§374)
+  ];
+  // ⚠️ **רק כשל-רשת מקדם לכתובת הבאה — לא תשובה שהתקבלה.** `fetch` נדחה רק כשלא הייתה
+  // תשובה בכלל (DNS/חיבור/TLS); 4xx/5xx הוא תשובה ועובר הלאה כרגיל. ניסיון חוזר על תשובה
+  // תקינה היה שולח את אותן תמונות פעמיים ויוצר עסק כפול ב-/check-biz-exists.
+  //
+  // ⚠️ **AbortError אינו כשל-רשת אלא החלטה שלנו** — `/upload-biz-media` רץ תחת
+  // `AbortSignal.timeout(90000)` (§294). ניסיון חוזר עליו היה מבטל את גבול-הזמן ומחזיר
+  // בדיוק את "המסך התקוע" שהוא נועד למנוע, רק כפול שלוש.
+  const hbApiFetch = (path, opts, st) => {
+    const state = st || {};
+    state.via = 0;
+    const tryHost = (i) =>
+      fetch(HB_API_HOSTS[i] + path, opts).catch(err => {
+        if (err && err.name === 'AbortError') throw err;
+        if (i + 1 >= HB_API_HOSTS.length) throw err;
+        state.via = i + 1;
+        return tryHost(i + 1);
+      });
+    return tryHost(0);
+  };
 
   // ── "חזרה לאתר" — קיים בכל מסלולי-הכניסה לטופס, לא רק בהמבורגר (§354) ──────────────────
   // עד כאן הכפתור הוצג **רק** ב-?ctx=menu, כפתרון למסך-ללא-מוצא ב-PWA. אבל המסלול שדרכו
@@ -1762,7 +1796,7 @@
   // ── קישור/יצירת רשומת חבר לבעל העסק ──
   async function findExistingMemberId(phone, email) {
     try {
-      const resp = await fetch(WORKER_URL + '/check-member-exists', {
+      const resp = await hbApiFetch('/check-member-exists', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, email })
@@ -2034,7 +2068,7 @@
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 6000);
     try {
-      const resp = await fetch(WORKER_URL + '/check-biz-exists', {
+      const resp = await hbApiFetch('/check-biz-exists', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, email, name }),
@@ -2981,7 +3015,7 @@
           // ⚠️ feature-detect ולא שימוש ישיר: `AbortSignal.timeout` לא קיים ב-iOS Safari 15
           // ומטה, ושם קריאה ישירה הייתה זורקת TypeError **לפני** ה-fetch — כלומר שוברת
           // העלאות תקינות במכשירים ישנים בדיוק בשם התיקון. התקרה החיצונית מכסה גם אותם.
-          const resp = await fetch(WORKER_URL + '/upload-biz-media', {
+          const resp = await hbApiFetch('/upload-biz-media', {
             method: 'POST', body: form,
             signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(90000) : undefined,
           });
@@ -3811,7 +3845,7 @@
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const resp = await fetch(WORKER_URL + '/shorten-benefit', {
+      const resp = await hbApiFetch('/shorten-benefit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),

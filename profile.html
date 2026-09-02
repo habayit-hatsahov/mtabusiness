@@ -673,7 +673,28 @@ import { getFirestore, doc, getDoc, getDocFromServer, updateDoc, collection, que
 let auth = primaryAuth;
 let db   = primaryDb;
 
-const WORKER_URL = 'https://api.yellowzone.co.il';   // §364 — היה workers.dev, נחסם ע"י סינון סלולרי. ר' PROJECT_CONTEXT §359/§364
+// ── §375 — פרטים אישיים עברו לרשימת הכתובות של §374 ──────────────────────────────────────
+// שתי קריאות כאן, ושתיהן הן נתיבי-זהות: `/mint-biz-token` (מעבר לדשבורד העסק) ו-`/google-link`
+// (חיבור חשבון גוגל, §371). כתובת יחידה שלא נפתרת ברשת של החבר הופכת את שתיהן לכפתור מת.
+// ר' §373/§374 — ולמה הכתובת השלישית חייבת להיות אצל גוגל ולא שם נוסף בקלאודפלייר.
+const HB_API_HOSTS = [
+  'https://api.yellowzone.co.il',                             // קלאודפלייר — השם שלנו (§364)
+  'https://habayit-hatsahov-worker.yellowzone.workers.dev',   // קלאודפלייר — הישנה
+  'https://habayit-hatsahov.web.app/api',                     // 🔑 גוגל — רשת אחרת לגמרי (§374)
+];
+// ⚠️ רק כשל-רשת מקדם לכתובת הבאה (4xx/5xx הוא תשובה), ו-AbortError לעולם לא.
+const hbApiFetch = (path, opts, st) => {
+  const state = st || {};
+  state.via = 0;
+  const tryHost = (i) =>
+    fetch(HB_API_HOSTS[i] + path, opts).catch(err => {
+      if (err && err.name === 'AbortError') throw err;
+      if (i + 1 >= HB_API_HOSTS.length) throw err;
+      state.via = i + 1;
+      return tryHost(i + 1);
+    });
+  return tryHost(0);
+};
 
 // ── SIGN OUT ──────────────────────────────────────────────────────────────
 // מוגדר מוקדם ככל האפשר (לפני ה-Auth guard למטה) — כדי שכפתור ההתנתקות תמיד
@@ -840,7 +861,7 @@ if (!bizToken && !previewMemberId) {
 }
 
 if (bizToken) {
-  const resp = await fetch(WORKER_URL + '/mint-biz-token', {
+  const resp = await hbApiFetch('/mint-biz-token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ accessToken: bizToken })
@@ -1355,7 +1376,7 @@ async function saveMemberField(updates) {
       const u = auth.currentUser;
       if (!u) { googleMsg('נראה שהחיבור שלך פג. רענן את הדף ונסה שוב.', 'warn'); return; }
       const memberIdToken = await u.getIdToken();
-      const resp = await fetch(WORKER_URL + '/google-link', {
+      const resp = await hbApiFetch('/google-link', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken: res.credential, memberIdToken }),
       });

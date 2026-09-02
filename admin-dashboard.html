@@ -2877,12 +2877,18 @@ window.qjStampDims = function (img) {
 // גרסת-התמונונת של markProofImageBroken. נפרדת ממנה בכוונה: זו מחליפה ב-owner-verify-photo-empty
 // שמעוצב לעמודה של 232px, וכאן מדובר בריבועים של 36px ובתאי-שער של 220px.
 window.markBizImageFailed = function(img) {
+  if (window.hbImageNextHost && window.hbImageNextHost(img)) return;   // §375 — ר' markBizImageBroken
   if (!img) return;
   img.classList.add('img-failed');
   img.title = 'התמונה לא נטענה. הקובץ קיים — אפשר לראותה בכרטיס העסק או להוריד אותה.';
 };
 
+// §375 — לפני שמכריזים "לא נטענה", מנסים את הכתובת הבאה ברשימה. `ERR_NAME_NOT_RESOLVED` על
+// הכתובת הראשית הוא בדיוק אותו onerror כמו קובץ פגום, ובלי הניסיון הזה הודעת-השגיאה מאשימה
+// את התמונה בתקלת-רשת שלנו. אין דגל-"טופל" לפני הניסיון: hbImageNextHost מקדם כתובת אחת בכל
+// קריאה ולכן הרצף עצמו סופי — שלוש כתובות, שלושה onerror לכל היותר, ואז false.
 window.markBizImageBroken = function(img) {
+  if (window.hbImageNextHost && window.hbImageNextHost(img)) return;
   if (!img || img.dataset.brokenHandled) return;
   img.dataset.brokenHandled = '1';
   const box = document.createElement('div');
@@ -2893,6 +2899,7 @@ window.markBizImageBroken = function(img) {
 };
 
 window.markProofImageBroken = function(img) {
+  if (window.hbImageNextHost && window.hbImageNextHost(img)) return;   // §375 — ר' ההערה מעל
   if (!img || img.dataset.brokenHandled) return;
   img.dataset.brokenHandled = '1';
   const box = document.createElement('div');
@@ -3226,7 +3233,48 @@ const ICO_WEEKLY  = `<svg ${ICO_ATTRS}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></
 // עד עכשיו הדרך היחידה לחזור ל-home.html הייתה עריכה ידנית של ה-URL. חץ-יציאה, לא "בית" — כדי
 // לא להתבלבל עם ICO_HOME שכבר מסמן את "דשבורד ראשי".
 const ICO_EXIT    = `<svg ${ICO_ATTRS}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5"></path><path d="M21 12H9"></path></svg>`;
-const WORKER_URL = 'https://api.yellowzone.co.il';   // §364 — היה workers.dev, נחסם ע"י סינון סלולרי. ר' PROJECT_CONTEXT §359/§364
+// ── §375 — מרכז הניהול עבר לרשימת הכתובות של §374 ────────────────────────────────────────
+// §374 נתן ל-welcome.html ול-home.html שלוש כתובות על שתי רשתות; מרכז הניהול נשאר על אחת.
+// נמדד בפועל (2.9): הדפדפן החזיר `ERR_NAME_NOT_RESOLVED` על `api.yellowzone.co.il` בזמן
+// ש-8.8.8.8 ו-1.1.1.1 פתרו אותה כרגיל — כלומר **כל** תמונה במרכז הניהול הופיעה כ"⚠️ לא
+// נטענה", והמנהל הסיק שהקבצים פגומים. הם לא היו: `mediaUploadFailed` היה ריק, והוורקר החזיר
+// 200 כשעקפנו את ה-DNS. ר' §373/§374ב — שרתי-השמות הישנים עוד חיים.
+const HB_API_HOSTS = [
+  'https://api.yellowzone.co.il',                             // קלאודפלייר — השם שלנו (§364)
+  'https://habayit-hatsahov-worker.yellowzone.workers.dev',   // קלאודפלייר — הישנה
+  'https://habayit-hatsahov.web.app/api',                     // 🔑 גוגל — רשת אחרת לגמרי (§374)
+];
+// ⚠️ נשאר בשם הישן **בכוונה**: bizImageViewUrl ו-downloadImage (שורות 2839/2925) בונים
+// מחרוזת-כתובת ל-<img src>/<a href> ולא קוראים fetch, ולכן אין להם למי ליפול-לאחור בזמן
+// הבנייה. הנפילה-לאחור שלהם יושבת ב-onerror של התמונה — ר' hbImageNextHost למטה.
+const WORKER_URL = HB_API_HOSTS[0];
+// ⚠️ רק כשל-רשת מקדם לכתובת הבאה — 4xx/5xx הוא תשובה שהתקבלה ועובר הלאה. ⚠️ AbortError הוא
+// החלטה שלנו (פסקי-הזמן של הפאנל) וניסיון חוזר עליו מבטל את הגבול שהצבנו. זהה ל-welcome.html.
+const hbApiFetch = (path, opts, st) => {
+  const state = st || {};
+  state.via = 0;
+  const tryHost = (i) =>
+    fetch(HB_API_HOSTS[i] + path, opts).catch(err => {
+      if (err && err.name === 'AbortError') throw err;
+      if (i + 1 >= HB_API_HOSTS.length) throw err;
+      state.via = i + 1;
+      return tryHost(i + 1);
+    });
+  return tryHost(0);
+};
+// ── נפילה-לאחור ל-<img> ─────────────────────────────────────────────────────────────────
+// תג <img> לא יודע לנסות כתובת שנייה — הוא יורה onerror וזהו. הפונקציה מזהה על איזו כתובת
+// ה-src יושב כרגע, ומחליפה אותה בבאה בתור. מחזירה true אם החליפה (כלומר יש עוד ניסיון
+// בדרך) ו-false כשנגמרו הכתובות — ורק אז נכון להציג למנהל שהתמונה לא נטענה.
+// ⚠️ מחליף **קידומת בלבד**: הנתיב והפרמטרים (?url=…&w=…) נשארים מילה במילה, אחרת ה-w
+// שנשמר בקאש של ה-edge היה משתנה וכל מידה הייתה מחושבת מחדש.
+window.hbImageNextHost = function(img) {
+  if (!img || !img.src) return false;
+  const i = HB_API_HOSTS.findIndex(h => img.src.startsWith(h));
+  if (i < 0 || i + 1 >= HB_API_HOSTS.length) return false;
+  img.src = HB_API_HOSTS[i + 1] + img.src.slice(HB_API_HOSTS[i].length);
+  return true;
+};
 
 // ── מגבלת אורך אמיתית לכותרת ה-AI — מדידת פיקסלים אמיתית מול רוחב הכרטיס בפועל, לא ספירת תווים גסה.
 // 🐛 באג-אמת שנמצא (2026-08-08, המשתמש דיווח "יש עוד מקום"): הקבועים כאן לא תאמו את .biz-discount-text
@@ -9317,7 +9365,7 @@ window.regenerateAiTitles = async function(id) {
   const optsEls = document.querySelectorAll(`[data-ai-title-options="${id}"]`);
   btns.forEach(btn => { btn.disabled = true; btn.textContent = '⏳ חושב על ניסוחים...'; });
   try {
-    const resp = await fetch(WORKER_URL + '/shorten-benefit', {
+    const resp = await hbApiFetch('/shorten-benefit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: sourceText, count: 3 }),
@@ -12773,7 +12821,7 @@ window.sendBroadcastNow = async function() {
   try {
     const idToken = await auth.currentUser.getIdToken();
     const idsField = isFans ? { memberIds: audience.map(x => x.id) } : { businessIds: audience.map(x => x.id) };
-    const resp = await fetch(WORKER_URL + '/send-broadcast-email', {
+    const resp = await hbApiFetch('/send-broadcast-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken, subject, body, audienceType: broadcastAudienceType, ...idsField }),
@@ -12812,7 +12860,7 @@ window.sendTestBroadcastEmail = async function() {
   renderMain();
   try {
     const idToken = await auth.currentUser.getIdToken();
-    const resp = await fetch(WORKER_URL + '/send-broadcast-email', {
+    const resp = await hbApiFetch('/send-broadcast-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken, subject, body, audienceType: broadcastAudienceType, testEmail }),
@@ -12845,7 +12893,7 @@ window.resendFailedFromBroadcast = async function(historyId) {
   try {
     const idToken = await auth.currentUser.getIdToken();
     const idsField = isFans ? { memberIds: failed.map(r => r.id) } : { businessIds: failed.map(r => r.id) };
-    const resp = await fetch(WORKER_URL + '/send-broadcast-email', {
+    const resp = await hbApiFetch('/send-broadcast-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken, subject: h.subject, body: h.body, audienceType: h.audienceGroup, ...idsField }),

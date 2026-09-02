@@ -1835,7 +1835,48 @@ import {
 import { getAuth, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
 // כתובת ה-Worker (Cloudflare) שמאמת accessToken מול Firestore בצד-שרת ומנפיק טוקן כניסה
-const WORKER_URL = 'https://api.yellowzone.co.il';   // §364 — היה workers.dev, נחסם ע"י סינון סלולרי. ר' PROJECT_CONTEXT §359/§364
+// ── §375 — דשבורד העסק עבר לרשימת הכתובות של §374 ────────────────────────────────────────
+// כאן הכשל הכי גלוי לבעל-העסק עצמו: `/mint-biz-token` הוא **הכניסה** לדשבורד. כתובת יחידה
+// שלא נפתרת ברשת שלו = "לא מצליח להיכנס לדשבורד" בלי שום סימן למה. ר' §373/§374.
+const HB_API_HOSTS = [
+  'https://api.yellowzone.co.il',                             // קלאודפלייר — השם שלנו (§364)
+  'https://habayit-hatsahov-worker.yellowzone.workers.dev',   // קלאודפלייר — הישנה
+  'https://habayit-hatsahov.web.app/api',                     // 🔑 גוגל — רשת אחרת לגמרי (§374)
+];
+// נשאר בשם הישן בכוונה — bizImageViewUrl למטה בונה מחרוזת ל-<img src> ולא קורא fetch.
+const WORKER_URL = HB_API_HOSTS[0];
+// ⚠️ רק כשל-רשת מקדם לכתובת הבאה (4xx/5xx הוא תשובה), ו-AbortError לעולם לא — הוא גבול-הזמן
+// שהצבנו בעצמנו. זהה מילה במילה ל-welcome.html.
+const hbApiFetch = (path, opts, st) => {
+  const state = st || {};
+  state.via = 0;
+  const tryHost = (i) =>
+    fetch(HB_API_HOSTS[i] + path, opts).catch(err => {
+      if (err && err.name === 'AbortError') throw err;
+      if (i + 1 >= HB_API_HOSTS.length) throw err;
+      state.via = i + 1;
+      return tryHost(i + 1);
+    });
+  return tryHost(0);
+};
+// §375 — <img> לא יודע לנסות כתובת שנייה. מחליף קידומת-כתובת בלבד; מחזיר false כשנגמרו.
+window.hbImageNextHost = function(img) {
+  if (!img || !img.src) return false;
+  const i = HB_API_HOSTS.findIndex(h => img.src.startsWith(h));
+  if (i < 0 || i + 1 >= HB_API_HOSTS.length) return false;
+  img.src = HB_API_HOSTS[i + 1] + img.src.slice(HB_API_HOSTS[i].length);
+  return true;
+};
+// ⚠️ מאזין אחד במקום onerror על עשרה מקומות-רינדור. `error` של תמונה **אינו עולה בבועה**
+// אבל כן עובר בשלב-הלכידה, ולכן `capture:true` הוא מה שמאפשר את זה — בלעדיו המאזין לא
+// יירה אף פעם. הבחירה כאן מכוונת: בדשבורד העסק התמונות נבנות בעשר נקודות שונות (כולל
+// השמות ישירות ל-.src, לא רק תבניות HTML), ו-onerror שנשכח באחת מהן הוא בדיוק סוג הפער
+// שנולד שוב בכל פיצ'ר חדש. hbImageNextHost מתעלם מכל src שאינו על אחת מכתובותינו, ולכן
+// המאזין אינו נוגע בתמונות אחרות בדף.
+document.addEventListener('error', (e) => {
+  const el = e.target;
+  if (el && el.tagName === 'IMG') window.hbImageNextHost(el);
+}, true);
 
 // תמונה של עסק pending/rejected חסומה ב-storage.rules ל-<img> רגיל בלי אימות (ר' §193,
 // storage.rules:46-48) — Worker /view-image מביא אותה בצד-שרת עם הרשאת ה-service-account
@@ -2212,7 +2253,7 @@ async function uploadImageWithThumb(file, basePath, maxDim = 1280) {
 async function fetchFallbackPhotoOptions(tag) {
   if (!tag) return null;
   try {
-    const resp = await fetch(WORKER_URL + '/suggest-fallback-images', {
+    const resp = await hbApiFetch('/suggest-fallback-images', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tag }),
@@ -2235,7 +2276,7 @@ if (!token) {
 
 async function loadBusiness(token) {
   try {
-    const resp = await fetch(WORKER_URL + '/mint-biz-token', {
+    const resp = await hbApiFetch('/mint-biz-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accessToken: token })
@@ -2302,7 +2343,7 @@ async function ensureBizAuth(force = false) {
   const tok = token || sessionStorage.getItem('hb_lastBizToken');
   if (!tok || !bizId) return false;
   try {
-    const resp = await fetch(WORKER_URL + '/mint-biz-token', {
+    const resp = await hbApiFetch('/mint-biz-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accessToken: tok }),
@@ -2363,7 +2404,7 @@ async function reportBizWriteError(action, e, detail) {
   try {
     const tok = token || sessionStorage.getItem('hb_lastBizToken');
     if (!tok) return;
-    await fetch(WORKER_URL + '/log-biz-error', {
+    await hbApiFetch('/log-biz-error', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       keepalive: true,
@@ -5205,7 +5246,7 @@ async function shortenBenefitAI(text) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() =>controller.abort(), 8000);
-    const resp = await fetch(WORKER_URL + '/shorten-benefit', {
+    const resp = await hbApiFetch('/shorten-benefit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
