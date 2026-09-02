@@ -24,6 +24,11 @@
 <link rel="manifest" href="manifest.json"/>
 <link rel="icon" href="icons/favicon-32.png"/>
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+<!-- §387 — הספרייה של גוגל, לכפתור "המשך עם Google" במודאל הכניסה. async defer: היא לא
+     חוסמת את ציור דף-הנחיתה, ואם היא לא נטענת — הכפתור פשוט לא מוצג והכניסה עם קוד
+     ממשיכה בדיוק כמו היום. ר' hbRenderGoogleLoginBtn. -->
+<link rel="preconnect" href="https://accounts.google.com"/>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
   // חבר עם session פעיל מוחבא עד שנדע בוודאות אם יש לו session תקף — כמו landing-demo.html הקיים
   // ?guest=1 — צפייה בדף הנחיתה כ"אורח" גם כשיש session תקף, בלי להתנתק.
@@ -113,6 +118,10 @@ function openLoginModal() {
   window.heroResetLoginBtn();
   document.getElementById('loginOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+  // §387 — כפתור Google מצויר רק עכשיו: מכל מוסתר מקבל clientWidth=0 וגוגל מציירת בגודל
+  // שגוי. הקריאה בטוחה לחזרות (יוצאת מיד אם הכפתור כבר קיים), ומוגנת כי היא מוגדרת
+  // בסקריפט-מודול שרץ אחרי הסקריפט הקלאסי הזה — ר' §310/§312.
+  window.hbRenderGoogleLoginBtn && window.hbRenderGoogleLoginBtn();
   setTimeout(() => document.getElementById('heroPhoneInput')?.focus(), 200);
 }
 function scrollToPreview() { document.getElementById('previewSection').scrollIntoView({behavior:'smooth', block:'start'}); }
@@ -884,6 +893,17 @@ button { font-family: inherit; }
 .login-modal-title { font-size: 20px; font-weight: 800; color: var(--ink); text-align: center; }
 .login-modal-sub { font-size: 13px; color: var(--ink-3); text-align: center; margin-top: 8px; line-height: 1.5; }
 
+/* ── §387 — כניסה עם Google, בראש מודאל הכניסה ─────────────────────────────────────────
+   מוסתר עד שהכפתור באמת צויר (ר' hbRenderGoogleLoginBtn): קו-מפריד "או עם קוד" בלי כפתור
+   מעליו נראה כמו מסך שבור, וגרוע מלא-להציע-גוגל-בכלל. */
+.gs-login-host { display: none; flex-direction: column; gap: 8px; }
+.gs-login-btn { display: flex; justify-content: center; }
+.gs-login-msg { display: none; font-size: 12.5px; line-height: 1.6; text-align: center; color: var(--ink-3); }
+.gs-login-msg.show { display: block; }
+.gs-login-msg.warn { color: #B45309; }
+.gs-login-or { display: flex; align-items: center; gap: 10px; color: var(--ink-3); font-size: 12.5px; }
+.gs-login-or::before, .gs-login-or::after { content: ''; flex: 1; height: 1px; background: var(--line, #E7E7E0); }
+
 /* ── כרטיס ההרשמה (iframe) — אותו מנגנון כמו landing-demo.html הקיים ── */
 .modal-frame-box { max-width: 1060px; padding: 0; max-height: 96vh; }
 .modal-frame-row { display: flex; min-height: 680px; height: 85vh; max-height: 780px; }
@@ -1290,9 +1310,23 @@ button { font-family: inherit; }
     <button class="modal-close" onclick="closeModal('loginOverlay')">✕</button>
     <div class="login-modal-body">
       <div>
-        <div class="login-modal-title">התחברות עם קוד</div>
-        <div class="login-modal-sub">הטלפון והקוד בן 6 הספרות שקיבלתם באישור החברות</div>
+        <div class="login-modal-title">התחברות</div>
+        <!-- §387 — הנוסח כאן מדבר על הקוד בלבד, ומוחלף ל"Google או קוד" **רק אם הכפתור
+             באמת צויר** (hbRenderGoogleLoginBtn). אותו כלל בדיוק כמו הבלוק עצמו: אסור
+             להזכיר אפשרות שאינה על המסך. -->
+        <div class="login-modal-sub" id="loginModalSub">הטלפון והקוד בן 6 הספרות שקיבלתם באישור החברות</div>
       </div>
+
+      <!-- §387 — כניסה עם Google. מוסתר עד שהכפתור צויר בפועל, ומצויר רק כשהמודאל נפתח
+           (ר' openLoginModal): מכל מוסתר מקבל clientWidth=0 וגוגל מציירת בגודל שגוי.
+           🔑 הכיתוב על הכפתור הוא "המשך עם Google" (GIS: continue_with + locale he) —
+           **בדיוק** המילים שהודעת-ההצלחה בתפריט מבטיחה לחבר אחרי שהוא מחבר חשבון. -->
+      <div class="gs-login-host" id="gsLoginHost">
+        <div class="gs-login-btn" id="gsLoginBtnHost"></div>
+        <div class="gs-login-msg" id="gsLoginMsg"></div>
+        <div class="gs-login-or"><span>או עם קוד</span></div>
+      </div>
+
       <div>
         <span class="field-label">מספר טלפון</span>
         <input type="tel" id="heroPhoneInput" class="field-input" placeholder="05X-XXXXXXX"
@@ -1873,6 +1907,203 @@ const heroEnvTagAt = (t0, st) => {
   const fb = via === 0 ? '' : via === 1 ? '|fb' : '|fb' + via;
   return `${window._hbEnvTag}|${((Date.now() - t0) / 1000).toFixed(1)}s${n ? '|x' + n : ''}${fb}`.slice(0, 50);
 };
+// ══ §387 — שני הפונקציות שנשלפו מתוך heroLogin ═══════════════════════════════════════════
+// עד היום הן היו סגורות בתוך `heroLogin` (closure על `phoneRaw`), וזה היה בסדר כל עוד יש
+// מסלול-כניסה אחד. עכשיו יש שניים — טלפון+קוד וגוגל — ו-§353 כבר קבע את הכלל במפורש:
+// **כל המסלולים חייבים לסיים דרך אותו קוד בדיוק.** הפיצול לעותקים הוא הדרך שבה נולד
+// "localStorage נכתב אבל בלי הפניה", כלומר אוהד מחובר שנשאר תקוע על מסך שגיאה.
+// לכן שליפה החוצה ולא שכפול. שום התנהגות לא השתנתה במסלול הקיים.
+
+// ⚠️ `phoneDigits` יכול להיות null — ובמסלול גוגל הוא תמיד כזה. `hb_phone` משמש **אך ורק**
+// למילוי-מראש של שדה הטלפון בכניסה הבאה (`_hbPrefillKnownPhone`); המפתח האמיתי הוא
+// `hb_memberId`. מי שנכנס עם גוגל פשוט לא יקבל טלפון ממולא, והוא גם לא צריך אותו.
+// 🔑 **ובמפורש לא כותבים מחרוזת ריקה:** דריסת טלפון ידוע ב-'' הייתה מוחקת נתון קיים
+// אצל מי שנכנס פעם אחת עם קוד ומאז עם גוגל — בדיוק הדפוס של §321.
+function heroFinishLogin(uid, phoneDigits) {
+  if (phoneDigits) localStorage.setItem('hb_phone', phoneDigits);
+  localStorage.setItem('hb_memberId', uid);
+  // §359 — האיפוס חייב לשבת כאן, בנקודת-הסיום היחידה: כניסה שהגיעה מרשת-ההצלה המאוחרת
+  // עוברת רק דרך הפונקציה הזאת, ובלי זה מי שנכנס בזכותה נושא מונה-חסימה דולף לכניסה הבאה.
+  try { localStorage.removeItem(window.HB_NETFAIL_KEY); } catch (_) {}
+  heroGoHome();
+}
+
+// §322 — הכניסה נחשבת מוצלחת ברגע ש-auth מדווח על משתמש, ולא רק כשההבטחה של
+// signInWithCustomToken חוזרת. אלה שני דברים שונים: ב-§312 אצל אוהד אמיתי מצב-ההזדהות
+// כבר היה תקין וההבטחה עצמה התעוררה רק אחרי שעה וחצי. הקוד הישן המתין להבטחה בלבד,
+// ולכן הפך הצלחה-בפועל להודעת-שגיאה שממנה אין דרך חזרה. עכשיו: מרוץ בין השניים,
+// הראשון שמגיע מנצח.
+// §353 — נשלף לפונקציה כי **רשת-ההצלה של ה-fetch חייבת להריץ אותו בעצמה**: טוקן שנוחת
+// מאוחר עוד לא עבר שום שלב auth, ובלי זה "הצלנו" בקשה ולא הכנסנו אף אחד.
+function heroRunAuth(customToken, onDone) {
+  let offState = null;
+  const viaState = new Promise(res => { offState = onAuthStateChanged(auth, u => { if (u) res(u.uid); }); });
+  // .catch כאן הוא חובה ולא קישוט: אם viaState מנצח, הדחייה המאוחרת של ההבטחה הזאת
+  // הופכת ל-unhandled rejection ומרעישה בקונסול. מי שמפסיד במרוץ פשוט לא מכריע כלום.
+  const viaCall = signInWithCustomToken(auth, customToken).then(c => c.user.uid);
+  viaCall.catch(() => {});
+  const settled = Promise.race([viaCall, viaState]);
+  settled.catch(() => {});
+  const stop = () => { try { offState && offState(); } catch (_) {} };
+  return { settled, done: (uid) => { stop(); onDone(uid); }, giveUp: stop };
+}
+
+// ══ §387 — כניסה עם Google ═══════════════════════════════════════════════════════════════
+// הדלת השנייה. §370 בנה את `/google-login` בשרת, §372/§377 נתנו לחבר לחבר חשבון מהתפריט,
+// ו-§386 חיבר אותו כבר בהרשמה — אבל **כאן** לא היה כפתור, ולכן שלושתם הבטיחו "כניסה בלי
+// קוד" לדלת שלא קיימת. זה מה שסוגר את הפער.
+//
+// 🔑 **גוגל היא הוכחת-זהות בלבד.** הוורקר מנפיק את אותו custom token בדיוק, ומכאן והלאה
+// הזרימה זהה למסלול טלפון+קוד — אותו `heroRunAuth`, אותו `heroFinishLogin`, אותו uid,
+// אותם rules. מחליפים את הדלת, לא את הבית (§368).
+//
+// ⚠️ **טלפון+קוד נשאר מסלול מלא ושווה-ערך**, ולא "גיבוי": הוא היחיד שעובד במכשיר שחשבון
+// הגוגל אינו מחובר בו, והוא היחיד שיש למי שלא חיבר.
+
+// הודעות: מה לעשות עכשיו, לא קוד שגיאה באנגלית.
+const HERO_G_MSGS = {
+  google_ambiguous:     'משהו בחשבון שלכם דורש בדיקה שלנו. כתבו לנו ונטפל בזה מיד.',
+  invalid_google_token: 'האימות מול Google לא הצליח. נסו שוב, או היכנסו עם הטלפון והקוד.',
+  pending:              'הבקשה שלכם עדיין ממתינה לאישור — ברגע שתאושר תישלח אליכם הודעת מייל.',
+  rejected:             'הבקשה שלכם נדחתה. לפרטים צרו קשר עם הצוות.',
+};
+
+function heroGMsg(html, kind) {
+  const m = document.getElementById('gsLoginMsg');
+  if (!m) return;
+  m.innerHTML = html;
+  m.classList.toggle('warn', kind === 'warn');
+  m.classList.add('show');
+}
+function heroGClearMsg() {
+  const m = document.getElementById('gsLoginMsg');
+  if (m) { m.classList.remove('show', 'warn'); m.innerHTML = ''; }
+}
+
+let heroGoogleBusy = false;
+
+async function heroGoogleLogin(res) {
+  const credential = res && res.credential;
+  if (!credential) return;
+  // ⚠️ נעילה פשוטה: GIS יכול לירות פעמיים אם המשתמש לוחץ שוב בזמן שהבקשה באוויר, ושתי
+  // כניסות מקבילות היו מריצות שני heroRunAuth על אותו auth. אין כאן `heroLoginSeq` כמו
+  // במסלול הקוד, כי אין מה "לנטוש" — אין שדות שהמשתמש ממשיך לערוך.
+  if (heroGoogleBusy) return;
+  heroGoogleBusy = true;
+  const release = () => { heroGoogleBusy = false; };
+
+  const t0 = Date.now();
+  const api = { via: 0 };   // §374 — מצב פר-ניסיון, ר' ההערה ב-heroLogin
+  heroGMsg('מתחבר…');
+  heroHideErr();
+
+  // §353 — שני ספים, בדיוק כמו במסלול הקוד: הראשון מפסיק להראות "מתחבר…", השני מבטל
+  // באמת. ביניהם הבקשה עדיין חיה, וזה החלון שבו תשובה מאוחרת עדיין מכניסה.
+  const ac = new AbortController();
+  const hardAbortTimer = setTimeout(() => ac.abort(), HERO_HARD_ABORT_MS);
+  const pending = hbApiFetch('/google-login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken: credential }), signal: ac.signal
+  }, api).then(r => r.json()).finally(() => clearTimeout(hardAbortTimer));
+  pending.catch(() => {});
+
+  const fail = (reason, html) => {
+    window.logEvent && window.logEvent('loginFail', {
+      channel: ('google:' + reason).slice(0, 50), blockId: heroEnvTagAt(t0, api),
+    });
+    window.hbBumpNetFail && window.hbBumpNetFail(reason);
+    heroGMsg('⚠️ ' + html, 'warn');
+  };
+
+  try {
+    const data = await heroWithTimeout(pending, HERO_TIMEOUT_MS);
+    if (data.customToken) {
+      heroGMsg('נכנסים…');
+      // ⚠️ null ולא טלפון: במסלול הזה אין טלפון בכלל, ו-`hb_phone` הוא מילוי-מראש בלבד.
+      const a = heroRunAuth(data.customToken, (uid) => heroFinishLogin(uid, null));
+      try {
+        a.done(await heroWithTimeout(a.settled, HERO_HARD_ABORT_MS));
+      } catch (authErr) {
+        // §350 — הצלחה מאוחרת עדיין מכניסה. auth שנסגר בשנייה ה-40 הוא אוהד מחובר.
+        a.settled.then(a.done, a.giveUp);
+        fail('authTimeout', 'ההתחברות מתעכבת. השאירו את הדף פתוח — אם זה לא נפתר, היכנסו עם הטלפון והקוד.');
+      }
+      return;
+    }
+
+    // 🔑 **הענף החשוב ביותר כאן.** חשבון גוגל תקין לגמרי שפשוט לא מקושר לאף רשומה אצלנו
+    // — וזה המצב של **כל** החברים הוותיקים. הודעה גנרית ("לא הצלחנו להתחבר") הייתה
+    // משאירה אותם בלי מושג מה לעשות, בדיוק במסך שהם כבר נתקעו בו פעם.
+    // ⚠️ **בכוונה לא מציעים "נחבר לך אוטומטית לפי המייל"** — ר' §368: כאן בני-משפחה
+    // נרשמים אחד בשם השני, והתאמה שגויה פירושה אדם שנכנס לחשבון של מישהו אחר.
+    if (data.error === 'google_not_linked') {
+      fail('notLinked',
+        'חשבון Google הזה' + (data.email ? ' (<b>' + heroEsc(data.email) + '</b>)' : '') +
+        ' עדיין לא מחובר אצלנו.<br>היכנסו הפעם עם הטלפון והקוד — ואז בתפריט, "חברו חשבון Google".');
+      return;
+    }
+    fail(data.error || 'unknown', HERO_G_MSGS[data.error] || 'לא הצלחנו להתחבר. נסו שוב, או היכנסו עם הטלפון והקוד.');
+  } catch (e) {
+    // §353 — תשובה שמאחרת מעבר לסף הרך עדיין מכניסה, בלי לגעת במסך שכבר עודכן.
+    if (heroIsTimeout(e)) {
+      pending.then(d => {
+        if (d && d.customToken) {
+          const late = heroRunAuth(d.customToken, (uid) => heroFinishLogin(uid, null));
+          late.settled.then(late.done, late.giveUp);
+        }
+      }).catch(() => {});
+      fail('fetchTimeout', 'החיבור איטי מהרגיל. השאירו את הדף פתוח עוד רגע — או היכנסו עם הטלפון והקוד.');
+    } else {
+      fail('error', 'לא הצלחנו להתחבר. בדקו את החיבור לאינטרנט, או היכנסו עם הטלפון והקוד.');
+    }
+  } finally {
+    release();
+  }
+}
+
+function heroEsc(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ⚠️ מצויר רק כשהמודאל נפתח (openLoginModal קורא לזה), ומוסתר עד שהציור באמת הצליח.
+// אותו נימוק כמו §386: `renderButton` אינו מדווח על כשל — כשה-origin אינו מאושר אצל גוגל
+// הוא פשוט לא מצייר כלום, ואז היה נשאר קו-מפריד "או עם קוד" בלי כפתור מעליו.
+window.hbRenderGoogleLoginBtn = function (tries) {
+  tries = tries || 0;
+  const host = document.getElementById('gsLoginHost');
+  const btnHost = document.getElementById('gsLoginBtnHost');
+  if (!host || !btnHost) return;
+  if (btnHost.childElementCount) { host.style.display = 'flex'; return; }   // כבר צויר
+  if (window.google && window.google.accounts && window.google.accounts.id) {
+    window.google.accounts.id.initialize({
+      client_id: '459607487972-esu70diuu360tg1ji15o1n1tikf3npnb.apps.googleusercontent.com',
+      callback: heroGoogleLogin,
+      // ⚠️ **auto_select כבוי בכוונה.** כניסה שמתרחשת מעצמה בלי לחיצה היא בדיוק סוג
+      // באגי-הזהות שהפרויקט הזה כבר נכווה בהם — הכניסה חייבת להיות פעולה של האדם.
+      auto_select: false,
+    });
+    window.google.accounts.id.renderButton(btnHost, {
+      theme: 'filled_blue', size: 'large', shape: 'pill',
+      // 🔑 "המשך עם Google" — בדיוק הנוסח שהודעת-ההצלחה בתפריט (google-link.js) מבטיחה.
+      text: 'continue_with', locale: 'he', width: 300,
+    });
+    host.style.display = 'flex';
+    setTimeout(() => {
+      const sub = document.getElementById('loginModalSub');
+      if (!document.getElementById('gsLoginBtnHost').childElementCount) {
+        host.style.display = 'none';
+        console.warn('google-login: הכפתור לא צויר (origin לא מאושר?) — הבלוק הוסתר');
+        return;
+      }
+      // רק עכשיו, כשהכפתור ודאי על המסך, מותר לכותרת-המשנה להבטיח אותו.
+      if (sub) sub.textContent = 'עם חשבון Google שחיברתם, או עם הטלפון והקוד בן 6 הספרות';
+    }, 1500);
+    return;
+  }
+  if (tries > 40) { console.warn('google-login: ספריית Google לא נטענה — הכפתור לא יוצג'); return; }
+  setTimeout(() => window.hbRenderGoogleLoginBtn(tries + 1), 150);
+};
+
 window.heroLogin = async function() {
   const phoneRaw = document.getElementById('heroPhoneInput').value.trim();
   const code = document.getElementById('heroCodeInput').value.trim();
@@ -1901,35 +2132,10 @@ window.heroLogin = async function() {
   // המסלול הרגיל, רשת-ההצלה של ה-auth (§350) ורשת-ההצלה של ה-fetch (למטה) חייבים לסיים
   // דרך אותו קוד בדיוק. הפיצול לעותקים הוא הדרך שבה נולד "localStorage נכתב אבל בלי הפניה" —
   // אוהד מחובר שנשאר תקוע על מסך שגיאה.
-  const finishLogin = (uid) => {
-    localStorage.setItem('hb_phone', heroNormalizePhoneDigits(phoneRaw));
-    localStorage.setItem('hb_memberId', uid);
-    // §359 — האיפוס חייב לשבת **כאן**, בנקודת-הסיום היחידה של §350, ולא בענף ההצלחה
-    // ה"רגיל": כניסה שהגיעה מרשת-ההצלה המאוחרת עוברת רק דרך הפונקציה הזאת, ובלי זה מי
-    // שנכנס בזכותה היה נושא מונה-חסימה דולף לכניסה הבאה שלו.
-    try { localStorage.removeItem(window.HB_NETFAIL_KEY); } catch (_) {}
-    heroGoHome();
-  };
+  // §387 — הגוף עבר ל-heroFinishLogin ברמת המודול, כדי שמסלול גוגל יסיים דרך אותו קוד בדיוק.
+  const finishLogin = (uid) => heroFinishLogin(uid, heroNormalizePhoneDigits(phoneRaw));
 
-  // §322 — הכניסה נחשבת מוצלחת ברגע ש-auth מדווח על משתמש, ולא רק כשההבטחה של
-  // signInWithCustomToken חוזרת. אלה שני דברים שונים: ב-§312 אצל אוהד אמיתי מצב-ההזדהות
-  // כבר היה תקין וההבטחה עצמה התעוררה רק אחרי שעה וחצי. הקוד הישן המתין להבטחה בלבד,
-  // ולכן הפך הצלחה-בפועל להודעת-שגיאה שממנה אין דרך חזרה. עכשיו: מרוץ בין השניים,
-  // הראשון שמגיע מנצח.
-  // §353 — נשלף לפונקציה כי **רשת-ההצלה של ה-fetch חייבת להריץ אותו בעצמה**: טוקן שנוחת
-  // מאוחר עוד לא עבר שום שלב auth, ובלי זה "הצלנו" בקשה ולא הכנסנו אף אחד.
-  const heroRunAuth = (customToken) => {
-    let offState = null;
-    const viaState = new Promise(res => { offState = onAuthStateChanged(auth, u => { if (u) res(u.uid); }); });
-    // .catch כאן הוא חובה ולא קישוט: אם viaState מנצח, הדחייה המאוחרת של ההבטחה הזאת
-    // הופכת ל-unhandled rejection ומרעישה בקונסול. מי שמפסיד במרוץ פשוט לא מכריע כלום.
-    const viaCall = signInWithCustomToken(auth, customToken).then(c => c.user.uid);
-    viaCall.catch(() => {});
-    const settled = Promise.race([viaCall, viaState]);
-    settled.catch(() => {});
-    const stop = () => { try { offState && offState(); } catch (_) {} };
-    return { settled, done: (uid) => { stop(); finishLogin(uid); }, giveUp: stop };
-  };
+  // §387 — heroRunAuth עבר לרמת המודול (ר' ההערה המלאה שם) ומקבל את פונקציית-הסיום כפרמטר.
 
   // ── §353 — הבקשה לוורקר: **שני ספים, לא ויתור על ה-abort** ───────────────────────────────
   // הבאג שזה מתקן: עד היום `ac.abort()` ירה בשנייה השמינית, וביטול הוא סופי — אילו הוורקר
@@ -1960,7 +2166,7 @@ window.heroLogin = async function() {
     if (data.customToken) {
       // מכאן והלאה הטוקן כבר בידינו — כל כשל הוא בצד הלקוח בלבד (ר' ההערה על stage למעלה).
       stage = 'auth';
-      const a = heroRunAuth(data.customToken);
+      const a = heroRunAuth(data.customToken, finishLogin);
       try {
         a.done(await heroWithTimeout(a.settled, Math.max(1500, deadline - Date.now())));
         return;
@@ -2054,7 +2260,7 @@ window.heroLogin = async function() {
           // ⚠️ הצלחה מאוחרת מכניסה **גם** אם הניסיון מיושן — זו ההחלטה של §350 והיא נשארת:
           // ברגע שיש טוקן תקף האוהד מחובר בפועל, ולהשאיר אותו בחוץ כי הספיק ללחוץ שוב זה
           // בדיוק הכשל שרשת-ההצלה נועדה למנוע.
-          const late = heroRunAuth(d.customToken);
+          const late = heroRunAuth(d.customToken, finishLogin);
           // ההצלחה עצמה נשארת **בלי גבול-זמן** — זו ההחלטה של §350: ברגע ש-auth נסגר,
           // בכל שלב שהוא, האוהד מחובר ויש להעביר אותו.
           late.settled.then(late.done, late.giveUp);
