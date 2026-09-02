@@ -121,7 +121,7 @@ export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind
 }
 
 // מייל שני, נפרד מקוד הכניסה — נשלח כשעסק (לא רק החברות של הבעלים) מאושר לאינדקס
-export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, businessName, dashboardLink, tpl }) {
+export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, businessName, dashboardLink, tpl, googleEmail = '' }) {
   const vars = { name: ownerName || '', business: businessName, link: dashboardLink };
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
@@ -141,8 +141,12 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
     replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
-    // §389 — **בכוונה בלי googleEmail**: המכתב הזה עוסק בדשבורד העסק (טוקן נפרד, §244)
-    // ולא בכניסת החבר, והערה על "כניסה בלי קוד" הייתה מפנה לדלת אחרת מזו שהמכתב מדבר עליה.
+    // §391 — נוסף בבקשת המשתמש. ⚠️ §389 השאיר את המכתב הזה בחוץ בנימוק שהוא מפנה
+    // לדשבורד העסק (טוקן נפרד, §244) ולא לכניסת החבר — והנימוק עדיין נכון, אבל **הקורא
+    // הוא אותו אדם**, ואם יש לו חשבון גוגל מקושר ומאושר, אין סיבה להסתיר ממנו את הדלת
+    // הקלה. הגדר-האמת נמצא בצד הקורא (index.js): הערך מועבר רק כשהוא **באמת** יכול
+    // להיכנס איתו — אחרת המכתב היה מבטיח כניסה למי שעוד ממתין לאישור.
+    googleEmail,
   });
 }
 

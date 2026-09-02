@@ -790,6 +790,11 @@ async function runEmailSweeps(env) {
         businessName: b.fields.name,
         dashboardLink,
         tpl: { subject: templates.bizSubject, body: templates.bizBody },
+        // §391 — ⚠️ **רק אם הוא באמת יכול להיכנס עכשיו.** המכתב הזה נשלח דווקא למי שאין
+        // מאחוריו רשומת-חבר עם קוד (ר' ownerHasCode למעלה), ולכן ההערה נכונה רק בצירוף
+        // הצר שבו יש רשומה, היא מאושרת, ויש עליה חשבון גוגל. אחרת /google-login היה
+        // מחזיר לו 'pending' — כלומר המכתב היה מבטיח דלת שנעולה בפניו.
+        googleEmail: (owner && owner.fields.status === 'approved' && owner.fields.googleEmail) || '',
       });
       await firestorePatch(env, accessToken, `businesses/${b.id}`, {
         ownerEmailStatus: 'sent',
