@@ -406,6 +406,13 @@ body {
   background: var(--nav-bg); border: 1px solid var(--border-md); border-radius: 8px; padding: 9px 11px;
   font-size: 12.5px; color: var(--text-sm); line-height: 1.6;
 }
+/* §376 — באנר כשל-העלאת-מדיה. כתום ולא אדום (חוק ברזל של הפרויקט: אין אדום בשום מקום). */
+.media-upload-failed {
+  margin-top: 8px; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 8px;
+  padding: 9px 11px; font-size: 12.5px; font-weight: 700; color: var(--orange); line-height: 1.55;
+}
+.media-upload-failed .muf-when { font-weight: 600; opacity: .8; margin-inline-start: 6px; font-size: 11.5px; }
+.media-upload-failed .muf-hint { font-weight: 600; font-size: 11.5px; opacity: .9; margin-top: 4px; }
 /* קופסת-כותרת-AI תואמת-handoff (עודכן 2026-08-04): שורת-כותרת (תג AI+טקסט+מצב-התאמה) מעל
    שורת-קלט+כפתור+תצוגה-מקדימה-חיה, במקום מבנה-טור ישן. תג "AI" מלא-כחול+טקסט-לבן. */
 .ai-title-field { background: var(--nav-bg); border-radius: 11px; padding: 14px 16px; }
@@ -9106,7 +9113,34 @@ function mediaRealViewHtml(b) {
       <div class="media-slot cover ${b.coverPhoto?'filled':'missing'}">${b.coverPhoto ? mediaThumbHtml(b.coverPhotoThumb || b.coverPhoto, 'cover.jpg', 'width:100%;height:100%', b.name) : `<span class="media-slot-ic">—</span><span class="media-slot-label">חסרה תמונה</span>`}</div>
       ${galleryThumbs}
     </div>
-    <div class="approve-longtext" style="margin-top:6px">${(b.photos||[]).length} תמונות בגלריה</div>`;
+    <div class="approve-longtext" style="margin-top:6px">${(b.photos||[]).length} תמונות בגלריה</div>
+    ${mediaUploadFailureHtml(b)}`;
+}
+
+// ── §376 — כשל-העלאה שנרשם ומעולם לא נקרא ────────────────────────────────────────────────
+// `worker/src/bizmedia.js` כותב `mediaUploadFailed` (מערך שמות-שדות) ו-`mediaUploadFailedAt`
+// על מסמך העסק בכל תמונה שנפלה, מאז 2026-08-22 — **ואף מסך ניהול לא הציג אותם.** ההערה בקוד
+// הוורקר אומרת את זה במפורש: "הם קיימים כדי שיהיה מה לשלוף כשעסק מדווח 'שלחתי תמונות ואין'".
+// ב-§375 זה בדיוק מה שקרה: השדה היה התשובה (ריק — כלומר ההעלאה הצליחה והבעיה ברשת), ונאלצנו
+// לשלוף אותו מקונסול הדפדפן. נתון שנאסף שנה ולא נקרא שווה בדיוק כמו נתון שלא נאסף.
+//
+// ⚠️ **היעדר כשל אינו הודעה.** מוצג רק כשיש כשל בפועל — באנר "הכל תקין" בכל עסק היה מרעיש
+// את הגיליון ומאמן את העין לדלג עליו, וזו בדיוק הסיבה שהשורה הזו תפספס ביום שהיא כן תופיע.
+function mediaUploadFailureHtml(b) {
+  const failed = b.mediaUploadFailed;
+  if (!Array.isArray(failed) || !failed.length) return '';
+  const at = toJsDate(b.mediaUploadFailedAt);
+  // שמות-השדות נכתבים באנגלית ע"י הוורקר (`fanPhoto`/`logo`/`cover`/`coverThumb`/`gallery[0]`).
+  // ⚠️ נפילה-לאחור לשם הגולמי ולא דילוג: שדה חדש בוורקר שלא תורגם כאן חייב עדיין להופיע —
+  // מוטב "gallery[7]" באנגלית מאשר כשל שנעלם כי אין לו תרגום.
+  const he = { fanPhoto: 'תמונת אימות', logo: 'לוגו', cover: 'תמונה מייצגת', coverThumb: 'תמונה מייצגת (ממוזערת)' };
+  const names = failed.map(f => he[f] || (f.startsWith('gallery') ? 'תמונת גלריה' : f));
+  return `
+    <div class="media-upload-failed">
+      ⚠️ ${names.length === 1 ? 'העלאה אחת נכשלה' : names.length + ' העלאות נכשלו'} בהרשמה: ${esc(names.join(', '))}
+      ${at ? `<span class="muf-when">${esc(fmtDateTime(at))}</span>` : ''}
+      <div class="muf-hint">הקבצים האלה מעולם לא הגיעו ל-Storage — צריך לבקש אותם מבעל העסק. (תמונה שקיימת אך לא מוצגת היא תקלה אחרת לגמרי, ר' §375.)</div>
+    </div>`;
 }
 
 function mediaRealEditHtml(b) {

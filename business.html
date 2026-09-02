@@ -1880,6 +1880,36 @@
     return dataUrlToFile(dataUrl, filename || file.name);
   }
 
+  // ── §376 — הלוגו נשלח גולמי, וההערה מעליו טענה את ההפך ──────────────────────────────────
+  // עד היום `buildMediaForm` צירף את הלוגו **בלי דחיסה כלל** — היחיד מבין ארבעת הסלוטים —
+  // בעוד ההערה שמעליו (§285) כתבה במפורש "הלוגו, התמונה המייצגת והגלריה כולם עוברים
+  // compressToFile". תמונת אייפון של 15MB שנבחרה כלוגו נסעה כמו-שהיא בגוף ה-FormData, וזה
+  // בדיוק מה ש-§285 תיקן עבור תמונת האימות מאותה סיבה בדיוק.
+  //
+  // 🔑 **למה לא פשוט compressToFile:** `compressImageFile` נופל ל-JPEG כשהדפדפן לא יודע לקודד
+  // webp (§240) — ו-JPEG **אינו יודע שקיפות**. לוגו PNG שקוף היה יוצא עם רקע שחור, כלומר
+  // הדחיסה הייתה מחליפה באג שקט (קובץ כבד) באג גלוי וגרוע יותר. שקיפות היא לא מקרה-קצה
+  // בלוגואים — `logoFit: 'contain'` קיים בדשבורד בדיוק בשבילם.
+  //
+  // לכן: דוחסים רק אם באמת יצא webp (שיודע אלפא). אחרת — מקור, כמו היום. מפסידים דחיסה
+  // בדפדפנים ישנים, לא מפסידים שקיפות באף אחד. ל-JPEG במקור אין אלפא מלכתחילה, ולכן שם
+  // הנפילה ל-JPEG בטוחה ומותרת.
+  const LOGO_MAX_DIM = 1024;   // לוגו מוצג בבאדג'/ריבוע — 1024 נדיב, ולא 1600 כמו התמונה המייצגת
+  const LOGO_ALPHA_TYPES = /^image\/(png|webp|gif|avif|heic|heif)$/i;
+  async function compressLogoToFile(file) {
+    try {
+      const dataUrl = await compressImageFile(file, LOGO_MAX_DIM, 0.9);
+      // ⚠️ טיפוס ריק נחשב "אולי שקוף" ולא "בטח לא": קובץ בלי type מגיע בפועל מכמה מסלולי
+      // בחירת-קובץ במובייל, ולנחש עליו JPEG זה בדיוק הימור על השקיפות של מישהו אחר.
+      if (!dataUrl.startsWith('data:image/webp') && (!file.type || LOGO_ALPHA_TYPES.test(file.type))) return file;
+      const out = dataUrlToFile(dataUrl, file.name);
+      return out.size < file.size ? out : file;   // דחיסה שמגדילה אינה דחיסה
+    } catch (e) {
+      console.warn('compressLogoToFile נכשל, שולח את המקור:', e?.message || e);
+      return file;
+    }
+  }
+
   // ── §287 — נתיב נפרד ועמיד לתמונת האימות ──────────────────────────────────────────────────
   // זהה ל-fan-register.html; ר' שם את ההסבר המלא על ארבעת הכשלים (זיכרון/HEIC/תקרת-קנבס/
   // תוצאה-שעדיין-כבדה). **בכוונה לא שונה `compressImageFile` המשותף** — הוא משרת גם לוגו,
@@ -2119,8 +2149,12 @@
     // אייפון של 15MB+ בגוף ה-FormData היא בדיוק מה שמפיל את הבקשה לוורקר.
     // §287 — compressProofToFile ולא compressToFile: הנתיב העמיד (createImageBitmap,
     // בלי base64, תקרת-קנבס, וסבבים חוזרים אם התוצאה עדיין כבדה).
+    //
+    // ⚠️ **תיקון §376: ההערה למעלה לא הייתה נכונה — הלוגו גם הוא נשלח גולמי.** ארבעה סלוטים,
+    // ושניים מהם עקפו דחיסה בזמן שההערה הכריזה שרק אחד עושה זאת. הערה שמתארת את הקוד
+    // כפי שהתכוונו שיהיה, ולא כפי שהוא, מסתירה את הבאג טוב יותר מהיעדר הערה.
     if (fanPhotoFile) form.append('fanPhoto', await compressProofToFile(fanPhotoFile));
-    if (effectiveLogoFile) form.append('logo', effectiveLogoFile);
+    if (effectiveLogoFile) form.append('logo', await compressLogoToFile(effectiveLogoFile));
     if (effectiveCoverFile) {
       const [mainFile, thumbFile] = await Promise.all([
         compressToFile(effectiveCoverFile, COVER_MAX_DIM, 0.82, effectiveCoverFile.name),
