@@ -1986,6 +1986,21 @@
   // "שם עם רווחים כפולים". אם עורכים את השורה — לוודא בפלט של הקובץ עצמו, לא בקוד המייצר.
   const normName = v => String(v || '').trim().replace(/[\s]+/g, ' ').toLowerCase();
 
+  // ⚠️ §363 — **שתי הפונקציות האלה בלעו כל כשל בשקט, וזה עלה סבב שלם.** כשההרשמה הכפולה
+  // חזרה מהבדיקה, לא היה שום סימן בקונסול ולא שום אירוע — ולא היה איך לדעת אם החותם לא
+  // נשמר, לא נמצא, או לא התאים. `catch {}` ריק על מנגנון-הגנה הוא בדיוק אותה מחלה שהקובץ
+  // הזה כבר תיעד פעמיים (§284 "ניסה ונכשל", §294 "כשל שנמדד"). עכשיו כל כשל צועק.
+  // ⚠️ **הדיווח עצמו עטוף.** `logEvent` פונה ל-Firestore, ואם הוא יזרוק כאן הוא יפיל את
+  // מנגנון-ההגנה שהוא בא לתעד — כלומר הדיאגנוסטיקה תשבור בדיוק את מה שהיא מודדת. זה לא
+  // תיאורטי: `priorSubmission` נקראת בנתיב-השליחה, וחריגה ממנה עוצרת הרשמה שלמה.
+  function reportDedupIssue(kind, e) {
+    try {
+      console.error('§363 ' + kind + ' failed:', e && e.name, e && e.message);
+      // ≤50 תווים (firestore.rules) — ערך חורג מוחק את כל האירוע בשקט.
+      logEvent('formError', { blockId: 'bizForm', channel: (kind + ':' + String((e && e.name) || '?')).slice(0, 50) });
+    } catch (_) { /* דיווח שנכשל לא ייקח איתו את ההרשמה */ }
+  }
+
   function priorSubmission(phone, email, name) {
     try {
       const d = JSON.parse(localStorage.getItem(BIZ_PENDING_KEY) || 'null');
@@ -1995,10 +2010,42 @@
       if (d.phone !== phone && d.email !== email) return null;
       if (normName(d.name) !== normName(name)) return null;
       return d;
-    } catch { return null; }
+    } catch (e) {
+      reportDedupIssue('dedupRead', e);
+      return null;
+    }
   }
   function rememberPending(rec) {
-    try { localStorage.setItem(BIZ_PENDING_KEY, JSON.stringify(rec)); } catch {}
+    try {
+      localStorage.setItem(BIZ_PENDING_KEY, JSON.stringify(rec));
+    } catch (e) {
+      // ⚠️ הסיבה השכיחה כאן היא **מכסת-אחסון מלאה**, לא באג: הטיוטה שומרת תמונות מכווצות
+      // כ-data URL ויכולה לתפוס מגהבייטים. כשזה קורה, ההגנה מפני הרשמה כפולה פשוט לא
+      // קיימת — ועד §363 היא נעלמה בלי מילה. הבדיקה בשרת היא הרשת השנייה בדיוק לזה.
+      reportDedupIssue('dedupWrite', e);
+    }
+  }
+
+  // ── §363 — הרשת השנייה: בדיקה בשרת ────────────────────────────────────────────────────
+  // מחזירה בוליאני בלבד (ר' handleCheckBizExists בוורקר — מכוון ומנומק שם).
+  // ⚠️ fail-open: כשל/פסק-זמן מחזיר false וההרשמה ממשיכה כרגיל. רשומה כפולה שמנהל מוחק
+  // עדיפה על הרשמה שנחסמה בגלל תקלת-רשת — זה בדיוק ההיפוך שהיה הופך תיקון לנזק.
+  async function checkBizExistsOnServer(phone, email, name) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 6000);
+    try {
+      const resp = await fetch(WORKER_URL + '/check-biz-exists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, email, name }),
+        signal: ctl.signal,
+      });
+      const d = await resp.json();
+      return !!d.exists;
+    } catch (e) {
+      console.error('§363 check-biz-exists failed:', e.name, e.message);
+      return false;
+    } finally { clearTimeout(timer); }
   }
 
   function setSubmitBusy(busy) {
@@ -2665,6 +2712,10 @@
     // מסמך. doc() מייצר מזהה מקומית בלי לפנות לרשת ובלי ליצור מסמך (אותו דפוס כמו §292).
     if (!prior) rememberPending({ id: bizId, accessToken, at: Date.now(),
                                   name: data.name, phone: data.ownerPhone, email: data.ownerEmail });
+    // §363 — נורה **כאן**, יחד עם הדחיסה, ולא ברגע ההחלטה. ההחלטה נמצאת בתוך ה-IIFE ורק שם
+    // ממתינים לה, כך שנסיעת-הרשת הזאת רצה במקביל לדחיסת התמונות ולא מוסיפה זמן למסלול
+    // הקריטי — בדיוק ההיגיון של §361ב. אם כבר יש חותם מקומי אין בכלל מה לשאול.
+    const serverDupPromise = prior ? null : checkBizExistsOnServer(data.ownerPhone, data.ownerEmail, data.name);
     data.pendingChanges = null;
     data.logo           = '';
     data.coverPhoto      = '';
@@ -2718,7 +2769,54 @@
     // ⚠️ הטיוטה *לא* נמחקת כאן — רק אחרי שהרשומה באמת נוצרה. קודם היא נמחקה לפני הכתיבה, כך
     // שכשל הותיר את בעל-העסק בלי הרשומה *וגם* בלי מה שמילא. §215.
 
+    // §363 — הוצא לפונקציה כי יש עכשיו **שני** נתיבי-הצלחה שצריכים בדיוק את ההערה הזאת:
+    // הרגיל, ונתיב "כבר נרשמתם" שנתפס בשרת (שם אין טוקן, ולכן תמונות שצורפו עכשיו לא עולות).
+    // ⚠️ 2026-08-22 — כשל בהעלאת התמונות היה עד עכשיו console.error בלבד: המסך הראה
+    // "הבקשה התקבלה!" נקי, בעל-העסק היה בטוח שהתמונות שלו אצלנו, ואיש לא ידע שהן לא. הרשמה
+    // בלי תמונות היא עדיין הרשמה תקינה (אפשר להשלים אותן מהדשבורד) — ולכן אומרים את זה כאן,
+    // בתוך מסך-ההצלחה, במקום להפיל את כל ההגשה.
+    function showMediaWarnIfNeeded() {
+      const warnEl = document.getElementById('successMediaWarn');
+      if (!mediaUploadFailed || !warnEl) return;
+      // §285 — במקום "נשלח לכם מייל ותענו לו": פעולה שאפשר לעשות עכשיו. הדשבורד הוא נתיב
+      // אמיתי לבעל-עסק (בניגוד לאוהד), אבל הוא זמין רק אחרי האישור — ולכן המייל קודם.
+      // הכתובת מופיעה גם כטקסט מלא, כי mailto: לא תמיד רשום כ-handler ואז הקישור מת.
+      const subj = encodeURIComponent(`תמונות העסק — ${data.name || ''}`);
+      const body = encodeURIComponent(`היי,\nרשמתי את "${data.name || ''}" ל-Yellow Zone והתמונות לא עלו בגלל תקלה.\nמצרף/ת אותן כאן.\n`);
+      warnEl.innerHTML = 'שימו לב: הפרטים נקלטו אצלנו, אבל התמונות לא עלו. ' +
+      `<a href="mailto:yellowzonemta@gmail.com?subject=${subj}&body=${body}" style="font-weight:800;text-decoration:underline">שלחו לנו אותן במייל</a>` +
+      ' (yellowzonemta@gmail.com) — או העלו אותן בעצמכם מהדשבורד האישי שייפתח לכם אחרי האישור.';
+      warnEl.style.display = 'block';
+    }
+
     (async () => {
+      // ── §363 — שתי רשתות, בסדר הזה ────────────────────────────────────────────────────
+      //   1. `prior` (חותם מקומי) — תופס גם כתיבה שעדיין **בתור המקומי** ולא הגיעה לשרת,
+      //      וזה בדיוק המקרה של "שלחתי, לא קרה כלום, שלחתי שוב" תוך שניות. השרת עוד לא
+      //      יודע עליה כלום, ולכן רק הרשת המקומית יכולה לתפוס אותה.
+      //   2. הבדיקה בשרת — תופסת את מה שהמקומית לא יכולה: דפדפן אחר, מכשיר אחר, חלון
+      //      פרטי, ואחסון מלא. זה מה שנכשל בבדיקה האמיתית.
+      // שתיהן נחוצות; אף אחת לבדה אינה מספיקה.
+      if (serverDupPromise && await serverDupPromise) {
+        console.warn('§363 — הבקשה כבר קיימת בשרת; לא נוצרת רשומה שנייה.');
+        localStorage.removeItem('_hb_bizRegDraft');
+        // ⚠️ **בלי כתיבה, ובלי העלאת מדיה.** אין לנו כאן מזהה-עסק ואין טוקן — הוורקר מחזיר
+        // בוליאני בלבד, מטעמי אבטחה (ר' handleCheckBizExists). אם צורפו עכשיו תמונות הן
+        // לא ייעלו, ולכן מדליקים את אותה הערה שכבר קיימת לכשל-מדיה: היא אומרת בדיוק את
+        // הדבר הנכון ("הפרטים נקלטו, התמונות לא עלו — שלחו במייל או מהדשבורד").
+        if (hasMediaToUpload) mediaUploadFailed = true;
+        // ⚠️ אין `logEvent('formSubmit')` ואין weekly_interest — ההרשמה כבר נספרה בשליחה
+        // הראשונה, וספירה חוזרת הייתה מנפחת את משפך ההרשמה בדיוק במקרים שהם תקלה.
+        clearSubmitWaitTimers();
+        setSubmitWait('');
+        setSubmitBusy(false);
+        hideFormPanels();
+        showMediaWarnIfNeeded();
+        document.getElementById('failState').style.display = 'none';
+        document.getElementById('successState').style.display = 'block';
+        return;
+      }
+
       let bizDocRef = null;
       let saveErr = null;
       // §361 — לתיעוד/לוג בלבד. ⚠️ **אף החלטה לא נשענת עליו**: הוא הסקה מקוד-שגיאה, ואילו
@@ -2904,22 +3002,7 @@
         }
       }
 
-      // ⚠️ 2026-08-22 — כשל בהעלאת התמונות היה עד עכשיו console.error בלבד: המסך הראה
-      // "הבקשה התקבלה!" נקי, בעל-העסק היה בטוח שהתמונות שלו אצלנו, ואיש לא ידע שהן לא. הרשמה
-      // בלי תמונות היא עדיין הרשמה תקינה (אפשר להשלים אותן מהדשבורד) — ולכן אומרים את זה כאן,
-      // בתוך מסך-ההצלחה, במקום להפיל את כל ההגשה.
-      const warnEl = document.getElementById('successMediaWarn');
-      if (mediaUploadFailed && warnEl) {
-        // §285 — במקום "נשלח לכם מייל ותענו לו": פעולה שאפשר לעשות עכשיו. הדשבורד הוא נתיב
-        // אמיתי לבעל-עסק (בניגוד לאוהד), אבל הוא זמין רק אחרי האישור — ולכן המייל קודם.
-        // הכתובת מופיעה גם כטקסט מלא, כי mailto: לא תמיד רשום כ-handler ואז הקישור מת.
-        const subj = encodeURIComponent(`תמונות העסק — ${data.name || ''}`);
-        const body = encodeURIComponent(`היי,\nרשמתי את "${data.name || ''}" ל-Yellow Zone והתמונות לא עלו בגלל תקלה.\nמצרף/ת אותן כאן.\n`);
-        warnEl.innerHTML = 'שימו לב: הפרטים נקלטו אצלנו, אבל התמונות לא עלו. ' +
-          `<a href="mailto:yellowzonemta@gmail.com?subject=${subj}&body=${body}" style="font-weight:800;text-decoration:underline">שלחו לנו אותן במייל</a>` +
-          ' (yellowzonemta@gmail.com) — או העלו אותן בעצמכם מהדשבורד האישי שייפתח לכם אחרי האישור.';
-        warnEl.style.display = 'block';
-      }
+      showMediaWarnIfNeeded();
       // §361ב — סוגרים את מה שרץ במקביל. ה-catch כבר בתוך ownerLinkPromise, ולכן זה לא
       // יכול לזרוק; ההמתנה כאן היא רק כדי שמסך ההצלחה לא יעלה בזמן שהקישור עוד באוויר.
       // ⚠️ גם גבול-זמן: קישור תקוע לא יחזיק את מסך ההצלחה לנצח — הרשומה כבר קיימת,

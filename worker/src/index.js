@@ -40,6 +40,9 @@ export default {
       if (request.method === 'POST' && url.pathname === '/check-member-exists') {
         return json(await handleCheckMemberExists(await request.json(), env), env, request);
       }
+      if (request.method === 'POST' && url.pathname === '/check-biz-exists') {
+        return json(await handleCheckBizExists(await request.json(), request, env), env, request);
+      }
       if (request.method === 'POST' && url.pathname === '/shorten-benefit') {
         return json(await handleShortenBenefit(await request.json(), request, env), env, request);
       }
@@ -255,6 +258,52 @@ async function handleCheckMemberExists({ phone, email, firstName, lastName }, en
   }
 
   return { exists: false, memberId: null };
+}
+
+// ── §363 — "כבר נרשמתם?" לעסקים ───────────────────────────────────────────────────────────
+// §361 מנע הרשמה כפולה דרך חותם ב-localStorage. זה נכשל בבדיקה אמיתית: הגנה שיושבת בזיכרון
+// הדפדפן נשברת מדפדפן אחר, ממכשיר אחר, מחלון פרטי ומאחסון מלא — וכל אלה שכיחים אצל בעל-עסק
+// שמתייאש ופותח את הקישור שוב. הבדיקה עברה לשרת, בדיוק כמו שכבר קיים לאוהדים.
+//
+// ⚠️⚠️ **מה שהפונקציה הזאת מחזירה הוא ההחלטה החשובה ביותר בה: בוליאני בלבד.**
+// הפיתוי היה להחזיר גם `bizId` ו-`accessToken`, כדי שהשליחה החוזרת תוכל לכתוב לאותו מסמך
+// ולהעלות את התמונות. **זו הייתה פרצת אבטחה חמורה:**
+//   • `accessToken` הוא **קוד הכניסה לדשבורד העסק**. החזרתו למי שיודע טלפון+מייל+שם הייתה
+//     מחזירה בדיוק את הפרצה ש-§244 סגר (טוקן שנשלף בלי אימות), רק דרך דלת אחרת.
+//   • `bizId` של עסק pending מאפשר לאורח לכתוב `photos/logo/coverPhoto/photoProofUrl` על
+//     אותו עסק (firestore.rules, allow update (א)) — כלומר להחליף לעסק את התמונות.
+// המחיר: בשליחה חוזרת שנתפסה **בשרת** אי אפשר להעלות תמונות. זה מחיר סביר — התמונות של
+// השליחה הראשונה כבר אצלנו, ומי שנתקל בכשל-העלאה מקבל ממילא את כרטיס-המייל של §285.
+//
+// ⚠️ נדרשת התאמה של **שלושת** השדות (טלפון וגם מייל וגם שם), ולא "טלפון או מייל" כמו
+// בבדיקת האוהדים. הסיבה אינה נוחות אלא אבטחה: הטלפון והשם של עסק מאושר **מפורסמים
+// באינדקס**, ולכן "טלפון או שם" היה הופך את הנקודה הזאת למגלה-סטטוס על כל עסק ברשימה.
+// המייל אינו מפורסם, והוא מה שהופך את הצירוף לידיעה של הבעלים עצמו.
+//
+// ⚠️ `status == 'pending'` בלבד. עסק שכבר אושר אינו "שליחה שנתקעה" אלא עסק קיים, ובעליו
+// רשאי להוסיף עסק שני (אדיר אילן — שני עסקים על אותו טלפון ואותו מייל).
+async function handleCheckBizExists({ phone, email, name }, request, env) {
+  if (!phone || !email || !name) return { error: 'invalid_request' };
+
+  // מכסת-IP: הנקודה חושפת בוליאני על צירוף טלפון+מייל+שם, וזה מספיק כדי להצדיק תקרה.
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (await ipIsRateLimited(env.RATE_LIMIT_KV, 'bizexists', ip)) return { error: 'too_many_attempts' };
+  await ipRecordAttempt(env.RATE_LIMIT_KV, 'bizexists', ip);
+
+  const accessToken = await getGoogleAccessToken(env);
+  const emailLower = String(email).trim().toLowerCase();
+  // שאילתה על המייל ולא על הטלפון: המייל נשמר מנורמל (toLowerCase) ולכן התאמה מדויקת
+  // עובדת, בעוד שהטלפון נשמר בכמה וריאציות היסטוריות (ר' phoneCandidates).
+  const rows = await firestoreRunQuery(env, accessToken, 'businesses', 'ownerEmail', emailLower, 20);
+
+  const norm = (v) => String(v == null ? '' : v).trim().replace(/[\s]+/g, ' ').toLowerCase();
+  const phones = phoneCandidates(phone);
+  const match = rows.find((r) =>
+    r.fields.status === 'pending' &&
+    norm(r.fields.name) === norm(name) &&
+    phones.includes(String(r.fields.ownerPhone || '')));
+
+  return { exists: !!match };
 }
 
 // הגנה על עלות קריאות ה-AI/API חיצוני — מכסה נפרדת מ-isRateLimited/recordAttempt (ratelimit.js), שנועד
