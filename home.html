@@ -374,6 +374,37 @@
       .hero .search-bar { display: none; } /* החיפוש הכפול במובייל לא מוצג כשיש חיפוש בהדר */
     }
 
+    /* ══ §388 — באנר "חברו חשבון Google" ══════════════════════════════════════════════
+       מחליף את פריט-התפריט של §377. הנימוק במספר: "הפעל התראות" ישב באותו תפריט ו-2 מתוך
+       61 הפעילו אותו, שניהם מנהלים — כלומר פריט קבור בתפריט הוא אפס אימוץ בפועל.
+       ⚠️ **מוצג רק אחרי קריאה מוצלחת של רשומת החבר** (ר' ההערה ב-JS): קריאה שנכשלת אינה
+       "לא מחובר", והבאנר הזה מול מי שכבר חיבר גרוע מהיעדרו. */
+    .gl-banner {
+      display: none; align-items: center; gap: 12px;
+      max-width: 1200px; margin: 0 auto 18px; padding: 13px 16px;
+      background: var(--card-bg, #fff); border: 1px solid var(--acc-line, #FFE9A3);
+      border-right: 4px solid var(--yellow, #FFD400);
+      border-radius: 14px; box-shadow: var(--shadow, 0 1px 2px rgba(10,42,102,.06));
+    }
+    .gl-banner.show { display: flex; }
+    .gl-banner-icon { font-size: 20px; flex: none; }
+    .gl-banner-text { flex: 1; font-size: 13.5px; line-height: 1.55; color: var(--text-muted, #6B7A9B); }
+    .gl-banner-text b { display: block; font-size: 14.5px; color: var(--text, #0A2A66); }
+    .gl-banner-btn {
+      flex: none; font-family: inherit; font-size: 13.5px; font-weight: 800; cursor: pointer;
+      padding: 9px 18px; border-radius: 999px; border: 0;
+      background: var(--yellow, #FFD400); color: var(--blue, #0A2A66);
+    }
+    .gl-banner-x {
+      flex: none; background: none; border: 0; cursor: pointer; padding: 4px 6px;
+      font-size: 15px; line-height: 1; color: var(--text-muted, #6B7A9B);
+    }
+    @media (max-width: 560px) {
+      .gl-banner { flex-wrap: wrap; }
+      .gl-banner-text { flex: 1 1 100%; order: 2; }
+      .gl-banner-btn { order: 3; flex: 1 1 100%; }
+    }
+
     /* ══ HERO / SEARCH ══ */
     .hero {
       padding: 18px 16px 16px;
@@ -1565,6 +1596,20 @@
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
   </div>
+</div>
+
+<!-- ══ §388 — באנר "חברו חשבון Google" ══════════════════════════════════════════════════
+     מחליף את פריט-התפריט של §377 (בקשת המשתמש: "אמרנו באנר, מורידים את זה בכלל").
+     ⚠️ מוצג ע"י JS בלבד, ורק אחרי קריאה **מוצלחת** של רשומת החבר — ר' ההערה בקוד.
+     הכפתור פותח את אותו גיליון בדיוק של google-link.js; אין כאן מסלול-חיבור שני. -->
+<div class="gl-banner" id="glBanner">
+  <span class="gl-banner-icon">🔗</span>
+  <div class="gl-banner-text">
+    <b>נמאס לחפש את הקוד?</b>
+    חברו את חשבון Google שלכם — ובפעם הבאה תיכנסו בלחיצה אחת, מכל מכשיר.
+  </div>
+  <button type="button" class="gl-banner-btn" onclick="openGoogleLinkSheet()">חברו עכשיו</button>
+  <button type="button" class="gl-banner-x" onclick="hbDismissGoogleBanner()" aria-label="סגירת ההודעה" title="לא עכשיו">✕</button>
 </div>
 
 <!-- ══ CATEGORIES ══ -->
@@ -3655,12 +3700,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <span class="menu-item-icon">📞</span>
       <span class="menu-item-label">צור קשר</span>
     </button>
-    <!-- §377 — חיבור חשבון Google. מוסתר; מוצג רק למי שעדיין לא חיבר (hbGoogleLink.init). -->
-    <button class="menu-item" id="menuGoogleItem" style="display:none" type="button"
-            onclick="try{closeMenu()}catch(e){}; openGoogleLinkSheet()">
-      <span class="menu-item-icon">🔗</span>
-      <span class="menu-item-label">חברו חשבון Google — כניסה בלי קוד</span>
-    </button>
     <a class="menu-item" id="menuBizItem" href="#" style="display:none">
       <span class="menu-item-icon">🏪</span>
       <span class="menu-item-label">העסק שלי</span>
@@ -4062,23 +4101,66 @@ const hbApiFetch = (path, opts) => {
 // כאן נשארת רק ההזרקה: הדף מספק את apiFetch ואת getIdToken שלו, כי לכל דף יש
 // אובייקט auth משלו — וניחוש היה קושר את חשבון הגוגל לרשומה הלא-נכונה.
 
-// שם פרטי בברכת הבית — נשלף מהחבר המחובר בפועל (לא placeholder קבוע). auth.currentUser.uid, לא hb_memberId — ר' הערה למעלה
+// ── §388 — הצגה/דחייה של באנר חיבור-גוגל ────────────────────────────────────────────────
+// ⚠️ **הדחייה היא נודניק ולא כיבוי.** פריט-התפריט של §377 ירד, ולכן הבאנר הוא **הדרך
+// היחידה** של חבר קיים לחבר חשבון — ודחייה לצמיתות הייתה סוגרת אותה לתמיד בלחיצה אחת
+// מוטעית. 14 יום זה מספיק כדי לא להציק, ולא מספיק כדי לאבד אותו.
+// ⚠️ **הנודניק נשמר לפי uid**: במכשיר משותף, דחייה של אחד לא אמורה להשתיק את השני.
+const GBANNER_KEY = 'hb_gbanner_snooze';
+const GBANNER_SNOOZE_DAYS = 14;
+window.hbMaybeShowGoogleBanner = function (uid) {
+  try {
+    const s = JSON.parse(localStorage.getItem(GBANNER_KEY) || 'null');
+    if (s && s.uid === uid && s.until > Date.now()) return;
+  } catch (e) {}
+  document.getElementById('glBanner')?.classList.add('show');
+};
+window.hbDismissGoogleBanner = function () {
+  document.getElementById('glBanner')?.classList.remove('show');
+  try {
+    localStorage.setItem(GBANNER_KEY, JSON.stringify({
+      uid: localStorage.getItem('hb_memberId') || '',
+      until: Date.now() + GBANNER_SNOOZE_DAYS * 864e5,
+    }));
+  } catch (e) {}
+};
+
+// שם פרטי בברכת הבית — נשלף מהחבר המחובר בפועל. §388: עם נפילה-לאחור ל-hb_memberId,
+// כי `auth.currentUser` יכול להיות null כשהשער נפתח בפסק-זמן (ר' ההערה המלאה בפנים).
 (async () => {
   try {
-    const memberId = auth.currentUser?.uid;
+    // ── §388 — 🐛 הקריאה הזאת נכשלה בשקט, ומי שכבר חיבר גוגל המשיך לראות "חברו חשבון" ──
+    // דווח חי (2026-09-02): רשומה עם `googleEmail` מלא — הקובייה במרכז הניהול הראתה
+    // "✅ מחובר · rami@getruck.co · 23:22" — ובכל זאת פריט-התפריט הוצג.
+    //
+    // 🔑 **שורש ראשון: `auth.currentUser` יכול להיות null כאן.** שער-ה-auth שמעל נפתח
+    // בשתי דרכים — או ש-auth התאושש, **או אחרי 6 שניות בכל מקרה** (HB_AUTH_GATE_MS).
+    // במסלול השני `memberId` יצא `undefined`, `doc(db,'members',undefined)` זרק, ארבעת
+    // הניסיונות זרקו, והדף קיבל `{}`. הנפילה-לאחור ל-`hb_memberId` מיישרת את זה לשער
+    // עצמו, שכבר ממשיך על סמך אותו ערך בדיוק — ו-`firestore.rules` נשארות שומר-האמת.
+    //
+    // 🔑 **שורש שני, והחשוב מביניהם: `data.googleEmail || ''` הפך קריאה שנכשלה ל"לא
+    // מחובר".** חוסר-מידע הוצג כעובדה. הברכה מוצגת קודם מהמטמון המקומי, ולכן הכישלון
+    // היה **בלתי-נראה לגמרי** — הדף אמר "שלום, רמי" והכל נראה תקין.
+    // מעכשיו: `ok` מבדיל בין "נקרא ואין" לבין "לא נקרא", והבאנר מוצג רק במקרה הראשון.
+    const memberId = auth.currentUser?.uid || localStorage.getItem('hb_memberId');
     const snap = await fetchMemberDocWithRetry(memberId);
-    const data = (snap && snap.exists()) ? snap.data() : {};
+    const ok = !!(snap && snap.exists());
+    const data = ok ? snap.data() : {};
+    if (!ok) console.warn('§388 — רשומת החבר לא נקראה; באנר Google לא יוצג (חוסר-מידע אינו "לא מחובר")');
     const firstName = data.firstName || '';
-    // §372 — אותו מסמך, בלי קריאה נוספת. מציג את פריט-התפריט רק למי שעדיין לא חיבר.
     // §377 — דרך המודול המשותף. getIdToken נקרא **בזמן הלחיצה** ולא כאן, כי הטוקן
     // קצר-מועד ועמוד שפתוח שעה היה שולח טוקן שפג.
+    // ⚠️ init נקרא **תמיד** — גם כשהקריאה נכשלה — כי הוא זה שמזריק apiFetch/getIdToken
+    // לגיליון. מה שמותנה ב-`ok` הוא ההצגה, לא היכולת לחבר.
     try {
       window.hbGoogleLink?.init({
         apiFetch: hbApiFetch,
         getIdToken: () => window._auth?.currentUser?.getIdToken() || null,
         googleEmail: data.googleEmail || '',
       });
-    } catch (e) { console.error('google menu init failed:', e); }
+      if (ok && !data.googleEmail) window.hbMaybeShowGoogleBanner(memberId);
+    } catch (e) { console.error('google banner init failed:', e); }
     const el = document.getElementById('heroUserName');
     // "חבר" הוא רק גיבוי לכשאין *שום* שם — הוא לא דורס שם אמיתי שכבר הוצג מה-cache המקומי
     // (ר' ההצגה המיידית למעלה). אחרת ניתוק-רשת רגעי היה מוריד את "שלום, רמי" ל"שלום, חבר".

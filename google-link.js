@@ -8,7 +8,9 @@
 // ── מה הדף צריך לספק ────────────────────────────────────────────────────────────────────
 //   1. <script src="https://accounts.google.com/gsi/client" async defer>
 //   2. <script src="google-link.js">
-//   3. פריט תפריט עם id="menuGoogleItem" (מוסתר), שקורא ל-window.openGoogleLinkSheet()
+//   3. נקודת-כניסה כלשהי שקוראת ל-window.openGoogleLinkSheet(). §388 החליף את פריט
+//      התפריט (id="menuGoogleItem") בבאנר בדף הבית (id="glBanner"), אחרי שהתברר שפריט
+//      קבור בתפריט = אפס אימוץ — אותו מספר של "הפעל התראות" (2 מתוך 61).
 //   4. קריאה אחת: window.hbGoogleLink.init({ apiFetch, getIdToken, googleEmail })
 //
 // ⚠️ **הגיליון נבנה כאן ולא ב-HTML של כל דף.** מרקאפ משוכפל בארבעה קבצים הוא בדיוק
@@ -134,8 +136,15 @@
         // הוא של גוגל ואי אפשר לשנות אותו, ולכן ההודעה היא זו שמתיישרת. הבטחה שמצטטת
         // כפתור בשם אחר שולחת את החבר לחפש משהו שאינו על המסך.
         msg('✅ מעולה — החשבון חובר. בפעם הבאה פשוט לחצו "להמשיך עם Google".', 'ok');
+        // §388 — הבאנר בדף הבית החליף את פריט-התפריט. שניהם מוסתרים כאן, כי החיבור
+        // מתבצע בתוך הגיליון והדף עצמו אינו נטען מחדש אחריו — בלי זה ההזמנה לחבר
+        // נשארת על המסך אחרי שהחיבור כבר הצליח.
+        // ⚠️ שני ה-id נבדקים בנפרד: `menuGoogleItem` הוסר מהדפים ב-§388, אבל השורה
+        // נשארת כדי שדף שעדיין מגיש HTML ישן מהמטמון לא יישאר עם פריט חי.
         var item = el('menuGoogleItem');
         if (item) item.style.display = 'none';
+        var banner = el('glBanner');
+        if (banner) banner.classList.remove('show');
         var host = el('googleBtnHost');
         if (host) host.innerHTML = '';
         return;
@@ -159,6 +168,10 @@
     }
     cfg = opts;
     if (opts.googleEmail) return;          // כבר מחובר — אין מה להציע
+    // §388 — הפריט הוסר משלושת הדפים והוחלף בבאנר, שמוצג ע"י `hbMaybeShowGoogleBanner`
+    // בדף הבית. השורה הזאת **נשארת בכוונה**: דף שעדיין מוגש מהמטמון של ה-Service Worker
+    // נושא את הפריט הישן, ובלעדיה הוא היה נשאר מוסתר — כלומר החבר היה מאבד את נקודת
+    // הכניסה היחידה שיש לו עד שה-HTML יתחדש.
     var item = el('menuGoogleItem');
     if (item) item.style.display = 'flex';
   }
