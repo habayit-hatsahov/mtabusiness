@@ -2100,6 +2100,27 @@ function emailWarnNote(email) {
   if (!hit) return '';
   return `<div class="identity-note warn"><div class="identity-note-h">כתובת מייל חשודה</div><div class="identity-note-v">הדומיין "${esc(hit.domain)}" לא נראה תקין — כנראה ${esc(hit.suggested)}.<br>מייל לכתובת כזאת יסומן כאן "נשלח" אבל לא יגיע לאף אחד.</div></div>`;
 }
+// ── §386 — חיבור חשבון Google על רשומת החבר ─────────────────────────────────────────────
+// עד היום `googleSub`/`googleEmail` נכתבו (§370–§372, §377, §386) ולא הוצגו **בשום** מסך
+// ניהול — כלומר לא הייתה שום דרך לדעת אם הקישור בכלל עובד, או כמה אנשים חיברו.
+//
+// 🔑 **מוצג תמיד, גם כשאין חיבור, ובכוונה.** קובייה שמופיעה רק כשיש `googleEmail` הופכת
+// "לא מחובר" ל"אולי הרנדור לא קורא את השדה" — בדיוק אי-ההבחנה שהסתירה את §357. שתי
+// מצבים מפורשים אומרים גם מה קרה וגם שהמנגנון חי.
+//
+// ⚠️ מקבל את רשומת **החבר** ולא את העסק: הזהות יושבת על `members/{id}`, וטוקן הדשבורד
+// של העסק (§244) הוא מנגנון נפרד לגמרי. בכרטיס העסק נשלף הבעלים דרך `ownerMemberId`.
+function googleLinkNoteHtml(member) {
+  if (!member) return '';
+  const mail = String(member.googleEmail || '').trim();
+  const at = toJsDate(member.googleLinkedAt);
+  return `<div class="identity-note neutral"><div class="identity-note-h">חשבון Google</div><div class="identity-note-v">${
+    mail
+      ? `✅ מחובר — כניסה בלי קוד<br>${esc(mail)}${at ? `<br>חובר ${fmtDateTime(at)}` : ''}`
+      : 'לא מחובר — נכנס/ת עם קוד בלבד'
+  }</div></div>`;
+}
+
 // אישור-אנוש לפני אישור נמען עם כתובת חשודה — מחזיר false אם המנהל בחר לעצור ולתקן קודם
 function confirmSuspectEmail(email, who) {
   const hit = emailDomainHit(email);
@@ -6294,8 +6315,12 @@ function bizFullDetailHtml(id, opts) {
              מקרים אמיתיים (§206 "יעדים לוגיסטיים", §243 כתובת שגויה). הסרתה הייתה מוחקת
              פעולות, לא רק תצוגה.
            · idNoteBox — נשארת במפורש לבקשת המשתמש: *"הערה מהעסק אפשר להשאיר, זה חשוב לדעת
-             האם כתב לנו או לא"*. היא מוצגת גם כשאין הערה, בדיוק בשביל השאלה הזאת. -->
-      <div class="identity-notes">${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${idEmailNote}${idNoteBox}</div>
+             האם כתב לנו או לא"*. היא מוצגת גם כשאין הערה, בדיוק בשביל השאלה הזאת.
+           · §386 — קוביית Google מצטרפת מאותו נימוק כמו idNoteBox, ובמודע בניגוד לכלל
+             "רק כשיש בעיה": השאלה שהיא עונה עליה היא **"האם החיבור קרה"**, ותשובה
+             שלילית שאינה מוצגת אינה נבדלת מרנדור שלא רץ. היא נשלפת מרשומת **החבר**
+             של הבעלים (ownerMemberId) — הזהות אינה יושבת על מסמך העסק. -->
+      <div class="identity-notes">${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${googleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${idEmailNote}${idNoteBox}</div>
     </div>`;
 
   const anchorCardHtml = b.status === 'approved' ? `
@@ -7941,7 +7966,7 @@ function fanFullDetailHtml(id, opts) {
            למטה"*. שתיהן היו שכפול של כרטיס האימות שמתחת, וכפילות בכרטיס-הזהות גובה מחיר
            אמיתי: היא דוחפת למטה את מה שכן ייחודי לו (בעל-עסק מקושר, מצב מייל-הקוד).
            נשארות רק קוביות שאין להן מקום אחר. -->
-      <div class="identity-notes">${emailWarnNote(f.email)}${idBizNote}${idEmailNote}</div>
+      <div class="identity-notes">${emailWarnNote(f.email)}${idBizNote}${googleLinkNoteHtml(f)}${idEmailNote}</div>
     </div>`;
 
   // כרטיס "פרטי ההרשמה" נפרד (2026-08-04, תואם-handoff — קודם היה טקסט-חופשי בתוך approve-card, לא

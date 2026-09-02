@@ -13,6 +13,13 @@
   <!-- §340 — נרמול/בדיקת קישורי פייסבוק+אינסטגרם. אותו מודול בדיוק שכבר מגן על שדות
        הקישור של העסקים (§232) ועל התצוגה במרכז הניהול. -->
   <script src="social-links.js"></script>
+  <!-- §386 — גוגל בהרשמה. הספרייה של גוגל + המודול המשותף (google-signup.js), אותו קובץ
+       בדיוק גם ב-business.html. שניהם async/defer ואינם חוסמים את ציור הטופס: אם גוגל
+       לא נטענת, הבלוק פשוט אינו מוצג וההרשמה הידנית ממשיכה כרגיל. -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- ⚠️ בלי defer, כמו phone-check.js/social-links.js שלידו: הקריאה ל-init יושבת בסקריפט
+       מודול בתחתית העמוד, ואי-ודאות בסדר-הריצה כאן היא בדיוק §310/§312. -->
+  <script src="google-signup.js"></script>
   <script>
     // ── מצב "embed" — כשהדף נטען בתוך ה-iframe של מודאל-ההרשמה בדסקטופ (welcome.html),
     // הכותרת/הירו הצהוב של העמוד העצמאי מוסתרים (הפאנל הצהוב החיצוני כבר נותן את המיתוג),
@@ -548,6 +555,14 @@
       <div class="form-card">
         <div class="section-title"><span class="badge">👤</span>פרטים אישיים</div>
 
+        <!-- §386 — כפתור ההרשמה עם Google. המכל ריק בכוונה: המרקאפ נבנה ב-google-signup.js,
+             המשותף לטופס הזה ולטופס העסקים. הוא **מוסתר עד שהכפתור באמת צויר**, ולכן דף
+             שגוגל לא נטענה בו נראה בדיוק כמו קודם.
+             ⚠️ המיקום כאן ולא בראש הטופס: §325 מדד ש-13 מתוך 37 סגרו את הטופס בלי להקליד
+             תו אחד, כלומר הנשירה היא ברושם הראשון — והכפתור צריך לשבת בדיוק שם, מעל השדה
+             הראשון שהם ראו. -->
+        <div id="gsHost"></div>
+
         <div class="form-row">
           <div class="form-group">
             <label for="firstName">שם פרטי <span class="req">*</span></label>
@@ -992,7 +1007,29 @@
   import { collection, doc, addDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
   import { ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
 
-  const WORKER_URL = 'https://api.yellowzone.co.il';   // §364 — היה workers.dev, נחסם ע"י סינון סלולרי. ר' PROJECT_CONTEXT §359/§364
+  // ── §386 — טופס האוהד עבר לרשימת הכתובות של §374 ─────────────────────────────────────────
+  // §375 העביר את **טופס העסקים** לשלוש הכתובות והשאיר את טופס האוהד על כתובת יחידה. זה
+  // נשאר פער אמיתי: מי שהנתיב שלו לקלאודפלייר חסום (המקרה שבגללו נולד §374) הוא בדיוק מי
+  // שהיה צריך את `/google-attach` החדש — ובלי נפילה-לאחור הוא היה נכשל אצלו תמיד.
+  // 🔑 הרשימה והסדר זהים ל-welcome.html ול-business.html **בכוונה**: הכתובת השנייה יושבת
+  // אצל גוגל ולא אצל קלאודפלייר, כי §374 הוכיח ששתי הכתובות של קלאודפלייר נופלות יחד.
+  const HB_API_HOSTS = [
+    'https://api.yellowzone.co.il',                             // קלאודפלייר — השם שלנו (§364)
+    'https://habayit-hatsahov.web.app/api',                     // 🔑 גוגל — רשת אחרת, ונמדדה מהירה (§378)
+    'https://habayit-hatsahov-worker.yellowzone.workers.dev',   // קלאודפלייר — הישנה, אחרונה
+  ];
+  // ⚠️ **רק כשל-רשת מקדם לכתובת הבאה — לא תשובה שהתקבלה.** 4xx/5xx הוא תשובה ועובר הלאה.
+  // ⚠️ **AbortError אינו כשל-רשת אלא החלטה שלנו** (גבול-הזמן של הקריאה): ניסיון חוזר עליו
+  // היה מבטל את גבול-הזמן ומחזיר בדיוק את המסך התקוע שהוא נועד למנוע, כפול שלוש.
+  const hbApiFetch = (path, opts) => {
+    const tryHost = (i) =>
+      fetch(HB_API_HOSTS[i] + path, opts).catch(err => {
+        if (err && err.name === 'AbortError') throw err;
+        if (i + 1 >= HB_API_HOSTS.length) throw err;
+        return tryHost(i + 1);
+      });
+    return tryHost(0);
+  };
 
   // ── שכבת מדידה (§281) — `formSubmit` היה חסר בכל המערכת ──────────────────────────────────
   // `welcome.html` רושם `formOpen` כשנפתח מודאל ההרשמה, אבל את השליחה עצמה לא רשם אף אחד —
@@ -1065,7 +1102,7 @@
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 8000);
     try {
-      const resp = await fetch(WORKER_URL + '/check-member-exists', {
+      const resp = await hbApiFetch('/check-member-exists', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, email, firstName, lastName }),
@@ -1995,6 +2032,15 @@
 
     clearTimeout(slowTimer);
     clearTimeout(stuckTimer);
+
+    // ── §386 — קישור חשבון הגוגל לרשומה שזה עתה נוצרה ────────────────────────────────────
+    // ⚠️ **ממתינים לו כאן, לפני מסך ההצלחה** — §292: מסך הצלחה עם עבודה שרצה מאחוריו אינו
+    // מסך הצלחה. הקריאה חסומה ב-8 שניות ולעולם אינה זורקת, ולכן היא יכולה רק לעכב מעט,
+    // לא להפיל. מי שלא לחץ על גוגל אינו משלם כלום — attach יוצא מיד בלי בקשת-רשת.
+    // 🔑 כשל כאן **אינו** כשל-הרשמה: הרשומה כבר נכתבה, והנרשם יקבל קוד כרגיל ויוכל לחבר
+    // את החשבון מהתפריט אחר-כך (§377).
+    if (memberDocRef) await window.hbGoogleSignup?.attach(hbApiFetch, memberDocRef.id);
+
     setSubmitStatus('');
     localStorage.removeItem(DRAFT_KEY);
     form.style.display = 'none';
@@ -2416,6 +2462,21 @@
   ['firstName', 'lastName', 'phone', 'email'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', warmDedupCheck);
+  });
+
+  // ── §386 — הרשמה עם Google ─────────────────────────────────────────────────────────────
+  // ⚠️ הקריאה יושבת **כאן ולא בראש המודול, בכוונה**: המילוי משדר input/change על השדות,
+  // ומאזיני ניקוי-השגיאות (attachClearErrors) וחימום-הכפילות (warmDedupCheck) נרשמים
+  // בשורות שמעל. init מוקדם יותר היה עובד כמעט תמיד — ונופל בדיוק במקרה שבו הנרשם לוחץ
+  // על הכפתור לפני שהדף סיים להיטען.
+  // הקישור עצמו קורה רק אחרי שהרשומה נוצרה, בסוף handleSubmit.
+  window.hbGoogleSignup?.init({
+    hostId: 'gsHost',
+    warnId: 'warn-email',
+    fields: { first: 'firstName', last: 'lastName', email: 'email' },
+    // המילוי נשמר לטיוטה מיד: מי שלחץ על גוגל וסגר את הדף יחזור לשדות מלאים, בדיוק כמו
+    // מי שהקליד אותם ביד (המסלול הידני נשמר ממילא במעבר לתקנון).
+    onFilled: () => { try { saveRegDraft(); } catch (e) { console.error('draft save after google fill failed', e); } },
   });
 
   // ── טיוטת טופס — נשמרת לפני מעבר לתקנון, כדי לא לאבד מה שמולא ──

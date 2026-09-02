@@ -27,6 +27,11 @@
   <script src="email-domain-check.js"></script>
   <script src="phone-check.js"></script>
   <script src="hours.js"></script>
+  <!-- §386 — גוגל בהרשמה. אותו מודול משותף בדיוק כמו ב-fan-register.html.
+       ⚠️ בלי defer, כמו שאר הקבצים כאן: הקריאה ל-init יושבת בסקריפט-מודול בתחתית העמוד,
+       ואי-ודאות בסדר-הריצה היא בדיוק §310/§312. -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="google-signup.js"></script>
   <style>
     /* §348 — זהה ל-.help-entry-btn ב-fan-register.html (§303). שני הטפסים מציגים את אותה
        הצעת-עזרה באותו מקום ובאותו משקל; הבדל חזותי היה נקרא כאילו זה שני דברים שונים. */
@@ -1262,6 +1267,14 @@
       <div class="form-card">
       <div class="section-title"><span class="badge"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#0A2A66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.9"></path></svg></span>מי מגיש את הבקשה</div>
 
+      <!-- §386 — כפתור ההרשמה עם Google. המכל ריק בכוונה: המרקאפ נבנה ב-google-signup.js,
+           המשותף לטופס הזה ולטופס האוהד.
+           ⚠️ **שלב 5 ולא שלב 1** — כאן יושבים פרטי מגיש-הבקשה (ownerFirst/ownerLast/
+           ownerEmail), והם השדות היחידים שגוגל יודעת למלא. פרטי העסק בשלבים 1–4 אינם
+           קשורים לזהות של האדם. ⚠️ הכפתור מצויר רק כשהשלב נפתח בפועל (ר' showStep) —
+           מכל מוסתר אינו מקבל רוחב, וגוגל הייתה מציירת כפתור בגודל שגוי. -->
+      <div id="gsHost"></div>
+
       <div class="form-row">
         <div class="form-group">
           <label for="ownerFirst">שם פרטי <span class="req">*</span></label>
@@ -2258,6 +2271,10 @@
     // ⚠️ טיוטה משוחזרת (restoreDraft) קופצת ישר ל-showStep(5) ותסמן רק את 'step5'. זה נכון —
     // הוא באמת לא עבר עכשיו בשלבים 2–4 — אבל צריך לזכור את זה כשקוראים את המשפך.
     if (n >= 2) markStep('step' + n);
+    // §386 — כפתור גוגל מצויר רק כשהשלב שלו נפתח בפועל. renderButton על מכל מוסתר מקבל
+    // clientWidth=0 ומצייר בגודל ברירת-מחדל, ולכן הציור נדחה עד לרגע הזה. הקריאה בטוחה
+    // לחזרות — המודול יוצא מיד אם הכפתור כבר קיים.
+    if (n === 5) window.hbGoogleSignup?.render();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -2986,10 +3003,18 @@
           await setDoc(doc(db, 'bizTokens', bizDocRef.id), { accessToken });
         } catch (e) { console.error('biz token write failed:', e.message); }
         ownerLinkPromise = (async () => {
+          let ownerMemberId = null;
           try {
-            const ownerMemberId = await linkOrCreateOwnerMember(data, bizDocRef.id);
+            ownerMemberId = await linkOrCreateOwnerMember(data, bizDocRef.id);
             await updateDoc(doc(db, 'businesses', bizDocRef.id), { ownerMemberId });
           } catch (e) { console.error('owner member link failed:', e.message); }
+          // ── §386 — קישור חשבון הגוגל לרשומת החבר של הבעלים ──────────────────────────────
+          // ⚠️ **מחוץ ל-try שמעליו, בכוונה**: אם `updateDoc` נכשל אחרי ש-linkOrCreateOwnerMember
+          // כבר הצליח, רשומת החבר קיימת ואין שום סיבה לוותר על הקישור אליה.
+          // 🔑 הקישור הוא ל-`members/{ownerMemberId}` ולא לעסק: הכניסה עם גוגל היא של האדם,
+          // וטוקן הדשבורד של העסק הוא מנגנון נפרד לגמרי (§244) שאינו נוגע בזה.
+          // כשל כאן אינו כשל-הרשמה — הבקשה כבר נקלטה, והחיבור אפשרי אחר-כך מהתפריט (§377).
+          if (ownerMemberId) await window.hbGoogleSignup?.attach(hbApiFetch, ownerMemberId);
         })();
       }
 
@@ -4539,6 +4564,19 @@
     showStep, toggleAlsoCat,
     toggleDiscount, toggleNoTagFits, toggleRegion, toggleWeekly,
     updateMinCounter,
+  });
+
+  // ── §386 — הרשמה עם Google (שלב 5) ────────────────────────────────────────────────────
+  // ⚠️ autoRender:false — הכפתור מצויר רק כשהשלב נפתח (showStep), ר' ההערה שם.
+  // ⚠️ הקריאה יושבת **לפני** בלוק ה-?resume=1 שמתחתיה, כי restoreBizRegDraft קופץ ישר
+  // ל-showStep(5) — ובלי init לפניו הבקשה לצייר את הכפתור הייתה מגיעה למודול שטרם אותחל.
+  // הקישור עצמו קורה רק אחרי שרשומת-החבר של הבעלים נוצרה, בתוך ownerLinkPromise.
+  window.hbGoogleSignup?.init({
+    hostId: 'gsHost',
+    warnId: 'warn-ownerEmail',
+    fields: { first: 'ownerFirst', last: 'ownerLast', email: 'ownerEmail' },
+    autoRender: false,
+    onFilled: () => { Promise.resolve(saveBizRegDraft()).catch(e => console.error('draft save after google fill failed', e)); },
   });
 
   if (new URLSearchParams(location.search).get('resume') === '1') {
