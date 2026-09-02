@@ -83,3 +83,26 @@ export async function verifyAdminIdToken(env, idToken) {
   if (!member || member.fields.isAdmin !== true) throw new Error('not_admin');
   return uid;
 }
+
+// ── §370 — מי מחובר, בלי דרישת מנהל ────────────────────────────────────────────────────
+// אותה קריאה בדיוק של verifyAdminIdToken, רק בלי בדיקת isAdmin. משמשת את /google-link,
+// שבו צריך לדעת רק **מי** מחובר כדי לקשור אליו את חשבון הגוגל שלו.
+// ⚠️ בכוונה לא מיזגתי את שתי הפונקציות לאחת עם דגל. verifyAdminIdToken הוא שער-הרשאות
+// חי שמגן על כל נתיבי הניהול, ורפקטור שלו לטובת שיתוף-קוד הוא בדיוק סוג השינוי שנופל
+// בשקט ופותח דלת. עדיף כפל של ארבע שורות.
+export async function uidFromIdToken(env, idToken) {
+  if (!idToken) throw new Error('missing_id_token');
+  const resp = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${env.FIREBASE_WEB_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    }
+  );
+  if (!resp.ok) throw new Error('invalid_id_token');
+  const data = await resp.json();
+  const uid = data.users?.[0]?.localId;
+  if (!uid) throw new Error('invalid_id_token');
+  return uid;
+}

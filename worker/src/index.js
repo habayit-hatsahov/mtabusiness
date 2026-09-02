@@ -1,5 +1,6 @@
 import { corsHeaders, handlePreflight, json } from './cors.js';
-import { getGoogleAccessToken, mintFirebaseCustomToken, verifyAdminIdToken } from './jwt.js';
+import { getGoogleAccessToken, mintFirebaseCustomToken, verifyAdminIdToken, uidFromIdToken } from './jwt.js';
+import { verifyGoogleIdToken } from './google.js';
 import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, bizTokenFor,
          memberIdFromLoginCode, loginCodeFor } from './firestore.js';
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
@@ -24,6 +25,17 @@ export default {
     try {
       if (request.method === 'POST' && url.pathname === '/mint-member-token') {
         return json(await handleMemberLogin(await request.json(), request, env), env, request);
+      }
+      // §370 — כניסה עם גוגל. שני נתיבים **נפרדים בכוונה**, כי רמת-האמון שלהם שונה:
+      // /google-login רק קורא, /google-link ו-/google-attach כותבים זהות על רשומת חבר.
+      if (request.method === 'POST' && url.pathname === '/google-login') {
+        return json(await handleGoogleLogin(await request.json(), request, env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/google-link') {
+        return json(await handleGoogleLink(await request.json(), env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/google-attach') {
+        return json(await handleGoogleAttach(await request.json(), request, env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/mint-biz-token') {
         return json(await handleBusinessLogin(await request.json(), env), env, request);
@@ -131,6 +143,97 @@ async function handleMemberLogin({ phone, code }, request, env) {
   }
 
   return { error: 'invalid_credentials' };
+}
+
+// ══ §370 — כניסה עם גוגל ═══════════════════════════════════════════════════════════════
+// גוגל היא הוכחת זהות בלבד (ר' google.js ו-§368). כל הנתיבים כאן מסתיימים באותו
+// custom token שמונפק אחרי טלפון+קוד — אין uid חדש, אין rules חדשים, אין מסך שמשתנה.
+
+// חיפוש חבר לפי מזהה-גוגל. ⚠️ מוחזר **מערך**, ובכוונה: שתי רשומות עם אותו googleSub
+// הן תקלת-נתונים שבה זהות אחת מצביעה על שני אנשים. הקוראים למטה עוצרים במקרה כזה
+// במקום לבחור אחת — 'לנחש' כאן פירושו להכניס אדם לחשבון שאינו שלו.
+async function membersByGoogleSub(env, accessToken, sub) {
+  return firestoreRunQuery(env, accessToken, 'members', 'googleSub', sub, 2);
+}
+
+async function handleGoogleLogin({ idToken }, request, env) {
+  let g;
+  try { g = await verifyGoogleIdToken(env, idToken); }
+  catch (e) { return { error: 'invalid_google_token' }; }
+
+  const accessToken = await getGoogleAccessToken(env);
+  const rows = await membersByGoogleSub(env, accessToken, g.sub);
+  if (rows.length > 1) return { error: 'google_ambiguous' };
+
+  const member = rows[0];
+  // ⚠️ 'לא מקושר' אינו שגיאה — זו הפעם הראשונה שלו. הקליינט הופך את זה למסך שמסביר
+  // איך לקשור, ולכן המייל מוחזר: כדי שהמסך יוכל לומר לו באיזה חשבון הוא השתמש.
+  if (!member) return { error: 'google_not_linked', email: g.email };
+  if (member.fields.status !== 'approved') {
+    return { error: member.fields.status === 'pending' ? 'pending' : 'rejected' };
+  }
+
+  const customToken = await mintFirebaseCustomToken(env, {
+    uid: member.id,
+    claims: { role: 'member', isBusinessOwner: member.fields.isBusinessOwner === true },
+  });
+  return { customToken };
+}
+
+// ── קישור ע"י חבר שכבר מחובר — הנתיב החזק ──────────────────────────────────────────────
+// דורש **שני** טוקנים: אחד שמוכיח מי הוא אצל גוגל, ואחד שמוכיח מי הוא אצלנו.
+// זה הנתיב של 'חבר את חשבון הגוגל שלי' בפרופיל, ושל כל חבר ותיק שנרשם לפני §370.
+async function handleGoogleLink({ idToken, memberIdToken }, env) {
+  let g, uid;
+  try { g = await verifyGoogleIdToken(env, idToken); } catch (e) { return { error: 'invalid_google_token' }; }
+  try { uid = await uidFromIdToken(env, memberIdToken); } catch (e) { return { error: 'not_signed_in' }; }
+
+  const accessToken = await getGoogleAccessToken(env);
+  // ⚠️ חשבון גוגל אחד = אדם אחד. אם הוא כבר קשור לחבר **אחר**, קישור נוסף היה נותן
+  // לאותה זהות שתי רשומות — ואז 'עם מי להיכנס' הופכת לשאלה שאין לה תשובה נכונה.
+  const existing = await membersByGoogleSub(env, accessToken, g.sub);
+  if (existing.some((m) => m.id !== uid)) return { error: 'google_already_linked' };
+
+  const me = await firestoreGetDoc(env, accessToken, `members/${uid}`);
+  if (!me) return { error: 'member_not_found' };
+
+  await firestorePatch(env, accessToken, `members/${uid}`, {
+    googleSub: g.sub, googleEmail: g.email, googleLinkedAt: new Date(),
+  });
+  return { ok: true, email: g.email };
+}
+
+// ── קישור בזמן הרשמה — הנתיב החלש, ולכן החסום ביותר ────────────────────────────────────
+// בהרשמה אין עדיין session: הנרשם יצר רשומת pending ואין לו טוקן שלנו. לכן הנתיב הזה
+// אינו יכול לדרוש הוכחת-זהות שלנו, ובלי גדר הוא היה מאפשר לתוקף לקשור את חשבון
+// **הגוגל שלו** לרשומה של **מישהו אחר** — ואז להיכנס בשמו ברגע שיאושר.
+//
+// 🔑 הגדר: המייל השמור על הרשומה חייב להיות **זהה** למייל שגוגל אימתה. כלומר אפשר
+// לקשור חשבון גוגל רק לרשומה שנושאת את הכתובת של אותו חשבון — כלומר רק לרשומה
+// שהנרשם עצמו יצר. תוקף אינו יכול לייצר מייל מאומת של אדם אחר.
+// ⚠️ ובנוסף: רק אם אין עדיין googleSub. חיבור **החלפה** מותר רק בנתיב המחובר למעלה.
+async function handleGoogleAttach({ idToken, memberId }, request, env) {
+  let g;
+  try { g = await verifyGoogleIdToken(env, idToken); } catch (e) { return { error: 'invalid_google_token' }; }
+  if (!memberId || typeof memberId !== 'string') return { error: 'invalid_request' };
+  // מייל לא מאומת אצל גוגל אינו ראיה לכלום, וכל הגדר כאן נשען עליו.
+  if (!g.emailVerified || !g.email) return { error: 'google_email_unverified' };
+
+  const accessToken = await getGoogleAccessToken(env);
+  const existing = await membersByGoogleSub(env, accessToken, g.sub);
+  if (existing.some((m) => m.id !== memberId)) return { error: 'google_already_linked' };
+
+  const me = await firestoreGetDoc(env, accessToken, `members/${memberId}`);
+  if (!me) return { error: 'member_not_found' };
+  if (me.fields.googleSub) return { error: 'already_attached' };
+
+  const onRecord = String(me.fields.email || '').trim().toLowerCase();
+  if (!onRecord || onRecord !== g.email) return { error: 'email_mismatch' };
+
+  await firestorePatch(env, accessToken, `members/${memberId}`, {
+    googleSub: g.sub, googleEmail: g.email, googleLinkedAt: new Date(),
+  });
+  return { ok: true };
 }
 
 async function handleBusinessLogin({ accessToken: bizToken }, env) {
