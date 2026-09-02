@@ -8645,11 +8645,50 @@ function unifiedIssueFilteredList() {
   return list;
 }
 const ISSUE_KIND_LABELS = { mail: 'מייל', reg: 'הרשמה', login: 'כניסה', help: 'פניית עזרה', bizErrors: 'דשבורד עסק' };
+// ── §363 — שורות הרשימה המאוחדת, בפונקציה נפרדת ─────────────────────────────────────
+// הופרד מ-unifiedIssuesTableHtml כדי שאפשר יהיה להציג שורות **יחד עם** אזהרת-טעינה,
+// במקום לבחור בין השתיים. מצב טעינה-חלקית הוא מצב אמיתי: תקלות המייל והפניות זמינות
+// מיד מהנתונים שכבר בזיכרון, וההרשמה והכניסה מגיעות רק אחרי המדידה.
+function unifiedIssueRowsHtml(list) {
+  return '<div class="task-table mail-issues">' + list.map(x =>
+    '<div class="task-table-row">' +
+      '<div class="task-table-main">' +
+        '<div class="task-table-name">' + esc(x.who) + '</div>' +
+        '<div class="task-table-meta">' + esc(x.title) + '</div>' +
+        (x.meta ? '<div class="task-table-meta" style="opacity:.75;white-space:pre-line">' + esc(x.meta) + '</div>' : '') +
+      '</div>' +
+      '<div class="task-table-badges"><span class="' + (x.urgent ? 'warn-badge' : 'treat-badge') + '">' +
+        esc(ISSUE_KIND_LABELS[x.kind] || x.kind) + '</span></div>' +
+      '<div class="mi-addr"></div>' +
+      '<div class="task-table-wait">' + agoTimeLabel(x.at) + '</div>' +
+      '<div class="mi-actions">' +
+        (x.entity ? '<button class="act-btn tiny" onclick="selectTask2(' + "'" + x.entity.kind + "','" + x.entity.id + "'" + ')">' +
+          (x.entity.kind === 'biz' ? 'פתיחת כרטיס העסק' : 'פתיחת כרטיס האוהד') + '</button>' : '') +
+        '<button class="act-btn approve tiny" onclick="' + x.markJs + '">✔️ טיפלתי</button>' +
+      '</div>' +
+    '</div>').join('') +
+  '</div>';
+}
 function unifiedIssuesTableHtml(list) {
   // אותה זהירות כמו בשתי הרשימות שנשענות על המדידה: האירועים נטענים עצלנית,
   // ואסור להכריז "אין תקלות" לפני שהגיעו (§296).
   if (platformEvents === null && !platformStatsError) loadPlatformStats();
   const pending = platformEvents === null && !platformStatsError;
+  // ── §363 — ⚠️ **שקט אינו שלום** ─────────────────────────────────────────────────────
+  // שניים מחמשת הסוגים (הרשמה, כניסה) נשענים על platformEvents. כשהטעינה **נכשלת** שתי
+  // הרשימות ריקות — לא כי אין בהן תקלות אלא כי לא הסתכלנו — והמסך היה מכריז 🎉.
+  // זו הכרזת-השלום השקרית של §296 שחזרה דרך הדלת האחורית: §296 שתל את הבדיקה בכל רשימה
+  // בנפרד, והמסך המאוחד הוא רשימה שישית שלא ירשה אותה. **מסקנה כללית: כל מסך חדש שמאחד
+  // מקורות יורש את חובות-האמינות של כולם, ולא אף אחת מההגנות שלהם.**
+  // "נסה שוב" הוא חובה ולא נוחות — פסק-זמן בלי דרך חזרה כיבה את הפאנל ל-24 שעות ב-§351.
+  if (platformStatsError) {
+    return '<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (' + esc(platformStatsError) + ') — ' +
+      (list.length
+        ? 'מוצגות תקלות מייל, דשבורד עסק ופניות עזרה בלבד. <b>תקלות ההרשמה והכניסה חסרות מהרשימה הזאת.</b>'
+        : '<b>אי אפשר לדעת אם יש תקלות הרשמה או כניסה.</b> הרשימה ריקה כי לא הסתכלנו, לא כי אין.') +
+      '<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatformStats()">נסה שוב</button></div></div>' +
+      (list.length ? unifiedIssueRowsHtml(list) : '');
+  }
   if (!list.length) {
     return '<div class="placeholder-note">' + (pending
       ? 'אין תקלות במיילים ובהצלבות. כשלי ההרשמה והכניסה מ-30 הימים האחרונים עדיין נטענים…'
@@ -8661,25 +8700,8 @@ function unifiedIssuesTableHtml(list) {
       (urgent ? '<b>⚠️ ' + urgent + ' מהן דורשות אותנו</b> — השאר טעויות של המשתמש או המתנה.'
               : 'אף אחת מהן אינה תקלה אצלנו — כולן טעויות משתמש או המתנה לאישור.') +
       ' לפעולות הייחודיות לכל סוג (שליחה חוזרת של מייל, המשפכים, פירוט ההצלבות) — בחרו את הסוג בבורר למעלה.' +
-    '</div>' +
-    '<div class="task-table mail-issues">' + list.map(x =>
-      '<div class="task-table-row">' +
-        '<div class="task-table-main">' +
-          '<div class="task-table-name">' + esc(x.who) + '</div>' +
-          '<div class="task-table-meta">' + esc(x.title) + '</div>' +
-          (x.meta ? '<div class="task-table-meta" style="opacity:.75;white-space:pre-line">' + esc(x.meta) + '</div>' : '') +
-        '</div>' +
-        '<div class="task-table-badges"><span class="' + (x.urgent ? 'warn-badge' : 'treat-badge') + '">' +
-          esc(ISSUE_KIND_LABELS[x.kind] || x.kind) + '</span></div>' +
-        '<div class="mi-addr"></div>' +
-        '<div class="task-table-wait">' + agoTimeLabel(x.at) + '</div>' +
-        '<div class="mi-actions">' +
-          (x.entity ? '<button class="act-btn tiny" onclick="selectTask2(' + "'" + x.entity.kind + "','" + x.entity.id + "'" + ')">' +
-            (x.entity.kind === 'biz' ? 'פתיחת כרטיס העסק' : 'פתיחת כרטיס האוהד') + '</button>' : '') +
-          '<button class="act-btn approve tiny" onclick="' + x.markJs + '">✔️ טיפלתי</button>' +
-        '</div>' +
-      '</div>').join('') +
-    '</div>';
+      (pending ? ' <b>תקלות ההרשמה והכניסה עדיין נטענות.</b>' : '') +
+    '</div>' + unifiedIssueRowsHtml(list);
 }
 window.setTaskEntityFilter = function(v) { taskEntityFilter = v; refreshTaskCenter(); };
 window.setTaskSearchQ = function(v) { taskSearchQ = v; refreshTaskCenter(); };
@@ -8694,12 +8716,22 @@ function refreshTaskCenter() {
   const tilesEl = document.getElementById('taskTilesWrap');
   if (tilesEl) tilesEl.outerHTML = taskTilesHtml();
   const tableWrap = document.getElementById('taskTableWrap');
-  if (tableWrap) tableWrap.innerHTML = taskCenterTableHtml();
+  if (tableWrap) tableWrap.innerHTML = safeTaskCenterTableHtml();
   const countEl = document.getElementById('taskListCount');
   if (countEl) countEl.textContent = taskCenterCountLabel();
 }
 // שלוש "תצוגות" חולקות את אותו גוף-טבלה: הרשימה המאוחדת, תקלות-מייל, וארכיון-הטופלו.
 // מרוכז כאן כדי ששלושת מקומות-הקריאה (רינדור ראשוני, רענון-קוביות, ספירה) לא יתפצלו בהיגיון.
+// §363 — עטיפה שהופכת נפילת-רינדור לשורה שרואים. ⚠️ **לא try/catch שמבליע**: הוא מדפיס
+// לקונסול *וגם* מציג את השגיאה, כי טבלה ישנה שנשארת על המסך נקראת כ\"אין נתונים\".
+function safeTaskCenterTableHtml() {
+  try { return taskCenterTableHtml(); }
+  catch (e) {
+    console.error('רינדור מרכז המשימות נכשל:', e);
+    return '<div class="mail-issues-note">⚠️ רינדור הרשימה נכשל: ' + esc(e && e.message ? e.message : String(e)) +
+      '<div style="margin-top:8px;opacity:.75">הרשימה למטה עשויה להיות ישנה. צילום של השורה הזאת הוא כל מה שצריך כדי לאתר את התקלה.</div></div>';
+  }
+}
 function taskCenterTableHtml() {
   // §356 — קובייה אחת, שש תצוגות. הבורר מצויר תמיד מעל, וכל תצוגת-סוג נשארת **בדיוק אותה
   // פונקציה** שרינדרה את הקובייה הנפרדת שלה עד היום — כולל ההערות, המשפכים והכפתורים
@@ -8888,7 +8920,7 @@ function taskCenterHtml() {
   return `
     ${taskTilesHtml()}
     <div class="filter-toolbar">${taskFilterBarHtml()}</div>
-    <div id="taskTableWrap">${taskCenterTableHtml()}</div>
+    <div id="taskTableWrap">${safeTaskCenterTableHtml()}</div>
     ${selectedTaskKey ? taskDrawerHtml(selectedTaskKey) : ''}`;
 }
 
