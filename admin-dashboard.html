@@ -7728,7 +7728,15 @@ function fanFullDetailHtml(id, opts) {
   ].filter(Boolean).join(' · ');
   const idWaBtn = f.phone ? `<button class="btn-id-wa" onclick="sendFanWA('${f.id}','${f.phone}','${escJsAttr(f.name)}','${f.loginCode||''}')">וואטסאפ</button>` : '';
   const idMailBtn = f.email ? `<button class="btn-id-mail" onclick="sendFanMail('${f.id}','${f.email}','${escJsAttr(f.name)}','${f.loginCode||''}')">מייל</button>` : '';
-  const idBizNote = linkedBiz ? `<div class="identity-note neutral"><div class="identity-note-h">בעל עסק</div><div class="identity-note-v">${linkedBiz.accessToken ? `<a href="business-dashboard.html?token=${linkedBiz.accessToken}" target="_blank">🏪 ${esc(linkedBiz.name)}</a>` : esc(linkedBiz.name)}</div></div>` : '';
+  // ── §366 — הקישור מוביל לכרטיס במרכז הניהול, לא לדשבורד האישי של בעל-העסק ───────────
+  // המשתמש: *"בתגית הזאת בפנים יש קישור לדשבורד בעל העסק — שים שבלחיצה שיכנס לכרטיס עסק
+  // בדשבורד ניהול, לא לדשבורד האישי"*. צודק: המנהל שלוחץ כאן נמצא באמצע שיפוט של אוהד
+  // ורוצה לראות את **רשומת העסק שלו כדי להכריע**, לא להיכנס לממשק העריכה של בעל-העסק.
+  // ⚠️ הישן גם פתח טאב חדש עם טוקן-הכניסה בכתובת — כלומר סוד בהיסטוריית הדפדפן ובכל
+  // מקום שאליו הכתובת נעתקת, בשביל מסך שלא ביקשו.
+  // openBizFromFan עוברת לטאב העסקים **וגם** בוחרת את הרשומה; `selectBizDetail` לבדה
+  // הייתה מעדכנת אלמנטים שאינם על המסך כשהטאב הפעיל הוא "כל האוהדים".
+  const idBizNote = linkedBiz ? `<div class="identity-note neutral"><div class="identity-note-h">בעל עסק</div><div class="identity-note-v"><a href="#" onclick="event.preventDefault();openBizFromFan('${esc(linkedBiz.id)}')">🏪 ${esc(linkedBiz.name)}</a></div></div>` : '';
   // §298 — קוביות "מנוי" ו"מסלול אימות" הוסרו מכרטיס-הזהות. הנתונים עצמם עברו לכרטיס
   // "אימות האוהד" שמתחת (fanVerifyCardHtml), שבנוי בדיוק כמו כרטיס האימות של בעל העסק.
   const idVerifyMethod = fanVerifyMethod(f);
@@ -8929,6 +8937,13 @@ function taskRow2Html(x) {
   const badges = [`<span class="class-badge">${x.c.primary}</span>`].concat(x.c.treatments.map(t => treatBadgeHtml(t, e)));
   if (x.kind === 'fan' && e.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">דגל בדיקה — כפילות אפשרית</span>`);
   else if (x.kind === 'fan' && e.reviewFlag) badges.push(`<span class="warn-badge">דגל בדיקה — שם לא תואם</span>`);
+  // ── §366 — "בעל עסק" חסר דווקא במסך שבו מחליטים ──────────────────────────────────────
+  // המשתמש: *"בכל האוהדים יש תגית בעל העסק, בדשבורד ראשי בממתינים אין להם תגית"*.
+  // התג היה קיים ב-fanRowsHtml (רשימת כל האוהדים) אבל לא כאן — וזה בדיוק המסך שבו
+  // עוברים על הממתינים ומאשרים. ⚠️ ההבדל אינו קוסמטי: אישור אוהד שהוא **גם בעל עסק**
+  // שולח מייל אחר לגמרי (המייל המאוחד, ר' §127) ומשפיע גם על רשומת העסק. מנהל שלא
+  // רואה את זה בשורה מכריע בלי לדעת מה הוא מפעיל.
+  if (x.kind === 'fan' && e.isBusinessOwner) badges.push(`<span class="treat-badge">בעל עסק</span>`);
   if (x.kind === 'biz' && x.c.primary === 'כרטיס חסר באינדקס') {
     missingFieldsFor(e).slice(0, 2).forEach(label => badges.push(`<span class="warn-badge">${label}</span>`));
   }
@@ -10652,6 +10667,19 @@ window.confirmMapTagSuggestion = async function(id) {
 window.jumpToBizFromTagQueue = function(id) {
   bizSearch = ''; bizStatusFilter = 'all'; bizCategoryFilter = 'all';
   selectedBizDetailId = id;
+  selectTab(ALL_BIZ_KEY);
+};
+
+// §366 — מעבר לכרטיס העסק מתוך כרטיס האוהד (התיבה "בעל עסק").
+// ⚠️ **אותו מנגנון בדיוק כמו jumpToBizFromTagQueue שמעל, ולא selectBizDetail לבדה:**
+// selectBizDetail מעדכנת `#bizListRows`/`#bizDetailCol`, ואלה פשוט אינם על המסך כשהטאב
+// הפעיל הוא "כל האוהדים" — כלומר הלחיצה הייתה נראית כאילו לא קרה כלום. איפוס הסינונים
+// נדרש מאותה סיבה בדיוק: עסק שאינו עובר את הסינון הפעיל לא יופיע ברשימה שנפתחת.
+window.openBizFromFan = function(id) {
+  if (!id) return;
+  bizSearch = ''; bizStatusFilter = 'all'; bizCategoryFilter = 'all';
+  selectedBizDetailId = id;
+  bizMobileShowDetail = true;   // במובייל הרשימה והכרטיס הם שני מסכים — בלי זה נוחתים על הרשימה
   selectTab(ALL_BIZ_KEY);
 };
 

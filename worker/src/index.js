@@ -275,35 +275,52 @@ async function handleCheckMemberExists({ phone, email, firstName, lastName }, en
 // המחיר: בשליחה חוזרת שנתפסה **בשרת** אי אפשר להעלות תמונות. זה מחיר סביר — התמונות של
 // השליחה הראשונה כבר אצלנו, ומי שנתקל בכשל-העלאה מקבל ממילא את כרטיס-המייל של §285.
 //
-// ⚠️ נדרשת התאמה של **שלושת** השדות (טלפון וגם מייל וגם שם), ולא "טלפון או מייל" כמו
-// בבדיקת האוהדים. הסיבה אינה נוחות אלא אבטחה: הטלפון והשם של עסק מאושר **מפורסמים
-// באינדקס**, ולכן "טלפון או שם" היה הופך את הנקודה הזאת למגלה-סטטוס על כל עסק ברשימה.
-// המייל אינו מפורסם, והוא מה שהופך את הצירוף לידיעה של הבעלים עצמו.
+// ── ⚠️ מפתח-ההתאמה: שם-העסק + (טלפון **או** מייל) ────────────────────────────────────────
+// הגרסה הראשונה דרשה את **שלושת** השדות, מתוך חשש שהטלפון והשם של עסק מאושר מפורסמים
+// באינדקס. **זה היה שגוי בפועל, ונתפס רק כי המשתמש אמר "נרשמתי עם מיילים שונים":**
+//   1. **הוא לא היה תופס את המקרה שהוא נבנה בשבילו.** אחת הסיבות השכיחות למילוי הטופס
+//      מחדש היא בדיוק תיקון של המייל או הטלפון שהוקלד לא נכון בפעם הראשונה — כלומר
+//      דרישת-שלושה נכשלת דווקא כשהיא הכי נחוצה.
+//   2. **החשש עצמו לא החזיק:** הפילטר על `pending` הוא שמנטרל אותו. עסק מאושר לעולם
+//      אינו מוחזר, ולכן אי אפשר לגלות מכאן דבר על מה שמפורסם באינדקס. מה שכן אפשר
+//      ללמוד הוא ביט אחד — "יש בקשה ממתינה בשם הזה" — ולשם כך צריך לדעת כבר את שם-העסק
+//      המדויק וגם את הטלפון או המייל, כלומר מידע של הבעלים עצמו.
+// שם-העסק נדרש תמיד; הטלפון או המייל — אחד מהם מספיק. זהה בדיוק לחותם המקומי, וזו
+// גם הסיבה שהם מסכימים ביניהם במקום לתת שתי תשובות שונות על אותה שליחה.
 //
 // ⚠️ `status == 'pending'` בלבד. עסק שכבר אושר אינו "שליחה שנתקעה" אלא עסק קיים, ובעליו
 // רשאי להוסיף עסק שני (אדיר אילן — שני עסקים על אותו טלפון ואותו מייל).
 async function handleCheckBizExists({ phone, email, name }, request, env) {
-  if (!phone || !email || !name) return { error: 'invalid_request' };
+  // שם-העסק הוא היחיד שחייב להגיע; די בטלפון **או** במייל לצדו.
+  if (!name || (!phone && !email)) return { error: 'invalid_request' };
 
-  // מכסת-IP: הנקודה חושפת בוליאני על צירוף טלפון+מייל+שם, וזה מספיק כדי להצדיק תקרה.
+  // מכסת-IP: הנקודה חושפת ביט על צירוף שם+טלפון/מייל, וזה מספיק כדי להצדיק תקרה.
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   if (await ipIsRateLimited(env.RATE_LIMIT_KV, 'bizexists', ip)) return { error: 'too_many_attempts' };
   await ipRecordAttempt(env.RATE_LIMIT_KV, 'bizexists', ip);
 
   const accessToken = await getGoogleAccessToken(env);
-  const emailLower = String(email).trim().toLowerCase();
-  // שאילתה על המייל ולא על הטלפון: המייל נשמר מנורמל (toLowerCase) ולכן התאמה מדויקת
-  // עובדת, בעוד שהטלפון נשמר בכמה וריאציות היסטוריות (ר' phoneCandidates).
-  const rows = await firestoreRunQuery(env, accessToken, 'businesses', 'ownerEmail', emailLower, 20);
+
+  // ⚠️ שתי שאילתות נפרדות ולא אחת: Firestore אינו יודע OR על שני שדות שונים בשאילתה אחת,
+  // והטלפון נשמר בכמה וריאציות היסטוריות (ר' phoneCandidates ב-src/phone.js) — בדיוק כמו
+  // ב-handleCheckMemberExists שמעל.
+  const rows = [];
+  const emailLower = String(email || '').trim().toLowerCase();
+  if (emailLower) {
+    rows.push(...await firestoreRunQuery(env, accessToken, 'businesses', 'ownerEmail', emailLower, 20));
+  }
+  if (phone) {
+    for (const candidate of phoneCandidates(phone)) {
+      rows.push(...await firestoreRunQuery(env, accessToken, 'businesses', 'ownerPhone', candidate, 20));
+    }
+  }
 
   const norm = (v) => String(v == null ? '' : v).trim().replace(/[\s]+/g, ' ').toLowerCase();
-  const phones = phoneCandidates(phone);
-  const match = rows.find((r) =>
-    r.fields.status === 'pending' &&
-    norm(r.fields.name) === norm(name) &&
-    phones.includes(String(r.fields.ownerPhone || '')));
+  const wanted = norm(name);
+  // ⚠️ `status === 'pending'` בלבד — ר' ההערה למעלה. זה מה שמנטרל את חשש-הדליפה.
+  const match = rows.some((r) => r.fields.status === 'pending' && norm(r.fields.name) === wanted);
 
-  return { exists: !!match };
+  return { exists: match };
 }
 
 // הגנה על עלות קריאות ה-AI/API חיצוני — מכסה נפרדת מ-isRateLimited/recordAttempt (ratelimit.js), שנועד
