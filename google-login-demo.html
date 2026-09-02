@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex, nofollow"/>
+<title>דמו — כניסה עם גוגל | Yellow Zone</title>
+
+<!--
+  ══ דמו מבודד — כניסה עם גוגל (§368) ══════════════════════════════════════════════════
+  הקובץ הזה **אינו מקושר משום מקום** ואינו נוגע בזרימת הכניסה האמיתית. הוא קיים כדי
+  שהמשתמש יראה וירגיש את הזרימה לפני שנוגעים ב-welcome.html — אותו דפוס כמו כל פיצ'ר
+  גדול אחר בפרויקט (דמו → אישור מפורש → שילוב).
+
+  🔑 מה **באמת** עובד כאן: הכפתור של גוגל אמיתי לגמרי. הוא פותח את בורר-החשבונות של
+  גוגל, ומחזיר טוקן-זהות חתום. כלומר כשתלחץ ותראה את השם והמייל שלך — זה לא מדומה,
+  זו גוגל שאמרה לנו מי אתה. זה החלק שאי אפשר "להראות במצגת".
+
+  ⚠️ מה **מדומה**: כל מה שאחרי זה. השרת עדיין לא יודע לקבל את הטוקן הזה, ולכן שלב
+  "מצאנו/לא מצאנו אותך אצלנו" מוצג כאן בשני כפתורים ידניים במקום תשובה אמיתית.
+
+  ⚠️ הדף חייב לרוץ מ-https://yellowzone.co.il — הכתובת היחידה שאושרה אצל גוגל.
+  ב-localhost הכפתור לא ייטען, וזה צפוי ולא תקלה.
+-->
+
+<link rel="preconnect" href="https://accounts.google.com"/>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<style>
+:root {
+  --bg:#F6F6F2; --surface:#FFFFFF; --ink:#0A2A66; --ink-2:#3A4C7A; --ink-3:#6B7A9B;
+  --line:#E7E7E0; --field:#F2F2EC; --field-line:#E4E4DC;
+  --acc:#FFD400; --acc-ink:#0A2A66; --acc-soft:#FFF7DB; --acc-line:#FFE9A3;
+  --ok:#0F8A4F; --ok-soft:#E8F6EE; --warn:#B45309; --warn-soft:#FEF3C7;
+  --r-card:16px; --r-field:11px; --r-btn:13px; --r-chip:999px;
+  --shadow:0 1px 2px rgba(10,42,102,.06); --shadow-h:0 12px 30px rgba(10,42,102,.14);
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; font-family:'Rubik','Heebo',system-ui,sans-serif;
+  background:var(--bg); color:var(--ink); line-height:1.6;
+  padding:20px 16px 64px;
+}
+.wrap { max-width:760px; margin:0 auto; }
+
+.demo-flag {
+  background:var(--acc); color:var(--acc-ink); border-radius:var(--r-card);
+  padding:14px 16px; font-weight:800; font-size:14px; margin-bottom:20px;
+  box-shadow:var(--shadow);
+}
+.demo-flag span { display:block; font-weight:500; font-size:13px; margin-top:4px; opacity:.85; }
+
+h1 { font-size:24px; font-weight:800; margin:0 0 6px; }
+.sub { color:var(--ink-3); font-size:14px; margin:0 0 26px; }
+
+.card {
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--r-card);
+  padding:20px; margin-bottom:18px; box-shadow:var(--shadow);
+}
+.card h2 { font-size:17px; font-weight:800; margin:0 0 4px; }
+.card .note { color:var(--ink-3); font-size:13.5px; margin:0 0 16px; }
+
+.step-tag {
+  display:inline-block; background:var(--acc-soft); border:1px solid var(--acc-line);
+  color:var(--ink); font-size:11.5px; font-weight:800; border-radius:var(--r-chip);
+  padding:3px 11px; margin-bottom:10px;
+}
+
+/* ── תיבת התוצאה מגוגל ─────────────────────────────────────────────── */
+#gResult { display:none; margin-top:18px; }
+.who {
+  display:flex; align-items:center; gap:12px;
+  background:var(--ok-soft); border:1px solid #BFE5CE; border-radius:var(--r-field);
+  padding:12px 14px;
+}
+.who img { width:44px; height:44px; border-radius:50%; flex:none; background:var(--field); }
+.who-t { font-weight:800; font-size:15px; }
+.who-s { font-size:13px; color:var(--ink-2); direction:ltr; text-align:right; }
+
+.kv { margin-top:14px; border:1px solid var(--line); border-radius:var(--r-field); overflow:hidden; }
+.kv-row { display:flex; gap:10px; padding:9px 12px; font-size:13px; border-bottom:1px solid var(--line); }
+.kv-row:last-child { border-bottom:0; }
+.kv-row b { flex:none; width:130px; font-weight:700; color:var(--ink-2); }
+.kv-row span { direction:ltr; text-align:right; word-break:break-all; color:var(--ink-3); font-family:ui-monospace,Menlo,monospace; font-size:12px; }
+
+.fork { margin-top:18px; padding-top:16px; border-top:1px dashed var(--field-line); }
+.fork-q { font-weight:800; font-size:14px; margin-bottom:4px; }
+.fork-n { font-size:13px; color:var(--ink-3); margin-bottom:12px; }
+.btn-row { display:flex; gap:10px; flex-wrap:wrap; }
+
+button.b {
+  font-family:inherit; font-size:14px; font-weight:700; cursor:pointer;
+  border-radius:var(--r-btn); padding:11px 18px; border:1px solid var(--line);
+  background:var(--surface); color:var(--ink); transition:transform .06s ease;
+}
+button.b:active { transform:translateY(1px); }
+button.b.pri { background:var(--acc); border-color:var(--acc); color:var(--acc-ink); }
+
+.outcome { display:none; margin-top:16px; border-radius:var(--r-field); padding:14px 16px; font-size:14px; }
+.outcome.ok   { background:var(--ok-soft);   border:1px solid #BFE5CE; }
+.outcome.warn { background:var(--warn-soft); border:1px solid #FCD98B; }
+.outcome b { display:block; font-size:15px; margin-bottom:4px; }
+.outcome .mini { font-size:12.5px; color:var(--ink-2); margin-top:8px; }
+
+.flow { counter-reset:s; margin:0; padding:0; list-style:none; }
+.flow li {
+  counter-increment:s; position:relative; padding:0 40px 16px 0;
+  border-right:2px solid var(--acc-line); margin-right:13px;
+}
+.flow li:last-child { border-right-color:transparent; padding-bottom:0; }
+.flow li::before {
+  content:counter(s); position:absolute; right:-14px; top:0;
+  width:26px; height:26px; border-radius:50%; background:var(--acc); color:var(--acc-ink);
+  font-size:13px; font-weight:800; display:flex; align-items:center; justify-content:center;
+}
+.flow b { display:block; font-size:14.5px; }
+.flow span { font-size:13px; color:var(--ink-3); }
+
+.cmp { width:100%; border-collapse:collapse; font-size:13.5px; }
+.cmp th, .cmp td { text-align:right; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+.cmp th { font-weight:800; font-size:12.5px; color:var(--ink-3); }
+.cmp tr:last-child td { border-bottom:0; }
+.cmp .gone { color:var(--ink-3); text-decoration:line-through; }
+
+.warnbox {
+  background:var(--warn-soft); border:1px solid #FCD98B; border-radius:var(--r-field);
+  padding:13px 15px; font-size:13.5px; margin-top:14px;
+}
+.warnbox b { display:block; margin-bottom:3px; }
+#gBtnHost { min-height:44px; }
+.gerr { display:none; font-size:13px; color:var(--warn); margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="demo-flag">
+    🧪 דמו בלבד — לא מחובר לשום דבר
+    <span>הכניסה האמיתית לא נגעה. אפשר ללחוץ על הכל בלי לשבור כלום.</span>
+  </div>
+
+  <h1>כניסה עם גוגל</h1>
+  <p class="sub">איך זה ייראה לאוהד, ומה בדיוק משתנה מאחורי הקלעים.</p>
+
+  <!-- ══ 1. הדבר האמיתי ══ -->
+  <div class="card">
+    <div class="step-tag">זה עובד באמת</div>
+    <h2>נסה בעצמך</h2>
+    <p class="note">
+      הכפתור למטה הוא הכפתור האמיתי של גוגל, עם המזהה האמיתי של Yellow Zone.
+      תלחץ, תבחר חשבון — ותראה בדיוק מה גוגל מוסרת לנו עליך.
+    </p>
+
+    <div id="gBtnHost"></div>
+    <div class="gerr" id="gErr">
+      ⚠️ הכפתור של גוגל לא נטען. זה קורה כשהדף רץ מכתובת שלא אושרה אצל גוגל
+      (למשל localhost). צריך לפתוח אותו מ-<b>yellowzone.co.il</b>.
+    </div>
+
+    <div id="gResult">
+      <div class="who">
+        <img id="rPic" alt=""/>
+        <div>
+          <div class="who-t" id="rName">—</div>
+          <div class="who-s" id="rMail">—</div>
+        </div>
+      </div>
+
+      <div class="kv">
+        <div class="kv-row"><b>מזהה קבוע</b><span id="rSub">—</span></div>
+        <div class="kv-row"><b>מייל מאומת?</b><span id="rVer">—</span></div>
+      </div>
+      <p class="note" style="margin:10px 0 0">
+        <b>המזהה הקבוע</b> הוא מה שנשמור על הרשומה שלו. הוא לא משתנה לעולם — גם אם הוא
+        מחליף שם או מייל. זה מה שמאפשר לזהות אותו בכל דפדפן, בלי קוד.
+      </p>
+
+      <div class="fork">
+        <div class="fork-q">ועכשיו — מה השרת שלנו היה עונה?</div>
+        <div class="fork-n">
+          זה החלק שעוד לא נבנה. תלחץ על אחד מהשניים כדי לראות את שתי האפשרויות.
+        </div>
+        <div class="btn-row">
+          <button class="b pri" onclick="showOutcome('known')">החשבון כבר מחובר אצלנו</button>
+          <button class="b" onclick="showOutcome('new')">החשבון עוד לא מחובר</button>
+        </div>
+
+        <div class="outcome ok" id="oKnown">
+          <b>✅ נכנסת.</b>
+          מצאנו אוהד מאושר עם המזהה הזה, והנפקנו לו כרטיס-כניסה — בדיוק אותו כרטיס
+          שמונפק היום אחרי טלפון + קוד.
+          <div class="mini">בלי קוד. בלי מייל. בכל דפדפן שהוא מחובר בו לגוגל.</div>
+        </div>
+
+        <div class="outcome warn" id="oNew">
+          <b>🔗 עוד לא חיברת את החשבון.</b>
+          זו הפעם הראשונה שאנחנו רואים את חשבון הגוגל הזה. כדי לחבר אותו לרשומה שלך,
+          תיכנס פעם אחת כרגיל (טלפון + קוד) ותלחץ "חבר את חשבון הגוגל שלי".
+          <div class="mini">
+            ⚠️ <b>לא</b> מזהים אוטומטית לפי מייל. זה נראה נוח, אבל אצלנו יש בני משפחה
+            שנרשמים אחד בשם השני — והמחיר של טעות הוא אדם שנכנס לחשבון של מישהו אחר.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 2. הזרימה ══ -->
+  <div class="card">
+    <h2>הזרימה, מקצה לקצה</h2>
+    <p class="note">גוגל היא רק <b>הוכחת זהות</b>. כל מה שאחריה נשאר בדיוק כמו היום.</p>
+    <ul class="flow">
+      <li><b>האוהד לוחץ "המשך עם Google"</b><span>בורר החשבונות של גוגל נפתח במכשיר שלו</span></li>
+      <li><b>גוגל מחזירה טוקן-זהות חתום</b><span>בתוכו: מזהה קבוע, שם, מייל מאומת</span></li>
+      <li><b>הטוקן נשלח לשרת שלנו</b><span>api.yellowzone.co.il — הכתובת החדשה מ-§364</span></li>
+      <li><b>השרת מוודא את החתימה מול גוגל</b><span>ובודק שהטוקן הונפק עבורנו ולא עבור אתר אחר</span></li>
+      <li><b>השרת מחפש אוהד עם המזהה הזה</b><span>נמצא ומאושר → ממשיכים. לא נמצא → מסך החיבור</span></li>
+      <li><b>השרת מנפיק את אותו כרטיס-כניסה של היום</b><span>ומכאן והלאה — שום דבר במערכת לא יודע שגוגל הייתה מעורבת</span></li>
+    </ul>
+    <div class="warnbox">
+      <b>למה זה חשוב</b>
+      אנחנו מחליפים את הדלת, לא את הבית. אין שינוי בהרשאות, אין שינוי במזהי החברים,
+      ואין שינוי בשום מסך שאחרי הכניסה. זה מה שהופך שינוי שנשמע גדול לשינוי קטן ובטוח.
+    </div>
+  </div>
+
+  <!-- ══ 3. מה משתנה ══ -->
+  <div class="card">
+    <h2>מה משתנה בכניסה הראשונה</h2>
+    <p class="note">
+      41% מהאוהדים שאישרת (34 מתוך 83) מעולם לא נכנסו. אלה השלבים שהם נתקעו בהם.
+    </p>
+    <table class="cmp">
+      <tr><th style="width:50%">היום</th><th>עם גוגל</th></tr>
+      <tr><td>האוהד נרשם</td><td>האוהד נרשם, ולוחץ "המשך עם Google"</td></tr>
+      <tr><td>אתה מאשר</td><td>אתה מאשר <i>(ללא שינוי)</i></td></tr>
+      <tr><td class="gone">נוצר קוד בן 6 ספרות</td><td>—</td></tr>
+      <tr><td class="gone">הקוד נשלח במייל</td><td>מייל "אושרת, בוא" <i>(הודעה בלבד)</i></td></tr>
+      <tr><td class="gone">הוא מחפש את הקוד</td><td>—</td></tr>
+      <tr><td class="gone">הוא מקליד את הקוד</td><td>לחיצה אחת</td></tr>
+    </table>
+    <div class="warnbox">
+      <b>⚠️ המייל לא נעלם — הוא מפסיק להיות המפתח</b>
+      עדיין צריך להודיע לאוהד שאושר. ההבדל: היום, מייל שלא הגיע = אוהד תקוע בלי שום דרך
+      להיכנס. עם גוגל, מייל שלא הגיע = הוא נכנס לאתר ולוחץ כפתור, ומסתדר לבד.
+      וגם "איבדתי את הקוד" מפסיק להתקיים.
+    </div>
+  </div>
+
+  <!-- ══ 4. מה נשאר ══ -->
+  <div class="card">
+    <h2>מה נשאר בדיוק כמו שהוא</h2>
+    <ul style="margin:0; padding-right:20px; font-size:14px;">
+      <li><b>האישור הידני שלך.</b> גוגל מוכיחה שהוא הוא — לא שהוא אוהד מכבי.</li>
+      <li><b>טלפון + קוד.</b> נשאר כמסלול מלא, למי שאין לו גוגל או שלא רוצה.</li>
+      <li><b>כל מה שאחרי הכניסה.</b> אותם מזהים, אותן הרשאות, אותם מסכים.</li>
+    </ul>
+    <div class="warnbox">
+      <b>מה זה עדיין לא פותר</b>
+      אוהד שלא מחובר לגוגל באותו דפדפן יצטרך להיכנס לגוגל קודם. עדיין הרבה יותר קל
+      מלחפש קוד בן 6 ספרות במייל מלפני חודש — אבל זה לא קסם.
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── §368 — Google Identity Services, ישירות ולא דרך Firebase ─────────────────────────────
+// למה ישירות: `signInWithPopup` של Firebase היה מחליף את מצב-ההזדהות במכשיר לחשבון-הגוגל,
+// ואז היינו דורסים אותו מיד בכרטיס שלנו. מצב-ביניים כזה על נתיב הכניסה הוא בדיוק המקום
+// שבו נולדים באגי-זהות. GIS מחזיר טוקן ולא נוגע ב-Firebase Auth בכלל — כלומר הסשן הקיים
+// של האוהד לא זז אפילו לרגע.
+const HB_GOOGLE_CLIENT_ID = '459607487972-esu70diuu360tg1ji15o1n1tikf3npnb.apps.googleusercontent.com';
+
+// פענוח מקומי של הטוקן — **לתצוגה בלבד**.
+// ⚠️ בקוד האמיתי אסור להסתמך על זה: כל אחד יכול לשלוח JWT מומצא. האימות היחיד שנחשב
+// הוא בדיקת החתימה מול המפתחות הציבוריים של גוגל, בצד השרת. כאן אנחנו רק מציירים.
+function decodeForDisplay(jwt) {
+  try {
+    const b = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(decodeURIComponent(atob(b).split('').map(
+      c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
+  } catch (e) { return null; }
+}
+
+function onGoogleCredential(res) {
+  const p = decodeForDisplay(res && res.credential);
+  if (!p) return;
+  document.getElementById('rName').textContent = p.name || '—';
+  document.getElementById('rMail').textContent = p.email || '—';
+  document.getElementById('rSub').textContent  = p.sub || '—';
+  document.getElementById('rVer').textContent  = p.email_verified ? 'כן' : 'לא';
+  const pic = document.getElementById('rPic');
+  if (p.picture) { pic.src = p.picture; pic.style.display = ''; } else { pic.style.display = 'none'; }
+  document.getElementById('gResult').style.display = 'block';
+  document.getElementById('oKnown').style.display = 'none';
+  document.getElementById('oNew').style.display = 'none';
+  document.getElementById('gResult').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+window.showOutcome = function (which) {
+  document.getElementById('oKnown').style.display = which === 'known' ? 'block' : 'none';
+  document.getElementById('oNew').style.display   = which === 'new'   ? 'block' : 'none';
+};
+
+// ⚠️ הספרייה נטענת async, ולכן אי אפשר לצייר את הכפתור ברגע שהסקריפט הזה רץ.
+// בלי ההמתנה הזאת הכפתור פשוט לא מופיע — וזה נראה כמו "הפיצ'ר לא עובד" ולא כמו תזמון.
+(function waitForGsi(tries) {
+  tries = tries || 0;
+  if (window.google && google.accounts && google.accounts.id) {
+    google.accounts.id.initialize({
+      client_id: HB_GOOGLE_CLIENT_ID,
+      callback: onGoogleCredential,
+      // One Tap כבוי בכוונה: הוא מתנהג שונה בין דפדפנים ותלוי בהגדרות פרטיות,
+      // וכפתור מפורש הוא מה שאנחנו רוצים לבדוק כאן.
+      auto_select: false,
+    });
+    google.accounts.id.renderButton(document.getElementById('gBtnHost'), {
+      theme: 'outline', size: 'large', shape: 'pill',
+      text: 'continue_with', locale: 'he', width: 280,
+    });
+    return;
+  }
+  if (tries > 40) { document.getElementById('gErr').style.display = 'block'; return; }
+  setTimeout(() => waitForGsi(tries + 1), 150);
+})();
+</script>
+</body>
+</html>
