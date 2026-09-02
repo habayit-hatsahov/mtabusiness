@@ -5176,6 +5176,28 @@ function fanEntryStats() {
   return { approved: approved.length, never: never.length, clean: clean.length, cleanNever: cleanNever.length };
 }
 
+// ── §390 — פילוח "אושרו ולא נכנסו" לפי מצב המייל ────────────────────────────────────────
+// המספר לבדו אינו ניתן-לפעולה: "לא נכנס" הוא **שלוש בעיות שונות** שמתחפשות לאחת, וכל אחת
+// דורשת פעולה אחרת — כתובת שגויה (לתקן ולשלוח שוב) · נמסר ולא נפתח (ערוץ אחר) · נפתח
+// ובכל זאת לא נכנס (חיכוך הקוד עצמו, וזה מה שגוגל פותר).
+//
+// 🔑 **הדלי הרביעי, "אין נתוני מסירה", הוא העיקר כאן.** ה-webhook של Brevo (§205/§206)
+// התחיל לרוץ מתישהו באמצע, ולרוב הרשומות הישנות פשוט **אין** נתון. בלי דלי נפרד הן היו
+// נופלות ל"לא נמסר" — כלומר בדיוק אותו כשל של §388: **חוסר-מידע שמוצג כעובדה שלילית**,
+// והפעם הוא היה שולח את המנהל לתקן 60 כתובות תקינות.
+function fanEntryBreakdown() {
+  const never = (MOCK_FANS || []).filter(f => f.status === 'approved' && !f.lastSeenAt);
+  const opened = [], deliveredNotOpened = [], sentNoData = [], notSent = [];
+  for (const f of never) {
+    if (f.loginCodeEmailStatus !== 'sent') { notSent.push(f); continue; }
+    if (f.loginCodeEmailOpenedAt || f.loginCodeEmailClickedAt) { opened.push(f); continue; }
+    if (f.loginCodeEmailDeliveryAt || f.loginCodeEmailDelivery) { deliveredNotOpened.push(f); continue; }
+    sentNoData.push(f);
+  }
+  return { never: never.length, opened: opened.length, deliveredNotOpened: deliveredNotOpened.length,
+           sentNoData: sentNoData.length, notSent: notSent.length };
+}
+
 function platRow(name, num, sub, help) {
   return `<div class="plat-row">
     <div class="plat-row-name">${name}</div>
@@ -5253,7 +5275,23 @@ function platformStatsHtml() {
         ${platRow('מתוכם — אושרו מ-2.8.26 ואילך', fe.cleanNever.toLocaleString('he-IL'),
           `מתוך ${fe.clean.toLocaleString('he-IL')} שאושרו מאז`,
           'כאן אין סייג היסטורי: כל אוהד בקבוצה הזאת אושר אחרי שהמדידה כבר רצה, ולכן "לא נכנס" אומר <b>באמת לא נכנס</b>. זה המספר שאפשר להסתמך עליו.')}
-      </div>`;
+      </div>
+      ${(() => {
+        // §390 — הפילוח. כל שורה כאן היא **פעולה אחרת**, ולכן הן מופרדות ולא מסוכמות.
+        const eb = fanEntryBreakdown();
+        if (!eb.never) return '';
+        return `<div class="plat-sect">מתוך אלה שלא נכנסו — מה קרה למייל</div>
+        <div class="plat-rows">
+          ${platRow('המייל לא נשלח', eb.notSent.toLocaleString('he-IL'), 'נכשל או עדיין בתור',
+            'כאן <b>אין טעם לדבר על גוגל</b> — הם מעולם לא קיבלו את הקוד. זו כתובת שגויה או כשל שליחה, ו"שליחה חוזרת" בכרטיס האוהד היא הפעולה.')}
+          ${platRow('נשלח, אין נתוני מסירה', eb.sentNoData.toLocaleString('he-IL'), 'לפני שמעקב המסירה התחיל',
+            '⚠️ <b>זה לא "לא נמסר" — זה "לא יודעים".</b> ה-webhook של Brevo התחיל לרוץ מאוחר יותר, ולרשומות הישנות פשוט אין נתון. אין מכאן מסקנה, ולכן גם אין פעולה אוטומטית.')}
+          ${platRow('נמסר ולא נפתח', eb.deliveredNotOpened.toLocaleString('he-IL'), 'הגיע לשרת הדואר',
+            '⚠️ <b>"לא נפתח" הוא סימן חלש.</b> הפתיחה נמדדת בתמונה זעירה, ו-Outlook וחלק מהלקוחות חוסמים תמונות — כלומר יש כאן גם אנשים שכן ראו את המכתב. מה שכן: ספאם/קידומים הוא חשוד אמיתי, וערוץ אחר (וואטסאפ) עוקף את זה.')}
+          ${platRow('נפתח — ובכל זאת לא נכנס', eb.opened.toLocaleString('he-IL'), 'ראה את הקוד ולא השתמש בו',
+            '🔑 <b>זו הקבוצה שגוגל נבנה בשבילה.</b> הם קיבלו, פתחו, וויתרו — כלומר החיכוך הוא הקוד עצמו ולא המסירה.')}
+        </div>`;
+      })()}`;
     })()}
     <div class="plat-sect">כניסות</div>
     <div class="plat-rows">
@@ -7747,6 +7785,8 @@ function fanClassCounts() {
     all: MOCK_FANS.length,
     pending: MOCK_FANS.filter(f => f.status === 'pending').length,
     unverified: MOCK_FANS.filter(f => !f.adminVerified).length,
+    // §390 — הרשימה שהמנהל ביקש: מי שאושר ומעולם לא נכנס, כדי לפנות אליהם שוב.
+    neverEntered: MOCK_FANS.filter(f => f.status === 'approved' && !f.lastSeenAt).length,
   };
 }
 function fanFilteredList() {
@@ -7756,6 +7796,9 @@ function fanFilteredList() {
     const matchF = fanStatusFilter === 'all' ? true : f.status === fanStatusFilter;
     const matchClass = fanClassPill === 'all' ? true
       : fanClassPill === 'pending' ? f.status === 'pending'
+      // §390 — ⚠️ ההגדרה זהה **מילה במילה** לזו של הפאנל (fanEntryStats/fanEntryBreakdown),
+      // ובכוונה: פיל שסופר אחרת מהמספר שממנו המנהל הגיע הוא בדיוק הפער של §353.
+      : fanClassPill === 'neverEntered' ? (f.status === 'approved' && !f.lastSeenAt)
       : !f.adminVerified;
     const matchVerify = fanVerifyTypeFilter === 'all' ? true
       : fanVerifyTypeFilter === 'subscriber' ? f.isSubscriber
@@ -8389,6 +8432,7 @@ function fanFilterBarHtml(opts) {
         ${pill('all', 'הכל')}
         ${pill('pending', 'ממתינים לאישור')}
         ${pill('unverified', 'טרם נבדקו')}
+        ${pill('neverEntered', 'מעולם לא נכנסו')}
       </div>
       <div class="filter-toolbar-row">
         <select class="filter-select" onchange="setFanSort(this.value)">
