@@ -38,6 +38,9 @@ const PASS_THROUGH = [
   'access-control-allow-headers',
   'access-control-max-age',
   'content-type',
+  // §383 — בלי זה כל תמונה שעוברת דרך המתווך נמשכת מחדש בכל טעינה. `/view-image` מחזיר
+  // `immutable` ארוך, והשמטתו כאן הפכה את נתיב-הגיבוי גם לאיטי וגם ליקר.
+  'cache-control',
 ];
 
 // ⚠️ **הכתובת האמיתית של האוהד — זה מה שמחזיק את מגבלת-הקצב.** בלעדיה הוורקר רואה את ה-IP
@@ -64,7 +67,20 @@ exports.yzApiProxy = onRequest(
   },
   async (req, res) => {
     // Firebase Hosting מעביר את הנתיב המלא כולל התחילית. '/api/mint-member-token' → '/mint-member-token'.
-    const path = req.path.replace(/^\/api(?=\/|$)/, '') || '/';
+    //
+    // ── 🐛 §383 — `req.path` בולע את ה-query string ────────────────────────────────────────
+    // `req.path` הוא **הנתיב בלבד**: '/api/view-image?url=…' מגיע כאן כ-'/api/view-image',
+    // וכל הפרמטרים נעלמים. הוורקר קיבל `/view-image` בלי `url` והחזיר 400
+    // ("Invalid or disallowed url") — **בכל בקשת-תמונה, לכל אדם, מאז §374.**
+    //
+    // 🔑 למה זה שרד חודש בלי שאיש שם לב: כל שאר נתיבי-ה-API הם POST עם גוף JSON, ושם אין
+    // query string בכלל. `/view-image` הוא ה-GET-עם-פרמטרים היחיד שעובר כאן — כלומר הבדיקה
+    // ש-"המתווך עובד" הייתה נכונה, ופשוט לא נגעה בסוג-הבקשה היחיד ששבור.
+    //
+    // ⚠️ והמשמעות חמורה מ"תמונה אחת": זו כתובת-המילוט של §374, הרשת היחידה שאינה קלאודפלייר.
+    // מי שקלאודפלייר חסום אצלו — בדיוק מי שהכתובת הזאת נועדה לו — **לא ראה שום תמונה באתר**.
+    const rawUrl = req.originalUrl || req.url || '/';
+    const path = rawUrl.replace(/^\/api(?=[/?]|$)/, '') || '/';
 
     const headers = {
       'X-YZ-Proxy-Secret': PROXY_SECRET.value(),
@@ -92,8 +108,15 @@ exports.yzApiProxy = onRequest(
           const v = upstream.headers.get(h);
           if (v) res.set(h, v);
         }
-        const text = await upstream.text();
-        res.status(upstream.status).send(text);
+        // ── 🐛 §383 (שני) — `text()` הורס כל תשובה בינארית ─────────────────────────────────
+        // גם אחרי תיקון ה-query string, `/view-image` עדיין היה חוזר שבור: `upstream.text()`
+        // מפענח את הבייטים כ-UTF-8, וכל בית שאינו רצף UTF-8 תקין מוחלף ב-U+FFFD. ב-JPEG/WEBP
+        // זה רוב הקובץ. התוצאה היא תשובת-200 עם `content-type: image/jpeg` שאינה תמונה —
+        // כלומר **כשל שקט שנראה כמו הצלחה**, וגרוע מה-400 שהחליף.
+        // ⚠️ שני הבאגים חיו באותה פונקציה וחוסמים את אותו נתיב; תיקון אחד מהם לבדו לא היה
+        // מחזיר ולו תמונה אחת. ר' §291 — "מנגנון נבדק אך ורק באותו נתיב שבו הוא ירוץ".
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        res.status(upstream.status).send(buf);
         return;
       } catch (e) {
         // כשל-רשת בלבד מגיע לכאן (סטטוס 4xx/5xx אינו זורק) — ואז מנסים את הכתובת הבאה.
