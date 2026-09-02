@@ -7083,19 +7083,39 @@ window.saveBizSec1 = async function(id) {
     //    התנאי נכתב כשמנוי לא נדרש לתמונה — ומאז §284/§294 שלושה מסלולים פתוחים גם למנויים
     //    ודורשים קובץ. כלומר שמירה שגרתית של המנהל מחקה ראיה קיימת, בלי סימן ובלי שגיאה.
     //    בדיוק הדפוס של "תנאי בשמירה מחק נתונים בשקט" (§321).
+    // ⚠️ §382ד — הערך כאן **נדרס למטה** לפי מה שקרה בפועל בכתיבה ל-bizProofs. הוא נשאר
+    // בליטרל רק כדי שהשדה יהיה חלק מהאובייקט; אל תסיק ממנו שהניקוי מובטח.
     photoProofUrl: '',
     fanInstagram: document.getElementById('edit_ownerInstagram_'+id).value.trim(), // §321
     ownerRelation: document.getElementById('edit_ownerRelation_'+id).value,
   };
-  await saveSectionUpdates(id, updates);
-  // §382 — הכתובת עצמה נכתבת לאוסף שקריא למנהל בלבד. setDoc({merge:true}) ולא updateDoc:
-  // לרוב העסקים אין עדיין מסמך כזה, ו-updateDoc היה נכשל על מסמך שאינו קיים.
-  // ⚠️ בלי תנאי על isSubscriber — ר' ההערה למעלה.
+  // ══ §382ד — הערך נקרא לפני השמירה, והסדר הפוך ═════════════════════════════════════════
+  // 🐛 **הבאג שנמדד בפועל, על שני העסקים האמיתיים:** הגרסה הראשונה קראה את הערך מה-DOM
+  // **אחרי** `await saveSectionUpdates`. אבל השמירה הזאת כותבת ל-Firestore, ה-onSnapshot
+  // הגלובלי יורה, `queueRenderAllPreserveScroll` בונה מחדש את כל הכרטיס — והשדה נוצר מחדש
+  // עם הערך שכבר נוקה (`photoProofUrl: ''`). כלומר `getElementById(...).value` החזיר
+  // **מחרוזת ריקה**, נכתב ריק ל-bizProofs, והכתובת אבדה משני המקומות בבת אחת. שני הכרטיסים
+  // הציגו "המסלול דורש תמונה — לא הועלתה" מיד אחרי שמירה מוצלחת לכאורה.
+  // ⚠️ בדיוק [[feedback_admin_dashboard_global_rerender]]: **כל קריאה מה-DOM אחרי await
+  // בקובץ הזה חשודה** — הרינדור הגלובלי רץ ביניהם. לקרוא לפני, תמיד.
+  //
+  // 🔑 **וגם הסדר התהפך:** כותבים קודם לאוסף החדש, ורק אם זה הצליח מנקים את השדה הישן.
+  // הסדר ההפוך הופך כשל-כתיבה לאובדן-נתון: הישן כבר נמחק והחדש לא נכתב. אין כאן טרנזקציה
+  // בין שני אוספים, ולכן הסדר הוא ההגנה היחידה.
+  const proofUrl = document.getElementById('edit_ownerProofUrl_'+id).value.trim();
+  let proofStored = false;
   try {
-    await setDoc(doc(db, 'bizProofs', id),
-      { photoProofUrl: document.getElementById('edit_ownerProofUrl_'+id).value.trim(), at: serverTimestamp() },
-      { merge: true });
-  } catch (e) { console.error('שמירת ראיית-האימות של בעל העסק נכשלה:', e.code || '', e.message); }
+    // setDoc({merge:true}) ולא updateDoc: לרוב העסקים אין עדיין מסמך כזה.
+    await setDoc(doc(db, 'bizProofs', id), { photoProofUrl: proofUrl, at: serverTimestamp() }, { merge: true });
+    proofStored = true;
+  } catch (e) {
+    console.error('שמירת ראיית-האימות של בעל העסק נכשלה:', e.code || '', e.message);
+    alert('שמירת כתובת ראיית-האימות נכשלה. שאר השדות נשמרו, והכתובת הקיימת **לא** נמחקה.');
+  }
+  // נוקה רק כשהערך באמת נחת באוסף החדש. אחרת משאירים אותו איפה שהוא — עדיף שדה חשוף
+  // מאשר ראיה שנעלמה.
+  updates.photoProofUrl = proofStored ? '' : proofUrl;
+  await saveSectionUpdates(id, updates);
   // סנכרון לרשומת החבר המקושרת — זהה ל-admin-businesses.html saveSec1 (מונע פער טלפון/מייל/שם מול הרשומה שדרכה בעל העסק נכנס)
   if (b.ownerMemberId) {
     try {
