@@ -6670,13 +6670,23 @@ function bizFullDetailHtml(id, opts) {
             <div class="step-field full"><div class="step-field-h">קישור פייסבוק</div><input type="url" id="edit_ownerFbUrl_${b.id}" value="${b.ownerFacebookUrl||''}" placeholder="https://facebook.com/..."></div>
             <div class="step-field full"><div class="step-field-h">קישור אינסטגרם</div><input type="text" id="edit_ownerInstagram_${b.id}" value="${b.ownerFanInstagram||''}" placeholder="instagram.com/..."></div>
           </div>
-          <div id="edit_ownerNoSubFields_${b.id}" style="display:${!b.ownerIsSubscriber?'block':'none'};margin-top:10px">
-            <div class="step-form-grid">
-              <div class="step-field full"><div class="step-field-h">URL לתמונה בשער אוהדים (תמונת הוכחה)</div><input type="url" id="edit_ownerProofUrl_${b.id}" value="${b.ownerProofPhotoUrl||''}" placeholder="https://..." oninput="updateOwnerProofPreview('${b.id}', this.value)"></div>
-            </div>
-            <div id="edit_ownerProofPreview_${b.id}" style="margin-top:8px;${b.ownerProofPhotoUrl?'':'display:none;'}">
-              <img id="edit_ownerProofImg_${b.id}" src="${b.ownerProofPhotoUrl||''}" alt="תמונה בשער אוהדים" style="max-width:100%;max-height:200px;object-fit:cover;border-radius:10px;border:1px solid var(--border-md);display:block;" />
-            </div>
+          <!-- ── §382ג — תמונת ההוכחה יצאה מהבלוק שמוצג ללא-מנוי בלבד ────────────────────────
+               ⚠️ אין כאן גרשיים-אחוריים בכוונה: כל הבלוק הזה יושב בתוך template literal,
+               וגרש-אחורי בהערת-HTML סוגר את הליטרל ושובר את כל הסקריפט (§355). נתפס כאן
+               בפועל ע"י node --check, בניסוח הראשון של ההערה הזאת עצמה.
+               בדיוק המהלך של §321 עם הסושיאל, ומאותה סיבה: השדה ישב בתוך
+               edit_ownerNoSubFields_, שמוסתר כש-ownerIsSubscriber — כלומר **אצל בעל-עסק
+               שהוא מנוי השדה לא היה קיים על המסך בכלל.** ההנחה "רק לא-מנוי מביא תמונה" נשברה
+               ב-§284, שפתח שלושה מסלולים מבוססי-תמונה גם למנויים.
+               ⚠️ נמדד בפועל: שני העסקים היחידים שהחזיקו ראיית-אימות — ג'ימבורי אוצרות יבנה
+               ופטריקס פארק רחובות — **שניהם מנויים** במסלול passScreenshot. כלומר 2 מתוך 2
+               מהמקרים האמיתיים נפלו בדיוק בתוך החור הזה, ולא היה שום מסך לתקן אותם דרכו.
+               זה גם המופע השלישי של אותה הנחה: §294 בכרטיס, השמירה למעלה, וכאן. -->
+          <div class="step-form-grid" style="margin-top:10px">
+            <div class="step-field full"><div class="step-field-h">URL לתמונה בשער אוהדים (תמונת הוכחה)</div><input type="url" id="edit_ownerProofUrl_${b.id}" value="${b.ownerProofPhotoUrl||''}" placeholder="https://..." oninput="updateOwnerProofPreview('${b.id}', this.value)"></div>
+          </div>
+          <div id="edit_ownerProofPreview_${b.id}" style="margin-top:8px;${b.ownerProofPhotoUrl?'':'display:none;'}">
+            <img id="edit_ownerProofImg_${b.id}" src="${b.ownerProofPhotoUrl||''}" alt="תמונה בשער אוהדים" style="max-width:100%;max-height:200px;object-fit:cover;border-radius:10px;border:1px solid var(--border-md);display:block;" />
           </div>
         </details>
         <div class="step-form-actions">
@@ -7326,9 +7336,10 @@ window.onEditCatChange = function(id) {
 window.onEditOwnerSubChange = function(id) {
   const isSub = document.getElementById('edit_ownerIsSub_'+id).value === 'yes';
   const subFields = document.getElementById('edit_ownerSubFields_'+id);
-  const noSubFields = document.getElementById('edit_ownerNoSubFields_'+id);
   if (subFields) subFields.style.display = isSub ? 'grid' : 'none';
-  if (noSubFields) noSubFields.style.display = isSub ? 'none' : 'block';
+  // §382ג — `edit_ownerNoSubFields_` הוסר. הוא החזיק את שדה תמונת-ההוכחה והסתיר אותו מכל
+  // בעל-עסק שהוא מנוי; השדה מוצג עכשיו תמיד. השורה שהחביאה אותו נמחקה כאן ולא הושארה עם
+  // גארד-null — תנאי מת שמצביע על מזהה שלא קיים הוא בדיוק מה שמסתיר את הבאג הבא.
 };
 window.onEditOwnerSportChange = function(id) {
   const sport = document.getElementById('edit_ownerSport_'+id).value;
