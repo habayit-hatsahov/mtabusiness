@@ -1649,6 +1649,26 @@ body {
 .plat-bar-fill { height: 100%; background: var(--accent); border-radius: 7px; min-width: 3px; }
 .plat-bar-val { flex: 0 0 auto; min-width: 68px; font-size: 13px; font-weight: 800; color: var(--text); }
 
+/* ── §394 — שורת-פילוח שמובילה לרשימה, והבאנר שמסביר למה הרשימה מסוננת ──────────────── */
+.plat-row.clickable { cursor: pointer; border-radius: 8px; transition: background .12s; }
+.plat-row.clickable:hover { background: var(--nav-bg); }
+.plat-row-go { font-size: 11px; font-weight: 700; color: var(--accent); opacity: 0; transition: opacity .12s; }
+.plat-row.clickable:hover .plat-row-go { opacity: 1; }
+
+.fan-bucket-banner { background: var(--nav-bg); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; margin: 2px 0 4px; }
+.fan-bucket-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.fan-bucket-title { font-size: 12.5px; font-weight: 800; color: var(--text); }
+.fan-bucket-count { font-size: 16px; font-weight: 800; color: var(--accent); }
+.fan-bucket-action { font-size: 11.5px; line-height: 1.7; color: var(--text-sm); margin-top: 6px; }
+.fan-bucket-action b { color: var(--text); font-weight: 700; }
+.row-wa-btn { margin-inline-start: auto; background: #25D366; color: #fff; border: none; border-radius: 7px;
+  padding: 4px 10px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; flex: none; }
+.row-wa-btn:hover { filter: brightness(.93); }
+/* ⚠️ מודיפייר בלבד, לא `.task-row-meta` הגלובלי: הכלל ההוא (שורה 1141) נושא
+   white-space/overflow/ellipsis ומשרת את **כל** שורות העסקים והאוהדים. דריסתו ל-flex
+   הייתה משנה את קיצור-הטקסט בכל הרשימות בשביל כפתור שמופיע רק בסינון-דלי. */
+.task-row-meta.has-action { display: flex; align-items: center; gap: 8px; overflow: visible; }
+
 /* ── §393 — יומן מחיקות ושחזור ─────────────────────────────────────────────────────────── */
 .del-note { background: var(--nav-bg); border: 1px solid var(--border-md); border-radius: 10px; padding: 12px 14px; font-size: 12px; line-height: 1.75; color: var(--text-sm); margin-bottom: 14px; }
 .del-note b { color: var(--text); font-weight: 700; }
@@ -5210,22 +5230,50 @@ function fanEntryStats() {
 // התחיל לרוץ מתישהו באמצע, ולרוב הרשומות הישנות פשוט **אין** נתון. בלי דלי נפרד הן היו
 // נופלות ל"לא נמסר" — כלומר בדיוק אותו כשל של §388: **חוסר-מידע שמוצג כעובדה שלילית**,
 // והפעם הוא היה שולח את המנהל לתקן 60 כתובות תקינות.
-function fanEntryBreakdown() {
-  const never = (MOCK_FANS || []).filter(f => f.status === 'approved' && !f.lastSeenAt);
-  const opened = [], deliveredNotOpened = [], sentNoData = [], notSent = [];
-  for (const f of never) {
-    if (f.loginCodeEmailStatus !== 'sent') { notSent.push(f); continue; }
-    if (f.loginCodeEmailOpenedAt || f.loginCodeEmailClickedAt) { opened.push(f); continue; }
-    if (f.loginCodeEmailDeliveryAt || f.loginCodeEmailDelivery) { deliveredNotOpened.push(f); continue; }
-    sentNoData.push(f);
-  }
-  return { never: never.length, opened: opened.length, deliveredNotOpened: deliveredNotOpened.length,
-           sentNoData: sentNoData.length, notSent: notSent.length };
+//
+// §394 — 🔑 **הסיווג הוצא לפונקציה אחת**, כי מרגע שאפשר לסנן לפי דלי, אותה הגדרה חיה בשני
+// מקומות: המונה בפאנל והסינון ברשימה. שתי העתקות של אותו `if` הן בדיוק הפער של §353/§390 —
+// מנהל שלוחץ על "12" ומקבל רשימה של 11 מפסיק להאמין לשני המספרים.
+function fanEmailBucketOf(f) {
+  if (f.loginCodeEmailStatus !== 'sent') return 'notSent';
+  if (f.loginCodeEmailOpenedAt || f.loginCodeEmailClickedAt) return 'opened';
+  if (f.loginCodeEmailDeliveryAt || f.loginCodeEmailDelivery) return 'deliveredNotOpened';
+  return 'sentNoData';
 }
 
-function platRow(name, num, sub, help) {
-  return `<div class="plat-row">
-    <div class="plat-row-name">${name}</div>
+// §394 — התווית והפעולה של כל דלי, במקום אחד. הפאנל, שבב-הסינון ברשימה וכותרת-ההסבר מעל
+// הרשימה קוראים כולם מכאן, כדי שהמנהל יראה את אותו משפט בשני המסכים.
+const FAN_EMAIL_BUCKETS = {
+  notSent: {
+    label: 'המייל לא נשלח',
+    action: 'כאן <b>אין טעם לדבר על גוגל</b> — הם מעולם לא קיבלו את הקוד. זו כתובת שגויה או כשל שליחה, והפעולה היא לתקן את הכתובת ואז "שליחה חוזרת" בכרטיס האוהד. וואטסאפ עובד כאן גם הוא, כי הוא מוסר את הקוד בלי תלות בכתובת.',
+  },
+  sentNoData: {
+    label: 'נשלח, אין נתוני מסירה',
+    action: '⚠️ <b>זה לא "לא נמסר" — זה "לא יודעים".</b> ה-webhook של Brevo התחיל לרוץ מאוחר יותר, ולרשומות הישנות פשוט אין נתון. אין מכאן מסקנה, ולכן גם אין פעולה מתבקשת: וואטסאפ כאן הוא ניחוש סביר, לא תיקון.',
+  },
+  deliveredNotOpened: {
+    label: 'נמסר ולא נפתח',
+    action: '🔑 <b>וואטסאפ — לא שליחה חוזרת של אותו מייל.</b> המכתב הגיע לשרת הדואר ולא נפתח; לשלוח אותו שוב זה לחזור בדיוק על מה שכבר לא עבד. ספאם/קידומים הוא חשוד אמיתי, וערוץ אחר עוקף אותו. ⚠️ ובכל זאת "לא נפתח" הוא <b>סימן חלש</b>: הפתיחה נמדדת בתמונה זעירה ש-Outlook וחלק מהלקוחות חוסמים, כלומר יש כאן גם אנשים שכן ראו את המכתב.',
+  },
+  opened: {
+    label: 'נפתח — ובכל זאת לא נכנס',
+    action: '🔑 <b>הם קיבלו, פתחו, וויתרו</b> — כלומר החיכוך הוא הקוד עצמו ולא המסירה. זו הקבוצה שגוגל נבנה בשבילה, וכדאי לומר להם במפורש שאפשר להיכנס גם בלי הקוד.',
+  },
+};
+
+function fanEntryBreakdown() {
+  const never = (MOCK_FANS || []).filter(f => f.status === 'approved' && !f.lastSeenAt);
+  const out = { never: never.length, opened: 0, deliveredNotOpened: 0, sentNoData: 0, notSent: 0 };
+  for (const f of never) out[fanEmailBucketOf(f)]++;
+  return out;
+}
+
+// §394 — הפרמטר החמישי (onclick) אופציונלי: 20 הקריאות הקיימות מעבירות ארבעה ארגומנטים
+// וממשיכות להתנהג בדיוק כמו קודם. רק שורות-הפילוח מקבלות אותו, כי רק להן יש רשימה להוביל אליה.
+function platRow(name, num, sub, help, onclick) {
+  return `<div class="plat-row${onclick ? ' clickable' : ''}"${onclick ? ` onclick="${onclick}" title="להצגת הרשימה"` : ''}>
+    <div class="plat-row-name">${name}${onclick ? ' <span class="plat-row-go">← לרשימה</span>' : ''}</div>
     <div class="plat-row-num">${num}</div>
     ${sub ? `<div class="plat-row-sub">${sub}</div>` : ''}
     <div class="plat-row-help">${help}</div>
@@ -5305,16 +5353,17 @@ function platformStatsHtml() {
         // §390 — הפילוח. כל שורה כאן היא **פעולה אחרת**, ולכן הן מופרדות ולא מסוכמות.
         const eb = fanEntryBreakdown();
         if (!eb.never) return '';
+        // §394 — כל שורה כאן מובילה לרשימת האנשים שמאחוריה. עד עכשיו הפילוח נגמר במספר:
+        // המנהל ראה "12 נמסר ולא נפתח" ולא הייתה לו שום דרך להגיע אל אותם 12.
+        const bRow = (key, num, sub) =>
+          platRow(FAN_EMAIL_BUCKETS[key].label, num.toLocaleString('he-IL'), sub,
+                  FAN_EMAIL_BUCKETS[key].action, `goToFanBucket('${key}')`);
         return `<div class="plat-sect">מתוך אלה שלא נכנסו — מה קרה למייל</div>
         <div class="plat-rows">
-          ${platRow('המייל לא נשלח', eb.notSent.toLocaleString('he-IL'), 'נכשל או עדיין בתור',
-            'כאן <b>אין טעם לדבר על גוגל</b> — הם מעולם לא קיבלו את הקוד. זו כתובת שגויה או כשל שליחה, ו"שליחה חוזרת" בכרטיס האוהד היא הפעולה.')}
-          ${platRow('נשלח, אין נתוני מסירה', eb.sentNoData.toLocaleString('he-IL'), 'לפני שמעקב המסירה התחיל',
-            '⚠️ <b>זה לא "לא נמסר" — זה "לא יודעים".</b> ה-webhook של Brevo התחיל לרוץ מאוחר יותר, ולרשומות הישנות פשוט אין נתון. אין מכאן מסקנה, ולכן גם אין פעולה אוטומטית.')}
-          ${platRow('נמסר ולא נפתח', eb.deliveredNotOpened.toLocaleString('he-IL'), 'הגיע לשרת הדואר',
-            '⚠️ <b>"לא נפתח" הוא סימן חלש.</b> הפתיחה נמדדת בתמונה זעירה, ו-Outlook וחלק מהלקוחות חוסמים תמונות — כלומר יש כאן גם אנשים שכן ראו את המכתב. מה שכן: ספאם/קידומים הוא חשוד אמיתי, וערוץ אחר (וואטסאפ) עוקף את זה.')}
-          ${platRow('נפתח — ובכל זאת לא נכנס', eb.opened.toLocaleString('he-IL'), 'ראה את הקוד ולא השתמש בו',
-            '🔑 <b>זו הקבוצה שגוגל נבנה בשבילה.</b> הם קיבלו, פתחו, וויתרו — כלומר החיכוך הוא הקוד עצמו ולא המסירה.')}
+          ${bRow('notSent', eb.notSent, 'נכשל או עדיין בתור')}
+          ${bRow('sentNoData', eb.sentNoData, 'לפני שמעקב המסירה התחיל')}
+          ${bRow('deliveredNotOpened', eb.deliveredNotOpened, 'הגיע לשרת הדואר')}
+          ${bRow('opened', eb.opened, 'ראה את הקוד ולא השתמש בו')}
         </div>`;
       })()}`;
     })()}
@@ -7791,7 +7840,9 @@ let fanSort = 'waitingTime';   // 'waitingTime' | 'newest' | 'oldest' | 'unverif
 let fanDateRangeFilter = 'all'; // 'all' | '7' | '30' | '90' (ימים אחורה מהיום)
 let fanVerifyTypeFilter = 'all'; // 'all' | 'subscriber' | 'nonsubscriber' | 'owner' — דרופדאון "סוג אימות" תואם-handoff
 // פילי-סיווג ראשיים תואמי-handoff, אותו עיקרון בדיוק כמו bizClassPill ("כל העסקים")
-let fanClassPill = 'all';      // 'all' | 'pending' | 'unverified'
+let fanClassPill = 'all';      // 'all' | 'pending' | 'unverified' | 'neverEntered'
+// §394 — דלי-המייל שנבחר מתוך הפילוח ב"מרכז נתונים". 'all' = בלי סינון-דלי.
+let fanEmailBucket = 'all';
 let selectedFanIds = new Set();
 let selectedFanDetailId = null;
 let fanMobileShowDetail = false;
@@ -7799,9 +7850,24 @@ let fanMobileShowDetail = false;
 window.setFanSort = function(v) { fanSort = v; renderMain(); };
 window.setFanDateRangeFilter = function(v) { fanDateRangeFilter = v; renderMain(); };
 window.setFanVerifyTypeFilter = function(v) { fanVerifyTypeFilter = v; renderMain(); };
-window.setFanClassPill = function(v) { fanClassPill = v; renderMain(); };
+// §394 — מעבר לפיל אחר מנקה את סינון-הדלי. בלי זה המנהל היה לוחץ "הכל" ומקבל 12 רשומות,
+// כי שבב-הדלי היה ממשיך לסנן בשקט מתחת לפיל שנראה כאילו הוא מציג את הכול.
+window.setFanClassPill = function(v) { fanClassPill = v; fanEmailBucket = 'all'; renderMain(); };
+window.setFanEmailBucket = function(v) { fanEmailBucket = v; renderMain(); };
+
+// §394 — הגשר מהפילוח אל האנשים. מגיע מלחיצה על שורת-פילוח ב"מרכז נתונים".
+window.goToFanBucket = function(key) {
+  fanClassPill = 'neverEntered';
+  fanEmailBucket = key;
+  // איפוס שאר הסינונים: המנהל מגיע לכאן ממספר שראה בפאנל, וחיפוש/טווח-תאריכים שנשארו
+  // מביקור קודם היו מציגים לו רשימה קצרה מהמספר — בדיוק הפער שהפיל של §390 נועד למנוע.
+  fanSearch = ''; fanStatusFilter = 'all'; fanDateRangeFilter = 'all'; fanVerifyTypeFilter = 'all';
+  selectedFanDetailId = null;
+  selectTab(ALL_FANS_KEY);
+};
 window.clearFanFilters = function() {
   fanSearch = ''; fanStatusFilter = 'all'; fanSort = 'waitingTime'; fanDateRangeFilter = 'all'; fanVerifyTypeFilter = 'all'; fanClassPill = 'all';
+  fanEmailBucket = 'all';   // §394 — אחרת "נקה סינון" משאיר סינון פעיל, וזו בדיוק ההבטחה שהכפתור מפר
   renderMain();
 };
 
@@ -7825,13 +7891,18 @@ function fanFilteredList() {
       // ובכוונה: פיל שסופר אחרת מהמספר שממנו המנהל הגיע הוא בדיוק הפער של §353.
       : fanClassPill === 'neverEntered' ? (f.status === 'approved' && !f.lastSeenAt)
       : !f.adminVerified;
+    // §394 — הדלי מוגדר **רק בתוך** "אושרו ולא נכנסו", ולכן הוא נושא את התנאי הזה בעצמו
+    // ולא נשען על כך שהפיל הנכון מסומן. אחרת "נמסר ולא נפתח" היה חל גם על מי שכן נכנס,
+    // והמספר ברשימה היה גדול מהמספר בפאנל שממנו המנהל הגיע.
+    const matchBucket = fanEmailBucket === 'all' ? true
+      : (f.status === 'approved' && !f.lastSeenAt && fanEmailBucketOf(f) === fanEmailBucket);
     const matchVerify = fanVerifyTypeFilter === 'all' ? true
       : fanVerifyTypeFilter === 'subscriber' ? f.isSubscriber
       : fanVerifyTypeFilter === 'nonsubscriber' ? !f.isSubscriber
       : !!f.isBusinessOwner;
     const matchQ = !q || f.name.includes(q) || f.phone.includes(q) || f.email.includes(q);
     const matchRange = fanDateRangeFilter === 'all' || (now - f.registeredAt.getTime()) <= Number(fanDateRangeFilter) * 86400000;
-    return matchF && matchClass && matchVerify && matchQ && matchRange;
+    return matchF && matchClass && matchVerify && matchQ && matchRange && matchBucket;
   });
   return list.sort((a, b) => {
     // "זמן המתנה" — ממתינים-לאישור קודם (הוותיק שבהם ראשון), אחריהם השאר לפי הכי-ותיק. אותו עיקרון כמו bizSort 'waitingLongest'
@@ -7867,6 +7938,7 @@ function fanRowsHtml() {
       f.isSubscriber ? 'מנוי' : 'לא מנוי',
       f.status === 'pending' ? `ממתין ${agoLabel(f.registeredAt)}` : (f.memberNumber ? `חבר ${f.memberNumber}` : '')
     ].filter(Boolean).join(' · ');
+    const wa = fanRowWaBtnHtml(f);   // §394 — ריק כשאין סינון-דלי, ואז השורה זהה לחלוטין לקודם
     return `
       <div class="task-row ${f.status} ${active?'active':''} ${sel?'selected':''}" onclick="selectFanDetail('${f.id}')">
         <div class="task-row-top">
@@ -7874,9 +7946,18 @@ function fanRowsHtml() {
           <div class="task-row-name">${esc(f.name)}</div>
         </div>
         <div class="task-row-badges">${badges.join('')}</div>
-        <div class="task-row-meta">${esc(metaBits)}</div>
+        <div class="task-row-meta${wa ? ' has-action' : ''}">${esc(metaBits)}${wa}</div>
       </div>`;
   }).join('');
+}
+
+// §394 — כפתור וואטסאפ ישירות על השורה, **רק כשסינון-דלי פעיל**. הרשימה הרגילה לא משתנה:
+// שם הפעולה נבחרת מתוך כרטיס האוהד, וכפתור על כל שורה היה מוסיף רעש ל-148 רשומות.
+// ⚠️ **אין שליחה המונית ולא תהיה** — `wa.me` פותח שיחה אחת בכל פעם. זו הליכה איש-איש, ועל
+// עשרות בודדות זה סביר לגמרי; אם דלי יגדל למאות, הפתרון הזה כבר לא מספיק — וזה ייאמר אז.
+function fanRowWaBtnHtml(f) {
+  if (fanEmailBucket === 'all' || !f.phone) return '';
+  return `<button class="row-wa-btn" title="פתיחת וואטסאפ עם הקוד" onclick="event.stopPropagation();sendFanWA('${f.id}','${f.phone}','${escJsAttr(f.name)}','${f.loginCode||''}')">💬 וואטסאפ</button>`;
 }
 
 window.selectFanDetail = function(id) {
@@ -8440,10 +8521,30 @@ window.setFanStatusFilter = function(status) { fanStatusFilter = status; renderM
 // בורר-הסטטוס/תאריך הישנים לא נמחקו — עברו ל"עוד סינונים" מקופל, אותו עיקרון כמו bizFilterBarHtml.
 let fanAdvancedOpen = false;
 window.toggleFanAdvanced = function() { fanAdvancedOpen = !fanAdvancedOpen; renderMain(); };
+// §394 — הבאנר שמסביר למה הרשימה מסוננת, ומה הפעולה **כאן**. בלעדיו המנהל מגיע מהפאנל
+// לרשימה קצרה בלי שום סימן למה היא קצרה — ומקבל בדיוק את החוויה של "המספרים לא מסתדרים".
+// המספר נספר מ-fanFilteredList עצמה ולא מהפאנל, ולכן הוא **תמיד** מה שבאמת על המסך.
+function fanBucketBannerHtml() {
+  if (fanEmailBucket === 'all') return '';
+  const meta = FAN_EMAIL_BUCKETS[fanEmailBucket];
+  if (!meta) return '';
+  const n = fanFilteredList().length;
+  return `
+    <div class="fan-bucket-banner">
+      <div class="fan-bucket-head">
+        <span class="fan-bucket-title">מתוך "מעולם לא נכנסו" · ${esc(meta.label)}</span>
+        <span class="fan-bucket-count">${n.toLocaleString('he-IL')}</span>
+        <span style="flex:1"></span>
+        <button class="filter-clear" onclick="setFanEmailBucket('all')">✕ הסרת סינון הדלי</button>
+      </div>
+      <div class="fan-bucket-action">${meta.action}</div>
+    </div>`;
+}
+
 function fanFilterBarHtml(opts) {
   const o = Object.assign({ searchId: '' }, opts || {}); // ר' ההערה ב-bizFilterBarHtml (§254)
   const advancedActiveCount = (fanStatusFilter!=='all'?1:0) + (fanDateRangeFilter!=='all'?1:0);
-  const hasActiveFilters = advancedActiveCount > 0 || fanSearch.trim() || fanSort !== 'waitingTime' || fanVerifyTypeFilter !== 'all' || fanClassPill !== 'all';
+  const hasActiveFilters = advancedActiveCount > 0 || fanSearch.trim() || fanSort !== 'waitingTime' || fanVerifyTypeFilter !== 'all' || fanClassPill !== 'all' || fanEmailBucket !== 'all';
   const counts = fanClassCounts();
   const pill = (key, label) => `<button class="biz-class-pill ${fanClassPill===key?'active':''}" onclick="setFanClassPill('${key}')">${label} · ${counts[key]}</button>`;
   return `
@@ -8459,6 +8560,7 @@ function fanFilterBarHtml(opts) {
         ${pill('unverified', 'טרם נבדקו')}
         ${pill('neverEntered', 'מעולם לא נכנסו')}
       </div>
+      ${fanBucketBannerHtml()}
       <div class="filter-toolbar-row">
         <select class="filter-select" onchange="setFanSort(this.value)">
           <option value="waitingTime" ${fanSort==='waitingTime'?'selected':''}>מיון: זמן המתנה</option>
