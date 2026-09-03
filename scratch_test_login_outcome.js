@@ -42,6 +42,9 @@ const E = [
   ev('2026-09-02T22:00:00Z','loginFail',{s:'SC',ch:'authError:auth/network-request-failed'}),
   ev('2026-09-02T22:05:00Z','loginFail',{s:'SD',ch:'error:TypeError'}),
   ev('2026-09-02T22:10:00Z','loginFail',{s:'SE',ch:'late:lateAuthError:auth/invalid-custom-token'}),
+  // §408 — נתיב-המילוט: מי שביקש קוד ולא קיבל
+  ev('2026-09-02T22:20:00Z','loginFail',{s:'SF',ch:'resendTimeout',ph:'0544254737'}),
+  ev('2026-09-02T22:25:00Z','loginFail',{s:'SG',ch:'resendError:TypeError',ph:'0544254737'}),
 ];
 const FANS = [
   { id:'5y8yeGh7kS', name:'מאיר דהן',      phone:'0502042330', status:'approved' },
@@ -99,6 +102,13 @@ chk('§403 כשל-קישור מתויג **ונספר כתקלה אצלנו**',
     !get('google:link:email_mismatch').label.includes('לא מוכרת') && get('google:link:email_mismatch').ours);
 chk('§403 כשל-קישור בלי הזנב "· דרך Google"',
     !get('google:link:email_mismatch').label.includes('דרך Google'));
+
+console.log('\n══ §408 — נתיב-המילוט ══');
+for (const ch of ['resendTimeout','resendError:TypeError']) {
+  const r = rows.find(x => x.ch === ch);
+  console.log(`   ${ch.padEnd(24)} → ${r.label}   [${r.ours ? 'תקלה אצלנו' : 'לא תקלה'}]`);
+  chk(`${ch} מתויג ונספר כתקלה אצלנו`, !r.label.includes('לא מוכרת') && r.ours);
+}
 
 console.log('\n══ §406 — פיצול השגיאה הטכנית ══');
 const g6 = ch => rows.find(r => r.ch === ch);

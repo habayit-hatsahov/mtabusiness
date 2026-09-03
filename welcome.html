@@ -2853,18 +2853,49 @@ window.heroRequestResend = async function() {
   const btn = document.getElementById('heroForgotBtn');
   btn.disabled = true; btn.textContent = 'שולח...';
   // §312 — גם כאן היה fetch בלי גבול-זמן, ובדיוק לכפתור הזה פונה מי שכבר נתקע פעם אחת.
+  // ── §408 — 🔴 **8 השניות חתכו את נתיב-המילוט שנייה לפני שהוא הגיע ליעד** ──────────────
+  // §364 כתב כאן במפורש: *"נתיב-מילוט שנשען על הכתובת שנחסמה אינו מילוט"* — ולכן הקריאה
+  // עוברת ב-hbApiFetch. אבל מאז §402 יש דד-ליין של 3.5 שנ' לכל כתובת, והחשבון לא נסגר:
+  //   כתובת 1 נקטעת ב-3.5 · כתובת 2 ב-7.0 · **הכתובת השלישית מתחילה ב-7.0 ונהרגת ב-8.0.**
+  // כלומר במכשיר שבו שתי הראשונות חסומות (§359/§374 — התרחיש שבגללו נבנתה השלישית), היא
+  // מקבלת שנייה אחת. 🔑 **הסף לא נגזר מאורך השרשרת, ולכן הוא ביטל אותה.**
+  //
+  // ⚠️ **וכאן אין רשת-הצלה.** בכניסה, תשובה מאוחרת עדיין מכניסה (§350/§353); כאן הבקשה
+  // מבוטלת ותו לא — המייל פשוט לא נשלח. לכן דווקא הסף הזה חייב לכסות את השרשרת המלאה.
+  // 12 שנ' = 3.5 + 3.5 + 5 לכתובת האחרונה (שאין לה דד-ליין משלה).
+  // 🔑 **הסף נגזר מ-HB_HOST_TIMEOUT_MS, ואם הוא ישתנה — גם זה חייב.**
+  const HERO_RESEND_TIMEOUT_MS = 2 * HB_HOST_TIMEOUT_MS + 5000;
   const ac = new AbortController();
-  const abortTimer = setTimeout(() => ac.abort(), HERO_TIMEOUT_MS);
-  let timedOut = false;
+  const abortTimer = setTimeout(() => ac.abort(), HERO_RESEND_TIMEOUT_MS);
+  const t0 = Date.now();
+  const api = { via: 0, hops: 0 };
+  // §408 — אותו שיקוף כמו בכניסה (§403/§405), ומאותה סיבה: 12 שניות של "שולח..." קפוא הן
+  // בדיוק המסך שממנו בורחים. ⚠️ אותה פונקציה ולא עותק (ר' §405).
+  let resendDone = false;
+  const stopProgress = heroProgress(t => { if (!resendDone) btn.textContent = t; }, api);
+  let timedOut = false, failed = null;
   try {
     // §364 — גם כאן דרך hbApiFetch: לכפתור הזה פונה מי שכבר לא הצליח להיכנס, כלומר בדיוק
     // מי שסביר שהכתובת הראשית חסומה אצלו. נתיב-מילוט שנשען על הכתובת שנחסמה אינו מילוט.
     await hbApiFetch('/resend-login-code', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone: phoneRaw }), signal: ac.signal
-    });
-  } catch (e) { timedOut = heroIsTimeout(e); }
+    }, api);
+  } catch (e) { timedOut = heroIsTimeout(e); failed = e; }
+  resendDone = true;
+  stopProgress();
   clearTimeout(abortTimer);
+  // ── §408 — עד היום הכפתור הזה לא נמדד **בכלל** ────────────────────────────────────────
+  // 🔑 אותו פער בדיוק ש-§322 סגר לכניסה: כשל בנתיב-המילוט נראה במדידה כ"לא קרה כלום".
+  // מי שגם לא הצליח להיכנס וגם לא קיבל קוד היה בלתי-נראה לחלוטין — והוא המקרה החמור ביותר.
+  // ⚠️ ערוץ נפרד ('resend…') ולא badCode/error, כדי שלא יתערבב עם כשלי-הכניסה בשורות.
+  if (failed) {
+    window.logEvent && window.logEvent('loginFail', {
+      channel: timedOut ? 'resendTimeout' : heroErrChannel('resendError', failed),
+      blockId: heroEnvTagAt(t0, api),
+      phone: heroNormalizePhoneDigits(phoneRaw),
+    });
+  }
   msgEl.textContent = timedOut
     ? HERO_TIMEOUT_MSG
     : 'אם המספר קיים במערכת המאושרת — הקוד יישלח למייל שנרשם בהקדם.';
