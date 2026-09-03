@@ -36,6 +36,10 @@ const E = [
   ev('2026-09-02T21:00:00Z','loginFail',{s:'S9',ch:'google:canLink'}),
   ev('2026-09-02T21:00:20Z','pageView',{s:'S9',m:'SICIYz7v5C'}),
   ev('2026-09-02T21:10:00Z','loginFail',{s:'SA',ch:'google:link:email_mismatch'}),
+  // §406 — הפיצול של 'error' והקוד האמיתי שנוסע איתו
+  ev('2026-09-02T22:00:00Z','loginFail',{s:'SC',ch:'authError:auth/network-request-failed'}),
+  ev('2026-09-02T22:05:00Z','loginFail',{s:'SD',ch:'error:TypeError'}),
+  ev('2026-09-02T22:10:00Z','loginFail',{s:'SE',ch:'late:lateAuthError:auth/invalid-custom-token'}),
 ];
 const FANS = [
   { id:'5y8yeGh7kS', name:'מאיר דהן',      phone:'0502042330', status:'approved' },
@@ -92,6 +96,23 @@ chk('§403 כשל-קישור מתויג **ונספר כתקלה אצלנו**',
     !get('google:link:email_mismatch').label.includes('לא מוכרת') && get('google:link:email_mismatch').ours);
 chk('§403 כשל-קישור בלי הזנב "· דרך Google"',
     !get('google:link:email_mismatch').label.includes('דרך Google'));
+
+console.log('\n══ §406 — פיצול השגיאה הטכנית ══');
+const g6 = ch => rows.find(r => r.ch === ch);
+for (const ch of ['authError:auth/network-request-failed','error:TypeError','late:lateAuthError:auth/invalid-custom-token'])
+  console.log(`   ${ch.padEnd(46)} → ${g6(ch).label}   [${g6(ch).ours ? 'תקלה אצלנו' : 'לא תקלה'}]`);
+chk('authError מקבל תווית משלו, נפרדת מ-error',
+    g6('authError:auth/network-request-failed').label.includes('ההזדהות במכשיר') );
+chk('🔑 והקוד האמיתי מוצג',
+    g6('authError:auth/network-request-failed').label.includes('auth/network-request-failed'));
+chk('authError נספר כתקלה אצלנו', g6('authError:auth/network-request-failed').ours);
+chk('error עם קוד עדיין מזוהה כ-error', g6('error:TypeError').label.includes('בבקשה לוורקר'));
+chk('late + קוד — שניהם מוצגים יחד',
+    g6('late:lateAuthError:auth/invalid-custom-token').label.includes('auth/invalid-custom-token')
+    && g6('late:lateAuthError:auth/invalid-custom-token').label.includes('מאוחרת'));
+chk('⚠️ google:link:x לא מתפרש בטעות כקוד',
+    get('google:link:email_mismatch').label.includes('המייל על הרשומה')
+    && !get('google:link:email_mismatch').label.includes(' · '));
 
 console.log('\n══ §404 — "לא מזוהה" שאפשר לזהות ══');
 const s1 = rows.find(r => r.sessionId === 'S1');   // notLinked שנכנס — חייב לקבל שם

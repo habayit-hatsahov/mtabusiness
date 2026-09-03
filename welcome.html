@@ -2047,6 +2047,31 @@ const HERO_TIMEOUT_MS = window.HB_LOGIN_TIMEOUT_MS || 8000;
 // מחדש. 35 שניות: גבוה מספיק כדי לכסות כל איחור-רשת שנצפה בפועל (החשוד הגרוע ביותר נמדד
 // בעשרות שניות), ונמוך מספיק כדי שהבקשה לא תישאר תלויה על דף פתוח.
 const HERO_HARD_ABORT_MS = 35000;
+// ══ §405 — שלב ההזדהות מקבל תקציב משלו, ולא את השאריות ═══════════════════════════════════
+// §313 קבע **דדליין אחד משותף** לשני ה-await: "ההמתנה הגרועה ביותר שהאוהד רואה היא 8
+// שניות סה"כ". זה היה נכון כשהשאלה הייתה "כמה זמן להראות ספינר" — אבל הוא יצר תלות שאין
+// לה שום הצדקה מכנית:
+//
+// 🔑 **ככל שהרשת איטית יותר, כך המכשיר מקבל פחות זמן לסיים להיכנס** — למרות ששני השלבים
+// נכשלים מסיבות שאין ביניהן שום קשר. ה-fetch תלוי ברשת; `signInWithCustomToken` תלוי
+// ב-IndexedDB המקומי. רשת איטית אינה מאיטה את IndexedDB, ובכל זאת היא גזלה ממנו את הזמן.
+//
+// ⚠️ **נמדד, ולא הוסק** — זהו **אירוע ה-authTimeout היחיד ב-90 יום** (ליאור ישראל, 3.9,
+// 13:00): טביעת-הסביבה `web|idb-ok|sw-none|8.0s` מספרת את כל הסיפור. `idb-ok` — האחסון
+// היה תקין. `sw-none` — טעינה קרה, בלי מטמון, כלומר ה-fetch לקח כ-6.5 שניות. ולכן שלב
+// ה-auth קיבל את **הרצפה של 1500 מ"ש** ותו לא. הוא נכנס **9 שניות אחרי** אירוע-הכשל,
+// כלומר ההזדהות נסגרה כשנייה אחת אחרי שוויתרנו עליה.
+//
+// 🔑 **מסך השגיאה שהוא ראה נוצר ע"י הרצפה, לא ע"י תקלה.** שנייה אחת נוספת, והוא לא היה
+// רואה כלום.
+//
+// 5 שניות: `signInWithCustomToken` נמדד מתחת לשנייה במסלול הרגיל, וכאן נדרשו ~2.5. פי-5
+// מהמדוד ופי-2 מהמקרה הגרוע שנצפה בפועל.
+// ⚠️ **המקרה הגרוע גדל ל-13 שניות** (8 + 5), וזה מכוון: מהרגע שהטוקן בידינו אנחנו **יודעים**
+// שהכניסה אושרה בשרת, והמסך אומר את זה במפורש ("הקוד אושר — נכנסים…", §405). חמש שניות
+// של הודעה נכונה עדיפות על מסך-שגיאה בשנייה השמינית. זה גם **בדיוק** ההבדל שההודעה של
+// §350 כבר מנסחת, רק שעכשיו הוא נאמר לפני הכשל ולא אחריו.
+const HERO_AUTH_MIN_MS = 5000;
 // §353 — מונה-ניסיונות. תשובה מאוחרת שייכת לניסיון **מסוים**, ואם האוהד כבר לחץ שוב היא
 // חייבת להיות שקטה: אחרת בקשה ישנה דורסת את המסך של הניסיון החדש שרץ עכשיו. זה בדיוק
 // המצב שהתיקון הזה מייצר לראשונה — עד היום הבקשה הישנה בוטלה ולא הייתה יכולה לחזור.
@@ -2070,6 +2095,16 @@ function heroWithTimeout(promise, ms) {
   ]);
 }
 const heroIsTimeout = (e) => !!e && (e.name === 'AbortError' || e.message === 'hb_timeout');
+// §406 — מצרף את קוד-השגיאה האמיתי לערוץ: 'authError:auth/network-request-failed'.
+// ⚠️ **חייב להישאר קצר ונקי**: firestore.rules אוכפת `channel.size() <= 50`, ושדה חורג
+// **מוחק את כל האירוע בשקט** (§326) — כלומר במקום אבחון טוב יותר היינו מקבלים אפס אבחון.
+// לכן גם סינון תווים: קוד Firebase הוא תמיד `auth/xxx-yyy`, וכל דבר אחר אינו קוד אלא
+// טקסט חופשי שאין טעם לשמור.
+function heroErrChannel(base, e) {
+  const raw = (e && (e.code || e.name)) || '';
+  const code = String(raw).replace(/[^a-zA-Z0-9/_.-]/g, '').slice(0, 34);
+  return code ? (base + ':' + code).slice(0, 50) : base;
+}
 // ── §353 — משך-הזמן בפועל, נוסע יחד עם טביעת-הסביבה ─────────────────────────────────────────
 // הפער שזה סוגר: עד היום `channel: 'fetchTimeout'` אמר רק "עברו 8 שניות" — לא אם זה היה 8.1
 // או 40. זו ההבחנה שמכריעה מה לתקן: 9 שניות פירושו שהדדליין קצר מדי ורשת-ההצלה תספיק לתפוס
@@ -2131,14 +2166,51 @@ function heroFinishLogin(uid, phoneDigits) {
 // הראשון שמגיע מנצח.
 // §353 — נשלף לפונקציה כי **רשת-ההצלה של ה-fetch חייבת להריץ אותו בעצמה**: טוקן שנוחת
 // מאוחר עוד לא עבר שום שלב auth, ובלי זה "הצלנו" בקשה ולא הכנסנו אף אחד.
+// §406 — כמה זמן ממתינים ל-onAuthStateChanged **אחרי** ש-signInWithCustomToken כבר נדחה.
+// ר' ההערה בגוף הפונקציה. 2.5 שנ' — מספיק כדי לתפוס הזדהות שנסגרת מיד אחרי, וקצר מספיק
+// שכשל אמיתי (טוקן פסול) לא יעכב את ההודעה יותר מרגע.
+const HERO_AUTH_REJECT_GRACE_MS = 2500;
 function heroRunAuth(customToken, onDone) {
   let offState = null;
-  const viaState = new Promise(res => { offState = onAuthStateChanged(auth, u => { if (u) res(u.uid); }); });
+  // ══ §406 — 🔴 משתמש שכבר היה מחובר אינו הוכחה שההתחברות **הזאת** הצליחה ═══════════════
+  // `onAuthStateChanged` יורה מיד עם המצב **הקיים** ברגע ההרשמה למאזין. הקוד הקודם קיבל
+  // כל `u` שאינו null — כלומר אם במכשיר כבר הייתה הזדהות חיה, `viaState` נפתר **מיידית**
+  // עם ה-uid הישן, ניצח את המרוץ, ו-`heroFinishLogin` כתב את הזיהוי **של האדם הקודם**.
+  //
+  // 🔑 **המשמעות: אדם מקליד את הטלפון והקוד שלו — ונכנס לחשבון של מישהו אחר.** לא הודעת
+  // שגיאה, לא כישלון: כניסה מוצלחת לגמרי לחשבון הלא-נכון.
+  //
+  // ⚠️ **הנתיב אינו תיאורטי, אבל גם אינו הנפוץ:** יציאה מסודרת (`signOutUser` ב-profile)
+  // קוראת ל-`signOut(auth)` ולכן סוגרת אותו. מה שפותח אותו הוא מצב שבו `hb_memberId`
+  // נמחק מ-localStorage בעוד הזדהות ה-Firebase שרדה ב-IndexedDB — ניקוי חלקי של הדפדפן,
+  // ITP באייפון, או מכשיר משפחתי. במצב הזה השער למעלה **אינו** מפנה (אין storedId), הדף
+  // נראה כמנותק לגמרי, וטופס הכניסה פתוח בפני האדם הבא.
+  // (feedback_flag_identity_bugs — באג-זהות מדווח, לא מתוקן בשקט. ר' §406 ב-PROJECT_CONTEXT.)
+  //
+  // התיקון: מי שכבר היה כאן לפני שהתחלנו אינו נחשב. ⚠️ אם זה **אותו** חבר שנכנס שוב,
+  // `viaState` פשוט לא יכריע — ו-`viaCall` יסגור את זה כרגיל, כמו בכל מסלול תקין.
+  const before = auth.currentUser ? auth.currentUser.uid : null;
+  const viaState = new Promise(res => {
+    offState = onAuthStateChanged(auth, u => { if (u && u.uid !== before) res(u.uid); });
+  });
   // .catch כאן הוא חובה ולא קישוט: אם viaState מנצח, הדחייה המאוחרת של ההבטחה הזאת
   // הופכת ל-unhandled rejection ומרעישה בקונסול. מי שמפסיד במרוץ פשוט לא מכריע כלום.
   const viaCall = signInWithCustomToken(auth, customToken).then(c => c.user.uid);
   viaCall.catch(() => {});
-  const settled = Promise.race([viaCall, viaState]);
+  // ── §406 — 🔑 **דחייה של ההבטחה אינה סוף הסיפור, וזו כל הנחת-היסוד של §322** ──────────
+  // §322 קבע ש-`onAuthStateChanged` אמין יותר מההבטחה של `signInWithCustomToken` (שם היא
+  // התעוררה רק אחרי שעה וחצי). אבל `Promise.race` מוכרע גם ע"י **דחייה** — כלומר ברגע
+  // שההבטחה נכשלת, רשת-הביטחון שנבנתה במיוחד בשבילה כבר לא מקבלת הזדמנות לדבר.
+  // כאן דחייה רק **פותחת חלון**: אם מצב-ההזדהות נסגר תוך 2.5 שנ', האוהד בפנים. אחרת
+  // השגיאה המקורית נזרקת כמו קודם, בלי לאבד אותה.
+  // ⚠️ הטיימר מנוקה בכל יציאה — טיימר ששורד דוחה הבטחה שאיש כבר לא מקשיב לה
+  // (unhandled rejection), בדיוק כמו הניקוי ב-hbApiFetch (§402).
+  const guarded = viaCall.catch(err => new Promise((res, rej) => {
+    const t = setTimeout(() => rej(err), HERO_AUTH_REJECT_GRACE_MS);
+    viaState.then(uid => { clearTimeout(t); res(uid); }, () => {});
+  }));
+  guarded.catch(() => {});
+  const settled = Promise.race([guarded, viaState]);
   settled.catch(() => {});
   const stop = () => { try { offState && offState(); } catch (_) {} };
   return { settled, done: (uid) => { stop(); onDone(uid); }, giveUp: stop };
@@ -2262,7 +2334,9 @@ async function heroGoogleLogin(res) {
   // ⚠️ מוצהר **לפני** הטיקר ולא אחריו: TDZ אמנם לא היה נורה כאן (הטיק הראשון ב-400ms),
   // אבל נכונות שנשענת על תזמון-טיימר היא בדיוק מה שנשבר בעריכה הבאה.
   let heroGoogleDone = false;
-  const stopProgress = heroProgress(t => { if (!heroGoogleDone) heroGMsg(t); }, api);
+  // §405 — גם כאן שלב, מאותה סיבה בדיוק כמו במסלול הקוד. ר' HERO_AUTH_PROGRESS.
+  let gStage = 'fetch';
+  const stopProgress = heroProgress(t => { if (!heroGoogleDone) heroGMsg(t); }, api, () => gStage);
 
   // §353 — שני ספים, בדיוק כמו במסלול הקוד: הראשון מפסיק להראות "מתחבר…", השני מבטל
   // באמת. ביניהם הבקשה עדיין חיה, וזה החלון שבו תשובה מאוחרת עדיין מכניסה.
@@ -2285,7 +2359,8 @@ async function heroGoogleLogin(res) {
   try {
     const data = await heroWithTimeout(pending, HERO_TIMEOUT_MS);
     if (data.customToken) {
-      heroGMsg('נכנסים…');
+      gStage = 'auth';           // §405 — מכאן הטיקר אומר "הקוד אושר", ולא דורס אותו
+      heroGMsg(HERO_AUTH_PROGRESS);
       // ⚠️ null ולא טלפון: במסלול הזה אין טלפון בכלל, ו-`hb_phone` הוא מילוי-מראש בלבד.
       const a = heroRunAuth(data.customToken, (uid) => heroFinishLogin(uid, null));
       try {
@@ -2470,7 +2545,15 @@ const HB_PROGRESS = [
   { at: 2500, text: 'עוד רגע…' },
   { at: 6000, text: 'כמעט שם…' },
 ];
-function heroProgress(setText, api) {
+// §405 — ⚠️ **ההודעה של שלב-ההזדהות גוברת על הכל, ואינה תלויה בשעון.** מרגע שהטוקן בידינו
+// הכניסה **אושרה בשרת**, וזו עובדה ולא הערכה — "עוד רגע…" שם היה מוסר פחות ממה שאנחנו
+// יודעים, ודווקא בשניות שבהן האוהד הכי קרוב לוותר. זה גם מה שהופך את הרצפה החדשה של 5
+// השניות (HERO_AUTH_MIN_MS) להמתנה שאפשר לסבול: היא מלווה בהודעה נכונה, לא בספינר אילם.
+// 🔑 **וזו גם תיקון של רגרסיה מ-§403**: במסלול Google נכתב `heroGMsg('נכנסים…')` ברגע
+// קבלת הטוקן — והטיקר, שהמשיך לרוץ, דרס אותו ב"עוד רגע…" שתי שניות אחר כך. שיקוף שמוחק
+// את ההודעה החשובה ביותר במסך הוא גרוע מהיעדר שיקוף.
+const HERO_AUTH_PROGRESS = 'הקוד אושר — נכנסים…';
+function heroProgress(setText, api, getStage) {
   const t0 = Date.now();
   let shown = '';
   const tick = () => {
@@ -2478,7 +2561,8 @@ function heroProgress(setText, api) {
     // מעבר-כתובת גובר על הזמן: הוא הדבר היחיד שבאמת קרה, והוא מסביר את ההמתנה.
     // ⚠️ `hops` ולא `via` — ר' ההערה ב-hbApiFetch. `via` אומר **איפה** אנחנו, `hops` אומר
     // **שעברנו**, ורק השני הוא דיווח על משהו שקרה לאוהד הזה עכשיו.
-    const stage = (api && api.hops > 0) ? 'החיבור איטי — מנסים דרך אחרת…'
+    const stage = (getStage && getStage() === 'auth') ? HERO_AUTH_PROGRESS
+                : (api && api.hops > 0) ? 'החיבור איטי — מנסים דרך אחרת…'
                 : (HB_PROGRESS.filter(p => ms >= p.at).pop() || {}).text || '';
     if (stage && stage !== shown) { shown = stage; setText(stage); }
   };
@@ -2508,7 +2592,9 @@ window.heroLogin = async function() {
   // שבאמת מסביר את ההמתנה.
   // ⚠️ **חייב להיעצר בכל נתיב-יציאה** (`finally` למטה). טיקר ששורד את סוף הבקשה כותב
   // "כמעט שם…" על כפתור שכבר חזר ל"התחברו" — בדיוק הבאג של §353, רק שהמקור הוא טיימר.
-  const stopProgress = heroProgress(t => { if (isCurrentAttempt()) btn.textContent = t; }, api);
+  // §405 — `() => stage` ולא הערך: `stage` משתנה ל-'auth' באמצע הריצה, והעברת הערך
+  // הייתה מקפיאה את הטיקר על 'fetch' לנצח.
+  const stopProgress = heroProgress(t => { if (isCurrentAttempt()) btn.textContent = t; }, api, () => stage);
   // §350 — באיזה משני השלבים נגמר הזמן. עד היום שניהם נרשמו כ-'timeout' יחיד, וזה בדיוק
   // המיזוג ש-§322 הזהיר מפניו — רמה אחת עמוק יותר. ההבחנה אינה אקדמית: ב-30.8 נרשמו כאן
   // שלושה 'timeout' רצופים, ונדרש סבב אבחון שלם רק כדי לקבוע שהוורקר בכלל לא היה מעורב.
@@ -2557,7 +2643,9 @@ window.heroLogin = async function() {
       stage = 'auth';
       const a = heroRunAuth(data.customToken, finishLogin);
       try {
-        a.done(await heroWithTimeout(a.settled, Math.max(1500, deadline - Date.now())));
+        // §405 — רצפה של 5 שנ' במקום 1.5. ⚠️ `Math.max` ולא החלפה: כשה-fetch היה מהיר,
+        // מה שנשאר מ-8 השניות **גדול** מהרצפה, וההתנהגות במסלול הרגיל אינה משתנה בכלל.
+        a.done(await heroWithTimeout(a.settled, Math.max(HERO_AUTH_MIN_MS, deadline - Date.now())));
         return;
       } catch (err) {
         // ── §350 — רשת-הצלה לאיחור ────────────────────────────────────────────────────────
@@ -2603,7 +2691,16 @@ window.heroLogin = async function() {
     // השני שקיבלנו תשובה שבורה. שתי בעיות שונות לגמרי, ואסור שיתמזגו לשורה אחת.
     const isT = heroIsTimeout(e);
     // §350 — 'timeout' התפצל ל-fetchTimeout/authTimeout (ר' ההערה על stage בראש הפונקציה).
-    const reason = isT ? (stage === 'auth' ? 'authTimeout' : 'fetchTimeout') : 'error';
+    // §406 — 🔑 **'error' לא אמר איזה שלב נכשל ולא למה, ולכן אי-אפשר היה לאבחן אותו.**
+    // זו בדיוק המלכודת ש-§350 פתר עבור 'timeout' (שהתפצל ל-fetchTimeout/authTimeout) —
+    // ו-'error' נשאר מאחור. אירוע ה-'error' היחיד ב-90 יום (מאיר דהן, 3.9, 12:59) הגיע
+    // אחרי 2.0 שנ' ואי אפשר לומר עליו כלום: לא אם הבקשה נכשלה, לא אם ההזדהות נדחתה, ולא
+    // עם איזה קוד. שני פיצולים, ושניהם נדרשים כדי לענות על "מה לתקן":
+    //   · השלב  — authError מול error. תיקון בצד הלקוח מול תיקון ברשת/וורקר.
+    //   · הקוד  — קוד השגיאה האמיתי ('auth/network-request-failed' וכו'), כמו ש-§284
+    //             כבר עושה ב-formError. בלעדיו התווית היא "שגיאה טכנית" ותו לא.
+    const reason = isT ? (stage === 'auth' ? 'authTimeout' : 'fetchTimeout')
+                       : heroErrChannel(stage === 'auth' ? 'authError' : 'error', e);
     // §353 — נרשם תמיד; המסך מתעדכן רק אם זה עדיין הניסיון הנוכחי (ר' ההערה בענף למעלה).
     // ⚠️ הגארד הזה נדרש **במיוחד** כאן: פסק-הזמן של ניסיון ישן יורה 8 שניות אחרי הלחיצה
     // שלו, כלומר הרבה אחרי שהאוהד כבר לחץ שוב — ובלעדיו הוא היה מוחק הודעה נכונה של הניסיון
@@ -2662,7 +2759,9 @@ window.heroLogin = async function() {
             // ⚠️ **ערוץ אחד, משתנה אחד.** הסיבה נגזרת פעם אחת ומוזנת גם ל-logEvent וגם
             // ל-heroShowLoginHelp. קודם היא הייתה מחושבת כאן ומקובעת שם, ושני השדות
             // התפצלו: המדידה אמרה 'lateAuthError' ופניית-העזרה נשאה 'authTimeout'.
-            const authReason = authIsT ? 'lateAuthTimeout' : 'lateAuthError';
+            // §406 — גם רשת-ההצלה המאוחרת נושאת את הקוד, מאותה סיבה: זה הענף שהכי קשה
+            // לשחזר ידנית, ולכן הוא זה שהכי צריך את האבחון עליו.
+            const authReason = authIsT ? 'lateAuthTimeout' : heroErrChannel('lateAuthError', authErr);
             // מעל הגארד, מאותה סיבה כמו בשני הענפים שמתחת.
             window.logEvent && window.logEvent('loginFail', { channel: authReason, blockId: heroEnvTagAt(t0, api), phone: heroNormalizePhoneDigits(phoneRaw) });
             // §359 — מאפס: הטוקן הונפק, כלומר הוורקר נגיש והחסימה אינה הסיפור כאן.
@@ -2710,7 +2809,7 @@ window.heroLogin = async function() {
         // ביותר** להיות היחיד שלא נמדד כלל.
         // ערוץ אחד, משתנה אחד — ר' ההערה על authReason למעלה. קיבוע 'fetchHardAbort' כאן
         // גרם לבקשה שנפלה אחרי 10 שניות להגיע ל"פניות עזרה" כ"לא חזרה גם אחרי 35 שניות".
-        const hardReason = heroIsTimeout(lateErr) ? 'fetchHardAbort' : 'lateError';
+        const hardReason = heroIsTimeout(lateErr) ? 'fetchHardAbort' : heroErrChannel('lateError', lateErr);
         window.logEvent && window.logEvent('loginFail', { channel: hardReason, blockId: heroEnvTagAt(t0, api), phone: heroNormalizePhoneDigits(phoneRaw) });
         // §359 — הענף הזה הוא **הכשל הכי מובהק** של כתובת חסומה: הבקשה לא חזרה כלל, לא
         // בזמן ולא באיחור. מעל הגארד מאותה סיבה שההערה למעלה מפרטת — מי שהמתין 35 שניות

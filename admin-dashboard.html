@@ -14321,7 +14321,10 @@ const LOGIN_FAIL_LABELS = {
   // אומרת שהוא ראה מסך-שגיאה בדרך. אין מה לחפש בוורקר על שורות האלה.
   authTimeout:     '⚠️ הטוקן הונפק — Firebase Auth לא סגר בזמן במכשיר',
   moduleTimeout:   '⚠️ הדף לא נטען — הבקשה כלל לא יצאה',
-  error:           '⚠️ שגיאה טכנית',
+  error:           '⚠️ שגיאה טכנית בבקשה לוורקר',
+  // §406 — הופרד מ-'error'. ⚠️ ההבחנה קובעת **איפה לחפש**: authError הוא כשל בצד הלקוח
+  // (Firebase/IndexedDB במכשיר) אחרי שהוורקר כבר הנפיק טוקן, ואין מה לחפש בוורקר.
+  authError:       '⚠️ הטוקן הונפק — ההזדהות במכשיר נכשלה',
   // ── §353 — הערוצים של רשת-ההצלה בשלב ה-fetch ────────────────────────────────────────────
   // ⚠️ **התקרה הקשיחה היא הכשל החמור ביותר בקובץ הזה**: לא "הספינר ירד אחרי 8 שניות" אלא
   // 35 שניות בלי שום תשובה. בלי השורה הזאת הוא היה מוצג כ"סיבה לא מוכרת" ומסומן "לא תקלה" —
@@ -14351,7 +14354,13 @@ function hbLoginFailParts(ch) {
   if (link) s = s.slice(5);
   const late = s.indexOf('late:') === 0;
   if (late) s = s.slice(5);
-  return { google, link, late, base: s };
+  // §406 — הזנב `:<קוד>` הוא קוד-השגיאה האמיתי ('authError:auth/network-request-failed').
+  // ⚠️ **מפוצל אחרון**, אחרי שכל הקידומות כבר ירדו — אחרת `google:link:x` היה מתפרש כבסיס
+  // 'google' עם קוד 'link:x'. הסדר כאן אינו סגנון, הוא הנכונות עצמה.
+  const ci = s.indexOf(':');
+  const code = ci > 0 ? s.slice(ci + 1) : '';
+  if (ci > 0) s = s.slice(0, ci);
+  return { google, link, late, base: s, code };
 }
 // §353 — הסיבה עצמה זהה ('late:badCode' הוא badCode), ולכן התווית נגזרת מהבסיס ורק מסומנת
 // כמאוחרת — אחרת היו נוצרות כאן שורות כפולות שאומרות בדיוק את אותו דבר. §402 — אותו נימוק
@@ -14394,7 +14403,7 @@ const GOOGLE_LINK_FAIL_LABELS = {
 // נראה כמו כשל שלנו אבל מקורו כמעט תמיד בטוקן שפג במכשיר, ואין לנו מה לתקן בו.
 const HB_LOGIN_FAIL_OURS = ['timeout', 'fetchTimeout', 'authTimeout', 'moduleTimeout', 'error',
                             'fetchHardAbort', 'lateError', 'lateAuthTimeout', 'lateAuthError',
-                            'google_ambiguous',
+                            'google_ambiguous', 'authError',
                             // §403 — כשלי-קישור. ר' ההערה על GOOGLE_LINK_FAIL_LABELS: אלה
                             // סתירות של השרת מול עצמו, לא טעויות של האדם. ⚠️ `canLink`
                             // **אינו** כאן — הוא הצעה שהוצגה בהצלחה, לא כשל.
@@ -14409,6 +14418,9 @@ function hbLoginFailLabel(ch) {
   // רועשת — הטקסט כבר אומר Google — ובשבבי-הסיכום למעלה הוא היה גולש לשורה שנייה.
   return label
     + (p.google && !p.link && !GOOGLE_FAIL_LABELS[p.base] ? ' · דרך Google' : '')
+    // §406 — הקוד האמיתי, כשיש. ⚠️ **אחרי התווית ולא במקומה**: 'auth/network-request-failed'
+    // אומר הכל למי שמכיר ואפס למי שלא, והשורה נקראת ע"י שניהם.
+    + (p.code ? ' · ' + p.code : '')
     + (p.late ? ' (תשובה מאוחרת)' : '');
 }
 function helpReqsActive() { return issuesActive() && taskIssueKind === 'help'; }

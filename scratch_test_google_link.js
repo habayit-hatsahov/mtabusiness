@@ -17,6 +17,9 @@ function build(apiResponses) {
     console, setTimeout, clearTimeout, AbortController, Promise, JSON, Date, String,
     window: {}, document: { getElementById: () => null },
     HERO_TIMEOUT_MS: 8000, HERO_HARD_ABORT_MS: 35000,
+    // §405 — מוגדר מעל הבלוק שנשלף (ליד heroProgress), ולכן חייב להגיע כאן כ-stub.
+    // ⚠️ בלעדיו הענף "יש טוקן" זורק ReferenceError — וזה בדיוק מה שההרנס תפס.
+    HERO_AUTH_PROGRESS: 'הקוד אושר — נכנסים…',
     HERO_G_MSGS: {},
     heroGMsg: (h, w) => msgs.push((w ? '[warn] ' : '') + String(h).replace(/<[^>]+>/g, '')),
     heroHideErr: () => {},
