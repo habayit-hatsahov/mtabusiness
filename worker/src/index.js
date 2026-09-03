@@ -101,6 +101,16 @@ export default {
       if (request.method === 'POST' && url.pathname === '/setup-brevo-webhook') {
         return json(await handleSetupBrevoWebhook(request, env), env, request);
       }
+      // ── §403 — חימום ────────────────────────────────────────────────────────────────
+      // הזול ביותר שאפשר: בלי Firestore, בלי KV, בלי getGoogleAccessToken. מטרתו אינה
+      // להחזיר מידע אלא **לשלם מראש** את DNS + TLS + קר-סטארט, בזמן שהאוהד עוד מקליד.
+      // ⚠️ **הוא גם מזהה איזו כתובת בכלל נגישה מהמכשיר הזה**, וזה החלק החשוב יותר: מכשיר
+      // שהראשית חסומה אצלו (§359/§374) לא ישלם 3.5 שניות בזמן הכניסה עצמה.
+      // ⚠️ אין כאן שום סוד ואין תופעות-לוואי, ולכן אין מגבלת-קצב: קריאה חוזרת עולה כלום
+      // ואינה נוגעת ב-`recordAttempt`.
+      if (request.method === 'GET' && url.pathname === '/ping') {
+        return json({ ok: true }, env, request);
+      }
       if (request.method === 'GET' && url.pathname === '/download-image') {
         return handleDownloadImage(request, env);
       }
@@ -187,7 +197,8 @@ async function handleGoogleLogin({ idToken }, request, env) {
   const member = rows[0];
   // ⚠️ 'לא מקושר' אינו שגיאה — זו הפעם הראשונה שלו. הקליינט הופך את זה למסך שמסביר
   // איך לקשור, ולכן המייל מוחזר: כדי שהמסך יוכל לומר לו באיזה חשבון הוא השתמש.
-  if (!member) return { error: 'google_not_linked', email: g.email };
+  if (!member) return { error: 'google_not_linked', email: g.email,
+                        linkable: await linkableByVerifiedEmail(env, accessToken, g) };
   if (member.fields.status !== 'approved') {
     return { error: member.fields.status === 'pending' ? 'pending' : 'rejected' };
   }
@@ -197,6 +208,38 @@ async function handleGoogleLogin({ idToken }, request, env) {
     claims: { role: 'member', isBusinessOwner: member.fields.isBusinessOwner === true },
   });
   return { customToken };
+}
+
+// ══ §403 — מי שהמייל המאומת שלו כבר יושב על רשומה, בלחיצה אחת ═══════════════════════════
+// 🔑 **זה אינו שער חדש — זה בדיוק השער של `handleGoogleAttach` למטה**, שקיים מ-§370 ומנוסח
+// שם במפורש: *"אפשר לקשור חשבון גוגל רק לרשומה שנושאת את הכתובת של אותו חשבון"*. מה שנוסף
+// כאן הוא רק **מציאת** הרשומה ההיא לפי המייל, במקום לדרוש מהקליינט לדעת את ה-memberId.
+//
+// למה זה בטוח באותה מידה: המייל שגוגל אימתה הוא **אותה תיבה בדיוק** שאליה אנחנו כבר שולחים
+// את קוד-הכניסה ב-`/resend-login-code`. מי ששולט בה יכול להיכנס גם היום, בשתי לחיצות נוספות.
+// ⚠️ ולכן גם החולשה זהה ואינה חדשה: רשומה שנרשמה ע"י בן-משפחה עם **המייל שלו** תיפתח לו —
+// בדיוק כפי שקוד-הכניסה שלה כבר מגיע אליו היום. זה מתועד ב-§368 ולא נפתר כאן.
+//
+// שלושה תנאים, וכולם חייבים להתקיים. ⚠️ **`rows.length !== 1` הוא עצירה ולא בחירה**: שתי
+// רשומות עם אותו מייל פירושן שאיננו יודעים מי מהן, ו'לנחש' כאן = להכניס אדם לחשבון של
+// מישהו אחר (אותו נימוק כמו `membersByGoogleSub` למעלה). נמדד ב-3.9: 200 מתוך 201 הכתובות
+// ייחודיות, והכפילות היחידה היא אותה אדם פעמיים.
+async function linkableByVerifiedEmail(env, accessToken, g) {
+  // מייל שגוגל לא אימתה אינו ראיה לכלום, וכל הגדר נשען עליו.
+  if (!g.emailVerified || !g.email) return null;
+  const rows = await firestoreRunQuery(env, accessToken, 'members', 'email', g.email, 2);
+  if (rows.length !== 1) return null;
+  const m = rows[0];
+  // ⚠️ כבר מקושר לחשבון גוגל **אחר** — החלפה מותרת רק בנתיב המחובר (`/google-link`).
+  if (m.fields.googleSub) return null;
+  // ⚠️ ממתין/נדחה אינו נכנס. `/google-login` כבר מחזיר 'pending'/'rejected' למי שמקושר,
+  // וזה חייב להיות זהה גם כאן — אחרת הקישור היה עוקף את שער-האישור.
+  if (m.fields.status !== 'approved') return null;
+  // רק שם פרטי + אות ראשונה של המשפחה: מספיק כדי שהקורא יזהה את עצמו, ולא רשימת-פרטים
+  // על אדם שאולי אינו הוא. (מי שמגיע לכאן ממילא שולט בתיבה, אבל אין סיבה להרחיב.)
+  const fn = String(m.fields.firstName || '').trim();
+  const ln = String(m.fields.lastName || '').trim();
+  return { memberId: m.id, name: (fn + ' ' + (ln ? ln[0] + "'" : '')).trim() };
 }
 
 // ── קישור ע"י חבר שכבר מחובר — הנתיב החזק ──────────────────────────────────────────────
@@ -252,7 +295,23 @@ async function handleGoogleAttach({ idToken, memberId }, request, env) {
   await firestorePatch(env, accessToken, `members/${memberId}`, {
     googleSub: g.sub, googleEmail: g.email, googleLinkedAt: new Date(),
   });
-  return { ok: true };
+
+  // ── §403 — ומיד גם נכנסים, באותה קריאה ───────────────────────────────────────────────
+  // 🔑 **אין כאן הרחבת-הרשאה, יש חיסכון בסיבוב.** מי שעבר את השער למעלה כבר הוכיח שליטה
+  // בתיבה שעל הרשומה — כלומר בדיוק מה שנדרש כדי לקבל קוד-כניסה ב-`/resend-login-code`
+  // ולהיכנס איתו. חזרה בלי טוקן הייתה מכריחה קריאה שנייה ל-`/google-login` על אותה עובדה
+  // עצמה: רשת נוספת, המתנה נוספת, ועוד נקודת-כשל — למי שכבר נכשל פעם אחת בכניסה.
+  //
+  // ⚠️ **רק ל-approved**, וזה שומר על הנתיב המקורי של §370: בהרשמה הרשומה היא `pending`,
+  // אין לה עדיין קוד-כניסה, והיא מקבלת כאן `{ ok: true }` בלבד — בדיוק כמו קודם. שער
+  // האישור אינו נעקף, הוא רק לא נשאל פעמיים.
+  const canEnter = me.fields.status === 'approved';
+  return canEnter
+    ? { ok: true, customToken: await mintFirebaseCustomToken(env, {
+        uid: memberId,
+        claims: { role: 'member', isBusinessOwner: me.fields.isBusinessOwner === true },
+      }) }
+    : { ok: true };
 }
 
 async function handleBusinessLogin({ accessToken: bizToken }, env) {

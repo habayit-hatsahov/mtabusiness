@@ -1865,16 +1865,42 @@ const HB_API_HOSTS = [
 const WORKER_URL = HB_API_HOSTS[0];
 // ⚠️ רק כשל-רשת מקדם לכתובת הבאה (4xx/5xx הוא תשובה), ו-AbortError לעולם לא — הוא גבול-הזמן
 // שהצבנו בעצמנו. זהה מילה במילה ל-welcome.html.
+// §403 — דד-ליין לכל כתובת. **הנימוק המלא ב-welcome.html (§402), ואין לשכפל אותו לכאן.**
+// בקצרה: הקידום נשען על `fetch` שנדחה, וכתובת שנתלית אינה נדחית לעולם — כלומר הגיבוי
+// לא הופעל דווקא במצב שבו הוא הכי נחוץ. 3.5 שניות לכל כתובת פרט לאחרונה.
+// ⚠️ הסף מקורו בספים של `welcome.html` (8 שנ' ספינר / 35 שנ' תקרה) — הדף היחיד שבו
+// אדם ממתין מול המסך. כאן אין ספים כאלה, והערך זהה **בכוונה**: סף נפרד לכל דף היה
+// אומר שאותה תקלת-רשת מתנהגת אחרת בכל מסך, בלי שאיש יידע למה.
+const HB_HOST_TIMEOUT_MS = 3500;
 const hbApiFetch = (path, opts, st) => {
   const state = st || {};
   state.via = 0;
-  const tryHost = (i) =>
-    fetch(HB_API_HOSTS[i] + path, opts).catch(err => {
-      if (err && err.name === 'AbortError') throw err;
-      if (i + 1 >= HB_API_HOSTS.length) throw err;
-      state.via = i + 1;
-      return tryHost(i + 1);
-    });
+  const outer = opts && opts.signal;
+  const tryHost = (i) => {
+    const last = i + 1 >= HB_API_HOSTS.length;
+    const ac = new AbortController();
+    const onOuter = () => ac.abort();
+    if (outer) {
+      if (outer.aborted) ac.abort();
+      else outer.addEventListener('abort', onOuter);
+    }
+    const timer = last ? null : setTimeout(() => ac.abort(), HB_HOST_TIMEOUT_MS);
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      if (outer) outer.removeEventListener('abort', onOuter);
+    };
+    return fetch(HB_API_HOSTS[i] + path, { ...opts, signal: ac.signal }).then(
+      (res) => { cleanup(); return res; },
+      (err) => {
+        cleanup();
+        // ⚠️ מי ביטל: הדד-ליין שלנו מקדם, ביטול של הקורא עוצר. ר' §402.
+        if (outer && outer.aborted) throw err;
+        if (last) throw err;
+        state.via = i + 1;
+        return tryHost(i + 1);
+      }
+    );
+  };
   return tryHost(0);
 };
 // §375 — <img> לא יודע לנסות כתובת שנייה. מחליף קידומת-כתובת בלבד; מחזיר false כשנגמרו.

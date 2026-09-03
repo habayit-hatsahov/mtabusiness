@@ -1174,6 +1174,10 @@ body {
 .class-badge.neutral { background: var(--border-md); color: var(--text-sm); }
 .treat-badge { display: inline-block; background: var(--accent-bg); color: var(--accent); font-size: 10px; font-weight: 700; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
 .warn-badge { display: inline-block; background: var(--warn-bg); color: var(--orange); font-size: 10px; font-weight: 700; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+/* §402 — "לא נכנס". ⚠️ **מחלקה נפרדת ולא warn-badge**: ליד תג "תקלה אצלנו" הכתום, תג כתום
+   שני נבלע בו — והוא בדיוק ההפך, כי זה התג היחיד ברשימה שדורש פעולה אנושית (שיחה לאוהד).
+   מה שנקרא באותו צבע נקרא כאותה חשיבות. */
+.miss-badge { display: inline-block; background: rgba(180,35,24,.10); color: #b42318; font-size: 10px; font-weight: 800; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
 .class-badge.lg, .treat-badge.lg, .warn-badge.lg { font-size: 11.5px; border-radius: 7px; padding: 3px 10px; }
 
 /* ── כרטיס-זהות (ראש כרטיס-מלא — עסק/אוהד) — סגנון dcard כללי, לשימוש חוזר בכרטיסים הבאים (מיקום/שיפוט-מהיר/שלבים) ── */
@@ -3387,16 +3391,42 @@ const HB_API_HOSTS = [
 const WORKER_URL = HB_API_HOSTS[0];
 // ⚠️ רק כשל-רשת מקדם לכתובת הבאה — 4xx/5xx הוא תשובה שהתקבלה ועובר הלאה. ⚠️ AbortError הוא
 // החלטה שלנו (פסקי-הזמן של הפאנל) וניסיון חוזר עליו מבטל את הגבול שהצבנו. זהה ל-welcome.html.
+// §403 — דד-ליין לכל כתובת. **הנימוק המלא ב-welcome.html (§402), ואין לשכפל אותו לכאן.**
+// בקצרה: הקידום נשען על `fetch` שנדחה, וכתובת שנתלית אינה נדחית לעולם — כלומר הגיבוי
+// לא הופעל דווקא במצב שבו הוא הכי נחוץ. 3.5 שניות לכל כתובת פרט לאחרונה.
+// ⚠️ הסף מקורו בספים של `welcome.html` (8 שנ' ספינר / 35 שנ' תקרה) — הדף היחיד שבו
+// אדם ממתין מול המסך. כאן אין ספים כאלה, והערך זהה **בכוונה**: סף נפרד לכל דף היה
+// אומר שאותה תקלת-רשת מתנהגת אחרת בכל מסך, בלי שאיש יידע למה.
+const HB_HOST_TIMEOUT_MS = 3500;
 const hbApiFetch = (path, opts, st) => {
   const state = st || {};
   state.via = 0;
-  const tryHost = (i) =>
-    fetch(HB_API_HOSTS[i] + path, opts).catch(err => {
-      if (err && err.name === 'AbortError') throw err;
-      if (i + 1 >= HB_API_HOSTS.length) throw err;
-      state.via = i + 1;
-      return tryHost(i + 1);
-    });
+  const outer = opts && opts.signal;
+  const tryHost = (i) => {
+    const last = i + 1 >= HB_API_HOSTS.length;
+    const ac = new AbortController();
+    const onOuter = () => ac.abort();
+    if (outer) {
+      if (outer.aborted) ac.abort();
+      else outer.addEventListener('abort', onOuter);
+    }
+    const timer = last ? null : setTimeout(() => ac.abort(), HB_HOST_TIMEOUT_MS);
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      if (outer) outer.removeEventListener('abort', onOuter);
+    };
+    return fetch(HB_API_HOSTS[i] + path, { ...opts, signal: ac.signal }).then(
+      (res) => { cleanup(); return res; },
+      (err) => {
+        cleanup();
+        // ⚠️ מי ביטל: הדד-ליין שלנו מקדם, ביטול של הקורא עוצר. ר' §402.
+        if (outer && outer.aborted) throw err;
+        if (last) throw err;
+        state.via = i + 1;
+        return tryHost(i + 1);
+      }
+    );
+  };
   return tryHost(0);
 };
 // ── נפילה-לאחור ל-<img> ─────────────────────────────────────────────────────────────────
@@ -14301,20 +14331,85 @@ const LOGIN_FAIL_LABELS = {
   lateAuthTimeout: '⚠️ הטוקן הונפק מאוחר — Firebase Auth לא סגר גם אחרי 35 שניות',
   lateAuthError:   '⚠️ הטוקן הונפק מאוחר וההזדהות נכשלה',
 };
-// §353 — תשובה שהגיעה **אחרי** שפסק-הזמן כבר הוריד את הספינר נושאת קידומת 'late:'.
-// הסיבה עצמה זהה ('late:badCode' הוא badCode), ולכן התווית נגזרת מהבסיס ורק מסומנת
-// כמאוחרת — אחרת היו נוצרות כאן ארבע שורות כפולות שאומרות בדיוק את אותו דבר.
-const hbLoginFailBase = (ch) => String(ch || '').replace(/^late:/, '');
-// §353 — **מקור-אמת יחיד ל"תקלה אצלנו"**. עד היום אותה הבחנה הייתה כתובה בשתי רשימות
+// ══ §402 — פירוק הערוץ לשלושת הרכיבים שלו: מסלול · איחור · סיבה ═══════════════════════
+// §353 טיפל בקידומת 'late:' בלבד, וזה הספיק כשהיה מסלול-כניסה אחד. §370 הוסיף מסלול שני
+// (Google), והוא נושא קידומת **משלו** — ואף אחת מהרשימות כאן לא ידעה עליה:
+//   · `google:notLinked` לא נמצא ב-LOGIN_FAIL_LABELS והוצג "סיבה לא מוכרת: google:notLinked"
+//   · 🔴 **וחמור מזה**: `google:fetchTimeout` לא נמצא ב-HB_LOGIN_FAIL_OURS, ולכן פסק-זמן
+//     במסלול Google — תקלה שלנו לכל דבר — הוצג בתג ירוק של **"לא תקלה"**.
+// זו בדיוק המלכודת שההערה של §350 מתחת מזהירה מפניה, בפעם השלישית: ערוץ חדש שאינו ברשימה
+// נספר אוטומטית כטעות של האוהד. 🔑 **קידומת חדשה בכתיבה = פירוק חדש בקריאה**, אחרת מסלול
+// שלם נעלם מהסיווג בשקט.
+// ⚠️ הסדר קבוע ולא הפיך: `google:` תמיד ראשונה (welcome.html עוטף בה את התוצאה של fail),
+// ו-'late:' בתוכה.
+function hbLoginFailParts(ch) {
+  let s = String(ch || '');
+  const google = s.indexOf('google:') === 0;
+  if (google) s = s.slice(7);
+  // §403 — קידומת שלישית: `google:link:` = כשל של פעולת-הקישור, לא של הכניסה.
+  const link = google && s.indexOf('link:') === 0;
+  if (link) s = s.slice(5);
+  const late = s.indexOf('late:') === 0;
+  if (late) s = s.slice(5);
+  return { google, link, late, base: s };
+}
+// §353 — הסיבה עצמה זהה ('late:badCode' הוא badCode), ולכן התווית נגזרת מהבסיס ורק מסומנת
+// כמאוחרת — אחרת היו נוצרות כאן שורות כפולות שאומרות בדיוק את אותו דבר. §402 — אותו נימוק
+// בדיוק חל על 'google:': `fetchTimeout` הוא אותו כשל בשני המסלולים, ומה שמשתנה הוא מאיפה
+// הגיע ולא מה קרה.
+const hbLoginFailBase = (ch) => hbLoginFailParts(ch).base;
+// §402 — סיבות שקיימות **רק** במסלול Google, ולכן טבלה נפרדת ולא ערבוב בטבלה הראשית.
+const GOOGLE_FAIL_LABELS = {
+  // ⚠️ **אינה תקלה, ואינה טעות של האוהד** — זה המצב הרגיל של כל מי שעדיין לא חיבר
+  // (173 מאושרים נכון ל-3.9). ההודעה במסך היא הפתרון, לא הקוד.
+  notLinked:            'חשבון Google שעדיין לא חובר לרשומה',
+  invalid_google_token: '⚠️ הטוקן של Google לא עבר אימות',
+  // שתי רשומות עם אותו googleSub — תקלת-נתונים אצלנו, לא אצל הנכנס.
+  google_ambiguous:     '🔴 אותו חשבון Google מקושר לשתי רשומות',
+  // §403 — **אינו כשל**: המייל המאומת נמצא על רשומה, והוצעה לו חיבור-בלחיצה. נרשם כדי
+  // שנדע כמה מהמסך הזה קיבלו הצעה מול כמה ראו את ההודעה הכללית. ⚠️ מוצג בירוק ("לא תקלה")
+  // ולכן חשוב שהתווית תסביר את עצמה — אחרת זה נראה כמו כשל שסווג לא נכון.
+  canLink:              'הוצע לחבר חשבון Google לרשומה קיימת',
+};
+// §403 — כשלים של **פעולת הקישור עצמה** (`google:link:<סיבה>`), אחרי שהאדם כבר לחץ "כן,
+// זה אני". ⚠️ 🔑 **`email_mismatch` ו-`already_attached` הם תקלה אצלנו ולא טעות שלו**:
+// הוורקר אישר את השער בקריאה הראשונה ופסל אותו בשנייה — כלומר סתירה, לרוב מרוץ בין שני
+// טאבים או רשומה שהשתנתה באמצע. מי שראה "כן, זה אני" ואז נדחה חייב להופיע ברשימה שלנו.
+const GOOGLE_LINK_FAIL_LABELS = {
+  email_mismatch:   '🔴 הקישור נדחה — המייל על הרשומה כבר לא תואם',
+  already_attached: '🔴 הקישור נדחה — הרשומה כבר קושרה בינתיים',
+  member_not_found: '🔴 הקישור נדחה — הרשומה לא נמצאה',
+  google_already_linked: '🔴 חשבון ה-Google הזה כבר מקושר לרשומה אחרת',
+  google_email_unverified: '⚠️ גוגל לא אימתה את המייל',
+  fetchTimeout:     '⚠️ הקישור לא נענה תוך 8 שניות',
+  error:            '⚠️ שגיאה טכנית בקישור',
+  unknown:          '🔴 הקישור נכשל מסיבה לא ידועה',
+};
+// §353 — **מקור-אמת יחיד ל"תקלה אצלנו"**. עד §353 אותה הבחנה הייתה כתובה בשתי רשימות
 // נפרדות (`ours` בשורות, ורשימת ה-warn-badge בשבבי-הסיכום), והן כבר הספיקו להיפרד: §350
 // הוסיף את fetchTimeout/authTimeout רק לראשונה, ולכן שני הערוצים החמורים האלה הוצגו בשבב
 // ירוק של "מצב תקין". רשימה אחת לשניהם מונעת את הסחיפה הזאת מלחזור.
+// §402 — הרשימה עצמה לא השתנתה; מה שהשתנה הוא ש-`hbLoginFailBase` מפרק עכשיו גם 'google:',
+// ולכן היא חלה סוף-סוף גם על המסלול השני. `invalid_google_token` **אינו** כאן בכוונה: הוא
+// נראה כמו כשל שלנו אבל מקורו כמעט תמיד בטוקן שפג במכשיר, ואין לנו מה לתקן בו.
 const HB_LOGIN_FAIL_OURS = ['timeout', 'fetchTimeout', 'authTimeout', 'moduleTimeout', 'error',
-                            'fetchHardAbort', 'lateError', 'lateAuthTimeout', 'lateAuthError'];
+                            'fetchHardAbort', 'lateError', 'lateAuthTimeout', 'lateAuthError',
+                            'google_ambiguous',
+                            // §403 — כשלי-קישור. ר' ההערה על GOOGLE_LINK_FAIL_LABELS: אלה
+                            // סתירות של השרת מול עצמו, לא טעויות של האדם. ⚠️ `canLink`
+                            // **אינו** כאן — הוא הצעה שהוצגה בהצלחה, לא כשל.
+                            'email_mismatch', 'already_attached', 'member_not_found',
+                            'google_already_linked'];
 function hbLoginFailLabel(ch) {
-  const base = hbLoginFailBase(ch);
-  const label = LOGIN_FAIL_LABELS[base] || ('סיבה לא מוכרת: ' + (ch || '—'));
-  return String(ch || '').indexOf('late:') === 0 ? label + ' (תשובה מאוחרת)' : label;
+  const p = hbLoginFailParts(ch);
+  const label = (p.link && GOOGLE_LINK_FAIL_LABELS[p.base])
+             || (p.google && GOOGLE_FAIL_LABELS[p.base]) || LOGIN_FAIL_LABELS[p.base]
+             || ('סיבה לא מוכרת: ' + (ch || '—'));
+  // ⚠️ הסימון "דרך Google" נוסף רק לסיבות **משותפות**. על `notLinked` הוא היה כפילות
+  // רועשת — הטקסט כבר אומר Google — ובשבבי-הסיכום למעלה הוא היה גולש לשורה שנייה.
+  return label
+    + (p.google && !p.link && !GOOGLE_FAIL_LABELS[p.base] ? ' · דרך Google' : '')
+    + (p.late ? ' (תשובה מאוחרת)' : '');
 }
 function helpReqsActive() { return issuesActive() && taskIssueKind === 'help'; }
 function helpReqList() {
@@ -14462,6 +14557,84 @@ function hbFanByPhone(phone) {
 // בודד ולא לפי אדם: ניסיון-כניסה שני שנכשל הוא תקלה חדשה שצריך לראות שוב.
 function loginIssueKey(sessionId, at) { return 'login|' + (sessionId || '') + '|' + (at ? at.getTime() : 0); }
 
+// ══ §402 — "האם הוא נכנס בסוף", ולא רק "מה נכשל" ═══════════════════════════════════════
+// בקשה מפורשת של המשתמש (3.9): *"אם הוא נכנס בסוף — שיופיע שם... כדי שאדע לפנות אליו"*.
+// עד היום השורה אמרה **מה** נכשל, **מתי**, ומ-§355 גם **למי** — ולא את הדבר היחיד שקובע
+// אם צריך להרים טלפון: האם הוא בפנים.
+//
+// 🔑 **המדידה כבר ידעה את זה, פשוט לא נשאלה.** אין אירוע 'loginOk' בשום מקום בפרויקט, ולכן
+// ההנחה הטבעית הייתה שאי אפשר לדעת. מה שכן קיים: home.html רושם `pageView` עם `memberId`.
+// כלומר **כל אירוע עם memberId שנרשם אחרי הכשל, באותו סשן, הוא הוכחה שהוא נכנס** — הדף
+// כבר ידע מי הוא. לא נדרש שום שדה חדש ושום כתיבה חדשה.
+//
+// נמדד ב-3.9 על 41 כשלים ב-30 יום: 27 (66%) נגמרו בכניסה. בכללם **כל שלוש** שורות
+// "תקלה אצלנו" של אותו יום — תוך 3, 9 ו-15 שניות. כלומר רשת-ההצלה של §350/§353 עובדת,
+// והתג "תקלה אצלנו" נכון (הם ראו מסך שגיאה) אבל נקרא בטעות כ"נשאר בחוץ".
+//
+// ⚠️ **אין כאן חור-קטימה, וזה לא מקרי**: platformEvents נטען 10,000 האחרונים בסדר **יורד**,
+// ולכן אם הכשל עצמו נטען — כל מה שקרה **אחריו** נטען בהכרח. הקטימה מורידה את הישנים.
+//
+// שתי דרגות-ודאות, ובכוונה **לא ממוזגות** — הן מובילות לשתי פעולות שונות:
+//   sess — אותו טאב. ודאות מלאה, אין מה לעשות.
+//   mem  — סשן אחר של אותו חבר (נגזר מהטלפון שהוקלד). הוא נכנס, אבל משהו הכריח אותו
+//          להתחיל מחדש — שווה מבט, לא שיחה.
+// ⚠️ 🔑 **"לא נמצאה כניסה" אינו "נשאר בחוץ", והניסוח על המסך חייב לומר את זה.** sessionId
+// יושב ב-sessionStorage ולכן מת עם הטאב, ושורת `google:notLinked` אינה נושאת טלפון בכלל —
+// כלומר עליה יש רק ההצלבה החלשה. מי שסגר וחזר ייראה כאן "לא נמצאה כניסה" למרות שנכנס.
+// קביעה חד-משמעית כאן הייתה שולחת את המשתמש להתקשר לאנשים שכבר בפנים.
+let _hbOutcomeIdx = null, _hbOutcomeSrc = null;
+function hbLoginOutcomeIndex() {
+  // ⚠️ ממומו על **זהות המערך** ולא על אורכו: platformEvents מוחלף כולו בטעינה מחדש
+  // (loadPlatformStats), ומטמון שנשען על אורך היה מחזיר אינדקס ישן אחרי רענון.
+  if (_hbOutcomeSrc === platformEvents && _hbOutcomeIdx) return _hbOutcomeIdx;
+  const bySess = new Map(), byMember = new Map();
+  for (const e of (platformEvents || [])) {
+    if (!e.memberId || !e.at) continue;
+    const t = e.at.getTime();
+    if (e.sessionId) (bySess.get(e.sessionId) || bySess.set(e.sessionId, []).get(e.sessionId)).push({ t, m: e.memberId });
+    (byMember.get(e.memberId) || byMember.set(e.memberId, []).get(e.memberId)).push(t);
+  }
+  for (const a of bySess.values()) a.sort((x, y) => x.t - y.t);
+  for (const a of byMember.values()) a.sort((x, y) => x - y);
+  _hbOutcomeSrc = platformEvents;
+  _hbOutcomeIdx = { bySess, byMember };
+  return _hbOutcomeIdx;
+}
+// ⚠️ הסף הזה קיים כדי לא להכריז "לא נכנס" על כשל שקרה **לפני רגע**: האוהד אולי מקליד
+// עכשיו. בלעדיו כל רענון של המסך היה מייצר שורה אדומה חדשה שנרגעת מעצמה דקה אחר כך.
+const HB_OUTCOME_GRACE_MS = 3 * 60 * 1000;
+function hbLoginOutcome(fail) {
+  const idx = hbLoginOutcomeIndex();
+  const t = fail.at ? fail.at.getTime() : 0;
+  if (!t) return { kind: 'unknown' };
+  const inSess = (idx.bySess.get(fail.sessionId) || []).find(x => x.t > t);
+  if (inSess) return { kind: 'sess', secs: Math.round((inSess.t - t) / 1000), memberId: inSess.m };
+  // ההצלבה החלשה — רק אם ידוע מי הוא. ר' האזהרה למעלה: היעדרה אינו ראיה.
+  const mid = fail.fan ? fail.fan.id : null;
+  const inMem = mid ? (idx.byMember.get(mid) || []).find(x => x > t) : null;
+  if (inMem) return { kind: 'mem', secs: Math.round((inMem - t) / 1000), memberId: mid };
+  if (Date.now() - t < HB_OUTCOME_GRACE_MS) return { kind: 'fresh' };
+  return { kind: 'none', weak: !fail.fan };
+}
+// משך קריא — "13 שנ'" / "4 דק'" / "1.2 שע'". שניות בודדות הן העיקר כאן: ההבדל בין
+// "נכנס אחרי 9 שניות" (רשת-ההצלה עבדה) לבין "אחרי 40 דקות" (הוא ויתר וחזר) הוא כל הסיפור.
+function hbDurLabel(s) {
+  if (s < 90) return s + " שנ'";
+  if (s < 5400) return Math.round(s / 60) + " דק'";
+  return (s / 3600).toFixed(1) + " שע'";
+}
+function hbOutcomeBadge(o) {
+  if (o.kind === 'sess')    return `<span class="treat-badge">✅ נכנס אחרי ${hbDurLabel(o.secs)}</span>`;
+  if (o.kind === 'mem')     return `<span class="treat-badge">✅ נכנס — מסשן אחר, ${hbDurLabel(o.secs)}</span>`;
+  if (o.kind === 'fresh')   return `<span class="warn-badge">⏳ טרם — הכשל ממש עכשיו</span>`;
+  if (o.kind === 'unknown') return '';
+  // ⚠️ שני ניסוחים שונים, וזו לא קוסמטיקה: על שורה בלי טלפון יש רק ההצלבה לפי סשן,
+  // והיא נשברת מסגירת טאב. "לא נמצאה" מזמין בדיקה; "לא נכנס" היה פסק-דין שגוי.
+  return o.weak
+    ? `<span class="warn-badge">❔ לא נמצאה כניסה (סשן בלבד)</span>`
+    : `<span class="miss-badge">🔴 לא נכנס — שווה לפנות אליו</span>`;
+}
+
 function loginFailList() {
   return (platformEvents || [])
     .filter(e => e.type === 'loginFail')
@@ -14489,6 +14662,9 @@ function loginFailList() {
       // נראות כאן שורה זהה, ודורשות שלושה תיקונים שונים. ריק באירועים שנרשמו לפני §338.
       env: e.blockId || '',
     }))
+    // §402 — מחושב **אחרי** ה-map ולא בתוכו: hbLoginOutcome נשען על `fan`, שנגזר שם.
+    // חישוב בתוך אותו אובייקט-ליטרל היה קורא שדה שעדיין לא קיים — ומקבל undefined בשקט.
+    .map(x => ({ ...x, outcome: hbLoginOutcome(x) }))
     .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
 // §355 — "טיפלתי" **מפנה את השורה**, לא רק צובע אותה. זו הייתה הבקשה המפורשת של המשתמש
@@ -14525,12 +14701,28 @@ function loginIssuesTableHtml(list) {
     .join('');
   const oursCount = list.filter(x => x.ours).length;
   const withPhone = list.filter(x => x.phone).length;
+  // §402 — הספירה שקובעת מה עושים עכשיו. ⚠️ 'fresh' (הכשל לפני פחות מ-3 דק') **אינו נספר
+  // באף אחד מהשניים** — הוא עדיין לא הוכרע, וספירה שלו כ"לא נכנס" הייתה מייצרת התראה
+  // שנרגעת מעצמה דקה אחר כך.
+  const gotIn   = list.filter(x => x.outcome.kind === 'sess' || x.outcome.kind === 'mem').length;
+  const leftOut = list.filter(x => x.outcome.kind === 'none' && !x.outcome.weak).length;
+  const unknown = list.filter(x => x.outcome.kind === 'none' && x.outcome.weak).length;
   return `
     <div class="mail-issues-note">
       ניסיונות כניסה שנכשלו ב-30 הימים האחרונים.
       ${oursCount
         ? `<b>⚠️ ${oursCount} מהם תקלה אצלנו ולא טעות של האוהד</b> — פסק-זמן או דף שלא נטען.`
         : 'כולם טעויות קוד/טלפון או המתנה לאישור — אף אחד מהם אינו תקלה אצלנו.'}
+      <!-- §402 — 🔑 **המשפט שהופך את הרשימה מלוג לרשימת-שיחות.** "תקלה אצלנו" נקרא עד היום
+           כ"נשאר בחוץ", ובפועל רוב הכשלים נגמרים בכניסה תוך שניות (רשת-ההצלה של §350/§353).
+           בלי השורה הזאת אותה עבודה בדיוק מושקעת בשורה שנפתרה מעצמה ובשורה של אדם שממתין. -->
+      <div style="margin-top:8px">
+        <b>מה קרה בפועל:</b>
+        ${gotIn ? `<b style="color:#0a7c2f">${gotIn} נכנסו בכל זאת</b>` : 'אף אחד לא נכנס אחרי הכשל'}${
+          leftOut ? ` · <b style="color:#b42318">🔴 ${leftOut} לא נכנסו — אלה שצריך לפנות אליהם</b>` : ''}${
+          unknown ? ` · ${unknown} ללא טלפון, ולכן אי אפשר לדעת מעבר לסשן עצמו` : ''}
+        <div style="opacity:.75;margin-top:4px">נגזר מכך ש-home.html רושם אירוע עם מזהה-החבר: אירוע כזה **אחרי** הכשל = הוא בפנים. ⚠️ מזהה-הסשן מת עם סגירת הטאב, ולכן "לא נמצאה כניסה" בשורה בלי טלפון אינו אומר שהוא נשאר בחוץ.</div>
+      </div>
       <div class="class-tile-chips" style="margin-top:8px">${chips}</div>
       <div style="margin-top:8px;opacity:.8">${
         // §355 — המשפט הזה אמר עד עכשיו "אין כאן שמות". עכשיו יש, אבל **רק מ-§355 והלאה**:
@@ -14565,7 +14757,9 @@ function loginIssuesTableHtml(list) {
             ].filter(Boolean).map(esc).join(' · ')
           }</div>
         </div>
-        <div class="task-table-badges"><span class="${x.ours ? 'warn-badge' : 'treat-badge'}">${x.ours ? 'תקלה אצלנו' : 'לא תקלה'}</span></div>
+        <!-- §402 — שני תגים, ובסדר הזה: מה קרה **במערכת**, ואז מה קרה **לאדם**. השני הוא
+             זה שקובע אם מרימים טלפון, ולכן הוא לא מוסתר בשורת-המטא הקטנה שמתחת. -->
+        <div class="task-table-badges"><span class="${x.ours ? 'warn-badge' : 'treat-badge'}">${x.ours ? 'תקלה אצלנו' : 'לא תקלה'}</span>${hbOutcomeBadge(x.outcome)}</div>
         <div class="mi-addr"></div>
         <!-- §355 — חתימת-זמן ולא "היום": כל הכשלים של היום-ואתמול נראו כאן שורה זהה, ודווקא
              בהם צריך להצליב מול שעת-פריסה או מול שיחה עם האוהד. -->
