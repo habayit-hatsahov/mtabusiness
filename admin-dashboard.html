@@ -1655,6 +1655,12 @@ body {
 .plat-row-go { font-size: 11px; font-weight: 700; color: var(--accent); opacity: 0; transition: opacity .12s; }
 .plat-row.clickable:hover .plat-row-go { opacity: 1; }
 
+/* §396 — רשימת בעלי-העסק שיאבדו גישה. רשימה ולא מספר, כי זו רשימת-עבודה. */
+.biz-ready-list { display: flex; flex-direction: column; gap: 5px; margin: 8px 0 2px; padding-inline-start: 12px; border-inline-start: 2px solid var(--orange); }
+.biz-ready-item { font-size: 11.5px; color: var(--text-sm); line-height: 1.6; }
+.biz-ready-item b { color: var(--text); font-weight: 700; }
+.biz-ready-why { color: var(--orange); font-weight: 700; }
+
 /* §395 — שורת-המשנה של הדליים. קטנה ומוזחת בכוונה: היא **תת-סינון** של הפיל שמעליה,
    ואם היא תיראה כמו שורת-פילים שנייה שוות-מעמד, המנהל לא יבין שהיא חלה רק על ה-78. */
 .bucket-pills { gap: 6px; padding-inline-start: 12px; border-inline-start: 2px solid var(--border-md); }
@@ -5282,6 +5288,43 @@ function fanEntryBreakdown() {
 
 // §394 — הפרמטר החמישי (onclick) אופציונלי: 20 הקריאות הקיימות מעבירות ארבעה ארגומנטים
 // וממשיכות להתנהג בדיוק כמו קודם. רק שורות-הפילוח מקבלות אותו, כי רק להן יש רשימה להוביל אליה.
+// ══════════════ §396 — מוכנות בעלי-העסק לכניסה כחבר ═══════════════════════════════════════
+//
+// **למה זה כאן:** ביטול קישור-הטוקן לדשבורד העסק (§244/§391) הוא החלטה שהמשתמש אישר
+// כמשימה עתידית. 🔑 **הצעד הראשון בה אינו קוד אלא מדידה:** ביום שבו הטוקן מבוטל, בעל-עסק
+// שאין לו מסלול-כניסה כחבר פשוט **מאבד גישה לדשבורד שלו**. בלי לדעת כמה כאלה יש — ומי הם —
+// אי-אפשר לתכנן את המעבר, ואפשר רק לקוות.
+//
+// ⚠️ שאילתה חיצונית מחזירה שכל 58 העסקים המאושרים נושאים `ownerMemberId`, **אבל זה לא
+// מספיק**: קישור קיים אינו אומר שרשומת-החבר מאושרת, ולא שיש עליה קוד או חשבון Google.
+// §391 כבר קבע שיש בעלי-עסק עם `ownerHasCode === false`. לכן הבדיקה כאן היא על התנאי
+// המלא, ולא על קיום הקישור.
+//
+// נגזר כולו מנתונים שכבר טעונים במסך (MOCK_BUSINESSES · MOCK_FANS · MEMBER_CODES) —
+// אפס קריאות נוספות ל-Firestore.
+const BIZ_READY_REASONS = {
+  noLink:        'אין קישור לרשומת חבר',
+  missingMember: 'הקישור מצביע על רשומה שאינה קיימת',
+  notApproved:   'רשומת החבר אינה מאושרת',
+  noCredential:  'אין קוד כניסה ואין חשבון Google',
+};
+function bizOwnerLoginReadiness() {
+  const approved = (MOCK_BUSINESSES || []).filter(b => b.status === 'approved');
+  const notReady = [];
+  for (const b of approved) {
+    const m = b.ownerMemberId ? (MOCK_FANS || []).find(f => f.id === b.ownerMemberId) : null;
+    let reason = null;
+    if (!b.ownerMemberId) reason = 'noLink';
+    else if (!m) reason = 'missingMember';
+    else if (m.status !== 'approved') reason = 'notApproved';
+    else if (!m.loginCode && !m.googleEmail) reason = 'noCredential';
+    if (reason) notReady.push({ name: b.name || '(ללא שם)', owner: m ? m.name : (b.ownerEmail || ''), reason });
+  }
+  const byReason = {};
+  for (const r of notReady) byReason[r.reason] = (byReason[r.reason] || 0) + 1;
+  return { total: approved.length, ready: approved.length - notReady.length, notReady, byReason };
+}
+
 function platRow(name, num, sub, help, onclick) {
   return `<div class="plat-row${onclick ? ' clickable' : ''}"${onclick ? ` onclick="${onclick}" title="להצגת הרשימה"` : ''}>
     <div class="plat-row-name">${name}${onclick ? ' <span class="plat-row-go">← לרשימה</span>' : ''}</div>
@@ -5377,6 +5420,28 @@ function platformStatsHtml() {
           ${bRow('opened', eb.opened, 'ראה את הקוד ולא השתמש בו')}
         </div>`;
       })()}`;
+    })()}
+    ${(() => {
+      // §396 — המדידה שצריכה להתקיים **לפני** ביטול קישור-הטוקן (§244/§391), לא אחריו.
+      const r = bizOwnerLoginReadiness();
+      if (!r.total) return '';
+      const pct = Math.round(r.ready / r.total * 100);
+      const list = r.notReady.length
+        ? `<div class="biz-ready-list">${r.notReady.map(x =>
+            `<div class="biz-ready-item"><b>${esc(x.name)}</b>${x.owner ? ` · ${esc(x.owner)}` : ''}
+             <span class="biz-ready-why">${esc(BIZ_READY_REASONS[x.reason])}</span></div>`).join('')}</div>`
+        : '';
+      return `<div class="plat-sect">בעלי עסק — מוכנות לכניסה כחבר</div>
+      <div class="plat-rows">
+        ${platRow('יכולים להיכנס כחבר', r.ready.toLocaleString('he-IL'),
+          `${pct}% מתוך ${r.total.toLocaleString('he-IL')} עסקים מאושרים`,
+          'רשומת החבר של הבעלים <b>מאושרת</b>, ויש עליה קוד כניסה או חשבון Google מקושר. אלה בעלי-עסק שיוכלו להיכנס לדשבורד גם ביום שבו קישור-הטוקן (§244) יבוטל.')}
+        ${platRow('יאבדו גישה אם הטוקן יבוטל היום', r.notReady.length.toLocaleString('he-IL'),
+          r.notReady.length ? Object.entries(r.byReason).map(([k, n]) => `${BIZ_READY_REASONS[k]}: ${n}`).join(' · ') : 'אין',
+          r.notReady.length
+            ? '⚠️ <b>זו רשימת-העבודה לפני המעבר, לא סטטיסטיקה.</b> לכל אחד מהם צריך להנפיק קוד, לאשר את רשומת החבר, או לתקן את הקישור — אחרת ביום המעבר הוא פשוט לא נכנס לדשבורד שלו.'
+            : '✅ כל בעלי-העסק המאושרים יכולים להיכנס כחבר. <b>התנאי לביטול קישור-הטוקן מתקיים</b> — נכון לרגע זה.')}
+      </div>${list}`;
     })()}
     <div class="plat-sect">כניסות</div>
     <div class="plat-rows">
