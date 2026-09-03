@@ -1501,6 +1501,24 @@
   <p>הקישור שבו השתמשת אינו תקין או שפג תוקפו.<br/>פנה/י אלינו לקבלת קישור חדש.</p>
 </div>
 
+<!-- §397 — מסך "צריך להתחבר". ⚠️ **מסך נפרד ובכוונה, ולא showError():** מי שנכנס בלי טוקן
+     ובלי session אינו מחזיק קישור שבור — הוא פשוט לא מחובר. "הקישור אינו תקין" היה שולח
+     אותו לחפש קישור חדש במקום פשוט להתחבר, וזה בדיוק סוג ההודעה שמייצרת פנייה מיותרת. -->
+<div class="full-screen" id="loginNeededScreen" style="display:none">
+  <div class="icon"></div>
+  <h2 id="loginNeededTitle">צריך להתחבר</h2>
+  <p id="loginNeededText">
+    כדי להיכנס לדשבורד העסק יש להתחבר לחשבון שלך —<br/>
+    עם מספר הטלפון והקוד, או עם חשבון Google.
+  </p>
+  <p style="margin-top:18px">
+    <a class="btn" id="loginNeededBtn" href="welcome.html">להתחברות</a>
+  </p>
+  <p style="margin-top:14px;font-size:13px;opacity:.75">
+    שכחת את הקוד? במסך ההתחברות אפשר לבקש שנשלח אותו שוב.
+  </p>
+</div>
+
 <!-- ══════════════════════════════════════════════════════
      MAIN DASHBOARD — עמודה אחת ממורכזת
      ══════════════════════════════════════════════════════ -->
@@ -1824,7 +1842,7 @@
 </div>
 
 <script type="module">
-import { firebaseConfig, db as sharedDb, auth as sharedAuth } from './firebase-config.js';
+import { firebaseConfig, db as sharedDb, auth as sharedAuth, getStorageLazy as sharedStorageLazy } from './firebase-config.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import {
   getFirestore, doc, getDoc, getDocFromServer, updateDoc, serverTimestamp, collection, query, where, getDocs
@@ -1945,6 +1963,20 @@ window.closeImgLightbox = function() {
 const bizApp = initializeApp(firebaseConfig, 'bizDashboard');
 const db = getFirestore(bizApp);
 const auth = getAuth(bizApp);
+
+// ── §397 — מצב-הזהות ומצביע ה-Firestore ─────────────────────────────────────────────────────
+// 'token'  = הזהות היא העסק עצמו (uid === businessId), דרך /mint-biz-token על bizApp.
+// 'member' = הזהות היא בעל-העסק כחבר (uid === memberId), על ה-app ברירת-המחדל.
+//
+// ⚠️ **כל קריאה/כתיבה של הדשבורד עוברת דרך `bizDb` ולא דרך `db` הישיר.** מי שיכתוב כאן
+// `doc(db, ...)` יקבל במסלול-החבר app בלי זהות, ו-permission-denied בלי סיבה נראית לעין.
+//
+// 🔑 **ההצהרות כאן ולא ליד ה-INIT, ובכוונה.** `loadLiveTagTaxonomy` הוא IIFE שרץ ברמת-המודול
+// הרבה לפני ה-INIT, וקורא `settings/tagTaxonomy` דרך `bizDb`. הצהרה מאוחרת יותר הייתה
+// זורקת שם TDZ — **לתוך `catch` שבולע** — וקטלוג התגיות היה נופל בשקט לרשימה הקשיחה שבקוד.
+// בדיוק סוג הכשל של §384, שבו הקטלוג התיישן בלי שאיש ידע.
+let authMode = 'token';
+let bizDb = db;
 let _storage = null;
 async function getStorageLazy() {
   if (!_storage) {
@@ -1952,6 +1984,15 @@ async function getStorageLazy() {
     _storage = getStorage(bizApp);
   }
   return _storage;
+}
+// §397 — ⚠️ **Storage סובל בדיוק מאותה מלכודת של Firestore כאן, וקל לפספס אותה:** ההעלאה
+// נושאת את הזהות של ה-app שממנו נלקח מופע ה-Storage. `getStorageLazy` שמעל קשור ל-`bizApp`,
+// שבמסלול-החבר אין בו זהות כלל — כלומר כל העלאת תמונה הייתה נדחית ב-storage/unauthorized,
+// **אחרי** שהמשתמש כבר בחר קובץ וחיכה. במסלול-החבר לוקחים את המופע מה-app ברירת-המחדל.
+// sharedStorageLazy הוא ה-getStorageLazy של firebase-config.js — קשור ל-app ברירת-המחדל,
+// אותו app שבו התבצעה התחברות החבר. אין צורך ב-app שלישי.
+async function bizStorage() {
+  return authMode === 'member' ? await sharedStorageLazy() : await getStorageLazy();
 }
 
 let biz = null;
@@ -2054,7 +2095,7 @@ const MAX_TAGS = 2;
 // בחזרה לרשימה הקשיחה למעלה אם הטעינה נכשלת — אף פעם לא חוסם עריכה בגלל זה.
 (async function loadLiveTagTaxonomy() {
   try {
-    const snap = await getDoc(doc(db, 'settings', 'tagTaxonomy'));
+    const snap = await getDoc(doc(bizDb, 'settings', 'tagTaxonomy'));
     if (!snap.exists()) return;
     const data = snap.data();
     CATEGORIES.forEach(c =>{ if (Array.isArray(data[c.key])) c.tags = data[c.key]; });
@@ -2150,7 +2191,7 @@ async function uploadFile(file, path) {
   // אידמפוטנטית — אין סיכון לכפילות. §215: בעל-עסק שמעלה 7 קבצים מהטלפון נפל על נפילת-רשת
   // אחת ואיבד את כל ההגשה.
   return await withBizAuth(async () => {
-    const storageRef = ref(await getStorageLazy(), path);
+    const storageRef = ref(await bizStorage(), path);
     // immutable בטוח כי כל נתיב העלאה כבר ייחודי (timestamp/החלפה מלאה) — מונע בדיקת-304 מיותרת
     // בכל טעינה חוזרת של אותה תמונה (ר' docs/PROJECT_CONTEXT.md).
     // §290 — contentType מפורש: בלעדיו ה-SDK נופל ל-file.type, ואם הוא ריק נשלח
@@ -2266,12 +2307,77 @@ async function fetchFallbackPhotoOptions(tag) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//  §397 — שתי דרכי כניסה לדשבורד, זו לצד זו
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//
+//  **המצב עד היום:** הדרך היחידה פנימה היא `?token=` → `/mint-biz-token` בוורקר →
+//  `signInWithCustomToken` על ה-app המבודד `bizApp`, עם `uid = businessId`.
+//
+//  **מה שנוסף:** בעל-עסק שכבר מחובר כחבר (טלפון+קוד או Google) נכנס **בלי טוקן בכלל**.
+//
+//  🔑 **שתי הדרכים חיות במקביל, ובכוונה.** ביטול הטוקן הוא ההחלטה הבאה ולא הזאת: 58 עסקים
+//  חיים נכנסים היום דרך קישורים שכבר נשלחו להם במייל, וכל אחד מהם חייב להמשיך לעבוד. מעבר
+//  שמסיר את הישן באותו רגע שהוא מוסיף את החדש הוא מעבר שאין בו רגע לבדוק.
+//
+//  ⚠️ **ההבדל המהותי בין שתי הדרכים הוא איזה Firestore מדבר:** במסלול-הטוקן הזהות יושבת על
+//  `bizApp` (`db`/`auth` המקומיים), ובמסלול-החבר היא יושבת על ה-app ברירת-המחדל
+//  (`sharedDb`/`sharedAuth`) — שם התבצעה ההתחברות בפועל. **Firebase Auth שומר persistence
+//  נפרד לכל app בשם**, ולכן ה-session של החבר פשוט אינו קיים על `bizApp` וההפך. מכאן
+//  `bizDb`: מצביע יחיד שכל קריאה/כתיבה של הדשבורד עוברת דרכו, ומכוון ל-app הנכון לפי המסלול.
+//  זה בדיוק הלקח שכבר תועד ב-initAdminNavItem למטה, ששבר את עצמו על אותה מלכודת.
+//
 // ── INIT ──
 const token = new URLSearchParams(location.search).get('token');
-if (!token) {
-  showError();
-} else {
+
+if (token) {
   loadBusiness(token);
+} else {
+  loadBusinessAsMember();
+}
+
+// ── מסלול החבר ─────────────────────────────────────────────────────────────────────────────
+async function loadBusinessAsMember() {
+  try {
+    // ⚠️ גבול-זמן על ההמתנה ל-session. onAuthStateChanged על משתמש לא-מחובר חוזר מהר עם null,
+    // אבל אתחול ה-SDK מול IndexedDB תקוע יכול פשוט לא לחזור — ואז המסך נתקע על "טוען" לנצח.
+    const user = await Promise.race([
+      new Promise(resolve => { const unsub = onAuthStateChanged(sharedAuth, u => { unsub(); resolve(u); }); }),
+      new Promise(resolve => setTimeout(() => resolve(null), 8000)),
+    ]);
+    if (!user) { showLoginNeeded(); return; }
+
+    // ר' ההערה ב-initAdminNavItem: בכניסה טרייה נצפה permission-denied על מסמך-החבר-של-עצמו
+    // לפני שהטוקן "מוכן" ל-SDK הפנימי, ו-persistentLocalCache עלול להחזיר תשובה ריקה.
+    try { await user.getIdToken(); } catch (e) { console.error('getIdToken failed:', e); }
+    let mSnap = null;
+    for (const d of [0, 400, 900, 1800]) {
+      if (d) await new Promise(r => setTimeout(r, d));
+      try { mSnap = await getDocFromServer(doc(sharedDb, 'members', user.uid)); } catch (e) { console.warn('member read retry:', e.code || e.message); }
+      if (mSnap && mSnap.exists()) break;
+    }
+    if (!mSnap || !mSnap.exists()) { showLoginNeeded(); return; }
+
+    const linkedId = mSnap.data().linkedBusinessId || null;
+    if (!linkedId) {
+      // מחובר, אבל אין עסק מקושר לרשומה שלו. זו **לא** תקלת-כניסה, וההודעה חייבת לומר את זה.
+      showLoginNeeded('לא נמצא עסק המשויך לחשבון שלך',
+        'החשבון שלך מחובר, אבל אין עסק שמשויך אליו. אם יש לך עסק ב-Yellow Zone — פנה/י אלינו ונקשר אותו.');
+      return;
+    }
+
+    authMode = 'member';
+    bizDb = sharedDb;
+    bizId = linkedId;
+
+    const snap = await getDoc(doc(bizDb, 'businesses', bizId));
+    if (!snap.exists()) { showError(); return; }
+    biz = { id: bizId, ...snap.data() };
+    await finishLoadingBusiness();
+  } catch (e) {
+    console.error('[loadBusinessAsMember]', e);
+    showError();
+  }
 }
 
 async function loadBusiness(token) {
@@ -2287,10 +2393,23 @@ async function loadBusiness(token) {
     const cred = await signInWithCustomToken(auth, data.customToken);
     bizId = cred.user.uid;
 
-    const snap = await getDoc(doc(db, 'businesses', bizId));
+    const snap = await getDoc(doc(bizDb, 'businesses', bizId));
     if (!snap.exists()) { showError(); return; }
 
     biz = { id: bizId, ...snap.data() };
+    sessionStorage.setItem('hb_lastBizToken', token);
+    await finishLoadingBusiness();
+  } catch(e) {
+    console.error(e);
+    showError();
+  }
+}
+
+// ── הזנב המשותף לשתי הדרכים ────────────────────────────────────────────────────────────────
+// מוצא מ-loadBusiness כדי שלא יתפצל בשקט בין שני המסלולים: כל שלב-טעינה שיתווסף בעתיד
+// לאחד מהם בלבד היה יוצר דשבורד שמתנהג אחרת לפי הדלת שנכנסו בה.
+async function finishLoadingBusiness() {
+  {
 
     // ── תאריך לידה של בעל העסק (2026-08-24) ──────────────────────────────────────────────
     // יושב על **רשומת החבר** ולא על מסמך העסק: מסמך של עסק מאושר נקרא ציבורית במלואו (§244),
@@ -2300,7 +2419,7 @@ async function loadBusiness(token) {
     ownerMember = null;
     if (biz.ownerMemberId) {
       try {
-        const mSnap = await getDoc(doc(db, 'members', biz.ownerMemberId));
+        const mSnap = await getDoc(doc(bizDb, 'members', biz.ownerMemberId));
         if (mSnap.exists()) ownerMember = { id: mSnap.id, ...mSnap.data() };
       } catch (e) { console.warn('לא ניתן לקרוא את רשומת החבר של בעל העסק:', e.message); }
     }
@@ -2312,17 +2431,12 @@ async function loadBusiness(token) {
     // שיבוץ "עסק השבוע · הטבת השבוע" (אם יש) — נקרא פעם אחת בטעינה, לתצוגת סטטוס בלבד
     // (ר' renderWeeklyCard). שליפה חד-פעמית, לא live — עקבי עם שאר loadBusiness (getDoc בודד).
     try {
-      const schedSnap = await getDocs(query(collection(db, 'weekly_schedule'), where('businessId', '==', bizId)));
+      const schedSnap = await getDocs(query(collection(bizDb, 'weekly_schedule'), where('businessId', '==', bizId)));
       weeklySchedule = schedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch (e) { console.error('שגיאה בטעינת שיבוץ עסק-השבוע:', e); weeklySchedule = []; }
 
-    sessionStorage.setItem('hb_lastBizToken', token);
-
     document.getElementById('loadingScreen').style.display = 'none';
     showDashboard();
-  } catch(e) {
-    console.error(e);
-    showError();
   }
 }
 
@@ -2339,6 +2453,16 @@ async function loadBusiness(token) {
 // ⚠️ הסיבה המדויקת לכשל שלו לא הוכחה — ההודעה הגנרית בלעה את קוד-השגיאה. הגארד הזה מטפל במחלקת
 // הכשלים הזאת (מרענן זהות ומנסה שוב) *וגם* חושף את הסיבה האמיתית בפעם הבאה, במקום להסתיר אותה.
 async function ensureBizAuth(force = false) {
+  // §397 — במסלול-החבר הזהות אינה של העסק אלא של בעל-העסק, והיא חיה על ה-app ברירת-המחדל.
+  // אין כאן טוקן לרענן ואין למי לפנות בוורקר: או שיש session חי, או שצריך להתחבר מחדש.
+  // 🔑 **`getIdToken(force)` הוא הרענון היחיד שיש כאן**, והוא גם מה שמכסה את מחלקת-הכשלים
+  // שבגללה הפונקציה הזאת נכתבה מלכתחילה (§213): טוקן שפג בדיוק לפני כתיבה.
+  if (authMode === 'member') {
+    const u = sharedAuth.currentUser;
+    if (!u || !bizId) return false;
+    try { await u.getIdToken(force); return true; }
+    catch (e) { console.error('ensureBizAuth(member) failed:', e); return false; }
+  }
   if (!force && auth.currentUser && auth.currentUser.uid === bizId) return true;
   const tok = token || sessionStorage.getItem('hb_lastBizToken');
   if (!tok || !bizId) return false;
@@ -2450,11 +2574,23 @@ function showError() {
   document.getElementById('errorScreen').style.display = 'flex';
 }
 
+// §397 — ר' ההערה ליד המסך עצמו: "לא מחובר" אינו "קישור שבור", ואסור שיוצג ככזה.
+// הכתובת שחוזרים אליה נשמרת, כדי שאחרי ההתחברות המשתמש ינחת בדשבורד ולא בדף הבית.
+function showLoginNeeded(title, text) {
+  try { sessionStorage.setItem('hb_afterLogin', location.pathname + location.search); } catch {}
+  document.getElementById('loadingScreen').style.display = 'none';
+  if (title) document.getElementById('loginNeededTitle').textContent = title;
+  if (text)  document.getElementById('loginNeededText').textContent = text;
+  document.getElementById('loginNeededScreen').style.display = 'flex';
+}
+
 function showDashboard() {
   document.getElementById('mainDashboard').style.display = 'block';
   document.getElementById('navActions').style.visibility = 'visible';
   document.getElementById('dashBackLink').style.visibility = 'visible';
-  document.getElementById('navProfileLink').href = `profile.html?bizToken=${token}`;
+  // §397 — במסלול-החבר אין טוקן, והמשתמש כבר מחובר כחבר: profile.html מזהה אותו מה-session
+  // בעצמו. בלי התנאי הזה הקישור היה נבנה כ-`?bizToken=null` ושולח את בעל-העסק למסך שגיאה.
+  document.getElementById('navProfileLink').href = token ? `profile.html?bizToken=${token}` : 'profile.html';
   renderBizView();
   setupLivePreview();
   // בדיקה תקופתית כדי שפריטים שהושלמו ייעלמו מהרשימה גם בלי אינטראקציה נוספת
@@ -2703,7 +2839,7 @@ async function renderHoursMigrationBanner(b) {
     firstSeen = new Date();
     b.hoursNoticeFirstSeen = firstSeen;
     try {
-      await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { hoursNoticeFirstSeen: serverTimestamp() }));
+      await withBizAuth(() => updateDoc(doc(bizDb, 'businesses', bizId), { hoursNoticeFirstSeen: serverTimestamp() }));
     } catch (e) { console.error(e); reportBizWriteError('hoursNoticeSeen', e, ''); }
   } else if (Date.now() - firstSeen.getTime() >= HOURS_NUDGE_DAYS * 86400000) {
     return hide();                          // חלון ההצגה נגמר; המנהל יסגור את השאר מהדשבורד שלו
@@ -2774,7 +2910,7 @@ window.saveHoursMigration = async function () {
 
     biz.hoursMigrationDone = new Date();
     biz.hoursMigrationBy = 'owner';
-    await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), {
+    await withBizAuth(() => updateDoc(doc(bizDb, 'businesses', bizId), {
       hoursMigrationDone: serverTimestamp(),
       hoursMigrationBy: 'owner',
     }));
@@ -2824,11 +2960,11 @@ async function renderContactNoteBanner(b) {
       if (Date.now() - ackDate.getTime() >= CONTACT_NOTE_CLEAR_DAYS * 86400000) {
         el.style.display = 'none';
         b.note = ''; b.noteHandled = false; b.noteHandledAt = null; b.noteOwnerAckAt = null;
-        try { await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { note: '', noteHandled: false, noteHandledAt: null, noteOwnerAckAt: null })); } catch (e) { console.error(e); reportBizWriteError('clearNote', e, ''); }
+        try { await withBizAuth(() => updateDoc(doc(bizDb, 'businesses', bizId), { note: '', noteHandled: false, noteHandledAt: null, noteOwnerAckAt: null })); } catch (e) { console.error(e); reportBizWriteError('clearNote', e, ''); }
         return;
       }
     } else {
-      try { await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { noteOwnerAckAt: serverTimestamp() })); b.noteOwnerAckAt = new Date(); } catch (e) { console.error(e); reportBizWriteError('ackNote', e, ''); }
+      try { await withBizAuth(() => updateDoc(doc(bizDb, 'businesses', bizId), { noteOwnerAckAt: serverTimestamp() })); b.noteOwnerAckAt = new Date(); } catch (e) { console.error(e); reportBizWriteError('ackNote', e, ''); }
     }
   }
   el.style.display = 'block';
@@ -4275,7 +4411,7 @@ function setupLivePreview() {
   // ראתה עדכוני-אמת של מנהל; זה אותו באג-שורש שתוקן לתקנון האוהדים ב-§51/§52, תוקן כאן גם.
   // db/doc/getDoc כבר מיובאים למעלה (bizApp המבודד) — אין צורך ב-app/instance נוסף.
   try {
-    const snap = await getDoc(doc(db, 'settings', 'siteTexts'));
+    const snap = await getDoc(doc(bizDb, 'settings', 'siteTexts'));
     const val = snap.exists() ? snap.data().termsBiz : null;
     if (val) renderTermsSections(val, el);
   } catch (e) { console.error('טעינת תנאי הצטרפות עסקית מ-Firestore נכשלה:', e.message); }
@@ -4461,7 +4597,7 @@ window.sendWriteUs = async function() {
   try {
     let stamped = true;
     try {
-      await withBizAuth(() =>updateDoc(doc(db, 'businesses', bizId), { ...base, noteAt: serverTimestamp() }));
+      await withBizAuth(() =>updateDoc(doc(bizDb, 'businesses', bizId), { ...base, noteAt: serverTimestamp() }));
     } catch (e1) {
       // חלון-ביניים: אם firestore.rules עדיין לא נפרסו עם noteAt (§235), ה-hasOnly חוסם את
       // הכתיבה כולה ב-permission-denied. ההודעה של בעל-העסק חשובה יותר מחותמת-הזמן — שולחים
@@ -4469,7 +4605,7 @@ window.sendWriteUs = async function() {
       if (e1 && e1.code === 'permission-denied') {
         console.warn('noteAt נחסם — כנראה firestore.rules טרם נפרסו. ההודעה נשלחת בלי חותמת-זמן.');
         reportBizWriteError('writeUsNoteAt', e1, 'noteAt חסום בחוקים — ההודעה נשלחה בלי חותמת-זמן');
-        await withBizAuth(() =>updateDoc(doc(db, 'businesses', bizId), base));
+        await withBizAuth(() =>updateDoc(doc(bizDb, 'businesses', bizId), base));
         stamped = false;
       } else throw e1;
     }
@@ -4643,7 +4779,7 @@ window.submitAllChanges = async function() {
     return false;
   }
   try {
-    await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), {
+    await withBizAuth(() => updateDoc(doc(bizDb, 'businesses', bizId), {
       pendingChanges: merged,
       pendingChangesAt: serverTimestamp()
     }));
@@ -4697,7 +4833,7 @@ async function saveOwnerBirthDate() {
   if (!ownerMember) { showToast('לא ניתן לשמור תאריך לידה — רשומת החבר לא נטענה'); return; }
 
   try {
-    await updateDoc(doc(db, 'members', ownerMember.id), { birthDate: val });
+    await updateDoc(doc(bizDb, 'members', ownerMember.id), { birthDate: val });
     ownerMember.birthDate = val;
   } catch (e) {
     console.error('birthDate save failed:', e.code || '', e.message);
@@ -5579,7 +5715,7 @@ window.showToast = showToast;
 window.acceptTermsNow = async function() {
   const cb = document.getElementById('ownerAgreeTerms');
   try {
-    await withBizAuth(() => updateDoc(doc(db, 'businesses', bizId), { agreedTermsAt: serverTimestamp() }));
+    await withBizAuth(() => updateDoc(doc(bizDb, 'businesses', bizId), { agreedTermsAt: serverTimestamp() }));
     biz.agreedTermsAt = new Date();
     showToast('התנאים אושרו, תודה!');
     renderBizView();

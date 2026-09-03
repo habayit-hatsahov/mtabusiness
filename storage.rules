@@ -45,11 +45,25 @@ service firebase.storage {
       // (עסקים מאושרים = ציבוריים בכוונה, כדי שיוצגו ב-home.html/welcome.html).
       allow read: if isAdmin()
         || (request.auth != null && request.auth.uid == bizId)
+        // §397 — בעל-העסק שנכנס לדשבורד **כחבר** (uid === memberId ולא businessId).
+        // בלי הענף הזה כל העלאת תמונה במסלול-החבר נדחית ב-storage/unauthorized —
+        // ודווקא אחרי שהמשתמש כבר בחר קובץ וחיכה. ר' bizStorage ב-business-dashboard.html.
+        || (
+          request.auth != null &&
+          firestore.get(/databases/(default)/documents/businesses/$(bizId)).data.ownerMemberId == request.auth.uid
+        )
         || firestore.get(/databases/(default)/documents/businesses/$(bizId)).data.status == 'approved';
 
       allow write: if isImage() && underSizeLimit() && (
         isAdmin()
         || (request.auth != null && request.auth.uid == bizId)
+        // §397 — בעל-העסק שנכנס לדשבורד **כחבר** (uid === memberId ולא businessId).
+        // בלי הענף הזה כל העלאת תמונה במסלול-החבר נדחית ב-storage/unauthorized —
+        // ודווקא אחרי שהמשתמש כבר בחר קובץ וחיכה. ר' bizStorage ב-business-dashboard.html.
+        || (
+          request.auth != null &&
+          firestore.get(/databases/(default)/documents/businesses/$(bizId)).data.ownerMemberId == request.auth.uid
+        )
         // אורח בהרשמה ראשונית — בלי session, אך רק לתוך עסק שכבר נוצר כ-pending
         // (business.html יוצר קודם את מסמך ה-Firestore, ורק אז מעלה תמונות)
         || (

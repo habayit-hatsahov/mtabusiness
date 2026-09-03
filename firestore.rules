@@ -42,6 +42,24 @@ service cloud.firestore {
         get(/databases/$(database)/documents/businesses/$(request.auth.uid)).data.ownerMemberId == memberId;
     }
 
+    // ── §397 — "אני בעל העסק הזה?", בשתי דרכי הכניסה ─────────────────────
+    // עד היום זהות בעל-העסק בדשבורד הייתה **תמיד** `uid == businessId`, כי
+    // הכניסה היחידה הייתה טוקן שה-Worker פודה ל-custom token. מעכשיו בעל-עסק
+    // יכול להיכנס גם כשהוא מחובר כ**חבר** (טלפון+קוד או Google), ואז
+    // `uid == memberId`. שתי הדרכים חיות במקביל, וזו הפונקציה שמכירה בשתיהן.
+    //
+    // 🔑 **בלי `get()` נוסף, ובכוונה:** הבדיקה נשענת על `resource.data` — המסמך
+    // שה-rule ממילא קורא — ולא על `isOwnerMemberOf()` שמוסיף קריאה. בכללי
+    // `list` זה ההבדל בין קריאה אחת לקריאה לכל מסמך בתוצאה.
+    //
+    // ⚠️ תקפה רק ל-get/update (יש `resource`), לא ל-create.
+    function isBizOwner(businessId) {
+      return request.auth != null && (
+        request.auth.uid == businessId ||
+        resource.data.ownerMemberId == request.auth.uid
+      );
+    }
+
     // "אני החבר שמקושר לעסק הזה?" — בעל-עסק שמחובר כ*חבר* (home/terms/profile,
     // request.auth.uid = memberId) ומבקש את הטוקן של העסק שלו בלבד. הכיוון ההפוך
     // מ-isLinkedBusinessOwnerOf שמעל: שם עסק-מחובר קורא מסמך-חבר, כאן חבר-מחובר
@@ -154,7 +172,7 @@ service cloud.firestore {
       // אותו. הוא הועבר ל-bizTokens/{businessId} בתחתית הקובץ. כל שדה-סוד עתידי
       // (טוקן/קוד/מפתח) חייב לשבת שם ולא כאן.
       allow get: if isAdmin()
-        || (request.auth != null && request.auth.uid == businessId)
+        || isBizOwner(businessId)
         || resource.data.status == 'approved';
 
       // שאילתה ציבורית עם where('status','==','approved') בלבד — Firestore
@@ -184,7 +202,7 @@ service cloud.firestore {
         // רואה את הבקשה, לא רק אחרי. תוקן 2026-08-13 אחרי דיווח-אמת: "Missing or insufficient
         // permissions" בפועל לעסק pending אמיתי שניסה לשלוח תמונה מהדשבורד.
         || (
-          request.auth != null && request.auth.uid == businessId &&
+          isBizOwner(businessId) &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['pendingChanges', 'pendingChangesAt'])
         )
@@ -196,7 +214,7 @@ service cloud.firestore {
         // כמו pendingChanges רגיל.
         // noteAt (§235) — חותמת-זמן ההודעה, כדי שהמנהל יראה מתי בדיוק נכתבה ולא רק מה נכתב.
         || (
-          request.auth != null && request.auth.uid == businessId &&
+          isBizOwner(businessId) &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['note', 'noteAt', 'noteHandled', 'noteHandledAt', 'noteOwnerAckAt'])
         )
@@ -205,7 +223,7 @@ service cloud.firestore {
         // שהצטרפו לפני שהצ'קבוקס הזה היה קיים בטופס ההרשמה. אישור חד-פעמי, לא ניתן לביטול
         // (רק דורש שעדיין לא אושר — resource.data לא מכיל agreedTermsAt).
         || (
-          request.auth != null && request.auth.uid == businessId &&
+          isBizOwner(businessId) &&
           !('agreedTermsAt' in resource.data) &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['agreedTermsAt'])
@@ -217,7 +235,7 @@ service cloud.firestore {
         // hoursNoticeFirstSeen הוא write-once — חלון ההצגה נספר ממנו, ואיפוס שלו היה מאריך
         // אותו לנצח. hoursMigrationBy מוגבל ל-'owner' כדי שלא ייכתב מכאן "המנהל טיפל".
         || (
-          request.auth != null && request.auth.uid == businessId &&
+          isBizOwner(businessId) &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['hoursNoticeFirstSeen', 'hoursMigrationDone', 'hoursMigrationBy']) &&
           (!('hoursNoticeFirstSeen' in resource.data) ||
@@ -413,7 +431,13 @@ service cloud.firestore {
     // renderWeeklyCard, §146 סבב רביעי): תצוגת-סטטוס בלבד ("התור שלכם: DATE–DATE"), לא עריכה —
     // לכן read/list, לא write.
     match /weekly_schedule/{docId} {
-      allow read, list: if isAdmin() || (request.auth != null && resource.data.businessId == request.auth.uid);
+      // §397 — הענף השני הוא בעל-העסק שנכנס לדשבורד **כחבר** (uid === memberId ולא businessId).
+      // ⚠️ כאן `isOwnerMemberOf` ולא `isBizOwner`: `resource` הוא מסמך-השיבוץ ואין עליו
+      // `ownerMemberId`, ולכן חייבים לקרוא את מסמך העסק. הקריאה הנוספת נסבלת רק מפני
+      // שהשאילתה מסוננת ל-businessId יחיד ומחזירה מסמכים בודדים.
+      allow read, list: if isAdmin()
+        || (request.auth != null && resource.data.businessId == request.auth.uid)
+        || isOwnerMemberOf(resource.data.businessId);
       allow write: if isAdmin();
 
       match /activity/{activityId} {
