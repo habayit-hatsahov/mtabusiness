@@ -60,10 +60,13 @@ chk('🔑 §411 — הכיתוב מופיע **לפני** הכפתור במרקא
     (r.dom.nodes['gsHost']._order || []).indexOf('hbGsCap') === 0);
 const cap = r.dom.nodes['hbGsCap'];
 console.log('הנוסח: ' + String(cap.innerHTML).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
-chk('הנוסח החדש — "מתמלאים לבד"', /מתמלאים לבד/.test(cap.innerHTML));
-chk('ו"בפעם הבאה תיכנסו בלי קוד"', /בפעם הבאה תיכנסו בלי קוד/.test(cap.innerHTML));
-chk('⚠️ "המייל יאומת" הוסר', !/יאומת/.test(cap.innerHTML));
-chk('קצר מהנוסח הקודם', cap.innerHTML.replace(/<[^>]+>/g, '').length < 78);
+// §412 — הנוסח פותח ב"הרשמה" (כי גוגל כותבת "כניסה" על הכפתור), ומבטיח את הקוד ולא שדות
+chk('🔑 §412 — פותח במילה "הרשמה"', /^\s*הרשמה/.test(cap.innerHTML));
+chk('ומזכיר את Google במפורש', /Google/.test(cap.innerHTML));
+chk('ההבטחה היא הקוד', /בלי לזכור קוד/.test(cap.innerHTML));
+chk('⚠️ "השם והמייל" ירד — הבטחה של שני שדות מתוך שמונה', !/השם והמייל/.test(cap.innerHTML));
+chk('⚠️ "המייל יאומת" עדיין לא שם', !/יאומת/.test(cap.innerHTML));
+chk('וקצר מכל הגרסאות הקודמות', cap.innerHTML.replace(/<[^>]+>/g, '').length < 62);
 chk('🔑 נרשם gsShown כשהכפתור צויר', r.logged.includes('gsShown'));
 chk('ולא נרשם gsBlocked', !r.logged.includes('gsBlocked'));
 
