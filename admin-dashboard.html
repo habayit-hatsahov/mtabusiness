@@ -1655,6 +1655,17 @@ body {
 .plat-row-go { font-size: 11px; font-weight: 700; color: var(--accent); opacity: 0; transition: opacity .12s; }
 .plat-row.clickable:hover .plat-row-go { opacity: 1; }
 
+/* §395 — שורת-המשנה של הדליים. קטנה ומוזחת בכוונה: היא **תת-סינון** של הפיל שמעליה,
+   ואם היא תיראה כמו שורת-פילים שנייה שוות-מעמד, המנהל לא יבין שהיא חלה רק על ה-78. */
+.bucket-pills { gap: 6px; padding-inline-start: 12px; border-inline-start: 2px solid var(--border-md); }
+.bucket-pills-label { font-size: 11px; font-weight: 700; color: var(--text-sm); align-self: center; }
+.bucket-pill {
+  padding: 4px 9px; border-radius: 99px; border: 1px dashed var(--border-md); background: transparent;
+  font-family: 'Heebo', sans-serif; font-size: 11.5px; font-weight: 500; color: var(--text-sm); cursor: pointer; white-space: nowrap;
+}
+.bucket-pill:hover { background: var(--card-bg2); }
+.bucket-pill.active { background: var(--accent); border-style: solid; border-color: var(--accent); color: #fff; font-weight: 700; }
+
 .fan-bucket-banner { background: var(--nav-bg); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; margin: 2px 0 4px; }
 .fan-bucket-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .fan-bucket-title { font-size: 12.5px; font-weight: 800; color: var(--text); }
@@ -8521,6 +8532,31 @@ window.setFanStatusFilter = function(status) { fanStatusFilter = status; renderM
 // בורר-הסטטוס/תאריך הישנים לא נמחקו — עברו ל"עוד סינונים" מקופל, אותו עיקרון כמו bizFilterBarHtml.
 let fanAdvancedOpen = false;
 window.toggleFanAdvanced = function() { fanAdvancedOpen = !fanAdvancedOpen; renderMain(); };
+// §395 — שורת-המשנה של הדליים, מתחת לפיל "מעולם לא נכנסו".
+//
+// 🔑 **הפער שזה סוגר, וזה בדיוק §354:** סינון-הדלי נבנה ב-§394 עם **דלת כניסה אחת** — לחיצה
+// על שורה בפאנל שב"מרכז נתונים". המשתמש אמר שהוא עובד מ"כל האוהדים" כי "יותר נוח", ובמסך
+// הזה המנגנון פשוט לא היה קיים בשבילו. מנגנון שיש אליו מסלול אחד הוא מנגנון שקיים רק
+// למי שבמקרה עובר במסלול הזה.
+//
+// המונים נקראים מ-fanEntryBreakdown — **אותו מקור בדיוק** שמזין את הפאנל, ולא ספירה מקבילה.
+function fanBucketPillsHtml() {
+  if (fanClassPill !== 'neverEntered') return '';
+  const eb = fanEntryBreakdown();
+  if (!eb.never) return '';
+  const p = (key, label, n) =>
+    `<button class="bucket-pill ${fanEmailBucket===key?'active':''}" onclick="setFanEmailBucket('${key}')">${label} · ${n.toLocaleString('he-IL')}</button>`;
+  return `
+    <div class="filter-toolbar-row bucket-pills">
+      <span class="bucket-pills-label">מה קרה למייל:</span>
+      ${p('all', 'הכל', eb.never)}
+      ${p('notSent', 'לא נשלח', eb.notSent)}
+      ${p('sentNoData', 'אין נתוני מסירה', eb.sentNoData)}
+      ${p('deliveredNotOpened', 'נמסר ולא נפתח', eb.deliveredNotOpened)}
+      ${p('opened', 'נפתח ולא נכנס', eb.opened)}
+    </div>`;
+}
+
 // §394 — הבאנר שמסביר למה הרשימה מסוננת, ומה הפעולה **כאן**. בלעדיו המנהל מגיע מהפאנל
 // לרשימה קצרה בלי שום סימן למה היא קצרה — ומקבל בדיוק את החוויה של "המספרים לא מסתדרים".
 // המספר נספר מ-fanFilteredList עצמה ולא מהפאנל, ולכן הוא **תמיד** מה שבאמת על המסך.
@@ -8560,6 +8596,7 @@ function fanFilterBarHtml(opts) {
         ${pill('unverified', 'טרם נבדקו')}
         ${pill('neverEntered', 'מעולם לא נכנסו')}
       </div>
+      ${fanBucketPillsHtml()}
       ${fanBucketBannerHtml()}
       <div class="filter-toolbar-row">
         <select class="filter-select" onchange="setFanSort(this.value)">
