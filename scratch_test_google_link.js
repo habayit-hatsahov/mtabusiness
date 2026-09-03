@@ -35,7 +35,8 @@ function build(apiResponses) {
       return Promise.resolve({ json: () => Promise.resolve(apiResponses[path]) });
     },
   };
-  box.window.logEvent = (t, e) => events.push(t + ':' + e.channel);
+  // §407 — נשמר האובייקט המלא ולא רק הערוץ: הבדיקה היא שהמייל **נוסע** על האירוע.
+  box.window.logEvent = (t, e) => { events.push(t + ':' + e.channel); events.last = e; };
   box.window.hbBumpNetFail = () => 1;
   vm.createContext(box);
   vm.runInContext(code + '\n; globalThis.__login = heroGoogleLogin; globalThis.__pending = () => heroPendingLink;', box);
@@ -57,6 +58,7 @@ function build(apiResponses) {
   chk("נותנת מוצא למי שזה לא הוא", t.msgs.some(m => m.includes('לא אתם')));
   chk("נרשם ערוץ 'canLink' ולא 'notLinked'", t.events.includes('loginFail:google:canLink'));
   chk('הטוקן והרשומה נשמרו ללחיצה', !!t.box.__pending() && t.box.__pending().memberId === 'M123');
+  chk('§407 — המייל נוסע גם על אירוע canLink', t.events.last.email === 'dan@gmail.com');
 
   await t.box.window.heroGoogleLinkAndEnter();
   const attach = t.calls.find(c => c.path === '/google-attach');
@@ -69,6 +71,7 @@ function build(apiResponses) {
   t = build({ '/google-login': { error: 'google_not_linked', email: 'x@gmail.com' } });
   await t.box.__login({ credential: 'IDT' });
   chk("בלי linkable — נשארת הודעת §399", t.msgs.some(m => m.includes('עדיין לא חיברתם')));
+  chk('🔑 §407 — המייל נוסע על אירוע notLinked', t.events.last.email === 'x@gmail.com');
   chk("והערוץ נשאר 'notLinked'", t.events.includes('loginFail:google:notLinked'));
   chk('ולא נשמר שום קישור ממתין', !t.box.__pending());
 
@@ -88,4 +91,11 @@ function build(apiResponses) {
   t = build({ '/google-login': { customToken: 'TOK2' } });
   await t.box.__login({ credential: 'IDT' });
   chk('חשבון מקושר — נכנס כרגיל', t.entered.length === 1 && t.calls.length === 1);
+
+  // ── 5. ⚠️ ענף בלי תשובה מהוורקר בכלל: אסור שיישלח email ריק/undefined ────────────────
+  t = build({});
+  t.box.hbApiFetch = () => Promise.reject(Object.assign(new Error('net'), { name: 'TypeError' }));
+  await t.box.__login({ credential: 'IDT' });
+  chk('§407 — כשל-רשת אינו שולח שדה email כלל',
+      t.events.length > 0 && !('email' in t.events.last));
 })();

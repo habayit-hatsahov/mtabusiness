@@ -1763,6 +1763,14 @@ if (!['yellowzone.co.il', 'www.yellowzone.co.il'].includes(location.hostname)) r
     // `phone: null` קבוע היה מפיל את *כל* המדידה של הדף הזה אם הכלל טרם נפרס, ולא רק את
     // כשלי-הכניסה. כך הסיכון מצומצם לערוץ אחד, וגם הוא רק עד פריסת הכלל.
     ...(e.phone ? { phone: String(e.phone).slice(0, 20) } : {}),
+    // ── §407 — המייל שגוגל אימתה, בכשל-כניסה במסלול Google בלבד ─────────────────────────
+    // 🔑 **שמירה של מה שכבר ידענו, לא איסוף חדש**: המייל הוצג לאותו אדם על המסך באותה
+    // שנייה ("עדיין לא חיברתם את חשבון ה-Google הזה (x@gmail.com)") ופשוט לא נשמר בשום
+    // מקום. השורה של 14:36 (3.9) החזיקה ארבעה אירועים ואפס דרכים ליצור קשר.
+    // ⚠️ **רק כשיש ערך, בדיוק כמו `phone` של §355**: `hasOnly` ב-firestore.rules הוא
+    // רשימת-היתר, ומפתח שאינו ברשימה **מוחק את כל האירוע בשקט**. שליחה מותנית מצמצמת את
+    // הסיכון לערוץ אחד גם אם הכלל טרם נפרס. (נפרס ואומת מקצה-לקצה ב-3.9 — §407.)
+    ...(e.email ? { email: String(e.email).slice(0, 80) } : {}),
     createdAt: serverTimestamp(),
   }).catch(err => console.error('logEvent failed:', type, err));
 };
@@ -2348,9 +2356,13 @@ async function heroGoogleLogin(res) {
   }, api).then(r => r.json()).finally(() => clearTimeout(hardAbortTimer));
   pending.catch(() => {});
 
-  const fail = (reason, html) => {
+  const fail = (reason, html, email) => {
     window.logEvent && window.logEvent('loginFail', {
       channel: ('google:' + reason).slice(0, 50), blockId: heroEnvTagAt(t0, api),
+      // §407 — ⚠️ **נשלח רק כשהקורא מוסר אותו במפורש.** `fail` משרת גם ענפים שבהם אין
+      // בכלל תשובה מהוורקר (fetchTimeout/error), ושם `data` לא קיים — צירוף אוטומטי היה
+      // או קורס או שולח undefined. הענף היחיד שמוסר אותו הוא 'notLinked', שם הוא באמת ידוע.
+      ...(email ? { email } : {}),
     });
     window.hbBumpNetFail && window.hbBumpNetFail(reason);
     heroGMsg('⚠️ ' + html, 'warn');
@@ -2405,7 +2417,7 @@ async function heroGoogleLogin(res) {
       // נפתרה הוא בדיוק סוג הסתירה שבין המסך למציאות ש-§350/§353 תיעדו. המדידה כן נרשמת
       // באותו ערוץ, כי זה עדיין ניסיון-כניסה שלא נכנס מיד.
       window.logEvent && window.logEvent('loginFail', {
-        channel: 'google:canLink', blockId: heroEnvTagAt(t0, api),
+        channel: 'google:canLink', blockId: heroEnvTagAt(t0, api), email: data.email || '',
         // §404 — ר' ההערה ב-logEvent: זה הדבר היחיד שהופך שורה "לא מזוהה" למישהו
         // שאפשר להתקשר אליו, אם הוא יעזוב בלי ללחוץ.
         memberId: data.linkable.memberId,
@@ -2460,7 +2472,10 @@ async function heroGoogleLogin(res) {
         // היחיד שחסר לו. הכפתור פותח את הפאנל שכבר קיים במודאל, בלי שום מנגנון חדש.
         '<button type="button" class="gs-login-act" onclick="heroOpenForgotFromGoogle()">' +
         'לא זוכרים את הקוד? שלחו לי קוד חדש למייל</button>' +
-        '<b>עדיין לא נרשמתם?</b> <a href="#" onclick="event.preventDefault();closeModal(\'loginOverlay\');openJoinModal();">הצטרפו כאן</a>');
+        '<b>עדיין לא נרשמתם?</b> <a href="#" onclick="event.preventDefault();closeModal(\'loginOverlay\');openJoinModal();">הצטרפו כאן</a>',
+        // §407 — הפרמטר השלישי. זה **הענף היחיד** שבו יש אדם אמיתי בלי שום דרך אחרת לזהות
+        // אותו: אין טלפון (במסלול הזה לא מקלידים), ואין memberId אם הוא לא רשום אצלנו.
+        data.email || '');
       return;
     }
     fail(data.error || 'unknown', HERO_G_MSGS[data.error] || 'לא הצלחנו להתחבר. נסו שוב, או היכנסו עם הטלפון והקוד.');

@@ -5201,6 +5201,9 @@ async function loadPlatformStats() {
         // בדיוק כמו ש-`channel` לא נטען מעולם והפך את §296 לקוד מת. **שדה חדש בכתיבה = שורה
         // חדשה גם כאן**, אחרת התיקון עובד בייצור ולא על המסך.
         phone: e.phone || null,
+        // §407 — המייל שגוגל אימתה. **שדה חדש בכתיבה = שורה חדשה גם כאן**, אחרת התיקון
+        // עובד בייצור ולא על המסך — בדיוק מה שקרה ל-`channel` ב-§302 ול-`phone` ב-§355.
+        email: e.email || null,
       });
     });
     platformEvents = rows;
@@ -14685,6 +14688,8 @@ function loginFailList() {
       // מה שכן נכנס הוא רק הכשלים שהם שלנו — התקרה הקשיחה וכשלי ההזדהות המאוחרים.
       ours: HB_LOGIN_FAIL_OURS.includes(hbLoginFailBase(e.channel)),
       device: e.device, sessionId: e.sessionId || '', memberId: e.memberId || null,
+      // §407 — ר' ההערה בשכבת הטעינה. זה מה שהופך שורת Google בלי טלפון לאדם שאפשר לכתוב לו.
+      email: e.email || null,
       // §355 — הטלפון שהוקלד, והחבר שמאחוריו אם יש כזה (ר' ההערה על hbFanByPhone).
       phone: e.phone || null,
       fan: e.phone ? hbFanByPhone(e.phone) : null,
@@ -14728,7 +14733,8 @@ function loginIssueFilteredList() {
   // §338 — env נכלל בחיפוש כדי שאפשר יהיה לבודד "pwa" או "idb-stuck" בשאילתה אחת.
   // §355 — הטלפון והשם נכללים, כי מעכשיו זו הדרך הטבעית לחפש כאן: אוהד מתקשר, מקלידים
   // את המספר שלו, ורואים מיד אם ומתי הוא נכשל.
-  if (q) list = list.filter(x => `${x.label} ${x.reason} ${x.sessionId} ${x.env} ${x.phone || ''} ${x.fan ? x.fan.name : ''}`.includes(q));
+  // §407 — המייל נכלל בחיפוש: אוהד כותב "ניסיתי להיכנס", מדביקים את הכתובת שלו, ורואים מיד.
+  if (q) list = list.filter(x => `${x.label} ${x.reason} ${x.sessionId} ${x.env} ${x.phone || ''} ${x.email || ''} ${x.fan ? x.fan.name : ''}`.includes(q));
   return list;
 }
 function loginIssuesTableHtml(list) {
@@ -14791,8 +14797,13 @@ function loginIssuesTableHtml(list) {
           <!-- §404 — הטלפון מוצג גם כשהוא נגזר מהרשומה ולא הוקלד: זה מה שמאפשר להרים
                טלפון ישר מהשורה, וזו הייתה הבקשה. הסימן "· זוהה מהכניסה" נשאר כדי שלא
                ייקרא כאילו האוהד הקליד אותו. -->
+          <!-- §407 — 🔑 **המייל הוא הזיהוי האחרון בתור, ולכן החשוב ביותר**: הוא היחיד
+               שקיים בשורה שאין בה טלפון, אין memberId, ולא הייתה כניסה אחריה. זו בדיוק
+               השורה שהמשתמש הצביע עליה ("על הרשומה הזאת אין מספר"). -->
           <div class="task-table-name">${
-            x.fan ? esc(x.fan.name) : x.phone ? esc(x.phone) : 'לא מזוהה'
+            x.fan ? esc(x.fan.name) : x.phone ? esc(x.phone)
+            : x.email ? `<span style="direction:ltr;display:inline-block">${esc(x.email)}</span>`
+            : 'לא מזוהה'
           }${x.fan && (x.phone || x.fan.phone)
               ? ` · <span style="font-weight:600;direction:ltr;display:inline-block">${esc(x.phone || x.fan.phone)}</span>` : ''
           }${x.fanVia === 'entry' || x.fanVia === 'event'
@@ -14803,7 +14814,10 @@ function loginIssuesTableHtml(list) {
             x.fan && x.fan.status && x.fan.status !== 'approved'
               ? ' · ⚠️ הרשומה שלו ' + (x.fan.status === 'pending' ? 'ממתינה לאישור' : 'נדחתה') : ''
           }${x.phone && !x.fan ? ' · ⚠️ המספר הזה לא רשום אצלנו' : ''
-          }${(x.fanVia === 'entry' || x.fanVia === 'event') && x.fan.email ? ' · ' + esc(x.fan.email) : ''}</div>
+          }${(x.fanVia === 'entry' || x.fanVia === 'event') && x.fan.email ? ' · ' + esc(x.fan.email) : ''
+          // §407 — ⚠️ אמירה מפורשת שהוא **אינו** רשום: בלעדיה מייל בשורה נקרא כמו כל זיהוי
+          // אחר, והמנהל מחפש רשומה שלא קיימת. זה גם מה שהופך את השורה לפעולה: להזמין אותו.
+          }${x.email && !x.fan && !x.phone ? ' · ⚠️ המייל הזה אינו רשום אצלנו — שווה להזמין אותו' : ''}</div>
           <div class="task-table-meta" style="opacity:.75">${
             [x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
              // §338 — הסביבה קודמת לסשן: בכשל 'timeout'/'moduleTimeout' זו השורה שאומרת

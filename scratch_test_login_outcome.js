@@ -14,7 +14,8 @@ for (const [n, c] of [['labels', labels], ['outcome', outcome]])
   if (c.split('\n').length > 140) throw new Error(n + ' נשלף ארוך מדי — העוגן תפס יותר מדי');
 
 const ev = (at, type, o) => ({ at: new Date(at), type, sessionId: o.s || null, memberId: o.m || null,
-                               channel: o.ch || null, device: o.dev || 'mobile', phone: o.ph || null, blockId: o.env || '' });
+                               channel: o.ch || null, device: o.dev || 'mobile', phone: o.ph || null,
+                               email: o.em || null, blockId: o.env || '' });
 // ששת הסשנים של 3.9 (UTC), אחד לאחד מהמדידה
 const E = [
   ev('2026-09-03T09:40:55Z','loginFail',{s:'S1',ch:'google:notLinked',dev:'desktop'}),
@@ -23,7 +24,8 @@ const E = [
   ev('2026-09-03T09:59:36Z','pageView',{s:'S2',m:'5y8yeGh7kS'}),
   ev('2026-09-03T10:00:27Z','loginFail',{s:'S3',ch:'authTimeout',ph:'0584439988'}),
   ev('2026-09-03T10:00:36Z','pageView',{s:'S3',m:'cRrLUiHuJl'}),
-  ev('2026-09-03T11:36:02Z','loginFail',{s:'S4',ch:'google:notLinked'}),            // ❌ לא נכנס, ובלי טלפון
+  // §407 — השורה של 14:36: בלי טלפון, בלי memberId, בלי כניסה — ועכשיו עם מייל
+  ev('2026-09-03T11:36:02Z','loginFail',{s:'S4',ch:'google:notLinked',em:'ghost@gmail.com'}),
   ev('2026-09-03T11:45:17Z','loginFail',{s:'S5',ch:'fetchTimeout',ph:'0585835311'}),
   ev('2026-09-03T11:45:20Z','pageView',{s:'S5',m:'KPTCd2XmzH'}),
   ev('2026-09-02T07:31:37Z','loginFail',{s:'S6',ch:'fetchTimeout',ph:'0544254737'}),// ❌ שובל צרפתי — עם טלפון
@@ -67,6 +69,7 @@ globalThis.__run = function(fans) {
     const byEntry = !x.fan && !byEvent && x.outcome.memberId ? fans.find(f => f.id === x.outcome.memberId) || null : null;
     x.fanVia = x.fan ? 'phone' : byEvent ? 'event' : byEntry ? 'entry' : null;
     x.fan = x.fan || byEvent || byEntry;
+    x.email = e.email || null;   // §407
     x.badge = hbOutcomeBadge(x.outcome);
     return x;
   });
@@ -121,7 +124,8 @@ console.log(`   14:57 → ${s1.fan ? s1.fan.name + ' · ' + s1.fan.phone : 'לא
 console.log(`   11:36 → ${s4.fan ? s4.fan.name : 'לא מזוהה'}   (${s4.fanVia || '—'})`);
 chk('🔑 שורה בלי טלפון שנכנסה — מזוהה מהכניסה', !!s1.fan && s1.fanVia === 'entry');
 chk('ויש עליה טלפון להתקשר אליו', !!s1.fan.phone);
-chk('שורה שלא נכנסה נשארת "לא מזוהה" ולא ניחוש', !s4.fan && s4.fanVia === null);
+chk('שורה שלא נכנסה אינה מקבלת שם בניחוש', !s4.fan && s4.fanVia === null);
+chk('🔑 §407 — אבל יש עליה מייל ליצירת קשר', s4.email === 'ghost@gmail.com');
 chk('מי שהקליד טלפון מסומן phone ולא entry',
     rows.filter(r => r.ch === 'fetchTimeout')[0].fanVia === 'phone');
 
