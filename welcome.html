@@ -2080,6 +2080,11 @@ const HERO_HARD_ABORT_MS = 35000;
 // של הודעה נכונה עדיפות על מסך-שגיאה בשנייה השמינית. זה גם **בדיוק** ההבדל שההודעה של
 // §350 כבר מנסחת, רק שעכשיו הוא נאמר לפני הכשל ולא אחריו.
 const HERO_AUTH_MIN_MS = 5000;
+// §409 — סף שמכסה את **שרשרת הכתובות המלאה** של §402, ולא רק את הראשונה. נגזר מהקבוע
+// עצמו: 3.5 + 3.5 + 5 לאחרונה (שאין לה דד-ליין משלה). 🔑 **אם HB_HOST_TIMEOUT_MS ישתנה,
+// זה משתנה איתו** — סף קבוע היה חוזר לחתוך את הכתובת האחרונה, וזה בדיוק הבאג של §408.
+// משמש בכל נתיב שאין לו רשת-הצלה: "שלחו לי קוד" (§408) והקישור-האוטומטי (§409).
+const HERO_CHAIN_TIMEOUT_MS = 2 * HB_HOST_TIMEOUT_MS + 5000;
 // §353 — מונה-ניסיונות. תשובה מאוחרת שייכת לניסיון **מסוים**, ואם האוהד כבר לחץ שוב היא
 // חייבת להיות שקטה: אחרת בקשה ישנה דורסת את המסך של הניסיון החדש שרץ עכשיו. זה בדיוק
 // המצב שהתיקון הזה מייצר לראשונה — עד היום הבקשה הישנה בוטלה ולא הייתה יכולה לחזור.
@@ -2270,35 +2275,47 @@ function heroGClearMsg() {
 }
 
 let heroGoogleBusy = false;
-// §403 — הטוקן של גוגל + הרשומה שנמצאה לפיו, בין הצגת ההצעה לבין הלחיצה עליה. בזיכרון
-// בלבד ולא ב-localStorage: אין שום סיבה שהוא ישרוד רענון, והוא ממילא קצר-מועד אצל גוגל.
-let heroPendingLink = null;
-// ⚠️ **`window.` מפורש** — ה-onclick שבתוך ההודעה יושב ב-HTML, כלומר בהיקף הגלובלי, בעוד
-// שהקוד הזה במודול. ר' feedback_module_scope_onclick: זה בדיוק הדפוס שהפיל כפתורים בעבר.
-window.heroGoogleLinkAndEnter = async function () {
-  const p = heroPendingLink;
-  if (!p) return;
-  heroPendingLink = null;           // חד-פעמי: לחיצה כפולה לא תשלח שתי בקשות-קישור
-  heroGMsg('מחברים ונכנסים…');
-  const t0 = Date.now();
-  const api = { via: 0 };
-  let done = false;
-  const stopProgress = heroProgress(t => { if (!done) heroGMsg(t); }, api);
+// §409 — `heroPendingLink` נמחק יחד עם הלחיצה: אין יותר מצב שנשמר בין הצגת הצעה לבין
+// לחיצה עליה, כי אין הצעה. הטוקן עובר ישירות כפרמטר.
+// ══ §409 — הקישור קורה מעצמו, בלי לחיצה ═════════════════════════════════════════════════
+// §403 שם כאן כפתור "כן, זה אני" כדי שהאדם יראה על איזו רשומה מדובר לפני שהיא נפתחת לו.
+// המשתמש שאל *"זה משהו שחייב את הלחיצה הזאת? היא לא נוחה"* — והתשובה הכנה היא **לא**:
+//
+// 🔑 **הלחיצה לא הגנה על כלום.** שלושת המסלולים דורשים בדיוק אותו דבר — שליטה בתיבת המייל
+// שעל הרשומה:
+//   · לפני §403:  גוגל → "לא מחובר" → "שלחו לי קוד למייל" → הקוד מגיע → נכנס.
+//   · עם הלחיצה:  גוגל → הצעה → לחיצה → נכנס.
+//   · בלעדיה:     גוגל → נכנס.
+// הוורקר מאמת מחדש את השער כולו ב-`/google-attach` בלי קשר למה שהדפדפן שלח, ולכן הלחיצה
+// לא הוסיפה שום בדיקה — רק חיכוך. וגם התרחיש שבגללו היא נולדה (§368 — בני-משפחה נרשמים
+// אחד בשם השני) אינו נמנע על-ידה: מי שיש לו את המייל של הרשומה נכנס אליה **כבר היום**
+// דרך "שלחו לי קוד", בשתי לחיצות במקום אחת.
+//
+// ⚠️ **מה כן נשמר מהלחיצה — הנראוּת, והיא עברה לאחרי הכניסה ולא לפניה:** הטיקר אומר
+// "מחברים את חשבון ה-Google ונכנסים…" בזמן אמת, ו-home.html ממילא מציג "שלום <שם>" —
+// כלומר מי שנחת ברשומה שאינה שלו רואה את זה מיד. `google:canLink` ממשיך להירשם עם המייל
+// ועם ה-memberId (§404/§407), ולכן כל קישור אוטומטי נשאר נראה גם לנו.
+//
+// ⚠️ **פונקציה פנימית ולא `window.`**: אין יותר onclick ב-HTML שקורא לה, וחשיפה מיותרת
+// למרחב הגלובלי היא בדיוק מה ש-feedback_module_scope_onclick מבקש לצמצם.
+async function heroGoogleAttachAndEnter(credential, memberId, api, t0) {
   const ac = new AbortController();
-  const hardTimer = setTimeout(() => ac.abort(), HERO_HARD_ABORT_MS);
+  // §409 — ⚠️ **`HERO_CHAIN_TIMEOUT_MS` ולא `HERO_TIMEOUT_MS`**: גם לנתיב הזה אין רשת-הצלה
+  // (בקשה שבוטלה = החשבון לא חובר, נקודה), ולכן הסף חייב לכסות את שלוש הכתובות. זה בדיוק
+  // הלקח של §408, ומכאן הוא חל על שני הנתיבים.
+  const hardTimer = setTimeout(() => ac.abort(), HERO_CHAIN_TIMEOUT_MS);
   try {
     const r = await heroWithTimeout(
       hbApiFetch('/google-attach', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: p.idToken, memberId: p.memberId }), signal: ac.signal,
-      }, api).then(r => r.json()), HERO_TIMEOUT_MS);
+        body: JSON.stringify({ idToken: credential, memberId }), signal: ac.signal,
+      }, api).then(r => r.json()), HERO_CHAIN_TIMEOUT_MS);
     if (r && r.customToken) {
-      heroGMsg('נכנסים…');
       // אותה נקודת-סיום בדיוק כמו שאר מסלולי-הכניסה (§353): heroRunAuth → heroFinishLogin.
       // ⚠️ עותק שני של לוגיקת-הסיום כאן היה הדרך שבה נולד "localStorage נכתב בלי הפניה".
       const a = heroRunAuth(r.customToken, (uid) => heroFinishLogin(uid, null));
       a.settled.then(a.done, a.giveUp);
-      return;
+      return true;
     }
     // ⚠️ **הכשל היחיד שמעניין כאן הוא `email_mismatch`/`already_attached`** — כלומר הוורקר
     // אמר "לא" על אותו שער שאישר לפני שנייה. זו סתירה ולא טעות של האדם, ולכן ההודעה
@@ -2310,17 +2327,16 @@ window.heroGoogleLinkAndEnter = async function () {
     heroGMsg('⚠️ לא הצלחנו לחבר את החשבון. היכנסו עם הטלפון והקוד למעלה — זה יעבוד.', 'warn');
   } catch (e) {
     window.logEvent && window.logEvent('loginFail', {
-      channel: heroIsTimeout(e) ? 'google:link:fetchTimeout' : 'google:link:error',
+      channel: heroIsTimeout(e) ? 'google:link:fetchTimeout' : heroErrChannel('google:link:error', e),
       blockId: heroEnvTagAt(t0, api),
     });
     window.hbBumpNetFail && window.hbBumpNetFail('error');
     heroGMsg('⚠️ החיבור איטי מהרגיל. נסו שוב, או היכנסו עם הטלפון והקוד למעלה.', 'warn');
   } finally {
-    done = true;
-    stopProgress();
     clearTimeout(hardTimer);
   }
-};
+  return false;
+}
 
 async function heroGoogleLogin(res) {
   const credential = res && res.credential;
@@ -2410,29 +2426,24 @@ async function heroGoogleLogin(res) {
     // ⚠️ בכוונה **לחיצה ולא אוטומטי**: §368 (בני-משפחה נרשמים אחד בשם השני) אינו נפתר כאן,
     // ולכן האדם רואה על איזו רשומה מדובר לפני שהיא נפתחת לו. זו גם הזדמנות לומר "זה לא אני".
     if (data.error === 'google_not_linked' && data.linkable && data.linkable.memberId) {
-      // המדידה נרשמת גם כאן: זה עדיין ניסיון-כניסה שלא הצליח מיד. ערוץ נפרד כדי שאפשר
-      // יהיה למדוד כמה מהם באמת לחצו — אחרת ההצעה הזאת תיראה בפאנל כמו notLinked רגיל.
-      // ⚠️ **לא דרך `fail()`** — הוא מוסיף "⚠️" וצובע את ההודעה ב-`warn`, וזו הודעה
-      // **חיובית**: נמצאה הרשומה שלך, לחץ להיכנס. מסך שנצבע ככשל בדיוק ברגע שבו הבעיה
-      // נפתרה הוא בדיוק סוג הסתירה שבין המסך למציאות ש-§350/§353 תיעדו. המדידה כן נרשמת
-      // באותו ערוץ, כי זה עדיין ניסיון-כניסה שלא נכנס מיד.
+      // §409 — המדידה נרשמת **לפני** הקישור ולא אחריו, וזה מכוון: אם `/google-attach`
+      // ייכשל או ייתקע, עדיין תישאר שורה בפאנל שאומרת מי זה היה ומה המייל שלו.
+      // ⚠️ **לא דרך `fail()`** — הוא מוסיף "⚠️" וצובע ב-`warn`, וזה אינו כשל אלא מצב
+      // שנפתר מעצמו. `canLink` נשאר ערוץ נפרד כדי שנדע כמה קישורים אוטומטיים קרו.
       window.logEvent && window.logEvent('loginFail', {
         channel: 'google:canLink', blockId: heroEnvTagAt(t0, api), email: data.email || '',
-        // §404 — ר' ההערה ב-logEvent: זה הדבר היחיד שהופך שורה "לא מזוהה" למישהו
-        // שאפשר להתקשר אליו, אם הוא יעזוב בלי ללחוץ.
+        // §404 — הדבר היחיד שהופך שורה "לא מזוהה" למישהו שאפשר לחזור אליו, אם הקישור נכשל.
         memberId: data.linkable.memberId,
       });
       // §359 — מאפס את מונה-כשלי-הרשת: הוורקר ענה, כלומר הכתובת נגישה.
       window.hbBumpNetFail && window.hbBumpNetFail('canLink');
-      heroGMsg(
-        'מצאנו רשומה על השם <b>' + heroEsc(data.linkable.name) + '</b> עם הכתובת ' +
-        (data.email ? '<b>' + heroEsc(data.email) + '</b>' : 'הזאת') + '.' +
-        '<br><br>אפשר לחבר את חשבון ה-Google הזה לרשומה ולהיכנס עכשיו — ובפעם הבאה בלחיצה אחת.' +
-        '<button type="button" class="gs-login-act" onclick="heroGoogleLinkAndEnter()">כן, זה אני — חברו והכניסו אותי</button>' +
-        '<span style="opacity:.75">לא אתם? היכנסו עם הטלפון והקוד למעלה.</span>');
-      // ⚠️ ה-idToken נשמר לרגע בלבד ובזיכרון בלבד, כדי שהלחיצה לא תדרוש סיבוב נוסף מול
-      // גוגל. הוא ממילא קצר-מועד, והוא כבר הגיע לדף הזה בקריאה שיצרה את ההודעה.
-      heroPendingLink = { idToken: credential, memberId: data.linkable.memberId };
+      // §409 — בלי לחיצה. ר' ההערה המלאה על heroGoogleAttachAndEnter: הלחיצה לא הגנה על
+      // כלום, והנראוּת עברה לטיקר ("מחברים את חשבון ה-Google ונכנסים…") ול-home.html.
+      gStage = 'link';
+      heroGMsg('מחברים את חשבון ה-Google ונכנסים…');
+      const linked = await heroGoogleAttachAndEnter(credential, data.linkable.memberId, api, t0);
+      // ⚠️ בהצלחה `heroRunAuth` כבר בדרך ל-home.html; בכשל ההודעה כבר נכתבה בפנים.
+      if (linked) gStage = 'auth';
       return;
     }
     if (data.error === 'google_not_linked') {
@@ -2576,7 +2587,11 @@ function heroProgress(setText, api, getStage) {
     // מעבר-כתובת גובר על הזמן: הוא הדבר היחיד שבאמת קרה, והוא מסביר את ההמתנה.
     // ⚠️ `hops` ולא `via` — ר' ההערה ב-hbApiFetch. `via` אומר **איפה** אנחנו, `hops` אומר
     // **שעברנו**, ורק השני הוא דיווח על משהו שקרה לאוהד הזה עכשיו.
-    const stage = (getStage && getStage() === 'auth') ? HERO_AUTH_PROGRESS
+    const st = getStage && getStage();
+    // §409 — שלב הקישור. ⚠️ הודעה משלו ולא "עוד רגע…": כאן קורה משהו שהאוהד לא ביקש
+    // במפורש (חיבור החשבון), והשקיפות עליו היא מה שמחליף את הלחיצה שהוסרה.
+    const stage = st === 'link' ? 'מחברים את חשבון ה-Google ונכנסים…'
+                : st === 'auth' ? HERO_AUTH_PROGRESS
                 : (api && api.hops > 0) ? 'החיבור איטי — מנסים דרך אחרת…'
                 : (HB_PROGRESS.filter(p => ms >= p.at).pop() || {}).text || '';
     if (stage && stage !== shown) { shown = stage; setText(stage); }
@@ -2864,9 +2879,8 @@ window.heroRequestResend = async function() {
   // מבוטלת ותו לא — המייל פשוט לא נשלח. לכן דווקא הסף הזה חייב לכסות את השרשרת המלאה.
   // 12 שנ' = 3.5 + 3.5 + 5 לכתובת האחרונה (שאין לה דד-ליין משלה).
   // 🔑 **הסף נגזר מ-HB_HOST_TIMEOUT_MS, ואם הוא ישתנה — גם זה חייב.**
-  const HERO_RESEND_TIMEOUT_MS = 2 * HB_HOST_TIMEOUT_MS + 5000;
   const ac = new AbortController();
-  const abortTimer = setTimeout(() => ac.abort(), HERO_RESEND_TIMEOUT_MS);
+  const abortTimer = setTimeout(() => ac.abort(), HERO_CHAIN_TIMEOUT_MS);   // §409 — הועבר לרמת המודול
   const t0 = Date.now();
   const api = { via: 0, hops: 0 };
   // §408 — אותו שיקוף כמו בכניסה (§403/§405), ומאותה סיבה: 12 שניות של "שולח..." קפוא הן
