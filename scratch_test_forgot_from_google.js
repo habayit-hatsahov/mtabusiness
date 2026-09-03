@@ -69,7 +69,14 @@ console.log('\nההודעה עצמה:');
 // 🔑 **ההערות מנוקות לפני הבדיקה.** הן מצטטות בכוונה את הנוסח הישן ("מהתפריט", "באנר
 // שיקפוץ") כדי להסביר למה הוא ירד — ובדיקה שסורקת אותן נכשלת על ההסבר במקום על הקוד.
 // זו הייתה נפילה אמיתית של הרנס הזה, לא של המוצר.
-const rawMsg = src.slice(src.indexOf("data.error === 'google_not_linked'"), src.indexOf("data.error === 'google_not_linked'") + 2600);
+// ⚠️ **גם הסוף מעוגן בתוכן, לא במספר.** הגרסה הקודמת חתכה 2600 תווים קבועים, וההערות
+// שנוספו ב-§399ז דחפו את הכפתור אל מחוץ לחלון — הבדיקה "הכפתור קיים" נפלה על באג בהרנס
+// ולא במוצר. זה בדיוק הלקח של §361: כל היסט קבוע זז בעריכה הבאה.
+const msgStart = src.indexOf("data.error === 'google_not_linked'");
+if (msgStart < 0) { console.log('❌ לא נמצא הענף google_not_linked'); process.exit(1); }
+const msgEnd = src.indexOf('return;', msgStart);
+if (msgEnd < 0) { console.log('❌ לא נמצא סוף הענף'); process.exit(1); }
+const rawMsg = src.slice(msgStart, msgEnd);
 const msg = rawMsg.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
 ok('הכפתור קיים בהודעה', /class="gs-login-act"/.test(msg));
 ok('"מהתפריט" הוסר', !/מהתפריט/.test(msg), 'עדיין מפנה לפריט תפריט שאינו קיים');
@@ -93,8 +100,12 @@ ok('ההחלפה יושבת בפונקציות ההודעה ולא בקורא', 
    'צפוי 3 מופעים: ההגדרה + שתי הקריאות');
 
 console.log('\n🔑 כל onclick בהודעה מצביע על שם שנחשף ל-window:');
-for (const m of msg.matchAll(/onclick=\\?"([a-zA-Z_$][\w$]*)\(/g)) {
-  const name = m[1];
+// 🔑 **לולאה שרצה אפס פעמים אינה "עברה".** בגרסה הקודמת החלון החתוך גרם ללולאה הזאת
+// לא למצוא אף onclick — והיא הדפיסה **כלום** ונראתה כמו הצלחה. הרנס ששותק על אפס
+// בדיקות הוא בדיוק הרנס ששיקר (§361). לכן הספירה נבדקת במפורש.
+const clicks = [...msg.matchAll(/onclick=\\?"([a-zA-Z_$][\w$]*)\(/g)].map(m => m[1]);
+ok('נמצא לפחות onclick אחד לבדיקה', clicks.length > 0, 'הלולאה לא בדקה כלום — כנראה החילוץ שבור');
+for (const name of clicks) {
   ok(`window.${name} מוגדר בקובץ`, src.includes(`window.${name} =`), 'מזהה חסר — הכפתור יזרוק בלחיצה');
 }
 
