@@ -171,6 +171,27 @@ window.heroToggleForgot = function () {
   }
 };
 
+// ── §399ב — "לא זוכרים את הקוד?" מתוך הודעת-הכשל של Google ───────────────────────────────
+// §398 בפועל: חבר מאושר **ששכח את הקוד** לחץ על גוגל, קיבל "לא מחובר אצלנו", וההודעה אמרה
+// לו "היכנסו עם הטלפון והקוד" — כלומר הפנתה אותו בדיוק לדבר היחיד שחסר לו. הוא נרשם מחדש,
+// ורק שתי דקות אחר-כך מצא לבד את "שכחתי את הקוד". הפאנל היה שם כל הזמן; ההודעה פשוט לא
+// הצביעה עליו.
+//
+// 🔑 **פותחת, לא מחליפה-מצב.** `heroToggleForgot` הוא toggle: אם הפאנל כבר פתוח (מי שלחץ
+// "שכחתי את הקוד", לא מצא מיד את מה שחיפש, וניסה גוגל) — קריאה לו הייתה **סוגרת** אותו,
+// כלומר הכפתור היה עושה את ההפך המדויק ממה שכתוב עליו.
+//
+// ⚠️ ה-focus אינו קישוט: אחרי §399 בלוק גוגל יושב **מתחת** לפאנל, ולכן הפאנל נפתח מחוץ
+// לשדה-הראייה של מי שלוחץ — ובלי המיקוד הלחיצה נראית כאילו לא עשתה כלום.
+window.heroOpenForgotFromGoogle = function () {
+  const panel = document.getElementById('heroForgotPanel');
+  if (panel && !panel.classList.contains('show')) window.heroToggleForgot();
+  const f = document.getElementById('heroForgotPhoneInput');
+  if (!f) return;
+  try { f.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { f.scrollIntoView(); }
+  f.focus();
+};
+
 // ── §322 — פאנל "לא מצליחים להיכנס? כתבו לנו" ─────────────────────────────────────────────
 // ⚠️ פתיחה/סגירה **חייבות** לשבת כאן ולא במודול: הפאנל הזה קיים בדיוק בשביל הרגע שבו המודול
 // לא הגיע. כפתור-עזרה מת בדיוק כשצריך אותו הוא גרוע יותר מכפתור שלא קיים (§312).
@@ -893,10 +914,15 @@ button { font-family: inherit; }
 .login-modal-title { font-size: 20px; font-weight: 800; color: var(--ink); text-align: center; }
 .login-modal-sub { font-size: 13px; color: var(--ink-3); text-align: center; margin-top: 8px; line-height: 1.5; }
 
-/* ── §387 — כניסה עם Google, בראש מודאל הכניסה ─────────────────────────────────────────
-   מוסתר עד שהכפתור באמת צויר (ר' hbRenderGoogleLoginBtn): קו-מפריד "או עם קוד" בלי כפתור
-   מעליו נראה כמו מסך שבור, וגרוע מלא-להציע-גוגל-בכלל. */
-.gs-login-host { display: none; flex-direction: column; gap: 8px; }
+/* ── §387/§399 — כניסה עם Google, מתחת לטלפון+קוד ───────────────────────────────────────
+   מוסתר עד שהכפתור באמת צויר (ר' hbRenderGoogleLoginBtn): קו-מפריד עם שאלה, בלי כפתור
+   מתחתיו, נראה כמו מסך שבור וגרוע מלא-להציע-גוגל-בכלל.
+   §399 — margin-top מפריד את הבלוק מ"שכחתי את הקוד" שמעליו: gap אחיד היה מציג את שניהם
+   כשתי אפשרויות שוות-מעמד, וזו בדיוק ההשוואה שאנחנו מנסים להסיר. */
+.gs-login-host { display: none; flex-direction: column; gap: 8px; margin-top: 6px; }
+/* ⚠️ הערת-ההבהרה נקראת **לפני** הלחיצה, ולכן היא קטנה אבל לא דהויה — ink-3 ולא ink-4. */
+.gs-login-note { font-size: 12.5px; line-height: 1.65; text-align: center; color: var(--ink-3); }
+.gs-login-note b { color: var(--ink-2); }
 .gs-login-btn { display: flex; justify-content: center; }
 .gs-login-msg { display: none; font-size: 12.5px; line-height: 1.6; text-align: center; color: var(--ink-3); }
 .gs-login-msg.show { display: block; }
@@ -904,6 +930,19 @@ button { font-family: inherit; }
 /* הודעת "לא מחובר אצלנו" נושאת קישור להרשמה — הוא חייב להיראות כמו קישור בתוך טקסט
    שכולו כתום-אזהרה, אחרת הוא נבלע בו ומי שלא נרשם מעולם נשאר בלי מוצא. */
 .gs-login-msg a { color: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+/* ── §399ב — הפעולה בתוך הודעת-הכשל ("שלחו לי קוד חדש למייל") ──────────────────────────
+   🔑 **כפתור ולא קישור-בתוך-טקסט.** מי שקורא את ההודעה הזאת כבר נכשל פעם אחת, והמוצא
+   צריך להיראות כמו דבר שלוחצים עליו — לא כמילה מודגשת בתוך פסקה כתומה.
+   ⚠️ `currentColor` ולא צבע קבוע: ההודעה מקבלת `.warn` (כתום) או את צבע-הבסיס, והכפתור
+   חייב להישאר קריא בשני המצבים בלי להגדיר כל אחד מהם בנפרד. */
+.gs-login-act {
+  display: block; width: 100%; margin: 10px 0 8px; padding: 10px 12px;
+  border: 1.5px solid currentColor; border-radius: var(--r-field);
+  background: transparent; color: inherit; font: inherit; font-weight: 800;
+  text-align: center; cursor: pointer;
+}
+.gs-login-act:hover { background: rgba(0, 0, 0, .04); }
+
 .gs-login-or { display: flex; align-items: center; gap: 10px; color: var(--ink-3); font-size: 12.5px; }
 .gs-login-or::before, .gs-login-or::after { content: ''; flex: 1; height: 1px; background: var(--line, #E7E7E0); }
 
@@ -1320,16 +1359,6 @@ button { font-family: inherit; }
         <div class="login-modal-sub" id="loginModalSub">הטלפון והקוד בן 6 הספרות שקיבלתם באישור החברות</div>
       </div>
 
-      <!-- §387 — כניסה עם Google. מוסתר עד שהכפתור צויר בפועל, ומצויר רק כשהמודאל נפתח
-           (ר' openLoginModal): מכל מוסתר מקבל clientWidth=0 וגוגל מציירת בגודל שגוי.
-           🔑 הכיתוב על הכפתור הוא "המשך עם Google" (GIS: continue_with + locale he) —
-           **בדיוק** המילים שהודעת-ההצלחה בתפריט מבטיחה לחבר אחרי שהוא מחבר חשבון. -->
-      <div class="gs-login-host" id="gsLoginHost">
-        <div class="gs-login-btn" id="gsLoginBtnHost"></div>
-        <div class="gs-login-msg" id="gsLoginMsg"></div>
-        <div class="gs-login-or"><span>או עם קוד</span></div>
-      </div>
-
       <div>
         <span class="field-label">מספר טלפון</span>
         <input type="tel" id="heroPhoneInput" class="field-input" placeholder="05X-XXXXXXX"
@@ -1352,6 +1381,37 @@ button { font-family: inherit; }
                inputmode="tel" maxlength="12" onkeydown="if(event.key==='Enter')heroRequestResend()"/>
         <button class="lp-btn lp-btn-outline" id="heroForgotBtn" onclick="heroRequestResend()" style="justify-content:center;height:44px">שלחו לי קוד למייל</button>
         <div class="login-err" id="heroForgotMsg"></div>
+      </div>
+
+      <!-- ══ §399 — כניסה עם Google, **מתחת** לטלפון+קוד ══════════════════════════════════
+           §387 שם את הכפתור בראש המודאל, ושם הוא הדבר הראשון שרואים. 🔑 **וזו הזמנה לכשל
+           עבור הרוב המוחלט:** נמדד בפרודקשן — **16 מתוך 185 מאושרים חיברו חשבון (8.6%)**,
+           כלומר הכפתור הבולט ביותר במסך הכניסה אינו עובד ל-91% ממי שרואה אותו. חבר שלא
+           זוכר את הקוד לוחץ עליו כי הוא הכי גדול והכי ראשון, ומקבל שגיאה — ומשם, כפי
+           שקרה בפועל ב-§398, הוא נרשם מחדש במקום להיכנס.
+
+           🔑 **המיקום הוא ההודעה.** אזהרה בטקסט מתחת לכפתור-ראשי אינה מתחרה בכפתור עצמו;
+           מה שקובע מה ילחצו הוא מה מוצג ראשון. לכן טלפון+קוד — המסלול שעובד ל**כולם** —
+           הוא הראשי, וגוגל הוא הקיצור למי שכבר הכין אותו.
+
+           ⚠️ הסדר בתוך הבלוק התהפך: הקו-המפריד עכשיו **לפני** הכפתור ולא אחריו, כי הוא
+           מפריד מהקוד שמעליו. השאלה בקו-המפריד ("כבר חיברתם…") היא הסינון עצמו.
+
+           ⚠️ הבלוק עדיין מוסתר עד שהכפתור צויר בפועל (ר' hbRenderGoogleLoginBtn) — קו
+           מפריד עם שאלה, בלי כפתור מתחתיו, גרוע מלא-להציע-גוגל-בכלל. -->
+      <div class="gs-login-host" id="gsLoginHost">
+        <div class="gs-login-or"><span>כבר חיברתם חשבון Google?</span></div>
+        <div class="gs-login-btn" id="gsLoginBtnHost"></div>
+        <div class="gs-login-msg" id="gsLoginMsg"></div>
+        <!-- ⚠️ הערה קבועה, ולא הודעת-שגיאה: היא נועדה להיקרא **לפני** הלחיצה. אותה
+             הבחנה של §398 — מי שמגלה רק מהשגיאה שהוא לא חיבר, כבר נכשל פעם אחת.
+             ⚠️ אינה חוזרת על "רק למי שחיבר" — הקו-המפריד שמעל כבר שואל בדיוק את זה,
+             ומשפט שחוזר על הכותרת שמעליו נקרא כרעש ולא כתנאי.
+             ⚠️ לא מצטט את הכיתוב שגוגל מציירת על הכפתור: הוא נקבע על ידה ומשתנה. -->
+        <div class="gs-login-note">
+          <b>עדיין לא?</b> היכנסו עם הטלפון והקוד — ובדף הבית תוכלו לחבר חשבון Google,
+          כדי שבפעם הבאה תיכנסו בלחיצה אחת בלי קוד.
+        </div>
       </div>
 
       <!-- ── §322 — "לא מצליחים להיכנס? כתבו לנו" ──────────────────────────────────────────
@@ -2051,9 +2111,19 @@ async function heroGoogleLogin(res) {
     if (data.error === 'google_not_linked') {
       fail('notLinked',
         'חשבון Google הזה' + (data.email ? ' (<b>' + heroEsc(data.email) + '</b>)' : '') + ' עדיין לא מחובר אצלנו.' +
-        '<br><br><b>כבר חברים?</b> היכנסו עכשיו עם הטלפון והקוד — ואחר כך תוכלו לחבר את Google מהתפריט, ' +
-        'כדי שבפעם הבאה זה יעבוד בלחיצה.' +
-        '<br><b>עדיין לא נרשמתם?</b> <a href="#" onclick="event.preventDefault();closeModal(\'loginOverlay\');openJoinModal();">הצטרפו כאן</a>');
+        // §399ב — "מהתפריט" הוסר: §388 החליף את פריט-התפריט בבאנר, ו-`menuGoogleItem` אינו
+        // קיים יותר באף אחד מארבעת הדפים (נבדק — 0 מופעים, גם באתר החי). הפניה למסך שאינו
+        // קיים היא בדיוק מה ש-§387 אוסר.
+        // ⚠️ **לא מבטיחים "יקפוץ לכם באנר"** — הוא ניתן לסגירה ל-GBANNER_SNOOZE_DAYS, ואז
+        // ההבטחה שקרית. "מדף הבית" נכון בכל מצב.
+        '<br><br><b>כבר חברים?</b> היכנסו עם הטלפון והקוד למעלה — ומדף הבית תוכלו לחבר את ' +
+        'החשבון, כדי שבפעם הבאה זה יעבוד בלחיצה.' +
+        // 🔑 **הלב של §399ב: פעולה, לא הוראה.** מי שקורא את ההודעה הזאת רוב הסיכויים שלחץ
+        // על גוגל כי הוא לא זוכר את הקוד — ומשפט שאומר לו "היכנסו עם הקוד" שולח אותו לדבר
+        // היחיד שחסר לו. הכפתור פותח את הפאנל שכבר קיים במודאל, בלי שום מנגנון חדש.
+        '<button type="button" class="gs-login-act" onclick="heroOpenForgotFromGoogle()">' +
+        'לא זוכרים את הקוד? שלחו לי קוד חדש למייל</button>' +
+        '<b>עדיין לא נרשמתם?</b> <a href="#" onclick="event.preventDefault();closeModal(\'loginOverlay\');openJoinModal();">הצטרפו כאן</a>');
       return;
     }
     fail(data.error || 'unknown', HERO_G_MSGS[data.error] || 'לא הצלחנו להתחבר. נסו שוב, או היכנסו עם הטלפון והקוד.');
@@ -2109,8 +2179,10 @@ window.hbRenderGoogleLoginBtn = function (tries) {
         console.warn('google-login: הכפתור לא צויר (origin לא מאושר?) — הבלוק הוסתר');
         return;
       }
-      // רק עכשיו, כשהכפתור ודאי על המסך, מותר לכותרת-המשנה להבטיח אותו.
-      if (sub) sub.textContent = 'עם חשבון Google שחיברתם, או עם הטלפון והקוד בן 6 הספרות';
+      // רק עכשיו, כשהכפתור ודאי על המסך, מותר לכותרת-המשנה להזכיר אותו.
+      // §399 — הקוד ראשון בנוסח, כמו שהוא ראשון על המסך: 91% מהמאושרים לא חיברו חשבון,
+      // וכותרת שפותחת ב-Google מפנה את הרוב למסלול שאינו שלהם עוד לפני שגללו.
+      if (sub) sub.textContent = 'הטלפון והקוד בן 6 הספרות — או עם Google, למי שכבר חיבר חשבון';
     }, 1500);
     return;
   }
