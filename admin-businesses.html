@@ -1117,6 +1117,8 @@ import {
 import {
   ref, uploadBytes, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+// §393 — ר' ההערה הזהה ב-admin-members.html. הדף עדיין מקושר מ-admin.html ומוחק עסקים בפועל.
+import { logAndDelete, resolveActor, deletionConfirmText } from './deletion-log.js';
 
 const WORKER_URL = 'https://api.yellowzone.co.il';   // §364 — היה workers.dev, נחסם ע"י סינון סלולרי. ר' PROJECT_CONTEXT §359/§364
 
@@ -2879,9 +2881,29 @@ window.rejectBiz = async function(id) {
 
 window.deleteBiz = async function(id) {
   const b = businesses.find(x => x.id === id);
-  if (!confirm(`למחוק לצמיתות את "${b?.name || id}"?\nפעולה זו אינה ניתנת לביטול.`)) return;
-  await deleteDoc(doc(db, 'businesses', id));
-  showToast(`🗑️ "${b?.name || id}" נמחק`);
+  // §393 — ר' ההערה ב-deleteMember (admin-members.html): הצילום לאישור נקרא מ-Firestore,
+  // וחלון האישור מציג גם בעלים/טלפון/מייל ולא רק שם.
+  let snapData;
+  try {
+    const s = await getDoc(doc(db, 'businesses', id));
+    if (!s.exists()) { alert('הרשומה כבר לא קיימת בבסיס הנתונים.'); return; }
+    snapData = s.data();
+  } catch (e) {
+    console.error(e);
+    alert('לא ניתן לקרוא את הרשומה, ולכן המחיקה לא בוצעה: ' + e.message);
+    return;
+  }
+  if (!confirm(deletionConfirmText('businesses', snapData))) return;
+  try {
+    const actor = await resolveActor(db, auth.currentUser);
+    const res = await logAndDelete(db, 'businesses', id, actor, 'admin-businesses');
+    if (!res.ok) { alert('הרשומה כבר לא קיימת בבסיס הנתונים.'); return; }
+  } catch (e) {
+    console.error(e);
+    alert('המחיקה לא בוצעה, והעסק נשאר במקומו.\n\nהרישום ליומן המחיקות קודם למחיקה, ואם אחד מהשניים נכשל — שניהם מתבטלים.\n\nהסיבה: ' + (e?.message || e));
+    return;
+  }
+  showToast(`🗑️ "${b?.name || id}" נמחק — נרשם ביומן המחיקות`);
 };
 
 window.sendWA = function(id) {

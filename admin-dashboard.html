@@ -1648,6 +1648,19 @@ body {
 .plat-bar-track { flex: 1; height: 26px; min-width: 70px; background: var(--nav-bg); border-radius: 7px; overflow: hidden; }
 .plat-bar-fill { height: 100%; background: var(--accent); border-radius: 7px; min-width: 3px; }
 .plat-bar-val { flex: 0 0 auto; min-width: 68px; font-size: 13px; font-weight: 800; color: var(--text); }
+
+/* ── §393 — יומן מחיקות ושחזור ─────────────────────────────────────────────────────────── */
+.del-note { background: var(--nav-bg); border: 1px solid var(--border-md); border-radius: 10px; padding: 12px 14px; font-size: 12px; line-height: 1.75; color: var(--text-sm); margin-bottom: 14px; }
+.del-note b { color: var(--text); font-weight: 700; }
+.del-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; padding: 13px 4px 14px; border-bottom: 1px solid var(--border-md); }
+.del-row-main { flex: 1 1 240px; min-width: 0; }
+.del-row-name { font-size: 14px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.del-kind { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--nav-bg); border: 1px solid var(--border-md); color: var(--text-sm); }
+.del-row-ident { font-size: 11.5px; color: var(--text-sm); line-height: 1.7; margin-top: 3px; }
+.del-row-actor { font-size: 11.5px; font-weight: 700; color: var(--accent); margin-top: 5px; }
+.del-row-side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.del-restored { font-size: 11.5px; font-weight: 700; color: var(--green, #1a7f4b); text-align: left; line-height: 1.6; }
+.del-attempted { font-size: 11px; font-weight: 700; color: var(--orange); }
 .plat-bar-pct { font-size: 11.5px; font-weight: 700; color: var(--text-sm); }
 .plat-drop { font-size: 12px; font-weight: 700; color: var(--orange); padding-right: 128px; }
 .plat-funnel-help { font-size: 11px; color: var(--text-sm); line-height: 1.7; margin-top: 8px; }
@@ -1942,6 +1955,9 @@ import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/fireba
 // מנוע העיצוב של גוף המייל — אותו קובץ בדיוק שהוורקר מייבא (worker/src/brevo.js), כדי שהתצוגה
 // המקדימה במרכז ההודעות תהיה מה שנשלח בפועל ולא חיקוי שלו. ר' ההערה בראש mail-format.js.
 import { MAIL_FONTS, mailFontKey, renderMailHtml, footerHtml as mailFooterHtml } from './mail-format.js';
+// §393 — יומן מחיקות ושחזור. אותו קובץ בדיוק שמייבאים admin-members.html ו-admin-businesses.html,
+// כדי ששלוש הדלתות שמוחקות חבר/עסק יריצו את **אותו** מנגנון ולא שלושה חיקויים שמתיישנים בנפרד.
+import { logAndDelete, restoreDeleted, fetchDeletionLog, deletionConfirmText, deletionLabel } from './deletion-log.js';
 
 // ── §244 — טוקן הכניסה לדשבורד יושב ב-bizTokens/{businessId}, לא על מסמך העסק ────────────────
 // מסמך עסק approved קריא ציבורית לגמרי, ולכן טוקן-כניסה שיושב עליו שקול לפרסום סיסמה.
@@ -3258,6 +3274,9 @@ const LANDING_KEY = 'landingContent'; // שלב 6, §11 במפרט — "7 תוכ
 // (b.clicks/b.likes/registeredAt/approvedAt/עיגונים) — לא נבנו חשיפות/המרה/פניות/פאנל/גרפים כי
 // אין להם צנרת-איסוף בכלל, ובנייתם הייתה אומרת מספרים מומצאים. החלטת המשתמש (2026-08-03).
 const DATA_KEY = 'dataCenter';
+// §393 — יומן מחיקות ושחזור. פריט משלו בסיידבר ולא סקשן בתוך מסך אחר: ברגע שצריך אותו,
+// צריך אותו מהר, ומסך שמחפשים אותו בפאניקה חייב להיות במקום קבוע ומוכר.
+const TRASH_KEY = 'deletionLog';
 // עסק השבוע · הטבת השבוע — תור ניהול לבקשות מ-weekly_interest (business.html §145, נבנה בפועל 2026-08-04)
 const WEEKLY_KEY = 'weeklyPicks';
 
@@ -3278,6 +3297,8 @@ const ICO_WEEKLY  = `<svg ${ICO_ATTRS}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></
 // §263 — "חזרה לאתר" בתחתית הסיידבר. לדשבורד הניהול אין topbar בכלל (רק sidebar+main), ולכן
 // עד עכשיו הדרך היחידה לחזור ל-home.html הייתה עריכה ידנית של ה-URL. חץ-יציאה, לא "בית" — כדי
 // לא להתבלבל עם ICO_HOME שכבר מסמן את "דשבורד ראשי".
+// §393 — archive-restore (Lucide), באותו viewBox/stroke של שאר האייקונים בסרגל
+const ICO_TRASH   = `<svg ${ICO_ATTRS}><rect x="2" y="3" width="20" height="5" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h2"></path><path d="M20 8v11a2 2 0 0 1-2 2h-2"></path><path d="m9 15 3-3 3 3"></path><path d="M12 12v9"></path></svg>`;
 const ICO_EXIT    = `<svg ${ICO_ATTRS}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5"></path><path d="M21 12H9"></path></svg>`;
 // ── §375 — מרכז הניהול עבר לרשימת הכתובות של §374 ────────────────────────────────────────
 // §374 נתן ל-welcome.html ול-home.html שלוש כתובות על שתי רשתות; מרכז הניהול נשאר על אחת.
@@ -3508,6 +3529,7 @@ function renderSidebar() {
       <div class="sidebar-standalone ${CAT_TABS.some(t=>t.key===activeTab)?'active':''}" onclick="goToTabGroup('category')" title="קטגוריות"><span class="ic">${ICO_CATS}</span></div>
       <div class="sidebar-divider"></div>
       <div class="sidebar-standalone featured ${activeTab===DATA_KEY?'active':''}" onclick="selectTab('${DATA_KEY}')" title="מרכז נתונים"><span class="ic">${ICO_DATA}</span></div>
+      <div class="sidebar-standalone ${activeTab===TRASH_KEY?'active':''}" onclick="selectTab('${TRASH_KEY}')" title="מחיקות ושחזור"><span class="ic">${ICO_TRASH}</span></div>
       <div class="sidebar-divider"></div>
       <a class="sidebar-standalone sidebar-exit" href="home.html" title="חזרה לאתר"><span class="ic">${ICO_EXIT}</span></a>`;
     return;
@@ -3551,6 +3573,9 @@ function renderSidebar() {
     <div class="sidebar-divider"></div>
     <div class="sidebar-standalone featured ${activeTab===DATA_KEY?'active':''}" onclick="selectTab('${DATA_KEY}')">
       <span class="ic">${ICO_DATA}</span><span>מרכז נתונים</span>
+    </div>
+    <div class="sidebar-standalone ${activeTab===TRASH_KEY?'active':''}" onclick="selectTab('${TRASH_KEY}')">
+      <span class="ic">${ICO_TRASH}</span><span>מחיקות ושחזור</span>
     </div>
     <div class="sidebar-divider"></div>
     <a class="sidebar-standalone sidebar-exit" href="home.html">
@@ -9690,21 +9715,56 @@ window.rejectFan = async function(id) {
 // עסק או אוהד לא רק לדחות"). עד עכשיו המחיקה הייתה קבורה בטאב "החלטות ויומן" בלבד. דחייה משאירה
 // את הרשומה בבסיס-הנתונים (ובספירות), מחיקה מוחקת אותה לגמרי — לכן אישור כפול, ובעסק גם דורש
 // להקליד את שם העסק, כי מחיקת עסק מוחקת גם את כל ההיסטוריה והמדיה שלו ואין ממנה חזרה.
+// ⚠️ §393 — "אין ממנה חזרה" כבר לא נכון: כל מחיקה נרשמת ל-deletionLog לפני שהיא קורית,
+// וניתן לשחזר אותה מ"מחיקות ושחזור" בסיידבר. הנימוק לאישור-הכפול נשאר תקף בכל זאת —
+// שחזור הוא תיקון-בדיעבד, לא רישיון למחוק בקלות.
 function qjDeleteBtn(kind, id) {
-  return `<button class="qj-btn-delete" title="מחיקה לצמיתות — לא ניתן לשחזר" onclick="${kind === 'fan' ? 'deleteFan' : 'deleteBiz'}('${id}')">🗑️ מחיקה</button>`;
+  return `<button class="qj-btn-delete" title="מחיקה — נרשמת ביומן המחיקות וניתנת לשחזור משם" onclick="${kind === 'fan' ? 'deleteFan' : 'deleteBiz'}('${id}')">🗑️ מחיקה</button>`;
+}
+
+// ══════════════ §393 — מחיקה שנרשמת לפני שהיא קורית ══════════════════════════════════════
+// ר' ההסבר המלא בראש deletion-log.js. כאן רק העטיפות שנוגעות למסך.
+
+// 🔑 **הצילום לאישור נקרא מ-Firestore, לא מ-MOCK_FANS/MOCK_BUSINESSES.** הרשומה בזיכרון עברה
+// hydrate — קוד-כניסה שמוזרם מ-memberCodes, טוקן מ-bizTokens, המרות תאריך — ומה שהמנהל מאשר
+// חייב להיות מה שבאמת יימחק. בדרך זה גם תופס מוקדם את המצב שבו הרשומה כבר איננה.
+async function confirmDeletion(collectionName, id) {
+  let data;
+  try {
+    const s = await getDoc(doc(db, collectionName, id));
+    if (!s.exists()) { alert(DELETE_MISSING_MSG); return false; }
+    data = s.data();
+  } catch (e) {
+    console.error(e);
+    // ⚠️ קריאה שנכשלה אינה "אין רשומה" — הכשל של §388. לכן לא ממשיכים למחיקה על סמך חוסר-מידע.
+    alert('לא ניתן לקרוא את הרשומה, ולכן המחיקה לא בוצעה: ' + e.message);
+    return false;
+  }
+  return confirm(deletionConfirmText(collectionName, data));
+}
+
+const DELETE_MISSING_MSG = 'הרשומה כבר לא קיימת בבסיס הנתונים — ייתכן שנמחקה במקביל בחלון אחר. רענן/י את המסך.';
+
+// ההודעה חייבת לומר במפורש שהרשומה **לא** נמחקה. מנהל שקורא "שגיאה במחיקה" סתם, מניח
+// שהמחיקה אולי כן עברה — ואז מוחק שוב, או מפסיק לסמוך על המסך.
+function deleteFailedMsg(e) {
+  return 'המחיקה לא בוצעה, והרשומה נשארה במקומה.\n\n'
+    + 'כדי שלא תישאר מחיקה בלי תיעוד, הרישום ליומן קודם למחיקה — ואם אחד מהשניים נכשל, שניהם מתבטלים.\n\n'
+    + 'הסיבה: ' + (e && e.message ? e.message : e);
 }
 window.deleteFan = async function(id) {
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return;
-  if (!confirm(`למחוק לצמיתות את "${f.name}"?\n\nזו לא דחייה — הרשומה נמחקת מבסיס הנתונים ולא ניתן לשחזר אותה.\nאם רק רצית שהוא לא יוכל להתחבר — השתמש ב"דחייה" במקום.`)) return;
+  if (!(await confirmDeletion('members', id))) return;
   try {
-    await deleteDoc(doc(db, 'members', id));
+    const res = await logAndDelete(db, 'members', id, CURRENT_ADMIN, 'admin-dashboard');
+    if (!res.ok) { alert(DELETE_MISSING_MSG); return; }
     if (selectedFanDetailId === id) selectedFanDetailId = null;
     if (selectedTaskKey === 'fan:' + id) selectedTaskKey = null;
     fanBackToList();
     renderMain();
   }
-  catch (e) { console.error(e); alert('שגיאה במחיקה: ' + e.message); }
+  catch (e) { console.error(e); alert(deleteFailedMsg(e)); }
 };
 // ── ביטול-החלטה אחרי אישור/דחייה — אותו פער בדיוק כמו rejectApprovedBiz/restoreBizToPending למעלה,
 // באוהדים. שים לב: לא נוגע ב-memberNumber/loginCode שכבר הוקצו ל-approveFan — נשארים על הרשומה
@@ -9761,14 +9821,15 @@ window.deleteBiz = async function(id) {
   const b = findBiz(id);
   if (!b) return;
   // אישור בודד בלבד — הקלדת שם העסק כאישור-שני הוסרה לבקשת המשתמש (2026-08-16), "שישר ימחק"
-  if (!confirm(`למחוק לצמיתות את "${b.name}"?\n\nזו לא דחייה — כל הרשומה (פרטים, הטבות, תמונות, יומן) נמחקת מבסיס הנתונים ולא ניתן לשחזר.\nאם רק רצית להוריד אותו מהאינדקס — השתמש ב"דחייה" / "הסרה מהאינדקס" במקום.`)) return;
+  if (!(await confirmDeletion('businesses', id))) return;
   try {
-    await deleteDoc(doc(db, 'businesses', id));
+    const res = await logAndDelete(db, 'businesses', id, CURRENT_ADMIN, 'admin-dashboard');
+    if (!res.ok) { alert(DELETE_MISSING_MSG); return; }
     if (selectedTaskKey === 'biz:' + id) selectedTaskKey = null;
     bizBackToList();
     renderMain();
   }
-  catch (e) { console.error(e); alert('שגיאה במחיקה: ' + e.message); }
+  catch (e) { console.error(e); alert(deleteFailedMsg(e)); }
 };
 // ── ביטול-החלטה אחרי אישור/דחייה — הפער שדווח: לא הייתה שום דרך בכרטיס עסק *מאושר* לבטל את
 // האישור (rejectBiz כבר יודע להחזיר מאושר→ממתין, אבל שום כפתור לא קרא לו כשהעסק כבר מאושר —
@@ -14567,6 +14628,121 @@ function restoreSearchFocus(st) {
   // ששחזור-הסמן לעולם לא יפיל את הרינדור עצמו.
   try { el.setSelectionRange(st.start, st.end); } catch (e) {}
 }
+// ══════════════════ §393 — מסך "מחיקות ושחזור" ═══════════════════════════════════════════
+// המסך שלא היה קיים ב-§392, וששאלת "מי מחק את הרשומה" נשארה בלעדיו בלי תשובה.
+//
+// טעינה עצלה ופעם-אחת, בדיוק כמו loadRedeemStats/loadPlatformStats — אבל עם מצב מפורש
+// ולא "אם הרשימה ריקה תטען שוב": כשל-קריאה משאיר את הרשימה ריקה, ותנאי כזה היה מייצר
+// לולאת-רינדור אינסופית מול Firestore.
+let deletionLogEntries = [];
+let deletionLogState = 'idle';   // idle | loading | ready | error
+let deletionLogError = '';
+
+async function loadDeletionLog(force) {
+  if (deletionLogState === 'loading') return;
+  if (!force && (deletionLogState === 'ready' || deletionLogState === 'error')) return;
+  deletionLogState = 'loading';
+  if (force && activeTab === TRASH_KEY) renderMain();
+  try {
+    deletionLogEntries = await fetchDeletionLog(db, 200);
+    deletionLogState = 'ready';
+    deletionLogError = '';
+  } catch (e) {
+    console.error('deletion log load failed:', e);
+    deletionLogState = 'error';
+    deletionLogError = e && e.message ? e.message : String(e);
+  }
+  if (activeTab === TRASH_KEY) renderMain();
+}
+window.retryDeletionLog = function() { loadDeletionLog(true); };
+
+const RESTORE_FAIL_MSG = {
+  // 🔑 המקרה שבאמת קורה: הרשומה כבר שוחזרה, או שאותו אדם נרשם מחדש וקיבל את אותו מזהה
+  // (מזהה של חבר שנכנס עם Google הוא ה-uid שלו — כלומר הרשמה חוזרת מחזירה בדיוק אותו ID).
+  // כתיבה במצב הזה הייתה **דורסת רשומה חיה בגרסה ישנה**, בלי שום סימן.
+  occupied: 'השחזור בוטל: כבר קיימת רשומה עם אותו מזהה.\n\nייתכן שהרשומה כבר שוחזרה, או שאותו אדם נרשם מחדש. כתיבה עכשיו הייתה דורסת את הרשומה החיה בגרסה ישנה.',
+  noLog: 'רשומת היומן לא נמצאה. רענן/י את המסך.',
+  noData: 'ברשומת היומן אין צילום של המסמך, ולכן אין מה לשחזר ממנה.',
+};
+
+window.restoreDeletedRecord = async function(logId) {
+  const entry = deletionLogEntries.find(x => x.id === logId);
+  if (!entry) return;
+  const { name } = deletionLabel(entry.collectionName, entry.data);
+  const what = entry.collectionName === 'members' ? 'האוהד' : 'העסק';
+  if (!confirm(`לשחזר את ${what} "${name}"?\n\nהרשומה תיכתב בחזרה על אותו מזהה, עם התוכן שנשמר ביומן ברגע המחיקה.\nהיומן ההיסטורי של הרשומה (תת-האוסף activity) שרד את המחיקה ויחזור איתה.`)) return;
+  try {
+    const res = await restoreDeleted(db, logId, CURRENT_ADMIN);
+    if (!res.ok) { alert(RESTORE_FAIL_MSG[res.reason] || 'השחזור לא בוצע.'); return; }
+    alert(`✓ "${res.name}" שוחזר.`);
+    loadDeletionLog(true);
+  } catch (e) { console.error(e); alert('השחזור נכשל, ולא נכתב דבר: ' + (e && e.message ? e.message : e)); }
+};
+
+function delTs(t) { return t && typeof t.toDate === 'function' ? fmtDateTime(t.toDate()) : ''; }
+
+function deletionLogRowHtml(entry) {
+  const isFan = entry.collectionName === 'members';
+  const { name, lines } = deletionLabel(entry.collectionName, entry.data);
+  const when = delTs(entry.deletedAt);
+  const side = entry.state === 'restored'
+    ? `<div class="del-restored">✓ שוחזר${entry.restoredBy ? ' ע"י ' + esc(entry.restoredBy) : ''}${delTs(entry.restoredAt) ? '<br>' + delTs(entry.restoredAt) : ''}</div>`
+    : `<button class="act-btn tiny" onclick="restoreDeletedRecord('${entry.id}')">↩️ שחזור</button>`;
+  return `
+    <div class="del-row">
+      <div class="del-row-main">
+        <div class="del-row-name">
+          <span class="del-kind">${isFan ? '👥 אוהד' : '🏪 עסק'}</span>
+          <span>${esc(name)}</span>
+        </div>
+        ${lines.length ? `<div class="del-row-ident">${lines.map(esc).join(' · ')}</div>` : ''}
+        <div class="del-row-actor">נמחק ע"י ${esc(entry.actorName || '(לא ידוע)')}${when ? ' · ' + when : ''}${entry.source ? ' · מתוך ' + esc(entry.source) : ''}</div>
+        ${entry.state === 'attempted'
+          ? `<div class="del-attempted">⚠️ הרישום נכתב אך אישור המחיקה לא חזר — ייתכן שהרשומה כלל לא נמחקה. "שחזור" יסרב אם היא עדיין קיימת.</div>` : ''}
+      </div>
+      <div class="del-row-side">${side}</div>
+    </div>`;
+}
+
+function deletionLogHtml() {
+  const head = `
+    <div class="msg-content-head">
+      <div style="flex:1;min-width:230px">
+        <div class="msg-crumb"><a onclick="selectTab('${HOME_KEY}')">← מרכז המשימות</a><span>/</span><span>מחיקות ושחזור</span></div>
+        <div class="msg-page-title">מחיקות ושחזור</div>
+      </div>
+      <div class="msg-kpis">
+        <div><div class="msg-kpi-num">${deletionLogState === 'ready' ? deletionLogEntries.length : '—'}</div><div class="msg-kpi-label">מחיקות ביומן</div></div>
+        <div class="msg-kpi-sep"></div>
+        <div><div class="msg-kpi-num">${deletionLogState === 'ready' ? deletionLogEntries.filter(e => e.state === 'restored').length : '—'}</div><div class="msg-kpi-label">שוחזרו</div></div>
+      </div>
+    </div>`;
+
+  const note = `<div class="del-note">
+    כל מחיקה של אוהד או עסק נרשמת כאן <b>לפני</b> שהיא מתבצעת — מי מחק, מתי, ותוכן מלא של הרשומה.
+    אם הרישום נכשל, המחיקה מתבטלת: מחיקה בלי תיעוד היא בדיוק המצב שאין ממנו חזרה.<br>
+    <b>שחזור</b> כותב את הרשומה בחזרה על אותו מזהה. היומן ההיסטורי של הרשומה, קוד הכניסה
+    (<span dir="ltr">memberCodes</span>) והתמונות ב-Storage לא נמחקו מלכתחילה — הם חוזרים איתה.<br>
+    ⚠️ היומן מתעד מכאן והלאה בלבד. מחיקות שקדמו לו אינן כאן, ואי אפשר לשחזר אותן.
+  </div>`;
+
+  if (deletionLogState === 'error') {
+    return `${head}${note}<div class="placeholder-note">לא ניתן לטעון את יומן המחיקות: ${esc(deletionLogError)}
+      <div style="margin-top:8px"><button class="act-btn tiny" onclick="retryDeletionLog()">נסה שוב</button></div></div>`;
+  }
+  if (deletionLogState !== 'ready') {
+    return `${head}${note}<div class="placeholder-note">טוען את יומן המחיקות…</div>`;
+  }
+  if (!deletionLogEntries.length) {
+    return `${head}${note}<div class="placeholder-note">אין עדיין מחיקות ביומן. זה המצב הרצוי.</div>`;
+  }
+  return `${head}${note}
+    <div class="dcard" style="padding:6px 16px 10px">
+      ${deletionLogEntries.map(deletionLogRowHtml).join('')}
+    </div>
+    <div style="margin-top:10px"><button class="act-btn tiny" onclick="retryDeletionLog()">🔄 רענון</button></div>`;
+}
+
 function renderMain() {
   const focusState = captureSearchFocus();
   renderMainInner();
@@ -14618,6 +14794,11 @@ function renderMainInner() {
     loadRedeemStats();
     // §281 — אותו דפוס בדיוק: טעינה עצלה, פעם אחת, וקריאה ל-renderMain בסיום
     loadPlatformStats();
+    return;
+  }
+  if (activeTab === TRASH_KEY) {
+    wrap.innerHTML = deletionLogHtml();
+    loadDeletionLog();   // §393 — טעינה עצלה פעם אחת, אותו דפוס כמו שתי השורות שמעל
     return;
   }
   const tab = tabMeta(activeTab);

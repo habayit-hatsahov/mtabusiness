@@ -586,6 +586,9 @@ import {
   collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc, runTransaction, query, where, getDocs, setDoc
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js";
+// §393 — הדף הזה עדיין מקושר מ-admin.html והמחיקה שלו עובדת, ולכן הוא דלת שלישית לאותה פעולה.
+// מנגנון-הגנה שיושב רק על admin-dashboard.html היה משאיר בדיוק את התרחיש של §392 פתוח כאן.
+import { logAndDelete, resolveActor, deletionConfirmText } from './deletion-log.js';
 
 async function allocateMemberNumber() {
   const counterRef = doc(db, 'counters', 'members');
@@ -1185,13 +1188,33 @@ window.clearReviewFlag = async function(id) {
 window.deleteMember = async function(id) {
   const m = members.find(x => x.id === id);
   const name = `${m?.firstName||''} ${m?.lastName||''}`.trim();
-  if (!confirm(`למחוק לצמיתות את ${name}?\nפעולה זו אינה ניתנת לביטול.`)) return;
-  await deleteDoc(doc(db, 'members', id));
+  // §393 — הצילום לאישור נקרא מ-Firestore ולא מ-members שבזיכרון, ומציג טלפון/מייל/מספר-חבר
+  // ולא רק שם: שתי רשומות באותו שם הפכו את אישור-המחיקה של §392 לחסר-ערך.
+  let snapData;
+  try {
+    const s = await getDoc(doc(db, 'members', id));
+    if (!s.exists()) { alert('הרשומה כבר לא קיימת בבסיס הנתונים.'); return; }
+    snapData = s.data();
+  } catch (e) {
+    console.error(e);
+    alert('לא ניתן לקרוא את הרשומה, ולכן המחיקה לא בוצעה: ' + e.message);
+    return;
+  }
+  if (!confirm(deletionConfirmText('members', snapData))) return;
+  try {
+    const actor = await resolveActor(db, auth.currentUser);
+    const res = await logAndDelete(db, 'members', id, actor, 'admin-members');
+    if (!res.ok) { alert('הרשומה כבר לא קיימת בבסיס הנתונים.'); return; }
+  } catch (e) {
+    console.error(e);
+    alert('המחיקה לא בוצעה, והרשומה נשארה במקומה.\n\nהרישום ליומן המחיקות קודם למחיקה, ואם אחד מהשניים נכשל — שניהם מתבטלים.\n\nהסיבה: ' + (e?.message || e));
+    return;
+  }
   const remaining = members.filter(x => x.id !== id && x.status === 'approved' && x.memberNumber);
   if (!remaining.length) {
     await deleteDoc(doc(db, 'counters', 'members'));
   }
-  showToast(`🗑️ ${name} נמחק`);
+  showToast(`🗑️ ${name} נמחק — נרשם ביומן המחיקות`);
 };
 
 window.sendWA = function(id) {
