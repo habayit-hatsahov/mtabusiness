@@ -14548,6 +14548,22 @@ function hbPhoneKey(p) {
   const d = String(p || '').replace(/[^0-9]/g, '');
   return d.length >= 9 ? d.slice(-9) : '';
 }
+// ══ §404 — "לא מזוהה" שאפשר בהחלט לזהות ═══════════════════════════════════════════════
+// המשתמש ראה בפאנל החי שלוש שורות "לא מזוהה" ושאל: *"אתה יכול לתת לי את הטלפון ולרשום
+// את הפרטים של האוהד שם שנוכל ליצור איתו קשר?"* — ובשתיים מהן התשובה כבר הייתה על המסך,
+// בעמודה שלידן.
+//
+// 🔑 **מי שנכנס אחרי הכשל — הזיהוי שלו כבר בידינו.** שורת `google:notLinked` אינה נושאת
+// טלפון (במסלול Google לא מקלידים טלפון בכלל), ולכן היא הופיעה "לא מזוהה". אבל האירוע
+// שהוכיח שהוא נכנס **נושא memberId**, וזה בדיוק אותו אדם. אותו נתון שכבר שימש לתשובה
+// "נכנס אחרי 13 שנ'" עונה גם על "מי זה היה".
+//
+// ⚠️ **ומסומן כנגזר ולא כמוקלד** (`fanVia`): טלפון שהאוהד הקליד הוא מה שהוא **ניסה**,
+// ורשומה שנגזרה מהכניסה היא מי שהוא **התברר שהוא**. בדרך כלל אותו אדם — אבל לא תמיד,
+// ואיחוד השניים לשורה זהה היה מוחק את ההבחנה בלי שאיש יידע.
+function hbFanById(id) {
+  return id ? (MOCK_FANS.find(f => f.id === id) || null) : null;
+}
 function hbFanByPhone(phone) {
   const k = hbPhoneKey(phone);
   if (!k) return null;
@@ -14590,6 +14606,11 @@ function hbLoginOutcomeIndex() {
   const bySess = new Map(), byMember = new Map();
   for (const e of (platformEvents || [])) {
     if (!e.memberId || !e.at) continue;
+    // §404 — 🔴 **`loginFail` לעולם אינו הוכחת-כניסה**, וזה הפך לקריטי ברגע ש-welcome.html
+    // התחיל לרשום memberId גם על כשלים (הזיהוי של §403). בלי השורה הזאת, שני כשלים רצופים
+    // באותו סשן היו גורמים לראשון להיראות "✅ נכנס אחרי X" — כלומר בדיוק ההפך מהאמת,
+    // ודווקא אצל מי שניסה פעמיים ונשאר בחוץ.
+    if (e.type === 'loginFail') continue;
     const t = e.at.getTime();
     if (e.sessionId) (bySess.get(e.sessionId) || bySess.set(e.sessionId, []).get(e.sessionId)).push({ t, m: e.memberId });
     (byMember.get(e.memberId) || byMember.set(e.memberId, []).get(e.memberId)).push(t);
@@ -14664,7 +14685,24 @@ function loginFailList() {
     }))
     // §402 — מחושב **אחרי** ה-map ולא בתוכו: hbLoginOutcome נשען על `fan`, שנגזר שם.
     // חישוב בתוך אותו אובייקט-ליטרל היה קורא שדה שעדיין לא קיים — ומקבל undefined בשקט.
-    .map(x => ({ ...x, outcome: hbLoginOutcome(x) }))
+    // §404 — ⚠️ **`outcome` קודם, וממנו נגזר `fan` כשאין טלפון.** ר' hbFanFromOutcome:
+    // הכניסה שאחרי הכשל נושאת memberId, וזה מספיק כדי לשים שם וטלפון על שורה שהייתה
+    // "לא מזוהה". אין כאן מעגליות — hbLoginOutcome קורא את `fan` רק להצלבה החוצה-סשנית,
+    // ובשורות האלה הוא null ממילא.
+    .map(x => {
+      const outcome = hbLoginOutcome(x);
+      // ⚠️ **שלושה מקורות-זיהוי, בסדר יורד של ישירות** — ולא מיזוג שלהם:
+      //   phone — הטלפון שהאוהד הקליד. מה שהוא **ניסה**.
+      //   event — זיהוי שנרשם על הכשל עצמו (§404: המייל המאומת נמצא על רשומה).
+      //   entry — הכניסה שקרתה אחרי, כלומר מי שהוא **התברר שהוא**.
+      // 🔑 `event` קודם ל-`entry` וזה חשוב: הוא היחיד שקיים גם כשהאדם **לא** נכנס —
+      // כלומר בדיוק בשורה שצריך להתקשר אליה.
+      const byEvent = !x.fan && x.memberId ? hbFanById(x.memberId) : null;
+      const byEntry = !x.fan && !byEvent && outcome.memberId ? hbFanById(outcome.memberId) : null;
+      return { ...x, outcome,
+               fanVia: x.fan ? 'phone' : byEvent ? 'event' : byEntry ? 'entry' : null,
+               fan: x.fan || byEvent || byEntry };
+    })
     .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
 // §355 — "טיפלתי" **מפנה את השורה**, לא רק צובע אותה. זו הייתה הבקשה המפורשת של המשתמש
@@ -14738,15 +14776,22 @@ function loginIssuesTableHtml(list) {
         <div class="task-table-main">
           <!-- §355 — **מי קודם למה.** כל עוד השורה נפתחה בסיבה ("פסק-זמן"), התקלות נראו
                כמו לוג-שרת ולא כמו אנשים שממתינים לשיחה. הטלפון הוא הפעולה, הסיבה היא ההסבר. -->
+          <!-- §404 — הטלפון מוצג גם כשהוא נגזר מהרשומה ולא הוקלד: זה מה שמאפשר להרים
+               טלפון ישר מהשורה, וזו הייתה הבקשה. הסימן "· זוהה מהכניסה" נשאר כדי שלא
+               ייקרא כאילו האוהד הקליד אותו. -->
           <div class="task-table-name">${
             x.fan ? esc(x.fan.name) : x.phone ? esc(x.phone) : 'לא מזוהה'
-          }${x.phone && x.fan ? ` · <span style="font-weight:600;direction:ltr;display:inline-block">${esc(x.phone)}</span>` : ''}</div>
+          }${x.fan && (x.phone || x.fan.phone)
+              ? ` · <span style="font-weight:600;direction:ltr;display:inline-block">${esc(x.phone || x.fan.phone)}</span>` : ''
+          }${x.fanVia === 'entry' || x.fanVia === 'event'
+              ? ` <span style="font-weight:500;opacity:.7;font-size:11px">· זוהה ${x.fanVia === 'event' ? 'מהמייל' : 'מהכניסה'}</span>` : ''}</div>
           <div class="task-table-meta">${esc(x.label)}${
             // ⚠️ סטטוס שאינו "מאושר" הוא לרוב **ההסבר עצמו** לכשל ולא נתון-לוואי: אוהד
             // שממתין לאישור ונכשל ב-'pending' אינו תקלה אלא תור שתלוי בנו.
             x.fan && x.fan.status && x.fan.status !== 'approved'
               ? ' · ⚠️ הרשומה שלו ' + (x.fan.status === 'pending' ? 'ממתינה לאישור' : 'נדחתה') : ''
-          }${x.phone && !x.fan ? ' · ⚠️ המספר הזה לא רשום אצלנו' : ''}</div>
+          }${x.phone && !x.fan ? ' · ⚠️ המספר הזה לא רשום אצלנו' : ''
+          }${(x.fanVia === 'entry' || x.fanVia === 'event') && x.fan.email ? ' · ' + esc(x.fan.email) : ''}</div>
           <div class="task-table-meta" style="opacity:.75">${
             [x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
              // §338 — הסביבה קודמת לסשן: בכשל 'timeout'/'moduleTimeout' זו השורה שאומרת

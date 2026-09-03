@@ -1734,7 +1734,13 @@ if (!['yellowzone.co.il', 'www.yellowzone.co.il'].includes(location.hostname)) r
   addDoc(collection(db, 'events'), {
     type,
     bizId: e.bizId ?? null,
-    memberId: localStorage.getItem('hb_memberId') || null,
+    // §404 — דריסה מפורשת, ורק ממקום אחד: הענף שבו הוורקר **זיהה** את הרשומה לפי המייל
+    // המאומת (`linkable`, §403). בכל שאר הקריאות `e.memberId` אינו קיים וההתנהגות זהה.
+    // 🔑 בלי זה, שורת כשל במסלול Google היא לנצח "לא מזוהה": שם לא מקלידים טלפון, ואם
+    // האדם גם לא נכנס בסוף — אין שום דרך לחזור אליו. וזה בדיוק מי שצריך שיחה.
+    // ⚠️ המשמעות כאן שונה מהרגיל ("החבר שביצע") ל"החבר שזוהה", ולכן admin-dashboard מחריג
+    // `loginFail` מהצלבת-הכניסה — אחרת כשל היה נראה כהוכחה שהוא נכנס (§404).
+    memberId: e.memberId || localStorage.getItem('hb_memberId') || null,
     sessionId: _hbSessionId(),
     path: location.pathname,
     // ⚠️ §281 — **המארח בלבד**, לא ה-URL המלא. firestore.rules אוכפת referrer.size() <= 50,
@@ -2325,6 +2331,9 @@ async function heroGoogleLogin(res) {
       // באותו ערוץ, כי זה עדיין ניסיון-כניסה שלא נכנס מיד.
       window.logEvent && window.logEvent('loginFail', {
         channel: 'google:canLink', blockId: heroEnvTagAt(t0, api),
+        // §404 — ר' ההערה ב-logEvent: זה הדבר היחיד שהופך שורה "לא מזוהה" למישהו
+        // שאפשר להתקשר אליו, אם הוא יעזוב בלי ללחוץ.
+        memberId: data.linkable.memberId,
       });
       // §359 — מאפס את מונה-כשלי-הרשת: הוורקר ענה, כלומר הכתובת נגישה.
       window.hbBumpNetFail && window.hbBumpNetFail('canLink');

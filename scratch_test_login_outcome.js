@@ -43,6 +43,9 @@ const FANS = [
   { id:'KPTCd2XmzH', name:'eliezer bitton',phone:'0585835311', status:'approved' },
   { id:'tEyFUx9FRK', name:'שובל צרפתי',    phone:'0544254737', status:'approved' },
   { id:'GvEdrgDJVH', name:'נבדק סשן-אחר',  phone:'0523777766', status:'approved' },
+  // §404 — שני אלה **אינם** מגיעים מטלפון: הם מזוהים רק דרך הכניסה שאחרי הכשל
+  { id:'5OmDhFgK4i', name:'גל שבתאי',      phone:'0526913504', email:'shabtaiprod@gmail.com', status:'approved' },
+  { id:'A2GYdyjKrj', name:'פלג לוינזון',   phone:'0528400525', email:'peleglevinson@gmail.com', status:'approved' },
 ];
 const sandbox = { platformEvents: E, Date, Math, console, JSON };
 vm.createContext(sandbox);
@@ -51,10 +54,15 @@ globalThis.__run = function(fans) {
   const key = p => String(p||'').replace(/[^0-9]/g,'').slice(-9);
   return platformEvents.filter(e => e.type === 'loginFail').map(e => {
     const fan = e.phone ? fans.find(f => key(f.phone) === key(e.phone)) || null : null;
-    const x = { at: e.at, sessionId: e.sessionId, phone: e.phone, fan,
+    const x = { at: e.at, sessionId: e.sessionId, phone: e.phone, fan, memberId: e.memberId || null,
                 label: hbLoginFailLabel(e.channel),
                 ours: HB_LOGIN_FAIL_OURS.includes(hbLoginFailBase(e.channel)), ch: e.channel };
     x.outcome = hbLoginOutcome(x);
+    // §404 — אותה גזירה כמו ב-loginFailList: phone → זיהוי על האירוע → הכניסה שאחרי
+    const byEvent = !x.fan && x.memberId ? fans.find(f => f.id === x.memberId) || null : null;
+    const byEntry = !x.fan && !byEvent && x.outcome.memberId ? fans.find(f => f.id === x.outcome.memberId) || null : null;
+    x.fanVia = x.fan ? 'phone' : byEvent ? 'event' : byEntry ? 'entry' : null;
+    x.fan = x.fan || byEvent || byEntry;
     x.badge = hbOutcomeBadge(x.outcome);
     return x;
   });
@@ -84,3 +92,28 @@ chk('§403 כשל-קישור מתויג **ונספר כתקלה אצלנו**',
     !get('google:link:email_mismatch').label.includes('לא מוכרת') && get('google:link:email_mismatch').ours);
 chk('§403 כשל-קישור בלי הזנב "· דרך Google"',
     !get('google:link:email_mismatch').label.includes('דרך Google'));
+
+console.log('\n══ §404 — "לא מזוהה" שאפשר לזהות ══');
+const s1 = rows.find(r => r.sessionId === 'S1');   // notLinked שנכנס — חייב לקבל שם
+const s4 = rows.find(r => r.sessionId === 'S4');   // notLinked שלא נכנס — נשאר בלי
+console.log(`   14:57 → ${s1.fan ? s1.fan.name + ' · ' + s1.fan.phone : 'לא מזוהה'}   (${s1.fanVia || '—'})`);
+console.log(`   11:36 → ${s4.fan ? s4.fan.name : 'לא מזוהה'}   (${s4.fanVia || '—'})`);
+chk('🔑 שורה בלי טלפון שנכנסה — מזוהה מהכניסה', !!s1.fan && s1.fanVia === 'entry');
+chk('ויש עליה טלפון להתקשר אליו', !!s1.fan.phone);
+chk('שורה שלא נכנסה נשארת "לא מזוהה" ולא ניחוש', !s4.fan && s4.fanVia === null);
+chk('מי שהקליד טלפון מסומן phone ולא entry',
+    rows.filter(r => r.ch === 'fetchTimeout')[0].fanVia === 'phone');
+
+// 🔴 הרגרסיה שהתיקון הזה יכול היה לייצר: כשל שנושא memberId (§403) אינו הוכחת-כניסה
+// ⚠️ תאריך **בעבר** ומחוץ לחלון-החסד של 3 דקות — אחרת התוצאה היא 'fresh' ולא 'none',
+// והבדיקה הייתה נכשלת מסיבה שאין לה קשר למה שהיא בודקת.
+const twoFails = [
+  ev('2026-09-01T10:00:00Z','loginFail',{s:'SB',ch:'google:canLink',m:'5OmDhFgK4i'}),
+  ev('2026-09-01T10:01:00Z','loginFail',{s:'SB',ch:'google:canLink',m:'5OmDhFgK4i'}),
+];
+sandbox.platformEvents = twoFails;
+const r2 = sandbox.__run(FANS);
+chk('🔴 שני כשלים רצופים — הראשון אינו "נכנס"', r2[0].outcome.kind === 'none');
+chk('🔑 ובכל זאת מזוהה בשם — מהמייל, בלי שנכנס בכלל',
+    !!r2[0].fan && r2[0].fan.name === 'גל שבתאי' && r2[0].fanVia === 'event');
+chk('ויש עליו טלפון להתקשר', r2[0].fan.phone === '0526913504');
