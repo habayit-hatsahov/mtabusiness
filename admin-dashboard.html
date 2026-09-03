@@ -2758,6 +2758,10 @@ function hydrateFan(id, raw) {
     // בלעדיו אי אפשר לענות על "כמה אישרתי ולא נכנסו" — השאלה שמצדיקה או שוללת את כל
     // העבודה על כניסה עם גוגל.
     lastSeenAt: toJsDate(raw.lastSeenAt),
+    // §400 — נכתבים ע"י /google-link (הבאנר) ו-/google-attach (טופס ההרשמה), **שניהם
+    // בדיוק אותם שדות**. עד עכשיו נאספו ולא נקראו במרכז הניהול. ר' googleLinkStats.
+    googleEmail: raw.googleEmail || '',
+    googleLinkedAt: toJsDate(raw.googleLinkedAt),
     rejectedAt: toJsDate(raw.rejectedAt),
     loginCodeCreatedAt: toJsDate(raw.loginCodeCreatedAt),
     loginCodeEmailQueuedAt: toJsDate(raw.loginCodeEmailQueuedAt), // מתי נכנס לתור השליחה — בסיס למדידת איחור
@@ -5302,6 +5306,61 @@ function fanEntryBreakdown() {
 //
 // נגזר כולו מנתונים שכבר טעונים במסך (MOCK_BUSINESSES · MOCK_FANS · MEMBER_CODES) —
 // אפס קריאות נוספות ל-Firestore.
+// ══ §400 — אימוץ חיבור Google, ותנאי-החזרה של §399י ═══════════════════════════════════════
+// 🔑 **הסקשן הזה קיים כי תנאי-החזרה שנכתב במסמך הוא הבטחה בלי מנגנון.** §399י קבע "כשהמקושרים
+// יעברו את מחצית המאושרים — גוגל חוזר למעלה במסך הכניסה", ואין שום דבר שיזכיר את זה ביום
+// שזה יקרה. מספר שיושב במסמך נקרא פעם אחת; מספר שיושב במסך שמסתכלים עליו — נקרא.
+//
+// 🔴 **וזה גם התיקון למדידה שהטעתה.** בתחילה דיווחתי "8.6% חיברו" — חלוקה של המקושרים בכל
+// המאושרים — והצגתי את זה כאילו הפיצ'ר לא נתפס. אבל החיבור נפתח רק ב-2.9 בערב, ורוב
+// המאושרים נרשמו שבועות קודם ולא פתחו את האתר מאז. **המכנה כלל אנשים שלא לחצו על כפתור
+// שלא היה על המסך שלהם.** מול מי שכן נחשף, האימוץ הוא כ-46%. לכן שתי השורות מוצגות
+// **יחד וכשוות-מעמד** — קריאה של אחת מהן בלבד, לכל כיוון, מספרת סיפור הפוך.
+const GOOGLE_SIGNUP_WINDOW_MS = 10 * 60 * 1000;
+
+// ⚠️ **הפילוח בין שני נתיבי-החיבור הוא אומדן ולא עובדה, וכך הוא מוצג.** `/google-link`
+// (הבאנר) ו-`/google-attach` (טופס ההרשמה) כותבים **בדיוק אותם שדות**, ואין דגל שמבדיל
+// ביניהם. ההבחנה כאן: attach רץ שניות אחרי כתיבת הרשומה, הבאנר דורש אישור וכניסה — כלומר
+// שעות לפחות. נבדק שמית על 16 הרשומות שסווגו כ"בהרשמה": כולן בפער של 0–1 שניות.
+// 🔑 התיקון האמיתי הוא שדה `googleLinkedVia` בוורקר, שורה אחת בכל patch — ואז זו עובדה.
+function googleLinkStats() {
+  const fans = MOCK_FANS || [];
+  const approved = fans.filter(f => f.status === 'approved');
+  const linked = fans.filter(f => f.googleEmail);
+  const linkedApproved = approved.filter(f => f.googleEmail).length;
+
+  // 🔑 שתי נקודות-הזמן נגזרות **מהנתונים** ולא מוקלדות. תאריך קבוע בקוד מתיישן בשקט
+  // ברגע שמישהו יחבר מוקדם יותר (למשל אחרי backfill), וממשיך להיראות נכון.
+  const firstLink = linked.map(f => f.googleLinkedAt).filter(Boolean).sort((a, b) => a - b)[0] || null;
+
+  const viaSignup = linked.filter(f => {
+    if (!f.googleLinkedAt || !f.registeredAtKnown) return false;
+    const d = f.googleLinkedAt - f.registeredAt;
+    return d >= 0 && d < GOOGLE_SIGNUP_WINDOW_MS;
+  });
+  const firstSignup = viaSignup.map(f => f.registeredAt).filter(Boolean).sort((a, b) => a - b)[0] || null;
+  const sinceSignup = firstSignup ? fans.filter(f => f.registeredAtKnown && f.registeredAt >= firstSignup) : [];
+
+  // מי שנחשף לבאנר = פתח את דף הבית מאז שהחיבור נפתח (lastSeenAt נכתב בכל טעינה, §367).
+  const exposed = firstLink ? approved.filter(f => f.lastSeenAt && f.lastSeenAt >= firstLink) : [];
+
+  const half = Math.ceil(approved.length / 2);
+  return {
+    approved: approved.length, linked: linked.length, linkedApproved,
+    viaSignup: viaSignup.length, viaLater: linked.length - viaSignup.length,
+    sinceSignup: sinceSignup.length,
+    exposed: exposed.length, exposedLinked: exposed.filter(f => f.googleEmail).length,
+    half, crossed: linkedApproved >= half, hasData: !!firstLink,
+  };
+}
+
+// מד-הנגד: מי ניסה להיכנס עם גוגל ולא הצליח. ⚠️ מחזיר null כשהאירועים עדיין לא נטענו —
+// **0 ו"לא יודעים" אינם אותו דבר**, ואפס-מזויף כאן היה קורא "אף אחד לא נכשל".
+function googleLoginFailCount() {
+  if (!Array.isArray(platformEvents)) return null;
+  return platformEvents.filter(e => e.type === 'loginFail' && String(e.channel || '').startsWith('google:')).length;
+}
+
 const BIZ_READY_REASONS = {
   noLink:        'אין קישור לרשומת חבר',
   missingMember: 'הקישור מצביע על רשומה שאינה קיימת',
@@ -5442,6 +5501,37 @@ function platformStatsHtml() {
             ? '⚠️ <b>זו רשימת-העבודה לפני המעבר, לא סטטיסטיקה.</b> לכל אחד מהם צריך להנפיק קוד, לאשר את רשומת החבר, או לתקן את הקישור — אחרת ביום המעבר הוא פשוט לא נכנס לדשבורד שלו.'
             : '✅ כל בעלי-העסק המאושרים יכולים להיכנס כחבר. <b>התנאי לביטול קישור-הטוקן מתקיים</b> — נכון לרגע זה.')}
       </div>${list}`;
+    })()}
+    ${(() => {
+      // §400 — אימוץ Google, ותנאי-החזרה של §399י. ר' ההערה המלאה מעל googleLinkStats.
+      const g = googleLinkStats();
+      if (!g.hasData) return '';
+      const gf = googleLoginFailCount();
+      const p = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+      const n = (x) => x.toLocaleString('he-IL');
+      return `<div class="plat-sect">חיבור Google — אימוץ</div>
+      <div class="plat-rows">
+        ${platRow('מקושרים מבין המאושרים', `${n(g.linkedApproved)} / ${n(g.approved)}`,
+          `${p(g.linkedApproved, g.approved)} · הסף להחזרת גוגל למעלה: ${n(g.half)}`,
+          '🔑 <b>המספר הזה לבדו מטעה, ולכן השורה מתחת חובה.</b> המכנה כולל את כל המאושרים — גם מי שנרשם שבועות לפני שחיבור Google בכלל היה קיים, ולא פתח את האתר מאז. הוא עונה על "כמה יכולים להיכנס עם גוגל היום", <b>לא</b> על "כמה רצו ולא".')}
+        ${platRow('מתוך מי שנחשף לבאנר', `${n(g.exposedLinked)} / ${n(g.exposed)}`,
+          `${p(g.exposedLinked, g.exposed)} — אלה שפתחו את דף הבית מאז שהחיבור נפתח`,
+          'שיעור האימוץ בקרב מי שהיתה לו הזדמנות לחבר. ⚠️ <b>אומדן-רצפה:</b> lastSeenAt הוא הביקור <b>האחרון</b> בלבד, ולכן אי אפשר לדעת כמה פעמים מישהו ראה את הבאנר. נכתב רק מ-2.8.26.')}
+        ${platRow('נרשמו עם Google בטופס', `${n(g.viaSignup)} / ${n(g.sinceSignup)}`,
+          `${p(g.viaSignup, g.sinceSignup)} מההרשמות מאז שהכפתור בטופס פעיל`,
+          '⚠️ <b>אומדן ולא עובדה.</b> שני נתיבי-החיבור (הבאנר וטופס ההרשמה) כותבים בדיוק אותם שדות, ואין דגל שמבדיל ביניהם. ההבחנה כאן לפי הפרש-זמן: חיבור תוך 10 דקות מההרשמה = הטופס. התיקון האמיתי הוא שדה <b>googleLinkedVia</b> בוורקר.')}
+        ${platRow('חיברו מאוחר יותר (באנר/תפריט)', n(g.viaLater),
+          `מתוך ${n(g.linked)} מקושרים בסך הכל`,
+          'מי שכבר היה רשום וחיבר את החשבון אחרי הכניסה. זה הנתיב שהבאנר של §388 פתח.')}
+        ${platRow('ניסו Google ולא נכנסו', gf === null ? '—' : n(gf),
+          gf === null ? 'האירועים עדיין נטענים' : 'לחצו על הכפתור וקיבלו "עדיין לא חיברתם"',
+          'מד-הנגד. 🔑 <b>זו העלות של הצגת הכפתור</b> — כל אחד כאן הוא מישהו שניסה מסלול שלא היה פתוח לו. אם המספר גדל מהר יותר מהמקושרים, המיקום שגוי.')}
+      </div>
+      <div class="biz-ready-list"><div class="biz-ready-item">${
+        g.crossed
+          ? '✅ <b>הסף נחצה.</b> יותר ממחצית המאושרים מקושרים — <b>להחזיר את כפתור Google מעל שדות הטלפון והקוד ב-welcome.html</b> (תנאי-החזרה של §399י).'
+          : `⏳ חסרים <b>${n(g.half - g.linkedApproved)}</b> מקושרים עד הסף. עד אז הקוד נשאר ראשון במסך הכניסה.`
+      }</div></div>`;
     })()}
     <div class="plat-sect">כניסות</div>
     <div class="plat-rows">
