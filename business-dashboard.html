@@ -2358,7 +2358,30 @@ async function loadBusinessAsMember() {
     }
     if (!mSnap || !mSnap.exists()) { showLoginNeeded(); return; }
 
-    const linkedId = mSnap.data().linkedBusinessId || null;
+    let linkedId = mSnap.data().linkedBusinessId || null;
+
+    // ⚠️ **§397ב — הקישור דו-כיווני, ורק כיוון אחד מובטח.** `businesses.ownerMemberId` קיים
+    // אצל כל 58 העסקים המאושרים (נמדד ב-§396), אבל `members.linkedBusinessId` — המצביע
+    // ההפוך — נכתב רק באישור-עסק, וההיתר הזה **נוסף לקוד באמצע הדרך** (ר' ההערה ליד
+    // `if (!m.linkedBusinessId && b.id)` ב-admin-dashboard.html). כלומר לבעלי-עסק שאושרו
+    // לפני כן הוא פשוט חסר, והם היו מקבלים "לא נמצא עסק המשויך לחשבון שלך" — הודעה שגויה
+    // לחלוטין למי שיש לו עסק.
+    //
+    // 🔑 **לכן לא נשענים על המצביע ההפוך בכלל, אלא נופלים לכיוון שנמדד ונמצא שלם.**
+    // השאילתה חייבת לכלול `status=='approved'` — כלל ה-`list` אוכף אותו, ובלעדיו היא
+    // נדחית כולה. עסק pending נשאר במסלול-הטוקן בלבד, וזה מקובל בשלב הזה.
+    if (!linkedId) {
+      try {
+        const s = await getDocs(query(collection(sharedDb, 'businesses'),
+          where('status', '==', 'approved'), where('ownerMemberId', '==', user.uid)));
+        if (!s.empty) linkedId = s.docs[0].id;
+      } catch (e) {
+        // לא לבלוע: אם חסר אינדקס מורכב, Firestore מחזיר כאן שגיאה עם קישור ליצירתו —
+        // וזה בדיוק המידע שצריך כדי לתקן, לא "לא נמצא עסק".
+        console.error('[loadBusinessAsMember] חיפוש עסק לפי ownerMemberId נכשל:', e.code || e.message, e);
+      }
+    }
+
     if (!linkedId) {
       // מחובר, אבל אין עסק מקושר לרשומה שלו. זו **לא** תקלת-כניסה, וההודעה חייבת לומר את זה.
       showLoginNeeded('לא נמצא עסק המשויך לחשבון שלך',
