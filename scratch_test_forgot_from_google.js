@@ -73,8 +73,20 @@ const rawMsg = src.slice(src.indexOf("data.error === 'google_not_linked'"), src.
 const msg = rawMsg.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
 ok('הכפתור קיים בהודעה', /class="gs-login-act"/.test(msg));
 ok('"מהתפריט" הוסר', !/מהתפריט/.test(msg), 'עדיין מפנה לפריט תפריט שאינו קיים');
-ok('מפנה לדף הבית במקום', /מדף הבית/.test(msg));
 ok('אינו מבטיח באנר קופץ', !/יקפוץ|יופיע.*באנר/.test(msg));
+
+// §399ה — ההבטחה על העתיד ירדה **מההודעה** ועברה להערה הקבועה, שנקראת לפני הלחיצה.
+// ⚠️ הטענה הישנה כאן ("ההודעה מפנה לדף הבית") הייתה נכונה ל-§399ב **והתיישנה** —
+// בדיקה שממשיכה לאכוף כוונה שהוחלפה הופכת לשומר של העבר, לא של המוצר.
+ok('ההודעה אינה נושאת את ההבטחה לעתיד', !/מדף הבית/.test(msg), 'המשפט חזר להודעה');
+ok('ההערה הקבועה כן נושאת אותה', /gs-login-note[\s\S]{0,400}בדף הבית/.test(src), 'ההבטחה נעלמה משני המקומות');
+
+console.log('\n🔑 §399ה — ההערה מתחלפת בהודעה ולא מצטרפת אליה:');
+ok('לפתק יש id', /class="gs-login-note" id="gsLoginNote"/.test(src));
+ok('heroGMsg מסתיר את ההערה', /m\.classList\.add\('show'\);\s*\n\s*heroGToggleNote\(true\)/.test(src));
+ok('heroGClearMsg מחזיר אותה', /heroGToggleNote\(false\)/.test(src));
+ok('ההחלפה יושבת בפונקציות ההודעה ולא בקורא', (src.match(/heroGToggleNote\(/g) || []).length === 3,
+   'צפוי 3 מופעים: ההגדרה + שתי הקריאות');
 
 console.log('\n🔑 כל onclick בהודעה מצביע על שם שנחשף ל-window:');
 for (const m of msg.matchAll(/onclick=\\?"([a-zA-Z_$][\w$]*)\(/g)) {
