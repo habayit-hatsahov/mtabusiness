@@ -14,10 +14,14 @@ for (const must of ['heroGoogleAttachAndEnter', 'data.linkable', "'google:canLin
   if (!code.includes(must)) throw new Error('הבלוק שנשלף חסר: ' + must);
 
 function build(apiResponses) {
-  const calls = [], msgs = [], events = [], entered = [];
+  const calls = [], msgs = [], events = [], entered = [], ls = {};
   const box = {
     console, setTimeout, clearTimeout, AbortController, Promise, JSON, Date, String,
     window: {}, document: { getElementById: () => null },
+    // §410 — localStorage מדומה, כדי לבדוק את הדגל של האישור החד-פעמי
+    localStorage: { getItem: (k) => ls[k] ?? null,
+                    setItem: (k, v) => { ls[k] = String(v); },
+                    removeItem: (k) => { delete ls[k]; } },
     HERO_TIMEOUT_MS: 8000, HERO_HARD_ABORT_MS: 35000,
     // §405 — מוגדר מעל הבלוק שנשלף (ליד heroProgress), ולכן חייב להגיע כאן כ-stub.
     // ⚠️ בלעדיו הענף "יש טוקן" זורק ReferenceError — וזה בדיוק מה שההרנס תפס.
@@ -45,6 +49,7 @@ function build(apiResponses) {
   box.window.hbBumpNetFail = () => 1;
   vm.createContext(box);
   vm.runInContext(code + '\n; globalThis.__login = heroGoogleLogin;', box);
+  box.__ls = ls;
   return { box, calls, msgs, events, entered };
 }
 (async () => {
@@ -69,6 +74,7 @@ function build(apiResponses) {
   chk('נשלחה בקשת /google-attach', !!attach);
   chk('ושולחת את שני השדות שהשער דורש', attach && attach.body.memberId === 'M123' && attach.body.idToken === 'IDT');
   chk('🔑 שתי קריאות בסך הכל — בלי /google-login שני', t.calls.length === 2);
+  chk('§410 — נשמר דגל שיציג אישור ב-home.html', t.box.__ls['hb_google_just_linked'] === 'M123');
 
   // ── 2. אין רשומה תואמת → ההודעה הישנה של §399, בלי שינוי ─────────────────────────────
   t = build({ '/google-login': { error: 'google_not_linked', email: 'x@gmail.com' } });
@@ -88,6 +94,8 @@ function build(apiResponses) {
   chk('כשל-קישור נרשם בערוץ נפרד', t.events.includes('loginFail:google:link:email_mismatch'));
   chk('והאדם מופנה למסלול שבטוח עובד', t.msgs.some(m => m.includes('הטלפון והקוד')));
   chk('ולא נכנס', t.entered.length === 0);
+  chk('🔑 §410 — וכשהקישור נכשל, הדגל נמחק (בלי אישור-שווא)',
+      t.box.__ls['hb_google_just_linked'] === undefined);
 
   // ── 4. מקושר כבר → כניסה רגילה, בלי לגעת בכלום ───────────────────────────────────────
   t = build({ '/google-login': { customToken: 'TOK2' } });

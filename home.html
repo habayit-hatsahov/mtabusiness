@@ -390,6 +390,11 @@
       border-radius: var(--r-card, 16px); box-shadow: var(--shadow, 0 1px 2px rgba(10,42,102,.06));
     }
     .gl-banner.show { display: flex; }
+    /* §410 — אישור חד-פעמי אחרי קישור אוטומטי (§409). ⚠️ אותה קופסה בדיוק כמו הבאנר
+       ורק בגוון ירוק: זו לא הודעה חדשה במסך אלא **התשובה** לבאנר שהיה כאן קודם, ומי
+       שראה אותו צריך לזהות מיד שזה אותו נושא. */
+    .gl-banner.done { background: rgba(22,163,74,.07); border-color: rgba(22,163,74,.3); }
+    .gl-banner.done .gl-banner-text b { color: #15803d; }
     .gl-banner-text { flex: 1; font-size: 13.5px; line-height: 1.55; color: var(--text-muted, #6B7A9B); }
     .gl-banner-text b { display: block; font-size: 14.5px; color: var(--text, #0A2A66); }
     .gl-banner-btn {
@@ -1606,6 +1611,19 @@
      מחליף את פריט-התפריט של §377 (בקשת המשתמש: "אמרנו באנר, מורידים את זה בכלל").
      ⚠️ מוצג ע"י JS בלבד, ורק אחרי קריאה **מוצלחת** של רשומת החבר — ר' ההערה בקוד.
      הכפתור פותח את אותו גיליון בדיוק של google-link.js; אין כאן מסלול-חיבור שני. -->
+<!-- ══ §410 — "מה קרה?" אחרי קישור אוטומטי ═══════════════════════════════════════════════
+     §409 הוריד את לחיצת האישור, ובצדק — היא לא הגנה על כלום. אבל היא **גם** הייתה הדבר
+     היחיד שאמר לאדם שחשבון ה-Google שלו נקשר. המשתמש שם לב לזה מיד אחרי הבדיקה: *"אין
+     אופציה לחבר את החשבון מדף ההתחברות כבר?"* — הפעולה קרתה, ואיש לא סיפר לו.
+     🔑 **הנראוּת לא בוטלה, היא רק זזה** — מלפני הפעולה (חיכוך) לאחריה (דיווח). ⚠️ חד-פעמי:
+     הדגל נמחק בקריאה הראשונה, ולכן זו הודעה ולא באנר קבוע. -->
+<div class="gl-banner done" id="glLinkedOk">
+  <div class="gl-banner-text">
+    <b>✅ חשבון ה-Google שלכם חובר</b>
+    מעכשיו אפשר להיכנס בלחיצה אחת — בלי לחפש את הקוד.
+  </div>
+  <button type="button" class="gl-banner-x" onclick="this.parentElement.classList.remove('show')" aria-label="סגירה" title="סגירה">✕</button>
+</div>
 <div class="gl-banner" id="glBanner">
   <div class="gl-banner-text">
     <b>נמאס לחפש את הקוד?</b>
@@ -4188,7 +4206,19 @@ window.hbDismissGoogleBanner = function () {
         getIdToken: () => window._auth?.currentUser?.getIdToken() || null,
         googleEmail: data.googleEmail || '',
       });
-      if (ok && !data.googleEmail) window.hbMaybeShowGoogleBanner(memberId);
+      // §410 — האישור החד-פעמי אחרי קישור אוטומטי (§409), **לפני** הבאנר ובמקומו.
+      // ⚠️ הדגל נמחק תמיד — גם כשההצגה לא יצאה לפועל — כדי שהודעה ישנה לא תצוץ בטעינה
+      // אקראית שבוע אחר כך. חד-פעמי פירושו חד-פעמי, לא "עד שיתאים לי להציג".
+      let justLinked = false;
+      try {
+        justLinked = localStorage.getItem('hb_google_just_linked') === memberId;
+        localStorage.removeItem('hb_google_just_linked');
+      } catch (e) {}
+      // ⚠️ מוצג רק כשהקריאה **הצליחה** והמייל באמת שם — אותו כלל של §388: חוסר-מידע אינו
+      // עובדה, ואישור על משהו שלא הצלחנו לאמת גרוע מלא-להציג כלום.
+      if (justLinked && ok && data.googleEmail) {
+        document.getElementById('glLinkedOk')?.classList.add('show');
+      } else if (ok && !data.googleEmail) window.hbMaybeShowGoogleBanner(memberId);
     } catch (e) { console.error('google banner init failed:', e); }
     const el = document.getElementById('heroUserName');
     // "חבר" הוא רק גיבוי לכשאין *שום* שם — הוא לא דורס שם אמיתי שכבר הוצג מה-cache המקומי
