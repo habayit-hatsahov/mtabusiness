@@ -74,13 +74,25 @@
     document.head.appendChild(s);
   }
 
+  // §411 — 🔑 **הכיתוב עלה מעל הכפתור.** קודם הוא ישב מתחתיו, כלומר הסיבה ללחוץ נקראה
+  // **אחרי** שההחלטה כבר התקבלה. זה בדיוק הלקח של §399 באותו פרויקט ("הקוד ראשון בנוסח,
+  // כמו שהוא ראשון על המסך") — מי שסורק טופס רואה כפתור בלי סיבה, ומדלג.
+  // ⚠️ הסדר בתוך ה-DOM הוא גם סדר הקריאה בקורא-מסך, ולכן זה לא רק ויזואלי.
   function buildBlock(host) {
     if (built) return;
     host.innerHTML =
-      '<div class="hb-gs-btn" id="hbGsBtnHost"></div>' +
       '<div class="hb-gs-cap" id="hbGsCap"></div>' +
+      '<div class="hb-gs-btn" id="hbGsBtnHost"></div>' +
       '<div class="hb-gs-or"><span>או למלא ידנית</span></div>';
     built = true;
+  }
+  // §411 — מדידה. ⚠️ **מוזרקת מהדף ולא נקראת ישירות**: ל-fan-register ול-business יש כל
+  // אחד `logEvent` מקומי משלו עם `blockId` משלו, והמודול הזה משותף לשניהם. אותו דפוס
+  // בדיוק כמו `apiFetch`/`onFilled` — ניחוש כאן היה מייחס הרשמות-עסק לטופס האוהד.
+  function track(channel) {
+    if (cfg && typeof cfg.log === 'function') {
+      try { cfg.log(channel); } catch (e) { console.error('google-signup: log נכשל', e); }
+    }
   }
 
   function setCap(html) {
@@ -88,9 +100,12 @@
     if (c) c.innerHTML = html;
   }
 
+  // §411 — משפט אחד במקום שניים, ו**קצר מהקודם** (62 תווים מול 78). שתי התועלות בו:
+  // מה שהם מרוויחים **עכשיו** (פחות הקלדה, מול הטופס שלפניהם) ומה **אחר כך** (בלי קוד).
+  // ⚠️ "והמייל יאומת" ירד: זו תועלת **שלנו** (§316 — כתובות שבורות), ולא של מי שקורא.
   function defaultCap() {
-    return 'לחיצה אחת — השם והמייל יתמלאו לבד, והמייל יאומת.<br>' +
-           '<b>ואחרי האישור — כניסה בלי קוד.</b>';
+    return 'לחיצה אחת — השם והמייל מתמלאים לבד,<br>' +
+           '<b>ובפעם הבאה תיכנסו בלי קוד.</b>';
   }
 
   // ⚠️ **לא דורסים ערך שכבר הוקלד** (למעט המייל, ר' מטה). מי שהתחיל למלא ואז לחץ על גוגל
@@ -154,6 +169,9 @@
            '<button type="button" class="hb-gs-undo" id="hbGsUndo">זה לא החשבון שלי</button>');
     var undo = el('hbGsUndo');
     if (undo) undo.addEventListener('click', clearToken);
+    // §411 — נרשם אחרי שהשדות כבר מולאו בפועל, לא בלחיצה: לחיצה שנגמרה בביטול אצל גוגל
+    // אינה "שימוש", והספירה שלה הייתה מנפחת את המונה שאמור למדוד הצלחה.
+    track('gsUsed');
     if (typeof cfg.onFilled === 'function') {
       try { cfg.onFilled(p); } catch (e) { console.error('google-signup: onFilled נכשל', e); }
     }
@@ -183,6 +201,8 @@
       });
       setCap(defaultCap());
       host.style.display = '';
+      // §411 — נרשם רק כשהכפתור **באמת** על המסך (הבדיקה מתחת), ולא כשניסינו לצייר.
+      // בלי ההבחנה הזאת "כמה ראו" היה סופר גם את מי שראה קו-מפריד ריק.
       // ⚠️ renderButton אינו מדווח על כשל. כשה-origin אינו מאושר אצל גוגל (למשל localhost)
       // הוא פשוט אינו מצייר כלום, ואז נשאר על המסך קו-מפריד לבדו. לכן בדיקה בדיעבד.
       // childElementCount ולא גובה — המכל עשוי להיות מוסתר לגמרי (שלב שעוד לא נפתח).
@@ -190,6 +210,13 @@
         if (!btnHost.childElementCount) {
           host.style.display = 'none';
           console.warn('google-signup: כפתור Google לא צויר (origin לא מאושר?) — הבלוק הוסתר');
+          // 🔑 **זה האירוע החשוב מכולם.** עד §411 הכשל הזה היה `console.warn` בלבד, כלומר
+          // בלתי-נראה לחלוטין — ולא הייתה שום דרך לדעת אם "37% נרשמו עם Google" פירושו
+          // ששני שליש בחרו למלא ידנית, או ששני שליש **לא ראו כפתור בכלל**. שתי מסקנות
+          // הפוכות עם שני תיקונים שונים לגמרי (§326).
+          track('gsBlocked');
+        } else {
+          track('gsShown');
         }
       }, 1500);
       return;
