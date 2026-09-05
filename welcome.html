@@ -51,11 +51,43 @@
      גופי הפונקציות ניגשים ל-DOM רק בזמן הלחיצה, ולכן מיקומן כאן בטוח לחלוטין. -->
 <script>
 // ── מודאלים ──────────────────────────────────────────────────────────────────
-function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow = ''; }
+// ── §417 — כפתור "חזור" סוגר מודאל, לא את האפליקציה ────────────────────────
+// 🔑 **נמדד על מכשיר אמיתי (Galaxy A52s, אנדרואיד 14):** כשחלון ההתחברות פתוח
+// באפליקציה, לחיצה על "חזור" **סגרה את האפליקציה כולה**. הסיבה: מודאל אינו
+// "עמוד" מבחינת הדפדפן, ולכן אין לאן לחזור — ואנדרואיד עושה את הדבר היחיד
+// שנשאר לו. באתר בדפדפן זה פחות מורגש (יוצאים לעמוד הקודם); באפליקציה זה
+// נראה בדיוק כמו קריסה.
+//
+// הפתרון: פתיחת מודאל דוחפת רשומת-היסטוריה, ו"חזור" צורך אותה במקום לצאת.
+// ⚠️ **הסגירה עצמה עוברת גם היא דרך history.back()** ולא ישירות ב-DOM — אחרת
+// הרשומה שנדחפה נשארת תלויה, ולחיצת "חזור" **הבאה** של המשתמש לא עושה כלום.
+const YZ_MODALS = ['joinOverlay', 'loginOverlay'];
+function yzAnyModalOpen() {
+  return YZ_MODALS.some(id => document.getElementById(id)?.classList.contains('open'));
+}
+// סגירה ב-DOM בלבד, בלי לגעת בהיסטוריה — זה מה ש-popstate קורא לו.
+function yzCloseModalsDom() {
+  YZ_MODALS.forEach(id => document.getElementById(id)?.classList.remove('open'));
+  document.body.style.overflow = '';
+}
+// נקראת אחרי שהמודאל כבר נפתח. שומרת על רשומה אחת בלבד, כדי ששתי פתיחות
+// רצופות (join ואז login) לא ידרשו שתי לחיצות "חזור".
+function yzPushModalState() {
+  if (history.state && history.state.yzModal) return;
+  try { history.pushState({ yzModal: true }, ''); } catch (e) {}
+}
+window.addEventListener('popstate', () => { if (yzAnyModalOpen()) yzCloseModalsDom(); });
+
+function closeModal(id) {
+  if (history.state && history.state.yzModal) { history.back(); return; }
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  ['joinOverlay', 'loginOverlay'].forEach(id => document.getElementById(id).classList.remove('open'));
-  document.body.style.overflow = '';
+  if (!yzAnyModalOpen()) return;
+  if (history.state && history.state.yzModal) { history.back(); return; }
+  yzCloseModalsDom();
 });
 
 // ── §349 — embed=1 בכל הרוחבים, כולל מובייל ──────────────────────────────────────────────
@@ -108,6 +140,7 @@ function openJoinModal() {
 
   document.getElementById('joinOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+  yzPushModalState();
 }
 function openLoginModal() {
   window.logEvent && window.logEvent('formOpen', { blockId: 'loginModal' });
@@ -118,6 +151,7 @@ function openLoginModal() {
   window.heroResetLoginBtn();
   document.getElementById('loginOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+  yzPushModalState();
   // §387 — כפתור Google מצויר רק עכשיו: מכל מוסתר מקבל clientWidth=0 וגוגל מציירת בגודל
   // שגוי. הקריאה בטוחה לחזרות (יוצאת מיד אם הכפתור כבר קיים), ומוגנת כי היא מוגדרת
   // בסקריפט-מודול שרץ אחרי הסקריפט הקלאסי הזה — ר' §310/§312.

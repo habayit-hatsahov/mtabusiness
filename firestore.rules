@@ -244,6 +244,32 @@ service cloud.firestore {
             request.resource.data.hoursMigrationBy == 'owner')
         )
 
+        // (ב5) §417 — תיבת ההודעות הדו-כיוונית: בעל עסק מחובר מעדכן את **שדות-הסיכום**
+        // של השיחה על מסמך העסק. ההודעות עצמן יושבות בתת-האוסף messages מתחת (מסמך לכל
+        // הודעה); כאן נשמר רק מה שמרכז-הניהול צריך כדי להראות "יש הודעה חדשה" בלי לקרוא
+        // את השרשור של כל 50 העסקים — ה-onSnapshot על businesses ממילא רץ שם.
+        //
+        // 🔑 **דגלים בוליאניים ולא מונים**, בכוונה: מונה שנכתב מהלקוח נסחף (כתיבה כפולה,
+        // כישלון-רשת באמצע) ואי אפשר לתקן אותו בדיעבד. דגל אפשר תמיד לחשב מחדש מהשרשור.
+        //
+        // ⚠️ שתי ההגבלות למטה נבדקות מול **affectedKeys**, לא מול `in request.resource.data`:
+        // request.resource.data הוא המסמך **כולו** אחרי הכתיבה, ולכן `'msgLastFrom' in ...`
+        // היה מחזיר true גם כשהשדה כלל לא נגע — כלומר עסק שקורא הודעה שהמנהל שלח
+        // (msgLastFrom=='admin' קיים על המסמך) לא היה מצליח לנקות את msgUnreadBiz של עצמו.
+        || (
+          isBizOwner(businessId) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['msgLastAt', 'msgLastFrom', 'msgUnreadAdmin', 'msgUnreadBiz']) &&
+          // msgUnreadBiz הוא הצד שהעסק **מנקה** כשהוא קורא. הדלקתו שמורה למנהל בלבד
+          // (שממילא עבר את isAdmin למעלה) — אחרת עסק היה יכול לסמן לעצמו "הודעה חדשה"
+          // שמעולם לא נשלחה.
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['msgUnreadBiz'])
+            || request.resource.data.msgUnreadBiz == false) &&
+          // ומאותה סיבה הפוכה: מכאן אפשר לכתוב רק "ההודעה האחרונה היא מהעסק".
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['msgLastFrom'])
+            || request.resource.data.msgLastFrom == 'biz')
+        )
+
         // (ג) כל חבר מחובר — likedBy/clicks בלבד, על כל עסק (home.html).
         || (
           isSignedInMember() &&
@@ -257,6 +283,53 @@ service cloud.firestore {
       match /activity/{activityId} {
         allow read, create: if isAdmin();
         allow update, delete: if false;
+      }
+
+      // ── §417 — תיבת ההודעות בין המנהל לבעל העסק (מסמך לכל הודעה) ───────
+      // מחליפה את שדה `note` היחיד ("כתבו לנו", §234): שם יש מקום להודעה אחת בלבד,
+      // בכיוון אחד, והודעה חדשה דורסת את הקודמת. כאן שרשור אמיתי, שני הכיוונים,
+      // וההיסטוריה נשמרת.
+      //
+      // ⚠️ isBizOwner **לא** משמש כאן, ובכוונה: הוא נשען על resource.data.ownerMemberId
+      // של המסמך שה-rule רץ עליו — וכאן זהו מסמך ההודעה, שאין בו שדה כזה. לכן
+      // isOwnerMemberOf(businessId), שעושה get() על מסמך העסק. בנוסף isBizOwner
+      // תקף רק כשיש resource (get/update), וכאן create היא הפעולה העיקרית.
+      match /messages/{msgId} {
+        allow read: if isAdmin()
+          || (request.auth != null && request.auth.uid == businessId)
+          || isOwnerMemberOf(businessId);
+
+        // 🔑 **מי ששולח חותם את הצד שלו ואינו יכול להתחזות לצד השני**: מנהל כותב
+        // from=='admin' בלבד, בעל עסק from=='biz' בלבד. בלי ההגבלה הזאת בעל עסק היה
+        // יכול לשתול בשרשור "הודעה מהמנהל" ולהציג אותה אחר כך כהבטחה שקיבל.
+        allow create: if
+          (
+            (isAdmin() && request.resource.data.from == 'admin')
+            || (
+              ((request.auth != null && request.auth.uid == businessId)
+                || isOwnerMemberOf(businessId))
+              && request.resource.data.from == 'biz'
+            )
+          )
+          && request.resource.data.keys().hasOnly(['from', 'text', 'createdAt', 'readAt'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000;
+
+        // עדכון = סימון "נקרא" בלבד, ורק ע"י הצד שקיבל. תוכן הודעה שנשלחה אינו ניתן
+        // לעריכה בשום צד: שרשור שאפשר לערוך בדיעבד אינו ראיה לכלום.
+        allow update: if
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt'])
+          && (
+            (isAdmin() && resource.data.from == 'biz')
+            || (
+              ((request.auth != null && request.auth.uid == businessId)
+                || isOwnerMemberOf(businessId))
+              && resource.data.from == 'admin'
+            )
+          );
+
+        allow delete: if isAdmin();
       }
 
       // אגרגציה יומית לעסק (שלב 7, §3 במפרט — "businesses/{bizId}/statsDaily/{date}") — יסודות
@@ -500,6 +573,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // settings/sectionLaunchPlan — לוח ההשקה של "חדש אצלנו" (§417): לכל אחד מימי ההשקה,
+    // אילו עסקים מוצגים ובאילו מקומות, ואילו מקומות שמורים לעסקים שיצטרפו תוך כדי.
+    // ⚠️ **קריאה ציבורית חובה, בדיוק כמו sectionState:** home.html מרכיב ממנה את המדף בכל
+    // בוקר, ובלעדיה הוא היה חוזר לחישוב עצמאי — כלומר בדיוק הפער ש-§413 תיקן. אין כאן
+    // מידע אישי: מזהי עסקים מאושרים בלבד, שכולם קריאים ציבורית ממילא.
+    match /settings/sectionLaunchPlan {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // settings/tagTaxonomy — קטלוג התגיות האפשריות לכל קטגוריה (rename/delete/merge בניהול תגיות,
     // admin-dashboard.html). אותו דפוס: קריאה ציבורית, כתיבה מנהל בלבד. הערה: business.html/
     // business-dashboard.html/admin-businesses.html עדיין לא קוראים ממנו — נשארו על הקטלוג הקשיח שלהם.
@@ -514,6 +597,24 @@ service cloud.firestore {
     // המחדל הקבועה ב-HTML לנצח, גם אחרי שהמנהל מפרסם שינוי אמיתי (באג-אמת שנתפס 2026-08-03,
     // ר' docs/PROJECT_CONTEXT.md — היה מתועד בעבר כ"לא-מאובחן"). אותו דפוס בדיוק כמו siteTexts/
     // sectionAnchors/tagTaxonomy: קריאה ציבורית, כתיבה מנהל בלבד.
+    // ── §417 — settings/appLaunch: המתג היחיד של "יש לנו אפליקציה" ────────
+    // כל מה שנבנה עבור האפליקציה — תיבת ההודעות, באנרי ההורדה, בקשת ההרשאה לפוש —
+    // נשען על המסמך הזה ונשאר **כבוי** עד יום ההשקה. הסיבה מפורשת: המערכת חיה, יש
+    // בה משתמשים עכשיו, ואסור שהם יראו "הורידו את האפליקציה" לפני שיש מה להוריד.
+    //
+    // 🔑 **הבאנר נגזר מהכתובת, לא רק מהדגל**: androidUrl/iosUrl ריקים = אין באנר,
+    // גם אם מישהו ידליק את הדגל בטעות. שני מנעולים, כי ביום שמדליקים בו הרבה מתגים
+    // בבת אחת, מנעול יחיד תמיד נפתח מוקדם מדי.
+    //
+    // קריאה ציבורית חובה — home.html ו-business-dashboard.html מרכיבים ממנו את
+    // הבאנר לפני שידוע בכלל מי המבקר. כתיבה מנהל בלבד.
+    // ⚠️ **לא להישען על match /settings/{docId} הכללי למעלה**: הוא admin-only גם
+    // בקריאה, וזה בדיוק הבאג שנתפס ב-2026-08-03 ומתועד בהערה של landingContent מתחת.
+    match /settings/appLaunch {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /settings/landingContent {
       allow read: if true;
       allow write: if isAdmin();
@@ -574,6 +675,14 @@ service cloud.firestore {
           // ⚠️ **בלי השורה הזאת כל אירוע כזה נדחה בשקט** — `type` הוא רשימת-היתר, ורשומה
           // עם סוג שאינו בה נכשלת כולה בלי שום סימן במסך (ר' §326/§351).
           'loginOk',
+          // ── §417 — באנר "הורידו את האפליקציה" ───────────────────────────────────────────
+          // channel נושא את הקהל (fan | biz | landing) ו-blockId את מערכת ההפעלה
+          // (android | ios). שני השדות **קיימים כבר** בסכימת האירוע, ובכוונה נעשה בהם שימוש
+          // חוזר: כל שדה חדש דורש גם הרחבת ה-hasOnly מתחת וגם פריסה, ובלעדיהן **כל האירוע
+          // נדחה** — לא רק השדה החדש (ר' §326/§351).
+          // ⚠️ בלי שתי השורות האלה הבאנר יוצג ולא יימדד, ולא נדע אם מישהו לחץ עליו בכלל.
+          'appBannerShown',
+          'appBannerClick',
           // ── §326 — עומק-גלילה בדף הנחיתה ────────────────────────────────────────────────
           // 66% מהנוחתים לא לוחצים על שום דבר (מדידת 26–29.8), ואין לנו עליהם שום מידע.
           // שתי אפשרויות הפוכות עם שני פתרונות שונים לגמרי: או שהם גוללים ולא משתכנעים
