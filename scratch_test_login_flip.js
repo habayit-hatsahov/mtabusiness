@@ -10,6 +10,14 @@ const fs = require('fs');
 const w = fs.readFileSync('welcome.html', 'utf8');
 const rules = fs.readFileSync('firestore.rules', 'utf8');
 
+// ⚠️ **בלי זה הבדיקות נכשלות על ההערות שמסבירות אותן.** שאלות כמו "הטקסט הזה ירד מהמסך"
+// או "התנאי אינו נשען על activeElement" אמורות להיבדק מול מה שרץ ומול מה שנראה — הערה
+// שמתעדת *למה* משהו הוסר היא בדיוק המקום שבו המחרוזת הישנה תמשיך להופיע, לנצח.
+const noComments = (src) => src
+  .replace(/<!--[\s\S]*?-->/g, '')        // הערות HTML
+  .replace(/^\s*\/\/.*$/gm, '');          // שורות-הערה ב-JS
+const wCode = noComments(w);
+
 let fails = 0;
 function check(name, cond, extra) {
   console.log((cond ? '  ✅ ' : '  ❌ ') + name + (cond ? '' : '  ← ' + (extra === undefined ? '' : extra)));
@@ -43,6 +51,18 @@ const iCollapse = fn.indexOf("classList.add('google-first')");
 check('⚠️ הקיפול בא אחרי אימות שהכפתור צויר', iVerify > 0 && iVerify < iCollapse, `verify@${iVerify} collapse@${iCollapse}`);
 check('לא מקפלים למי שכבר הקליד (בדיקת touched)', fn.includes('touched') && fn.includes('heroPhoneInput'));
 
+// 🔴 §415ג — שתי הבדיקות האלה נולדו מבאג אמיתי, ולכן הן כאן ולא סתם לשלמות.
+// `openLoginModal` מיקד את שדה-הטלפון אוטומטית 200ms אחרי הפתיחה, וההגנה על הקיפול בדקה
+// `document.activeElement` — כלומר התנאי "המשתמש כבר בתוך השדות" התקיים **תמיד**, והקיפול
+// לא קרה אף פעם. המסך נראה בדיוק כמו לפני ההיפוך, וכל הבדיקות המבניות עברו בירוק.
+const openFn = w.slice(w.indexOf('function openLoginModal()'), w.indexOf('function scrollToPreview'));
+check('⚠️ openLoginModal אינו ממקד את שדה הטלפון אוטומטית',
+      !openFn.includes("heroPhoneInput')?.focus()"),
+      'פוקוס אוטומטי כאן מבטל את הקיפול, ובמובייל פותח מקלדת על המסלול המשני');
+check('⚠️ תנאי הקיפול אינו נשען על activeElement', !noComments(fn).includes('activeElement'),
+      'הגנה שמתקיימת תמיד אינה הגנה — היא כיבוי');
+check('הפוקוס עבר לענף שבו גוגל לא זמינה', fn.includes("heroPhoneInput')?.focus()"));
+
 console.log('\n── 3. כשל בגוגל פותח את הקוד מיד ────────────────────────');
 check('heroShowCodePath מוגדר וחשוף ל-window', w.includes('window.heroShowCodePath = function'));
 check('נקרא מתוך מטפל-הכשל של גוגל', w.includes('window.heroShowCodePath && window.heroShowCodePath();'));
@@ -64,6 +84,11 @@ console.log('\n── 5. הכיתובים שהוחלפו לא חזרו ───
 check('"כבר חיברתם חשבון Google?" ירד מהמסך', !w.includes('<span>כבר חיברתם חשבון Google?</span>'));
 check('"למי שכבר חיבר חשבון" ירד מכותרת-המשנה', !w.includes('או עם Google, למי שכבר חיבר חשבון'));
 check('הנוסח שנבחר נמצא במסך', w.includes('נכנסים עם Google — עם המייל שאיתו נרשמתם'));
+check('⚠️ "הכתובת הזו" ירד — אין כתובת על המסך בשלב הזה',
+      !w.includes('אין לכם חשבון Google עם הכתובת הזו?'));
+check('⚠️ ההפניה ל"חיבור מדף הבית" ירדה ממסך הכניסה', !wCode.includes('ובדף הבית'),
+      'היא נקראה כ"קודם תיכנס עם קוד" — ההפך מהאמת');
+check('נאמר במפורש שלא צריך קישור מוקדם', w.includes('גם אם לא חיברתם חשבון קודם'));
 
 console.log(fails ? `\n❌ ${fails} בדיקות נכשלו\n` : '\n✅ הכל עבר\n');
 process.exit(fails ? 1 : 0);
