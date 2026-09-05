@@ -350,8 +350,42 @@
     .menu-toggle:active { transform: scale(.93); }
     .hbg-line { width: 16px; height: 2px; border-radius: 2px; background: currentColor; }
 
-    /* חיפוש בתוך ההדר עצמו — רק ממסך רחב; במובייל החיפוש נשאר ב-.hero למטה */
+    /* חיפוש בתוך ההדר עצמו — ממסך רחב הוא פשוט שם תמיד; במובייל ר' §415 מתחת. */
     .nav-search { display: none; }
+
+    /* ══ §415 — חיפוש בהדר גם במובייל, אבל רק אחרי גלילה ═══════════════════════════════
+       הבעיה: ההדר sticky, תיבת-החיפוש של ה-hero **אינה** — ולכן במובייל החיפוש פשוט
+       נעלם ברגע שמתחילים לגלול באינדקס, בדיוק כשמחפשים. בדסקטופ הוא יושב בהדר ולא נעלם.
+       🔑 **בראש הדף לא מוסיפים כלום**: שם תיבת ה-hero גלויה ומלאה, וכפתור שני לידה היה
+       שתי תיבות-חיפוש על אותו מסך. הכפתור מופיע רק כשה-hero כבר יצא מהמסך (past-hero).
+       ⚠️ **כפתור ולא תיבה** — בשורה יושבים ההמבורגר והלוגו, ותיבה מלאה לא נכנסת בלי לרסק
+       את אחד מהם. הלחיצה פותחת את התיבה לרוחב השורה והלוגו נסתר לזמן ההקלדה בלבד. */
+    .nav-search-toggle {
+      display: none; width: 40px; height: 40px; border-radius: var(--r-field);
+      background: var(--field); border: none; align-items: center; justify-content: center;
+      color: var(--ink); cursor: pointer; flex-shrink: 0; -webkit-tap-highlight-color: transparent;
+    }
+    .nav-search-toggle:active { transform: scale(.93); }
+    @media (max-width: 639px) {
+      .top-nav.past-hero .nav-search-toggle { display: flex; }
+      .top-nav.searching .nav-search-toggle { display: none; }
+      .top-nav.searching .nav-search {
+        display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+        height: 34px; padding: 0 12px;
+        background: var(--field); border: 1px solid var(--field-line); border-radius: var(--r-field);
+        color: var(--ink-3);
+      }
+      .top-nav.searching .nav-search svg { flex-shrink: 0; }
+      /* 16px — אותו סף בדיוק של .search-bar input, ומאותה סיבה: מתחתיו iOS מזום את כל
+         הדף בפוקוס ולא חוזר. ר' ההסבר המלא ליד .search-bar input. */
+      .top-nav.searching .nav-search input {
+        background: none; border: none; outline: none; flex: 1; min-width: 0;
+        color: var(--ink); font-family: 'Rubik', sans-serif; font-size: 16px;
+      }
+      .top-nav.searching .nav-search input::placeholder { color: var(--ink-3); }
+      /* הלוגו יורד רק בזמן ההקלדה עצמה — לא כשהכפתור בלבד מוצג. */
+      .top-nav.searching .nav-logo { display: none; }
+    }
     @media (min-width: 640px) {
       .nav-search {
         display: flex; align-items: center; gap: 8px;
@@ -872,7 +906,11 @@
       position: relative; z-index: 1; font-family: 'Rubik', sans-serif;
     }
 
-    .sheet-content { padding: 40px 20px 24px; }
+    /* §415 — ריפוד-עליון 40px -> 18px. ה-40 נכנס בקומיט העיצוב הגדול (6.8.26; לפניו 16px)
+       כדי לפנות מקום לתג-לוגו שיחפוף את התמונה מלמעלה — תג כזה לא מומש מעולם
+       (.sheet-hero-logo-badge יושב בתוך ה-hero עצמו, בפינה ימין-למטה), ולכן נשאר רווח לבן
+       ריק בין תחתית התמונה לשם העסק, במובייל ובדסקטופ כאחד. דווח בפועל עם צילום-מסך. */
+    .sheet-content { padding: 18px 20px 24px; }
 
     .sheet-section-label {
       font-size: 12.5px; font-weight: 800; letter-spacing: .04em; color: var(--ink-2);
@@ -1561,10 +1599,14 @@
       <div class="menu-toggle" id="menuToggle" onclick="openMenu()">
         <span class="hbg-line"></span><span class="hbg-line"></span><span class="hbg-line"></span>
       </div>
+      <!-- §415 — מוצג רק במובייל ורק אחרי שתיבת ה-hero יצאה מהמסך (ר' CSS + observeHeroSearch) -->
+      <button type="button" class="nav-search-toggle" id="navSearchToggle" onclick="openNavSearch()" aria-label="חיפוש" title="חיפוש">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      </button>
     </div>
     <div class="nav-search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-      <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInputDesktop" oninput="handleSearch(this.value)" onkeydown="if(event.key==='Escape')clearSearch()"/>
+      <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInputDesktop" oninput="handleSearch(this.value)" onkeydown="if(event.key==='Escape'){clearSearch();closeNavSearch();}" onblur="navSearchBlur()"/>
       <button type="button" class="search-clear" id="searchClearDesktop" onclick="clearSearch()" aria-label="ניקוי החיפוש" title="ניקוי החיפוש">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
@@ -1639,6 +1681,7 @@
 <script src="categories.js"></script>
 <script src="hours.js"></script>
 <script src="social-links.js"></script>
+<script src="sections-policy.js"></script>
 <div class="cats-section">
   <div class="cats-scroll" id="catPills">
     <div class="cat-item active" onclick="filterCat('all',this)">
@@ -1781,6 +1824,50 @@ let businesses = [];
 // (למטה, קרוב ל-loadFirebaseData), לא onSnapshot: אין צורך ברי-אקטיביות מיידית לביקור בודד,
 // זהה ברוח לעירבוב היומי שגם הוא מחושב פעם אחת לטעינה. {} = עדיין לא נטען / אין עיגונים בכלל.
 let sectionAnchorsDoc = {};
+
+// §414 — הרכב הסקשן "עסקים נבחרים"/"חדש אצלנו". יושב כאן ולא במודול, מאותה סיבה
+// בדיוק כמו sectionAnchorsDoc שמעליו: renderSections קוראת לזה, והיא בבלוק הזה.
+//
+// 🔑 **הדף הזה קורא את החברוּת שנרשמה, ואינו מחשב אותה מחדש.** מרכז הניהול מחשב,
+// רושם ל-settings/sectionState, ומציג למנהל תצוגה מקדימה — וכאן מוצגת בדיוק אותה
+// רשימה. חישוב-מחדש כאן היה מייצר בדיוק את הפער ש-§413 תיקן: מסך אחד מראה למנהל
+// דבר אחד והאוהד רואה אחר, בלי שאיש ידע.
+let sectionPolicyDoc = null;
+let sectionStateDoc = { log: [] };
+
+// מחזיר Set של מזהי-עסקים לסקשן, או null = "אין מדיניות פעילה — התנהג בדיוק כמו קודם".
+function sectionMembersFor(key) {
+  const S = window.HB_SECTIONS;
+  // fail-open אם sections-policy.js לא נטען — כמו הגארד על hours.js/social-links.js.
+  if (!S || !sectionPolicyDoc) return null;
+  const pol = S.normalizePolicy(sectionPolicyDoc);
+  if (!pol[key] || !pol[key].enabled) return null;
+
+  // §414ב — 🔑 **"חדש אצלנו" מחושב כאן ועכשיו, ולא נקרא מהיומן.** הוא חלון-זמן
+  // מרגע האישור, בלי תור ובלי תקופות — ולכן עסק שאושר לפני שנייה מופיע בטעינה הבאה
+  // **בלי שאיש ייכנס למרכז הניהול.** זו בדיוק הדרישה: בעל עסק חדש רואה את עצמו מיד.
+  // אין כאן סיכון לפער מול המנהל (הסיבה שהסקשן השני כן נקרא מהיומן) — החישוב תלוי
+  // רק ב-approvedAt ובמדיניות, ושניהם זהים בשני המסכים.
+  if (key === 'new') {
+    const built = S.buildNew(businesses, pol, {});
+    return new Set(built.list.map(b => b.id));
+  }
+  const entries = S.historyFor(sectionStateDoc, key);   // ממוין: התקופה החדשה ראשונה
+  if (!entries.length) return null;
+  const cur = S.periodIndex(pol, key, Date.now());
+  // ⚠️ אם התקופה הנוכחית טרם נרשמה (המנהל לא נכנס למרכז הניהול מאז שהיא התחלפה) —
+  // נופלים לתקופה **האחרונה שכן נרשמה**. רשימה של שבוע שעבר עדיפה בהרבה על רשימה
+  // שחושבה כאן בנפרד ואינה מה שהמנהל אישר, ובוודאי על סקשן ריק.
+  const use = entries.find(e => e.p === cur) || entries[0];
+  if (!use || !use.ids || !use.ids.length) return null;
+  return new Set(use.ids);
+}
+
+window.loadSectionPolicy = function(policyRaw, stateRaw) {
+  sectionPolicyDoc = policyRaw || null;
+  sectionStateDoc = (stateRaw && Array.isArray(stateRaw.log)) ? { log: stateRaw.log } : { log: [] };
+  if (typeof businesses !== "undefined" && businesses.length) renderSections();
+};
 // סדר-התצוגה היומי שחושב לכל סקשן "שרירותי" (ר' renderSections) — filterCat קורא מכאן ("הכל")
 // כדי שהתצוגה המורחבת תתאים בדיוק לשורת הגלילה, בלי לחשב מסחור שונה בנפרד.
 let _dailySectionOrder = {};
@@ -2284,11 +2371,15 @@ function renderSections() {
   _writeSectionIfChanged('loved', 'lovedBizScroll', loved, b => buildCard(b), _emptyRowHtml('אף עסק עדיין לא קיבל לייק'));
 
   // featured=eager (src ישיר, בלי lazy) — הסקשן הראשון שנראה בכניסה, תמיד גלוי, מעט פריטים.
-  const featured = arrangeSection(b => isFeatured(b), 'featured');
+  // §414 — מי **נכנס** לסקשן מגיע מהמדיניות (אם הופעלה); הסדר **בתוכו** נשאר בדיוק כמו
+  // שהיה — סבב יומי, מניעת-הובלה-כפולה ועיגונים. שתי החלטות נפרדות, ובכוונה.
+  const _memFeatured = sectionMembersFor('featured');
+  const _memNew = sectionMembersFor('new');
+  const featured = arrangeSection(b => _memFeatured ? _memFeatured.has(b.id) : isFeatured(b), 'featured');
   _dailySectionOrder.featured = featured;
   _writeSectionIfChanged('featured', 'featuredBizScroll', featured, b => buildCard(b, false, true), _emptyRowHtml('בקרוב...'));
 
-  const newBiz = arrangeSection(b => isNew(b), 'new');
+  const newBiz = arrangeSection(b => _memNew ? _memNew.has(b.id) : isNew(b), 'new');
   _dailySectionOrder.new = newBiz;
   _writeSectionIfChanged('new', 'newBizScroll', newBiz, b => buildCard(b, true), _emptyRowHtml('בקרוב...'));
 
@@ -2464,6 +2555,41 @@ function syncSearchInputs(val) {
     document.getElementById(id)?.classList.toggle('show', !!val);
   });
 }
+
+// ══ §415 — פתיחה/סגירה של תיבת-החיפוש שבהדר, במובייל בלבד ═══════════════════════════════
+// שלוש הפונקציות חשופות ל-window כי כולן נקראות מ-onclick/onkeydown inline (סקופ גלובלי,
+// לא סקופ המודול) — אותו כלל של כל שאר הקובץ.
+// ⚠️ **הסגירה היא על blur-כשריק בלבד**: סגירה על כל blur הייתה מכווצת את התיבה מתחת לאצבע
+// של מי שגלל את התוצאות תוך כדי חיפוש, ואיתה גם את הטקסט שהוא הקליד.
+window.openNavSearch = function () {
+  document.querySelector('.top-nav')?.classList.add('searching');
+  const el = document.getElementById('searchInputDesktop');
+  if (el) { el.focus(); el.select(); }
+};
+window.closeNavSearch = function () {
+  document.querySelector('.top-nav')?.classList.remove('searching');
+};
+window.navSearchBlur = function () {
+  const el = document.getElementById('searchInputDesktop');
+  if (el && !el.value.trim()) closeNavSearch();
+};
+
+// מתי הכפתור בכלל מופיע: ברגע שתיבת-החיפוש של ה-hero יצאה מתחת להדר. IntersectionObserver
+// ולא מאזין-גלילה עם חשבון-פיקסלים — הגובה של ההדר משתנה (באנר PWA, שורת התקנה), וכל מספר
+// קשיח כאן היה נכון רק במצב אחד. rootMargin שלילי = "החל מתחתית ההדר ומטה".
+// ⚠️ בדסקטופ ‎.hero .search-bar הוא display:none ולכן תמיד "לא נחתך" — הכלל מוסיף past-hero,
+// וזה לא משנה כלום: כל ה-CSS של §415 חי בתוך max-width:639px, ובדסקטופ החיפוש בהדר ממילא.
+(function observeHeroSearch() {
+  const bar = document.querySelector('.hero .search-bar');
+  const nav = document.querySelector('.top-nav');
+  if (!bar || !nav || !('IntersectionObserver' in window)) return;
+  new IntersectionObserver(([e]) => {
+    nav.classList.toggle('past-hero', !e.isIntersecting);
+    // גלילה חזרה לראש הדף מחזירה את תיבת ה-hero — ואז אין שום סיבה שהתיבה שבהדר תישאר
+    // פתוחה מעליה. ⚠️ רק כשהיא ריקה: לא סוגרים חיפוש פעיל בגלל גלילה.
+    if (e.isIntersecting) navSearchBlur();
+  }, { rootMargin: '-64px 0px 0px 0px', threshold: 0 }).observe(bar);
+})();
 
 // ✕ / Escape — ניקוי בלחיצה אחת: מרוקן את שתי התיבות, חוזר לדף הבית, ומשאיר את הפוקוס
 // בתיבה הגלויה כדי שאפשר להקליד חיפוש חדש מיד בלי לחיצה נוספת.
@@ -3928,6 +4054,9 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
         redeemTypes: computeDiscountTypesLive(bizTypes, !!d.code, d.redeemMode),
       })),
       coupon:       b.discountCode || '',
+      // §414ב — buildNew נשען על approvedAt בלבד: "חדש אצלנו" הוא חלון-זמן מרגע
+      // האישור, ולא דגל. isNew/newUntil נשארים כי הם עדיין קובעים כשהמדיניות כבויה.
+      approvedAt:   b.approvedAt || null,
       isNew:        b.isNew || false,
       newUntil:     b.newUntil || null,
       isFeatured:   b.isFeatured || false,
@@ -3983,6 +4112,18 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
 getDoc(doc(db, 'settings', 'sectionAnchors'))
   .then(snap => window.loadSectionAnchors(snap.exists() ? snap.data() : {}))
   .catch(err => console.error('Section anchors load error:', err));
+
+// §414 — טעינת מדיניות הסקשנים + יומן התקופות. אותו דפוס בדיוק כמו sectionAnchors
+// שמעל: הקריאה כאן, וההגדרות/הלוגיקה יושבות בסקריפט הראשי (ר' loadSectionPolicy).
+// ⚠️ **ההפרדה הזאת אינה סגנון אלא תנאי לעבודה:** renderSections יושבת בבלוק script
+// אחר לגמרי, ו-let שמוגדר בתוך המודול הזה פשוט אינו קיים עבורה — היא הייתה זורקת
+// ReferenceError ומפילה את **כל** רינדור הסקשנים, לא רק את הפיצ'ר הזה.
+Promise.all([
+  getDoc(doc(db, 'settings', 'sectionPolicy')).then(sn => sn.exists() ? sn.data() : null).catch(() => null),
+  getDoc(doc(db, 'settings', 'sectionState')).then(sn => sn.exists() ? sn.data() : null).catch(() => null),
+])
+  .then(([pol, st]) => window.loadSectionPolicy(pol, st))
+  .catch(err => console.error('Section policy load error:', err));
 
 // קריאת מסמך-חבר עם ניסיון-חוזר — נצפה race לסירוגין (2026-08-06, המשתמש דיווח חי, וחוזר שוב
 // ב-2026-08-13): הקריאה הראשונה ל-Firestore לפעמים מחזירה "לא קיים" על מסמך שבוודאות קיים

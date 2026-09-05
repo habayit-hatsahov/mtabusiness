@@ -739,6 +739,10 @@ async function runEmailSweeps(env) {
           dashboardLink: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, business.id)}`,   // §244
           tpl: { subject: templates.combinedSubject, body: templates.combinedBody },
           googleEmail: m.fields.googleEmail || '',   // §389
+          // §415 — ההזמנה ההפוכה: אין חשבון מקושר, והרשומה כבר מאושרת (כאן תמיד — המכתב
+          // נשלח באישור עצמו). התנאי `!googleEmail` מיותר טכנית (brevo.js כבר מעדיף את
+          // הבלוק המקושר) ונשאר כאן כדי שהכוונה תיקרא במקום שבו מחליטים.
+          googleInvite: !m.fields.googleEmail && m.fields.status === 'approved',
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
           loginCodeEmailStatus: 'sent',
@@ -765,6 +769,10 @@ async function runEmailSweeps(env) {
           kind: isResend ? 'resend' : 'welcome',
           googleEmail: m.fields.googleEmail || '',   // §389 — נשלח גם ב'שכחתי קוד', ושם זה
           // אפילו יותר שימושי: מי שמבקש קוד ויש לו גוגל מקבל תזכורת שהוא לא צריך אותו.
+          // §415 — ⚠️ **ב'שכחתי קוד' זה החשוב מכולם**: מי שמבקש קוד שוב הוא ההוכחה החיה
+          // לכך שהקוד הוא החיכוך. `status === 'approved'` הוא תנאי-אמת ולא נוסח: ל-pending
+          // הכפתור היה מחזיר 'ממתין לאישור', כלומר הבטחה לדלת נעולה.
+          googleInvite: !m.fields.googleEmail && m.fields.status === 'approved',
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
           loginCodeEmailStatus: 'sent',
@@ -854,6 +862,9 @@ async function runEmailSweeps(env) {
         // הצר שבו יש רשומה, היא מאושרת, ויש עליה חשבון גוגל. אחרת /google-login היה
         // מחזיר לו 'pending' — כלומר המכתב היה מבטיח דלת שנעולה בפניו.
         googleEmail: (owner && owner.fields.status === 'approved' && owner.fields.googleEmail) || '',
+        // §415 — אותו צירוף צר בדיוק, רק בכיוון ההפוך: יש רשומת-חבר, היא מאושרת, ואין
+        // עליה חשבון גוגל. בלי `owner` מאושר אין למי להבטיח כניסה, ולכן אין הזמנה.
+        googleInvite: !!(owner && owner.fields.status === 'approved' && !owner.fields.googleEmail),
       });
       await firestorePatch(env, accessToken, `businesses/${b.id}`, {
         ownerEmailStatus: 'sent',

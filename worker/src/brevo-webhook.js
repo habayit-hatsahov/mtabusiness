@@ -4,6 +4,9 @@
 // הזה מקבל ממנו את האירועים וכותב אותם על מסמך העסק/החבר, כדי שבדשבורד יופיע "נמסר בפועל" או
 // "חזר — הכתובת לא קיימת" במקום ניחוש. ר' docs/PROJECT_CONTEXT.md §205.
 //
+// §415 — האירועים מנותבים לפי **תג המכתב** (ר' eventTags): שידור המוני כותב לשדות
+// broadcastEmail*, וכל השאר ממשיך לשדות של מייל-הקוד/מייל-העסק כמו קודם.
+//
 // ⚠️ מה זה *לא* פותר: דומיין typo-squatting כמו gamil.com מקבל את המייל ומחזיר "delivered" —
 // הוא באמת נמסר, רק לא לנמען הנכון. בשביל זה יש את בדיקת-הדומיין (email-domain-check.js, §203).
 //
@@ -93,6 +96,28 @@ export async function handleSetupBrevoWebhook(request, env) {
   return { ok: true, action: 'created', id: createJson.id, events: WEBHOOK_EVENTS };
 }
 
+// ── §415 — על איזה מכתב מדובר ────────────────────────────────────────────────────────────
+// 🔑 **למה זה נדרש:** ההתאמה כאן היא לפי **כתובת מייל בלבד**, ולכן כל אירוע נחת עד היום על
+// שדות מייל-הקוד — גם אירוע של מכתב אחר לגמרי. ברגע שנשלח שידור המוני, "נמסר"/"נפתח" של
+// **השידור** היו דורסים את הנתונים של מייל-הקוד אצל כל 108 הנמענים, ואיתם את ארבעת הדליים
+// של "אושרו ולא נכנסו" (§390/§394) — שכל ההחלטה "למי לשלוח וואטסאפ" נשענת עליהם. בשקט.
+//
+// ⚠️ **אירוע בלי תג נשאר בהתנהגות הישנה בדיוק**, ולא נופל לדלי חדש: מיילים שכבר בדרך
+// בזמן הפריסה נשלחו בלי תג, ואירוע שלהם חייב להמשיך לכתוב לאותם שדות כמו קודם.
+// Brevo מחזיר את התגים פעם כמערך (`tags`) ופעם כמחרוזת (`tag`, לפעמים JSON מקודד) —
+// שתי הצורות מטופלות כאן, כי צורה שלא טופלה = חזרה שקטה לדריסה.
+export function eventTags(ev) {
+  const out = [];
+  if (Array.isArray(ev.tags)) out.push(...ev.tags.map(String));
+  if (typeof ev.tag === 'string' && ev.tag) {
+    try {
+      const parsed = JSON.parse(ev.tag);
+      Array.isArray(parsed) ? out.push(...parsed.map(String)) : out.push(ev.tag);
+    } catch { out.push(ev.tag); }
+  }
+  return out;
+}
+
 function normalizeEvents(body) {
   if (Array.isArray(body)) return body;
   if (body && Array.isArray(body.events)) return body.events;
@@ -146,12 +171,25 @@ export async function handleBrevoWebhook(request, env) {
 
     // אירוע-מסירה כותב את שדות המסירה; אירוע-מגע כותב *רק* את חותמת הפתיחה/הלחיצה. שני הענפים
     // אף פעם לא נוגעים באותם שדות, ולכן סדר-ההגעה בין delivered ל-opened לא משנה.
-    const bizPatch = touch
-      ? { [`ownerEmail${touch}At`]: at }
-      : { ownerEmailDelivery: status, ownerEmailDeliveryAt: at, ownerEmailDeliveryReason: reason };
-    const memberPatch = touch
-      ? { [`loginCodeEmail${touch}At`]: at }
-      : { loginCodeEmailDelivery: status, loginCodeEmailDeliveryAt: at, loginCodeEmailDeliveryReason: reason };
+    // §415 — מכתב-שידור כותב לשדות משלו, על שתי הרשומות. אותו מבנה-שדות בדיוק כמו
+    // מייל-הקוד (Delivery/DeliveryAt/DeliveryReason/OpenedAt/ClickedAt), כדי שהתצוגה
+    // במרכז הניהול תוכל לקרוא את שניהם באותו קוד.
+    const isBroadcast = eventTags(ev).includes('broadcast');
+
+    const bizPatch = isBroadcast
+      ? (touch
+          ? { [`broadcastEmail${touch}At`]: at }
+          : { broadcastEmailDelivery: status, broadcastEmailDeliveryAt: at, broadcastEmailDeliveryReason: reason })
+      : (touch
+          ? { [`ownerEmail${touch}At`]: at }
+          : { ownerEmailDelivery: status, ownerEmailDeliveryAt: at, ownerEmailDeliveryReason: reason });
+    const memberPatch = isBroadcast
+      ? (touch
+          ? { [`broadcastEmail${touch}At`]: at }
+          : { broadcastEmailDelivery: status, broadcastEmailDeliveryAt: at, broadcastEmailDeliveryReason: reason })
+      : (touch
+          ? { [`loginCodeEmail${touch}At`]: at }
+          : { loginCodeEmailDelivery: status, loginCodeEmailDeliveryAt: at, loginCodeEmailDeliveryReason: reason });
 
     for (const b of bizList) {
       await firestorePatch(env, accessToken, `businesses/${b.id}`, bizPatch);

@@ -23,6 +23,32 @@ const REPLY_TO = 'yellowzonemta@gmail.com';
 function esc(v) {
   return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+// ══ §415 — והבלוק ההפוך: מי ש**לא** חיבר חשבון Google ══════════════════════════════════
+// 🔑 **הפער שזה סוגר:** §389 דיבר רק אל מי שכבר מקושר. מי שנרשם בלי גוגל לא ראה במכתב שלו
+// שום אזכור של הדלת הקלה — והוא בדיוק זה שצריך אותה. הבאנר באתר (§388) אינו מגיע אליו
+// בכלל: הוא מוצג ב-`home.html` אחרי כניסה מוצלחת, כלומר **מי שמעולם לא נכנס לא רואה אותו**.
+// המכתב הזה הוא הערוץ היחיד שמגיע אליו.
+//
+// ⚠️ **ההבטחה כאן נבדקה מול הקוד ולא נוסחה מהזיכרון:** `linkableByVerifiedEmail` (index.js)
+// מוצא את הרשומה לפי המייל שגוגל אימתה, ו-`welcome.html` מטפל ב-`google_not_linked`+`linkable`
+// ומקשר-ונכנס באותה לחיצה (§403/§409). כלומר אין כאן "צריך קודם להיכנס עם קוד" — הלחיצה
+// הראשונה עצמה מכניסה. שני התנאים: הרשומה מאושרת, והמייל בחשבון הגוגל זהה לזה שעל הרשומה.
+// ולכן גם הניסוח מותנה ("אם יש לכם חשבון Google עם הכתובת הזו") ולא הבטחה גורפת.
+//
+// ⚠️ **הבלוק מוחלט-מנוגד לשידור המוני:** `sendBroadcastEmail` אינו מעביר את הדגל, ולכן
+// מכתב-שיווק אינו נושא אותו. `invite` נשלח במפורש משלושת מכתבי-המערכת בלבד.
+function googleInviteHtml() {
+  return `
+    <div dir="rtl" style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#555;
+                          background:#F6F6F2;border:1px solid #E7E7E0;border-radius:12px;
+                          padding:14px 16px;margin:20px auto 0;max-width:520px;text-align:right">
+      <b style="color:#0A2A66">הכניסה הקלה: פעם אחת עם Google, ואין יותר קוד</b><br>
+      בעמוד הכניסה יש כפתור "להמשיך עם Google". אם יש לכם חשבון Google עם הכתובת הזו,
+      הלחיצה הראשונה מחברת אותו לחשבון שלכם ומכניסה אתכם פנימה — ומאותו רגע נכנסים
+      בלחיצה אחת, מכל מכשיר, בלי לחפש את הקוד. הקוד שלמעלה ממשיך לעבוד תמיד.
+    </div>`;
+}
+
 function googleNoteHtml(googleEmail) {
   if (!googleEmail) return '';
   return `
@@ -35,12 +61,15 @@ function googleNoteHtml(googleEmail) {
     </div>`;
 }
 
-async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent, googleEmail }) {
+async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent, googleEmail, googleInvite, tag }) {
   // כל מייל יוצא (גם תבניות-מנהל וגם ברירת-המחדל הקבועה) מקבל את אותו פוטר וגרסת-טקסט-חלופית —
   // ריכוזי כאן ולא בכל קורא-קריאה, כדי שלא יישכח פעם אחת מתוך 4 (ר' "מסירות מייל ל-Gmail" בתיעוד).
   // §389 — הערת-הגוגל נוספת כאן **מאותו נימוק בדיוק**: מיקום אחד, ולא ארבעה שאפשר לשכוח אחד מהם.
   // היא נכנסת **לפני** הפוטר ואחרי גוף המכתב, ו-`footerHtml` ממשיך לקבל את הגוף המקורי בלבד.
-  const finalHtml = htmlContent + googleNoteHtml(googleEmail) + footerHtml(htmlContent);
+  // §415 — שני הבלוקים סותרים זה את זה מעצם הגדרתם (יש/אין חשבון מקושר), ולכן `||` ולא
+  // שרשור: מקושר מקבל את התזכורת, לא-מקושר מקבל את ההזמנה, ואף אחד לא מקבל את שניהם.
+  const googleBlock = googleEmail ? googleNoteHtml(googleEmail) : (googleInvite ? googleInviteHtml() : '');
+  const finalHtml = htmlContent + googleBlock + footerHtml(htmlContent);
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
@@ -53,6 +82,14 @@ async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent, 
       to,
       ...(replyTo ? { replyTo } : {}),
       subject,
+      // ── §415 — תג על כל מייל יוצא, וזה תיקון-אמת ולא נוחות ─────────────────────────
+      // 🔑 **הבאג שזה סוגר:** webhook המסירה (brevo-webhook.js) מתאים אירועים **לפי כתובת
+      // מייל בלבד**, וכותב אותם תמיד לשדות של מייל-הקוד (`loginCodeEmailDelivery`/
+      // `loginCodeEmailOpenedAt`). כלומר השידור ההמוני הראשון היה **דורס** את נתוני מייל-
+      // הקוד של כל 108 הנמענים — ואיתם את ארבעת הדליים ב"אושרו ולא נכנסו" (§390/§394),
+      // שכל ההחלטה "למי לשלוח וואטסאפ" נשענת עליהם. הדריסה הייתה שקטה לחלוטין.
+      // התג הוא מה שמאפשר ל-webhook לדעת על **איזה מכתב** מדובר, ולכתוב לשדות הנכונים.
+      ...(tag ? { tags: [tag] } : {}),
       htmlContent: finalHtml,
       textContent: stripHtml(finalHtml),
     }),
@@ -93,7 +130,7 @@ function stripHtml(html) {
 // tpl אופציונלי — override מ-settings/messageTemplates (Firestore), נערך במרכז ההודעות.
 // כשקיים, מחליף גם את הנושא וגם את גוף ההודעה — טקסט חופשי דרך renderMailHtml, כולל תיבת-קוד/
 // כפתור ממותגים אם {code}/{link} יושבים על שורה נפרדת משלהם, וכל סימוני-העיצוב של סרגל הכתיבה.
-export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind = 'welcome', googleEmail = '' }) {
+export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind = 'welcome', googleEmail = '', googleInvite = false }) {
   // בניגוד לבעלי-עסקים, לאוהד אין accessToken אישי (הכניסה היא תמיד טלפון+קוד) — אז {link} כאן
   // הוא כתובת האתר הכללית, זהה לכל אוהד, לא קישור-קסם מותאם-אישית.
   const vars = { name: toName || '', code, link: 'https://yellowzone.co.il/welcome.html' };
@@ -117,11 +154,13 @@ export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind
     subject,
     htmlContent,
     googleEmail,
+    googleInvite,
+    tag: 'login',
   });
 }
 
 // מייל שני, נפרד מקוד הכניסה — נשלח כשעסק (לא רק החברות של הבעלים) מאושר לאינדקס
-export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, businessName, dashboardLink, tpl, googleEmail = '' }) {
+export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, businessName, dashboardLink, tpl, googleEmail = '', googleInvite = false }) {
   const vars = { name: ownerName || '', business: businessName, link: dashboardLink };
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
@@ -147,6 +186,8 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
     // הקלה. הגדר-האמת נמצא בצד הקורא (index.js): הערך מועבר רק כשהוא **באמת** יכול
     // להיכנס איתו — אחרת המכתב היה מבטיח כניסה למי שעוד ממתין לאישור.
     googleEmail,
+    googleInvite,
+    tag: 'bizApproved',
   });
 }
 
@@ -163,11 +204,14 @@ export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, 
     replyTo: { email: REPLY_TO },
     subject: finalSubject,
     htmlContent,
+    // §415 — ⚠️ **התג הזה הוא כל ההפרדה.** בלעדיו אירועי המסירה של השידור נוחתים על שדות
+    // מייל-הקוד ומוחקים את התמונה שלפיה מחליטים למי לשלוח וואטסאפ. ר' ההערה ב-sendBrevoEmail.
+    tag: 'broadcast',
   });
 }
 
 // מייל מאוחד — כשבעל עסק מאושר גם כאוהד וגם כבעל עסק באותה פעולה
-export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl, googleEmail = '' }) {
+export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl, googleEmail = '', googleInvite = false }) {
   const vars = { name: toName || '', code, business: businessName, link: dashboardLink };
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
@@ -191,5 +235,7 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
     subject,
     htmlContent,
     googleEmail,
+    googleInvite,
+    tag: 'combined',
   });
 }
