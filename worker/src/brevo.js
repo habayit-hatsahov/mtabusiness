@@ -12,6 +12,10 @@ import {
 // אוהדים יוכלו להשיב למייל שלהם, כדי לאפשר שיתופי-פעולה שמתחילים מתגובה חופשית.
 const REPLY_TO = 'yellowzonemta@gmail.com';
 
+// §415ב — דלת-הכניסה של החבר. ⚠️ **זו אינה אותה כתובת של `{link}` במכתב העסק** (שם היא
+// דשבורד-העסק עם טוקן אישי, §244) — זו הכניסה כחבר, וזהה לכולם.
+const MEMBER_LOGIN_URL = 'https://yellowzone.co.il/welcome.html';
+
 // ══ §389 — "אפשר גם בלי הקוד" למי שחיבר חשבון Google ═════════════════════════════════════
 // 🔑 **למה זה חייב להיות בקוד ולא בתבנית שהמנהל עורך:** המשפט נכון רק לחלק מהנמענים, ותבנית
 // סטטית אינה יודעת להתנות. יתרה מזו — `tpl.body` **דורס את גוף המכתב במלואו**, ולכן משפט
@@ -39,13 +43,18 @@ function esc(v) {
 // מכתב-שיווק אינו נושא אותו. `invite` נשלח במפורש משלושת מכתבי-המערכת בלבד.
 function googleInviteHtml() {
   return `
-    <div dir="rtl" style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#555;
-                          background:#F6F6F2;border:1px solid #E7E7E0;border-radius:12px;
-                          padding:14px 16px;margin:20px auto 0;max-width:520px;text-align:right">
-      <b style="color:#0A2A66">הכניסה הקלה: פעם אחת עם Google, ואין יותר קוד</b><br>
-      בעמוד הכניסה יש כפתור "להמשיך עם Google". אם יש לכם חשבון Google עם הכתובת הזו,
-      הלחיצה הראשונה מחברת אותו לחשבון שלכם ומכניסה אתכם פנימה — ומאותו רגע נכנסים
-      בלחיצה אחת, מכל מכשיר, בלי לחפש את הקוד. הקוד שלמעלה ממשיך לעבוד תמיד.
+    <div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.7;color:#0A2A66;
+                          background:#FFF8DC;border:2px solid #FFDE00;border-radius:14px;
+                          padding:18px 20px;margin:0 auto 22px;max-width:520px;text-align:right">
+      <div style="font-size:17px;font-weight:bold;margin-bottom:8px">הכניסה לאתר — בלחיצה אחת</div>
+      בעמוד הכניסה יש כפתור <b>"להמשיך עם Google"</b>. אם יש לכם חשבון Google עם הכתובת הזו,
+      הלחיצה הראשונה מכניסה אתכם — ומאותו רגע נכנסים כך תמיד, מכל מכשיר, בלי לחפש קוד.
+      <div style="margin-top:12px;font-size:15px">
+        <a href="${MEMBER_LOGIN_URL}" style="color:#0A2A66;font-weight:bold">כניסה לאתר — yellowzone.co.il</a>
+      </div>
+      <div style="margin-top:10px;font-size:13px;color:#555">
+        אין לכם חשבון Google עם הכתובת הזו? הקוד שבמייל עובד תמיד, יחד עם מספר הטלפון.
+      </div>
     </div>`;
 }
 
@@ -69,7 +78,23 @@ async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent, 
   // §415 — שני הבלוקים סותרים זה את זה מעצם הגדרתם (יש/אין חשבון מקושר), ולכן `||` ולא
   // שרשור: מקושר מקבל את התזכורת, לא-מקושר מקבל את ההזמנה, ואף אחד לא מקבל את שניהם.
   const googleBlock = googleEmail ? googleNoteHtml(googleEmail) : (googleInvite ? googleInviteHtml() : '');
-  const finalHtml = htmlContent + googleBlock + footerHtml(htmlContent);
+
+  // ── §415ב — 🔑 **ההזמנה עלתה לראש המכתב, התזכורת נשארה בתחתית.** ─────────────────────
+  // בקשת המשתמש: *"אני לא רוצה שזה יהיה למטה"*. והנימוק אינו העדפה: מי שאין לו חשבון
+  // מקושר צריך לדעת שיש דרך קלה **לפני** שהוא מגיע לקוד ומתחיל להעתיק אותו — משפט
+  // שמופיע אחרי שהמשימה כבר בוצעה אינו משנה התנהגות. זה בדיוק הלקח של §411 ("הכיתוב עלה
+  // מעל הכפתור: הסיבה ללחוץ נקראה אחרי שההחלטה כבר התקבלה"), באותו מכתב עצמו.
+  //
+  // ⚠️ **התזכורת למקושרים נשארת למטה בכוונה** — היא אינה פעולה אלא הרגעה ("החשבון שלך
+  // כבר מחובר"), ואין שום סיבה שתדחוף את גוף המכתב מטה אצל מי שכבר סידר את עצמו.
+  //
+  // ⚠️ **הבלוק אינו יכול לשבת *בתוך* גוף המכתב, ליד הקוד** — וזו מגבלה אמיתית ולא בחירה:
+  // `tpl.body` הוא טקסט חופשי שהמנהל כותב, והמשפט נכון רק לחלק מהנמענים (§389). תבנית
+  // סטטית אינה יודעת להתנות, ולכן המיקום היחיד שהקוד שולט בו הוא לפני הגוף או אחריו.
+  const finalHtml = (googleInvite && !googleEmail ? googleBlock : "")
+    + htmlContent
+    + (googleEmail ? googleBlock : "")
+    + footerHtml(htmlContent);
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {

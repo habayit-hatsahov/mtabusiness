@@ -21,7 +21,7 @@ function check(name, cond, extra) {
   console.log((cond ? '  ✅ ' : '  ❌ ') + name + (cond ? '' : '  ← ' + (extra || '')));
   if (!cond) fails++;
 }
-const INVITE = 'הכניסה הקלה: פעם אחת עם Google';
+const INVITE = 'הכניסה לאתר — בלחיצה אחת';   // §415ב — הנוסח החדש של משבצת-הפעולה
 const LINKED = 'אפשר גם בלי הקוד';
 
 console.log('\n── 1. בלוק הגוגל: למי הוא מופיע ──────────────────────────────');
@@ -35,6 +35,19 @@ await sendLoginCodeEmail(env, { toEmail: 'a@a.com', toName: 'דנה', code: '123
 check('מי שכבר מקושר — מקבל את התזכורת ולא את ההזמנה',
       captured.body.htmlContent.includes(LINKED) && !captured.body.htmlContent.includes(INVITE));
 check('...והמייל שלו מופיע בגוף', captured.body.htmlContent.includes('d@gmail.com'));
+
+// §415ב — ⚠️ **סדר ולא רק נוכחות.** "לא רוצה שזה יהיה למטה" הוא הבקשה עצמה, ובדיקה שרק
+// שואלת includes() הייתה עוברת גם אם הבלוק חזר לתחתית המכתב בלי שאיש ישים לב.
+await sendLoginCodeEmail(env, { toEmail: 'a@a.com', toName: 'דנה', code: '123456', googleInvite: true, tpl: { subject: 'נושא', body: 'גוף המכתב כאן' } });
+let html = captured.body.htmlContent;
+check('ההזמנה נמצאת **לפני** גוף המכתב', html.indexOf(INVITE) < html.indexOf('גוף המכתב כאן'),
+      `invite@${html.indexOf(INVITE)} body@${html.indexOf('גוף המכתב כאן')}`);
+check('משבצת הפעולה נושאת את קישור הכניסה', html.includes('yellowzone.co.il/welcome.html'));
+
+await sendLoginCodeEmail(env, { toEmail: 'a@a.com', toName: 'דנה', code: '123456', googleEmail: 'd@gmail.com', tpl: { subject: 'נושא', body: 'גוף המכתב כאן' } });
+html = captured.body.htmlContent;
+check('התזכורת למקושרים נשארת **אחרי** הגוף', html.indexOf(LINKED) > html.indexOf('גוף המכתב כאן'),
+      `linked@${html.indexOf(LINKED)} body@${html.indexOf('גוף המכתב כאן')}`);
 
 await sendLoginCodeEmail(env, { toEmail: 'a@a.com', toName: 'דנה', code: '123456' });
 check('בלי דגל ובלי חשבון — אין שום בלוק גוגל',
