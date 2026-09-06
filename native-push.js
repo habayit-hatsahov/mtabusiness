@@ -165,11 +165,60 @@
     } catch (e) { return 'unknown'; }
   }
 
+  // ── §420ו — פיקדון: טוקן שהתקבל לפני שיש למי לשייך אותו ────────────────────────────
+  //
+  //  🔑 **האילוץ שהכתיב את המנגנון:** `nativePushTokens` נכתב על `members/{uid}`, והחוק
+  //  דורש `request.auth.uid == memberId`. במסך הכניסה עדיין אין זהות — כלומר טוקן שהתקבל
+  //  שם אין לאן לשמור באותו רגע.
+  //
+  //  ⚠️ **והתשובה אינה "לבקש רק אחרי הכניסה".** `heroFinishLogin` מנווט **מיד**
+  //  (`heroGoHome()`), ובקשת-הרשאה שם הייתה עוצרת אדם שבדיוק מנסה להיכנס — או נקטעת
+  //  בניווט, בדיוק כמו האירוע ב-§410 שלא הספיק לצאת.
+  //
+  //  לכן: הטוקן נשמר מקומית, ומי שכן מחזיק זהות (home.html אחרי הכניסה) פורק אותו.
+  //  ⚠️ הפיקדון **אינו** ההרשמה עצמה — הרשאה שניתנה תקפה בין אם הפריקה הצליחה ובין אם לא,
+  //  ולכן הפריקה חוזרת ומנסה בכל טעינה עד שהיא מצליחה.
+  const STASH_KEY = 'yz_push_stash';
+
+  function stash(res) {
+    try {
+      localStorage.setItem(STASH_KEY, JSON.stringify({
+        token: res.token, platform: res.platform, installId: res.installId,
+      }));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function peekStash() {
+    try {
+      const raw = localStorage.getItem(STASH_KEY);
+      if (!raw) return null;
+      const v = JSON.parse(raw);
+      return (v && v.token && v.installId) ? v : null;
+    } catch (e) { return null; }
+  }
+
+  // ⚠️ מנוקה **רק** אחרי שהכתיבה ל-Firestore הצליחה — הקורא מנקה במפורש, ולא הפונקציה
+  // שקוראת. ניקוי בקריאה היה מאבד את הטוקן בכל כשל-רשת חולף.
+  function clearStash() {
+    try { localStorage.removeItem(STASH_KEY); } catch (e) {}
+  }
+
+  // נרשם ומפקיד. למסכים שאין בהם זהות (welcome.html).
+  async function registerAndStash() {
+    const res = await register();
+    if (res.ok) stash(res);
+    return res;
+  }
+
   window.YZNativePush = {
     available: available,
     platform: platform,
     installId: installId,
     permissionState: permissionState,
     register: register,
+    registerAndStash: registerAndStash,
+    peekStash: peekStash,
+    clearStash: clearStash,
   };
 })();

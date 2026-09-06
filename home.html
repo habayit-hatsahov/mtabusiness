@@ -4784,6 +4784,38 @@ async function initBizNavItem() {
 }
 initBizNavItem();
 
+// ── §420ו — פריקת הפיקדון: טוקן שהתקבל לפני שהייתה זהות ────────────────────────────────
+//  מי שאישר התראות ב-`welcome.html` (לפני הכניסה) קיבל טוקן שלא היה למי לשייך —
+//  `nativePushTokens` נכתב על `members/{uid}` והחוק דורש `request.auth.uid == memberId`.
+//  הטוקן הופקד מקומית, וכאן — הדף הראשון שיש בו זהות — הוא נפרק.
+//
+//  ⚠️ **הניקוי קורה רק אחרי שהכתיבה הצליחה.** ניקוי לפני, או ניקוי ב-`catch`, היה
+//  מאבד את ההרשאה שהמשתמש כבר נתן בגלל כשל-רשת חולף — וההרשאה הזאת היא משאב חד-פעמי
+//  (סירוב במערכת ההפעלה הוא סופי). כשל משאיר את הפיקדון, והטעינה הבאה מנסה שוב.
+//
+//  ⚠️ **ולא מבקש דבר מעצמו** — פורק רק מה שכבר הופקד.
+(async function flushPushStash() {
+  try {
+    if (!window.YZNativePush || typeof window.YZNativePush.peekStash !== 'function') return;
+    const st = window.YZNativePush.peekStash();
+    if (!st) return;
+    const memberId = auth.currentUser?.uid;
+    if (!memberId) return;   // עוד אין זהות — הטעינה הבאה תנסה שוב
+
+    await updateDoc(doc(db, 'members', memberId), {
+      [`nativePushTokens.${st.installId}`]: {
+        token: st.token,
+        platform: st.platform || 'unknown',
+        updatedAt: new Date().toISOString(),
+      },
+    });
+    window.YZNativePush.clearStash();
+  } catch (e) {
+    // נשאר בפיקדון בכוונה. ר' ההערה למעלה.
+    console.error('push stash flush failed (will retry next load):', e);
+  }
+})();
+
 // ── תעודת חבר מוטמעת בגיליון עסק (הוכחת חברות מול ההטבה) ──
 let _memberCardData = null;
 async function loadMemberCardData() {
