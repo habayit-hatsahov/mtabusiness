@@ -398,6 +398,141 @@ window.heroRequestResend = function () {
   }
   heroQueueUntilReady('_hbPendingResend', 'heroForgotBtn', 'heroForgotMsg', 'שולח...');
 };
+
+// ══ §425 — 🔴 **מי שמצייר את כפתור Google ישב מאחורי firebase, בלי שום סיבה** ═══════════
+// דווח (6.9), גם מספארי וגם מה-PWA: בפתיחה הראשונה של מסך ההתחברות מופיע רק טלפון+קוד,
+// **בלי גוגל**; יציאה מהמודאל וכניסה שוב מציגה את המסך הנכון (גוגל למעלה, הקוד מקופל).
+// שוחזר על האתר החי בדגימה של 25ms, שני הצדדים באותה טעינה:
+//     280ms  לחיצה על "התחברו"            → gsLoginHost=none · אפס כפתורים · code-path גלוי
+//     432ms  hbRenderGoogleLoginBtn הוגדרה  ← 152ms מאוחר מדי, ואיש לא מנסה שוב
+//    3008ms  סגירה + פתיחה מחדש            → הכפתור צויר מיד, google-first הוחל
+//
+// 🔑 **השורש: `openLoginModal` קוראת `window.hbRenderGoogleLoginBtn && ...`, וה-`&&` הפך
+// "עוד לא נטען" לדילוג שקט וחד-פעמי.** הפונקציה ישבה ב-`<script type="module">`, כלומר
+// מאחורי שלוש הורדות מ-gstatic **ואחרי** ה-await ברמת-המודול (שער ה-auth, עד 3 שניות,
+// נשען על IndexedDB ש"יודע להיתקע" במובייל — §322). `openLoginModal` עצמה קלאסית ולחיצה
+// עליה עובדת מיד, ולכן נפתח חלון שבו הכפתור לחיץ לגמרי ואין מי שיצייר. בטעינה קרה של PWA
+// החלון הוא שנייה עד ארבע — כלומר הרוב, וזה בדיוק מה שהופך את זה ל"תמיד בפעם הראשונה".
+//
+// ⚠️ **ובלי שום סימן:** `.gs-login-host` הוא display:none במרקאפ, והפונקציה שדולגה היא
+// היחידה שהופכת אותו ל-flex — כלומר אין שגיאה, אין אזהרה, והמסך נראה כמו מסך תקין של
+// מישהו שגוגל חסומה אצלו. זה **לא** ענף החסימה של §415ב; הענף הזה בכלל לא רץ.
+// זו אותה משפחת באג בדיוק של §312/§313 (onclick שמוגדר מאוחר מהכפתור שקורא לו), רק שכאן
+// ה-`&&` הסתיר אותה: [[feedback_empty_catch_on_a_guard]] — הגנה ששותקת מסתירה חוסר.
+//
+// 🔑 **התיקון הוא מיקום, לא לוגיקה.** הרנדרר אינו נוגע ב-firebase בכלל — הוא צריך רק את
+// הספרייה של גוגל, שנטענת בתגית נפרדת משלה. לכן הוא עובר לכאן, בדיוק לפי הכלל של §312,
+// ומתחיל לצייר ברגע פתיחת המודאל בלי תלות ב-gstatic, ב-firebase או ב-IndexedDB. **גוף
+// הפונקציה זהה לחלוטין למה שהיה במודול** — הקיפול, ה-fail-open, הסקר של §415ג והתקרות
+// לא נגעתי בהם.
+//
+// ⚠️ **ה-callback הוא הדבר היחיד שבאמת שייך למודול** (הוא עושה signInWithCustomToken),
+// ולכן הוא נקשר באיחור דרך `window.heroGoogleLogin`. זה בטוח כי הוא נקרא רק **אחרי**
+// שאדם לחץ על הכפתור — שניות אחרי הפתיחה — אבל "בטוח כי בדרך כלל" הוא בדיוק ההנחה
+// שיצרה את הבאג הזה מלכתחילה, ולכן מי שכן מקדים נכנס לתור במקום לקבל לחיצה מתה.
+function hbGoogleLoginCallback(res) {
+  if (typeof window.heroGoogleLogin === 'function') { window.heroGoogleLogin(res); return; }
+  // §313 בדיוק: לא מבקשים מהאוהד לחכות ולא בולעים את הלחיצה — אומרים שמשהו קורה,
+  // ומשחזרים אותה ברגע שהמודול מוכן. הגבול זהה לזה של מסלול הקוד (HB_LOGIN_TIMEOUT_MS),
+  // כדי שמודול שלא יגיע לעולם (CDN חסום) לא ישאיר את הכפתור תלוי בלי סוף.
+  const msg = document.getElementById('gsLoginMsg');
+  const show = (t, warn) => {
+    if (!msg) return;
+    msg.textContent = t;
+    msg.classList.toggle('warn', !!warn);
+    msg.classList.add('show');
+  };
+  show('רגע, טוענים…');
+  const t0 = Date.now();
+  const tick = function () {
+    if (typeof window.heroGoogleLogin === 'function') {
+      if (msg) { msg.classList.remove('show', 'warn'); msg.textContent = ''; }
+      window.heroGoogleLogin(res);
+      return;
+    }
+    if (Date.now() - t0 >= (window.HB_LOGIN_TIMEOUT_MS || 8000)) {
+      show(window.HB_TIMEOUT_MSG, true);
+      // אותו ערוץ בדיוק כמו מסלול הקוד: מבחינת האוהד זה אותו כשל, והאבחון זהה (§322).
+      window.logEvent && window.logEvent('loginFail', { channel: 'moduleTimeout', blockId: window._hbEnvTag });
+      window.heroShowLoginHelp && window.heroShowLoginHelp('moduleTimeout');
+      return;
+    }
+    setTimeout(tick, 100);
+  };
+  setTimeout(tick, 100);
+}
+
+// ⚠️ מצויר רק כשהמודאל נפתח (openLoginModal קורא לזה), ומוסתר עד שהציור באמת הצליח.
+// אותו נימוק כמו §386: `renderButton` אינו מדווח על כשל — כשה-origin אינו מאושר אצל גוגל
+// הוא פשוט לא מצייר כלום, ואז היה נשאר קו-מפריד "או עם קוד" בלי כפתור מעליו.
+window.hbRenderGoogleLoginBtn = function (tries) {
+  tries = tries || 0;
+  const host = document.getElementById('gsLoginHost');
+  const btnHost = document.getElementById('gsLoginBtnHost');
+  if (!host || !btnHost) return;
+  if (btnHost.childElementCount) { host.style.display = 'flex'; return; }   // כבר צויר
+  if (window.google && window.google.accounts && window.google.accounts.id) {
+    window.google.accounts.id.initialize({
+      client_id: '459607487972-esu70diuu360tg1ji15o1n1tikf3npnb.apps.googleusercontent.com',
+      // §425 — עטיפה, ולא הפונקציה עצמה: היא חיה במודול ואולי עוד לא נטענה בזמן הציור.
+      callback: hbGoogleLoginCallback,
+      // ⚠️ **auto_select כבוי בכוונה.** כניסה שמתרחשת מעצמה בלי לחיצה היא בדיוק סוג
+      // באגי-הזהות שהפרויקט הזה כבר נכווה בהם — הכניסה חייבת להיות פעולה של האדם.
+      auto_select: false,
+    });
+    window.google.accounts.id.renderButton(btnHost, {
+      theme: 'filled_blue', size: 'large', shape: 'pill',
+      // 🔑 "המשך עם Google" — בדיוק הנוסח שהודעת-ההצלחה בתפריט (google-link.js) מבטיחה.
+      text: 'continue_with', locale: 'he', width: 300,
+    });
+    host.style.display = 'flex';
+    // ══ §415ג — סקר קצר במקום המתנה אחת ארוכה ══════════════════════════════════════
+    // ⚠️ **1500ms היו יותר מדי מרגע שיש מה לקפל.** קודם ההמתנה שירתה רק החלפת-כותרת,
+    // ואיש לא הרגיש בה; עכשיו היא הפרש בין "המסך נפתח נכון" לבין "המסך קופץ מתחת לאצבע
+    // אחרי שנייה וחצי". הסקר תופס את הציור ברגע שהוא קורה (בד"כ פחות מ-300ms), ושומר על
+    // אותה תקרה של 1.5 שנ' לפני שמכריזים שהכפתור לא צויר.
+    // ⚠️ **התקרה היא עדיין ההכרעה היחידה שמובילה לקיפול** — ר' ההערה למטה.
+    let gTries = 0;
+    const gSettle = () => {
+      const drawn = !!document.getElementById('gsLoginBtnHost')?.childElementCount;
+      if (!drawn && ++gTries < 15) { setTimeout(gSettle, 100); return; }
+      const sub = document.getElementById('loginModalSub');
+      if (!drawn) {
+        host.style.display = 'none';
+        console.warn('google-login: הכפתור לא צויר (origin לא מאושר?) — הבלוק הוסתר');
+        // §415ג — כאן הקוד הוא המסלול **היחיד**, ולכן הפוקוס שייך לו. זו בדיוק ההתנהגות
+        // שהייתה בדף עד היום, ומי שמגיע מדפדפן משובץ ימשיך לקבל אותה במדויק.
+        document.getElementById('heroPhoneInput')?.focus();
+        return;
+      }
+      // רק עכשיו, כשהכפתור ודאי על המסך, מותר לכותרת-המשנה להזכיר אותו.
+      // §415 — התנאי מתאר את המייל, לא קישור שנעשה בעבר.
+      if (sub) sub.textContent = 'נכנסים עם Google — או עם הטלפון והקוד בן 6 הספרות';
+
+      // ══ §415ב — 🔴 **כאן, ורק כאן, מסלול הקוד מתקפל** ═════════════════════════════
+      // זה הענף היחיד בקובץ שיודע בוודאות שכפתור גוגל **צויר על המסך**. כל שאר המצבים —
+      // ספריית גוגל שלא נטענה, origin לא מאושר, דפדפן משובץ של וואטסאפ/אינסטגרם שגוגל
+      // חוסמת בו התחברות — נופלים לענף שמעל, ואז הקוד **נשאר פתוח כברירת מחדל**. מסך
+      // התחברות שבו שני המסלולים מוסתרים הוא מסך בלי מוצא (§354), והמחיר שלו גבוה
+      // בהרבה מהמחיר של להשאיר את הקוד פתוח למי שממילא ישתמש בגוגל.
+      //
+      // ⚠️ **`touched` בודק ערך שהוקלד בלבד, ולא `activeElement`.** §415ג: הבדיקה על
+      // הפוקוס נראתה זהירה יותר, ובפועל היא ביטלה את הקיפול לחלוטין — `openLoginModal`
+      // מיקד את שדה-הטלפון אוטומטית, כלומר התנאי התקיים תמיד. **הגנה שמתקיימת תמיד
+      // אינה הגנה, היא כיבוי.** הפוקוס האוטומטי ההוא הוסר, והתנאי צומצם למה שבאמת
+      // מסוכן למחוק: תווים שאדם כבר הקליד.
+      const modalBody = document.querySelector('.login-modal-body');
+      const touched = ['heroPhoneInput', 'heroCodeInput']
+        .some(id => (document.getElementById(id)?.value || '').trim());
+      if (modalBody && !touched) modalBody.classList.add('google-first');
+    };
+    setTimeout(gSettle, 120);
+    return;
+  }
+  if (tries > 40) { console.warn('google-login: ספריית Google לא נטענה — הכפתור לא יוצג'); return; }
+  setTimeout(() => window.hbRenderGoogleLoginBtn(tries + 1), 150);
+};
+
 </script>
 
 <!-- ══ §338 — דף הכניסה היה הדף היחיד שלא מעדכן את ה-Service Worker ═══════════════════════
@@ -2648,75 +2783,15 @@ function heroEsc(v) {
   return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// ⚠️ מצויר רק כשהמודאל נפתח (openLoginModal קורא לזה), ומוסתר עד שהציור באמת הצליח.
-// אותו נימוק כמו §386: `renderButton` אינו מדווח על כשל — כשה-origin אינו מאושר אצל גוגל
-// הוא פשוט לא מצייר כלום, ואז היה נשאר קו-מפריד "או עם קוד" בלי כפתור מעליו.
-window.hbRenderGoogleLoginBtn = function (tries) {
-  tries = tries || 0;
-  const host = document.getElementById('gsLoginHost');
-  const btnHost = document.getElementById('gsLoginBtnHost');
-  if (!host || !btnHost) return;
-  if (btnHost.childElementCount) { host.style.display = 'flex'; return; }   // כבר צויר
-  if (window.google && window.google.accounts && window.google.accounts.id) {
-    window.google.accounts.id.initialize({
-      client_id: '459607487972-esu70diuu360tg1ji15o1n1tikf3npnb.apps.googleusercontent.com',
-      callback: heroGoogleLogin,
-      // ⚠️ **auto_select כבוי בכוונה.** כניסה שמתרחשת מעצמה בלי לחיצה היא בדיוק סוג
-      // באגי-הזהות שהפרויקט הזה כבר נכווה בהם — הכניסה חייבת להיות פעולה של האדם.
-      auto_select: false,
-    });
-    window.google.accounts.id.renderButton(btnHost, {
-      theme: 'filled_blue', size: 'large', shape: 'pill',
-      // 🔑 "המשך עם Google" — בדיוק הנוסח שהודעת-ההצלחה בתפריט (google-link.js) מבטיחה.
-      text: 'continue_with', locale: 'he', width: 300,
-    });
-    host.style.display = 'flex';
-    // ══ §415ג — סקר קצר במקום המתנה אחת ארוכה ══════════════════════════════════════
-    // ⚠️ **1500ms היו יותר מדי מרגע שיש מה לקפל.** קודם ההמתנה שירתה רק החלפת-כותרת,
-    // ואיש לא הרגיש בה; עכשיו היא הפרש בין "המסך נפתח נכון" לבין "המסך קופץ מתחת לאצבע
-    // אחרי שנייה וחצי". הסקר תופס את הציור ברגע שהוא קורה (בד"כ פחות מ-300ms), ושומר על
-    // אותה תקרה של 1.5 שנ' לפני שמכריזים שהכפתור לא צויר.
-    // ⚠️ **התקרה היא עדיין ההכרעה היחידה שמובילה לקיפול** — ר' ההערה למטה.
-    let gTries = 0;
-    const gSettle = () => {
-      const drawn = !!document.getElementById('gsLoginBtnHost')?.childElementCount;
-      if (!drawn && ++gTries < 15) { setTimeout(gSettle, 100); return; }
-      const sub = document.getElementById('loginModalSub');
-      if (!drawn) {
-        host.style.display = 'none';
-        console.warn('google-login: הכפתור לא צויר (origin לא מאושר?) — הבלוק הוסתר');
-        // §415ג — כאן הקוד הוא המסלול **היחיד**, ולכן הפוקוס שייך לו. זו בדיוק ההתנהגות
-        // שהייתה בדף עד היום, ומי שמגיע מדפדפן משובץ ימשיך לקבל אותה במדויק.
-        document.getElementById('heroPhoneInput')?.focus();
-        return;
-      }
-      // רק עכשיו, כשהכפתור ודאי על המסך, מותר לכותרת-המשנה להזכיר אותו.
-      // §415 — התנאי מתאר את המייל, לא קישור שנעשה בעבר.
-      if (sub) sub.textContent = 'נכנסים עם Google — או עם הטלפון והקוד בן 6 הספרות';
-
-      // ══ §415ב — 🔴 **כאן, ורק כאן, מסלול הקוד מתקפל** ═════════════════════════════
-      // זה הענף היחיד בקובץ שיודע בוודאות שכפתור גוגל **צויר על המסך**. כל שאר המצבים —
-      // ספריית גוגל שלא נטענה, origin לא מאושר, דפדפן משובץ של וואטסאפ/אינסטגרם שגוגל
-      // חוסמת בו התחברות — נופלים לענף שמעל, ואז הקוד **נשאר פתוח כברירת מחדל**. מסך
-      // התחברות שבו שני המסלולים מוסתרים הוא מסך בלי מוצא (§354), והמחיר שלו גבוה
-      // בהרבה מהמחיר של להשאיר את הקוד פתוח למי שממילא ישתמש בגוגל.
-      //
-      // ⚠️ **`touched` בודק ערך שהוקלד בלבד, ולא `activeElement`.** §415ג: הבדיקה על
-      // הפוקוס נראתה זהירה יותר, ובפועל היא ביטלה את הקיפול לחלוטין — `openLoginModal`
-      // מיקד את שדה-הטלפון אוטומטית, כלומר התנאי התקיים תמיד. **הגנה שמתקיימת תמיד
-      // אינה הגנה, היא כיבוי.** הפוקוס האוטומטי ההוא הוסר, והתנאי צומצם למה שבאמת
-      // מסוכן למחוק: תווים שאדם כבר הקליד.
-      const modalBody = document.querySelector('.login-modal-body');
-      const touched = ['heroPhoneInput', 'heroCodeInput']
-        .some(id => (document.getElementById(id)?.value || '').trim());
-      if (modalBody && !touched) modalBody.classList.add('google-first');
-    };
-    setTimeout(gSettle, 120);
-    return;
-  }
-  if (tries > 40) { console.warn('google-login: ספריית Google לא נטענה — הכפתור לא יוצג'); return; }
-  setTimeout(() => window.hbRenderGoogleLoginBtn(tries + 1), 150);
-};
+// ══ §425 — hbRenderGoogleLoginBtn עבר לסקריפט הקלאסי בראש הדף ═════════════════════════
+// כאן היה הרנדרר, ובדיוק כאן היה הבאג: כל מה שמתחת ל-await של שער-ה-auth (למעלה בקובץ)
+// אינו קיים בשניות הראשונות, ו-`openLoginModal` דילגה עליו בשקט. הגוף המלא, על כל
+// ההערות שלו, יושב עכשיו למעלה יחד עם שאר ה-onclick-ים (§312). ר' ההערה שם.
+//
+// ⚠️ **החשיפה הזאת היא מה שמחזיק את המעבר.** הרנדרר למעלה מוסר `hbGoogleLoginCallback`
+// לגוגל, והוא מחפש את `window.heroGoogleLogin` ברגע הלחיצה. בלי השורה הבאה כפתור גוגל
+// היה נצבע ולא עושה כלום — כלומר בדיוק אותו כשל, שכבה אחת פנימה.
+window.heroGoogleLogin = heroGoogleLogin;
 
 // ══ §403 — לשקף מה קורה, כדי שלא יברח ═══════════════════════════════════════════════════
 // עד היום הכפתור אמר "בודק..." ואז, אחרי 8 שניות שלמות של אותה מילה, קפץ מסך שגיאה. שמונה
