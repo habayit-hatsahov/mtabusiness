@@ -43,7 +43,7 @@ const PARTS = [
   'const secAnswered = (b, k) =>', 'const secPlacementAnswered = b =>', 'const secPlacementOf = b =>',
   'const secOpenQuestions = b =>', 'const secPrio = b =>', 'const secInTurns = b =>',
   'const secHasDeal = b =>', 'const secInDeals = b =>', 'const dealsOptIn = () =>',
-  'function secPlacementHtml(', 'function bizQuestionRow(',
+  'function secPlacementHtml(', 'function secQuestionHint(', 'function bizQuestionRow(',
   'function secQuestionsBodyHtml(', 'function bizApprovalSectionsHtml(', 'function bizQuestionsHtml(',
   'function ownerMemberOfPendingBiz(', 'const fanPendingList = () =>', 'const fanHiddenOwnerCount = () =>',
 ];
@@ -60,7 +60,8 @@ const sandbox = {
 const body = PARTS.map(grab).join('\n');
 const build = new Function('env', `with (env) { ${body}
   return { secQuestionsBodyHtml, bizApprovalSectionsHtml, bizQuestionsHtml,
-           ownerMemberOfPendingBiz, fanPendingList, fanHiddenOwnerCount, secOpenQuestions }; }`);
+           ownerMemberOfPendingBiz, fanPendingList, fanHiddenOwnerCount, secOpenQuestions,
+           bizQuestionRow, secQuestionHint, SEC_QUESTIONS, secInDeals, secHasDeal }; }`);
 let F;
 try { F = build(sandbox); ok(true, 'כל ההגדרות נטענו והורצו בלי לזרוק'); }
 catch (e) { ok(false, 'טעינת ההגדרות זרקה: ' + e.message); console.log(''); process.exit(1); }
@@ -149,6 +150,62 @@ const uti = grab('function unifiedTaskItems(');
 ok(uti.includes('!ownerMemberOfPendingBiz(x.entity)'), 'מרכז המשימות אינו מציג אותם כמשימה');
 ok(!grab('function classifyAction(').includes('ownerMemberOfPendingBiz'),
    '🔑 classifyAction לא נגוע — תג-הסיווג בכרטיס האוהד ממשיך לומר את האמת');
+
+// ══ 3. §428 — הכפתור מציג את התשובה, לא את התוצאה ═════════════════════════════════
+// 🐛 דווח: *"סימנתי כן ואי אפשר לשנות."* על עסק **בלי הטבה מוגדרת** קורא-התצוגה היה
+// `secInDeals`, שהוא `secHasDeal(b) && …` — כלומר תמיד false, ואף רצף לחיצות לא הדליק
+// את "כן". התשובה **כן נשמרה** במסמך; רק המסך הכחיש אותה.
+console.log('\n3. שאלת "הטבות שוות" — התשובה שנענתה היא מה שמוצג');
+
+// מדמה בדיוק את secAnswerFor: patch מהשאלה + סימון, ואז פירוק ה-dot-path כמו ב-secWrite.
+function clickDeals(b, val) {
+  const q = F.SEC_QUESTIONS.find(x => x[0] === 'deals');
+  const patch = q[4](val);
+  patch['sectionAnswers.deals'] = true;
+  Object.keys(patch).forEach(k => {
+    if (k.indexOf('.') < 0) { b[k] = patch[k]; return; }
+    const [h, t] = k.split('.');
+    b[h] = Object.assign({}, b[h]); b[h][t] = patch[k];
+  });
+  return b;
+}
+const litDeals = (b) => {
+  const html = F.bizQuestionRow(b, F.SEC_QUESTIONS.find(x => x[0] === 'deals'));
+  if (/sc-ans on"[^>]*'deals',true\)/.test(html)) return 'כן';
+  if (/sc-ans on"[^>]*'deals',false\)/.test(html)) return 'לא';
+  return '(אף אחד)';
+};
+
+[['עם הטבה', { id: 'D1', discountText: '10% הנחה' }],
+ ['בלי הטבה', { id: 'D2' }],
+ ['הטבה = רווחים בלבד', { id: 'D3', discountText: '   ' }]].forEach(([label, base]) => {
+  const b = { ...base };
+  ok(litDeals(b) === '(אף אחד)', `${label}: לפני מענה — אף כפתור לא דלוק`);
+  ok(litDeals(clickDeals(b, true)) === 'כן', `${label}: לחיצה על "כן" מדליקה את "כן"`);
+  ok(litDeals(clickDeals(b, false)) === 'לא', `${label}: לחיצה על "לא" מדליקה את "לא"`);
+  ok(litDeals(clickDeals(b, true)) === 'כן', `${label}: אפשר לחזור ל"כן" — לא נתקע`);
+});
+
+// ⚠️ המנוע **לא** השתנה: עסק בלי הטבה לא נכנס לסקשן גם אם נענה "כן". רק התצוגה תוקנה.
+ok(F.secInDeals({ id: 'D2', sectionDeals: true }) === false,
+   '🔑 המנוע לא נגוע — עסק בלי הטבה עדיין אינו משובץ ב"הטבות שוות"');
+ok(F.secInDeals({ id: 'D1', discountText: 'x', sectionDeals: true }) === true,
+   'המנוע משבץ עסק עם הטבה שנענה "כן"');
+ok(F.secInDeals({ id: 'D1', discountText: 'x', sectionDeals: false }) === false,
+   'המנוע אינו משבץ עסק עם הטבה שנענה "לא"');
+
+// ההסבר — נוסח אחד לשני המסכים, וההבחנה בין "יש הטבה" ל"אין" נאמרת למנהל.
+const qDeals = F.SEC_QUESTIONS.find(x => x[0] === 'deals');
+ok(/תישמר ותחול ברגע שתוגדר הטבה/.test(F.secQuestionHint({ id: 'D2' }, qDeals)),
+   'בלי הטבה: ההסבר אומר שהתשובה תישמר ותחול כשתוגדר הטבה');
+ok(/נפעיל אותה בהמשך/.test(F.secQuestionHint({ id: 'D1', discountText: 'x' }, qDeals)),
+   'עם הטבה: ההסבר הרגיל');
+ok(F.bizQuestionRow({ id: 'D2' }, qDeals).includes('תישמר ותחול'),
+   '🔑 ההסבר מופיע גם בכרטיס העסק — עד §428 הוא היה רק במסך-המעבר');
+ok(!grab('function sectionsReviewHtml(').includes('לעסק אין הטבה מוגדרת כרגע'),
+   'הנוסח הישן הוסר ממסך-המעבר — נוסח אחד בלבד');
+ok(grab('function sectionsReviewHtml(').includes('secQuestionHint(b, q)'),
+   'מסך-המעבר קורא לאותה פונקציית-הסבר');
 
 console.log(`\n${pass} עברו · ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);

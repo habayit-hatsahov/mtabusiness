@@ -5199,11 +5199,23 @@ function secPlacementHtml(b, onclickPrefix) {
     </div>`;
 }
 
+// §428 — נוסח אחד להסבר שמתחת לשאלה, לשני המסכים. עד היום הוא היה כתוב inline רק
+// במסך-המעבר, ובכרטיס העסק לא הופיע כלל — כלומר דווקא במקום שבו מאשרים עסק חדש,
+// המנהל לא ראה שהתשובה שלו נשמרת גם כשעוד אין הטבה.
+function secQuestionHint(b, q) {
+  const [key, , hint] = q;
+  if (key !== 'deals') return hint;
+  return secHasDeal(b)
+    ? 'התשובה נשמרת כבר עכשיו ואינה משפיעה על האתר — נפעיל אותה בהמשך.'
+    : 'לעסק אין הטבה מוגדרת כרגע. התשובה תישמר ותחול ברגע שתוגדר הטבה.';
+}
+
 function bizQuestionRow(b, q) {
   const key = q[0], title = q[1], get = q[3];
   const val = get(b), answered = secAnswered(b, key);
+  const hintText = secQuestionHint(b, q);
   return `<div class="sc-q">
-      <div class="sc-q-t">${title}${answered ? '' : '<i class="sc-never">טרם נענה</i>'}</div>
+      <div class="sc-q-t">${title}${hintText ? `<i>${hintText}</i>` : ''}${answered ? '' : '<i class="sc-never">טרם נענה</i>'}</div>
       <div class="sc-q-a">
         <button class="sc-ans${answered && val ? ' on' : ''}" onclick="secAnswerFor('${b.id}','${key}',true)">כן</button>
         <button class="sc-ans${answered && !val ? ' on' : ''}" onclick="secAnswerFor('${b.id}','${key}',false)">לא</button>
@@ -17996,9 +18008,23 @@ const SEC_PLACEMENT = [
     b => !b.isFeatured && !secInTurns(b),
     () => ({ isFeatured: false, featuredUntil: null, sectionTurn: false })],
 ];
+// ══ §428 — 🔴 **הכפתור הציג את התוצאה, לא את התשובה** ═══════════════════════════════
+// דווח: *"'שיופיע בהטבות שוות' — סימנתי כן ואי אפשר לשנות."* שוחזר בהרצת הפונקציות
+// עצמן: על עסק **בלי הטבה מוגדרת** הלחיצה על "כן" מדליקה את "לא", ואין שום רצף
+// לחיצות שמדליק את "כן".
+//
+// 🔑 **השורש:** קורא-התצוגה היה `secInDeals`, והוא `secHasDeal(b) && …` — כלומר הוא
+// עונה על "**האם העסק מופיע בפועל** בהטבות שוות", ולעסק בלי הטבה התשובה היא לא, תמיד,
+// לא משנה מה נענה. `sectionDeals: true` **כן נשמר** במסמך; רק המסך הכחיש אותו.
+// ⚠️ זה קדם ל-§427 (נולד ב-§418יא), אבל §427 הוא שהעמיד אותו בנתיב של כל עסק חדש.
+//
+// **התיקון: הקורא מחזיר את מה שנענה** (`sectionDeals !== false`) ולא את התוצאה
+// המחושבת. המנוע והטבלה ממשיכים להשתמש ב-`secInDeals` לשיבוץ בפועל — שם הוא נכון.
+// ⚠️ `!== false` ולא `=== true`: ברירת-המחדל היא השתתפות, בדיוק כמו במנוע — אבל היא
+// נראית רק כשהשאלה כבר נענתה, כי הכפתורים נדלקים רק תחת `answered`.
 const SEC_QUESTIONS = [
   ['deals', 'שיופיע ב"הטבות שוות"?', null,
-    b => secInDeals(b), v => ({ sectionDeals: v })],
+    b => b.sectionDeals !== false, v => ({ sectionDeals: v })],
 ];
 const SEC_PRIO_EFFECT = [
   ['רגיל', 'נכנס בתורו כמו כולם — יום אחד בכל סבב.'],
@@ -18061,12 +18087,9 @@ function sectionsReviewHtml() {
   const qRow = (q) => {
     const [key, title, hint, get, ] = q;
     const val = get(b), answered = secAnswered(b, key);
-    const noDeal = key === 'deals' && !secHasDeal(b);
-    const hintText = key === 'deals'
-      ? (noDeal
-        ? 'לעסק אין הטבה מוגדרת כרגע. התשובה תישמר ותחול ברגע שתוגדר הטבה.'
-        : 'התשובה נשמרת כבר עכשיו ואינה משפיעה על האתר — נפעיל אותה בהמשך.')
-      : hint;
+    // §428 — הנוסח עבר ל-secQuestionHint, המשותף גם לכרטיס העסק. שני נוסחים לאותו
+    // הסבר הם בדיוק הפער שהתיקון הזה בא לסגור.
+    const hintText = secQuestionHint(b, q);
     return `<div class="sc-q">
       <div class="sc-q-t">${title}<i>${hintText}</i></div>
       <div class="sc-q-a">
