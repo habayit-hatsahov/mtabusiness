@@ -57,7 +57,7 @@ const keys = (rows) => rows.map((r) => r.key).sort().join(', ');
 // AI Out Of The Box: מסמך קיים, אפס תמונות, אין ראיה, מסלול שדורש תמונה, אין שום אירוע.
 console.log('\n— המקרה של AI Out Of The Box (§419) —');
 {
-  const rows = run([biz({ name: 'AI Out Of The Box', ownerPhone: '0509103344', isSubscriber: 'yes', ownerIsSubscriber: true, ownerVerifyRoute: 'passScreenshot', ownerProofPhotoUrl: '', coverPhoto: '', logo: '' })], []);
+  const rows = run([biz({ name: 'AI Out Of The Box', ownerPhone: '0500000001', isSubscriber: 'yes', ownerIsSubscriber: true, ownerVerifyRoute: 'passScreenshot', ownerProofPhotoUrl: '', coverPhoto: '', logo: '' })], []);
   is('שתי שורות — ראיה חסרה + אפס תמונות', keys(rows), 'nomedia|images|b1, nomedia|proof|b1');
   is('שתיהן מצביעות על העסק', rows.every((r) => r.bizRef && r.bizRef.id === 'b1'), true);
   is('אף אחת אינה מסומנת כטופלה', rows.every((r) => r.handled === null), true);
@@ -104,9 +104,9 @@ console.log('\n— עסק · מתי לא מדווחים —');
 }
 
 // ── §419 — §361 בכיוון ההפוך: הראיה על רשומת החבר של הבעלים ───────────────────────────
-// המקרה האמיתי: איל מנדל נרשם כאוהד ב-09-03, אומת ב-passScreenshot, ורק למחרת רשם עסק.
+// המקרה האמיתי: הבעלים נרשם כאוהד יום קודם, אומת ב-passScreenshot, ורק למחרת רשם עסק.
 // הראיה שלו קיימת — על רשומת החבר. בלי הנפילה-לאחור הוא היה מופיע כתקלה בזמן שהתמונה
-// מוצגת יפה בכרטיס שלו.
+// מוצגת יפה בכרטיס שלו. ⚠️ כל הנתונים כאן מפוברקים — הריפו ציבורי.
 console.log('\n— הראיה אצל הבעלים (§419) —');
 {
   const f = fan({ id: 'mAyal', email: 'a@b.c', photoProofUrl: 'https://x/proof.jpg' });
@@ -116,18 +116,18 @@ console.log('\n— הראיה אצל הבעלים (§419) —');
 {
   // 🔑 בדיוק המקרה של AI Out Of The Box: ownerMemberId **נכשל בכתיבה** ולכן null.
   // להסתמך עליו לבדו היה מפספס את המקרה שהנפילה-לאחור נועדה לו.
-  const f = fan({ id: 'mAyal', email: 'ayalmandel@gmail.com', photoProofUrl: 'https://x/proof.jpg' });
-  const b = biz({ ownerMemberId: null, ownerEmail: 'ayalmandel@gmail.com', ownerIsSubscriber: true, ownerVerifyRoute: 'passScreenshot', ownerProofPhotoUrl: '', coverPhoto: 'x' });
+  const f = fan({ id: 'mAyal', email: 'owner@example.com', photoProofUrl: 'https://x/proof.jpg' });
+  const b = biz({ ownerMemberId: null, ownerEmail: 'owner@example.com', ownerIsSubscriber: true, ownerVerifyRoute: 'passScreenshot', ownerProofPhotoUrl: '', coverPhoto: 'x' });
   is('בלי ownerMemberId — נמצא לפי מייל', keys(run([b], [f])), '');
 }
 {
-  const f = fan({ id: 'mAyal', email: 'AyalMandel@GMAIL.com', photoProofUrl: 'https://x/proof.jpg' });
-  const b = biz({ ownerMemberId: null, ownerEmail: '  ayalmandel@gmail.com ', ownerIsSubscriber: true, ownerVerifyRoute: 'passScreenshot', ownerProofPhotoUrl: '', coverPhoto: 'x' });
+  const f = fan({ id: 'mAyal', email: 'Owner@EXAMPLE.com', photoProofUrl: 'https://x/proof.jpg' });
+  const b = biz({ ownerMemberId: null, ownerEmail: '  owner@example.com ', ownerIsSubscriber: true, ownerVerifyRoute: 'passScreenshot', ownerProofPhotoUrl: '', coverPhoto: 'x' });
   is('אות גדולה ורווחים במייל אינם מפספסים', keys(run([b], [f])), '');
 }
 {
   const f = fan({ id: 'mOther', email: 'someone@else.com', photoProofUrl: 'https://x/proof.jpg' });
-  const b = biz({ ownerMemberId: null, ownerEmail: 'ayalmandel@gmail.com', ownerIsSubscriber: true, ownerVerifyRoute: 'passScreenshot', ownerProofPhotoUrl: '', coverPhoto: 'x' });
+  const b = biz({ ownerMemberId: null, ownerEmail: 'owner@example.com', ownerIsSubscriber: true, ownerVerifyRoute: 'passScreenshot', ownerProofPhotoUrl: '', coverPhoto: 'x' });
   is('מייל של מישהו אחר אינו נחשב ראיה', keys(run([b], [f])), 'nomedia|proof|b1');
 }
 {

@@ -1,19 +1,24 @@
-// ── אבחון ממוקד: AI Out Of The Box — למה כל השרשרת שאחרי יצירת המסמך לא רצה ──────────────
-// קריאה בלבד. הרצה: node scratch_diag_biz_0N33.js
+// ── אבחון ממוקד לעסק בודד: למה השרשרת שאחרי יצירת המסמך לא רצה (נכתב ב-§419) ──────────────
+// קריאה בלבד. הרצה:  node scratch_diag_biz_0N33.js <bizId>
+// הטלפון והמייל נשלפים **מהמסמך עצמו** — אין צורך למסור אותם.
 //
 // שלוש שאלות מכריעות, וכל אחת מפרידה בין שני תרחישים שנראים זהים מבחוץ:
-//   1. יש אירועים בכלל על העסק/הנרשם?  formSubmit קיים ⇒ הקוד הגיע עד סוף handleSubmit
-//      (כלומר הדף לא מת), ואז החשוד הוא נתיב-הכפילות של §366. אין כלום ⇒ הדף מת מוקדם.
-//   2. קיימת רשומת-חבר לאיל מנדל?  קיימת ⇒ linkOrCreateOwnerMember כן רץ ורק updateDoc נפל.
-//      לא קיימת ⇒ שום דבר אחרי setDoc של המסמך לא רץ.
-//   3. יש מסמך-עסק שני של אותו בעלים?  ⇒ שליחה כפולה.
+//   1. יש אירועים בכלל על העסק/הנרשם?  🔑 `formSubmit` שנרשם **הוא בעצמו כתיבה ל-Firestore**
+//      — כלומר אם הוא קיים, הרשת עבדה והדף היה חי, וכשל של כתיבה אחרת באותה שנייה הוא
+//      **החוקים** ולא הרשת. זה מה שהכריע ב-§419.
+//   2. קיימת רשומת-חבר לבעלים?  קיימת ⇒ linkOrCreateOwnerMember רץ ורק updateDoc נפל.
+//   3. יש מסמך-עסק שני של אותו בעלים?  ⇒ שליחה כפולה (§366).
+//
+// ⚠️ **בלי לקודד קשיח פרטים של אדם אמיתי.** הריפו הזה **ציבורי** (GitHub Pages), וגרסה
+// קודמת של הקובץ נדחפה אליו עם טלפון ומייל בתוך הקוד. סקריפט-אבחון מקבל מזהה בפרמטר.
 
 const fs = require('fs');
 const crypto = require('crypto');
 
-const BIZ_ID = '0N33cE117xAGpb5Rn2j5';
-const PHONE = '0509103344';
-const EMAIL = 'ayalmandel@gmail.com';
+const BIZ_ID = process.argv[2];
+if (!BIZ_ID) { console.log('שימוש: node scratch_diag_biz_0N33.js <bizId>'); process.exit(1); }
+let PHONE = '';   // נשלפים ממסמך העסק למטה
+let EMAIL = '';
 
 const KEY = JSON.parse(fs.readFileSync('C:/Users/User/Downloads/habayit-hatsahov-firebase-adminsdk-fbsvc-435903db31.json', 'utf8'));
 const DOCS = `projects/${KEY.project_id}/databases/(default)/documents`;
@@ -54,11 +59,19 @@ const flat = (f) => Object.fromEntries(Object.keys(f || {}).sort().map((k) => [k
   };
   const eq = (field, value) => ({ fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: value } } });
 
+  // הפרטים נשלפים מהמסמך ולא מקודדים בקובץ — ר' האזהרה בראש הקובץ.
+  const bizResp = await fetch(`https://firestore.googleapis.com/v1/${DOCS}/businesses/${BIZ_ID}`, { headers: H });
+  if (bizResp.status === 404) { console.log(`🔴 businesses/${BIZ_ID} — לא קיים`); return; }
+  const bizDoc = await bizResp.json();
+  PHONE = S((bizDoc.fields || {}).ownerPhone) || '';
+  EMAIL = S((bizDoc.fields || {}).ownerEmail) || '';
+  console.log(`עסק: ${S((bizDoc.fields || {}).name)}  [${BIZ_ID}]\n`);
+
   console.log('─── 1. כל האירועים שקשורים לעסק / לנרשם ───────────────────────────────');
   for (const [label, filter] of [
     ['bizId == ' + BIZ_ID, eq('bizId', BIZ_ID)],
-    ['phone == ' + PHONE, eq('phone', PHONE)],
-    ['email == ' + EMAIL, eq('email', EMAIL)],
+    ...(PHONE ? [['phone (של הבעלים)', eq('phone', PHONE)]] : []),
+    ...(EMAIL ? [['email (של הבעלים)', eq('email', EMAIL)]] : []),
   ]) {
     try {
       const ev = await q({ structuredQuery: { from: [{ collectionId: 'events' }], where: filter, limit: 60 } });
@@ -70,7 +83,10 @@ const flat = (f) => Object.fromEntries(Object.keys(f || {}).sort().map((k) => [k
   }
 
   console.log('\n─── 2. רשומות חבר של הבעלים ───────────────────────────────────────────');
-  for (const [label, filter] of [['phone', eq('phone', PHONE)], ['email', eq('email', EMAIL)]]) {
+  for (const [label, filter] of [
+    ...(PHONE ? [['phone', eq('phone', PHONE)]] : []),
+    ...(EMAIL ? [['email', eq('email', EMAIL)]] : []),
+  ]) {
     const ms = await q({ structuredQuery: { from: [{ collectionId: 'members' }], where: filter, limit: 10 } });
     console.log(`\n  members לפי ${label} → ${ms.length}`);
     ms.forEach((x) => {
@@ -81,7 +97,10 @@ const flat = (f) => Object.fromEntries(Object.keys(f || {}).sort().map((k) => [k
   }
 
   console.log('\n─── 3. מסמכי עסק נוספים של אותו בעלים ─────────────────────────────────');
-  for (const [label, filter] of [['ownerPhone', eq('ownerPhone', PHONE)], ['ownerEmail', eq('ownerEmail', EMAIL)]]) {
+  for (const [label, filter] of [
+    ...(PHONE ? [['ownerPhone', eq('ownerPhone', PHONE)]] : []),
+    ...(EMAIL ? [['ownerEmail', eq('ownerEmail', EMAIL)]] : []),
+  ]) {
     const bs = await q({ structuredQuery: { from: [{ collectionId: 'businesses' }], where: filter, limit: 10 } });
     console.log(`  businesses לפי ${label} → ${bs.length}: ${bs.map((x) => `${S((x.document.fields || {}).name)}[${x.document.name.split('/').pop()}] ${S((x.document.fields || {}).submittedAt)}`).join(' | ')}`);
   }
