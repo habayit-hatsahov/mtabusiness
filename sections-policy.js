@@ -100,11 +100,10 @@
       desc: 'לפי מונה הכניסות לכרטיס העסק (clicks). הנמוך ביותר — ראשון.',
       why: 'מכוון את החשיפה למי שבפועל לא נראה, ולא רק למי שלא סומן. נמדד: 3 עסקים עם 0 כניסות.'
     },
-    {
-      key: 'completeProfile', kind: 'order', label: 'מי שהפרופיל שלו הכי מלא',
-      desc: 'לוגו, תמונה מייצגת, תיאור, שעות, הטבה, תגיות, גלריה — כל אחד נקודה. הגבוה ביותר ראשון.',
-      why: 'החשיפה גם צריכה להיראות טוב. עסק בלי תמונה בשורה העליונה פוגע בכל השורה.'
-    },
+    // ⚠️ §418 — הקריטריון 'completeProfile' ("מי שהפרופיל שלו הכי מלא") **הוסר בבקשת
+    // המשתמש.** מדיניות שנשמרה עם הקריטריון הזה תמשיך לעבוד: criterionByKey מחזיר
+    // undefined והוא מסונן החוצה גם ברשימת-הדירוג וגם ברשימת-הסינון, כלומר הוא פשוט
+    // מפסיק להשפיע — ולא מפיל את הבנייה. אין צורך במיגרציה של המסמך.
     {
       key: 'lovedButUnseen', kind: 'order', label: 'אהוב אבל לא נראה',
       desc: 'יחס לבבות לכניסות. עסק שהרבה ממי שכן ראה אותו אהב — אבל מעטים ראו.',
@@ -324,6 +323,28 @@
   // ── בניית "עסקים נבחרים" ──────────────────────────────────────────────────────
   // מחזיר תמיד את שלוש השכבות בנפרד **וגם** את הרשימה המאוחדת — מרכז הניהול צריך
   // לדעת למה כל עסק נמצא שם, לא רק שהוא נמצא.
+  // ── §418 — העברה ידנית של מקום בתור ─────────────────────────────────────────────
+  // 🔑 המשתמש שאל "איך אני משנה את התור?", והתשובה "רק דרך הקריטריונים" לא הספיקה.
+  // `sectionQueuePos` (1-based, על מסמך העסק) שותל עסק במקום מבוקש **בלי למחוק את
+  // הדירוג**: כל השאר נשארים בסדר שהקריטריונים קבעו ופשוט נדחפים מקום אחד אחורה.
+  // ⚠️ זו דחיפה ולא דריסה — עסק שנדחף החוצה מהעשירייה עדיין בתור, וזה בדיוק מה
+  // שמונע את "למה אני אף פעם לא מופיע".
+  function applyManualQueue(ranked) {
+    var manual = [], auto = [];
+    ranked.forEach(function (b) {
+      var p = Number(b.sectionQueuePos);
+      if (p >= 1 && isFinite(p)) manual.push(b); else auto.push(b);
+    });
+    if (!manual.length) return ranked;
+    manual.sort(function (a, b) { return Number(a.sectionQueuePos) - Number(b.sectionQueuePos); });
+    var out = auto.slice();
+    manual.forEach(function (b) {
+      var at = Math.min(Math.max(0, Number(b.sectionQueuePos) - 1), out.length);
+      out.splice(at, 0, b);
+    });
+    return out;
+  }
+
   function buildFeatured(businesses, policy, opts) {
     opts = opts || {};
     var pol = normalizePolicy(policy);
@@ -361,7 +382,11 @@
     var filters = cfg.criteria.map(criterionByKey).filter(function (c) { return c && c.kind === 'filter'; });
     var oppPool = businesses.filter(function (b) {
       if (taken[b.id]) return false;
-      if (isFlaggedFeatured(b, now)) return false;   // מאגר ה-⭐ מקבל את הסבב, לא את ההזדמנות
+      if (isFlaggedFeatured(b, now)) return false;   // הנבחרים הקבועים מקבלים את הסבב, לא את ההזדמנות
+      // §418 — הוצאה ידנית מהתורנות. ⚠️ **ברירת-המחדל היא השתתפות**: השדה נכתב רק
+      // כשהמנהל עונה "לא" במסך המעבר, ולכן `=== false` ולא `!b.sectionTurn` — אחרת
+      // כל 63 העסקים שטרם נשאלו היו נעלמים מהשכבה בשקט ביום שהשדה נוסף.
+      if (b.sectionTurn === false) return false;
       for (var i = 0; i < filters.length; i++) if (!filters[i].test(b)) return false;
       return true;
     });
@@ -374,7 +399,7 @@
     });
     // אם הצינון חיסל את המאגר — עדיף לחזור על עסק מאשר להשאיר מקום ריק. הדירוג עצמו
     // כבר מעדיף את מי שנח הכי הרבה זמן, ולכן החזרה אינה שרירותית.
-    var oppRanked = rankCandidates(cooled.length >= cfg.opportunity ? cooled : oppPool, cfg.criteria, expF);
+    var oppRanked = applyManualQueue(rankCandidates(cooled.length >= cfg.opportunity ? cooled : oppPool, cfg.criteria, expF));
     var opportunity = oppRanked.slice(0, Math.max(0, cfg.opportunity));
     opportunity.forEach(function (b) { taken[b.id] = 1; });
 
@@ -568,6 +593,13 @@
       }
       p[k] = o;
     });
+    // §418יז — שדות-מנהל שאינם משתתפים בחישוב, אך **חייבים לשרוד את הנרמול**.
+    // 🐛 השמירה כותבת את התוצאה עם merge:false, ולכן כל שדה שאינו מועתק לכאן נמחק
+    // מהמסמך בשמירה הבאה — בשקט, בלי שגיאה. בדיוק כך נמחק dealsOptIn: המתג הודלק,
+    // savePolicyDraft רץ מיד אחריו ומחק אותו, ו"הטבות שוות" חזר לאוטומטי מעצמו.
+    p.dealsOptIn = !!(raw && raw.dealsOptIn);
+    p.launchDone = (raw && raw.launchDone && typeof raw.launchDone === 'object'
+      && !Array.isArray(raw.launchDone)) ? raw.launchDone : {};
     return p;
   }
   function rotationCount(policy) {

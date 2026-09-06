@@ -50,7 +50,8 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✔ ' + m); } else { fail
 
   // ── סביבה: כל מה שהבלוק מצפה לו מהקובץ הגדול, כדי שהוא ירוץ בבידוד ──
   const env = {
-    updateDoc: async () => {},
+    updateDoc: async (ref, patch) => { env.__writes.push(patch); },
+    __writes: [],
     window: global.window,
     MOCK_BUSINESSES: BIZ,
     state: { featured: new Array(10).fill(null), 'new': new Array(10).fill(null) },
@@ -64,11 +65,14 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✔ ' + m); } else { fail
   const names = Object.keys(env);
   const exported = ['policyCardHtml', 'previewCardHtml', 'criteriaCardHtml', 'queueCardHtml',
                     'historyCardHtml', 'sectionComposeHtml', 'sectionGuideHtml',
-                    'newWindowCardHtml', 'sectionModeSwitcherHtml'];
+                    'newWindowCardHtml', 'sectionModeSwitcherHtml',
+                    'sectionsTableHtml', 'secSummaryHtml', 'secTableRows'];
   const factory = new Function(...names,
     block + '\nreturn { ' + exported.join(', ') + ', setPolicyField: window.setPolicyField, ' +
     'togglePolicyCriterion: window.togglePolicyCriterion, __setPolicy: (p) => { SECTION_POLICY = p; }, ' +
-    '__setState: (st) => { SECTION_STATE = st; }, __draft: () => policyDraft };');
+    '__setState: (st) => { SECTION_STATE = st; }, __draft: () => policyDraft, ' +
+    'setSecFilter: window.setSecFilter, setSecSort: window.setSecSort, setSecSearch: window.setSecSearch, ' +
+    'secToggle: window.secToggle, secCyclePrio: window.secCyclePrio };');
   const M = factory(...names.map(n => env[n]));
 
   const tabF = { key: 'featured', label: '⭐ נבחרים', type: 'section' };

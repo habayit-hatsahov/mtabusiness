@@ -2383,7 +2383,16 @@ function renderSections() {
   _dailySectionOrder.new = newBiz;
   _writeSectionIfChanged('new', 'newBizScroll', newBiz, b => buildCard(b, true), _emptyRowHtml('בקרוב...'));
 
-  const deals = arrangeSection(b => b.discount && b.sectionDeals !== false, 'deals');
+  // §418טו — 💛 הטבות שוות עובר מ**אוטומטי** ל**נבחר ידנית**: יש הטבות גנריות שלא
+  // מגיע להן להיות שם. בקשת המשתמש.
+  // ⚠️ **המתג הוא מה שמונע התרוקנות בשקט.** כל עוד `dealsOptIn` כבוי, ההתנהגות היא
+  // בדיוק הישנה (כל מי שיש לו הטבה, אלא אם הוצא). הוא נדלק **רק** אחרי שמרכז הניהול
+  // סימן את כל החברים הנוכחיים — כלומר ברגע המעבר הסקשן נראה זהה, ומשם מצמצמים.
+  // בלי המתג, פריסת הקובץ הזה לבדה הייתה מרוקנת את הסקשן באתר החי.
+  const dealsOptIn = !!(sectionPolicyDoc && sectionPolicyDoc.dealsOptIn);
+  const deals = arrangeSection(b => dealsOptIn
+    ? (b.discount && b.sectionDeals === true)
+    : (b.discount && b.sectionDeals !== false), 'deals');
   _dailySectionOrder.deals = deals;
   _writeSectionIfChanged('deals', 'dealsBizScroll', deals, b => buildCard(b));
 
@@ -4003,7 +4012,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <script type="module">
 import { db, auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, getDoc, getDocFromServer, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, getDoc, getDocFromServer, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp, setDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // חושף את auth ל-<script> הרגיל (לא module) שמעליו — currentMemberId() שם צריך auth.currentUser, אך import הוא scoped ל-module הזה בלבד
 window._auth = auth;
@@ -4418,6 +4427,86 @@ window._recordView = function(id) {
   // אירועי ה-events עצמם ממשיכים להירשם: אותם *אפשר* לסנן בדיעבד לפי memberId, את המונה לא.
   if (window._hbIsAdmin === true) return;
   updateDoc(doc(db, 'businesses', id), { clicks: increment(1) }).catch(() => {});
+
+// ═══ §418ה — מדידת חשיפות ════════════════════════════════════════════════════════
+// 🔑 **"חשיפה" = הכרטיס באמת נראה על המסך**, לא נטען ל-DOM. בלי זה אי אפשר לענות
+// על השאלה היחידה שבעל-עסק שואל: "מה הקידום עשה לי" — יש לנו רק כניסות, כלומר
+// המונה של מי שכבר לחץ, ואף מספר על מי שראה ולא לחץ.
+//
+// ⚠️ **נשמר ב-businesses/{id}/statsDaily/{תאריך} ולא באוסף events**: שאילתת
+// מרכז-הנתונים שולפת 30 יום מ-events עם התקרה הקשיחה 10,000, וחשיפות היו חותכות
+// בשקט את כל שאר המדידה (ר' §351).
+const IMP_RATIO = 0.5;        // כמה מהכרטיס צריך להיראות
+const IMP_DWELL_MS = 1000;    // וכמה זמן — גלילה מהירה אינה חשיפה
+const IMP_FLUSH_MS = 4000;
+const IMP_MAX_PER_SESSION = 80;
+
+const _impDay = new Date().toISOString().slice(0, 10);
+const _impKey = 'yz_imp_' + _impDay;
+let _impSeen = new Set();
+try { _impSeen = new Set(JSON.parse(sessionStorage.getItem(_impKey) || '[]')); } catch (e) {}
+const _impPending = new Set();
+const _impTimers = new Map();
+let _impFlushTimer = null;
+
+// ⚠️ ספירה **פעם אחת לעסק בכל יום ובכל סשן**. בלי הדדופ הזה גלילה הלוך-ושוב הייתה
+// מנפחת את המונה פי כמה, והמספר שבעל-העסק יראה היה חסר משמעות.
+function _impMark(id) {
+  if (!id || _impSeen.has(id) || _impSeen.size >= IMP_MAX_PER_SESSION) return;
+  _impSeen.add(id);
+  _impPending.add(id);
+  try { sessionStorage.setItem(_impKey, JSON.stringify([..._impSeen])); } catch (e) {}
+  if (!_impFlushTimer) _impFlushTimer = setTimeout(_impFlush, IMP_FLUSH_MS);
+}
+
+// כתיבה אחת מרוכזת לכל קבוצה, ולא כתיבה לכל כרטיס.
+async function _impFlush() {
+  _impFlushTimer = null;
+  if (!_impPending.size) return;
+  const ids = [..._impPending];
+  _impPending.clear();
+  try {
+    const batch = writeBatch(db);
+    ids.forEach(id => batch.set(doc(db, 'businesses', id, 'statsDaily', _impDay), { imp: increment(1) }, { merge: true }));
+    await batch.commit();
+  } catch (e) {
+    // ⚠️ שקט בכוונה: מדידה שנכשלת לעולם לא תשבור את הדף לגולש.
+    console.debug('impression flush failed', e && e.code);
+  }
+}
+
+const _impObserver = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
+  entries.forEach(en => {
+    const id = en.target.getAttribute('data-id');
+    if (!id) return;
+    if (en.isIntersecting) {
+      if (_impTimers.has(id)) return;
+      _impTimers.set(id, setTimeout(() => { _impTimers.delete(id); _impMark(id); }, IMP_DWELL_MS));
+    } else {
+      const t = _impTimers.get(id);
+      if (t) { clearTimeout(t); _impTimers.delete(id); }
+    }
+  });
+}, { threshold: IMP_RATIO }) : null;
+
+// הסקשנים נבנים מחדש בכל רינדור, ולכן הכרטיסים נסרקים שוב — הסימון מונע כפילות.
+function _impObserveCards() {
+  if (!_impObserver) return;
+  document.querySelectorAll('.biz-card[data-id]:not([data-imp])').forEach(el => {
+    el.setAttribute('data-imp', '1');
+    if (!_impSeen.has(el.getAttribute('data-id'))) _impObserver.observe(el);
+  });
+}
+let _impScan = null;
+new MutationObserver(() => {
+  if (_impScan) return;
+  _impScan = setTimeout(() => { _impScan = null; _impObserveCards(); }, 300);
+}).observe(document.body, { childList: true, subtree: true });
+_impObserveCards();
+
+// ⚠️ visibilitychange ולא unload — כתיבה בזמן סגירת דף אינה אמינה, ובדיוק אצל מי
+// שסוגר מהר היא תיכשל הכי הרבה (אותה מסקנה כמו §304 על מדידת נטישה).
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') _impFlush(); });
 };
 
 // ── שכבת מדידה (שלב 7, §3 במפרט) — event log גולמי, לא אגרגציה. sessionId אחד לכל טאב

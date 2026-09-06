@@ -117,7 +117,17 @@ while ($listener.IsListening) {
 
         if ($ext -eq '.html') {
             $html = [System.IO.File]::ReadAllText($file, [System.Text.Encoding]::UTF8)
-            $html = $html -replace '</body>', "$liveReloadSnippet</body>"
+            # ⚠️ **רק ה-</body> האחרון.** `-replace` הוא regex על **כל** ההתאמות, ולכן כל
+            # מחרוזת JS שמכילה '</body>' (למשל תבנית שכותבת מסמך לחלון הדפסה) קיבלה
+            # <script> באמצע — ה-parser סגר שם את הסקריפט, וכל הדף נשבר עם
+            # 'Unexpected end of input'. בפרודקשן אין הזרקה, ולכן זה נראה כבאג בקוד
+            # בזמן שהוא היה בשרת בלבד.
+            $bodyIdx = $html.LastIndexOf('</body>')
+            if ($bodyIdx -ge 0) {
+                $html = $html.Substring(0, $bodyIdx) + $liveReloadSnippet + $html.Substring($bodyIdx)
+            } else {
+                $html = $html + $liveReloadSnippet
+            }
             $bytes = [System.Text.Encoding]::UTF8.GetBytes($html)
         } else {
             $bytes = [System.IO.File]::ReadAllBytes($file)

@@ -335,8 +335,27 @@ service cloud.firestore {
       // אגרגציה יומית לעסק (שלב 7, §3 במפרט — "businesses/{bizId}/statsDaily/{date}") — יסודות
       // בלבד: אין עדיין שום קוד שכותב לכאן. בפועל ייכתב ע"י ה-Worker (service-account, עוקף
       // rules) בשלב האגרגציה העתידי — admin-בלבד ברמת ה-rules כדי שמרכז-הנתונים יוכל לקרוא ישירות.
+      // §418ה — **מונה החשיפות היומי.** מסמך אחד לכל עסק לכל יום, שדה יחיד `imp`.
+      //
+      // 🔑 **למה כאן ולא באוסף `events`:** שאילתת מרכז-הנתונים שולפת 30 יום מ-`events`
+      // עם `limit(10000)` — התקרה הקשיחה של Firestore. חשיפות הן אירוע בנפח גבוה
+      // (עשרות לכל ביקור), והכנסתן ל-`events` הייתה **חותכת בשקט** את כל שאר
+      // המדידה: המספרים היו ממשיכים להיראות תקינים לגמרי. ר' §351, שבו בדיוק
+      // התקרה הזאת כיבתה את הפאנל כולו.
+      //
+      // ⚠️ כתיבה ציבורית — כמו `clicks` על מסמך העסק, שנכתב ציבורית מ-home.html מאז
+      // ומעולם. החשיפה לזיוף זהה ומוגבלת לאותו שדה, ולכן הכללים מצמצמים ל-`imp`
+      // בלבד: לא ניתן להוסיף שדות, ולא ניתן לגעת בשום מסמך אחר.
       match /statsDaily/{dateId} {
-        allow read, write: if isAdmin();
+        allow read: if isAdmin() || isBizOwner(businessId);
+        allow create: if request.resource.data.keys().hasOnly(['imp'])
+                      && request.resource.data.imp is number
+                      && request.resource.data.imp > 0 && request.resource.data.imp <= 500;
+        // ⚠️ `affectedKeys` ולא `keys` — במסמך קיים `keys()` מחזיר גם שדות שלא נגעו בהם.
+        allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['imp'])
+                      && request.resource.data.imp is number
+                      && request.resource.data.imp <= 100000;
+        allow write: if isAdmin();
       }
     }
 
