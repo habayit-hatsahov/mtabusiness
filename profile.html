@@ -392,6 +392,41 @@
       border-bottom: 1px solid var(--border);
     }
     .setting-row:last-child { border-bottom: none; }
+
+    /* ── §420 — מחיקת חשבון ─────────────────────────────────────────────────────────
+       השורה אדומה ולא כחולה **בכוונה**: היא יושבת באותה רשימה עם "תקנון" ו"התנתקות",
+       ולחיצה בטעות כאן אינה הפיכה מהצד של המשתמש. */
+    .setting-row.danger .setting-label { color: #B42318; }
+    .yz-modal {
+      display: none; position: fixed; inset: 0; z-index: 900;
+      background: rgba(10,42,102,.55); padding: 18px;
+      align-items: center; justify-content: center;
+    }
+    .yz-modal.open { display: flex; }
+    .yz-modal-box {
+      background: var(--card-bg); border-radius: 18px; padding: 22px 20px;
+      width: 100%; max-width: 420px; max-height: 88vh; overflow-y: auto;
+      box-shadow: 0 18px 44px rgba(10,42,102,.24);
+    }
+    .yz-modal-title { font-size: 19px; font-weight: 900; color: var(--text); margin-bottom: 10px; }
+    .yz-modal-text { font-size: 14px; line-height: 1.7; color: var(--text-sm); }
+    .yz-modal-text ul { margin: 8px 0 0; padding-inline-start: 20px; }
+    .yz-modal-text li { margin-bottom: 5px; }
+    .yz-modal-label { display:block; font-size:13px; font-weight:800; color:var(--text); margin:16px 0 6px; }
+    .yz-modal-box textarea {
+      width: 100%; box-sizing: border-box; min-height: 74px; resize: vertical;
+      border: 1.5px solid var(--border-md); border-radius: 12px; padding: 10px 12px;
+      font: inherit; font-size: 14px; color: var(--text); background: var(--bg);
+    }
+    .yz-modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+    .yz-modal-actions button {
+      flex: 1; border: 0; border-radius: 12px; padding: 13px 10px;
+      font: inherit; font-weight: 900; font-size: 14px; cursor: pointer;
+    }
+    .yz-btn-cancel { background: var(--bg); color: var(--text); border: 1.5px solid var(--border-md) !important; }
+    .yz-btn-danger  { background: #B42318; color: #fff; }
+    .yz-btn-danger[disabled] { opacity: .55; cursor: default; }
+    .yz-modal-err { margin-top: 12px; font-size: 13px; font-weight: 700; color: #B42318; display: none; }
     .setting-label { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 10px; }
     .setting-arrow { color: var(--text-muted); display: flex; align-items: center; }
 
@@ -644,6 +679,14 @@
     <div class="setting-row" style="cursor:pointer;" onclick="signOutUser()">
       <div class="setting-label" style="color:#000;">התנתקות</div>
     </div>
+    <!-- §420 — דרישת Google Play: מסלול מחיקת חשבון **מתוך האפליקציה**.
+         §420ב — ⚠️ **display:none הוא ברירת המחדל, ולא סגנון.** המערכת חיה, והמשתמש
+         ביקש במפורש שאף שינוי לא ייראה לאוהדים לפני שיש אפליקציה. השורה נחשפת רק
+         ע"י revealDeleteRow() למטה — בתוך האפליקציה, או דרך הדף הציבורי.
+         הכיוון הזה גם בטוח יותר: JS שנשבר משאיר אותה מוסתרת, לא חשופה. -->
+    <div class="setting-row danger" id="deleteAccountRow" style="cursor:pointer;display:none;" onclick="openDeleteAccount()">
+      <div class="setting-label">מחיקת החשבון שלי</div>
+    </div>
   </div>
 
 </div><!-- end profile-main-panel -->
@@ -654,11 +697,36 @@
      ⚠️ שניהם לא-חוסמים: דף שלא הצליח לטעון אותם מאבד את פריט-התפריט בלבד. -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="google-link.js"></script>
+<!-- §420ב — נטען בשביל YZAppBanner.inApp() בלבד. הקובץ **אינו מצייר דבר מעצמו** —
+     הוא רק חושף window.YZAppBanner, ו-render() נקראת מפורשות (וטרם נקראת מאף דף). -->
+<script src="app-banner.js"></script>
 
 <footer class="site-footer">
   <img class="site-footer-logo" src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
   <div class="site-footer-line"><a class="site-footer-link site-footer-highlight" href="https://instagram.com/Yellowzone.mta" target="_blank"><span dir="ltr">Yellowzone.mta <svg class="footer-ig-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></span></a> · <a class="site-footer-link" href="terms.html">תקנון ומדיניות לאוהדים</a></div>
 </footer>
+
+<!-- §420 — חלון מחיקת החשבון -->
+<div class="yz-modal" id="deleteAccountOverlay">
+  <div class="yz-modal-box" role="dialog" aria-modal="true" aria-labelledby="deleteAccountTitle">
+    <div class="yz-modal-title" id="deleteAccountTitle">למחוק את החשבון שלך?</div>
+    <div class="yz-modal-text">
+      הפעולה מוחקת את רשומת החבר שלך ואת קוד הכניסה האישי, ומנתקת אותך.
+      <ul>
+        <li>לא תוכל/י להיכנס יותר עם הקוד או עם חשבון Google המקושר.</li>
+        <li>אם רשום/ה על שמך עסק — <b>העסק עצמו נשאר באתר</b>, והצוות שלנו יקבל על כך התראה.</li>
+        <li>אפשר להירשם מחדש בעתיד, אבל הנתונים לא יחזרו מעצמם.</li>
+      </ul>
+    </div>
+    <label class="yz-modal-label" for="deleteAccountReason">אפשר לספר לנו למה? (לא חובה)</label>
+    <textarea id="deleteAccountReason" maxlength="500" placeholder="מה גרם לך להחליט לעזוב?"></textarea>
+    <div class="yz-modal-err" id="deleteAccountErr"></div>
+    <div class="yz-modal-actions">
+      <button type="button" class="yz-btn-cancel" onclick="closeDeleteAccount()">ביטול</button>
+      <button type="button" class="yz-btn-danger" id="deleteAccountGo" onclick="confirmDeleteAccount()">כן, למחוק</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -721,6 +789,134 @@ const hbApiFetch = (path, opts, st) => {
     );
   };
   return tryHost(0);
+};
+
+// ══════════════════════════════════════════════════════════════════════════════════════
+//  §420 — מחיקת חשבון עצמית
+// ══════════════════════════════════════════════════════════════════════════════════════
+//  Google Play דורש מסלול מחיקה **מתוך האפליקציה** לכל אפליקציה שבה נוצר חשבון.
+//  המחיקה עצמה קורית בוורקר (/delete-account) ולא כאן — שם יש הרשאה לכתוב ליומן
+//  המחיקות ולמחוק את memberCodes. הנימוק המלא בראש handleDeleteAccount.
+//
+//  ⚠️ **המודאל דוחף רשומת-היסטוריה** — אותו דפוס בדיוק של §417 ב-welcome.html.
+//  בלעדיו לחיצת "חזור" באפליקציה **סוגרת את האפליקציה** במקום לסגור את החלון.
+//  מודאל חדש בלי הדפוס הזה הוא מופע חדש של אותו באג.
+function yzDelModalOpen() {
+  return document.getElementById('deleteAccountOverlay')?.classList.contains('open');
+}
+function yzDelCloseDom() {
+  document.getElementById('deleteAccountOverlay')?.classList.remove('open');
+  document.body.style.overflow = '';
+}
+window.addEventListener('popstate', () => { if (yzDelModalOpen()) yzDelCloseDom(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !yzDelModalOpen()) return;
+  if (history.state && history.state.yzModal) { history.back(); return; }
+  yzDelCloseDom();
+});
+
+// ── §420ב — מי בכלל רואה את השורה ──────────────────────────────────────────────────
+// המקור הקנוני לזיהוי הוא app-banner.js (בודק גם window.Capacitor וגם appendUserAgent,
+// כי כל אחד לבדו מפספס — ר' ההערה שם).
+//
+// ⚠️ **הנפילה-לאחור כאן פותחת ולא סוגרת, וזה הפוך מברירת המחדל של הדף — בכוונה.**
+// אם app-banner.js לא נטען, שורה חסרה **בתוך האפליקציה** פירושה שהבודק של Google Play
+// לא מוצא מסלול מחיקה, כלומר דחייה. באתר עצמו שתי הבדיקות ממילא מחזירות false, אז
+// הנפילה-לאחור אינה חושפת דבר למי שלא באפליקציה.
+function yzInApp() {
+  try {
+    if (window.YZAppBanner && typeof window.YZAppBanner.inApp === 'function') {
+      return window.YZAppBanner.inApp();
+    }
+  } catch (e) {}
+  if (window.Capacitor) return true;
+  return /YellowZoneApp/i.test(navigator.userAgent || '');
+}
+
+// 🔑 **?delete=1 אינו פרצה, הוא הדלת השנייה שגוגל מחייבת.** טופס Data Safety דורש
+// כתובת-web למחיקה שנגישה **בלי** להתקין את האפליקציה. בלי הפרמטר הזה delete-account.html
+// היה שולח את המשתמש להתחבר — ואז נוחת בפרופיל שבו השורה מוסתרת. מבוי סתום.
+// אין כאן חשיפת מידע: מי שמגיע לכאן צריך בכל מקרה להיות מחובר כדי שהמחיקה תעבוד.
+function revealDeleteRow() {
+  const row = document.getElementById('deleteAccountRow');
+  if (!row) return;
+  let fromPublicPage = false;
+  try { fromPublicPage = new URLSearchParams(location.search).get('delete') === '1'; } catch (e) {}
+  if (yzInApp() || fromPublicPage) row.style.display = '';
+}
+document.addEventListener('DOMContentLoaded', revealDeleteRow);
+// ⚠️ גם מיידית: המודול הזה נטען deferred, ו-DOMContentLoaded עלול כבר לחלוף.
+// אירוע שכבר קרה אינו נורה שוב, וההסתמכות עליו לבדה הייתה משאירה את השורה מוסתרת תמיד.
+if (document.readyState !== 'loading') revealDeleteRow();
+
+window.openDeleteAccount = function () {
+  const err = document.getElementById('deleteAccountErr');
+  if (err) { err.style.display = 'none'; err.textContent = ''; }
+  const btn = document.getElementById('deleteAccountGo');
+  if (btn) { btn.disabled = false; btn.textContent = 'כן, למחוק'; }
+  document.getElementById('deleteAccountOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  if (!(history.state && history.state.yzModal)) {
+    try { history.pushState({ yzModal: true }, ''); } catch (e) {}
+  }
+};
+
+// ⚠️ הסגירה עוברת דרך history.back() ולא ישירות ב-DOM — אחרת הרשומה שנדחפה
+// נשארת תלויה, ולחיצת "חזור" **הבאה** של המשתמש לא עושה כלום. ר' §417.
+window.closeDeleteAccount = function () {
+  if (history.state && history.state.yzModal) { history.back(); return; }
+  yzDelCloseDom();
+};
+
+window.confirmDeleteAccount = async function () {
+  const btn = document.getElementById('deleteAccountGo');
+  const err = document.getElementById('deleteAccountErr');
+  const showErr = (m) => { err.textContent = m; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'כן, למחוק'; };
+
+  btn.disabled = true;
+  btn.textContent = 'מוחק…';
+  err.style.display = 'none';
+
+  const user = auth.currentUser;
+  if (!user) { showErr('נראה שההתחברות פגה. רענן/י את הדף ונסה/י שוב.'); return; }
+
+  let idToken;
+  try { idToken = await user.getIdToken(true); }
+  catch (e) { showErr('לא הצלחנו לאמת את ההתחברות. נסה/י שוב.'); return; }
+
+  const reason = (document.getElementById('deleteAccountReason').value || '').trim();
+
+  let data;
+  try {
+    const res = await hbApiFetch('/delete-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, reason }),
+    });
+    data = await res.json();
+  } catch (e) {
+    showErr('אין חיבור לשרת כרגע. נסה/י שוב בעוד רגע.');
+    return;
+  }
+
+  if (!data || !data.ok) {
+    // ⚠️ כל שגיאה מקבלת נוסח משלה. "אירעה שגיאה" על מנהל שניסה למחוק את עצמו היה
+    // שולח אותו לחפש תקלה שאינה קיימת.
+    const msg = {
+      admin_cannot_self_delete: 'חשבון מנהל אינו נמחק מכאן — פנה/י לצוות.',
+      member_not_found: 'לא נמצאה רשומה למחיקה. ייתכן שהחשבון כבר נמחק.',
+      invalid_id_token: 'ההתחברות פגה. רענן/י את הדף ונסה/י שוב.',
+    }[data && data.error] || 'המחיקה לא הושלמה. נסה/י שוב, ואם זה חוזר — פנה/י אלינו.';
+    showErr(msg);
+    return;
+  }
+
+  // 🔑 **מסך סופי, בלי עבודה ברקע.** ניקוי האחסון המקומי קורה *לפני* ההודעה, כדי
+  // שרענון מיידי לא יחזיר את המשתמש למצב "מחובר" לרשומה שכבר לא קיימת.
+  ['hb_uid', 'hb_phone', 'hb_memberId'].forEach(k => localStorage.removeItem(k));
+  try { await signOut(auth); } catch (e) {}
+  alert('החשבון נמחק. תודה שהיית איתנו.');
+  location.href = 'index.html';
 };
 
 // ── SIGN OUT ──────────────────────────────────────────────────────────────

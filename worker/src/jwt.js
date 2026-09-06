@@ -28,13 +28,21 @@ export async function mintFirebaseCustomToken(env, { uid, claims }) {
 // טוקן OAuth2 שה-Worker עצמו צריך כדי לקרוא/לכתוב ב-Firestore REST API (service-to-service).
 // כולל גם scope ל-Firebase/Cloud Storage (devstorage.read_write) — נדרש ל-backfill thumbnails
 // (src/index.js /backfill-thumbnails), שמעלה קבצים חדשים ל-Storage עם אותו service account בדיוק.
+//
+// ── §420ג — נוסף firebase.messaging (פוש נייטיב, src/fcm.js) ─────────────────────────────
+// 🔑 **ומפתח המטמון עלה ל-v3 באותה נשימה, וזה לא ניקיון — זה חלק מהתיקון.**
+// הטוקן נשמר ב-KV עם תפוגה של כשעה. הוספת scope לבדה הייתה משאירה את הטוקן **הישן**
+// (בלי הרשאת messaging) מוגש מהמטמון עד שיפוג — כלומר FCM היה מחזיר 403 למשך שעה
+// אחרי פריסה שנראית מוצלחת לגמרי, ואז מתחיל לעבוד מעצמו. תקלה שנעלמת לבד היא
+// הגרועה ביותר לאבחון. מפתח חדש = טוקן חדש מיד.
+// ⚠️ כל שינוי עתידי ב-scope חייב לבמפ את המפתח הזה. אחרת אותו באג בדיוק, שוב.
 export async function getGoogleAccessToken(env) {
-  const cached = await env.RATE_LIMIT_KV.get('google_access_token_v2', 'json');
+  const cached = await env.RATE_LIMIT_KV.get('google_access_token_v3', 'json');
   const now = Math.floor(Date.now() / 1000);
   if (cached && cached.exp > now + 60) return cached.token;
 
   const { key, clientEmail } = await getServiceAccountKey(env);
-  const scope = 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/devstorage.read_write';
+  const scope = 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/devstorage.read_write https://www.googleapis.com/auth/firebase.messaging';
   const assertion = await new SignJWT({ scope })
     .setProtectedHeader({ alg: 'RS256' })
     .setIssuer(clientEmail)
@@ -51,7 +59,7 @@ export async function getGoogleAccessToken(env) {
   if (!resp.ok) throw new Error('google_oauth_failed: ' + (await resp.text()));
   const { access_token, expires_in } = await resp.json();
   await env.RATE_LIMIT_KV.put(
-    'google_access_token_v2',
+    'google_access_token_v3',
     JSON.stringify({ token: access_token, exp: now + expires_in }),
     { expirationTtl: Math.max(60, expires_in - 60) }
   );

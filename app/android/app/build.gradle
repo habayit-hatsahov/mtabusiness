@@ -1,5 +1,44 @@
 apply plugin: 'com.android.application'
 
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//  §420 — חתימת release
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//  Google Play לא מקבל בנייה לא-חתומה, ולא מקבל APK לאפליקציה חדשה — רק AAB חתום.
+//  עד §420 לא היה כאן signingConfig בכלל, כלומר `bundleRelease` ייצר קובץ שאי-אפשר להעלות.
+//
+//  🔑 **הסיסמאות אינן בקוד ואינן בגיט.** הן יושבות ב-`android/keystore.properties`, שנוסף
+//  ל-.gitignore. הקובץ נוצר ידנית פעם אחת (ר' keystore.properties.example).
+//
+//  ⚠️ **הבנייה נופלת בקול אם הקובץ חסר, ורק כשמבקשים release.** זה מכוון: AGP *לא* נכשל
+//  על signingConfig ריק — הוא מייצר בשקט חבילה **לא חתומה**, וההפתעה מגיעה רק בהעלאה
+//  ל-Play, עם שגיאה שלא מרמזת על הסיבה. הגנה ששותקת בכשל אינה הגנה.
+//  ר' [[feedback_empty_catch_on_a_guard]].
+//
+//  ⚠️ **את מפתח-ההעלאה אסור לאבד.** גם עם Play App Signing (שבו גוגל מחזיקה את מפתח-החתימה
+//  האמיתי), אובדן מפתח-ההעלאה דורש איפוס מול התמיכה. הקובץ צריך לשבת **מחוץ לתיקיית
+//  הפרויקט** ולהיות מגובה בנפרד.
+// ══════════════════════════════════════════════════════════════════════════════════════════
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+// נבדק על שמות המשימות שהתבקשו בפועל, ולא על buildType — כדי ש-assembleDebug ימשיך
+// לרוץ על מכונה בלי keystore (בדיוק מה שצריך לבדיקה על מכשיר).
+def wantsRelease = gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
+if (wantsRelease && !keystorePropsFile.exists()) {
+    throw new GradleException(
+        "\n\n  חסר android/keystore.properties — בנייה ל-release תיצור חבילה לא חתומה ש-Play ידחה.\n" +
+        "  צור אותו לפי android/keystore.properties.example (הפקודה המלאה שם).\n"
+    )
+}
+
+// נתיב ה-keystore יכול להיות מוחלט (מומלץ — מחוץ לריפו) או יחסי לתיקיית android/.
+def resolveKeystore = { String p ->
+    p == null ? null : (new File(p).isAbsolute() ? new File(p) : rootProject.file(p))
+}
+
 android {
     namespace = "il.co.yellowzone.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,6 +46,8 @@ android {
         applicationId "il.co.yellowzone.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        // ⚠️ versionCode חייב לעלות בכל העלאה ל-Play — גם בהעלאה חוזרת לאותו ערוץ בדיקות.
+        // Play דוחה מספר שכבר נראה, וההודעה אינה מסבירה שזו הסיבה.
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -16,8 +57,24 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile resolveKeystore(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+            // ⚠️ נשאר false בכוונה. R8 על אפליקציית Capacitor מסירה מחלקות שנקראות רק
+            // דרך הגשר מ-JavaScript (רפלקציה), והכשל מופיע רק בזמן ריצה על המכשיר —
+            // כלומר אחרי שהבנייה כבר "הצליחה". אין כאן קוד נייטיב משלנו שיש מה לכווץ בו.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

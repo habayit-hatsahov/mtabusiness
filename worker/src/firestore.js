@@ -163,3 +163,75 @@ export async function firestorePatch(env, accessToken, path, fieldsObj) {
   if (!resp.ok) throw new Error('firestore_patch_failed: ' + (await resp.text()));
   return resp.json();
 }
+
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//  §420 — מה שנדרש למחיקת-חשבון עצמית: צילום נאמן, יצירת מסמך, ומחיקה
+// ══════════════════════════════════════════════════════════════════════════════════════════
+
+// ── צילום נאמן לצורך יומן המחיקות ─────────────────────────────────────────────────────────
+// 🔑 **למה לא fromFirestoreValue הקיים:** הוא מחזיר `timestampValue` כמחרוזת ISO. מסמך
+// שנרשם ביומן דרכו וישוחזר אחר כך היה חוזר עם `createdAt` כ**מחרוזת** במקום Timestamp —
+// שינוי-טיפוס שקט שכל שאילתה לפי תאריך נשברת עליו. הפונקציה כאן מחזירה `Date`, ו-
+// `toFirestoreValue` כותב אותו בחזרה כ-timestampValue. כך הצילום זהה למה ש-deletion-log.js
+// מייצר בצד הלקוח (שם `snap.data()` נותן Timestamp ממילא), ושתי הדלתות מזינות יומן אחד.
+//
+// ⚠️ **טיפוס לא מוכר זורק, ולא הופך ל-null.** הצילום הזה הוא מה שיאפשר לשחזר אדם שמחק את
+// עצמו בטעות; המרה חסרה בשקט הופכת אותו לצילום שנראה שלם ומשחזר רשומה פגומה. עדיף שהמחיקה
+// תיכשל בקול. ר' [[feedback_empty_catch_on_a_guard]].
+function fromFirestoreValueFaithful(v) {
+  if (!v) return null;
+  if ('nullValue' in v) return null;
+  if ('stringValue' in v) return v.stringValue;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('integerValue' in v) return parseInt(v.integerValue, 10);
+  if ('doubleValue' in v) return v.doubleValue;
+  if ('timestampValue' in v) return new Date(v.timestampValue);
+  if ('arrayValue' in v) return (v.arrayValue.values || []).map(fromFirestoreValueFaithful);
+  if ('mapValue' in v) {
+    return Object.fromEntries(
+      Object.entries(v.mapValue.fields || {}).map(([k, vv]) => [k, fromFirestoreValueFaithful(vv)])
+    );
+  }
+  throw new Error('firestore_snapshot_unsupported_type: ' + Object.keys(v).join(','));
+}
+
+// שליפה שמיועדת לצילום בלבד — מחזירה null אם המסמך לא קיים.
+export async function firestoreGetDocForSnapshot(env, accessToken, path) {
+  const resp = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}/${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error('firestore_get_failed: ' + (await resp.text()));
+  const doc = await resp.json();
+  const out = {};
+  for (const [k, v] of Object.entries(doc.fields || {})) out[k] = fromFirestoreValueFaithful(v);
+  return { id: docIdFromName(doc.name), data: out };
+}
+
+// יצירת מסמך עם מזהה אוטומטי באוסף — מחזירה את המזהה שנוצר.
+export async function firestoreCreateDoc(env, accessToken, collectionId, fieldsObj) {
+  const body = {
+    fields: Object.fromEntries(Object.entries(fieldsObj).map(([k, v]) => [k, toFirestoreValue(v)])),
+  };
+  const resp = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}/${collectionId}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error('firestore_create_failed: ' + (await resp.text()));
+  const doc = await resp.json();
+  return docIdFromName(doc.name);
+}
+
+// מחיקת מסמך. 404 אינו שגיאה — "כבר לא שם" הוא בדיוק התוצאה שרצינו.
+// ⚠️ **אינה מוחקת תת-אוספים** (זו התנהגות Firestore, לא בחירה כאן) — ר' ההערה בראש
+// deletion-log.js: members/{id}/activity שורד כיתום וחוזר מעצמו בשחזור.
+export async function firestoreDeleteDoc(env, accessToken, path) {
+  const resp = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}/${path}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (resp.status === 404) return false;
+  if (!resp.ok) throw new Error('firestore_delete_failed: ' + (await resp.text()));
+  return true;
+}

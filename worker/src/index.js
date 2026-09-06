@@ -2,7 +2,8 @@ import { corsHeaders, handlePreflight, json } from './cors.js';
 import { getGoogleAccessToken, mintFirebaseCustomToken, verifyAdminIdToken, uidFromIdToken } from './jwt.js';
 import { verifyGoogleIdToken } from './google.js';
 import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, bizTokenFor,
-         memberIdFromLoginCode, loginCodeFor } from './firestore.js';
+         memberIdFromLoginCode, loginCodeFor,
+         firestoreGetDocForSnapshot, firestoreCreateDoc, firestoreDeleteDoc } from './firestore.js';
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt } from './ratelimit.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail } from './brevo.js';
@@ -11,6 +12,7 @@ import { suggestFallbackImages } from './pexels.js';
 import { runBackfillThumbnails } from './backfill.js';
 import { runMigrateBizTokens } from './migrate-biz-tokens.js';
 import { sendWebPush } from './push.js';
+import { sendFcmToMember } from './fcm.js';
 import { handleDownloadImage, handleViewImage } from './download.js';
 import { handleUploadBizMedia } from './bizmedia.js';
 import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js';
@@ -89,6 +91,14 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/send-test-push') {
         return json(await handleSendTestPush(request, env), env, request);
+      }
+      // §420 — מחיקת חשבון עצמית (דרישת Google Play). מאומת ב-idToken של המוחק עצמו.
+      if (request.method === 'POST' && url.pathname === '/delete-account') {
+        return json(await handleDeleteAccount(await request.json(), request, env), env, request);
+      }
+      // §420ג — פוש נייטיב. מאומת כמנהל, כמו שידור המייל.
+      if (request.method === 'POST' && url.pathname === '/send-native-push') {
+        return json(await handleSendNativePush(await request.json(), env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/send-broadcast-email') {
         return json(await handleSendBroadcastEmail(await request.json(), env), env, request);
@@ -626,6 +636,199 @@ async function handleSendTestPush(request, env) {
     await firestorePatch(env, accessToken, `members/${memberId}`, { pushSubscriptions: remaining });
   }
   return { sentTo: deviceKeys.length, results };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//  §420 — מחיקת חשבון עצמית  (POST /delete-account)
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//
+//  Google Play דורש שכל אפליקציה שבה ניתן ליצור חשבון תאפשר גם למחוק אותו — **מתוך
+//  האפליקציה**, ולא דרך פנייה לתמיכה. עד §420 לא היה בפרויקט שום מסלול כזה.
+//
+//  🔑 **למה בוורקר ולא בדפדפן:** שלוש סיבות, וכל אחת מהן מכריעה לבדה:
+//  (1) `deletionLog` פתוח לכתיבה **למנהל בלבד** (firestore.rules). פתיחתו לכל חבר הייתה
+//      הופכת את יומן-הביקורת למשהו שכל אחד יכול לכתוב בו — בדיוק מה ש-§393 מזהיר ממנו
+//      ("מי שיכול לשכתב אותם יכול להפוך את היומן לעדות שקרית").
+//  (2) `memberCodes/{uid}` — קוד הכניסה — אינו ניתן למחיקה מהלקוח. בלעדיו הקוד שורד את
+//      החשבון שנמחק.
+//  (3) סימון העסק של בעל-החשבון דורש כתיבה למסמך שהמוחק אינו בעליו מבחינת החוקים.
+//
+//  🔑 **הסדר הוא כל העניין: רושמים, ורק אם הרישום הצליח — מוחקים.**
+//  זהה לחלוטין ל-`logAndDelete` בצד הלקוח, ומאותה סיבה (§392: רשומה נעלמה ולא היתה
+//  שום דרך לברר מי מחק אותה). כשל ברישום מפיל את הפונקציה — והמחיקה לא רצה.
+//
+//  ⚠️ **מנהל אינו יכול למחוק את עצמו מכאן.** `isAdmin()` ב-firestore.rules נשען על קיום
+//  מסמך החבר עם `isAdmin===true`; מחיקתו בלחיצה אחת נועלת את המערכת בלי דרך חזרה
+//  מהממשק. השחזור ביומן דורש מנהל — כלומר האדם היחיד שיכול לתקן את זה הוא זה שנמחק.
+async function handleDeleteAccount({ idToken, reason }, request, env) {
+  let uid;
+  try { uid = await uidFromIdToken(env, idToken); }
+  catch (e) { return { error: 'invalid_id_token' }; }
+
+  const accessToken = await getGoogleAccessToken(env);
+  const snap = await firestoreGetDocForSnapshot(env, accessToken, `members/${uid}`);
+  if (!snap) return { error: 'member_not_found' };
+  const d = snap.data;
+  if (d.isAdmin === true) return { error: 'admin_cannot_self_delete' };
+
+  const name = `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.name || d.email || '(ללא שם)';
+  const cleanReason = String(reason || '').trim().slice(0, 500);
+
+  // ⚠️ בלי catch, ובכוונה — זו הנקודה ש-§393 קיים בשבילה. שדות הרשומה זהים למה
+  // ש-logAndDelete כותב, כדי ששתי הדלתות יזינו יומן אחד — עם תוספת אחת:
+  // `selfReason`, התשובה לשאלת "למה?" שנשאלה בחלון האישור.
+  const logId = await firestoreCreateDoc(env, accessToken, 'deletionLog', {
+    collectionName: 'members',
+    docId: uid,
+    data: d,
+    label: name,
+    actorUid: uid,
+    actorName: name,
+    actorEmail: d.email || '',
+    source: 'self-delete',
+    selfReason: cleanReason,
+    deletedAt: new Date(),
+    state: 'attempted',
+    restoredAt: null,
+    restoredBy: null,
+  });
+
+  await firestoreDeleteDoc(env, accessToken, `members/${uid}`);
+  await firestoreDeleteDoc(env, accessToken, `memberCodes/${uid}`);
+
+  // ── העסק שלו נשאר, ומסומן למנהל ─────────────────────────────────────────────────────
+  // החלטה מוצרית: מחיקת חשבון **אישי** אינה מורידה עסק שאוהדים רואים והטבות שלהם.
+  //
+  // 🔑 **החיפוש הוא לפי ownerMemberId, ולא לפי linkedBusinessId שעל מסמך החבר.**
+  // הקישור הדו-כיווני נמדד (§397ב): `ownerMemberId` שלם 58/58, ודווקא `linkedBusinessId`
+  // ההפוך **חסר לוותיקים**. שאילתה על הצד החסר הייתה משאירה בדיוק את העסקים הוותיקים
+  // בלי סימון — בלי שגיאה, ובלי שאדע על כך.
+  let flaggedBusinesses = [];
+  try {
+    const owned = await firestoreRunQuery(env, accessToken, 'businesses', 'ownerMemberId', uid, 10);
+    for (const biz of owned) {
+      await firestorePatch(env, accessToken, `businesses/${biz.id}`, {
+        ownerAccountDeletedAt: new Date(),
+        ownerAccountDeletedName: name,
+        ownerAccountDeletedReason: cleanReason,
+      });
+      flaggedBusinesses.push(biz.id);
+    }
+  } catch (e) {
+    // המחיקה כבר קרתה ואי-אפשר להחזיר אותה — כאן catch הוא הנכון, בדיוק כמו ב-logActivity.
+    // הכשל נרשם על הרשומה עצמה למטה, כדי שלא ייעלם בשקט.
+    console.error('flag owned businesses failed:', e);
+    flaggedBusinesses = null;
+  }
+
+  // ── חשבון ה-Auth עצמו ───────────────────────────────────────────────────────────────
+  // מסמך החבר נמחק, אבל זהות ה-Firebase Auth שרדה — ואדם שנכנס שוב עם אותה זהות
+  // מגיע למצב שבו הוא "מחובר" בלי שום רשומה. accounts:delete עם הטוקן שלו מאשר
+  // את עצמו — אין כאן הרשאה חדשה.
+  //
+  // ⚠️ **אחרון בתור, ולא ראשון.** כשל כאן משאיר זהות יתומה — מצב שניתן לנקות.
+  // מחיקתו ראשון הייתה שוללת את הטוקן שכל השאר נשען עליו.
+  let authDeleted = false;
+  try {
+    const r = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${env.FIREBASE_WEB_API_KEY}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) }
+    );
+    authDeleted = r.ok;
+  } catch (e) { authDeleted = false; }
+
+  try {
+    await firestorePatch(env, accessToken, `deletionLog/${logId}`, {
+      state: 'deleted',
+      selfFlaggedBusinesses: flaggedBusinesses === null ? ['כשל'] : flaggedBusinesses,
+      selfAuthDeleted: authDeleted,
+    });
+  } catch (e) { console.error('deletion-log state update failed:', e); }
+
+  return { ok: true, flaggedBusinesses: flaggedBusinesses || [], authDeleted };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//  §420ג — שליחת פוש נייטיב לאוהדים  (POST /send-native-push)
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//
+//  🔑 **הנתיב הזה נבנה *לפני* שמבקשים מאף אחד הרשאה, וזה לא סדר שרירותי.**
+//  §283 תיעד בדיוק את הכשל ההפוך: הכפתור "הפעל התראות" הוסתר מכולם כי *"אין היום שום
+//  נתיב ששולח פוש לאוהדים... ולכן מי שנתן הרשאה לא מקבל כלום — וזה שורף את ההרשאה לפעם
+//  הבאה שבאמת נרצה לבקש"*. בנייטיב זה חמור יותר: סירוב במערכת ההפעלה הוא **סופי**, ובקשה
+//  נוספת אינה מציגה דבר. יש ירייה אחת לכל אדם, ואסור לירות בה לתוך ערוץ ריק.
+//
+//  ⚠️ **מאומת ב-verifyAdminIdToken ולא בסוד סטטי.** הקוד הקורא (admin-dashboard.html) הוא
+//  קובץ סטטי שניתן להורדה, כלומר סוד מוטבע בו אינו סוד. אותו שיקול בדיוק כמו
+//  /send-broadcast-email.
+//
+//  ⚠️ **בחירת הנמענים זהה ל-/send-broadcast-email במכוון** (memberIds או כל המאושרים,
+//  תקרה 500). שני מסכים ששולחים "לאותו קהל" בשתי הגדרות שונות הוא בדיוק המקום שבו
+//  מגלים אחרי ההשקה שחצי מהאנשים לא קיבלו.
+async function handleSendNativePush({ idToken, title, body, link, memberIds }, env) {
+  if (!title || !body) return { error: 'missing_fields' };
+  try { await verifyAdminIdToken(env, idToken); }
+  catch (e) { return { error: 'not_admin' }; }
+
+  const accessToken = await getGoogleAccessToken(env);
+
+  let recipients;
+  if (Array.isArray(memberIds) && memberIds.length) {
+    const docs = await Promise.all(memberIds.map((id) => firestoreGetDoc(env, accessToken, `members/${id}`)));
+    recipients = docs.filter(Boolean);
+  } else {
+    recipients = await firestoreRunQuery(env, accessToken, 'members', 'status', 'approved', 500);
+  }
+
+  const results = [];
+  let totalSent = 0, totalDead = 0, withTokens = 0;
+
+  for (const r of recipients) {
+    const tokens = (r.fields && r.fields.nativePushTokens) || {};
+    const name = `${(r.fields && r.fields.firstName) || ''} ${(r.fields && r.fields.lastName) || ''}`.trim();
+    if (!Object.keys(tokens).length) {
+      // ⚠️ **מדווח ולא נבלע.** "לא רשום לפוש" הוא התוצאה השכיחה ביותר בהתחלה, ומסך
+      // שמראה רק הצלחות היה נותן למנהל להאמין שהשידור הגיע לכולם.
+      results.push({ id: r.id, name, status: 'no_token' });
+      continue;
+    }
+    withTokens++;
+
+    const out = await sendFcmToMember(env, accessToken, tokens, { title, body, link });
+    totalSent += out.sent;
+
+    // ── ניקוי טוקנים מתים ────────────────────────────────────────────────────────────
+    // 🔑 נכתב **רק** על מפתחות שחזרו UNREGISTERED — לא על כשל רשת ולא על 500.
+    // מחיקה על כשל חולף הייתה מנתקת מכשיר חי בגלל תקלה של רגע.
+    if (out.deadKeys.length) {
+      const remaining = Object.fromEntries(
+        Object.entries(tokens).filter(([k]) => !out.deadKeys.includes(k))
+      );
+      try {
+        await firestorePatch(env, accessToken, `members/${r.id}`, { nativePushTokens: remaining });
+        totalDead += out.deadKeys.length;
+      } catch (e) {
+        // הניקוי הוא תחזוקה, לא המשימה. כשל כאן לא אמור להכשיל שליחה שהצליחה.
+        console.error('native push cleanup failed for', r.id, e);
+      }
+    }
+
+    results.push({
+      id: r.id, name,
+      status: out.sent ? 'sent' : 'failed',
+      sent: out.sent, failed: out.failed, removed: out.deadKeys.length,
+      error: out.sent ? undefined : (out.results.find((x) => !x.ok) || {}).error,
+    });
+  }
+
+  return {
+    ok: true,
+    recipients: recipients.length,
+    withTokens,
+    devicesSent: totalSent,
+    devicesRemoved: totalDead,
+    results,
+  };
 }
 
 // שידור מייל — לכל בעלי העסקים/אוהדים המאושרים כברירת מחדל, או לרשימת מזהים ספציפית שהמנהל בחר
