@@ -36,6 +36,9 @@ const ei = html.indexOf(ESC_START);
 if (ei < 0) throw new Error('לא נמצאה הפונקציה esc ב-admin-dashboard.html');
 const escSrc = html.slice(ei, html.indexOf(String.fromCharCode(10) + '}', ei) + 2);
 const realEsc = new Function(escSrc + String.fromCharCode(10) + 'return esc;')();
+const fmtSrc = (html.match(/function fmtDate\(d\) \{[^\n]*\}/) || [])[0];
+if (!fmtSrc) throw new Error('לא נמצאה fmtDate ב-admin-dashboard.html');
+const realFmtDate = new Function(fmtSrc + String.fromCharCode(10) + 'return fmtDate;')();
 
 const FS_URL = 'https://firestore.googleapis.com/v1/projects/habayit-hatsahov/databases/(default)/documents:runQuery';
 const QUERY = { structuredQuery: { from: [{ collectionId: 'businesses' }], where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'approved' } } }, limit: 300 } };
@@ -77,7 +80,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✔ ' + m); } else { fail
     showSaving: () => {}, hideSaving: () => {},
     logActivity: async () => {}, setDoc: async (ref, data) => { env.__saves.push(data); }, doc: () => ({}), db: {},
     __saves: [],
-    fmtDate: (d) => d ? new Date(d).toLocaleDateString('he-IL') : '—',
+    fmtDate: realFmtDate,
     alert: (m) => { env.__alerts.push(m); },
     __alerts: [],
     esc: realEsc,
@@ -107,7 +110,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✔ ' + m); } else { fail
     'cleanAdminClicks: window.cleanAdminClicks, cleanAdminClicksAll: window.cleanAdminClicksAll, ' +
     '__setEvents: (e) => { platformEvents = e; }, adminMemberIds: () => adminMemberIds(), ' +
     'secReviewMove: window.secReviewMove, secReviewJump: window.secReviewJump, ' +
-    '__reviewIdx: () => secReviewPos(), __reviewId: () => secReviewId, ' +
+    '__reviewIdx: () => secReviewPos(), __reviewId: () => secReviewId, __setReviewId: (v) => { secReviewId = v; }, ' +
     'planAutoFill: window.planAutoFill, planSetReserved: window.planSetReserved, ' +
     'planEditCell: window.planEditCell, planSetCell: window.planSetCell, planPlaceJoiner: window.planPlaceJoiner, ' +
     'savePlanDraft: window.savePlanDraft, discardPlanDraft: window.discardPlanDraft, ' +
@@ -115,7 +118,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✔ ' + m); } else { fail
     'setReportBiz: window.setReportBiz, setReportRange: window.setReportRange, ' +
     'setBizStatsSection: window.setBizStatsSection, setDealsOptIn: window.setDealsOptIn, ' +
     'dealsOptInCardHtml, secInDeals, dealsOptIn, ' +
-    'sectionsLaunchHtml, launchBannerHtml, secLaunchDone, secLaunchOpenCount, LAUNCH_STEPS, sectionModesFor, sectionModeFor, ' +
+    'sectionsLaunchHtml, launchBannerHtml, secLaunchDone, secLaunchOpenCount, LAUNCH_STEPS, sectionModesFor, sectionModeFor, secSafe, ' +
     'secLaunchToggle: window.secLaunchToggle, secLaunchShow: window.secLaunchShow, secLaunchGo: window.secLaunchGo, ' +
     '__reportRange: () => [reportFrom, reportTo], ' +
     '__planDirty: () => planDirty(), __setPlan: (p) => { SECTION_PLAN = p; planDraft = null; }, ' +
@@ -732,6 +735,46 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✔ ' + m); } else { fail
     M.__setMode('report');
     ok(M.sectionModeFor('deals') !== 'launch',
       '🔑 טאב שלא תומך במצב הנוכחי אינו נופל למדריך — אחרת המדריך היה הופך למסך-הפתיחה של הטאב');
+  }
+
+  console.log('\n── §418יח — עסק ממתין-לאישור במסך המעבר ──');
+  // 🔑 **הנקודה העיוורת של ההרנס הזה.** חוקי Firestore מרשים קריאה ציבורית של
+  // עסקים מאושרים בלבד, ולכן BIZ לעולם אינו מכיל ממתינים — בזמן ש-secReviewList
+  // ממיין דווקא **אותם ראשונים**. הכרטיס הראשון שהמנהל רואה בפועל הוא בדיוק זה
+  // שההרנס מעולם לא ראה. כאן הוא מוזרק ידנית.
+  {
+    ok(realFmtDate(null) === '—', '🔑 fmtDate על ערך ריק מחזירה מקף ואינה זורקת');
+    ok(realFmtDate(undefined) === '—', 'וגם על undefined');
+    ok(realFmtDate(new Date('2026-01-15')) !== '—', 'ותאריך אמיתי ממשיך להיות מוצג');
+
+    const pending = {
+      id: '__pending__', name: 'עסק ממתין לבדיקה', status: 'pending',
+      approvedAt: null, registeredAt: new Date('2026-09-01'), registeredAtKnown: true,
+      clicks: 0, likedBy: [], likes: 0, discountText: '', logo: '', coverPhoto: '',
+      isFeatured: false, exposurePriority: 0,
+    };
+    BIZ.push(pending);
+    M.__setReviewId(null);   // ⚠️ בדיקות קודמות נעלו כרטיס; בלי איפוס הממתין לא ייבחר
+    try {
+      M.__setMode('review');
+      let threw = null, out = '';
+      try { out = M.sectionsReviewHtml(); } catch (e) { threw = e; }
+      ok(!threw, '🔑 מסך המעבר אינו זורק כשהעסק הראשון ממתין לאישור' + (threw ? ' — ' + threw.message : ''));
+      ok(out.indexOf('עסק ממתין לבדיקה') > 0, 'והעסק הממתין הוא באמת הכרטיס הראשון');
+      ok(out.indexOf('טרם אושר') > 0, '⚠️ ונכתב "טרם אושר" ולא "אושר —"');
+      ok(out.indexOf('ממתין לאישור') > 0, 'עם תג ממתין-לאישור');
+    } finally {
+      BIZ.splice(BIZ.indexOf(pending), 1);
+    }
+  }
+
+  console.log('\n── רשת הביטחון של הרינדור ──');
+  {
+    const broken = M.secSafe('מסך בדיקה', () => { throw new Error('נשבר בכוונה'); });
+    ok(broken.indexOf('המסך הזה נכשל בטעינה') > 0,
+      '🔑 מסך שזורק מציג הודעה במקום להשאיר את הטאב בלי תגובה');
+    ok(broken.indexOf('נשבר בכוונה') > 0, 'עם הסיבה, כדי שאפשר יהיה לאבחן');
+    ok(M.secSafe('תקין', () => 'תוכן') === 'תוכן', 'ומסך תקין עובר דרכה בלי שינוי');
   }
 
   console.log('\n' + pass + '/' + (pass + fail) + ' עברו' + (fail ? ' · ' + fail + ' נכשלו' : ''));
