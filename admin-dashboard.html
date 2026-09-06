@@ -10152,6 +10152,29 @@ const TASK_CLASS_TILES = [
 //            שני שבבים שהראו "5" מול מספר גדול "5" היו בלתי-ניתנים ליישוב במבט.
 //            ההבחנה עצמה לא אבדה — היא נשארה **בשורות**: תג "תקלה אצלנו"/"לא תקלה" בכל שורת
 //            כניסה, ודירוג-החומרה בכל שורת מייל. היא כבר לא מסננת את המונה.
+// ── §420ז — אוהד שמחק את עצמו ──────────────────────────────────────────────────────────
+// בקשת המשתמש: *"אוהד שמחק אני רוצה לקבל את זה בדשבורד בתקלות ופניות, זה חשוב לי."*
+// אין כאן איסוף חדש — `deletionLog` כבר נושא הכל מאז §393, כולל `selfReason`, התשובה
+// לשאלה "מה גרם לך להחליט לעזוב?" שנשאלה בחלון האישור. עד עכשיו זה היה קבור בטאב
+// "מחיקות ושחזור", שנפתח רק כשמחפשים אותו — כלומר עזיבה עברה בשקט מוחלט.
+//
+// ⚠️ **`source: 'self-delete'` בלבד** — מחיקה שהמנהל עצמו ביצע אינה תקלה ואינה פנייה,
+// והיא הרוב המוחלט של היומן. בלי הסינון הזה כל ניקוי שעשית היה חוזר אליך כשורה לטיפול.
+function selfDeleteList() {
+  return (deletionLogEntries || [])
+    .filter(e => e.source === 'self-delete')
+    .map(e => {
+      const key = 'selfdel|' + e.id;
+      return {
+        key, at: toJsDate(e.deletedAt), name: e.label || e.actorName || '(ללא שם)',
+        email: e.actorEmail || '', reason: String(e.selfReason || '').trim(),
+        handled: handledRegIssues[key] || null,
+      };
+    })
+    .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
+}
+function selfDeleteOpenList() { return selfDeleteList().filter(x => !x.handled); }
+
 const ISSUE_KINDS = [
   { key: 'mail',      label: 'מייל',          open: () => mailIssueList(),
     urgent: l => l.length },
@@ -10160,6 +10183,9 @@ const ISSUE_KINDS = [
     urgent: l => l.length },
   { key: 'help',      label: 'פניות עזרה',    open: () => helpReqOpenList(),       urgent: l => l.length },
   { key: 'bizErrors', label: 'דשבורד עסק',    open: () => bizWriteErrorList(),     urgent: l => l.length },
+  // ⚠️ `urgent: 0` — עזיבה אינה תקלה שלנו ואי אפשר "לתקן" אותה, ולכן היא לא צריכה לצבוע
+  // את המונה באדום לצד כשלים שכן דורשים פעולה. היא כן חייבת להיראות, וזה מה שהיא מקבלת.
+  { key: 'selfDelete', label: 'מחקו חשבון',   open: () => selfDeleteOpenList(),    urgent: () => 0 },
 ];
 function issueKindCounts() {
   const out = {};
@@ -10308,6 +10334,21 @@ function unifiedIssueList() {
     markJs: 'markHelpReqHandled(' + [q1(x.id), q1(escJsAttr(x.name || ''))].join(',') + ')',
   }));
 
+  // §420ז — אוהד שמחק את עצמו. `urgent: false` — אין כאן מה לתקן, אבל יש מה לדעת.
+  selfDeleteOpenList().forEach(x => out.push({
+    kind: 'selfDelete', at: x.at, urgent: false,
+    who: x.name, title: 'מחק את החשבון שלו',
+    // הסיבה שהוא כתב היא כל הערך כאן. כשלא כתב — נאמר במפורש שלא נשאל שוב, כדי
+    // ש"בלי סיבה" לא ייקרא כמו נתון חסר שאפשר להשלים.
+    // ⚠️ טקסט חופשי מהמשתמש — מוברח ברינדור, בדיוק כמו פניות העזרה.
+    meta: [x.email, x.reason ? '«' + x.reason + '»' : 'לא ציין סיבה (השאלה אינה חובה)']
+      .filter(Boolean).join(' · '),
+    // ⚠️ **אין `entity`**: הרשומה נמחקה, וקישור אליה היה מוביל לכרטיס שאינו קיים.
+    // השחזור נעשה מ"מחיקות ושחזור", שהוא המסך היחיד שיודע לעשות את זה בבטחה.
+    entity: null,
+    markJs: 'markRegIssueHandled(' + [q1(esc(x.key)), q1(escJsAttr(x.name + ' מחק את החשבון'))].join(',') + ')',
+  }));
+
   bizWriteErrorList().forEach(x => out.push({
     kind: 'bizErrors', at: x.at, urgent: true,
     who: x.name, title: 'שגיאת שמירה — ' + x.action,
@@ -10332,7 +10373,7 @@ function unifiedIssueFilteredList() {
   if (q) list = list.filter(x => (x.who + ' ' + x.title + ' ' + x.meta).includes(q));
   return list;
 }
-const ISSUE_KIND_LABELS = { mail: 'מייל', reg: 'הרשמה', login: 'כניסה', help: 'פניית עזרה', bizErrors: 'דשבורד עסק' };
+const ISSUE_KIND_LABELS = { mail: 'מייל', reg: 'הרשמה', login: 'כניסה', help: 'פניית עזרה', bizErrors: 'דשבורד עסק', selfDelete: 'מחק חשבון' };
 // ── §363 — שורות הרשימה המאוחדת, בפונקציה נפרדת ─────────────────────────────────────
 // הופרד מ-unifiedIssuesTableHtml כדי שאפשר יהיה להציג שורות **יחד עם** אזהרת-טעינה,
 // במקום לבחור בין השתיים. מצב טעינה-חלקית הוא מצב אמיתי: תקלות המייל והפניות זמינות
@@ -10361,7 +10402,14 @@ function unifiedIssuesTableHtml(list) {
   // אותה זהירות כמו בשתי הרשימות שנשענות על המדידה: האירועים נטענים עצלנית,
   // ואסור להכריז "אין תקלות" לפני שהגיעו (§296).
   if (platformEvents === null && !platformStatsError) loadPlatformStats();
-  const pending = platformEvents === null && !platformStatsError;
+  // ── §420ז — יומן המחיקות נטען עצלנית בדיוק כמו המדידה ──────────────────────────────
+  // 🔑 `deletionLogEntries` נשאר `[]` עד שפותחים את טאב "מחיקות ושחזור" — כלומר בלי
+  // הטעינה הזאת השורה "מחק את החשבון שלו" **לא הייתה מופיעה כאן לעולם**, והמסך היה
+  // מכריז "אין תקלות פתוחות 🎉" בביטחון מלא. זו בדיוק ההכרזה השקרית של §296/§363:
+  // **מקור שישי שנוסף למסך המאוחד יורש את חובות-האמינות של כולם.**
+  if (deletionLogState === 'idle') loadDeletionLog();
+  const delPending = deletionLogState === 'idle' || deletionLogState === 'loading';
+  const pending = (platformEvents === null && !platformStatsError) || delPending;
   // ── §363 — ⚠️ **שקט אינו שלום** ─────────────────────────────────────────────────────
   // שניים מחמשת הסוגים (הרשמה, כניסה) נשענים על platformEvents. כשהטעינה **נכשלת** שתי
   // הרשימות ריקות — לא כי אין בהן תקלות אלא כי לא הסתכלנו — והמסך היה מכריז 🎉.
@@ -10379,8 +10427,10 @@ function unifiedIssuesTableHtml(list) {
   }
   if (!list.length) {
     return '<div class="placeholder-note">' + (pending
-      ? 'אין תקלות במיילים ובהצלבות. כשלי ההרשמה והכניסה מ-30 הימים האחרונים עדיין נטענים…'
-      : 'אין תקלות פתוחות 🎉 אף מייל לא נכשל, אף הרשמה לא נתקעה, אף כניסה לא נכשלה באשמתנו ואף אחד לא ביקש עזרה.') + '</div>';
+      ? 'אין תקלות במיילים ובהצלבות. ' +
+        [platformEvents === null && !platformStatsError ? 'כשלי ההרשמה והכניסה מ-30 הימים האחרונים' : '',
+         delPending ? 'מחיקות חשבון' : ''].filter(Boolean).join(' ו') + ' עדיין נטענים…'
+      : 'אין תקלות פתוחות 🎉 אף מייל לא נכשל, אף הרשמה לא נתקעה, אף כניסה לא נכשלה באשמתנו, אף אחד לא ביקש עזרה ואף אחד לא מחק את החשבון שלו.') + '</div>';
   }
   const urgent = list.filter(x => x.urgent).length;
   return '<div class="mail-issues-note">' +
