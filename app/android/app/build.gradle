@@ -27,11 +27,30 @@ if (keystorePropsFile.exists()) {
 // נבדק על שמות המשימות שהתבקשו בפועל, ולא על buildType — כדי ש-assembleDebug ימשיך
 // לרוץ על מכונה בלי keystore (בדיוק מה שצריך לבדיקה על מכשיר).
 def wantsRelease = gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
-if (wantsRelease && !keystorePropsFile.exists()) {
-    throw new GradleException(
-        "\n\n  חסר android/keystore.properties — בנייה ל-release תיצור חבילה לא חתומה ש-Play ידחה.\n" +
-        "  צור אותו לפי android/keystore.properties.example (הפקודה המלאה שם).\n"
-    )
+if (wantsRelease) {
+    // ⚠️ **§420ז — קיום הקובץ אינו מספיק, והלקח נלמד תוך כדי.** הקובץ נוצר מראש עם
+    // סיסמאות ריקות כדי שהמשתמש רק ימלא שתי שורות — ואז "הקובץ קיים" הפך את ההגנה
+    // לכזאת שמתקיימת תמיד, בדיוק [[feedback_guard_that_always_holds]]. עם ערך ריק
+    // AGP נכשל בשגיאת-חתימה גנרית שאינה מרמזת מה חסר.
+    def missing = []
+    if (!keystorePropsFile.exists()) {
+        missing << "android/keystore.properties (צור לפי keystore.properties.example)"
+    } else {
+        ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].each { k ->
+            if (!keystoreProps[k]?.trim()) missing << "השדה '${k}' ריק ב-android/keystore.properties"
+        }
+        def sf = keystoreProps['storeFile']?.trim()
+        if (sf) {
+            def f = new File(sf).isAbsolute() ? new File(sf) : rootProject.file(sf)
+            if (!f.exists()) missing << "קובץ המפתח לא נמצא: ${f.absolutePath}"
+        }
+    }
+    if (missing) {
+        throw new GradleException(
+            "\n\n  בנייה ל-release תיצור חבילה לא חתומה ש-Play ידחה:\n" +
+            missing.collect { "    · " + it }.join("\n") + "\n"
+        )
+    }
 }
 
 // נתיב ה-keystore יכול להיות מוחלט (מומלץ — מחוץ לריפו) או יחסי לתיקיית android/.
