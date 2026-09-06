@@ -1811,6 +1811,9 @@ document.getElementById('catPills').insertAdjacentHTML('beforeend', window.CATEG
      ⚠️ שניהם לא-חוסמים: דף שלא הצליח לטעון אותם מאבד את פריט-התפריט בלבד. -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="google-link.js"></script>
+<!-- §420ה — הרשמה לפוש נייטיב. script רגיל (לא module), חושף window.YZNativePush בלבד
+     ואינו מבקש דבר מעצמו — הבקשה תמיד מגיעה מלחיצה של המשתמש. -->
+<script src="native-push.js"></script>
 
 <footer class="site-footer">
   <img class="site-footer-logo" src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
@@ -3844,7 +3847,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <span class="menu-item-icon">📲</span>
       <span class="menu-item-label">התקינו את האפליקציה</span>
     </button>
-    <button class="menu-item" id="menuPushItem" style="display:none" onclick="enablePushNotifications()">
+    <button class="menu-item" id="menuPushItem" style="display:none" onclick="enablePushAny()">
       <span class="menu-item-icon">🔔</span>
       <span class="menu-item-label" id="menuPushLabel">הפעל התראות</span>
     </button>
@@ -4583,6 +4586,21 @@ window.updatePushMenuItem = function() {
   // מקבל כלום — וזה שורף את ההרשאה לפעם הבאה שבאמת נרצה לבקש. בנוסף: באייפון הכפתור
   // ממילא לא מופיע אלא אם האתר הותקן למסך הבית, ועברית מוצגת שם כ-'?' (§52).
   // להחזרה: למחוק את שתי השורות הבאות. ההיגיון המקורי נשמר מתחת, כמו שהוא.
+  //
+  // ── §420ה — ובאפליקציה הכפתור כן מוצג ────────────────────────────────────────────────
+  // 🔑 **הנימוק של §283 היה "אין נתיב ששולח", ולא "אין ערך בהתראות".** מאז נבנה
+  // `/send-native-push` ומסך שליחה במרכז ההודעות — כלומר התנאי שהצדיק את ההסתרה כבר
+  // אינו מתקיים **בערוץ הנייטיב**. בדפדפן הוא עדיין מתקיים במלואו, ולכן ההסתרה נשארת שם
+  // בדיוק כמו שהייתה.
+  // ⚠️ בדיקת הגשר ולא הפלטפורמה: אנדרואיד בדפדפן רגיל הוא עדיין המסלול הישן.
+  if (window.YZNativePush && window.YZNativePush.available()) {
+    // ההרשאה כבר ניתנה? הכפתור נעלם — אותה התנהגות בדיוק כמו במסלול הדפדפן.
+    window.YZNativePush.permissionState().then((st) => {
+      item.style.display = (st === 'granted') ? 'none' : 'flex';
+    }).catch(() => { item.style.display = 'flex'; });
+    return;
+  }
+
   item.style.display = 'none';
   return;
 
@@ -4592,6 +4610,66 @@ window.updatePushMenuItem = function() {
   }
   // אחרי אישור — הכפתור נעלם לגמרי מההמבורגר (לפי בקשה מפורשת), לא רק משנה תווית
   item.style.display = Notification.permission === 'granted' ? 'none' : 'flex';
+};
+
+// ══════════════════════════════════════════════════════════════════════════════════════
+//  §420ה — פוש נייטיב: ההרשמה, והשמירה
+// ══════════════════════════════════════════════════════════════════════════════════════
+//  🔑 **Web Push אינו עובד בתוך האפליקציה.** Android WebView אינו תומך ב-Push API —
+//  `reg.pushManager` פשוט לא קיים שם, ו-enablePushNotifications למטה היה זורק. לכן
+//  שני שולחים נפרדים ומפנה שבוחר ביניהם.
+//
+//  ⚠️ **הערוצים אינם מחליפים זה את זה.** `pushSubscriptions` (דפדפן) ו-`nativePushTokens`
+//  (אפליקציה) חיים במקביל על אותו מסמך — אותו אדם יכול להיות רשום גם במחשב וגם בטלפון,
+//  ומיזוגם לשדה אחד היה אומר שהתקנת האפליקציה מוחקת בשקט את ההרשמה מהמחשב.
+window.enableNativePush = async function() {
+  const memberId = auth.currentUser?.uid;
+  if (!memberId) return { ok: false, reason: 'not_signed_in' };
+  if (!window.YZNativePush || !window.YZNativePush.available()) {
+    return { ok: false, reason: 'no_bridge' };
+  }
+
+  const res = await window.YZNativePush.register();
+  if (!res.ok) return res;
+
+  // ⚠️ **המפתח הוא מזהה-ההתקנה ולא הטוקן** — טוקני FCM מתחלפים, ומפתוח לפי הטוקן היה
+  // מייצר רשומה חדשה בכל רוטציה ומשאיר את הישנה כזבל. אותו דפוס של pushKeyFor() מעל.
+  // ⚠️ **וכתיבת-נקודה על השדה** (`nativePushTokens.${key}`) ולא אובייקט שלם — אחרת
+  // מכשיר שני היה דורס את הראשון.
+  try {
+    await updateDoc(doc(db, 'members', memberId), {
+      [`nativePushTokens.${res.installId}`]: {
+        token: res.token,
+        platform: res.platform,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (e) {
+    // 🔴 הכשל הצפוי כאן הוא firestore.rules — `nativePushTokens` חייב להיות ברשימת-ההיתר
+    // של עדכון-עצמי (§420ג). בלעדיו הכתיבה נדחית, וההרשמה "מצליחה" בלי שנשמר דבר.
+    console.error('native push token save failed:', e);
+    return { ok: false, reason: 'save_failed', detail: String((e && e.message) || e) };
+  }
+  return { ok: true };
+};
+
+// המפנה. ⚠️ בודק את הגשר ולא את הפלטפורמה — אנדרואיד בדפדפן רגיל הוא עדיין מסלול Web Push.
+window.enablePushAny = async function() {
+  if (window.YZNativePush && window.YZNativePush.available()) {
+    const r = await window.enableNativePush();
+    if (r.ok) { updatePushMenuItem(); closeMenu(); return; }
+    // ⚠️ כל סיבה מקבלת נוסח משלה. "משהו השתבש" על סירוב-הרשאה היה שולח את המשתמש
+    // לחפש תקלה שאינה קיימת, במקום להסביר לו שהוא עצמו לחץ "לא".
+    const MSG = {
+      denied: 'ההתראות חסומות למערכת. אפשר להפעיל אותן בהגדרות המכשיר → אפליקציות → Yellow Zone.',
+      declined: 'לא ניתנה הרשאה להתראות. אפשר לנסות שוב מכאן בכל שלב.',
+      timeout: 'ההרשמה להתראות לא הושלמה. נסה/י שוב בעוד רגע.',
+      save_failed: 'ההרשאה ניתנה, אבל השמירה נכשלה. נסה/י שוב.',
+    };
+    alert(MSG[r.reason] || 'לא הצלחנו להפעיל התראות כרגע. נסה/י שוב מאוחר יותר.');
+    return;
+  }
+  return window.enablePushNotifications();
 };
 
 window.enablePushNotifications = async function() {

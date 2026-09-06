@@ -14110,7 +14110,118 @@ let manualPickerSelectedBizIds = new Set();
 let manualPickerSelectedFanIds = new Set();
 // מצב-שליחה — שידור-המוני מול נמענים-נבחרים, מתג אחד עם 2 מצבים (§136, לפי מוקאפ
 // demo-redesign-admin-messages.html) — מחליף 2 אקורדיונים-עצמאיים ישנים (msgOpenSection/toggleMsgSection).
-let msgSendMode = 'broadcast'; // 'broadcast' | 'single'
+let msgSendMode = 'broadcast'; // 'broadcast' | 'single' | 'push'  (§420ד)
+
+// ══════════════════════════════════════════════════════════════════════════════════════
+//  §420ד — שליחת פוש נייטיב
+// ══════════════════════════════════════════════════════════════════════════════════════
+//  🔑 **מצב שלישי באותו מתג, ולא מסך נפרד — וזו ההחלטה המרכזית כאן.**
+//  מסך שליחה נפרד היה מגיע עם בחירת-קהל משלו, ואז "כל האוהדים" במייל ו"כל האוהדים"
+//  בפוש היו שתי הגדרות שונות שנפרדות זו מזו עם הזמן. הפוש חולק את **אותו**
+//  `selectedFanIds` בדיוק, ואת אותה שאילתת-ברירת-מחדל בשרת (מאושרים, תקרה 500).
+//
+//  ⚠️ **אוהדים בלבד בשלב זה.** ל-business-dashboard אין עדיין קוד הרשמה לפוש ואין חוק
+//  שמתיר לו לכתוב טוקן, ולכן טאב "עסקים" כאן היה כפתור שנראה עובד ושולח לאפס מכשירים.
+let pushDraft = { title: '', body: '', link: '' };
+let pushSending = false;
+let pushResult = null;   // { recipients, withTokens, devicesSent, devicesRemoved, results }
+
+window.updatePushDraft = function(field, v) { pushDraft[field] = v; };
+
+function nativePushTabHtml() {
+  const audience = broadcastAudienceType === 'fans' && selectedFanIds.size
+    ? Array.from(selectedFanIds)
+    : MOCK_FANS.filter(f => f.status === 'approved').map(f => f.id);
+  const usingSelection = selectedFanIds.size > 0;
+
+  // ⚠️ הסיכום מוצג **אחרי** השליחה ואינו נמחק ברינדור הבא — מסך שמנקה את התוצאה
+  // בלחיצה הבאה הוא מסך שבו אי-אפשר לבדוק מה קרה.
+  const resultHtml = !pushResult ? '' : `
+    <div class="aud-summary" style="margin-top:14px;background:rgba(224,168,122,.13)">
+      <b>הסיכום:</b> ${pushResult.recipients} נמענים ·
+      <b>${pushResult.withTokens}</b> מהם רשומים לפוש ·
+      <b>${pushResult.devicesSent}</b> מכשירים קיבלו${pushResult.devicesRemoved ? ` · ${pushResult.devicesRemoved} טוקנים מתים נוקו` : ''}
+      ${pushResult.withTokens === 0 ? '<br>⚠️ <b>אף אחד מהנמענים אינו רשום לפוש עדיין.</b> זה צפוי עד שיהיו התקנות של האפליקציה.' : ''}
+    </div>`;
+
+  return `
+    <div class="aud-summary">
+      📲 נשלח <b>רק למי שהתקין את האפליקציה ואישר התראות</b>. מי שאינו רשום פשוט לא מקבל —
+      ואינו נספר ככשל.
+      ${usingSelection
+        ? ` קהל נבחר ידנית: <b>${audience.length} אוהדים</b> — <button class="filter-clear" onclick="clearFanSelection()">נקה בחירה</button>`
+        : ` כרגע: <b>כל ${audience.length} האוהדים המאושרים</b>. לבחירה ספציפית — סמנ/י ברשימה בטאב "שידור המוני".`}
+    </div>
+
+    <div class="approve-field-label" style="margin-top:14px">כותרת ההתראה</div>
+    <input type="text" id="pushTitle" class="chain-select" maxlength="60"
+           value="${esc(pushDraft.title)}" oninput="updatePushDraft('title', this.value)"
+           placeholder="למשל: הטבה חדשה בפלאפל הזהב" />
+
+    <div class="approve-field-label">גוף ההתראה</div>
+    <textarea id="pushBody" class="broadcast-body-input" rows="3" maxlength="160"
+              oninput="updatePushDraft('body', this.value)"
+              placeholder="שורה או שתיים. אנדרואיד חותך הודעות ארוכות.">${esc(pushDraft.body)}</textarea>
+
+    <div class="approve-field-label">קישור בלחיצה (לא חובה)</div>
+    <input type="text" id="pushLink" class="chain-select" dir="ltr"
+           value="${esc(pushDraft.link)}" oninput="updatePushDraft('link', this.value)"
+           placeholder="https://yellowzone.co.il/home.html" />
+
+    <div class="tpl-vars-box">
+      ⚠️ <b>אין כאן <code>{name}</code> ואין החלפות.</b> ההתראה נשלחת כלשונה לכולם —
+      בניגוד למייל, שבו יש ערכים לכל נמען.
+    </div>
+
+    <div class="broadcast-actions">
+      <button class="act-btn approve" onclick="sendNativePushNow()"
+        ${pushSending || !audience.length ? 'disabled' : ''}>${pushSending ? '⏳ שולח...' : `📲 שלח ל-${audience.length} אוהדים`}</button>
+    </div>
+    ${resultHtml}`;
+}
+
+// ⚠️ **אישור לפני שליחה, ובכוונה.** פוש אינו ניתן לביטול או לתיקון — ברגע שהוא על המסך
+// של אדם, הוא שם. אין כאן "שליחה חוזרת לנכשלים" כמו במייל, כי אין למה לחזור.
+window.sendNativePushNow = async function() {
+  const title = (pushDraft.title || '').trim();
+  const body = (pushDraft.body || '').trim();
+  if (!title || !body) { alert('חסרה כותרת או גוף להתראה'); return; }
+
+  const audience = selectedFanIds.size
+    ? Array.from(selectedFanIds)
+    : MOCK_FANS.filter(f => f.status === 'approved').map(f => f.id);
+
+  const who = selectedFanIds.size ? `${audience.length} אוהדים נבחרים` : `כל ${audience.length} האוהדים המאושרים`;
+  if (!confirm(`לשלוח התראה ל${who}?\n\n"${title}"\n${body}\n\n⚠️ פוש אי-אפשר לבטל או לתקן אחרי השליחה.`)) return;
+
+  pushSending = true;
+  pushResult = null;
+  renderMain();
+  try {
+    const idToken = await auth.currentUser.getIdToken();
+    const resp = await hbApiFetch('/send-native-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idToken, title, body,
+        link: (pushDraft.link || '').trim() || undefined,
+        // ⚠️ נשלח **רק** כשיש בחירה מפורשת. רשימה ריקה הייתה נקראת בשרת כ"אין נמענים",
+        // ורשימה מלאה מיותרת עוקפת את שאילתת-המאושרים ומתיישנת מול המצב האמיתי.
+        memberIds: selectedFanIds.size ? audience : undefined,
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) { alert('שגיאה בשליחת הפוש: ' + data.error); return; }
+    pushResult = data;
+  } catch (e) {
+    console.error(e);
+    alert('שגיאה בשליחת הפוש: ' + e.message);
+  } finally {
+    pushSending = false;
+    renderMain();
+  }
+};
+
 window.setMsgSendMode = function(m) { msgSendMode = m; renderMain(); };
 
 window.setManualPickerType = function(type) {
@@ -14323,12 +14434,13 @@ function sendNowSectionHtml() {
         <div class="card-head-title">שליחה עכשיו</div>
         <div class="spacer"></div>
         <div class="seg">
-          <div class="${!isSingle?'on':''}" onclick="setMsgSendMode('broadcast')">שידור המוני</div>
-          <div class="${isSingle?'on':''}" onclick="setMsgSendMode('single')">נמענים נבחרים${singleCount?` (${singleCount})`:''}</div>
+          <div class="${msgSendMode==='broadcast'?'on':''}" onclick="setMsgSendMode('broadcast')">שידור המוני</div>
+          <div class="${msgSendMode==='single'?'on':''}" onclick="setMsgSendMode('single')">נמענים נבחרים${singleCount?` (${singleCount})`:''}</div>
+          <div class="${msgSendMode==='push'?'on':''}" onclick="setMsgSendMode('push')">📲 פוש לאפליקציה</div>
         </div>
       </div>
       <div class="msg-section-body">
-        ${isSingle ? singleSenderBodyHtml() : broadcastTabHtml()}
+        ${msgSendMode === 'push' ? nativePushTabHtml() : (isSingle ? singleSenderBodyHtml() : broadcastTabHtml())}
       </div>
     </div>`;
 }
