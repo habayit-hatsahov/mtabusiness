@@ -1,6 +1,7 @@
 import { corsHeaders, handlePreflight, json } from './cors.js';
 import { getGoogleAccessToken, mintFirebaseCustomToken, verifyAdminIdToken, uidFromIdToken } from './jwt.js';
 import { verifyGoogleIdToken } from './google.js';
+import { verifyAppleIdToken } from './apple.js';
 import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, bizTokenFor,
          memberIdFromLoginCode, loginCodeFor,
          firestoreGetDocForSnapshot, firestoreCreateDoc, firestoreDeleteDoc } from './firestore.js';
@@ -57,6 +58,17 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/google-attach') {
         return json(await handleGoogleAttach(await request.json(), request, env), env, request);
+      }
+      // §423 — כניסה עם Apple. שלושה נתיבים במקביל מדויק לשל גוגל, ומאותו נימוק:
+      // /apple-login רק קורא, /apple-link ו-/apple-attach כותבים זהות על רשומת חבר.
+      if (request.method === 'POST' && url.pathname === '/apple-login') {
+        return json(await handleAppleLogin(await request.json(), request, env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/apple-link') {
+        return json(await handleAppleLink(await request.json(), env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/apple-attach') {
+        return json(await handleAppleAttach(await request.json(), request, env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/mint-biz-token') {
         return json(await handleBusinessLogin(await request.json(), env), env, request);
@@ -208,7 +220,7 @@ async function handleGoogleLogin({ idToken }, request, env) {
   // ⚠️ 'לא מקושר' אינו שגיאה — זו הפעם הראשונה שלו. הקליינט הופך את זה למסך שמסביר
   // איך לקשור, ולכן המייל מוחזר: כדי שהמסך יוכל לומר לו באיזה חשבון הוא השתמש.
   if (!member) return { error: 'google_not_linked', email: g.email,
-                        linkable: await linkableByVerifiedEmail(env, accessToken, g) };
+                        linkable: await linkableByVerifiedEmail(env, accessToken, g, 'googleSub') };
   if (member.fields.status !== 'approved') {
     return { error: member.fields.status === 'pending' ? 'pending' : 'rejected' };
   }
@@ -234,14 +246,21 @@ async function handleGoogleLogin({ idToken }, request, env) {
 // רשומות עם אותו מייל פירושן שאיננו יודעים מי מהן, ו'לנחש' כאן = להכניס אדם לחשבון של
 // מישהו אחר (אותו נימוק כמו `membersByGoogleSub` למעלה). נמדד ב-3.9: 200 מתוך 201 הכתובות
 // ייחודיות, והכפילות היחידה היא אותה אדם פעמיים.
-async function linkableByVerifiedEmail(env, accessToken, g) {
-  // מייל שגוגל לא אימתה אינו ראיה לכלום, וכל הגדר נשען עליו.
+// §423 — `subField` נוסף כשהמסלול הזה נפתח גם לאפל, והוא **פרמטר חובה בלי ברירת-מחדל
+// בכוונה**: ברירת-מחדל `'googleSub'` הייתה גורמת לכניסת-אפל שנשכחה לבדוק את השדה של
+// גוגל — כלומר לאשר קישור על רשומה שכבר מקושרת לחשבון אפל אחר, בשקט ובלי שגיאה. זריקה
+// כאן היא הדבר היחיד שנתפס. ר' [[feedback_empty_catch_on_a_guard]].
+async function linkableByVerifiedEmail(env, accessToken, g, subField) {
+  if (!subField) throw new Error('linkable_sub_field_required');
+  // מייל שהספק לא אימת אינו ראיה לכלום, וכל הגדר נשען עליו.
+  // ⚠️ אצל אפל `emailVerified` הוא **false ביודעין** כשהמייל הוא כתובת-ממסר — כלומר
+  // המסלול הזה נסגר מעצמו בדיוק במקרה שבו אי-אפשר להוכיח שליטה בתיבה. ר' `apple.js`.
   if (!g.emailVerified || !g.email) return null;
   const rows = await firestoreRunQuery(env, accessToken, 'members', 'email', g.email, 2);
   if (rows.length !== 1) return null;
   const m = rows[0];
-  // ⚠️ כבר מקושר לחשבון גוגל **אחר** — החלפה מותרת רק בנתיב המחובר (`/google-link`).
-  if (m.fields.googleSub) return null;
+  // ⚠️ כבר מקושר לחשבון **אחר של אותו ספק** — החלפה מותרת רק בנתיב המחובר.
+  if (m.fields[subField]) return null;
   // ⚠️ ממתין/נדחה אינו נכנס. `/google-login` כבר מחזיר 'pending'/'rejected' למי שמקושר,
   // וזה חייב להיות זהה גם כאן — אחרת הקישור היה עוקף את שער-האישור.
   if (m.fields.status !== 'approved') return null;
@@ -315,6 +334,117 @@ async function handleGoogleAttach({ idToken, memberId }, request, env) {
   // ⚠️ **רק ל-approved**, וזה שומר על הנתיב המקורי של §370: בהרשמה הרשומה היא `pending`,
   // אין לה עדיין קוד-כניסה, והיא מקבלת כאן `{ ok: true }` בלבד — בדיוק כמו קודם. שער
   // האישור אינו נעקף, הוא רק לא נשאל פעמיים.
+  const canEnter = me.fields.status === 'approved';
+  return canEnter
+    ? { ok: true, customToken: await mintFirebaseCustomToken(env, {
+        uid: memberId,
+        claims: { role: 'member', isBusinessOwner: me.fields.isBusinessOwner === true },
+      }) }
+    : { ok: true };
+}
+
+// ══ §423 — כניסה עם Apple ═══════════════════════════════════════════════════════════════
+// מקביל מדויק לשלושת נתיבי גוגל שלמעלה, ובכוונה: הפרדה בין "קורא" ל"כותב זהות", אותם
+// שערים, אותם קודי-שגיאה במבנה. **ההבדל היחיד הוא כתובת-הממסר**, והוא מסומן בכל מקום.
+//
+// 🔑 **מדוע אפל בכלל:** אפל מחייבת "התחברות עם Apple" בכל אפליקציה שמציעה התחברות של צד
+// שלישי. אצלנו יש גוגל — כלומר זה תנאי לאישור בחנות, לא פיצ'ר.
+
+async function membersByAppleSub(env, accessToken, sub) {
+  return firestoreRunQuery(env, accessToken, 'members', 'appleSub', sub, 2);
+}
+
+async function handleAppleLogin({ idToken }, request, env) {
+  let a;
+  try { a = await verifyAppleIdToken(env, idToken); }
+  catch (e) { return { error: 'invalid_apple_token' }; }
+
+  const accessToken = await getGoogleAccessToken(env);
+  const rows = await membersByAppleSub(env, accessToken, a.sub);
+  if (rows.length > 1) return { error: 'apple_ambiguous' };
+
+  const member = rows[0];
+  // ⚠️ 'לא מקושר' אינו שגיאה — זו הפעם הראשונה שלו. `isPrivateRelay` מוחזר כדי שהמסך
+  // יוכל לומר לו **למה** אין לו מסלול-קישור מהיר: לא תקלה, אלא שהוא בחר להסתיר את המייל.
+  // בלי הדגל הזה המסך היה מציג "לא מצאנו רשומה" למי שהרשומה שלו קיימת ומחכה לו.
+  if (!member) return { error: 'apple_not_linked', email: a.email,
+                        isPrivateRelay: a.isPrivateRelay,
+                        linkable: await linkableByVerifiedEmail(env, accessToken, a, 'appleSub') };
+  if (member.fields.status !== 'approved') {
+    return { error: member.fields.status === 'pending' ? 'pending' : 'rejected' };
+  }
+
+  const customToken = await mintFirebaseCustomToken(env, {
+    uid: member.id,
+    claims: { role: 'member', isBusinessOwner: member.fields.isBusinessOwner === true },
+  });
+  return { customToken };
+}
+
+// ── קישור ע"י חבר שכבר מחובר — הנתיב החזק ──────────────────────────────────────────────
+// דורש **שני** טוקנים: אחד שמוכיח מי הוא אצל אפל, ואחד שמוכיח מי הוא אצלנו.
+//
+// 🔑 **וכאן כתובת-ממסר מותרת במפורש, בניגוד ל-`/apple-attach`.** הזהות כאן מוכחת ע"י
+// טוקן החבר שלנו ולא ע"י המייל — כלומר שאלת "האם הוא שולט בתיבה" אינה נשאלת בכלל, ואין
+// שום דבר שכתובת-הממסר מחלישה. חסימתה כאן הייתה מונעת מבעל חשבון אפל פרטי לקשר את
+// עצמו לנצח, בלי שום רווח באבטחה.
+async function handleAppleLink({ idToken, memberIdToken }, env) {
+  let a, uid;
+  try { a = await verifyAppleIdToken(env, idToken); } catch (e) { return { error: 'invalid_apple_token' }; }
+  try { uid = await uidFromIdToken(env, memberIdToken); } catch (e) { return { error: 'not_signed_in' }; }
+
+  const accessToken = await getGoogleAccessToken(env);
+  // ⚠️ חשבון אפל אחד = אדם אחד. אותו נימוק בדיוק כמו בגוגל.
+  const existing = await membersByAppleSub(env, accessToken, a.sub);
+  if (existing.some((m) => m.id !== uid)) return { error: 'apple_already_linked' };
+
+  const me = await firestoreGetDoc(env, accessToken, `members/${uid}`);
+  if (!me) return { error: 'member_not_found' };
+
+  await firestorePatch(env, accessToken, `members/${uid}`, {
+    appleSub: a.sub, appleEmail: a.email, appleLinkedAt: new Date(),
+  });
+  return { ok: true, email: a.email };
+}
+
+// ── קישור בזמן הרשמה — הנתיב החלש, ולכן החסום ביותר ────────────────────────────────────
+// אותו שער של `handleGoogleAttach`: המייל שעל הרשומה חייב להיות **זהה** למייל שאפל
+// אימתה, כלומר אפשר לקשור רק לרשומה שהנרשם עצמו יצר. בלעדיו תוקף היה קושר את חשבון
+// **האפל שלו** לרשומה של אדם אחר ונכנס בשמו ברגע שתאושר.
+//
+// 🔴 **וכאן כתובת-ממסר נחסמת — לא כהחמרה, אלא כי השער אינו יכול לעבוד איתה.**
+// `@privaterelay.appleid.com` לעולם לא יהיה זהה למייל שעל הרשומה, ולכן ההשוואה למטה
+// הייתה נכשלת **תמיד** ומחזירה `email_mismatch` — הודעה ששולחת את הנרשם לחפש טעות
+// הקלדה שאינה קיימת. קוד-שגיאה נפרד הוא מה שמאפשר למסך לומר את הדבר הנכון: "בחר לשתף
+// את המייל שלך". ר' [[feedback_state_not_event_detection]].
+async function handleAppleAttach({ idToken, memberId }, request, env) {
+  let a;
+  try { a = await verifyAppleIdToken(env, idToken); } catch (e) { return { error: 'invalid_apple_token' }; }
+  if (!memberId || typeof memberId !== 'string') return { error: 'invalid_request' };
+
+  // ⚠️ **לפני** בדיקת `emailVerified` הכללית, ולא אחריה: `apple.js` מסמן כתובת-ממסר כלא
+  // מאומתת ביודעין, ולכן הסדר ההפוך היה בולע את המקרה הזה לתוך שגיאה גנרית.
+  if (a.isPrivateRelay) return { error: 'apple_private_email' };
+  if (!a.emailVerified || !a.email) return { error: 'apple_email_unverified' };
+
+  const accessToken = await getGoogleAccessToken(env);
+  const existing = await membersByAppleSub(env, accessToken, a.sub);
+  if (existing.some((m) => m.id !== memberId)) return { error: 'apple_already_linked' };
+
+  const me = await firestoreGetDoc(env, accessToken, `members/${memberId}`);
+  if (!me) return { error: 'member_not_found' };
+  if (me.fields.appleSub) return { error: 'already_attached' };
+
+  const onRecord = String(me.fields.email || '').trim().toLowerCase();
+  if (!onRecord || onRecord !== a.email) return { error: 'email_mismatch' };
+
+  await firestorePatch(env, accessToken, `members/${memberId}`, {
+    appleSub: a.sub, appleEmail: a.email, appleLinkedAt: new Date(),
+  });
+
+  // ⚠️ **רק ל-approved** — זהה לנתיב של גוגל (§403). מי שעבר את השער כבר הוכיח שליטה
+  // בתיבה שעל הרשומה, כלומר בדיוק מה שנדרש כדי לקבל קוד-כניסה ולהיכנס איתו. רשומה
+  // `pending` מקבלת `{ ok: true }` בלבד — שער האישור אינו נעקף.
   const canEnter = me.fields.status === 'approved';
   return canEnter
     ? { ok: true, customToken: await mintFirebaseCustomToken(env, {
