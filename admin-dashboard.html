@@ -765,6 +765,11 @@ body {
 .qj-count.empty { background: var(--nav-bg); color: var(--text-muted); }
 .qj-hint { flex-basis: 100%; font-size: 11.5px; color: var(--text-sm); }
 .qj-body { border-top: 1px solid var(--border); }
+/* §427 — שאלות הסקשנים בתוך כרטיס השיפוט המהיר, מיד מתחת לכפתורי האישור. משתמש
+   ב-.sc-q/.sc-ans/.sc-gate הקיימים, כדי שלא ייווצר נוסח שני לאותן שאלות. */
+.qj-sections { border-top: 1px solid var(--border); padding: 12px 16px 6px; }
+.qj-sections .sc-gate { margin-top: 0; margin-bottom: 2px; }
+.qj-sections .sc-q:first-of-type { border-top: 1px solid var(--border); }
 .qj-row { padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--border); }
 .qj-row:first-child { border-top: none; }
 .qj-row-label { flex: 0 0 150px; }
@@ -5205,9 +5210,45 @@ function bizQuestionRow(b, q) {
       </div>
     </div>`;
 }
+// §427 — גוף השאלות לבדו, בלי מעטפת-הכרטיס. משמש גם את הטאב "📊 נתונים והגדרות"
+// וגם את בלוק האישור בשיפוט המהיר. ⚠️ **פונקציה אחת ולא שני נוסחים** — שאלה שנשאלת
+// אחרת בכל מסך היא בדיוק הפער שאיש אינו רואה (§413).
+function secQuestionsBodyHtml(b) {
+  const prio = secPrio(b);
+  return `
+        ${secPlacementHtml(b, "secSetPlacementFor('" + b.id + "','")}
+        ${SEC_QUESTIONS.map(q => bizQuestionRow(b, q)).join("")}
+        <div class="sc-q">
+          <div class="sc-q-t">עדיפות חשיפה<i>${SEC_PRIO_EFFECT[prio][1]}</i></div>
+          <div class="sc-q-a">${SEC_PRIO_EFFECT.map((p, v) =>
+            `<button class="sc-ans${prio === v ? ' on' : ''}" onclick="secSetPrioFor('${b.id}',${v})">${p[0]}</button>`).join("")}</div>
+        </div>`;
+}
+
+// ══ §427 — 🔴 **שאלות הסקשנים בבלוק האישור עצמו** ═══════════════════════════════════
+// דווח: *"אני לא יכול לאשר את העסק לפני שעונים על השאלות של הסקשנים אבל לא מופיע על
+// העסקים האלה את השאלות."* — והוא צדק לגמרי. הטאב "📊 נתונים והגדרות", שמכיל את
+// `bizQuestionsHtml`, מרונדר **רק כש-`b.status === 'approved'`** — כלומר בדיוק העסקים
+// שצריך לאשר היו היחידים שלא יכלו להגיע לשאלות, והשער של §418ב שלח אותם למסך אחר
+// ("ניהול סקשנים → מעבר על העסקים"). שער שחוסם פעולה חייב להציג את מה שפותח אותו
+// **במקום שבו הפעולה נעשית** — אחרת הוא לא שער אלא מבוי סתום ([[feedback_exit_gated_on_one_entry_path]]).
+//
+// ⚠️ **הטאב עצמו נשאר נעול ל-approved בכוונה**: הוא מכיל גם את `bizDataHtml` (קליקים,
+// לבבות, היסטוריית חשיפה) שחסר-משמעות לעסק שטרם אושר. מה שעבר לכאן הן השאלות בלבד.
+// ⚠️ מוצג גם ב-`rejected`: גם שם יש "אשר בכל זאת", ואותו שער חוסם אותו.
+function bizApprovalSectionsHtml(b) {
+  const open = secOpenQuestions(b);
+  return `
+      <div class="qj-sections">
+        <div class="sc-gate${open.length ? '' : ' ok'}">${open.length
+          ? '🔒 <b>לא ניתן לאשר את העסק עד שכל השאלות ייענו.</b> נותרו: ' + open.map(q => q[1].replace('?', '')).join(' · ')
+          : '✓ כל שאלות הסקשנים נענו — אפשר לאשר.'}</div>
+        ${secQuestionsBodyHtml(b)}
+      </div>`;
+}
+
 function bizQuestionsHtml(b) {
   const open = secOpenQuestions(b);
-  const prio = secPrio(b);
   return `
     <div class="dcard sc-card" style="margin-top:14px">
       <div class="sc-head"><div>
@@ -5217,13 +5258,7 @@ function bizQuestionsHtml(b) {
           : 'כל השאלות נענו. אפשר לשנות כאן בכל רגע.'}</div>
       </div></div>
       <div class="sc-body">
-        ${secPlacementHtml(b, "secSetPlacementFor('" + b.id + "','")}
-        ${SEC_QUESTIONS.map(q => bizQuestionRow(b, q)).join("")}
-        <div class="sc-q">
-          <div class="sc-q-t">עדיפות חשיפה<i>${SEC_PRIO_EFFECT[prio][1]}</i></div>
-          <div class="sc-q-a">${SEC_PRIO_EFFECT.map((p, v) =>
-            `<button class="sc-ans${prio === v ? ' on' : ''}" onclick="secSetPrioFor('${b.id}',${v})">${p[0]}</button>`).join("")}</div>
-        </div>
+        ${secQuestionsBodyHtml(b)}
       </div>
     </div>`;
 }
@@ -9090,10 +9125,38 @@ window.clearFanFilters = function() {
   renderMain();
 };
 
+// ══ §427 — 🔴 **בעל עסק שנרשם אינו גם אוהד שממתין לאישור** ═══════════════════════════
+// דווח: *"כאשר עסק נרשם נוצר עדיין גם רשומת אוהד כממתין ואין צורך, זה כפול סתם."*
+//
+// 🔑 **הרשומה עצמה נחוצה ואינה כפילות** — היא הזהות שדרכה בעל העסק נכנס: `ownerMemberId`
+// נוצר ב-`business.html` בהרשמה עצמה, מקשר את מסמך העסק ואת חשבון ה-Google, ותמונת
+// האימות של הבעלים נשענת עליו (§361). מה שכן היה כפול הוא **הטיפול**: אישור העסק
+// מאשר אותה ממילא באותה כתיבה אטומית ומנפיק את קוד הכניסה (§248), ובכל זאת היא ישבה
+// בתור האוהדים עם כפתורי אישור/דחייה משלה ונספרה ב"ממתינים".
+//
+// המשתמש: *"אין מה להחשיב בתור אוהד... הבדיקה נעשית מתוך דף העסק, ושם מופיע גם האימות
+// של בעל העסק."* — וזה מדויק: `ownerVerifStepHtml` בכרטיס העסק מציג את כל מה שהיה
+// נבדק כאן, כלומר שום ביקורת לא אובדת.
+//
+// ⚠️ **התנאי דורש שהעסק המקושר קיים ו-`pending` בעצמו, ולא רק `isBusinessOwner`.**
+// עסק שנדחה/נמחק, או רשומה שנשארה ממתינה בזמן שהעסק כבר אושר (כשל של ה-batch), הם
+// חריגות אמיתיות שחייבות להישאר גלויות. הסתרה לפי הדגל לבדו הייתה מעלימה בשקט בדיוק
+// את המקרים שצריך לראות ([[feedback_guard_that_always_holds]]).
+// ⚠️ ומי שכן רוצה לראות אותם — הפילטר "בעלי עסק" מציג אותם תמיד (ר' fanFilteredList),
+// והמספר נאמר במפורש בכותרת הרשימה. הסתרה שקטה היא לא ניקוי.
+function ownerMemberOfPendingBiz(f) {
+  if (!f || f.status !== 'pending' || !f.isBusinessOwner) return false;
+  const b = (MOCK_BUSINESSES || []).find(x =>
+    x.ownerMemberId === f.id || (f.linkedBusinessId && x.id === f.linkedBusinessId));
+  return !!b && b.status === 'pending';
+}
+const fanPendingList = () => MOCK_FANS.filter(f => f.status === 'pending' && !ownerMemberOfPendingBiz(f));
+const fanHiddenOwnerCount = () => MOCK_FANS.filter(ownerMemberOfPendingBiz).length;
+
 function fanClassCounts() {
   return {
     all: MOCK_FANS.length,
-    pending: MOCK_FANS.filter(f => f.status === 'pending').length,
+    pending: fanPendingList().length,
     unverified: MOCK_FANS.filter(f => !f.adminVerified).length,
     // §390 — הרשימה שהמנהל ביקש: מי שאושר ומעולם לא נכנס, כדי לפנות אליהם שוב.
     neverEntered: MOCK_FANS.filter(f => f.status === 'approved' && !f.lastSeenAt).length,
@@ -9103,6 +9166,9 @@ function fanFilteredList() {
   const q = fanSearch.trim();
   const now = Date.now();
   const list = MOCK_FANS.filter(f => {
+    // §427 — בעל עסק שממתין יחד עם העסק שלו יורד מהרשימה, **חוץ מכשמסננים במפורש
+    // "בעלי עסק"** — שם הוא בדיוק מה שחיפשו. ר' ההערה על ownerMemberOfPendingBiz.
+    if (fanVerifyTypeFilter !== 'owner' && ownerMemberOfPendingBiz(f)) return false;
     const matchF = fanStatusFilter === 'all' ? true : f.status === fanStatusFilter;
     const matchClass = fanClassPill === 'all' ? true
       : fanClassPill === 'pending' ? f.status === 'pending'
@@ -9904,7 +9970,8 @@ function fanListHtml() {
   if (selectedFanDetailId == null || !list.find(f => f.id === selectedFanDetailId)) {
     selectedFanDetailId = list[0] ? list[0].id : null;
   }
-  const pendingCount = MOCK_FANS.filter(f => f.status === 'pending').length;
+  const pendingCount = fanPendingList().length;          // §427 — בלי בעלי עסק שממתינים עם העסק
+  const hiddenOwners = fanHiddenOwnerCount();
   const approvedCount = MOCK_FANS.filter(f => f.status === 'approved').length;
   const subscriberPct = MOCK_FANS.length ? Math.round(100 * MOCK_FANS.filter(f => f.isSubscriber).length / MOCK_FANS.length) : 0;
   const weekAgo = Date.now() - 7 * 86400000;
@@ -9914,6 +9981,7 @@ function fanListHtml() {
       <div style="flex:1;min-width:230px">
         <div class="msg-crumb"><a onclick="selectTab('${HOME_KEY}')">← מרכז המשימות</a><span>/</span><span>כל האוהדים</span></div>
         <div class="msg-page-title">${pendingCount} אוהדים ממתינים לאישור</div>
+        ${hiddenOwners ? `<div class="msg-crumb" style="margin-top:4px">${hiddenOwners} ${hiddenOwners === 1 ? 'בעל עסק ממתין אינו מוצג כאן' : 'בעלי עסק ממתינים אינם מוצגים כאן'} — הם מאושרים אוטומטית עם העסק, והבדיקה נעשית מכרטיס העסק. <a onclick="setFanVerifyTypeFilter('owner')">להצגתם</a></div>` : ''}
       </div>
       <div class="msg-kpis">
         <div><div class="msg-kpi-num">${approvedCount}</div><div class="msg-kpi-label">אוהדים מאושרים</div></div>
@@ -10203,8 +10271,12 @@ function issueKindCounts() {
 function unifiedTaskItems() {
   const biz = MOCK_BUSINESSES.map(b => ({ kind:'biz', id:b.id, entity:b, c: classifyAction(b, 'business') }))
     .filter(x => x.c.primary !== 'מאושר · אין פעולה');
+  // §427 — 🔑 **הסינון כאן ולא ב-classifyAction, בכוונה.** classifyAction מזין גם את
+  // תג-הסיווג בשורת האוהד ובכרטיס-הזהות שלו; שינוי שם היה כותב "מאושר · אין פעולה"
+  // על רשומה שסטטוסה pending — שקר על המסך. כאן יורדת רק **המשימה**, בזמן שהכרטיס
+  // ממשיך לומר את האמת. ר' ההערה על ownerMemberOfPendingBiz.
   const fan = MOCK_FANS.map(f => ({ kind:'fan', id:f.id, entity:f, c: classifyAction(f, 'fan') }))
-    .filter(x => x.c.primary !== 'מאושר · אין פעולה');
+    .filter(x => x.c.primary !== 'מאושר · אין פעולה' && !ownerMemberOfPendingBiz(x.entity));
   return [...biz, ...fan];
 }
 function taskWaitDate(x) {
@@ -12267,6 +12339,7 @@ function quickJudgmentHtml(b) {
         </div>` : ''}
         <div class="qj-hint">${hint}</div>
       </div>
+      ${(showApproveApp || b.status === 'rejected') ? bizApprovalSectionsHtml(b) : ''}
       ${(hasBody && isOpen) ? `<div class="qj-body">${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
     </div>`;
 }
@@ -18707,7 +18780,12 @@ async function secWrite(id, patch, title) {
     alert('השמירה נכשלה: ' + (e && e.message ? e.message : e));
   } finally {
     delete _secBusy[id];
-    renderMain();
+    // §427 — `renderAllPreserveScroll` ולא `renderMain`: מאז שהשאלות יושבות **בתוך**
+    // כרטיס העסק (בלוק האישור), רינדור מלא היה מקפיץ את המנהל לראש המסך אחרי כל
+    // תשובה — בדיוק בשלוש התשובות הרצופות שהוא נותן לפני שהוא לוחץ "אשר".
+    // ⚠️ בטוח לכל הקשר אחר: `refreshOpenDetailPanel` מחזיר false כשאין פאנל פתוח
+    // (מסך "מעבר על העסקים", הטבלה), ואז זה נופל ל-`renderMain()` בדיוק כמו קודם.
+    renderAllPreserveScroll();
   }
 }
 window.secToggle = function(id, field) {
