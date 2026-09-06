@@ -3019,15 +3019,26 @@
       // ⚠️ עדיין **ממתינים** לו לפני מסך ההצלחה (ר' Promise.all בסוף) — §292: מסך הצלחה
       // אינו מסך אם משהו עוד רץ מאחוריו.
       let ownerLinkPromise = null;
+      let bizTokenPromise = null;   // §419 — ר' ההערה בגוף הבלוק
       if (bizDocRef) {
         // §244 — טוקן הכניסה לדשבורד, באוסף נפרד שאינו קריא ציבורית. כשל כאן לא מבטל הרשמה
         // שכבר נוצרה (בדיוק כמו קישור-החבר מתחת) — המנהל יכול להנפיק טוקן מחדש ממרכז הניהול.
-        // ⚠️ **זה כן נשאר בטור, ובכוונה:** `firestore.rules` מתנה יצירת bizTokens ב-
-        // `exists(businesses/{id}) && status == 'pending'`, כלומר הוא חייב לרוץ אחרי כתיבת
-        // המסמך; ו-/upload-biz-media מזהה את העסק דרכו, כלומר הוא חייב לרוץ לפני ההעלאה.
-        try {
-          await setDoc(doc(db, 'bizTokens', bizDocRef.id), { accessToken });
-        } catch (e) { console.error('biz token write failed:', e.message); }
+        // ── §419 — יצא מהטור ──────────────────────────────────────────────────────────────
+        // ההערה הקודמת כאן טענה שהשלב חייב להישאר בטור *"כי /upload-biz-media מזהה את העסק
+        // דרכו"*. הכיוון הראשון עדיין נכון — `firestore.rules` מתנה יצירת bizTokens ב-
+        // `exists(businesses/{id}) && status == 'pending'`, ולכן הוא חייב לרוץ **אחרי** כתיבת
+        // המסמך. הכיוון השני כבר לא: הוורקר יודע להנפיק את הטוקן בעצמו מתוך אותה בקשה
+        // שנושאת את התמונות (claimBizToken, worker/src/firestore.js).
+        //
+        // 🔑 **זה היה השלב שהפיל את AI Out Of The Box.** הוא נכשל/לא רץ, ואיתו נפלו כל
+        // התמונות **וגם** ראיית-האימות — בזמן שרשומת העסק עצמה נשמרה תקינה. כל נסיעת-רשת
+        // שיושבת בטור לפני ההעלאה היא עוד חלון שבו מוות של הדף עולה בכל הקבצים.
+        //
+        // ⚠️ הכתיבה **נשארת** ולא הוחלפה: עסק שנרשם **בלי שום תמונה** לא שולח בקשת-מדיה
+        // כלל (`hasMediaToUpload`), ולוורקר לא תהיה הזדמנות להנפיק לו טוקן. שתי הדרכים
+        // כותבות את אותו UUID בדיוק, ולכן מרוץ ביניהן אינו יכול לייצר שני טוקנים שונים.
+        bizTokenPromise = setDoc(doc(db, 'bizTokens', bizDocRef.id), { accessToken })
+          .catch(e => { console.error('biz token write failed:', e.message); });
         ownerLinkPromise = (async () => {
           let ownerMemberId = null;
           try {
@@ -3130,6 +3141,10 @@
           // להיחסם בזמן בדיוק כמו קודם (§294), והעובדה שהיא התחילה מוקדם לא משנה זאת.
           const form = await formPromise;
           form.append('accessToken', accessToken);
+          // §419 — נוסע כנפילה-לאחור בלבד: הוורקר משתמש בו רק אם הטוקן עדיין לא נמצא
+          // ב-Firestore, ומאמת אותו מול השרת לפני שהוא נשען עליו (claimBizToken).
+          // **אינו** מקור-סמכות — הזיהוי ממשיך להיות דרך הטוקן, בדיוק כמו קודם.
+          form.append('bizId', bizDocRef.id);
           // ── ⚠️ §294 — גבול-זמן. זה היה השורש של "מסך תקוע" ──────────────────────────────
           // דווח בפועל: ההרשמה נקלטה, אבל המסך נשאר על "שולח את הבקשה שלכם…" עם ספינר —
           // *"הבעל עסק היה חושב שהוא לא נרשם"*. ה-fetch הזה רץ בלי AbortController, ולכן
@@ -3168,7 +3183,22 @@
             }
           }
           const result = await resp.json();
-          if (!result.ok) { console.error(`upload-biz-media (${tag}) failed:`, result); mediaUploadFailed = true; }
+          if (!result.ok) {
+            console.error(`upload-biz-media (${tag}) failed:`, result);
+            mediaUploadFailed = true;
+            // ── §419 — 🔑 תשובה שנדחתה אינה זורקת, ולכן היא לא הגיעה ל-catch ─────────────
+            // האירוע נרשם **רק** ב-catch שמתחת, כלומר רק על חריגה. תשובת-שרת תקינה
+            // שאומרת "נכשלתי" (`{ ok:false, error:'invalid_token' }`) עברה כאן בשקט
+            // מוחלט: דגל מקומי, console.error, וזהו.
+            //
+            // **זה בדיוק מה שקרה ל-AI Out Of The Box (2026-09-04).** בלי `bizTokens`
+            // הוורקר החזיר `invalid_token`, כל התמונות **וגם ראיית-האימות** אבדו,
+            // ורשימת התקלות במרכז הניהול נשארה **ריקה לגמרי** — אפס אירועים.
+            // ⚠️ ≤50 תווים (firestore.rules) — שדה חורג מוחק את כל האירוע בשקט.
+            const why = result.error
+              || (Array.isArray(result.failed) && result.failed.length ? 'files:' + result.failed.length : 'failed');
+            logEvent('formError', { blockId: 'bizForm', bizId: bizDocRef.id, channel: `bm:${tag}:${String(why).slice(0, 24)}` });
+          }
           })(), 120000, 'MediaPhaseTimeout');
         } catch (e) {
           console.error(`upload-biz-media (${tag}) request failed:`, e.name, e.message);
@@ -3200,6 +3230,13 @@
       if (ownerLinkPromise) {
         await withTimeout(ownerLinkPromise, 20000, 'OwnerLinkTimeout')
           .catch(e => console.error('owner link wait:', e.name));
+      }
+      // §419 — כתיבת הטוקן יצאה מהטור (ר' ההערה למעלה), ולכן היא נסגרת כאן יחד עם
+      // קישור-הבעלים: §292 — מסך הצלחה אינו מסך אם משהו עוד רץ מאחוריו. ה-catch כבר
+      // בתוך ההבטחה, ולכן זה לא יכול לזרוק; גבול-הזמן מונע החזקה של המסך על כתיבה תקועה.
+      if (bizTokenPromise) {
+        await withTimeout(bizTokenPromise, 10000, 'BizTokenTimeout')
+          .catch(e => console.error('biz token wait:', e.name));
       }
 
       // §295 — החלפת-המסך היחידה בזרימה המוצלחת: מהטופס ישירות למסך ההצלחה.

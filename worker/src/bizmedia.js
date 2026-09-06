@@ -1,5 +1,5 @@
 import { getGoogleAccessToken } from './jwt.js';
-import { firestorePatch, bizIdFromToken } from './firestore.js';
+import { firestorePatch, bizIdFromToken, claimBizToken } from './firestore.js';
 import { uploadToFirebaseStorage } from './storage.js';
 
 // מקבל FormData עם accessToken + קבצים (fanPhoto/logo גולמיים, cover/coverThumb/gallery/galleryThumb
@@ -15,7 +15,17 @@ export async function handleUploadBizMedia(request, env) {
 
   const googleToken = await getGoogleAccessToken(env);
   // §244 — הטוקן עבר ל-bizTokens/{businessId}, ר' bizIdFromToken ב-firestore.js
-  const bizId = await bizIdFromToken(env, googleToken, bizToken);
+  let bizId = await bizIdFromToken(env, googleToken, bizToken);
+
+  // ── §419 — נפילה-לאחור כשהטוקן עדיין לא נכתב ל-Firestore ────────────────────────────────
+  // `bizId` הגולמי מהלקוח **אינו** מקור-סמכות ולא הפך לכזה: claimBizToken מאמת מול השרת
+  // שהמסמך אינו קיים, שהעסק קיים, ושהוא `pending` — בדיוק שלושת התנאים שהחוקים אוכפים
+  // ממילא על יצירה אנונימית. הוא משמש **רק** כשהטוקן לא נמצא, כלומר במצב שעד היום החזיר
+  // `invalid_token` והפיל את כל התמונות. ר' ההסבר המלא ב-firestore.js.
+  if (!bizId) {
+    const claimed = form.get('bizId');
+    if (claimed) bizId = await claimBizToken(env, googleToken, String(claimed), bizToken);
+  }
   if (!bizId) return { error: 'invalid_token' };
 
   const updates = {};

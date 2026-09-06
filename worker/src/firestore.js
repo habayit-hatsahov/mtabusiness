@@ -94,6 +94,33 @@ export async function bizIdFromToken(env, accessToken, bizToken) {
   const rows = await firestoreRunQuery(env, accessToken, 'bizTokens', 'accessToken', bizToken, 1);
   return rows.length ? rows[0].id : null;   // מזהה-המסמך *הוא* ה-businessId
 }
+// ── §419 — הנפקת הטוקן יכולה לקרות **בצד השרת**, בתוך אותה בקשה שנושאת את התמונות ────────
+// נולד מ-AI Out Of The Box (2026-09-04): מסמך העסק נוצר, `setDoc(bizTokens)` שאחריו לא רץ,
+// ולכן `/upload-biz-media` קיבל טוקן שאינו מצביע על שום עסק והחזיר `invalid_token`. התוצאה:
+// עסק בלי תמונות, בלי ראיית-אימות, ובלי דרך כניסה לדשבורד כדי לתקן.
+//
+// 🔑 **הבעיה היא הטור, לא הכתיבה.** בין "לחצתי שלח" ל"הקבצים בשרת" היו ארבע נסיעות-רשת
+// בטור, וכל אחת מהן דורשת שהדף יישאר חי. טלפון הורג דפים בקלות (מעבר לאפליקציה אחרת, נעילת
+// מסך, שחרור זיכרון), ואין "המשך הרשמה" בצד השרת. עכשיו ההעלאה כבר לא תלויה בכך שהנסיעה
+// השלישית הספיקה לחזור.
+//
+// ⚠️ **זה אינו מרחיב את שטח-התקיפה ולו במעט**, וזו הנקודה שהכריעה את העיצוב: שלושת התנאים
+// כאן הם **בדיוק** אלה שב-`firestore.rules` מתירים כבר היום ליצור `bizTokens` באופן אנונימי
+// (מסמך שאינו קיים · עסק קיים · `status == 'pending'` · שדה יחיד). כל מי שיכול לקרוא לוורקר
+// יכול היה לעשות בדיוק את אותה כתיבה ישירות מהדפדפן.
+//
+// ⚠️ **לעולם לא דורסים מסמך קיים.** דריסה כאן הייתה חטיפה: מי שמנחש מזהה של עסק (והוא מזהה
+// של מסמך **ציבורי**) היה מחליף את הטוקן ונכנס לדשבורד. מסמך קיים עם טוקן אחר = דחייה.
+export async function claimBizToken(env, accessToken, businessId, bizToken) {
+  if (!businessId || !bizToken) return null;
+  const existing = await firestoreGetDoc(env, accessToken, `bizTokens/${businessId}`);
+  if (existing) return existing.fields.accessToken === bizToken ? businessId : null;
+  const biz = await firestoreGetDoc(env, accessToken, `businesses/${businessId}`);
+  if (!biz || biz.fields.status !== 'pending') return null;
+  await firestorePatch(env, accessToken, `bizTokens/${businessId}`, { accessToken: bizToken });
+  return businessId;
+}
+
 export async function bizTokenFor(env, accessToken, businessId) {
   if (!businessId) return '';
   const d = await firestoreGetDoc(env, accessToken, `bizTokens/${businessId}`);

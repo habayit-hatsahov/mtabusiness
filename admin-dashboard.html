@@ -2643,6 +2643,51 @@ function ownerAsFan(b) {
 // "לא נדרשת תמונה במסלול הזה" לבין "נדרשת ולא הועלתה" — שתי מסקנות הפוכות למנהל.
 const PHOTO_ROUTES = new Set(['passScreenshot', 'purchaseEmail', 'standsPhoto']);
 
+// ── §419 — מצב האימות של בעל העסק, בפונקציה אחת ─────────────────────────────────────────
+// הגזירה הזאת ("עסק מאושר בלי החלטה מפורשת = אימות מאושר", ר' ההערה המלאה בכרטיס העסק)
+// ישבה עד עכשיו **בתוך** renderBizCard בלבד. קוביית התקלות צריכה בדיוק את אותה הכרעה כדי
+// לדעת אם ראיה חסרה היא עדיין שאלה פתוחה, ועותק שני היה נפרד מהראשון ביום הראשון — בדיוק
+// הכשל של [[ownerAsFan]] שנולד כדי למנוע אותו. מקור אחד, שני קוראים.
+function bizOwnerVerifStatus(b) {
+  return b.ownerVerificationStatus || (b.status === 'approved' ? 'confirmed' : null);
+}
+// "ההחלטה עדיין פתוחה" — כלומר ראיה חסרה כאן היא משהו שהמנהל *צריך* לעשות איתו משהו,
+// ולא תיעוד היסטורי של החלטה שכבר התקבלה.
+function bizOwnerVerifOpen(b) {
+  const s = bizOwnerVerifStatus(b);
+  return !s || s === 'pending' || s === 'info_requested';
+}
+
+// ── §419 — §361 בכיוון ההפוך: הראיה יושבת על רשומת **החבר**, לא על העסק ──────────────────
+// §361 תיקן את הכיוון האחד: כרטיס-האוהד הכריז "לא הועלתה" בזמן שהראיה על מסמך העסק.
+// הכיוון ההפוך נשאר פתוח, ונמדד אצל AI Out Of The Box (2026-09-06): הבעלים נרשם כאוהד
+// **יום קודם**, אומת ב-passScreenshot עם verifyTrust גבוה, אושר — ו-`photoProofUrl` מלא
+// על רשומת החבר שלו. כרטיס העסק הכריז "⚠️ המסלול דורש תמונה — לא הועלתה", כי הוא מסתכל
+// ב-`bizProofs` בלבד. אותו אדם, אותו מסלול אימות, אותה תמונה — ושני מסכים שלא מדברים.
+//
+// ⚠️ **נפילה-לאחור בקריאה, לא שכפול הכתובת** — בדיוק הנימוק של §361: שכפול היה מייצר שני
+// עותקים שמתפצלים ברגע שמנהל מחליף תמונה מאחד המסכים.
+//
+// ⚠️ **החיפוש לפי מייל נחוץ ואינו קיצור-דרך:** `ownerMemberId` הוא בדיוק השדה שנכשל
+// בכתיבה במקרה הזה (ר' §419 ב-firestore.rules), כלומר להסתמך עליו לבדו היה מפספס בדיוק
+// את המקרה שהנפילה-לאחור נועדה לו. זהו אותו מפתח-זהות ש-`prepareLinkedMemberApproval`
+// כבר משתמש בו כשאין קישור.
+function bizOwnerMember(b) {
+  if (!b) return null;
+  const byId = b.ownerMemberId ? findFan(b.ownerMemberId) : null;
+  if (byId) return byId;
+  const mail = String(b.ownerEmail || '').trim().toLowerCase();
+  if (!mail) return null;
+  return (MOCK_FANS || []).find(f => String(f.email || '').trim().toLowerCase() === mail) || null;
+}
+// מחזיר { url, member } רק כשאין ראיה על העסק **ויש** אחת אצל הבעלים. null בכל מצב אחר,
+// כדי שהקורא יוכל להבדיל "נמצאה אצל הבעלים" מ"נמצאה על העסק" ולומר זאת על המסך.
+function bizOwnerProofFallback(b) {
+  if (!b || b.ownerProofPhotoUrl) return null;
+  const m = bizOwnerMember(b);
+  return (m && m.photoProofUrl) ? { url: m.photoProofUrl, member: m } : null;
+}
+
 // הערך שהנרשם מסר בפועל במסלול שבחר — מה שהמנהל צריך לקרוא כדי להחליט. מסלולי-תמונה
 // מחזירים '' כי הראיה שלהם היא הקובץ עצמו, שכבר מוצג בנפרד בכרטיס.
 function fanVerifyValue(f) {
@@ -4887,6 +4932,31 @@ function bumpWaNudge(collectionName, id) {
   updateDoc(doc(db, collectionName, id), { waNudgeCount: increment(1), waNudgeAt: serverTimestamp() })
     .catch(e => console.error('bumpWaNudge failed:', collectionName, id, e));
 }
+
+// ── §419 — הנפקת טוקן-דשבורד לעסק שאין לו ───────────────────────────────────────────────
+// נולד מ-AI Out Of The Box (2026-09-04): מסמך העסק נוצר, `setDoc(bizTokens)` שאחריו לא רץ,
+// והתוצאה הייתה עסק **בלי שום דרך כניסה** — לא לבעלים ולא למנהל. הטוקן הוא אותו
+// `crypto.randomUUID()` שבדיוק business.html מייצר, ו-firestore.rules מתירה למנהל create.
+//
+// ⚠️ **הגנה חובה — קריאה בשרת לפני כתיבה, לא הסתמכות על `b.accessToken`.** BIZ_TOKENS נטען
+// ב-onSnapshot, ולפני שהוא הגיע **כל** העסקים נראים כאילו אין להם טוקן (בדיוק האזהרה שכתובה
+// מעל onSnapshot של bizProofs). לחיצה במצב הזה הייתה **מסובבת טוקן חי** ושוברת לבעל-עסק
+// קיים את הלינק שכבר נשלח לו במייל. `getDoc` מכריע מול השרת ולא מול המטמון של המסך.
+window.issueBizToken = async function (id, name) {
+  try {
+    const snap = await getDoc(doc(db, 'bizTokens', id));
+    if (snap.exists() && snap.data().accessToken) {
+      alert('לעסק הזה כבר יש טוקן — המסך פשוט עוד לא סיים לטעון אותו.\nרעננו את הדף והקישור לדשבורד יופיע.');
+      return;
+    }
+    if (!confirm(`הנפקת טוקן כניסה לדשבורד עבור "${name}".\n\nאחרי ההנפקה אפשר לשלוח לבעל העסק את הקישור, והוא יוכל להעלות בעצמו את התמונות שלא הגיעו.\n\nלהנפיק?`)) return;
+    await setDoc(doc(db, 'bizTokens', id), { accessToken: crypto.randomUUID() });
+    alert('הטוקן הונפק. הקישור לדשבורד יופיע בכרטיס תוך רגע, וגם בכפתורי הוואטסאפ/מייל.');
+  } catch (e) {
+    console.error('issueBizToken failed:', e);
+    alert('הנפקת הטוקן נכשלה: ' + e.message);
+  }
+};
 
 window.sendBizWA = function(id, phone, ownerName, businessName, accessToken) {
   window.open(waLink(phone, applyBizTpl(getTpl('wa', DEFAULT_TPL_WA), ownerName, businessName, accessToken)), '_blank');
@@ -7431,7 +7501,15 @@ function bizFullDetailHtml(id, opts) {
   ].filter(Boolean).join('');
   const idWaBtn = b.ownerPhone ? `<button class="btn-id-wa" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">וואטסאפ</button>` : '';
   const idMailBtn = b.ownerEmail ? `<button class="btn-id-mail" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מייל</button>` : '';
-  const idDashBtn = b.accessToken ? `<a href="business-dashboard.html?token=${b.accessToken}" target="_blank" class="btn-id-dash">פתיחת דשבורד העסק</a>` : '';
+  // ── §419 — עסק בלי טוקן היה מבוי סתום גמור ─────────────────────────────────────────────
+  // עד עכשיו: אין טוקן → אין כפתור → **שום דבר**. ההערה ליד `accessToken` ב-hydrateBiz כבר
+  // אמרה "עסק שהלינקים שלו ריקים… צריך להנפיק לו טוקן", אבל לא היה שום מסך שמנפיק.
+  // זה מה שקרה ל-AI Out Of The Box: `setDoc(bizTokens)` ב-business.html נכשל/לא רץ, ובעל
+  // העסק לא יכול היה להיכנס לדשבורד — כלומר גם **לא** להעלות בעצמו את התמונות שאבדו.
+  // 🔑 בלי הכפתור הזה, "שלח לו לינק לדשבורד" הוא עצה שאי אפשר לבצע.
+  const idDashBtn = b.accessToken
+    ? `<a href="business-dashboard.html?token=${b.accessToken}" target="_blank" class="btn-id-dash">פתיחת דשבורד העסק</a>`
+    : `<button class="btn-id-dash" onclick="issueBizToken('${b.id}','${escJsAttr(b.name)}')">🔑 הנפקת טוקן — אין לעסק דשבורד</button>`;
   // ── §299 — "מנוי מאומת" ו"תקנון" ירדו מכרטיס-הזהות ──────────────────────────────────────
   // המשתמש: *"מנוי מאומת תוריד, משם כל הפרטים יש באימות. תקנון וזמן האישור תוסיף באימות."*
   // "מנוי מאומת" היה שכפול מלא של כרטיס האימות שמתחת (ענף/שער/מס' מנוי), ומאז §284 הוא גם
@@ -7619,9 +7697,13 @@ function bizFullDetailHtml(id, opts) {
   // approveBiz כבר כותב 'confirmed' בפועל, אבל ~50 העסקים שאושרו *לפני* השינוי נשארו עם שדה ריק
   // והמשיכו להציג "ממתין להחלטה". הגזירה כאן מיישרת אותם מיידית בלי migration: עסק מאושר בלי
   // החלטה מפורשת = אימות מאושר. החלטה מפורשת (כולל דחייה) תמיד מנצחת את הגזירה.
+  // §419 — הגזירה עברה ל-bizOwnerVerifStatus (ליד PHOTO_ROUTES), כי קוביית התקלות צריכה
+  // אותה הכרעה בדיוק. הלוגיקה זהה לחלוטין למה שהיה כאן; רק המיקום השתנה.
+  // ⚠️ שני המשתנים הנלווים נשארים: `ownerVerifRaw` מזין את כפתור "החזרה לממתין להחלטה",
+  // ו-`ownerVerifDerived` מבדיל "אושר יחד עם העסק" מ"הוחלט במפורש" בשורת-המצב.
   const ownerVerifRaw = b.ownerVerificationStatus || null;
-  const ownerVerifDerived = !ownerVerifRaw && b.status === 'approved';
-  const ownerVerifStatus = ownerVerifRaw || (ownerVerifDerived ? 'confirmed' : null);
+  const ownerVerifStatus = bizOwnerVerifStatus(b);
+  const ownerVerifDerived = !ownerVerifRaw && ownerVerifStatus === 'confirmed';
   const ownerVerifBadge = ownerVerifStatus === 'confirmed' ? `<span class="class-badge neutral">✓ אומת</span>`
     : ownerVerifStatus === 'rejected' ? `<span class="warn-badge">✗ נדחה</span>`
     : ownerVerifStatus === 'info_requested' ? `<span class="treat-badge">ממתין למידע נוסף</span>`
@@ -7649,11 +7731,20 @@ function bizFullDetailHtml(id, opts) {
   // ראה "לא נדרשת תמונה" מעל ראיה שכן קיימת. דווח: "העליתי גם תמונה באימות וגם לא רואים אותו".
   const ownerRoute = ownerAsFan(b).verifyMethod;
   const ownerVerifValue = fanVerifyValue(ownerAsFan(b));
-  const ownerVerifPhotoHtml = b.ownerProofPhotoUrl
-    ? `<img src="${esc(bizImageViewUrl(b.ownerProofPhotoUrl))}" alt="ראיית האימות של בעל העסק"
+  // §419 — הראיה עשויה לשבת על רשומת החבר של הבעלים (ר' bizOwnerProofFallback).
+  const ownerProofAlt = bizOwnerProofFallback(b);
+  const ownerProofUrl = b.ownerProofPhotoUrl || (ownerProofAlt ? ownerProofAlt.url : '');
+  const ownerVerifPhotoHtml = ownerProofUrl
+    ? `<img src="${esc(bizImageViewUrl(ownerProofUrl))}" alt="ראיית האימות של בעל העסק"
            class="zoomable" title="לחצו להגדלה"
-           onclick="openImageLightbox('${esc(b.ownerProofPhotoUrl)}','proof-${esc(b.id)}.jpg')"
-           onerror="markProofImageBroken(this)">`
+           onclick="openImageLightbox('${esc(ownerProofUrl)}','proof-${esc(b.id)}.jpg')"
+           onerror="markProofImageBroken(this)">${ownerProofAlt
+             // נאמר במפורש מאיפה היא הגיעה — בדיוק כמו שכרטיס האוהד אומר "מתוך רשומת
+             // העסק המקושר". המנהל צריך לדעת שהיא **אינה** על העסק, אחרת הוא יסיק
+             // שבעל-העסק צירף אותה בטופס העסק כשלמעשה היא מהרשמת-האוהד שלו.
+             ? `<div class="proof-src">מתוך רשומת החבר של הבעלים${
+                  ownerProofAlt.member.name ? ' · ' + esc(ownerProofAlt.member.name) : ''}</div>`
+             : ''}`
     : PHOTO_ROUTES.has(ownerRoute)
       ? `<div class="owner-verify-photo-empty warn">⚠️ המסלול דורש תמונה — לא הועלתה</div>`
       : `<div class="owner-verify-photo-empty">במסלול הזה אין תמונה</div>`;
@@ -15099,6 +15190,13 @@ const MEDIA_ERR_LABELS = {
   MediaPhaseTimeout: 'ההעלאה נתקעה ונקטעה',
   AbortError:        'ההעלאה נקטעה',
   TypeError:         'הבקשה לא יצאה (רשת/דפדפן)',
+  // §419 — עד עכשיו כאן היו **רק** שמות-חריגה, כי רק חריגה נרשמה כאירוע. תשובת-שרת
+  // שנדחתה עברה בשקט (ר' business.html). אלה הקודים שהוורקר מחזיר בפועל.
+  // 🔑 `invalid_token` הוא הקוד של התקלה עצמה: בלי `bizTokens` הוורקר אינו מזהה את
+  // העסק ודוחה את **כל** התמונות בבת אחת — ולכן הוא מתורגם למה שהמנהל צריך לעשות.
+  invalid_token:        'העסק לא זוהה בשרת — לא היה לו טוקן בזמן ההרשמה',
+  missing_access_token: 'הבקשה נשלחה בלי טוקן',
+  failed:               'השרת דחה את ההעלאה',
 };
 
 // מבדיל בין שני דברים שנראו עד היום זהים — וההבדל ביניהם הוא **מה המנהל צריך לעשות**:
@@ -15126,14 +15224,33 @@ function classifyRegError(e) {
   }
 
   // §294: `bm:<name>` — מדיה של עסק (לוגו/תמונה מייצגת/גלריה/ראיה) דרך ה-Worker.
+  // ── §419 — התג של §381 מעולם לא הגיע למסך ──────────────────────────────────────────────
+  // §381 פיצל את שלב-המדיה לשתי בקשות נפרדות והוסיף תג באמצע הערוץ: `bm:<tag>:<name>`,
+  // כאשר tag הוא 'proof' (ראיית האימות) או 'rest' (לוגו/מייצגת/גלריה). ההערה שם אומרת
+  // במפורש למה: *"בלעדיו bm:TimeoutError לא אומר אם אבדה ראיית-האימות (חוסם אישור של
+  // בעל-עסק) או תמונת גלריה (מטרד)"*. ⚠️ **המפה כאן לא עודכנה אז**, ו-`ch.slice(3)` החזיר
+  // `'proof:TimeoutError'` — מחרוזת שאינה מפתח ב-MEDIA_ERR_LABELS. התוצאה: מאז §381 כל
+  // כשל-מדיה של עסק הוצג באנגלית גולמית, **וההבחנה שהתג נועד לשאת לא הגיעה למסך כלל.**
+  // ⚠️ נפילה-לאחור לאירועים מלפני §381 (`bm:TimeoutError`, בלי תג) — הם עדיין ברשימה.
   if (ch.startsWith('bm:')) {
-    const name = ch.slice(3);
-    return {
-      kind: 'photoFailed',
-      title: 'תמונות העסק לא עלו — ההרשמה כן נקלטה',
-      detail: MEDIA_ERR_LABELS[name] || name || 'סיבה לא ידועה',
-      badge: 'תמונות חסרות',
-    };
+    const parts = ch.slice(3).split(':');
+    const tag  = parts.length > 1 ? parts[0] : '';
+    const name = parts.length > 1 ? parts.slice(1).join(':') : parts[0];
+    // §419 — `files:N` נושא מספר משתנה ולכן אינו יכול להיות מפתח במפה. הוא נוצר כשהוורקר
+    // העלה חלק מהקבצים ונכשל באחרים — מצב שונה לגמרי מ"הכל נפל", ולכן הוא נאמר במספרים.
+    const files = /^files:(\d+)$/.exec(name);
+    const reason = files
+      ? (files[1] === '1' ? 'קובץ אחד נדחה בשרת — השאר עלו' : `${files[1]} קבצים נדחו בשרת — השאר עלו`)
+      : (MEDIA_ERR_LABELS[name] || name || 'סיבה לא ידועה');
+    // הראיה חמורה יותר מהגלריה: בלעדיה אי אפשר לאשר את בעל העסק בכלל, ואילו תמונות
+    // חסרות הן כרטיס פחות יפה. אותה שורה בדיוק, שתי משמעויות — ולכן שתי תוויות.
+    return tag === 'proof'
+      ? { kind: 'photoFailed', badge: 'ראיה חסרה',
+          title: 'תמונת האימות של בעל העסק לא עלתה — ההרשמה כן נקלטה',
+          detail: reason + ' · בלי הראיה אי אפשר לאשר את האימות' }
+      : { kind: 'photoFailed', badge: 'תמונות חסרות',
+          title: 'תמונות העסק לא עלו — ההרשמה כן נקלטה',
+          detail: tag === 'rest' ? reason + ' · לוגו/תמונה מייצגת/גלריה' : reason };
   }
 
   return {
@@ -15228,6 +15345,86 @@ function regFailureList() {
       };
     })
     .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
+}
+
+// ══ §419 — "תמונה לא עלתה" שנגזרת מהמצב, לא מאירוע ═══════════════════════════════════════
+// דיווח-אמת (איל מנדל / AI Out Of The Box, 2026-09-04): *"לא עלו התמונות שהוא העלה, וגם
+// המסלול אימות שהוא בחר נדרשת תמונה והיא לא עלתה"*. שליפה מהנתונים הראתה מסמך-עסק קיים
+// **בלי** bizTokens, **בלי** ownerMemberId, בלי תמונות — ו**אפס אירועי formError**.
+//
+// 🔑 **וזה בדיוק הכשל שאף אחד מהמנגנונים הקיימים לא יכול לתפוס.** שלושתם נשענים על משהו
+// שנרשם *בזמן* הכשל, וכאן שום דבר לא נרשם:
+//   · `regFailureList` (§284/§294) — דורש אירוע formError מהלקוח.
+//   · `mediaUploadFailureHtml` (§376) — דורש שהוורקר יכתוב `mediaUploadFailed`. הוורקר יוצא
+//     מוקדם ב-`invalid_token` (bizmedia.js) ואינו כותב כלום; ובלי bizTokens זה בדיוק מה שקרה.
+//   · `bizWriteErrorList` (§215) — דורש `/log-biz-error`, שדורש בעצמו accessToken תקין.
+// דף שמת אחרי כתיבת המסמך לא מריץ אף אחד מהם. **מדידה של אירוע אינה מדידה של מצב.**
+//
+// לכן כאן: הכרעה מהנתונים עצמם, בדיוק כמו `regClashList` שמחשב התנגשויות-מושב בלי שאיש
+// דיווח עליהן. זה המנגנון היחיד ברשימה שעובד גם כשהדפדפן של הנרשם נעלם באמצע.
+//
+// ⚠️ **מוצג רק כשההחלטה עדיין פתוחה** — עסק/אוהד שכבר אושר או נדחה אינו תקלה פתוחה אלא
+// היסטוריה, ורשימת-תקלות שמערבבת את השניים היא רשימה שאי-אפשר לעבוד איתה (אותו נימוק
+// בדיוק שכתוב מעל mediaUploadFailureHtml: "היעדר כשל אינו הודעה").
+function missingMediaList() {
+  const out = [];
+  const push = (o) => out.push({ ...o, handled: handledRegIssues[o.key] || null });
+
+  (MOCK_BUSINESSES || []).forEach(b => {
+    if (b.status === 'rejected') return;
+    const bizRef = { id: b.id, name: b.name || '(ללא שם)' };
+    const who = b.ownerPhone ? ` · ${b.ownerPhone}` : '';
+
+    // (1) המסלול דורש ראיה, ואין ראיה **בשום מקום**. חוסם אישור של בעל-העסק.
+    // ⚠️ `b.ownerProofPhotoUrl` מגיע מ-BIZ_PROOFS (§382/§385) — האוסף, לא מסמך העסק.
+    // ⚠️ §419 — וגם לא אצל הבעלים: `bizOwnerProofFallback` בודק את רשומת החבר שלו.
+    // בלי זה כל בעל-עסק שאימת את עצמו קודם **כאוהד** היה מופיע כאן כתקלת-שווא, בזמן
+    // שהראיה שלו קיימת ומוצגת בכרטיס. זה בדיוק §361, בכיוון ההפוך.
+    if (bizOwnerVerifOpen(b) && PHOTO_ROUTES.has(ownerAsFan(b).verifyMethod)
+        && !b.ownerProofPhotoUrl && !bizOwnerProofFallback(b)) {
+      push({
+        kind: 'photoFailed', key: 'nomedia|proof|' + b.id, at: b.registeredAt, fans: [], bizRef,
+        title: 'תמונת האימות של בעל העסק חסרה — המסלול דורש אותה',
+        detail: `${bizRef.name}${who} · מסלול "${fanVerifyMethodLabel(ownerAsFan(b))}" · אי אפשר לאשר את האימות בלעדיה`,
+        badge: 'ראיה חסרה',
+      });
+    }
+
+    // (2) אפס תמונות בכלל. תמונה מייצגת היא **חובה בטופס ההרשמה** מאז §237 (ושם בלבד —
+    // בדשבורד היא מכוון לא נאכפת), ולכן בקשה חדשה בלי אף תמונה אינה בחירה של בעל-העסק
+    // אלא העלאה שלא הגיעה. מוגבל ל-pending: עסק מאושר בלי תמונות כבר עבר החלטה, ויש לו
+    // את הבאנר של §376 ואת כרטיס-הדחיפה בדשבורד.
+    if (b.status === 'pending' && !b.coverPhoto && !b.logo && !(b.photos || []).length) {
+      push({
+        kind: 'photoFailed', key: 'nomedia|images|' + b.id, at: b.registeredAt, fans: [], bizRef,
+        title: 'אף תמונה של העסק לא הגיעה — אך הטופס דורש תמונה מייצגת',
+        detail: `${bizRef.name}${who} · לא לוגו, לא תמונה מייצגת ולא גלריה · כמעט בוודאות ההעלאה נכשלה ולא שבעל-העסק ויתר`,
+        badge: 'תמונות חסרות',
+      });
+    }
+  });
+
+  (MOCK_FANS || []).forEach(f => {
+    if (f.status !== 'pending') return;   // אושר/נדחה = ההחלטה כבר התקבלה
+    if (!PHOTO_ROUTES.has(fanVerifyMethod(f))) return;
+    if (f.photoProofUrl) return;
+    // ⚠️ §361 — לבעל-עסק הראיה יושבת על **מסמך העסק**, לא על רשומת החבר. בלי הנפילה-לאחור
+    // הזאת כל בעל-עסק היה מופיע כאן כתקלה בזמן שהתמונה שלו קיימת ומוצגת יפה בכרטיס העסק.
+    // זו בדיוק אותה נפילה-לאחור שכבר קיימת בכרטיס האוהד — ולא שכפול של הכתובת.
+    const linkedBiz = f.isBusinessOwner
+      ? (findBiz(f.linkedBusinessId) || (MOCK_BUSINESSES || []).find(b => b.ownerMemberId === f.id))
+      : null;
+    if (linkedBiz && linkedBiz.ownerProofPhotoUrl) return;
+    push({
+      kind: 'photoFailed', key: 'nomedia|fan|' + f.id, at: f.registeredAt,
+      fans: [{ id: f.id, name: f.name, status: f.status }], bizRef: null,
+      title: 'תמונת האימות של האוהד חסרה — המסלול דורש אותה',
+      detail: `${f.name}${f.phone ? ' · ' + f.phone : ''} · מסלול "${fanVerifyMethodLabel(f)}" · אי אפשר להכריע בלעדיה`,
+      badge: 'ראיה חסרה',
+    });
+  });
+
+  return out;
 }
 
 // כמה פתחו את הטופס ולא שלחו — מוצג כמשפט-סיכום בלבד, ר' ההערה למעלה.
@@ -15352,7 +15549,11 @@ function regIssueList() {
   // §302 — מה שטופל יורד לתחתית הרשימה ולא נמחק ממנה. הסתרה מלאה הייתה "מנקה" יפה אבל
   // גם מוחקת את הדרך לבטל סימון שגוי; המונה בקובייה כבר סופר רק את הפתוחים, וזה מה
   // שהמשתמש באמת רצה לנקות.
-  return [...regClashList(), ...regFailureList()]
+  // §419 — נקודת-החיבור **היחידה** של missingMediaList. כל מה שמתחת יורש אותה מכאן: מונה
+  // הקובייה (TASK_CLASS_TILES), הרשימה המאוחדת (unifiedIssueList), טאב "הרשמה", ו"טיפלתי".
+  // זה מכוון: §357 נשרף בדיוק על ההפך — מנגנון שחובר לחצי מהרשימה, כך ש"טיפלתי" לא ניקה
+  // כלום ואיש לא ראה שגיאה. מקור חדש שנוסף כאן מחובר לכל הצרכנים ביום הראשון.
+  return [...regClashList(), ...regFailureList(), ...missingMediaList()]
     .sort((a, b) => (a.handled ? 1 : 0) - (b.handled ? 1 : 0)
                  || (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
@@ -15923,7 +16124,14 @@ function regIssueFilteredList() {
   let list = regIssueOpenList();
   // §296 — 'photoFailed' נוסף ליד 'failed'. בלי זה כשלי-תמונה היו נעלמים בשקט בסינון הזה,
   // כלומר בדיוק הדבר שהמשתמש ביקש לראות היה מוסתר ע"י סינון שנראה תמים.
-  if (taskEntityFilter === 'biz') list = list.filter(x => x.kind === 'failed' || x.kind === 'photoFailed');
+  // ── §419 — הסינון עבר מ**סוג-התקלה** ל**ישות שהשורה מצביעה עליה** ────────────────────
+  // הסינון לפי `kind` היה שגוי משני הכיוונים: 'biz' שמר גם כשלי-תמונה של **אוהדים** (אותו
+  // kind בדיוק), ו-'fan' לא סינן כלום ולכן הציג גם כשלי-עסקים. עד היום זה כמעט לא הורגש כי
+  // רוב כשלי-השליחה הם של עסקים — אבל missingMediaList מוסיף שורות-אוהד רבות, והופך את זה
+  // לגלוי מיד. 🔑 `unifiedIssueList` כבר מסנן לפי `entity.kind` (ר' unifiedIssueFilteredList),
+  // כלומר שני המסכים הכריעו אחרת על אותה שורה. עכשיו הם מסכימים.
+  if (taskEntityFilter === 'biz') list = list.filter(x => !!x.bizRef);
+  else if (taskEntityFilter === 'fan') list = list.filter(x => x.fans && x.fans.length);
   const q = taskSearchQ.trim();
   if (q) list = list.filter(x => `${x.title} ${x.detail} ${x.fans.map(f => f.name).join(' ')}`.includes(q));
   return list;

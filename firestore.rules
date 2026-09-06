@@ -92,10 +92,33 @@ service cloud.firestore {
 
       allow update: if isAdmin()
 
-        // (א) דדופ אנונימי לרשומה קיימת — אחרי שה-Worker כבר זיהה memberId
-        // תואם. עדיין ללא request.auth — מוגבל בקפדנות לשדות "פרופיל אישי".
+        // (א) דדופ לרשומה קיימת — אחרי שה-Worker כבר זיהה memberId תואם.
+        // מוגבל בקפדנות לשדות "פרופיל אישי".
+        //
+        // ══ §419 — `request.auth == null` הוסר. זהו §288, שנה אחרי, ב-Firestore ══════════
+        // 🔑 **הניסוח הקודם היה: מותר למנהל, ומותר למי שלא מחובר בכלל — ואסור לכל מי
+        // שביניהם.** מי נופל שם? כל חבר שכבר התחבר פעם לאתר. `firebase-config.js` מריץ
+        // `getAuth(app)` **בכל דף**, כולל טופסי ההרשמה; הסשן חי ב-IndexedDB של הדומיין;
+        // וה-SDK מצרף את הטוקן לכל כתיבה. `request.auth` כבר לא null, והכתיבה נדחית.
+        //
+        // **נמדד בפועל (2026-09-06, §419):** "AI Out Of The Box" נרשם ב-10:40:50. אירוע
+        // `formSubmit` — שהוא בעצמו כתיבה ל-Firestore — **נרשם בהצלחה ב-10:40:51.334**,
+        // כלומר הרשת עבדה והדף היה חי. באותה שנייה בדיוק נכשלו שלוש כתיבות: `bizTokens`,
+        // `businesses.ownerMemberId`, והדדופ הזה. **שלושתן היו המקומות היחידים בקובץ
+        // שדרשו `request.auth == null`.** שתי הכתיבות שהצליחו (יצירת מסמך העסק, ו-events)
+        // הן היחידות בלי תנאי auth. הבעלים נרשם כאוהד יום קודם, אושר, וחיבר Google.
+        // התוצאה: עסק בלי תמונות, בלי ראיית-אימות, ובלי דרך כניסה לדשבורד כדי לתקן.
+        //
+        // ⚠️ **ההסרה אינה מרחיבה את החשיפה ולו במעט**, וזה בדיוק הנימוק של §288
+        // ב-`storage.rules`: הנתיב **כבר** פתוח לכתיבה אנונימית — זו הזרימה המתוכננת.
+        // כל תוקף יכול פשוט לפתוח חלון פרטי ולהיות אנונימי. התנאי לא הגן על כלום; הוא רק
+        // העניש דווקא את מי שכן התחבר. ההגנה האמיתית היא רשימת-ההיתר של השדות שמתחת,
+        // שנשארה בדיוק כפי שהייתה.
+        //
+        // ⚠️ הדבר הזה חוזר בשלושה מקומות בקובץ (כאן · `businesses` update (א) ·
+        // `bizTokens` create). כולם הוסרו יחד ב-§419 — הסרה חלקית הייתה משאירה את אותו
+        // באג חי בחצי מהזרימה, וזה בדיוק מה שקרה בין §288 לכאן.
         || (
-          request.auth == null &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly([
               'firstName', 'lastName', 'birthDate', 'phone', 'email',
@@ -185,10 +208,11 @@ service cloud.firestore {
 
       allow update: if isAdmin()
 
-        // (א) יצירה אנונימית ממשיכה עם updateDoc מיידי: הוספת ownerMemberId,
-        // ואח"כ עדכון תמונות אחרי Storage upload. status חייב להישאר pending.
+        // (א) ההרשמה ממשיכה עם updateDoc מיידי: הוספת ownerMemberId, ואח"כ עדכון
+        // תמונות אחרי Storage upload. status חייב להישאר pending.
+        // §419 — `request.auth == null` הוסר. **הנימוק המלא והמדידה: ר' `members` update (א)
+        // למעלה.** זו הכתיבה שהפילה בפועל את ownerMemberId ואת התמונות של AI Out Of The Box.
         || (
-          request.auth == null &&
           resource.data.status == 'pending' &&
           request.resource.data.status == 'pending' &&
           request.resource.data.diff(resource.data).affectedKeys()
@@ -457,8 +481,11 @@ service cloud.firestore {
       // אין list לאף אחד חוץ ממנהל — list על האוסף הזה = שליפת כל הטוקנים.
       allow list: if isAdmin();
 
-      // הרשמת עסק חדש (business.html) היא אנונימית, ולכן גם יצירת הטוקן שלה.
-      // שלוש הגנות מצטברות:
+      // הרשמת עסק חדש (business.html) — יצירת טוקן הכניסה שלה.
+      // §419 — `request.auth == null` הוסר. **הנימוק המלא והמדידה: ר' `members` update (א)
+      // בראש הקובץ.** זו הכתיבה שנכשלה ראשונה אצל AI Out Of The Box, ובלי הטוקן גם
+      // `/upload-biz-media` החזיר `invalid_token` והפיל את כל התמונות ואת ראיית-האימות.
+      // שלוש הגנות מצטברות — כולן נשארו כפי שהיו:
       // (1) create חל רק כשהמסמך *לא* קיים — אי-אפשר לדרוס טוקן של עסק שכבר יש לו אחד;
       // (2) מזהה-המסמך חייב להיות של עסק **קיים** שסטטוסו 'pending' — כלומר גם אם מישהו
       //     ינחש מזהה, הוא לא יכול להנפיק טוקן לעסק מאושר (ולכולם ממילא כבר יש מסמך טוקן);
@@ -466,7 +493,6 @@ service cloud.firestore {
       // עדכון/מחיקה (רוטציית טוקן) — מנהל בלבד.
       allow create: if isAdmin()
         || (
-          request.auth == null &&
           request.resource.data.keys().hasOnly(['accessToken']) &&
           exists(/databases/$(database)/documents/businesses/$(businessId)) &&
           get(/databases/$(database)/documents/businesses/$(businessId)).data.status == 'pending'
