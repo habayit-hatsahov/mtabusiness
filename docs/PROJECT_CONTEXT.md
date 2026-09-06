@@ -20945,15 +20945,14 @@ service-account (עסק `pending` אינו קריא ציבורית):
 | | |
 |---|---|
 | ✅ הגשר מוזרק לדומיין המרוחק | `Bridge.java:242` מוסיף את `server.url` ל-`allowedOriginRules`, ו-`addDocumentStartJavaScript` + `addWebMessageListener` חלים עליהם |
-| ❌ **`Capacitor.Plugins.PushNotifications` אינו קיים כאן** | `native-bridge.js` *קורא* את `cap.Plugins` ולעולם אינו ממלא אותו — המילוי נעשה ע"י ה-JS של כל תוסף, שאינו ארוז אצלנו |
+| 🔴 ~~`Capacitor.Plugins` אינו מאוכלס~~ | **טענה זו שגויה — ר' §420ט.** נמדד על מכשיר: `Plugins` מכיל את כל 5 התוספים כולל `PushNotifications` |
 | ✅ ומה שכן נחשף, וזה כל מה שצריך | `cap.nativePromise` · `cap.addListener` · `cap.getPlatform` |
 
 **כלומר אין צורך לארוז ולו בייט אחד של Capacitor באתר.**
 
-⚠️ **`Capacitor.isPluginAvailable()` יחזיר `false` תמיד אצלנו — אסור להשתמש בו.**
-הוא ממומש כ-`hasOwnProperty(cap.Plugins, name)` (native-bridge.js:841), ו-`cap.Plugins`
-ריק כאן לנצח. זו הבדיקה הטבעית ביותר לכתוב, והיא הייתה מכבה את הפוש **בשקט בכל
-מכשיר** — בדיוק [[feedback_guard_that_always_holds]].
+🔴 **האזהרה שהופיעה כאן על `isPluginAvailable()` הוסרה — היא הייתה שגויה.**
+מדידה על Galaxy A52s (§420ט) החזירה `true`. הקוד לא נשען עליה ולכן לא נפגע, אבל
+אזהרה שגויה גרועה מהיעדר אזהרה. הפירוט המלא ב-§420ט.
 
 ### מה נבנה
 
@@ -21287,3 +21286,101 @@ network-first עם נפילה למטמון אחרי 4 שניות, ולכן הב�
 
 **קבצים ב-§422:** business.html, storage.rules, worker/src/bizmedia.js,
 tests/bizmediaurl.test.js (חדש), tests/package.json, ומסמך זה.
+
+---
+
+## §420ט — הפוש עבד מקצה לקצה על מכשיר אמיתי, ושתי טענות שלי התבררו כשגויות (2026-09-06)
+
+**Galaxy A52s, אנדרואיד 14** — אותו מכשיר שגילה את באג "חזור" ב-§417.
+
+### השיטה — ולמה היא שווה לזכור
+
+המשתמש על **אייפון**, כלומר אינו יכול להתקין APK כלל. עם מכשיר אנדרואיד מושאל ו-`adb`
+נפתחה דרך שמייתרת את הלולאה "מה ראית על המסך?":
+
+```
+adb install / logcat / exec-out screencap / shell input keyevent
+adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>
+→ DevTools Protocol (WebSocket) → Runtime.evaluate בתוך ה-WebView החי
+```
+
+🔑 **זה מה שאפשר להריץ את `native-push.js` האמיתי מהאתר החי בתוך האפליקציה** ולקרוא
+את התוצאה — במקום לשכפל את הלוגיקה להרנס ולבדוק את השכפול
+([[feedback_verification_must_run_the_producer]]).
+הסקריפט: `scratch/devtools_eval.js` (בתיקיית העבודה, לא בריפו).
+
+### מה אומת, חוליה-חוליה
+
+| חוליה | הראיה |
+|---|---|
+| `google-services.json` עובד בזמן ריצה | `I/FirebaseApp: FirebaseApp initialization successful` |
+| התוסף רשום נייטיב | `D/Capacitor: Registering plugin instance: PushNotifications` |
+| האפליקציה טוענת את הדומיין החי | `D/Capacitor: Loading app at https://yellowzone.co.il` |
+| **הגשר מוזרק לדומיין המרוחק** | `hasCapacitor:true`, `nativePromise:"function"`, `platform:"android"` |
+| ההרשאה נדרשת ומתקבלת | חלון אנדרואיד בעברית → `granted` |
+| **טוקן FCM אמיתי** | 142 תווים, `docgtNkDTXyTlQ86dClolc…` |
+| **השליחה עובדת** | `sendFcmToToken` **האמיתית מהוורקר** → `status:200` |
+| **זיהוי טוקן מת** | טוקן פגום → `dead:true, status:404` |
+| **ההתראה מגיעה** | צולמה על המסך: אייקון ה-Z, עברית, אימוג'י |
+
+`scratch_test_fcm_send.mjs` (חדש) — **מייבא את `sendFcmToToken` מ-`worker/src/fcm.js`**
+ולא משכפל אותה. בודק גם את המרת `data` למחרוזות (נשלח מספר בכוונה).
+
+### 🔴 טעות א' — מסקנה שלילית מחיפוש חלקי
+
+בניתי את `native-push.js` על הטענה: *"`native-bridge.js` קורא את `cap.Plugins` ולעולם
+אינו ממלא אותו, ולכן `Capacitor.Plugins.PushNotifications` אינו קיים ו-
+`isPluginAvailable()` יחזיר תמיד false"* — וכתבתי אותה גם כאזהרה חד-משמעית בקוד.
+
+**מדידה על המכשיר:**
+```json
+{"PluginsKeys":["SystemBars","CapacitorCookies","WebView","CapacitorHttp","PushNotifications"],
+ "hasRegisterMethod":"function", "isPluginAvailable":true}
+```
+
+**הכול שגוי.** ואיך זה קרה: grep-תי אחרי המקום שממלא את `cap.Plugins`, לא מצאתי,
+**והסקתי מהיעדר ראיה שזה לא קורה** — ואז הצגתי את זה כ"נבדק במקור, לא הונח".
+
+🔑 **קריאת-מקור שמצאה משהו היא ראיה; קריאת-מקור שלא מצאה משהו אינה ראיה להיפך.**
+ר' [[feedback_absence_of_evidence]].
+
+⚠️ **הקוד עצמו לא השתנה, ובכוונה** — `available()` בודק את הפונקציות עצמן, וזה עובד
+בשני המצבים. **מה שהיה שגוי הוא הנימוק, לא המימוש.** אבל אזהרה שגויה גרועה מהיעדר
+אזהרה, כי היא תגרום למישהו להימנע בעתיד מ-API עובד — ולכן תוקנה בשלושה מקומות.
+
+### 🔴 טעות ב' — ייחסתי משמעות לראיה שאינה קשורה
+
+כשראיתי את חלון ההרשאה בעברית תקינה כתבתי שזו "אחת משתי הסיבות שבנינו אפליקציה".
+**המשתמש תיקן: בעיית ה-"?????" הייתה באייפון בלבד** (§52), ובאנדרואיד מעולם לא הייתה.
+התצפית נכונה, המשמעות שייחסתי לה לא.
+
+### ⚠️ ממצא פתוח — ההתראות לא קופצות
+
+```
+channel=fcm_fallback_notification_channel   importance=3
+```
+
+**אין לנו ערוץ התראות משלנו**, ולכן FCM נופל לערוץ ברירת-המחדל שלו:
+- ההתראה נכנסת למגירה **בלי לקפוץ על המסך** (heads-up דורש importance=HIGH)
+- בהגדרות המכשיר היא תופיע תחת שם גנרי ולא "הטבות חדשות"
+
+לאפליקציית הטבות שמודיעה על משהו חדש — זה הפרש משמעותי בנראות. **תיקון: ליצור ערוץ
+משלנו ב-`MainActivity` ולציין אותו ב-`fcm.js`.** ההערה שם כבר מסמנת את הנקודה.
+
+### ⚠️ והתנהגות שאינה באג
+
+**כשהאפליקציה בחזית — לא מוצגת התראה מערכתית.** ההודעה נמסרת לקוד
+(`pushNotificationReceived`) ולא למערכת. זו התנהגות תקנית של FCM. אומת: אותה שליחה
+בדיוק, פעם בחזית (אין התראה) ופעם ברקע (יש).
+
+### 🔲 פתוח
+
+- ערוץ התראות משלנו (heads-up)
+- **הטוקן טרם נשמר ל-Firestore בפועל** — הבדיקה רצה מ-`welcome.html` שאין בו זהות.
+  הנתיב `home.html` → `updateDoc` טרם נבדק חי
+- מסך השליחה במרכז ההודעות טרם הופעל מול נתוני-אמת
+- הבקשה הדו-שלבית ב-`welcome.html` / `fan-register.html`
+- פוש לבעלי עסקים
+
+**קבצים ב-§420ט:** `native-push.js` (תיקון תיעוד), `scratch_test_fcm_send.mjs` (חדש),
+ומסמך זה.

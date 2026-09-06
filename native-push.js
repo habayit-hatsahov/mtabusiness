@@ -19,18 +19,21 @@
 //     `allowedOriginRules`, ו-`addDocumentStartJavaScript` + `addWebMessageListener` חלים
 //     בדיוק על המקורות האלה.
 //
-//  ❌ **אבל `Capacitor.Plugins.PushNotifications` לא קיים כאן.** `native-bridge.js` *קורא*
-//     את `cap.Plugins` ולעולם אינו ממלא אותו — הוא מאוכלס ע"י ה-JS של כל תוסף, שנארז
-//     באפליקציות רגילות ואינו קיים אצלנו.
+//  ✅ ו-`cap.nativePromise(plugin, method, opts)` · `cap.addListener(plugin, event, cb)` ·
+//     `cap.getPlatform()` נחשפים ישירות — כלומר **אין צורך לארוז ולו בייט אחד של
+//     Capacitor באתר**. זו הסיבה שהמודול הזה משתמש בהם.
 //
-//  ✅ ומה שכן נחשף ישירות מ-`native-bridge.js`, וזה כל מה שצריך:
-//     `cap.nativePromise(plugin, method, opts)` · `cap.addListener(plugin, event, cb)` ·
-//     `cap.getPlatform()`.
+//  🔴 **תיקון (§420ט, נמדד על Galaxy A52s):** בגרסה הראשונה נכתב כאן ש-`Capacitor.Plugins`
+//  אינו מאוכלס בדומיין מרוחק ולכן `isPluginAvailable()` "תמיד יחזיר false". **זה שגוי.**
+//  מדידה על המכשיר החזירה `Plugins = [SystemBars, CapacitorCookies, WebView, CapacitorHttp,
+//  PushNotifications]`, ו-`Plugins.PushNotifications.register` הוא function תקין.
 //
-//  ⚠️ **`Capacitor.isPluginAvailable()` תמיד יחזיר `false` אצלנו — אסור להשתמש בו.**
-//  הוא ממומש כ-`hasOwnProperty(cap.Plugins, name)` (native-bridge.js:841), ו-`cap.Plugins`
-//  ריק כאן לנצח. בדיקה תמימה דרכו הייתה מכבה את הפוש בשקט בכל מכשיר, ונראית נכונה לגמרי
-//  בקוד. ר' [[feedback_guard_that_always_holds]].
+//  🔑 **ואיך נולדה הטעות — כי זה חוזר:** חיפשתי ב-`native-bridge.js` את המקום שממלא את
+//  `cap.Plugins`, לא מצאתי, **והסקתי מהיעדר ראיה שזה לא קורה** — ואז כתבתי את זה כאזהרה
+//  חד-משמעית. מסקנה שלילית מחיפוש חלקי אינה ממצא. ר' [[feedback_absence_of_evidence]].
+//
+//  ⚠️ **הקוד עצמו לא השתנה, ובכוונה.** `available()` בודק את הפונקציות עצמן, וזה עובד
+//  בשני המצבים ועמיד יותר משתי הדרכים האחרות. מה שהיה שגוי הוא הנימוק, לא המימוש.
 //
 // ══════════════════════════════════════════════════════════════════════════════════════════
 
