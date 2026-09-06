@@ -1241,7 +1241,8 @@
       <!-- גלריה -->
       <div class="form-card">
       <div class="form-group">
-        <label>תמונות גלריה <span class="opt">(עד 5 תמונות)</span></label>
+        <!-- §422 — המספר כאן חייב להישאר תואם ל-BIZ_GALLERY_MAX בסקריפט. -->
+        <label>תמונות גלריה <span class="opt">(עד 12 תמונות)</span></label>
         <div class="cat-hint" style="margin-top:0;margin-bottom:12px;"><strong>כמה שיותר תמונות אמיתיות — כך יותר אמון ולחיצות.</strong> תמונות של המקום, המוצרים, או העבודה שלכם נותנות לאוהדים תחושה מדויקת של מה מחכה להם, ומשפרות משמעותית את הסיכוי שיבחרו בכם.</div>
         <div class="upload-zone" onclick="document.getElementById('bizGalleryFiles').click()">
           <input type="file" id="bizGalleryFiles" accept="image/*" multiple style="display:none" onchange="onGalleryFilesPicked(this)" />
@@ -1667,6 +1668,14 @@
   import { attachImageGuard } from './image-check.js';
   import { collection, addDoc, updateDoc, doc, setDoc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
+  // ── §422 — תקרת הגלריה, במספר אחד ─────────────────────────────────────────────────────
+  // בקשת המשתמש (2026-09-06): *"הגלריה היא לא עד 5 תמונות, כרגע אין הגבלה — אפשר להגביל
+  // ל-10 נגיד או 12."* נבחר 12.
+  // ⚠️ **המספר היה כתוב ארבע פעמים** (חמש עם המסך) בארבעה מקומות שונים — הגשה, בחירה,
+  // תצוגה מקדימה, וטיוטה — ועוד פעם חמישית בטקסט שעל המסך. תקרה שמשוכפלת כך סוחפת ברגע
+  // שאחד מהם מתעדכן: אפשר היה לבחור 12 ולראות 5 בתצוגה. מספר אחד, חמישה קוראים.
+  const BIZ_GALLERY_MAX = 12;
+
   // ── שכבת מדידה (§281) — טופס העסקים לא נמדד כלל ─────────────────────────────────────────
   // עד היום לא נרשם כאן שום אירוע: לא פתיחה ולא שליחה, ולכן "כמה עסקים התחילו להירשם מול כמה
   // סיימו" פשוט לא היה קיים כנתון. אותה פונקציה בדיוק כמו ב-home.html/welcome.html/fan-register.html.
@@ -1949,6 +1958,71 @@
     }
   }
 
+  // ══ §422 — התמונות מתחילות לעלות ברגע שנבחרו ═══════════════════════════════════════════
+  // עד היום כל מדיה של עסק נסעה בגוף הבקשה בלחיצת "שלח" — כלומר נסיעת-הרשת הכבדה ביותר
+  // יצאה לדרך בדיוק כשהנרשם כבר ממתין מול ספינר, ונפילת-רשת של שנייה הפילה את כולן יחד.
+  // §361ב כבר הקדים את ה**דחיסה** לרגע הבחירה; זה הצעד המשלים — גם ההעלאה.
+  //
+  // 🔑 **זו בדיוק הזרימה של האוהד מאז §381**, שהתמונה שלו עולה מרגע הבחירה ורצה במקביל
+  // למילוי הטופס. ההבדל היחיד שמנע את זה כאן היה `storage.rules`: נתיב העסק דורש שמסמך
+  // העסק כבר קיים, והוא לא קיים בזמן הבחירה. `bizUploads/{uploadId}/` (§422) פותר זאת.
+  //
+  // ⚠️ **הכל כאן הוא שכבה על-גבי, לא החלפה.** אם ההעלאה המוקדמת נכשלה מכל סיבה — SDK
+  // שלא נטען, חוקים שלא נפרסו, רשת — הקובץ פשוט נוסע בגוף הבקשה **בדיוק כמו היום**.
+  // זו הסיבה שהשינוי הזה בטוח לנתיב-ההרשמה: המסלול הישן נשאר שלם ומשמש כרשת-ביטחון.
+  const BIZ_UPLOAD_ID = crypto.randomUUID();
+  const bizMediaUploads = new Map();       // File → { promise, url, failed }
+  // ⚠️ מפה שנייה לתמונה-המייצגת בלבד: מאותו קובץ נגזרות **שתי** תמונות (מלאה + ממוזערת),
+  // ו-Map אחד לא יכול להחזיק שתי תוצאות תחת אותו מפתח.
+  const bizCoverThumbUploads = new Map();  // File(מקורי) → entry של הממוזערת
+
+  async function bizStorageApi() {
+    const [{ getStorageLazy }, mod] = await Promise.all([
+      import('./firebase-config.js'),
+      import('https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js'),
+    ]);
+    return { storage: await getStorageLazy(), ...mod };
+  }
+
+  // slot משמש רק לשם-הקובץ ולהודעות; הזיהוי בפועל הוא ה-uploadId האקראי.
+  function startBizMediaUpload(file, slot, compress) {
+    if (!file) return null;
+    const existing = bizMediaUploads.get(file);
+    if (existing) return existing;
+    const entry = { url: '', failed: false, promise: null };
+    entry.promise = (async () => {
+      const out = await compress(file);
+      const { storage, ref, uploadBytesResumable, getDownloadURL } = await bizStorageApi();
+      // ⚠️ שם אקראי ולא שם-הקובץ של המשתמש: שם-קובץ עברי/ארוך/עם תווים מיוחדים הוא
+      // מקור-כשל ידוע ב-Storage, ואין שום צורך בו — השם המקורי נשמר בנפרד ב-photos[].name.
+      const path = `bizUploads/${BIZ_UPLOAD_ID}/${slot}_${crypto.randomUUID()}`;
+      const task = uploadBytesResumable(ref(storage, path), out, { contentType: out.type || 'image/webp' });
+      // ⚠️ **בלי `task.cancel()` בשום מקרה** — הלקח של §381: ביטול מוחק בדיוק את מה שמנסים
+      // להציל. אם נמאס לנו לחכות, מוותרים על ההמתנה ולא על הבייטים.
+      await new Promise((res, rej) => task.on('state_changed', null, rej, res));
+      entry.url = await getDownloadURL(task.snapshot.ref);
+      return entry.url;
+    })().catch((e) => {
+      entry.failed = true;
+      console.warn(`§422 — העלאה מוקדמת נכשלה (${slot}), הקובץ ייסע בגוף הבקשה:`, e?.code || e?.name || e);
+      return '';
+    });
+    bizMediaUploads.set(file, entry);
+    return entry;
+  }
+
+  // מחזיר את הכתובת אם ההעלאה המוקדמת הספיקה והצליחה, ואחרת '' — והקורא שולח בייטים.
+  // ⚠️ **גבול-זמן קצר בכוונה (12 שנ').** ברוב המקרים ההעלאה הסתיימה מזמן וזה חוזר מיד;
+  // אם היא עדיין באוויר, אין טעם להחזיק את השליחה — הנתיב הישן ממילא יעלה את הקובץ.
+  // המתנה ארוכה כאן הייתה הופכת שיפור-מהירות לעיכוב, וזה בדיוק ההפך מהמטרה.
+  async function bizUploadedUrl(file) {
+    const e = file && bizMediaUploads.get(file);
+    if (!e) return '';
+    if (e.url) return e.url;
+    try { return await withTimeout(e.promise, 12000, 'EarlyUploadWait') || ''; }
+    catch (err) { return ''; }
+  }
+
   // ── §287 — נתיב נפרד ועמיד לתמונת האימות ──────────────────────────────────────────────────
   // זהה ל-fan-register.html; ר' שם את ההסבר המלא על ארבעת הכשלים (זיכרון/HEIC/תקרת-קנבס/
   // תוצאה-שעדיין-כבדה). **בכוונה לא שונה `compressImageFile` המשותף** — הוא משרת גם לוגו,
@@ -2223,24 +2297,53 @@
     // ושניים מהם עקפו דחיסה בזמן שההערה הכריזה שרק אחד עושה זאת. הערה שמתארת את הקוד
     // כפי שהתכוונו שיהיה, ולא כפי שהוא, מסתירה את הבאג טוב יותר מהיעדר הערה.
     // §381 — fanPhoto יצא מכאן לבקשה משלו (ר' buildProofForm למעלה).
-    if (effectiveLogoFile) form.append('logo', await compressLogoToFile(effectiveLogoFile));
+    // ── §422 — כתובת אם ההעלאה המוקדמת הספיקה, בייטים אם לא ──────────────────────────
+    // כל סלוט מוכרע בנפרד: תמונה אחת שההעלאה שלה נכשלה לא מפילה את השאר לנתיב הישן.
+    if (effectiveLogoFile) {
+      const u = await bizUploadedUrl(effectiveLogoFile);
+      if (u) form.append('logoUrl', u);
+      else form.append('logo', await compressLogoToFile(effectiveLogoFile));
+    }
     if (effectiveCoverFile) {
-      const [mainFile, thumbFile] = await Promise.all([
-        compressToFile(effectiveCoverFile, COVER_MAX_DIM, 0.82, effectiveCoverFile.name),
-        compressToFile(effectiveCoverFile, 640, 0.80, 'thumb_' + effectiveCoverFile.name),
-      ]).catch(() => [effectiveCoverFile, effectiveCoverFile]);
-      form.append('cover', mainFile);
-      form.append('coverThumb', thumbFile);
+      const thumbEntry = bizCoverThumbUploads.get(effectiveCoverFile);
+      const [coverUrl, thumbUrl] = await Promise.all([
+        bizUploadedUrl(effectiveCoverFile),
+        thumbEntry ? (thumbEntry.url || thumbEntry.promise.catch(() => '')) : '',
+      ]);
+      // ⚠️ **שתיהן ביחד או אף אחת** — קאבר מלא בלי ממוזערת שולח את כל הכרטיסים באתר
+      // לטעון תמונה של 1600px בתיבה של 400 (בדיוק התקלה של §317). אם אחת מהן חסרה,
+      // שתיהן נוסעות בגוף הבקשה ונדחסות מחדש, כמו קודם.
+      if (coverUrl && thumbUrl) {
+        form.append('coverUrl', coverUrl);
+        form.append('coverThumbUrl', thumbUrl);
+      } else {
+        const [mainFile, thumbFile] = await Promise.all([
+          compressToFile(effectiveCoverFile, COVER_MAX_DIM, 0.82, effectiveCoverFile.name),
+          compressToFile(effectiveCoverFile, 640, 0.80, 'thumb_' + effectiveCoverFile.name),
+        ]).catch(() => [effectiveCoverFile, effectiveCoverFile]);
+        form.append('cover', mainFile);
+        form.append('coverThumb', thumbFile);
+      }
     }
     // ⚠️ §361ב — הגלריה נשארת **בטור, במכוון**. `Promise.all` על חמש תמונות היה מקצר
     // מעט (פענוח התמונה ו-FileReader רצים מחוץ לתהליכון הראשי, ולכן כן נשזרים) — אבל הוא
     // מחזיק חמש תמונות מפוענחות בזיכרון **בו-זמנית**. תמונת אייפון 4000×3000 היא ~48MB
     // כבִּיטמַפ, וחמש כאלה הן ~240MB בטלפון בינוני. §287 כבר תיעד כשל-זיכרון בדיוק בנתיב
     // הדחיסה הזה, וזה בדיוק סוג הכשל שנראה רק במכשיר של מישהו אחר. הרווח לא שווה את זה.
-    for (const file of galleryFiles) {
+    // ── §422 — כל תמונה בנפרד: כתובת אם עלתה מראש, בייטים אם לא ─────────────────────
+    // ⚠️ **הסדר חייב להישמר.** הוורקר בונה `photos[]` לפי סדר-ההגעה, וזה הסדר שמוצג
+    // בדף העסק (§257). לכן `galleryUrls` נושא גם את המיקום, ולא רק את הכתובת — אחרת
+    // ערבוב של "חלק עלו מראש וחלק לא" היה מסדר את הגלריה מחדש בלי שאיש ביקש.
+    const galleryUrls = [];
+    for (let i = 0; i < galleryFiles.length; i++) {
+      const file = galleryFiles[i];
+      const u = await bizUploadedUrl(file);
+      if (u) { galleryUrls.push({ i, url: u, name: file.name }); continue; }
       const compressed = await compressToFile(file, 1280, 0.82, file.name).catch(() => file);
       form.append('gallery', compressed);
+      form.append('galleryIndex', String(i));   // המיקום המקורי, לצד הבייטים
     }
+    if (galleryUrls.length) form.append('galleryUrls', JSON.stringify(galleryUrls));
     return form;
   }
 
@@ -2876,7 +2979,7 @@
     const fanPhotoFile   = bizProofInputId ? document.getElementById(bizProofInputId)?.files[0] : null;
     const logoFile       = document.getElementById('bizLogoFile')?.files[0];
     const coverPhotoFile = document.getElementById('bizCoverPhotoFile')?.files[0];
-    const galleryFiles   = [...(document.getElementById('bizGalleryFiles')?.files || [])].slice(0, 5);
+    const galleryFiles   = [...(document.getElementById('bizGalleryFiles')?.files || [])].slice(0, BIZ_GALLERY_MAX);
     const effectiveCoverFile = coverPhotoFile || logoFile || null;
     const effectiveLogoFile  = coverPhotoFile ? logoFile : null;
     const hasMediaToUpload = !!(fanPhotoFile || effectiveCoverFile || effectiveLogoFile || galleryFiles.length);
@@ -4178,6 +4281,7 @@
   function previewLogo(input) {
     const file = input.files[0];
     if (!file) return;
+    startBizMediaUpload(file, 'logo', compressLogoToFile);   // §422
     const reader = new FileReader();
     reader.onload = e => {
       document.getElementById('logoPreviewWrap').innerHTML = `
@@ -4256,6 +4360,13 @@
       const err = document.getElementById('err-coverPhoto');
       if (err) err.style.display = 'none';
       document.getElementById('coverPhotoZone')?.classList.remove('error-highlight');
+      // §422 — שתי העלאות: התמונה המלאה והממוזערת. שתיהן נשמרות תחת אותו File כמפתח,
+      // ולכן `bizCoverThumbUploads` נפרד — Map אחד לא יכול להחזיק שתי תוצאות לאותו קובץ.
+      startBizMediaUpload(input.files[0], 'cover',
+        (f) => compressToFile(f, COVER_MAX_DIM, 0.82, f.name).catch(() => f));
+      bizCoverThumbUploads.set(input.files[0],
+        startBizMediaUpload(new File([input.files[0]], 'thumb_' + input.files[0].name, { type: input.files[0].type }),
+          'coverThumb', (f) => compressToFile(f, 640, 0.80, f.name).catch(() => f)));
     }
     const file = input.files[0];
     if (!file) return;
@@ -4286,7 +4397,19 @@
   let gallerySelectedFiles = [];
 
   function setGalleryFiles(filesArr) {
-    gallerySelectedFiles = filesArr.slice(0, 5);
+    gallerySelectedFiles = filesArr.slice(0, BIZ_GALLERY_MAX);
+    // ── §422 — כל תמונת גלריה מתחילה לעלות מיד ────────────────────────────────────────
+    // ⚠️ **בטור ולא במקביל**, בדיוק מאותו נימוק של §361ב שכתוב מעל buildMediaForm:
+    // תמונת אייפון מפוענחת היא ~48MB, ו-12 כאלה בו-זמנית מפילות טלפון בינוני. ההעלאה
+    // המוקדמת דווקא מרוויחה מהטור — היא פרושה על דקות המילוי, לא על שניות השליחה.
+    // ⚠️ `startBizMediaUpload` ממוטמן לפי זהות ה-File, ולכן בחירה חוזרת של אותן תמונות
+    // לא מעלה אותן שוב.
+    (async () => {
+      for (const f of gallerySelectedFiles) {
+        await startBizMediaUpload(f, 'gallery', (x) => compressToFile(x, 1280, 0.82, x.name).catch(() => x))
+          ?.promise;
+      }
+    })();
     const input = document.getElementById('bizGalleryFiles');
     setInputFiles(input, gallerySelectedFiles);
     previewGallery(input);
@@ -4299,7 +4422,7 @@
   function previewGallery(input) {
     const preview = document.getElementById('galleryPreview');
     preview.innerHTML = '';
-    const files = Array.from(input.files).slice(0, 5);
+    const files = Array.from(input.files).slice(0, BIZ_GALLERY_MAX);
     files.forEach((file, idx) => {
       const reader = new FileReader();
       reader.onload = e => {
@@ -4446,7 +4569,7 @@
         draft.fanPhotoData = await compressImageFile(fanPhotoFile);
         draft.fanPhotoName = fanPhotoFile.name;
       }
-      const galleryFiles = [...(document.getElementById('bizGalleryFiles')?.files || [])].slice(0, 5);
+      const galleryFiles = [...(document.getElementById('bizGalleryFiles')?.files || [])].slice(0, BIZ_GALLERY_MAX);
       if (galleryFiles.length) {
         draft.gallery = await Promise.all(galleryFiles.map(async f => ({
           data: await compressImageFile(f), name: f.name,

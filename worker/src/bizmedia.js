@@ -28,6 +28,34 @@ export async function handleUploadBizMedia(request, env) {
   }
   if (!bizId) return { error: 'invalid_token' };
 
+  // ── §422 — כתובת של קובץ שכבר עלה, במקום בייטים ────────────────────────────────────────
+  // הלקוח מעלה כל תמונה ל-`bizUploads/{uploadId}/` ברגע הבחירה (storage.rules §422),
+  // ובשליחה נוסעת רק הכתובת. הבקשה שהייתה עד היום כמה מגה-בייטים הופכת למחרוזות.
+  //
+  // ⚠️ **ולידציה חובה, וזו הנקודה הקריטית כאן.** הכתובת מגיעה מהלקוח, והיא נכתבת ישר
+  // למסמך העסק שמוצג לכל אוהד. בלי הבדיקה הזאת אפשר היה להזריק כתובת לכל דומיין —
+  // כלומר להפוך את כרטיס העסק לנקודת-הגשה של תוכן זר. שני תנאים מצטברים: המארח חייב
+  // להיות של Firebase Storage, והנתיב חייב להיות **בדיוק** `bizUploads/` — לא נתיב אחר
+  // בבאקט שלנו, ולא בבאקט של פרויקט אחר.
+  const bucket = env.FIREBASE_STORAGE_BUCKET;
+  const okUrl = (u) => {
+    if (!u || typeof u !== 'string' || u.length > 800) return '';
+    let parsed;
+    try { parsed = new URL(u); } catch (e) { return ''; }
+    if (parsed.protocol !== 'https:') return '';
+    if (parsed.hostname !== 'firebasestorage.googleapis.com') return '';
+    // הנתיב הוא /v0/b/{bucket}/o/{objectPath מקודד}
+    if (!parsed.pathname.startsWith(`/v0/b/${bucket}/o/`)) return '';
+    const obj = decodeURIComponent(parsed.pathname.slice(`/v0/b/${bucket}/o/`.length));
+    if (!obj.startsWith('bizUploads/')) return '';
+    // ⚠️ **נתפס בבדיקה, לא בקריאה:** `bizUploads/../businesses/x/cover` עובר את
+    // `startsWith` בשלום. ב-Firebase Storage שם-האובייקט הוא מחרוזת ליטרלית ו-`..`
+    // אינו מנורמל, ולכן זה כנראה לא היה ניתן-לניצול בפועל — אבל ולידציה שנשענת על
+    // "כנראה" של שכבה אחרת אינה ולידציה. כל מקטע-נתיב חשוד נדחה.
+    if (obj.split('/').some((seg) => seg === '..' || seg === '.')) return '';
+    return u;
+  };
+
   const updates = {};
   const tasks = [];
   // כל כשל-העלאה נאסף כאן וחוזר ללקוח (2026-08-22). קודם כל catch רשם console.error והפונקציה
@@ -60,7 +88,29 @@ export async function handleUploadBizMedia(request, env) {
     );
   }
 
-  const logo = form.get('logo');
+  // ── §422 — הכתובות מוכרעות ראשונות, ורק מה שאין לו כתובת נופל לנתיב הבייטים ────────
+  // כל סלוט בנפרד: תמונה אחת שההעלאה המוקדמת שלה נכשלה אינה מפילה את השאר.
+  const logoUrl = okUrl(form.get('logoUrl'));
+  if (logoUrl) updates.logo = logoUrl;
+  const coverUrl = okUrl(form.get('coverUrl'));
+  const coverThumbUrl = okUrl(form.get('coverThumbUrl'));
+  // ⚠️ שתיהן ביחד או אף אחת — קאבר בלי ממוזערת שולח כל כרטיס באתר לטעון 1600px
+  // בתיבה של 400 (§317). הלקוח כבר אוכף את זה, וזו אכיפה שנייה בשרת.
+  if (coverUrl && coverThumbUrl) {
+    updates.coverPhoto = coverUrl;
+    updates.coverPhotoThumb = coverThumbUrl;
+  }
+  let urlPhotos = [];
+  try {
+    const raw = form.get('galleryUrls');
+    if (raw) {
+      urlPhotos = JSON.parse(String(raw))
+        .filter((p) => p && okUrl(p.url))
+        .map((p) => ({ i: Number(p.i) || 0, url: okUrl(p.url), name: String(p.name || '').slice(0, 200) }));
+    }
+  } catch (e) { console.error('galleryUrls parse failed:', e.message); }
+
+  const logo = logoUrl ? null : form.get('logo');
   if (logo && logo.size) {
     tasks.push(
       logo.arrayBuffer()
@@ -70,7 +120,7 @@ export async function handleUploadBizMedia(request, env) {
     );
   }
 
-  const cover = form.get('cover');
+  const cover = (coverUrl && coverThumbUrl) ? null : form.get('cover');
   if (cover && cover.size) {
     tasks.push(
       cover.arrayBuffer()
@@ -79,7 +129,7 @@ export async function handleUploadBizMedia(request, env) {
         .catch((e) => { console.error('cover upload failed:', e.message); failed.push('cover'); })
     );
   }
-  const coverThumb = form.get('coverThumb');
+  const coverThumb = (coverUrl && coverThumbUrl) ? null : form.get('coverThumb');
   if (coverThumb && coverThumb.size) {
     tasks.push(
       coverThumb.arrayBuffer()
@@ -89,19 +139,26 @@ export async function handleUploadBizMedia(request, env) {
     );
   }
 
+  // ── §422 — הגלריה מורכבת משני מקורות, ו**הסדר המקורי הוא מה שמחזיק אותם יחד** ────────
+  // חלק מהתמונות עלו מראש (כתובות) וחלק נוסעות כבייטים. הסדר שהמשתמש בחר הוא הסדר
+  // שמוצג בדף העסק (§257), ולכן כל פריט נושא את המיקום שלו: `galleryUrls[].i` מצד אחד,
+  // ושדה `galleryIndex` המקביל לכל קובץ מצד שני. מיזוג לפי מיקום, לא לפי סדר-הגעה.
   const galleryFiles = form.getAll('gallery');
-  if (galleryFiles.length) {
-    const photos = new Array(galleryFiles.length);
-    updates.photos = photos;
-    galleryFiles.forEach((f, i) => {
+  const galleryIdx = form.getAll('galleryIndex').map((v) => Number(v));
+  const bySlot = new Map();
+  urlPhotos.forEach((p) => bySlot.set(p.i, { url: p.url, name: p.name }));
+  if (galleryFiles.length || urlPhotos.length) {
+    galleryFiles.forEach((f, n) => {
+      // ⚠️ נפילה-לאחור למיקום לפי סדר-ההגעה: לקוח ישן (לפני §422) אינו שולח galleryIndex
+      // כלל, ובלעדיה כל התמונות שלו היו נדחסות למיקום NaN ונעלמות.
+      const slot = Number.isFinite(galleryIdx[n]) ? galleryIdx[n] : n;
       tasks.push(
         f.arrayBuffer()
-          .then((bytes) => uploadToFirebaseStorage(env, googleToken, `businesses/${bizId}/gallery_${Date.now()}_${i}`, bytes, f.type || 'image/webp'))
-          .then((url) => { photos[i] = { url, name: f.name }; })
+          .then((bytes) => uploadToFirebaseStorage(env, googleToken, `businesses/${bizId}/gallery_${Date.now()}_${slot}`, bytes, f.type || 'image/webp'))
+          .then((url) => { bySlot.set(slot, { url, name: f.name }); })
           .catch((e) => {
             console.error('gallery photo upload failed:', e.message);
-            photos[i] = { url: '', name: f.name };
-            failed.push('gallery[' + i + ']');
+            failed.push('gallery[' + slot + ']');
           })
       );
     });
@@ -111,9 +168,15 @@ export async function handleUploadBizMedia(request, env) {
   // חשוב במיוחד ל"שולח..." שמוצג ללקוח לפני שרואים "הבקשה התקבלה" (ר' business.html).
   await Promise.all(tasks);
 
-  // תמונת-גלריה שנכשלה נשארה קודם כרשומה ריקה ({ url: '', name }) בתוך photos — היא נספרת
-  // כתמונה בכל מקום שסופר photos.length, אבל אין מה להציג בה. מסננים אותה החוצה.
-  if (updates.photos) updates.photos = updates.photos.filter((ph) => ph && ph.url);
+  // §422 — הרכבת הגלריה לפי המיקום המקורי. תמונה שנכשלה פשוט אינה ב-`bySlot`, ולכן
+  // היא נופלת מהרשימה מעצמה — במקום להישאר כרשומה ריקה שנספרת ב-photos.length ואין
+  // מה להציג בה (הכשל שתוקן קודם בסינון מפורש; עכשיו המבנה עצמו מונע אותו).
+  if (bySlot.size) {
+    updates.photos = [...bySlot.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, ph]) => ph)
+      .filter((ph) => ph && ph.url);
+  }
 
   if (Object.keys(updates).length) {
     await firestorePatch(env, googleToken, `businesses/${bizId}`, updates);
