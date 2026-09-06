@@ -1917,6 +1917,15 @@ body {
 .del-kind { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--nav-bg); border: 1px solid var(--border-md); color: var(--text-sm); }
 .del-row-ident { font-size: 11.5px; color: var(--text-sm); line-height: 1.7; margin-top: 3px; }
 .del-row-actor { font-size: 11.5px; font-weight: 700; color: var(--accent); margin-top: 5px; }
+/* §420 — מחיקה שהמשתמש ביצע בעצמו מהאפליקציה. נבדלת חזותית **בכוונה**: "נמחק ע\"י רמי"
+   על שורה שרמי מחק בה את עצמו קריא בדיוק כמו מחיקה שמנהל ביצע, וזו בדיוק ההבחנה
+   שהמנהל צריך. */
+.del-self { display:inline-block; font-size:11px; font-weight:900; color:#7A2E0E;
+            background:#FDEBDD; border-radius:999px; padding:2px 9px; margin-top:5px; }
+.del-reason { font-size:12.5px; line-height:1.6; color:var(--text); background:rgba(224,168,122,.13);
+              border-inline-start:3px solid #E0A87A; border-radius:8px; padding:7px 10px; margin-top:6px; }
+.del-reason b { font-weight:900; }
+.del-reason.empty { color:var(--text-muted); font-style:italic; }
 .del-row-side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .del-restored { font-size: 11.5px; font-weight: 700; color: var(--green, #1a7f4b); text-align: left; line-height: 1.6; }
 .del-attempted { font-size: 11px; font-weight: 700; color: var(--orange); }
@@ -2686,6 +2695,23 @@ function bizOwnerProofFallback(b) {
   if (!b || b.ownerProofPhotoUrl) return null;
   const m = bizOwnerMember(b);
   return (m && m.photoProofUrl) ? { url: m.photoProofUrl, member: m } : null;
+}
+
+// §419ז — הכיוון ההפוך של bizOwnerMember: מרשומת החבר אל העסק שלו. שלושה מסלולים,
+// ובכוונה בסדר הזה: הקישור הישיר, הקישור ההפוך (`ownerMemberId` על העסק), ולבסוף המייל.
+// ⚠️ **שלושתם נחוצים ואף אחד אינו מיותר:** `linkedBusinessId` חסר לוותיקים,
+// ו-`ownerMemberId` הוא בדיוק השדה שנכשל בכתיבה ב-§419 — כלומר בכל אחד משני הכשלים
+// האלה מסלול אחד בלבד היה מספיק כדי לפספס, וזו בדיוק התקלה שהרשימה נועדה לתפוס.
+// ⚠️ `isBusinessOwner` **אינו** תנאי מקדים: הוא נכתב באותה כתיבה שנכשלה.
+function fanLinkedBiz(f) {
+  if (!f) return null;
+  const byId = f.linkedBusinessId ? findBiz(f.linkedBusinessId) : null;
+  if (byId) return byId;
+  const byOwner = (MOCK_BUSINESSES || []).find(b => b.ownerMemberId === f.id);
+  if (byOwner) return byOwner;
+  const mail = String(f.email || '').trim().toLowerCase();
+  if (!mail) return null;
+  return (MOCK_BUSINESSES || []).find(b => String(b.ownerEmail || '').trim().toLowerCase() === mail) || null;
 }
 
 // הערך שהנרשם מסר בפועל במסלול שבחר — מה שהמנהל צריך לקרוא כדי להחליט. מסלולי-תמונה
@@ -15408,13 +15434,20 @@ function missingMediaList() {
     if (f.status !== 'pending') return;   // אושר/נדחה = ההחלטה כבר התקבלה
     if (!PHOTO_ROUTES.has(fanVerifyMethod(f))) return;
     if (f.photoProofUrl) return;
-    // ⚠️ §361 — לבעל-עסק הראיה יושבת על **מסמך העסק**, לא על רשומת החבר. בלי הנפילה-לאחור
-    // הזאת כל בעל-עסק היה מופיע כאן כתקלה בזמן שהתמונה שלו קיימת ומוצגת יפה בכרטיס העסק.
-    // זו בדיוק אותה נפילה-לאחור שכבר קיימת בכרטיס האוהד — ולא שכפול של הכתובת.
-    const linkedBiz = f.isBusinessOwner
-      ? (findBiz(f.linkedBusinessId) || (MOCK_BUSINESSES || []).find(b => b.ownerMemberId === f.id))
-      : null;
-    if (linkedBiz && linkedBiz.ownerProofPhotoUrl) return;
+    // ── §419ז — בעל-עסק נבדק בכרטיס העסק בלבד, ולא בשתי שורות ──────────────────────────
+    // בקשת המשתמש אחרי בדיקה חיה: *"אין צורך ל-2 שורות, אני בודק הכל רק אצל העסק,
+    // ומבחינתי עסק שנרשם הוא גם אוהד."* שתי שורות על אותו אדם הן אותה עבודה פעמיים, והן
+    // שולחות את המנהל לפתוח כרטיס-אוהד כדי להכריע במשהו שהוא ממילא מכריע בכרטיס העסק.
+    // זה מחליף את התנאי הצר של §361 (`linkedBiz.ownerProofPhotoUrl`), שדילג רק כשהראיה
+    // כבר נמצאה — ולכן השאיר שורה כפולה בדיוק במקרה שבו היא **חסרה**, שהוא המקרה היחיד
+    // שמגיע לרשימה מלכתחילה.
+    //
+    // ⚠️ **הדילוג מותנה במציאת העסק בפועל** — בלי כרטיס-עסק להצביע עליו, השורה חייבת
+    // להישאר, אחרת האדם נעלם משתי הרשימות גם יחד.
+    // ⚠️ **ועסק שנדחה אינו כרטיס פתוח**: ההחלטה עליו כבר התקבלה, אבל רשומת האוהד עדיין
+    // ממתינה להכרעה — ודווקא שם השורה נשארת.
+    const linkedBiz = fanLinkedBiz(f);
+    if (linkedBiz && linkedBiz.status !== 'rejected') return;
     push({
       kind: 'photoFailed', key: 'nomedia|fan|' + f.id, at: f.registeredAt,
       fans: [{ id: f.id, name: f.name, status: f.status }], bizRef: null,
@@ -16576,7 +16609,15 @@ function deletionLogRowHtml(entry) {
           <span>${esc(name)}</span>
         </div>
         ${lines.length ? `<div class="del-row-ident">${lines.map(esc).join(' · ')}</div>` : ''}
-        <div class="del-row-actor">נמחק ע"י ${esc(entry.actorName || '(לא ידוע)')}${when ? ' · ' + when : ''}${entry.source ? ' · מתוך ' + esc(entry.source) : ''}</div>
+        ${entry.source === 'self-delete'
+          ? `<div class="del-self">🚪 מחק/ה את החשבון בעצמו${when ? ' · ' + when : ''}</div>
+             <div class="del-reason${entry.selfReason ? '' : ' empty'}">${entry.selfReason
+               ? '<b>הסיבה שנמסרה:</b> ' + esc(entry.selfReason)
+               : 'לא נמסרה סיבה.'}</div>
+             ${(entry.selfFlaggedBusinesses && entry.selfFlaggedBusinesses.length)
+               ? `<div class="del-reason"><b>⚠️ נשארו עסקים על שמו:</b> ${entry.selfFlaggedBusinesses.map(esc).join(', ')} — העסק לא נמחק, וממתין להחלטה שלך.</div>`
+               : ''}`
+          : `<div class="del-row-actor">נמחק ע"י ${esc(entry.actorName || '(לא ידוע)')}${when ? ' · ' + when : ''}${entry.source ? ' · מתוך ' + esc(entry.source) : ''}</div>`}
         ${entry.state === 'attempted'
           ? `<div class="del-attempted">⚠️ הרישום נכתב אך אישור המחיקה לא חזר — ייתכן שהרשומה כלל לא נמחקה. "שחזור" יסרב אם היא עדיין קיימת.</div>` : ''}
       </div>

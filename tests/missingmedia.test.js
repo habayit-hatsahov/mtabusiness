@@ -133,9 +133,9 @@ console.log('\n— הראיה אצל הבעלים (§419) —');
 {
   const f = fan({ id: 'mAyal', email: 'a@b.c', photoProofUrl: '' });
   const b = biz({ ownerMemberId: 'mAyal', ownerIsSubscriber: true, ownerVerifyRoute: 'passScreenshot', ownerProofPhotoUrl: '', coverPhoto: 'x' });
-  // **שתי שורות, וזה נכון:** גם לעסק אין ראיה, וגם רשומת-החבר עצמה היא ממתינה בלי ראיה
-  // במסלול שדורש אחת. שתי ההחלטות פתוחות, ולכל אחת יש מה לעשות איתה.
-  is('לבעלים אין ראיה גם הוא → שורה לעסק **וגם** לחבר', keys(run([b], [f])), 'nomedia|fan|mAyal, nomedia|proof|b1');
+  // §419ז — **שורה אחת, של העסק.** עד §419ז היו כאן שתיים (גם על רשומת-החבר), והמשתמש
+  // ביקש במפורש אחת: *"אני בודק הכל רק אצל העסק."*
+  is('לבעלים אין ראיה גם הוא → שורה אחת, של העסק', keys(run([b], [f])), 'nomedia|proof|b1');
 }
 {
   const b = biz({ ownerMemberId: null, ownerEmail: '', ownerIsSubscriber: true, ownerVerifyRoute: 'passScreenshot', ownerProofPhotoUrl: '', coverPhoto: 'x' });
@@ -179,10 +179,30 @@ console.log('\n— אוהדים —');
   const rows = run([b], [fan({ verifyMethod: 'standsPhoto', photoProofUrl: '', isBusinessOwner: true, linkedBusinessId: 'b9' })]);
   is('בעל-עסק שהראיה שלו על מסמך העסק → אין שורת-אוהד (§361)', keys(rows), '');
 }
+// ── §419ז — בעל-עסק מיוצג בשורה אחת: של העסק ──────────────────────────────────────────
+// בקשת המשתמש אחרי בדיקה חיה. §361 דילג רק כשהראיה **נמצאה** על העסק — כלומר השאיר
+// כפילות בדיוק במקרה שבו היא חסרה, שהוא המקרה היחיד שמגיע לרשימה מלכתחילה.
 {
   const b = biz({ id: 'b9', ownerProofPhotoUrl: '', ownerVerifyRoute: 'seatDetails', ownerIsSubscriber: true, coverPhoto: 'x' });
   const rows = run([b], [fan({ verifyMethod: 'standsPhoto', photoProofUrl: '', isBusinessOwner: true, linkedBusinessId: 'b9' })]);
-  is('בעל-עסק שאין ראיה גם על העסק → כן שורת-אוהד', keys(rows), 'nomedia|fan|f1');
+  is('אין ראיה גם על העסק → עדיין שורה אחת בלבד, של העסק', keys(rows), '');
+}
+{
+  // הקישור נשבר לגמרי — אין עסק להצביע עליו, ולכן השורה **חייבת** להישאר.
+  const rows = run([], [fan({ verifyMethod: 'standsPhoto', photoProofUrl: '', isBusinessOwner: true, linkedBusinessId: 'bGone' })]);
+  is('בעל-עסק בלי עסק שנמצא → השורה נשארת', keys(rows), 'nomedia|fan|f1');
+}
+{
+  // עסק שנדחה אינו כרטיס פתוח, ורשומת האוהד עדיין ממתינה להכרעה.
+  const b = biz({ id: 'b9', status: 'rejected', ownerVerifyRoute: 'seatDetails', ownerIsSubscriber: true });
+  const rows = run([b], [fan({ verifyMethod: 'standsPhoto', photoProofUrl: '', isBusinessOwner: true, linkedBusinessId: 'b9' })]);
+  is('העסק נדחה → שורת-האוהד נשארת', keys(rows), 'nomedia|fan|f1');
+}
+{
+  // 🔑 בדיוק המצב של §419: `linkedBusinessId` ו-`ownerMemberId` **שניהם** נכשלו בכתיבה.
+  const b = biz({ id: 'b9', ownerMemberId: null, ownerEmail: 'a@b.c', ownerVerifyRoute: 'seatDetails', ownerIsSubscriber: true, coverPhoto: 'x' });
+  const rows = run([b], [fan({ email: 'a@b.c', verifyMethod: 'standsPhoto', photoProofUrl: '', isBusinessOwner: false, linkedBusinessId: null })]);
+  is('שני הקישורים נשברו — נמצא לפי מייל, שורה אחת', keys(rows), '');
 }
 {
   // הקישור ההפוך: linkedBusinessId חסר לוותיקים, ר' feedback על קישור דו-כיווני
