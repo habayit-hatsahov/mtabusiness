@@ -938,7 +938,11 @@ body {
 .msg-crumb a { color: var(--accent); font-weight: 600; cursor: pointer; }
 .msg-crumb a:hover { text-decoration: underline; }
 .msg-page-title { font-size: 23px; font-weight: 700; letter-spacing: -0.02em; }
-.msg-kpis { display: flex; gap: 26px; align-items: flex-end; }
+/* §429 — `flex-wrap` נוסף יחד עם הקובייה הרביעית בדשבורד הראשי. בלעדיו השורה גולשת
+   מהמסך במקום לרדת שורה: להורה (.msg-content-head) יש wrap ולכן **בלוק ה-KPI כולו**
+   ירד שורה, אבל בתוכו הקוביות נשארו בשורה אחת שלא נשברת. ⚠️ ההשפעה על המסכים בני
+   3 הקוביות היא אפס — wrap נכנס לפעולה רק כשאין מקום ממילא. */
+.msg-kpis { display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: flex-end; }
 .msg-kpi-num { font-size: 21px; font-weight: 700; line-height: 1.1; }
 .msg-kpi-unit { font-size: 12px; font-weight: 500; color: var(--text-muted); }
 .msg-kpi-label { font-size: 11.5px; font-weight: 500; color: var(--text-muted); margin-top: 2px; }
@@ -4405,7 +4409,8 @@ window.filterPicker = function(q) {
   );
   const list = poolFor(tab).filter(b =>
     !anchoredIdsElsewhere.has(b.id) &&
-    (!q || b.name.includes(q))
+    // §429 — בורר-העיגון חיפש בשם בלבד ורגיש-לרישיות, כמו כל השאר.
+    matchesSearch(q, [b.name, b.city, b.ownerFirst, b.ownerLast])
   );
   const listEl = document.getElementById('pickerList');
   if (!listEl) return;
@@ -4701,6 +4706,46 @@ function bizClassCounts() {
     hoursOther: MOCK_BUSINESSES.filter(b => hoursIssues(b).length).length,
   };
 }
+// ══ §429 — פונקציית-חיפוש אחת, כי היו שש ═══════════════════════════════════════════════════
+// המשתמש: *"בדשבורד בחיפוש תבדוק יש שם תקלה אני לפעמים מחפש וזה לא מוצא"*. "לפעמים" הוא
+// שלושה באגים נפרדים שהתחפשו לאחד:
+//
+//   1. 🔴 **רגישות לאותיות גדולות.** `bizSearch.trim()` בלי `toLowerCase`, וגם השדה עצמו לא
+//      נורמל — כלומר `cafe` לא מצא `Cafe`. בעברית אין רישיות ולכן זה נראה כמו תקלה אקראית,
+//      ובפועל זה מפספס **כל** עסק שנרשם באנגלית עם אות ראשונה גדולה. ⚠️ ובמרכז הנתונים
+//      דווקא **כן** היה `toLowerCase` — ולכן אותו חיפוש בדיוק עבד במסך אחד ונכשל בשני, וזה
+//      מה שהפך את זה ל"לפעמים".
+//   2. **שם בעל העסק.** במרכז המשימות החיפוש כלל `ownerFirst`/`ownerLast`, וב"כל העסקים",
+//      ב"מרכז נתונים" ובלבבות — לא. בקשה מפורשת של המשתמש, וגם ההסבר לשאר ה"לפעמים".
+//   3. **טלפון עם מקפים.** `f.phone.includes(q)` על מחרוזת גולמית: מי שמקליד `052-1234567`
+//      לא מצא רשומה שנשמרה כ-`0521234567`, ולהפך.
+//
+// 🔑 **מסלול-הטלפון רץ רק על שאילתה שכולה ספרות ומפרידים.** אחרת "רון 052" היה מחזיר כל מי
+// שיש לו 052 בטלפון גם כששמו אינו רון — כלומר חיפוש שמוצא **יותר מדי**, וזה לא פחות מבלבל.
+function normSearch(s) {
+  return String(s == null ? '' : s).toLowerCase()
+    // גרשיים בעברית: מקלדות שונות מייצרות ׳/״ מול '/", ו"בית הצהוב״" לא אמור להיות שונה
+    // מ"בית הצהוב". מוסרים משני הצדדים, ולכן ההשוואה סימטרית.
+    .replace(/[׳״'"`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+const normDigits = (s) => String(s == null ? '' : s).replace(/\D/g, '');
+const isPhoneQuery = (q) => /^[\d\s\-+()]+$/.test(String(q || '').trim()) && normDigits(q).length >= 3;
+
+// q = שאילתה גולמית · fields = שדות-טקסט · phoneFields = שדות-טלפון (אופציונלי).
+// שאילתה ריקה מחזירה true — כלומר "אין סינון", ולא "לא נמצא".
+function matchesSearch(q, fields, phoneFields) {
+  const nq = normSearch(q);
+  if (!nq) return true;
+  // ⚠️ המפריד ' | ' אינו קישוט: בלעדיו שאילתה יכולה להתאים **על התפר** בין שני שדות —
+  // עסק בשם "אבי" בעיר "בן שמן" היה נמצא בחיפוש "אביבן". מפריד שלא מופיע בשום שדה מונע את זה.
+  if ((fields || []).filter(Boolean).map(normSearch).join(' | ').includes(nq)) return true;
+  if (!isPhoneQuery(q)) return false;
+  const dq = normDigits(q);
+  return (phoneFields || []).some(p => p && normDigits(p).includes(dq));
+}
+
 function bizFilteredList() {
   const q = bizSearch.trim();
   const list = MOCK_BUSINESSES.filter(b => {
@@ -4726,7 +4771,10 @@ function bizFilteredList() {
     const matchDate = bizDateRangeFilter === 'all' ? true
       : (Date.now() - b.registeredAt.getTime()) <= Number(bizDateRangeFilter) * 86400000;
     const catLabel = (CATEGORIES.find(c => c.key === b.catKey) || {}).label || '';
-    const matchQ = !q || b.name.includes(q) || (b.city || '').includes(q) || catLabel.includes(q);
+    // §429 — נוספו שם בעל העסק, המייל והטלפון שלו. עד עכשיו חיפוש לפי בעלים עבד במרכז
+    // המשימות בלבד, וכאן החזיר "לא נמצא" על אותה מילה בדיוק.
+    const matchQ = matchesSearch(q, [b.name, b.city, catLabel, b.ownerFirst, b.ownerLast, b.ownerEmail],
+                                 [b.ownerPhone, b.phone]);
     return matchF && matchClass && matchCat && matchType && matchReview && matchHealth && matchDate && matchQ;
   });
   return list.sort((a, b) => {
@@ -5768,7 +5816,8 @@ function heartsFilteredSorted() {
   else if (heartsFilter === 'none') items = items.filter(b => !isLikesOverrideActive(b));
   else if (heartsFilter === 'zero') items = items.filter(b => (b.likesOverride ?? b.likes) === 0);
   const q = heartsSearch.trim();
-  if (q) items = items.filter(b => b.name.includes(q));
+  // §429 — היה `b.name.includes(q)` בלבד: רגיש-לרישיות, ובלי שם הבעלים.
+  if (q) items = items.filter(b => matchesSearch(q, [b.name, b.ownerFirst, b.ownerLast]));
   return items.slice().sort((a, b) => {
     const shownA = a.likesOverride ?? a.likes, shownB = b.likesOverride ?? b.likes;
     if (heartsSort === 'mostReal') return b.likes - a.likes;
@@ -5899,7 +5948,7 @@ function heartsFilterBarHtml() {
       <div class="filter-toolbar-row">
         <div style="font-size:15px;font-weight:700">לבבות לפי עסק</div>
         <div style="flex:1"></div>
-        <input class="filter-search-input" type="search" id="heartsSearchInput" placeholder="🔍 חיפוש עסק" value="${esc(heartsSearch)}" oninput="filterHeartsRows(this.value)" style="width:180px">
+        <input class="filter-search-input" type="search" id="heartsSearchInput" placeholder="🔍 חיפוש עסק או בעל עסק" value="${esc(heartsSearch)}" oninput="filterHeartsRows(this.value)" style="width:180px">
         <select class="filter-select" onchange="setHeartsSort(this.value)">
           <option value="mostShown" ${heartsSort==='mostShown'?'selected':''}>מיון: הכי הרבה מוצגים</option>
           <option value="mostReal" ${heartsSort==='mostReal'?'selected':''}>מיון: הכי הרבה אמיתיים</option>
@@ -6267,7 +6316,69 @@ const platPct = (n, of) => of > 0 ? Math.round((n / of) * 100) + '%' : '—';
 // **גבול עליון** בלבד, והשנייה — שמוגבלת למי שאושר אחרי שהמדידה כבר רצה — היא המספר
 // שאפשר להסתמך עליו. מספר יחיד בלי הסייג הזה היה שקר שקט.
 const HB_SEEN_SINCE = new Date('2026-08-02T00:00:00Z');
+
+// ══ §429 — הגדרה אחת לספירת אוהדים, כי היו ארבע ═══════════════════════════════════════════
+// המשתמש: *"כמות האוהדים מבולבלת — יש את הנתון בדשבורד ראשי ובכל האוהדים ובנתוני הפלטפורמה
+// והוא לא נראה לי נכון"*. הוא צדק, אבל **לא בגלל חישוב שגוי**: כל אחד מהמספרים היה נכון בפני
+// עצמו, וארבעה מסכים ספרו ארבעה דברים שונים תחת שמות שנשמעים זהים:
+//   · דשבורד ראשי     — `MOCK_FANS.length`      → כולל ממתינים **ונדחים**
+//   · כל האוהדים      — `status === 'approved'`  → מאושרים בלבד
+//   · מרכז הודעות     — `status === 'approved'`  → אותו דבר, חישוב מקביל שני
+//   · נתוני הפלטפורמה — `fanEntryStats()`        → אותו דבר, חישוב מקביל שלישי
+//   · והרשימה עצמה    — `fanFilteredList()`      → מאושרים **פחות** בעלי-עסק ממתינים (§427)
+// ⚠️ **זה הדפוס של §353**: ארבעה `filter` מקבילים אינם "כפילות קוד" בלבד — הם ארבעה מספרים
+// שיתפצלו ביום שבו מישהו יתקן אחד מהם. מרגע זה כולם קוראים מכאן.
+//
+// 🔑 **בעל עסק הוא אוהד, לא ישות מקבילה.** `approveBusiness` כותב על מסמך החבר
+// `status:'approved'` + `isBusinessOwner:true`, ולכן `approved` **כבר כולל** את בעלי העסק —
+// אין מה "לחבר", צריך רק לומר את זה במפורש ולפרק כמה מתוכם. חיבור של השניים היה ספירה כפולה.
+//
+// ⚠️ שני פערים אמיתיים שהפונקציה **מודדת ולא מחביאה**:
+//   1. אדם יכול להחזיק יותר מעסק מאושר אחד. לכן `ownerOfActiveBiz` סופר **אנשים** ואילו
+//      `activeBiz` סופר **עסקים**, ובכל מסך מוצג זה שמתאים למשפט. שני מספרים שנראים כמו
+//      אחד הם בדיוק השורש של הבלבול הזה — לא לאחד אותם.
+//   2. עסק מאושר שרשומת-החבר של הבעלים אינה מאושרת (או שאין קישור בכלל) **אינו** נספר
+//      ב-`approved`. זה אדם שקיים בפלטפורמה ונופל בין הכיסאות — `ownerGap`, ואותה הגדרה
+//      בדיוק כמו ב-bizOwnerLoginReadiness (noLink · missingMember · notApproved).
+function fanCounts() {
+  const fans = MOCK_FANS || [];
+  const bizs = MOCK_BUSINESSES || [];
+  const weekAgo = Date.now() - 7 * 86400000;
+  const approvedList = fans.filter(f => f.status === 'approved');
+  const approvedIds = new Set(approvedList.map(f => f.id));
+
+  // עסקים מאושרים לפי מזהה-הבעלים. Map ולא Set — צריך גם לדעת כמה עסקים לכל אדם.
+  const bizByOwner = new Map();
+  let activeBiz = 0, ownerGap = 0;
+  for (const b of bizs) {
+    if (b.status !== 'approved') continue;
+    activeBiz++;
+    if (!b.ownerMemberId || !approvedIds.has(b.ownerMemberId)) { ownerGap++; continue; }
+    bizByOwner.set(b.ownerMemberId, (bizByOwner.get(b.ownerMemberId) || 0) + 1);
+  }
+  const ownerOfActiveBiz = approvedList.filter(f => bizByOwner.has(f.id)).length;
+
+  return {
+    total: fans.length,                                        // כל הרשומות, כל הסטטוסים
+    approved: approvedList.length,                             // מאושרים — **כולל** בעלי עסק
+    pending: fans.filter(f => f.status === 'pending').length,
+    rejected: fans.filter(f => f.status === 'rejected').length,
+    ownerOfActiveBiz,                                          // אנשים שמחזיקים עסק מאושר
+    plainFans: approvedList.length - ownerOfActiveBiz,         // מאושרים שאינם בעלי עסק פעיל
+    activeBiz,                                                 // עסקים מאושרים (ישויות, לא אנשים)
+    ownerGap,                                                  // עסק מאושר בלי בעלים מאושר
+    hiddenPendingOwners: fans.filter(ownerMemberOfPendingBiz).length,   // §427
+    newThisWeek: fans.filter(f => f.registeredAt && f.registeredAt.getTime() >= weekAgo).length,
+    // ⚠️ המכנה הוא **כל** הרשומות ולא המאושרים — כך זה חושב מאז ומעולם, ושינוי כאן היה
+    // מזיז מספר שהמשתמש לא ביקש לגעת בו. נשמר כפי שהוא, ומתועד כדי שלא ייקרא בטעות
+    // כ"אחוז מהמאושרים".
+    subscriberPct: fans.length ? Math.round(100 * fans.filter(f => f.isSubscriber).length / fans.length) : 0,
+  };
+}
+
 function fanEntryStats() {
+  // §429 — אותה רשימה בדיוק שממנה `fanCounts()` גוזר את `approved`. הפילטר נשאר כאן כי
+  // הפונקציה צריכה את **הרשומות** ולא רק את המספר, אבל ההגדרה זהה מילה במילה — וזו הנקודה.
   const approved = (MOCK_FANS || []).filter(f => f.status === 'approved');
   const never = approved.filter(f => !f.lastSeenAt);
   const clean = approved.filter(f => f.approvedAt && f.approvedAt >= HB_SEEN_SINCE);
@@ -6543,8 +6654,15 @@ function platformStatsHtml() {
       const fe = fanEntryStats();
       if (!fe.approved) return '';
       const pct = Math.round(fe.never / fe.approved * 100);
+      const c = fanCounts();
       return `<div class="plat-sect">אוהדים מאושרים</div>
       <div class="plat-rows">
+        ${platRow('מאושרים בסך הכול', c.approved.toLocaleString('he-IL'),
+          `${c.ownerOfActiveBiz.toLocaleString('he-IL')} בעלי עסק פעיל · ${c.plainFans.toLocaleString('he-IL')} אוהדים בלבד · מתוך ${c.total.toLocaleString('he-IL')} רשומות`,
+          // §429 — השורה הזאת קיימת כי המשתמש דיווח ש"כמות האוהדים מבולבלת". היא לא מוסיפה
+          // נתון חדש — היא אומרת במפורש מה המספר **כולל**, וזה בדיוק מה שחסר היה.
+          '🔑 <b>בעל עסק הוא אוהד, לא ישות מקבילה.</b> אישור עסק כותב <code>status:\'approved\'</code> על רשומת החבר של הבעלים, ולכן הוא כבר בפנים — אין מה לחבר, וחיבור של "אוהדים + עסקים" הוא ספירה כפולה. ⚠️ <b>שני המספרים בפירוק סופרים אנשים</b>: מי שמחזיק שני עסקים מאושרים נספר כאן פעם אחת, ולכן הם לא יסתכמו למספר העסקים.' +
+          (c.ownerGap ? ` <br>⚠️ <b>${c.ownerGap} עסקים מאושרים אינם נספרים כאן בכלל</b> — אין קישור לרשומת חבר, או שרשומת החבר אינה מאושרת. ר' "מוכנות לכניסה כחבר" למטה.` : ''))}
         ${platRow('אושרו ולא נכנסו מעולם', fe.never.toLocaleString('he-IL'),
           `${pct}% מתוך ${fe.approved.toLocaleString('he-IL')} מאושרים`,
           '⚠️ <b>גבול עליון.</b> הנתון (lastSeenAt) נכתב רק מ-2.8.26, ולכן אוהד שנכנס לפני כן ולא חזר מאז נספר כאן בטעות. השורה מתחת מסננת את זה.')}
@@ -6745,14 +6863,14 @@ function dataCenterHtml() {
   const approved = MOCK_BUSINESSES.filter(b => b.status === 'approved');
   const totalClicks = approved.reduce((s, b) => s + (b.clicks || 0), 0);
   const totalHearts = approved.reduce((s, b) => s + (b.likesOverride ?? b.likes ?? 0), 0);
-  const q = dataSearch.trim().toLowerCase();
+  const q = dataSearch.trim();
   const filtered = approved.filter(b => {
     if (dataCategoryFilter !== 'all' && b.catKey !== dataCategoryFilter) return false;
-    if (q) {
-      const catLabel = (CATEGORIES.find(c => c.key === b.catKey) || {}).label || '';
-      if (!b.name.toLowerCase().includes(q) && !catLabel.toLowerCase().includes(q)) return false;
-    }
-    return true;
+    const catLabel = (CATEGORIES.find(c => c.key === b.catKey) || {}).label || '';
+    // §429 — נוסף שם בעל העסק. הנרמול כאן כבר היה תקין, ודווקא זה מה שהפך את הבאג
+    // בשאר המסכים ל"לפעמים": אותה מילה נמצאה כאן ולא נמצאה ב"כל העסקים".
+    return matchesSearch(q, [b.name, catLabel, b.ownerFirst, b.ownerLast, b.ownerEmail],
+                         [b.ownerPhone, b.phone]);
   });
   const rows = filtered.map(b => ({ b, anchors: anchoredForBiz(b.id), redeem: redeemFor(b.id) })).sort((x, y) => {
     if (dataSort === 'likes') return (y.b.likesOverride ?? y.b.likes ?? 0) - (x.b.likesOverride ?? x.b.likes ?? 0);
@@ -6793,7 +6911,7 @@ function dataCenterHtml() {
             `<div class="redeem-kpi"><div class="redeem-kpi-num">${(redeemTotals.ch[k] || 0).toLocaleString('he-IL')}</div><div class="redeem-kpi-lbl">${lbl}</div></div>`).join('')}</div>`}
     ${platformStatsHtml()}
     <div class="filter-toolbar-row" style="margin-bottom:10px">
-      <input class="filter-search-input" type="search" id="dataSearchInput" placeholder="🔍 חיפוש עסק או קטגוריה" value="${esc(dataSearch)}" oninput="filterDataRows(this.value)">
+      <input class="filter-search-input" type="search" id="dataSearchInput" placeholder="🔍 עסק, בעל העסק, קטגוריה או טלפון" value="${esc(dataSearch)}" oninput="filterDataRows(this.value)">
       <select class="filter-select" onchange="setDataCategoryFilter(this.value)">
         <option value="all">כל הקטגוריות</option>
         ${CATEGORIES.map(c => `<option value="${c.key}" ${dataCategoryFilter===c.key?'selected':''}>${c.icon} ${c.label}</option>`).join('')}
@@ -9019,7 +9137,7 @@ function bizFilterBarHtml(opts) {
   return `
     <div class="filter-toolbar">
       <div class="filter-toolbar-row">
-        <input class="filter-search-input" type="search" ${o.searchId ? `id="${o.searchId}"` : ''} placeholder="🔍 חיפוש עסק, עיר או קטגוריה" value="${esc(bizSearch)}" oninput="filterBizRows(this.value)">
+        <input class="filter-search-input" type="search" ${o.searchId ? `id="${o.searchId}"` : ''} placeholder="🔍 עסק, בעל העסק, עיר, קטגוריה או טלפון" value="${esc(bizSearch)}" oninput="filterBizRows(this.value)">
         <select class="filter-select" onchange="setBizSort(this.value)">
           <option value="waitingLongest" ${bizSort==='waitingLongest'?'selected':''}>מיון: הממתין הכי הרבה זמן</option>
           <option value="reviewedAsc" ${bizSort==='reviewedAsc'?'selected':''}>מיון: הכי פחות שלבים נסקרו</option>
@@ -9244,7 +9362,9 @@ function fanFilteredList() {
       // אותם מתוך ה-108, אבל את **היתר** לא הייתה שום דרך לבחור — כלומר מכתב שמדבר אל בעל
       // עסק היה מגיע גם לאוהד רגיל, או שהאוהדים הרגילים לא היו מקבלים כלום.
       : !f.isBusinessOwner;
-    const matchQ = !q || f.name.includes(q) || f.phone.includes(q) || f.email.includes(q);
+    // §429 — נוסף מספר החבר, והטלפון עבר להשוואת-ספרות: `052-1234567` מוצא גם רשומה
+    // שנשמרה כ-`0521234567`. עד עכשיו זו הייתה השוואת-מחרוזת גולמית.
+    const matchQ = matchesSearch(q, [f.name, f.email, f.memberNumber], [f.phone]);
     const matchRange = fanDateRangeFilter === 'all' || (now - f.registeredAt.getTime()) <= Number(fanDateRangeFilter) * 86400000;
     return matchF && matchClass && matchVerify && matchQ && matchRange && matchBucket;
   });
@@ -9944,7 +10064,7 @@ function fanFilterBarHtml(opts) {
   return `
     <div class="filter-toolbar">
       <div class="filter-toolbar-row">
-        <input class="filter-search-input" type="search" ${o.searchId ? `id="${o.searchId}"` : ''} placeholder="🔍 חיפוש לפי שם, טלפון או מייל" value="${esc(fanSearch)}" oninput="filterFanRows(this.value)">
+        <input class="filter-search-input" type="search" ${o.searchId ? `id="${o.searchId}"` : ''} placeholder="🔍 שם, טלפון, מייל או מספר חבר" value="${esc(fanSearch)}" oninput="filterFanRows(this.value)">
         <button class="filter-pill ${fanAdvancedOpen?'active':''}" onclick="toggleFanAdvanced()">⚙️ עוד סינונים${advancedActiveCount ? ` <span class="biz-changes-badge">${advancedActiveCount}</span>` : ''}</button>
         ${hasActiveFilters ? `<button class="filter-clear" onclick="clearFanFilters()">נקה סינון</button>` : ''}
       </div>
@@ -10027,10 +10147,10 @@ function fanListHtml() {
   }
   const pendingCount = fanPendingList().length;          // §427 — בלי בעלי עסק שממתינים עם העסק
   const hiddenOwners = fanHiddenOwnerCount();
-  const approvedCount = MOCK_FANS.filter(f => f.status === 'approved').length;
-  const subscriberPct = MOCK_FANS.length ? Math.round(100 * MOCK_FANS.filter(f => f.isSubscriber).length / MOCK_FANS.length) : 0;
-  const weekAgo = Date.now() - 7 * 86400000;
-  const newThisWeek = MOCK_FANS.filter(f => f.registeredAt && f.registeredAt.getTime() > weekAgo).length;
+  // §429 — אותה הגדרה בדיוק של הדשבורד הראשי ושל מרכז הנתונים. עד עכשיו היה כאן `filter`
+  // מקביל, ו-`newThisWeek` אפילו השתמש ב-`>` בזמן שהדשבורד הראשי השתמש ב-`>=` — כלומר שני
+  // המסכים יכלו להציג מספר שונה באותו רגע, בלי ששום דבר "נשבר".
+  const c = fanCounts();
   return `
     <div class="msg-content-head">
       <div style="flex:1;min-width:230px">
@@ -10039,11 +10159,11 @@ function fanListHtml() {
         ${hiddenOwners ? `<div class="msg-crumb" style="margin-top:4px">${hiddenOwners} ${hiddenOwners === 1 ? 'בעל עסק ממתין אינו מוצג כאן' : 'בעלי עסק ממתינים אינם מוצגים כאן'} — הם מאושרים אוטומטית עם העסק, והבדיקה נעשית מכרטיס העסק. <a onclick="setFanVerifyTypeFilter('owner')">להצגתם</a></div>` : ''}
       </div>
       <div class="msg-kpis">
-        <div><div class="msg-kpi-num">${approvedCount}</div><div class="msg-kpi-label">אוהדים מאושרים</div></div>
+        <div title="מאושרים בלבד, מתוך ${c.total} רשומות בסך הכול. המספר כולל את בעלי העסק — בעל עסק הוא אוהד בפלטפורמה, לא ישות נפרדת."><div class="msg-kpi-num">${c.approved}</div><div class="msg-kpi-label">אוהדים מאושרים · <span style="color:var(--text-sm);font-weight:600">${c.ownerOfActiveBiz} בעלי עסק פעיל</span></div></div>
         <div class="msg-kpi-sep"></div>
-        <div><div class="msg-kpi-num">${subscriberPct}<span class="msg-kpi-unit">%</span></div><div class="msg-kpi-label">מנויים מאומתים</div></div>
+        <div title="מתוך כלל הרשומות (${c.total}), לא מתוך המאושרים."><div class="msg-kpi-num">${c.subscriberPct}<span class="msg-kpi-unit">%</span></div><div class="msg-kpi-label">מנויים מאומתים</div></div>
         <div class="msg-kpi-sep"></div>
-        <div><div class="msg-kpi-num">+${newThisWeek}</div><div class="msg-kpi-label">נרשמו השבוע</div></div>
+        <div><div class="msg-kpi-num">+${c.newThisWeek}</div><div class="msg-kpi-label">נרשמו השבוע</div></div>
       </div>
     </div>
     ${notConnectedBannerHtml()}
@@ -10205,9 +10325,8 @@ function homeStatsHtml() {
   // openTasks = unifiedTaskItems().length — מקור-אמת יחיד (classifyAction), לא סכום-שדות שעלול לספור
   // עסק פעמיים (ממתין+יש-לו-גם-בקשה) ולפספס עסק "כרטיס חסר" בלי אף treatment. ר' §18 במפרט (שלב 2).
   const openTasks = unifiedTaskItems().length;
-  const approvedBiz = MOCK_BUSINESSES.filter(b => b.status === 'approved').length;
-  const weekAgo = Date.now() - 7 * 86400000;
-  const newFansThisWeek = MOCK_FANS.filter(f => f.registeredAt && f.registeredAt.getTime() >= weekAgo).length;
+  // §429 — מקור-אמת אחד. `c.activeBiz` הוא אותו מספר בדיוק ש-`approvedBiz` היה קודם.
+  const c = fanCounts();
   // "כניסות ב-24 שעות" לא נכלל בכוונה — אין שום מעקב session/login אמיתי במערכת (לא ב-members, לא
   // בשום מקום אחר) שממנו אפשר לחשב מספר כזה; הצגת מספר קבוע כאילו הוא אמיתי הייתה מטעה.
   return `
@@ -10219,11 +10338,14 @@ function homeStatsHtml() {
       <div class="msg-kpis">
         <div><div class="msg-kpi-num">${avgHandlingTimeLabel()}</div><div class="msg-kpi-label">זמן טיפול ממוצע</div></div>
         <div class="msg-kpi-sep"></div>
-        <div><div class="msg-kpi-num">${approvedBiz}<span style="font-size:13px;font-weight:500;color:var(--text-sm)">/${MOCK_BUSINESSES.length}</span></div><div class="msg-kpi-label">עסקים פעילים מתוך רשומים</div></div>
+        <div><div class="msg-kpi-num">${c.activeBiz}<span style="font-size:13px;font-weight:500;color:var(--text-sm)">/${MOCK_BUSINESSES.length}</span></div><div class="msg-kpi-label">עסקים פעילים מתוך רשומים</div></div>
         <div class="msg-kpi-sep"></div>
-        <div><div class="msg-kpi-num">${MOCK_FANS.length}</div><div class="msg-kpi-label">אוהדים רשומים · <span style="color:var(--accent);font-weight:700">+${newFansThisWeek} השבוע</span></div></div>
+        <div title="מאושרים מתוך כלל הרשומות (כולל ממתינים ונדחים). המספר כולל את בעלי העסק — בעל עסק הוא אוהד בפלטפורמה, לא ישות נפרדת."><div class="msg-kpi-num">${c.approved}<span style="font-size:13px;font-weight:500;color:var(--text-sm)">/${c.total}</span></div><div class="msg-kpi-label">אוהדים מאושרים מתוך רשומים · <span style="color:var(--accent);font-weight:700">+${c.newThisWeek} השבוע</span></div></div>
+        <div class="msg-kpi-sep"></div>
+        <div title="כמה מתוך האוהדים המאושרים מחזיקים עסק מאושר. נספרים אנשים ולא עסקים — מי שמחזיק שני עסקים מאושרים נספר פעם אחת, ולכן המספר יכול להיות קטן ממספר העסקים הפעילים."><div class="msg-kpi-num">${c.ownerOfActiveBiz}</div><div class="msg-kpi-label">מתוכם בעלי עסק פעיל${c.plainFans ? ` · <span style="color:var(--text-sm);font-weight:600">${c.plainFans} אוהדים בלבד</span>` : ''}</div></div>
       </div>
-    </div>`;
+    </div>
+    ${c.ownerGap ? `<div class="placeholder-note" style="margin:-4px 0 12px">⚠️ <b>${c.ownerGap} ${c.ownerGap === 1 ? 'עסק מאושר אינו נספר' : 'עסקים מאושרים אינם נספרים'} ב"אוהדים מאושרים"</b> — אין לו קישור לרשומת חבר, או שרשומת החבר של הבעלים עדיין אינה מאושרת. זה אדם שקיים בפלטפורמה ונופל בין הכיסאות. הפירוט המלא ב<a onclick="selectTab('${DATA_KEY}')">מרכז הנתונים</a>, בשורת "בעלי עסק — מוכנות לכניסה כחבר".</div>` : ''}`;
 }
 
 // ── מרכז המשימות: 3 לשוניות (סוג משימה) + Master-Detail בכל לשונית ──
@@ -10363,12 +10485,13 @@ function taskFilteredList() {
     });
   }
   const q = taskSearchQ.trim();
+  // §429 — אותה פונקציה של שאר המסכים. כאן שם-הבעלים כבר נכלל, אבל ההשוואה הייתה
+  // רגישה-לרישיות ולא ידעה טלפון.
   if (q) items = items.filter(x => {
     const e = x.entity;
-    const hay = x.kind === 'biz'
-      ? [e.name, e.ownerFirst, e.ownerLast, e.city].filter(Boolean).join(' ')
-      : [e.name, e.city].filter(Boolean).join(' ');
-    return hay.includes(q);
+    return x.kind === 'biz'
+      ? matchesSearch(q, [e.name, e.ownerFirst, e.ownerLast, e.city, e.ownerEmail], [e.ownerPhone, e.phone])
+      : matchesSearch(q, [e.name, e.city, e.email, e.memberNumber], [e.phone]);
   });
   return items.slice().sort((a, b) => {
     if (taskSort2 === 'leastReviewed') return (a.kind==='biz'?bizReviewedCount(a.entity):0) - (b.kind==='biz'?bizReviewedCount(b.entity):0);
@@ -14627,8 +14750,7 @@ function sendNowSectionHtml() {
 // בשום טאב אחר, ר' §136) — "שידורים נשלחו" מוגבל ל-10 האחרונים כי זה גודל ה-onSnapshot query
 // הקיים (messageBroadcastHistory), לא נוספה שאילתת-ספירה-אמיתית חדשה בשביל KPI אחד.
 function msgContentHeadHtml() {
-  const approvedFans = MOCK_FANS.filter(f => f.status === 'approved').length;
-  const approvedBiz = MOCK_BUSINESSES.filter(b => b.status === 'approved').length;
+  const c = fanCounts();   // §429 — לא `filter` רביעי; אותה הגדרה של שאר המסכים
   return `
     <div class="msg-content-head">
       <div style="flex:1;min-width:240px">
@@ -14636,9 +14758,9 @@ function msgContentHeadHtml() {
         <div class="msg-page-title">מרכז הודעות</div>
       </div>
       <div class="msg-kpis">
-        <div><div class="msg-kpi-num">${approvedFans}</div><div class="msg-kpi-label">אוהדים מאושרים</div></div>
+        <div title="מאושרים בלבד. כולל את בעלי העסק — ${c.ownerOfActiveBiz} מהם מחזיקים עסק מאושר, ולכן שתי הקוביות האלה אינן מתחברות ל'סך הכול נמענים'."><div class="msg-kpi-num">${c.approved}</div><div class="msg-kpi-label">אוהדים מאושרים</div></div>
         <div class="msg-kpi-sep"></div>
-        <div><div class="msg-kpi-num">${approvedBiz}</div><div class="msg-kpi-label">עסקים מאושרים</div></div>
+        <div title="ישויות-עסק מאושרות, לא אנשים. מי שמחזיק שני עסקים נספר כאן פעמיים ובקובייה שלצד פעם אחת."><div class="msg-kpi-num">${c.activeBiz}</div><div class="msg-kpi-label">עסקים מאושרים</div></div>
         <div class="msg-kpi-sep"></div>
         <div><div class="msg-kpi-num">${messageBroadcastHistory.length}</div><div class="msg-kpi-label">שידורים אחרונים</div></div>
       </div>
