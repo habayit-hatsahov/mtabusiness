@@ -24,6 +24,50 @@
       unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
   </style>
   <script>
+
+  // ── §431ג — תור לפונקציות שמוגדרות במודול ונקראות מ-onclick שנצבע קודם ──────────────────
+  // ר' §431/§431ג ב-docs/PROJECT_CONTEXT.md, ואת ההסבר המלא ב-home.html. בקצרה: המסך נצבע
+  // לפני שהמודול נטען, ולכן onclick שקורא לפונקציה שמוגדרת **בתוכו** זורק TypeError בשקט
+  // בחלון שבין השניים. getter מחזיר stub-שמכניס-לתור, setter משחרר אותו כשהמודול מגדיר.
+  // ⚠️ פעולה אחת בתור לכל שם — לחיצה שנייה מחליפה, לא מצטברת (אחרת טוגל מבטל את עצמו).
+  // ⚠️ `this` והארגומנטים נשמרים. חייב לרוץ בסקריפט **קלאסי**: מודול רץ אחרי כל אלה.
+  window.hbQueueUntilDefined = function (names, opts) {
+    const capMs  = (opts && opts.capMs) || 12000;
+    const onDrop = opts && opts.onDrop;
+    names.forEach(function (name) {
+      let real = null, pending = null, timer = null;
+      Object.defineProperty(window, name, {
+        configurable: true,
+        get: function () {
+          if (real) return real;
+          return function () {
+            pending = { args: Array.prototype.slice.call(arguments), ctx: this };
+            clearTimeout(timer);
+            timer = setTimeout(function () {
+              if (!pending) return;
+              pending = null;
+              if (onDrop) onDrop(name);
+              else console.warn('hbQueueUntilDefined: המודול לא נטען בזמן, הפעולה בוטלה —', name);
+            }, capMs);
+          };
+        },
+        set: function (fn) {
+          real = fn;
+          clearTimeout(timer);
+          const p = pending; pending = null;
+          if (!p) return;
+          try { fn.apply(p.ctx, p.args); }
+          catch (e) { console.error('hbQueueUntilDefined: שחזור נכשל', name, e); }
+        },
+      });
+    });
+  };
+
+  window.hbQueueUntilDefined([
+    'openMenu', 'closeMenu', 'openContactSheet', 'closeContactSheet', 'copyContactEmail', 'shareApp',
+    'shareMyBiz', 'closeShareSheet', 'copyShareLink'
+  ]);
+
     var isBizDoc = new URLSearchParams(location.search).get('doc') === 'biz';
     // §421 — מסמך שלישי באותו מנגנון. נדרש כדף ציבורי נפרד בגלל דרישת החנויות (אפל
     // וגוגל שתיהן חוסמות הגשה בלי כתובת מדיניות פרטיות), ולא כסעיף בתוך התקנון —

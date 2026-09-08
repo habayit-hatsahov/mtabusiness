@@ -1841,6 +1841,51 @@
   </div>
 </div>
 
+<script>
+  // ── §431ג — תור לפונקציות שמוגדרות במודול ונקראות מ-onclick שנצבע קודם ──────────────────
+  // ר' §431/§431ג ב-docs/PROJECT_CONTEXT.md, ואת ההסבר המלא ב-home.html. בקצרה: המסך נצבע
+  // לפני שהמודול נטען, ולכן onclick שקורא לפונקציה שמוגדרת **בתוכו** זורק TypeError בשקט
+  // בחלון שבין השניים. getter מחזיר stub-שמכניס-לתור, setter משחרר אותו כשהמודול מגדיר.
+  // ⚠️ פעולה אחת בתור לכל שם — לחיצה שנייה מחליפה, לא מצטברת (אחרת טוגל מבטל את עצמו).
+  // ⚠️ `this` והארגומנטים נשמרים. חייב לרוץ בסקריפט **קלאסי**: מודול רץ אחרי כל אלה.
+  window.hbQueueUntilDefined = function (names, opts) {
+    const capMs  = (opts && opts.capMs) || 12000;
+    const onDrop = opts && opts.onDrop;
+    names.forEach(function (name) {
+      let real = null, pending = null, timer = null;
+      Object.defineProperty(window, name, {
+        configurable: true,
+        get: function () {
+          if (real) return real;
+          return function () {
+            pending = { args: Array.prototype.slice.call(arguments), ctx: this };
+            clearTimeout(timer);
+            timer = setTimeout(function () {
+              if (!pending) return;
+              pending = null;
+              if (onDrop) onDrop(name);
+              else console.warn('hbQueueUntilDefined: המודול לא נטען בזמן, הפעולה בוטלה —', name);
+            }, capMs);
+          };
+        },
+        set: function (fn) {
+          real = fn;
+          clearTimeout(timer);
+          const p = pending; pending = null;
+          if (!p) return;
+          try { fn.apply(p.ctx, p.args); }
+          catch (e) { console.error('hbQueueUntilDefined: שחזור נכשל', name, e); }
+        },
+      });
+    });
+  };
+
+  window.hbQueueUntilDefined([
+    'closeImgLightbox', 'switchView', 'jumpToSubmitCard', 'openMenu', 'closeMenu', 'goBackOrHome',
+    'shareApp', 'shareMyBiz', 'closeShareSheet', 'copyShareLink', 'openContactSheet', 'closeContactSheet',
+    'copyContactEmail', 'dismissInstallBanner', 'installPWA', 'closeManualInstallSheet', 'dismissInAppBanner'
+  ]);
+</script>
 <script type="module">
 import { firebaseConfig, db as sharedDb, auth as sharedAuth, getStorageLazy as sharedStorageLazy } from './firebase-config.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";

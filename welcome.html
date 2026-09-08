@@ -199,6 +199,49 @@ window.shareLandingPage = async function() {
 // openLoginModal מוגדר כבר עכשיו, אבל heroLogin/heroRequestResend חיים ב-script type=module
 // שממתין להורדת firebase מ-gstatic. בלי המעטפת הזאת רק הזזנו את אותו באג פנימה: הכפתור
 // "התחברו" היה מת בשקט. עכשיו הוא **אומר** למה, והמודול דורס את ההגדרות ברגע שהוא מוכן.
+// ── §431ג — אותו מצב-ביניים בדיוק, לכפתור שלא קיבל מעטפת ──────────────────────────────
+// heroLogin/heroRequestResend מוגנים כאן למעלה (heroQueueUntilReady), אבל
+// **`heroShowCodePath` נשאר מחוץ להסדר** — והוא הכפתור "כניסה עם טלפון וקוד". `openLoginModal`
+// קלאסית ונפתחת מיד, כלומר המודאל לחיץ לגמרי בזמן שהפונקציה שפותחת את מסלול-הקוד עדיין
+// לא קיימת: לחיצה = כלום, בשקט. לפי §415ב זה המסלול היחיד של 4.1% מהנכנסים, ושל **כל** מי
+// שגוגל נכשלה אצלו — כלומר בדיוק מי שכבר במצוקה. זו אותה משפחה של §425.
+//
+// המנגנון זהה ל-home.html (§431ג): stub שמכניס לתור, והמודול משחרר אותו בהגדרה.
+// ⚠️ הקריאה השנייה, בענף הכישלון של גוגל (`window.heroShowCodePath && …`), יושבת בתוך
+// closure שרץ רק אחרי ניסיון-כניסה — כלומר הרבה אחרי שהמודול הגדיר את האמיתית. היא לא
+// מושפעת מכאן, ונבדקה במפורש לפני השינוי.
+window.hbQueueUntilDefined = function (names, opts) {
+  const capMs  = (opts && opts.capMs) || 12000;
+  const onDrop = opts && opts.onDrop;
+  names.forEach(function (name) {
+    let real = null, pending = null, timer = null;
+    Object.defineProperty(window, name, {
+      configurable: true,
+      get: function () {
+        if (real) return real;
+        return function () {
+          pending = { args: Array.prototype.slice.call(arguments), ctx: this };
+          clearTimeout(timer);
+          timer = setTimeout(function () {
+            if (!pending) return;
+            pending = null;
+            if (onDrop) onDrop(name);
+          }, capMs);
+        };
+      },
+      set: function (fn) {
+        real = fn;
+        clearTimeout(timer);
+        const p = pending; pending = null;
+        if (!p) return;
+        try { fn.apply(p.ctx, p.args); }
+        catch (e) { console.error('hbQueueUntilDefined: שחזור נכשל', name, e); }
+      },
+    });
+  });
+};
+window.hbQueueUntilDefined(['heroShowCodePath']);
+
 window.heroResetLoginBtn = function () {
   const b = document.getElementById('heroLoginBtn');
   if (b) { b.disabled = false; b.textContent = 'התחברו'; }

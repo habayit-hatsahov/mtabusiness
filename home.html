@@ -122,6 +122,65 @@
   </div>
 </div>
 <script>
+  // ── §431ג — תור לפונקציות שמוגדרות במודול ונקראות מ-onclick שנצבע קודם ──────────────────
+  // ר' §431: המסך נצבע לפני שהמודול נטען (ב-PWA כמעט מיידית), ולכן onclick שקורא לפונקציה
+  // שמוגדרת **בתוך** המודול זורק TypeError בשקט בחלון שבין השניים. זו ההכללה של
+  // heroQueueUntilReady שכבר קיים ב-welcome.html מאז §310/§312.
+  //
+  // המנגנון: getter שמחזיר stub-שמכניס-לתור כל עוד האמיתית לא הוגדרה, ו-setter שמשחרר את
+  // התור ברגע שהמודול מגדיר אותה. **אף מוקד-קריאה לא משתנה** — לא ה-onclick ולא הפונקציה.
+  //
+  // ⚠️ **פעולה אחת בתור לכל שם, לא רשימה.** לחיצה שנייה מחליפה את הראשונה במקום להצטבר —
+  // אחרת לחיצה כפולה על טוגל הייתה משוחזרת פעמיים ומבטלת את עצמה, שזה בדיוק הבאג של §431.
+  // ⚠️ **`this` נשמר** — יש onclick-ים שמעבירים את האלמנט עצמו (toggleMemberCard(this,…)).
+  // ⚠️ חייב לרוץ בסקריפט **קלאסי**: מודול רץ אחרי כל אלה, כלומר אחרי החלון שהוא בא לסגור.
+  window.hbQueueUntilDefined = function (names, opts) {
+    const capMs  = (opts && opts.capMs) || 12000;
+    const onDrop = opts && opts.onDrop;
+    names.forEach(function (name) {
+      let real = null, pending = null, timer = null;
+      Object.defineProperty(window, name, {
+        configurable: true,
+        get: function () {
+          if (real) return real;
+          return function () {
+            pending = { args: Array.prototype.slice.call(arguments), ctx: this };
+            clearTimeout(timer);
+            // המודול לא הגיע בזמן — עדיף לוותר ולומר, מאשר שהלחיצה "תתעורר" אחרי דקה.
+            timer = setTimeout(function () {
+              if (!pending) return;
+              pending = null;
+              if (onDrop) onDrop(name);
+            }, capMs);
+          };
+        },
+        set: function (fn) {
+          real = fn;
+          clearTimeout(timer);
+          const p = pending; pending = null;
+          if (!p) return;
+          try { fn.apply(p.ctx, p.args); }
+          catch (e) { console.error('hbQueueUntilDefined: שחזור נכשל', name, e); }
+        },
+      });
+    });
+  };
+
+  // 🔑 **`toggleMemberCard` הוא היחיד מהשלושה שאפשר באמת ללחוץ עליו בחלון המת** — הכפתור
+  // "לקבלת ההטבה", שנבנה בקוד קלאסי בתוך גיליון-העסק. ומאז ש-§431 תיקן את הגארד על
+  // `_recordView`, הגיליון **כן** נפתח בחלון הזה — כלומר התיקון הקודם הוא מה שהפך את
+  // הכפתור הזה לנגיש, וזה מחייב שגם הוא יעבוד.
+  //
+  // שני האחרים נבדקו ואינם נגישים היום: `#glBanner` מקבל .show רק מהמודול עצמו, ו-#menuPushItem
+  // הוא display:none עד ש-updatePushMenuItem (מודול, ומוגן ב-if) חושף אותו. הם ברשימה כביטוח
+  // בלבד — ⚠️ אם מישהו יקדים את החשיפה שלהם לקוד קלאסי, הבאג היה חוזר בשקט בלי השורה הזאת.
+  window.hbQueueUntilDefined(['toggleMemberCard', 'hbDismissGoogleBanner', 'enablePushAny'], {
+    onDrop: function () {
+      // showLikeNote מוגדר בסקריפט הקלאסי הגדול — קיים הרבה לפני שהטיימר הזה נורה.
+      if (window.showLikeNote) window.showLikeNote('משהו לא נטען כמו שצריך. נסו לרענן את הדף.');
+    },
+  });
+
   window._hbSplashFirstEntry = !sessionStorage.getItem('hb_splash_shown');
   window._hbSplashReady = false;
   window._hbSplashPending = { cards: false, name: false };
@@ -721,6 +780,19 @@
     .like-heart { display: block; }
     .biz-card-like .like-heart path { fill: none; stroke: #fff; stroke-width: 2; }
     .biz-card-like.liked .like-heart path { fill: var(--acc); stroke: var(--acc); }
+
+    /* §431 — הודעה קצרה כשלב לא נשמר. עד עכשיו כישלון-כתיבה היה שקט לחלוטין, והמשתמש
+       ראה בדיוק את מה שרואה מי שלא לחץ בכלל. האלמנט נוצר ב-JS בפעם הראשונה שצריך אותו. */
+    .like-note {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(12px);
+      z-index: 9000; max-width: min(92vw, 420px);
+      background: rgba(10,20,35,.94); color: #fff;
+      font-size: 14px; font-weight: 600; line-height: 1.4; text-align: center;
+      padding: 11px 18px; border-radius: 999px;
+      box-shadow: 0 6px 22px rgba(16,24,40,.34);
+      opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease;
+    }
+    .like-note.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     .biz-card-body { padding: 12px 16px 16px; display: flex; flex-direction: column; flex: 1; min-height: 0; }
     .biz-card-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1909,6 +1981,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // פעולות חד-פעמיות (פתיחת עסק מקישור-שיתוף) ממתינות לנתונים האמיתיים כדי לא לרוץ פעמיים.
 window.loadFirebaseData = function(data, isPreview) {
   businesses = data;
+  // §431 — כל snapshot דורס את המערך כולו, ולכן לחיצת-לב שטרם אושרה ע"י השרת חייבת להיות
+  // מוחלת מחדש **כאן**. בלי השורה הזאת הלב היה מתמלא בלחיצה וקופץ אחורה שנייה אחר כך.
+  _applyPendingLikes();
   renderSections();
   window._hbMarkReady && window._hbMarkReady('cards');
   refreshOpenFeed();
@@ -2988,14 +3063,140 @@ function refreshSheetIfOpen() {
   if (b) renderSheetMeta(b);
 }
 
-async function toggleLike(id) {
+// ── §431 — לחיצת-לב: תגובה מיידית, תור לחלון-הטעינה, וחסימת לחיצה כפולה ─────────────────
+// 🔑 **הבאג ששלושת התיקונים כאן סוגרים היה שקוף לחלוטין למדידה.** הכרטיסים מצוירים **מיד**
+// מ-hb_businesses_cache (סקריפט קלאסי, ר' loadFirebaseData), בעוד ש-window._likeFirestoreToggle
+// מוגדר רק בסוף המודול — אחרי שער-ה-auth שממתין עד 6 שניות (HB_AUTH_GATE_MS) ועוד עד 4 שניות
+// ל-getIdToken. כל לחיצה בחלון הזה זרקה TypeError בשקט, ו**אפילו לא נרשמה כאירוע**, כי
+// window.logEvent מוגדר מאוחר עוד יותר. ב-PWA זה החמור ביותר: המעטפת נצבעת כמעט מיידית
+// מהמטמון, כלומר בדיוק שם המשתמש רואה כרטיסים מלאים ולוחץ לפני שקיים קוד שיכתוב את הלב.
+//
+// אומת בנתונים חיים אצל אוהד באייפון (2026-09-07): **36 לחיצות ייצרו 21 לבבות** — 15 מהן
+// על עסק אחד בתוך 1.3 שניות, ושלוש לחיצות נגמרו בלי לב כלל, כי הלחיצה השנייה ("למה לא קרה
+// כלום?") הגיעה אחרי שה-snapshot כבר סימן והיא **ביטלה** את הראשונה.
+//
+// שלושה תיקונים נפרדים, כל אחד עומד בפני עצמו:
+//   1. **המסך מגיב לפני הרשת** — הלב מתמלא בלחיצה, לא כשהכתיבה חוזרת מהשרת.
+//   2. **לחיצה בחלון-הטעינה נשמרת ונשלחת** ברגע שהמנוע מוכן, במקום להיזרק בשקט.
+//   3. **לחיצה כפולה מהירה על אותו עסק נחסמת** — אחרת היא מבטלת את הקודמת.
+//
+// ⚠️ מצב-היעד נשמר ב-_likeWanted **בנפרד** מ-businesses, כי כל snapshot דורס את המערך כולו
+// (`businesses = data`). בלי זה הלב היה מתמלא בלחיצה וקופץ אחורה ב-snapshot הבא — כלומר
+// בדיוק ההתנהגות שהתיקון בא למנוע, רק מהירה יותר.
+const _likeWanted  = new Map();   // bizId → מצב-היעד (true = מסומן) עד שהשרת מאשר
+const _likeQueued  = new Map();   // bizId → מזהה-טיימר, ללחיצות שנעשו לפני שהמנוע נטען
+const _likeLastTap = new Map();   // bizId → חותמת-זמן הלחיצה האחרונה
+const LIKE_TAP_GUARD_MS = 600;    // לחיצה שנייה על אותו עסק בתוך הזמן הזה = מעידה, לא כוונה
+const LIKE_QUEUE_MAX_MS = 15000;  // המנוע לא נטען בזמן הזה → מחזירים את הלב ואומרים למה
+
+// מחיל את מצבי-היעד שטרם אושרו על מערך businesses הנוכחי. נקרא גם אחרי כל snapshot.
+function _applyPendingLikes() {
+  if (!_likeWanted.size) return;
+  const myId = currentMemberId();
+  if (!myId) return;
+  _likeWanted.forEach((wanted, id) => {
+    const b = businesses.find(x => x.id === id);
+    if (!b) return;
+    const arr = (b.likedBy || []).filter(x => x !== myId);
+    if (wanted) arr.push(myId);
+    b.likedBy = arr;
+  });
+}
+
+function _paintLike() {
+  syncLiveCardFields();
+  refreshSheetIfOpen();
+}
+
+// הודעה קצרה בתחתית המסך. נוצרת בפעם הראשונה שצריך אותה — כישלון לייק הוא נדיר, ואין סיבה
+// שאלמנט קבוע ישב ב-HTML של כל טעינה.
+function showLikeNote(text) {
+  let el = document.getElementById('likeNote');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'likeNote';
+    el.className = 'like-note';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+// החזרת הלב למצב שלפני הלחיצה. wanted = מה שביקשנו ונכשל, ולכן המצב הקודם הוא ההיפך.
+function _revertLike(id, myId, wanted) {
+  _likeWanted.delete(id);
+  const b = businesses.find(x => x.id === id);
+  if (b) {
+    const arr = (b.likedBy || []).filter(x => x !== myId);
+    if (!wanted) arr.push(myId);
+    b.likedBy = arr;
+  }
+  _paintLike();
+}
+
+async function _likeSend(id, myId, wanted) {
+  try {
+    // החתימה של _likeFirestoreToggle מקבלת את המצב **הנוכחי** ומחליטה union/remove לפיו.
+    await window._likeFirestoreToggle(id, myId, !wanted);
+    // לא מחזירים כלום ל-businesses: הערך האופטימי כבר שם, וה-snapshot הבא יביא את האמת.
+    _likeWanted.delete(id);
+  } catch (e) {
+    console.error('like failed:', e);
+    _revertLike(id, myId, wanted);
+    showLikeNote('לא הצלחנו לשמור את הלב. נסו שוב עוד רגע.');
+  }
+}
+
+// נקרא מהמודול ברגע ש-_likeFirestoreToggle מוגדר (ר' שם), ומשחרר את מה שנלחץ לפני כן.
+window._likeDrainQueue = function() {
+  if (!_likeQueued.size) return;
+  const myId = currentMemberId();
+  const ids = [..._likeQueued.keys()];
+  ids.forEach(id => {
+    clearTimeout(_likeQueued.get(id));
+    _likeQueued.delete(id);
+    const wanted = _likeWanted.get(id);
+    if (wanted === undefined) return;
+    if (!myId) { _likeWanted.delete(id); return; }
+    // האירוע לא נרשם בלחיצה עצמה — window.logEvent עדיין לא היה קיים באותו רגע. נרשם כאן,
+    // ולכן לחיצות מחלון-הטעינה מפסיקות להיות בלתי-נראות גם במדידה, לא רק למשתמש.
+    if (wanted) window.logEvent && window.logEvent('heart', { bizId: id });
+    _likeSend(id, myId, wanted);
+  });
+};
+
+function toggleLike(id) {
   const myId = currentMemberId();
   if (!myId) { location.href = 'welcome.html'; return; }
   const b = businesses.find(x => x.id === id);
   if (!b) return;
-  const liked = (b.likedBy || []).includes(myId);
-  if (!liked) window.logEvent && window.logEvent('heart', { bizId: id }); // רק על הוספת-לב, לא על הסרה
-  await window._likeFirestoreToggle(id, myId, liked);
+
+  const now = Date.now();
+  if (now - (_likeLastTap.get(id) || 0) < LIKE_TAP_GUARD_MS) return;
+  _likeLastTap.set(id, now);
+
+  const wanted = !(b.likedBy || []).includes(myId);
+
+  // (1) המסך מגיב מיד — לפני כל פנייה לרשת.
+  _likeWanted.set(id, wanted);
+  _applyPendingLikes();
+  _paintLike();
+
+  if (wanted) window.logEvent && window.logEvent('heart', { bizId: id }); // רק על הוספת-לב, לא על הסרה
+
+  // (2) המנוע עדיין לא נטען — שומרים את הלחיצה במקום לזרוק אותה.
+  if (typeof window._likeFirestoreToggle !== 'function') {
+    clearTimeout(_likeQueued.get(id));
+    _likeQueued.set(id, setTimeout(() => {
+      _likeQueued.delete(id);
+      _revertLike(id, myId, wanted);
+      showLikeNote('אין חיבור כרגע — הלב לא נשמר.');
+    }, LIKE_QUEUE_MAX_MS));
+    return;
+  }
+  _likeSend(id, myId, wanted);
 }
 
 // ── קישור WhatsApp לעסק ─────────────────────────────────────────────────────────────
@@ -3078,7 +3279,10 @@ function openBiz(id) {
   const b = businesses.find(x => x.id === id);
   if (!b) return;
   _openBizId = id;
-  window._recordView(b.id);
+  // §431 — הגארד אינו קישוט. _recordView מוגדר באותו מודול כמו _likeFirestoreToggle, ולכן
+  // לחיצה על כרטיס בחלון-הטעינה זרקה כאן TypeError — ו**כל openBiz מתחת לשורה הזאת לא רץ**,
+  // כלומר גיליון-העסק פשוט לא נפתח, בלי שום שגיאה על המסך. אותה תקלה בדיוק כמו הלב.
+  window._recordView && window._recordView(b.id);
   window.logEvent && window.logEvent('bizClick', { bizId: id });
 
   const hero = document.getElementById('sheetHero');
@@ -4423,6 +4627,10 @@ window._likeFirestoreToggle = async function(id, memberId, liked) {
     likedBy: liked ? arrayRemove(memberId) : arrayUnion(memberId)
   });
 };
+// §431 — מרגע זה יש מנוע-כתיבה. כל לב שנלחץ קודם (בין ציור-הכרטיסים מהמטמון לבין סיום
+// המודול) ממתין בתור ונשלח עכשיו. ⚠️ חייב לשבת **מיד** אחרי ההגדרה ולא בסוף הקובץ: כל שורה
+// שביניהן יכולה לזרוק ולהשאיר את התור תקוע — וזו בדיוק תקלה שאינה משאירה שום עקבה.
+window._likeDrainQueue && window._likeDrainQueue();
 
 window._recordView = function(id) {
   // §281 — מנהל לא מנפח לעסק את מונה הלחיצות. הדגל נקבע ב-initBizNavItem אחרי קריאת מסמך
