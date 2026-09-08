@@ -20,7 +20,14 @@
   <!-- ⚠️ בלי defer, כמו phone-check.js/social-links.js שלידו: הקריאה ל-init יושבת בסקריפט
        מודול בתחתית העמוד, ואי-ודאות בסדר-הריצה כאן היא בדיוק §310/§312. -->
   <script src="google-signup.js"></script>
+  <!-- §430 — התחברות עם Apple. **אין כאן תגית לספרייה של אפל, בכוונה**: המודול מטעין
+       אותה בעצמו ורק אחרי שהוא מוודא ש-`SERVICES_ID` מוגדר (§430). כל עוד חשבון
+       המפתחים לא אושר — הבלוק מוסתר, ולא יוצאת ולו בקשת-רשת אחת לאפל.
+       ⚠️ הקובץ כן נטען: הוא מגדיר את `window.hbAppleSignup`, וקריאה ל-init על מודול
+       שלא נטען הייתה `undefined` שקט — בדיוק הדפוס של §425. -->
+  <script src="apple-signup.js"></script>
   <script>
+
   // ── §431ג — תור לפונקציות שמוגדרות במודול ונקראות מ-onclick שנצבע קודם ──────────────────
   // ר' §431/§431ג ב-docs/PROJECT_CONTEXT.md, ואת ההסבר המלא ב-home.html. בקצרה: המסך נצבע
   // לפני שהמודול נטען, ולכן onclick שקורא לפונקציה שמוגדרת **בתוכו** זורק TypeError בשקט
@@ -605,6 +612,14 @@
              תו אחד, כלומר הנשירה היא ברושם הראשון — והכפתור צריך לשבת בדיוק שם, מעל השדה
              הראשון שהם ראו. -->
         <div id="gsHost"></div>
+
+        <!-- §430 — כפתור ההרשמה עם Apple, **מתחת לגוגל** (חלופה ב' בדמו, בחירת המשתמש).
+             הנימוק: 88.2% מהנרשמים על Gmail (§415ב), ולכן הכפתור שרובם ילחצו עליו נשאר
+             ראשון; אפל נדרשת לאישור בחנות ולא כי היא הערוץ העיקרי.
+             המכל ריק בכוונה, כמו של גוגל — המרקאפ נבנה ב-apple-signup.js.
+             🔲 **מוסתר עד שיוגדר `SERVICES_ID`** (חשבון המפתחים ב-enrollment pending).
+             עד אז הדף נראה בדיוק כמו קודם. -->
+        <div id="asHost"></div>
 
         <div class="form-row">
           <div class="form-group">
@@ -2110,6 +2125,14 @@
     // את החשבון מהתפריט אחר-כך (§377).
     if (memberDocRef) await window.hbGoogleSignup?.attach(hbApiFetch, memberDocRef.id);
 
+    // ── §430 — אותו דבר בדיוק עבור אפל ────────────────────────────────────────────────
+    // 🔑 **שתי הקריאות אינן מתחרות זו בזו:** מי שלא לחץ על הכפתור אין לו טוקן, ו-attach
+    // יוצא מיד עם `{skipped:'no_token'}` בלי בקשת-רשת. כלומר בפועל רצה לכל היותר אחת,
+    // וכל עוד `SERVICES_ID` ריק — אף אחת מהן לא רצה בכלל.
+    // ⚠️ ברצף ולא ב-Promise.all: הרצף עולה אפס (הנתיב שלא נלחץ מסתיים סינכרונית),
+    // ו-Promise.all על שתי קריאות שכל אחת חסומה ב-8 שניות היה מסתיר איזו מהן איחרה.
+    if (memberDocRef) await window.hbAppleSignup?.attach(hbApiFetch, memberDocRef.id);
+
     setSubmitStatus('');
     localStorage.removeItem(DRAFT_KEY);
     form.style.display = 'none';
@@ -2552,6 +2575,19 @@
     // ⚠️ `formStep` ולא סוג-אירוע חדש: `type` ב-firestore.rules הוא רשימת-היתר סגורה, וסוג
     // שאינו בה **מוחק את כל האירוע בשקט** (§326). `channel` הוא טקסט חופשי עד 50 תווים,
     // ו-funnelStats מתעלם מערוצים שאינו מכיר — כלומר אפס סיכון למשפך הקיים.
+    log: (channel) => logEvent('formStep', { blockId: 'fanRegister', channel: channel }),
+  });
+
+  // ── §430 — אותה הפעלה בדיוק עבור אפל, אותם שדות, אותו מקום בקוד ───────────────────────
+  // 🔲 כל עוד `SERVICES_ID` ריק ב-apple-signup.js, `init` מסתיר את המכל ו-`render` יוצא
+  // לפני הציור — כלומר הקריאה הזאת היא no-op גלוי-לעין-אפס. **זה המתג היחיד.**
+  // ⚠️ ערוצי המדידה נפרדים (`apple*` מול `google*`) — אותו שם ערוץ בשני הכפתורים היה
+  // ממזג אותם במשפך לערוץ אחד, ואז אי-אפשר לדעת מי מהם עובד.
+  window.hbAppleSignup?.init({
+    hostId: 'asHost',
+    warnId: 'warn-email',
+    fields: { first: 'firstName', last: 'lastName', email: 'email' },
+    onFilled: () => { try { saveRegDraft(); } catch (e) { console.error('draft save after apple fill failed', e); } },
     log: (channel) => logEvent('formStep', { blockId: 'fanRegister', channel: channel }),
   });
 

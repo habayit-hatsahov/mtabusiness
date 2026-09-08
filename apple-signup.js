@@ -72,6 +72,32 @@
   // ⚠️ ולכן, כמו אצל גוגל: **בלוקאלהוסט זה לא יעבוד**, וזה צפוי ולא באג.
   var REDIRECT_URI = 'https://yellowzone.co.il/fan-register.html';
 
+  // ── §430 — ה-SDK של אפל נטען מכאן, ולא בתגית בדף ─────────────────────────────────────
+  // 🔑 **דרישה מפורשת של המשתמש: הכפתור לא מוצג עד שיש חשבון אפל.** תגית `<script>` בדף
+  // הייתה מקיימת את זה למראית-עין בלבד — הכפתור אמנם לא מצויר, אבל כל נרשם היה משלם
+  // בקשה של 42KB לשרת של אפל בכל טעינה, בשביל ספרייה שאין לה מה לעשות. ההטענה כאן
+  // רצה **אחרי** בדיקת `SERVICES_ID`, ולכן כל עוד הוא ריק לא יוצאת ולו בקשה אחת.
+  // 🔑 וזה גם משאיר **מתג יחיד**: מילוי `SERVICES_ID` מדליק את הכל, בלי עריכה בשישה דפים.
+  // ⚠️ מקטע ה-locale בכתובת קובע רק את שפת הכפתור **של ה-SDK** — ואנחנו מציירים כפתור
+  // משלנו (ר' APPLE_LOGO למטה), כלומר הוא לא בשימוש. גיליון-האימות עצמו מתורגם לפי
+  // חשבון האפל של המשתמש ולא לפי הכתובת הזאת. `en_US` הוא הנתיב שבתיעוד של אפל,
+  // ונבדק בפועל: HTTP 200, 42,880 בייט.
+  var APPLE_SDK_SRC =
+    'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
+  var sdkRequested = false;
+
+  function loadSdk() {
+    if (sdkRequested) return;                       // גם אם render נקרא משני מכלים
+    sdkRequested = true;
+    if (window.AppleID && window.AppleID.auth) return;
+    var s = document.createElement('script');
+    s.src = APPLE_SDK_SRC;
+    s.async = true;
+    // כישלון רשת אינו זורק — לולאת ה-tries ב-render תיגמר באזהרה, והבלוק יישאר מוסתר.
+    s.onerror = function () { console.warn('apple-signup: ה-SDK של אפל לא נטען מהרשת'); };
+    document.head.appendChild(s);
+  }
+
   // ⏱️ אותו סף בדיוק של google-signup: הקריאה רצה **בתוך** זמן-ההמתנה של הנרשם, כי מסך
   // הצלחה עם עבודה שרצה מאחוריו אינו מסך הצלחה (§292).
   var ATTACH_TIMEOUT_MS = 8000;
@@ -320,6 +346,10 @@
       console.warn('apple-signup: SERVICES_ID ריק — הבלוק לא יוצג (חשבון אפל טרם הוגדר)');
       return;
     }
+
+    // §430 — רק מכאן ואילך יש סיבה לספרייה של אפל. הקריאה בטוחה לחזרות: היא מזריקה פעם
+    // אחת, ובדמו/בבדיקות (שבהם AppleID כבר מוזרק) אינה מייצרת שום בקשת-רשת.
+    loadSdk();
 
     if (window.AppleID && window.AppleID.auth) {
       try {
