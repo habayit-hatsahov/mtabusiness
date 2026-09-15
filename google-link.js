@@ -90,12 +90,33 @@
     document.body.style.overflow = '';
   }
 
+  // §435 — ר' ההערה המקבילה ב-google-signup.js: הנפילה-לאחור מגינה מפני HTML ישן במטמון.
+  function nativeGoogleMode() {
+    var ng = window.YZNativeGoogle;
+    if (ng && typeof ng.mode === 'function') return ng.mode();
+    return (window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || '')) ? 'blocked' : 'web';
+  }
+
   // ⚠️ ספריית גוגל נטענת async. בלי ההמתנה הכפתור פשוט לא מצויר, וזה נראה למשתמש
   // כמו "הפיצ'ר לא עובד" ולא כמו תזמון. אחרי ~6 שניות אומרים את זה במפורש.
   function renderButton(tries) {
     tries = tries || 0;
     var host = el('googleBtnHost');
     if (!host || host.childElementCount) return;
+    // ── §435 — באפליקציה הכפתור של GIS מוביל לדף לבן בדפדפן החיצוני (§434) ──────────────
+    var gMode = nativeGoogleMode();
+    if (gMode === 'native') {
+      window.YZNativeGoogle.renderButton(host, {
+        label: 'להמשיך עם Google', width: 260, onCredential: onCredential,
+      });
+      return;
+    }
+    if (gMode === 'blocked') {
+      // הבאנר בדף הבית כבר לא מוצג במצב הזה (hbMaybeShowGoogleBanner), אבל הגיליון עשוי
+      // להיפתח מדף אחר או מ-HTML ישן — ואז אומרים את האמת במקום לצייר כפתור שבור.
+      msg('החיבור ל-Google יגיע לאפליקציה בעדכון הקרוב. בינתיים אפשר לחבר מהאתר בדפדפן.', 'warn');
+      return;
+    }
     if (window.google && window.google.accounts && window.google.accounts.id) {
       window.google.accounts.id.initialize({
         client_id: CLIENT_ID, callback: onCredential, auto_select: false,

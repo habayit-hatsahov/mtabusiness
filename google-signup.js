@@ -185,6 +185,15 @@
     }
   }
 
+  // §435 — המצב נקבע ב-native-google.js. ⚠️ **הנפילה-לאחור אינה כפילות:** אם הקובץ ההוא
+  // חסר (HTML ישן מהמטמון מול JS חדש), בלי השורה הזאת האפליקציה הייתה חוזרת לכפתור של GIS
+  // — כלומר בדיוק לדף הלבן של §434.
+  function nativeGoogleMode() {
+    var ng = window.YZNativeGoogle;
+    if (ng && typeof ng.mode === 'function') return ng.mode();
+    return (window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || '')) ? 'blocked' : 'web';
+  }
+
   // ⚠️ הספרייה של גוגל נטענת async, ולכן ההמתנה. אם היא לא הגיעה — **הבלוק כולו נשאר
   // מוסתר**: קו-מפריד עם "או למלא ידנית" בלי כפתור מעליו נראה כמו טופס שבור, וגרוע
   // מלא-להציע-גוגל-בכלל. אבל כן נרשמת אזהרה בקונסול — כישלון שקט לגמרי הוא בדיוק מה
@@ -196,13 +205,30 @@
     var btnHost = el('hbGsBtnHost');
     if (!host || !btnHost) return;
     if (btnHost.childElementCount) { host.style.display = ''; return; }   // כבר צויר
+    // הרוחב נגזר מהמכל בפועל: בתוך המודאל של welcome.html הטופס יושב ב-iframe של 343px,
+    // וכפתור ברוחב קבוע היה חורג ממנו. 0 = המכל עדיין מוסתר (שלב 5 בטופס העסק) → 300.
+    var w = Math.max(200, Math.min(400, host.clientWidth || 300));
+    // ── §435 — באפליקציה הכפתור של GIS מוביל לדף לבן בדפדפן החיצוני (§434) ──────────────
+    var gMode = nativeGoogleMode();
+    if (gMode === 'native') {
+      window.YZNativeGoogle.renderButton(btnHost, {
+        label: 'הרשמה עם Google', width: w, onCredential: onCredential,
+      });
+      setCap(defaultCap());
+      host.style.display = '';
+      track('gsShown');
+      return;
+    }
+    if (gMode === 'blocked') {
+      // ⚠️ **בלי track('gsBlocked') בכוונה:** הערוץ ההוא מודד "origin לא מאושר / גוגל לא
+      // נטענה" (§411), וגרסת-אפליקציה ישנה היא סיבה אחרת לגמרי עם תיקון אחר.
+      host.style.display = 'none';
+      return;
+    }
     if (window.google && window.google.accounts && window.google.accounts.id) {
       window.google.accounts.id.initialize({
         client_id: CLIENT_ID, callback: onCredential, auto_select: false,
       });
-      // הרוחב נגזר מהמכל בפועל: בתוך המודאל של welcome.html הטופס יושב ב-iframe של 343px,
-      // וכפתור ברוחב קבוע היה חורג ממנו. 0 = המכל עדיין מוסתר (שלב 5 בטופס העסק) → 300.
-      var w = Math.max(200, Math.min(400, host.clientWidth || 300));
       window.google.accounts.id.renderButton(btnHost, {
         theme: 'filled_blue', size: 'large', shape: 'rectangular',
         text: 'signup_with', locale: 'he', width: w,

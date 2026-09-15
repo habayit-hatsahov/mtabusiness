@@ -29,6 +29,9 @@
      ממשיכה בדיוק כמו היום. ר' hbRenderGoogleLoginBtn. -->
 <link rel="preconnect" href="https://accounts.google.com"/>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<!-- §435 — כניסה נייטיב עם Google באפליקציה. בלי defer: hbRenderGoogleLoginBtn קורא ל-mode()
+     ברגע פתיחת המודאל, והקובץ חייב להתקיים לפני כן (§310/§312). -->
+<script src="native-google.js"></script>
 <script>
   // חבר עם session פעיל מוחבא עד שנדע בוודאות אם יש לו session תקף — כמו landing-demo.html הקיים
   // ?guest=1 — צפייה בדף הנחיתה כ"אורח" גם כשיש session תקף, בלי להתנתק.
@@ -514,20 +517,38 @@ window.hbRenderGoogleLoginBtn = function (tries) {
   const btnHost = document.getElementById('gsLoginBtnHost');
   if (!host || !btnHost) return;
   if (btnHost.childElementCount) { host.style.display = 'flex'; return; }   // כבר צויר
-  if (window.google && window.google.accounts && window.google.accounts.id) {
-    window.google.accounts.id.initialize({
-      client_id: '459607487972-esu70diuu360tg1ji15o1n1tikf3npnb.apps.googleusercontent.com',
-      // §425 — עטיפה, ולא הפונקציה עצמה: היא חיה במודול ואולי עוד לא נטענה בזמן הציור.
-      callback: hbGoogleLoginCallback,
-      // ⚠️ **auto_select כבוי בכוונה.** כניסה שמתרחשת מעצמה בלי לחיצה היא בדיוק סוג
-      // באגי-הזהות שהפרויקט הזה כבר נכווה בהם — הכניסה חייבת להיות פעולה של האדם.
-      auto_select: false,
-    });
-    window.google.accounts.id.renderButton(btnHost, {
-      theme: 'filled_blue', size: 'large', shape: 'pill',
-      // 🔑 "המשך עם Google" — בדיוק הנוסח שהודעת-ההצלחה בתפריט (google-link.js) מבטיחה.
-      text: 'continue_with', locale: 'he', width: 300,
-    });
+  // ══ §435 — באפליקציה הכפתור של GIS מוביל לדף לבן בדפדפן החיצוני (§434) ════════════════
+  // 'native' → כפתור נייטיב שקורא לאותו hbGoogleLoginCallback בדיוק, ומשם הכל זהה.
+  // 'blocked' (אפליקציה בלי התוסף) → אותו ענף כמו "הכפתור לא צויר": הקוד נשאר המסלול היחיד
+  // ואינו מתקפל. ⚠️ **ולא ממתינים לספריית גוגל** — היא אולי נטענת, והיא בדיוק מה שנשבר כאן.
+  // ⚠️ הנפילה-לאחור ל-UA מגינה מפני native-google.js שלא נטען (ר' google-signup.js).
+  const ng = window.YZNativeGoogle;
+  const gMode = (ng && typeof ng.mode === 'function') ? ng.mode()
+    : ((window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || '')) ? 'blocked' : 'web');
+  if (gMode === 'blocked') {
+    host.style.display = 'none';
+    document.getElementById('heroPhoneInput')?.focus();
+    return;
+  }
+  const gisReady = !!(window.google && window.google.accounts && window.google.accounts.id);
+  if (gMode === 'native' || gisReady) {
+    if (gMode === 'native') {
+      ng.renderButton(btnHost, { label: 'להמשיך עם Google', width: 300, onCredential: hbGoogleLoginCallback });
+    } else {
+      window.google.accounts.id.initialize({
+        client_id: '459607487972-esu70diuu360tg1ji15o1n1tikf3npnb.apps.googleusercontent.com',
+        // §425 — עטיפה, ולא הפונקציה עצמה: היא חיה במודול ואולי עוד לא נטענה בזמן הציור.
+        callback: hbGoogleLoginCallback,
+        // ⚠️ **auto_select כבוי בכוונה.** כניסה שמתרחשת מעצמה בלי לחיצה היא בדיוק סוג
+        // באגי-הזהות שהפרויקט הזה כבר נכווה בהם — הכניסה חייבת להיות פעולה של האדם.
+        auto_select: false,
+      });
+      window.google.accounts.id.renderButton(btnHost, {
+        theme: 'filled_blue', size: 'large', shape: 'pill',
+        // 🔑 "המשך עם Google" — בדיוק הנוסח שהודעת-ההצלחה בתפריט (google-link.js) מבטיחה.
+        text: 'continue_with', locale: 'he', width: 300,
+      });
+    }
     host.style.display = 'flex';
     // ══ §415ג — סקר קצר במקום המתנה אחת ארוכה ══════════════════════════════════════
     // ⚠️ **1500ms היו יותר מדי מרגע שיש מה לקפל.** קודם ההמתנה שירתה רק החלפת-כותרת,
