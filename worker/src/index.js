@@ -1002,9 +1002,11 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
   // (אין רשומת businesses/members אמיתית לחפש), אז ערכי-placeholder לדוגמה בלבד, לא נתוני-אמת.
   if (testEmail) {
     const isFansTest = audienceType === 'fans';
+    // §444 — בלוק {login} במצב שנגזר מכתובת הבדיקה עצמה, כדי שמייל הבדיקה יראה כמו המכתב האמיתי.
+    const loginTestVars = { login_mode: loginModeFor({ email: testEmail }), login_account: testEmail };
     const vars = isFansTest
-      ? { name: 'ישראל ישראלי', code: '123456', link: `${SITE_BASE}home.html` }
-      : { name: 'ישראל ישראלי', business: 'עסק לדוגמה', link: `${SITE_BASE}business-dashboard.html?token=demo` };
+      ? { name: 'ישראל ישראלי', code: '123456', link: `${SITE_BASE}home.html`, ...loginTestVars }
+      : { name: 'ישראל ישראלי', business: 'עסק לדוגמה', link: `${SITE_BASE}business-dashboard.html?token=demo`, ...loginTestVars };
     try {
       await sendBroadcastEmail(env, { toEmail: testEmail, toName: 'בדיקה', subject: `[בדיקה] ${subject}`, body, vars });
       return { results: [{ id: 'test', name: testEmail, email: testEmail, status: 'sent' }], isTest: true };
