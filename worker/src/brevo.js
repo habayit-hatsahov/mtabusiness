@@ -12,89 +12,22 @@ import {
 // אוהדים יוכלו להשיב למייל שלהם, כדי לאפשר שיתופי-פעולה שמתחילים מתגובה חופשית.
 const REPLY_TO = 'yellowzonemta@gmail.com';
 
-// §415ב — דלת-הכניסה של החבר. ⚠️ **זו אינה אותה כתובת של `{link}` במכתב העסק** (שם היא
-// דשבורד-העסק עם טוקן אישי, §244) — זו הכניסה כחבר, וזהה לכולם.
-const MEMBER_LOGIN_URL = 'https://yellowzone.co.il/welcome.html';
 
-// ══ §389 — "אפשר גם בלי הקוד" למי שחיבר חשבון Google ═════════════════════════════════════
-// 🔑 **למה זה חייב להיות בקוד ולא בתבנית שהמנהל עורך:** המשפט נכון רק לחלק מהנמענים, ותבנית
-// סטטית אינה יודעת להתנות. יתרה מזו — `tpl.body` **דורס את גוף המכתב במלואו**, ולכן משפט
-// שהיה נכתב בתבנית ברירת-המחדל שבקוד לא היה מופיע לעולם אצל מי שיש לו תבנית מותאמת (וזה
-// המצב בפועל). בקשת המשתמש הייתה מפורשת: *"חשוב שאני עורך שאני לא אגע בזה"*.
-//
-// ⚠️ **בלי אימוג'ים** — §306: סימן אחד (☰) נקרא כאימוג'י אצל נמען ושבר משפט שלם.
-// ⚠️ **בלי כפתור** — §306 שוב: אין כפתור-פעולה במכתב מלבד מה שכבר קיים בתבנית.
-function esc(v) {
-  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-// ══ §415 — והבלוק ההפוך: מי ש**לא** חיבר חשבון Google ══════════════════════════════════
-// 🔑 **הפער שזה סוגר:** §389 דיבר רק אל מי שכבר מקושר. מי שנרשם בלי גוגל לא ראה במכתב שלו
-// שום אזכור של הדלת הקלה — והוא בדיוק זה שצריך אותה. הבאנר באתר (§388) אינו מגיע אליו
-// בכלל: הוא מוצג ב-`home.html` אחרי כניסה מוצלחת, כלומר **מי שמעולם לא נכנס לא רואה אותו**.
-// המכתב הזה הוא הערוץ היחיד שמגיע אליו.
-//
-// ⚠️ **ההבטחה כאן נבדקה מול הקוד ולא נוסחה מהזיכרון:** `linkableByVerifiedEmail` (index.js)
-// מוצא את הרשומה לפי המייל שגוגל אימתה, ו-`welcome.html` מטפל ב-`google_not_linked`+`linkable`
-// ומקשר-ונכנס באותה לחיצה (§403/§409). כלומר אין כאן "צריך קודם להיכנס עם קוד" — הלחיצה
-// הראשונה עצמה מכניסה. שני התנאים: הרשומה מאושרת, והמייל בחשבון הגוגל זהה לזה שעל הרשומה.
-// ולכן גם הניסוח מותנה ("אם יש לכם חשבון Google עם הכתובת הזו") ולא הבטחה גורפת.
-//
-// ⚠️ **הבלוק מוחלט-מנוגד לשידור המוני:** `sendBroadcastEmail` אינו מעביר את הדגל, ולכן
-// מכתב-שיווק אינו נושא אותו. `invite` נשלח במפורש משלושת מכתבי-המערכת בלבד.
-function googleInviteHtml() {
-  return `
-    <div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.7;color:#0A2A66;
-                          background:#FFF8DC;border:2px solid #FFDE00;border-radius:14px;
-                          padding:18px 20px;margin:0 auto 22px;max-width:520px;text-align:right">
-      <div style="font-size:17px;font-weight:bold;margin-bottom:8px">הכניסה לאתר — בלחיצה אחת</div>
-      בעמוד הכניסה יש כפתור <b>"להמשיך עם Google"</b>. אם יש לכם חשבון Google עם הכתובת הזו,
-      הלחיצה הראשונה מכניסה אתכם — ומאותו רגע נכנסים כך תמיד, מכל מכשיר, בלי לחפש קוד.
-      <div style="margin-top:12px;font-size:15px">
-        <a href="${MEMBER_LOGIN_URL}" style="color:#0A2A66;font-weight:bold">כניסה לאתר — yellowzone.co.il</a>
-      </div>
-      <div style="margin-top:10px;font-size:13px;color:#555">
-        אין לכם חשבון Google עם הכתובת הזו? הקוד שבמייל עובד תמיד, יחד עם מספר הטלפון.
-      </div>
-    </div>`;
+// ══ §444 — בלוקי ה-Google שמעל/מתחת לגוף המכתב הוסרו ═══════════════════════════════════
+// §389 (תזכורת למקושרים, בתחתית) ו-§415 (הזמנה ללא-מקושרים, קופסה צהובה בראש) הוחלפו בבלוק
+// אחד, `{login}`, שהמנהל ממקם בעצמו בתבנית (mail-format.js → loginBlockHtml). בקשת המשתמש:
+// *"הוא מרגיש לי עמוס"* + "הקוד משני, שאנשים ייכנסו עם גוגל".
+// 🔑 המצב (Google/קוד) עדיין נקבע כאן בקוד ולא בתבנית — אותו נימוק של §389: תבנית סטטית
+// אינה יודעת להתנות. היא רק אומרת **איפה**; הוורקר אומר **מה**.
+// ⚠️ תבנית שאין בה `{login}` נשלחת כמו לפני §389 — בלי שום אזכור של Google.
+function loginVars(login) {
+  return { login_mode: (login && login.mode) || '', login_account: (login && login.account) || '' };
 }
 
-function googleNoteHtml(googleEmail) {
-  if (!googleEmail) return '';
-  return `
-    <div dir="rtl" style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#555;
-                          background:#F6F6F2;border:1px solid #E7E7E0;border-radius:12px;
-                          padding:14px 16px;margin:20px auto 0;max-width:520px;text-align:right">
-      <b style="color:#0A2A66">אפשר גם בלי הקוד</b><br>
-      בעמוד הכניסה יש כפתור "להמשיך עם Google". החשבון ${esc(googleEmail)} כבר מקושר לחשבון שלכם,
-      ולכן אפשר להיכנס איתו בלחיצה אחת — מכל מכשיר, בלי להקליד קוד.
-    </div>`;
-}
-
-async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent, googleEmail, googleInvite, tag }) {
+async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent, tag }) {
   // כל מייל יוצא (גם תבניות-מנהל וגם ברירת-המחדל הקבועה) מקבל את אותו פוטר וגרסת-טקסט-חלופית —
   // ריכוזי כאן ולא בכל קורא-קריאה, כדי שלא יישכח פעם אחת מתוך 4 (ר' "מסירות מייל ל-Gmail" בתיעוד).
-  // §389 — הערת-הגוגל נוספת כאן **מאותו נימוק בדיוק**: מיקום אחד, ולא ארבעה שאפשר לשכוח אחד מהם.
-  // היא נכנסת **לפני** הפוטר ואחרי גוף המכתב, ו-`footerHtml` ממשיך לקבל את הגוף המקורי בלבד.
-  // §415 — שני הבלוקים סותרים זה את זה מעצם הגדרתם (יש/אין חשבון מקושר), ולכן `||` ולא
-  // שרשור: מקושר מקבל את התזכורת, לא-מקושר מקבל את ההזמנה, ואף אחד לא מקבל את שניהם.
-  const googleBlock = googleEmail ? googleNoteHtml(googleEmail) : (googleInvite ? googleInviteHtml() : '');
-
-  // ── §415ב — 🔑 **ההזמנה עלתה לראש המכתב, התזכורת נשארה בתחתית.** ─────────────────────
-  // בקשת המשתמש: *"אני לא רוצה שזה יהיה למטה"*. והנימוק אינו העדפה: מי שאין לו חשבון
-  // מקושר צריך לדעת שיש דרך קלה **לפני** שהוא מגיע לקוד ומתחיל להעתיק אותו — משפט
-  // שמופיע אחרי שהמשימה כבר בוצעה אינו משנה התנהגות. זה בדיוק הלקח של §411 ("הכיתוב עלה
-  // מעל הכפתור: הסיבה ללחוץ נקראה אחרי שההחלטה כבר התקבלה"), באותו מכתב עצמו.
-  //
-  // ⚠️ **התזכורת למקושרים נשארת למטה בכוונה** — היא אינה פעולה אלא הרגעה ("החשבון שלך
-  // כבר מחובר"), ואין שום סיבה שתדחוף את גוף המכתב מטה אצל מי שכבר סידר את עצמו.
-  //
-  // ⚠️ **הבלוק אינו יכול לשבת *בתוך* גוף המכתב, ליד הקוד** — וזו מגבלה אמיתית ולא בחירה:
-  // `tpl.body` הוא טקסט חופשי שהמנהל כותב, והמשפט נכון רק לחלק מהנמענים (§389). תבנית
-  // סטטית אינה יודעת להתנות, ולכן המיקום היחיד שהקוד שולט בו הוא לפני הגוף או אחריו.
-  const finalHtml = (googleInvite && !googleEmail ? googleBlock : "")
-    + htmlContent
-    + (googleEmail ? googleBlock : "")
-    + footerHtml(htmlContent);
+  const finalHtml = htmlContent + footerHtml(htmlContent);
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
@@ -155,10 +88,10 @@ function stripHtml(html) {
 // tpl אופציונלי — override מ-settings/messageTemplates (Firestore), נערך במרכז ההודעות.
 // כשקיים, מחליף גם את הנושא וגם את גוף ההודעה — טקסט חופשי דרך renderMailHtml, כולל תיבת-קוד/
 // כפתור ממותגים אם {code}/{link} יושבים על שורה נפרדת משלהם, וכל סימוני-העיצוב של סרגל הכתיבה.
-export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind = 'welcome', googleEmail = '', googleInvite = false }) {
+export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind = 'welcome', login = null }) {
   // בניגוד לבעלי-עסקים, לאוהד אין accessToken אישי (הכניסה היא תמיד טלפון+קוד) — אז {link} כאן
   // הוא כתובת האתר הכללית, זהה לכל אוהד, לא קישור-קסם מותאם-אישית.
-  const vars = { name: toName || '', code, link: 'https://yellowzone.co.il/welcome.html' };
+  const vars = { name: toName || '', code, link: 'https://yellowzone.co.il/welcome.html', ...loginVars(login) };
   const isResend = kind === 'resend';
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
@@ -178,15 +111,13 @@ export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind
     replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
-    googleEmail,
-    googleInvite,
     tag: 'login',
   });
 }
 
 // מייל שני, נפרד מקוד הכניסה — נשלח כשעסק (לא רק החברות של הבעלים) מאושר לאינדקס
-export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, businessName, dashboardLink, tpl, googleEmail = '', googleInvite = false }) {
-  const vars = { name: ownerName || '', business: businessName, link: dashboardLink };
+export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, businessName, dashboardLink, tpl, login = null }) {
+  const vars = { name: ownerName || '', business: businessName, link: dashboardLink, ...loginVars(login) };
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
     : 'העסק שלך אושר לאינדקס Yellow Zone';
@@ -205,13 +136,6 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
     replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
-    // §391 — נוסף בבקשת המשתמש. ⚠️ §389 השאיר את המכתב הזה בחוץ בנימוק שהוא מפנה
-    // לדשבורד העסק (טוקן נפרד, §244) ולא לכניסת החבר — והנימוק עדיין נכון, אבל **הקורא
-    // הוא אותו אדם**, ואם יש לו חשבון גוגל מקושר ומאושר, אין סיבה להסתיר ממנו את הדלת
-    // הקלה. הגדר-האמת נמצא בצד הקורא (index.js): הערך מועבר רק כשהוא **באמת** יכול
-    // להיכנס איתו — אחרת המכתב היה מבטיח כניסה למי שעוד ממתין לאישור.
-    googleEmail,
-    googleInvite,
     tag: 'bizApproved',
   });
 }
@@ -236,8 +160,8 @@ export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, 
 }
 
 // מייל מאוחד — כשבעל עסק מאושר גם כאוהד וגם כבעל עסק באותה פעולה
-export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl, googleEmail = '', googleInvite = false }) {
-  const vars = { name: toName || '', code, business: businessName, link: dashboardLink };
+export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl, login = null }) {
+  const vars = { name: toName || '', code, business: businessName, link: dashboardLink, ...loginVars(login) };
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
     : 'ברוכים הבאים ל-Yellow Zone';
@@ -259,8 +183,6 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
     replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
-    googleEmail,
-    googleInvite,
     tag: 'combined',
   });
 }

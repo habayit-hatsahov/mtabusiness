@@ -21,6 +21,7 @@
 //   {center}                → מרכוז הפסקה
 //   {font:tahoma}           → גופן לכל המכתב (שורה ראשונה בגוף ההודעה בלבד)
 //   {code} {link} {login_link} {social} — בפסקה נפרדת: הבלוקים הממותגים (ללא שינוי)
+//   {login}                 → §444 בלוק הכניסה החכם — Google או קוד, נבחר לכל נמען (ר' loginBlockHtml)
 // כל מה שאין לו סימון מרונדר בדיוק כמו קודם — פסקה = <p>, שורה בתוך פסקה = <br>.
 
 const LOGO_HORIZONTAL_URL = 'https://yellowzone.co.il/images/yellowzone-logo-horizontal.png';
@@ -64,11 +65,11 @@ export function codeBoxHtml(code) {
 
 // כפתור-הכניסה מציג את *כתובת האתר* ולא "כניסה לאתר" — כדי שהנמען יזכור אותה ויוכל להקליד
 // אותה בעצמו בפעם הבאה.
-export function loginButtonHtml() {
+export function loginButtonHtml(href = SITE_URL) {
   return `
     <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:16px auto">
       <tr><td style="background:#FFDE00;border-radius:14px">
-        <a href="${SITE_URL}" style="display:inline-block;color:#16130a;text-decoration:none;padding:11px 28px;text-align:center;line-height:1.35">
+        <a href="${escapeHtml(href)}"style="display:inline-block;color:#16130a;text-decoration:none;padding:11px 28px;text-align:center;line-height:1.35">
           <span style="font-size:12px;font-weight:700">לכניסה לחצו</span><br>
           <span style="font-size:18px;font-weight:900;direction:ltr;unicode-bidi:isolate">yellowzone.co.il</span>
         </a>
@@ -80,6 +81,52 @@ export function loginButtonHtml() {
 // היא מקבלת false ומציבה את הכפתור בעצמה במקום שבחרה — כדי שלא יופיעו שני כפתורים זהים.
 export function codeBlockHtml(code, withButton = true) {
   return codeBoxHtml(code) + (withButton ? loginButtonHtml() : '');
+}
+
+// ══ §444 — בלוק הכניסה `{login}`: Google ראשי, הקוד משני ═══════════════════════════════
+// החלטת המשתמש (16.9): "שאנשים ייכנסו עם גוגל, הקוד משני". מחליף את שתי הקופסאות של §389/§415
+// שישבו מעל/מתחת לגוף המכתב — עכשיו הכניסה היא בלוק אחד, **במקום שהמנהל בחר בתבנית**, והמלל
+// לפניו ואחריו שלו.
+//
+// 🔑 **הכפתור אינו "כניסה עם Google"** — מייל לא מריץ קוד, ולכן אין כפתור שמכניס עם Google.
+// הכפתור פותח את דף הכניסה עם החלון כבר פתוח (`?login=1`, welcome.html), ו-Google מופיע רק
+// במשפט שאומר **מה ללחוץ שם**. כפתור שמבטיח Google ופותח דף היה מבטיח משהו שהוא לא עושה.
+//
+// 🔑 **המצב נבחר לפי מה שידוע על הנמען** (loginModeFor): חשבון Google מקושר, או כתובת Gmail
+// → Google. כל כתובת אחרת → הקוד נשאר ראשי, כי אצלו כנראה אין Google באותה כתובת, והכפתור
+// היה שולח אותו לדלת שלא נפתחת (הכניסה עם Google מתאימה רשומה **לפי המייל**, §409).
+export const MEMBER_LOGIN_URL = SITE_URL + '/welcome.html?login=1';
+const GMAIL_RX = /@(gmail|googlemail)\.com$/i;
+
+export function loginModeFor({ email, googleEmail } = {}) {
+  if (String(googleEmail || '').trim()) return 'google';
+  return GMAIL_RX.test(String(email || '').trim()) ? 'google' : 'code';
+}
+
+// vars.login_mode: 'google' | 'code' | '' (ריק = אין למי להבטיח כניסה → הבלוק לא מוצג).
+// vars.login_account: הכתובת שמוצגת במשפט ה-Google. vars.code: אופציונלי בשני המצבים.
+export function loginBlockHtml(vars) {
+  const mode = vars.login_mode;
+  const code = vars.code || '';
+  const button = loginButtonHtml(MEMBER_LOGIN_URL);
+  const p = (style, html) => `<p style="margin:0 0 12px 0;text-align:center;${style}">${html}</p>`;
+  if (mode === 'google') {
+    const acc = String(vars.login_account || '').trim();
+    const withAcc = acc
+      ? `עם החשבון <b style="direction:ltr;unicode-bidi:isolate">${escapeHtml(acc)}</b>`
+      : 'עם חשבון ה-Google של הכתובת הזו';
+    return button
+      + p('font-size:15px;line-height:1.6;color:#0A2A66',
+          `בחלון שייפתח לחצו <b>"להמשיך עם Google"</b> ${withAcc} — בלי קוד.<br>מאותו רגע האתר זוכר אתכם.`)
+      + (code ? p('font-size:13px;line-height:1.6;color:#888',
+          `אין לכם גישה לחשבון הזה? קוד הכניסה: <b style="direction:ltr;unicode-bidi:isolate;letter-spacing:2px">${escapeHtml(code)}</b>, יחד עם מספר הטלפון שאיתו נרשמתם.`) : '');
+  }
+  // ⚠️ מצב קוד בלי קוד = אין שום דלת להציע, ולכן כלום — לא כפתור לדף שלא יכניס אותו.
+  if (mode === 'code' && code) {
+    return codeBoxHtml(code) + button
+      + p('font-size:15px;line-height:1.6;color:#0A2A66', 'נכנסים עם הקוד ומספר הטלפון שאיתו נרשמתם.');
+  }
+  return '';
 }
 
 // כפתור צהוב ממותג — משמש כש-{link} יושב על שורה נפרדת (פסקה משלו) בתבנית מותאמת-אישית
@@ -153,7 +200,9 @@ function linkifyUrls(text) {
   });
 }
 
+// §444 — `{login}` שנכתב בתוך משפט (לא בשורה משלו) אינו בלוק; נמחק ולא נשלח כטקסט מילולי.
 function inlineHtml(rawLine, vars) {
+  rawLine = String(rawLine).split('{login}').join('');
   return linkifyUrls(applyItalic(applyBold(escapeHtml(applyVars(rawLine, vars)))));
 }
 
@@ -261,6 +310,7 @@ export function richBodyHtml(bodyTemplate, vars, linkLabel) {
   const hasLoginButton = paras.some((p) => p.trim() === '{login_link}');
   return paras.map((para) => {
     const trimmed = para.trim();
+    if (trimmed === '{login}') return loginBlockHtml(vars || {});
     if (trimmed === '{code}' && vars && vars.code) return codeBlockHtml(vars.code, !hasLoginButton);
     if (trimmed === '{link}' && vars && vars.link) return linkButtonHtml(vars.link, linkLabel || 'כניסה');
     if (trimmed === '{login_link}') return loginButtonHtml();

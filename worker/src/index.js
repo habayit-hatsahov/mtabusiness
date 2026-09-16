@@ -8,6 +8,7 @@ import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, biz
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt } from './ratelimit.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail } from './brevo.js';
+import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
 import { runBackfillThumbnails } from './backfill.js';
@@ -1068,6 +1069,17 @@ const MAX_SWEEP_RECIPIENTS = 10;
 // רשת-ביטחון ב' למטה שולחות את המייל המאוחד במקום מייל-עסק קצר לבדו.
 const BIZ_SEND_GRACE_MS = 60 * 1000;
 
+// §444 — מצב בלוק הכניסה `{login}` במייל (mail-format.js → loginBlockHtml).
+// ⚠️ **רק לרשומה מאושרת** — אותו תנאי-אמת של §391/§415: ל-pending הכניסה מחזירה "ממתין
+// לאישור", כלומר המכתב היה מבטיח דלת נעולה. mode ריק = הבלוק לא מוצג.
+function memberLoginFor(fields) {
+  if (!fields || fields.status !== 'approved') return null;
+  return {
+    mode: loginModeFor({ email: fields.email, googleEmail: fields.googleEmail }),
+    account: fields.googleEmail || fields.email || '',
+  };
+}
+
 async function runEmailSweeps(env) {
   const accessToken = await getGoogleAccessToken(env);
   const templatesDoc = await firestoreGetDoc(env, accessToken, 'settings/messageTemplates');
@@ -1094,11 +1106,7 @@ async function runEmailSweeps(env) {
           businessName: business.fields.name,
           dashboardLink: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, business.id)}`,   // §244
           tpl: { subject: templates.combinedSubject, body: templates.combinedBody },
-          googleEmail: m.fields.googleEmail || '',   // §389
-          // §415 — ההזמנה ההפוכה: אין חשבון מקושר, והרשומה כבר מאושרת (כאן תמיד — המכתב
-          // נשלח באישור עצמו). התנאי `!googleEmail` מיותר טכנית (brevo.js כבר מעדיף את
-          // הבלוק המקושר) ונשאר כאן כדי שהכוונה תיקרא במקום שבו מחליטים.
-          googleInvite: !m.fields.googleEmail && m.fields.status === 'approved',
+          login: memberLoginFor(m.fields),   // §444
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
           loginCodeEmailStatus: 'sent',
@@ -1123,12 +1131,7 @@ async function runEmailSweeps(env) {
           code: await loginCodeFor(env, accessToken, m.id),   // §248
           tpl: loginTpl,
           kind: isResend ? 'resend' : 'welcome',
-          googleEmail: m.fields.googleEmail || '',   // §389 — נשלח גם ב'שכחתי קוד', ושם זה
-          // אפילו יותר שימושי: מי שמבקש קוד ויש לו גוגל מקבל תזכורת שהוא לא צריך אותו.
-          // §415 — ⚠️ **ב'שכחתי קוד' זה החשוב מכולם**: מי שמבקש קוד שוב הוא ההוכחה החיה
-          // לכך שהקוד הוא החיכוך. `status === 'approved'` הוא תנאי-אמת ולא נוסח: ל-pending
-          // הכפתור היה מחזיר 'ממתין לאישור', כלומר הבטחה לדלת נעולה.
-          googleInvite: !m.fields.googleEmail && m.fields.status === 'approved',
+          login: memberLoginFor(m.fields),   // §444 — גם ב'שכחתי קוד'; התבנית קובעת אם להציג
         });
         await firestorePatch(env, accessToken, `members/${m.id}`, {
           loginCodeEmailStatus: 'sent',
@@ -1190,6 +1193,7 @@ async function runEmailSweeps(env) {
           businessName: b.fields.name,
           dashboardLink,
           tpl: { subject: templates.combinedSubject, body: templates.combinedBody },
+          login: memberLoginFor(owner.fields),   // §444 — עד כאן המסלול הזה לא העביר את מצב ה-Google כלל
         });
         // רק כשהחבר באמת המתין — אחרת (שליחה חוזרת של העסק בלבד) אין לדרוס לו את חותמת
         // השליחה המקורית ואת נתוני המסירה/פתיחה שנצברו עליה.
@@ -1213,14 +1217,9 @@ async function runEmailSweeps(env) {
         businessName: b.fields.name,
         dashboardLink,
         tpl: { subject: templates.bizSubject, body: templates.bizBody },
-        // §391 — ⚠️ **רק אם הוא באמת יכול להיכנס עכשיו.** המכתב הזה נשלח דווקא למי שאין
-        // מאחוריו רשומת-חבר עם קוד (ר' ownerHasCode למעלה), ולכן ההערה נכונה רק בצירוף
-        // הצר שבו יש רשומה, היא מאושרת, ויש עליה חשבון גוגל. אחרת /google-login היה
-        // מחזיר לו 'pending' — כלומר המכתב היה מבטיח דלת שנעולה בפניו.
-        googleEmail: (owner && owner.fields.status === 'approved' && owner.fields.googleEmail) || '',
-        // §415 — אותו צירוף צר בדיוק, רק בכיוון ההפוך: יש רשומת-חבר, היא מאושרת, ואין
-        // עליה חשבון גוגל. בלי `owner` מאושר אין למי להבטיח כניסה, ולכן אין הזמנה.
-        googleInvite: !!(owner && owner.fields.status === 'approved' && !owner.fields.googleEmail),
+        // §444 — המכתב הזה יוצא רק למי שאין לו קוד (ר' ownerHasCode), ולכן בפועל בלוק הכניסה
+        // מוצג כאן רק כשיש רשומה מאושרת עם Google. בלי רשומה מאושרת — אין למי להבטיח כניסה.
+        login: owner ? memberLoginFor(owner.fields) : null,
       });
       await firestorePatch(env, accessToken, `businesses/${b.id}`, {
         ownerEmailStatus: 'sent',
