@@ -118,8 +118,9 @@ export function loginBlockHtml(vars) {
     return button
       + p('font-size:15px;line-height:1.6;color:#0A2A66',
           `בחלון שייפתח לחצו <b>"להמשיך עם Google"</b> ${withAcc} — בלי קוד.<br>מאותו רגע האתר זוכר אתכם.`)
-      + (code ? p('font-size:13px;line-height:1.6;color:#888',
-          `אין לכם גישה לחשבון הזה? קוד הכניסה: <b style="direction:ltr;unicode-bidi:isolate;letter-spacing:2px">${escapeHtml(code)}</b>, יחד עם מספר הטלפון שאיתו נרשמתם.`) : '');
+      // ⚠️ משני בגודל ובמיקום — **לא בצבע**. אפור (#888) נדחה: "שיהיה לפחות בצבע שחור שיראו את זה".
+      + (code ? p('font-size:14px;line-height:1.6;color:#16130a',
+          `אין לכם גישה לחשבון הזה? קוד הכניסה: <b style="direction:ltr;unicode-bidi:isolate;letter-spacing:2px;color:#000">${escapeHtml(code)}</b>, יחד עם מספר הטלפון שאיתו נרשמתם.`) : '');
   }
   // ⚠️ מצב קוד בלי קוד = אין שום דלת להציע, ולכן כלום — לא כפתור לדף שלא יכניס אותו.
   if (mode === 'code' && code) {
