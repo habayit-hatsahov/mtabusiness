@@ -23040,4 +23040,4 @@ combined/biz עברו ל-`{login}`; **resend נשאר `{code}`** (האדם בי�
 **קבצים ב-§444:** `home.html`, `welcome.html`, `admin-dashboard.html`, `mail-format.js`,
 `worker/src/brevo.js`, `worker/src/index.js`, `sw.js` (**v127**), מסמך זה.
 
-**✅ released (16.9):** וורקר נפרס (גרסה ), push (). אומת חי עם cache-buster:  = v127 ·  כולל את הפתיחה האוטומטית ·  בלי  ·  מעודכן. **§444ב:** שורת הקוד במצב Google — שחור ולא אפור (בקשת המשתמש). ⏳ **נשאר למשתמש:** להחליף  ב- בתבניות.
+**✅ released (16.9):** וורקר נפרס (גרסה `c1e46b5e`), push (`a074ad7`). אומת חי עם cache-buster: `sw.js` = v127 · `welcome.html` כולל את הפתיחה האוטומטית · `home.html` בלי `glBanner` · `mail-format.js` מעודכן. **§444ב:** שורת הקוד במצב Google — שחור ולא אפור (בקשת המשתמש). ⏳ **נשאר למשתמש:** להחליף `{code}` ב-`{login}` בתבניות.
