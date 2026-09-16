@@ -250,13 +250,36 @@ async function handleGoogleLogin({ idToken }, request, env) {
 // בכוונה**: ברירת-מחדל `'googleSub'` הייתה גורמת לכניסת-אפל שנשכחה לבדוק את השדה של
 // גוגל — כלומר לאשר קישור על רשומה שכבר מקושרת לחשבון אפל אחר, בשקט ובלי שגיאה. זריקה
 // כאן היא הדבר היחיד שנתפס. ר' [[feedback_empty_catch_on_a_guard]].
+// §437 — תקרת הסריקה החסינה-לרישיות. 3,000 מול ~250 חברים היום, כלומר מרווח של פי עשרה,
+// ועדיין הרחק מתקרת השאילתה של Firestore. ר' ההערה בגוף הפונקציה.
+const MEMBER_EMAIL_SCAN_LIMIT = 3000;
+
 async function linkableByVerifiedEmail(env, accessToken, g, subField) {
   if (!subField) throw new Error('linkable_sub_field_required');
   // מייל שהספק לא אימת אינו ראיה לכלום, וכל הגדר נשען עליו.
   // ⚠️ אצל אפל `emailVerified` הוא **false ביודעין** כשהמייל הוא כתובת-ממסר — כלומר
   // המסלול הזה נסגר מעצמו בדיוק במקרה שבו אי-אפשר להוכיח שליטה בתיבה. ר' `apple.js`.
   if (!g.emailVerified || !g.email) return null;
-  const rows = await firestoreRunQuery(env, accessToken, 'members', 'email', g.email, 2);
+  let rows = await firestoreRunQuery(env, accessToken, 'members', 'email', g.email, 2);
+  // ── §437 — 🔴 **שאילתת Firestore רגישה לרישיות, והמייל מהספק תמיד באותיות קטנות** ────
+  // דווח חי (2026-09-16): חבר **מאושר** לחץ על Google, בחר חשבון, וחזר למסך הכניסה עם
+  // "עדיין לא חיברתם". רשומה ששמורה כ-`Israel@Gmail.com` אינה נמצאת בחיפוש של
+  // `israel@gmail.com`, **ואין שום סימן לכך** — התוצאה נראית בדיוק כמו חשבון לא-מקושר.
+  // הרשמות חדשות נשמרות `trim().toLowerCase()` (fan-register.html / business.html), אבל
+  // רשומות ישנות ורשומות שהוזנו ידנית במרכז הניהול אינן מנורמלות.
+  // ⚠️ **הסריקה רצה רק כשהמסלול המהיר לא מצא כלום** — כלומר במקרה הנדיר ולא בכל כניסה.
+  // ⚠️ **ההגנה נשמרת במלואה:** יותר מהתאמה אחת = עצירה, מאותו נימוק בדיוק שלמעלה.
+  // 🔲 פער ידוע שלא נסגר כאן: בדיקת-הכפילות בהרשמה מחפשת גם היא במייל מנורמל, ולכן רשומה
+  //    ישנה עם אות גדולה אינה נתפסת כקיימת. ר' §437 במסמך.
+  if (rows.length === 0) {
+    const approved = await firestoreRunQuery(env, accessToken, 'members', 'status', 'approved', MEMBER_EMAIL_SCAN_LIMIT);
+    // ⚠️ תקרה שנגמרה היא סריקה חלקית, כלומר "לא נמצא" שאינו אמין. לא משנה את ההחלטה
+    // (עצירה היא עדיין הצד הבטוח), אבל **חייב להיראות בלוג** — אחרת הוא ייעלם בשקט.
+    if (approved.length >= MEMBER_EMAIL_SCAN_LIMIT) {
+      console.warn('linkableByVerifiedEmail: סריקת המיילים הגיעה לתקרה — ייתכן שההתאמה פוספסה');
+    }
+    rows = approved.filter((m) => String(m.fields.email || '').trim().toLowerCase() === g.email);
+  }
   if (rows.length !== 1) return null;
   const m = rows[0];
   // ⚠️ כבר מקושר לחשבון **אחר של אותו ספק** — החלפה מותרת רק בנתיב המחובר.
