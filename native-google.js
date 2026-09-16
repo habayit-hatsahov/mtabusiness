@@ -164,7 +164,10 @@
         'border-radius:50%;background:#fff;flex:none}' +
       '.yz-ng-msg{display:none;font-size:12.5px;line-height:1.6;text-align:center;color:#8A5A00;' +
         'background:#FEF3C7;border:1px solid #FCD98B;border-radius:10px;padding:8px 10px;max-width:320px}' +
-      '.yz-ng-msg.show{display:block}';
+      '.yz-ng-msg.show{display:block}' +
+      // §439 — "מתחבר…" אינו אזהרה, ולכן אינו צהוב. בלי החיווי הזה המתנה נראית זהה לגמרי
+      // לכישלון שקט, וזה בדיוק מה שדווח ("לוחץ, בוחר חשבון, ולא קורה כלום").
+      '.yz-ng-msg.busy{color:#1E3A8A;background:#EEF2FF;border-color:#C7D2FE}';
     document.head.appendChild(s);
   }
 
@@ -196,10 +199,12 @@
       if (busy) return;                 // לחיצה כפולה פותחת גיליון שני מעל הראשון
       busy = true;
       btn.disabled = true;
-      msg.classList.remove('show');
+      msg.textContent = 'מתחבר…';
+      msg.classList.add('show', 'busy');
       signIn().then(function (r) {
         busy = false;
         btn.disabled = false;
+        msg.classList.remove('show', 'busy');
         if (r.ok) {
           if (typeof opts.onCredential === 'function') {
             try { opts.onCredential({ credential: r.credential, select_by: 'native' }); }
@@ -207,6 +212,21 @@
           }
           return;
         }
+        // ── §439 — 🔴 **כשל נייטיב היה נרשם רק בקונסול, כלומר לא היה קיים** ───────────────
+        // דווח חי (16.9): בורר החשבונות נפתח, המשתמש בחר חשבון, **והמסך חזר בלי כלום**.
+        // בדיקת האירועים הראתה **אפס** `loginFail` באותה דקה — כי הכשל קרה **לפני** הקריאה
+        // ל-`/google-login`, והערוץ היחיד שידע עליו היה `console.warn` במכשיר של מישהו אחר.
+        // ⚠️ **גם `canceled` נרשם, ובכוונה:** ההבדל בין "האדם התחרט" לבין "נכשל בשקט אחרי
+        // הבחירה" הוא כל האבחון כאן, ובלעדיו שניהם נראים כמו מסך שחזר לעצמו.
+        // ⚠️ הרישום עטוף ב-try ואינו תלוי ב-logEvent: המודול נטען גם בדפים שאין בהם מדידה.
+        try {
+          if (typeof window.logEvent === 'function') {
+            window.logEvent('loginFail', {
+              channel: ('google:native:' + r.reason).slice(0, 50),
+              blockId: (window._hbEnvTag || 'app').slice(0, 50),
+            });
+          }
+        } catch (e) {}
         if (r.reason === 'canceled') return;
         // ⚠️ תמיד לקונסול — כישלון שקט הוא מה שהסתיר את §357. `config` כאן כמעט תמיד
         // פירושו Android client חסר / SHA-1 שגוי ב-Cloud Console, לא באג בקוד.
