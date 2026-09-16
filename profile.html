@@ -779,7 +779,7 @@
   window.hbQueueUntilDefined([
     'openDeleteAccount', 'closeDeleteAccount', 'signOutUser', 'openMenu', 'closeMenu', 'openContactSheet',
     'closeContactSheet', 'copyContactEmail', 'shareApp', 'shareMyBiz', 'closeShareSheet', 'copyShareLink',
-    'installPWA', 'dismissInstallBanner', 'closeManualInstallSheet', 'dismissInAppBanner', 'startEdit',
+    'dismissInAppBanner', 'startEdit',
     'saveCard'
   ]);
 </script>
@@ -997,9 +997,6 @@ window.shareApp                = shareApp;
 window.shareMyBiz              = shareMyBiz;
 window.closeShareSheet         = closeShareSheet;
 window.copyShareLink           = copyShareLink;
-window.installPWA              = installPWA;
-window.dismissInstallBanner    = dismissInstallBanner;
-window.closeManualInstallSheet = closeManualInstallSheet;
 window.dismissInAppBanner      = dismissInAppBanner;
 window.startEdit               = startEdit;
 window.saveEdit                = saveEdit;
@@ -1426,28 +1423,22 @@ async function saveMemberField(updates) {
   function openMenu() {
     document.getElementById('menuOverlay').classList.add('open');
     document.body.style.overflow = 'hidden';
-    const installItem = document.getElementById('menuInstallItem');
-    if (installItem) installItem.style.display = pwaIsStandalone() ? 'none' : 'flex';
   }
   function closeMenu() {
     document.getElementById('menuOverlay').classList.remove('open');
     document.body.style.overflow = '';
   }
 
-  // ── PWA — התקנה למסך הבית ──
-  const PWA_CHOICE_KEY = 'hb_pwaBannerChoice'; // 'installed' | 'dismissed'
-  let _pwaDeferredPrompt = null;
-
-  function pwaIsStandalone() {
-    // §441 — באפליקציה הנייטיב אין מה להתקין. ר' ההערה המלאה ב-home.html.
-    if (window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || '')) return true;
-    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  }
+  // ── §442 — התקנת האתר כאפליקציה (PWA) הוסרה ────────────────────────────────────────
+  // החלטת המשתמש (16.9): אפליקציה אמיתית בדרך לחנות, ו"התקינו" שמוביל ל-PWA מבלבל בין השתיים.
+  // הוסרו פריט התפריט "התקינו את האפליקציה", באנר ההתקנה וגיליון ההוראות הידניות.
+  // ⚠️ **המאזין ל-beforeinstallprompt נשאר, ובכוונה:** האתר עדיין עומד בתנאי ההתקנה של כרום
+  // (manifest + service worker), ובלי preventDefault כרום מציג **באנר התקנה משלו** — כלומר
+  // בדיוק את מה שהוסר, רק בלי שליטה שלנו.
+  window.addEventListener('beforeinstallprompt', e => e.preventDefault());
+  // עזרים שבאנר הדפדפן הפנימי (למטה) עדיין משתמש בהם.
   function pwaIsIOS() {
     return /iphone|ipad|ipod/i.test(navigator.userAgent);
-  }
-  function pwaIsAndroid() {
-    return /android/i.test(navigator.userAgent);
   }
   function pwaIsIOSNonSafari() {
     return pwaIsIOS() && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(navigator.userAgent);
@@ -1455,55 +1446,6 @@ async function saveMemberField(updates) {
   function pwaIsMobileViewport() {
     return window.innerWidth <= 700;
   }
-  function maybeShowInstallBanner() {
-    if (pwaIsStandalone() || localStorage.getItem(PWA_CHOICE_KEY) || !pwaIsMobileViewport()) return;
-    document.getElementById('pwaInstallBanner')?.classList.add('show');
-  }
-  function hideInstallBanner() {
-    document.getElementById('pwaInstallBanner')?.classList.remove('show');
-  }
-  function dismissInstallBanner() {
-    localStorage.setItem(PWA_CHOICE_KEY, 'dismissed');
-    hideInstallBanner();
-  }
-  async function installPWA() {
-    if (!pwaIsIOS() && !_pwaDeferredPrompt) {
-      for (let i = 0; i < 15 && !_pwaDeferredPrompt; i++) {
-        await new Promise(r => setTimeout(r, 100));
-      }
-    }
-    if (!pwaIsIOS() && _pwaDeferredPrompt) {
-      _pwaDeferredPrompt.prompt();
-      const { outcome } = await _pwaDeferredPrompt.userChoice;
-      _pwaDeferredPrompt = null;
-      localStorage.setItem(PWA_CHOICE_KEY, outcome === 'accepted' ? 'installed' : 'dismissed');
-      hideInstallBanner();
-    } else {
-      const iosOther = pwaIsIOSNonSafari();
-      const android = !iosOther && pwaIsAndroid();
-      document.getElementById('pwaStepsIOS').style.display = (!iosOther && !android) ? 'flex' : 'none';
-      document.getElementById('pwaStepsAndroid').style.display = android ? 'flex' : 'none';
-      document.getElementById('pwaStepsIOSOther').style.display = iosOther ? 'flex' : 'none';
-      if (iosOther) {
-        document.getElementById('pwaOpenSafariBtn').href = location.href.replace(/^https:\/\//, 'x-safari-https://');
-      }
-      document.getElementById('pwaManualSheet')?.classList.add('open');
-    }
-  }
-  function closeManualInstallSheet() {
-    document.getElementById('pwaManualSheet')?.classList.remove('open');
-    localStorage.setItem(PWA_CHOICE_KEY, 'dismissed');
-    hideInstallBanner();
-  }
-  window.addEventListener('beforeinstallprompt', e => {
-    e.preventDefault();
-    _pwaDeferredPrompt = e;
-  });
-  window.addEventListener('appinstalled', () => {
-    localStorage.setItem(PWA_CHOICE_KEY, 'installed');
-    hideInstallBanner();
-  });
-  maybeShowInstallBanner();
   // Service Worker — נרשם רק באתר החי, לא ב-localhost. זהה בדיוק ל-home.html, ר' ההערה המלאה שם
   // (§211): ב-localhost ה-SW רק מסתיר שינויים, ולכן גם מבטלים רישום קיים ומנקים מטמון.
   if ('serviceWorker' in navigator) {
@@ -1661,10 +1603,6 @@ async function saveMemberField(updates) {
       <span class="menu-item-icon">🏠</span>
       <span class="menu-item-label">בית</span>
     </a>
-    <button class="menu-item" id="menuInstallItem" onclick="closeMenu(); installPWA()">
-      <span class="menu-item-icon">📲</span>
-      <span class="menu-item-label">התקינו את האפליקציה</span>
-    </button>
     <a class="menu-item active" href="profile.html">
       <span class="menu-item-icon">👤</span>
       <span class="menu-item-label">פרטים אישיים</span>
@@ -1784,37 +1722,5 @@ async function saveMemberField(updates) {
   </div>
 </div>
 
-<!-- ══ PWA — התקנה למסך הבית ══ -->
-<div class="pwa-install-banner" id="pwaInstallBanner">
-  <span class="pwa-install-icon">📲</span>
-  <div class="pwa-install-text">
-    <div class="pwa-install-title">התקינו את Yellow Zone</div>
-    <div class="pwa-install-sub">גישה מהירה ישירות ממסך הבית</div>
-  </div>
-  <button class="pwa-install-btn" onclick="installPWA()">התקינו</button>
-  <button class="pwa-install-close" onclick="dismissInstallBanner()" aria-label="סגור">✕</button>
-</div>
-<div class="contact-overlay" id="pwaManualSheet" onclick="if(event.target===this)closeManualInstallSheet()">
-  <div class="contact-sheet">
-    <div class="contact-sheet-handle"></div>
-    <button class="contact-sheet-close" onclick="closeManualInstallSheet()">✕</button>
-    <div class="contact-sheet-title">📲 התקנת האפליקציה</div>
-    <div class="contact-sheet-sub">שלושה קליקים ו-Yellow Zone נמצא במסך הבית שלכם</div>
-    <div class="pwa-manual-steps" id="pwaStepsIOS">
-      <div class="pwa-manual-step"><span class="pwa-manual-step-num">1</span> הקישו על כפתור השיתוף ⬆️ בסרגל הכלים של הדפדפן</div>
-      <div class="pwa-manual-step"><span class="pwa-manual-step-num">2</span> גללו ובחרו <strong>"הוסף למסך הבית"</strong></div>
-      <div class="pwa-manual-step"><span class="pwa-manual-step-num">3</span> הקישו <strong>"הוסף"</strong> — האפליקציה תופיע במסך הבית</div>
-    </div>
-    <div class="pwa-manual-steps" id="pwaStepsAndroid" style="display:none">
-      <div class="pwa-manual-step"><span class="pwa-manual-step-num">1</span> הקישו על שלוש הנקודות ⋮ בפינה הימנית העליונה של הדפדפן</div>
-      <div class="pwa-manual-step"><span class="pwa-manual-step-num">2</span> בחרו <strong>"התקנת אפליקציה"</strong> (או <strong>"הוספה למסך הבית"</strong>)</div>
-      <div class="pwa-manual-step"><span class="pwa-manual-step-num">3</span> אשרו — האפליקציה תתווסף למסך הבית</div>
-    </div>
-    <div class="pwa-manual-steps" id="pwaStepsIOSOther" style="display:none">
-      <div class="pwa-manual-step">באייפון, התקנה אמיתית של אפליקציה אפשרית רק דרך <strong>Safari</strong> — זו הגבלה של אפל, לא תלויה בנו. הדפדפן הזה לא יאפשר את זה.</div>
-      <a class="pwa-install-btn" id="pwaOpenSafariBtn" style="text-align:center; text-decoration:none; margin-top:4px;" href="#">פתחו ב-Safari</a>
-    </div>
-  </div>
-</div>
 </body>
 </html>
