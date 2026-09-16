@@ -1,3 +1,8 @@
+// §438 — v122 (משטח הגלישה במדידה: app / pwa / web על כל pageView).
+//   native-google.js (surface()), welcome.html, home.html, fan-register.html, business.html.
+// ⚠️ הבאמפ נדרש כדי שהמדידה תתחיל לזרום מכולם: `native-google.js` מוגש stale-while-revalidate,
+// וארבעת הדפים מחזיקים כל אחד עותק משלו של logEvent — עמוד ישן פשוט לא ישלח את הערוץ, בשקט.
+//
 // §435 — v120 (כניסה נייטיב עם Google באפליקציה; באפליקציה בלי התוסף — אין כפתור Google).
 //   native-google.js (חדש), google-signup.js, google-link.js, welcome.html, fan-register.html,
 //   business.html, home.html, profile.html, terms.html.
@@ -288,7 +293,7 @@
 // כאן הוא network-first עם 4 שניות, ולכן מנהל על רשת איטית היה ממשיך לקבל את admin-dashboard
 // הישן — **את הגרסה השבורה של §351 בדיוק** — כי המטמון הישן נמחק רק כשהשם הזה משתנה.
 // §350 — v43 (רשת-הצלה לכניסה שמאחרת + פיצול ערוץ פסק-הזמן). §339 — v42 (הפצת תג הלוגו ל-3 המשטחים הנותרים). v41 = home.html בלבד. §338 — v40. פסק-זמן הניווט עלה מ-1.5 ל-4 שניות (ר' fetch למטה).
-const CACHE_NAME = 'yz-shell-v121';
+const CACHE_NAME = 'yz-shell-v122';
 // §338 — פסק-הזמן של ניווטים. 1.5 שניות נבחרו כדי שדף לא "יתקע" על רשת גרועה, אבל בפועל
 // זה נמדד קצר מדי: ניווט סלולרי רגיל חוצה אותו בקלות, וכל חצייה כזאת מגישה HTML **ישן**.
 // אצל משתמש מנותק ב-PWA זה היה קטלני, כי דף הכניסה גם לא עדכן את ה-Service Worker (ר'

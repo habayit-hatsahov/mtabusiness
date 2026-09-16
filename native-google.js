@@ -218,10 +218,32 @@
     return wrap;
   }
 
+  // ── §438 — מאיזה משטח הגיע הגולש: אפליקציה / קיצור-דרך במסך הבית / דפדפן ──────────────
+  //
+  //  🔑 **נולד משעה של ניחושים.** שני בודקים דיווחו "רואה כפתור Google באפליקציה", ולא
+  //  הייתה שום דרך לדעת אם הם באמת באפליקציה — אין באירועים שדה שאומר זאת. התשובה הגיעה
+  //  בסוף מצילום מסך של מסך ההגדרות של אנדרואיד ("גרסה: 1.1"). זה לא תהליך שאפשר לחזור
+  //  עליו בכל שאלה, ובוודאי לא מול 15 בודקים. ר' [[feedback_state_not_event_detection]].
+  //
+  //  ⚠️ **'app' נבדק לפני 'pwa' ולא להפך**: ל-WebView אין display-mode סטנדרטי, ובמכשירים
+  //  מסוימים הוא כן מדווח standalone — סדר הפוך היה מסמן את האפליקציה כקיצור-דרך.
+  //  ⚠️ יושב כאן ולא בקובץ נפרד: זהו הקובץ היחיד שכבר נטען בארבעת הדפים שמודדים
+  //  (welcome / home / fan-register / business), ולכן אין צורך בתגית script חמישית.
+  function surface() {
+    if (inApp()) return 'app';
+    try {
+      const std = (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
+                  || navigator.standalone === true;
+      if (std) return 'pwa';
+    } catch (e) {}
+    return 'web';
+  }
+
   // ⚠️ החשיפה מיידית — הדפים בודקים את mode() בזמן ציור המודאל. ר' §310/§312.
   window.YZNativeGoogle = {
     mode: mode,
     inApp: inApp,
+    surface: surface,
     signIn: signIn,
     renderButton: renderButton,
   };

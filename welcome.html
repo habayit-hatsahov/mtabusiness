@@ -2023,6 +2023,17 @@ function _hbSessionId() {
   }
   return id;
 }
+// §438 — מאיזה משטח הגיע הגולש (app / pwa / web). ⚠️ **אינו מחשב כאן ואינו מעתיק את
+// ההיגיון**: המקור היחיד הוא `YZNativeGoogle.surface()`, כי זיהוי-אפליקציה שמשוכפל לארבעה
+// עותקים הוא בדיוק הדפוס שנשבר ב-§353/§357. מודול שלא נטען → null, בלי להמציא ערך.
+function _hbSurface() {
+  try {
+    const ng = window.YZNativeGoogle;
+    if (ng && typeof ng.surface === 'function') return ng.surface();
+  } catch (e) {}
+  return null;
+}
+
 window.logEvent = function(type, extra) {
 // §315+§324 — **רשימת-היתר של מארחים, לא רשימת-חסימה.** §315 חסם את localhost בלבד, אחרי
 // ש-22 אירועי-בדיקה נכתבו לפרודקשן ונמחקו ידנית. §324 גילה שזה לא הספיק: יש עותק חי ומלא
@@ -2058,7 +2069,9 @@ if (!['yellowzone.co.il', 'www.yellowzone.co.il'].includes(location.hostname)) r
     referrer: (document.referrer.split('/')[2] || '').slice(0, 50) || null,
     device: window.innerWidth <= 700 ? 'mobile' : 'desktop',
     blockId: e.blockId ?? null,
-    channel: e.channel ?? null,
+    // §438 — על `pageView` בלבד, ורק כשאין ערך מפורש. שאר סוגי האירועים משתמשים ב-`channel`
+    // למשמעויות משלהם (קוד-שגיאה, מסלול כניסה), ודריסה שם הייתה הורסת מדידות קיימות.
+    channel: e.channel ?? (type === 'pageView' ? _hbSurface() : null),
     // ── §355 — הטלפון על כשל-כניסה בלבד ─────────────────────────────────────────────────
     // עד היום שורת "תקלת כניסה" במרכז הניהול אמרה *מה* נכשל ומתי, ולא **מי** — האירוע
     // נרשם לפני שההזדהות הצליחה ולכן memberId ריק. הטלפון הוא הדבר היחיד שהאוהד הקליד,
