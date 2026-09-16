@@ -1657,12 +1657,6 @@
     }
   </style>
 
-<!-- ══ PWA — התרעה על דפדפן פנימי (וואטסאפ/אינסטגרם/פייסבוק) ══ -->
-<div class="pwa-inapp-banner" id="pwaInAppBanner">
-  <span id="pwaInAppText">📲 רוצים להתקין את Yellow Zone?</span>
-  <a class="pwa-inapp-btn" id="pwaInAppBtn" href="#">פתחו בדפדפן להורדת האפליקציה</a>
-  <button class="pwa-inapp-close" onclick="dismissInAppBanner()" aria-label="סגור">✕</button>
-</div>
 
 <!-- ══ TOP NAV ══ -->
 <header class="top-nav">
@@ -2767,18 +2761,9 @@ function closeMenu() {
 // (manifest + service worker), ובלי preventDefault כרום מציג **באנר התקנה משלו** — כלומר
 // בדיוק את מה שהוסר, רק בלי שליטה שלנו.
 window.addEventListener('beforeinstallprompt', e => e.preventDefault());
-// עזרים שבאנר הדפדפן הפנימי (למטה) עדיין משתמש בהם.
-function pwaIsIOS() {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
-}
-// iOS מגביל התקנה אמיתית (עם manifest+service worker) ל-Safari בלבד — דפדפנים אחרים
-// באייפון (כרום/פיירפוקס/אדג') הם רק "מעטפת" סביב Safari ולא תומכים ב-Add to Home Screen מלא
-function pwaIsIOSNonSafari() {
-  return pwaIsIOS() && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(navigator.userAgent);
-}
-function pwaIsMobileViewport() {
-  return window.innerWidth <= 700;
-}
+// §443 — גם הפס הצהוב "פתחו בדפדפן" (דפדפן פנימי של וואטסאפ/אינסטגרם/פייסבוק) הוסר:
+// הוא הזמין לצאת לדפדפן **כדי להתקין את האתר**, ואחרי §442 אין מה להתקין. מי שבתוך
+// וואטסאפ נכנס עם טלפון וקוד. 🔲 פס שמפנה לאפליקציה בחנות — ייבנה כשהיא תעלה.
 // ── Service Worker — נרשם רק באתר החי, לא בפיתוח מקומי (2026-08-16) ────────────────────────
 // ב-localhost ה-SW לא נותן שום ערך (אין התקנה כאפליקציה, אין offline, אין פוש) והוא רק מגיש
 // גרסה מהמטמון ומסתיר שינויים שזה עתה נכתבו בקוד — בזבוז זמן חוזר בכל בדיקה מקומית.
@@ -2824,33 +2809,6 @@ if ('serviceWorker' in navigator) {
   }
 }
 
-// ── PWA — התרעה כשהדף נפתח בתוך דפדפן פנימי (וואטסאפ/אינסטגרם/פייסבוק) ──
-// בדפדפנים פנימיים אין בכלל אפשרות להתקין (לא iOS ולא אנדרואיד) — צריך קודם "לברוח" לדפדפן האמיתי
-function pwaInAppBrowserName() {
-  const ua = navigator.userAgent || '';
-  if (/\bWhatsApp\b/i.test(ua)) return 'WhatsApp';
-  if (/\bInstagram\b/i.test(ua)) return 'Instagram';
-  if (/FBAN|FBAV|FB_IAB/i.test(ua)) return 'Facebook';
-  if (/\bMessenger\b/i.test(ua)) return 'Messenger';
-  // iOS: WebView גנרי בלי Safari/CriOS/FxiOS/EdgiOS בכלל — לרוב אפליקציה חיצונית לא מזוהה שפותחת קישורים בתוכה
-  if (pwaIsIOS() && !pwaIsIOSNonSafari() && !/Safari/i.test(ua)) return 'האפליקציה';
-  return null;
-}
-function pwaEscapeInAppUrl() {
-  if (pwaIsIOS()) return location.href.replace(/^https:\/\//, 'x-safari-https://');
-  return `intent://${location.href.replace(/^https?:\/\//, '')}#Intent;scheme=https;end`;
-}
-function dismissInAppBanner() {
-  document.getElementById('pwaInAppBanner')?.classList.remove('show');
-}
-function maybeShowInAppBanner() {
-  const name = pwaInAppBrowserName();
-  if (!name || !pwaIsMobileViewport()) return;
-  document.getElementById('pwaInAppText').textContent = `📲 רוצים להתקין את Yellow Zone? (אתם בתוך ${name} כרגע)`;
-  document.getElementById('pwaInAppBtn').href = pwaEscapeInAppUrl();
-  document.getElementById('pwaInAppBanner')?.classList.add('show');
-}
-document.addEventListener('DOMContentLoaded', maybeShowInAppBanner);
 
 // ── שיתוף — הזמנת חברים לדף ההרשמה, וגם שיתוף עסק בודד מתוך הגיליון (תפריט מותאם אישית
 // אחד, משותף לשני ההקשרים — רק הכותרת/טקסט/קישור משתנים) ──

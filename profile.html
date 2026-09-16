@@ -523,12 +523,6 @@
 </head>
 <body>
 
-<!-- ══ PWA — התרעה על דפדפן פנימי (וואטסאפ/אינסטגרם/פייסבוק) ══ -->
-<div class="pwa-inapp-banner" id="pwaInAppBanner">
-  <span id="pwaInAppText">📲 רוצים להתקין את Yellow Zone?</span>
-  <a class="pwa-inapp-btn" id="pwaInAppBtn" href="#">פתחו בדפדפן להורדת האפליקציה</a>
-  <button class="pwa-inapp-close" onclick="dismissInAppBanner()" aria-label="סגור">✕</button>
-</div>
 
 <!-- TOP NAV -->
 <header class="top-nav">
@@ -779,7 +773,7 @@
   window.hbQueueUntilDefined([
     'openDeleteAccount', 'closeDeleteAccount', 'signOutUser', 'openMenu', 'closeMenu', 'openContactSheet',
     'closeContactSheet', 'copyContactEmail', 'shareApp', 'shareMyBiz', 'closeShareSheet', 'copyShareLink',
-    'dismissInAppBanner', 'startEdit',
+    'startEdit',
     'saveCard'
   ]);
 </script>
@@ -997,7 +991,6 @@ window.shareApp                = shareApp;
 window.shareMyBiz              = shareMyBiz;
 window.closeShareSheet         = closeShareSheet;
 window.copyShareLink           = copyShareLink;
-window.dismissInAppBanner      = dismissInAppBanner;
 window.startEdit               = startEdit;
 window.saveEdit                = saveEdit;
 window.saveBirthDate           = saveBirthDate;
@@ -1436,16 +1429,9 @@ async function saveMemberField(updates) {
   // (manifest + service worker), ובלי preventDefault כרום מציג **באנר התקנה משלו** — כלומר
   // בדיוק את מה שהוסר, רק בלי שליטה שלנו.
   window.addEventListener('beforeinstallprompt', e => e.preventDefault());
-  // עזרים שבאנר הדפדפן הפנימי (למטה) עדיין משתמש בהם.
-  function pwaIsIOS() {
-    return /iphone|ipad|ipod/i.test(navigator.userAgent);
-  }
-  function pwaIsIOSNonSafari() {
-    return pwaIsIOS() && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(navigator.userAgent);
-  }
-  function pwaIsMobileViewport() {
-    return window.innerWidth <= 700;
-  }
+  // §443 — גם הפס הצהוב "פתחו בדפדפן" (דפדפן פנימי של וואטסאפ/אינסטגרם/פייסבוק) הוסר:
+  // הוא הזמין לצאת לדפדפן **כדי להתקין את האתר**, ואחרי §442 אין מה להתקין. מי שבתוך
+  // וואטסאפ נכנס עם טלפון וקוד. 🔲 פס שמפנה לאפליקציה בחנות — ייבנה כשהיא תעלה.
   // Service Worker — נרשם רק באתר החי, לא ב-localhost. זהה בדיוק ל-home.html, ר' ההערה המלאה שם
   // (§211): ב-localhost ה-SW רק מסתיר שינויים, ולכן גם מבטלים רישום קיים ומנקים מטמון.
   if ('serviceWorker' in navigator) {
@@ -1474,31 +1460,6 @@ async function saveMemberField(updates) {
     }
   }
 
-  // ── PWA — התרעה כשהדף נפתח בתוך דפדפן פנימי (וואטסאפ/אינסטגרם/פייסבוק) ──
-  function pwaInAppBrowserName() {
-    const ua = navigator.userAgent || '';
-    if (/\bWhatsApp\b/i.test(ua)) return 'WhatsApp';
-    if (/\bInstagram\b/i.test(ua)) return 'Instagram';
-    if (/FBAN|FBAV|FB_IAB/i.test(ua)) return 'Facebook';
-    if (/\bMessenger\b/i.test(ua)) return 'Messenger';
-    if (pwaIsIOS() && !pwaIsIOSNonSafari() && !/Safari/i.test(ua)) return 'האפליקציה';
-    return null;
-  }
-  function pwaEscapeInAppUrl() {
-    if (pwaIsIOS()) return location.href.replace(/^https:\/\//, 'x-safari-https://');
-    return `intent://${location.href.replace(/^https?:\/\//, '')}#Intent;scheme=https;end`;
-  }
-  function dismissInAppBanner() {
-    document.getElementById('pwaInAppBanner')?.classList.remove('show');
-  }
-  function maybeShowInAppBanner() {
-    const name = pwaInAppBrowserName();
-    if (!name || !pwaIsMobileViewport()) return;
-    document.getElementById('pwaInAppText').textContent = `📲 רוצים להתקין את Yellow Zone? (אתם בתוך ${name} כרגע)`;
-    document.getElementById('pwaInAppBtn').href = pwaEscapeInAppUrl();
-    document.getElementById('pwaInAppBanner')?.classList.add('show');
-  }
-  maybeShowInAppBanner();
 
   // ── שיתוף — הזמנת חברים לדף ההרשמה, וגם שיתוף העסק-של-בעל-העסק (אותה תשתית, ר' home.html) ──
   function shareApp() {
