@@ -20,15 +20,15 @@ const ev = (at, type, o) => ({ at: new Date(at), type, sessionId: o.s || null, m
 const E = [
   ev('2026-09-03T09:40:55Z','loginFail',{s:'S1',ch:'google:notLinked',dev:'desktop'}),
   ev('2026-09-03T09:41:41Z','pageView',{s:'S1',m:'A2GYdyjKrj'}),
-  ev('2026-09-03T09:59:22Z','loginFail',{s:'S2',ch:'error',ph:'0502042330'}),
+  ev('2026-09-03T09:59:22Z','loginFail',{s:'S2',ch:'error',ph:'0500000001'}),
   ev('2026-09-03T09:59:36Z','pageView',{s:'S2',m:'5y8yeGh7kS'}),
-  ev('2026-09-03T10:00:27Z','loginFail',{s:'S3',ch:'authTimeout',ph:'0584439988'}),
+  ev('2026-09-03T10:00:27Z','loginFail',{s:'S3',ch:'authTimeout',ph:'0500000002'}),
   ev('2026-09-03T10:00:36Z','pageView',{s:'S3',m:'cRrLUiHuJl'}),
   // §407 — השורה של 14:36: בלי טלפון, בלי memberId, בלי כניסה — ועכשיו עם מייל
   ev('2026-09-03T11:36:02Z','loginFail',{s:'S4',ch:'google:notLinked',em:'ghost@gmail.com'}),
-  ev('2026-09-03T11:45:17Z','loginFail',{s:'S5',ch:'fetchTimeout',ph:'0585835311'}),
+  ev('2026-09-03T11:45:17Z','loginFail',{s:'S5',ch:'fetchTimeout',ph:'0500000003'}),
   ev('2026-09-03T11:45:20Z','pageView',{s:'S5',m:'KPTCd2XmzH'}),
-  ev('2026-09-02T07:31:37Z','loginFail',{s:'S6',ch:'fetchTimeout',ph:'0544254737'}),// ❌ שובל צרפתי — עם טלפון
+  ev('2026-09-02T07:31:37Z','loginFail',{s:'S6',ch:'fetchTimeout',ph:'0500000004'}),// ❌ שובל צרפתי — עם טלפון
   // מקרה-קצה: נכשל בסשן אחד ונכנס מסשן אחר (טאב חדש) — חייב לצאת 'mem' ולא 'לא נכנס'
   ev('2026-09-02T12:23:25Z','loginFail',{s:'S7',ch:'badCode',ph:'0523777766'}),
   ev('2026-09-02T12:29:00Z','pageView',{s:'S7b',m:'GvEdrgDJVH'}),
@@ -43,18 +43,18 @@ const E = [
   ev('2026-09-02T22:05:00Z','loginFail',{s:'SD',ch:'error:TypeError'}),
   ev('2026-09-02T22:10:00Z','loginFail',{s:'SE',ch:'late:lateAuthError:auth/invalid-custom-token'}),
   // §408 — נתיב-המילוט: מי שביקש קוד ולא קיבל
-  ev('2026-09-02T22:20:00Z','loginFail',{s:'SF',ch:'resendTimeout',ph:'0544254737'}),
-  ev('2026-09-02T22:25:00Z','loginFail',{s:'SG',ch:'resendError:TypeError',ph:'0544254737'}),
+  ev('2026-09-02T22:20:00Z','loginFail',{s:'SF',ch:'resendTimeout',ph:'0500000004'}),
+  ev('2026-09-02T22:25:00Z','loginFail',{s:'SG',ch:'resendError:TypeError',ph:'0500000004'}),
 ];
 const FANS = [
-  { id:'5y8yeGh7kS', name:'מאיר דהן',      phone:'0502042330', status:'approved' },
-  { id:'cRrLUiHuJl', name:'ליאור ישראל',   phone:'0584439988', status:'approved' },
-  { id:'KPTCd2XmzH', name:'eliezer bitton',phone:'0585835311', status:'approved' },
-  { id:'tEyFUx9FRK', name:'שובל צרפתי',    phone:'0544254737', status:'approved' },
+  { id:'5y8yeGh7kS', name:'מאיר דהן',      phone:'0500000001', status:'approved' },
+  { id:'cRrLUiHuJl', name:'ליאור ישראל',   phone:'0500000002', status:'approved' },
+  { id:'KPTCd2XmzH', name:'eliezer bitton',phone:'0500000003', status:'approved' },
+  { id:'tEyFUx9FRK', name:'שובל צרפתי',    phone:'0500000004', status:'approved' },
   { id:'GvEdrgDJVH', name:'נבדק סשן-אחר',  phone:'0523777766', status:'approved' },
   // §404 — שני אלה **אינם** מגיעים מטלפון: הם מזוהים רק דרך הכניסה שאחרי הכשל
-  { id:'5OmDhFgK4i', name:'גל שבתאי',      phone:'0526913504', email:'shabtaiprod@gmail.com', status:'approved' },
-  { id:'A2GYdyjKrj', name:'פלג לוינזון',   phone:'0528400525', email:'peleglevinson@gmail.com', status:'approved' },
+  { id:'5OmDhFgK4i', name:'גל שבתאי',      phone:'0500000005', email:'fan5@example.com', status:'approved' },
+  { id:'A2GYdyjKrj', name:'פלג לוינזון',   phone:'0500000006', email:'fan6@example.com', status:'approved' },
 ];
 const sandbox = { platformEvents: E, Date, Math, console, JSON };
 vm.createContext(sandbox);
@@ -151,4 +151,4 @@ const r2 = sandbox.__run(FANS);
 chk('🔴 שני כשלים רצופים — הראשון אינו "נכנס"', r2[0].outcome.kind === 'none');
 chk('🔑 ובכל זאת מזוהה בשם — מהמייל, בלי שנכנס בכלל',
     !!r2[0].fan && r2[0].fan.name === 'גל שבתאי' && r2[0].fanVia === 'event');
-chk('ויש עליו טלפון להתקשר', r2[0].fan.phone === '0526913504');
+chk('ויש עליו טלפון להתקשר', r2[0].fan.phone === '0500000005');

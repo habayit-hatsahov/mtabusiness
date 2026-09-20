@@ -3,7 +3,7 @@
 //  - status (רק approved מקבל custom token מהוורקר → request.auth != null)
 //  - האם קיים משתמש ב-Firebase Auth עם ה-uid הזה (isSignedInMember דורש members/{uid})
 //  - כמה לבבות כבר יש לו בפועל (likedBy ברחבי businesses)
-// הרצה: node scratch_diag_heart_member.js 0522918655
+// הרצה: node scratch_diag_heart_member.js 05XXXXXXXX
 
 const fs = require('fs');
 const crypto = require('crypto');
@@ -42,7 +42,7 @@ const B = (f, k) => (f[k] ? f[k].booleanValue : undefined);
 const digits = (s) => String(s || '').replace(/[^0-9]/g, '');
 
 (async () => {
-  const needle = digits(process.argv[2] || '0522918655');
+  const needle = digits(process.argv[2] || '');
   const token = await getToken('https://www.googleapis.com/auth/datastore');
   const members = await listAll(token, 'members');
   console.log('סה"כ חברים:', members.length);
