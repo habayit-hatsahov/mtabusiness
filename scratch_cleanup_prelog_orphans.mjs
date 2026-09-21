@@ -27,8 +27,28 @@ import fs from 'fs';
 import crypto from 'crypto';
 
 const APPLY = process.argv.includes('--apply');
-const TARGETS = ['3FHf9PHT8sHFO9nYmfGy', 'xUskdJ9skZhB560P1CRH'];
 const LOG_BORN = '2026-09-03';
+
+// ── שתי קטגוריות, ולכל אחת תנאי משלה ───────────────────────────────────────────────────
+// 🔑 **התנאי המחייב בשתיהן זהה: אין רשומה ביומן.** אין רשומה → אין מה לשחזר → הקוד אינו
+// משרת דבר. ההבדל הוא ב**הצדקה** לכך שאין רשומה, ולכל הצדקה יש ראיה משלה:
+//
+//   `preLog`       — נמחק **לפני שהיומן נולד** (3.9, commit `12a3e25`). הראיה היא
+//                    `updateTime` של מסמך הקוד.
+//   `investigated` — נמחק **אחרי** שהיומן היה חי, כלומר לא דרך האתר (§447ד). כאן
+//                    `updateTime` אינו יכול להצדיק כלום, ולכן הראיה היא אחרת:
+//                    **משתמש ה-Auth חייב להיות מושבת או לא-קיים** — כלומר מישהו כבר
+//                    בדק את הזהות הזאת והכריע לגביה (§447ה).
+//
+// ⚠️ 🔑 **הקטגוריה השנייה נוספה כדי לא לרכך את הראשונה.** הדרך הקלה הייתה למחוק את
+// תנאי-התאריך ולתת לשלושתם לעבור — וזו בדיוק הגנה שמתקיימת תמיד, כלומר כיבוי.
+// ר' [[feedback_guard_that_always_holds]].
+const TARGETS = [
+  { id: '3FHf9PHT8sHFO9nYmfGy', why: 'preLog' },
+  { id: 'xUskdJ9skZhB560P1CRH', why: 'preLog' },
+  // §447ד — זהות מנהל ישנה. נחקרה מארבעה מקורות, וה-Auth שלה הושבת ב-§447ה.
+  { id: 'Uw1Caau9QFS8Voy2V6ij', why: 'investigated' },
+];
 // ⚠️ מחוץ לריפו, במכוון — הגיבוי מכיל קודי-כניסה חיים. ר' [[feedback_docs_are_public]].
 const BACKUP = `C:/Users/User/Downloads/yz-orphan-codes-backup-${Date.now()}.json`;
 
@@ -36,9 +56,9 @@ const KEY = JSON.parse(fs.readFileSync('C:/Users/User/Downloads/habayit-hatsahov
 const DOCS = `projects/${KEY.project_id}/databases/(default)/documents`;
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 
-async function token() {
+async function token(scope) {
   const n = Math.floor(Date.now() / 1e3);
-  const claim = { iss: KEY.client_email, scope: 'https://www.googleapis.com/auth/datastore', aud: 'https://oauth2.googleapis.com/token', exp: n + 3600, iat: n };
+  const claim = { iss: KEY.client_email, scope, aud: 'https://oauth2.googleapis.com/token', exp: n + 3600, iat: n };
   const u = b64({ alg: 'RS256', typ: 'JWT' }) + '.' + b64(claim);
   const sig = crypto.createSign('RSA-SHA256').update(u).sign(KEY.private_key).toString('base64url');
   const j = await (await fetch('https://oauth2.googleapis.com/token', {
@@ -47,7 +67,24 @@ async function token() {
   })).json();
   return j.access_token;
 }
-const t = await token();
+const t = await token('https://www.googleapis.com/auth/datastore');
+// ── בדיקת מצב ה-Auth, לקטגוריית `investigated` בלבד ───────────────────────────────────
+// מחזירה 'disabled' | 'active' | 'missing' | 'unknown'. ⚠️ `unknown` (כשל רשת/הרשאה)
+// **אינו נחשב כמאושר** — כשל בבדיקת-בטיחות חייב לחסום ולא לעבור בשקט.
+// ר' [[feedback_empty_catch_on_a_guard]].
+async function authState(uid) {
+  try {
+    const tId = await token('https://www.googleapis.com/auth/cloud-platform');
+    const r = await (await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${KEY.project_id}/accounts:lookup`, {
+      method: 'POST', headers: { Authorization: `Bearer ${tId}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ localId: [uid] }),
+    })).json();
+    if (r.error) return 'unknown';
+    const u = (r.users || [])[0];
+    if (!u) return 'missing';
+    return u.disabled ? 'disabled' : 'active';
+  } catch (e) { return 'unknown'; }
+}
 const H = { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' };
 const api = (p, q) => `https://firestore.googleapis.com/v1/${DOCS}/${p}${q || ''}`;
 const get = async (p) => (await (await fetch(api(p), { headers: H })).json());
@@ -67,23 +104,34 @@ console.log(APPLY ? '🔴 מצב ביצוע\n' : '🧪 הרצה יבשה — ל�
 const log = await all('deletionLog');
 const plan = [];
 
-for (const id of TARGETS) {
-  console.log(`── ${id}`);
+for (const { id, why } of TARGETS) {
+  console.log(`── ${id}   [${why}]`);
   const code = await get(`memberCodes/${id}`);
-  if (code.error) { console.log(`   ⛔ memberCodes אינו קיים (${code.error.status}) — מדלג`); continue; }
+  if (code.error) { console.log(`   ⛔ memberCodes אינו קיים (${code.error.status}) — מדלג\n`); continue; }
   const member = await get(`members/${id}`);
   const hasLog = log.some((l) => l.f.docId?.stringValue === id);
   const upd = (code.updateTime || '').slice(0, 10);
 
-  // ── שלושת התנאים. כולם חייבים להתקיים, וכל אחד מהם לבדו מבטל את המחיקה ───────────
+  // ── שני תנאים משותפים, ותנאי שלישי שנגזר מהקטגוריה ────────────────────────────────
   const ok1 = !!member.error;        // החבר באמת אינו קיים
   const ok2 = !hasLog;               // אין רשומת שחזור שתישבר
-  const ok3 = upd < LOG_BORN;        // באמת קודם ליומן
   console.log(`   החבר אינו קיים : ${ok1 ? '✅' : '🔴 קיים! — לא נוגעים'}`);
   console.log(`   אין רשומת יומן : ${ok2 ? '✅' : '🔴 יש — מחיקה תשבור שחזור'}`);
-  console.log(`   עודכן ${upd} < ${LOG_BORN} : ${ok3 ? '✅' : '🔴'}`);
+
+  let ok3;
+  if (why === 'preLog') {
+    ok3 = upd < LOG_BORN;
+    console.log(`   עודכן ${upd} < ${LOG_BORN} : ${ok3 ? '✅' : '🔴 מאוחר ליומן — דורש חקירה, לא תאריך'}`);
+  } else {
+    // 🔑 כאן התאריך אינו יכול להצדיק כלום (המחיקה מאוחרת ליומן). הראיה היא שמישהו
+    // כבר הכריע לגבי הזהות עצמה — כלומר ה-Auth הושבת או אינו קיים (§447ה).
+    const st = await authState(id);
+    ok3 = st === 'disabled' || st === 'missing';
+    console.log(`   מצב ה-Auth : ${st} ${ok3 ? '✅' : '🔴 פעיל/לא ידוע — להשבית תחילה'}`);
+  }
+
   if (!(ok1 && ok2 && ok3)) { console.log('   ⛔ לא עומד בתנאים — מדלג\n'); continue; }
-  plan.push({ id, fields: code.fields, createTime: code.createTime, updateTime: code.updateTime });
+  plan.push({ id, why, fields: code.fields, createTime: code.createTime, updateTime: code.updateTime });
   console.log('   ✅ מתוכנן למחיקה\n');
 }
 
@@ -105,7 +153,11 @@ for (const p of plan) {
       collectionName: { stringValue: 'memberCodes' },
       docId: { stringValue: p.id },
       data: { mapValue: { fields: p.fields } },
-      label: { stringValue: 'קוד-כניסה יתום (חבר נמחק לפני שהיומן נולד)' },
+      // ⚠️ התווית נגזרת מהקטגוריה ולא קבועה — שורה ביומן שמתארת סיבה שגויה גרועה
+      // משורה בלי סיבה, כי היא **נראית** כמו מידע.
+      label: { stringValue: p.why === 'preLog'
+        ? 'קוד-כניסה יתום (החבר נמחק לפני שיומן המחיקות נולד)'
+        : 'קוד-כניסה יתום (זהות מנהל ישנה — §447ד; ה-Auth הושבת ב-§447ה)' },
       actorUid: { nullValue: null },
       actorName: { stringValue: 'script:orphan-cleanup' },
       actorEmail: { stringValue: '' },
@@ -113,7 +165,7 @@ for (const p of plan) {
       deletedAt: { timestampValue: now },
       state: { stringValue: 'attempted' },
       restoredAt: { nullValue: null }, restoredBy: { nullValue: null },
-      note: { stringValue: `origCreate=${p.createTime} origUpdate=${p.updateTime}` },
+      note: { stringValue: `why=${p.why} origCreate=${p.createTime} origUpdate=${p.updateTime}` },
     } }),
   })).json();
   if (logRes.error) { console.log(`   ⛔ הרישום נכשל: ${logRes.error.message} — לא מוחק`); continue; }
@@ -137,7 +189,11 @@ const membersAfter = await all('members');
 const orphansAfter = codesAfter.filter((c) => !membersAfter.some((m) => m.id === c.id));
 console.log(`  memberCodes: ${codesAfter.length} · members: ${membersAfter.length} · יתומים: ${orphansAfter.length}`);
 orphansAfter.forEach((o) => console.log(`    נשאר: ${o.id}`));
-for (const id of TARGETS) {
+// 🐛 **היה `for (const id of TARGETS)` אחרי ש-TARGETS הפך למערך אובייקטים** — השורה
+// הדפיסה `[object Object] → ✅ נמחק`. האימות עצמו היה נכון (`memberCodes/[object Object]`
+// באמת אינו קיים...) — וזו בדיוק הבעיה: **הוא היה מחזיר ✅ גם אם שום דבר לא נמחק.**
+// אימות שמדווח הצלחה על מזהה שאינו קיים אינו אימות. ר' [[feedback_guard_that_always_holds]].
+for (const { id, why } of TARGETS) {
   const d = await get(`memberCodes/${id}`);
-  console.log(`  ${id} → ${d.error ? '✅ נמחק' : '🔴 עדיין קיים'}`);
+  console.log(`  ${id} [${why}] → ${d.error ? '✅ נמחק' : '🔴 עדיין קיים'}`);
 }
