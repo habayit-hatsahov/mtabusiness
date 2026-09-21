@@ -23650,18 +23650,34 @@ isAdmin() = request.auth != null
 | מזהה **איזה מסמך** | ⚠️ לא ודאי — ר' למטה | ✅ מדויק |
 | תלות חדשה | אין (הגדרה בקונסולה) | 🔴 Cloud Functions — אין היום בפרויקט |
 
-**ההגדרה:** Google Cloud Console → **IAM & Admin → Audit Logs** → לבחור
-**Google Cloud Firestore API** (`firestore.googleapis.com`) → לסמן **Data Write** → Save.
+**ההגדרה:** Google Cloud Console → **IAM & Admin → Audit Logs** → לסמן את השירות →
+לשונית **Permission Types** → **Data Write** → Save.
+
+🔴 **המלכודת, ואני נפלתי בה קודם:** השירות שמגדירים אותו הוא **`datastore.googleapis.com`**
+("Google Cloud Datastore API") — **לא** `firestore.googleapis.com`. התיעוד של גוגל מפורש:
+*"use the service name `datastore.googleapis.com` to configure both `datastore.googleapis.com`
+and `firestore.googleapis.com`"*. ⚠️ אבל **בקריאה** מסננים לפי `firestore.googleapis.com`.
+כלומר **מגדירים תחת שם אחד וקוראים תחת שם אחר** — מי שיחפש "Firestore" ברשימת ההגדרה
+לא ימצא, יניח שאין, ויוותר.
 
 🔴 **לסמן `Data Write` בלבד.** `Data Read` ירשום **כל קריאת מסמך** — ובפיד ציבורי עם
 ~60 עסקים ו-234 חברים זה נפח אדיר ועלות מיותרת. הכתיבות כאן הן עשרות-מאות ביום.
+✅ **אומת מול התיעוד ש-`DATA_WRITE` מכסה את מה שצריך:** `DeleteDocument`, `Commit`,
+`BatchWrite`, `Write`, `CreateDocument`, `UpdateDocument` — כלומר גם מחיקה בודדת וגם
+מחיקה בתוך batch. וזהות הקורא יושבת ב-`AuthenticationInfo.principalEmail`.
 
-⚠️ **מה לא אומת, ונאמר במפורש:** (1) חשבון-השירות של Firebase Admin SDK **אינו מורשה**
-לקרוא את `auditConfigs` של הפרויקט, ולכן **לא יכולתי למדוד מה מוגדר היום** — §392 קבע
-שהלוג כבוי, וזה לא אומת מחדש כאן. (2) לוגי Data Access מתעדים בוודאות **מי ומתי**;
-האם נתיב המסמך המדויק מופיע בהם — **לא נבדק**. ר' [[feedback_absence_of_evidence]].
-(3) ברירת המחדל של שמירה היא 30 יום — הספיקה למקרה הזה (המחיקה הייתה לפני ~10 ימים),
-אך לא תספיק לחקירה ישנה יותר.
+⚠️ **שלוש מגבלות שנאמרות במפורש:**
+1. **מה שלא נרשם גם כשהלוג דולק** (מהתיעוד): *"Individual writes from import, bulk delete
+   operations and TTL are not audit logged."* כלומר **מחיקה המונית מהקונסולה עלולה שלא
+   להירשם ברמת המסמך הבודד**.
+2. **האם נתיב המסמך מופיע — לא אומת.** התיעוד מאשר `principalEmail` במפורש, ואינו מאשר
+   את נתיב המסמך. ר' [[feedback_absence_of_evidence]] — **לבדוק בפועל** אחרי ההפעלה.
+3. **לא נמדד מה מוגדר היום:** חשבון-השירות של Firebase Admin SDK אינו מורשה לקרוא
+   `auditConfigs` (`The caller does not have permission`). §392 קבע שהלוג כבוי; לא אומת מחדש.
+
+💰 **עולה כסף.** התיעוד: *"Enabling Data Access logs might result in your Google Cloud
+project being charged for the additional logs usage."* יש מכסה חינמית חודשית ל-Cloud
+Logging, אך **דף התיעוד אינו נוקב במספר** — לבדוק חיוב אחרי שבוע.
 
 ### ח. ✅ §447ז — הקוד היתום האחרון נמחק, והשער הורחב במקום לרכך
 
