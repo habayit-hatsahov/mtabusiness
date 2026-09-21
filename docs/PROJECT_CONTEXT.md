@@ -23689,16 +23689,45 @@ auditConfigs אחרי: datastore.googleapis.com / DATA_WRITE
 1. **מה שלא נרשם גם כשהלוג דולק** (מהתיעוד): *"Individual writes from import, bulk delete
    operations and TTL are not audit logged."* כלומר **מחיקה המונית מהקונסולה עלולה שלא
    להירשם ברמת המסמך הבודד**.
-2. 🔲 **האם נתיב המסמך מופיע — עדיין לא אומת.** התיעוד מאשר `principalEmail` במפורש
-   ואינו מאשר את נתיב המסמך. נוצר אירוע-בדיקה (`_auditTest/auditProbe`, נוצר ונמחק
-   22.9 21:06 UTC) — **הקריאה בפועל טרם נעשתה.** ר' [[feedback_absence_of_evidence]].
-   השאילתה מוכנה למי שירצה לסגור את זה:
-   ```
-   gcloud logging read 'logName="projects/habayit-hatsahov/logs/cloudaudit.googleapis.com%2Fdata_access"' \
-     --limit=10 --freshness=20m \
-     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName, protoPayload.resourceName)"
-   ```
-   ⚠️ **ההגדרה אינה רטרואקטיבית** — אם האירוע ההוא קדם להחלתה, פשוט לייצר אירוע חדש.
+2. ⚠️ **מחיקה מהאתר עוברת דרך `Commit` ולא `DeleteDocument`** — שם מבנה ה-`request` הוא
+   מערך `writes[]`, **ולא אומת איך הנתיב נראה בו**. למקרה שבגללו התחלנו (מחיקה ידנית
+   מהקונסולה) זה לא רלוונטי, אבל זה לא נבדק לכל סוגי המחיקה.
+
+### ✅ §447ט — אומת מקצה לקצה: הלוג **כן** מדויק למסמך (2026-09-22)
+
+נוצר אירוע-בדיקה אמיתי (`_auditTest/auditProbe` — נוצר ונמחק ב-21:06 UTC), ונקרא מהלוג:
+
+```
+21:06:53  CreateDocument   firebase-adminsdk-fbsvc@…
+21:06:54  DeleteDocument   firebase-adminsdk-fbsvc@…
+```
+
+🔴 **והמלכודת שכמעט הכריעה הפוך:** `resourceName` **ו**-`authorizationInfo.resource`
+שניהם ברמת ה**מסד** (`projects/…/databases/(default)`) — כלומר מי שיסתכל בהם (ואלה
+השדות המתבקשים) יסיק שהלוג אינו יודע איזה מסמך נמחק. **הנתיב המלא יושב במקום אחר:**
+
+```json
+"request": {
+  "@type": "type.googleapis.com/google.firestore.v1.DeleteDocumentRequest",
+  "name": "projects/…/databases/(default)/documents/_auditTest/auditProbe"
+}
+```
+
+**כלומר יש לנו את כל הארבעה: מי · מתי · מה · ואיזה מסמך.**
+
+🔑 **השאילתה לשימוש עתידי — עם `request.name`, לא `resourceName`:**
+```
+gcloud logging read 'logName="projects/habayit-hatsahov/logs/cloudaudit.googleapis.com%2Fdata_access"' \
+  --limit=50 --freshness=7d \
+  --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName, protoPayload.request.name)"
+```
+
+🔑 **ואיך זה משתלב עם `deletionLog`, וזו הנקודה המעשית:** השניים מכסים דברים שונים,
+וההצלבה ביניהם היא האבחון. **שורה ב-Audit Log בלי שורה מקבילה ב-`deletionLog`
+= מחיקה שלא עברה דרך האתר** — כלומר בדיוק המצב של §447ד, שהפעם היה נסגר בדקה אחת
+עם שם ותאריך במקום בשעת חקירה שנגמרה ב"אי-אפשר לדעת".
+
+⚠️ **ואינו רטרואקטיבי** — מתעד מרגע ההפעלה (22.9) ואילך בלבד.
 
 💰 **עולה כסף.** התיעוד: *"Enabling Data Access logs might result in your Google Cloud
 project being charged for the additional logs usage."* יש מכסה חינמית חודשית ל-Cloud
