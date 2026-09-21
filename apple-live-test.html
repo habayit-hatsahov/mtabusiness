@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>בדיקה חיה — כניסה עם Apple</title>
+<!--
+  §445 — דף בדיקה חי ל"התחברות עם Apple". **לא מקושר משום מקום באתר, ולא באינדקס.**
+
+  🔑 **למה הוא קיים, ולמה לא השתמשתי ב-apple-signin-demo.html:** אותו דמו **מזייף** את
+  `window.AppleID` ומחזיר טוקן עם חתימה מומצאת. הוא נבנה להכרעת פריסה, והוא מצוין לכך —
+  אבל בדיקה דרכו הייתה מאשרת את המוק, לא את אפל, לא את הדומיין ולא את הוורקר.
+  ר' [[feedback_verification_must_run_the_producer]].
+
+  **מה כן רץ כאן — הכל אמיתי:**
+    1. `apple-signup.js` עצמו — אותו מודול שמשובץ בדפי ההרשמה, בלי עותק ובלי חיקוי
+    2. ה-SDK האמיתי של אפל, שהמודול שולף בעצמו אחרי בדיקת ה-clientId
+    3. גיליון ההתחברות האמיתי של אפל, עם ה-Services ID האמיתי
+    4. הוורקר האמיתי — הטוקן נשלח ל-/apple-login ומאומת מול ה-JWKS של אפל
+
+  **מה כל תשובה אומרת** (הטבלה היא כל הטעם של הדף):
+    • שגיאה מאפל עוד לפני שנפתח גיליון → הדומיין לא מאומת / ה-Services ID לא תקין
+    • invalid_apple_token                → הטוקן לא עבר אימות בוורקר (aud / JWKS / פריסה)
+    • apple_not_linked                   → ✅ הכל עובד. אין עדיין חבר עם ה-sub הזה, וזה צפוי
+    • ok / pending / rejected            → ✅ הכל עובד, ויש כבר רשומת חבר
+
+  ⚠️ **אין כאן CACHE_NAME באמפ במכוון:** זה קובץ HTML **חדש**, ולניווט חדש אין עותק
+  במטמון (ה-SW הוא network-first לניווטים, ר' sw.js). באמפ היה מאלץ הורדה מחדש של כל
+  המעטפת לכל משתמש, בשביל דף שאיש מלבדנו לא פותח. ר' [[project_pwa_cache_and_deploy_rule]].
+-->
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 20px 16px 60px;
+    font-family: Rubik, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    background: #f5f5f7; color: #1d1d1f; line-height: 1.6;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #6e6e73; font-size: 14px; margin: 0 0 20px; }
+  .card {
+    background: #fff; border-radius: 14px; padding: 18px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 14px;
+  }
+  .card h2 { font-size: 16px; margin: 0 0 10px; }
+  .meta { font-size: 13px; color: #6e6e73; }
+  .meta code { background: #f0f0f2; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  label { display: block; font-size: 13px; color: #6e6e73; margin: 10px 0 3px; }
+  input {
+    width: 100%; box-sizing: border-box; padding: 9px 10px; font-size: 15px;
+    border: 1px solid #d2d2d7; border-radius: 8px; background: #fff; color: inherit;
+  }
+  button.go {
+    width: 100%; margin-top: 14px; padding: 13px; font-size: 16px; font-weight: 600;
+    border: 0; border-radius: 10px; background: #0071e3; color: #fff; cursor: pointer;
+  }
+  button.go:disabled { background: #b0c9e0; cursor: default; }
+  pre {
+    background: #1d1d1f; color: #e8e8ed; padding: 12px; border-radius: 10px;
+    font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+    margin: 10px 0 0; max-height: 320px; overflow: auto;
+  }
+  .verdict { font-size: 16px; font-weight: 600; padding: 12px; border-radius: 10px; margin-top: 10px; }
+  .v-ok   { background: #e3f6e8; color: #1a7f37; }
+  .v-bad  { background: #fdecec; color: #b3261e; }
+  .v-wait { background: #fff6e0; color: #8a6100; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>בדיקה חיה — כניסה עם Apple</h1>
+  <p class="sub">דף פנימי. לא מקושר, לא באינדקס. כל מה שרץ כאן הוא הקוד האמיתי.</p>
+
+  <div class="card">
+    <h2>1 · הגדרות שבשימוש</h2>
+    <div class="meta">
+      Services ID: <code id="mServices"></code><br>
+      Return URI: <code id="mRedirect"></code><br>
+      כתובת ה-API: <code id="mApi"></code>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2 · התחברות מול אפל</h2>
+    <div class="meta">הכפתור מצויר על ידי <code>apple-signup.js</code> עצמו. אם הוא לא מופיע — זו כבר תשובה, והיא בלוג למטה.</div>
+    <div id="asHost" style="margin-top:12px"></div>
+
+    <label for="firstName">שם פרטי (המודול ממלא)</label>
+    <input id="firstName" type="text" autocomplete="off">
+    <label for="lastName">שם משפחה (המודול ממלא)</label>
+    <input id="lastName" type="text" autocomplete="off">
+    <label for="email">מייל (המודול ממלא ונועל)</label>
+    <input id="email" type="email" autocomplete="off">
+  </div>
+
+  <div class="card">
+    <h2>3 · שליחת הטוקן לוורקר</h2>
+    <div class="meta">שולח את הטוקן האמיתי ל-<code>/apple-login</code>, ומציג את התשובה הגולמית.</div>
+    <button class="go" id="send" disabled>עדיין אין טוקן — קודם להתחבר למעלה</button>
+    <div id="verdict"></div>
+  </div>
+
+  <div class="card">
+    <h2>4 · מה היה בטוקן</h2>
+    <div class="meta">פענוח לתצוגה בלבד. החתימה נבדקת בשרת, לא כאן.</div>
+    <pre id="claims">—</pre>
+  </div>
+
+  <div class="card">
+    <h2>5 · לוג</h2>
+    <div class="meta">כולל כל אזהרה ושגיאה שהמודול או ה-SDK של אפל כותבים לקונסול.</div>
+    <pre id="log"></pre>
+  </div>
+
+</div>
+
+<script src="apple-signup.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ── הקבועים של הבדיקה ───────────────────────────────────────────────────────────────
+  // ⚠️ ה-Services ID נמסר כאן כ-`clientId` ל-init, ו**לא** נכתב לתוך `apple-signup.js`.
+  // זו כל הנקודה: המתג הגלובלי (`SERVICES_ID` במודול) נשאר ריק, כלומר שלושת דפי
+  // ההרשמה החיים אינם מציגים כפתור, ואיש מלבדנו אינו רואה כלום.
+  var SERVICES_ID = 'il.co.yellowzone.web';
+
+  // כתובת ההחזרה חייבת להיות **רשומה אצל אפל במדויק**. הדף הזה עצמו אינו רשום שם,
+  // ואינו צריך להיות: בזרימת ה-popup אפל מחזירה את התשובה ל-opener דרך postMessage,
+  // וה-redirect_uri משמש רק ככתובת שהחלון הקופץ חוזר אליה. לכן נמסרת כתובת רשומה.
+  var REDIRECT_URI = 'https://yellowzone.co.il/fan-register.html';
+
+  // כתובת יחידה ובמכוון — לא שרשרת הגיבוי של hbApiFetch. כאן אני רוצה תשובה חד-משמעית
+  // מהוורקר, ולא "מישהו מהשלושה ענה"; גיבוי שמסתיר איזו כתובת נכשלה מטשטש בדיוק את מה
+  // שהבדיקה אמורה להכריע.
+  var API = 'https://api.yellowzone.co.il';
+
+  var logEl = document.getElementById('log');
+  function log(line) {
+    var t = new Date().toTimeString().slice(0, 8);
+    logEl.textContent += '[' + t + '] ' + line + '\n';
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // ── לכידת הקונסול ───────────────────────────────────────────────────────────────────
+  // 🔑 `apple-signup.js` בולע כשלים לתוך console.warn/error ואינו מציג אותם על המסך —
+  // החלטה נכונה בטופס אמיתי, אבל כאן היא בדיוק מה שהיינו מפספסים. בטלפון אין DevTools,
+  // ובלי זה "הכפתור לא הופיע" היה נשאר בלי סיבה.
+  ['warn', 'error'].forEach(function (lvl) {
+    var orig = console[lvl].bind(console);
+    console[lvl] = function () {
+      try {
+        log(lvl.toUpperCase() + ': ' + Array.prototype.map.call(arguments, function (a) {
+          return (a && a.message) ? a.message : String(a);
+        }).join(' '));
+      } catch (e) { /* לכידה שנכשלת לא תפיל את הדף */ }
+      orig.apply(null, arguments);
+    };
+  });
+
+  document.getElementById('mServices').textContent = SERVICES_ID;
+  document.getElementById('mRedirect').textContent = REDIRECT_URI;
+  document.getElementById('mApi').textContent = API;
+
+  function verdict(cls, text) {
+    var v = document.getElementById('verdict');
+    v.className = 'verdict ' + cls;
+    v.textContent = text;
+  }
+
+  // פענוח לתצוגה בלבד. ⚠️ אינו אימות ואינו מתיימר להיות — החתימה נבדקת ב-worker/src/apple.js
+  // מול ה-JWKS של אפל. הצגה כאן נועדה לענות על שאלה אחת: האם ה-`aud` הוא מה שציפינו.
+  function decode(tok) {
+    try {
+      var parts = String(tok).split('.');
+      if (parts.length < 2) return null;
+      var b = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (b.length % 4) b += '=';
+      return JSON.parse(decodeURIComponent(escape(atob(b))));
+    } catch (e) { return null; }
+  }
+
+  var sendBtn = document.getElementById('send');
+
+  function onFilled(payload) {
+    var tok = window.hbAppleSignup.token();
+    log('אפל החזירה טוקן. אורך: ' + (tok ? tok.length : 0) + ' תווים.');
+    var p = decode(tok) || payload || {};
+    document.getElementById('claims').textContent = JSON.stringify({
+      aud: p.aud, iss: p.iss, sub: p.sub,
+      email: p.email, email_verified: p.email_verified,
+      is_private_email: p.is_private_email,
+      exp: p.exp ? new Date(p.exp * 1000).toISOString() : undefined,
+    }, null, 2);
+
+    if (p.aud && p.aud !== SERVICES_ID) {
+      log('⚠️ ה-aud בטוקן (' + p.aud + ') אינו ה-Services ID שנמסר. זה ייפול בוורקר.');
+    }
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'שלח את הטוקן ל-/apple-login';
+    verdict('v-wait', 'יש טוקן מאפל. נשאר לבדוק שהוורקר מקבל אותו.');
+  }
+
+  sendBtn.addEventListener('click', async function () {
+    var tok = window.hbAppleSignup.token();
+    if (!tok) { verdict('v-bad', 'אין טוקן — צריך קודם להתחבר למעלה.'); return; }
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'שולח...';
+    log('POST ' + API + '/apple-login');
+    try {
+      var resp = await fetch(API + '/apple-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: tok }),
+        signal: AbortSignal.timeout(15000),
+      });
+      var text = await resp.text();
+      log('HTTP ' + resp.status + ' — ' + text);
+      var out = {};
+      try { out = JSON.parse(text); } catch (e) { /* תשובה שאינה JSON נשארת בלוג כפי שהיא */ }
+
+      // 🔑 הקריאה של התוצאה, ולא רק הצגתה. `apple_not_linked` היא **הצלחה**: הטוקן
+      // אומת במלואו, פשוט אין עדיין חבר עם ה-sub הזה. קריאה שלה כ"שגיאה" הייתה שולחת
+      // אותנו לחפש תקלה שאינה קיימת.
+      if (out.error === 'invalid_apple_token') {
+        verdict('v-bad', '❌ הוורקר דחה את הטוקן. אפל בסדר — הבעיה ב-aud, ב-JWKS, או שהפריסה לא עלתה.');
+      } else if (out.error === 'apple_not_linked') {
+        verdict('v-ok', '✅ הכל עובד. הטוקן אומת במלואו; פשוט אין עדיין חבר מקושר ל-sub הזה.');
+      } else if (out.error === 'pending' || out.error === 'rejected') {
+        verdict('v-ok', '✅ הכל עובד. הטוקן אומת, נמצאה רשומת חבר במצב: ' + out.error + '.');
+      } else if (out.error) {
+        verdict('v-bad', '❌ הוורקר החזיר: ' + out.error);
+      } else {
+        verdict('v-ok', '✅ הכל עובד — התחברות מלאה, כולל custom token.');
+      }
+    } catch (e) {
+      log('הקריאה נכשלה: ' + (e && e.message ? e.message : e));
+      verdict('v-bad', '❌ הקריאה לוורקר נכשלה ברשת או בפסק-זמן. ר׳ לוג.');
+    } finally {
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'שלח שוב';
+    }
+  });
+
+  if (!window.hbAppleSignup) {
+    log('❌ apple-signup.js לא נטען כלל. אין מה להמשיך.');
+    verdict('v-bad', '❌ המודול לא נטען.');
+    return;
+  }
+
+  log('מאתחל את apple-signup.js עם clientId=' + SERVICES_ID);
+  window.hbAppleSignup.init({
+    hostId: 'asHost',
+    clientId: SERVICES_ID,
+    redirectUri: REDIRECT_URI,
+    fields: { first: 'firstName', last: 'lastName', email: 'email' },
+    onFilled: onFilled,
+    log: function (ch) { log('המודול דיווח: ' + ch); },
+  });
+
+  // ⚠️ המודול מחביא את הבלוק עד שה-SDK של אפל מוכן, ומוותר בשקט־יחסי אחרי כמה ניסיונות.
+  // הבדיקה הזאת הופכת את הוויתור הזה לאמירה על המסך — בלעדיה "לא קרה כלום" הוא המצב
+  // הכי סביר, והוא גם הכי חסר-מידע.
+  setTimeout(function () {
+    var host = document.getElementById('asHost');
+    if (host && getComputedStyle(host).display === 'none') {
+      verdict('v-bad', '❌ הכפתור לא צויר אחרי 6 שניות. ר׳ לוג — כנראה ה-SDK של אפל לא נטען או ה-clientId נדחה.');
+    }
+  }, 6000);
+})();
+</script>
+</body>
+</html>
