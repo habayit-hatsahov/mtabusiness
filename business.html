@@ -34,6 +34,11 @@
   <!-- §435 — כניסה נייטיב עם Google באפליקציה; חייב לפני google-signup.js. -->
   <script src="native-google.js"></script>
   <script src="google-signup.js"></script>
+  <!-- §445ו — אפל בהרשמה, אותו מודול משותף בדיוק כמו ב-fan-register.html.
+       🔑 **ה-SDK של אפל אינו נטען כאן בתגית**, אלא מתוך apple-signup.js ורק אחרי בדיקת
+       SERVICES_ID (§430) — כלומר אין בקשה של 42KB לשרת של אפל בדפים שבהם הכפתור כבוי.
+       זו הסיבה שאין כאן מקבילה לתגית של accounts.google.com שמעל. -->
+  <script src="apple-signup.js"></script>
   <style>
     /* §348 — זהה ל-.help-entry-btn ב-fan-register.html (§303). שני הטפסים מציגים את אותה
        הצעת-עזרה באותו מקום ובאותו משקל; הבדל חזותי היה נקרא כאילו זה שני דברים שונים. */
@@ -1294,6 +1299,12 @@
            מכל מוסתר אינו מקבל רוחב, וגוגל הייתה מציירת כפתור בגודל שגוי. -->
       <div id="gsHost"></div>
 
+      <!-- §445ו — כפתור ההרשמה עם Apple, **מתחת לגוגל**, בדיוק כמו ב-fan-register.html
+           (§430: 88.2% מהנרשמים על Gmail, ולכן הכפתור שרובם ילחצו עליו נשאר ראשון).
+           המכל ריק בכוונה — המרקאפ נבנה ב-apple-signup.js.
+           ⚠️ כמו גוגל, הוא מצויר רק כששלב 5 נפתח בפועל (ר' showStep). -->
+      <div id="asHost"></div>
+
       <div class="form-row">
         <div class="form-group">
           <label for="ownerFirst">שם פרטי <span class="req">*</span></label>
@@ -2432,6 +2443,10 @@
     // clientWidth=0 ומצייר בגודל ברירת-מחדל, ולכן הציור נדחה עד לרגע הזה. הקריאה בטוחה
     // לחזרות — המודול יוצא מיד אם הכפתור כבר קיים.
     if (n === 5) window.hbGoogleSignup?.render();
+    // §445ו — ואותו דבר לאפל. ⚠️ הנימוק כאן אינו רוחב (את כפתור אפל אנחנו מציירים בעצמנו
+    // ולא דרך SDK), אלא **מדידה**: ציור בטעינת הדף היה שולח `asShown` לכל מי שפתח את
+    // הטופס, מול `gsShown` שנשלח רק בשלב 5 — ואז המשפך של שני הכפתורים אינו בר-השוואה.
+    if (n === 5) window.hbAppleSignup?.render();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -3183,6 +3198,11 @@
           // וטוקן הדשבורד של העסק הוא מנגנון נפרד לגמרי (§244) שאינו נוגע בזה.
           // כשל כאן אינו כשל-הרשמה — הבקשה כבר נקלטה, והחיבור אפשרי אחר-כך מהתפריט (§377).
           if (ownerMemberId) await window.hbGoogleSignup?.attach(hbApiFetch, ownerMemberId);
+          // §445ו — ואותו קישור עבור אפל, על אותה רשומת-חבר.
+          // 🔑 **שתי הקריאות ולא אחת, ובלי else**: אלה שני ספקים נפרדים, ומי שמילא את
+          // הטופס דרך אחד מהם פשוט לא מחזיק טוקן של השני — `attach` יוצא מיד ב-`no_token`.
+          // הצבה של else כאן הייתה מניחה שאי-אפשר לקשר את שניהם, וזו הנחה שאין לה מקור.
+          if (ownerMemberId) await window.hbAppleSignup?.attach(hbApiFetch, ownerMemberId);
         })();
       }
 
@@ -4789,6 +4809,31 @@
     onFilled: () => { Promise.resolve(saveBizRegDraft()).catch(e => console.error('draft save after google fill failed', e)); },
     // §411 — ר' ההערה המקבילה ב-fan-register.html. blockId שונה, אותו מנגנון.
     log: (channel) => logEvent('formStep', { blockId: 'bizForm', channel: channel }),
+  });
+
+  // ── §445ו — אותה הפעלה בדיוק עבור אפל ────────────────────────────────────────────────
+  // 🐛 **המפריד "או למלא ידנית" — אותו באג של §445ג, ולא הנחה שהתיקון עובר.** הוא האיבר
+  // האחרון ש-`google-signup.js` מצייר, ובלוק אפל נכנס **אחריו**; כלומר סדר הקריאה היה
+  // כפתור גוגל → "או למלא ידנית" → עוד כפתור. האלמנט עצמו **מוזז** לסוף בלוק אפל, ולכן
+  // לעולם אין שניים ואין CSS חדש. ⚠️ `google-signup.js` אינו נוגע בזה — הוא משותף.
+  // 🔑 **קשור ל-`asShown` ולא ל-`init`:** כאן `autoRender:false`, כלומר הבלוק מצויר רק
+  // כששלב 5 נפתח. הזזה ב-init הייתה מזיזה את המפריד בזמן שהמכל עוד ריק ומוסתר.
+  const moveOrAfterApple = () => {
+    const gsOr = document.querySelector('#gsHost .hb-gs-or');
+    const asHost = document.getElementById('asHost');
+    if (gsOr && asHost) asHost.appendChild(gsOr);
+  };
+
+  window.hbAppleSignup?.init({
+    hostId: 'asHost',
+    warnId: 'warn-ownerEmail',
+    fields: { first: 'ownerFirst', last: 'ownerLast', email: 'ownerEmail' },
+    autoRender: false,
+    onFilled: () => { Promise.resolve(saveBizRegDraft()).catch(e => console.error('draft save after apple fill failed', e)); },
+    log: (channel) => {
+      if (channel === 'asShown') { try { moveOrAfterApple(); } catch (e) { console.error('apple: הזזת המפריד נכשלה', e); } }
+      logEvent('formStep', { blockId: 'bizForm', channel: channel });
+    },
   });
 
   if (new URLSearchParams(location.search).get('resume') === '1') {
