@@ -103,6 +103,17 @@
   </div>
 
   <div class="card">
+    <h2>3ב · בדיקת <code>/apple-attach</code> בלי ליצור רשומה</h2>
+    <div class="meta">
+      שולח את הטוקן עם <code>memberId</code> שאינו קיים. הנתיב רץ **כולו** — אימות הטוקן,
+      שער כתובת-הממסר, חשבון-השירות, שאילתת ה-<code>sub</code> ושליפת המסמך — ונעצר
+      בדיוק לפני הכתיבה. <b>אינו יוצר, אינו מקשר ואינו משנה כלום.</b>
+    </div>
+    <button class="go" id="sendAttach" disabled>עדיין אין טוקן</button>
+    <div id="verdictAttach"></div>
+  </div>
+
+  <div class="card">
     <h2>4 · מה היה בטוקן</h2>
     <div class="meta">פענוח לתצוגה בלבד. החתימה נבדקת בשרת, לא כאן.</div>
     <pre id="claims">—</pre>
@@ -183,6 +194,63 @@
   }
 
   var sendBtn = document.getElementById('send');
+  var attachBtn = document.getElementById('sendAttach');
+
+  // ── §445ד — בדיקת `/apple-attach` בלי תופעות-לוואי ───────────────────────────────────
+  // 🔑 **`memberId` שאינו קיים הוא כלי בדיקה ולא פריצה.** הנתיב בשרת מסודר כך שהכתיבה
+  // היא **הפעולה האחרונה**, ולפניה: אימות הטוקן, חסימת כתובת-ממסר, בדיקת `emailVerified`,
+  // שליפת access token של חשבון-השירות, שאילתת `appleSub`, ושליפת המסמך. מסמך שאינו
+  // קיים עוצר ב-`member_not_found` — כלומר כל השרשרת רצה ורק ה-`firestorePatch` לא.
+  // ⚠️ **מה שזה לא מוכיח:** את הכתיבה עצמה. היא אותה `firestorePatch` שנתיב גוגל משתמש
+  // בה בייצור, אבל זו טענה על דמיון, לא מדידה. ר' [[feedback_absence_of_evidence]].
+  var PROBE_MEMBER_ID = 'probe-no-such-member-445';
+
+  function verdictAttach(cls, text) {
+    var v = document.getElementById('verdictAttach');
+    v.className = 'verdict ' + cls;
+    v.textContent = text;
+  }
+
+  attachBtn.addEventListener('click', async function () {
+    var tok = window.hbAppleSignup.token();
+    if (!tok) { verdictAttach('v-bad', 'אין טוקן — צריך קודם להתחבר למעלה.'); return; }
+    attachBtn.disabled = true;
+    attachBtn.textContent = 'שולח...';
+    log('POST ' + API + '/apple-attach  (memberId לא קיים, בכוונה)');
+    try {
+      var resp = await fetch(API + '/apple-attach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: tok, memberId: PROBE_MEMBER_ID }),
+        signal: AbortSignal.timeout(15000),
+      });
+      var text = await resp.text();
+      log('HTTP ' + resp.status + ' — ' + text);
+      var out = {};
+      try { out = JSON.parse(text); } catch (e) { /* נשאר בלוג כפי שהוא */ }
+
+      if (out.error === 'member_not_found') {
+        verdictAttach('v-ok', '✅ הנתיב רץ במלואו ונעצר בדיוק לפני הכתיבה. זו התשובה שרצינו.');
+      } else if (out.error === 'apple_already_linked') {
+        verdictAttach('v-wait', 'ℹ️ חשבון האפל הזה כבר מקושר לרשומת חבר קיימת. הנתיב תקין — הוא פשוט נעצר מוקדם יותר.');
+      } else if (out.error === 'apple_private_email') {
+        verdictAttach('v-bad', '❌ נבחר "הסתר את המייל שלי". צריך להתנתק מאפל ולבחור "שתף".');
+      } else if (out.error === 'invalid_apple_token') {
+        verdictAttach('v-bad', '❌ הטוקן נדחה. ייתכן שפג תוקפו — להתחבר שוב למעלה.');
+      } else if (out.error) {
+        verdictAttach('v-bad', '❌ תשובה לא צפויה: ' + out.error);
+      } else {
+        // 🔴 הצלחה כאן הייתה אומרת שהכתיבה בוצעה על מזהה שאינו קיים — כלומר באג חמור.
+        verdictAttach('v-bad', '🔴 השרת החזיר הצלחה על מזהה שאינו קיים. זה באג — אל תתעלם.');
+      }
+    } catch (e) {
+      log('הקריאה נכשלה: ' + (e && e.message ? e.message : e));
+      verdictAttach('v-bad', '❌ הקריאה נכשלה ברשת או בפסק-זמן. ר׳ לוג.');
+    } finally {
+      attachBtn.disabled = false;
+      attachBtn.textContent = 'שלח שוב';
+    }
+  });
 
   function onFilled(payload) {
     var tok = window.hbAppleSignup.token();
@@ -200,6 +268,8 @@
     }
     sendBtn.disabled = false;
     sendBtn.textContent = 'שלח את הטוקן ל-/apple-login';
+    attachBtn.disabled = false;
+    attachBtn.textContent = 'בדוק את /apple-attach (בלי ליצור כלום)';
     verdict('v-wait', 'יש טוקן מאפל. נשאר לבדוק שהוורקר מקבל אותו.');
   }
 
