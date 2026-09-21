@@ -23666,14 +23666,39 @@ and `firestore.googleapis.com`"*. ⚠️ אבל **בקריאה** מסננים ל
 `BatchWrite`, `Write`, `CreateDocument`, `UpdateDocument` — כלומר גם מחיקה בודדת וגם
 מחיקה בתוך batch. וזהות הקורא יושבת ב-`AuthenticationInfo.principalEmail`.
 
-⚠️ **שלוש מגבלות שנאמרות במפורש:**
+### ✅ §447ח — הופעל בפועל (2026-09-22)
+
+**בוצע ע"י המשתמש ב-Cloud Shell**, אחרי ש**השירות לא נמצא בטבלת ה-UI** של Audit Logs
+(התיעוד: *"The console shows services available for your specific resource"*). מסלול
+ה-`gcloud` עוקף את הטבלה לגמרי, והוא גם היחיד שעבד כאן.
+
+```
+auditConfigs לפני : "אין auditConfigs כלל"   ← §392 אומת סוף-סוף, ולא הונח
+הרשאות לפני      : 19
+הרשאות אחרי      : 19                        ← אף הרשאה לא אבדה
+auditConfigs אחרי: datastore.googleapis.com / DATA_WRITE
+```
+
+🔑 **המיזוג נעשה ב-`jq` ולא בעריכה ידנית של ה-YAML, ובכוונה:** `set-iam-policy` **מחליף
+את המדיניות כולה**, ועריכה ידנית שמוחקת בטעות שורה מ-`bindings` מוחקת הרשאות של אנשים.
+`jq` שומר על הכול אוטומטית, והצעד שלפני הכתיבה היה **`diff` שמוכיח** ששום דבר מלבד
+`auditConfigs` לא השתנה. ✅ ואומת בקריאה **חוזרת מהשרת** (`after.json`), לא מתשובת הפקודה.
+⚠️ גיבוי מלא נשמר (`p.backup.json`); שחזור = `gcloud projects set-iam-policy … p.backup.json`.
+
+⚠️ **שתי מגבלות שנשארו בתוקף:**
 1. **מה שלא נרשם גם כשהלוג דולק** (מהתיעוד): *"Individual writes from import, bulk delete
    operations and TTL are not audit logged."* כלומר **מחיקה המונית מהקונסולה עלולה שלא
    להירשם ברמת המסמך הבודד**.
-2. **האם נתיב המסמך מופיע — לא אומת.** התיעוד מאשר `principalEmail` במפורש, ואינו מאשר
-   את נתיב המסמך. ר' [[feedback_absence_of_evidence]] — **לבדוק בפועל** אחרי ההפעלה.
-3. **לא נמדד מה מוגדר היום:** חשבון-השירות של Firebase Admin SDK אינו מורשה לקרוא
-   `auditConfigs` (`The caller does not have permission`). §392 קבע שהלוג כבוי; לא אומת מחדש.
+2. 🔲 **האם נתיב המסמך מופיע — עדיין לא אומת.** התיעוד מאשר `principalEmail` במפורש
+   ואינו מאשר את נתיב המסמך. נוצר אירוע-בדיקה (`_auditTest/auditProbe`, נוצר ונמחק
+   22.9 21:06 UTC) — **הקריאה בפועל טרם נעשתה.** ר' [[feedback_absence_of_evidence]].
+   השאילתה מוכנה למי שירצה לסגור את זה:
+   ```
+   gcloud logging read 'logName="projects/habayit-hatsahov/logs/cloudaudit.googleapis.com%2Fdata_access"' \
+     --limit=10 --freshness=20m \
+     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName, protoPayload.resourceName)"
+   ```
+   ⚠️ **ההגדרה אינה רטרואקטיבית** — אם האירוע ההוא קדם להחלתה, פשוט לייצר אירוע חדש.
 
 💰 **עולה כסף.** התיעוד: *"Enabling Data Access logs might result in your Google Cloud
 project being charged for the additional logs usage."* יש מכסה חינמית חודשית ל-Cloud
