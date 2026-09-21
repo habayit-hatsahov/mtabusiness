@@ -2588,12 +2588,31 @@
   // לפני הציור — כלומר הקריאה הזאת היא no-op גלוי-לעין-אפס. **זה המתג היחיד.**
   // ⚠️ ערוצי המדידה נפרדים (`apple*` מול `google*`) — אותו שם ערוץ בשני הכפתורים היה
   // ממזג אותם במשפך לערוץ אחד, ואז אי-אפשר לדעת מי מהם עובד.
+  // ── §445ג — המפריד "או למלא ידנית" מוזז לסוף בלוק אפל ────────────────────────────────
+  // 🐛 **נתפס ברגע ההדלקה, על הדף החי.** `google-signup.js` מצייר את המפריד כאיבר האחרון
+  // בבלוק שלו, ובלוק אפל נכנס **אחריו** — כלומר סדר הקריאה היה: כפתור גוגל → "או למלא
+  // ידנית" → **עוד כפתור**. המפריד הבטיח טופס ידני והציג כפתור, וזה מבלבל בדיוק במקום
+  // שבו §325 מדד את הנשירה (13 מתוך 37 סגרו בלי להקליד תו).
+  // 🔑 **מוזז ולא משוכפל:** אותו אלמנט עצמו עובר, ולכן לעולם אין שניים, אין CSS חדש, ואין
+  // נגיעה ב-`google-signup.js` — מודול משותף שגם `business.html` נשען עליו, ושם אין אפל.
+  // 🔑 **ותלוי ב-`asShown` ולא בטעינה:** המודול מדווח את הערוץ הזה רק כשהבלוק באמת צויר.
+  // הזזה מוקדמת יותר הייתה מזיזה את המפריד גם כשה-SDK של אפל לא נטען — ואז המפריד היה
+  // צף אחרי מכל ריק ומוסתר, כלומר טופס שנראה שבור. ר' ההערה המקבילה ב-google-signup.js.
+  const moveOrAfterApple = () => {
+    const gsOr = document.querySelector('#gsHost .hb-gs-or');
+    const asHost = document.getElementById('asHost');
+    if (gsOr && asHost) asHost.appendChild(gsOr);
+  };
+
   window.hbAppleSignup?.init({
     hostId: 'asHost',
     warnId: 'warn-email',
     fields: { first: 'firstName', last: 'lastName', email: 'email' },
     onFilled: () => { try { saveRegDraft(); } catch (e) { console.error('draft save after apple fill failed', e); } },
-    log: (channel) => logEvent('formStep', { blockId: 'fanRegister', channel: channel }),
+    log: (channel) => {
+      if (channel === 'asShown') { try { moveOrAfterApple(); } catch (e) { console.error('apple: הזזת המפריד נכשלה', e); } }
+      logEvent('formStep', { blockId: 'fanRegister', channel: channel });
+    },
   });
 
   // ── טיוטת טופס — נשמרת לפני מעבר לתקנון, כדי לא לאבד מה שמולא ──
