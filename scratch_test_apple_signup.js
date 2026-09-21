@@ -44,7 +44,8 @@ const RESP = {
 };
 
 // ── סביבה ────────────────────────────────────────────────────────────────────────────
-function makePage(hosts) {
+function makePage(hosts, opts) {
+  opts = opts || {};
   const body = hosts.map((k) =>
     '<div id="asHost' + k + '"></div>' +
     '<input id="firstName' + k + '"><input id="lastName' + k + '"><input id="email' + k + '">'
@@ -55,13 +56,20 @@ function makePage(hosts) {
   // נופלת על הסביבה ולא על הקוד.
   if (!w.AbortSignal) w.AbortSignal = AbortSignal;
   if (!w.AbortSignal.timeout) w.AbortSignal.timeout = AbortSignal.timeout.bind(AbortSignal);
+  // 🐛 **`userAgent` כאפשרות של JSDOM מתעלמים ממנה מגרסה 30** — היא עברה ל-ResourceLoader.
+  // דריסה ישירה היא המקום היחיד שהקוד הנבדק באמת קורא.
+  // ר' [[feedback_test_harness_anchor_by_content]] — הרנס ששיקר גרוע מהרנס שנפל.
+  if (opts.ua) Object.defineProperty(w.navigator, 'userAgent', { value: opts.ua, configurable: true });
+  if (opts.capacitor) w.Capacitor = {};
+  if (opts.nativeMode) w.YZNativeGoogle = { mode: () => opts.nativeMode };
   let mode = 'first';
-  w.AppleID = {
-    auth: {
-      init() {},
-      signIn: async () => RESP[mode],
-    },
-  };
+  // ⚠️ 🔑 **`noAppleId` אינו נוחות אלא תנאי למדידה.** `loadSdk` יוצאת מיד כשהספרייה כבר
+  // קיימת — כלומר עם `AppleID` מוזרק, בדיקת "אפס בקשות ל-SDK" עוברת ירוק **גם אם הענף
+  // שנבדק לא רץ בכלל**. הגנה שמתקיימת תמיד אינה הגנה.
+  // ר' [[feedback_guard_that_always_holds]].
+  if (!opts.noAppleId) {
+    w.AppleID = { auth: { init() {}, signIn: async () => RESP[mode] } };
+  }
   w.eval(SRC);
   return {
     w,
@@ -70,22 +78,64 @@ function makePage(hosts) {
     locked: (k) => w.document.getElementById('email' + k).readOnly,
     cap: (k) => (w.document.getElementById('asHost' + k).querySelector('.hb-as-cap') || {}).textContent || '',
     btn: (k) => w.document.getElementById('asHost' + k).querySelector('.hb-as-btn'),
+    sdkTags: () => Array.from(w.document.querySelectorAll('script'))
+      .filter((s) => (s.src || '').includes('appleid.cdn-apple.com')).length,
   };
 }
 
 (async () => {
-  console.log('\n== 🔲 בלי Services ID הבלוק אינו מוצג ==');
+  // ⚠️ **הבלוק הזה בדק פעם "בלי Services ID אין כפתור" — והנחת-היסוד שלו נעלמה ב-§445,**
+  // שבו ה-Services ID הודלק. שלוש הבדיקות המשיכו לרוץ אדום ולטעון את ההפך מהמצב הנכון.
+  // הוחלפו במה שנכון היום: **המתג דולק**, והכפתור מצויר בדפדפן.
+  console.log('\n== ✅ §445 — המתג דולק, והכפתור מצויר בדפדפן ==');
   {
     const p = makePage(['A']);
-    check('_configured מדווח false', p.w.hbAppleSignup._configured() === false);
+    check('_configured מדווח true (SERVICES_ID מלא)', p.w.hbAppleSignup._configured() === true);
     p.w.hbAppleSignup.init({ hostId: 'asHostA', fields: { first: 'firstNameA', last: 'lastNameA', email: 'emailA' } });
-    // ⚠️ המרקאפ **כן** נבנה — `init` בונה ואז `render` מחליט אם לחשוף, בדיוק כמו
-    // ב-`google-signup.js`. מה שחשוב הוא ששום דבר אינו נראה ושהכפתור אינו פעיל:
-    // כפתור אפל שנשבר בלחיצה גרוע מכפתור שאינו קיים, וגם סיבת דחייה בפני עצמה.
-    check('🔴 המכל נשאר מוסתר', p.w.document.getElementById('asHostA').style.display === 'none',
+    check('המכל נחשף', p.w.document.getElementById('asHostA').style.display === '',
           p.w.document.getElementById('asHostA').style.display);
-    check('🔴 הכפתור אינו מחובר למאזין', !(p.btn('A') && p.btn('A')._hbBound),
-          'render יצא לפני החיבור, כלומר לחיצה אינה עושה כלום');
+    check('הכפתור מחובר למאזין', !!(p.btn('A') && p.btn('A')._hbBound));
+  }
+
+  // ══ §446ב — 🔴 בתוך האפליקציה: אין כפתור, ואין ולו בקשה אחת ל-SDK ═════════════════════
+  // הפער שזה סוגר היה **חי**: `google-signup.js` קיבל את השער ב-§435 אחרי §434,
+  // ו-`apple-signup.js` נכתב לפני כן והודלק ב-§445 בלי שאיש חזר לשאול. באפליקציה
+  // כפתור גוגל כבר היה נייטיב — וכפתור אפל לצידו המשיך להיות מצויר.
+  console.log('\n== §446ב — 🔴 בתוך האפליקציה הכפתור אינו מצויר ==');
+  [
+    ['גשר Capacitor קיים', { capacitor: true }],
+    ['UA של האפליקציה', { ua: 'Mozilla/5.0 (Linux; Android 14) YellowZoneApp/1.1' }],
+    ["YZNativeGoogle.mode()='native'", { nativeMode: 'native' }],
+    ["YZNativeGoogle.mode()='blocked'", { nativeMode: 'blocked' }],
+  ].forEach(([label, env]) => {
+    // ⚠️ בלי AppleID מוזרק — אחרת בדיקת ה-SDK חסרת-ערך (ר' ההערה ב-makePage).
+    const p = makePage(['A'], Object.assign({ noAppleId: true }, env));
+    p.w.hbAppleSignup.init({ hostId: 'asHostA', fields: { first: 'firstNameA', last: 'lastNameA', email: 'emailA' } });
+    check(label + ' → המכל מוסתר', p.w.document.getElementById('asHostA').style.display === 'none',
+          p.w.document.getElementById('asHostA').style.display);
+    check(label + ' → הכפתור אינו מחובר למאזין', !(p.btn('A') && p.btn('A')._hbBound));
+    check(label + ' → אפס בקשות ל-SDK של אפל', p.sdkTags() === 0, p.sdkTags());
+  });
+  {
+    // 🔑 **בקרת-נגד, ובלעדיה כל הקבוצה למעלה חסרת-ערך:** אותה סביבה בלי סימן-אפליקציה
+    // **כן** מזריקה את ה-SDK. זה מה שמוכיח ש-0 למעלה נמדד ולא נגזר מכך ששום דבר לא רץ.
+    const p = makePage(['A'], { noAppleId: true, nativeMode: 'web' });
+    p.w.hbAppleSignup.init({ hostId: 'asHostA', fields: { first: 'firstNameA', last: 'lastNameA', email: 'emailA' } });
+    check("mode()='web' → ה-SDK כן מוזרק (בקרת-נגד)", p.sdkTags() === 1, p.sdkTags());
+    const p2 = makePage(['A'], { noAppleId: true });   // בלי YZNativeGoogle כלל, UA רגיל
+    p2.w.hbAppleSignup.init({ hostId: 'asHostA', fields: { first: 'firstNameA', last: 'lastNameA', email: 'emailA' } });
+    check('בלי YZNativeGoogle, UA רגיל → ה-SDK מוזרק (בקרת-נגד ל-UA)', p2.sdkTags() === 1, p2.sdkTags());
+  }
+
+  // 🔑 **ומה שאסור שישתנה:** כשהכפתור לא צויר, `attach` חייב לצאת בשקט ולא לגעת ברשת —
+  // אחרת הסתרת הכפתור הייתה הופכת כל הרשמה באפליקציה לקריאת-שרת מיותרת שנכשלת.
+  {
+    const p = makePage(['A'], { noAppleId: true, capacitor: true });
+    p.w.hbAppleSignup.init({ hostId: 'asHostA', fields: { first: 'firstNameA', last: 'lastNameA', email: 'emailA' } });
+    let calls = 0;
+    const r = await p.w.hbAppleSignup.attach(() => { calls++; }, 'MEM1');
+    check('🔑 באפליקציה attach יוצא ב-no_token ואינו פונה לרשת',
+          r && r.skipped === 'no_token' && calls === 0, JSON.stringify(r) + ' calls=' + calls);
   }
 
   console.log('\n== הציור ==');

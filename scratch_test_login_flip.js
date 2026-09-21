@@ -66,8 +66,22 @@ check('הפוקוס עבר לענף שבו גוגל לא זמינה', fn.include
 console.log('\n── 3. כשל בגוגל פותח את הקוד מיד ────────────────────────');
 check('heroShowCodePath מוגדר וחשוף ל-window', w.includes('window.heroShowCodePath = function'));
 check('נקרא מתוך מטפל-הכשל של גוגל', w.includes('window.heroShowCodePath && window.heroShowCodePath();'));
+// ⚠️ 🐛 **תוקן ב-§446ה: הבדיקה הזאת עוגנה על המופע ה*ראשון* בקובץ** —
+// `w.indexOf(...) > iFailFn`. ברגע ש-§446 הוסיף את `heroGFallBackToCode`/`heroAFallBackToCode`
+// (שגופן הוא בדיוק המחרוזת הזאת) **מעל** ה-fail של גוגל, הבדיקה נכשלה על קוד תקין לגמרי.
+// 🔑 מה שהיא באמת רוצה לוודא הוא ש**בתוך ענף-הכשל של גוגל** יש קריאה — לא איפה היא
+// מופיעה לראשונה בקובץ. ר' [[feedback_test_harness_anchor_by_content]].
 const iFailFn = w.indexOf("heroGMsg('⚠️ ' + html, 'warn');");
-check('הקריאה יושבת בענף הכשל המשותף', iFailFn > 0 && w.indexOf('window.heroShowCodePath && window.heroShowCodePath();') > iFailFn);
+const failTail = iFailFn > 0 ? w.slice(iFailFn, iFailFn + 600) : '';
+check('הקריאה יושבת בענף הכשל המשותף של גוגל',
+      iFailFn > 0 && failTail.includes('window.heroShowCodePath && window.heroShowCodePath();'),
+      iFailFn > 0 ? 'לא נמצאה בתוך 600 התווים שאחרי heroGMsg' : 'ענף הכשל לא נמצא כלל');
+// §446ה — ושני ענפי ה-`attach` (גוגל ואפל), שעד אז הבטיחו מוצא בזמן שהשדות מקופלים.
+check('§446ה — ענפי ה-attach נופלים חזרה למסלול הקוד',
+      w.includes('heroGFallBackToCode()') && w.includes('heroAFallBackToCode()'));
+check('§446ה — שתי הודעות הכשל של attach-גוגל קוראות לו',
+      (w.match(/heroGFallBackToCode\(\);/g) || []).length === 2,
+      (w.match(/heroGFallBackToCode\(\);/g) || []).length);
 
 console.log('\n── 4. מדידת מסלול-הכניסה (תנאי 3) ───────────────────────');
 check('loginOk נשלח בנקודת-הסיום היחידה', (w.match(/logEvent\('loginOk'/g) || []).length === 1);

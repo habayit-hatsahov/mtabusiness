@@ -159,6 +159,12 @@ function openLoginModal() {
   // שגוי. הקריאה בטוחה לחזרות (יוצאת מיד אם הכפתור כבר קיים), ומוגנת כי היא מוגדרת
   // בסקריפט-מודול שרץ אחרי הסקריפט הקלאסי הזה — ר' §310/§312.
   window.hbRenderGoogleLoginBtn && window.hbRenderGoogleLoginBtn();
+  // §446 — כפתור Apple, באותה נקודה ומאותו נימוק. ⚠️ **שתי הקריאות בלתי-תלויות לחלוטין**:
+  // כישלון של אחת (ספרייה שלא נטענה, origin לא מאושר) אינו מונע מהשנייה להיות מצוירת,
+  // ואף אחת מהן אינה מקפלת את מסלול הקוד — רק הענף של §415ב עושה את זה, והוא תלוי בגוגל
+  // בלבד. ⚠️ שתיהן מוגנות ב-`&&` **רק** מפני קובץ שלא נטען כלל; הן עצמן קלאסיות (§425),
+  // כלומר קיימות מרגע הפרסור — וזה בדיוק מה שמונע את הדילוג-השקט שמתועד למטה.
+  window.hbRenderAppleLoginBtn && window.hbRenderAppleLoginBtn();
   // §403 — החימום מתחיל **כאן**, ברגע שהמודאל נפתח: מכאן ועד הלחיצה על "התחברו" יש 10–30
   // שניות של הקלדה, וזה בדיוק החלון שבו משתלם לשלם DNS+TLS+קר-סטארט. ⚠️ מוגן ב-`&&` מאותה
   // סיבה כמו השורה מעליו — הוא מוגדר בסקריפט-מודול שרץ אחרי הסקריפט הקלאסי הזה (§310/§312).
@@ -589,12 +595,226 @@ window.hbRenderGoogleLoginBtn = function (tries) {
       const touched = ['heroPhoneInput', 'heroCodeInput']
         .some(id => (document.getElementById(id)?.value || '').trim());
       if (modalBody && !touched) modalBody.classList.add('google-first');
+      // §446 — רק כאן ידוע בוודאות שכפתור גוגל על המסך. אם אפל כבר צוירה, ההערה יורדת
+      // מתחתיה כדי ששני הכפתורים יהיו צמודים. אידמפוטנטית.
+      window.hbSyncLoginBlocks && window.hbSyncLoginBlocks();
     };
     setTimeout(gSettle, 120);
     return;
   }
   if (tries > 40) { console.warn('google-login: ספריית Google לא נטענה — הכפתור לא יוצג'); return; }
   setTimeout(() => window.hbRenderGoogleLoginBtn(tries + 1), 150);
+};
+
+// ══ §446 — כניסה עם Apple במודאל ההתחברות ════════════════════════════════════════════════
+//
+// 🔑 **הכל כאן יושב בסקריפט הקלאסי, ולא במודול — וזה לא סגנון אלא הלקח של §425.**
+// הרנדרר של גוגל ישב פעם ב-`<script type="module">`, כלומר מאחורי הורדות gstatic ומאחורי
+// ה-await של שער-ה-auth, ו-`openLoginModal` (קלאסית, לחיצה) דילגה עליו **בשקט ובלי לנסות
+// שוב**. במובייל החלון הזה הוא שנייה עד ארבע — כלומר הרוב. כל כפתור נוסף במודאל הזה חייב
+// להיוולד כאן, אחרת הוא יולד מחדש את אותו באג בדיוק.
+//
+// ⚠️ **מה שכן שייך למודול הוא ה-callback בלבד** (הוא עושה signInWithCustomToken), ולכן
+// הוא נקשר באיחור דרך `window.heroAppleLogin` — מקביל מדויק ל-`window.heroGoogleLogin` —
+// **עם תור** ללחיצה מוקדמת. בלי התור הכפתור נצבע ולא עושה כלום, אותו כשל שכבה פנימה.
+
+// 🔴 **עותק של ה-Services ID, ובמודע.** מקור-האמת הראשון הוא `SERVICES_ID` בתוך
+// `apple-signup.js` — אבל אותו קובץ הוא מודול **הרשמה**, ואין שום סיבה לטעון אותו במסך
+// הכניסה בשביל מחרוזת אחת (ר' §446א והאזהרה בראש הקובץ עצמו).
+//
+// 🔑 **§446ו — הערך חי בארבעה מקומות, והם נעולים זה לזה בבדיקה:** `apple-signup.js` ·
+// `welcome.html` (כאן) · `apple-live-test.html` · `APPLE_CLIENT_IDS` ב-`wrangler.toml`.
+// **`node scratch_test_apple_client_id.js` אחרי כל שינוי כאן** — פער מפיל כל כניסה עם
+// אפל על שגיאת-audience, וההודעה למשתמש זהה לזו של טוקן פגום.
+// ⚠️ אינו סוד — משובץ גלוי בקוד הלקוח, כמו ה-Client ID של גוגל שכמה שורות מעל.
+var HB_APPLE_SERVICES_ID = 'il.co.yellowzone.web';
+// כתובת החזרה **חייבת** להיות רשומה בדיוק ב-Return URLs בפורטל של אפל. `welcome.html`
+// נרשמה שם ב-§445א לצד fan-register ו-business. ⚠️ ולכן בלוקאלהוסט זה לא יעבוד — צפוי, לא באג.
+var HB_APPLE_REDIRECT_URI = 'https://yellowzone.co.il/welcome.html';
+// §430 — ה-SDK נטען מכאן ולא בתגית בדף, ו**רק ברגע שהמודאל נפתח**: מי שנוחת על דף
+// הנחיתה ולא לוחץ "להתחברות" אינו משלם 42KB לשרת של אפל. אותו נימוק בדיוק כמו שם.
+var HB_APPLE_SDK_SRC =
+  'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
+var hbAppleSdkRequested = false;
+
+function hbLoadAppleSdk() {
+  if (hbAppleSdkRequested) return;
+  hbAppleSdkRequested = true;
+  if (window.AppleID && window.AppleID.auth) return;
+  var s = document.createElement('script');
+  s.src = HB_APPLE_SDK_SRC;
+  s.async = true;
+  // כישלון רשת אינו זורק — לולאת ה-tries למטה תיגמר באזהרה, והבלוק יישאר מוסתר.
+  s.onerror = function () { console.warn('apple-login: ה-SDK של אפל לא נטען מהרשת'); };
+  document.head.appendChild(s);
+}
+
+// הלוגו זהה בדיוק לזה של `apple-signup.js` — נתיב ה-SVG הוא נכס של אפל ואין לשנותו.
+var HB_APPLE_LOGO =
+  '<svg viewBox="0 0 17 20" width="15" height="18" aria-hidden="true" focusable="false">' +
+  '<path fill="currentColor" d="M14.06 10.6c-.02-2.2 1.8-3.26 1.88-3.31-1.02-1.5-2.62-1.7-3.19-1.72-1.36-.14-2.65.8-3.34.8-.69 0-1.75-.78-2.87-.76-1.48.02-2.84.86-3.6 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.06 1.6 2.25 2.74 2.2 1.1-.04 1.52-.71 2.85-.71 1.33 0 1.7.71 2.87.69 1.18-.02 1.93-1.08 2.65-2.14.84-1.23 1.18-2.42 1.2-2.48-.03-.01-2.29-.88-2.31-3.5zM11.87 3.9c.6-.74 1.01-1.76.9-2.78-.87.04-1.93.58-2.56 1.31-.56.65-1.06 1.7-.93 2.7.97.08 1.97-.5 2.59-1.23z"/></svg>';
+
+// ⚠️ מקביל מדויק ל-`hbGoogleLoginCallback`, ומאותו נימוק: מי שלוחץ לפני שהמודול הגיע
+// נכנס לתור ולא מקבל לחיצה מתה. הגבול זהה (`HB_LOGIN_TIMEOUT_MS`), ומודול שלא יגיע
+// לעולם (CDN חסום) נופל לאותו `moduleTimeout` עם פאנל-העזרה.
+
+// 🔑 **כותב-הודעות אחד לשני הצדדים.** במסלול גוגל יש `heroGMsg` במודול ו-`show()` מקומי
+// בתוך ה-callback הקלאסי — שני כותבים לאותו אלמנט, ורק אחד מהם מסתיר את ההערה הקבועה.
+// כאן זו פונקציה אחת שנחשפת ל-`window`, והמודול משתמש בה כמו שהיא. זה בדיוק מה שמונע
+// את הסחיפה שבין שני מימושים של אותו דבר (§353/§357).
+// ⚠️ ההערה הקבועה **מתחלפת** בהודעה ולא מצטרפת אליה — §399ה: שתי פסקאות שאומרות כמעט
+// אותו דבר נקראות כקיר-טקסט, ואז שתיהן לא נקראות.
+// ══ §446 — שני הכפתורים צמודים, וההערות אחריהם ══════════════════════════════════════════
+//
+// **הבעיה שנצפתה בדפדפן, לא בקוד:** ההערה של גוגל היא ארבע שורות, והיא יושבת **בתוך**
+// בלוק גוגל — כלומר כשכפתור אפל נוסף מתחתיו, סדר הקריאה יוצא: כפתור → קיר-טקסט →
+// **עוד כפתור**. זו בדיוק הקריאה השבורה של §445ג, שם המפריד "או למלא ידנית" נתקע בין
+// שני הכפתורים, ובאותו מסך שבו §325 מדד נשירה.
+//
+// 🔑 **ההזזה נגזרת מהמצב ולא מסדר-האירועים:** התנאי הוא ש**שני** מכלי-הכפתורים מחזיקים
+// ילד בפועל, ולא "אפל דיווחה שציירה". זה גם מה שסוגר את הסיכון האמיתי כאן — ההערה
+// יוצאת ממכל שמוסתר כיחידה, ולכן אסור להזיז אותה כל עוד ייתכן שכפתור גוגל לא יופיע.
+// ⚠️ **ומרגע שגוגל צוירה היא לעולם אינה מוסתרת שוב** (`gSettle` מכריע פעם אחת בלבד),
+// ולכן אין מצב שבו ההערה נשארת גלויה בלי הכפתור שלה. ר' [[feedback_state_not_event_detection]].
+//
+// ⚠️ **אידמפוטנטית**: נקראת משני הרנדררים, וכל אחד מהם עשוי לסיים ראשון.
+window.hbSyncLoginBlocks = function () {
+  var note = document.getElementById('gsLoginNote');
+  var asHost = document.getElementById('asLoginHost');
+  var gsDrawn = !!(document.getElementById('gsLoginBtnHost') || {}).childElementCount;
+  var asDrawn = !!(document.getElementById('asLoginBtnHost') || {}).childElementCount;
+  if (!note || !asHost || !gsDrawn || !asDrawn) return;
+  if (note.previousElementSibling === asHost) return;      // כבר במקום
+  asHost.parentNode.insertBefore(note, asHost.nextSibling);
+};
+
+window.hbAsMsg = function (html, kind) {
+  var m = document.getElementById('asLoginMsg');
+  var n = document.getElementById('asLoginNote');
+  if (n) n.style.display = html ? 'none' : '';
+  if (!m) return;
+  if (!html) { m.classList.remove('show', 'warn'); m.innerHTML = ''; return; }
+  m.innerHTML = html;
+  m.classList.toggle('warn', kind === 'warn');
+  m.classList.add('show');
+};
+
+function hbAppleLoginCallback(idToken) {
+  if (typeof window.heroAppleLogin === 'function') { window.heroAppleLogin(idToken); return; }
+  window.hbAsMsg('רגע, טוענים…');
+  var t0 = Date.now();
+  var tick = function () {
+    if (typeof window.heroAppleLogin === 'function') {
+      window.hbAsMsg('');
+      window.heroAppleLogin(idToken);
+      return;
+    }
+    if (Date.now() - t0 >= (window.HB_LOGIN_TIMEOUT_MS || 8000)) {
+      window.hbAsMsg(window.HB_TIMEOUT_MSG, 'warn');
+      window.logEvent && window.logEvent('loginFail', { channel: 'moduleTimeout', blockId: window._hbEnvTag });
+      window.heroShowLoginHelp && window.heroShowLoginHelp('moduleTimeout');
+      return;
+    }
+    setTimeout(tick, 100);
+  };
+  setTimeout(tick, 100);
+}
+
+async function hbAppleLoginClick() {
+  var btn = document.querySelector('#asLoginBtnHost .hb-as-login-btn');
+  if (btn) btn.disabled = true;
+  try {
+    var res = await window.AppleID.auth.signIn();
+    var raw = res && res.authorization && res.authorization.id_token;
+    if (!raw) {
+      // ⚠️ אין כאן שום דבר שהאדם יכול לתקן, ולכן ההודעה מפנה למסלול שכן עובד לו.
+      window.hbAsMsg('⚠️ משהו השתבש מול Apple. היכנסו עם הטלפון והקוד, או נסו שוב.', 'warn');
+      return;
+    }
+    // ⚠️ **אין כאן שום בדיקה של תוכן הטוקן, במכוון.** `apple-signup.js` מפענח אותו כדי
+    // למלא שדות; כאן אין מה למלא, וכל הכרעה על סמך פענוח-בצד-לקוח היא הכרעה על נתון
+    // שהמשתמש שולט בו. מה שקובע הוא אך ורק `worker/src/apple.js` — חתימה מול ה-JWKS,
+    // issuer, aud ותפוגה. גם `is_private_email` נקרא **מהתשובה של השרת** ולא מכאן.
+    hbAppleLoginCallback(raw);
+  } catch (e) {
+    // ⚠️ ביטול ע"י המשתמש אינו תקלה ואינו מקבל הודעה — אותו לקח של §420ה: "משהו השתבש"
+    // על סגירת-חלון שולח אדם לחפש בעיה שהוא עצמו יצר.
+    var code = (e && (e.error || e.message)) || '';
+    if (String(code).indexOf('popup_closed') === -1 && String(code) !== 'user_cancelled_authorize') {
+      console.error('apple-login: signIn נכשל', e);
+      window.logEvent && window.logEvent('loginFail', { channel: 'apple:sdk', blockId: window._hbEnvTag });
+      window.hbAsMsg('⚠️ משהו השתבש מול Apple. היכנסו עם הטלפון והקוד, או נסו שוב.', 'warn');
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ⚠️ מצויר רק כשהמודאל נפתח, ומוסתר עד שהציור באמת הצליח — אותו כלל של בלוק גוגל:
+// כותרת/הערה בלי כפתור מעליהן גרועה מלא-להציע-אפל-בכלל.
+window.hbRenderAppleLoginBtn = function (tries) {
+  tries = tries || 0;
+  var host = document.getElementById('asLoginHost');
+  var btnHost = document.getElementById('asLoginBtnHost');
+  if (!host || !btnHost) return;
+  // כבר צויר. ⚠️ הסנכרון נקרא גם כאן: בפתיחה חוזרת אין ציור חדש, וגוגל אולי סיימה בינתיים.
+  if (btnHost.childElementCount) { host.style.display = 'flex'; window.hbSyncLoginBlocks(); return; }
+
+  // ══ 🔴 בתוך האפליקציה הכפתור **לא מוצג** ════════════════════════════════════════════
+  // §434 מדד את המנגנון על מכשיר אמיתי: `Bridge.launchIntent` של Capacitor שולח **כל
+  // host שאינו yellowzone.co.il** לדפדפן החיצוני, ודף ה-popup מנסה להחזיר טוקן ל-
+  // `window.opener` שאינו קיים → **דף לבן**, והאפליקציה לא מקבלת כלום. `AppleID.auth.signIn`
+  // עם `usePopup:true` נשען על אותו `window.open` אל `appleid.apple.com` — כלומר אותו
+  // תנאי בדיוק.
+  // ⚠️ **וזו גזירה מהמנגנון שנמדד, לא מדידה של אפל עצמה על מכשיר** — ר'
+  // [[feedback_absence_of_evidence]]. אבל הכיוון הזהיר ברור: כפתור שמוביל לדף לבן הוא
+  // בדיוק התקלה שהבודקים דיווחו עליה, והמחיר של הסתרה הוא אפס (אין היום אפל באפליקציה).
+  // 🔗 **הפתרון האמיתי הוא מסלול נייטיב ולא תיקון של המסלול הזה** — תוסף Capacitor שמחזיר
+  // `identityToken`, בדיוק כמו `native-google.js`. §426 — חסום עד שיהיה `app/ios`.
+  // ⚠️ אותה נפילה-לאחור ל-UA כמו בענף של גוגל, למקרה ש-native-google.js לא נטען.
+  var ng = window.YZNativeGoogle;
+  var inApp = (ng && typeof ng.mode === 'function')
+    ? (ng.mode() !== 'web')
+    : !!(window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || ''));
+  if (inApp) { host.style.display = 'none'; return; }
+
+  if (!HB_APPLE_SERVICES_ID) {
+    console.warn('apple-login: Services ID ריק — הבלוק לא יוצג');
+    return;
+  }
+  hbLoadAppleSdk();
+
+  if (window.AppleID && window.AppleID.auth) {
+    try {
+      // ⚠️ `scope` ללא 'name': במסך **כניסה** אין שדה שם למלא, ואפל מוסרת שם רק בהרשאה
+      // הראשונה בחיים ממילא. בקשת הרשאה שאין לה שימוש היא חיכוך מיותר בגיליון של אפל.
+      window.AppleID.auth.init({
+        clientId: HB_APPLE_SERVICES_ID,
+        scope: 'email',
+        redirectURI: HB_APPLE_REDIRECT_URI,
+        usePopup: true,
+      });
+    } catch (e) {
+      console.warn('apple-login: AppleID.auth.init נכשל — הבלוק לא יוצג', e);
+      return;
+    }
+    btnHost.innerHTML =
+      '<button type="button" class="hb-as-login-btn">' +
+      HB_APPLE_LOGO + '<span>המשך עם Apple</span></button>';
+    var btn = btnHost.querySelector('.hb-as-login-btn');
+    if (btn) btn.addEventListener('click', hbAppleLoginClick);
+    host.style.display = 'flex';
+    // §446 — אם גוגל כבר צוירה, ההערה שלה יורדת לכאן כדי ששני הכפתורים יהיו צמודים.
+    // אם עדיין לא — `gSettle` של גוגל יקרא לאותה פונקציה כשתסיים. אידמפוטנטית.
+    window.hbSyncLoginBlocks();
+    // ⚠️ **ובמכוון אין כאן אירוע "הכפתור הוצג".** הוא היה נורה בכל פתיחת מודאל, והאוסף
+    // `events` כבר על הסף של `limit()` (§351 — ~8,600 מתוך 10,000 בחלון של 30 יום).
+    // כפתור גוגל שלצידו אינו מודד הצגה גם הוא, והשאלה האמיתית ("נכנס מישהו דרך אפל?")
+    // נענית מ-`loginOk` עם `channel: 'apple'`. ר' [[feedback_measurement_field_limits]].
+    return;
+  }
+  if (tries > 40) { console.warn('apple-login: ספריית Apple לא נטענה — הכפתור לא יוצג'); return; }
+  setTimeout(function () { window.hbRenderAppleLoginBtn(tries + 1); }, 150);
 };
 
 </script>
@@ -1189,15 +1409,15 @@ button { font-family: inherit; }
    כשתי אפשרויות שוות-מעמד, וזו בדיוק ההשוואה שאנחנו מנסים להסיר. */
 .gs-login-host { display: none; flex-direction: column; gap: 8px; margin-top: 6px; }
 /* ⚠️ הערת-ההבהרה נקראת **לפני** הלחיצה, ולכן היא קטנה אבל לא דהויה — ink-3 ולא ink-4. */
-.gs-login-note { font-size: 12.5px; line-height: 1.65; text-align: center; color: var(--ink-3); }
-.gs-login-note b { color: var(--ink-2); }
-.gs-login-btn { display: flex; justify-content: center; }
-.gs-login-msg { display: none; font-size: 12.5px; line-height: 1.6; text-align: center; color: var(--ink-3); }
-.gs-login-msg.show { display: block; }
-.gs-login-msg.warn { color: #B45309; }
+.gs-login-note, .as-login-note { font-size: 12.5px; line-height: 1.65; text-align: center; color: var(--ink-3); }
+.gs-login-note b, .as-login-note b { color: var(--ink-2); }
+.gs-login-btn, .as-login-btn { display: flex; justify-content: center; }
+.gs-login-msg, .as-login-msg { display: none; font-size: 12.5px; line-height: 1.6; text-align: center; color: var(--ink-3); }
+.gs-login-msg.show, .as-login-msg.show { display: block; }
+.gs-login-msg.warn, .as-login-msg.warn { color: #B45309; }
 /* הודעת "לא מחובר אצלנו" נושאת קישור להרשמה — הוא חייב להיראות כמו קישור בתוך טקסט
    שכולו כתום-אזהרה, אחרת הוא נבלע בו ומי שלא נרשם מעולם נשאר בלי מוצא. */
-.gs-login-msg a { color: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+.gs-login-msg a, .as-login-msg a { color: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
 /* ── §399ב — הפעולה בתוך הודעת-הכשל ("שלחו לי קוד חדש למייל") ──────────────────────────
    🔑 **כפתור ולא קישור-בתוך-טקסט.** מי שקורא את ההודעה הזאת כבר נכשל פעם אחת, והמוצא
    צריך להיראות כמו דבר שלוחצים עליו — לא כמילה מודגשת בתוך פסקה כתומה.
@@ -1209,10 +1429,35 @@ button { font-family: inherit; }
   background: transparent; color: inherit; font: inherit; font-weight: 800;
   text-align: center; cursor: pointer;
 }
-.gs-login-act:hover { background: rgba(0, 0, 0, .04); }
+.gs-login-act:hover, .as-login-act:hover { background: rgba(0, 0, 0, .04); }
 
 .gs-login-or { display: flex; align-items: center; gap: 10px; color: var(--ink-3); font-size: 12.5px; }
 .gs-login-or::before, .gs-login-or::after { content: ''; flex: 1; height: 1px; background: var(--line, #E7E7E0); }
+
+/* ══ §446 — כניסה עם Apple, מתחת לכפתור Google ══════════════════════════════════════════
+   ⚠️ **הסגנון כאן אינו זהה ל-`apple-signup.js`, ובכוונה.** שם הכפתור הוא `border-radius:8px`
+   כי כפתור גוגל שלצידו מצויר `shape:'rectangular'`. **כאן** כפתור גוגל מצויר `shape:'pill'`
+   (ר' hbRenderGoogleLoginBtn), ושני כפתורים בצורות שונות זה מעל זה נקראים כשני רכיבים
+   שאינם שייכים לאותו מסך. אפל מתירה במפורש רדיוס עד חצי-גובה, כלומר pill חוקי לגמרי.
+   🔑 שאר המידות נשארות בדיוק כפי שאפל מגדירה: גובה מינימלי 44, הלוגו ללא שינוי,
+   והרוחב 300 — זהה ל-`width: 300` שנמסר ל-renderButton של גוגל, אחרת המדרגה נראית כבאג.
+   ⚠️ **מוסתר עד שהכפתור באמת מצויר**, אותו כלל של §387/§415ב שחל על בלוק גוגל. */
+.as-login-host { display: none; flex-direction: column; gap: 8px; }
+.hb-as-login-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 300px; max-width: 100%; min-height: 44px; padding: 0 16px;
+  border: 0; border-radius: 999px; background: #000; color: #fff;
+  font: inherit; font-size: 15px; font-weight: 600; line-height: 1; cursor: pointer;
+}
+.hb-as-login-btn:hover { background: #1a1a1a; }
+.hb-as-login-btn:disabled { opacity: .6; cursor: default; }
+.hb-as-login-btn svg { flex: 0 0 auto; margin-bottom: 2px; }
+.as-login-act {
+  display: block; width: 100%; margin: 10px 0 8px; padding: 10px 12px;
+  border: 1.5px solid currentColor; border-radius: var(--r-field);
+  background: transparent; color: inherit; font: inherit; font-weight: 800;
+  text-align: center; cursor: pointer;
+}
 
 /* ── כרטיס ההרשמה (iframe) — אותו מנגנון כמו landing-demo.html הקיים ── */
 .modal-frame-box { max-width: 1060px; padding: 0; max-height: 96vh; }
@@ -1677,6 +1922,35 @@ button { font-family: inherit; }
           <b>גם אם לא חיברתם חשבון קודם</b> — הלחיצה הראשונה מחברת ומכניסה, כשחשבון ה-Google
           הוא זה שנושא את המייל שאיתו נרשמתם.<br>
           אין לכם חשבון Google עם המייל הזה? היכנסו עם הטלפון והקוד.
+        </div>
+      </div>
+
+      <!-- ══ §446 — כניסה עם Apple, מתחת ל-Google ═══════════════════════════════════════
+           🔑 **זו דרישת חנות ולא פיצ'ר.** אפל מחייבת "התחברות עם Apple" בכל מסך שמציע
+           התחברות של צד שלישי — והמסך הזה מציע Google. §445 כבר הדליק אותה בשני טופסי
+           ההרשמה; זהו המשטח השלישי והאחרון באתר.
+
+           ⚠️ 🔴 **הבלוק הזה אינו משתמש ב-`apple-signup.js`.** הקובץ ההוא הוא מודול
+           **הרשמה**: הוא ממלא שדות וקורא ל-`/apple-attach` על רשומה שזה עתה נוצרה.
+           כאן אין שדה למלא — צריך `/apple-login` ואז `signInWithCustomToken`. שימוש בו
+           כאן היה נותן כפתור שנראה נכון ואינו מכניס איש. ר' האזהרה בראש הקובץ עצמו.
+
+           ⚠️ **ובלי קו-מפריד משלו, במכוון.** לבלוק גוגל יש כותרת-קו ("נכנסים עם Google…"),
+           ומפריד שני בינו לבין אפל היה מייצר בדיוק את הקריאה השבורה של §445ג: הבטחה
+           שנסגרת ומיד נפתחת שוב. שני הכפתורים יושבים תחת אותה כותרת, והמפריד "או" שמתחת
+           מפריד את שניהם יחד ממסלול הטלפון+קוד.
+
+           ⚠️ **הקיפול של §415ב נשאר תלוי בגוגל בלבד** — ר' ההערה הגדולה מתחת. אפל שצוירה
+           אינה עדות שגוגל צוירה, וקיפול על סמך העדות הלא-נכונה הוא בדיוק מסך-בלי-מוצא. -->
+      <div class="as-login-host" id="asLoginHost">
+        <div class="as-login-btn" id="asLoginBtnHost"></div>
+        <div class="as-login-msg" id="asLoginMsg"></div>
+        <!-- ⚠️ שורה אחת ולא פסקה: המודאל כבר נחשד ב"יותר מדי תוכן" (§399ה), ולבלוק גוגל
+             שמעליו כבר יש הערה בת שלוש שורות. מה שנאמר כאן הוא **הדבר היחיד שנכשל בשקט**
+             אם לא אומרים אותו מראש — כתובת-ממסר של אפל לעולם אינה זהה למייל שעל הרשומה,
+             ולכן "הסתר את המייל שלי" מוביל תמיד לדחייה (§423). -->
+        <div class="as-login-note" id="asLoginNote">
+          עם Apple — בוחרים <b>"שתף את המייל שלי"</b>, כדי שנוכל לזהות את הרשומה שלכם.
         </div>
       </div>
 
@@ -2633,6 +2907,17 @@ let heroGoogleBusy = false;
 //
 // ⚠️ **פונקציה פנימית ולא `window.`**: אין יותר onclick ב-HTML שקורא לה, וחשיפה מיותרת
 // למרחב הגלובלי היא בדיוק מה ש-feedback_module_scope_onclick מבקש לצמצם.
+// 🔴 **§446ה — שתי הודעות-הכשל למטה הבטיחו מוצא שאינו על המסך.** הן אומרות "היכנסו עם
+// הטלפון והקוד", אבל כשהקיפול של §415ב פעיל (`google-first` בלי `code-open`) השדות
+// **מוסתרים** — כלומר מסך שמבטיח מוצא ואז לא מראה אותו, גרוע ממסך-בלי-מוצא של §354.
+// ⚠️ **`fail()` כבר עושה את זה בכל ענפי `/google-login`**, ושני הענפים כאן היו היחידים
+// שנשארו בחוץ — [[feedback_merged_list_half_mechanism]] במיניאטורה: מנגנון שחובר לרוב
+// הרשימה נראה בדיוק כמו מנגנון שחובר לכולה.
+// 🔑 **נתפס במסלול של אפל ולא כאן** (§446ד): כתבתי את המקביל, בדקתי אותו בדפדפן, וראיתי
+// את השדות מקופלים מתחת להודעה. הקוד הזה חי מאז §403 ואיש לא ראה אותו — כי מי שנוחת בו
+// הוא נדיר (הוורקר אישר `linkable` ואז דחה את `/google-attach`) ואינו מדווח.
+const heroGFallBackToCode = () => { window.heroShowCodePath && window.heroShowCodePath(); };
+
 async function heroGoogleAttachAndEnter(credential, memberId, api, t0) {
   const ac = new AbortController();
   // §409 — ⚠️ **`HERO_CHAIN_TIMEOUT_MS` ולא `HERO_TIMEOUT_MS`**: גם לנתיב הזה אין רשת-הצלה
@@ -2660,14 +2945,16 @@ async function heroGoogleAttachAndEnter(credential, memberId, api, t0) {
       channel: ('google:link:' + (r && r.error ? r.error : 'unknown')).slice(0, 50),
       blockId: heroEnvTagAt(t0, api),
     });
-    heroGMsg('⚠️ לא הצלחנו לחבר את החשבון. היכנסו עם הטלפון והקוד למעלה — זה יעבוד.', 'warn');
+    heroGMsg('⚠️ לא הצלחנו לחבר את החשבון. היכנסו עם הטלפון והקוד למטה — זה יעבוד.', 'warn');
+    heroGFallBackToCode();
   } catch (e) {
     window.logEvent && window.logEvent('loginFail', {
       channel: heroIsTimeout(e) ? 'google:link:fetchTimeout' : heroErrChannel('google:link:error', e),
       blockId: heroEnvTagAt(t0, api),
     });
     window.hbBumpNetFail && window.hbBumpNetFail('error');
-    heroGMsg('⚠️ החיבור איטי מהרגיל. נסו שוב, או היכנסו עם הטלפון והקוד למעלה.', 'warn');
+    heroGMsg('⚠️ החיבור איטי מהרגיל. נסו שוב, או היכנסו עם הטלפון והקוד למטה.', 'warn');
+    heroGFallBackToCode();
   } finally {
     clearTimeout(hardTimer);
   }
@@ -2819,10 +3106,15 @@ async function heroGoogleLogin(res) {
         //
         // הפעם משפט **אחד** ולא שניים, והוא נושא את שתי התשובות: מה לעשות עכשיו, ומה עם
         // גוגל. ⚠️ "מדף הבית" ולא "יקפוץ באנר" — הוא ניתן לסגירה ל-GBANNER_SNOOZE_DAYS.
-        // ⚠️ "למעלה" חזר. הוא היה ב-§399ב, ירד ב-§399ו בקיצוץ — ומאז §399 הבלוק הזה יושב
-        // ב**תחתית** המודאל, כלומר הקורא מסתכל למטה והשדות שהוא נשלח אליהם מעליו ומחוץ
-        // לשדה-הראייה. הפניה בלי כיוון, במסך שנגלל, היא חצי הוראה.
-        '<br><br><b>כבר חברים?</b> היכנסו עם הטלפון והקוד למעלה — ואז תוכלו לחבר את Google ' +
+        // ⚠️ הכיוון חזר ב-§399ב (הוא ירד ב-§399ו בקיצוץ): הפניה בלי כיוון, במסך שנגלל,
+        // היא חצי הוראה.
+        // 🔴 **§446 — והכיוון עצמו היה שגוי מאז §415ב, בשלוש הודעות.** כשההודעה נוסחה,
+        // בלוק גוגל ישב ב**תחתית** המודאל והשדות היו מעליו. §415ב הפך את הסדר ולא נגע
+        // בטקסט — כלומר שלוש הודעות המשיכו לשלוח למעלה אדם שהשדות שלו למטה, בדיוק במסך
+        // שאליו מגיע מי שכבר נכשל פעם אחת.
+        // 🔑 **נמדד ולא נקרא:** בדפדפן חי, בלוק גוגל ב-y=136 ושדה הטלפון ב-y=596.
+        // ר' [[feedback_verification_must_run_the_producer]].
+        '<br><br><b>כבר חברים?</b> היכנסו עם הטלפון והקוד למטה — ואז תוכלו לחבר את Google ' +
         'מדף הבית, ולהיכנס בלחיצה אחת בפעם הבאה.' +
         // 🔑 **הלב של §399ב: פעולה, לא הוראה.** מי שקורא את ההודעה הזאת רוב הסיכויים שלחץ
         // על גוגל כי הוא לא זוכר את הקוד — ומשפט שאומר לו "היכנסו עם הקוד" שולח אותו לדבר
@@ -2872,6 +3164,221 @@ function heroEsc(v) {
 // היה נצבע ולא עושה כלום — כלומר בדיוק אותו כשל, שכבה אחת פנימה.
 window.heroGoogleLogin = heroGoogleLogin;
 
+// ══ §446 — כניסה עם Apple: הצד שנוגע ב-firebase ══════════════════════════════════════════
+//
+// 🔑 **מקביל מדויק ל-`heroGoogleLogin` שמעליו, ובכוונה.** הוורקר מחזיר בדיוק את אותו מבנה
+// תשובה (`customToken` / `error` + `linkable`), ומכאן והלאה הזרימה זהה לחלוטין — אותו
+// `heroRunAuth`, אותו `heroFinishLogin`, אותו uid, אותם rules. מחליפים את הדלת, לא את הבית.
+//
+// ⚠️ **הרנדרר עצמו אינו כאן** — הוא בסקריפט הקלאסי בראש הדף (§425). כאן יושב רק מה שחייב
+// להיות כאן, וזו בדיוק ההפרדה שהבאג ההוא לימד.
+//
+// ⚠️ **וההבדל היחיד מגוגל הוא כתובת-הממסר**, והוא מסומן בכל מקום שבו הוא רלוונטי.
+
+const HERO_A_MSGS = {
+  apple_ambiguous:     'משהו בחשבון שלכם דורש בדיקה שלנו. כתבו לנו ונטפל בזה מיד.',
+  invalid_apple_token: 'האימות מול Apple לא הצליח. נסו שוב, או היכנסו עם הטלפון והקוד.',
+  pending:             'הבקשה שלכם עדיין ממתינה לאישור — ברגע שתאושר תישלח אליכם הודעת מייל.',
+  rejected:            'הבקשה שלכם נדחתה. לפרטים צרו קשר עם הצוות.',
+};
+
+// 🔑 **כותב-ההודעות הוא זה שהוגדר בסקריפט הקלאסי** (`window.hbAsMsg`) ולא עותק שני כאן.
+// במסלול גוגל יש שני כותבים לאותו אלמנט, והם כבר נבדלים זה מזה בהתנהגות (רק אחד מסתיר
+// את ההערה). ⚠️ העטיפה קיימת רק כדי שקריאה לפני שהסקריפט הקלאסי רץ לא תזרוק — מצב
+// שאינו אפשרי בפועל (הוא קודם למודול), אבל "בטוח כי בדרך כלל" הוא בדיוק מה שיצר את §425.
+const heroAMsg = (html, kind) => { window.hbAsMsg && window.hbAsMsg(html, kind); };
+
+// 🔴 **נמצא בבדיקה בדפדפן, ולא בקריאת קוד.** הודעת הכשל של `/apple-attach` אומרת "היכנסו
+// עם הטלפון והקוד" — אבל כשהקיפול של §415ב פעיל (`google-first` בלי `code-open`) השדות
+// האלה **מוסתרים**. כלומר ההודעה מפנה למסלול שאינו על המסך: בדיוק מסך-בלי-מוצא של §354,
+// רק גרוע יותר, כי הוא מבטיח מוצא ואז לא מראה אותו.
+// ⚠️ `fail()` כבר עושה את זה בכל ענפי `/apple-login`; הענפים של `attach` היו היחידים
+// שנשארו בחוץ — [[feedback_merged_list_half_mechanism]] במיניאטורה.
+// ✅ **§446ה — ופער זהה שהיה ב-`heroGoogleAttachAndEnter` נסגר גם הוא**, ר' ההערה שם.
+// 🔑 הוא חי מאז §403 ונתפס רק כשנכתב המקביל באפל ונבדק בדפדפן.
+const heroAFallBackToCode = () => { window.heroShowCodePath && window.heroShowCodePath(); };
+
+let heroAppleBusy = false;
+
+// ⚠️ מקביל ל-`heroGoogleAttachAndEnter`, כולל `HERO_CHAIN_TIMEOUT_MS` ולא `HERO_TIMEOUT_MS`:
+// גם לנתיב הזה אין רשת-הצלה (בקשה שבוטלה = החשבון לא חובר, נקודה), ולכן הסף חייב לכסות
+// את שלוש הכתובות. הלקח של §408.
+async function heroAppleAttachAndEnter(idToken, memberId, api, t0) {
+  const ac = new AbortController();
+  const hardTimer = setTimeout(() => ac.abort(), HERO_CHAIN_TIMEOUT_MS);
+  try {
+    const r = await heroWithTimeout(
+      hbApiFetch('/apple-attach', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, memberId }), signal: ac.signal,
+      }, api).then(r => r.json()), HERO_CHAIN_TIMEOUT_MS);
+    if (r && r.customToken) {
+      _hbLoginVia = 'appleLink';   // קישור-ראשון-ואז-כניסה, נפרד מכניסת-אפל רגילה
+      const a = heroRunAuth(r.customToken, (uid) => heroFinishLogin(uid, null));
+      a.settled.then(a.done, a.giveUp);
+      return true;
+    }
+    // ⚠️ **הכשל היחיד שמעניין כאן הוא סתירה**: הוורקר אמר "לא" על אותו שער שאישר לפני
+    // שנייה (`/apple-login` החזיר `linkable`). לכן ההודעה מחזירה למסלול שבטוח עובד,
+    // ולא מבקשת לנסות שוב את מה שנכשל.
+    // 🔑 **חריג אחד: `ok` בלי `customToken`.** הוורקר מחזיר בדיוק את זה כשהקישור **הצליח**
+    // אבל הרשומה עדיין `pending` — שער האישור אינו נעקף. זה לא כשל, וההודעה חייבת לומר
+    // את האמת: החשבון חובר, וההמתנה היא לאישור.
+    if (r && r.ok) {
+      heroAMsg('✅ חשבון ה-Apple חובר. הבקשה שלכם עדיין ממתינה לאישור — ברגע שתאושר תוכלו להיכנס בלחיצה אחת.');
+      return false;
+    }
+    window.logEvent && window.logEvent('loginFail', {
+      channel: ('apple:link:' + (r && r.error ? r.error : 'unknown')).slice(0, 50),
+      blockId: heroEnvTagAt(t0, api),
+    });
+    heroAMsg('⚠️ לא הצלחנו לחבר את החשבון. היכנסו עם הטלפון והקוד — זה יעבוד.', 'warn');
+    heroAFallBackToCode();
+  } catch (e) {
+    window.logEvent && window.logEvent('loginFail', {
+      channel: heroIsTimeout(e) ? 'apple:link:fetchTimeout' : heroErrChannel('apple:link:error', e),
+      blockId: heroEnvTagAt(t0, api),
+    });
+    window.hbBumpNetFail && window.hbBumpNetFail('error');
+    heroAMsg('⚠️ החיבור איטי מהרגיל. נסו שוב, או היכנסו עם הטלפון והקוד.', 'warn');
+    heroAFallBackToCode();
+  } finally {
+    clearTimeout(hardTimer);
+  }
+  return false;
+}
+
+async function heroAppleLogin(idToken) {
+  if (!idToken) return;
+  if (heroAppleBusy) return;
+  heroAppleBusy = true;
+  const release = () => { heroAppleBusy = false; };
+
+  const t0 = Date.now();
+  const api = { via: 0 };
+  heroAMsg('מתחבר…');
+  heroHideErr();
+  let heroAppleDone = false;
+  let aStage = 'fetch';
+  const stopProgress = heroProgress(t => { if (!heroAppleDone) heroAMsg(t); }, api, () => aStage);
+
+  const ac = new AbortController();
+  const hardAbortTimer = setTimeout(() => ac.abort(), HERO_HARD_ABORT_MS);
+  const pending = hbApiFetch('/apple-login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken }), signal: ac.signal
+  }, api).then(r => r.json()).finally(() => clearTimeout(hardAbortTimer));
+  pending.catch(() => {});
+
+  const fail = (reason, html, email) => {
+    window.logEvent && window.logEvent('loginFail', {
+      channel: ('apple:' + reason).slice(0, 50), blockId: heroEnvTagAt(t0, api),
+      ...(email ? { email } : {}),
+    });
+    window.hbBumpNetFail && window.hbBumpNetFail(reason);
+    heroAMsg('⚠️ ' + html, 'warn');
+    // §415ב — כשל פותח את מסלול הקוד מיד, בלי לחיצה נוספת. מי שניסה ונכשל הוא בדיוק מי
+    // שאסור לבקש ממנו עוד צעד.
+    window.heroShowCodePath && window.heroShowCodePath();
+  };
+
+  try {
+    const data = await heroWithTimeout(pending, HERO_TIMEOUT_MS);
+    if (data.customToken) {
+      aStage = 'auth';
+      heroAMsg(HERO_AUTH_PROGRESS);
+      _hbLoginVia = 'apple';
+      const a = heroRunAuth(data.customToken, (uid) => heroFinishLogin(uid, null));
+      try {
+        a.done(await heroWithTimeout(a.settled, HERO_HARD_ABORT_MS));
+      } catch (authErr) {
+        // §350 — הצלחה מאוחרת עדיין מכניסה.
+        a.settled.then(a.done, a.giveUp);
+        fail('authTimeout', 'ההתחברות מתעכבת. השאירו את הדף פתוח — אם זה לא נפתר, היכנסו עם הטלפון והקוד.');
+      }
+      return;
+    }
+
+    if (data.error === 'apple_not_linked') {
+      // ── 🔴 "הסתר את המייל שלי" — **לפני** כל שאר הענפים ────────────────────────────────
+      // 🔑 **זה המצב היחיד שבו אין ולא יכול להיות מסלול מהיר, וזו אינה תקלה.** אפל נותנת
+      // כתובת-ממסר (`@privaterelay.appleid.com`) שלעולם אינה זהה למייל שעל רשומת החבר,
+      // ולכן `linkable` יהיה `null` **תמיד** — `apple.js` מסמן ממסר כלא-מאומת ביודעין.
+      // ⚠️ בלי הענף הזה האדם היה מקבל את ההודעה הגנרית ("עדיין לא חיברתם") ויוצא לחפש
+      // טעות שאינה קיימת — הוא לא שכח לחבר, הוא בחר להסתיר. הדגל `isPrivateRelay` נוסף
+      // לשרת ב-§423 **בדיוק** כדי שהמסך יוכל לומר את זה. ר' [[feedback_state_not_event_detection]].
+      if (data.isPrivateRelay) {
+        fail('privateEmail',
+          'בחרתם <b>להסתיר את המייל</b> מ-Apple, ולכן איננו יכולים לזהות את הרשומה שלכם.<br>' +
+          'נסו שוב ובחרו <b>"שתף את המייל שלי"</b> — או היכנסו עם הטלפון והקוד.');
+        return;
+      }
+
+      // ══ §403/§409 — המייל שאפל אימתה כבר יושב על רשומה: כניסה בלי לחיצה נוספת ═════════
+      // ⚠️ **השער כולו בוורקר** (`linkableByVerifiedEmail`), ולא כאן. הקליינט מקבל memberId
+      // ומחזיר אותו, ו-`/apple-attach` מאמת מחדש שהמייל על הרשומה זהה למייל שאפל אימתה.
+      if (data.linkable && data.linkable.memberId) {
+        window.logEvent && window.logEvent('loginFail', {
+          channel: 'apple:canLink', blockId: heroEnvTagAt(t0, api), email: data.email || '',
+          memberId: data.linkable.memberId,
+        });
+        // §359 — מאפס את מונה-כשלי-הרשת: הוורקר ענה, כלומר הכתובת נגישה.
+        window.hbBumpNetFail && window.hbBumpNetFail('canLink');
+        aStage = 'linkApple';
+        heroAMsg('מחברים את חשבון ה-Apple ונכנסים…');
+        // §410 — נכתב **לפני** הקישור ולא אחריו: בהצלחה `heroRunAuth` מנווט ל-home.html
+        // מיד, ולפעמים לפני שהשורה שאחריו בכלל רצה.
+        try { localStorage.setItem('hb_google_just_linked', data.linkable.memberId); } catch (e) {}
+        const linked = await heroAppleAttachAndEnter(idToken, data.linkable.memberId, api, t0);
+        if (!linked) { try { localStorage.removeItem('hb_google_just_linked'); } catch (e) {} }
+        if (linked) aStage = 'auth';
+        return;
+      }
+
+      // 🔑 **אותו ניסוח של §399ז, ומאותו נימוק בדיוק:** "לא מחובר אצלנו" נקרא כפסק-דין על
+      // החברות ולא על הקישור. הנושא הוא **פעולה שלא נעשתה** ("עדיין לא חיברתם"), לא טענה
+      // על מי שקורא. ושלושה סוגי אנשים נוחתים כאן — חבר מאושר שלא חיבר · מי שלא נרשם
+      // מעולם · מי שממתין לאישור — ולכן ההודעה מנוסחת בתנאים ולא בהוראה אחת (§354).
+      fail('notLinked',
+        'עדיין לא חיברתם את חשבון ה-Apple הזה' + (data.email ? ' (<b>' + heroEsc(data.email) + '</b>)' : '') +
+        ' לכניסה ל-Yellow Zone.' +
+        '<br><br><b>כבר חברים?</b> היכנסו עם הטלפון והקוד למטה — ואחרי הכניסה הראשונה ' +
+        'תוכלו להיכנס עם Apple בלחיצה אחת.' +
+        // §399ב — פעולה, לא הוראה: מי שלחץ על אפל עשה את זה כי הוא לא זוכר את הקוד.
+        '<button type="button" class="as-login-act" onclick="heroOpenForgotFromGoogle()">' +
+        'לא זוכרים את הקוד? שלחו לי קוד חדש למייל</button>' +
+        '<b>עדיין לא נרשמתם?</b> <a href="#" onclick="event.preventDefault();closeModal(\'loginOverlay\');openJoinModal();">הצטרפו כאן</a>',
+        // §407 — הענף היחיד שבו יש אדם אמיתי בלי שום דרך אחרת לזהות אותו.
+        data.email || '');
+      return;
+    }
+
+    fail(data.error || 'unknown', HERO_A_MSGS[data.error] || 'לא הצלחנו להתחבר. נסו שוב, או היכנסו עם הטלפון והקוד.');
+  } catch (e) {
+    // §353 — תשובה שמאחרת מעבר לסף הרך עדיין מכניסה.
+    if (heroIsTimeout(e)) {
+      pending.then(d => {
+        if (d && d.customToken) {
+          const late = heroRunAuth(d.customToken, (uid) => heroFinishLogin(uid, null));
+          late.settled.then(late.done, late.giveUp);
+        }
+      }).catch(() => {});
+      fail('fetchTimeout', 'החיבור איטי מהרגיל. השאירו את הדף פתוח עוד רגע — או היכנסו עם הטלפון והקוד.');
+    } else {
+      fail('error', 'לא הצלחנו להתחבר. בדקו את החיבור לאינטרנט, או היכנסו עם הטלפון והקוד.');
+    }
+  } finally {
+    heroAppleDone = true;
+    stopProgress();
+    release();
+  }
+}
+
+// ⚠️ **החשיפה הזאת היא מה שמחזיק את המעבר** — בדיוק כמו אצל גוגל שורה מעל. הרנדרר הקלאסי
+// מוסר את הטוקן ל-`hbAppleLoginCallback`, והוא מחפש את `window.heroAppleLogin` ברגע
+// הלחיצה. בלעדיה הכפתור נצבע ולא עושה כלום.
+window.heroAppleLogin = heroAppleLogin;
+
 // ══ §403 — לשקף מה קורה, כדי שלא יברח ═══════════════════════════════════════════════════
 // עד היום הכפתור אמר "בודק..." ואז, אחרי 8 שניות שלמות של אותה מילה, קפץ מסך שגיאה. שמונה
 // שניות של טקסט קפוא הן הרבה יותר מ**הרגשה** של שמונה שניות — אין שום סימן שמשהו עדיין
@@ -2905,7 +3412,11 @@ function heroProgress(setText, api, getStage) {
     const st = getStage && getStage();
     // §409 — שלב הקישור. ⚠️ הודעה משלו ולא "עוד רגע…": כאן קורה משהו שהאוהד לא ביקש
     // במפורש (חיבור החשבון), והשקיפות עליו היא מה שמחליף את הלחיצה שהוסרה.
+    // §446 — שלב נפרד לאפל ולא ערך משותף: הטקסט נוקב בשם הספק, ו"מחברים את חשבון
+    // ה-Google" על מי שלחץ על Apple הוא בדיוק סוג ההודעה שגורמת לאדם לחשוב שנכנס לחשבון
+    // הלא-נכון — במסך שבו זה החשש הסביר ביותר.
     const stage = st === 'link' ? 'מחברים את חשבון ה-Google ונכנסים…'
+                : st === 'linkApple' ? 'מחברים את חשבון ה-Apple ונכנסים…'
                 : st === 'auth' ? HERO_AUTH_PROGRESS
                 : (api && api.hops > 0) ? 'החיבור איטי — מנסים דרך אחרת…'
                 : (HB_PROGRESS.filter(p => ms >= p.at).pop() || {}).text || '';
