@@ -77,9 +77,38 @@
     } catch (e) { return false; }
   }
 
+  // ══ §451 — 🔴 באייפון אין Google, וההיגיון "יש תוסף ⇒ יש כפתור" נשבר כאן ═══════════════
+  //
+  // **מה שנמדד (22.9), ולא נחזה:** `npx cap add ios` הדפיס `Found 3 Capacitor plugins for
+  // ios`, וביניהם **`@capawesome/capacitor-google-sign-in`**. הוא יושב ב-`package.json`
+  // מאז אנדרואיד, ו-SPM אורז את **כל** התוספים לשתי הפלטפורמות — אין הפרדה לפי פלטפורמה.
+  // ב-Xcode זה נראה כחמש חבילות (`GoogleSignIn-iOS`, `AppAuth-iOS`, `GTMAppAuth`,
+  // `gtm-session-fetcher`, `app-check`) שנגררו לאפליקציה.
+  //
+  // 🔑 **ולכן `hasPlugin()` הופך לשקר:** עד היום "התוסף קיים" פירושו "מישהו התקין אותו
+  // בכוונה עבור המשטח הזה". באייפון הוא קיים **בלי שאיש בחר בו**, ו-`mode()` היה מחזיר
+  // `'native'` → כפתור Google מצויר באפליקציית האייפון. זה **סותר את החלטת המשתמש
+  // (22.9: "רק Apple וטלפון/קוד")** וגם **שבור בפועל** — אין OAuth client ל-iOS ואין
+  // URL scheme, כלומר לחיצה נגמרת בשגיאת תצורה.
+  //
+  // ⚠️ **והשער הוא `iOS` **וגם** `בתוך האפליקציה`, לא iOS לבדו.** אייפון בספארי הוא
+  // דפדפן רגיל לכל דבר — 88.2% מהאוהדים על Gmail (§370), וחסימה גורפת לפי מערכת-הפעלה
+  // הייתה מכבה את הכניסה עם גוגל לחצי מהקהל **בלי שאיש יבקש זאת**.
+  // ר' [[feedback_sweep_mechanism_not_reporter]] — הגזירה היא מהמנגנון, לא מהמכשיר.
+  function isIosApp() {
+    if (!inApp()) return false;
+    var c = bridge();
+    // `getPlatform` הוא ה-API הרשמי של הגשר. ⚠️ עטוף, ועם נפילה-לאחור ל-UA: גרסת-גשר
+    // שאין בה אותו הייתה מחזירה undefined ומחזירה בשקט את הכפתור השבור.
+    try {
+      if (c && typeof c.getPlatform === 'function') return c.getPlatform() === 'ios';
+    } catch (e) {}
+    return /iPad|iPhone|iPod/i.test((typeof navigator !== 'undefined' && navigator.userAgent) || '');
+  }
+
   function mode() {
     var c = bridge();
-    if (c && hasPlugin(c)) return 'native';
+    if (c && hasPlugin(c) && !isIosApp()) return 'native';
     return inApp() ? 'blocked' : 'web';
   }
 

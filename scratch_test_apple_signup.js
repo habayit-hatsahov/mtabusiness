@@ -46,6 +46,7 @@ const RESP = {
 // ── סביבה ────────────────────────────────────────────────────────────────────────────
 function makePage(hosts, opts) {
   opts = opts || {};
+  const nativeCalls = [];
   const body = hosts.map((k) =>
     '<div id="asHost' + k + '"></div>' +
     '<input id="firstName' + k + '"><input id="lastName' + k + '"><input id="email' + k + '">'
@@ -62,6 +63,14 @@ function makePage(hosts, opts) {
   if (opts.ua) Object.defineProperty(w.navigator, 'userAgent', { value: opts.ua, configurable: true });
   if (opts.capacitor) w.Capacitor = {};
   if (opts.nativeMode) w.YZNativeGoogle = { mode: () => opts.nativeMode };
+  // §450 — הגשר של אפל. ⚠️ **נעדר בכוונה כברירת מחדל**: כל הבדיקות שנכתבו לפניו חייבות
+  // להמשיך לתאר את ההתנהגות הקיימת, אחרת הנפילה-לאחור אינה נבדקת אלא מונחת.
+  if (opts.apple) {
+    w.YZNativeApple = {
+      mode: () => opts.apple.mode,
+      signIn: async (o) => { nativeCalls.push(o); return opts.apple.result; },
+    };
+  }
   let mode = 'first';
   // ⚠️ 🔑 **`noAppleId` אינו נוחות אלא תנאי למדידה.** `loadSdk` יוצאת מיד כשהספרייה כבר
   // קיימת — כלומר עם `AppleID` מוזרק, בדיקת "אפס בקשות ל-SDK" עוברת ירוק **גם אם הענף
@@ -73,6 +82,7 @@ function makePage(hosts, opts) {
   w.eval(SRC);
   return {
     w,
+    nativeCalls,
     setMode: (m) => { mode = m; },
     val: (k, f) => w.document.getElementById(f + k).value,
     locked: (k) => w.document.getElementById('email' + k).readOnly,
@@ -256,6 +266,178 @@ function makePage(hosts, opts) {
     check('אותו סף פסק-זמן (8 שניות)',
           /ATTACH_TIMEOUT_MS = 8000/.test(g) && /ATTACH_TIMEOUT_MS = 8000/.test(SRC));
     check('נחשף מיד ל-window, לא בתוך callback', /window\.hbAppleSignup = \{/.test(SRC));
+  }
+
+  // ══ §450 — המסלול הנייטיב (iOS) ═══════════════════════════════════════════════════════
+  const NATIVE_OK = {
+    ok: true,
+    idToken: fakeToken({ sub: 'a.9', email: 'Fan@Example.com', email_verified: 'true' }),
+    givenName: 'ישראל', familyName: 'ישראלי', user: 'a.9',
+  };
+  const F = { first: 'firstNameA', last: 'lastNameA', email: 'emailA' };
+  const initA = (p, extra) => p.w.hbAppleSignup.init(Object.assign({ hostId: 'asHostA', fields: F }, extra || {}));
+  const clickA = async (p) => { p.btn('A').dispatchEvent(new p.w.Event('click')); await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0)); };
+
+  console.log("\n== §450 — mode()='native': כפתור בלי SDK ==");
+  {
+    const p = makePage(['A'], { noAppleId: true, capacitor: true, nativeMode: 'blocked',
+                                apple: { mode: 'native', result: NATIVE_OK } });
+    initA(p);
+    check('המכל נחשף למרות שאנחנו באפליקציה', p.w.document.getElementById('asHostA').style.display === '');
+    check('🔑 אפס בקשות ל-SDK של אפל (42KB שלא שולמו)', p.sdkTags() === 0, p.sdkTags());
+    check('הכפתור מחובר למאזין', !!(p.btn('A') && p.btn('A')._hbBound));
+
+    await clickA(p);
+    check('נקראה YZNativeApple.signIn', p.nativeCalls.length === 1, JSON.stringify(p.nativeCalls));
+    check("נתבקש גם FULL_NAME (יש שדות שם למלא)",
+          JSON.stringify((p.nativeCalls[0] || {}).scopes) === JSON.stringify(['EMAIL', 'FULL_NAME']),
+          JSON.stringify(p.nativeCalls[0]));
+
+    // 🔑 זה הלב: התשובה הנייטיבית עברה דרך `onAuthorized` **האמיתי**, ולכן ירשה ממנו הכל.
+    check('המייל מולא', p.val('A', 'email') === 'fan@example.com', p.val('A', 'email'));
+    check('🔑 והונמך לאותיות קטנות (§437 — ירושה מנתיב ה-web)', p.val('A', 'email') === 'fan@example.com');
+    check('השם מולא משדות התוסף', p.val('A', 'firstName') === 'ישראל' && p.val('A', 'lastName') === 'ישראלי',
+          p.val('A', 'firstName') + '/' + p.val('A', 'lastName'));
+    check('שדה המייל ננעל', p.locked('A') === true);
+    check('הטוקן נשמר ל-attach', !!p.w.hbAppleSignup.token());
+  }
+
+  console.log('\n== §450 — 🔴 כתובת-ממסר נחסמת גם במסלול הנייטיב ==');
+  {
+    // ההחלטה מ-§423: "הסתר את המייל שלי" שובר את שער הקישור לנצח. נתיב נייטיב שהיה
+    // עוקף את `onAuthorized` היה מאבד את החסימה **בשקט**, וזה בדיוק כל הטעם בהמרה.
+    const relay = { ok: true, givenName: null, familyName: null,
+      idToken: fakeToken({ sub: 'a.9', email: 'zzz@privaterelay.appleid.com',
+                           email_verified: 'true', is_private_email: 'true' }) };
+    const p = makePage(['A'], { noAppleId: true, apple: { mode: 'native', result: relay } });
+    initA(p);
+    await clickA(p);
+    check('המייל לא מולא', p.val('A', 'email') === '', p.val('A', 'email'));
+    check('אין טוקן שמור', !p.w.hbAppleSignup.token());
+    check('הוצג הסבר ולא "משהו השתבש"', /הסתר|שיתוף|מייל/.test(p.cap('A')), p.cap('A'));
+  }
+
+  console.log('\n== §450 — כניסה חוזרת: אפל לא שולחת שם, והשדות לא נמחקים ==');
+  {
+    const p = makePage(['A'], { noAppleId: true,
+      apple: { mode: 'native', result: Object.assign({}, NATIVE_OK, { givenName: null, familyName: null }) } });
+    initA(p);
+    p.w.document.getElementById('firstNameA').value = 'רון';
+    p.w.document.getElementById('lastNameA').value = 'לוי';
+    await clickA(p);
+    check('🔑 שם שהנרשם מילא לא נדרס', p.val('A', 'firstName') === 'רון' && p.val('A', 'lastName') === 'לוי',
+          p.val('A', 'firstName') + '/' + p.val('A', 'lastName'));
+    check('המייל כן מולא', p.val('A', 'email') === 'fan@example.com');
+  }
+
+  console.log('\n== §450 — כשלים: ביטול שותק, שגיאה מדברת, שניהם נרשמים ==');
+  {
+    const logs = [];
+    const p = makePage(['A'], { noAppleId: true, apple: { mode: 'native', result: { ok: false, reason: 'canceled' } } });
+    initA(p, { log: (c) => logs.push(c) });
+    await clickA(p);
+    check('ביטול — אין הודעת שגיאה', !/השתבש/.test(p.cap('A')), p.cap('A'));
+    check('ביטול — כן נרשם (§439)', logs.includes('asNativeFail:canceled'), JSON.stringify(logs));
+    check('הכפתור שוחרר לניסיון נוסף', p.btn('A').disabled === false);
+  }
+  {
+    const logs = [];
+    const p = makePage(['A'], { noAppleId: true, apple: { mode: 'native', result: { ok: false, reason: 'error', detail: 'boom' } } });
+    initA(p, { log: (c) => logs.push(c) });
+    await clickA(p);
+    check('שגיאה — ההודעה מוצגת ומציעה מוצא', /השתבש/.test(p.cap('A')) && /ידנית/.test(p.cap('A')), p.cap('A'));
+    check('שגיאה — נרשמה', logs.includes('asNativeFail:error'), JSON.stringify(logs));
+  }
+
+  console.log('\n== §450 — 🔴 בלי native-apple.js ההתנהגות זהה לאתמול ==');
+  {
+    // זו שיטת ההפצה: דף בלי תגית ה-script חייב להתנהג **בדיוק** כמו לפני השינוי.
+    const p = makePage(['A'], { noAppleId: true, capacitor: true });   // אין opts.apple
+    initA(p);
+    check('באפליקציה, בלי הגשר → המכל מוסתר', p.w.document.getElementById('asHostA').style.display === 'none');
+    check('באפליקציה, בלי הגשר → אפס בקשות ל-SDK', p.sdkTags() === 0);
+    const p2 = makePage(['A'], { noAppleId: true });                   // דפדפן רגיל, אין גשר
+    initA(p2);
+    check('בדפדפן, בלי הגשר → ה-SDK מוזרק כרגיל', p2.sdkTags() === 1, p2.sdkTags());
+  }
+  {
+    // ⚠️ והמקרה ההפוך: הגשר קיים ואומר blocked → מוסתר, גם אם YZNativeGoogle אומר web.
+    const p = makePage(['A'], { noAppleId: true, nativeMode: 'web', apple: { mode: 'blocked' } });
+    initA(p);
+    check("🔑 YZNativeApple גובר על YZNativeGoogle (blocked מול web)",
+          p.w.document.getElementById('asHostA').style.display === 'none',
+          p.w.document.getElementById('asHostA').style.display);
+    check('ואפס בקשות ל-SDK', p.sdkTags() === 0);
+  }
+
+  console.log('\n== §450 — 🔴 התוסף שנרשם באיחור: הכפתור לא ננעל על "מוסתר" ==');
+  {
+    // התרחיש: `init` רצה לפני ש-Capacitor סיים לרשום את התוסף. עד §450 `blocked` היה
+    // מצב יציב; עכשיו הוא גם התשובה הזמנית של השנייה הראשונה.
+    let ready = false;
+    const p = makePage(['A'], { noAppleId: true });
+    p.w.YZNativeApple = {
+      mode: () => (ready ? 'native' : 'blocked'),
+      signIn: async (o) => { p.nativeCalls.push(o); return NATIVE_OK; },
+    };
+    initA(p);
+    check('בשנייה הראשונה — עדיין מוסתר', p.w.document.getElementById('asHostA').style.display === 'none');
+    ready = true;                                   // התוסף נרשם
+    await new Promise(r => setTimeout(r, 400));     // שתי חזרות של 150ms ועוד
+    check('🔑 אחרי שהתוסף נרשם — הכפתור מופיע',
+          p.w.document.getElementById('asHostA').style.display === '',
+          p.w.document.getElementById('asHostA').style.display);
+    check('ועדיין אפס בקשות ל-SDK', p.sdkTags() === 0, p.sdkTags());
+    await clickA(p);
+    check('והלחיצה הולכת לגשר', p.nativeCalls.length === 1, JSON.stringify(p.nativeCalls));
+  }
+  {
+    // ⚠️ בקרת-נגד: באנדרואיד התוסף **לעולם** לא יגיע — ההמתנה חייבת להיגמר בהסתרה.
+    const p = makePage(['A'], { noAppleId: true, apple: { mode: 'blocked' } });
+    initA(p);
+    await new Promise(r => setTimeout(r, 300));
+    check('תוסף שלא מגיע → נשאר מוסתר', p.w.document.getElementById('asHostA').style.display === 'none');
+    check('ואפס בקשות ל-SDK', p.sdkTags() === 0);
+  }
+  {
+    // 🔑 **ובלי המודול — ההכרעה מיידית, בלי שום המתנה.** זו ההתנהגות של אתמול.
+    const p = makePage(['A'], { noAppleId: true, capacitor: true });
+    initA(p);
+    check('בלי native-apple.js — מוסתר **מיד**, בלי המתנה',
+          p.w.document.getElementById('asHostA').style.display === 'none');
+  }
+
+  console.log('\n== §450 — תגית ה-script קיימת בדף שהודלק, וחסרה בשאר ==');
+  {
+    const tag = /<script src="native-apple\.js"><\/script>/;
+    const fan = fs.readFileSync(path.join(__dirname, 'fan-register.html'), 'utf8');
+    const biz = fs.readFileSync(path.join(__dirname, 'business.html'), 'utf8');
+    check('fan-register.html טוען את native-apple.js', tag.test(fan));
+    // ⚠️ **הסדר נבדק, לא רק הקיום:** apple-signup.js קורא ל-`window.YZNativeApple` —
+    // תגית שתבוא אחריו הייתה משאירה את המודול עם הנפילה-לאחור, בלי שום שגיאה.
+    //
+    // 🐛 **והניסיון הראשון כאן נכשל על הערה ולא על קוד:** `fan.indexOf('apple-signup.js')`
+    // מצא את **האזכור בתיאור** שמעל התגית (מיקום 1794) ולא את התגית עצמה, והכריז על
+    // סדר הפוך שאינו קיים. משווים **תגיות**, לא מחרוזות. ר' §421, אותה מלכודת.
+    // ⚠️ **§452 הפך את הבדיקה הזאת.** היא נכתבה ב-§450 כשהיא נעלה את ההפך —
+    // "business.html **עדיין לא** הודלק" — וזה היה נכון ליום שבו נכתבה. משהודלק, הבדיקה
+    // נכשלה **כמו שצריך**, וזה מה שמחזיק את הבדיקות מלתאר עולם שכבר לא קיים.
+    // ר' [[feedback_stale_action_item_may_be_harmful]] — אותו דפוס, רק שכאן הוא נתפס.
+    check('business.html טוען את native-apple.js', tag.test(biz));
+    [['fan-register.html', fan], ['business.html', biz]].forEach(([name, src]) => {
+      const iNative = src.indexOf('<script src="native-apple.js">');
+      const iSignup = src.indexOf('<script src="apple-signup.js">');
+      check('🔑 ' + name + ' — native-apple לפני apple-signup',
+            iNative > -1 && iSignup > -1 && iNative < iSignup, iNative + ' < ' + iSignup);
+    });
+
+    // 🔑 **ו-`welcome.html` נבדק כאן דווקא כי הוא **אינו** טוען את apple-signup.js.**
+    // הוא מריץ מסלול משלו (§446א), אבל הוא כן צריך את הגשר — ותגית חסרה שם הייתה
+    // משאירה את מסך ההתחברות בלי כפתור אפל באייפון, בשקט מוחלט.
+    const wel = fs.readFileSync(path.join(__dirname, 'welcome.html'), 'utf8');
+    check('welcome.html טוען את native-apple.js', tag.test(wel));
+    check('⚠️ ו**אינו** טוען את apple-signup.js (מסלול אחר, §446א)',
+          !/<script src="apple-signup\.js">/.test(wel));
   }
 
   console.log('\n' + (fail === 0 ? '✅ ' : '❌ ') + pass + '/' + (pass + fail) + ' עברו');

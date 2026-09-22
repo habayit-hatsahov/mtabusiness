@@ -74,6 +74,15 @@ function makeEnv(opts) {
   w.logEvent = (t, d) => { w.__events = w.__events || []; w.__events.push({ t, d }); };
   if (opts.capacitor) w.Capacitor = {};
   if (opts.nativeMode) w.YZNativeGoogle = { mode: () => opts.nativeMode };
+  // §452 — הגשר של אפל. **נעדר כברירת מחדל**: כל הבדיקות שנכתבו לפניו חייבות להמשיך
+  // לתאר את ההתנהגות הקיימת, אחרת הנפילה-לאחור אינה נבדקת אלא מונחת.
+  if (opts.apple) {
+    w.__nativeCalls = [];
+    w.YZNativeApple = {
+      mode: () => (typeof opts.apple.mode === "function" ? opts.apple.mode() : opts.apple.mode),
+      signIn: async (o) => { w.__nativeCalls.push(o); return opts.apple.result; },
+    };
+  }
   if (opts.appleId) w.AppleID = opts.appleId;
   // הבלוק הקלאסי מגדיר בעצמו כמה דברים גלובליים; מריצים אותו כמו שהוא.
   w.eval(CLASSIC);
@@ -240,8 +249,96 @@ console.log('\n── 6. 🔑 התור: לחיצה מוקדמת לא נבלעת 
     const ev = (w.__events || []).find(e => e.d && e.d.channel === 'moduleTimeout');
     check("נרשם loginFail עם channel 'moduleTimeout'", !!ev, JSON.stringify(w.__events));
     check('נפתח פאנל העזרה', w.__help === 'moduleTimeout', w.__help);
-    done();
+    nativeTests().then(done, (e) => { console.error(e); done(); });
   }, 700);
+}
+
+// ══ 8. §452 — המסלול הנייטיב (אפליקציית iOS) ═════════════════════════════════════════════
+//
+// 🔑 **מה שנבדק כאן הוא הגבול**, לא הכניסה עצמה: שהטוקן מהתוסף מגיע ל-`heroAppleLogin`
+// בדיוק כמו הטוקן מה-SDK. מה שקורה אחריו חי במודול (firebase) ונבדק בדפדפן.
+const NATIVE_OK = { ok: true, idToken: RAW_TOKEN };
+const tick = (ms) => new Promise(r => setTimeout(r, ms || 0));
+
+async function nativeTests() {
+  console.log('\n── 8. §452 — מצב נייטיב: כפתור בלי SDK ──────────────────');
+  {
+    // ⚠️ `capacitor:true` + **בלי** appleId — כלומר אם הענף הנייטיב לא ירוץ, הבדיקה
+    // תיפול על "אין כפתור" ולא תעבור בטעות.
+    const w = makeEnv({ capacitor: true, ua: 'Mozilla/5.0 (iPhone) YellowZoneApp',
+                        apple: { mode: 'native', result: NATIVE_OK } });
+    w.heroAppleLogin = (t) => { w.__got = t; };
+    w.hbRenderAppleLoginBtn();
+    check('המכל נחשף למרות שאנחנו באפליקציה', hostOf(w).style.display === 'flex', hostOf(w).style.display);
+    check('🔑 אפס בקשות ל-SDK של אפל', sdkTags(w) === 0, sdkTags(w));
+    check('הכפתור צויר', !!btnOf(w));
+    check('הכיתוב זהה לזה של הדפדפן', /Apple/.test((btnOf(w) || {}).textContent || ''));
+
+    btnOf(w).click();
+    await tick(); await tick();
+    check('נקראה YZNativeApple.signIn', (w.__nativeCalls || []).length === 1, JSON.stringify(w.__nativeCalls));
+    check("נתבקש EMAIL בלבד (מסך כניסה, אין שם למלא)",
+          JSON.stringify((w.__nativeCalls[0] || {}).scopes) === JSON.stringify(['EMAIL']),
+          JSON.stringify(w.__nativeCalls[0]));
+    check('🔑 הטוקן הגיע ל-heroAppleLogin — אותו יעד של מסלול ה-web', w.__got === RAW_TOKEN, w.__got);
+    check('אין הודעת שגיאה אחרי הצלחה', !msgOf(w).classList.contains('show'), msgOf(w).className);
+  }
+
+  console.log('\n── 8ב. ביטול שותק, שגיאה מדברת, שניהם נרשמים ────────────');
+  {
+    const w = makeEnv({ capacitor: true, apple: { mode: 'native', result: { ok: false, reason: 'canceled' } } });
+    w.heroAppleLogin = () => {};
+    w.hbRenderAppleLoginBtn();
+    btnOf(w).click();
+    await tick(); await tick();
+    check('ביטול — אין הודעה', !msgOf(w).classList.contains('show'), msgOf(w).textContent);
+    check('ביטול — ההערה הקבועה חזרה', noteOf(w).style.display === '', noteOf(w).style.display);
+    check('ביטול — כן נרשם (§439)',
+          (w.__events || []).some(e => e.d && e.d.channel === 'apple:native:canceled'), JSON.stringify(w.__events));
+    check('הכפתור שוחרר', btnOf(w).disabled === false);
+  }
+  {
+    const w = makeEnv({ capacitor: true, apple: { mode: 'native', result: { ok: false, reason: 'error', detail: 'boom' } } });
+    w.heroAppleLogin = () => {};
+    w.hbRenderAppleLoginBtn();
+    btnOf(w).click();
+    await tick(); await tick();
+    check('שגיאה — ההודעה מוצגת', msgOf(w).classList.contains('show'), msgOf(w).className);
+    check('שגיאה — מפנה לטלפון+קוד', /טלפון/.test(msgOf(w).textContent), msgOf(w).textContent);
+    check('שגיאה — נרשמה',
+          (w.__events || []).some(e => e.d && e.d.channel === 'apple:native:error'), JSON.stringify(w.__events));
+  }
+
+  console.log('\n── 8ג. 🔴 התוסף שנרשם באיחור ────────────────────────────');
+  {
+    let ready = false;
+    const w = makeEnv({ capacitor: true, ua: 'Mozilla/5.0 (iPhone) YellowZoneApp',
+                        apple: { mode: () => (ready ? 'native' : 'blocked'), result: NATIVE_OK } });
+    w.heroAppleLogin = (t) => { w.__got = t; };
+    w.hbRenderAppleLoginBtn();
+    // 🐛 **לא `=== none` אלא `!== flex`, וזה לא ריכוך.** `.as-login-host` מוסתר ב-**CSS**
+    // (`display:none` על המחלקה, welcome.html:1521), ולכן בזמן ההמתנה ה-style ה-inline
+    // נשאר ריק — והמכל בכל זאת מוסתר בפועל. השאלה שבאמת נבדקת היא **האם נחשף**.
+    check('בשנייה הראשונה — לא נחשף', hostOf(w).style.display !== 'flex', JSON.stringify(hostOf(w).style.display));
+    ready = true;
+    await tick(400);
+    check('🔑 אחרי שהתוסף נרשם — הכפתור מופיע', hostOf(w).style.display === 'flex', hostOf(w).style.display);
+    check('ועדיין אפס בקשות ל-SDK', sdkTags(w) === 0, sdkTags(w));
+  }
+  {
+    // בקרת-נגד: באנדרואיד התוסף לעולם לא יגיע, וההמתנה חייבת להיגמר בהסתרה.
+    const w = makeEnv({ capacitor: true, apple: { mode: 'blocked' } });
+    w.hbRenderAppleLoginBtn();
+    await tick(300);
+    check('תוסף שלא מגיע → לא נחשף לעולם', hostOf(w).style.display !== 'flex', JSON.stringify(hostOf(w).style.display));
+  }
+  {
+    // 🔑 **ובלי המודול — ההכרעה מיידית**, בדיוק ההתנהגות של §446ב.
+    const w = makeEnv({ capacitor: true });
+    w.hbRenderAppleLoginBtn();
+    check('בלי native-apple.js — מוסתר מיד', hostOf(w).style.display === 'none', hostOf(w).style.display);
+    check('ואפס בקשות ל-SDK', sdkTags(w) === 0, sdkTags(w));
+  }
 }
 
 // ── עזר: ממתין לסבב timer אחד ולא "מקווה" ──────────────────────────────────────────────

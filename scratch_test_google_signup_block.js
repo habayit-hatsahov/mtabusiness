@@ -39,7 +39,9 @@ function run(googleDraws) {
   const dom = makeDom(googleDraws);
   const logged = [];
   const box = { window: {}, document: dom.document, console: { warn(){}, error(){} },
+                navigator: { userAgent: '' },
                 setTimeout: (fn, ms) => { if (ms === 1500) fn(); return 0; }, clearTimeout(){} };
+  box.window.navigator = box.navigator;
   box.window.google = dom.google;
   box.google = dom.google;
   vm.createContext(box);
@@ -79,7 +81,9 @@ r = (function () {
   dom.google.accounts.id.renderButton = function () {};   // לא מצייר כלום
   const logged = [];
   const box = { window: {}, document: dom.document, console: { warn(){}, error(){} },
+                navigator: { userAgent: '' },
                 setTimeout: (fn, ms) => { if (ms === 1500) fn(); return 0; }, clearTimeout(){} };
+  box.window.navigator = box.navigator;
   box.window.google = dom.google; box.google = dom.google;
   vm.createContext(box); vm.runInContext(code, box);
   box.window.hbGoogleSignup.init({ hostId: 'gsHost', warnId: 'warn-email',
@@ -94,7 +98,9 @@ chk('והבלוק הוסתר', r.dom.nodes['gsHost'].style.display === 'none');
 r = (function () {
   const dom = makeDom(true);
   const box = { window: {}, document: dom.document, console: { warn(){}, error(){} },
+                navigator: { userAgent: '' },
                 setTimeout: (fn, ms) => { if (ms === 1500) fn(); return 0; }, clearTimeout(){} };
+  box.window.navigator = box.navigator;
   box.window.google = dom.google; box.google = dom.google;
   vm.createContext(box); vm.runInContext(code, box);
   let threw = null;

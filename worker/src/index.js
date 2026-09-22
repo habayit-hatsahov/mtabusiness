@@ -13,6 +13,7 @@ import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
 import { runBackfillThumbnails } from './backfill.js';
 import { runMigrateBizTokens } from './migrate-biz-tokens.js';
+import { runDeletionLogPurge, PURGE_CRON } from './purge.js';
 import { sendWebPush } from './push.js';
 import { sendFcmToMember } from './fcm.js';
 import { handleDownloadImage, handleViewImage } from './download.js';
@@ -147,7 +148,20 @@ export default {
     }
   },
 
+  // ══ §449 — שני טריגרים, ו-`event.cron` הוא מה שמבדיל ביניהם ═══════════════════════════
+  //
+  // 🔑 **גזירה מהטריגר ולא משעון פנימי.** החלופה הייתה לשמור "מתי רצתי לאחרונה" ב-KV
+  // ולבדוק בכל דקה — כלומר מצב שצריך לתחזק, שיכול להיתקע, ושכשל בו נראה בדיוק כמו
+  // "עדיין לא הגיע הזמן". Cloudflare כבר מוסרת את זה ב-`event.cron`.
+  //
+  // ⚠️ **ברירת המחדל היא התנהגות היום**: כל ערך שאינו הטריגר היומי מריץ את תור המיילים,
+  // ולכן שינוי או הסרה של ה-cron החדש אינם יכולים לשתק את המיילים. הכיוון ההפוך
+  // (ברירת מחדל = ניקוי) היה מריץ מחיקות כל דקה על ערך לא צפוי.
   async scheduled(event, env, ctx) {
+    if (event && event.cron === PURGE_CRON) {
+      ctx.waitUntil(runDeletionLogPurge(env));
+      return;
+    }
     ctx.waitUntil(runEmailSweeps(env));
   },
 };

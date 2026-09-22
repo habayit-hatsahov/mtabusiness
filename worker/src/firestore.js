@@ -64,6 +64,38 @@ export async function firestoreRunQuery(env, accessToken, collectionId, fieldPat
     .map((r) => ({ id: docIdFromName(r.document.name), fields: fieldsToObject(r.document.fields) }));
 }
 
+// ══ §449 — שאילתת טווח על שדה יחיד ═══════════════════════════════════════════════════════
+//
+// 🔑 **נוספה ולא הורחבה `firestoreRunQuery`:** זו פונקציה שקוראים לה היום מעשרות מקומות,
+// וכל שינוי בחתימה שלה הוא סיכון בכל אחד מהם. כאן צריך `LESS_THAN` על תאריך, וזה
+// מקרה-שימוש אחד בלבד (ניקוי יומן המחיקות).
+//
+// ⚠️ **`orderBy` על שדה האי-שוויון אינו קישוט** — Firestore דורש שה-orderBy הראשון יהיה
+// שדה האי-שוויון, אחרת השאילתה נדחית. ולכן אין כאן פרמטר מיון חופשי.
+// ⚠️ **ומסמך שאין בו את השדה כלל פשוט לא יוחזר** — זו התנהגות Firestore. במקרה שלנו
+// (`deletedAt`) זה דווקא הכיוון הבטוח: רשומה בלי תאריך לעולם לא תיבחר למחיקה.
+export async function firestoreRunRangeQuery(env, accessToken, collectionId, fieldPath, op, value, limit = 300) {
+  const resp = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}:runQuery`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId }],
+        where: {
+          fieldFilter: { field: { fieldPath }, op, value: toFirestoreValue(value) },
+        },
+        orderBy: [{ field: { fieldPath }, direction: 'ASCENDING' }],
+        limit,
+      },
+    }),
+  });
+  if (!resp.ok) throw new Error('firestore_range_query_failed: ' + (await resp.text()));
+  const rows = await resp.json();
+  return rows
+    .filter((r) => r.document)
+    .map((r) => ({ id: docIdFromName(r.document.name), fields: fieldsToObject(r.document.fields) }));
+}
+
 // שליפת מסמך בודד לפי path (למשל 'businesses/abc123') — מחזיר null אם לא קיים
 export async function firestoreGetDoc(env, accessToken, path) {
   const resp = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}/${path}`, {

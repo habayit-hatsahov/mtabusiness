@@ -32,6 +32,12 @@
 <!-- §435 — כניסה נייטיב עם Google באפליקציה. בלי defer: hbRenderGoogleLoginBtn קורא ל-mode()
      ברגע פתיחת המודאל, והקובץ חייב להתקיים לפני כן (§310/§312). -->
 <script src="native-google.js"></script>
+<!-- §452 — כניסה נייטיב עם Apple באפליקציית iOS. ⚠️ **בלי defer, מאותו נימוק בדיוק כמו
+     גוגל שורה מעל**: `hbRenderAppleLoginBtn` קוראת ל-`mode()` ברגע פתיחת המודאל, והקובץ
+     חייב להתקיים לפני כן (§310/§312/§425).
+     ⚠️ **ואין כאן תגית ל-SDK של אפל** — הוא נטען מתוך הדף עצמו ורק כשהמודאל נפתח (§430),
+     ובמסלול הנייטיב אינו נטען כלל. -->
+<script src="native-apple.js"></script>
 <script>
   // חבר עם session פעיל מוחבא עד שנדע בוודאות אם יש לו session תקף — כמו landing-demo.html הקיים
   // ?guest=1 — צפייה בדף הנחיתה כ"אורח" גם כשיש session תקף, בלי להתנתק.
@@ -750,6 +756,41 @@ async function hbAppleLoginClick() {
   }
 }
 
+// ══ §452 — אותה לחיצה, מקור-טוקן אחר ═══════════════════════════════════════════════════
+//
+// 🔑 **מסתיים באותה שורה בדיוק** — `hbAppleLoginCallback(idToken)`. מרגע שהטוקן ביד,
+// כל מה שקורה אחריו (התור למודול, `/apple-login`, `signInWithCustomToken`, ענף
+// כתובת-הממסר, ההודעות) **זהה לחלוטין** לזה של הדפדפן. אין כאן מסלול כניסה שני.
+//
+// ⚠️ **ואינו מאוחד עם `hbAppleLoginClick`, במכוון:** שם `AppleID.auth.signIn()` **זורק**
+// ולכן יש `try/catch`; כאן `YZNativeApple.signIn()` **לעולם אינו זורק** ומחזיר
+// `{ok, reason}`. `catch` סביב פונקציה שאינה זורקת הוא הגנה מדומה.
+//
+// ⚠️ `scopes: ['EMAIL']` בלבד — מסך כניסה, אין שדה שם למלא. מקביל ל-`scope:'email'`
+// שנמסר ל-`AppleID.auth.init` בענף ה-web.
+async function hbAppleLoginClickNative() {
+  var btn = document.querySelector('#asLoginBtnHost .hb-as-login-btn');
+  if (btn) btn.disabled = true;
+  // §439 — המתנה בלי חיווי נראית זהה לכישלון שקט. הגיליון של אפל נפתח מעל הדף, ולאחר
+  // סגירתו יש רגע שבו המסך נראה כאילו לא קרה כלום.
+  window.hbAsMsg('מתחבר…');
+  try {
+    var r = await window.YZNativeApple.signIn({ scopes: ['EMAIL'] });
+    if (r.ok) { window.hbAsMsg(''); hbAppleLoginCallback(r.idToken); return; }
+    // ⚠️ **גם ביטול נרשם** — ההבדל בין "התחרט" לבין "נכשל בשקט אחרי האישור" הוא כל
+    // האבחון, ובלעדיו שניהם נראים כמו מסך שחזר לעצמו. ר' §439.
+    window.logEvent && window.logEvent('loginFail', {
+      channel: ('apple:native:' + r.reason).slice(0, 50),
+      blockId: window._hbEnvTag,
+    });
+    if (r.reason === 'canceled') { window.hbAsMsg(''); return; }
+    console.warn('apple-login: כניסה נייטיב נכשלה —', r.reason, r.detail || '');
+    window.hbAsMsg('⚠️ משהו השתבש מול Apple. היכנסו עם הטלפון והקוד, או נסו שוב.', 'warn');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ⚠️ מצויר רק כשהמודאל נפתח, ומוסתר עד שהציור באמת הצליח — אותו כלל של בלוק גוגל:
 // כותרת/הערה בלי כפתור מעליהן גרועה מלא-להציע-אפל-בכלל.
 window.hbRenderAppleLoginBtn = function (tries) {
@@ -772,11 +813,46 @@ window.hbRenderAppleLoginBtn = function (tries) {
   // 🔗 **הפתרון האמיתי הוא מסלול נייטיב ולא תיקון של המסלול הזה** — תוסף Capacitor שמחזיר
   // `identityToken`, בדיוק כמו `native-google.js`. §426 — חסום עד שיהיה `app/ios`.
   // ⚠️ אותה נפילה-לאחור ל-UA כמו בענף של גוגל, למקרה ש-native-google.js לא נטען.
-  var ng = window.YZNativeGoogle;
-  var inApp = (ng && typeof ng.mode === 'function')
-    ? (ng.mode() !== 'web')
-    : !!(window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || ''));
-  if (inApp) { host.style.display = 'none'; return; }
+  // ══ §452 — וזה בדיוק המסלול הנייטיב שההערה למעלה חיכתה לו ════════════════════════════
+  //
+  // 🔑 **`native-apple.js` הוא שער-הרשות היחיד, ו"אין קובץ" = ההתנהגות של אתמול בדיוק.**
+  // הענף השני כאן הוא העתק מדויק של מה שהיה, ולכן דף בלי התגית לא השתנה כהוא-זה.
+  var na = window.YZNativeApple;
+  var aMode;
+  if (na && typeof na.mode === 'function') {
+    aMode = na.mode();
+  } else {
+    var ng = window.YZNativeGoogle;
+    var inApp = (ng && typeof ng.mode === 'function')
+      ? (ng.mode() !== 'web')
+      : !!(window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || ''));
+    aMode = inApp ? 'blocked' : 'web';
+  }
+
+  if (aMode === 'blocked') {
+    // 🔴 **המרוץ של §450ג, וכאן הוא יקר יותר.** `blocked` הוא גם התשובה של השנייה שלפני
+    // שהתוסף נרשם, והענף הזה **אינו קובע ניסיון נוסף** — כלומר הכרעה מוקדמת ננעלת לכל
+    // חיי הדף, דווקא על הכפתור שאפל **מחייבת**. ⚠️ אפס מחיר חזותי: המכל מוסתר ממילא.
+    // ⚠️ **ורק כשהמודול נטען** — בלעדיו ההכרעה מיידית, כמו אתמול.
+    if (na && tries < 40) { setTimeout(function () { window.hbRenderAppleLoginBtn(tries + 1); }, 150); return; }
+    host.style.display = 'none';
+    return;
+  }
+
+  if (aMode === 'native') {
+    // ⚠️ **אותו מרקאפ בדיוק** כמו בענף ה-web למטה — לא `renderButton` של המודול.
+    // מה שמתחלף הוא מי מטפל בלחיצה, ולא צורת הכפתור: מעבר בין דפדפן לאפליקציה שמשנה
+    // את המראה נקרא כשני רכיבים שונים.
+    // ⚠️ **ואין כאן `hbLoadAppleSdk()`** — 42KB לשרת של אפל שאין בהם שום צורך (§430).
+    btnHost.innerHTML =
+      '<button type="button" class="hb-as-login-btn">' +
+      HB_APPLE_LOGO + '<span>המשך עם Apple</span></button>';
+    var nbtn = btnHost.querySelector('.hb-as-login-btn');
+    if (nbtn) nbtn.addEventListener('click', hbAppleLoginClickNative);
+    host.style.display = 'flex';
+    window.hbSyncLoginBlocks();
+    return;
+  }
 
   if (!HB_APPLE_SERVICES_ID) {
     console.warn('apple-login: Services ID ריק — הבלוק לא יוצג');

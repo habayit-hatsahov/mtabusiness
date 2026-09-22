@@ -368,6 +368,57 @@
     return !!(window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || ''));
   }
 
+  // ══ §450 — והנה המסלול הנייטיב שההערה למעלה חיכתה לו ═══════════════════════════════════
+  //
+  // 🔑 **`native-apple.js` הוא שער-הרשות היחיד, ו"אין קובץ" פירושו ההתנהגות של אתמול
+  // בדיוק.** זה לא נימוס — זו שיטת ההפצה: דף שאין בו את תגית ה-script ממשיך להסתיר את
+  // הכפתור באפליקציה, כלומר אפשר להדליק דף אחד ולמדוד אותו לפני השאר.
+  // ר' [[feedback_staged_rollout]].
+  function appleMode() {
+    var na = window.YZNativeApple;
+    if (na && typeof na.mode === 'function') return na.mode();
+    return isInApp() ? 'blocked' : 'web';
+  }
+
+  // 🔑 **המרה לצורת ה-SDK של אפל, ולא נתיב-תשובה שני.**
+  // `onAuthorized` הוא הלב הנבדק של הקובץ: הוא מפענח את הטוקן, חוסם כתובת-ממסר,
+  // מנמיך את המייל לאותיות קטנות (§437), ממלא שדות וכותב את הכיתוב. **נתיב נייטיב
+  // שהיה עוקף אותו היה מאבד את כל אלה בשקט** — ובראשם חסימת הממסר, שהיא החלטת-מוצר
+  // ולא פרט מימוש. ר' [[feedback_merged_list_half_mechanism]].
+  //
+  // ⚠️ **`user` נבנה רק כשיש שם**, ולא כאובייקט ריק: `onAuthorized` גוזר `gotName`
+  // מהקיום בפועל, ומעטפת ריקה הייתה אומרת לו "קיבלנו שם" ומוחקת שדות שהנרשם מילא.
+  // ⚠️ **ואפל מוסרת שם רק בהרשאה הראשונה בחיים** — בכניסה חוזרת שני השדות `null`,
+  // וזה תקין ומטופל שם.
+  function fromNative(r) {
+    var out = { authorization: { id_token: r.idToken } };
+    if (r.givenName || r.familyName) {
+      out.user = { name: { firstName: r.givenName || '', lastName: r.familyName || '' } };
+    }
+    return out;
+  }
+
+  // ⚠️ מקביל ל-`onClick`, ובמכוון **אינו** מאוחד איתו: שם מקור הטוקן הוא
+  // `AppleID.auth.signIn()` שזורק, וכאן `YZNativeApple.signIn()` ש**לעולם אינו זורק**
+  // ומחזיר `{ok,reason}`. `try/catch` סביב פונקציה שאינה זורקת הוא הגנה מדומה.
+  async function onClickNative() {
+    var btn = part('.hb-as-btn');
+    if (btn) btn.disabled = true;
+    try {
+      // 'FULL_NAME' נדרש **כאן ולא במסך הכניסה**: זה טופס, ויש בו שדות שם למלא.
+      var r = await window.YZNativeApple.signIn({ scopes: ['EMAIL', 'FULL_NAME'] });
+      if (r.ok) { onAuthorized(fromNative(r)); return; }
+      // §439 — כשל נייטיב שנרשם רק בקונסול אינו קיים. **גם ביטול נרשם**, אחרת
+      // "התחרט" ו"נכשל בשקט אחרי האישור" נראים זהים לגמרי מהנתונים.
+      track(('asNativeFail:' + r.reason).slice(0, 50));
+      if (r.reason === 'canceled') return;     // הוא החליט, אין מה לומר לו
+      console.warn('apple-signup: כניסה נייטיב נכשלה —', r.reason, r.detail || '');
+      setCap('⚠️ משהו השתבש מול Apple. אפשר פשוט למלא את הטופס ידנית.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   // ⚠️ הספרייה של אפל נטענת async, ולכן ההמתנה. אם היא לא הגיעה — **הבלוק כולו נשאר
   // מוסתר**, בדיוק כמו אצל גוגל: כפתור שבור גרוע מאין-כפתור. אבל כן נרשמת אזהרה
   // בקונסול — כישלון שקט לגמרי הוא בדיוק מה שהסתיר את §357.
@@ -382,7 +433,41 @@
     // ⚠️ **ובלי `track('asBlocked')`, בכוונה** — בדיוק כמו בענף המקביל ב-`google-signup.js`:
     // הערוץ ההוא מודד "ה-SDK לא נטען / init נכשל", וגרסת-אפליקציה היא סיבה אחרת לגמרי
     // עם תיקון אחר. מיזוג השניים היה הופך את המונה לחסר-משמעות.
-    if (isInApp()) { host.style.display = 'none'; return; }
+    // §450 — שלושה מצבים במקום שניים. ⚠️ **הסדר חשוב:** `blocked` יוצא ראשון, ו-`native`
+    // חוזר **לפני** `loadSdk()` — שני המסלולים האלה אינם משלמים 42KB לשרת של אפל.
+    var mode = appleMode();
+
+    // ══ 🔴 המרוץ שבלעדיו הכפתור נעלם באייפון לתמיד ═════════════════════════════════════
+    //
+    // `blocked` פירושו "אנחנו באפליקציה **ואין תוסף**". עד §450 זה היה מצב יציב — לא היה
+    // תוסף אפל בשום גרסה. **מהרגע שיש, זו גם התשובה שמתקבלת שנייה לפני שהתוסף נרשם.**
+    //
+    // ⚠️ **ו-`render` מכריעה פעם אחת:** ענף `blocked` מסתיר ו**אינו קובע ניסיון נוסף**,
+    // בניגוד להמתנה ל-SDK שלמטה. כלומר הכרעה מוקדמת ננעלת לכל חיי הדף — ודווקא על
+    // הכפתור שאפל **מחייבת** שיהיה. זה בדיוק הדפוס של §431 ("החלון המת"): המדידה
+    // מתרחשת לפני שהמנגנון קיים.
+    //
+    // 🔑 **ולכן ממתינים, ורק אז מוותרים.** ⚠️ אין לזה מחיר חזותי: `init` כבר הסתיר את
+    // המכל, כלומר שום דבר לא מהבהב — מה שמתעכב הוא ההכרעה, לא התצוגה.
+    // ⚠️ **רק כשהמודול נטען**: בלעדיו `blocked` נגזר מה-UA, וזו ההתנהגות של אתמול
+    // שחייבת להישאר מיידית וזהה. ר' [[feedback_state_not_event_detection]].
+    if (mode === 'blocked' && window.YZNativeApple && tries < 40) {
+      setTimeout(function () { render(tries + 1); }, 150);
+      return;
+    }
+    if (mode === 'blocked') { host.style.display = 'none'; return; }
+
+    if (mode === 'native') {
+      // 🔑 **הכפתור כבר קיים** — `buildBlock` בנה אותו ב-`init`, והוא זהה לזה של ה-web.
+      // ולכן אין כאן `renderButton` ואין מרקאפ שני: מה שמתחלף הוא **מי מטפל בלחיצה**.
+      // ציור מחדש היה דורס את `.hb-as-cap`, ואיתו את כל הכיתובים ש-`onAuthorized` כותב.
+      var nbtn = part('.hb-as-btn');
+      if (nbtn && !nbtn._hbBound) { nbtn.addEventListener('click', onClickNative); nbtn._hbBound = true; }
+      setCap(defaultCap());
+      host.style.display = '';
+      track('asShown');
+      return;
+    }
 
     // 🔲 בלי Services ID אין מה לצייר, וזה המצב עד שחשבון המפתחים יאושר.
     // ⚠️ `cfg.clientId` קיים כדי שהדמו (ובהמשך, אם נרצה, דף מסוים) יוכל להזין מזהה
