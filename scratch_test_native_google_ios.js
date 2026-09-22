@@ -1,12 +1,17 @@
-// ══ §451 — בדיקות לשער ה-iOS ב-native-google.js ══════════════════════════════════════════
+// ══ §453 — בדיקות לכניסה עם Google באפליקציית iOS ════════════════════════════════════════
 //
-// 🔑 **מריץ את `native-google.js` האמיתי** בתוך jsdom, מול גשר Capacitor מדומה.
-// הרקע: `npx cap add ios` (22.9) אישר שתוסף Google **נארז לאייפון** — הוא ב-`package.json`
-// מאז אנדרואיד, ו-SPM אינו מפריד לפי פלטפורמה. כלומר `hasPlugin()` אמת באייפון **בלי
-// שאיש בחר בזה**, וה-mode היה מחזיר 'native'.
+// 🔑 **הקובץ הזה נולד ב-§451 כדי לנעול את ההפך** — ששום כפתור Google לא יוצג באייפון.
+// §453 הפך את ההחלטה (נוצר iOS OAuth client), ולכן הבדיקות הפוכות. **מה שנשאר זהה הוא
+// הדבר היחיד שבאמת מסוכן כאן: התצורה.**
 //
-// 🔴 **מה שהבדיקה הזאת שומרת עליו יותר מכל:** שאייפון **בספארי** ימשיך לקבל 'web'.
-// חסימה לפי מערכת-הפעלה בלבד הייתה מכבה את הכניסה עם גוגל לכל גולשי האייפון באתר.
+// 🔴 **הסיכון שהקובץ הזה קיים בשבילו:** ב-iOS יש **שני** מזהים שונים —
+//   · `GIDClientID` + URL scheme ב-`Info.plist` = ה-**iOS client**
+//   · `initialize()` ב-`native-google.js`       = ה-**web client** (וגם ה-aud שהוורקר מאמת)
+// החלפה ביניהם, או תו אחד שגוי ב-scheme ההפוך, **אינה נראית כשגיאת תצורה**: הבורר
+// הנייטיב כן נפתח, והכשל מגיע רק אחרי בחירת החשבון. זה בדיוק §439 (ה-SHA-1) בלבוש אחר,
+// והוא עלה שם שעות. ר' [[feedback_absence_of_evidence]].
+//
+// ⚠️ **מה שלא ניתן לבדוק כאן:** שהמזהים באמת רשומים אצל Google, ושהזרימה עובדת על מכשיר.
 //
 // הרצה:  node scratch_test_native_google_ios.js
 
@@ -15,6 +20,7 @@ const path = require('path');
 const { JSDOM } = require(path.join(__dirname, 'tests', 'node_modules', 'jsdom'));
 
 const SRC = fs.readFileSync(path.join(__dirname, 'native-google.js'), 'utf8');
+const PLIST = fs.readFileSync(path.join(__dirname, 'app', 'ios', 'App', 'App', 'Info.plist'), 'utf8');
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {
@@ -22,24 +28,19 @@ function check(name, cond, detail) {
   else { fail++; console.log('  ✗ ' + name + (detail !== undefined ? '  — ' + detail : '')); }
 }
 
-// opts: { ua, plugin, platform (getPlatform), noGetPlatform }
 function build(opts) {
   opts = opts || {};
   const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'dangerously' });
   const w = dom.window;
   Object.defineProperty(w.navigator, 'userAgent', { value: opts.ua || 'Mozilla/5.0', configurable: true });
-
   if (opts.bridge) {
-    const cap = {
+    w.Capacitor = {
       nativePromise: () => Promise.resolve({}),
       Plugins: opts.plugin ? { GoogleSignIn: {} } : {},
       isPluginAvailable: (n) => !!opts.plugin && n === 'GoogleSignIn',
+      getPlatform: () => opts.platform || 'android',
     };
-    // ⚠️ ניתן להשמיט את getPlatform בכוונה — כדי לבדוק את הנפילה-לאחור ל-UA.
-    if (!opts.noGetPlatform) cap.getPlatform = () => opts.platform || 'android';
-    w.Capacitor = cap;
   }
-
   const s = w.document.createElement('script');
   s.textContent = SRC;
   w.document.head.appendChild(s);
@@ -49,19 +50,18 @@ function build(opts) {
 const UA_IPHONE_APP = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) YellowZoneApp';
 const UA_IPHONE_SAFARI = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605 Safari/604';
 const UA_ANDROID_APP = 'Mozilla/5.0 (Linux; Android 14) YellowZoneApp';
-const UA_DESKTOP = 'Mozilla/5.0 (Windows NT 10.0; Win64) Chrome/140';
 
-console.log('\n── 1. 🔴 אייפון: אפליקציה מול ספארי ──');
+console.log('\n── 1. §453 — אייפון מקבל Google, וספארי לא נפגע ──');
 {
   const iosApp = build({ ua: UA_IPHONE_APP, bridge: true, plugin: true, platform: 'ios' });
-  check("אפליקציית אייפון + תוסף → 'blocked' (אין כפתור Google)", iosApp.mode() === 'blocked', iosApp.mode());
+  check("אפליקציית אייפון + תוסף → 'native'", iosApp.mode() === 'native', iosApp.mode());
 
-  // 🔴 זו הבדיקה שמגינה על 88.2% מהאוהדים.
+  // 🔴 הבדיקה ששמרה עלינו ב-§451 וממשיכה לשמור: אייפון בספארי הוא דפדפן רגיל.
   const iosSafari = build({ ua: UA_IPHONE_SAFARI });
-  check("🔑 אייפון בספארי → 'web' (הכפתור נשאר!)", iosSafari.mode() === 'web', iosSafari.mode());
+  check("אייפון בספארי → 'web' (ה-SDK הרגיל)", iosSafari.mode() === 'web', iosSafari.mode());
 }
 
-console.log('\n── 2. אנדרואיד לא נפגע ──');
+console.log('\n── 2. אנדרואיד לא נגע ──');
 {
   const androidApp = build({ ua: UA_ANDROID_APP, bridge: true, plugin: true, platform: 'android' });
   check("אפליקציית אנדרואיד + תוסף → 'native'", androidApp.mode() === 'native', androidApp.mode());
@@ -69,59 +69,55 @@ console.log('\n── 2. אנדרואיד לא נפגע ──');
   const androidOld = build({ ua: UA_ANDROID_APP, bridge: true, plugin: false, platform: 'android' });
   check("אנדרואיד בלי תוסף (גרסה 1.0) → 'blocked'", androidOld.mode() === 'blocked', androidOld.mode());
 
-  const desktop = build({ ua: UA_DESKTOP });
+  const desktop = build({ ua: 'Mozilla/5.0 (Windows NT 10.0) Chrome/140' });
   check("דפדפן רגיל → 'web'", desktop.mode() === 'web', desktop.mode());
 }
 
-console.log('\n── 3. הנפילה-לאחור כשאין getPlatform בגשר ──');
-{
-  // גרסת-גשר ישנה. בלי הנפילה-לאחור `getPlatform` היה undefined והכפתור השבור היה חוזר.
-  const iosNoApi = build({ ua: UA_IPHONE_APP, bridge: true, plugin: true, noGetPlatform: true });
-  check("אייפון בלי getPlatform → עדיין 'blocked' (זוהה מה-UA)", iosNoApi.mode() === 'blocked', iosNoApi.mode());
-
-  const androidNoApi = build({ ua: UA_ANDROID_APP, bridge: true, plugin: true, noGetPlatform: true });
-  check("אנדרואיד בלי getPlatform → עדיין 'native'", androidNoApi.mode() === 'native', androidNoApi.mode());
-}
-
-console.log('\n── 4. getPlatform גובר על ה-UA ──');
-{
-  // ⚠️ iPad מדווח לפעמים UA של מק. הגשר הוא מקור-האמת כשהוא קיים.
-  const ipadDesktopUa = build({
-    ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) YellowZoneApp',
-    bridge: true, plugin: true, platform: 'ios',
-  });
-  check("UA של מק אבל getPlatform='ios' → 'blocked'", ipadDesktopUa.mode() === 'blocked', ipadDesktopUa.mode());
-}
-
-console.log('\n── 5. inApp/surface לא השתנו ──');
-{
-  // ⚠️ `welcome.html` ו-`apple-signup.js` גוזרים "בתוך אפליקציה" מ-`mode() !== 'web'`.
-  // אם השער היה מחזיר 'web' באייפון, **כפתור אפל של ה-web היה חוזר לאפליקציה** —
-  // כלומר הדף הלבן של §434. 'blocked' הוא מה ששומר על הגזירה הזאת.
-  const iosApp = build({ ua: UA_IPHONE_APP, bridge: true, plugin: true, platform: 'ios' });
-  check("🔑 mode() !== 'web' — הגוזרים ממשיכים לזהות אפליקציה", iosApp.mode() !== 'web', iosApp.mode());
-  check('inApp() עדיין true', iosApp.inApp() === true);
-  check("surface() עדיין 'app'", iosApp.surface() === 'app', iosApp.surface());
-}
-
-console.log('\n── 6. ההחלטה מתועדת בקוד ולא רק בתיעוד ──');
+console.log('\n── 3. השער של §451 אכן הוסר ולא רוכך ──');
 {
   const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-  check('isIosApp קיימת בקוד', /function isIosApp\(\)/.test(CODE));
-  check('mode משתמשת בה', /!isIosApp\(\)/.test(CODE));
-  check('getPlatform נקראת דרך typeof (לא גישה עיוורת)', /typeof c\.getPlatform === 'function'/.test(CODE));
+  check('אין יותר isIosApp בקוד', !/isIosApp/.test(CODE));
+  check('mode() פשוטה: hasPlugin בלבד', /if \(c && hasPlugin\(c\)\) return 'native';/.test(CODE));
+  check('ההיסטוריה כן תועדה (§451/§453 בהערות)', /§451/.test(SRC) && /§453/.test(SRC));
+}
 
-  // ⚠️ 🔑 **הבהרה שנקנתה בשבירה מכוונת, ולא הנחה:** הוצאת `if (!inApp()) return false;`
-  // מתוך `isIosApp` **אינה מפילה אף בדיקה כאן** — כי `mode()` קוראת לה רק אחרי
-  // `c && hasPlugin(c)`, ובאייפון בספארי אין גשר ולכן היא לא נקראת בכלל.
-  //
-  // כלומר **ההגנה על ספארי מגיעה ממבנה `mode()` ולא מהשורה ההיא.** השורה נשארת כדי
-  // שהפונקציה תהיה נכונה **בשם שלה** — `isIosApp` שמחזירה true לאייפון בספארי היא
-  // מלכודת לכל קורא עתידי. הבדיקה למטה נועלת את שני החלקים בנפרד.
-  check('🔑 ההגנה על ספארי היא במבנה mode(): hasPlugin נבדקת לפני isIosApp',
-        /hasPlugin\(c\)\s*&&\s*!isIosApp\(\)/.test(CODE), 'הסדר ב-mode()');
-  check('ו-isIosApp נכונה גם לבדה (שער inApp בתוכה)',
-        /function isIosApp\(\)\s*\{\s*if \(!inApp\(\)\) return false;/.test(CODE));
+// ══ 4. 🔴 נעילת התצורה — זה הלב של הקובץ ═════════════════════════════════════════════════
+console.log('\n── 4. 🔴 שלושת המזהים נעולים זה לזה ──');
+{
+  const gid = (PLIST.match(/<key>GIDClientID<\/key>\s*<string>([^<]+)<\/string>/) || [])[1];
+  const scheme = (PLIST.match(/<string>(com\.googleusercontent\.apps\.[^<]+)<\/string>/) || [])[1];
+  const webId = (SRC.match(/var CLIENT_ID = '([^']+)'/) || [])[1];
+
+  check('GIDClientID קיים ב-Info.plist', !!gid, gid);
+  check('URL scheme קיים ב-Info.plist', !!scheme, scheme);
+  check('CLIENT_ID קיים ב-native-google.js', !!webId, webId && webId.slice(0, 22) + '…');
+
+  // ⚠️ **ה-scheme הוא ה-id ההפוך.** תו אחד שגוי והבורר ייפתח ויתפוצץ אחרי בחירת החשבון.
+  const expected = 'com.googleusercontent.apps.' + String(gid).replace('.apps.googleusercontent.com', '');
+  check('🔑 ה-URL scheme הוא בדיוק ה-GIDClientID ההפוך', scheme === expected, scheme + '\n     צפוי: ' + expected);
+
+  // 🔴 **ואסור שיהיו זהים.** החלפה ביניהם היא הטעות הקלה ביותר לעשות וקשה ביותר לאבחן.
+  check('🔴 ה-web client שונה מה-iOS client', !!webId && !!gid && webId !== gid);
+  check('web client מסתיים ב-.apps.googleusercontent.com', /\.apps\.googleusercontent\.com$/.test(webId || ''));
+
+  // שניהם חייבים לשבת באותו פרויקט — הקידומת היא מספר הפרויקט.
+  const proj = (s) => String(s).split('-')[0];
+  check('🔑 שני המזהים מאותו פרויקט (אותה קידומת)', proj(webId) === proj(gid),
+        proj(webId) + ' מול ' + proj(gid));
+
+  // ⚠️ עוגן מפורש: אם מספר הפרויקט ישתנה אי-פעם, שיישבר כאן ולא על מכשיר.
+  check('מספר הפרויקט הוא 459607487972', proj(gid) === '459607487972', proj(gid));
+}
+
+console.log('\n── 5. Info.plist תקין מבנית ──');
+{
+  check('CFBundleURLTypes קיים', /<key>CFBundleURLTypes<\/key>/.test(PLIST));
+  check('CFBundleURLSchemes בתוכו', /<key>CFBundleURLSchemes<\/key>/.test(PLIST));
+  // ⚠️ plist פגום אינו נכשל בבנייה — הוא פשוט מתעלם מהמפתח. ספירת תגיות היא הגלאי הזול.
+  const open = (PLIST.match(/<dict>/g) || []).length, close = (PLIST.match(/<\/dict>/g) || []).length;
+  check('מאזן תגיות <dict>', open === close, open + ' פתוחות מול ' + close + ' סגורות');
+  const aOpen = (PLIST.match(/<array>/g) || []).length, aClose = (PLIST.match(/<\/array>/g) || []).length;
+  check('מאזן תגיות <array>', aOpen === aClose, aOpen + ' מול ' + aClose);
 }
 
 console.log('\n' + '─'.repeat(60));

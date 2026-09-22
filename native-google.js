@@ -77,38 +77,30 @@
     } catch (e) { return false; }
   }
 
-  // ══ §451 — 🔴 באייפון אין Google, וההיגיון "יש תוסף ⇒ יש כפתור" נשבר כאן ═══════════════
+  // ══ §453 — השער של §451 הוסר, ואייפון חזר לקבל Google ═════════════════════════════════
   //
-  // **מה שנמדד (22.9), ולא נחזה:** `npx cap add ios` הדפיס `Found 3 Capacitor plugins for
-  // ios`, וביניהם **`@capawesome/capacitor-google-sign-in`**. הוא יושב ב-`package.json`
-  // מאז אנדרואיד, ו-SPM אורז את **כל** התוספים לשתי הפלטפורמות — אין הפרדה לפי פלטפורמה.
-  // ב-Xcode זה נראה כחמש חבילות (`GoogleSignIn-iOS`, `AppAuth-iOS`, `GTMAppAuth`,
-  // `gtm-session-fetcher`, `app-check`) שנגררו לאפליקציה.
+  // **מה ש-§451 חסם, ולמה:** `npx cap add ios` הדפיס `Found 3 Capacitor plugins for ios`
+  // וביניהם `@capawesome/capacitor-google-sign-in` — SPM אורז את **כל** התוספים לשתי
+  // הפלטפורמות, ואין הפרדה לפי פלטפורמה. כלומר `hasPlugin()` חדל לענות על השאלה "האם
+  // מישהו בחר בזה עבור המשטח הזה", ו-`mode()` היה מחזיר `'native'` על כפתור **שבור**:
+  // לא היה iOS client ולא URL scheme, והלחיצה הייתה נגמרת בשגיאת תצורה.
   //
-  // 🔑 **ולכן `hasPlugin()` הופך לשקר:** עד היום "התוסף קיים" פירושו "מישהו התקין אותו
-  // בכוונה עבור המשטח הזה". באייפון הוא קיים **בלי שאיש בחר בו**, ו-`mode()` היה מחזיר
-  // `'native'` → כפתור Google מצויר באפליקציית האייפון. זה **סותר את החלטת המשתמש
-  // (22.9: "רק Apple וטלפון/קוד")** וגם **שבור בפועל** — אין OAuth client ל-iOS ואין
-  // URL scheme, כלומר לחיצה נגמרת בשגיאת תצורה.
+  // 🔑 **ומה שהשתנה ב-§453: הכפתור כבר אינו שבור.** נוצר iOS OAuth client (22.9.2026),
+  // ו-`Info.plist` מחזיק `GIDClientID` ו-URL scheme. **הסיבה לחסימה התאדתה, ולכן השער
+  // נמחק ולא רוכך** — תנאי שאיבד את נימוקו הוא קוד יתום שמישהו יצטרך לפענח בעוד חודשיים,
+  // והפעם הנימוק כתוב כאן. ר' §447ז.
   //
-  // ⚠️ **והשער הוא `iOS` **וגם** `בתוך האפליקציה`, לא iOS לבדו.** אייפון בספארי הוא
-  // דפדפן רגיל לכל דבר — 88.2% מהאוהדים על Gmail (§370), וחסימה גורפת לפי מערכת-הפעלה
-  // הייתה מכבה את הכניסה עם גוגל לחצי מהקהל **בלי שאיש יבקש זאת**.
-  // ר' [[feedback_sweep_mechanism_not_reporter]] — הגזירה היא מהמנגנון, לא מהמכשיר.
-  function isIosApp() {
-    if (!inApp()) return false;
-    var c = bridge();
-    // `getPlatform` הוא ה-API הרשמי של הגשר. ⚠️ עטוף, ועם נפילה-לאחור ל-UA: גרסת-גשר
-    // שאין בה אותו הייתה מחזירה undefined ומחזירה בשקט את הכפתור השבור.
-    try {
-      if (c && typeof c.getPlatform === 'function') return c.getPlatform() === 'ios';
-    } catch (e) {}
-    return /iPad|iPhone|iPod/i.test((typeof navigator !== 'undefined' && navigator.userAgent) || '');
-  }
-
+  // ⚠️ **ומה שנשאר נכון מ-§451, והוא הדבר הקל ביותר לשבור:** `CLIENT_ID` שלמטה הוא
+  // ה-**web client**, ואסור להחליף אותו ב-iOS client. הוא זה שנמסר ל-`initialize()`,
+  // והוא ה-`aud` שהוורקר מאמת — **בשתי הפלטפורמות**. מזהה ה-iOS חי **רק** ב-`Info.plist`.
+  //
+  // ⚠️ **ואין כאן עוד הגנה מפני build לא-מוגדר:** באנדרואיד גרסה 1.0 פשוט לא נשאה את
+  // התוסף ולכן קיבלה `blocked`, כלומר הגרסה עצמה הייתה השער. באייפון התוסף **תמיד** ארוז,
+  // ולכן build עם `Info.plist` חסר יציג כפתור. הוא ייפול ל-`PROVIDER_CONFIGURATION_ERROR`
+  // שמתורגם להודעה בעברית — לא למסך מת, אבל גם לא לכניסה.
   function mode() {
     var c = bridge();
-    if (c && hasPlugin(c) && !isIosApp()) return 'native';
+    if (c && hasPlugin(c)) return 'native';
     return inApp() ? 'blocked' : 'web';
   }
 
