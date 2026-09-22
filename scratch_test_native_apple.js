@@ -179,68 +179,27 @@ console.log('\n── 9. התוסף חסר → unavailable, בלי זריקה �
   check("reason 'unavailable'", r.ok === false && r.reason === 'unavailable', JSON.stringify(r));
 }
 
-console.log('\n── 10. הכפתור — ציור, הצלחה, ושתיקה על ביטול ──');
+console.log('\n── 10. 🗑️ §454 — הקובץ הוא גשר, לא רכיב ממשק ──');
 {
+  // ⚠️ **הבדיקות שהיו כאן בדקו `renderButton`, והיא נמחקה** — לשלושת המשטחים יש
+  // מרקאפ כפתור משלהם, ולכן היא לא הייתה "עוד לא בשימוש" אלא "לעולם לא תהיה" (§450/§452).
+  // מה שהחליף אותן הוא נעילה על **משטח ה-API**: פונקציה חדשה שתיווסף כאן בלי סיבה
+  // תישבר, וכך גם מרקאפ/CSS שיחזרו פנימה. ר' §447ז.
   const t = build({ plugin: true, onSignIn: () => REAL_RESULT });
-  const host = t.win.document.getElementById('host');
-  let got = null;
-  t.api.renderButton(host, { onToken: (r) => { got = r; } });
-  check('הכפתור צויר לתוך ה-host', host.childElementCount > 0, String(host.childElementCount));
+  const keys = Object.keys(t.api).sort();
+  check('משטח ה-API הוא בדיוק mode/inApp/signIn',
+        JSON.stringify(keys) === JSON.stringify(['inApp', 'mode', 'signIn']), JSON.stringify(keys));
+  check('🗑️ renderButton אינה קיימת', t.api.renderButton === undefined);
 
-  const btn = host.querySelector('.yz-na-btn');
-  check('טקסט ברירת המחדל', btn && /Apple/.test(btn.textContent), btn && btn.textContent);
-  check('לוגו אפל קיים', !!(btn && btn.querySelector('svg')));
-
-  btn.dispatchEvent(new t.win.Event('click'));
-  await tick(); await tick();
-  check('onToken קיבל את הטוקן', got && got.idToken === REAL_RESULT.idToken, JSON.stringify(got));
-  check('אין הודעת שגיאה אחרי הצלחה',
-    !host.querySelector('.yz-na-msg').classList.contains('show'));
+  const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  check('אין מרקאפ בקוד (createElement)', !/createElement/.test(CODE));
+  check('אין CSS בקוד (yz-na)', !/yz-na/.test(CODE));
+  check('אין הזרקת style', !/injectStyle|<style/.test(CODE));
+  // 🔑 והרישום של loginFail ירד יחד איתה — הוא כבר היה אצל שני הקוראים.
+  check('אין logEvent בקובץ (הרישום אצל הקוראים)', !/logEvent/.test(CODE));
+  // ⚠️ אבל הסיפור כן נשאר, אחרת הקורא הבא יוסיף אותה מחדש.
+  check('ההיסטוריה תועדה (§454 בהערות)', /§454/.test(SRC) && /renderButton/.test(SRC));
 }
-{
-  const t = build({ plugin: true, onSignIn: () => { throw { code: 'SIGN_IN_CANCELED' }; } });
-  const host = t.win.document.getElementById('host');
-  t.api.renderButton(host, { onToken: () => {} });
-  host.querySelector('.yz-na-btn').dispatchEvent(new t.win.Event('click'));
-  await tick(); await tick();
-  check('ביטול — אין הודעה למשתמש',
-    !host.querySelector('.yz-na-msg').classList.contains('show'));
-  // §439 — אבל **כן** נרשם, אחרת אי-אפשר להבדיל בין "התחרט" ל"נכשל בשקט".
-  check('ביטול — כן נרשם ב-loginFail',
-    t.events.some(e => e.name === 'loginFail' && e.data.channel === 'apple:native:canceled'),
-    JSON.stringify(t.events));
-}
-{
-  const t = build({ plugin: true, onSignIn: () => { throw { code: 'ODD', message: 'boom' }; } });
-  const host = t.win.document.getElementById('host');
-  t.api.renderButton(host, { onToken: () => {} });
-  host.querySelector('.yz-na-btn').dispatchEvent(new t.win.Event('click'));
-  await tick(); await tick();
-  const msg = host.querySelector('.yz-na-msg');
-  check('🔴 שגיאה לא-מוכרת — ההודעה כן מוצגת (לא כישלון שקט)', msg.classList.contains('show'), msg.className);
-  check('ההודעה בעברית ומציעה מוצא', /טלפון/.test(msg.textContent), msg.textContent);
-  check('נרשם apple:native:error',
-    t.events.some(e => e.name === 'loginFail' && e.data.channel === 'apple:native:error'),
-    JSON.stringify(t.events));
-  check('הכפתור שוחרר לניסיון נוסף', host.querySelector('.yz-na-btn').disabled === false);
-}
-
-console.log('\n── 11. לחיצה כפולה אינה פותחת שני גיליונות ──');
-{
-  let opened = 0;
-  const t = build({
-    plugin: true,
-    onSignIn: () => { opened++; return new Promise(r => setTimeout(() => r(REAL_RESULT), 20)); },
-  });
-  const host = t.win.document.getElementById('host');
-  t.api.renderButton(host, { onToken: () => {} });
-  const btn = host.querySelector('.yz-na-btn');
-  btn.dispatchEvent(new t.win.Event('click'));
-  btn.dispatchEvent(new t.win.Event('click'));
-  await new Promise(r => setTimeout(r, 60));
-  check('קריאה אחת בלבד לתוסף', opened === 1, String(opened));
-}
-
 console.log('\n── 12. 🔴 הקובץ אינו מחזיק עותק חמישי של ה-Services ID ──');
 {
   // §446ו — הערך חי ב-4 מקומות נעולים. עותק נוסף כאן היה נשכח בדיוק כמו `apple-live-test.html`.

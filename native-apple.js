@@ -167,113 +167,28 @@
     }
   }
 
-  // ── הכפתור ──────────────────────────────────────────────────────────────────────────────
-  // הלוגו זהה בדיוק לזה שב-`welcome.html` ו-`apple-signup.js` — נתיב ה-SVG הוא נכס של אפל
-  // ואין לשנותו.
-  var A_LOGO =
-    '<svg viewBox="0 0 17 20" width="15" height="18" aria-hidden="true" focusable="false">' +
-    '<path fill="currentColor" d="M14.06 10.6c-.02-2.2 1.8-3.26 1.88-3.31-1.02-1.5-2.62-1.7-3.19-1.72-1.36-.14-2.65.8-3.34.8-.69 0-1.75-.78-2.87-.76-1.48.02-2.84.86-3.6 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.06 1.6 2.25 2.74 2.2 1.1-.04 1.52-.71 2.85-.71 1.33 0 1.7.71 2.87.69 1.18-.02 1.93-1.08 2.65-2.14.84-1.23 1.18-2.42 1.2-2.48-.03-.01-2.29-.88-2.31-3.5zM11.87 3.9c.6-.74 1.01-1.76.9-2.78-.87.04-1.93.58-2.56 1.31-.56.65-1.06 1.7-.93 2.7.97.08 1.97-.5 2.59-1.23z"/></svg>';
-
-  // מה שהאדם יכול לעשות, לא קוד באנגלית. ביטול אינו מוצג כלל — הוא החליט, אין מה לומר לו.
-  var MSGS = {
-    timeout: 'הכניסה עם Apple לא הושלמה בזמן. אפשר לנסות שוב, או להיכנס עם הטלפון והקוד.',
-  };
-  var MSG_GENERIC = 'הכניסה עם Apple לא הושלמה. נסו שוב, או היכנסו עם הטלפון והקוד.';
-
-  // ⚠️ המידות זהות ל-`.hb-as-login-btn` ב-`welcome.html` (§446): pill, גובה מינימלי 44,
-  // רוחב 300 — כדי שהמעבר בין דפדפן לאפליקציה לא ייראה כמו שני רכיבים שונים.
-  // אפל מתירה במפורש רדיוס עד חצי-גובה.
-  function injectStyle() {
-    if (document.getElementById('yzNaStyle')) return;
-    var s = document.createElement('style');
-    s.id = 'yzNaStyle';
-    s.textContent =
-      '.yz-na{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%}' +
-      '.yz-na-btn{display:flex;align-items:center;justify-content:center;gap:8px;' +
-        'width:300px;max-width:100%;min-height:44px;padding:0 16px;border:0;border-radius:999px;' +
-        'background:#000;color:#fff;font:inherit;font-size:15px;font-weight:600;line-height:1;' +
-        'cursor:pointer;-webkit-tap-highlight-color:transparent}' +
-      '.yz-na-btn:active{background:#1a1a1a}' +
-      '.yz-na-btn[disabled]{opacity:.6;cursor:default}' +
-      '.yz-na-btn svg{flex:0 0 auto;margin-bottom:2px}' +
-      '.yz-na-msg{display:none;font-size:12.5px;line-height:1.6;text-align:center;color:#8A5A00;' +
-        'background:#FEF3C7;border:1px solid #FCD98B;border-radius:10px;padding:8px 10px;max-width:320px}' +
-      '.yz-na-msg.show{display:block}' +
-      // §439 — "מתחבר…" אינו אזהרה ולכן אינו צהוב. בלי החיווי הזה המתנה נראית זהה לגמרי
-      // לכישלון שקט, וזה בדיוק מה שדווח במסלול הנייטיב של גוגל.
-      '.yz-na-msg.busy{color:#1E3A8A;background:#EEF2FF;border-color:#C7D2FE}';
-    document.head.appendChild(s);
-  }
-
-  // opts: { label, width, scopes, nonce, onToken(res) }
-  // ⚠️ מצייר **לתוך host** (מחליף את תוכנו) — ולכן `host.childElementCount` נשאר האות
-  // ש"הכפתור צויר", בדיוק כמו אחרי הציור של ה-SDK. `hbSyncLoginBlocks` נשען על זה.
-  function renderButton(host, opts) {
-    if (!host) return null;
-    opts = opts || {};
-    injectStyle();
-    var wrap = document.createElement('div');
-    wrap.className = 'yz-na';
-    var btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'yz-na-btn';
-    btn.style.width = (opts.width || 300) + 'px';
-    btn.innerHTML = A_LOGO + '<span class="yz-na-txt"></span>';
-    btn.querySelector('.yz-na-txt').textContent = opts.label || 'המשך עם Apple';
-    var msg = document.createElement('div');
-    msg.className = 'yz-na-msg';
-    wrap.appendChild(btn);
-    wrap.appendChild(msg);
-    host.innerHTML = '';
-    host.appendChild(wrap);
-
-    var busy = false;
-    btn.addEventListener('click', function () {
-      if (busy) return;                 // לחיצה כפולה פותחת גיליון שני מעל הראשון
-      busy = true;
-      btn.disabled = true;
-      msg.textContent = 'מתחבר…';
-      msg.classList.add('show', 'busy');
-      signIn({ scopes: opts.scopes, nonce: opts.nonce }).then(function (r) {
-        busy = false;
-        btn.disabled = false;
-        msg.classList.remove('show', 'busy');
-        if (r.ok) {
-          if (typeof opts.onToken === 'function') {
-            try { opts.onToken(r); }
-            catch (e) { console.error('native-apple: onToken נכשל', e); }
-          }
-          return;
-        }
-        // ── §439 — 🔴 **כשל נייטיב שנרשם רק בקונסול אינו קיים** ──────────────────────────
-        // זה הלקח שנקנה במסלול של גוגל: הבורר נפתח, האדם בחר, המסך חזר בלי כלום, ובאירועים
-        // היו **אפס** `loginFail` — כי הכשל קרה **לפני** הקריאה לוורקר.
-        // ⚠️ **גם `canceled` נרשם, ובכוונה:** ההבדל בין "התחרט" לבין "נכשל בשקט אחרי
-        // האישור" הוא כל האבחון, ובלעדיו שניהם נראים כמו מסך שחזר לעצמו.
-        // ⚠️ עטוף ב-try ואינו תלוי ב-logEvent: המודול ייטען גם בדפים שאין בהם מדידה.
-        try {
-          if (typeof window.logEvent === 'function') {
-            window.logEvent('loginFail', {
-              channel: ('apple:native:' + r.reason).slice(0, 50),
-              blockId: (window._hbEnvTag || 'app').slice(0, 50),
-            });
-          }
-        } catch (e) {}
-        if (r.reason === 'canceled') return;
-        // ⚠️ תמיד לקונסול — כישלון שקט הוא מה שהסתיר את §357.
-        console.warn('native-apple: הכניסה נכשלה —', r.reason, r.detail || '');
-        msg.textContent = MSGS[r.reason] || MSG_GENERIC;
-        msg.classList.add('show');
-      });
-    });
-    return wrap;
-  }
+  // ── 🗑️ §454 — `renderButton` נמחקה, ובמכוון אין לה מחליף ─────────────────────────────
+  //
+  // היא נכתבה ב-§448 כמקבילה ל-`native-google.js`, ושם היא **חיונית**: הכפתור של GIS
+  // מצויר ע"י גוגל ואי-אפשר להשתמש בו במסלול הנייטיב, ולכן צריך כפתור משלנו.
+  //
+  // 🔑 **אצל אפל ההנחה הזאת לא חלה, ו-§450/§452 גילו זאת בפועל:** לשלושת המשטחים
+  // (`fan-register`, `business`, `welcome`) יש **מרקאפ כפתור משלהם** שכבר קיים בדף —
+  // `.hb-as-btn` ו-`.hb-as-login-btn`. מה שהתחלף במעבר לנייטיב הוא **מי מטפל בלחיצה**,
+  // לא צורת הכפתור. ציור מחדש היה דורס את `.hb-as-cap` ואת כל הכיתובים שנכתבים אליו.
+  //
+  // ⚠️ **ולכן היא לא הייתה "עוד לא בשימוש" אלא "לעולם לא תהיה"** — מרקאפ רביעי שאיש
+  // אינו מצייר, סגנון CSS שאיש אינו מזריק, ושלוש מחרוזות הודעה שכפולות למה שכבר קיים
+  // בקוראים. עם המחיקה ירדו גם `A_LOGO`, `MSGS`, `MSG_GENERIC` ו-`injectStyle`.
+  // ר' §447ז — קוד יתום נמחק, והנימוק נשאר.
+  //
+  // 🔑 **ומה שנשאר הוא בדיוק מה שצריך:** הקובץ הזה הוא **גשר**, לא רכיב ממשק.
+  // ⚠️ הרישום של `loginFail` עבר עם המחיקה אל הקוראים — הוא כבר היה שם משני הצדדים.
 
   // ⚠️ החשיפה מיידית — הדפים בודקים את mode() בזמן ציור המודאל. ר' §310/§312/§425.
   window.YZNativeApple = {
     mode: mode,
     inApp: inApp,
     signIn: signIn,
-    renderButton: renderButton,
   };
 })();
