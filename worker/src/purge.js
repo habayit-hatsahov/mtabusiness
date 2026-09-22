@@ -138,9 +138,15 @@ export async function runDeletionLogPurge(env, now = new Date()) {
     if (summary.windowFull) {
       console.warn('purge: ⚠️ חלון הסריקה מלא (' + SCAN_LIMIT + ') — ייתכן שרשומות חדשות אינן נראות');
     }
-    if (summary.purged || summary.failed) {
-      console.log('purge: רוקנו ' + summary.purged + ', נכשלו ' + summary.failed + ', נסרקו ' + summary.scanned);
-    }
+    // 🔴 **ללא תנאי, ובכוונה — זו הראיה היחידה שהמנגנון רץ בכלל.**
+    // היה כאן `if (purged || failed)`, ו**היום אין ולו רשומה אחת בת 12 חודשים ביומן**:
+    // כלומר הריצה הראשונה הייתה מסתיימת בלי להשאיר שום עקבה, ו"רץ ומצא 0" היה נראה
+    // **זהה לחלוטין** ל"ה-cron לא נרשם" או "הקוד לא נפרס". שורה אחת ביום היא מחיר
+    // אפסי מול מנגנון שמוחק נתונים ואי-אפשר לדעת אם הוא חי.
+    // ר' [[feedback_state_not_event_detection]] — היעדר אירוע נקרא כמו "הכל תקין".
+    console.log('purge: נסרקו ' + summary.scanned + ', רוקנו ' + summary.purged +
+                ', נכשלו ' + summary.failed +
+                ', דולגו ' + JSON.stringify(summary.skipped));
   } catch (e) {
     summary.error = String((e && e.message) || e);
     console.error('purge: הריצה נכשלה', e);

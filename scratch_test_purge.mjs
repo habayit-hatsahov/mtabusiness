@@ -110,7 +110,17 @@ console.log('\n── 7. ברירת המחדל ב-scheduled נשארה תור ה
     block.indexOf('runEmailSweeps') > block.indexOf('runDeletionLogPurge'), 'סדר');
 }
 
-console.log('\n── 8. הבדיקה יודעת להיכשל ──');
+console.log('\n── 8. 🔴 הריצה משאירה עקבה גם כשלא נמחק כלום ──');
+{
+  // ללא זה, הריצה הראשונה (שתמצא 0, כי אין עדיין רשומה בת 12 חודשים) הייתה שקטה
+  // לגמרי — ו"רץ ומצא 0" נראה זהה ל"ה-cron לא נרשם". ר' [[feedback_state_not_event_detection]].
+  const src = read('worker/src/purge.js');
+  const CODE = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  check('🔑 הלוג אינו מותנה ב-purged/failed', !/if \(summary\.purged \|\| summary\.failed\)/.test(CODE));
+  check('והוא מדווח כמה נסרקו', /console\.log\([^)]*summary\.scanned/.test(CODE.replace(/\n/g, ' ')));
+}
+
+console.log('\n── 9. הבדיקה יודעת להיכשל ──');
 {
   // [[feedback_guard_that_always_holds]] — מוודא שהגלאי של סעיף 2 באמת תופס.
   const { pick } = selectForPurge([row('x', { deletedAt: '2026-09-21T00:00:00.000Z' })], NOW);
