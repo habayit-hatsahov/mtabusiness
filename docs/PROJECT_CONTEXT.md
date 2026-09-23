@@ -24439,3 +24439,7 @@ Workers → habayit-hatsahov-worker → Logs, לחפש שורה שמתחילה �
 נבדק), `sw.js` (**v136**). נבדק בדפדפן מקומי ב-`?doc=privacy`.
 **הרקע:** עלה בהכנת שאלון App Privacy ב-App Store Connect — הרשומה נפתחה היום, Bundle
 `il.co.yellowzone.app` (אומת), וכתובת המדיניות הוזנה.
+
+### §455ד — טקסטי App Store Connect (2026-09-23)
+
+רשומת App Store Connect נפתחה (`Yellow Zone`, Bundle `il.co.yellowzone.app` — אומת), כתובת המדיניות הוזנה, ו**שאלון App Privacy פורסם** (11 סוגים, כולם Linked, אף אחד לא Tracking). הטקסטים לשאר הרשומה ב-**`docs/app-store-listing.md`** — נגזרו מטקסטי Play ונבדקו מול הקוד (תוקנה הטענה "סינון לפי אזור", שאינו קיים). 🔴 פתוח: שם המועדון מול Guideline 5.2.1 — החלטה של רמי.
