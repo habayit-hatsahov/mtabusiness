@@ -19,9 +19,9 @@
 
 ## 2 · דף הגרסה 1.0 (בעברית)
 
-**Promotional Text** (עד 170, ניתן לשינוי בלי גרסה חדשה) — *(103)*
+**Promotional Text** (עד 170, ניתן לשינוי בלי גרסה חדשה) — *(104)* — הנוסח של רמי (23.9)
 ```
-עשרות עסקים של אוהדי מכבי תל אביב, הטבה בלעדית בכל אחד, ותעודת חבר דיגיטלית להצגה בקופה. ההצטרפות חינם.
+עסקים של אוהדי מכבי תל אביב, הטבות בלעדיות, ותעודת חבר דיגיטלית להצגה בקופה. הרשמה סגורה, ההצטרפות חינם.
 ```
 
 **Description** (עד 4000)
@@ -48,6 +48,8 @@ Yellow Zone היא הקהילה העסקית של אוהדי מכבי תל אב�
 ודף עסק שאתם מנהלים בעצמכם.
 
 ההצטרפות חינם, והשימוש חינם.
+
+Yellow Zone היא יוזמה עצמאית פרטית ואינה קשורה רשמית למועדון מכבי תל אביב.
 ```
 
 **Keywords** (עד 100, פסיקים בלי רווחים) — *(94)*
@@ -75,6 +77,10 @@ Yellow Zone היא הקהילה העסקית של אוהדי מכבי תל אב�
 Yellow Zone is a members-only community app for fans of the Maccabi Tel Aviv sports club.
 It lists businesses owned by fans and shows each member an exclusive benefit at each
 business. The interface is in Hebrew.
+
+Yellow Zone is an independent, privately run initiative. It is not affiliated with,
+endorsed by, or operated by the Maccabi Tel Aviv club; the club name is used only to
+describe the audience the app serves.
 
 Membership requires manual approval by our team, so a new account (including a new
 Sign in with Apple account) will wait for approval. Please use the pre-approved demo
@@ -114,4 +120,7 @@ Please do not delete the demo account — it is shared with Google Play review.
 - **אם יש הרשאה מהמועדון** — לצרף אותה בהערות לבודק (או ב-Attachment).
 - **אם אין** — להוסיף לסוף התיאור שורה כמו: `Yellow Zone היא יוזמה עצמאית של אוהדים ואינה
   קשורה רשמית למועדון מכבי תל אביב.` ולענות בהתאם בשאלת Content Rights.
-**החלטה של רמי — טרם התקבלה.**
+✅ **הוחלט (23.9): אין הרשאה.** נוספה לסוף התיאור שורת **"יוזמה עצמאית פרטית"** — לבקשת רמי
+"פרטית" ולא "של אוהדים", כי היא שלו בלבד. ונוספה פסקה מקבילה באנגלית בראש ההערות לבודק.
+⚠️ **עדיין סיכון, לא ודאות:** ההצהרה מפחיתה את הסיכוי לדחייה על 5.2.1, אינה מבטלת אותו.
+🔲 אותה שורה **אינה** בטקסט של Google Play — לשקול להוסיף שם לעקביות.
