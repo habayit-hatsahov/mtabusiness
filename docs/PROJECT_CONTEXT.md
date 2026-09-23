@@ -24443,3 +24443,7 @@ Workers → habayit-hatsahov-worker → Logs, לחפש שורה שמתחילה �
 ### §455ד — טקסטי App Store Connect (2026-09-23)
 
 רשומת App Store Connect נפתחה (`Yellow Zone`, Bundle `il.co.yellowzone.app` — אומת), כתובת המדיניות הוזנה, ו**שאלון App Privacy פורסם** (11 סוגים, כולם Linked, אף אחד לא Tracking). הטקסטים לשאר הרשומה ב-**`docs/app-store-listing.md`** — נגזרו מטקסטי Play ונבדקו מול הקוד (תוקנה הטענה "סינון לפי אזור", שאינו קיים). 🔴 פתוח: שם המועדון מול Guideline 5.2.1 — החלטה של רמי.
+
+### §455ה — אפליקציית ה-iOS: אייפון בלבד (2026-09-23)
+
+`TARGETED_DEVICE_FAMILY` עבר מ-`"1,2"` ל-`1` (Debug ו-Release, `project.pbxproj`). **הנימוק:** עם אייפד אפל דורשת צילומי אייפד, והבודק בודק על אייפד — מסך שמעולם לא נבדק אצלנו. באייפד האפליקציה עדיין תותקן, במצב תאימות-אייפון. `UISupportedInterfaceOrientations~ipad` ב-`Info.plist` נשאר — אינו מזיק. ⚠️ **נכנס לתוקף רק ב-Archive הבא על המק** (`git pull` קודם).
