@@ -119,6 +119,9 @@ console.log('\n── 3. signIn — מבנה התשובה האמיתי ──');
   check('הטוקן נקרא מ-idToken', r.idToken === REAL_RESULT.idToken, r.idToken);
   check('email/givenName/familyName מועברים', r.email === 'fan@example.com' && r.givenName === 'רון', JSON.stringify(r));
   check('user (ה-sub היציב) מועבר', r.user === REAL_RESULT.user, r.user);
+  // §455 — עד §455 הגשר **השמיט** את השדה, ולכן אף קורא לא יכל לשלוח אותו לשרת.
+  check('🔑 §455 — authorizationCode מועבר (ביטול במחיקת חשבון)',
+    r.authorizationCode === REAL_RESULT.authorizationCode, r.authorizationCode);
 }
 
 console.log('\n── 4. 🔴 ההגנה על שם-השדה — identityToken אינו idToken ──');

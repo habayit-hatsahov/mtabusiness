@@ -71,6 +71,9 @@ function makeEnv(opts) {
     value: opts.ua || 'Mozilla/5.0 (iPhone) Safari', configurable: true,
   });
   w._hbEnvTag = 'test';
+  // §455 — jsdom אינו מספק AbortSignal.timeout; בלעדיו השליחה נופלת על הסביבה ולא על הקוד.
+  if (!w.AbortSignal) w.AbortSignal = AbortSignal;
+  if (!w.AbortSignal.timeout) w.AbortSignal.timeout = AbortSignal.timeout.bind(AbortSignal);
   w.logEvent = (t, d) => { w.__events = w.__events || []; w.__events.push({ t, d }); };
   if (opts.capacitor) w.Capacitor = {};
   if (opts.nativeMode) w.YZNativeGoogle = { mode: () => opts.nativeMode };
@@ -338,6 +341,60 @@ async function nativeTests() {
     w.hbRenderAppleLoginBtn();
     check('בלי native-apple.js — מוסתר מיד', hostOf(w).style.display === 'none', hostOf(w).style.display);
     check('ואפס בקשות ל-SDK', sdkTags(w) === 0, sdkTags(w));
+  }
+
+  // ══ 9. §455 — ה-authorizationCode נשלח לשרת, במקביל לכניסה ═══════════════════════════
+  console.log('\n── 9. §455 — שליחת ה-authorizationCode ───────────────────');
+  const spyFetch = (w) => {
+    w.__ex = [];
+    w.hbApiFetch = async (url, o) => { w.__ex.push({ url, body: JSON.parse(o.body) }); return { json: async () => ({ ok: true }) }; };
+  };
+  {
+    const w = makeEnv({ appleId: { auth: { init() {}, signIn: async () => ({ authorization: { id_token: RAW_TOKEN, code: 'code-web' } }) } } });
+    spyFetch(w);
+    w.heroAppleLogin = (t) => { w.__got = t; };
+    w.hbRenderAppleLoginBtn();
+    await tick(50);
+    btnOf(w).click();
+    await tick(); await tick();
+    const c = w.__ex.find((x) => x.url === '/apple-exchange');
+    check('אתר: נקרא /apple-exchange', !!c, JSON.stringify(w.__ex));
+    check('אתר: הקוד והטוקן', c && c.body.code === 'code-web' && c.body.idToken === RAW_TOKEN);
+    check('אתר: redirectUri = welcome.html (זו שנמסרה ל-init)', c && c.body.redirectUri === 'https://yellowzone.co.il/welcome.html', c && c.body.redirectUri);
+    check('🔑 הכניסה עצמה לא הושפעה — הטוקן הגיע ל-heroAppleLogin', w.__got === RAW_TOKEN, w.__got);
+  }
+  {
+    const w = makeEnv({ capacitor: true, apple: { mode: 'native', result: Object.assign({}, NATIVE_OK, { authorizationCode: 'code-app' }) } });
+    spyFetch(w);
+    w.heroAppleLogin = (t) => { w.__got = t; };
+    w.hbRenderAppleLoginBtn();
+    btnOf(w).click();
+    await tick(); await tick();
+    const c = w.__ex.find((x) => x.url === '/apple-exchange');
+    check('אפליקציה: נקרא /apple-exchange עם הקוד של התוסף', c && c.body.code === 'code-app', JSON.stringify(w.__ex));
+    check('אפליקציה: בלי redirectUri', c && !('redirectUri' in c.body), c && JSON.stringify(c.body));
+    check('אפליקציה: הכניסה לא הושפעה', w.__got === RAW_TOKEN, w.__got);
+  }
+  {
+    // 🔴 "החלון המת" (§431): הלחיצה קודמת לטעינת המודול שמגדיר את hbApiFetch.
+    const w = makeEnv({ capacitor: true, apple: { mode: 'native', result: Object.assign({}, NATIVE_OK, { authorizationCode: 'late' }) } });
+    w.heroAppleLogin = () => {};
+    w.hbRenderAppleLoginBtn();
+    btnOf(w).click();
+    await tick(50);
+    spyFetch(w);                           // המודול מגיע באיחור
+    await tick(450);
+    check('hbApiFetch שהגיע באיחור — הקוד נשלח בכל זאת',
+          (w.__ex || []).some((x) => x.url === '/apple-exchange' && x.body.code === 'late'), JSON.stringify(w.__ex));
+  }
+  {
+    const w = makeEnv({ capacitor: true, apple: { mode: 'native', result: NATIVE_OK } });   // בלי code
+    spyFetch(w);
+    w.heroAppleLogin = () => {};
+    w.hbRenderAppleLoginBtn();
+    btnOf(w).click();
+    await tick(); await tick();
+    check('בלי code — לא נשלח כלום', w.__ex.length === 0, JSON.stringify(w.__ex));
   }
 }
 

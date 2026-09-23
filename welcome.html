@@ -726,12 +726,43 @@ function hbAppleLoginCallback(idToken) {
   setTimeout(tick, 100);
 }
 
+// ══ §455 — שליחת ה-authorizationCode לשרת, **ברגע ההרשאה** ═══════════════════════════
+// השרת מחליף אותו ב-refresh_token ושומר לפי ה-`sub` של אפל, כדי שמחיקת חשבון תוכל לבטל את
+// ההרשאה אצל אפל (Guideline 5.1.1(v)). הקוד פג אחרי 5 דקות — אין "אחר כך".
+// ⚠️ **במקביל לכניסה ולא לפניה, ובלי שום השפעה עליה:** לא ממתינים, לא מציגים, ולא נוגעים
+// ב-`hbAppleLoginCallback`. כשל כאן אינו כשל כניסה.
+// ⚠️ **בלי `logEvent`, במכוון:** `loginFail` הוא המונה של "אדם לא נכנס", והזרקת כשלי-החלפה
+// אליו הייתה מזהמת אותו; סוג-אירוע חדש דורש שינוי ב-firestore.rules. התוצאה נרשמת בלוג
+// של הוורקר (`apple-exchange: …`), ובמחיקה ביומן (`selfAppleRevoke`).
+// ⚠️ `hbApiFetch` מוגדר במודול שנטען אחרי הסקריפט הזה — ולכן המתנה קצרה (ר' §431, "החלון המת").
+function hbAppleExchange(idToken, code, redirectUri) {
+  if (!idToken || !code) return;
+  var body = { idToken: idToken, code: code };
+  if (redirectUri) body.redirectUri = redirectUri;
+  var t0 = Date.now();
+  var go = function () {
+    if (typeof window.hbApiFetch !== 'function') {
+      if (Date.now() - t0 < 15000) { setTimeout(go, 200); return; }
+      console.warn('apple-login: hbApiFetch לא נטען — הקוד לא נשלח');
+      return;
+    }
+    try {
+      window.hbApiFetch('/apple-exchange', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(8000),
+      }).catch(function (e) { console.warn('apple-login: /apple-exchange נכשל (רשת)', e); });
+    } catch (e) { console.warn('apple-login: /apple-exchange נכשל', e); }
+  };
+  go();
+}
+
 async function hbAppleLoginClick() {
   var btn = document.querySelector('#asLoginBtnHost .hb-as-login-btn');
   if (btn) btn.disabled = true;
   try {
     var res = await window.AppleID.auth.signIn();
     var raw = res && res.authorization && res.authorization.id_token;
+    if (raw) hbAppleExchange(raw, res.authorization.code, HB_APPLE_REDIRECT_URI);
     if (!raw) {
       // ⚠️ אין כאן שום דבר שהאדם יכול לתקן, ולכן ההודעה מפנה למסלול שכן עובד לו.
       window.hbAsMsg('⚠️ משהו השתבש מול Apple. היכנסו עם הטלפון והקוד, או נסו שוב.', 'warn');
@@ -776,7 +807,10 @@ async function hbAppleLoginClickNative() {
   window.hbAsMsg('מתחבר…');
   try {
     var r = await window.YZNativeApple.signIn({ scopes: ['EMAIL'] });
-    if (r.ok) { window.hbAsMsg(''); hbAppleLoginCallback(r.idToken); return; }
+    if (r.ok) {
+      hbAppleExchange(r.idToken, r.authorizationCode);   // §455 — באפליקציה אין redirect_uri
+      window.hbAsMsg(''); hbAppleLoginCallback(r.idToken); return;
+    }
     // ⚠️ **גם ביטול נרשם** — ההבדל בין "התחרט" לבין "נכשל בשקט אחרי האישור" הוא כל
     // האבחון, ובלעדיו שניהם נראים כמו מסך שחזר לעצמו. ר' §439.
     window.logEvent && window.logEvent('loginFail', {

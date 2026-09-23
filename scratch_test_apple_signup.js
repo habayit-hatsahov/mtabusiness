@@ -440,6 +440,88 @@ function makePage(hosts, opts) {
           !/<script src="apple-signup\.js">/.test(wel));
   }
 
+  // ══ §455 — ה-authorizationCode נשלח לשרת ברגע ההרשאה ═══════════════════════════════
+  // 🔑 **בלעדיו מחיקת חשבון אינה יכולה לבטל את ההרשאה אצל אפל**, והקוד פג אחרי 5 דקות —
+  // כלומר מה שלא נשלח כאן אבד לתמיד. הבדיקות מריצות את `onAuthorized` האמיתי דרך לחיצה.
+  console.log('\n== §455 — שליחת ה-authorizationCode ==');
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  const fetchSpy = () => {
+    const calls = [];
+    const fn = async (url, o) => { calls.push({ url, body: JSON.parse(o.body), signal: o.signal });
+                                   return { json: async () => ({ ok: true }) }; };
+    return { calls, fn };
+  };
+  {
+    const p = makePage(['A']);
+    RESP.first.authorization.code = 'code-web';
+    const s = fetchSpy(); const logs = [];
+    initA(p, { apiFetch: s.fn, log: (c) => logs.push(c) });
+    await clickA(p); await tick(); await tick();
+    delete RESP.first.authorization.code;
+    const c = s.calls.find((x) => x.url === '/apple-exchange');
+    check('אתר: נקרא /apple-exchange', !!c, JSON.stringify(s.calls.map(x => x.url)));
+    check('אתר: עם ה-id_token וה-code', c && c.body.code === 'code-web' && c.body.idToken === RESP.first.authorization.id_token);
+    check('אתר: redirectUri = זו שנמסרה ל-AppleID.auth.init', c && c.body.redirectUri === 'https://yellowzone.co.il/fan-register.html', c && c.body.redirectUri);
+    check('אתר: עם גבול-זמן', c && c.signal && typeof c.signal.aborted === 'boolean');
+    check('אתר: התוצאה נמדדת (asExchange:ok)', logs.includes('asExchange:ok'), logs.join(','));
+    check('אתר: הטופס עדיין מולא (לא חסם כלום)', p.val('A', 'email') === 'fan@example.com');
+  }
+  {
+    const p = makePage(['A'], { noAppleId: true, capacitor: true, nativeMode: 'blocked',
+                                apple: { mode: 'native', result: Object.assign({}, NATIVE_OK, { authorizationCode: 'code-app' }) } });
+    const s = fetchSpy();
+    initA(p, { apiFetch: s.fn });
+    await clickA(p); await tick();
+    const c = s.calls.find((x) => x.url === '/apple-exchange');
+    check('אפליקציה: נקרא /apple-exchange עם הקוד של התוסף', c && c.body.code === 'code-app', c && JSON.stringify(c.body));
+    check('אפליקציה: **בלי** redirectUri (אפל הייתה דוחה)', c && !('redirectUri' in c.body), c && JSON.stringify(c.body));
+  }
+  {
+    const p = makePage(['A']);
+    p.setMode('relay');
+    RESP.relay.authorization.code = 'code-relay';
+    const s = fetchSpy();
+    initA(p, { apiFetch: s.fn });
+    await clickA(p); await tick();
+    delete RESP.relay.authorization.code;
+    check('כתובת-ממסר: לא נשלח (הטוקן נזרק ממילא)', s.calls.length === 0, JSON.stringify(s.calls.map(x => x.url)));
+  }
+  {
+    const p = makePage(['A']);
+    RESP.first.authorization.code = 'code-x';
+    const logs = [];
+    initA(p, { log: (c) => logs.push(c) });
+    await clickA(p); await tick();
+    delete RESP.first.authorization.code;
+    check('בלי apiFetch: נמדד כ-no_fetch (לא נעלם בשקט)', logs.includes('asExchange:no_fetch'), logs.join(','));
+  }
+  {
+    const p = makePage(['A']);
+    const s = fetchSpy(); const logs = [];
+    initA(p, { apiFetch: s.fn, log: (c) => logs.push(c) });
+    await clickA(p); await tick();
+    check('בלי code בתשובה: לא נשלח, ונמדד כ-no_code', s.calls.length === 0 && logs.includes('asExchange:no_code'), logs.join(','));
+  }
+  {
+    const p = makePage(['A']);
+    RESP.first.authorization.code = 'c';
+    const logs = [];
+    initA(p, { apiFetch: async () => { throw new Error('net'); }, log: (c) => logs.push(c) });
+    await clickA(p); await tick(); await tick();
+    delete RESP.first.authorization.code;
+    check('רשת נופלת: הטופס מולא בכל זאת', p.val('A', 'email') === 'fan@example.com');
+    check('רשת נופלת: נמדד כ-network', logs.includes('asExchange:network'), logs.join(','));
+  }
+  {
+    // 🔑 שני הדפים מעבירים את apiFetch — בלעדיו כל הנ"ל לא רץ בפרודקשן.
+    for (const f of ['fan-register.html', 'business.html']) {
+      const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+      const i = src.indexOf('window.hbAppleSignup?.init({');
+      const block = i > -1 ? src.slice(i, src.indexOf('});', i)) : '';
+      check(f + ' מעביר apiFetch: hbApiFetch ל-init', /apiFetch:\s*hbApiFetch/.test(block));
+    }
+  }
+
   console.log('\n' + (fail === 0 ? '✅ ' : '❌ ') + pass + '/' + (pass + fail) + ' עברו');
   process.exit(fail === 0 ? 0 : 1);
 })();

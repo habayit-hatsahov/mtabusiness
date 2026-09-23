@@ -119,7 +119,7 @@
     return /cancel/i.test(detailOf(e));
   }
 
-  // מחזיר { ok:true, idToken, email, givenName, familyName, user } או
+  // מחזיר { ok:true, idToken, authorizationCode, email, givenName, familyName, user } או
   // { ok:false, reason, detail }. **לעולם אינו זורק.**
   //
   // ⚠️ **`email`/`givenName`/`familyName` מגיעים מאפל רק בהרשאה הראשונה בחיים** — כך כתוב
@@ -153,6 +153,9 @@
       return {
         ok: true,
         idToken: String(r.idToken),
+        // §455 — הקוד החד-פעמי שהשרת מחליף ב-refresh_token, כדי שמחיקת חשבון תוכל לבטל את
+        // ההרשאה אצל אפל. פג אחרי 5 דקות, ולכן הקוראים שולחים אותו מיד.
+        authorizationCode: r.authorizationCode ? String(r.authorizationCode) : null,
         email: r.email || null,
         givenName: r.givenName || null,
         familyName: r.familyName || null,

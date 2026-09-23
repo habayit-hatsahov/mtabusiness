@@ -113,6 +113,7 @@
   // ⏱️ אותו סף בדיוק של google-signup: הקריאה רצה **בתוך** זמן-ההמתנה של הנרשם, כי מסך
   // הצלחה עם עבודה שרצה מאחוריו אינו מסך הצלחה (§292).
   var ATTACH_TIMEOUT_MS = 8000;
+  var EXCHANGE_TIMEOUT_MS = 8000;
 
   var cfg = null;
   var token = null;        // ה-id_token הגולמי שאפל החזירה
@@ -284,6 +285,7 @@
     if (isPrivateRelay(p)) { showPrivateRelayHelp(); return; }
 
     token = raw;
+    exchangeCode(res, raw);
     // 🐛 **מונמך לאותיות קטנות, ובכוונה — כאן ולא רק בשרת.** הערך הזה נכתב לשדה, ומשם
     // לתוך `members.email`. השרת אמנם משווה שני הצדדים ב-toLowerCase ולכן הקישור עצמו
     // היה עובד — אבל הכתובת הייתה **נשמרת** עם אות גדולה, וזה כבר קרה כאן: כתובת עם
@@ -391,7 +393,8 @@
   // ⚠️ **ואפל מוסרת שם רק בהרשאה הראשונה בחיים** — בכניסה חוזרת שני השדות `null`,
   // וזה תקין ומטופל שם.
   function fromNative(r) {
-    var out = { authorization: { id_token: r.idToken } };
+    // §455 — `code` בשם של ה-SDK, ו-`_native` כי באפליקציה אין redirect_uri לשלוח.
+    var out = { authorization: { id_token: r.idToken, code: r.authorizationCode || null }, _native: true };
     if (r.givenName || r.familyName) {
       out.user = { name: { firstName: r.givenName || '', lastName: r.familyName || '' } };
     }
@@ -509,6 +512,40 @@
       return;
     }
     setTimeout(function () { render(tries + 1); }, 150);
+  }
+
+  // ══ §455 — שליחת ה-authorizationCode לשרת, **ברגע ההרשאה** ══════════════════════════
+  //
+  // 🔑 **למה כאן ולא ב-`attach`:** הקוד פג אחרי 5 דקות, ו-`attach` רץ בשליחת הטופס —
+  // שיכולה לבוא הרבה אחרי. השרת מחליף אותו ב-refresh_token ושומר לפי ה-`sub` של אפל,
+  // כדי שמחיקת חשבון תוכל לבטל את ההרשאה אצל אפל (דרישה של אפל, Guideline 5.1.1(v)).
+  //
+  // ⚠️ **לא ממתינים ולא מציגים כלום.** כשל כאן אינו כשל-הרשמה; הנרשם באמצע טופס.
+  // התוצאה נרשמת בערוץ המדידה בלבד, כדי ש"לא נשלח קוד" ייראה בנתונים ולא ייעלם.
+  // ⚠️ **כתובת-ממסר אינה מגיעה לכאן** — `onAuthorized` יוצא לפני הקריאה, והטוקן שלה נזרק.
+  function exchangeCode(res, idToken) {
+    var code = res && res.authorization && res.authorization.code;
+    if (!code) { track('asExchange:no_code'); return; }
+    if (!cfg || typeof cfg.apiFetch !== 'function') {
+      console.warn('apple-signup: init בלי apiFetch — הקוד לא נשלח, והחשבון לא יהיה ניתן לביטול אצל אפל');
+      track('asExchange:no_fetch');
+      return;
+    }
+    var body = { idToken: idToken, code: code };
+    if (!res._native) body.redirectUri = cfg.redirectUri || REDIRECT_URI;
+    var p;
+    try {
+      p = cfg.apiFetch('/apple-exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(EXCHANGE_TIMEOUT_MS),
+      });
+    } catch (e) { track('asExchange:network'); return; }
+    Promise.resolve(p).then(function (r) { return r.json(); }).then(function (out) {
+      var s = out && (out.ok ? 'ok' : (out.skipped || out.error)) || 'unknown';
+      track(('asExchange:' + s).slice(0, 50));
+    }).catch(function () { track('asExchange:network'); });
   }
 
   // ── הקישור עצמו, אחרי שהרשומה כבר קיימת ──────────────────────────────────────────────

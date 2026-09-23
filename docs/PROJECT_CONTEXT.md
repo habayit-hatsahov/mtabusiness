@@ -878,6 +878,7 @@ Firestore collection יחיד `settings`, מסמך יחיד בשימוש `messag
 | בעיה | חומרה |
 |------|--------|
 | **🔶 בטיפול (2026-09-15, §434→§435) — כפתור Google באפליקציית אנדרואיד משאיר דף לבן.** ה-popup של GIS נשלח ע"י Capacitor לדפדפן החיצוני, והטוקן לא חוזר לאפליקציה (נמדד בצילום מסך). **§435 בנה:** `native-google.js` — גרסה 1 מקבלת `blocked` (אין כפתור), גרסה 2 כפתור נייטיב. **נשאר:** Android OAuth client ב-Cloud Console · push · העלאת AAB 1.1 · בדיקה על מכשיר. הבודק הראשון — לאמת בכניסה עם קוד | גבוהה |
+| **🔶 פתוח (2026-09-23, §455א) — ביטול הרשאת Apple: הוורקר חי, האתר עוד לא.** מפתח `2U878J959V` נוצר, הסוד הוזן והוורקר נפרס (`32738d18`). **כל כניסה עם Apple עד push של v135 אינה ניתנת לביטול, לתמיד** — עותק ישן של האתר לא שולח את הקוד. נשאר: push → כניסה אמיתית אחת עם Apple → `apple-exchange: stored` בלוג הוורקר | גבוהה |
 | **✅ נסגר (2026-09-21, §446ה) — `heroGoogleAttachAndEnter` הבטיח מוצא שאינו על המסך.** שתי הודעות-הכשל אמרו "היכנסו עם הטלפון והקוד" בזמן שהקיפול של §415ב הסתיר את השדות. נוסף `heroGFallBackToCode()` לשני הענפים. **חי מאז §403 ונתפס רק כשנכתב המקביל באפל ונבדק בדפדפן** — מי שנוחת שם נדיר ואינו מדווח | — |
 | **✅ נסגר (2026-09-21, §446ו) — ה-Services ID של אפל יושב ב-4 מקומות, ועכשיו הם נעולים.** `scratch_test_apple_client_id.js` נועל את `apple-signup.js` · `welcome.html` · `apple-live-test.html` · `APPLE_CLIENT_IDS` ב-`wrangler.toml`, וסורק את הריפו לעותק חמישי. **הוכח בשני הכיוונים** — שינוי מכוון בדף האבחון ובוורקר הפיל את הבדיקה | — |
 | **🔶 פתוח (2026-09-02, §384) — קטלוג התגיות נטען פעם אחת (`getDoc`) ולא ב-`onSnapshot`.** דף שכבר פתוח לא רואה תגית שהמנהל הוסיף עד רענון. נגזרת ב-`business-dashboard.html`: `renderCatHoursCard` מסנן את `w.tags` מול הרשימה שבזיכרון, ולכן אם נתוני-העסק מגיעים לפני הקטלוג — בעל-עסק שכבר מתויג בתגית החדשה יראה אותה **לא-מסומנת**. `saveCatHours` חוסם שמירה ריקה בטוסט (אין מחיקה שקטה), אבל הוא עלול לבחור תגית אחרת. צר בפועל — קריאת הקטלוג ציבורית, קטנה, ומתחילה לפני אימות העסק. **הצעד:** להמיר את שלוש הטעינות ל-`onSnapshot`, או לחכות לקטלוג לפני הרינדור הראשון | נמוכה |
@@ -24335,3 +24336,84 @@ Workers → habayit-hatsahov-worker → Logs, לחפש שורה שמתחילה �
 ב-iOS). החי נשאר **v134**. ר' [[project_pwa_cache_and_deploy_rule]].
 
 **קבצים ב-§454:** `native-apple.js`, `scratch_test_native_apple.js`, ומסמך זה.
+
+---
+
+## §455 — ביטול ההרשאה אצל אפל במחיקת חשבון (Guideline 5.1.1(v)) (2026-09-23)
+
+אפל דורשת שמחיקת חשבון של מי שנכנס עם Apple **תבטל את ההרשאה אצלה** דרך `/auth/revoke`.
+עד כאן זה נרשם כ"צריך מפתח `.p8`" (§449ג, §452) — **והפער היה גדול יותר:** ביטול דורש
+`refresh_token`, ואותו מקבלים רק מהחלפת ה-`authorizationCode`, קוד חד-פעמי ש**פג אחרי 5 דקות**.
+חיפוש בריפו: **אף נתיב לא שלח את הקוד לשרת**, ו-`native-apple.js` אף השמיט אותו מהתשובה.
+כלומר גם עם מפתח לא היה מה לבטל, ולא ניתן להשלים זאת בדיעבד.
+
+### המבנה
+
+- **`POST /apple-exchange`** (`idToken`, `code`, `redirectUri?`) — מאמת את הטוקן, מחליף את הקוד
+  (`client_secret` = JWT ב-ES256 במפתח `.p8`, `sub` = ה-`aud` של הטוקן), ושומר ב-
+  **`appleTokens/{appleSub}`** (`refreshToken`, `clientId`, `updatedAt`).
+  - 🔑 **לפי `sub` של אפל ולא לפי uid**: בטופס ההרשמה ההרשאה קודמת לרשומה.
+  - 🔑 **ה-id_token שחוזר מאפל בהחלפה חייב להיות עם אותו `sub`** — אחרת תוקף היה שולח
+    טוקן אמיתי שלו עם קוד של אחר. `apple_exchange_sub_mismatch`.
+  - `redirect_uri` רק באתר ורק מ-`yellowzone.co.il/*.html`; באפליקציה אין (אפל הייתה דוחה).
+  - האוסף **ללא `match` ב-firestore.rules** = סגור לכל לקוח, כולל מנהל. הוורקר בלבד.
+- **הלקוח שולח ברגע ההרשאה, בלי להמתין ובלי להציג:** `apple-signup.js` (`exchangeCode`, דרך
+  `apiFetch` חדש ב-`init` — fan-register + business), `welcome.html` (`hbAppleExchange`, שני
+  הענפים, עם המתנה ל-`hbApiFetch` בגלל החלון המת של §431). **הכניסה וההרשמה לא נוגעות בזה.**
+- **`/delete-account`** — אחרי המחיקה ולפני מחיקת ה-Auth: אם יש `appleSub` → ביטול. **אינו חוסם
+  את המחיקה.** התוצאה ביומן: `selfAppleRevoke` = `revoked` / `no_token` / `not_apple` /
+  `apple_key_not_configured` / `apple_revoke_*`. המסמך נמחק **רק** אחרי ביטול מוכח.
+
+### 🔴 מה שנמדד מול אפל החיה ושינה את העיצוב
+
+**`/auth/revoke` מחזיר 200 על הכול** — `client_secret=x`, `client_id` שאינו קיים, טוקן `bogus`.
+כלומר 200 **אינו ראיה**, ומפתח שגוי היה נרשם "בוטל" בזמן שההרשאה חיה — הגנה שמתקיימת תמיד.
+**ההוכחה:** אחרי הביטול מנסים `grant_type=refresh_token`. אפל בודקת grant **לפני** client
+(נמדד: קוד מזויף + סוד מזויף → `invalid_grant`), ולכן `invalid_grant` = מת (הצלחה),
+`invalid_client` = חי והסוד נדחה, 200 = הביטול לא נקלט.
+⚠️ שני הענפים האחרונים **נגזרו מהסדר שנמדד** ולא נצפו — דורשים `.p8` אמיתי.
+
+### נבדק
+
+- **`scratch_test_apple_revoke.mjs` — 63/63** (`node --conditions=workerd`). מריץ את
+  `worker/src/index.js` דרך `default.fetch`; מדומה רק הרשת. `client_secret` נחתם במפתח EC אמיתי
+  ומאומת בחתימה. חלק 4 פונה **לאפל החיה** ונועל את ההתנהגות שנמדדה.
+  **נשבר במכוון:** הסרת ההוכחה → 8 כשלים.
+- **`scratch_test_apple_signup.js` — 112/112** (+15), **`scratch_test_apple_login_modal.js` — 77/77**
+  (+9), **`scratch_test_native_apple.js` — 32/32** (+1). **נשבר במכוון:** הסרת הקריאה → 10 ו-3 כשלים.
+- ⚠️ **לא נבדק ולא ניתן לבדוק בלי מפתח:** שאפל מקבלת את ה-`client_secret` שלנו.
+
+### 🔲 מה נשאר, לפי הסדר
+
+1. **רמי, בפורטל:** Keys → `+` → Sign in with Apple → Primary App ID `il.co.yellowzone.app` →
+   הורדת `AuthKey_XXXXXXXXXX.p8` (**פעם אחת בלבד**) + רישום ה-Key ID.
+2. `APPLE_KEY_ID` ב-`wrangler.toml` + `npx wrangler secret put APPLE_PRIVATE_KEY < AuthKey_….p8`
+   (**מ-Git Bash** — ב-PowerShell אין `<`) → `wrangler deploy`.
+3. push (**v135**).
+4. **כניסה אמיתית אחת עם Apple באתר** → בלוג הוורקר `apple-exchange: stored aud=il.co.yellowzone.web`.
+   `apple_exchange_rejected:400:invalid_client` = מפתח/Key ID שגוי.
+5. מחיקת חשבון-בדיקה → `selfAppleRevoke: revoked` ביומן.
+
+⚠️ **הסדר 2 לפני 3 חשוב פחות מכפי שנראה:** לקוח חדש מול ורקר ישן מקבל 404 ושותק. אבל **כל
+כניסה בין עכשיו לשלב 2 אבודה לביטול.**
+⚠️ **מחיקה ע"י מנהל (`logAndDelete` מהדשבורד) אינה מבטלת** — הדרישה של אפל היא על מחיקה ביוזמת
+המשתמש, ולכן לא טופל. ו-`appleTokens` של נרשם שלא סיים נשאר כיתום (הרשאה שהוא עצמו נתן).
+
+**קבצים ב-§455:** `worker/src/apple.js`, `worker/src/index.js`, `worker/wrangler.toml`,
+`firestore.rules` (הערה בלבד — **אין צורך בפריסת חוקים**), `apple-signup.js`, `native-apple.js`,
+`welcome.html`, `fan-register.html`, `business.html`, `sw.js` (**v135**),
+`scratch_test_apple_revoke.mjs` (חדש), `scratch_test_apple_signup.js`,
+`scratch_test_apple_login_modal.js`, `scratch_test_native_apple.js`, ומסמך זה.
+
+### §455א — המפתח נוצר והוורקר נפרס (2026-09-23)
+
+- **Key ID `2U878J959V`** (אינו סוד) ב-`wrangler.toml`. הקובץ `AuthKey_2U878J959V.p8` אומת
+  **לפני ההעלאה** דרך `appleClientSecret` עצמה (נטען כ-PKCS8, בלי `\r`, חותם ES256) — בלי להדפיס תוכן.
+- `APPLE_PRIVATE_KEY` הוזן מהקובץ (Git Bash, `<`). **הקובץ נשאר ב-Downloads של רמי — לשמור
+  עותק במקום בטוח; אפל לא תאפשר להוריד אותו שוב.**
+- `wrangler deploy` — גרסה `32738d18-75a0-4ef6-bd9b-3e9dcc2159b1`. **אומת חי** (עם בקרה):
+  `/apple-exchange` → `invalid_apple_token` בשתי הכתובות (workers.dev + api), נתיב לא-קיים → 404,
+  `/delete-account` ו-`/apple-login` ללא שינוי.
+- ⚠️ **שאפל מקבלת את המפתח עדיין לא אומת** — ובכוונה אין בדיקה סינתטית: אפל בודקת grant לפני
+  client, כלומר כל בקשה עם קוד מזויף עונה `invalid_grant` בלי לגעת במפתח. **ההוכחה היחידה היא
+  כניסה אמיתית אחרי ה-push.** `apple_exchange_rejected:400:invalid_client` בלוג = המפתח נדחה.

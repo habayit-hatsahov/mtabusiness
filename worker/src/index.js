@@ -1,7 +1,7 @@
 import { corsHeaders, handlePreflight, json } from './cors.js';
 import { getGoogleAccessToken, mintFirebaseCustomToken, verifyAdminIdToken, uidFromIdToken } from './jwt.js';
 import { verifyGoogleIdToken } from './google.js';
-import { verifyAppleIdToken } from './apple.js';
+import { verifyAppleIdToken, exchangeAppleCode, revokeAppleToken, appleKeyConfigured } from './apple.js';
 import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, bizTokenFor,
          memberIdFromLoginCode, loginCodeFor,
          firestoreGetDocForSnapshot, firestoreCreateDoc, firestoreDeleteDoc } from './firestore.js';
@@ -71,6 +71,10 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/apple-attach') {
         return json(await handleAppleAttach(await request.json(), request, env), env, request);
+      }
+      // §455 — החלפת ה-authorizationCode ב-refresh_token, ברגע ההרשאה. ר' apple.js.
+      if (request.method === 'POST' && url.pathname === '/apple-exchange') {
+        return json(await handleAppleExchange(await request.json(), env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/mint-biz-token') {
         return json(await handleBusinessLogin(await request.json(), env), env, request);
@@ -492,6 +496,48 @@ async function handleAppleAttach({ idToken, memberId }, request, env) {
     : { ok: true };
 }
 
+// ── §455 — שמירת ה-refresh_token, כדי שמחיקת חשבון תוכל לבטל אותו אצל אפל ──────────────
+// נקרא ע"י הלקוח **מיד** כשאפל מחזירה תשובה — בטופס ההרשמה ובמסך הכניסה, באתר ובאפליקציה.
+// הקוד פג אחרי 5 דקות, ולכן אי-אפשר לחכות לשליחת הטופס (`/apple-attach`).
+//
+// 🔑 **הלקוח אינו ממתין לתשובה ואינו מציג אותה.** כשל כאן אינו כשל כניסה ואינו כשל הרשמה;
+// הוא נרשם בלוג, ובמחיקה יופיע כ-`no_token` ביומן. אותו עיקרון של `attach`.
+//
+// ⚠️ **אינו יוצר ואינו משנה רשומת חבר.** כותב רק את `appleTokens/{sub}` — אוסף שאין לו
+// שום `allow` ב-firestore.rules (כלומר סגור ללקוח לגמרי), לפי הכלל "כל שדה-סוד באוסף משלו".
+// מסמך בלי חבר (נרשם שלא סיים) הוא יתום שאינו מזיק: הוא מחזיק הרשאה שהאדם עצמו נתן.
+const APPLE_REDIRECT_OK = /^https:\/\/yellowzone\.co\.il\/[a-z-]+\.html$/;
+
+async function handleAppleExchange({ idToken, code, redirectUri }, env) {
+  let a;
+  try { a = await verifyAppleIdToken(env, idToken); }
+  catch (e) { return { error: 'invalid_apple_token' }; }
+  // נבדק **אחרי** האימות, במכוון: "לא הוגדר מפתח" אינו מידע שמגיע למי שלא הוכיח זהות.
+  if (!appleKeyConfigured(env)) {
+    console.log('apple-exchange: skipped — apple_key_not_configured');
+    return { skipped: 'apple_key_not_configured' };
+  }
+  const ru = typeof redirectUri === 'string' && APPLE_REDIRECT_OK.test(redirectUri) ? redirectUri : '';
+
+  const x = await exchangeAppleCode(env, a, code, ru);
+  if (!x.ok) {
+    // ⚠️ בלי sub ובלי מייל בשורה — ר' ההערה על [observability] ב-wrangler.toml.
+    console.log('apple-exchange: failed —', x.reason, x.detail || '', 'aud=' + a.aud);
+    return { error: x.reason };
+  }
+
+  const accessToken = await getGoogleAccessToken(env);
+  // ⚠️ דורס טוקן קודם של אותו אדם, במכוון: אפל מנפיקה refresh_token חדש בכל הרשאה, וביטול
+  // של כל אחד מהם מבטל את ההרשאה כולה. החדש ביותר הוא הבטוח ביותר שעוד תקף.
+  await firestorePatch(env, accessToken, `appleTokens/${a.sub}`, {
+    refreshToken: x.refreshToken,
+    clientId: x.clientId,
+    updatedAt: new Date(),
+  });
+  console.log('apple-exchange: stored aud=' + x.clientId);
+  return { ok: true };
+}
+
 async function handleBusinessLogin({ accessToken: bizToken }, env) {
   if (!bizToken) return { error: 'invalid_request' };
 
@@ -889,6 +935,32 @@ async function handleDeleteAccount({ idToken, reason }, request, env) {
     flaggedBusinesses = null;
   }
 
+  // ── §455 — ביטול ההרשאה אצל אפל (Guideline 5.1.1(v)) ──────────────────────────────
+  // ⚠️ **אחרי המחיקה ולא לפניה, ואינו חוסם אותה:** האדם ביקש למחוק, וכשל אצל אפל אינו
+  // סיבה להשאיר את הנתונים שלו אצלנו. התוצאה נרשמת ביומן בשמה — `no_token` (נרשם לפני
+  // §455, או שההחלפה נכשלה), `apple_key_not_configured`, או כשל של אפל — כדי שאפשר יהיה
+  // להבדיל "אין מה לבטל" מ"ניסינו ונכשלנו". ר' [[feedback_failed_read_rendered_as_fact]].
+  //
+  // ⚠️ **המסמך נמחק רק כשהביטול הצליח.** טוקן שלא בוטל נשאר, כדי שאפשר יהיה לנסות שוב
+  // ידנית; מחיקתו הייתה הופכת כשל זמני לכשל סופי.
+  let appleRevoke = 'not_apple';
+  if (d.appleSub) {
+    try {
+      const t = await firestoreGetDoc(env, accessToken, `appleTokens/${d.appleSub}`);
+      if (!t || !t.fields.refreshToken) {
+        appleRevoke = 'no_token';
+      } else {
+        const r = await revokeAppleToken(env, t.fields.clientId, t.fields.refreshToken);
+        appleRevoke = r.ok ? 'revoked' : (r.reason + (r.detail ? ':' + r.detail : ''));
+        if (r.ok) await firestoreDeleteDoc(env, accessToken, `appleTokens/${d.appleSub}`);
+      }
+    } catch (e) {
+      console.error('apple revoke failed:', e);
+      appleRevoke = 'error';
+    }
+    console.log('delete-account: apple revoke —', appleRevoke);
+  }
+
   // ── חשבון ה-Auth עצמו ───────────────────────────────────────────────────────────────
   // מסמך החבר נמחק, אבל זהות ה-Firebase Auth שרדה — ואדם שנכנס שוב עם אותה זהות
   // מגיע למצב שבו הוא "מחובר" בלי שום רשומה. accounts:delete עם הטוקן שלו מאשר
@@ -910,6 +982,7 @@ async function handleDeleteAccount({ idToken, reason }, request, env) {
       state: 'deleted',
       selfFlaggedBusinesses: flaggedBusinesses === null ? ['כשל'] : flaggedBusinesses,
       selfAuthDeleted: authDeleted,
+      selfAppleRevoke: appleRevoke,
     });
   } catch (e) { console.error('deletion-log state update failed:', e); }
 
