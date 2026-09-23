@@ -140,3 +140,12 @@ Please do not delete the demo account — it is shared with Google Play review.
 - **Calculated: 13+ → Override: 16+** — תואם סעיף 12 במדיניות ("לבני שש עשרה ומעלה").
   Age Suitability URL: `terms.html?doc=privacy`.
 - ⚠️ **לעדכן את השאלון** אם יתווסף עסק עם תוכן מהקטגוריות האלה (למשל מטווח, או אלכוהול כעיקר העסק).
+
+## 7 · Pricing and Availability — ✅ (23.9)
+
+- **Base Country:** Israel · **Price:** Free
+- **Availability: ישראל בלבד** ("Available on App Release"). הנימוק: כל העסקים וההטבות בישראל,
+  ו**בלי מדינות האיחוד האירופי אין צורך בהצהרת trader status (DSA)**. הרחבה אפשרית בכל רגע,
+  בלי גרסה ובלי בדיקה חוזרת. המחיר: אוהד עם חשבון Apple ממדינה אחרת לא ימצא את האפליקציה.
+- **Pre-Order:** לא
+- **Apple Silicon Mac / Vision Pro:** לבטל — לא נבדק (אותו נימוק של §455ה, אייפון בלבד)
