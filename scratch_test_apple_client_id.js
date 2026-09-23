@@ -53,6 +53,8 @@ const CLIENT_FILES = [
   ['apple-signup.js',      /^\s*var\s+SERVICES_ID\s*=\s*'([^']*)'\s*;/m,           'SERVICES_ID'],
   ['welcome.html',         /^\s*var\s+HB_APPLE_SERVICES_ID\s*=\s*'([^']*)'\s*;/m,  'HB_APPLE_SERVICES_ID'],
   ['apple-live-test.html', /^\s*var\s+SERVICES_ID\s*=\s*'([^']*)'\s*;/m,           'SERVICES_ID (דף אבחון)'],
+  // §456 — חיבור חשבון Apple בפרופיל. עותק חמישי, ננעל לשוויון כמו כולם.
+  ['apple-link.js',        /^\s*var\s+SERVICES_ID\s*=\s*'([^']*)'\s*;/m,           'SERVICES_ID'],
 ];
 
 const clients = CLIENT_FILES.map(([file, re, label]) => {
