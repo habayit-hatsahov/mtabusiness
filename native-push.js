@@ -52,7 +52,19 @@
   // 🔑 הבדיקה היא על הפונקציות עצמן ולא על isPluginAvailable/Plugins — ר' ההערה בראש.
   function available() {
     const c = cap();
-    return !!(c && typeof c.nativePromise === 'function' && typeof c.addListener === 'function');
+    if (!(c && typeof c.nativePromise === 'function' && typeof c.addListener === 'function')) return false;
+    // ── §457 — 🔴 באייפון אין עדיין ערוץ פוש, ולכן אין כפתור ─────────────────────────────
+    // נבדק בקבצי `app/ios` (23.9), וכל אחד מהשלושה לבדו מפיל את ההרשמה:
+    //   1. `App.entitlements` — אין `aps-environment` (רק applesignin) → iOS מסרב לרשום
+    //   2. `AppDelegate.swift` — אין `didRegisterForRemoteNotificationsWithDeviceToken` →
+    //      אירוע `registration` לא נורה, וההמתנה נגמרת ב-timeout אחרי 15 שניות
+    //   3. אין Firebase Messaging ל-iOS — וגם טוקן APNs גולמי לא היה עובר דרך `fcm.js`
+    // כלומר בודק של אפל שלוחץ "הפעל התראות" מקבל "לא הצלחנו" — פיצ'ר שבור = Guideline 2.1.
+    // 🔑 **כאן ולא ב-home.html:** זה השער היחיד — `updatePushMenuItem` מסתיר את הפריט כשהוא
+    // false, ו-`enableNativePush` אינו מנסה להירשם. אנדרואיד **אינו מושפע** (§420ט, עובד).
+    // ⚠️ **להסרה רק יחד עם שלושת החלקים למעלה** — ר' §457 ב-PROJECT_CONTEXT.
+    if (platform() === 'ios') return false;
+    return true;
   }
 
   function platform() {
