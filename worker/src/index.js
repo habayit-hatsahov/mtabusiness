@@ -299,6 +299,19 @@ async function linkableByVerifiedEmail(env, accessToken, g, subField) {
     }
     rows = approved.filter((m) => String(m.fields.email || '').trim().toLowerCase() === g.email);
   }
+  // ── §456ב — גם המייל של חשבון ה-Google המחובר, ורק לכניסת Apple ────────────────────
+  // 🔴 נמדד אצל רמי (23.9): Apple מסרה `ramibentl@gmail.com`, ו-`members.email` הוא כתובת
+  // אחרת — אבל `googleEmail` על אותה רשומה הוא בדיוק `ramibentl@gmail.com`. כלומר אותו אדם,
+  // שכבר נכנס עם Google, קיבל "לא מחובר" מ-Apple. המשתמש: *"זה אמור לזהות ולעבוד"*.
+  // 🔑 **זו אותה ראיה בדיוק, לא החלשה:** `googleEmail` נכתב רק ע"י הוורקר, רק אחרי שגוגל
+  // אימתה שהאדם שולט בתיבה (§370/§377). מי שמוכיח עכשיו מול Apple שליטה באותה תיבה (מייל
+  // מאומת, לא ממסר — נבדק למעלה) הוא אותו אדם באותה ודאות שבה `email` מוכיח זאת.
+  // ⚠️ **רק כשהמסלול הרגיל לא מצא כלום**, ועם אותו שער `rows.length !== 1` — כפילות = עצירה.
+  // ⚠️ **לא לכניסת Google:** שם `googleEmail` שווה למייל רק אם `googleSub` כבר מקושר, כלומר
+  // `/google-login` היה נכנס ישירות — והשדה היה נבדק מול עצמו.
+  if (rows.length === 0 && subField === 'appleSub') {
+    rows = await firestoreRunQuery(env, accessToken, 'members', 'googleEmail', g.email, 2);
+  }
   if (rows.length !== 1) return null;
   const m = rows[0];
   // ⚠️ כבר מקושר לחשבון **אחר של אותו ספק** — החלפה מותרת רק בנתיב המחובר.
@@ -478,7 +491,12 @@ async function handleAppleAttach({ idToken, memberId }, request, env) {
   if (me.fields.appleSub) return { error: 'already_attached' };
 
   const onRecord = String(me.fields.email || '').trim().toLowerCase();
-  if (!onRecord || onRecord !== a.email) return { error: 'email_mismatch' };
+  // §456ב — אותה הרחבה של `linkableByVerifiedEmail`, ומאותו נימוק: `googleEmail` הוא מייל
+  // שגוגל כבר אימתה עבור הרשומה הזאת. ⚠️ בלעדיה המסך היה מציע "מחברים ונכנסים…" (linkable
+  // מצא את הרשומה לפי googleEmail) — ו-attach היה דוחה את אותה רשומה ב-email_mismatch.
+  const onRecordGoogle = String(me.fields.googleEmail || '').trim().toLowerCase();
+  const matches = (onRecord && onRecord === a.email) || (onRecordGoogle && onRecordGoogle === a.email);
+  if (!matches) return { error: 'email_mismatch' };
 
   await firestorePatch(env, accessToken, `members/${memberId}`, {
     appleSub: a.sub, appleEmail: a.email, appleLinkedAt: new Date(),
