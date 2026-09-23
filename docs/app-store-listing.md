@@ -146,3 +146,11 @@ Please do not delete the demo account — it is shared with Google Play review.
   בלי גרסה ובלי בדיקה חוזרת. המחיר: אוהד עם חשבון Apple ממדינה אחרת לא ימצא את האפליקציה.
 - **Pre-Order:** לא
 - **Apple Silicon Mac / Vision Pro:** לבטל — לא נבדק (אותו נימוק של §455ה, אייפון בלבד)
+
+## 8 · מצב הרשומה — 23.9, סוף היום
+
+✅ הוזן ונשמר ב-App Store Connect: App Information (Subtitle, Shopping/Lifestyle, Content Rights = Yes +
+זכויות — בגלל תמונות Pexels ב-`business-dashboard.html`), App Privacy (פורסם), Age Rating (16+),
+Pricing and Availability (Free, ישראל, בלי Mac/Vision Pro), דף הגרסה 1.0 (כל הטקסטים), App Review
+Information (חשבון הבדיקה + Notes), **Version Release: Manual**.
+🔲 חסר להגשה: **Build + צילומי מסך** (סבב המק) · בדיקת כניסה לחשבון הבדיקה בחלון פרטי.
