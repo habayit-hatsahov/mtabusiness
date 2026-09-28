@@ -24592,7 +24592,8 @@ push_menu 5/5 · push_ui 7/7.
 `viewport-fit=cover`, כך ש-`env(safe-area-inset-top)` הקיים ב-home/profile מחזיר 0.
 **התיקון — נייטיב בלבד, בלי שינוי באתר:** `app/capacitor.config.json` → `"ios": { "contentInset": "always",
 "backgroundColor": "#ffffff" }`. אנדרואיד לא מושפע (המפתח `ios`). **Build 2** (`CURRENT_PROJECT_VERSION = 2`) — אפל
-דוחה העלאה חוזרת של אותו מספר. 🔲 **לא אומת על מכשיר** — נדרש `git pull` + `npx cap sync ios` + ▶ על המק.
+דוחה העלאה חוזרת של אותו מספר. ✅ **אומת על האייפון של אבירן (23:50)** — דף הנחיתה: השעה על פס לבן, הלוגו
+ו"להתחברות"/"להרשמה" מתחתיה ולחיצים.
 ⚠️ נימוק הבחירה: תיקון באתר היה חי מיד, אבל דורש כותרת-בטוחה בכל דף בנפרד (sticky/fixed מתעלמים מ-padding של body).
 
 **🔲 נשאר:** צילומי מסך מסימולטור Pro Max (אחרי הורדת 26.5) · בדיקת כניסה עם Apple על האייפון · TestFlight → הגשה.
