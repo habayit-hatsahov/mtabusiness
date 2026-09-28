@@ -24559,3 +24559,24 @@ push_menu 5/5 · push_ui 7/7.
 - **תנאי מקדים:** להחליט **מה** שולחים ובאיזו תדירות. בקשה בלי שליחות אחריה מלמדת להתעלם.
 **להפעלה באייפון:** שלושת החלקים למעלה + מפתח APNs שמועלה ל-Firebase + בדיקה על מכשיר (לא סימולטור),
 ואז להסיר את השורה ב-`available()`.
+
+---
+
+## §458 — הבנייה הראשונה לאייפון הועלתה ל-App Store Connect (2026-09-28)
+
+**✅ `App 1.0 (1) uploaded`** — `il.co.yellowzone.app`, Team `Rahamim Tal`, arm64. נבנה על המק של אבירן.
+עכשיו מחכה לעיבוד ב-**TestFlight**; ב-Export Compliance עונים *None of the algorithms mentioned above*.
+
+**שלושה חסמים שנתקלנו בהם — לסבב הבא:**
+1. 🔴 **`npm install` + `npx cap sync ios` חובה אחרי `git pull`** — `App/App/capacitor.config.json` ו-`App/App/public`
+   ב-`app/ios/.gitignore`. בלי `sync` אין `server.url` בחבילה והאפליקציה עולה ריקה. וה-SPM מצביע על `node_modules`.
+2. **"iOS 26.5 Not Installed" (8.5GB)** חוסם את הבחירה ב-`Any iOS Device` — אין Archive לפני ההורדה.
+3. 🔴 **תוקן:** נכתב קודם ש"no devices" / "No profiles" **אינן חוסמות Archive**. **נמדד: הן חוסמות** — עם Automatic
+   signing ה-Archive נחתם קודם בפרופיל פיתוח שדורש מכשיר רשום. הפתרון: אייפון בכבל → Trust → Developer Mode →
+   לבחור אותו כיעד → Build → "Device isn't registered" → רישום → סיסמת **המק** ב-`codesign` + "הרשאה קבועה".
+   האייפון של אבירן (iPhone 14) רשום עכשיו בחשבון.
+
+**האפליקציה רצה על מכשיר אמיתי** (`WebView loaded` על האייפון של אבירן) — סעיף "שהאפליקציה בכלל נטענת" לא עוד
+תיאורטי, אבל **לא נצפה בעין** ולא נבדקו עדיין כניסה עם Apple/Google וכפתור חזור.
+
+**🔲 נשאר:** צילומי מסך מסימולטור Pro Max (אחרי הורדת 26.5) · בדיקת כניסה עם Apple על האייפון · TestFlight → הגשה.
