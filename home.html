@@ -2356,21 +2356,31 @@ function renderSections() {
   // sectionDeals וכו') — רק בסדר הפנימי. בכוונה לא כולל פופולריים/הכי אהובים (ר' למטה) —
   // הם מבוססי-נתון-אמיתי שמשתנה בזמן אמת, וצירוף שלהם היה גורם לסקשנים המסוחררים "לזוז" בכל
   // פעם שמישהו עושה לייק לעסק כלשהו, למרות שההרכב שלהם עצמם לא השתנה.
+  //
+  // §459 — 🐛 יוסיאל הוביל גם את "נבחרים" וגם את "חדש אצלנו". "חדש" היה בו 2 עסקים בלבד,
+  // ושניהם גם ב"נבחרים" — כלומר **כל** סיבוב שלו שם את שניהם במקומות 1-2. "נבחרים" חושב
+  // ראשון ותפס את יוסיאל, ול"חדש" לא נשאר שום סיבוב חוקי → נפל ל-fallback שהתעלם מהכלל.
+  // שני תיקונים:
+  //   1. סקשן קטן בוחר מובילים **ראשון** (ר' _sectionPlan למטה) — לו אין ברירה, לגדול יש.
+  //   2. כשאין סיבוב נקי — בוחרים את הכי פחות גרוע, ומקום 1 שוקל יותר ממקום 2.
+  // המובילים נרשמים מהרשימה **אחרי העיגונים**, כי זה מה שהגולש רואה בפועל.
   const usedLeaders = new Set();
-  function arrangeSection(filterFn, sectionKey) {
-    const subset = masterOrder.filter(filterFn);
-    if (subset.length <= 1) return applyAnchors(subset, sectionKey);
-    let offset = Math.abs(_seedFromString(daySeed + ':' + sectionKey)) % subset.length;
-    for (let attempt = 0; attempt < subset.length; attempt++) {
-      const candidate = _rotate(subset, offset);
-      const leaders = candidate.slice(0, 2).map(b => b.id);
-      if (!leaders.some(id => usedLeaders.has(id))) {
-        leaders.forEach(id => usedLeaders.add(id));
-        return applyAnchors(candidate, sectionKey);
-      }
-      offset++;
+  function arrangeSection(subset, sectionKey) {
+    if (subset.length <= 1) {
+      const out = applyAnchors(subset, sectionKey);
+      out.slice(0, 2).forEach(b => usedLeaders.add(b.id));
+      return out;
     }
-    return applyAnchors(_rotate(subset, offset), sectionKey); // fallback (רק אם אין די עסקים כדי להימנע מחפיפה)
+    const start = Math.abs(_seedFromString(daySeed + ':' + sectionKey)) % subset.length;
+    let best = null, bestScore = Infinity;
+    for (let attempt = 0; attempt < subset.length; attempt++) {
+      const candidate = applyAnchors(_rotate(subset, (start + attempt) % subset.length), sectionKey);
+      const score = (usedLeaders.has(candidate[0].id) ? 2 : 0) + (candidate[1] && usedLeaders.has(candidate[1].id) ? 1 : 0);
+      if (score < bestScore) { best = candidate; bestScore = score; }
+      if (score === 0) break;
+    }
+    best.slice(0, 2).forEach(b => usedLeaders.add(b.id));
+    return best;
   }
 
   // "פופולריים"/"הכי אהובים" מדורגים לפי נתון אמיתי (קליקים/לייקים) — לא מסוחררים, כדי לא לפגוע
@@ -2389,11 +2399,29 @@ function renderSections() {
   // שהיה — סבב יומי, מניעת-הובלה-כפולה ועיגונים. שתי החלטות נפרדות, ובכוונה.
   const _memFeatured = sectionMembersFor('featured');
   const _memNew = sectionMembersFor('new');
-  const featured = arrangeSection(b => _memFeatured ? _memFeatured.has(b.id) : isFeatured(b), 'featured');
+  // §418טו — ר' הערת dealsOptIn למטה.
+  const dealsOptIn = !!(sectionPolicyDoc && sectionPolicyDoc.dealsOptIn);
+
+  // §459 — מי נכנס לכל סקשן נקבע קודם, והסדר בתוכו אחר-כך — **מהקטן לגדול**, כדי שסקשן
+  // של 2 עסקים (שאין לו שום חופש) יתפוס את מקומות 1-2 לפני שסקשן של 14 בוחר את שלו.
+  // שובר-שוויון: הסדר הקבוע כאן, כדי שהתוצאה תהיה זהה בכל טעינה באותו יום.
+  const _sectionPlan = [
+    ['featured', b => _memFeatured ? _memFeatured.has(b.id) : isFeatured(b)],
+    ['new',      b => _memNew ? _memNew.has(b.id) : isNew(b)],
+    ['deals',    b => dealsOptIn ? (b.discount && b.sectionDeals === true) : (b.discount && b.sectionDeals !== false)],
+    ['online',   b => b.online],
+    ['everyone', () => true],
+  ].map(([key, fn], i) => ({ key, i, subset: masterOrder.filter(fn) }));
+  const _arranged = {};
+  [..._sectionPlan]
+    .sort((a, b) => (a.subset.length - b.subset.length) || (a.i - b.i))
+    .forEach(p => { _arranged[p.key] = arrangeSection(p.subset, p.key); });
+
+  const featured = _arranged.featured;
   _dailySectionOrder.featured = featured;
   _writeSectionIfChanged('featured', 'featuredBizScroll', featured, b => buildCard(b, false, true), _emptyRowHtml('בקרוב...'));
 
-  const newBiz = arrangeSection(b => _memNew ? _memNew.has(b.id) : isNew(b), 'new');
+  const newBiz = _arranged.new;
   _dailySectionOrder.new = newBiz;
   _writeSectionIfChanged('new', 'newBizScroll', newBiz, b => buildCard(b, true), _emptyRowHtml('בקרוב...'));
 
@@ -2403,18 +2431,16 @@ function renderSections() {
   // בדיוק הישנה (כל מי שיש לו הטבה, אלא אם הוצא). הוא נדלק **רק** אחרי שמרכז הניהול
   // סימן את כל החברים הנוכחיים — כלומר ברגע המעבר הסקשן נראה זהה, ומשם מצמצמים.
   // בלי המתג, פריסת הקובץ הזה לבדה הייתה מרוקנת את הסקשן באתר החי.
-  const dealsOptIn = !!(sectionPolicyDoc && sectionPolicyDoc.dealsOptIn);
-  const deals = arrangeSection(b => dealsOptIn
-    ? (b.discount && b.sectionDeals === true)
-    : (b.discount && b.sectionDeals !== false), 'deals');
+  // (dealsOptIn עצמו מוגדר למעלה, לפני _sectionPlan.)
+  const deals = _arranged.deals;
   _dailySectionOrder.deals = deals;
   _writeSectionIfChanged('deals', 'dealsBizScroll', deals, b => buildCard(b));
 
-  const online = arrangeSection(b => b.online, 'online');
+  const online = _arranged.online;
   _dailySectionOrder.online = online;
   _writeSectionIfChanged('online', 'onlineBizScroll', online, b => buildCard(b));
 
-  const everyone = arrangeSection(() => true, 'everyone');
+  const everyone = _arranged.everyone;
   _dailySectionOrder.everyone = everyone;
   _writeSectionIfChanged('everyone', 'allBizGrid', everyone, b => buildCard(b));
 
