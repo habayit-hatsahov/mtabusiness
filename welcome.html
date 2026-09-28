@@ -39,6 +39,15 @@
      ובמסלול הנייטיב אינו נטען כלל. -->
 <script src="native-apple.js"></script>
 <script>
+  // §458ו — באפליקציית האייפון `ios.contentInset: always` (§458ב) מזיז את **הדף** מתחת לשורת
+  // השעה, אבל לא אלמנטים ב-`position:fixed` — המודאלים נפתחים מראש המסך ונכנסים מתחתיה (נצפה
+  // על מכשיר). `env(safe-area-inset-top)` מחזיר 0 בלי `viewport-fit=cover`, ולכן מחלקה + ריפוד
+  // קבוע. ⚠️ רק באפליקציה ורק ב-iOS: בדפדפן ובאנדרואיד שורת השעה אינה מעל התוכן.
+  if (/YellowZoneApp/.test(navigator.userAgent || '') && /iPhone|iPad|iPod/.test(navigator.userAgent || '')) {
+    document.documentElement.classList.add('yz-ios-app');
+  }
+</script>
+<script>
   // חבר עם session פעיל מוחבא עד שנדע בוודאות אם יש לו session תקף — כמו landing-demo.html הקיים
   // ?guest=1 — צפייה בדף הנחיתה כ"אורח" גם כשיש session תקף, בלי להתנתק.
   // נולד מצורך אמיתי: כדי לבדוק הרשמה הייתי חייב להתנתק, וההתנתקות הפילה את
@@ -1267,6 +1276,8 @@ button { font-family: inherit; }
 .google-first .code-path-toggle:active { transform: scale(.985); }
 /* נפתח בלחיצה — ואז הכפתור עצמו מיותר ויורד, כדי שלא יישאר "כפתור שכבר לחצתי עליו". */
 .google-first.code-open .code-path { display: flex; }
+.code-path-note { display: none; font-size: 12.5px; color: var(--ink-3); text-align: center; line-height: 1.5; }
+.google-first .code-path-note { display: block; }
 .google-first.code-open .code-path-toggle, .google-first.code-open .code-path-or { display: none; }
 
 .forgot-toggle { background: none; border: none; color: var(--ink-3); font-size: 12.5px; font-weight: 600; cursor: pointer; text-decoration: underline; padding: 0; }
@@ -1498,6 +1509,10 @@ button { font-family: inherit; }
   align-items: center; justify-content: center; padding: 16px;
 }
 .modal-overlay.open { display: flex; }
+/* §458ו — 60px מכסה את הגבוהה שבשורות השעה (Dynamic Island, 59pt); באייפון עם כפתור בית
+   נשאר רווח קטן מיותר, וזה המחיר של ערך קבוע. ר' ההערה בסקריפט שמוסיף את המחלקה. */
+.yz-ios-app .modal-overlay { padding-top: 60px; }
+.yz-ios-app .modal-box { max-height: 100%; }
 .modal-box {
   background: #fff; border-radius: var(--r-shell); box-shadow: 0 24px 60px rgba(10,14,22,.35);
   position: relative; max-width: 460px; width: 100%; max-height: 92vh; overflow: auto;
@@ -2084,6 +2099,9 @@ button { font-family: inherit; }
       <div class="code-path-or"><span>או</span></div>
       <button type="button" class="code-path-toggle" id="heroCodeToggle" onclick="heroShowCodePath()">כניסה עם טלפון וקוד</button>
       <div class="code-path" id="heroCodePath">
+      <!-- §458ו — נצפה על מכשיר: מי שהמסלול נפתח לו אחרי כשל הבין "חייבים טלפון וקוד". מוצג
+           רק כשיש כפתורי Google/Apple מעליו (`google-first`); בלעדיהם הקוד הוא המסלול היחיד. -->
+      <div class="code-path-note">הטלפון והקוד הם <b>דרך נוספת</b> — רק למי שלא הצליח להיכנס עם Google או Apple.</div>
       <div>
         <span class="field-label">מספר טלפון</span>
         <input type="tel" id="heroPhoneInput" class="field-input" placeholder="05X-XXXXXXX"
@@ -3118,6 +3136,9 @@ async function heroGoogleLogin(res) {
     // §415ב — 🔑 **כשל בגוגל פותח את מסלול הקוד מיד, בלי לחיצה נוספת.** מי שניסה ונכשל
     // הוא בדיוק מי שאסור לבקש ממנו עוד צעד: ההודעה מסבירה מה קרה, והמסלול שכן יעבוד לו
     // כבר פתוח מתחתיה. בלי זה הוא רואה שגיאה מעל כפתור מקופל — וזה המסך של §398.
+    // §458ו — **חוץ מממתין/נדחה:** לממתין אין עדיין קוד, ולנדחה אין כניסה. פתיחה שם הציגה
+    // שדות שאין מה להקליד בהם, ובדיקת המכשיר הראתה שזה נקרא כ"מבקש ממני טלפון וקוד".
+    if (reason === 'pending' || reason === 'rejected') return;
     window.heroShowCodePath && window.heroShowCodePath();
   };
 
@@ -3389,6 +3410,8 @@ async function heroAppleLogin(idToken) {
     heroAMsg('⚠️ ' + html, 'warn');
     // §415ב — כשל פותח את מסלול הקוד מיד, בלי לחיצה נוספת. מי שניסה ונכשל הוא בדיוק מי
     // שאסור לבקש ממנו עוד צעד.
+    // §458ו — חוץ מממתין/נדחה, כמו בגוגל: שם אין קוד שיעזור.
+    if (reason === 'pending' || reason === 'rejected') return;
     window.heroShowCodePath && window.heroShowCodePath();
   };
 
