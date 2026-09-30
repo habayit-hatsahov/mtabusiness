@@ -24679,3 +24679,14 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 ✅ **(1.10) נרשם בפורטל אפל — שני המקורות עם ✓ SPF. היה: חובה לפני שמשתמש עם ממסר מקבל מייל** (Certificates, Identifiers & Profiles ← Services ← Sign in with Apple for Email Communication ← Configure): לרשום את הדומיין `yellowzone.co.il` (SPF כולל `include:spf.brevo.com` ✓, DKIM של Brevo ✓) **וגם** את הכתובת `yellowzonemta@gmail.com` (מיילים ידניים מהג׳ימייל). בלי זה הכניסה עובדת, אבל מייל האישור והקוד לא מגיעים.
 🔲 **אחרי הרישום:** מייל-בדיקה לכתובת ממסר אמיתית, ותשובה ממנה — לראות שמגיעה ל-yellowzonemta@gmail.com. 🔲 הפניית `info@yellowzone.co.il` לג׳ימייל (MX מצביע ל-`mail.yellowzone.co.il`, לא ברור שיש תיבה) — מייל **ישיר** אליה עלול ללכת לאיבוד. 🔲 `admin-messages.html:237` ו-`admin-dashboard.html` מציגים כשולח `yellowzonemta@gmail.com` — תצוגה ישנה, לא נגעתי.
 🚀 **נפרס 1.10:** וורקר `0d5199c0` (Uploaded + Deployed; `/apple-attach` חי) · אתר v142 אומת חי (cache-buster) · Email Sources באפל: `yellowzone.co.il` (Domain) + `yellowzonemta@gmail.com` (Email address), שניהם ✓ SPF.
+
+### §460ג — מיתוג OAuth של גוגל: "Yellow Zone" במקום `project-459607487972` (1.10)
+**הבעיה (§458):** מסך הכניסה עם Google באייפון הציג `project-459607487972`. באנדרואיד ובאתר המסך לא מופיע, ולכן לא נתפס.
+**מה נמצא:** שם האפליקציה ב-Google Auth Platform ← Branding היה ברירת-המחדל, ו**המיתוג מעולם לא אומת** — Verification Center: "Your branding is not being shown to users". כלומר שינוי השם לבדו לא היה משנה כלום.
+**מה נעשה (פרויקט `habayit-hatsahov`):**
+1. Branding: App name **Yellow Zone** · home `https://yellowzone.co.il/` · privacy `…/terms.html?doc=privacy` · terms `…/terms.html` · developer contact ramibentl@. Authorized domains כבר היו (`yellowzone.co.il` + `habayit-hatsahov.firebaseapp.com`). **בלי לוגו, במכוון** — לוגו מחייב אימות אפליקציה מלא
+2. `welcome.html` — קישור **"מדיניות פרטיות"** (`terms.html?doc=privacy`) נוסף לפוטר: גוגל דורשת שדף הבית יקשר למדיניות, ועד כה היה רק `terms.html` (= התקנון). נמדד ב-375px: שורה אחת, בלי גלילה אופקית. v143, אומת חי
+3. **Verify branding** → בדיקה אוטומטית (~דקות, לא ימים) → "verified, but is not yet being shown" → **Publish branding** (באישור רמי). ⚠️ **שני שלבים:** אימות שלא פורסם פג תוך 7 ימים
+**המצב:** Verification Center — "Your branding has been verified and is being shown to users". Data access: לא נדרש אימות (אין scopes רגישים).
+🔑 **הלקח:** בכפתור Verify branding לחיצה מהממשק לא הגיבה פעמיים; `click()` מה-DOM הפעיל. ⚠️ שינוי עתידי בשדות ה-Branding עלול לדרוש אימות חוזר.
+🔲 **לא נבדק על מכשיר:** מסך הכניסה עם Google באפליקציית iOS מציג "Yellow Zone" — לבדיקה הבאה מול אבירן.
