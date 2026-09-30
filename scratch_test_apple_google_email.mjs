@@ -110,10 +110,44 @@ console.log('\n2. השערים לא נחלשו');
   check('כבר מקושר לחשבון Apple אחר → אין linkable', !l.linkable, JSON.stringify(l));
 }
 {
+  // §460ב — חבר ותיק (מייל אמיתי) שהסתיר בכניסה: אין דרך לזהות אותו, והמסך צריך לדעת למה.
   reset();
-  put('M1', { email: 'a@x.co', googleEmail: 'zz@privaterelay.appleid.com', status: 'approved' });
+  put('M1', { email: 'ramibentl@gmail.com', status: 'approved' });
   const l = await call('/apple-login', { idToken: await appleTok({ email: 'zz@privaterelay.appleid.com', relay: true }) });
-  check('כתובת-ממסר → אין linkable (לא ראיה לשליטה בתיבה)', !l.linkable, JSON.stringify(l));
+  check('ותיק שהסתיר → אין linkable, ו-isPrivateRelay=true', !l.linkable && l.isPrivateRelay === true, JSON.stringify(l));
+}
+
+console.log('\n3. §460ב — נרשם עם "הסתר את המייל"');
+{
+  reset();
+  const RELAY = 'zz@privaterelay.appleid.com';
+  // הטופס כותב את הממסר כמייל הרשומה (pending), ואז קורא ל-attach.
+  put('N1', { firstName: 'חדש', email: RELAY, status: 'pending' });
+  const tok = await appleTok({ email: RELAY, relay: true });
+  const a = await call('/apple-attach', { idToken: tok, memberId: 'N1' });
+  check('🔑 attach עם ממסר מצליח (לא apple_private_email)', a.ok === true, JSON.stringify(a));
+  check('...בלי customToken — pending לא עוקף אישור', !a.customToken, JSON.stringify(a));
+  check('appleSub נכתב על N1', val(db.get('members/N1').appleSub) === 'S-rami');
+  const p = await call('/apple-login', { idToken: tok });
+  check('כניסה לפני אישור → pending', p.error === 'pending', JSON.stringify(p));
+  db.get('members/N1').status = { stringValue: 'approved' };
+  const ok = await call('/apple-login', { idToken: tok });
+  check('🔑 אחרי אישור — כניסה ישירה עם Apple', typeof ok.customToken === 'string', JSON.stringify(ok).slice(0, 80));
+}
+{
+  // ה-attach בהרשמה נכשל (רשת) — הכניסה מוצאת את הרשומה לפי הממסר ומשלימה.
+  reset();
+  const RELAY = 'zz@privaterelay.appleid.com';
+  put('N1', { email: RELAY, status: 'approved' });
+  const l = await call('/apple-login', { idToken: await appleTok({ email: RELAY, relay: true }) });
+  check('attach שלא הושלם → linkable לפי הממסר', l.linkable && l.linkable.memberId === 'N1', JSON.stringify(l));
+}
+{
+  // השער לא נפתח: ממסר של אדם אחד אינו מתאים לרשומה עם ממסר אחר.
+  reset();
+  put('N1', { email: 'other@privaterelay.appleid.com', status: 'pending' });
+  const a = await call('/apple-attach', { idToken: await appleTok({ email: 'zz@privaterelay.appleid.com', relay: true }), memberId: 'N1' });
+  check('ממסר שונה → email_mismatch', a.error === 'email_mismatch', JSON.stringify(a));
 }
 {
   reset();

@@ -24641,7 +24641,7 @@ fixed. תיקון באתר (לא דורש Build). · Guideline 4.8 (ממסר נ�
 
 ### §458ו — חלון הכניסה מתחת לשורת השעה + "מבקש ממני טלפון וקוד" (welcome.html, v141)
 ✅ **Apple אומת עד הסוף (21:23):** אחרי מחיקת הכפולה, כניסת Apple זיהתה לפי מייל וקישרה — `members/6ko9…` קיבל
-`appleSub` + `appleEmail: aviranyahav@gmail.com`.
+`appleSub` + `appleEmail: avir•••@gmail.com`.
 **1. שורת השעה:** `contentInset` (§458ב) לא חל על `position:fixed`, ולכן `.modal-overlay` נפתח מראש המסך. סקריפט
 בראש הדף מוסיף `yz-ios-app` רק כש-UA מכיל `YellowZoneApp` **וגם** iPhone/iPad → `padding-top: 60px` + `max-height:100%`.
 נמדד בדפדפן עם תוכן גבוה: באפליקציה top=60, בדפדפן 32 (ללא שינוי). ⚠️ ערך קבוע, לא `env()` (מחזיר 0 בלי

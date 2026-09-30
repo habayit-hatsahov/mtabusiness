@@ -195,7 +195,7 @@ function makePage(hosts, opts) {
     check('הטוקן נשמר בכל זאת', !!p.w.hbAppleSignup.token());
   }
 
-  console.log('\n== 🔴 מצב 3 — "הסתר את המייל שלי" ==');
+  console.log('\n== מצב 3 — "הסתר את המייל שלי" (§460ב: הממסר הוא המייל) ==');
   {
     const q = makePage(['C']);
     q.w.hbAppleSignup.init({ hostId: 'asHostC', clientId: 'demo.services.id',
@@ -203,13 +203,12 @@ function makePage(hosts, opts) {
     q.setMode('relay');
     q.btn('C').click();
     await new Promise((r) => setTimeout(r, 30));
-    check('🔴 לא נשמר טוקן', !q.w.hbAppleSignup.token(),
-          'טוקן שידוע מראש שהקישור שלו ייכשל הוא "נראה שהצליח" שמתגלה רק בכניסה');
-    check('כתובת הממסר לא נכתבה לשדה', q.val('C', 'email') === '', q.val('C', 'email'));
-    check('המייל לא ננעל', q.locked('C') === false);
-    check('ההסבר אומר מה לעשות', /שתף את המייל שלי/.test(q.cap('C')),
-          'לא "משהו השתבש" — הנרשם צריך לדעת שהוא עצמו בחר להסתיר');
-    check('לא נטען שהמייל אומת', !/אומת ע/.test(q.cap('C')));
+    check('🔑 נשמר טוקן — attach יקשר את הרשומה', !!q.w.hbAppleSignup.token());
+    check('כתובת הממסר נכתבה לשדה', q.val('C', 'email') === 'zzz@privaterelay.appleid.com', q.val('C', 'email'));
+    check('המייל ננעל — לא מבקשים מייל אחר (Guideline 4.8)', q.locked('C') === true);
+    check('הכיתוב אומר שההסתרה כובדה', /המייל המוסתר/.test(q.cap('C')), q.cap('C'));
+    check('הכיתוב אינו מציג את הכתובת האקראית', !/privaterelay/.test(q.cap('C')));
+    check('אין יותר "שתף את המייל שלי"', !/שתף את המייל שלי/.test(q.cap('C')));
   }
 
   console.log('\n== זיהוי כתובת-ממסר ==');
@@ -302,19 +301,19 @@ function makePage(hosts, opts) {
     check('הטוקן נשמר ל-attach', !!p.w.hbAppleSignup.token());
   }
 
-  console.log('\n== §450 — 🔴 כתובת-ממסר נחסמת גם במסלול הנייטיב ==');
+  console.log('\n== §450/§460ב — כתובת-ממסר במסלול הנייטיב: מתקבלת כמו באתר ==');
   {
-    // ההחלטה מ-§423: "הסתר את המייל שלי" שובר את שער הקישור לנצח. נתיב נייטיב שהיה
-    // עוקף את `onAuthorized` היה מאבד את החסימה **בשקט**, וזה בדיוק כל הטעם בהמרה.
+    // הנתיב הנייטיב עובר דרך אותו `onAuthorized` — כלומר ההתנהגות זהה לאתר. זה המסלול
+    // שבודק האפליקציה של אפל יפעיל (Guideline 4.8).
     const relay = { ok: true, givenName: null, familyName: null,
       idToken: fakeToken({ sub: 'a.9', email: 'zzz@privaterelay.appleid.com',
                            email_verified: 'true', is_private_email: 'true' }) };
     const p = makePage(['A'], { noAppleId: true, apple: { mode: 'native', result: relay } });
     initA(p);
     await clickA(p);
-    check('המייל לא מולא', p.val('A', 'email') === '', p.val('A', 'email'));
-    check('אין טוקן שמור', !p.w.hbAppleSignup.token());
-    check('הוצג הסבר ולא "משהו השתבש"', /הסתר|שיתוף|מייל/.test(p.cap('A')), p.cap('A'));
+    check('המייל מולא בממסר', p.val('A', 'email') === 'zzz@privaterelay.appleid.com', p.val('A', 'email'));
+    check('נשמר טוקן', !!p.w.hbAppleSignup.token());
+    check('הכיתוב: המייל המוסתר, לא "משהו השתבש"', /המייל המוסתר/.test(p.cap('A')), p.cap('A'));
   }
 
   console.log('\n== §450 — כניסה חוזרת: אפל לא שולחת שם, והשדות לא נמחקים ==');
@@ -484,7 +483,9 @@ function makePage(hosts, opts) {
     initA(p, { apiFetch: s.fn });
     await clickA(p); await tick();
     delete RESP.relay.authorization.code;
-    check('כתובת-ממסר: לא נשלח (הטוקן נזרק ממילא)', s.calls.length === 0, JSON.stringify(s.calls.map(x => x.url)));
+    // §460ב — ממסר הוא הרשמה אמיתית, ולכן גם הוא צריך את ה-refresh_token לביטול במחיקה.
+    check('כתובת-ממסר: /apple-exchange נשלח (§460ב)', s.calls.some((x) => x.url === '/apple-exchange'),
+          JSON.stringify(s.calls.map(x => x.url)));
   }
   {
     const p = makePage(['A']);

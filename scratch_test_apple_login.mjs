@@ -132,15 +132,15 @@ console.log('\n== 🔴 הסתר את המייל שלי ==');
     email: 'abc123@privaterelay.appleid.com', email_verified: true,
   }));
   check('כתובת ממסר מזוהה לפי הדומיין', relay.isPrivateRelay === true);
-  check('   ...ואינה נחשבת מאומתת', relay.emailVerified === false,
-        'שער הקישור נשען על זה — ממסר אינו ראיה לשליטה בתיבה');
+  // §460ב — הממסר הוא המייל שעל הרשומה של מי שנרשם עם "הסתר", ולכן מאומת.
+  check('   ...ונחשבת מאומתת (§460ב)', relay.emailVerified === true);
 
   const flagged = await verifyAppleIdToken(ENV, await makeToken({
     email: 'looks-real@example.com', email_verified: true, is_private_email: true,
   }));
   check('כתובת ממסר מזוהה גם לפי הדגל בלבד', flagged.isPrivateRelay === true,
         'is_private_email הוא ההצהרה הרשמית; הדומיין הוא הגיבוי');
-  check('   ...וגם היא אינה מאומתת', flagged.emailVerified === false);
+  check('   ...וגם היא מאומתת', flagged.emailVerified === true);
 }
 
 console.log('\n== בוליאני כמחרוזת (המלכודת של גוגל, שוב) ==');
@@ -177,14 +177,10 @@ console.log('\n== חיווט ב-index.js ==');
 
   // 🔑 סדר השערים — בדיקה אמיתית ולא נוכחות מחרוזת.
   const attach = code.slice(code.indexOf('async function handleAppleAttach'));
-  const iRelay = attach.indexOf('isPrivateRelay');
-  const iVerified = attach.indexOf('emailVerified');
-  const iMismatch = attach.indexOf('email_mismatch');
-  check('🔴 בדיקת הממסר קודמת לבדיקה הכללית', iRelay > -1 && iRelay < iVerified,
-        'relay@' + iRelay + ' verified@' + iVerified);
-  check('🔴 ...וגם קודמת להשוואת המיילים', iRelay > -1 && iRelay < iMismatch,
-        'אחרת ממסר היה מקבל email_mismatch — הודעה ששולחת לחפש טעות שאינה קיימת');
-  check('קוד שגיאה נפרד לממסר', attach.includes("'apple_private_email'"));
+  // §460ב — הממסר **אינו** נחסם ב-attach: הוא המייל שעל הרשומה, וההשוואה מצליחה.
+  const attachBody = attach.slice(0, attach.indexOf('\n}\n'));
+  check('🔑 attach אינו חוסם ממסר (§460ב)', !attachBody.includes('isPrivateRelay'));
+  check('...ואין קוד apple_private_email בשום מקום', !code.includes("'apple_private_email'"));
 
   // הנתיב החזק חייב **לא** לחסום ממסר.
   const link = code.slice(code.indexOf('async function handleAppleLink'),
