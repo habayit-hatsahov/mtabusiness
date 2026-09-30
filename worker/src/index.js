@@ -276,8 +276,8 @@ const MEMBER_EMAIL_SCAN_LIMIT = 3000;
 async function linkableByVerifiedEmail(env, accessToken, g, subField) {
   if (!subField) throw new Error('linkable_sub_field_required');
   // מייל שהספק לא אימת אינו ראיה לכלום, וכל הגדר נשען עליו.
-  // ⚠️ אצל אפל `emailVerified` הוא **false ביודעין** כשהמייל הוא כתובת-ממסר — כלומר
-  // המסלול הזה נסגר מעצמו בדיוק במקרה שבו אי-אפשר להוכיח שליטה בתיבה. ר' `apple.js`.
+  // §460ב — כתובת-ממסר של אפל עוברת כאן (מאומתת), ותמצא רק רשומה שנרשמה איתה — כלומר
+  // של מי שנרשם עם "הסתר" וה-attach שלו לא הושלם. חבר ותיק עם מייל אמיתי לא יימצא. ר' `apple.js`.
   if (!g.emailVerified || !g.email) return null;
   let rows = await firestoreRunQuery(env, accessToken, 'members', 'email', g.email, 2);
   // ── §437 — 🔴 **שאילתת Firestore רגישה לרישיות, והמייל מהספק תמיד באותיות קטנות** ────
@@ -467,19 +467,14 @@ async function handleAppleLink({ idToken, memberIdToken }, env) {
 // אימתה, כלומר אפשר לקשור רק לרשומה שהנרשם עצמו יצר. בלעדיו תוקף היה קושר את חשבון
 // **האפל שלו** לרשומה של אדם אחר ונכנס בשמו ברגע שתאושר.
 //
-// 🔴 **וכאן כתובת-ממסר נחסמת — לא כהחמרה, אלא כי השער אינו יכול לעבוד איתה.**
-// `@privaterelay.appleid.com` לעולם לא יהיה זהה למייל שעל הרשומה, ולכן ההשוואה למטה
-// הייתה נכשלת **תמיד** ומחזירה `email_mismatch` — הודעה ששולחת את הנרשם לחפש טעות
-// הקלדה שאינה קיימת. קוד-שגיאה נפרד הוא מה שמאפשר למסך לומר את הדבר הנכון: "בחר לשתף
-// את המייל שלך". ר' [[feedback_state_not_event_detection]].
+// §460ב — **כתובת-ממסר עוברת כאן כמו כל מייל.** טופס ההרשמה ממלא אותה כמייל של הרשומה
+// ונועל אותה, ולכן ההשוואה למטה מצליחה. (עד §460ב נחסמה ב-`apple_private_email` —
+// Guideline 4.8 של אפל דורשת שמי שבחר להסתיר את המייל יוכל להירשם ולהיכנס.)
 async function handleAppleAttach({ idToken, memberId }, request, env) {
   let a;
   try { a = await verifyAppleIdToken(env, idToken); } catch (e) { return { error: 'invalid_apple_token' }; }
   if (!memberId || typeof memberId !== 'string') return { error: 'invalid_request' };
 
-  // ⚠️ **לפני** בדיקת `emailVerified` הכללית, ולא אחריה: `apple.js` מסמן כתובת-ממסר כלא
-  // מאומתת ביודעין, ולכן הסדר ההפוך היה בולע את המקרה הזה לתוך שגיאה גנרית.
-  if (a.isPrivateRelay) return { error: 'apple_private_email' };
   if (!a.emailVerified || !a.email) return { error: 'apple_email_unverified' };
 
   const accessToken = await getGoogleAccessToken(env);
