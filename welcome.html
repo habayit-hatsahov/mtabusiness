@@ -2900,10 +2900,22 @@ const heroEnvTagAt = (t0, st) => {
 // פרט-מימוש שישתנה ביום שמסלול חדש יעביר null גם הוא, והמדידה תשקר בלי להישבר.
 let _hbLoginVia = 'code';
 
+// ══ §460ה — 🔴 האירוע לא נשלח מכאן, אלא מ-home.html ═══════════════════════════════════════
+// עד §460ה הוא נשלח כאן, "לפני heroGoHome". אבל `addDoc` הוא בקשת-רשת (שקודם מביאה טוקן),
+// והניווט 60ms אחריו **מבטל אותה**. נמדד 16.9–4.10: ~9 מתוך ~20 כניסות מוצלחות מדף הנחיתה
+// נגמרו בלי `loginOk`, בכל המסלולים ובכל המשטחים. ("לפני" בקוד ≠ "יצא לרשת" — §410 עבד כי
+// localStorage סינכרוני, ו-addDoc לא.)
+// עכשיו: נשמר ב-sessionStorage (סינכרוני, שורד ניווט באותה לשונית, ושם גם ה-sessionId),
+// ו-home.html שולח אותו מיד אחרי ה-pageView שלו — בדף שלא עומד להיסגר.
+const HB_PENDING_LOGIN_KEY = 'hb_pending_loginOk';
 function heroFinishLogin(uid, phoneDigits) {
-  // ⚠️ לפני `heroGoHome` — הניווט מתרחש מיד, ואירוע שנשלח אחריו לא תמיד מספיק לצאת.
-  // אותו לקח בדיוק כמו §410 (הדגל נכתב לפני הקישור ולא אחריו).
-  window.logEvent && window.logEvent('loginOk', { channel: _hbLoginVia, memberId: uid });
+  try {
+    sessionStorage.setItem(HB_PENDING_LOGIN_KEY,
+      JSON.stringify({ channel: _hbLoginVia, memberId: uid, t: Date.now() }));
+  } catch (e) {
+    // sessionStorage חסום (מצב פרטי קיצוני) — הדרך הישנה עדיף על כלום, גם אם תאבד לפעמים.
+    window.logEvent && window.logEvent('loginOk', { channel: _hbLoginVia, memberId: uid });
+  }
   if (phoneDigits) localStorage.setItem('hb_phone', phoneDigits);
   localStorage.setItem('hb_memberId', uid);
   // §359 — האיפוס חייב לשבת כאן, בנקודת-הסיום היחידה: כניסה שהגיעה מרשת-ההצלה המאוחרת

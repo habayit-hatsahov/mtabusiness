@@ -4575,6 +4575,20 @@ if (!['yellowzone.co.il', 'www.yellowzone.co.il'].includes(location.hostname)) r
 };
 window.logEvent('pageView');
 
+// ── §460ה — loginOk שדף הנחיתה השאיר לנו ─────────────────────────────────────────────────
+// welcome.html כבר לא שולח אותו בעצמו: הניווט ל-home ביטל את הבקשה בכ-45% מהכניסות.
+// ר' ההערה על heroFinishLogin. נקרא ונמחק **לפני** השליחה — רענון לא יספור כניסה פעמיים.
+// ⚠️ תקרת 10 דקות: ערך שנשאר מסיבה כלשהי לא ייספר ככניסה מאוחר יותר באותה לשונית.
+(function flushPendingLoginOk() {
+  let p = null;
+  try {
+    p = JSON.parse(sessionStorage.getItem('hb_pending_loginOk') || 'null');
+    sessionStorage.removeItem('hb_pending_loginOk');
+  } catch (e) { return; }
+  if (!p || !p.channel || !(Date.now() - (p.t || 0) < 10 * 60 * 1000)) return;
+  window.logEvent('loginOk', { channel: String(p.channel) });
+})();
+
 // ── Web Push — הרשמה להתראות (VAPID). המפתח הציבורי לא סוד (ר' worker/wrangler.toml) ──
 const VAPID_PUBLIC_KEY = 'BECSM177-gOp4bBBQNnZPd4wsO23UnSkKFVbf5pBXtH6DENFhif2Ywr7uhR3wqKrP0_CJwfzpZN1KwYvZ6rNvCM';
 

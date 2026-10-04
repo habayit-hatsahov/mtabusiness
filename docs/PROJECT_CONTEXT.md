@@ -24690,3 +24690,11 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 **המצב:** Verification Center — "Your branding has been verified and is being shown to users". Data access: לא נדרש אימות (אין scopes רגישים).
 🔑 **הלקח:** בכפתור Verify branding לחיצה מהממשק לא הגיבה פעמיים; `click()` מה-DOM הפעיל. ⚠️ שינוי עתידי בשדות ה-Branding עלול לדרוש אימות חוזר.
 🔲 **לא נבדק על מכשיר:** מסך הכניסה עם Google באפליקציית iOS מציג "Yellow Zone" — לבדיקה הבאה מול אבירן.
+
+### §460ה — `loginOk` אבד בכ-45% מהכניסות: הניווט ביטל את הבקשה (4.10)
+**התסמין (§439, §458ה):** כניסות מוצלחות בלי אירוע `loginOk`.
+**נמדד** (`events`, 16.9–4.10, סשן שבו נפתח טופס הכניסה ב-welcome ואחריו home עם memberId): **~9 מתוך ~20 כניסות בלי `loginOk`** — בקוד, Google ו-Apple; באפליקציה, PWA ודפדפן. כלומר לא מסלול שבור, אלא מרוץ.
+**השורש:** `heroFinishLogin` שלח את האירוע "לפני `heroGoHome`" — אבל `addDoc` הוא בקשת-רשת אסינכרונית (שקודם מביאה טוקן), והניווט 60ms אחריו **מבטל אותה**. "לפני" בסדר השורות ≠ "יצא לרשת". (§410 עבד באותו מבנה כי `localStorage` סינכרוני.)
+**התיקון:** `welcome.html` שומר `{channel, memberId, t}` ב-`sessionStorage` (`hb_pending_loginOk`) לפני הניווט — סינכרוני, שורד ניווט באותה לשונית, ושם גם ה-`sessionId`. `home.html` קורא ומוחק את המפתח **לפני** השליחה (רענון לא סופר פעמיים) ושולח `loginOk` מיד אחרי ה-`pageView` שלו. ערך מעל 10 דקות נזרק. אם `sessionStorage` חסום — נשלח ישירות כמו קודם. **הנתיב באירוע הוא עכשיו `/home.html`**; `admin-dashboard` (`loginPathStats`) סופר לפי `type`+`channel` בלבד, ולכן לא מושפע.
+**נבדק:** `scratch_test_loginok_handoff.js` (חדש) 15/15 — מריץ את הקוד האמיתי משני הקבצים; 🔨 שבירה מכוונת (בלי `removeItem`) → 3 נכשלו · `scratch_test_login_flip.js` עודכן (השמירה לפני ההפניה + home שולח) ✅ · apple_login_modal 77/77 · 15 הסקריפטים בשני הדפים עוברים `node --check` · `sw.js` → **v145**.
+🔲 **לאמת בעוד כמה ימים:** להריץ שוב את מדידת הפער — צפוי כיסוי כמעט מלא לכניסות שאחרי הפריסה.

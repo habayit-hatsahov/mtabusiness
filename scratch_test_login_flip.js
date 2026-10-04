@@ -88,9 +88,12 @@ check('loginOk נשלח בנקודת-הסיום היחידה', (w.match(/logEven
 check("המסלול נקבע ל-'code' במסלול הטלפון", w.includes("_hbLoginVia = 'code';"));
 check("המסלול נקבע ל-'google' בכניסת גוגל", w.includes("_hbLoginVia = 'google';"));
 check("המסלול נקבע ל-'googleLink' בקישור-ואז-כניסה", w.includes("_hbLoginVia = 'googleLink';"));
-const iSend = w.indexOf("logEvent('loginOk'");
+// §460ה — האירוע **נשמר** לפני ההפניה ונשלח מ-home.html; שליחה מכאן בוטלה ע"י הניווט.
+const iStash = w.indexOf('sessionStorage.setItem(HB_PENDING_LOGIN_KEY', w.indexOf('function heroFinishLogin'));
 const iGoHome = w.indexOf('heroGoHome();', w.indexOf('function heroFinishLogin'));
-check('האירוע נשלח לפני ההפניה לדף הבית', iSend < iGoHome, `send@${iSend} goHome@${iGoHome}`);
+check('§460ה — האירוע נשמר לפני ההפניה לדף הבית', iStash > -1 && iStash < iGoHome, `stash@${iStash} goHome@${iGoHome}`);
+const h = fs.readFileSync('home.html', 'utf8');
+check("§460ה — home.html שולח את loginOk השמור", h.includes("window.logEvent('loginOk'") && h.includes("'hb_pending_loginOk'"));
 check("🔴 'loginOk' קיים ברשימת-ההיתר ב-firestore.rules", rules.includes("'loginOk'"),
       'בלי זה כל אירוע כזה נדחה בשקט ואפס יוצג כאילו איש לא נכנס');
 
