@@ -31,6 +31,7 @@ import {
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   serverTimestamp, query, orderBy, limit
 } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
+import { getAuth } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 
 export const DELETION_LOG = 'deletionLog';
 
@@ -128,7 +129,43 @@ export async function logAndDelete(db, collectionName, docId, actor, source) {
   // ממילא כי הוא בודק חי אם היעד תפוס.
   try { await updateDoc(logRef, { state: 'deleted' }); }
   catch (e) { console.error('deletion-log state update failed:', e); }
+  if (collectionName === 'members' && data.appleSub) revokeAppleAfterDelete(logRef.id);
   return { ok: true, logId: logRef.id, name };
+}
+
+// ── §460ח — ביטול הרשאת Apple אחרי מחיקת מנהל ─────────────────────────────────────────────
+// רק השרת מחזיק את המפתח של אפל, ולכן זו קריאה לוורקר. **אחרי** המחיקה ו**בלי await** אצל
+// הקורא: כשל אצל אפל אינו סיבה לבטל מחיקה שכבר קרתה. השרת קורא את ה-sub מהצילום ביומן
+// (לא מכאן) ורושם את התוצאה ב-`adminAppleRevoke` על אותה רשומת יומן — שם רואים אותה.
+// ⚠️ לא מבטל כשרשומה אחרת מחזיקה את אותו sub (מחיקת כפולה) — ההחלטה בשרת.
+const API_HOSTS = [
+  'https://api.yellowzone.co.il',
+  'https://habayit-hatsahov.web.app/api',
+  'https://habayit-hatsahov-worker.yellowzone.workers.dev',
+];
+async function revokeAppleAfterDelete(logId) {
+  try {
+    const user = getAuth().currentUser;
+    if (!user) { console.error('admin-apple-revoke: no signed-in user'); return; }
+    const idToken = await user.getIdToken();
+    const body = JSON.stringify({ idToken, logId });
+    for (let i = 0; i < API_HOSTS.length; i++) {
+      // רק כשל-רשת מקדם לכתובת הבאה; תשובה (גם שגיאה) היא תשובה.
+      try {
+        const ac = new AbortController();
+        const t = setTimeout(() => ac.abort(), 8000);
+        const r = await fetch(API_HOSTS[i] + '/admin-apple-revoke', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: ac.signal,
+        });
+        clearTimeout(t);
+        const j = await r.json().catch(() => ({}));
+        console.log('admin-apple-revoke:', j.error || j.result);
+        return;
+      } catch (e) {
+        if (i === API_HOSTS.length - 1) console.error('admin-apple-revoke failed:', e);
+      }
+    }
+  } catch (e) { console.error('admin-apple-revoke failed:', e); }
 }
 
 // ── קריאת היומן ─────────────────────────────────────────────────────────────────────────────

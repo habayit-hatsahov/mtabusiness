@@ -114,6 +114,10 @@ export default {
       if (request.method === 'POST' && url.pathname === '/delete-account') {
         return json(await handleDeleteAccount(await request.json(), request, env), env, request);
       }
+      // §460ח — ביטול הרשאת Apple אחרי מחיקה ע"י מנהל. מאומת כמנהל.
+      if (request.method === 'POST' && url.pathname === '/admin-apple-revoke') {
+        return json(await handleAdminAppleRevoke(await request.json(), env), env, request);
+      }
       // §420ג — פוש נייטיב. מאומת כמנהל, כמו שידור המייל.
       if (request.method === 'POST' && url.pathname === '/send-native-push') {
         return json(await handleSendNativePush(await request.json(), env), env, request);
@@ -958,19 +962,7 @@ async function handleDeleteAccount({ idToken, reason }, request, env) {
   // ידנית; מחיקתו הייתה הופכת כשל זמני לכשל סופי.
   let appleRevoke = 'not_apple';
   if (d.appleSub) {
-    try {
-      const t = await firestoreGetDoc(env, accessToken, `appleTokens/${d.appleSub}`);
-      if (!t || !t.fields.refreshToken) {
-        appleRevoke = 'no_token';
-      } else {
-        const r = await revokeAppleToken(env, t.fields.clientId, t.fields.refreshToken);
-        appleRevoke = r.ok ? 'revoked' : (r.reason + (r.detail ? ':' + r.detail : ''));
-        if (r.ok) await firestoreDeleteDoc(env, accessToken, `appleTokens/${d.appleSub}`);
-      }
-    } catch (e) {
-      console.error('apple revoke failed:', e);
-      appleRevoke = 'error';
-    }
+    appleRevoke = await revokeAppleForSub(env, accessToken, d.appleSub);
     console.log('delete-account: apple revoke —', appleRevoke);
   }
 
@@ -1000,6 +992,69 @@ async function handleDeleteAccount({ idToken, reason }, request, env) {
   } catch (e) { console.error('deletion-log state update failed:', e); }
 
   return { ok: true, flaggedBusinesses: flaggedBusinesses || [], authDeleted };
+}
+
+// ── ביטול ההרשאה אצל אפל לפי `sub` — משותף למחיקה עצמית ולמחיקת מנהל ──────────────────────
+// מחזיר מחרוזת-תוצאה ליומן ולא זורק: `revoked` (אומת ב-refresh שנדחה, ר' apple.js),
+// `no_token`, `error`, או סיבת הכשל של אפל. המסמך נמחק **רק** כשהביטול הצליח — ר' למעלה.
+async function revokeAppleForSub(env, accessToken, sub) {
+  try {
+    const t = await firestoreGetDoc(env, accessToken, `appleTokens/${sub}`);
+    if (!t || !t.fields.refreshToken) return 'no_token';
+    const r = await revokeAppleToken(env, t.fields.clientId, t.fields.refreshToken);
+    if (r.ok) await firestoreDeleteDoc(env, accessToken, `appleTokens/${sub}`);
+    return r.ok ? 'revoked' : (r.reason + (r.detail ? ':' + r.detail : ''));
+  } catch (e) {
+    console.error('apple revoke failed:', e);
+    return 'error';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//  §460ח — ביטול הרשאת Apple אחרי מחיקה ע"י מנהל  (POST /admin-apple-revoke)
+// ══════════════════════════════════════════════════════════════════════════════════════════
+//
+//  מחיקת מנהל רצה בדפדפן (`deletion-log.js` → `logAndDelete`), ולכן לא נגעה באפל: הטוקן
+//  נשאר ב-`appleTokens` ו-Yellow Zone נשאר ברשימה של האדם (נצפה ב-§460ו). הנתיב הזה נקרא
+//  **אחרי** שהמחיקה הצליחה, ואינו חוסם אותה — אותו עיקרון כמו במחיקה העצמית.
+//
+//  🔑 **הקלט הוא `logId` בלבד — ה-`sub` נקרא מהצילום ביומן, לא מהדפדפן.** כך אי-אפשר לבקש
+//  ביטול ל-sub שרירותי: רק למי שנמחק בפועל, ורק כשהמסמך שלו באמת כבר לא קיים.
+//
+//  🔑 **לא מבטלים כשרשומה חיה אחרת מחזיקה את אותו `appleSub`.** ההרשאה אצל אפל היא של
+//  **האדם**, לא של הרשומה; מחיקת כפולה (המקרה הנפוץ של מחיקת מנהל) הייתה מנתקת את החשבון
+//  האמיתי שלו. נרשם `kept_other_member`.
+//
+//  ⚠️ שחזור מהיומן מחזיר את `appleSub` לרשומה — הכניסה עם Apple ממשיכה לעבוד (אותו sub),
+//  ואפל רק תשאל שוב שתף/הסתר. החלטת המשתמש (§460ח).
+async function handleAdminAppleRevoke({ idToken, logId }, env) {
+  try { await verifyAdminIdToken(env, idToken); }
+  catch (e) { return { error: 'not_admin' }; }
+  if (!logId || typeof logId !== 'string' || logId.includes('/')) return { error: 'bad_log_id' };
+
+  const accessToken = await getGoogleAccessToken(env);
+  const entry = await firestoreGetDoc(env, accessToken, `deletionLog/${logId}`);
+  if (!entry) return { error: 'log_not_found' };
+  const e = entry.fields;
+  if (e.collectionName !== 'members' || !e.docId) return { error: 'not_member_deletion' };
+  const sub = e.data && e.data.appleSub;
+
+  let result;
+  if (!sub) {
+    result = 'not_apple';
+  } else if (await firestoreGetDoc(env, accessToken, `members/${e.docId}`)) {
+    // המחיקה לא הושלמה (או שוחזרה) — אין מה לבטל.
+    result = 'member_still_exists';
+  } else if ((await membersByAppleSub(env, accessToken, sub)).length > 0) {
+    result = 'kept_other_member';
+  } else {
+    result = await revokeAppleForSub(env, accessToken, sub);
+  }
+  console.log('admin-apple-revoke:', logId, '—', result);
+
+  try { await firestorePatch(env, accessToken, `deletionLog/${logId}`, { adminAppleRevoke: result }); }
+  catch (err) { console.error('deletion-log adminAppleRevoke update failed:', err); }
+  return { ok: true, result };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════
