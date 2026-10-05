@@ -24898,3 +24898,11 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - 🔴 **חסם לפני push:** `https://api.yellowzone.co.il/apple-callback` **לא רשום** ב-Return URLs של `il.co.yellowzone.web`. נבדק: authorize מחזיר `invalid_request`, בעוד `fan-register.html` עובר. **רמי מוסיף בפורטל, ורק אז push.**
 - `sw.js` → **v159**.
 - **§468ד (6.10) — 🐛 מסך לבן בבדיקה הראשונה, ותוקן.** טופס האוהד נפתח בתוך iframe במודאל של `welcome.html` (`joinModal`), ו-`location.assign` העביר **רק את המסגרת** לאפל. אפל מחזירה `X-Frame-Options: DENY`, ולכן מסך לבן (`asRedirect` נרשם). התיקון: `(window.top || window).location.assign(url)` — אותו origin, ולכן מותר. החזרה נוחתת על `fan-register.html` כדף עצמאי (נתמך — `window.top === window` כבר מטופל בדף), ו-sessionStorage משותף לאותה לשונית. `sw.js` → **v160**.
+- **§468ה (6.10) — ✅ זרימת-ההפניה עובדת על האייפון**, ובקשת המשך של רמי.
+  - **האימות:** Safari פרטי, Apple ID של אשת רמי, "הסתר את המייל". הדף חזר לבד לטופס ממולא, ונוצרה רשומה `iMiWBerx38g7I3O0utbd` "בדיקה אפל3" (pending, ממסר, `appleSub`). `appleTokens` נשמר בוורקר (22:25:47), כלומר ההחלפה בשרת עובדת. מחיקת "בדיקה אפל2" נרשמה `revoked`.
+  - **הבקשה:** "שיהיו בדף הנחיתה בהרשמה בחלון בדף, לא בדף נפרד של הרשמה".
+  - **השינוי:**
+    - `APPLE_CALLBACK_RETURN.fan` → `welcome.html?join=1`.
+    - `welcome.html`: ב-`DOMContentLoaded`, כש-state מתחיל ב-`fan.`, שומרים את ה-fragment, מוחקים אותו מהכתובת ופותחים את `openJoinModal()`. זה טוען את ה-iframe מחדש עם `fan-register.html?embed=1&r=…#as=…`, ושם `apple-signup.js` מאמת nonce וממלא.
+    - `hbConsumeAppleReturn` (הכניסה) מתעלם מ-state שאינו `login.`, **בלי לצרוך את ה-nonce**.
+  - **נבדק בדפדפן:** `welcome.html?join=1#as=<fan>` → המודאל נפתח, הכתובת נוקתה, וה-iframe קיבל את ה-fragment. הבדיקות: 94/94, 22/22, 113/113. וורקר `35a6c7e5`. `sw.js` → **v161**.

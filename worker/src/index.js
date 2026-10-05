@@ -578,7 +578,9 @@ async function handleAppleExchange({ idToken, code, redirectUri }, env) {
 // ⚠️ דורש ש-`APPLE_CALLBACK_URL` רשום ב-Return URLs של ה-Services ID בפורטל אפל.
 const APPLE_CALLBACK_URL = 'https://api.yellowzone.co.il/apple-callback';
 const APPLE_CALLBACK_RETURN = {
-  fan: 'https://yellowzone.co.il/fan-register.html',
+  // §468ה — לדף הנחיתה, שפותח את מודאל ההרשמה ומעביר את ה-fragment ל-iframe (בקשת רמי:
+  // "שיהיו בדף הנחיתה בהרשמה בחלון בדף, לא בדף נפרד של הרשמה").
+  fan: 'https://yellowzone.co.il/welcome.html?join=1',
   login: 'https://yellowzone.co.il/welcome.html?login=1',
 };
 async function handleAppleCallback(request, env) {

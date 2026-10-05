@@ -127,10 +127,40 @@ document.addEventListener('keydown', e => {
 //
 // תופעת-לוואי מבורכת: הלינק לתקנון כבר שומר על מצב-embed (ר' fan-register.html), ולכן
 // גם החזרה ממנו במובייל מפסיקה להציג "פס צהוב כפול".
+// ══ §468ה — חזרה מאפל (זרימת-ההפניה באייפון) לתוך מודאל ההרשמה ══════════════════════════
+// הוורקר מחזיר לכאן `?join=1#as=…` (state "fan.<nonce>"). פותחים את המודאל, וה-fragment עובר
+// **כמו שהוא** ל-iframe — שם `apple-signup.js` מאמת את ה-nonce וממלא את הטופס. ה-nonce
+// ב-sessionStorage משותף לדף ול-iframe (אותו origin, אותה לשונית).
+// ⚠️ מוחקים את ה-fragment מהכתובת של הדף **לפני** הכל — הוא נושא טוקן.
+let _hbJoinHash = '';
+function hbAppleReturnState() {
+  const m = /[#&]as=([A-Za-z0-9_-]+)/.exec(location.hash || '');
+  if (!m) return '';
+  try {
+    const b = m[1].replace(/-/g, '+').replace(/_/g, '/');
+    return String(JSON.parse(decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4))))).s || '');
+  } catch (_) { return ''; }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  if (!/^fan\./.test(hbAppleReturnState())) return;
+  _hbJoinHash = location.hash;
+  try { history.replaceState(null, '', location.pathname); } catch (_) {}
+  openJoinModal();
+});
+
 function openJoinModal() {
   window.logEvent && window.logEvent('formOpen', { blockId: 'joinModal' });
   const f = document.getElementById('joinFrame');
   const wantedSrc = 'fan-register.html?embed=1';
+  // §468ה — חזרה מאפל: טעינה מחדש של ה-iframe עם ה-fragment, פעם אחת.
+  if (_hbJoinHash) {
+    f.src = wantedSrc + '&r=' + Date.now() + _hbJoinHash;
+    _hbJoinHash = '';
+    document.getElementById('joinOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    yzPushModalState();
+    return;
+  }
 
   // ── §286 — פתיחה חוזרת אחרי הרשמה מוצלחת ─────────────────────────────────────────────────
   // התנאי `src !== wantedSrc` נועד לא לטעון מחדש טופס שכבר פתוח (כדי לא לאבד מה שהוקלד בו
@@ -803,6 +833,8 @@ function hbConsumeAppleReturn() {
     var b = m[1].replace(/-/g, '+').replace(/_/g, '/');
     d = JSON.parse(decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4)))));
   } catch (e) { return; }
+  // §468ה — חזרה של טופס ההרשמה ("fan.") שייכת ל-iframe, לא לכאן — ואסור לצרוך לה את ה-nonce.
+  if (String((d && d.s) || '').split('.')[0] !== 'login') return;
   var expected = '';
   try { expected = sessionStorage.getItem(HB_AS_NONCE_KEY) || ''; sessionStorage.removeItem(HB_AS_NONCE_KEY); } catch (_) {}
   var got = String((d && d.s) || '').split('.')[1] || '';
