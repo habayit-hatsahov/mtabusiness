@@ -24785,3 +24785,4 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - `delete-account.html`: "הקישור לחשבון Google או Apple, אם התחברת עם אחד מהם".
 - ⚠️ במכוון לא נכתב "ההרשאה מבוטלת מול אפל". הביטול תלוי ב-refresh token, וכניסות שקדמו למפתח ה-`.p8` אין להן כזה (§455).
 - `sw.js` → **v150**.
+✅ **released (5.10):** נדחף, v150 חי, והנוסח החדש נמצא ב-`profile.html` וב-`delete-account.html` החיים (נבדק עם cache-buster).
