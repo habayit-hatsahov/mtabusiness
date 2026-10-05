@@ -96,10 +96,6 @@ export default {
       if (request.method === 'POST' && url.pathname === '/submit-member') {
         return json(await handleSubmitMember(await request.json(), env), env, request);
       }
-      // §466 — דוח-אבחון מהאפליקציה (app-diag.js). דרך הוורקר ולא Firestore, כי Firestore הוא החשוד.
-      if (request.method === 'POST' && url.pathname === '/app-diag') {
-        return json(await handleAppDiag(await request.json(), request, env), env, request);
-      }
       if (request.method === 'POST' && url.pathname === '/check-biz-exists') {
         return json(await handleCheckBizExists(await request.json(), request, env), env, request);
       }
@@ -710,24 +706,6 @@ const SUBMIT_MEMBER_STRING_FIELDS = {
   reviewFlag: 60, duplicateOfId: 40,
 };
 const PROOF_URL_PREFIX = 'https://firebasestorage.googleapis.com/';
-
-// §466 — אבחון "דף הבית נתקע אחרי כניסה באפליקציה, iOS 27". זמני: נמחק אחרי שהשורש נמצא.
-// ציבורי ובלי אימות, ולכן: גוף חתוך ל-8,000 תווים, שדות-מסגרת חתוכים, ונכתב לאוסף נפרד
-// (`appDiag`) שהלקוח לא יכול לקרוא (אין לו חוק → נחסם כברירת מחדל).
-async function handleAppDiag({ sid, kind, payload } = {}, request, env) {
-  const cut = (v, n) => String(v == null ? '' : v).slice(0, n);
-  let body = '';
-  try { body = JSON.stringify(payload ?? null); } catch (_) { body = 'unserializable'; }
-  const accessToken = await getGoogleAccessToken(env);
-  await firestoreCreateDoc(env, accessToken, 'appDiag', {
-    at: new Date(),
-    sid: cut(sid, 60),
-    kind: cut(kind, 30),
-    ua: cut(request.headers.get('User-Agent'), 300),
-    body: cut(body, 8000),
-  });
-  return { ok: true };
-}
 
 async function handleSubmitMember({ memberId, data } = {}, env) {
   if (typeof memberId !== 'string' || !/^[A-Za-z0-9]{20}$/.test(memberId)) return { error: 'bad_member_id' };
