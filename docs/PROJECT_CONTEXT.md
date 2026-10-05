@@ -24873,3 +24873,27 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
   - **מדידה (`apple-signup.js`):** `asPopup:noHandle` / `asPopup:closedAlready` / `asPopupClosed` (+`asPopup:stillOpen` אחרי 600ms) / `asPopup:threw:*`.
   - **התשובה קובעת את הכיוון:** תיקון מצד הדף, או זרימת-הפניה (`usePopup:false`). זרימת-הפניה עם `name email` מחייבת `form_post` → נקודת-קבלה בוורקר + Return URL חדש בפורטל אפל.
   - `scratch_test_apple_signup.js` 113/113. `sw.js` → **v158**.
+- **§468ב — התוצאה (6.10):** `asPopup:closedAlready` — מבחינת הדף החלון כבר סגור, ועל המסך הוא פתוח. **אין תיקון מצד הדף.**
+
+### §468ג — "התחברות עם Apple" באייפון בדפדפן: זרימת-הפניה במקום חלון (6.10)
+**החלטת רמי:** טופס האוהד וחלון הכניסה עוברים לזרימת-הפניה. **בטופס העסק באייפון בדפדפן הכפתור מוסתר** (הכפתור בשלב 5, ומעבר לאפל היה מוחק את שלבים 1–4). מחשב, אנדרואיד והאפליקציה — ללא שינוי.
+- **הזרימה:**
+  1. לחיצה → נשמר nonce ב-sessionStorage → `location.assign` ל-`appleid.apple.com/auth/authorize`, עם `response_mode=form_post`, `redirect_uri=https://api.yellowzone.co.il/apple-callback` ו-`state=<יעד>.<nonce>`.
+  2. אפל שולחת POST לוורקר (`/apple-callback`). הוורקר **מחליף את הקוד בעצמו** (`handleAppleExchange`), מה שסוגר גם את `asExchange:network`.
+  3. הוורקר מחזיר 303 ל-`fan-register.html` או `welcome.html?login=1`, עם `#as=<base64url JSON {s,t,u,x | e}>`.
+  4. הדף מוחק את ה-fragment, בודק nonce (**הגנת login-CSRF**) וממשיך ב-`onAuthorized` / `hbAppleLoginCallback`.
+- **פרטים:**
+  - היעד נבחר מרשימה סגורה (`APPLE_CALLBACK_RETURN`), כך שאין הפניה פתוחה.
+  - טוקן שלא עבר אימות לא ממשיך לדף, והדף מקבל `e:'invalid_apple_token'`.
+  - שם (`user`) מועבר רק בהרשאה הראשונה, כמו אצל אפל.
+- **קבצים:**
+  - `worker/src/index.js` — `handleAppleCallback`, `APPLE_CALLBACK_URL`/`APPLE_CALLBACK_RETURN`. ה-allowlist של `redirectUri` ב-`handleAppleExchange` כולל את כתובת ה-callback.
+  - `apple-signup.js` — `isIOSWeb`, `onClickRedirect`, `consumeRedirectReturn` (ב-`setTimeout(0)`), ענף ב-`render` לפני `loadSdk`. `_serverExchanged` ב-`exchangeCode`. מדידות: `asRedirect`, `asReturn:*`, `asHiddenIOS`.
+  - `fan-register.html` — `redirectReturn: 'fan'`. (`business.html` לא מוסר אותו, ולכן מוסתר באייפון.)
+  - `welcome.html` — `hbIsIOSWeb`, `hbAppleLoginRedirect`, `hbAppleAuthorizeUrl`, `hbConsumeAppleReturn`. עותק מקביל.
+- **נבדק:**
+  - `scratch_test_apple_redirect.js` 22/22 (חדש) · `scratch_test_apple_login_modal.js` 94/94 (+17 חדשות; ה-UA הברירתי עבר למחשב) · `scratch_test_apple_signup.js` 113/113 · `scratch_test_apple_client_id.js` 11/11.
+  - 🔨 ביטול בדיקת ה-nonce הכשיל 2 בדיקות.
+  - וורקר `1e372efa` נפרס. נבדק חי: ביטול → 303 עם `e`; טוקן פגום → `e:invalid_apple_token`; יעד לא מוכר → `fan-register`.
+- 🔴 **חסם לפני push:** `https://api.yellowzone.co.il/apple-callback` **לא רשום** ב-Return URLs של `il.co.yellowzone.web`. נבדק: authorize מחזיר `invalid_request`, בעוד `fan-register.html` עובר. **רמי מוסיף בפורטל, ורק אז push.**
+- `sw.js` → **v159**.

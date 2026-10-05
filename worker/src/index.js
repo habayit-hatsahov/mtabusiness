@@ -96,6 +96,10 @@ export default {
       if (request.method === 'POST' && url.pathname === '/submit-member') {
         return json(await handleSubmitMember(await request.json(), env), env, request);
       }
+      // §468ג — חזרה מאפל בזרימת-הפניה (אייפון בדפדפן). ניווט של הדף כולו, לא fetch — ולכן 303.
+      if (request.method === 'POST' && url.pathname === '/apple-callback') {
+        return await handleAppleCallback(request, env);
+      }
       if (request.method === 'POST' && url.pathname === '/check-biz-exists') {
         return json(await handleCheckBizExists(await request.json(), request, env), env, request);
       }
@@ -539,7 +543,8 @@ async function handleAppleExchange({ idToken, code, redirectUri }, env) {
     console.log('apple-exchange: skipped — apple_key_not_configured');
     return { skipped: 'apple_key_not_configured' };
   }
-  const ru = typeof redirectUri === 'string' && APPLE_REDIRECT_OK.test(redirectUri) ? redirectUri : '';
+  // §468ג — גם כתובת-החזרה של זרימת-ההפניה (APPLE_CALLBACK_URL) — הקוד שלה הונפק מולה.
+  const ru = typeof redirectUri === 'string' && (APPLE_REDIRECT_OK.test(redirectUri) || redirectUri === APPLE_CALLBACK_URL) ? redirectUri : '';
 
   const x = await exchangeAppleCode(env, a, code, ru);
   if (!x.ok) {
@@ -558,6 +563,48 @@ async function handleAppleExchange({ idToken, code, redirectUri }, env) {
   });
   console.log('apple-exchange: stored aud=' + x.clientId);
   return { ok: true };
+}
+
+// ══ §468ג — זרימת-הפניה של "התחברות עם Apple", לאייפון בדפדפן בלבד ══════════════════════
+// נמדד 6.10 (iOS 27, Safari): בזרימת החלון (`usePopup:true`) הלשונית של אפל נשארת פתוחה מעל
+// האתר, ומבחינת הדף היא **כבר סגורה** (`asPopup:closedAlready`) — כלומר אי-אפשר לסגור אותה
+// מאיתנו. לכן באייפון הדף עצמו עובר לאפל, ואפל שולחת לכאן POST (`response_mode=form_post` —
+// חובה כשמבקשים name/email). מכאן חוזרים לדף עם התשובה **ב-fragment** (`#as=`), שאינו נשלח
+// לשום שרת ואינו נכנס ל-Referer; הדף מוחק אותו מיד.
+// 🔑 **החלפת הקוד ב-refresh_token נעשית כאן, בשרת** — ולא מהדף. זה סוגר גם את
+// `asExchange:network`: בזרימת החלון הלשונית שלנו הייתה ברקע, ו-Safari האט את הבקשה.
+// ⚠️ `state` = "<יעד>.<nonce>". היעד נבחר **מרשימה סגורה** (אין הפניה פתוחה), וה-nonce נבדק
+// בדף מול sessionStorage — כך POST מזויף לא יכול להזריק זהות של מישהו אחר לטופס (login CSRF).
+// ⚠️ דורש ש-`APPLE_CALLBACK_URL` רשום ב-Return URLs של ה-Services ID בפורטל אפל.
+const APPLE_CALLBACK_URL = 'https://api.yellowzone.co.il/apple-callback';
+const APPLE_CALLBACK_RETURN = {
+  fan: 'https://yellowzone.co.il/fan-register.html',
+  login: 'https://yellowzone.co.il/welcome.html?login=1',
+};
+async function handleAppleCallback(request, env) {
+  let form;
+  try { form = await request.formData(); } catch (_) { form = new FormData(); }
+  const get = (k) => { const v = form.get(k); return typeof v === 'string' ? v : ''; };
+  const state = get('state').slice(0, 120);
+  const dest = APPLE_CALLBACK_RETURN[state.split('.')[0]] || APPLE_CALLBACK_RETURN.fan;
+  const out = { s: state };
+  const idToken = get('id_token');
+  if (!idToken) {
+    out.e = (get('error') || 'no_token').slice(0, 60);
+  } else {
+    out.t = idToken;
+    // אפל שולחת `user` (שם) **רק בהרשאה הראשונה בחיים**, כמחרוזת JSON.
+    try { const u = JSON.parse(get('user') || 'null'); if (u && u.name) out.u = { name: u.name }; } catch (_) {}
+    let x;
+    try { x = await handleAppleExchange({ idToken, code: get('code'), redirectUri: APPLE_CALLBACK_URL }, env); }
+    catch (e) { x = { error: 'exchange_threw' }; }
+    out.x = x.ok ? 'ok' : (x.skipped || x.error || 'unknown');
+    // טוקן שלא עבר אימות חתימה לא ממשיך לדף בכלל — הדף מקבל שגיאה במקומו.
+    if (x.error === 'invalid_apple_token') { delete out.t; delete out.u; delete out.x; out.e = 'invalid_apple_token'; }
+  }
+  const frag = btoa(unescape(encodeURIComponent(JSON.stringify(out))))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return new Response(null, { status: 303, headers: { Location: dest + '#as=' + frag, 'Cache-Control': 'no-store' } });
 }
 
 async function handleBusinessLogin({ accessToken: bizToken }, env) {

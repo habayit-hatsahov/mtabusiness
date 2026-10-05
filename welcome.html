@@ -767,6 +767,53 @@ function hbAppleExchange(idToken, code, redirectUri) {
   go();
 }
 
+// ══ §468ג — זרימת-ההפניה לאייפון בדפדפן (עותק מקביל ל-apple-signup.js) ══════════════════
+function hbIsIOSWeb() {
+  var ua = navigator.userAgent || '';
+  return /iP(hone|od|ad)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+var HB_APPLE_CALLBACK_URL = 'https://api.yellowzone.co.il/apple-callback';
+var HB_AS_NONCE_KEY = 'hb_as_nonce';
+function hbAppleLoginRedirect() {
+  var nonce = '';
+  try {
+    var a = new Uint8Array(12); crypto.getRandomValues(a);
+    nonce = Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+    sessionStorage.setItem(HB_AS_NONCE_KEY, nonce);
+  } catch (e) {
+    window.hbAsMsg('⚠️ הדפדפן חוסם את ההתחברות עם Apple. היכנסו עם הטלפון והקוד.', 'warn');
+    return;
+  }
+  location.assign(hbAppleAuthorizeUrl(nonce));
+}
+// נפרד מהלחיצה כדי שאפשר יהיה לבדוק אותו (את location.assign אי-אפשר ליירט בבדיקה).
+// scope 'email' בלבד, כמו בענף החלון: במסך כניסה אין שדה שם.
+function hbAppleAuthorizeUrl(nonce) {
+  var q = { client_id: HB_APPLE_SERVICES_ID, redirect_uri: HB_APPLE_CALLBACK_URL, response_type: 'code id_token',
+            response_mode: 'form_post', scope: 'email', state: 'login.' + nonce };
+  return 'https://appleid.apple.com/auth/authorize?' +
+    Object.keys(q).map(function (k) { return k + '=' + encodeURIComponent(q[k]); }).join('&');
+}
+function hbConsumeAppleReturn() {
+  var m = /[#&]as=([A-Za-z0-9_-]+)/.exec(location.hash || '');
+  if (!m) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}   // הטוקן לא נשאר בהיסטוריה
+  var d = null;
+  try {
+    var b = m[1].replace(/-/g, '+').replace(/_/g, '/');
+    d = JSON.parse(decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4)))));
+  } catch (e) { return; }
+  var expected = '';
+  try { expected = sessionStorage.getItem(HB_AS_NONCE_KEY) || ''; sessionStorage.removeItem(HB_AS_NONCE_KEY); } catch (_) {}
+  var got = String((d && d.s) || '').split('.')[1] || '';
+  if (!expected || got !== expected) return;   // לא אנחנו שלחנו אותו לאפל — מתעלמים בשקט
+  if (d.e) {
+    if (d.e !== 'user_cancelled_authorize') window.hbAsMsg('⚠️ משהו השתבש מול Apple. היכנסו עם הטלפון והקוד, או נסו שוב.', 'warn');
+    return;
+  }
+  if (d.t) hbAppleLoginCallback(d.t);   // ההחלפה כבר נעשתה בוורקר — אין hbAppleExchange
+}
+
 // §468 — ב-Safari באייפון חלון אפל לא נסגר אחרי האישור, והאדם נשאר מול הלשונית של אפל.
 // אנחנו סוגרים אותו בעצמנו אחרי שהתשובה הגיעה. הנימוק המלא והמדידה: `signInClosingPopup`
 // ב-`apple-signup.js` — ⚠️ זה עותק מקביל, ושינוי באחד מחייב את השני.
@@ -914,6 +961,21 @@ window.hbRenderAppleLoginBtn = function (tries) {
 
   if (!HB_APPLE_SERVICES_ID) {
     console.warn('apple-login: Services ID ריק — הבלוק לא יוצג');
+    return;
+  }
+
+  // §468ג — אייפון בדפדפן: זרימת-הפניה במקום חלון (החלון נשאר פתוח מעל האתר ואי-אפשר
+  // לסגור אותו, §468ב). עותק מקביל ל-`apple-signup.js` (onClickRedirect/consumeRedirectReturn),
+  // ⚠️ שינוי באחד מחייב את השני. ⚠️ בלי `hbLoadAppleSdk()` — אין בו צורך כאן.
+  if (hbIsIOSWeb()) {
+    btnHost.innerHTML =
+      '<button type="button" class="hb-as-login-btn">' +
+      HB_APPLE_LOGO + '<span>המשך עם Apple</span></button>';
+    var rbtn = btnHost.querySelector('.hb-as-login-btn');
+    if (rbtn) rbtn.addEventListener('click', hbAppleLoginRedirect);
+    host.style.display = 'flex';
+    window.hbSyncLoginBlocks();
+    setTimeout(hbConsumeAppleReturn, 0);
     return;
   }
   hbLoadAppleSdk();
