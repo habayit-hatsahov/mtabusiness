@@ -4,7 +4,8 @@ import { verifyGoogleIdToken } from './google.js';
 import { verifyAppleIdToken, exchangeAppleCode, revokeAppleToken, appleKeyConfigured } from './apple.js';
 import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, bizTokenFor,
          memberIdFromLoginCode, loginCodeFor,
-         firestoreGetDocForSnapshot, firestoreCreateDoc, firestoreDeleteDoc } from './firestore.js';
+         firestoreGetDocForSnapshot, firestoreCreateDoc, firestoreDeleteDoc,
+         firestoreCreateDocWithId } from './firestore.js';
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt } from './ratelimit.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail } from './brevo.js';
@@ -90,6 +91,10 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/check-member-exists') {
         return json(await handleCheckMemberExists(await request.json(), env), env, request);
+      }
+      // §462 — נתיב-גיבוי לשליחת טופס האוהד כש-Firestore בדפדפן לא מאשר את הכתיבה.
+      if (request.method === 'POST' && url.pathname === '/submit-member') {
+        return json(await handleSubmitMember(await request.json(), env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/check-biz-exists') {
         return json(await handleCheckBizExists(await request.json(), request, env), env, request);
@@ -680,6 +685,62 @@ async function handleCheckMemberExists({ phone, email, firstName, lastName }, en
   }
 
   return { exists: false, memberId: null };
+}
+
+// ── §462 — נתיב-גיבוי לשליחת טופס האוהד ────────────────────────────────────────────────────
+// ב-4.10 נתקעה שליחה בדפדפן מובייל: כל כתיבה ל-Firestore מהדף נעצרה בלי שגיאה (Firestore
+// ממתין לנצח, לא נכשל), בזמן ש-/check-member-exists עבר באותה דקה. fan-register.html שולח
+// לכאן את אותה רשומה כשאין אישור מ-Firestore אחרי כמה שניות.
+// 🔑 **אותו מזהה (`memberId`) שהדפדפן יצר מראש**, ויצירה רק-אם-לא-קיים: אם הכתיבה המקורית
+// כבר נקלטה — מחזירים הצלחה בלי לגעת; אם היא תסונכרן אחר כך — היא כבר לא יכולה ליצור כפולה.
+// ⚠️ **לא רופף יותר מ-firestore.rules** (create ציבורי: status=='pending' ובלי isAdmin), ובפועל
+// מחמיר: רשימת-היתר של שדות הטופס בלבד. השרת כותב בהרשאות-מנהל, ולכן שדה שלא ברשימה
+// (appleSub, googleEmail, isAdmin...) היה הופך את הנתיב הזה לדלת אחורית לזהות של אחר.
+// האורכים נדיבים בכוונה: ל-rules אין גבול בכלל, וגבול הדוק מדי כאן היה הופך הצלה לכישלון.
+const SUBMIT_MEMBER_STRING_FIELDS = {
+  firstName: 200, lastName: 200, birthDate: 20, phone: 40, email: 254,
+  fanSport: 60, verifiedSport: 60, subscriberSection: 200, subscriberTier: 60, wasSubscriber: 60,
+  photoProofUrl: 2000, verifyMethod: 60, verifyTrust: 60, subscriberNumber: 100,
+  seatArea: 100, seatBlock: 100, seatRow: 100, seatNumber: 100, verifyNote: 0,
+  facebookUrl: 2000, instagramUrl: 2000, profileRaw: 2000, profileSource: 60,
+  reviewFlag: 60, duplicateOfId: 40,
+};
+const PROOF_URL_PREFIX = 'https://firebasestorage.googleapis.com/';
+
+async function handleSubmitMember({ memberId, data } = {}, env) {
+  if (typeof memberId !== 'string' || !/^[A-Za-z0-9]{20}$/.test(memberId)) return { error: 'bad_member_id' };
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { error: 'invalid_request' };
+
+  const out = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (k === 'isSubscriber') {
+      if (typeof v !== 'boolean') return { error: 'bad_field', field: k };
+      out[k] = v;
+      continue;
+    }
+    if (k === 'status') continue;   // נכפה למטה — לא נלקח מהדפדפן
+    if (!(k in SUBMIT_MEMBER_STRING_FIELDS)) return { error: 'bad_field', field: k };
+    if (v === null) { out[k] = null; continue; }
+    if (typeof v !== 'string' || v.length > SUBMIT_MEMBER_STRING_FIELDS[k]) return { error: 'bad_field', field: k };
+    out[k] = v;
+  }
+  if (!out.firstName || !out.lastName || (!out.phone && !out.email)) return { error: 'missing_fields' };
+  if (out.photoProofUrl && !out.photoProofUrl.startsWith(PROOF_URL_PREFIX)) return { error: 'bad_field', field: 'photoProofUrl' };
+  if (out.reviewFlag && out.reviewFlag !== 'possible_duplicate') return { error: 'bad_field', field: 'reviewFlag' };
+
+  const now = new Date();
+  out.status = 'pending';
+  out.submittedAt = now;                       // מקביל ל-serverTimestamp() בדפדפן
+  if (out.reviewFlag) out.reviewFlagAt = now;
+  // 🔑 סימן-מקור. גם מדידה (כמה הרשמות ניצלו דרך כאן), וגם בלם: כתיבה מאוחרת מהדפדפן
+  // (setDoc בלי merge) הייתה מוחקת את השדה, ושדה שאינו ברשימת ה-update הציבורית ב-rules
+  // גורם לדחייתה — כלומר היא לא יכולה לדרוס את מה שנשמר כאן.
+  out.submitPath = 'worker';
+
+  const accessToken = await getGoogleAccessToken(env);
+  const created = await firestoreCreateDocWithId(env, accessToken, 'members', memberId, out);
+  console.log(`submit-member: ${created ? 'created' : 'already_exists'} ${memberId}`);
+  return { ok: true, created };
 }
 
 // ── §366 — "כבר נרשמתם?" לעסקים ───────────────────────────────────────────────────────────

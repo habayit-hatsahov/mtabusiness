@@ -1517,6 +1517,64 @@
   // לאותו מזהה במקום לייצר רשומה שנייה.
   const memberRef = doc(collection(db, 'members'));
 
+  // ── §462 — שליחה עם גיבוי דרך הוורקר ────────────────────────────────────────────────────────
+  // ב-4.10 נתקעה שליחה בדפדפן מובייל: כל כתיבה ל-Firestore מהדף נעצרה **בלי שגיאה** — Firestore
+  // לא נכשל, הוא ממתין לנצח — בזמן שהוורקר ענה באותה דקה. ההודעה דאז ("נשמרו במכשיר ויישלחו
+  // אוטומטית") לא הייתה נכונה: שום דבר לא נשלח, ולא נשאר סימן במדידה.
+  // עכשיו: אם Firestore לא אישר תוך SUBMIT_FALLBACK_MS, אותה רשומה נשלחת גם דרך הוורקר,
+  // **לאותו מזהה**, ביצירה-רק-אם-לא-קיים. הראשון שמאשר מנצח. כפולה בלתי-אפשרית: שני הנתיבים
+  // כותבים למסמך אחד, והכתיבה המאוחרת מבין השתיים נדחית (ר' handleSubmitMember בוורקר).
+  // אם אף אחד לא אישר עד SUBMIT_CEILING_MS — נדחה עם 'stuck', והנרשם מקבל "נסו שוב" אמיתי.
+  // ניסיון חוזר בטוח מאותה סיבה בדיוק: memberRef קבוע לטעינת הדף.
+  const SUBMIT_FALLBACK_MS = 8000;
+  const SUBMIT_CEILING_MS  = 35000;
+  const SUBMIT_WORKER_MS   = 15000;
+  function submitMember(data) {
+    return new Promise((resolve, reject) => {
+      let settled = false, fsErr = null, wkState = 'idle';   // idle | running | failed
+      const done = (fn, v) => { if (settled) return; settled = true; clearTimeout(fbTimer); clearTimeout(ceilTimer); fn(v); };
+      setDoc(memberRef, data).then(
+        () => done(resolve, 'firestore'),
+        (err) => {
+          // דחייה אמיתית מ-Firestore (למשל permission-denied) — אם הגיבוי עוד רץ, הוא מכריע.
+          fsErr = err;
+          if (wkState !== 'running') done(reject, err);
+        });
+      const runWorker = async () => {
+        if (settled || wkState !== 'idle') return;
+        wkState = 'running';
+        // serverTimestamp() אינו JSON — הוורקר קובע את הזמנים בעצמו.
+        const payload = {};
+        for (const [k, v] of Object.entries(data)) if (k !== 'submittedAt' && k !== 'reviewFlagAt') payload[k] = v;
+        const ctl = new AbortController();
+        const t = setTimeout(() => ctl.abort(), SUBMIT_WORKER_MS);
+        try {
+          const resp = await hbApiFetch('/submit-member', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ memberId: memberRef.id, data: payload }),
+            signal: ctl.signal,
+          });
+          const j = await resp.json().catch(() => ({}));
+          if (resp.ok && j.ok) return done(resolve, 'worker');
+          console.error('fan-register.html: submit-member נכשל', resp.status, j);
+        } catch (e) {
+          console.error('fan-register.html: submit-member לא הגיע', e);
+        } finally {
+          clearTimeout(t);
+        }
+        wkState = 'failed';
+        // גם הגיבוי נכשל: אם Firestore כבר דחה — זו התשובה; אחרת ממשיכים לחכות לו עד התקרה.
+        if (fsErr) done(reject, fsErr);
+      };
+      const fbTimer = setTimeout(runWorker, SUBMIT_FALLBACK_MS);
+      const ceilTimer = setTimeout(() => {
+        const e = new Error('submit stuck'); e.code = 'stuck';
+        done(reject, e);
+      }, SUBMIT_CEILING_MS);
+    });
+  }
+
   // ההעלאה שרצה ברקע מאז בחירת הקובץ. `file` נשמר כדי לזהות שהנרשם לא החליף תמונה בינתיים.
   let proofUpload = null;
 
@@ -2067,17 +2125,12 @@
 
     let memberDocRef = null;
 
-    // שעוני-משוב. במכוון **לא** קוטעים את הכתיבה עצמה: Firestore כבר מחזיק את המוטציה בתור
-    // המקומי, וקטיעה + ניסיון חוזר של הנרשם = שתי רשומות. לכן ממשיכים לחכות, אבל מפסיקים לשתוק.
+    // שעון-משוב. §462: התקיעה עצמה מטופלת עכשיו ב-submitMember (גיבוי דרך הוורקר + תקרה),
+    // ולכן מה שנשאר כאן הוא רק לא לשתוק בזמן ההמתנה.
     const slowTimer = setTimeout(() => {
       submitBtn.innerHTML = 'עדיין שולח... <span class="spinner"></span>';
       setSubmitStatus('החיבור איטי — ממשיכים לנסות לשלוח. אין צורך ללחוץ שוב, ואל תסגור/י את הדף.');
     }, 12000);
-
-    const stuckTimer = setTimeout(() => {
-      setSubmitStatus('השליחה עדיין לא הושלמה, כנראה בגלל חיבור לא יציב. אין צורך למלא את הטופס מחדש — הפרטים נשמרו במכשיר ויישלחו אוטומטית ברגע שהחיבור יחזור. אם לא יתקבל מייל תוך יום, אפשר לפנות אלינו.', 'err');
-      statusEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 35000);
 
     try {
       // תמיד יוצרים רשומת-pending חדשה — לעולם לא דורסים רשומה קיימת מטופס
@@ -2100,12 +2153,11 @@
       }
       // setDoc על מזהה שנוצר מראש, במקום addDoc — התמונה כבר בפנים ב-data, ואין יותר
       // כתיבה שנייה (updateDoc) שיכולה להיכשל בנפרד ולהשאיר רשומה בלי קישור לתמונה.
-      await setDoc(memberRef, data);
+      await submitMember(data);
       memberDocRef = memberRef;
     } catch (err) {
       console.error('Firebase error:', err);
       clearTimeout(slowTimer);
-      clearTimeout(stuckTimer);
       resetSubmitBtn();
       saveRegDraft();
       // ── §284 — "ניסה להירשם ונכשל" ────────────────────────────────────────────────────────
@@ -2125,7 +2177,6 @@
     }
 
     clearTimeout(slowTimer);
-    clearTimeout(stuckTimer);
 
     // ── §386 — קישור חשבון הגוגל לרשומה שזה עתה נוצרה ────────────────────────────────────
     // ⚠️ **ממתינים לו כאן, לפני מסך ההצלחה** — §292: מסך הצלחה עם עבודה שרצה מאחוריו אינו

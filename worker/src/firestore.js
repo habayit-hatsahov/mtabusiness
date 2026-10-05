@@ -255,6 +255,23 @@ export async function firestoreCreateDoc(env, accessToken, collectionId, fieldsO
   return docIdFromName(doc.name);
 }
 
+// §462 — יצירה **במזהה נתון**, ורק אם המסמך עוד לא קיים. createDocument עם `documentId`
+// מחזיר 409 ALREADY_EXISTS על מסמך קיים — ולכן אין כאן דריסה בשום מצב, וקריאה כפולה בטוחה.
+// מחזירה true אם נוצר, false אם כבר היה קיים.
+export async function firestoreCreateDocWithId(env, accessToken, collectionId, docId, fieldsObj) {
+  const body = {
+    fields: Object.fromEntries(Object.entries(fieldsObj).map(([k, v]) => [k, toFirestoreValue(v)])),
+  };
+  const resp = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}/${collectionId}?documentId=${encodeURIComponent(docId)}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (resp.status === 409) return false;
+  if (!resp.ok) throw new Error('firestore_create_failed: ' + (await resp.text()));
+  return true;
+}
+
 // מחיקת מסמך. 404 אינו שגיאה — "כבר לא שם" הוא בדיוק התוצאה שרצינו.
 // ⚠️ **אינה מוחקת תת-אוספים** (זו התנהגות Firestore, לא בחירה כאן) — ר' ההערה בראש
 // deletion-log.js: members/{id}/activity שורד כיתום וחוזר מעצמו בשחזור.
