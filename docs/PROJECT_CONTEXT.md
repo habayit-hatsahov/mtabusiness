@@ -24804,3 +24804,4 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - `admin-dashboard.html` — ההסבר "בלוק הכניסה {login} — מה קורה בפועל" עודכן בהתאם.
 - נבדק: `loginModeFor` בארבעה מקרים (iCloud→code, iCloud+appleSub→google, Gmail→google, googleEmail→google), פלט שני הבלוקים, `node --check` לוורקר, והחלון ב-Browser pane (שתי הכותרות על המסך).
 - `sw.js` → **v152**.
+✅ **released (5.10):** האתר נדחף, v152 חי ושתי הכותרות ב-`welcome.html` החי (נבדק עם cache-buster); הוורקר נפרס (`1c5a80f3`). 🔲 עוד לא נצפה מייל אמיתי בנוסח החדש.
