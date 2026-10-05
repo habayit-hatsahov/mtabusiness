@@ -333,10 +333,19 @@
     window.open = function () { popup = origOpen.apply(window, arguments); return popup; };
     var p;
     try { p = window.AppleID.auth.signIn(); } finally { window.open = origOpen; }
+    // §468ב — 🔴 הסגירה **לא קרתה** בניסיון הראשון על אייפון (asUsed בלי asPopupClosed), ולא
+    // ידוע למה: אין ידית, החלון כבר "סגור" מבחינתנו, או ש-close() לא עבד. כל מצב נמדד בנפרד —
+    // התשובה קובעת אם יש תיקון מצד הדף בכלל, או שצריך זרימת-הפניה (usePopup:false).
     function closeIt() {
       try {
-        if (popup && !popup.closed) { popup.close(); track('asPopupClosed'); }   // ראיה שהבאג קרה
-      } catch (_) {}
+        if (!popup) { track('asPopup:noHandle'); return; }
+        if (popup.closed) { track('asPopup:closedAlready'); return; }
+        popup.close();
+        track('asPopupClosed');
+        setTimeout(function () {
+          try { if (!popup.closed) track('asPopup:stillOpen'); } catch (_) { track('asPopup:checkThrew'); }
+        }, 600);
+      } catch (e) { track(('asPopup:threw:' + (e && e.name)).slice(0, 50)); }
     }
     return Promise.resolve(p).then(function (r) { closeIt(); return r; },
                                    function (e) { closeIt(); throw e; });

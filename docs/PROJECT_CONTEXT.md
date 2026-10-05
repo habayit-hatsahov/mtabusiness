@@ -24867,3 +24867,9 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
   - `scratch_test_apple_signup.js` 113/113 · `scratch_test_apple_login_modal.js` 77/77 · תחביר.
 - `sw.js` → **v157**.
 - 🔲 **לאמת על אייפון:** הרשמה עם Apple ב-Safari → הלשונית של אפל נסגרת ומחזירה לטופס, ו-`asPopupClosed` נרשם. ⚠️ האפליקציה לא מושפעת — היא בגיליון הנייטיב (§450).
+- **§468ב (6.10) — 🔴 התיקון לא עבד על האייפון.** Safari פרטי, v157: `asUsed`+`asRelay` (00:23:05) **בלי `asPopupClosed`**, והנרשמת שוב לא חזרה לאתר. כלומר `closeIt` רץ, אבל לא מצא חלון פתוח לסגור. שוב גם `asExchange:network`, ולכן לרשומה (`HDG3XrrbeMEiQ17dQizL`) אין מפתח ביטול.
+  - אפשרויות: אין ידית, `popup.closed` כבר true מצד הדף, או ש-`close()` נבלע.
+  - ל-`appleid.apple.com/auth/authorize` **אין** `Cross-Origin-Opener-Policy` (נבדק בכותרות).
+  - **מדידה (`apple-signup.js`):** `asPopup:noHandle` / `asPopup:closedAlready` / `asPopupClosed` (+`asPopup:stillOpen` אחרי 600ms) / `asPopup:threw:*`.
+  - **התשובה קובעת את הכיוון:** תיקון מצד הדף, או זרימת-הפניה (`usePopup:false`). זרימת-הפניה עם `name email` מחייבת `form_post` → נקודת-קבלה בוורקר + Return URL חדש בפורטל אפל.
+  - `scratch_test_apple_signup.js` 113/113. `sw.js` → **v158**.
