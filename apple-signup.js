@@ -383,8 +383,14 @@
       scope: 'name email',
       state: cfg.redirectReturn + '.' + nonce,
     };
-    location.assign('https://appleid.apple.com/auth/authorize?' +
-      Object.keys(q).map(function (k) { return k + '=' + encodeURIComponent(q[k]); }).join('&'));
+    var url = 'https://appleid.apple.com/auth/authorize?' +
+      Object.keys(q).map(function (k) { return k + '=' + encodeURIComponent(q[k]); }).join('&');
+    // 🐛 §468ד — **הלשונית כולה, לא המסגרת.** נמדד 6.10: הטופס יושב בתוך iframe במודאל של
+    // welcome.html (`joinModal`), ו-`location.assign` העביר רק את המסגרת — ואפל שולחת
+    // `X-Frame-Options: DENY`, כלומר מסך לבן. `top` הוא אותו origin ולכן מותר; החזרה נוחתת
+    // על fan-register.html כדף עצמאי, ו-sessionStorage (ה-nonce) משותף לאותה לשונית.
+    try { (window.top || window).location.assign(url); }
+    catch (e) { location.assign(url); }
   }
 
   // החזרה מאפל: `#as=<base64url(JSON)>` → {s: state, t: id_token, u: {name}, x: תוצאת-ההחלפה, e: שגיאה}

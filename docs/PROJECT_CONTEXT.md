@@ -24897,3 +24897,4 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
   - וורקר `1e372efa` נפרס. נבדק חי: ביטול → 303 עם `e`; טוקן פגום → `e:invalid_apple_token`; יעד לא מוכר → `fan-register`.
 - 🔴 **חסם לפני push:** `https://api.yellowzone.co.il/apple-callback` **לא רשום** ב-Return URLs של `il.co.yellowzone.web`. נבדק: authorize מחזיר `invalid_request`, בעוד `fan-register.html` עובר. **רמי מוסיף בפורטל, ורק אז push.**
 - `sw.js` → **v159**.
+- **§468ד (6.10) — 🐛 מסך לבן בבדיקה הראשונה, ותוקן.** טופס האוהד נפתח בתוך iframe במודאל של `welcome.html` (`joinModal`), ו-`location.assign` העביר **רק את המסגרת** לאפל. אפל מחזירה `X-Frame-Options: DENY`, ולכן מסך לבן (`asRedirect` נרשם). התיקון: `(window.top || window).location.assign(url)` — אותו origin, ולכן מותר. החזרה נוחתת על `fan-register.html` כדף עצמאי (נתמך — `window.top === window` כבר מטופל בדף), ו-sessionStorage משותף לאותה לשונית. `sw.js` → **v160**.
