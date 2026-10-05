@@ -98,6 +98,40 @@ function makePage(opts) {
     check('fragment פגום → לא נופל', p.val('email') === '');
   }
 
+  console.log('\n== §468ז — החיבור שורד טעינה מחדש של הטופס ==');
+  {
+    const frag = b64url({ s: 'fan.abc', t: TOKEN, x: 'ok' });
+    const p1 = makePage({ ua: IOS, redirectReturn: 'fan', nonce: 'abc', hash: '#as=' + frag });
+    await tick(20);
+    const saved = JSON.parse(p1.w.sessionStorage.getItem('hb_as_pending') || 'null');
+    check('אחרי החזרה — התשובה נשמרה ב-sessionStorage', !!saved && saved.t === TOKEN, JSON.stringify(saved));
+    // "טעינה מחדש" של ה-iframe: דף חדש בלי hash, עם אותו sessionStorage
+    const p2 = makePage({ ua: IOS, redirectReturn: 'fan' });
+    p2.w.sessionStorage.setItem('hb_as_pending', JSON.stringify(saved));
+    p2.w.hbAppleSignup.render();
+    await tick(20);
+    check('🔑 טעינה מחדש בלי hash → הטוקן שוחזר', p2.w.hbAppleSignup.token() === TOKEN, String(p2.w.hbAppleSignup.token()));
+    check('המייל מולא שוב', p2.val('email') === 'xyz@privaterelay.appleid.com', p2.val('email'));
+    check('asRestored נרשם, ובלי asExchange כפול', p2.events.includes('asRestored') && !p2.events.some((e) => /^asExchange/.test(e)), p2.events.join(','));
+    const r = await p2.w.hbAppleSignup.attach(async () => ({ json: async () => ({ ok: true }) }), 'm1');
+    check('attach מוצלח → השמירה נמחקה', r.ok && p2.w.sessionStorage.getItem('hb_as_pending') === null);
+  }
+  {
+    const p = makePage({ ua: IOS, redirectReturn: 'fan' });
+    p.w.sessionStorage.setItem('hb_as_pending', JSON.stringify({ t: TOKEN, at: Date.now() - 10 * 60 * 1000 }));
+    p.w.hbAppleSignup.render();
+    await tick(20);
+    check('שמירה בת יותר מ-9 דקות → לא משוחזרת, ונמחקת', p.w.hbAppleSignup.token() === null && p.w.sessionStorage.getItem('hb_as_pending') === null);
+  }
+  {
+    const p = makePage({ ua: IOS, redirectReturn: 'fan' });
+    p.w.sessionStorage.setItem('hb_as_pending', JSON.stringify({ t: TOKEN, at: Date.now() }));
+    p.w.hbAppleSignup.render();
+    await tick(20);
+    p.w.hbAppleSignup.clear();
+    check('"זה לא החשבון שלי" → השמירה נמחקת', p.w.sessionStorage.getItem('hb_as_pending') === null);
+  }
+
   console.log('\n== אייפון בלי redirectReturn (טופס העסק) ==');
   {
     const p = makePage({ ua: IOS });

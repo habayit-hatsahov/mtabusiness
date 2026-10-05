@@ -24907,3 +24907,9 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
     - `hbConsumeAppleReturn` (הכניסה) מתעלם מ-state שאינו `login.`, **בלי לצרוך את ה-nonce**.
   - **נבדק בדפדפן:** `welcome.html?join=1#as=<fan>` → המודאל נפתח, הכתובת נוקתה, וה-iframe קיבל את ה-fragment. הבדיקות: 94/94, 22/22, 113/113. וורקר `35a6c7e5`. `sw.js` → **v161**.
 - **§468ו (6.10) — ✅ אומת על האייפון: חזרה לדף הנחיתה עם המודאל פתוח.** רמי: "חזר לדף הנחיתה עם החלון פתוח". רצף האירועים: `asRedirect` → (אפל) → `formOpen` → `asShown` → `asExchange:ok` → `asUsed` → `asRelay` → שלבי הטופס → `formSubmit`. נוצרה הרשומה `qtE1fxSq6SuLFjwrjRXl` ("אפל בדיקה 4"), ו-`appleTokens` נשמר (22:31). מחיקת "בדיקה אפל3" נרשמה `revoked`. **§468 סגור.** 🔲 נותר למחוק את "אפל בדיקה 4".
+- **§468ז (6.10) — 🐛 הרשמה עם Apple נשלחה בלי `appleSub`, ותוקן.**
+  - **מה קרה:** בדיקה נוספת של אשת רמי ("ירדן יהב", `WtncwYbL3nUa7pqzMY2L` — בדיקה, נמחקת ע"י רמי). החזרה מאפל עבדה (`asUsed`, `asExchange:ok`, 00:39:40). 10 שנ' אחר כך המודאל נפתח שוב (`formOpen`), ה-iframe **נטען מחדש**, והטוקן — שחי בזיכרון המודול בלבד — אבד. השדות שוחזרו מהטיוטה (`saveRegDraft` ב-`onFilled`), ולכן הטופס נראה מחובר. הוא נשלח בלי attach.
+  - **שורש 1:** `openJoinModal` השווה את ה-src **כולל** `#as=…` ל-`fan-register.html?embed=1`, ולכן כל פתיחה חוזרת טענה מחדש. תוקן — ההשוואה בלי fragment.
+  - **שורש 2 (רשת-ביטחון):** `apple-signup.js` שומר את התשובה בזרימת-ההפניה ב-`sessionStorage.hb_as_pending` ל-9 דק' (ה-id_token פג אחרי 10), ומשחזר בטעינה הבאה (`asRestored`). נמחק אחרי attach מוצלח או `clear`.
+  - **נבדק:** `scratch_test_apple_redirect.js` 29/29 (+7). 🔨 ביטול השחזור הכשיל 5. 113/113 · 94/94. `sw.js` → **v162**.
+  - ⚠️ ל-Apple ID של אשת רמי נשאר `appleTokens/000043…` מהניסיון הזה, בלי רשומה. זה יתום שאינו מזיק (ר' ההערה ב-`handleAppleExchange`).

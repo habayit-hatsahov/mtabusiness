@@ -375,7 +375,7 @@
 // §460ד — v144 (admin-messages/admin-dashboard: כתובת השולח המוצגת = info@yellowzone.co.il).
 // §460ה — v145 (welcome.html שומר את loginOk ו-home.html שולח; הניווט ביטל את הבקשה ב-~45% מהכניסות).
 // §460ח — v147 (deletion-log.js: מחיקת חבר ע"י מנהל מבטלת גם את הרשאת Apple — /admin-apple-revoke).
-const CACHE_NAME = 'yz-shell-v161';
+const CACHE_NAME = 'yz-shell-v162';
 // §338 — פסק-הזמן של ניווטים. 1.5 שניות נבחרו כדי שדף לא "יתקע" על רשת גרועה, אבל בפועל
 // זה נמדד קצר מדי: ניווט סלולרי רגיל חוצה אותו בקלות, וכל חצייה כזאת מגישה HTML **ישן**.
 // אצל משתמש מנותק ב-PWA זה היה קטלני, כי דף הכניסה גם לא עדכן את ה-Service Worker (ר'

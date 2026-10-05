@@ -248,6 +248,7 @@
   // ביטול — השדות **נשארים מלאים** (הם נכונים), רק הקישור יורד והמייל נפתח לעריכה.
   function clearToken() {
     token = null;
+    dropPending();
     lockEmail(false);
     clearEmailWarn();
     setCap(defaultCap());
@@ -360,6 +361,32 @@
   var CALLBACK_URL = 'https://api.yellowzone.co.il/apple-callback';
   var NONCE_KEY = 'hb_as_nonce';
 
+  // ══ §468ז — רשת-ביטחון: החיבור ל-Apple שורד טעינה מחדש של הטופס ═══════════════════════════
+  // נמדד 6.10: אחרי החזרה מאפל המודאל נסגר ונפתח, ה-iframe נטען מחדש, והטוקן (שחי בזיכרון
+  // המודול בלבד) אבד. השדות שוחזרו מהטיוטה, ולכן הטופס **נראה** מחובר — ונשלח בלי appleSub.
+  // 🔑 שומרים את התשובה ב-sessionStorage (אותה לשונית בלבד) ל-9 דקות — ה-id_token של אפל פג
+  // אחרי 10 — ומשחזרים בטעינה הבאה של הטופס. נמחק אחרי attach מוצלח או "זה לא החשבון שלי".
+  var PENDING_KEY = 'hb_as_pending';
+  var PENDING_MAX_MS = 9 * 60 * 1000;
+  function savePending(res) {
+    try {
+      sessionStorage.setItem(PENDING_KEY, JSON.stringify({
+        t: res.authorization.id_token, u: res.user || null, at: Date.now() }));
+    } catch (_) {}
+  }
+  function dropPending() { try { sessionStorage.removeItem(PENDING_KEY); } catch (_) {} }
+  function restorePending() {
+    if (token) return;
+    var p = null;
+    try { p = JSON.parse(sessionStorage.getItem(PENDING_KEY) || 'null'); } catch (_) {}
+    if (!p || !p.t) return;
+    if (!(Date.now() - p.at < PENDING_MAX_MS)) { dropPending(); return; }
+    var res = { authorization: { id_token: p.t, code: null }, _serverExchanged: 'restored' };
+    if (p.u) res.user = p.u;
+    track('asRestored');
+    onAuthorized(res);
+  }
+
   // ⚠️ בלי ה-SDK: כתובת ה-authorize נבנית כאן. `form_post` חובה כשמבקשים name/email — ולכן
   // החזרה עוברת דרך הוורקר (`/apple-callback`), שמחזיר לכאן עם `#as=`.
   function onClickRedirect() {
@@ -396,7 +423,7 @@
   // החזרה מאפל: `#as=<base64url(JSON)>` → {s: state, t: id_token, u: {name}, x: תוצאת-ההחלפה, e: שגיאה}
   function consumeRedirectReturn() {
     var m = /[#&]as=([A-Za-z0-9_-]+)/.exec(location.hash || '');
-    if (!m) return;
+    if (!m) { restorePending(); return; }
     // ⚠️ מוחקים את ה-fragment **לפני** כל דבר אחר — הוא נושא טוקן, ואסור שיישאר בהיסטוריה.
     try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
     var d = null;
@@ -639,7 +666,10 @@
   // ⚠️ **כתובת-ממסר אינה מגיעה לכאן** — `onAuthorized` יוצא לפני הקריאה, והטוקן שלה נזרק.
   function exchangeCode(res, idToken) {
     // §468ג — בזרימת-ההפניה הוורקר כבר החליף את הקוד (`/apple-callback`); רק רושמים את התוצאה.
-    if (res && res._serverExchanged) { track(('asExchange:' + res._serverExchanged).slice(0, 50)); return; }
+    if (res && res._serverExchanged) {
+      if (res._serverExchanged !== 'restored') { track(('asExchange:' + res._serverExchanged).slice(0, 50)); savePending(res); }
+      return;
+    }
     var code = res && res.authorization && res.authorization.code;
     if (!code) { track('asExchange:no_code'); return; }
     if (!cfg || typeof cfg.apiFetch !== 'function') {
@@ -683,7 +713,7 @@
         signal: AbortSignal.timeout(ATTACH_TIMEOUT_MS),
       });
       var out = await resp.json();
-      if (out && out.ok) return out;
+      if (out && out.ok) { dropPending(); return out; }
       console.error('apple-signup: /apple-attach לא השלים —', (out && out.error) || 'unknown');
       return out || { error: 'unknown' };
     } catch (e) {
