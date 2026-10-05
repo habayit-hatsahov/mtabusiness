@@ -106,6 +106,8 @@
     .hb-splash-note b { display: block; font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
     .hb-splash-note span { display: block; margin-top: 6px; font-size: 13px; font-weight: 500; opacity: .68; line-height: 1.5; }
   </style>
+  <!-- §466 — אבחון זמני, באפליקציה בלבד. נטען ראשון כדי לא להיות תלוי במודול. ר' app-diag.js -->
+  <script src="app-diag.js"></script>
 </head>
 <body>
 
@@ -257,6 +259,7 @@
   // נקרא per-חלק ('cards'/'name') ברגע שהוא מוכן בפועל — המסך נעלם רק כששני החלקים
   // מוכנים (או שרשת-הביטחון מתפרצת), כדי שלא ייחשף מצב-ביניים חצי-ריק.
   window._hbMarkReady = function (part) {
+    window.hbDiagMark && window.hbDiagMark('ready+', part);   // §466
     if (window._hbSplashPending) window._hbSplashPending[part] = true;
     window._hbHideSplash();
   };
@@ -4056,6 +4059,7 @@ import { collection, query, where, onSnapshot, doc, getDoc, getDocFromServer, up
 
 // חושף את auth ל-<script> הרגיל (לא module) שמעליו — currentMemberId() שם צריך auth.currentUser, אך import הוא scoped ל-module הזה בלבד
 window._auth = auth;
+window.hbDiagMark && window.hbDiagMark('mod');   // §466
 
 // ── רשימת העסקים המאושרים היא קריאה פומבית לפי חוקי Firestore (לא דורשת auth) —
 // נרשמת כאן, *לפני* ה-auth guard שמתחתיה, כדי שהטעינה תתחיל במקביל לבדיקת ה-session
@@ -4070,6 +4074,9 @@ function computeDiscountTypesLive(bizTypes, hasCode, redeemMode) {
 }
 
 onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')), snap => {
+  // §466 — הסנאפשוט הראשון, והראשון שהגיע מהשרת (לא מהמטמון)
+  window.hbDiagMark && window.hbDiagMark('biz', { c: snap.metadata.fromCache, n: snap.size });
+  if (!snap.metadata.fromCache) window.hbDiagMark && window.hbDiagMark('bizServer', { n: snap.size });
   // ── snapshot ריק שהגיע מהמטמון-המקומי (offline) — מתעלמים ממנו לגמרי ─────────────────────
   // firebase-config.js מפעיל persistentLocalCache, ולכן onSnapshot יורה מיד גם בלי רשת, עם מה
   // שיש במטמון-המכשיר. אם המטמון עדיין ריק (התקנה טרייה / פינוי-אחסון של iOS / מחיקת נתוני-אתר)
@@ -4191,9 +4198,11 @@ async function fetchMemberDocWithRetry(memberId) {
     // וקודם לכן הזריקה הראשונה יצאה מהפונקציה כולה: שלושת הניסיונות החוזרים מעולם לא רצו על
     // כשל-רשת, רק על "המסמך עוד לא קיים". חיבור שנופל לרגע = ברכה ריקה לצמיתות באותה טעינה.
     try {
+      window.hbDiagMark && window.hbDiagMark('memTry+', 'start');   // §466 — getDocFromServer בלי גבול-זמן: start בלי סוף = נתקע
       snap = await getDocFromServer(doc(db, 'members', memberId));
+      window.hbDiagMark && window.hbDiagMark('memTry+', snap.exists() ? 'exists' : 'missing');
       if (snap.exists()) return snap;
-    } catch (e) { /* לניסיון הבא, ואם כולם נכשלו — נופלים למטמון המקומי למטה */ }
+    } catch (e) { window.hbDiagMark && window.hbDiagMark('memTry+', 'err:' + (e && e.code)); /* לניסיון הבא, ואם כולם נכשלו — נופלים למטמון המקומי למטה */ }
   }
   // אין רשת בכלל (כל הניסיונות זרקו) — getDoc רגיל *כן* רשאי לענות מהמטמון המתמיד המקומי,
   // וזה עדיף על ברכה ריקה. מחזיר null רק אם גם המטמון לא יודע כלום — הקורא ערוך לזה.
@@ -4233,10 +4242,12 @@ await new Promise(resolve => {
     if (opened) return;
     if (!localStorage.getItem('hb_memberId')) { location.href = 'welcome.html'; return; }
     console.warn('auth gate timed out — ממשיך עם hb_memberId שמור');
+    window.hbDiagMark && window.hbDiagMark('gateTimeout');   // §466
     openGate();
   }, HB_AUTH_GATE_MS);
   const unsub = onAuthStateChanged(auth, async user => {
     unsub();
+    window.hbDiagMark && window.hbDiagMark('authFired', { u: !!user });   // §466
     const storedId = localStorage.getItem('hb_memberId');
     // §360 — ר' ההערה המלאה ב-welcome.html. `user === null` אינו הוכחה שהוא התנתק, ולכן הוא
     // כבר לא מוחק את הזיהוי מהמכשיר. המחיקה נשארה **רק** לזהות שונה בפועל.
@@ -4260,7 +4271,8 @@ await new Promise(resolve => {
         user.getIdToken(),
         new Promise((_, rej) => setTimeout(() => rej(new Error('hb_idtoken_timeout')), 4000)),
       ]);
-    } catch (e) { console.error('getIdToken failed:', e); }
+      window.hbDiagMark && window.hbDiagMark('idToken', 'ok');   // §466
+    } catch (e) { console.error('getIdToken failed:', e); window.hbDiagMark && window.hbDiagMark('idToken', String(e && e.message).slice(0, 60)); }
     openGate();
   });
 });
