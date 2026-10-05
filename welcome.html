@@ -767,11 +767,24 @@ function hbAppleExchange(idToken, code, redirectUri) {
   go();
 }
 
+// §468 — ב-Safari באייפון חלון אפל לא נסגר אחרי האישור, והאדם נשאר מול הלשונית של אפל.
+// אנחנו סוגרים אותו בעצמנו אחרי שהתשובה הגיעה. הנימוק המלא והמדידה: `signInClosingPopup`
+// ב-`apple-signup.js` — ⚠️ זה עותק מקביל, ושינוי באחד מחייב את השני.
+function hbAppleSignIn() {
+  var origOpen = window.open, popup = null;
+  window.open = function () { popup = origOpen.apply(window, arguments); return popup; };
+  var p;
+  try { p = window.AppleID.auth.signIn(); } finally { window.open = origOpen; }
+  function closeIt() { try { if (popup && !popup.closed) popup.close(); } catch (_) {} }
+  return Promise.resolve(p).then(function (r) { closeIt(); return r; },
+                                 function (e) { closeIt(); throw e; });
+}
+
 async function hbAppleLoginClick() {
   var btn = document.querySelector('#asLoginBtnHost .hb-as-login-btn');
   if (btn) btn.disabled = true;
   try {
-    var res = await window.AppleID.auth.signIn();
+    var res = await hbAppleSignIn();
     var raw = res && res.authorization && res.authorization.id_token;
     if (raw) hbAppleExchange(raw, res.authorization.code, HB_APPLE_REDIRECT_URI);
     if (!raw) {

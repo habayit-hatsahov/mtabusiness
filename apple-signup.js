@@ -318,11 +318,35 @@
     }
   }
 
+  // ══ §468 — 🔴 ב-Safari באייפון חלון אפל לא נסגר ולא מחזיר לאתר ═══════════════════════
+  // נמדד 5.10 (iOS 27, Safari): `signIn()` **הוחזר תקין** והטופס התמלא מאחור (`asUsed`), אבל
+  // הלשונית של appleid.apple.com נשארה פתוחה מעליו, והנרשמת "לא חזרה לאתר" — ניסתה שוב.
+  // עוד תוצאה: הלשונית שלנו ברקע, ו-`/apple-exchange` נתקע 20 שנ' (`asExchange:network`) —
+  // כנראה ש-Safari מאט לשונית מוסתרת.
+  // 🔑 **אנחנו סוגרים אותו בעצמנו.** נמדד מול ה-SDK האמיתי: הוא קורא ל-`window.open`
+  // **סינכרונית** בתוך `signIn()`, ולכן עטיפה רגעית תופסת את הידית. מי שפתח חלון רשאי לסגור אותו.
+  // ⚠️ סוגרים רק **אחרי** שההבטחה הוכרעה — כלומר אחרי שאפל כבר מסרה את התשובה. חלון שנסגר
+  // מעצמו (דסקטופ) נשאר `closed`, ואז לא קורה כלום.
+  // ⚠️ עותק מקביל ב-`welcome.html` (`hbAppleSignIn`) — שינוי כאן מחייב שם.
+  function signInClosingPopup() {
+    var origOpen = window.open, popup = null;
+    window.open = function () { popup = origOpen.apply(window, arguments); return popup; };
+    var p;
+    try { p = window.AppleID.auth.signIn(); } finally { window.open = origOpen; }
+    function closeIt() {
+      try {
+        if (popup && !popup.closed) { popup.close(); track('asPopupClosed'); }   // ראיה שהבאג קרה
+      } catch (_) {}
+    }
+    return Promise.resolve(p).then(function (r) { closeIt(); return r; },
+                                   function (e) { closeIt(); throw e; });
+  }
+
   async function onClick() {
     var btn = part('.hb-as-btn');
     if (btn) btn.disabled = true;
     try {
-      var res = await window.AppleID.auth.signIn();
+      var res = await signInClosingPopup();
       onAuthorized(res);
     } catch (e) {
       // ⚠️ ביטול ע"י המשתמש אינו תקלה ואינו מקבל הודעה. אפל מחזירה
