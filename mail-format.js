@@ -98,29 +98,31 @@ export function codeBlockHtml(code, withButton = true) {
 export const MEMBER_LOGIN_URL = SITE_URL + '/welcome.html?login=1';
 const GMAIL_RX = /@(gmail|googlemail)\.com$/i;
 
-export function loginModeFor({ email, googleEmail } = {}) {
-  if (String(googleEmail || '').trim()) return 'google';
+// §465 — 🔑 **מסלול אחד "בלי קוד" ל-Google ול-Apple, לא מצב לכל ספק.** בקשת המשתמש: "שיהיה
+// אחידות בלי להסתבך עם המון שינויים רק לגוגל או לאייפון". שני הכפתורים מזהים באותו עיקרון
+// (מייל זהה או חשבון מקושר, §409/§456ב), ולכן רק **התנאי** התרחב ל-`appleSub` — לא נוסף מצב.
+// ⚠️ הערך הפנימי נשאר 'google' (מרכז הניהול והוורקר מעבירים אותו) — משמעותו "בלי קוד".
+export function loginModeFor({ email, googleEmail, appleSub } = {}) {
+  if (String(googleEmail || '').trim() || String(appleSub || '').trim()) return 'google';
   return GMAIL_RX.test(String(email || '').trim()) ? 'google' : 'code';
 }
 
-// vars.login_mode: 'google' | 'code' | '' (ריק = אין למי להבטיח כניסה → הבלוק לא מוצג).
-// vars.login_account: הכתובת שמוצגת במשפט ה-Google. vars.code: אופציונלי בשני המצבים.
+// vars.login_mode: 'google' (= בלי קוד) | 'code' | '' (ריק = אין למי להבטיח כניסה → הבלוק לא מוצג).
+// vars.code: אופציונלי בשני המצבים. (vars.login_account כבר לא מוצג — §465, ר' למטה.)
 export function loginBlockHtml(vars) {
   const mode = vars.login_mode;
   const code = vars.code || '';
   const button = loginButtonHtml(MEMBER_LOGIN_URL);
   const p = (style, html) => `<p style="margin:0 0 12px 0;text-align:center;${style}">${html}</p>`;
   if (mode === 'google') {
-    const acc = String(vars.login_account || '').trim();
-    const withAcc = acc
-      ? `עם החשבון <b style="direction:ltr;unicode-bidi:isolate">${escapeHtml(acc)}</b>`
-      : 'עם חשבון ה-Google של הכתובת הזו';
+    // §465 — נוסח אחד לכולם, **בלי הכתובת**: אצל מי שנרשם עם Apple היא לרוב כתובת-ממסר
+    // שלא אומרת לו כלום, ונוסח שמשתנה לפי ספק הוא בדיוק הפיצול שהמשתמש ביקש להימנע ממנו.
     return button
       + p('font-size:15px;line-height:1.6;color:#0A2A66',
-          `בחלון שייפתח לחצו <b>"להמשיך עם Google"</b> ${withAcc} — בלי קוד.<br>מאותו רגע האתר זוכר אתכם.`)
+          'בחלון שייפתח לחצו על <b>Google</b> או על <b>Apple</b> — לפי החשבון שאיתו נרשמתם — בלי קוד.<br>מאותו רגע האתר זוכר אתכם.')
       // ⚠️ משני בגודל ובמיקום — **לא בצבע**. אפור (#888) נדחה: "שיהיה לפחות בצבע שחור שיראו את זה".
       + (code ? p('font-size:14px;line-height:1.6;color:#16130a',
-          `אין לכם גישה לחשבון הזה? קוד הכניסה: <b style="direction:ltr;unicode-bidi:isolate;letter-spacing:2px;color:#000">${escapeHtml(code)}</b>, יחד עם מספר הטלפון שאיתו נרשמתם.`) : '');
+          `מעדיפים קוד? קוד הכניסה: <b style="direction:ltr;unicode-bidi:isolate;letter-spacing:2px;color:#000">${escapeHtml(code)}</b>, יחד עם מספר הטלפון שאיתו נרשמתם.`) : '');
   }
   // ⚠️ מצב קוד בלי קוד = אין שום דלת להציע, ולכן כלום — לא כפתור לדף שלא יכניס אותו.
   if (mode === 'code' && code) {

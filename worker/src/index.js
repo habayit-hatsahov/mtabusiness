@@ -1293,7 +1293,7 @@ const BIZ_SEND_GRACE_MS = 60 * 1000;
 function memberLoginFor(fields) {
   if (!fields || fields.status !== 'approved') return null;
   return {
-    mode: loginModeFor({ email: fields.email, googleEmail: fields.googleEmail }),
+    mode: loginModeFor({ email: fields.email, googleEmail: fields.googleEmail, appleSub: fields.appleSub }),   // §465
     account: fields.googleEmail || fields.email || '',
   };
 }
