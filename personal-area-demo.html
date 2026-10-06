@@ -96,6 +96,18 @@
   .sec-biz { border:2px solid var(--text); }
   .sec-biz .sec-head { background:var(--text); color:#fff; }
   .sec-biz .sec-sub { color:rgba(255,255,255,.75); }
+  .jump { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .jump[hidden] { display:none; }
+  .jump-btn { display:flex; flex-direction:column; align-items:flex-start; gap:4px; text-align:right; cursor:pointer;
+    background:#fff; border:1.5px solid var(--border-md); border-radius:14px; padding:12px 14px; color:var(--text); min-height:64px; }
+  .jump-btn.biz { background:var(--text); border-color:var(--text); color:#fff; }
+  .jump-btn.biz2 { background:#E8EEFB; border-color:var(--text); }
+  .jump-t { font-size:14.5px; font-weight:900; line-height:1.3; }
+  .jump-c { font-size:12.5px; font-weight:700; color:var(--text-muted); }
+  .jump-btn.biz .jump-c { color:rgba(255,255,255,.7); }
+  .jump-c.has { background:var(--yellow); color:var(--text) !important; border-radius:20px; padding:2px 9px; font-weight:900; }
+  /* גלילה לבלוק — שלא ייחתך מתחת לפס העליון הדביק */
+  .sec { scroll-margin-top:76px; }
   .reply-strip { display:flex; align-items:center; gap:12px; width:100%; text-align:right; border:none; cursor:pointer;
     background:var(--yellow); color:var(--text); border-radius:16px; padding:14px 16px; font-size:15px; line-height:1.45; box-shadow:var(--shadow); }
   .reply-strip[hidden] { display:none; }
@@ -245,6 +257,15 @@
     <section id="pUpdates" style="display:flex;flex-direction:column;gap:12px">
       <!-- §473ג — תשובה אישית מהצוות אינה "עדכון לאוהדים", ולכן לא ברשימות. היא פס בולט
            בראש הלשונית, שלחיצה עליו מובילה ישר לשיחה. -->
+      <!-- §473ד — ניווט מהיר לבלוקים (בעל עסק בלבד; לאוהד יש 2 בלוקים קצרים). רשת 2×2 גדולה
+           ולא שורת צ'יפים נגללת. לחיצה **גוללת** ולא מסננת — הכל נשאר גלוי, אף אחד לא
+           "נתקע" בתצוגה מסוננת. כל כפתור אומר במילים אם יש חדש. -->
+      <nav class="jump" id="jumpNav" hidden>
+        <button class="jump-btn biz" onclick="jumpTo('secBiz')"><span class="jump-t">על העסק שלך</span><span class="jump-c" id="jBiz"></span></button>
+        <button class="jump-btn biz2" onclick="jumpTo('secBizAll')"><span class="jump-t">לכל בעלי העסקים</span><span class="jump-c" id="jBizAll"></span></button>
+        <button class="jump-btn" onclick="jumpTo('secGen')"><span class="jump-t">לאוהדים</span><span class="jump-c" id="jGen"></span></button>
+        <button class="jump-btn" onclick="jumpTo('secPush')"><span class="jump-t">התראות בטלפון</span><span class="jump-c" id="jPush"></span></button>
+      </nav>
       <button class="reply-strip" id="replyStrip" hidden onclick="setTab('msgs')">
         <span class="reply-strip-dot"></span>
         <span><b>יש לך תשובה חדשה מהצוות</b><br/>לחצו כאן כדי לקרוא</span>
@@ -272,14 +293,14 @@
         </div>
         <div class="feed" id="feedBizAll"></div>
       </div>
-      <div class="sec">
+      <div class="sec" id="secGen">
         <div class="sec-head plain">
           <div><div class="sec-title" id="genTitle">עדכונים מ-Yellow Zone</div>
                <div class="sec-sub" id="genSub">חדשות, הטבות ועדכונים לכל החברים</div></div>
         </div>
         <div class="feed" id="feedGen"></div>
       </div>
-      <div class="sec">
+      <div class="sec" id="secPush">
         <div class="sec-head plain">
           <div><div class="sec-title">התראות שקיבלת לטלפון</div>
                <div class="sec-sub">כל התראה שקפצה לך — גם אם מחקת אותה מהטלפון</div></div>
@@ -512,6 +533,13 @@ function render() {
   document.getElementById('genSub').textContent = isBizView()
     ? 'מה שנשלח לכל חברי Yellow Zone — גם אליך כאוהד'
     : 'חדשות, הטבות ועדכונים לכל החברים';
+  document.getElementById('jumpNav').hidden = !isBizView();
+  [['jBiz', 'biz'], ['jBizAll', 'bizAll'], ['jGen', 'gen'], ['jPush', 'push']].forEach(([id, k]) => {
+    const n = groups[k].filter(i => !i.read).length;
+    const el = document.getElementById(id);
+    el.textContent = !n ? 'אין חדש' : n === 1 ? 'חדש אחד' : n + ' חדשים';
+    el.classList.toggle('has', !!n);
+  });
   [['cntBiz', 'biz'], ['cntBizAll', 'bizAll']].forEach(([id, k]) => {
     const n = groups[k].filter(i => !i.read).length;
     const el = document.getElementById(id); el.hidden = !n; el.textContent = n === 1 ? 'חדש אחד' : n + ' חדשים';
@@ -553,6 +581,12 @@ function itemHtml(i) {
           : i.link === 'biz' ? '<span class="item-link">לכרטיס העסק ›</span>' : ''}
       </div>
     </div>`;
+}
+function jumpTo(id) {
+  const el = document.getElementById(id);
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // הבהוב קצר — שיהיה ברור לאן הגענו
+  el.animate([{ boxShadow: '0 0 0 4px #FFD400' }, { boxShadow: '0 0 0 0 #FFD400' }], { duration: 1200 });
 }
 function expand(k) { state.expanded[k] = true; render(); }
 function setCount(id, n) { const el = document.getElementById(id); el.hidden = !n; el.textContent = n; }
