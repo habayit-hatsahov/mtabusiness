@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>דמו — האזור שלי</title>
+<!-- §473 — דמו בלבד. קובץ מבודד: לא מקושר מאף דף, לא נטען ע"י אף דף, לא כותב לשום מקום.
+     הכל בזיכרון. מטרתו: לאשר מבנה ותוכן של "האזור שלי" (אוהד + בעל עסק) ושל הצד בדשבורד,
+     לפני שנוגעים ב-profile.html החי. ר' docs/PROJECT_CONTEXT.md §473. -->
+<style>
+  @font-face { font-family: 'Rubik'; font-style: normal; font-weight: 300 900; font-display: swap;
+    src: url('fonts/rubik-hebrew.woff2') format('woff2');
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
+  @font-face { font-family: 'Rubik'; font-style: normal; font-weight: 300 900; font-display: swap;
+    src: url('fonts/rubik-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+20AA, U+2122, U+2212; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    /* אותם טוקנים בדיוק כמו profile.html — הדמו הוא הבסיס לשדרוג שלו */
+    --yellow:#FFD400; --bg:#F6F6F2; --card-bg:#FFFFFF; --card-bg2:#F2F2EC;
+    --border:#E7E7E0; --border-md:#E4E4DC; --text:#0A2A66; --text-sm:#6B7A9B; --text-muted:#9AA6C0;
+    --fg-rgb:10,42,102; --orange:#d97706; --shadow:0 1px 2px rgba(10,42,102,.06);
+    --soft:#FFF7DB; --soft-line:#FFE9A3;
+  }
+  body { font-family:'Rubik',sans-serif; background:var(--bg); color:var(--text); min-height:100dvh; }
+  button { font-family:inherit; }
+
+  /* ── פס הדמו (לא חלק מהמוצר) ── */
+  .demo-bar { background:#1c1c1c; color:#fff; padding:10px 12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center; position:relative; z-index:300; }
+  .demo-bar-label { font-size:12px; opacity:.7; margin-inline-end:4px; }
+  .demo-bar button { border:1px solid #555; background:#2b2b2b; color:#fff; border-radius:20px; padding:7px 14px; font-size:13px; font-weight:700; cursor:pointer; }
+  .demo-bar button.on { background:var(--yellow); color:var(--text); border-color:var(--yellow); }
+  .demo-note { max-width:480px; margin:10px auto 0; padding:0 16px; font-size:12px; color:var(--text-sm); line-height:1.6; }
+
+  /* ── מעטפת האפליקציה ── */
+  .app { max-width:480px; margin:10px auto 40px; background:var(--bg); }
+  .top-nav { background:#fff; padding:7px 16px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:3px solid var(--yellow); box-shadow:0 3px 0 0 var(--text); position:sticky; top:0; z-index:100; }
+  .nav-actions { display:flex; align-items:center; gap:8px; }
+  .icon-btn { width:40px; height:40px; border-radius:11px; background:var(--card-bg2); border:none; color:var(--text);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; position:relative; }
+  .hbg { display:flex; flex-direction:column; gap:4px; } .hbg span { width:16px; height:2px; border-radius:2px; background:currentColor; }
+  .badge { position:absolute; top:-4px; left:-4px; min-width:18px; height:18px; padding:0 5px; border-radius:9px;
+    background:var(--yellow); color:var(--text); font-size:11px; font-weight:900; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 2px #fff; }
+  .badge[hidden] { display:none; }
+  .nav-logo img { height:30px; display:block; }
+
+  .content { padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .hero { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .hero-title { font-size:22px; font-weight:900; }
+  .hero-sub { font-size:13px; color:var(--text-sm); margin-top:2px; }
+  .role-chip { font-size:11px; font-weight:800; background:var(--soft); border:1px solid var(--soft-line); border-radius:20px; padding:4px 10px; white-space:nowrap; }
+
+  /* לשוניות */
+  .tabs { display:flex; gap:6px; background:var(--card-bg2); border-radius:14px; padding:4px; }
+  .tab { flex:1; border:none; background:none; border-radius:11px; padding:10px 4px; font-size:13.5px; font-weight:700; color:var(--text-sm);
+    cursor:pointer; position:relative; display:flex; align-items:center; justify-content:center; gap:5px; }
+  .tab.on { background:#fff; color:var(--text); box-shadow:var(--shadow); }
+  .tab .count { min-width:18px; height:18px; border-radius:9px; background:var(--yellow); color:var(--text); font-size:11px; font-weight:900;
+    display:inline-flex; align-items:center; justify-content:center; padding:0 5px; }
+  .tab .count[hidden] { display:none; }
+
+  .card { background:var(--card-bg); border:1px solid var(--border); border-radius:16px; padding:16px; box-shadow:var(--shadow); }
+  .section-title { font-size:13px; font-weight:800; color:rgba(var(--fg-rgb),.55); margin-bottom:12px; letter-spacing:.5px; }
+  .muted { color:var(--text-sm); font-size:12.5px; line-height:1.6; }
+
+  /* עדכונים */
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { border:1px solid var(--border-md); background:#fff; border-radius:20px; padding:6px 12px; font-size:12.5px; font-weight:700; color:var(--text-sm); cursor:pointer; }
+  .chip.on { background:var(--text); color:#fff; border-color:var(--text); }
+  .feed { display:flex; flex-direction:column; }
+  .item { display:flex; gap:12px; padding:14px 2px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .item:last-child { border-bottom:none; }
+  .item-dot { width:9px; height:9px; border-radius:50%; background:var(--yellow); box-shadow:0 0 0 2px var(--soft-line); margin-top:6px; flex-shrink:0; }
+  .item.read .item-dot { background:transparent; box-shadow:none; }
+  .item-body { flex:1; min-width:0; }
+  .item-top { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:3px; }
+  .kind { font-size:10.5px; font-weight:800; border-radius:6px; padding:2px 7px; }
+  .kind.update { background:var(--soft); color:var(--text); }
+  .kind.push { background:var(--text); color:#fff; }
+  .kind.auto { background:var(--card-bg2); color:var(--text-sm); }
+  .kind.biz { background:#E8EEFB; color:var(--text); }
+  .item-time { font-size:11px; color:var(--text-muted); margin-inline-start:auto; }
+  .item-title { font-size:14.5px; font-weight:800; line-height:1.4; }
+  .item.read .item-title { font-weight:600; }
+  .item-text { font-size:13px; color:var(--text-sm); line-height:1.55; margin-top:3px; white-space:pre-line; }
+  .item-link { display:inline-block; margin-top:8px; font-size:12.5px; font-weight:800; color:var(--text); text-decoration:none;
+    border:1px solid var(--border-md); border-radius:10px; padding:6px 10px; background:#fff; }
+  .empty { text-align:center; padding:26px 10px; color:var(--text-sm); font-size:13px; }
+
+  /* שיחה */
+  .thread { display:flex; flex-direction:column; gap:10px; }
+  .bubble-wrap { display:flex; flex-direction:column; }
+  .bubble { max-width:84%; padding:10px 12px; border-radius:16px; font-size:14px; line-height:1.55; white-space:pre-line; }
+  .bubble-wrap.me { align-items:flex-start; }   /* RTL: התחלה = ימין */
+  .bubble-wrap.team { align-items:flex-end; }
+  .me .bubble { background:var(--yellow); border-bottom-right-radius:4px; }
+  .team .bubble { background:var(--card-bg2); border:1px solid var(--border); border-bottom-left-radius:4px; }
+  .bubble-meta { font-size:10.5px; color:var(--text-muted); margin-top:3px; padding:0 4px; }
+  .topic { font-size:10.5px; font-weight:800; background:#E8EEFB; border-radius:6px; padding:1px 6px; margin-inline-end:4px; }
+  .composer { display:flex; flex-direction:column; gap:8px; margin-top:12px; border-top:1px solid var(--border); padding-top:12px; }
+  textarea, input[type=text], select { width:100%; font:inherit; font-size:16px; color:var(--text); background:var(--bg);
+    border:1.5px solid var(--border-md); border-radius:12px; padding:10px 12px; }
+  textarea { min-height:80px; resize:vertical; line-height:1.5; }
+  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .btn { border:none; border-radius:12px; padding:11px 18px; font-size:14px; font-weight:900; cursor:pointer; background:var(--yellow); color:var(--text); }
+  .btn.ghost { background:#fff; border:1px solid var(--border-md); font-weight:700; }
+  .btn.dark { background:var(--text); color:#fff; }
+  .check { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; cursor:pointer; }
+
+  /* פרטים */
+  .member-card { border-radius:20px; background:var(--yellow); padding:18px 20px; box-shadow:0 10px 26px rgba(10,42,102,.14); }
+  .mc-label { font-size:11px; font-weight:700; letter-spacing:.14em; color:rgba(10,42,102,.62); }
+  .mc-name { font-size:22px; font-weight:800; margin-top:4px; }
+  .mc-fields { display:flex; gap:20px; margin-top:24px; }
+  .mc-fl { font-size:11px; font-weight:600; color:rgba(10,42,102,.62); }
+  .mc-fv { font-size:16px; font-weight:800; }
+  .detail-row { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--border); gap:10px; }
+  .detail-row:last-child { border-bottom:none; }
+  .dl { font-size:11px; color:var(--text-muted); font-weight:600; }
+  .dv { font-size:14px; font-weight:700; margin-top:2px; }
+  .edit { background:none; border:none; font-size:13px; cursor:pointer; color:var(--text-sm); }
+  .toggle { width:44px; height:24px; border-radius:12px; background:rgba(var(--fg-rgb),.1); border:1px solid var(--border-md); position:relative; cursor:pointer; flex-shrink:0; }
+  .toggle::after { content:''; position:absolute; width:18px; height:18px; border-radius:50%; background:#fff; top:2px; right:2px; transition:transform .2s; box-shadow:0 1px 4px rgba(0,0,0,.3); }
+  .toggle.on { background:var(--yellow); border-color:var(--yellow); }
+  .toggle.on::after { transform:translateX(-20px); }
+  .setting { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--border); font-size:14px; font-weight:600; gap:10px; }
+  .setting:last-child { border-bottom:none; }
+  .setting small { display:block; font-size:11.5px; color:var(--text-sm); font-weight:500; margin-top:2px; }
+  .danger { color:var(--orange); }
+
+  /* העסק שלי */
+  .biz-head { display:flex; gap:12px; align-items:center; }
+  .biz-logo { width:54px; height:54px; border-radius:14px; background:var(--text); color:var(--yellow); font-weight:900; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+  .biz-name { font-size:17px; font-weight:900; }
+  .ok-chip { display:inline-block; font-size:11px; font-weight:800; background:#E6F4EA; color:#1e6b34; border-radius:20px; padding:3px 9px; margin-top:4px; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .stat { background:var(--card-bg2); border-radius:14px; padding:12px; }
+  .stat-n { font-size:22px; font-weight:900; }
+  .stat-l { font-size:12px; color:var(--text-sm); margin-top:2px; }
+  .req { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--border); gap:10px; font-size:13.5px; font-weight:600; }
+  .req:last-child { border-bottom:none; }
+  .req-st { font-size:11px; font-weight:800; border-radius:20px; padding:3px 9px; white-space:nowrap; }
+  .req-st.wait { background:var(--soft); }
+  .req-st.done { background:#E6F4EA; color:#1e6b34; }
+  .wide-btn { display:block; width:100%; text-align:center; margin-top:12px; text-decoration:none; }
+
+  /* ── הדשבורד שלך (סכמטי — במוצר זה ייכנס לעיצוב הכהה של מרכז הניהול) ── */
+  .admin { max-width:720px; margin:10px auto 40px; padding:0 16px; display:flex; flex-direction:column; gap:14px; }
+  .admin h2 { font-size:18px; font-weight:900; }
+  .vs { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .vs > div { background:#fff; border:1px solid var(--border); border-radius:14px; padding:12px; font-size:13px; line-height:1.6; }
+  .vs b { display:block; font-size:14px; margin-bottom:4px; }
+  @media (max-width:560px) { .vs { grid-template-columns:1fr; } }
+  .aud { display:flex; gap:6px; flex-wrap:wrap; }
+  .lbl { font-size:12.5px; font-weight:800; margin:8px 0 4px; display:block; }
+  .inq { border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px; }
+  .inq-who { font-size:14px; font-weight:800; }
+  .inq-meta { font-size:12px; color:var(--text-sm); }
+  .inq-msg { font-size:13.5px; line-height:1.55; white-space:pre-line; background:var(--bg); border-radius:10px; padding:8px 10px; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--text); color:#fff; padding:10px 18px; border-radius:20px;
+    font-size:13px; font-weight:700; opacity:0; transition:opacity .25s; pointer-events:none; z-index:999; white-space:nowrap; }
+  .toast.show { opacity:1; }
+  [hidden] { display:none !important; }
+
+  /* מסך מסוג "התראה בטלפון" שמדמה פוש */
+  .push-sim { position:fixed; top:12px; left:50%; transform:translate(-50%,-160%); visibility:hidden; width:min(92vw,380px); background:rgba(250,250,250,.97);
+    border-radius:18px; box-shadow:0 12px 30px rgba(0,0,0,.25); padding:12px 14px; display:flex; gap:10px; z-index:998; transition:transform .35s; }
+  .push-sim.show { transform:translate(-50%,0); visibility:visible; }
+  .push-icon { width:38px; height:38px; border-radius:9px; background:var(--yellow); display:flex; align-items:center; justify-content:center; font-weight:900; flex-shrink:0; }
+  .push-app { font-size:11px; color:#666; } .push-t { font-size:14px; font-weight:800; } .push-b { font-size:13px; color:#333; }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <span class="demo-bar-label">דמו — לצפות בתור:</span>
+  <button id="vFan" class="on" onclick="setView('fan')">אוהד</button>
+  <button id="vBiz" onclick="setView('biz')">בעל עסק</button>
+  <button id="vAdmin" onclick="setView('admin')">הדשבורד שלך</button>
+</div>
+<p class="demo-note" id="demoNote"></p>
+
+<!-- ══════════ האזור שלי ══════════ -->
+<div class="app" id="appView">
+  <header class="top-nav">
+    <div class="nav-actions">
+      <button class="icon-btn" title="תפריט"><span class="hbg"><span></span><span></span><span></span></span></button>
+      <!-- הפעמון: קיצור ל"עדכונים", והמספר = כל מה שלא נקרא (עדכונים + הודעות) -->
+      <button class="icon-btn" title="האזור שלי" onclick="setTab('updates')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="badge" id="bellBadge" hidden></span>
+      </button>
+    </div>
+    <a class="nav-logo"><img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/></a>
+  </header>
+
+  <div class="content">
+    <div class="hero">
+      <div>
+        <div class="hero-title">האזור שלי</div>
+        <div class="hero-sub" id="heroSub">שלום רמי — כל מה שחדש אצלך, במקום אחד</div>
+      </div>
+      <span class="role-chip" id="roleChip" hidden>אוהד · בעל עסק</span>
+    </div>
+
+    <div class="tabs">
+      <button class="tab on" id="tUpdates" onclick="setTab('updates')">עדכונים <span class="count" id="cUpdates" hidden></span></button>
+      <button class="tab" id="tMsgs" onclick="setTab('msgs')">הודעות <span class="count" id="cMsgs" hidden></span></button>
+      <button class="tab" id="tBiz" onclick="setTab('biz')" hidden>העסק שלי</button>
+      <button class="tab" id="tMe" onclick="setTab('me')">הפרטים שלי</button>
+    </div>
+
+    <!-- ── עדכונים ── -->
+    <section id="pUpdates">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px">
+          <div class="chips" id="feedChips">
+            <button class="chip on" data-f="all" onclick="setFilter('all')">הכל</button>
+            <button class="chip" data-f="update" onclick="setFilter('update')">עדכונים</button>
+            <button class="chip" data-f="push" onclick="setFilter('push')">התראות שקיבלת</button>
+          </div>
+          <button class="chip" onclick="markAllRead()">סמן הכל כנקרא</button>
+        </div>
+        <div class="feed" id="feed"></div>
+      </div>
+    </section>
+
+    <!-- ── הודעות ── -->
+    <section id="pMsgs" hidden>
+      <div class="card">
+        <div class="section-title">השיחה שלך עם צוות Yellow Zone</div>
+        <div class="thread" id="thread"></div>
+        <div class="composer">
+          <textarea id="msgText" placeholder="כתבו לנו — שאלה, הצעה, עסק שחסר לכם..."></textarea>
+          <div class="row">
+            <button class="btn" onclick="sendFanMsg()">שליחה</button>
+            <label class="check" id="topicWrap" hidden><input type="checkbox" id="topicBiz"/> בנושא העסק שלי</label>
+          </div>
+          <div class="muted">כשנענה, התשובה תופיע כאן, ונשלח לך גם מייל קצר.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── העסק שלי (בעל עסק בלבד) — עריכת פרטי העסק עצמה, בתוך האזור (לא קישור החוצה) ── -->
+    <section id="pBiz" hidden>
+      <div class="card">
+        <div class="biz-head">
+          <div class="biz-logo">ש</div>
+          <div>
+            <div class="biz-name">שווארמה רמי</div>
+            <span class="ok-chip">✓ מאושר ומופיע באינדקס</span>
+          </div>
+        </div>
+        <div class="muted" style="margin-top:10px">כל שינוי נשלח לאישור הצוות, ומופיע באינדקס אחרי שאושר. כשזה קורה, תקבלו עדכון כאן.</div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="section-title">פרטי העסק</div>
+        <div class="detail-row"><div><div class="dl">שם העסק</div><div class="dv">שווארמה רמי</div></div><button class="edit" onclick="bizEdit(this)">✏️</button></div>
+        <div class="detail-row"><div><div class="dl">קטגוריה ותגיות</div><div class="dv">אוכל ומסעדות · מסעדות וברים</div></div><button class="edit" onclick="bizEdit(this)">✏️</button></div>
+        <div class="detail-row"><div><div class="dl">תיאור</div><div class="dv" style="font-weight:500;line-height:1.5">שווארמה על הגחלים, פתוח עד מאוחר. ליד האצטדיון.</div></div><button class="edit" onclick="bizEdit(this)">✏️</button></div>
+        <div class="detail-row"><div><div class="dl">תגית חדשה שביקשתם</div><div class="dv">משלוחים <span class="req-st wait">ממתין לאישור הצוות</span></div></div></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="section-title">ההטבה לחברי Yellow Zone</div>
+        <div class="detail-row"><div><div class="dl">ההטבה</div><div class="dv">10% הנחה על כל ההזמנה</div></div><button class="edit" onclick="bizEdit(this)">✏️</button></div>
+        <div class="detail-row"><div><div class="dl">איך מממשים</div><div class="dv">בהצגת תעודת החבר בקופה</div></div><button class="edit" onclick="bizEdit(this)">✏️</button></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="section-title">יצירת קשר ושעות</div>
+        <div class="detail-row"><div><div class="dl">טלפון ווואטסאפ</div><div class="dv">03-0000000</div></div><button class="edit" onclick="bizEdit(this)">✏️</button></div>
+        <div class="detail-row"><div><div class="dl">כתובת</div><div class="dv">תל אביב</div></div><button class="edit" onclick="bizEdit(this)">✏️</button></div>
+        <div class="detail-row"><div><div class="dl">שעות פעילות</div><div class="dv">א׳–ה׳ 11:00–23:00 · ו׳ 11:00–15:00</div></div><button class="edit" onclick="bizEdit(this)">✏️</button></div>
+        <div class="detail-row"><div><div class="dl">אתר ורשתות</div><div class="dv">אינסטגרם · פייסבוק</div></div><button class="edit" onclick="bizEdit(this)">✏️</button></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="section-title">תמונות</div>
+        <div class="detail-row"><div><div class="dl">לוגו, תמונה מייצגת וגלריה</div><div class="dv">3 תמונות</div></div><button class="edit" onclick="bizEdit(this)">✏️</button></div>
+      </div>
+    </section>
+
+    <!-- ── הפרטים שלי ── -->
+    <section id="pMe" hidden>
+      <div class="card">
+        <div class="section-title">תעודת החבר שלי</div>
+        <div class="member-card">
+          <div class="mc-label">תעודת חבר</div>
+          <div class="mc-name">רמי בן טל</div>
+          <div class="mc-fields">
+            <div><div class="mc-fl">מספר חבר</div><div class="mc-fv">#00001</div></div>
+            <div><div class="mc-fl">הצטרפות</div><div class="mc-fv">07/26</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="section-title">פרטים אישיים</div>
+        <div class="detail-row"><div><div class="dl">שם מלא</div><div class="dv">רמי בן טל</div></div></div>
+        <div class="detail-row"><div><div class="dl">טלפון</div><div class="dv">050-0000000</div></div><button class="edit">✏️</button></div>
+        <div class="detail-row"><div><div class="dl">אימייל</div><div class="dv">rami@example.com</div></div><button class="edit">✏️</button></div>
+        <div class="detail-row"><div><div class="dl">תאריך לידה</div><div class="dv">01/01/1985</div></div><button class="edit">✏️</button></div>
+        <div class="detail-row"><div><div class="dl">אימות אוהד</div><div class="dv">מנוי · שער 5</div></div></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="section-title">התראות</div>
+        <div class="setting"><div>התראות בטלפון<small>הודעות מהצוות, תשובות, הטבות חדשות</small></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="setting"><div>תשובות מהצוות גם במייל</div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="section-title">הגדרות</div>
+        <div class="setting">כניסה עם Google או Apple<span class="muted">מחובר</span></div>
+        <div class="setting">תקנון ומדיניות לאוהדים<span class="muted">›</span></div>
+        <div class="setting">התנתקות</div>
+        <div class="setting danger">מחיקת החשבון שלי</div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ══════════ הדשבורד שלך ══════════ -->
+<div class="admin" id="adminView" hidden>
+  <h2>הדשבורד שלך — מה נוסף</h2>
+  <div class="vs">
+    <div><b>שליחת עדכון</b>נכתב לאזור של האוהד או בעל העסק ונשאר שם. לא מקפיץ שום דבר בטלפון. מתאים לחדשות, לטיפים ולהודעות שאפשר לקרוא כשנכנסים.</div>
+    <div><b>שליחת פוש</b>מקפיץ התראה בטלפון עכשיו. נשמר גם באזור תחת "התראות שקיבלת", כדי שמי שפספס או מחק את ההתראה עדיין ימצא אותה.</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">הודעות שמחכות לתשובה</div>
+    <div id="inbox" style="display:flex;flex-direction:column;gap:10px"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">שליחת עדכון לאזור</div>
+    <span class="lbl">למי</span>
+    <div class="aud" id="audU"></div>
+    <span class="lbl">כותרת</span><input type="text" id="uTitle" placeholder="למשל: 5 עסקים חדשים הצטרפו השבוע"/>
+    <span class="lbl">טקסט</span><textarea id="uText" placeholder="מה רוצים לספר"></textarea>
+    <span class="lbl">קישור (לא חובה)</span>
+    <select id="uLink"><option value="">בלי קישור</option><option value="home">לדף הבית</option><option value="biz">לעסק מסוים</option></select>
+    <div class="row" style="margin-top:12px"><button class="btn" onclick="sendUpdate()">שליחת עדכון</button></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">שליחת פוש</div>
+    <span class="lbl">למי</span>
+    <div class="aud" id="audP"></div>
+    <span class="lbl">כותרת (קצרה — זה מה שרואים על המסך הנעול)</span><input type="text" id="pTitle" maxlength="50" placeholder="למשל: הטבה חדשה ב-Yellow Zone"/>
+    <span class="lbl">טקסט</span><input type="text" id="pText" maxlength="120" placeholder="שורה אחת"/>
+    <span class="lbl">לחיצה על ההתראה פותחת</span>
+    <select id="pLink"><option value="area">את האזור שלי</option><option value="home">את דף הבית</option><option value="biz">עסק מסוים</option></select>
+    <div class="row" style="margin-top:12px"><button class="btn dark" onclick="sendPush()">שליחת פוש</button></div>
+    <div class="muted" style="margin-top:8px">בדמו: ההתראה "קופצת" כשעוברים לתצוגת אוהד או בעל עסק. במוצר — כשמנגנון הפוש יהיה מוכן.</div>
+  </div>
+</div>
+
+<div class="push-sim" id="pushSim"><div class="push-icon">YZ</div><div><div class="push-app">Yellow Zone · עכשיו</div><div class="push-t" id="psT"></div><div class="push-b" id="psB"></div></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ── נתוני דמו, בזיכרון בלבד ───────────────────────────────────────────────────────────────
+// aud: 'fans' | 'biz' | 'all' (למי זה נשלח). kind: 'update' | 'push' | 'auto'.
+// אוהד רואה fans+all. בעל עסק — אזור אחד מורחב — רואה הכל (fans+biz+all), וזה בדיוק "אוהד + עסק".
+const now = Date.now(), M = 60000, H = 60 * M, D = 24 * H;
+const state = {
+  view: 'fan', tab: 'updates', filter: 'all',
+  items: [
+    { id: 1, kind: 'auto', aud: 'all', title: 'קיבלת תשובה מהצוות', text: 'ענינו על ההודעה ששלחת. לחצו כדי לקרוא.', at: now - 20 * M, read: false, link: 'msgs' },
+    { id: 2, kind: 'update', aud: 'fans', title: '5 עסקים חדשים הצטרפו השבוע', text: 'מסעדה, מוסך, מספרה ועוד שניים — כולם עם הטבות לחברי Yellow Zone.', at: now - 3 * H, read: false, link: 'home' },
+    { id: 3, kind: 'auto', aud: 'biz', title: 'השינוי שביקשת אושר', text: 'התיאור החדש של "שווארמה רמי" כבר מופיע באינדקס.', at: now - 5 * H, read: false },
+    { id: 4, kind: 'push', aud: 'fans', title: 'הטבה חדשה: 15% בספורט אנד פול', text: 'על מגוון מוצרים, בהצגת תעודת החבר.', at: now - 1 * D, read: true, link: 'biz' },
+    { id: 5, kind: 'update', aud: 'biz', title: 'לבעלי העסקים: עדכנו שעות לחגים', text: 'אפשר לעדכן שעות פעילות מיוחדות ממסך העריכה, והן יוצגו לאוהדים בכרטיס.', at: now - 2 * D, read: true },
+    { id: 6, kind: 'update', aud: 'all', title: 'חדש: כניסה עם Apple', text: 'מעכשיו אפשר להיכנס לאפליקציה גם עם חשבון Apple.', at: now - 4 * D, read: true },
+    { id: 7, kind: 'auto', aud: 'fans', title: 'החשבון שלך אושר', text: 'ברוך הבא ל-Yellow Zone! תעודת החבר שלך מחכה ב"הפרטים שלי".', at: now - 60 * D, read: true },
+  ],
+  thread: [
+    { from: 'me', text: 'היי, יש עסק של חבר שלי שמוכר ציוד ספורט — אפשר שיצטרף?', at: now - 2 * D, topic: '' },
+    { from: 'team', text: 'בטח! שלח לו את הקישור להוספת עסק מהתפריט, ואנחנו נאשר תוך יום-יומיים 💛', at: now - 20 * M, read: false },
+  ],
+  pendingPush: null,
+};
+let nextId = 100;
+
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function ago(t) {
+  const d = now - t, dn = Date.now() - t;
+  const x = Math.max(d, dn);
+  if (x < H) return 'לפני ' + Math.max(1, Math.round(x / M)) + ' דק׳';
+  if (x < D) return 'לפני ' + Math.round(x / H) + ' שע׳';
+  const days = Math.round(x / D);
+  return days === 1 ? 'אתמול' : 'לפני ' + days + ' ימים';
+}
+const isBizView = () => state.view === 'biz';
+function visible(it) { return isBizView() ? true : it.aud !== 'biz'; }
+const KIND_LABEL = { update: 'עדכון', push: 'התראה', auto: 'עדכון אישי' };
+
+function render() {
+  const fanView = state.view !== 'admin';
+  document.getElementById('appView').hidden = !fanView;
+  document.getElementById('adminView').hidden = fanView;
+  ['vFan', 'vBiz', 'vAdmin'].forEach(id => document.getElementById(id).classList.toggle('on',
+    (id === 'vFan' && state.view === 'fan') || (id === 'vBiz' && state.view === 'biz') || (id === 'vAdmin' && state.view === 'admin')));
+  document.getElementById('demoNote').textContent = state.view === 'admin'
+    ? 'זה מה שנוסף לדשבורד שלך. שלחו עדכון, פוש או תשובה — ועברו לתצוגת אוהד או בעל עסק כדי לראות איך זה נראה אצלם.'
+    : state.view === 'biz'
+      ? 'בעל עסק מקבל את אותו אזור כמו כל אוהד, מורחב: לשונית "העסק שלי" שבה עורכים את פרטי העסק ישירות, ובעדכונים גם מה ששייך לעסק (מסומן "לעסק").'
+      : 'כך אוהד רואה את האזור שלו. זה יחליף את דף הפרופיל של היום ("הפרטים שלי" הוא מה שיש שם היום).';
+  if (!fanView) { renderAdmin(); return; }
+
+  document.getElementById('roleChip').hidden = !isBizView();
+  document.getElementById('tBiz').hidden = !isBizView();
+  document.getElementById('topicWrap').hidden = !isBizView();
+  if (!isBizView() && state.tab === 'biz') state.tab = 'updates';
+
+  const unreadItems = state.items.filter(i => visible(i) && !i.read).length;
+  const unreadMsgs = state.thread.filter(m => m.from === 'team' && !m.read).length;
+  setCount('cUpdates', unreadItems); setCount('cMsgs', unreadMsgs);
+  const bell = document.getElementById('bellBadge');
+  bell.hidden = !(unreadItems + unreadMsgs); bell.textContent = unreadItems + unreadMsgs;
+
+  [['updates', 'tUpdates', 'pUpdates'], ['msgs', 'tMsgs', 'pMsgs'], ['biz', 'tBiz', 'pBiz'], ['me', 'tMe', 'pMe']].forEach(([k, t, p]) => {
+    document.getElementById(t).classList.toggle('on', state.tab === k);
+    document.getElementById(p).hidden = state.tab !== k;
+  });
+  document.querySelectorAll('#feedChips .chip').forEach(c => c.classList.toggle('on', c.dataset.f === state.filter));
+
+  const list = state.items.filter(visible)
+    .filter(i => state.filter === 'all' ? true : state.filter === 'push' ? i.kind === 'push' : i.kind !== 'push')
+    .sort((a, b) => b.at - a.at);
+  document.getElementById('feed').innerHTML = list.length ? list.map(i => `
+    <div class="item ${i.read ? 'read' : ''}" onclick="openItem(${i.id})">
+      <span class="item-dot"></span>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="kind ${i.kind}">${KIND_LABEL[i.kind]}</span>
+          ${isBizView() && i.aud === 'biz' ? '<span class="kind biz">לעסק</span>' : ''}
+          <span class="item-time">${ago(i.at)}</span>
+        </div>
+        <div class="item-title">${esc(i.title)}</div>
+        ${i.text ? `<div class="item-text">${esc(i.text)}</div>` : ''}
+        ${i.link === 'msgs' ? '<span class="item-link">לקריאת התשובה</span>'
+          : i.link === 'home' ? '<span class="item-link">לצפייה בעסקים</span>'
+          : i.link === 'biz' ? '<span class="item-link">לכרטיס העסק</span>' : ''}
+      </div>
+    </div>`).join('') : '<div class="empty">אין כאן כלום עדיין</div>';
+
+  document.getElementById('thread').innerHTML = state.thread.map(m => `
+    <div class="bubble-wrap ${m.from}">
+      <div class="bubble">${m.topic ? '<span class="topic">על העסק</span>' : ''}${esc(m.text)}</div>
+      <div class="bubble-meta">${m.from === 'me' ? 'את/ה' : 'צוות Yellow Zone'} · ${ago(m.at)}</div>
+    </div>`).join('');
+
+  if (state.pendingPush) {
+    const p = state.pendingPush; state.pendingPush = null;
+    if (p.aud !== 'biz' || isBizView()) showPush(p.title, p.text);
+  }
+}
+function setCount(id, n) { const el = document.getElementById(id); el.hidden = !n; el.textContent = n; }
+
+function setView(v) { state.view = v; state.tab = 'updates'; window.scrollTo(0, 0); render(); }
+function setTab(t) {
+  state.tab = t;
+  if (t === 'msgs') state.thread.forEach(m => { if (m.from === 'team') m.read = true; });
+  render();
+}
+function setFilter(f) { state.filter = f; render(); }
+function openItem(id) {
+  const it = state.items.find(i => i.id === id); if (!it) return;
+  it.read = true;
+  if (it.link === 'msgs') { setTab('msgs'); return; }
+  if (it.link) toast(it.link === 'home' ? 'במוצר: פותח את דף הבית' : 'במוצר: פותח את כרטיס העסק');
+  render();
+}
+function bizEdit() { toast('במוצר: נפתח לעריכה כאן, ונשלח לאישור הצוות'); }
+function markAllRead() { state.items.forEach(i => { if (visible(i)) i.read = true; }); render(); }
+
+function sendFanMsg() {
+  const ta = document.getElementById('msgText'); const t = ta.value.trim();
+  if (!t) { toast('כתבו משהו קודם'); return; }
+  const topic = isBizView() && document.getElementById('topicBiz').checked ? 'biz' : '';
+  state.thread.push({ from: 'me', text: t, at: Date.now(), topic, who: isBizView() ? 'biz' : 'fan' });
+  ta.value = ''; document.getElementById('topicBiz').checked = false;
+  toast('נשלח — נחזור אליך כאן ובמייל'); render();
+}
+
+// ── הדשבורד ──
+const AUD = [['fans', 'כל האוהדים'], ['biz', 'כל בעלי העסקים'], ['all', 'כולם']];
+const audSel = { U: 'fans', P: 'fans' };
+function renderAdmin() {
+  ['U', 'P'].forEach(k => {
+    document.getElementById('aud' + k).innerHTML = AUD.map(([v, l]) =>
+      `<button class="chip ${audSel[k] === v ? 'on' : ''}" onclick="audSel['${k}']='${v}';renderAdmin()">${l}</button>`).join('');
+  });
+  const open = state.thread.map((m, i) => ({ m, i })).filter(({ m, i }) => m.from === 'me' && !state.thread.slice(i + 1).some(x => x.from === 'team'));
+  document.getElementById('inbox').innerHTML = open.length ? open.map(({ m, i }) => `
+    <div class="inq">
+      <div class="inq-who">רמי בן טל · #00001 ${m.topic ? '<span class="topic">על העסק</span>' : ''}</div>
+      <div class="inq-meta">050-0000000 · rami@example.com · ${ago(m.at)}${m.who === 'biz' ? ' · בעל העסק "שווארמה רמי"' : ''}</div>
+      <div class="inq-msg">${esc(m.text)}</div>
+      <textarea id="rep${i}" placeholder="התשובה שלך — תופיע לו ב'הודעות', ויישלח לו מייל קצר"></textarea>
+      <div class="row"><button class="btn" onclick="reply(${i})">שליחת תשובה</button><span class="muted">"טיפלתי" מסומן אוטומטית כשעונים</span></div>
+    </div>`).join('') : '<div class="empty">אין הודעות שמחכות לתשובה. שלחו הודעה מתצוגת אוהד (לשונית "הודעות") והיא תופיע כאן.</div>';
+}
+function reply(i) {
+  const t = document.getElementById('rep' + i).value.trim();
+  if (!t) { toast('כתבו תשובה'); return; }
+  state.thread.push({ from: 'team', text: t, at: Date.now(), read: false });
+  state.items.push({ id: nextId++, kind: 'auto', aud: 'all', title: 'קיבלת תשובה מהצוות', text: 'ענינו על ההודעה ששלחת. לחצו כדי לקרוא.', at: Date.now(), read: false, link: 'msgs' });
+  toast('נשלח: תשובה באזור + מייל קצר'); renderAdmin();
+}
+function sendUpdate() {
+  const title = document.getElementById('uTitle').value.trim(); const text = document.getElementById('uText').value.trim();
+  if (!title) { toast('חסרה כותרת'); return; }
+  state.items.push({ id: nextId++, kind: 'update', aud: audSel.U, title, text, at: Date.now(), read: false, link: document.getElementById('uLink').value });
+  document.getElementById('uTitle').value = ''; document.getElementById('uText').value = '';
+  toast('העדכון נכנס לאזור — בלי התראה בטלפון');
+}
+function sendPush() {
+  const title = document.getElementById('pTitle').value.trim(); const text = document.getElementById('pText').value.trim();
+  if (!title) { toast('חסרה כותרת'); return; }
+  const link = document.getElementById('pLink').value;
+  state.items.push({ id: nextId++, kind: 'push', aud: audSel.P, title, text, at: Date.now(), read: false, link: link === 'area' ? '' : link });
+  state.pendingPush = { title, text, aud: audSel.P };
+  document.getElementById('pTitle').value = ''; document.getElementById('pText').value = '';
+  toast('נשלח פוש — עברו לתצוגת אוהד כדי לראות אותו קופץ');
+}
+
+let toastT, pushT;
+function toast(t) { const el = document.getElementById('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2400); }
+function showPush(t, b) {
+  document.getElementById('psT').textContent = t; document.getElementById('psB').textContent = b;
+  const el = document.getElementById('pushSim'); el.classList.add('show');
+  clearTimeout(pushT); pushT = setTimeout(() => el.classList.remove('show'), 3600);
+}
+render();
+</script>
+</body>
+</html>
