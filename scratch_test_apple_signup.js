@@ -190,7 +190,9 @@ function makePage(hosts, opts) {
     check('🔴 השם נשאר ריק', p.val('B', 'firstName') === '' && p.val('B', 'lastName') === '',
           'אפל מוסרת שם רק בהרשאה הראשונה בחיים');
     check('המייל בכל זאת מולא', p.val('B', 'email') === 'fan@example.com');
-    check('הכיתוב מסביר למה אין שם', /אינה שולחת שם בכניסות חוזרות/.test(p.cap('B')),
+    // §469 — בלי apiFetch אין עותק שמור לשלוף, ולכן (ורק אז) מבקשים.
+    await new Promise((r) => setTimeout(r, 0));
+    check('הכיתוב מסביר שהשם לא התקבל', /השם לא התקבל מ-Apple/.test(p.cap('B')),
           'בלי זה הנרשם רואה טופס חצי-ריק ולא מבין אם משהו נשבר');
     check('הטוקן נשמר בכל זאת', !!p.w.hbAppleSignup.token());
   }
@@ -512,6 +514,60 @@ function makePage(hosts, opts) {
     delete RESP.first.authorization.code;
     check('רשת נופלת: הטופס מולא בכל זאת', p.val('A', 'email') === 'fan@example.com');
     check('רשת נופלת: נמדד כ-network', logs.includes('asExchange:network'), logs.join(','));
+  }
+  // ══ §469 — דחיית אפל (Guideline 4): אסור לבקש שם אחרי Apple ═══════════════════════════
+  console.log('\n== §469 — השם נשמר בוורקר ומוחזר בהרשאה חוזרת ==');
+  const nameSpy = (reply) => {
+    const calls = [];
+    const fn = async (url, o) => { calls.push({ url, body: JSON.parse(o.body) }); return { json: async () => reply }; };
+    return { calls, fn };
+  };
+  const ro = (p, id) => p.w.document.getElementById(id).readOnly;
+  {
+    const p = makePage(['A']);
+    RESP.first.authorization.code = 'c1';
+    const s = nameSpy({ ok: true, name: { firstName: 'ישראל', lastName: 'ישראלי' } });
+    initA(p, { apiFetch: s.fn });
+    await clickA(p); await tick(); await tick();
+    delete RESP.first.authorization.code;
+    const c = s.calls[0];
+    check('הרשאה ראשונה: השם נשלח לוורקר לשמירה', c && c.body.name && c.body.name.firstName === 'ישראל', c && JSON.stringify(c.body));
+    check('הרשאה ראשונה: שם פרטי+משפחה ננעלו', ro(p, 'firstNameA') && ro(p, 'lastNameA'));
+  }
+  {
+    const p = makePage(['A']); p.setMode('repeat');
+    RESP.repeat.authorization.code = 'c2';
+    const s = nameSpy({ ok: true, name: { firstName: 'רון', lastName: 'לוי' } }); const logs = [];
+    initA(p, { apiFetch: s.fn, log: (c) => logs.push(c) });
+    await clickA(p); await tick(); await tick();
+    delete RESP.repeat.authorization.code;
+    check('🔑 הרשאה חוזרת: השם הגיע מהעותק השמור', p.val('A', 'firstName') === 'רון' && p.val('A', 'lastName') === 'לוי', p.val('A', 'firstName'));
+    check('🔑 הרשאה חוזרת: לא נשלח name (אין מה לשמור)', s.calls[0] && !('name' in s.calls[0].body));
+    check('🔑 הרשאה חוזרת: השם ננעל', ro(p, 'firstNameA') && ro(p, 'lastNameA'));
+    check('🔴 הרשאה חוזרת: אין בקשה למלא שם', !/נשמח שתמלאו/.test(p.cap('A')), p.cap('A'));
+    check('נמדד asNameRestored', logs.includes('asNameRestored'), logs.join(','));
+    p.w.document.querySelector('#asHostA .hb-as-undo').click();
+    check('"זה לא החשבון שלי" פותח את השם לעריכה', !ro(p, 'firstNameA') && !ro(p, 'lastNameA'));
+  }
+  {
+    const p = makePage(['A']); p.setMode('repeat');
+    RESP.repeat.authorization.code = 'c3';
+    const s = nameSpy({ ok: true }); const logs = [];
+    initA(p, { apiFetch: s.fn, log: (c) => logs.push(c) });
+    await clickA(p); await tick(); await tick();
+    delete RESP.repeat.authorization.code;
+    check('אין עותק שמור: מבקשים (המקרה הנדיר)', /השם לא התקבל מ-Apple/.test(p.cap('A')), p.cap('A'));
+    check('אין עותק שמור: השדות פתוחים', !ro(p, 'firstNameA') && !ro(p, 'lastNameA'));
+    check('נמדד asNameMissing', logs.includes('asNameMissing'), logs.join(','));
+  }
+  {
+    const p = makePage(['A']); p.setMode('repeat');
+    RESP.repeat.authorization.code = 'c4';
+    const s = nameSpy({ ok: true, name: { firstName: 'דנה', lastName: 'X' } });
+    initA(p, { apiFetch: s.fn });
+    await clickA(p); await tick(); await tick();
+    delete RESP.repeat.authorization.code;
+    check('שם משפחה של תו אחד אינו ננעל (הולידציה דורשת 2)', ro(p, 'firstNameA') && !ro(p, 'lastNameA'));
   }
   {
     // 🔑 שני הדפים מעבירים את apiFetch — בלעדיו כל הנ"ל לא רץ בפרודקשן.

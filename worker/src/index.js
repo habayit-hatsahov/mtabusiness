@@ -534,14 +534,47 @@ async function handleAppleAttach({ idToken, memberId }, request, env) {
 // מסמך בלי חבר (נרשם שלא סיים) הוא יתום שאינו מזיק: הוא מחזיק הרשאה שהאדם עצמו נתן.
 const APPLE_REDIRECT_OK = /^https:\/\/yellowzone\.co\.il\/[a-z-]+\.html$/;
 
-async function handleAppleExchange({ idToken, code, redirectUri }, env) {
+// ── §469 — השם מאפל נשמר ברגע שמגיע, ומוחזר בכל הרשאה אחריו ─────────────────────────────
+// 🔴 **הדחייה של אפל (6.10, Guideline 4):** "users are required to provide their name … after
+// using Sign in with Apple". אפל מוסרת שם **רק בהרשאה הראשונה בחיים**, ועד כאן הוא חי רק
+// בטופס — מי שלחץ, יצא וחזר (הבודק) קיבל טופס שדורש להקליד שם.
+// 🔑 נשמר על `appleTokens/{sub}` — אותו אוסף סגור, ונמחק איתו כשההרשאה מבוטלת (ואז אפל
+// תשלח את השם שוב בהרשאה הבאה). `firestorePatch` עם updateMask — אינו דורס את הטוקן.
+// ⚠️ השם מגיע מהלקוח ואינו חתום — אבל רק מי שמחזיק טוקן מאומת של ה-sub הזה כותב לו.
+// ⚠️ לפני בדיקת המפתח ולפני ההחלפה, במכוון: כשל בהחלפה אינו סיבה לאבד את השם.
+function cleanAppleName(n) {
+  if (!n || typeof n !== 'object') return null;
+  const f = String(n.firstName || '').trim().slice(0, 60);
+  const l = String(n.lastName || '').trim().slice(0, 60);
+  return (f || l) ? { firstName: f, lastName: l } : null;
+}
+async function rememberAppleName(env, accessToken, sub, name) {
+  try {
+    const n = cleanAppleName(name);
+    if (n) {
+      await firestorePatch(env, accessToken, `appleTokens/${sub}`, { firstName: n.firstName, lastName: n.lastName, nameAt: new Date() });
+      return n;
+    }
+    const d = await firestoreGetDoc(env, accessToken, `appleTokens/${sub}`);
+    const f = d && d.fields;
+    return f && (f.firstName || f.lastName) ? { firstName: f.firstName || '', lastName: f.lastName || '' } : null;
+  } catch (e) {
+    console.error('apple-name: failed', e);
+    return null;
+  }
+}
+
+async function handleAppleExchange({ idToken, code, redirectUri, name }, env) {
   let a;
   try { a = await verifyAppleIdToken(env, idToken); }
   catch (e) { return { error: 'invalid_apple_token' }; }
+  const accessToken = await getGoogleAccessToken(env);
+  const nm = await rememberAppleName(env, accessToken, a.sub, name);   // §469
+  const withName = (o) => (nm ? { ...o, name: nm } : o);
   // נבדק **אחרי** האימות, במכוון: "לא הוגדר מפתח" אינו מידע שמגיע למי שלא הוכיח זהות.
   if (!appleKeyConfigured(env)) {
     console.log('apple-exchange: skipped — apple_key_not_configured');
-    return { skipped: 'apple_key_not_configured' };
+    return withName({ skipped: 'apple_key_not_configured' });
   }
   // §468ג — גם כתובת-החזרה של זרימת-ההפניה (APPLE_CALLBACK_URL) — הקוד שלה הונפק מולה.
   const ru = typeof redirectUri === 'string' && (APPLE_REDIRECT_OK.test(redirectUri) || redirectUri === APPLE_CALLBACK_URL) ? redirectUri : '';
@@ -550,10 +583,9 @@ async function handleAppleExchange({ idToken, code, redirectUri }, env) {
   if (!x.ok) {
     // ⚠️ בלי sub ובלי מייל בשורה — ר' ההערה על [observability] ב-wrangler.toml.
     console.log('apple-exchange: failed —', x.reason, x.detail || '', 'aud=' + a.aud);
-    return { error: x.reason };
+    return withName({ error: x.reason });
   }
 
-  const accessToken = await getGoogleAccessToken(env);
   // ⚠️ דורס טוקן קודם של אותו אדם, במכוון: אפל מנפיקה refresh_token חדש בכל הרשאה, וביטול
   // של כל אחד מהם מבטל את ההרשאה כולה. החדש ביותר הוא הבטוח ביותר שעוד תקף.
   await firestorePatch(env, accessToken, `appleTokens/${a.sub}`, {
@@ -562,7 +594,7 @@ async function handleAppleExchange({ idToken, code, redirectUri }, env) {
     updatedAt: new Date(),
   });
   console.log('apple-exchange: stored aud=' + x.clientId);
-  return { ok: true };
+  return withName({ ok: true });
 }
 
 // ══ §468ג — זרימת-הפניה של "התחברות עם Apple", לאייפון בדפדפן בלבד ══════════════════════
@@ -598,9 +630,10 @@ async function handleAppleCallback(request, env) {
     // אפל שולחת `user` (שם) **רק בהרשאה הראשונה בחיים**, כמחרוזת JSON.
     try { const u = JSON.parse(get('user') || 'null'); if (u && u.name) out.u = { name: u.name }; } catch (_) {}
     let x;
-    try { x = await handleAppleExchange({ idToken, code: get('code'), redirectUri: APPLE_CALLBACK_URL }, env); }
+    try { x = await handleAppleExchange({ idToken, code: get('code'), redirectUri: APPLE_CALLBACK_URL, name: out.u && out.u.name }, env); }
     catch (e) { x = { error: 'exchange_threw' }; }
     out.x = x.ok ? 'ok' : (x.skipped || x.error || 'unknown');
+    if (x.name) out.u = { name: x.name };   // §469 — גם בהרשאה חוזרת, מהעותק השמור
     // טוקן שלא עבר אימות חתימה לא ממשיך לדף בכלל — הדף מקבל שגיאה במקומו.
     if (x.error === 'invalid_apple_token') { delete out.t; delete out.u; delete out.x; out.e = 'invalid_apple_token'; }
   }

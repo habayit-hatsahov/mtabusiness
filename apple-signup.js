@@ -240,6 +240,19 @@
     e.classList.toggle('hb-as-verified', !!on);
   }
 
+  // §469 — 🔴 **הדחייה של אפל (6.10, Guideline 4):** אחרי Sign in with Apple אסור לבקש שם
+  // או מייל שאפל כבר מסרה. השם ננעל כמו המייל — **רק שדה שערכו עובר את ולידציית הטופס**
+  // (≥2 תווים). שדה קצר מזה שהיה ננעל היה טופס שאי-אפשר לשלוח ואי-אפשר לתקן.
+  function lockName(on) {
+    [cfg && cfg.fields && cfg.fields.first, cfg && cfg.fields && cfg.fields.last].forEach(function (id) {
+      var f = el(id);
+      if (!f) return;
+      var lock = !!on && String(f.value).trim().length >= 2;
+      f.readOnly = lock;
+      f.classList.toggle('hb-as-verified', lock);
+    });
+  }
+
   function clearEmailWarn() {
     var w = el(cfg && cfg.warnId);
     if (w) w.classList.remove('show');
@@ -250,6 +263,7 @@
     token = null;
     dropPending();
     lockEmail(false);
+    lockName(false);
     clearEmailWarn();
     setCap(defaultCap());
     var e = el(cfg && cfg.fields && cfg.fields.email);
@@ -266,6 +280,12 @@
   // ⚠️ 🔑 **אפל מוסרת שם רק בהרשאה הראשונה בחיים.** מהפעם השנייה `res.user` אינו קיים
   // כלל, ומגיע `sub` בלבד. מודול שהיה מניח שהשם תמיד מגיע "היה עובד" פעם אחת ואז מפסיק
   // בשקט — ולכן הכיתוב כאן נגזר ממה שהתקבל בפועל ולא מהנחה.
+  function fillName(nm) {
+    setField(cfg.fields.first, nm.firstName || '', true);
+    setField(cfg.fields.last, nm.lastName || '', true);
+    lockName(true);
+  }
+
   function onAuthorized(res) {
     var raw = res && res.authorization && res.authorization.id_token;
     var p = raw ? decodeForDisplay(raw) : null;
@@ -277,7 +297,7 @@
     var relay = isPrivateRelay(p);
 
     token = raw;
-    exchangeCode(res, raw);
+    var exchanged = exchangeCode(res, raw);
     // 🐛 **מונמך לאותיות קטנות, ובכוונה — כאן ולא רק בשרת.** הערך הזה נכתב לשדה, ומשם
     // לתוך `members.email`. השרת אמנם משווה שני הצדדים ב-toLowerCase ולכן הקישור עצמו
     // היה עובד — אבל הכתובת הייתה **נשמרת** עם אות גדולה, וזה כבר קרה כאן: כתובת עם
@@ -287,13 +307,10 @@
     // פתוח שם. לא נגעתי בו מכאן — הוא מודול משותף גם לטופס העסקים.
     var email = String(p.email).trim().toLowerCase();
 
-    // `res.user.name` — קיים רק בפעם הראשונה. אין לו תחליף: אפל אינה שולחת שם בטוקן.
+    // `res.user.name` — מאפל רק בפעם הראשונה; §469: בזרימת-ההפניה גם מהעותק השמור בוורקר.
     var nm = res && res.user && res.user.name;
     var gotName = !!(nm && (nm.firstName || nm.lastName));
-    if (gotName) {
-      setField(cfg.fields.first, nm.firstName || '');
-      setField(cfg.fields.last, nm.lastName || '');
-    }
+    if (gotName) fillName(nm);
 
     setField(cfg.fields.email, email, true);
     lockEmail(true);
@@ -301,14 +318,38 @@
 
     // בממסר הכתובת עצמה היא רצף אקראי ארוך שאינו אומר לו כלום — מה שחשוב לו לדעת הוא
     // שההסתרה כובדה ושהמיילים יגיעו.
-    setCap((relay
-             ? '✅ נרשמים עם <b>המייל המוסתר</b> של Apple — המיילים שלנו יגיעו אליכם דרך Apple.<br>'
-             : '✅ <b>' + escapeHtml(email) + '</b> — המייל אומת ע"י Apple.<br>') +
-           (gotName ? '' : 'אפל אינה שולחת שם בכניסות חוזרות — נשמח שתמלאו אותו.<br>') +
-           'אחרי שנאשר אתכם תיכנסו בלחיצה אחת, בלי קוד.' +
-           '<button type="button" class="hb-as-undo">זה לא החשבון שלי</button>');
-    var undo = part('.hb-as-undo');
-    if (undo) undo.addEventListener('click', clearToken);
+    // §469 — 'pending' לא מציג כלום על השם: התשובה מהוורקר בדרך, ובקשה להקליד שם שתתמלא
+    // שנייה אחר כך היא בדיוק מה שאפל דחתה. רק 'missing' (אין גם עותק שמור) מבקש.
+    var showCap = function (nameState) {
+      setCap((relay
+               ? '✅ נרשמים עם <b>המייל המוסתר</b> של Apple — המיילים שלנו יגיעו אליכם דרך Apple.<br>'
+               : '✅ <b>' + escapeHtml(email) + '</b> — המייל אומת ע"י Apple.<br>') +
+             (nameState === 'missing' ? 'השם לא התקבל מ-Apple — נשמח שתמלאו אותו.<br>' : '') +
+             'אחרי שנאשר אתכם תיכנסו בלחיצה אחת, בלי קוד.' +
+             '<button type="button" class="hb-as-undo">זה לא החשבון שלי</button>');
+      var undo = part('.hb-as-undo');
+      if (undo) undo.addEventListener('click', clearToken);
+    };
+    showCap(gotName ? 'ok' : 'pending');
+
+    // §469 — אפל לא שלחה שם: הוורקר מחזיר את מה ששמר בהרשאה הראשונה.
+    if (!gotName) {
+      Promise.resolve(exchanged).then(function (out) {
+        if (token !== raw) return;              // "זה לא החשבון שלי" בינתיים
+        var sn = out && out.name;
+        if (sn && (sn.firstName || sn.lastName)) {
+          fillName(sn);
+          track('asNameRestored');
+          showCap('ok');
+          if (typeof cfg.onFilled === 'function') {
+            try { cfg.onFilled(p); } catch (e) { console.error('apple-signup: onFilled נכשל', e); }
+          }
+        } else {
+          track('asNameMissing');
+          showCap('missing');
+        }
+      });
+    }
 
     // נרשם רק אחרי שהשדות מולאו בפועל, לא בלחיצה: לחיצה שנגמרה בביטול אצל אפל אינה
     // "שימוש", וספירה שלה הייתה מנפחת מונה שאמור למדוד הצלחה.
@@ -668,16 +709,19 @@
     // §468ג — בזרימת-ההפניה הוורקר כבר החליף את הקוד (`/apple-callback`); רק רושמים את התוצאה.
     if (res && res._serverExchanged) {
       if (res._serverExchanged !== 'restored') { track(('asExchange:' + res._serverExchanged).slice(0, 50)); savePending(res); }
-      return;
+      return null;
     }
     var code = res && res.authorization && res.authorization.code;
-    if (!code) { track('asExchange:no_code'); return; }
+    if (!code) { track('asExchange:no_code'); return null; }
     if (!cfg || typeof cfg.apiFetch !== 'function') {
       console.warn('apple-signup: init בלי apiFetch — הקוד לא נשלח, והחשבון לא יהיה ניתן לביטול אצל אפל');
       track('asExchange:no_fetch');
-      return;
+      return null;
     }
     var body = { idToken: idToken, code: code };
+    // §469 — השם (אם הגיע) נשמר בוורקר; ובלעדיו התשובה מחזירה את השמור.
+    var nm = res.user && res.user.name;
+    if (nm && (nm.firstName || nm.lastName)) body.name = { firstName: nm.firstName || '', lastName: nm.lastName || '' };
     if (!res._native) body.redirectUri = cfg.redirectUri || REDIRECT_URI;
     var p;
     try {
@@ -687,11 +731,13 @@
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(EXCHANGE_TIMEOUT_MS),
       });
-    } catch (e) { track('asExchange:network'); return; }
-    Promise.resolve(p).then(function (r) { return r.json(); }).then(function (out) {
+    } catch (e) { track('asExchange:network'); return null; }
+    // §469 — מחזיר את התשובה (בשביל `name`); כשל נבלע ל-null — הוא לעולם אינו כשל-הרשמה.
+    return Promise.resolve(p).then(function (r) { return r.json(); }).then(function (out) {
       var s = out && (out.ok ? 'ok' : (out.skipped || out.error)) || 'unknown';
       track(('asExchange:' + s).slice(0, 50));
-    }).catch(function () { track('asExchange:network'); });
+      return out;
+    }).catch(function () { track('asExchange:network'); return null; });
   }
 
   // ── הקישור עצמו, אחרי שהרשומה כבר קיימת ──────────────────────────────────────────────
