@@ -29,9 +29,16 @@
     // הצעד "שתפו את העסק" שבעלי העסקים מתבקשים לעשות. שומרים כאן, **לפני** כל הפניה (גם זו
     // שלמטה וגם של ה-auth guard), ונצרך ב-loadFirebaseData. 30 יום — מכסה גם נרשם חדש שאושר
     // אחרי כמה ימים ונכנס מאותו מכשיר.
+    // §474ב — **גם ב-sessionStorage, והוא הראשי.** localStorage משותף לכל הלשוניות: בבדיקה של
+    // רמי לשונית ישנה שישבה על welcome זיהתה את הכניסה שבוצעה בלשונית החדשה, הגיעה ל-home
+    // ראשונה **וצרכה את העסק אצלה** — והלשונית שבה נפתח הקישור נחתה בלי כרטיס (אומת באירועים:
+    // bizClick באותה שנייה, בסשן הישן). sessionStorage שייך ללשונית ושורד את home→welcome→home.
     try {
       var _hbSharedBiz = new URLSearchParams(location.search).get('biz');
-      if (_hbSharedBiz) localStorage.setItem('hb_shared_biz', JSON.stringify({ v: _hbSharedBiz.slice(0, 120), at: Date.now() }));
+      if (_hbSharedBiz) {
+        sessionStorage.setItem('hb_shared_biz', _hbSharedBiz.slice(0, 120));
+        localStorage.setItem('hb_shared_biz', JSON.stringify({ v: _hbSharedBiz.slice(0, 120), at: Date.now() }));
+      }
     } catch (e) {}
     if (!localStorage.getItem('hb_memberId')) {
       document.documentElement.classList.add('hb-checking');
@@ -1942,11 +1949,22 @@ window.loadFirebaseData = function(data, isPreview) {
     _sharedBizOpened = true;
     // §474 — מהכתובת, ואם אין (חזר מ-welcome אחרי כניסה) — מה שנשמר בראש הדף. נמחק אחרי
     // ניסיון אחד, נמצא או לא: עסק שירד מהאינדקס לא ינסה להיפתח בכל כניסה מעכשיו והלאה.
+    // §474ב — סדר העדיפות: הכתובת → הלשונית הזאת (sessionStorage) → השמור הכללי. השמור הכללי
+    // נועד **רק** למי שחוזר מאוחר יותר (נרשם ואושר אחרי כמה ימים), ולכן בחצי השעה הראשונה הוא
+    // לא נוגעים בו: הוא שייך ללשונית שבה נפתח הקישור, ולשונית אחרת לא "תגנוב" אותו.
     let sharedBizParam = new URLSearchParams(location.search).get('biz');
     try {
+      const fromTab = sessionStorage.getItem('hb_shared_biz');
+      sessionStorage.removeItem('hb_shared_biz');
       const saved = JSON.parse(localStorage.getItem('hb_shared_biz') || 'null');
-      if (!sharedBizParam && saved && saved.v && Date.now() - saved.at < 30 * 24 * 3600 * 1000) sharedBizParam = saved.v;
-      localStorage.removeItem('hb_shared_biz');
+      const age = saved && saved.at ? Date.now() - saved.at : Infinity;
+      let usedSaved = false;
+      if (!sharedBizParam && fromTab) sharedBizParam = fromTab;
+      else if (!sharedBizParam && saved && saved.v && age > 30 * 60000 && age < 30 * 24 * 3600 * 1000) { sharedBizParam = saved.v; usedSaved = true; }
+      // נמחק כשנוצל כאן (מכל מקור — אחרת הלשונית הזאת השאירה עותק שלשונית אחרת תפתח אחר כך),
+      // או כשפג. עותק צעיר שלא נגענו בו — נשאר ללשונית שלו.
+      if (sharedBizParam && (usedSaved || fromTab || (saved && saved.v === sharedBizParam))) localStorage.removeItem('hb_shared_biz');
+      else if (age >= 30 * 24 * 3600 * 1000) localStorage.removeItem('hb_shared_biz');
     } catch (e) {}
     // תואם גם קישורים ישנים עם מזהה-Firestore גולמי (id) וגם הפורמט הקריא החדש (slugify(name)).
     const sharedBiz = sharedBizParam
