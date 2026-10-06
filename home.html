@@ -2251,10 +2251,53 @@ function _mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-function _todaySeedStr() {
-  const d = new Date();
-  return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+// ── §470 — "ביקור": היחידה שבה הסדר מתחלף (סקשנים וקטגוריות) ──────────────────────────────
+// היה: סדר יומי (זרע = התאריך) — מי שנכנס כמה פעמים ביום ראה תמיד אותם מובילים.
+// עכשיו: סדר חדש **בכל ביקור**, וביקור חדש = חזרה אחרי VISIT_GAP_MS בלי פעילות. לא בכל טעינה:
+// הדף נטען מחדש בכל חזרה מפרופיל/כרטיס/דשבורד, וסדר שמתחלף שם נראה כמו באג ("איפה העסק
+// שראיתי"). מצב-הביקור ב-localStorage['hb_visit']:
+//   seed — אקראי, נקבע פעם אחת לכל מבקר: סדר-הבסיס שלו, ונקודת-ההתחלה שלו (לא כולם רואים אותו ראש)
+//   n    — מונה ביקורים; כל ביקור מקדם את ראש כל רשימה ב-VISIT_STEP, כך שבביקורים רצופים
+//          כל העסקים עוברים בתורם במקומות הראשונים
+//   last — הפעילות האחרונה (נכתב בטעינה ובכל יציאה מהמסך)
+// localStorage חסום → ביקור חדש בכל טעינה (seed אקראי בזיכרון). לא מפיל.
+const VISIT_GAP_MS = 30 * 60 * 1000;
+const VISIT_STEP = 4;
+let _visit = null;
+function _visitLoad() {
+  let v = null;
+  try { v = JSON.parse(localStorage.getItem('hb_visit') || 'null'); } catch (e) {}
+  if (!v || !Number.isFinite(v.seed) || !Number.isFinite(v.n)) {
+    v = { seed: Math.floor(Math.random() * 1e9), n: 0, last: Date.now() };
+  } else if (!Number.isFinite(v.last) || Date.now() - v.last > VISIT_GAP_MS) {
+    v.n += 1;
+  }
+  v.last = Date.now();
+  return v;
 }
+function _visitSave() {
+  if (!_visit) return;
+  _visit.last = Date.now();
+  try { localStorage.setItem('hb_visit', JSON.stringify(_visit)); } catch (e) {}
+}
+function _visitState() {
+  if (!_visit) { _visit = _visitLoad(); _visitSave(); }
+  return _visit;
+}
+// נקודת-ההתחלה של רשימה מסוימת בביקור הנוכחי — שונה לכל רשימה (key), מתקדמת ב-VISIT_STEP לכל ביקור.
+function _visitOffset(key) {
+  const v = _visitState();
+  return Math.abs(_seedFromString(v.seed + ':' + key)) + v.n * VISIT_STEP;
+}
+// אפליקציה/לשונית שנשארה פתוחה ברקע לא נטענת מחדש — שם החזרה אחרי הפסקה היא הביקור החדש.
+// מסדרים מחדש רק ברגע החזרה (לא תוך כדי שימוש), וממילא הגולש לא היה כאן חצי שעה.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { _visitSave(); return; }
+  if (!_visit || Date.now() - _visit.last <= VISIT_GAP_MS) { _visitSave(); return; }
+  _visit.n += 1;
+  _visitSave();
+  if (typeof businesses !== 'undefined' && businesses.length) { renderSections(); refreshOpenFeed(); }
+});
 function seededShuffle(arr, seedStr) {
   const rand = _mulberry32(_seedFromString(seedStr));
   const a = [...arr];
@@ -2342,14 +2385,15 @@ function renderSections() {
   // ר' PROJECT_CONTEXT.md — משתמש דיווח שכניסה לאינדקס מדפים אחרים (פרופיל/דשבורד/הוספת עסק)
   // נחתה באמצע סקשן במקום למעלה.
   const _scrollAnchor = window.scrollY > 4 ? _captureScrollAnchor() : null;
-  const daySeed = _todaySeedStr();
+  // §470 — הבסיס כבר לא יומי: seed קבוע לכל מבקר, והסבב בין ביקורים נעשה ב-_visitOffset.
+  const baseSeed = 'base:' + _visitState().seed;
   // שאילתת Firestore בלי orderBy לא מבטיחה סדר יציב בין snapshots — כל כתיבה כלשהי (למשל לייק
   // על עסק כלשהו, לא בהכרח קשור) עלולה להחזיר את businesses בסדר-התחלתי שונה, וכיוון ש-
   // seededShuffle מערבב לפי המיקומים ההתחלתיים, סדר-פלט שונה = "כל העסקים" (שכולל את כולם,
   // הכי רגיש לזה) נראה כאילו מתערבב מחדש בכל לייק. ממיינים לפי id (יציב) לפני הערבוב היומי,
-  // כך ש-masterOrder תלוי רק ב-daySeed + קבוצת ה-id-ים, לא בסדר שה-SDK החזיר הפעם.
+  // כך ש-masterOrder תלוי רק ב-baseSeed + קבוצת ה-id-ים, לא בסדר שה-SDK החזיר הפעם.
   const stableOrder = [...businesses].sort((a, b) => a.id.localeCompare(b.id));
-  const masterOrder = seededShuffle(stableOrder, daySeed); // סדר-בסיס אחד, יומי, משותף לכל הסקשנים
+  const masterOrder = seededShuffle(stableOrder, baseSeed); // סדר-בסיס אחד לכל מבקר, משותף לכל הסקשנים
 
   // מעקב "מי כבר תפס מקום 1-2" — כדי שאותו עסק לא יוביל (מקום ראשון/שני בגלילה) בכמה סקשנים
   // מסוחררים בבת אחת. לא נוגע ב-*מי נכנס* לסקשן (זה עדיין נשלט לגמרי ע"י isFeatured/isNew/
@@ -2371,7 +2415,7 @@ function renderSections() {
       out.slice(0, 2).forEach(b => usedLeaders.add(b.id));
       return out;
     }
-    const start = Math.abs(_seedFromString(daySeed + ':' + sectionKey)) % subset.length;
+    const start = _visitOffset('sec:' + sectionKey) % subset.length;
     let best = null, bestScore = Infinity;
     for (let attempt = 0; attempt < subset.length; attempt++) {
       const candidate = applyAnchors(_rotate(subset, (start + attempt) % subset.length), sectionKey);
@@ -2526,35 +2570,19 @@ function filterCat(cat, el) {
   window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 
   _currentCatFeedKey = cat;
-  _advanceCatRotation(cat);
   renderCatFeedContent(cat);
 }
 
 // ── §470 — סבב-חשיפה בתוך קטגוריה ─────────────────────────────────────────────────────────
 // לפני כן קטגוריה הוצגה בסדר הגולמי של Firestore — קבוע לחלוטין, אותם עסקים תמיד למעלה.
-// עכשיו: (1) סדר-בסיס קבוע לקטגוריה — ערבוב לפי זרע הקטגוריה מעל מיון לפי id, כך שעסק חדש
-// נכנס למקום שרירותי ברשימה ולא ראשון; (2) כל **פתיחה** של הקטגוריה מזיזה את נקודת-ההתחלה
-// ב-CAT_ROTATE_STEP, כך שבפתיחות רצופות כל העסקים עוברים בתורם בראש הרשימה; (3) נקודת-ההתחלה
-// הראשונה של כל מבקר אקראית — אחרת כל המבקרים החדשים היו רואים את אותו ראש-רשימה.
-// ⚠️ מתקדמים **רק** ב-filterCat, לא ב-renderCatFeedContent — זה נקרא גם בכל snapshot (לייק
-// של מישהו אחר), ושם הסדר חייב להישאר כמו שהוא מול העיניים של הגולש.
+// עכשיו: סדר-בסיס קבוע לכל מבקר+קטגוריה (ערבוב מעל מיון לפי id — עסק חדש נכנס למקום שרירותי,
+// לא ראשון), ונקודת-ההתחלה מתקדמת **פעם בביקור** (_visitOffset, אותו מנגנון כמו הסקשנים).
+// באותו ביקור הסדר קבוע — גם בפתיחה חוזרת וגם בכל snapshot.
 // עיגונים ידניים (applyAnchors, 'cat_<key>') ממשיכים לגבור על הסבב, כמו קודם.
-const CAT_ROTATE_STEP = 4;
-const _catRotation = {};
-function _advanceCatRotation(cat) {
-  if (!CATEGORIES.some(c => c.key === cat)) return; // רק קטגוריות אמיתיות, לא סקשנים
-  let saved = {};
-  try { saved = JSON.parse(localStorage.getItem('hb_cat_rotation') || '{}') || {}; } catch (e) {}
-  const prev = Number.isFinite(saved[cat]) ? saved[cat] : null;
-  const next = prev === null ? Math.floor(Math.random() * 1000) : prev + CAT_ROTATE_STEP;
-  _catRotation[cat] = next;
-  saved[cat] = next;
-  try { localStorage.setItem('hb_cat_rotation', JSON.stringify(saved)); } catch (e) {}
-}
 function arrangeCategory(list, cat) {
   if (list.length <= 1) return list;
-  const base = seededShuffle([...list].sort((a, b) => a.id.localeCompare(b.id)), 'cat:' + cat);
-  return _rotate(base, (_catRotation[cat] || 0) % base.length);
+  const base = seededShuffle([...list].sort((a, b) => a.id.localeCompare(b.id)), 'cat:' + cat + ':' + _visitState().seed);
+  return _rotate(base, _visitOffset('cat:' + cat) % base.length);
 }
 
 // בונה מחדש את תוכן הגריד של "רואה הכל" לקטגוריה/סקשן הנתונים, בלי לגעת בגלילה/display —
