@@ -24,6 +24,15 @@
     // אין hb_memberId ב-localStorage → ה-auth guard למטה תמיד יעביר ל-welcome.html בכל מקרה (ר' התנאי שם).
     // מעבירים מיד כאן — לפני ה-<link>-ים של Firebase/הגופן למטה — כדי שהדפדפן לא יתחיל בכלל להוריד
     // אותם על ביקור שממילא הולך לוותר עליו. hb-checking (הסתרה) נשאר כגיבוי למקרה שהניווט לא יספיק מיד.
+    // §474 — קישור-שיתוף לעסק (?biz=) שנפתח אצל מי שלא מחובר הלך לאיבוד: ההפניה ל-welcome
+    // לא נושאת את הפרמטר, ואחרי הכניסה האוהד נחת בדף הבית ולא בכרטיס ששיתפו איתו — בדיוק
+    // הצעד "שתפו את העסק" שבעלי העסקים מתבקשים לעשות. שומרים כאן, **לפני** כל הפניה (גם זו
+    // שלמטה וגם של ה-auth guard), ונצרך ב-loadFirebaseData. 30 יום — מכסה גם נרשם חדש שאושר
+    // אחרי כמה ימים ונכנס מאותו מכשיר.
+    try {
+      var _hbSharedBiz = new URLSearchParams(location.search).get('biz');
+      if (_hbSharedBiz) localStorage.setItem('hb_shared_biz', JSON.stringify({ v: _hbSharedBiz.slice(0, 120), at: Date.now() }));
+    } catch (e) {}
     if (!localStorage.getItem('hb_memberId')) {
       document.documentElement.classList.add('hb-checking');
       location.href = 'welcome.html';
@@ -1931,7 +1940,14 @@ window.loadFirebaseData = function(data, isPreview) {
   // בלבד (לא בכל רענון-נתונים חי, אחרת סגירה ידנית של הגיליון תיפתח מחדש עם ה-snapshot הבא).
   if (!_sharedBizOpened) {
     _sharedBizOpened = true;
-    const sharedBizParam = new URLSearchParams(location.search).get('biz');
+    // §474 — מהכתובת, ואם אין (חזר מ-welcome אחרי כניסה) — מה שנשמר בראש הדף. נמחק אחרי
+    // ניסיון אחד, נמצא או לא: עסק שירד מהאינדקס לא ינסה להיפתח בכל כניסה מעכשיו והלאה.
+    let sharedBizParam = new URLSearchParams(location.search).get('biz');
+    try {
+      const saved = JSON.parse(localStorage.getItem('hb_shared_biz') || 'null');
+      if (!sharedBizParam && saved && saved.v && Date.now() - saved.at < 30 * 24 * 3600 * 1000) sharedBizParam = saved.v;
+      localStorage.removeItem('hb_shared_biz');
+    } catch (e) {}
     // תואם גם קישורים ישנים עם מזהה-Firestore גולמי (id) וגם הפורמט הקריא החדש (slugify(name)).
     const sharedBiz = sharedBizParam
       ? businesses.find(b => b.id === sharedBizParam || slugify(b.name) === sharedBizParam)
