@@ -338,16 +338,6 @@
     .card-field-label { font-size: 11px; font-weight: 600; color: rgba(10,42,102,.62); margin-bottom: 3px; }
     .card-field-value { font-family: 'Rubik', sans-serif; font-size: 16px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
 
-    /* SAVE BUTTON */
-    .save-btn {
-      width: 100%; margin-top: 14px;
-      background: var(--card-bg); color: var(--text);
-      border: 1px solid var(--border-md); border-radius: 12px; padding: 13px;
-      font-family: 'Rubik', sans-serif; font-size: 14px; font-weight: 700;
-      cursor: pointer; display: flex; align-items: center;
-      justify-content: center; gap: 6px; transition: background .15s;
-    }
-    .save-btn:active { background: var(--card-bg2); }
 
     /* ══ DETAILS ══ */
     .detail-row {
@@ -578,8 +568,9 @@
       </div>
     </div>
 
-    <button class="save-btn" onclick="saveCard()">שמור תעודה לגלריה</button>
-    <p style="font-size:11px;color:var(--text-sm);text-align:center;margin-top:8px;">הצג תעודה זו בחנויות המשתתפות לקבלת הטבות</p>
+    <!-- §475 — "שמור תעודה לגלריה" הוסר (רמי): תמונה שמורה אין בה פס האימות עם שם העסק והשעון
+         החי, ולפי מדריך המימוש (§473יט) עסק לא אמור לקבל אותה. ההטבה מוצגת מתוך כרטיס העסק. -->
+    <p style="font-size:12px;color:var(--text-sm);text-align:center;margin-top:12px;line-height:1.6;">לקבלת הטבה: פותחים את הכרטיס של העסק ולוחצים "לקבלת ההטבה" — שם מוצגת התעודה עם שם העסק ושעון חי.</p>
   </div>
 
 </div><!-- end profile-side-panel -->
@@ -775,8 +766,7 @@
   window.hbQueueUntilDefined([
     'openDeleteAccount', 'closeDeleteAccount', 'signOutUser', 'openMenu', 'closeMenu', 'openContactSheet',
     'closeContactSheet', 'copyContactEmail', 'shareApp', 'shareMyBiz', 'closeShareSheet', 'copyShareLink',
-    'startEdit',
-    'saveCard'
+    'startEdit'
   ]);
 </script>
 <script type="module">
@@ -997,51 +987,6 @@ window.startEdit               = startEdit;
 window.saveEdit                = saveEdit;
 window.saveBirthDate           = saveBirthDate;
 
-// ── SAVE CARD ────────────────────────────────────────────────────────────
-// מוגדר מוקדם (כמו signOutUser למעלה) כדי שהכפתור יעבוד גם לפני שה-Auth guard למטה מסתיים.
-// בנייד (iOS בפרט) ל-<a download> על data-URI אין תמיכה אמינה — קודם מנסים navigator.share
-// (פותח את תפריט השיתוף המקורי עם "שמור תמונה"), ורק אם אין תמיכה נופלים ל-download.
-function waitForHtml2Canvas() {
-  if (typeof html2canvas !== 'undefined') return Promise.resolve();
-  return new Promise(resolve => {
-    const iv = setInterval(() => {
-      if (typeof html2canvas !== 'undefined') { clearInterval(iv); resolve(); }
-    }, 150);
-    setTimeout(() => { clearInterval(iv); resolve(); }, 8000);
-  });
-}
-
-window.saveCard = async function() {
-  const card = document.getElementById('memberCardEl');
-  await waitForHtml2Canvas();
-  if (typeof html2canvas === 'undefined') {
-    alert('לחץ לחיצה ארוכה על הכרטיס ובחר "שמור תמונה"');
-    return;
-  }
-  try {
-    const canvas = await html2canvas(card, { scale: 3, backgroundColor: null });
-    canvas.toBlob(async (blob) => {
-      if (!blob) { alert('לא הצלחנו ליצור את התמונה, נסו שוב'); return; }
-      const file = new File([blob], 'תעודת-חבר.png', { type: 'image/png' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try { await navigator.share({ files: [file] }); return; }
-        catch (e) { if (e?.name === 'AbortError') return; }
-      }
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.download = 'תעודת-חבר.png';
-      link.href = url;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
-    }, 'image/png');
-  } catch (e) {
-    alert('לחץ לחיצה ארוכה על הכרטיס ובחר "שמור תמונה"');
-  }
-};
-
-const _html2canvasScript = document.createElement('script');
-_html2canvasScript.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
-document.head.appendChild(_html2canvasScript);
 
 // ── AUTH GUARD ────────────────────────────────────────────────────────────
 // 3 נתיבי גישה שונים לדף הזה:
