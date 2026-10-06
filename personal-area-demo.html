@@ -96,6 +96,15 @@
   .sec-biz { border:2px solid var(--text); }
   .sec-biz .sec-head { background:var(--text); color:#fff; }
   .sec-biz .sec-sub { color:rgba(255,255,255,.75); }
+  .reply-strip { display:flex; align-items:center; gap:12px; width:100%; text-align:right; border:none; cursor:pointer;
+    background:var(--yellow); color:var(--text); border-radius:16px; padding:14px 16px; font-size:15px; line-height:1.45; box-shadow:var(--shadow); }
+  .reply-strip[hidden] { display:none; }
+  .reply-strip-dot { width:12px; height:12px; border-radius:50%; background:var(--text); flex-shrink:0; }
+  .reply-strip-arrow { margin-inline-start:auto; font-size:26px; font-weight:900; }
+  .sec-biz2 { border:2px solid var(--text); }
+  .sec-biz2 .sec-head { background:#E8EEFB; border-bottom:1px solid #cdd8f2; }
+  .sec-count { margin-inline-start:auto; font-size:12.5px; font-weight:900; background:var(--yellow); color:var(--text); border-radius:20px; padding:4px 10px; white-space:nowrap; }
+  .sec-count[hidden] { display:none; }
   .sec-icon { width:40px; height:40px; border-radius:11px; background:var(--yellow); color:var(--text); font-weight:900; font-size:18px;
     display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .sec-title { font-size:16.5px; font-weight:900; }
@@ -234,17 +243,38 @@
          טכנולוגית". לכן: אין צ'יפים ואין מצבים נסתרים — הכל גלוי, כל בלוק עם כותרת שאומרת
          במילים מה יש בו, והעסק הספציפי שלו ראשון ובולט. -->
     <section id="pUpdates" style="display:flex;flex-direction:column;gap:12px">
+      <!-- §473ג — תשובה אישית מהצוות אינה "עדכון לאוהדים", ולכן לא ברשימות. היא פס בולט
+           בראש הלשונית, שלחיצה עליו מובילה ישר לשיחה. -->
+      <button class="reply-strip" id="replyStrip" hidden onclick="setTab('msgs')">
+        <span class="reply-strip-dot"></span>
+        <span><b>יש לך תשובה חדשה מהצוות</b><br/>לחצו כאן כדי לקרוא</span>
+        <span class="reply-strip-arrow">‹</span>
+      </button>
       <div id="secBiz" class="sec sec-biz" hidden>
         <div class="sec-head">
           <div class="sec-icon">ש</div>
           <div><div class="sec-title">על העסק שלך — שווארמה רמי</div>
                <div class="sec-sub">הודעות שנשלחו במיוחד לעסק שלך</div></div>
+          <span class="sec-count" id="cntBiz" hidden></span>
         </div>
         <div class="feed" id="feedBiz"></div>
       </div>
+      <!-- §473ג — הודעות לכל בעלי העסקים: בלוק עסקי משלו, מיד אחרי העסק הספציפי ולפני
+           עדכוני האוהדים. רמי: "תן חשיבות גדולה יותר להודעות לבעלי העסקים — הן חשובות". -->
+      <div id="secBizAll" class="sec sec-biz2" hidden>
+        <div class="sec-head">
+          <div class="sec-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/></svg>
+          </div>
+          <div><div class="sec-title">לבעלי העסקים</div>
+               <div class="sec-sub">הודעות חשובות מהצוות לכל העסקים באינדקס</div></div>
+          <span class="sec-count" id="cntBizAll" hidden></span>
+        </div>
+        <div class="feed" id="feedBizAll"></div>
+      </div>
       <div class="sec">
         <div class="sec-head plain">
-          <div><div class="sec-title">עדכונים מ-Yellow Zone</div>
+          <div><div class="sec-title" id="genTitle">עדכונים מ-Yellow Zone</div>
                <div class="sec-sub" id="genSub">חדשות, הטבות ועדכונים לכל החברים</div></div>
         </div>
         <div class="feed" id="feedGen"></div>
@@ -396,15 +426,15 @@
 // אוהד רואה fans+all. בעל עסק — אזור אחד מורחב — רואה הכל (fans+biz+all), וזה בדיוק "אוהד + עסק".
 const now = Date.now(), M = 60000, H = 60 * M, D = 24 * H;
 const state = {
-  view: 'fan', tab: 'updates', expanded: { biz: false, gen: false, push: false },
+  view: 'fan', tab: 'updates', expanded: { biz: false, bizAll: false, gen: false, push: false },
   items: [
-    { id: 1, kind: 'auto', aud: 'all', title: 'קיבלת תשובה מהצוות', text: 'ענינו על ההודעה ששלחת. לחצו כדי לקרוא.', at: now - 20 * M, read: false, link: 'msgs' },
     { id: 2, kind: 'update', aud: 'fans', title: '5 עסקים חדשים הצטרפו השבוע', text: 'מסעדה, מוסך, מספרה ועוד שניים — כולם עם הטבות לחברי Yellow Zone.', at: now - 3 * H, read: false, link: 'home' },
     // aud:'one' + bizId — נשלח לעסק **אחד ספציפי** (אוטומטי, או ידני מהדשבורד ב"עסק מסוים").
     { id: 3, kind: 'auto', aud: 'one', bizId: 'rami', title: 'השינוי שביקשת אושר', text: 'התיאור החדש של "שווארמה רמי" כבר מופיע באינדקס.', at: now - 5 * H, read: false },
     { id: 8, kind: 'auto', aud: 'one', bizId: 'rami', title: 'קיבלנו את הבקשה שלך לתגית "משלוחים"', text: 'הצוות יבדוק אותה ונעדכן אותך כאן.', at: now - 6 * H, read: false },
     { id: 9, kind: 'auto', aud: 'one', bizId: 'rami', title: 'העסק שלך אושר ומופיע באינדקס', text: 'ברוכים הבאים! אוהדים כבר יכולים למצוא את "שווארמה רמי".', at: now - 40 * D, read: true },
     { id: 4, kind: 'push', aud: 'fans', title: 'הטבה חדשה: 15% בספורט אנד פול', text: 'על מגוון מוצרים, בהצגת תעודת החבר.', at: now - 1 * D, read: true, link: 'biz' },
+    { id: 10, kind: 'update', aud: 'biz', title: 'חשוב: בדקו שההטבה שלכם מעודכנת לעונה החדשה', text: 'אוהדים רואים את ההטבה בכרטיס שלכם. אם משהו השתנה — עדכנו בלשונית "העסק שלי".', at: now - 8 * H, read: false },
     { id: 5, kind: 'update', aud: 'biz', title: 'לבעלי העסקים: עדכנו שעות לחגים', text: 'אפשר לעדכן שעות פעילות מיוחדות ממסך העריכה, והן יוצגו לאוהדים בכרטיס.', at: now - 2 * D, read: true },
     { id: 6, kind: 'update', aud: 'all', title: 'חדש: כניסה עם Apple', text: 'מעכשיו אפשר להיכנס לאפליקציה גם עם חשבון Apple.', at: now - 4 * D, read: true },
     { id: 7, kind: 'auto', aud: 'fans', title: 'החשבון שלך אושר', text: 'ברוך הבא ל-Yellow Zone! תעודת החבר שלך מחכה ב"הפרטים שלי".', at: now - 60 * D, read: true },
@@ -467,17 +497,27 @@ function render() {
   // §473ב — שלושה בלוקים גלויים במקום סינון. פוש תמיד בבלוק ההתראות (גם אם נשלח לעסק);
   // "על העסק שלך" = מה שנשלח לעסק הזה בלבד. לכל בעלי העסקים — בעדכונים הכלליים.
   const mine = state.items.filter(visible).sort((a, b) => b.at - a.at);
+  // §473ג — הודעות לבעלי עסקים (ספציפי + לכולם) **נפרדות** מעדכוני האוהדים, ובאות לפניהם.
   const groups = {
-    biz:  mine.filter(i => i.kind !== 'push' && i.aud === 'one'),
-    gen:  mine.filter(i => i.kind !== 'push' && i.aud !== 'one'),
-    push: mine.filter(i => i.kind === 'push'),
+    biz:    mine.filter(i => i.kind !== 'push' && i.aud === 'one'),
+    bizAll: mine.filter(i => i.kind !== 'push' && i.aud === 'biz'),
+    gen:    mine.filter(i => i.kind !== 'push' && (i.aud === 'fans' || i.aud === 'all')),
+    push:   mine.filter(i => i.kind === 'push'),
   };
+  document.getElementById('replyStrip').hidden = !unreadMsgs;
   document.getElementById('secBiz').hidden = !isBizView();
+  document.getElementById('secBizAll').hidden = !isBizView();
+  // אצל בעל עסק הכותרת אומרת במפורש שזה הצד שלו **כאוהד** — כדי שלא יתבלבל עם הבלוקים העסקיים.
+  document.getElementById('genTitle').textContent = isBizView() ? 'עדכונים לאוהדים' : 'עדכונים מ-Yellow Zone';
   document.getElementById('genSub').textContent = isBizView()
-    ? 'חדשות והטבות לכל החברים, ועדכונים לכל בעלי העסקים'
+    ? 'מה שנשלח לכל חברי Yellow Zone — גם אליך כאוהד'
     : 'חדשות, הטבות ועדכונים לכל החברים';
-  const EMPTY = { biz: 'אין עדיין הודעות על העסק שלך', gen: 'אין עדיין עדכונים', push: 'עדיין לא קיבלת התראות לטלפון' };
-  [['biz', 'feedBiz'], ['gen', 'feedGen'], ['push', 'feedPush']].forEach(([k, el]) => {
+  [['cntBiz', 'biz'], ['cntBizAll', 'bizAll']].forEach(([id, k]) => {
+    const n = groups[k].filter(i => !i.read).length;
+    const el = document.getElementById(id); el.hidden = !n; el.textContent = n === 1 ? 'חדש אחד' : n + ' חדשים';
+  });
+  const EMPTY = { biz: 'אין עדיין הודעות על העסק שלך', bizAll: 'אין עדיין הודעות לבעלי העסקים', gen: 'אין עדיין עדכונים', push: 'עדיין לא קיבלת התראות לטלפון' };
+  [['biz', 'feedBiz'], ['bizAll', 'feedBizAll'], ['gen', 'feedGen'], ['push', 'feedPush']].forEach(([k, el]) => {
     const all = groups[k];
     const shown = state.expanded[k] ? all : all.slice(0, SHOW_N);
     const rest = all.length - shown.length;
@@ -517,7 +557,7 @@ function itemHtml(i) {
 function expand(k) { state.expanded[k] = true; render(); }
 function setCount(id, n) { const el = document.getElementById(id); el.hidden = !n; el.textContent = n; }
 
-function setView(v) { state.view = v; state.tab = 'updates'; state.expanded = { biz: false, gen: false, push: false }; window.scrollTo(0, 0); render(); }
+function setView(v) { state.view = v; state.tab = 'updates'; state.expanded = { biz: false, bizAll: false, gen: false, push: false }; window.scrollTo(0, 0); render(); }
 function setTab(t) {
   state.tab = t;
   if (t === 'msgs') state.thread.forEach(m => { if (m.from === 'team') m.read = true; });
@@ -567,7 +607,6 @@ function reply(i) {
   const t = document.getElementById('rep' + i).value.trim();
   if (!t) { toast('כתבו תשובה'); return; }
   state.thread.push({ from: 'team', text: t, at: Date.now(), read: false });
-  state.items.push({ id: nextId++, kind: 'auto', aud: 'all', title: 'קיבלת תשובה מהצוות', text: 'ענינו על ההודעה ששלחת. לחצו כדי לקרוא.', at: Date.now(), read: false, link: 'msgs' });
   toast('נשלח: תשובה באזור + מייל קצר'); renderAdmin();
 }
 function sendUpdate() {
