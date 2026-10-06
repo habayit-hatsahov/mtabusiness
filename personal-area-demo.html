@@ -89,6 +89,23 @@
     border:1px solid var(--border-md); border-radius:10px; padding:6px 10px; background:#fff; }
   .empty { text-align:center; padding:26px 10px; color:var(--text-sm); font-size:13px; }
 
+  /* §473ב — בלוקי העדכונים. גדולים, ברורים, בלי מצבים נסתרים. */
+  .sec { background:var(--card-bg); border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow:var(--shadow); }
+  .sec-head { display:flex; align-items:center; gap:12px; padding:14px 16px; }
+  .sec-head.plain { border-bottom:1px solid var(--border); }
+  .sec-biz { border:2px solid var(--text); }
+  .sec-biz .sec-head { background:var(--text); color:#fff; }
+  .sec-biz .sec-sub { color:rgba(255,255,255,.75); }
+  .sec-icon { width:40px; height:40px; border-radius:11px; background:var(--yellow); color:var(--text); font-weight:900; font-size:18px;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .sec-title { font-size:16.5px; font-weight:900; }
+  .sec-sub { font-size:13px; color:var(--text-sm); margin-top:2px; }
+  .sec .feed { padding:0 16px; }
+  .new-tag { font-size:11.5px; font-weight:900; background:var(--yellow); color:var(--text); border-radius:6px; padding:2px 8px; }
+  .more-btn { display:block; width:100%; border:none; border-top:1px solid var(--border); background:none; padding:13px; font-size:14px; font-weight:800; color:var(--text); cursor:pointer; }
+  .sec .item-title { font-size:15.5px; }
+  .sec .item-text { font-size:14px; }
+
   /* שיחה */
   .thread { display:flex; flex-direction:column; gap:10px; }
   .bubble-wrap { display:flex; flex-direction:column; }
@@ -213,17 +230,31 @@
     </div>
 
     <!-- ── עדכונים ── -->
-    <section id="pUpdates">
-      <div class="card">
-        <div class="row" style="justify-content:space-between;margin-bottom:6px">
-          <div class="chips" id="feedChips">
-            <button class="chip on" data-f="all" onclick="setFilter('all')">הכל</button>
-            <button class="chip" data-f="update" onclick="setFilter('update')">עדכונים</button>
-            <button class="chip" data-f="push" onclick="setFilter('push')">התראות שקיבלת</button>
-          </div>
-          <button class="chip" onclick="markAllRead()">סמן הכל כנקרא</button>
+    <!-- §473ב — בלוקים נפרדים ולא סינון. רמי: "לא רק סימון פנימי", ו"המשתמשים מתקשים
+         טכנולוגית". לכן: אין צ'יפים ואין מצבים נסתרים — הכל גלוי, כל בלוק עם כותרת שאומרת
+         במילים מה יש בו, והעסק הספציפי שלו ראשון ובולט. -->
+    <section id="pUpdates" style="display:flex;flex-direction:column;gap:12px">
+      <div id="secBiz" class="sec sec-biz" hidden>
+        <div class="sec-head">
+          <div class="sec-icon">ש</div>
+          <div><div class="sec-title">על העסק שלך — שווארמה רמי</div>
+               <div class="sec-sub">הודעות שנשלחו במיוחד לעסק שלך</div></div>
         </div>
-        <div class="feed" id="feed"></div>
+        <div class="feed" id="feedBiz"></div>
+      </div>
+      <div class="sec">
+        <div class="sec-head plain">
+          <div><div class="sec-title">עדכונים מ-Yellow Zone</div>
+               <div class="sec-sub" id="genSub">חדשות, הטבות ועדכונים לכל החברים</div></div>
+        </div>
+        <div class="feed" id="feedGen"></div>
+      </div>
+      <div class="sec">
+        <div class="sec-head plain">
+          <div><div class="sec-title">התראות שקיבלת לטלפון</div>
+               <div class="sec-sub">כל התראה שקפצה לך — גם אם מחקת אותה מהטלפון</div></div>
+        </div>
+        <div class="feed" id="feedPush"></div>
       </div>
     </section>
 
@@ -334,6 +365,7 @@
     <div class="section-title">שליחת עדכון לאזור</div>
     <span class="lbl">למי</span>
     <div class="aud" id="audU"></div>
+    <select id="oneU" hidden style="margin-top:8px"><option value="rami">שווארמה רמי</option><option value="sport">ספורט אנד פול</option><option value="xray">XRAY TLV</option></select>
     <span class="lbl">כותרת</span><input type="text" id="uTitle" placeholder="למשל: 5 עסקים חדשים הצטרפו השבוע"/>
     <span class="lbl">טקסט</span><textarea id="uText" placeholder="מה רוצים לספר"></textarea>
     <span class="lbl">קישור (לא חובה)</span>
@@ -345,6 +377,7 @@
     <div class="section-title">שליחת פוש</div>
     <span class="lbl">למי</span>
     <div class="aud" id="audP"></div>
+    <select id="oneP" hidden style="margin-top:8px"><option value="rami">שווארמה רמי</option><option value="sport">ספורט אנד פול</option><option value="xray">XRAY TLV</option></select>
     <span class="lbl">כותרת (קצרה — זה מה שרואים על המסך הנעול)</span><input type="text" id="pTitle" maxlength="50" placeholder="למשל: הטבה חדשה ב-Yellow Zone"/>
     <span class="lbl">טקסט</span><input type="text" id="pText" maxlength="120" placeholder="שורה אחת"/>
     <span class="lbl">לחיצה על ההתראה פותחת</span>
@@ -363,11 +396,14 @@
 // אוהד רואה fans+all. בעל עסק — אזור אחד מורחב — רואה הכל (fans+biz+all), וזה בדיוק "אוהד + עסק".
 const now = Date.now(), M = 60000, H = 60 * M, D = 24 * H;
 const state = {
-  view: 'fan', tab: 'updates', filter: 'all',
+  view: 'fan', tab: 'updates', expanded: { biz: false, gen: false, push: false },
   items: [
     { id: 1, kind: 'auto', aud: 'all', title: 'קיבלת תשובה מהצוות', text: 'ענינו על ההודעה ששלחת. לחצו כדי לקרוא.', at: now - 20 * M, read: false, link: 'msgs' },
     { id: 2, kind: 'update', aud: 'fans', title: '5 עסקים חדשים הצטרפו השבוע', text: 'מסעדה, מוסך, מספרה ועוד שניים — כולם עם הטבות לחברי Yellow Zone.', at: now - 3 * H, read: false, link: 'home' },
-    { id: 3, kind: 'auto', aud: 'biz', title: 'השינוי שביקשת אושר', text: 'התיאור החדש של "שווארמה רמי" כבר מופיע באינדקס.', at: now - 5 * H, read: false },
+    // aud:'one' + bizId — נשלח לעסק **אחד ספציפי** (אוטומטי, או ידני מהדשבורד ב"עסק מסוים").
+    { id: 3, kind: 'auto', aud: 'one', bizId: 'rami', title: 'השינוי שביקשת אושר', text: 'התיאור החדש של "שווארמה רמי" כבר מופיע באינדקס.', at: now - 5 * H, read: false },
+    { id: 8, kind: 'auto', aud: 'one', bizId: 'rami', title: 'קיבלנו את הבקשה שלך לתגית "משלוחים"', text: 'הצוות יבדוק אותה ונעדכן אותך כאן.', at: now - 6 * H, read: false },
+    { id: 9, kind: 'auto', aud: 'one', bizId: 'rami', title: 'העסק שלך אושר ומופיע באינדקס', text: 'ברוכים הבאים! אוהדים כבר יכולים למצוא את "שווארמה רמי".', at: now - 40 * D, read: true },
     { id: 4, kind: 'push', aud: 'fans', title: 'הטבה חדשה: 15% בספורט אנד פול', text: 'על מגוון מוצרים, בהצגת תעודת החבר.', at: now - 1 * D, read: true, link: 'biz' },
     { id: 5, kind: 'update', aud: 'biz', title: 'לבעלי העסקים: עדכנו שעות לחגים', text: 'אפשר לעדכן שעות פעילות מיוחדות ממסך העריכה, והן יוצגו לאוהדים בכרטיס.', at: now - 2 * D, read: true },
     { id: 6, kind: 'update', aud: 'all', title: 'חדש: כניסה עם Apple', text: 'מעכשיו אפשר להיכנס לאפליקציה גם עם חשבון Apple.', at: now - 4 * D, read: true },
@@ -391,8 +427,14 @@ function ago(t) {
   return days === 1 ? 'אתמול' : 'לפני ' + days + ' ימים';
 }
 const isBizView = () => state.view === 'biz';
-function visible(it) { return isBizView() ? true : it.aud !== 'biz'; }
-const KIND_LABEL = { update: 'עדכון', push: 'התראה', auto: 'עדכון אישי' };
+const MY_BIZ = 'rami';
+// אוהד: מה שנשלח לאוהדים או לכולם. בעל עסק: גם לכל בעלי העסקים, וגם מה שנשלח לעסק שלו בלבד.
+function visible(it) {
+  if (it.aud === 'fans' || it.aud === 'all') return true;
+  if (!isBizView()) return false;
+  return it.aud === 'biz' || (it.aud === 'one' && it.bizId === MY_BIZ);
+}
+const SHOW_N = 3; // בכל בלוק — 3 אחרונים, והשאר מאחורי "הצגת עוד" (בלוק ארוך מבלבל)
 
 function render() {
   const fanView = state.view !== 'admin';
@@ -403,7 +445,7 @@ function render() {
   document.getElementById('demoNote').textContent = state.view === 'admin'
     ? 'זה מה שנוסף לדשבורד שלך. שלחו עדכון, פוש או תשובה — ועברו לתצוגת אוהד או בעל עסק כדי לראות איך זה נראה אצלם.'
     : state.view === 'biz'
-      ? 'בעל עסק מקבל את אותו אזור כמו כל אוהד, מורחב: לשונית "העסק שלי" שבה עורכים את פרטי העסק ישירות, ובעדכונים גם מה ששייך לעסק (מסומן "לעסק").'
+      ? 'בעל עסק מקבל את אותו אזור כמו כל אוהד, מורחב: לשונית "העסק שלי" שבה עורכים את פרטי העסק ישירות, ובעדכונים בלוק נפרד ובולט "על העסק שלך" — רק מה שנשלח לעסק שלו. בדשבורד אפשר לשלוח עדכון ל"עסק מסוים".'
       : 'כך אוהד רואה את האזור שלו. זה יחליף את דף הפרופיל של היום ("הפרטים שלי" הוא מה שיש שם היום).';
   if (!fanView) { renderAdmin(); return; }
 
@@ -422,27 +464,26 @@ function render() {
     document.getElementById(t).classList.toggle('on', state.tab === k);
     document.getElementById(p).hidden = state.tab !== k;
   });
-  document.querySelectorAll('#feedChips .chip').forEach(c => c.classList.toggle('on', c.dataset.f === state.filter));
-
-  const list = state.items.filter(visible)
-    .filter(i => state.filter === 'all' ? true : state.filter === 'push' ? i.kind === 'push' : i.kind !== 'push')
-    .sort((a, b) => b.at - a.at);
-  document.getElementById('feed').innerHTML = list.length ? list.map(i => `
-    <div class="item ${i.read ? 'read' : ''}" onclick="openItem(${i.id})">
-      <span class="item-dot"></span>
-      <div class="item-body">
-        <div class="item-top">
-          <span class="kind ${i.kind}">${KIND_LABEL[i.kind]}</span>
-          ${isBizView() && i.aud === 'biz' ? '<span class="kind biz">לעסק</span>' : ''}
-          <span class="item-time">${ago(i.at)}</span>
-        </div>
-        <div class="item-title">${esc(i.title)}</div>
-        ${i.text ? `<div class="item-text">${esc(i.text)}</div>` : ''}
-        ${i.link === 'msgs' ? '<span class="item-link">לקריאת התשובה</span>'
-          : i.link === 'home' ? '<span class="item-link">לצפייה בעסקים</span>'
-          : i.link === 'biz' ? '<span class="item-link">לכרטיס העסק</span>' : ''}
-      </div>
-    </div>`).join('') : '<div class="empty">אין כאן כלום עדיין</div>';
+  // §473ב — שלושה בלוקים גלויים במקום סינון. פוש תמיד בבלוק ההתראות (גם אם נשלח לעסק);
+  // "על העסק שלך" = מה שנשלח לעסק הזה בלבד. לכל בעלי העסקים — בעדכונים הכלליים.
+  const mine = state.items.filter(visible).sort((a, b) => b.at - a.at);
+  const groups = {
+    biz:  mine.filter(i => i.kind !== 'push' && i.aud === 'one'),
+    gen:  mine.filter(i => i.kind !== 'push' && i.aud !== 'one'),
+    push: mine.filter(i => i.kind === 'push'),
+  };
+  document.getElementById('secBiz').hidden = !isBizView();
+  document.getElementById('genSub').textContent = isBizView()
+    ? 'חדשות והטבות לכל החברים, ועדכונים לכל בעלי העסקים'
+    : 'חדשות, הטבות ועדכונים לכל החברים';
+  const EMPTY = { biz: 'אין עדיין הודעות על העסק שלך', gen: 'אין עדיין עדכונים', push: 'עדיין לא קיבלת התראות לטלפון' };
+  [['biz', 'feedBiz'], ['gen', 'feedGen'], ['push', 'feedPush']].forEach(([k, el]) => {
+    const all = groups[k];
+    const shown = state.expanded[k] ? all : all.slice(0, SHOW_N);
+    const rest = all.length - shown.length;
+    document.getElementById(el).innerHTML = (shown.length ? shown.map(itemHtml).join('') : `<div class="empty">${EMPTY[k]}</div>`) +
+      (rest > 0 ? `<button class="more-btn" onclick="expand('${k}')">הצגת עוד ${rest}</button>` : '');
+  });
 
   document.getElementById('thread').innerHTML = state.thread.map(m => `
     <div class="bubble-wrap ${m.from}">
@@ -452,18 +493,37 @@ function render() {
 
   if (state.pendingPush) {
     const p = state.pendingPush; state.pendingPush = null;
-    if (p.aud !== 'biz' || isBizView()) showPush(p.title, p.text);
+    if (visible(p)) showPush(p.title, p.text);
   }
 }
+// פריט אחד. "חדש" במילה ולא רק בנקודה — נקודה צבעונית לא אומרת כלום למי שלא מכיר את הקוד הזה.
+function itemHtml(i) {
+  return `
+    <div class="item ${i.read ? 'read' : ''}" onclick="openItem(${i.id})">
+      <div class="item-body">
+        <div class="item-top">
+          ${i.read ? '' : '<span class="new-tag">חדש</span>'}
+          ${i.kind === 'push' && i.aud === 'one' ? '<span class="kind biz">לעסק שלך</span>' : ''}
+          <span class="item-time">${ago(i.at)}</span>
+        </div>
+        <div class="item-title">${esc(i.title)}</div>
+        ${i.text ? `<div class="item-text">${esc(i.text)}</div>` : ''}
+        ${i.link === 'msgs' ? '<span class="item-link">לקריאת התשובה ›</span>'
+          : i.link === 'home' ? '<span class="item-link">לצפייה בעסקים ›</span>'
+          : i.link === 'biz' ? '<span class="item-link">לכרטיס העסק ›</span>' : ''}
+      </div>
+    </div>`;
+}
+function expand(k) { state.expanded[k] = true; render(); }
 function setCount(id, n) { const el = document.getElementById(id); el.hidden = !n; el.textContent = n; }
 
-function setView(v) { state.view = v; state.tab = 'updates'; window.scrollTo(0, 0); render(); }
+function setView(v) { state.view = v; state.tab = 'updates'; state.expanded = { biz: false, gen: false, push: false }; window.scrollTo(0, 0); render(); }
 function setTab(t) {
   state.tab = t;
   if (t === 'msgs') state.thread.forEach(m => { if (m.from === 'team') m.read = true; });
   render();
 }
-function setFilter(f) { state.filter = f; render(); }
+
 function openItem(id) {
   const it = state.items.find(i => i.id === id); if (!it) return;
   it.read = true;
@@ -484,12 +544,14 @@ function sendFanMsg() {
 }
 
 // ── הדשבורד ──
-const AUD = [['fans', 'כל האוהדים'], ['biz', 'כל בעלי העסקים'], ['all', 'כולם']];
+const AUD = [['fans', 'כל האוהדים'], ['biz', 'כל בעלי העסקים'], ['one', 'עסק מסוים'], ['all', 'כולם']];
 const audSel = { U: 'fans', P: 'fans' };
 function renderAdmin() {
   ['U', 'P'].forEach(k => {
     document.getElementById('aud' + k).innerHTML = AUD.map(([v, l]) =>
       `<button class="chip ${audSel[k] === v ? 'on' : ''}" onclick="audSel['${k}']='${v}';renderAdmin()">${l}</button>`).join('');
+    // §473ב — "עסק מסוים": מה שנשלח כאן מופיע אצל בעל העסק בבלוק "על העסק שלך".
+    document.getElementById('one' + k).hidden = audSel[k] !== 'one';
   });
   const open = state.thread.map((m, i) => ({ m, i })).filter(({ m, i }) => m.from === 'me' && !state.thread.slice(i + 1).some(x => x.from === 'team'));
   document.getElementById('inbox').innerHTML = open.length ? open.map(({ m, i }) => `
@@ -511,7 +573,7 @@ function reply(i) {
 function sendUpdate() {
   const title = document.getElementById('uTitle').value.trim(); const text = document.getElementById('uText').value.trim();
   if (!title) { toast('חסרה כותרת'); return; }
-  state.items.push({ id: nextId++, kind: 'update', aud: audSel.U, title, text, at: Date.now(), read: false, link: document.getElementById('uLink').value });
+  state.items.push({ id: nextId++, kind: 'update', aud: audSel.U, bizId: document.getElementById('oneU').value, title, text, at: Date.now(), read: false, link: document.getElementById('uLink').value });
   document.getElementById('uTitle').value = ''; document.getElementById('uText').value = '';
   toast('העדכון נכנס לאזור — בלי התראה בטלפון');
 }
@@ -519,8 +581,8 @@ function sendPush() {
   const title = document.getElementById('pTitle').value.trim(); const text = document.getElementById('pText').value.trim();
   if (!title) { toast('חסרה כותרת'); return; }
   const link = document.getElementById('pLink').value;
-  state.items.push({ id: nextId++, kind: 'push', aud: audSel.P, title, text, at: Date.now(), read: false, link: link === 'area' ? '' : link });
-  state.pendingPush = { title, text, aud: audSel.P };
+  state.items.push({ id: nextId++, kind: 'push', aud: audSel.P, bizId: document.getElementById('oneP').value, title, text, at: Date.now(), read: false, link: link === 'area' ? '' : link });
+  state.pendingPush = { title, text, aud: audSel.P, bizId: document.getElementById('oneP').value };
   document.getElementById('pTitle').value = ''; document.getElementById('pText').value = '';
   toast('נשלח פוש — עברו לתצוגת אוהד כדי לראות אותו קופץ');
 }
