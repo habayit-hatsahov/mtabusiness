@@ -10384,7 +10384,7 @@ let selectedTaskKey = null;     // "biz:ID" / "fan:ID" — הכרטיס הפתו
 // §356 — איזה סוג-תקלה מוצג בתוך קוביית "תקלות ופניות". 'all' = הרשימה המאוחדת, שהיא
 // **ברירת המחדל בכוונה**: הבקשה של המשתמש הייתה לראות מיד שיש מה לבדוק, ורשימה שמתחילה
 // על סוג מסוים היא בדיוק החזרה למצב שבו צריך לעבור סוג-סוג.
-let taskIssueKind = 'all';      // 'all' | 'mail' | 'reg' | 'login' | 'help' | 'bizErrors'
+let taskIssueKind = 'all';      // 'all' | 'mail' | 'reg' | 'login' | 'help' | 'fanMsg' | 'bizErrors' | 'selfDelete'
 
 const TASK_CLASS_TILES = [
   { key: 'pendingBiz', primary: 'עסק ממתין לאישור', label: 'עסקים ממתינים לאישור' },
@@ -10447,6 +10447,9 @@ const ISSUE_KINDS = [
   { key: 'login',     label: 'כניסה',         open: () => loginFailOpenList(),
     urgent: l => l.length },
   { key: 'help',      label: 'פניות עזרה',    open: () => helpReqOpenList(),       urgent: l => l.length },
+  // §472 — הודעות "כתבו לנו" מאוהדים מחוברים (fan-message.js). ⚠️ שונה מ"כתבו לנו" של העסקים,
+  // שנשאר ב"בקשות מבעלי עסקים" — שם זה שדה על מסמך העסק, כאן זה מסמך ב-helpRequests.
+  { key: 'fanMsg',    label: 'כתבו לנו — אוהדים', open: () => fanMsgOpenList(),   urgent: l => l.length },
   { key: 'bizErrors', label: 'דשבורד עסק',    open: () => bizWriteErrorList(),     urgent: l => l.length },
   // ⚠️ `urgent: 0` — עזיבה אינה תקלה שלנו ואי אפשר "לתקן" אותה, ולכן היא לא צריכה לצבוע
   // את המונה באדום לצד כשלים שכן דורשים פעולה. היא כן חייבת להיראות, וזה מה שהיא מקבלת.
@@ -10604,6 +10607,16 @@ function unifiedIssueList() {
     markJs: 'markHelpReqHandled(' + [q1(x.id), q1(escJsAttr(x.name || ''))].join(',') + ')',
   }));
 
+  // §472 — "כתבו לנו" מאוהד. השולח מזוהה, ולכן יש לשורה ישות (כרטיס האוהד).
+  fanMsgOpenList().forEach(x => out.push({
+    kind: 'fanMsg', at: x.at, urgent: true,
+    who: x.who + (x.num ? ' · ' + x.num : ''),
+    title: 'כתב לנו הודעה',
+    meta: [x.message, [x.phone, x.email].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
+    entity: x.fan ? { kind: 'fan', id: x.fan.id } : null,
+    markJs: 'markHelpReqHandled(' + [q1(x.id), q1(escJsAttr(x.who || ''))].join(',') + ')',
+  }));
+
   // §420ז — אוהד שמחק את עצמו. `urgent: false` — אין כאן מה לתקן, אבל יש מה לדעת.
   selfDeleteOpenList().forEach(x => out.push({
     kind: 'selfDelete', at: x.at, urgent: false,
@@ -10643,7 +10656,7 @@ function unifiedIssueFilteredList() {
   if (q) list = list.filter(x => (x.who + ' ' + x.title + ' ' + x.meta).includes(q));
   return list;
 }
-const ISSUE_KIND_LABELS = { mail: 'מייל', reg: 'הרשמה', login: 'כניסה', help: 'פניית עזרה', bizErrors: 'דשבורד עסק', selfDelete: 'מחק חשבון' };
+const ISSUE_KIND_LABELS = { mail: 'מייל', reg: 'הרשמה', login: 'כניסה', help: 'פניית עזרה', fanMsg: 'כתבו לנו', bizErrors: 'דשבורד עסק', selfDelete: 'מחק חשבון' };
 // ── §363 — שורות הרשימה המאוחדת, בפונקציה נפרדת ─────────────────────────────────────
 // הופרד מ-unifiedIssuesTableHtml כדי שאפשר יהיה להציג שורות **יחד עם** אזהרת-טעינה,
 // במקום לבחור בין השתיים. מצב טעינה-חלקית הוא מצב אמיתי: תקלות המייל והפניות זמינות
@@ -10700,7 +10713,7 @@ function unifiedIssuesTableHtml(list) {
       ? 'אין תקלות במיילים ובהצלבות. ' +
         [platformEvents === null && !platformStatsError ? 'כשלי ההרשמה והכניסה מ-30 הימים האחרונים' : '',
          delPending ? 'מחיקות חשבון' : ''].filter(Boolean).join(' ו') + ' עדיין נטענים…'
-      : 'אין תקלות פתוחות 🎉 אף מייל לא נכשל, אף הרשמה לא נתקעה, אף כניסה לא נכשלה באשמתנו, אף אחד לא ביקש עזרה ואף אחד לא מחק את החשבון שלו.') + '</div>';
+      : 'אין תקלות פתוחות 🎉 אף מייל לא נכשל, אף הרשמה לא נתקעה, אף כניסה לא נכשלה באשמתנו, אף אחד לא ביקש עזרה, אף אוהד לא כתב לנו ואף אחד לא מחק את החשבון שלו.') + '</div>';
   }
   const urgent = list.filter(x => x.urgent).length;
   return '<div class="mail-issues-note">' +
@@ -10750,6 +10763,7 @@ function taskCenterTableHtml() {
       : bizErrorsActive() ? bizErrorsTableHtml(bizErrorFilteredList())
       : regIssuesActive() ? regIssuesTableHtml(regIssueFilteredList())
       : helpReqsActive()  ? helpReqsTableHtml(helpReqFilteredList())
+      : fanMsgActive()    ? fanMsgTableHtml(fanMsgFilteredList())
       : loginIssuesActive() ? loginIssuesTableHtml(loginIssueFilteredList())
       : unifiedIssuesTableHtml(unifiedIssueFilteredList()));
   }
@@ -10764,6 +10778,7 @@ function taskCenterCountLabel() {
   // הייתה מציגה "מציג 3 מתוך 11" ונקראת כאילו סינון מסתיר 8 שורות, במקום שהן טופלו.
   if (regIssuesActive()) return `מציג ${regIssueFilteredList().length} מתוך ${regIssueOpenList().length}`;
   if (helpReqsActive()) return `מציג ${helpReqFilteredList().length} מתוך ${helpReqList().length}`;
+  if (fanMsgActive()) return `מציג ${fanMsgFilteredList().length} מתוך ${fanMsgList().length}`;
   if (loginIssuesActive()) return `מציג ${loginIssueFilteredList().length} מתוך ${loginFailOpenList().length}`;
   if (handledActive()) return `מציג ${handledFilteredList().length} מתוך ${handledItemsList().length}`;
   return `מציג ${taskFilteredList().length} מתוך ${unifiedTaskItems().length}`;
@@ -16206,8 +16221,15 @@ function hbLoginFailLabel(ch) {
     + (p.late ? ' (תשובה מאוחרת)' : '');
 }
 function helpReqsActive() { return issuesActive() && taskIssueKind === 'help'; }
+// §472 — "כתבו לנו" של אוהדים יושב באותו אוסף (source:'fanMessage') אבל הוא **לא** פניית
+// עזרה — יש לו שבב משלו ("כתבו לנו — אוהדים"). בלי הסינון הזה כל הודעה הייתה נספרת פעמיים.
+function _isFanMsg(x) { return x.source === 'fanMessage'; }
+function _byOpenThenNew(a, b) {
+  const h = (a.status === 'handled' ? 1 : 0) - (b.status === 'handled' ? 1 : 0);
+  return h || ((b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
+}
 function helpReqList() {
-  return [...HELP_REQUESTS].sort((a, b) => {
+  return HELP_REQUESTS.filter(x => !_isFanMsg(x)).sort((a, b) => {
     // פתוחות קודם, ובתוך כל קבוצה — החדשות למעלה
     const h = (a.status === 'handled' ? 1 : 0) - (b.status === 'handled' ? 1 : 0);
     return h || ((b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
@@ -16273,6 +16295,58 @@ function helpReqsTableHtml(list) {
         </div>
       </div>`).join('')}</div>`;
 }
+// ══ §472 — "כתבו לנו — אוהדים" ═════════════════════════════════════════════════════════
+// הודעה שאוהד מחובר שלח מגיליון "צור קשר" (fan-message.js). בניגוד לפניות העזרה, השולח
+// **מזוהה בוודאות** — firestore.rules מחייב memberId == ה-uid המחובר — ולכן השורה נשענת
+// על רשומת החבר (שם, מספר, טלפון, מייל) ולא על מה שנכתב בפנייה, ויש כפתור לכרטיס שלו.
+// "טיפלתי" — אותו markHelpReqHandled, כי זה אותו אוסף.
+function fanMsgActive() { return issuesActive() && taskIssueKind === 'fanMsg'; }
+function fanMsgList() {
+  return HELP_REQUESTS.filter(_isFanMsg).map(x => {
+    const f = x.memberId ? MOCK_FANS.find(m => m.id === x.memberId) : null;
+    return { ...x, fan: f || null,
+      who: f ? f.name : (x.name || 'אוהד'),
+      phone: f ? (f.phone || '') : '', email: f ? (f.email || '') : (x.contact || ''),
+      num: f && f.memberNumber ? '#' + String(f.memberNumber).padStart(5, '0') : '' };
+  }).sort(_byOpenThenNew);
+}
+function fanMsgOpenList() { return fanMsgList().filter(x => x.status !== 'handled'); }
+function fanMsgFilteredList() {
+  const q = taskSearchQ.trim();
+  if (!q) return fanMsgList();
+  return fanMsgList().filter(x => `${x.who} ${x.phone} ${x.email} ${x.num} ${x.message}`.includes(q));
+}
+function fanMsgTableHtml(list) {
+  if (!list.length) {
+    return `<div class="placeholder-note">אין הודעות מאוהדים. כאן ינחתו הודעות שאוהדים מחוברים כתבו לנו מ"צור קשר" בתפריט.</div>`;
+  }
+  return `
+    <div class="mail-issues-note">הודעות שאוהדים כתבו לנו מ"צור קשר". השולח מזוהה — זה החבר המחובר עצמו. חוזרים אליו בטלפון או במייל שברשומה, ומסמנים "טיפלתי".</div>
+    <div class="task-table mail-issues">${list.map(x => `
+      <div class="task-table-row">
+        <div class="task-table-main">
+          <div class="task-table-name">${esc(x.who)}${x.num ? ' · <span style="font-weight:600">' + esc(x.num) + '</span>' : ''}</div>
+          <!-- ⚠️ esc על message — טקסט חופשי של משתמש. -->
+          <div class="task-table-meta" style="white-space:pre-line">${esc(x.message)}</div>
+          <div class="task-table-meta" style="opacity:.75">${
+            [x.phone, x.email, x.fan ? '' : 'הרשומה לא נמצאה (נמחקה?)',
+             x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
+             x.status === 'handled' && x.handledNote ? 'טופל: ' + x.handledNote : '']
+              .filter(Boolean).map(esc).join(' · ')
+          }</div>
+        </div>
+        <div class="task-table-badges"><span class="${x.status === 'handled' ? 'treat-badge' : 'warn-badge'}">${x.status === 'handled' ? '✔️ טופל' : 'ממתין לתשובה'}</span></div>
+        <div class="mi-addr"></div>
+        <div class="task-table-wait">${x.at ? agoLabel(x.at) : '—'}</div>
+        <div class="mi-actions">
+          ${x.fan ? `<button class="act-btn tiny" onclick="selectTask2('fan','${escJsAttr(x.fan.id)}')">פתיחת כרטיס האוהד</button>` : ''}
+          ${x.status === 'handled'
+            ? `<button class="act-btn tiny" onclick="unmarkHelpReqHandled('${x.id}')">↺ החזרה לפתוח</button>`
+            : `<button class="act-btn approve tiny" onclick="markHelpReqHandled('${x.id}','${escJsAttr(x.who || '')}')">✔️ טיפלתי</button>`}
+        </div>
+      </div>`).join('')}</div>`;
+}
+
 // ══ §322 — תקלות כניסה ══════════════════════════════════════════════════════════════════
 // נגזר מאירועי `loginFail` (welcome.html). ⚠️ **מה שהקובייה הזאת לא יכולה לתת: מי.**
 // האירוע נרשם לפני שההזדהות הצליחה, ולכן memberId הוא כמעט תמיד null — יש לנו את הסיבה
