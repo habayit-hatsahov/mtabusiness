@@ -214,6 +214,25 @@
   .drawer-count { margin-inline-start:auto; min-width:24px; height:24px; padding:0 8px; border-radius:12px; background:#fff; color:var(--text);
     font-size:12.5px; font-weight:900; display:inline-flex; align-items:center; justify-content:center; }
   .drawer-count[hidden] { display:none; }
+  .conv-row { display:block; width:100%; text-align:right; background:#fff; border:1px solid var(--border); border-radius:14px; padding:12px 14px; margin-top:8px; cursor:pointer; color:var(--text); font-size:14.5px; }
+  .conv-row.closed { background:var(--bg); opacity:.85; }
+  .conv-row-top { display:flex; gap:6px; align-items:center; line-height:1.45; }
+  .conv-row-meta { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px; font-size:12px; color:var(--text-muted); flex-wrap:wrap; }
+  .conv-tag { font-size:11.5px; font-weight:900; border-radius:20px; padding:2px 9px; white-space:nowrap; }
+  .conv-tag.new { background:var(--yellow); color:var(--text); }
+  .conv-tag.wait { background:var(--card-bg2); color:var(--text-sm); }
+  .conv-tag.open { background:#E8EEFB; color:var(--text); }
+  .conv-tag.closed { background:var(--card-bg2); color:var(--text-sm); }
+  .conv-sep { margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:12.5px; font-weight:800; color:var(--text-sm); }
+  .conv-sep[hidden] { display:none; }
+  .conv-view-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin:12px 0; }
+  .conv-subject { font-size:16px; font-weight:900; line-height:1.4; }
+  .conv-status { font-size:12px; font-weight:900; border-radius:20px; padding:3px 10px; white-space:nowrap; }
+  .conv-status.open { background:#E8EEFB; }
+  .conv-status.closed { background:var(--card-bg2); color:var(--text-sm); }
+  .conv-closed-note { margin-top:14px; background:var(--card-bg2); border-radius:12px; padding:12px; font-size:13.5px; line-height:1.7; }
+  .conv-closed-note[hidden], #convReply[hidden], #convNew[hidden] { display:none; }
+  .inq-msg.team { background:#E8EEFB; }
   .faq { border-bottom:1px solid var(--border); }
   .faq:last-of-type { border-bottom:none; }
   .faq summary { list-style:none; cursor:pointer; padding:13px 0; font-size:15px; font-weight:800; display:flex; align-items:center; gap:10px; }
@@ -346,7 +365,7 @@
         <button class="jump-btn" data-sec="secGen" onclick="showSub('U','secGen')"><span class="jump-t">לאוהדים</span><span class="jump-c" id="jGen"></span></button>
         <button class="jump-btn" data-sec="secPush" onclick="showSub('U','secPush')"><span class="jump-t">התראות בטלפון</span><span class="jump-c" id="jPush"></span></button>
       </nav>
-      <button class="reply-strip" id="replyStrip" hidden onclick="setTab('msgs')">
+      <button class="reply-strip" id="replyStrip" hidden onclick="openFirstUnread()">
         <span class="reply-strip-dot"></span>
         <span><b>יש לך תשובה חדשה מהצוות</b><br/>לחצו כאן כדי לקרוא</span>
         <span class="reply-strip-arrow">‹</span>
@@ -391,7 +410,7 @@
 
     <!-- ── הודעות ── -->
     <section id="pMsgs" hidden>
-      <p class="tab-intro" style="margin-bottom:12px"><b>השיחה שלך עם צוות Yellow Zone.</b> כאן מופיעות ההודעות ששלחת אלינו, והתשובות שלנו מתחתן. רוצים לשאול, להציע או לדווח על משהו? כותבים למטה ולוחצים "שליחה" — נחזור אליך כאן, וגם במייל.</p>
+      <p class="tab-intro" style="margin-bottom:12px"><b>השיחות שלך עם צוות Yellow Zone.</b> כל פנייה היא שיחה נפרדת. רוצים לשאול, להציע או לדווח על משהו? לוחצים "שיחה חדשה" — נחזור אליך בשיחה, וגם במייל. שיחות שנסגרו נשמרות למטה עם התאריך, ואפשר להיכנס ולקרוא אותן.</p>
       <!-- §473יד — שאלות נפוצות לבעלי עסקים (בלבד, לפי רמי). מעל "כתבו לנו": מי שבא לשאול רואה
            קודם את התשובות. השאלות מתוך הנתונים: 9 הודעות "כתבו לנו" של עסקים — רובן תיאורי-עסק
            שנכתבו במקום הלא נכון. ⚠️ כל תשובה נבדקה מול הקוד — לא להבטיח זמנים או יכולות שאין. -->
@@ -421,17 +440,40 @@
           <div class="faq-a">כל שינוי עובר לאישור הצוות לפני שהוא מופיע לאוהדים. ברגע שהוא אושר, תקבלו עדכון ב"עדכונים" ← "על העסק שלך". עד אז האוהדים רואים את הפרטים הקודמים.</div>
         </details>
       </div>
-      <div class="card">
-        <div class="section-title">השיחה שלך עם צוות Yellow Zone</div>
-        <div class="thread" id="thread"></div>
-        <div class="composer">
-          <textarea id="msgText" placeholder="כתבו לנו — שאלה, הצעה, עסק שחסר לכם..."></textarea>
+      <!-- §473טו — כל פנייה = שיחה נפרדת, עם היסטוריה (רמי). רשימה: פתוחות למעלה, סגורות למטה
+           עם תאריך ותג "סגורה"; לחיצה פותחת. שיחה סגורה — לקריאה בלבד (שאלה חדשה = שיחה חדשה).
+           שיחה נסגרת כשהצוות מסמן "טיפלתי" — אותו מנגנון של helpRequests (status:'handled'). -->
+      <div class="card" id="convListCard">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px">
+          <div class="section-title" style="margin:0">השיחות שלך עם הצוות</div>
+          <button class="btn" onclick="newConv()">+ שיחה חדשה</button>
+        </div>
+        <div id="convNew" hidden class="composer" style="border-top:none;padding-top:0">
+          <textarea id="msgText" placeholder="כתבו לנו — שאלה, הצעה, משהו שלא עובד..."></textarea>
           <div class="row">
             <button class="btn" onclick="sendFanMsg()">שליחה</button>
+            <button class="chip" onclick="document.getElementById('convNew').hidden=true">ביטול</button>
             <label class="check" id="topicWrap" hidden><input type="checkbox" id="topicBiz"/> בנושא העסק שלי</label>
           </div>
-          <div class="muted">כשנענה, התשובה תופיע כאן, ונשלח לך גם מייל קצר.</div>
+          <div class="muted">כשנענה, התשובה תופיע בשיחה, ונשלח לך גם מייל קצר.</div>
         </div>
+        <div id="convOpenList"></div>
+        <div class="conv-sep" id="convClosedHead">שיחות שנסגרו</div>
+        <div id="convClosedList"></div>
+      </div>
+
+      <div class="card" id="convView" hidden>
+        <button class="chip" onclick="closeConvView()">› חזרה לכל השיחות</button>
+        <div class="conv-view-head">
+          <div class="conv-subject" id="convSubject"></div>
+          <span class="conv-status" id="convStatus"></span>
+        </div>
+        <div class="thread" id="thread"></div>
+        <div class="composer" id="convReply">
+          <textarea id="convReplyText" placeholder="להוסיף משהו לשיחה..."></textarea>
+          <div class="row"><button class="btn" onclick="replyInConv()">שליחה</button></div>
+        </div>
+        <div class="conv-closed-note" id="convClosedNote">השיחה הזאת נסגרה. יש שאלה חדשה? <button class="chip" onclick="closeConvView();newConv()">פתחו שיחה חדשה</button></div>
       </div>
     </section>
 
@@ -714,10 +756,24 @@ const state = {
     { id: 11, kind: 'auto', aud: 'me', title: 'קיבלנו את ההצעה שלך: "מוסך הצפון"', text: 'תודה! פנינו לעסק ונעדכן אותך כאן כשיצטרף לאינדקס.', at: now - 26 * H, read: false },
     { id: 7, kind: 'auto', aud: 'fans', title: 'החשבון שלך אושר', text: 'ברוך הבא ל-Yellow Zone! תעודת החבר שלך מחכה ב"הפרטים שלי".', at: now - 60 * D, read: true },
   ],
-  thread: [
-    { from: 'me', text: 'היי, יש עסק של חבר שלי שמוכר ציוד ספורט — אפשר שיצטרף?', at: now - 2 * D, topic: '' },
-    { from: 'team', text: 'בטח! שלח לו את הקישור להוספת עסק מהתפריט, ואנחנו נאשר תוך יום-יומיים 💛', at: now - 20 * M, read: false },
+  // §473טו — שיחות נפרדות. status: 'open' | 'closed' (נסגר ע"י הצוות ב"טיפלתי").
+  // biz: true — שיחה של בעל העסק על העסק (מוצגת רק בתצוגת בעל עסק).
+  convs: [
+    { id: 1, status: 'open', topic: '', biz: false, msgs: [
+      { from: 'me', text: 'היי, יש עסק של חבר שלי שמוכר ציוד ספורט — אפשר שיצטרף?', at: now - 2 * D },
+      { from: 'team', text: 'בטח! שלח לו את הקישור להוספת עסק מהתפריט, ואנחנו נאשר תוך יום-יומיים 💛', at: now - 20 * M, read: false },
+    ] },
+    { id: 2, status: 'closed', closedAt: now - 9 * D, topic: 'biz', biz: true, msgs: [
+      { from: 'me', text: 'אפשר להוסיף לכרטיס שאם אין מענה בטלפון אפשר לשלוח וואטסאפ?', at: now - 12 * D },
+      { from: 'team', text: 'הוספנו שורה בתיאור שלכם — תבדקו שזה נראה טוב.', at: now - 10 * D, read: true },
+      { from: 'me', text: 'מעולה, תודה!', at: now - 9 * D },
+    ] },
+    { id: 3, status: 'closed', closedAt: now - 30 * D, topic: '', biz: false, msgs: [
+      { from: 'me', text: 'איך אני רואה את תעודת החבר שלי?', at: now - 31 * D },
+      { from: 'team', text: 'ב"האזור שלי" ← "הפרטים שלי" — שם התעודה, אפשר גם לשמור אותה לגלריה.', at: now - 30 * D, read: true },
+    ] },
   ],
+  openConv: null,
   pendingPush: null,
 };
 let nextId = 100;
@@ -761,7 +817,7 @@ function render() {
   if (!isBizView() && state.tab === 'biz') state.tab = 'updates';
 
   const unreadItems = state.items.filter(i => visible(i) && !i.read).length;
-  const unreadMsgs = state.thread.filter(m => m.from === 'team' && !m.read).length;
+  const unreadMsgs = myConvs().reduce((s, c) => s + unreadIn(c), 0);
   setCount('cUpdates', unreadItems); setCount('cMsgs', unreadMsgs);
   const bell = document.getElementById('bellBadge');
   bell.hidden = !(unreadItems + unreadMsgs); bell.textContent = unreadItems + unreadMsgs;
@@ -814,11 +870,7 @@ function render() {
   });
   applySubs(groups);
 
-  document.getElementById('thread').innerHTML = state.thread.map(m => `
-    <div class="bubble-wrap ${m.from}">
-      <div class="bubble">${m.topic ? '<span class="topic">על העסק</span>' : ''}${esc(m.text)}</div>
-      <div class="bubble-meta">${m.from === 'me' ? 'את/ה' : 'צוות Yellow Zone'} · ${ago(m.at)}</div>
-    </div>`).join('');
+  renderConvs();
 
   if (state.pendingPush) {
     const p = state.pendingPush; state.pendingPush = null;
@@ -893,7 +945,7 @@ function setView(v) { state.view = v; state.tab = 'updates'; state.subU = null; 
 function setTab(t) {
   state.tab = t;
   if (t === 'biz') state.subB = null; // כניסה ל"העסק שלי" תמיד נקייה
-  if (t === 'msgs') state.thread.forEach(m => { if (m.from === 'team') m.read = true; });
+  if (t === 'msgs') state.openConv = null; // לשונית ההודעות נפתחת על רשימת השיחות; נקרא = כשנכנסים לשיחה
   render();
 }
 
@@ -907,13 +959,84 @@ function openItem(id) {
 function bizEdit() { toast('במוצר: נפתח לעריכה כאן, ונשלח לאישור הצוות'); }
 function markAllRead() { state.items.forEach(i => { if (visible(i)) i.read = true; }); render(); }
 
+// ── §473טו — שיחות ────────────────────────────────────────────────────────────────────────
+const myConvs = () => state.convs.filter(c => isBizView() || !c.biz);
+const lastAt = c => c.msgs[c.msgs.length - 1].at;
+const unreadIn = c => c.msgs.filter(m => m.from === 'team' && !m.read).length;
+const fmtDate = t => new Date(t).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: 'numeric' });
+const subjectOf = c => { const s = c.msgs[0].text.replace(/\s+/g, ' '); return s.length > 60 ? s.slice(0, 58) + '…' : s; };
+function convRowHtml(c) {
+  const last = c.msgs[c.msgs.length - 1];
+  const n = unreadIn(c);
+  const state2 = c.status === 'closed'
+    ? `<span class="conv-tag closed">סגורה · ${fmtDate(c.closedAt)}</span>`
+    : n ? `<span class="conv-tag new">תשובה חדשה</span>`
+    : last.from === 'me' ? `<span class="conv-tag wait">ממתינה לתשובה</span>`
+    : `<span class="conv-tag open">פתוחה</span>`;
+  return `<button class="conv-row ${c.status}" onclick="openConv(${c.id})">
+      <div class="conv-row-top">${c.topic ? '<span class="topic">על העסק</span>' : ''}<b>${esc(subjectOf(c))}</b></div>
+      <div class="conv-row-meta">${state2}<span>${c.msgs.length} הודעות · ${ago(lastAt(c))}</span></div>
+    </button>`;
+}
+function renderConvs() {
+  const list = myConvs();
+  const open = list.filter(c => c.status === 'open').sort((a, b) => lastAt(b) - lastAt(a));
+  const closed = list.filter(c => c.status === 'closed').sort((a, b) => b.closedAt - a.closedAt);
+  const c = state.openConv && list.find(x => x.id === state.openConv);
+  document.getElementById('convListCard').hidden = !!c;
+  document.getElementById('convView').hidden = !c;
+  document.getElementById('convOpenList').innerHTML = open.length ? open.map(convRowHtml).join('')
+    : '<div class="empty">אין שיחות פתוחות. יש שאלה? לחצו "שיחה חדשה".</div>';
+  document.getElementById('convClosedHead').hidden = !closed.length;
+  document.getElementById('convClosedList').innerHTML = closed.map(convRowHtml).join('');
+  if (!c) return;
+  document.getElementById('convSubject').textContent = subjectOf(c);
+  const st = document.getElementById('convStatus');
+  st.textContent = c.status === 'closed' ? 'סגורה · ' + fmtDate(c.closedAt) : 'פתוחה';
+  st.className = 'conv-status ' + c.status;
+  document.getElementById('thread').innerHTML = c.msgs.map(m => `
+    <div class="bubble-wrap ${m.from}">
+      <div class="bubble">${esc(m.text)}</div>
+      <div class="bubble-meta">${m.from === 'me' ? 'את/ה' : 'צוות Yellow Zone'} · ${fmtDate(m.at)}</div>
+    </div>`).join('');
+  document.getElementById('convReply').hidden = c.status === 'closed';
+  document.getElementById('convClosedNote').hidden = c.status !== 'closed';
+}
+function openConv(id) {
+  const c = state.convs.find(x => x.id === id); if (!c) return;
+  c.msgs.forEach(m => { if (m.from === 'team') m.read = true; });
+  state.openConv = id; state.tab = 'msgs'; render(); window.scrollTo(0, 0);
+}
+function closeConvView() { state.openConv = null; render(); }
+function newConv() {
+  state.openConv = null; render();
+  document.getElementById('convNew').hidden = false;
+  document.getElementById('msgText').focus();
+}
+// שיחה חדשה. אצל בעל עסק — "בנושא העסק שלי" מסמן אותה כשיחה עסקית.
 function sendFanMsg() {
   const ta = document.getElementById('msgText'); const t = ta.value.trim();
   if (!t) { toast('כתבו משהו קודם'); return; }
-  const topic = isBizView() && document.getElementById('topicBiz').checked ? 'biz' : '';
-  state.thread.push({ from: 'me', text: t, at: Date.now(), topic, who: isBizView() ? 'biz' : 'fan' });
+  const biz = isBizView() && document.getElementById('topicBiz').checked;
+  const id = Math.max(0, ...state.convs.map(c => c.id)) + 1;
+  state.convs.push({ id, status: 'open', topic: biz ? 'biz' : '', biz: isBizView(), who: isBizView() ? 'biz' : 'fan',
+    msgs: [{ from: 'me', text: t, at: Date.now() }] });
   ta.value = ''; document.getElementById('topicBiz').checked = false;
-  toast('נשלח — נחזור אליך כאן ובמייל'); render();
+  document.getElementById('convNew').hidden = true;
+  toast('נשלח — נחזור אליך כאן ובמייל');
+  openConv(id);
+}
+// הוספה לשיחה פתוחה (שיחה סגורה — לקריאה בלבד)
+function replyInConv() {
+  const c = state.convs.find(x => x.id === state.openConv);
+  const ta = document.getElementById('convReplyText'); const t = ta.value.trim();
+  if (!c || c.status === 'closed' || !t) { if (!t) toast('כתבו משהו קודם'); return; }
+  c.msgs.push({ from: 'me', text: t, at: Date.now() }); ta.value = ''; render();
+}
+// הפס הצהוב "יש לך תשובה חדשה" — פותח ישר את השיחה שיש בה תשובה
+function openFirstUnread() {
+  const c = myConvs().filter(x => unreadIn(x)).sort((a, b) => lastAt(b) - lastAt(a))[0];
+  if (c) openConv(c.id); else setTab('msgs');
 }
 
 // ── הדשבורד ──
@@ -992,21 +1115,37 @@ function renderAdmin() {
     document.getElementById('one' + k).hidden = audSel[k] !== 'one';
     if (audSel[k] === 'one') renderPick(k);
   });
-  const open = state.thread.map((m, i) => ({ m, i })).filter(({ m, i }) => m.from === 'me' && !state.thread.slice(i + 1).some(x => x.from === 'team'));
-  document.getElementById('inbox').innerHTML = open.length ? open.map(({ m, i }) => `
+  // §473טו — שיחות פתוחות; מחכות-לתשובה (ההודעה האחרונה של האוהד) קודם. "טיפלתי" = סגירת
+  // השיחה — היא עוברת אצלו ל"שיחות שנסגרו" עם התאריך. תשובה לבד **לא** סוגרת: אולי ישאל עוד.
+  const open = state.convs.filter(c => c.status === 'open')
+    .sort((a, b) => ((b.msgs[b.msgs.length - 1].from === 'me') - (a.msgs[a.msgs.length - 1].from === 'me')) || (lastAt(b) - lastAt(a)));
+  document.getElementById('inbox').innerHTML = open.length ? open.map(c => {
+    const waiting = c.msgs[c.msgs.length - 1].from === 'me';
+    return `
     <div class="inq">
-      <div class="inq-who">רמי בן טל · #00001 ${m.topic ? '<span class="topic">על העסק</span>' : ''}</div>
-      <div class="inq-meta">050-0000000 · rami@example.com · ${ago(m.at)}${m.who === 'biz' ? ' · בעל העסק "שווארמה רמי"' : ''}</div>
-      <div class="inq-msg">${esc(m.text)}</div>
-      <textarea id="rep${i}" placeholder="התשובה שלך — תופיע לו ב'הודעות', ויישלח לו מייל קצר"></textarea>
-      <div class="row"><button class="btn" onclick="reply(${i})">שליחת תשובה</button><span class="muted">"טיפלתי" מסומן אוטומטית כשעונים</span></div>
-    </div>`).join('') : '<div class="empty">אין הודעות שמחכות לתשובה. שלחו הודעה מתצוגת אוהד (לשונית "הודעות") והיא תופיע כאן.</div>';
+      <div class="inq-who">רמי בן טל · #00001 ${c.topic ? '<span class="topic">על העסק</span>' : ''}
+        <span class="conv-tag ${waiting ? 'wait' : 'open'}">${waiting ? 'ממתינה לתשובה' : 'נענתה — פתוחה'}</span></div>
+      <div class="inq-meta">050-0000000 · rami@example.com${c.who === 'biz' || c.biz ? ' · בעל העסק "שווארמה רמי"' : ''} · ${c.msgs.length} הודעות</div>
+      ${c.msgs.map(m => `<div class="inq-msg${m.from === 'team' ? ' team' : ''}"><b>${m.from === 'me' ? 'הוא' : 'אתה'}:</b> ${esc(m.text)}</div>`).join('')}
+      <textarea id="rep${c.id}" placeholder="התשובה שלך — תופיע לו בשיחה, ויישלח לו מייל קצר"></textarea>
+      <div class="row">
+        <button class="btn" onclick="reply(${c.id})">שליחת תשובה</button>
+        <button class="btn ghost" onclick="closeConv(${c.id})">✔️ טיפלתי — סגירת השיחה</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">אין שיחות פתוחות. פתחו שיחה מתצוגת אוהד או בעל עסק (לשונית "הודעות") והיא תופיע כאן.</div>';
 }
-function reply(i) {
-  const t = document.getElementById('rep' + i).value.trim();
-  if (!t) { toast('כתבו תשובה'); return; }
-  state.thread.push({ from: 'team', text: t, at: Date.now(), read: false });
-  toast('נשלח: תשובה באזור + מייל קצר'); renderAdmin();
+function reply(id) {
+  const c = state.convs.find(x => x.id === id);
+  const t = document.getElementById('rep' + id).value.trim();
+  if (!c || !t) { toast('כתבו תשובה'); return; }
+  c.msgs.push({ from: 'team', text: t, at: Date.now(), read: false });
+  toast('נשלח: תשובה בשיחה + מייל קצר'); renderAdmin();
+}
+function closeConv(id) {
+  const c = state.convs.find(x => x.id === id); if (!c) return;
+  c.status = 'closed'; c.closedAt = Date.now();
+  toast('השיחה נסגרה — אצלו היא עברה ל"שיחות שנסגרו"'); renderAdmin();
 }
 function sendUpdate() {
   const title = document.getElementById('uTitle').value.trim(); const text = document.getElementById('uText').value.trim();
