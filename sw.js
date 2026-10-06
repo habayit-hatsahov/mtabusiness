@@ -376,7 +376,17 @@
 // §460ה — v145 (welcome.html שומר את loginOk ו-home.html שולח; הניווט ביטל את הבקשה ב-~45% מהכניסות).
 // §460ח — v147 (deletion-log.js: מחיקת חבר ע"י מנהל מבטלת גם את הרשאת Apple — /admin-apple-revoke).
 // §469 — v163 (apple-signup.js: השם מ-Apple נשמר בוורקר ומוחזר בהרשאה חוזרת, וננעל — דחיית אפל Guideline 4).
-const CACHE_NAME = 'yz-shell-v165';
+// §471 — v166 (תמונות סטטיות עברו למטמון נפרד, IMG_CACHE, שבאמפ-גרסה לא מוחק).
+const CACHE_NAME = 'yz-shell-v166';
+// §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
+// מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
+// באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד
+// הפתיחה הבאה (נצפה באייפון של רמי, 6.10, 4 דק' אחרי פריסת v165: הלוגו ו-3 אייקוני קטגוריות).
+// התמונות עדיין מתרעננות: stale-while-revalidate, כך שתמונה שהוחלפה בשרת מגיעה בפתיחה הבאה.
+// ⚠️ לנקות את כל התמונות בכוח? לשנות את השם כאן (yz-img-v2) — זה הכפתור היחיד.
+// ⚠️ לא להתחיל ב-'yz-shell-' — welcome.html (hbProbeEnv) מזהה את גרסת ה-SW לפי הקידומת הזו.
+const IMG_CACHE = 'yz-img-v1';
+const IMG_PATH_RE = /\.(png|jpe?g|webp|gif|svg|ico)$/i;
 // §338 — פסק-הזמן של ניווטים. 1.5 שניות נבחרו כדי שדף לא "יתקע" על רשת גרועה, אבל בפועל
 // זה נמדד קצר מדי: ניווט סלולרי רגיל חוצה אותו בקלות, וכל חצייה כזאת מגישה HTML **ישן**.
 // אצל משתמש מנותק ב-PWA זה היה קטלני, כי דף הכניסה גם לא עדכן את ה-Service Worker (ר'
@@ -400,9 +410,25 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys().then(async keys => {
+      const old = keys.filter(k => k !== CACHE_NAME && k !== IMG_CACHE);
+      // §471 — לפני המחיקה מעבירים את התמונות שכבר נשמרו במטמונים הישנים ל-IMG_CACHE, כדי
+      // שגם המעבר הזה עצמו (המחיקה האחרונה של yz-shell-v165) לא יוריד הכול מחדש בבת אחת.
+      // נכשל? לא חוסם — במקרה הגרוע זה בדיוק המצב הקודם.
+      try {
+        const img = await caches.open(IMG_CACHE);
+        for (const k of old) {
+          const c = await caches.open(k);
+          for (const req of await c.keys()) {
+            if (!IMG_PATH_RE.test(new URL(req.url).pathname)) continue;
+            if (await img.match(req)) continue;
+            const res = await c.match(req);
+            if (res) await img.put(req, res);
+          }
+        }
+      } catch (e) {}
+      await Promise.all(old.map(k => caches.delete(k)));
+    }).then(() => self.clients.claim())
   );
 });
 
@@ -447,10 +473,13 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // §471 — תמונה: מטמון נפרד וקבוע (ר' IMG_CACHE), ועוד ניסיון אחד מול הרשת לפני שמוותרים —
+  // בלי מטמון ובלי רשת, ה-respondWith נכשל והתמונה נשברת. שאר הקבצים — כמו קודם.
+  const isImg = IMG_PATH_RE.test(new URL(req.url).pathname);
   event.respondWith(
-    caches.open(CACHE_NAME).then(async cache => {
+    caches.open(isImg ? IMG_CACHE : CACHE_NAME).then(async cache => {
       const cached = await cache.match(req);
-      const network = fetch(req)
+      const network = (isImg ? fetch(req).catch(() => fetch(req)) : fetch(req))
         .then(res => { if (res.ok) cache.put(req, res.clone()); return res; })
         .catch(() => cached);
       return cached || network;
