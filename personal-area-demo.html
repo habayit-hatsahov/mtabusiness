@@ -197,6 +197,19 @@
   .inq-who { font-size:14px; font-weight:800; }
   .inq-meta { font-size:12px; color:var(--text-sm); }
   .inq-msg { font-size:13.5px; line-height:1.55; white-space:pre-line; background:var(--bg); border-radius:10px; padding:8px 10px; }
+  .dot { position:absolute; top:6px; left:6px; width:10px; height:10px; border-radius:50%; background:var(--yellow); box-shadow:0 0 0 2px #fff, 0 0 0 3px var(--text); }
+  .dot[hidden] { display:none; }
+  .drawer-overlay { display:none; position:fixed; inset:0; z-index:400; background:rgba(10,42,102,.34); justify-content:flex-start; }
+  .drawer-overlay.open { display:flex; }
+  .drawer { width:min(340px,86vw); background:var(--yellow); display:flex; flex-direction:column; box-shadow:-18px 0 44px rgba(10,42,102,.18); }
+  .drawer-head { background:#fff; display:flex; align-items:center; justify-content:space-between; padding:7px 16px; border-bottom:3px solid var(--yellow); box-shadow:0 3px 0 0 var(--text); }
+  .drawer-list { display:flex; flex-direction:column; padding:10px 8px; gap:2px; }
+  .drawer-item { display:flex; align-items:center; gap:10px; height:52px; padding:0 12px; border:none; background:none; text-align:right;
+    font-size:15px; font-weight:600; color:var(--text); cursor:pointer; border-radius:8px; }
+  .drawer-item.on { background:var(--text); color:#fff; font-weight:800; }
+  .drawer-count { margin-inline-start:auto; min-width:24px; height:24px; padding:0 8px; border-radius:12px; background:#fff; color:var(--text);
+    font-size:12.5px; font-weight:900; display:inline-flex; align-items:center; justify-content:center; }
+  .drawer-count[hidden] { display:none; }
   .guide { display:flex; flex-direction:column; gap:6px; }
   .guide-row { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; text-align:right; background:var(--bg); border:1px solid var(--border);
     border-radius:12px; padding:10px 12px; cursor:pointer; font-size:14px; color:var(--text); }
@@ -243,7 +256,8 @@
 <div class="app" id="appView">
   <header class="top-nav">
     <div class="nav-actions">
-      <button class="icon-btn" title="תפריט"><span class="hbg"><span></span><span></span><span></span></span></button>
+      <!-- §473ח — נקודה על ההמבורגר כשיש חדש: מי שלא פותח את התפריט לא יודע שיש בו משהו. -->
+      <button class="icon-btn" title="תפריט" onclick="openDrawer()"><span class="hbg"><span></span><span></span><span></span></span><span class="dot" id="menuDot" hidden></span></button>
       <!-- הפעמון: קיצור ל"עדכונים", והמספר = כל מה שלא נקרא (עדכונים + הודעות) -->
       <button class="icon-btn" title="האזור שלי" onclick="setTab('updates')">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
@@ -483,6 +497,20 @@
   </div>
 </div>
 
+<!-- §473ח — תפריט הצד (מקוצר; העיצוב כמו ב-profile/home: מגירה צהובה מימין). "האזור שלי" עם מונה. -->
+<div class="drawer-overlay" id="drawer" onclick="if(event.target===this)closeDrawer()">
+  <div class="drawer">
+    <div class="drawer-head"><img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone" style="height:26px"/><button class="icon-btn" onclick="closeDrawer()">✕</button></div>
+    <div class="drawer-list">
+      <button class="drawer-item" onclick="closeDrawer()">דף הבית</button>
+      <button class="drawer-item on" onclick="closeDrawer();setTab('updates')">האזור שלי <span class="drawer-count" id="drawerCount" hidden></span></button>
+      <button class="drawer-item" onclick="closeDrawer()">העסקים שאהבתי</button>
+      <button class="drawer-item" onclick="closeDrawer()">שתפו את Yellow Zone</button>
+      <button class="drawer-item" onclick="closeDrawer()">צור קשר</button>
+    </div>
+  </div>
+</div>
+
 <div class="push-sim" id="pushSim"><div class="push-icon">YZ</div><div><div class="push-app">Yellow Zone · עכשיו</div><div class="push-t" id="psT"></div><div class="push-b" id="psB"></div></div></div>
 <div class="toast" id="toast"></div>
 
@@ -555,6 +583,10 @@ function render() {
   setCount('cUpdates', unreadItems); setCount('cMsgs', unreadMsgs);
   const bell = document.getElementById('bellBadge');
   bell.hidden = !(unreadItems + unreadMsgs); bell.textContent = unreadItems + unreadMsgs;
+  // §473ח — אותו מספר בדיוק בשלושה מקומות (פעמון, תפריט, נקודה) — מקור אחד, כדי שלא יסתרו.
+  const dc = document.getElementById('drawerCount');
+  dc.hidden = !(unreadItems + unreadMsgs); dc.textContent = (unreadItems + unreadMsgs) + ' חדשים';
+  document.getElementById('menuDot').hidden = !(unreadItems + unreadMsgs);
 
   [['updates', 'tUpdates', 'pUpdates'], ['msgs', 'tMsgs', 'pMsgs'], ['biz', 'tBiz', 'pBiz'], ['me', 'tMe', 'pMe']].forEach(([k, t, p]) => {
     document.getElementById(t).classList.toggle('on', state.tab === k);
@@ -630,6 +662,8 @@ function itemHtml(i) {
       </div>
     </div>`;
 }
+function openDrawer() { document.getElementById('drawer').classList.add('open'); }
+function closeDrawer() { document.getElementById('drawer').classList.remove('open'); }
 function jumpTo(id) {
   const el = document.getElementById(id);
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
