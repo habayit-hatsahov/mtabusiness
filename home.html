@@ -2526,7 +2526,35 @@ function filterCat(cat, el) {
   window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 
   _currentCatFeedKey = cat;
+  _advanceCatRotation(cat);
   renderCatFeedContent(cat);
+}
+
+// ── §470 — סבב-חשיפה בתוך קטגוריה ─────────────────────────────────────────────────────────
+// לפני כן קטגוריה הוצגה בסדר הגולמי של Firestore — קבוע לחלוטין, אותם עסקים תמיד למעלה.
+// עכשיו: (1) סדר-בסיס קבוע לקטגוריה — ערבוב לפי זרע הקטגוריה מעל מיון לפי id, כך שעסק חדש
+// נכנס למקום שרירותי ברשימה ולא ראשון; (2) כל **פתיחה** של הקטגוריה מזיזה את נקודת-ההתחלה
+// ב-CAT_ROTATE_STEP, כך שבפתיחות רצופות כל העסקים עוברים בתורם בראש הרשימה; (3) נקודת-ההתחלה
+// הראשונה של כל מבקר אקראית — אחרת כל המבקרים החדשים היו רואים את אותו ראש-רשימה.
+// ⚠️ מתקדמים **רק** ב-filterCat, לא ב-renderCatFeedContent — זה נקרא גם בכל snapshot (לייק
+// של מישהו אחר), ושם הסדר חייב להישאר כמו שהוא מול העיניים של הגולש.
+// עיגונים ידניים (applyAnchors, 'cat_<key>') ממשיכים לגבור על הסבב, כמו קודם.
+const CAT_ROTATE_STEP = 4;
+const _catRotation = {};
+function _advanceCatRotation(cat) {
+  if (!CATEGORIES.some(c => c.key === cat)) return; // רק קטגוריות אמיתיות, לא סקשנים
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('hb_cat_rotation') || '{}') || {}; } catch (e) {}
+  const prev = Number.isFinite(saved[cat]) ? saved[cat] : null;
+  const next = prev === null ? Math.floor(Math.random() * 1000) : prev + CAT_ROTATE_STEP;
+  _catRotation[cat] = next;
+  saved[cat] = next;
+  try { localStorage.setItem('hb_cat_rotation', JSON.stringify(saved)); } catch (e) {}
+}
+function arrangeCategory(list, cat) {
+  if (list.length <= 1) return list;
+  const base = seededShuffle([...list].sort((a, b) => a.id.localeCompare(b.id)), 'cat:' + cat);
+  return _rotate(base, (_catRotation[cat] || 0) % base.length);
 }
 
 // בונה מחדש את תוכן הגריד של "רואה הכל" לקטגוריה/סקשן הנתונים, בלי לגעת בגלילה/display —
@@ -2546,7 +2574,7 @@ function renderCatFeedContent(cat) {
   else if (cat === 'everyone'){ filtered = _dailySectionOrder.everyone || businesses; title = 'כל העסקים'; }
   else {
     filtered = businesses.filter(b => mapCatKey(b.cat) === cat || (b.alsoUnderCategory && mapCatKey(b.alsoUnderCategory) === cat));
-    filtered = applyAnchors(filtered, 'cat_' + cat);
+    filtered = applyAnchors(arrangeCategory(filtered, cat), 'cat_' + cat);
     // אייקון תואם לעיגול-הקטגוריה למעלה (PNG החדש), לא האימוג'י הטקסטואלי הישן של catIcon().
     const catObj = CATEGORIES.find(c => c.key === cat);
     const catIconImg = catObj
