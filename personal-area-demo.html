@@ -144,7 +144,6 @@
   .me .bubble { background:var(--yellow); border-bottom-right-radius:4px; }
   .team .bubble { background:var(--card-bg2); border:1px solid var(--border); border-bottom-left-radius:4px; }
   .bubble-meta { font-size:10.5px; color:var(--text-muted); margin-top:3px; padding:0 4px; }
-  .topic { font-size:10.5px; font-weight:800; background:#E8EEFB; border-radius:6px; padding:1px 6px; margin-inline-end:4px; }
   .composer { display:flex; flex-direction:column; gap:8px; margin-top:12px; border-top:1px solid var(--border); padding-top:12px; }
   textarea, input[type=text], select { width:100%; font:inherit; font-size:16px; color:var(--text); background:var(--bg);
     border:1.5px solid var(--border-md); border-radius:12px; padding:10px 12px; }
@@ -249,6 +248,12 @@
   .week-q { display:flex; gap:12px; align-items:flex-start; border:2px solid var(--border-md); border-radius:13px; padding:14px; margin-top:10px; cursor:pointer; font-size:14px; line-height:1.6; }
   .week-q:has(input:checked) { border-color:var(--yellow); background:var(--soft); }
   .week-q input { width:20px; height:20px; flex-shrink:0; margin-top:2px; }
+  .week-nav { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+  .week-btn { border:1px solid var(--border-md); background:#fff; border-radius:10px; padding:8px 10px; font-size:13px; font-weight:800; color:var(--text); cursor:pointer; white-space:nowrap; }
+  .week-btn:disabled { opacity:.35; cursor:default; }
+  .week-label { text-align:center; display:flex; flex-direction:column; line-height:1.3; }
+  .week-label b { font-size:15.5px; font-weight:900; }
+  .week-label span { font-size:12.5px; color:var(--text-sm); }
   .kpi { display:flex; flex-direction:column; }
   .kpi-row { display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); flex-wrap:wrap; }
   .kpi-row:last-child { border-bottom:none; }
@@ -453,7 +458,6 @@
           <div class="row">
             <button class="btn" onclick="sendFanMsg()">שליחה</button>
             <button class="chip" onclick="document.getElementById('convNew').hidden=true">ביטול</button>
-            <label class="check" id="topicWrap" hidden><input type="checkbox" id="topicBiz"/> בנושא העסק שלי</label>
           </div>
           <div class="muted">כשנענה, התשובה תופיע בשיחה, ונשלח לך גם מייל קצר.</div>
         </div>
@@ -523,14 +527,15 @@
         <!-- §473יא — 4 הנתונים שרמי בחר. כולם כבר נמדדים היום: חשיפות (statsDaily.imp, §418ה),
              פתיחות (bizClick), פניות (bizContact phone/whatsapp), לבבות (heart). "לחצו להתקשר"
              ולא "התקשרו" — נמדדת לחיצה, לא שיחה שהתקיימה. השוואה לשבוע הקודם בכל שורה. -->
-        <div class="section-title">השבוע אצלך</div>
-        <div class="kpi">
-          <div class="kpi-row"><span class="kpi-n">240</span><span class="kpi-l">פעמים אוהדים ראו את העסק שלך</span><span class="kpi-d up">▲ 30</span></div>
-          <div class="kpi-row"><span class="kpi-n">38</span><span class="kpi-l">פתחו את הכרטיס שלך</span><span class="kpi-d up">▲ 5</span></div>
-          <div class="kpi-row"><span class="kpi-n">6</span><span class="kpi-l">לחצו להתקשר או לשלוח וואטסאפ</span><span class="kpi-d same">כמו בשבוע שעבר</span></div>
-          <div class="kpi-row"><span class="kpi-n">2</span><span class="kpi-l">אוהדים חדשים סימנו לב לעסק שלך</span><span class="kpi-d down">▼ 1</span></div>
+        <!-- §473טז — בחירת שבוע (רמי: "תראה לנו על איזה שבוע... ותן אופציה לבחור שבוע קודם").
+             שבוע = ראשון עד שבת. "שבוע הבא" כבוי על השבוע הנוכחי. ההשוואה — לשבוע שלפני הנבחר. -->
+        <div class="week-nav">
+          <button class="week-btn" id="weekPrev" onclick="moveWeek(1)">› שבוע קודם</button>
+          <div class="week-label"><b id="weekTitle"></b><span id="weekRange"></span></div>
+          <button class="week-btn" id="weekNext" onclick="moveWeek(-1)">שבוע הבא ‹</button>
         </div>
-        <div class="muted" style="margin-top:8px">החצים משווים לשבוע שעבר. כניסות שלך לכרטיס של עצמך לא נספרות. בדמו — מספרים לדוגמה.</div>
+        <div class="kpi" id="kpiList"></div>
+        <div class="muted" style="margin-top:8px" id="kpiNote"></div>
       </div>
 
       <!-- §473יב — מדריך החשיפה. ⚠️ כל טענה כאן נבדקה מול home.html: "הכי אהובים" = 10 עם הכי
@@ -757,18 +762,19 @@ const state = {
     { id: 7, kind: 'auto', aud: 'fans', title: 'החשבון שלך אושר', text: 'ברוך הבא ל-Yellow Zone! תעודת החבר שלך מחכה ב"הפרטים שלי".', at: now - 60 * D, read: true },
   ],
   // §473טו — שיחות נפרדות. status: 'open' | 'closed' (נסגר ע"י הצוות ב"טיפלתי").
-  // biz: true — שיחה של בעל העסק על העסק (מוצגת רק בתצוגת בעל עסק).
+  // §473טז — תיבה אחת לכל אדם, בלי הפרדה לפי "בתור מה" כתב (רמי). biz: true רק כדי שבדמו
+  // אוהד רגיל לא יראה שיחה שנפתחה מתצוגת בעל העסק — שני אנשים שונים בדמו, אדם אחד במוצר.
   convs: [
-    { id: 1, status: 'open', topic: '', biz: false, msgs: [
+    { id: 1, status: 'open', biz: false, msgs: [
       { from: 'me', text: 'היי, יש עסק של חבר שלי שמוכר ציוד ספורט — אפשר שיצטרף?', at: now - 2 * D },
       { from: 'team', text: 'בטח! שלח לו את הקישור להוספת עסק מהתפריט, ואנחנו נאשר תוך יום-יומיים 💛', at: now - 20 * M, read: false },
     ] },
-    { id: 2, status: 'closed', closedAt: now - 9 * D, topic: 'biz', biz: true, msgs: [
+    { id: 2, status: 'closed', closedAt: now - 9 * D, biz: true, msgs: [
       { from: 'me', text: 'אפשר להוסיף לכרטיס שאם אין מענה בטלפון אפשר לשלוח וואטסאפ?', at: now - 12 * D },
       { from: 'team', text: 'הוספנו שורה בתיאור שלכם — תבדקו שזה נראה טוב.', at: now - 10 * D, read: true },
       { from: 'me', text: 'מעולה, תודה!', at: now - 9 * D },
     ] },
-    { id: 3, status: 'closed', closedAt: now - 30 * D, topic: '', biz: false, msgs: [
+    { id: 3, status: 'closed', closedAt: now - 30 * D, biz: false, msgs: [
       { from: 'me', text: 'איך אני רואה את תעודת החבר שלי?', at: now - 31 * D },
       { from: 'team', text: 'ב"האזור שלי" ← "הפרטים שלי" — שם התעודה, אפשר גם לשמור אותה לגלריה.', at: now - 30 * D, read: true },
     ] },
@@ -812,7 +818,7 @@ function render() {
 
   document.getElementById('roleChip').hidden = !isBizView();
   document.getElementById('tBiz').hidden = !isBizView();
-  document.getElementById('topicWrap').hidden = !isBizView();
+
   document.getElementById('bizFaq').hidden = !isBizView();
   if (!isBizView() && state.tab === 'biz') state.tab = 'updates';
 
@@ -895,6 +901,37 @@ function itemHtml(i) {
       </div>
     </div>`;
 }
+// ── §473טז — נתונים לפי שבוע ─────────────────────────────────────────────────────────────
+// מספרים לדוגמה, שבוע 0 = הנוכחי. במוצר: סיכום שבועי מהוורקר (ר' §473יא).
+const WEEKS = [
+  { imp: 240, open: 38, contact: 6, hearts: 2 },
+  { imp: 210, open: 33, contact: 6, hearts: 3 },
+  { imp: 185, open: 35, contact: 4, hearts: 1 },
+  { imp: 150, open: 22, contact: 3, hearts: 4 },
+  { imp: 120, open: 18, contact: 1, hearts: 2 },
+];
+let weekOff = 0;
+function weekStart(off) {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay() - 7 * off); // ראשון של השבוע
+  return d;
+}
+const dm = d => d.getDate() + '.' + (d.getMonth() + 1);
+function renderWeek() {
+  const s = weekStart(weekOff), e = new Date(s); e.setDate(s.getDate() + 6);
+  document.getElementById('weekTitle').textContent = weekOff === 0 ? 'השבוע' : weekOff === 1 ? 'שבוע שעבר' : 'לפני ' + weekOff + ' שבועות';
+  document.getElementById('weekRange').textContent = dm(s) + '–' + dm(e) + '.' + e.getFullYear();
+  document.getElementById('weekNext').disabled = weekOff === 0;
+  document.getElementById('weekPrev').disabled = weekOff >= WEEKS.length - 1;
+  const cur = WEEKS[weekOff], prev = WEEKS[weekOff + 1];
+  const delta = (a, b) => !b ? '' : a > b[0] ? `<span class="kpi-d up">▲ ${a - b[0]}</span>` : a < b[0] ? `<span class="kpi-d down">▼ ${b[0] - a}</span>` : '<span class="kpi-d same">ללא שינוי</span>';
+  const rows = [['imp', 'פעמים אוהדים ראו את העסק שלך'], ['open', 'פתחו את הכרטיס שלך'], ['contact', 'לחצו להתקשר או לשלוח וואטסאפ'], ['hearts', 'אוהדים חדשים סימנו לב לעסק שלך']];
+  document.getElementById('kpiList').innerHTML = rows.map(([k, l]) =>
+    `<div class="kpi-row"><span class="kpi-n">${cur[k]}</span><span class="kpi-l">${l}</span>${delta(cur[k], prev && [prev[k]])}</div>`).join('');
+  document.getElementById('kpiNote').textContent = (prev ? 'החצים משווים לשבוע שלפניו. ' : 'אין נתונים לשבוע שלפניו להשוואה. ') +
+    'כניסות שלך לכרטיס של עצמך לא נספרות. בדמו — מספרים לדוגמה.';
+}
+function moveWeek(d) { weekOff = Math.min(WEEKS.length - 1, Math.max(0, weekOff + d)); renderWeek(); }
 function openDrawer() { document.getElementById('drawer').classList.add('open'); }
 function closeDrawer() { document.getElementById('drawer').classList.remove('open'); }
 // §473י — הקוביות מציגות **רק** את הבלוק שנבחר (רמי: "במקום המון מידע בדף"). הקוביות עצמן
@@ -974,7 +1011,7 @@ function convRowHtml(c) {
     : last.from === 'me' ? `<span class="conv-tag wait">ממתינה לתשובה</span>`
     : `<span class="conv-tag open">פתוחה</span>`;
   return `<button class="conv-row ${c.status}" onclick="openConv(${c.id})">
-      <div class="conv-row-top">${c.topic ? '<span class="topic">על העסק</span>' : ''}<b>${esc(subjectOf(c))}</b></div>
+      <div class="conv-row-top"><b>${esc(subjectOf(c))}</b></div>
       <div class="conv-row-meta">${state2}<span>${c.msgs.length} הודעות · ${ago(lastAt(c))}</span></div>
     </button>`;
 }
@@ -1013,15 +1050,15 @@ function newConv() {
   document.getElementById('convNew').hidden = false;
   document.getElementById('msgText').focus();
 }
-// שיחה חדשה. אצל בעל עסק — "בנושא העסק שלי" מסמן אותה כשיחה עסקית.
+// שיחה חדשה.
 function sendFanMsg() {
   const ta = document.getElementById('msgText'); const t = ta.value.trim();
   if (!t) { toast('כתבו משהו קודם'); return; }
-  const biz = isBizView() && document.getElementById('topicBiz').checked;
+
   const id = Math.max(0, ...state.convs.map(c => c.id)) + 1;
-  state.convs.push({ id, status: 'open', topic: biz ? 'biz' : '', biz: isBizView(), who: isBizView() ? 'biz' : 'fan',
+  state.convs.push({ id, status: 'open', biz: isBizView(), who: isBizView() ? 'biz' : 'fan',
     msgs: [{ from: 'me', text: t, at: Date.now() }] });
-  ta.value = ''; document.getElementById('topicBiz').checked = false;
+  ta.value = '';
   document.getElementById('convNew').hidden = true;
   toast('נשלח — נחזור אליך כאן ובמייל');
   openConv(id);
@@ -1123,7 +1160,7 @@ function renderAdmin() {
     const waiting = c.msgs[c.msgs.length - 1].from === 'me';
     return `
     <div class="inq">
-      <div class="inq-who">רמי בן טל · #00001 ${c.topic ? '<span class="topic">על העסק</span>' : ''}
+      <div class="inq-who">רמי בן טל · #00001
         <span class="conv-tag ${waiting ? 'wait' : 'open'}">${waiting ? 'ממתינה לתשובה' : 'נענתה — פתוחה'}</span></div>
       <div class="inq-meta">050-0000000 · rami@example.com${c.who === 'biz' || c.biz ? ' · בעל העסק "שווארמה רמי"' : ''} · ${c.msgs.length} הודעות</div>
       ${c.msgs.map(m => `<div class="inq-msg${m.from === 'team' ? ' team' : ''}"><b>${m.from === 'me' ? 'הוא' : 'אתה'}:</b> ${esc(m.text)}</div>`).join('')}
@@ -1174,6 +1211,7 @@ function showPush(t, b) {
   clearTimeout(pushT); pushT = setTimeout(() => el.classList.remove('show'), 3600);
 }
 setMode(sendMode);
+renderWeek();
 render();
 </script>
 </body>
