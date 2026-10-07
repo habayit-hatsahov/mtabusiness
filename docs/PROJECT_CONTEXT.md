@@ -25165,3 +25165,5 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
   - "הפרסום המנוהל" כבוי, כך שהאפליקציה עולה לבד כשהבדיקה עוברת. "שליחת 3 שינויים לבדיקה" נשלח ב-7.10.
   - **שתי אזהרות, שאינן חוסמות:** אין קובץ deobfuscation, כי `minifyEnabled false` ואין קוד ממוסך, ולכן אין מה לפענח. אין סמלי Native, כי הקוד ה-Native מגיע מספריות התוספים. הסמלים רלוונטיים רק לניתוח קריסות; אפשר להוסיף `ndk { debugSymbolLevel 'FULL' }` בבנייה הבאה.
 - 🔲 **הבא:** לאמת שהאפליקציה חיה בחנויות: `play.google.com/store/apps/details?id=il.co.yellowzone.app` (היה 404) ו-`itunes.apple.com/lookup?bundleId=il.co.yellowzone.app&country=il` (היה 0). להחזיר ל-#00058 את השם האמיתי של אבירן. 1.0.1 ל-iOS על המק.
+- ✅ **(7.10, 20:20 UTC) iOS 1.0 חי ב-App Store:** `apps.apple.com/il/app/yellow-zone/id6815345699` (נבדק ב-lookup). Play: עדיין 404, כלומר בבדיקה.
+- ✅ **#00058 (מזהה `6ko9JOVnImImeU2I1mFg`):** "שומע מ" הוחלף ב-`firstName`=אבירן, `lastName`=יהב (PATCH עם updateMask, אומת בקריאה חוזרת).
