@@ -25205,4 +25205,4 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 1. `git pull` ← `cd app` ← `npm install` ← `npx cap sync ios` (בלי זה אין `server.url`, ר' §458) ← לפתוח את `app/ios/App/App.xcodeproj`
 2. **קודם Run על האייפון שלו, לא Archive.** לבדוק: (א) גלילה בדף הבית — האזור של השעה נשאר לבן; (ב) פתיחת כרטיס עסק; (ג) מצב כהה במכשיר — השעה עדיין כהה וקריאה; (ד) כניסה עם Google — החלון של iOS אומר "Yellow Zone" ולא "App"; (ה) לרוחב, אם רלוונטי.
 3. אם הכול תקין: Any iOS Device ← Product ← Archive ← Distribute ← App Store Connect ← Upload.
-4. **רמי, בדפדפן:** App Store Connect ← Yellow Zone ← "+" גרסה **1.0.1** ← What's New ומילות מפתח מ-`app-store-listing.md` §9 ← לבחור Build 3 ← Submit. אין שאלת הצפנה, כי היא כבר ב-plist.
+4. **רמי, בדפדפן:** App Store Connect ← Yellow Zone ← "+" גרסה **1.0.1** ← What's New ומילות מפתח מ-`app-store-listing.md` §9 ← **App Information ← Subtitle: "הטבות בלעדיות לאוהדי מכבי"** (היה "...מכבי ת״א"; החלטת רמי 8.10) ← לבחור Build 3 ← Submit. אין שאלת הצפנה, כי היא כבר ב-plist.
