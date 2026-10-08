@@ -434,7 +434,7 @@
       times.appendChild(cl);
     } else {
       times.appendChild(timeSelect(d.open, onOpen));
-      var sp = document.createElement('span'); sp.className = 'hbh-sep'; sp.textContent = '—';
+      var sp = document.createElement('span'); sp.className = 'hbh-sep'; sp.textContent = '–';
       times.appendChild(sp);
       times.appendChild(timeSelect(d.close, onClose));
     }
@@ -490,7 +490,7 @@
 
       var modes = document.createElement('div');
       modes.className = 'hbh-modes';
-      [['fixed', 'שעות קבועות'], ['other', 'אחר — אני אכתוב בעצמי']].forEach(function (p) {
+      [['fixed', 'שעות קבועות'], ['other', 'אחר – אני אכתוב בעצמי']].forEach(function (p) {
         var b = document.createElement('button');
         b.type = 'button';
         b.className = 'hbh-mode' + (m.mode === p[0] ? ' sel' : '');
@@ -503,7 +503,7 @@
       var hint = document.createElement('div');
       hint.className = 'hbh-hint';
       hint.textContent = m.mode === 'other'
-        ? 'לעסקים שהשעות שלהם לא נכנסות לטבלה — כתבו במילים שלכם, ואנחנו נסדר את זה.'
+        ? 'לעסקים שהשעות שלהם לא נכנסות לטבלה – כתבו במילים שלכם, ואנחנו נסדר את זה.'
         : 'יום שכבוי = סגור. שישי ושבת נפרדים כי כמעט לכל עסק הם שונים.';
       box.appendChild(hint);
 
@@ -518,7 +518,7 @@
         if (opts.approvalNote !== false) {
           var note = document.createElement('div');
           note.className = 'hbh-note';
-          note.innerHTML = '<span>⏳</span><span><b>מה שתכתבו כאן עובר אישור של הצוות</b> לפני שהוא מוצג באתר — ' +
+          note.innerHTML = '<span>⏳</span><span><b>מה שתכתבו כאן עובר אישור של הצוות</b> לפני שהוא מוצג באתר – ' +
             'כדי שנוכל לנסח את זה אחיד ולוודא שהוא ברור ללקוחות.</span>';
           wrap.appendChild(note);
         }

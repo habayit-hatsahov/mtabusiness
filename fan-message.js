@@ -55,7 +55,7 @@
       '<span class="contact-option-icon">💬</span>' +
       '<div class="contact-option-body">' +
         '<div class="contact-option-title">כתבו לנו</div>' +
-        '<div class="contact-option-sub">הודעה ישירה לצוות — נחזור אליכם</div>' +
+        '<div class="contact-option-sub">הודעה ישירה לצוות – נחזור אליכם</div>' +
       '</div>';
     var panel = document.createElement('div');
     panel.className = 'fanmsg-panel';
@@ -169,7 +169,7 @@
       btn.disabled = false; btn.textContent = 'שליחה';
       showErr(e && e.message === 'fanmsg-no-auth'
         ? 'צריך להיות מחוברים כדי לשלוח הודעה. אפשר לכתוב לנו גם במייל yellowzonemta@gmail.com'
-        : 'ההודעה לא נשלחה — נסו שוב, או כתבו לנו במייל yellowzonemta@gmail.com');
+        : 'ההודעה לא נשלחה – נסו שוב, או כתבו לנו במייל yellowzonemta@gmail.com');
     }
   }
 

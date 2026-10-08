@@ -124,7 +124,7 @@ exports.yzApiProxy = onRequest(
       }
     }
 
-    console.error('§374 proxy — כל כתובות הוורקר נכשלו', last);
+    console.error('§374 proxy – כל כתובות הוורקר נכשלו', last);
     res.status(502).json({ error: 'upstream_unreachable' });
   }
 );

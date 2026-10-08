@@ -162,7 +162,7 @@ export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, only
       // 'pending' (משתמש בלינק כדי להעלות תמונות לפני האישור, ואין לו עדיין מסלול-תפריט),
       // ועסק מאושר שמשום מה אין לו מסלול-תפריט — שניהם היו ננעלים בחוץ בלי דרך חזרה.
       if (!canEnterViaMenu && status !== 'rejected') {
-        rep.skipped.push({ id: b.id, name, status, why: 'no_menu_path — היה ננעל בחוץ' });
+        rep.skipped.push({ id: b.id, name, status, why: 'no_menu_path – היה ננעל בחוץ' });
         continue;
       }
       try {
@@ -229,7 +229,7 @@ export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, only
 
       if (!code) { rep.skipped.push({ id: m.id, name, why: 'already_clean' }); continue; }
       if (!haveCode.has(m.id)) {
-        rep.skipped.push({ id: m.id, name, why: 'no_copy_in_memberCodes — הרץ copy-member-codes קודם' });
+        rep.skipped.push({ id: m.id, name, why: 'no_copy_in_memberCodes – הרץ copy-member-codes קודם' });
         continue;
       }
       try {
@@ -351,7 +351,7 @@ export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, only
       // לא דורסים טוקן קיים בשום מצב — גם לא אחד שנשאר בטעות על מסמך העסק (אחרי cleanup
       // אין כאלה, אבל אם יופיע אחד, הוא סימן לתקלה ולא הזמנה להנפיק שני טוקנים לאותו עסק).
       if (haveToken.has(b.id)) { report.skipped.push({ id: b.id, name, why: 'has_token' }); continue; }
-      if (tok) { report.skipped.push({ id: b.id, name, why: 'legacy_token_on_biz_doc — הרץ mode=copy' }); continue; }
+      if (tok) { report.skipped.push({ id: b.id, name, why: 'legacy_token_on_biz_doc – הרץ mode=copy' }); continue; }
       const status = (b.fields.status && b.fields.status.stringValue) || '';
       const fresh = crypto.randomUUID();
       try {
@@ -382,7 +382,7 @@ export async function runMigrateBizTokens(env, accessToken, { mode, dryRun, only
       if (!tok) { report.skipped.push({ id: b.id, name, why: 'already_clean' }); continue; }
       // רשת-הביטחון המרכזית: לא מוחקים טוקן שאין לו עותק — עסק כזה היה מאבד גישה לדשבורד.
       if (!haveToken.has(b.id)) {
-        report.skipped.push({ id: b.id, name, why: 'no_copy_in_bizTokens — הרץ mode=copy קודם' });
+        report.skipped.push({ id: b.id, name, why: 'no_copy_in_bizTokens – הרץ mode=copy קודם' });
         continue;
       }
       try {

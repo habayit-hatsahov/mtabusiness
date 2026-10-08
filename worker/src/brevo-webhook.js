@@ -55,7 +55,7 @@ const MAX_EVENTS_PER_REQUEST = 8;
 // שמות-האירועים כאן הם ה-camelCase של ה-API ליצירה (hardBounce), בעוד שב-payload שמגיע בפועל
 // הם snake_case (hard_bounce) — הבדל אמיתי בצד של Brevo, ר' EVENT_STATUS למעלה.
 const WEBHOOK_EVENTS = ['delivered', 'hardBounce', 'softBounce', 'blocked', 'spam', 'invalid', 'opened', 'uniqueOpened', 'click'];
-const WEBHOOK_DESC = 'Yellow Zone — delivery events';
+const WEBHOOK_DESC = 'Yellow Zone – delivery events';
 
 export async function handleSetupBrevoWebhook(request, env) {
   const url = new URL(request.url);

@@ -31,7 +31,7 @@
 
   // ── הודעות שגיאה: מה לעשות, לא קוד באנגלית ──────────────────────────────────────────
   var MSGS = {
-    google_already_linked: 'חשבון ה-Google הזה כבר מקושר לאוהד אחר. אם זו טעות — כתבו לנו.',
+    google_already_linked: 'חשבון ה-Google הזה כבר מקושר לאוהד אחר. אם זו טעות – כתבו לנו.',
     invalid_google_token:  'האימות מול Google לא הצליח. נסו שוב.',
     not_signed_in:         'נראה שהחיבור שלכם פג. רעננו את הדף ונסו שוב.',
     member_not_found:      'לא מצאנו את הרשומה שלכם. כתבו לנו ונטפל בזה.',
@@ -53,10 +53,10 @@
         '<div class="sheet-handle"></div>' +
         '<button class="sheet-close" type="button" data-hb-google-close>✕</button>' +
         '<div class="contact-sheet-title">🔗 כניסה בלי קוד</div>' +
-        '<div class="contact-sheet-sub">חברו את חשבון Google שלכם — פעם אחת, וזהו.</div>' +
+        '<div class="contact-sheet-sub">חברו את חשבון Google שלכם – פעם אחת, וזהו.</div>' +
         '<div style="font-size:13.5px;line-height:1.7;margin:14px 0 4px;color:var(--ink-2,#3A4C7A)">' +
           'מהרגע הזה תיכנסו בלחיצה אחת <b>מכל דפדפן ומכל מכשיר</b>, בלי לחפש קוד ובלי לזכור אותו.<br>' +
-          'קוד הכניסה שלכם ממשיך לעבוד כרגיל — זו רק דרך נוספת.' +
+          'קוד הכניסה שלכם ממשיך לעבוד כרגיל – זו רק דרך נוספת.' +
         '</div>' +
         '<div id="googleBtnHost" style="display:flex;justify-content:center;margin:16px 0 6px"></div>' +
         '<div id="googleLinkMsg" style="display:none;font-size:13px;line-height:1.6;border-radius:12px;padding:10px 12px;margin-bottom:6px"></div>' +
@@ -156,7 +156,7 @@
         // **"להמשיך עם Google"** ולא "המשך עם Google" — וזה מה שכתוב כאן עד היום. הכיתוב
         // הוא של גוגל ואי אפשר לשנות אותו, ולכן ההודעה היא זו שמתיישרת. הבטחה שמצטטת
         // כפתור בשם אחר שולחת את החבר לחפש משהו שאינו על המסך.
-        msg('✅ מעולה — החשבון חובר. בפעם הבאה פשוט לחצו "להמשיך עם Google".', 'ok');
+        msg('✅ מעולה – החשבון חובר. בפעם הבאה פשוט לחצו "להמשיך עם Google".', 'ok');
         // §388 — הבאנר בדף הבית החליף את פריט-התפריט. שניהם מוסתרים כאן, כי החיבור
         // מתבצע בתוך הגיליון והדף עצמו אינו נטען מחדש אחריו — בלי זה ההזמנה לחבר
         // נשארת על המסך אחרי שהחיבור כבר הצליח.
@@ -184,7 +184,7 @@
     if (typeof opts.apiFetch !== 'function' || typeof opts.getIdToken !== 'function') {
       // ⚠️ שקט ולא זריקה: דף שלא סיפק את התלויות פשוט לא מציג את הפריט, במקום להפיל
       // את המודול שמתחתיו. אבל כן נאמר בקונסול — כישלון שקט לגמרי הוא מה שהסתיר את §357.
-      console.warn('google-link: init נקרא בלי apiFetch/getIdToken — הפריט לא יוצג');
+      console.warn('google-link: init נקרא בלי apiFetch/getIdToken – הפריט לא יוצג');
       return;
     }
     cfg = opts;

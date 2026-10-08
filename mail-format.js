@@ -119,7 +119,7 @@ export function loginBlockHtml(vars) {
     // שלא אומרת לו כלום, ונוסח שמשתנה לפי ספק הוא בדיוק הפיצול שהמשתמש ביקש להימנע ממנו.
     return button
       + p('font-size:15px;line-height:1.6;color:#0A2A66',
-          'בחלון שייפתח לחצו על <b>Google</b> או על <b>Apple</b> — לפי החשבון שאיתו נרשמתם — בלי קוד.<br>מאותו רגע האתר זוכר אתכם.')
+          'בחלון שייפתח לחצו על <b>Google</b> או על <b>Apple</b> – לפי החשבון שאיתו נרשמתם – בלי קוד.<br>מאותו רגע האתר זוכר אתכם.')
       // ⚠️ משני בגודל ובמיקום — **לא בצבע**. אפור (#888) נדחה: "שיהיה לפחות בצבע שחור שיראו את זה".
       + (code ? p('font-size:14px;line-height:1.6;color:#16130a',
           `מעדיפים קוד? קוד הכניסה: <b style="direction:ltr;unicode-bidi:isolate;letter-spacing:2px;color:#000">${escapeHtml(code)}</b>, יחד עם מספר הטלפון שאיתו נרשמתם.`) : '');
@@ -165,7 +165,7 @@ export function socialRowHtml(inBody = false) {
 export function footerHtml(bodyHtml) {
   const socialInBody = String(bodyHtml || '').includes('data-social-row');
   return (socialInBody ? '' : socialRowHtml()) + `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px;line-height:1.6">
-    אם המייל הזה נחת בתיקיית הספאם/קידומים, נשמח שתסמנו אותו כ"לא ספאם" — כך מיילים עתידיים יגיעו ישר לתיבה הראשית.<br>
+    אם המייל הזה נחת בתיקיית הספאם/קידומים, נשמח שתסמנו אותו כ"לא ספאם" – כך מיילים עתידיים יגיעו ישר לתיבה הראשית.<br>
     Yellow Zone · תל אביב, ישראל
   </div>`;
 }

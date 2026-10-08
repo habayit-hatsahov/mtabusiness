@@ -197,7 +197,7 @@
     if (r.ok || r.reason === 'empty') return null;
     var what = kind === 'facebook' ? 'עמוד הפייסבוק' : kind === 'instagram' ? 'פרופיל האינסטגרם' : 'האתר';
     if (r.reason === 'reversed') {
-      return 'נראה שהסדר התהפך — השם צריך לבוא **אחרי** הדומיין' +
+      return 'נראה שהסדר התהפך – השם צריך לבוא **אחרי** הדומיין' +
              (r.suggest ? ', כלומר ' + r.suggest : '') + '.';
     }
     if (r.reason === 'bad_url') return 'הכתובת של ' + what + ' לא תקינה.';

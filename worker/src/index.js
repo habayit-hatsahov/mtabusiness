@@ -308,7 +308,7 @@ async function linkableByVerifiedEmail(env, accessToken, g, subField) {
     // ⚠️ תקרה שנגמרה היא סריקה חלקית, כלומר "לא נמצא" שאינו אמין. לא משנה את ההחלטה
     // (עצירה היא עדיין הצד הבטוח), אבל **חייב להיראות בלוג** — אחרת הוא ייעלם בשקט.
     if (approved.length >= MEMBER_EMAIL_SCAN_LIMIT) {
-      console.warn('linkableByVerifiedEmail: סריקת המיילים הגיעה לתקרה — ייתכן שההתאמה פוספסה');
+      console.warn('linkableByVerifiedEmail: סריקת המיילים הגיעה לתקרה – ייתכן שההתאמה פוספסה');
     }
     rows = approved.filter((m) => String(m.fields.email || '').trim().toLowerCase() === g.email);
   }
@@ -573,7 +573,7 @@ async function handleAppleExchange({ idToken, code, redirectUri, name }, env) {
   const withName = (o) => (nm ? { ...o, name: nm } : o);
   // נבדק **אחרי** האימות, במכוון: "לא הוגדר מפתח" אינו מידע שמגיע למי שלא הוכיח זהות.
   if (!appleKeyConfigured(env)) {
-    console.log('apple-exchange: skipped — apple_key_not_configured');
+    console.log('apple-exchange: skipped – apple_key_not_configured');
     return withName({ skipped: 'apple_key_not_configured' });
   }
   // §468ג — גם כתובת-החזרה של זרימת-ההפניה (APPLE_CALLBACK_URL) — הקוד שלה הונפק מולה.
@@ -582,7 +582,7 @@ async function handleAppleExchange({ idToken, code, redirectUri, name }, env) {
   const x = await exchangeAppleCode(env, a, code, ru);
   if (!x.ok) {
     // ⚠️ בלי sub ובלי מייל בשורה — ר' ההערה על [observability] ב-wrangler.toml.
-    console.log('apple-exchange: failed —', x.reason, x.detail || '', 'aud=' + a.aud);
+    console.log('apple-exchange: failed –', x.reason, x.detail || '', 'aud=' + a.aud);
     return withName({ error: x.reason });
   }
 
@@ -1106,7 +1106,7 @@ async function handleDeleteAccount({ idToken, reason }, request, env) {
   let appleRevoke = 'not_apple';
   if (d.appleSub) {
     appleRevoke = await revokeAppleForSub(env, accessToken, d.appleSub);
-    console.log('delete-account: apple revoke —', appleRevoke);
+    console.log('delete-account: apple revoke –', appleRevoke);
   }
 
   // ── חשבון ה-Auth עצמו ───────────────────────────────────────────────────────────────
@@ -1193,7 +1193,7 @@ async function handleAdminAppleRevoke({ idToken, logId }, env) {
   } else {
     result = await revokeAppleForSub(env, accessToken, sub);
   }
-  console.log('admin-apple-revoke:', logId, '—', result);
+  console.log('admin-apple-revoke:', logId, '–', result);
 
   try { await firestorePatch(env, accessToken, `deletionLog/${logId}`, { adminAppleRevoke: result }); }
   catch (err) { console.error('deletion-log adminAppleRevoke update failed:', err); }

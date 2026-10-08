@@ -112,7 +112,7 @@
   // שכתוב עליו **כניסה**. אין לנו שליטה על הטקסט בכפתור, ולכן המילה "הרשמה" חייבת לשבת
   // בשורה שכן בשליטתנו — ומיד מעליו. נצפה חי ע"י המשתמש (3.9).
   function defaultCap() {
-    return 'הרשמה מהירה עם Google —<br>' +
+    return 'הרשמה מהירה עם Google –<br>' +
            '<b>ובלי לזכור קוד, אף פעם.</b>';
   }
 
@@ -172,7 +172,7 @@
     setField(cfg.fields.email, String(p.email).trim(), true);
     lockEmail(true);
     clearEmailWarn();
-    setCap('✅ <b>' + escapeHtml(p.email) + '</b> — המייל אומת ע"י Google.<br>' +
+    setCap('✅ <b>' + escapeHtml(p.email) + '</b> – המייל אומת ע"י Google.<br>' +
            'אחרי שנאשר אתכם תיכנסו בלחיצה אחת, בלי קוד.' +
            '<button type="button" class="hb-gs-undo" id="hbGsUndo">זה לא החשבון שלי</button>');
     var undo = el('hbGsUndo');
@@ -243,7 +243,7 @@
       setTimeout(function () {
         if (!btnHost.childElementCount) {
           host.style.display = 'none';
-          console.warn('google-signup: כפתור Google לא צויר (origin לא מאושר?) — הבלוק הוסתר');
+          console.warn('google-signup: כפתור Google לא צויר (origin לא מאושר?) – הבלוק הוסתר');
           // 🔑 **זה האירוע החשוב מכולם.** עד §411 הכשל הזה היה `console.warn` בלבד, כלומר
           // בלתי-נראה לחלוטין — ולא הייתה שום דרך לדעת אם "37% נרשמו עם Google" פירושו
           // ששני שליש בחרו למלא ידנית, או ששני שליש **לא ראו כפתור בכלל**. שתי מסקנות
@@ -256,7 +256,7 @@
       return;
     }
     if (tries > 40) {          // ~6 שניות
-      console.warn('google-signup: ספריית Google לא נטענה — הבלוק לא יוצג');
+      console.warn('google-signup: ספריית Google לא נטענה – הבלוק לא יוצג');
       return;
     }
     setTimeout(function () { render(tries + 1); }, 150);
@@ -273,7 +273,7 @@
     if (!token) return { skipped: 'no_token' };
     if (!memberId) return { skipped: 'no_member' };
     if (typeof apiFetch !== 'function') {
-      console.warn('google-signup: attach נקרא בלי apiFetch — הקישור לא נעשה');
+      console.warn('google-signup: attach נקרא בלי apiFetch – הקישור לא נעשה');
       return { skipped: 'no_fetch' };
     }
     try {
@@ -288,7 +288,7 @@
       // ⚠️ google_already_linked כאן = אותו חשבון גוגל כבר יושב על רשומה אחרת, כלומר
       // אותו אדם נרשם כבר פעם קודמת. זו אינה תקלה טכנית אלא כפילות — והיא כבר מסומנת
       // בנפרד ע"י בדיקת-הכפילות של הטופס (אותו מייל), שרצה לפני הכתיבה.
-      console.error('google-signup: /google-attach לא השלים —', (out && out.error) || 'unknown');
+      console.error('google-signup: /google-attach לא השלים –', (out && out.error) || 'unknown');
       return out || { error: 'unknown' };
     } catch (e) {
       console.error('google-signup: /google-attach נכשל (רשת/פסק-זמן)', e);
@@ -300,7 +300,7 @@
     opts = opts || {};
     var f = opts.fields || {};
     if (!opts.hostId || !f.first || !f.last || !f.email) {
-      console.warn('google-signup: init נקרא בלי hostId/fields — הבלוק לא יוצג');
+      console.warn('google-signup: init נקרא בלי hostId/fields – הבלוק לא יוצג');
       return;
     }
     var host = el(opts.hostId);

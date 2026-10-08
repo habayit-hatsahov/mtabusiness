@@ -95,7 +95,7 @@ export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind
   const isResend = kind === 'resend';
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
-    : (isResend ? 'קוד הכניסה שלכם ל-Yellow Zone' : 'אתם בפנים — קוד הכניסה שלכם ל-Yellow Zone');
+    : (isResend ? 'קוד הכניסה שלכם ל-Yellow Zone' : 'אתם בפנים – קוד הכניסה שלכם ל-Yellow Zone');
   const htmlContent = tpl?.body
     ? renderMailHtml(tpl.body, vars, { linkLabel: 'כניסה לאתר' })
     : `
@@ -125,10 +125,10 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
     ? renderMailHtml(tpl.body, vars, { linkLabel: 'כניסה לאזור העסק שלי' })
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
-          <h2>שמחים לבשר — "${businessName}" אושר!</h2>
+          <h2>שמחים לבשר – "${businessName}" אושר!</h2>
           <p style="color:#555">העסק שלך עכשיו חלק מהאינדקס הבלעדי שלנו.</p>
           <p><a href="${dashboardLink}" style="display:inline-block;background:#FFDE00;color:#16130a;font-weight:900;text-decoration:none;padding:12px 24px;border-radius:14px;margin-top:8px">לניהול העסק שלך</a></p>
-          <p style="color:#888;font-size:13px">עריכת פרטים, תמונות ועוד — הקישור אישי ולא ניתן להעברה</p>
+          <p style="color:#888;font-size:13px">עריכת פרטים, תמונות ועוד – הקישור אישי ולא ניתן להעברה</p>
         </div>`;
 
   await sendBrevoEmail(env, {
@@ -174,7 +174,7 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
           ${codeBlockHtml(code)}
           <p>נכנסים איתו יחד עם מספר הטלפון שאיתו נרשמתם.</p>
           <hr style="border:none;border-top:1px solid #eee;margin:24px 0"/>
-          <p style="color:#555">בנוסף — העסק "${businessName}" שלך אושר לאינדקס!</p>
+          <p style="color:#555">בנוסף – העסק "${businessName}" שלך אושר לאינדקס!</p>
           <p><a href="${dashboardLink}" style="display:inline-block;background:#FFDE00;color:#16130a;font-weight:900;text-decoration:none;padding:12px 24px;border-radius:14px;margin-top:8px">לניהול העסק שלך</a></p>
         </div>`;
 

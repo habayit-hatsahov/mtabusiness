@@ -29,7 +29,7 @@ const TAG_TO_QUERY = {
   'עבודת גינון והדברה': 'gardening pest control service',
   'חשמל, מיזוג אוויר ומנעולנים': 'electrician air conditioning technician',
   'חנות חיות': 'pet shop supplies store',
-  'נדל״ן — קבלנים ויזמים': 'real estate construction apartment building',
+  'נדל״ן – קבלנים ויזמים': 'real estate construction apartment building',
   'בגדים ואופנה': 'fashion clothing store',
   'תכשיטים ויהלומים': 'jewelry diamonds store',
   'משקפיים ואביזרי אופנה': 'eyewear glasses store',

@@ -136,7 +136,7 @@ export async function runDeletionLogPurge(env, now = new Date()) {
     }
 
     if (summary.windowFull) {
-      console.warn('purge: ⚠️ חלון הסריקה מלא (' + SCAN_LIMIT + ') — ייתכן שרשומות חדשות אינן נראות');
+      console.warn('purge: ⚠️ חלון הסריקה מלא (' + SCAN_LIMIT + ') – ייתכן שרשומות חדשות אינן נראות');
     }
     // 🔴 **ללא תנאי, ובכוונה — זו הראיה היחידה שהמנגנון רץ בכלל.**
     // היה כאן `if (purged || failed)`, ו**היום אין ולו רשומה אחת בת 12 חודשים ביומן**:

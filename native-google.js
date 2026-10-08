@@ -251,7 +251,7 @@
         if (r.reason === 'canceled') return;
         // ⚠️ תמיד לקונסול — כישלון שקט הוא מה שהסתיר את §357. `config` כאן כמעט תמיד
         // פירושו Android client חסר / SHA-1 שגוי ב-Cloud Console, לא באג בקוד.
-        console.warn('native-google: הכניסה נכשלה —', r.reason, r.detail || '');
+        console.warn('native-google: הכניסה נכשלה –', r.reason, r.detail || '');
         msg.textContent = MSGS[r.reason] || MSG_GENERIC;
         msg.classList.add('show');
       });

@@ -214,7 +214,7 @@
   }
 
   function defaultCap() {
-    return 'הרשמה מהירה עם Apple —<br><b>ובלי לזכור קוד, אף פעם.</b>';
+    return 'הרשמה מהירה עם Apple –<br><b>ובלי לזכור קוד, אף פעם.</b>';
   }
 
   function setField(id, value, force) {
@@ -322,9 +322,9 @@
     // שנייה אחר כך היא בדיוק מה שאפל דחתה. רק 'missing' (אין גם עותק שמור) מבקש.
     var showCap = function (nameState) {
       setCap((relay
-               ? '✅ נרשמים עם <b>המייל המוסתר</b> של Apple — המיילים שלנו יגיעו אליכם דרך Apple.<br>'
-               : '✅ <b>' + escapeHtml(email) + '</b> — המייל אומת ע"י Apple.<br>') +
-             (nameState === 'missing' ? 'השם לא התקבל מ-Apple — נשמח שתמלאו אותו.<br>' : '') +
+               ? '✅ נרשמים עם <b>המייל המוסתר</b> של Apple – המיילים שלנו יגיעו אליכם דרך Apple.<br>'
+               : '✅ <b>' + escapeHtml(email) + '</b> – המייל אומת ע"י Apple.<br>') +
+             (nameState === 'missing' ? 'השם לא התקבל מ-Apple – נשמח שתמלאו אותו.<br>' : '') +
              'אחרי שנאשר אתכם תיכנסו בלחיצה אחת, בלי קוד.' +
              '<button type="button" class="hb-as-undo">זה לא החשבון שלי</button>');
       var undo = part('.hb-as-undo');
@@ -579,7 +579,7 @@
       // "התחרט" ו"נכשל בשקט אחרי האישור" נראים זהים לגמרי מהנתונים.
       track(('asNativeFail:' + r.reason).slice(0, 50));
       if (r.reason === 'canceled') return;     // הוא החליט, אין מה לומר לו
-      console.warn('apple-signup: כניסה נייטיב נכשלה —', r.reason, r.detail || '');
+      console.warn('apple-signup: כניסה נייטיב נכשלה –', r.reason, r.detail || '');
       setCap('⚠️ משהו השתבש מול Apple. אפשר פשוט למלא את הטופס ידנית.');
     } finally {
       if (btn) btn.disabled = false;
@@ -660,7 +660,7 @@
     // הוא נכתב כאן, ולא מפוזר על פני הדפים.
     var clientId = cfg.clientId || SERVICES_ID;
     if (!clientId) {
-      console.warn('apple-signup: SERVICES_ID ריק — הבלוק לא יוצג (חשבון אפל טרם הוגדר)');
+      console.warn('apple-signup: SERVICES_ID ריק – הבלוק לא יוצג (חשבון אפל טרם הוגדר)');
       return;
     }
 
@@ -677,7 +677,7 @@
           usePopup: true,
         });
       } catch (e) {
-        console.warn('apple-signup: AppleID.auth.init נכשל — הבלוק לא יוצג', e);
+        console.warn('apple-signup: AppleID.auth.init נכשל – הבלוק לא יוצג', e);
         track('asBlocked');
         return;
       }
@@ -689,7 +689,7 @@
       return;
     }
     if (tries > 40) {          // ~6 שניות, אותו סף של google-signup
-      console.warn('apple-signup: ספריית Apple לא נטענה — הבלוק לא יוצג');
+      console.warn('apple-signup: ספריית Apple לא נטענה – הבלוק לא יוצג');
       track('asBlocked');
       return;
     }
@@ -714,7 +714,7 @@
     var code = res && res.authorization && res.authorization.code;
     if (!code) { track('asExchange:no_code'); return null; }
     if (!cfg || typeof cfg.apiFetch !== 'function') {
-      console.warn('apple-signup: init בלי apiFetch — הקוד לא נשלח, והחשבון לא יהיה ניתן לביטול אצל אפל');
+      console.warn('apple-signup: init בלי apiFetch – הקוד לא נשלח, והחשבון לא יהיה ניתן לביטול אצל אפל');
       track('asExchange:no_fetch');
       return null;
     }
@@ -748,7 +748,7 @@
     if (!token) return { skipped: 'no_token' };
     if (!memberId) return { skipped: 'no_member' };
     if (typeof apiFetch !== 'function') {
-      console.warn('apple-signup: attach נקרא בלי apiFetch — הקישור לא נעשה');
+      console.warn('apple-signup: attach נקרא בלי apiFetch – הקישור לא נעשה');
       return { skipped: 'no_fetch' };
     }
     try {
@@ -760,7 +760,7 @@
       });
       var out = await resp.json();
       if (out && out.ok) { dropPending(); return out; }
-      console.error('apple-signup: /apple-attach לא השלים —', (out && out.error) || 'unknown');
+      console.error('apple-signup: /apple-attach לא השלים –', (out && out.error) || 'unknown');
       return out || { error: 'unknown' };
     } catch (e) {
       console.error('apple-signup: /apple-attach נכשל (רשת/פסק-זמן)', e);
@@ -772,7 +772,7 @@
     opts = opts || {};
     var f = opts.fields || {};
     if (!opts.hostId || !f.first || !f.last || !f.email) {
-      console.warn('apple-signup: init נקרא בלי hostId/fields — הבלוק לא יוצג');
+      console.warn('apple-signup: init נקרא בלי hostId/fields – הבלוק לא יוצג');
       return;
     }
     var host = el(opts.hostId);
