@@ -25189,3 +25189,20 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - **גיבוי שליחת הטופס (§462):** אין אף רשומה עם `submitPath=='worker'`. **אבל זו לא ראיה שהגיבוי לא נדרש:** מאז 24.9 אין אף `submittedAt` חדש ב-`members`, ומ-27.9 אין `approvedAt` (רשומות בדיקה שנמחקו לא נספרות). כלומר המנגנון עוד לא נבחן מול הרשמה אמיתית.
 - **מייל "בלי קוד" (§465):** מאז 5.10 לא נשלח אף מייל אישור, כי לא היה את מי לאשר. נשאר פתוח עד ההרשמה הבאה.
 - 📌 **ממצא:** אין הרשמות חדשות כבר שבועיים (235 חברים, 0 ממתינים).
+
+### §480 — iOS 1.0.1 הוכנה מ-Windows, לבנייה עם אבירן ביום שני (8.10)
+**החלטת רמי:** בלי בנייה בענן. מחכים לאבירן ביום שני, וההשקה (פוסט לכולם) ביום שלישי או רביעי.
+**מה שונה (iOS בלבד, האתר לא הושפע):**
+- `app/ios/App/App/AppDelegate.swift` — מחלקה חדשה `MainViewController: CAPBridgeViewController`. ב-`capacitorDidLoad` היא מוסיפה ל-WebView רקע **לבן** אטום, מראש המסך ועד `safeAreaLayoutGuide.top`, ומחזירה אותו לראש ב-`viewDidLayoutSubviews`. **נבדק מול מקור Capacitor 8.5.2** (הורד מ-npm, כי במחשב הזה הוא לא מותקן): `loadView` מבצע `view = webView`, `capacitorDidLoad` נקרא אחרי שה-WebView קיים, ו-`webView` הוא `public`. נוסף `import WebKit`. **המחלקה בקובץ קיים**, כדי לא לערוך את `project.pbxproj` ידנית.
+- `Main.storyboard` — `customClass="MainViewController" customModule="App" customModuleProvider="target"` (היה `CAPBridgeViewController`/`Capacitor`).
+- `Info.plist` — `CFBundleName` = "Yellow Zone" (היה "App") · `UIStatusBarStyle` = `UIStatusBarStyleDarkContent`, כי במצב כהה השעה הייתה לבנה על הרקע הלבן; Capacitor קורא את המפתח ב-`setStatusBarDefaults` · `ITSAppUsesNonExemptEncryption` = false.
+- `project.pbxproj` — `MARKETING_VERSION` 1.0.1, `CURRENT_PROJECT_VERSION` 3.
+- `docs/app-store-listing.md` §9 — What's New ומילות מפתח חדשות (97 תווים).
+- **בכוונה לא נכלל: `WKAppBoundDomains`** (מטמון ה-SW באפליקציה). הוא מגביל ניווט לרשימה של עד 10 דומיינים, וגם את הזרקת הגשר של Capacitor. בלי בדיקה מקיפה זה סיכון לשבור כניסות וקישורים חיצוניים, בשביל מטמון בלבד.
+- **נבדק:** XML של Info.plist ושל ה-storyboard תקין (`@xmldom`), אין מפתחות כפולים, והערכים נכונים. ⚠️ **Swift לא קומפל.** אין כלים ב-Windows, ולכן הקומפילציה הראשונה תהיה אצל אבירן.
+
+**🔲 יום שני — אבירן, על המק:**
+1. `git pull` ← `cd app` ← `npm install` ← `npx cap sync ios` (בלי זה אין `server.url`, ר' §458) ← לפתוח את `app/ios/App/App.xcodeproj`
+2. **קודם Run על האייפון שלו, לא Archive.** לבדוק: (א) גלילה בדף הבית — האזור של השעה נשאר לבן; (ב) פתיחת כרטיס עסק; (ג) מצב כהה במכשיר — השעה עדיין כהה וקריאה; (ד) כניסה עם Google — החלון של iOS אומר "Yellow Zone" ולא "App"; (ה) לרוחב, אם רלוונטי.
+3. אם הכול תקין: Any iOS Device ← Product ← Archive ← Distribute ← App Store Connect ← Upload.
+4. **רמי, בדפדפן:** App Store Connect ← Yellow Zone ← "+" גרסה **1.0.1** ← What's New ומילות מפתח מ-`app-store-listing.md` §9 ← לבחור Build 3 ← Submit. אין שאלת הצפנה, כי היא כבר ב-plist.
