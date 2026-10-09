@@ -2851,6 +2851,28 @@ function socialProofEmptyCellHtml(f) {
   return '<div><div class="form-field-label">פרופיל חברתי · ' + (required ? 'שדה חובה, לא-מנוי' : 'שדה רשות') + '</div>' +
          '<div class="form-field-val empty">' + body + '</div></div>';
 }
+// ── §482 — פרופיל חובה שנמסר כשם-עירום בלי קישור ────────────────────────────────────────
+// 9.10: שני לא-מנויים (#255 "bhshd", #256 "no") אושרו כשבשדה-החובה ישבה מילה ולא פרופיל.
+// הטופס חוסם עכשיו סירובים ושמות קצרים, אבל שם-עירום ארוך עדיין עובר בכוונה (§345) — ולכן
+// כאן אזהרה בולטת: אצל לא-מנוי זה הנתון המרכזי, ואין מה לאשר בלי לחפש אותו קודם.
+// רשומות ישנות ("no") מסומנות בחומרה גבוהה יותר. אותה רשימה ב-fan-register.html.
+const PROFILE_REFUSALS = ['none', 'nope', 'nothing', 'null', 'nil', 'non', 'nada', 'dont', 'idk',
+  'private', 'noprofile', 'test', 'asdf', 'xxxx', 'aaaa', 'nofacebook', 'noinstagram', 'notavailable'];
+function isProfileRefusal(raw) {
+  const v = String(raw || '').trim().toLowerCase().replace(/^@/, '');
+  if (v.length < 4) return true;
+  return PROFILE_REFUSALS.includes(v.replace(/[\s._\-\/']/g, ''));
+}
+function socialProofWeakCellHtml(f) {
+  if (!f || f.isSubscriber || f.facebookUrl || f.instagramUrl) return '';
+  const raw = String(f.profileRaw || '').trim();
+  if (!raw) return '';
+  const msg = isProfileRefusal(raw)
+    ? 'לא נמסר פרופיל – מה שהוקלד אינו שם משתמש. אין על מה לאשר.'
+    : 'שם משתמש בלי קישור – לחפש בפייסבוק ובאינסטגרם לפני אישור.';
+  return '<div><div class="form-field-label">⚠️ בדיקת הפרופיל</div>' +
+         '<div class="form-field-val"><span class="opt-empty warn">' + esc(msg) + '</span></div></div>';
+}
 // האופציות נבנות בתוך מחרוזת-התבנית של הפאנל ולא ממולאות אחרי הרינדור — הפאנל מרונדר מחדש
 // בכל renderMain/refreshOpenDetailPanel, ומילוי מאוחר היה נמחק (ר' §246).
 function birthOptionsHtml(kind, cur) {
@@ -9703,6 +9725,7 @@ function fanFullDetailHtml(id, opts) {
                  שום פרופיל נראה בדיוק כמו אוהד שהשדה לא הוצג לו בכלל – בשני המקרים אין
                  שורה. זה בדיוק מה שהמשתמש ביקש להפריד. התא הזה נכנס רק כששלושתם ריקים. -->
             ${(!f.facebookUrl && !f.instagramUrl && !f.profileRaw) ? socialProofEmptyCellHtml(f) : ''}
+            ${socialProofWeakCellHtml(f)}
           </div>
           <!-- §300 – השורה כבר לא חוזרת על "לא מנוי / היה בעבר": הם תאים ברשת למעלה.
                נשאר רק מה שהיא באמת אומרת – על מה ההחלטה נשענת. -->

@@ -2438,9 +2438,24 @@
     // ⚠️ הקבלה **אינה** גוררת גזירת-קישור: הערך עדיין נשמר ב-profileRaw בלבד ולא מקודם
     // ל-facebookUrl, כי עדיין לא ידוע לאיזו רשת הוא שייך (§345). מה שהשתנה הוא רק מי
     // מורשה להירשם, לא מה אנחנו מתיימרים לדעת עליו.
+    //
+    // ── §482 — סירוב אינו שם-משתמש ─────────────────────────────────────────────────────────
+    // 9.10: לא-מנויה הקלידה "no" ועברה — אינסטגרם מקבל handle של 2 תווים, ולכן כל מילה
+    // באנגלית נקראה "שם-משתמש". שם עירום מתקבל רק מ-4 תווים ומעלה ורק אם אינו סירוב מוכר.
+    // קישור מלא (facebook.com/… / instagram.com/…) לא עובר כאן בכלל — הוא נבדק למעלה.
+    if (isProfileRefusal(v)) return false;
     const nf = window.HB_LINKS.normalize('facebook',  v);
     const ni = window.HB_LINKS.normalize('instagram', v);
     return (nf.ok && nf.confidence === 'guessed') || (ni.ok && ni.confidence === 'guessed');
+  }
+
+  // §482 — סירובים ושמות-עירום קצרים מדי. אותה רשימה ב-admin-dashboard.html (PROFILE_REFUSALS).
+  const PROFILE_REFUSALS = ['none', 'nope', 'nothing', 'null', 'nil', 'non', 'nada', 'dont', 'idk',
+    'private', 'noprofile', 'test', 'asdf', 'xxxx', 'aaaa', 'nofacebook', 'noinstagram', 'notavailable'];
+  function isProfileRefusal(raw) {
+    const v = String(raw || '').trim().toLowerCase().replace(/^@/, '');
+    if (v.length < 4) return true;
+    return PROFILE_REFUSALS.includes(v.replace(/[\s._\-\/']/g, ''));
   }
 
   // ── הערות רכות — מיידעות, לא עוצרות ─────────────────────────────────────────────────────
@@ -2468,6 +2483,10 @@
     }
     // §342 — הנוסח כאן **לא** אומר "אפשר לשלוח ככה": בשדה הזה זה כבר לא נכון, הוא חוסם.
     // הערה רכה שמבטיחה משהו שהכפתור יסתור כעבור שנייה גרועה מאין-הערה בכלל.
+    // §482 — סירוב ("no") או שם קצר מדי: לומר במפורש שבלי פרופיל אין איך לאשר לא-מנוי.
+    if (!socialFieldPlatform(v) && isProfileRefusal(v)) {
+      return 'בלי פייסבוק או אינסטגרם אין לנו איך לאשר הרשמה של לא-מנוי. אם אין לך פרופיל – אפשר לפנות אלינו ב"צריכים עזרה בהרשמה" בתחתית הטופס.';
+    }
     return profileFieldOk(v)
       ? ''
       : 'עדיין לא זיהינו כאן פרופיל. הכי פשוט: לפתוח את הפרופיל שלך בפייסבוק או באינסטגרם ולהעתיק את הכתובת מהדפדפן.';
