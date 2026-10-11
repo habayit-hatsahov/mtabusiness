@@ -8371,7 +8371,7 @@ function bizFullDetailHtml(id, opts) {
              "רק כשיש בעיה": השאלה שהיא עונה עליה היא **"האם החיבור קרה"**, ותשובה
              שלילית שאינה מוצגת אינה נבדלת מרנדור שלא רץ. היא נשלפת מרשומת **החבר**
              של הבעלים (ownerMemberId) – הזהות אינה יושבת על מסמך העסק. -->
-      <div class="identity-notes">${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${googleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${appleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${signupSourceNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${idEmailNote}${idBroadcastNote}${idNoteBox}</div>
+      <div class="identity-notes">${bizOwnerLinkBoxHtml(b)}${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${googleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${appleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${signupSourceNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${idEmailNote}${idBroadcastNote}${idNoteBox}</div>
     </div>`;
 
   const anchorCardHtml = b.status === 'approved' ? `
@@ -9233,6 +9233,50 @@ window.saveBizSec1 = async function(id) {
       });
     } catch (e) { console.warn('owner member sync failed', e); }
   }
+};
+
+// ── §490 — "חיבור בעלים לעסק": תיקון עסק בלי ownerMemberId, בלחיצה ────────────────────────
+// חוק (§484.7): כל בעל עסק הוא גם אוהד. עסק בלי ownerMemberId (או עם מזהה של חבר שאינו קיים)
+// נשבר בכמה מקומות במרכז הניהול. זה קרה בפועל ב-§419 ("סרטוני AI לכל אירוע"), כשהכתיבה של
+// הקישור נכשלה בשקט. המועמדים נמצאים לפי שלושה סימנים, ומוצג **מה** תאם — ההחלטה של המנהל.
+// ⚠️ לעולם לא מחבר אוטומטית: שם שונה (עברית/אנגלית) נפוץ, אבל גם בן-משפחה עם אותו טלפון.
+const bizPhoneKey = (p) => String(p || '').replace(/\D/g, '').replace(/^972/, '0');
+function bizOwnerCandidates(b) {
+  const mail = String(b.ownerEmail || '').trim().toLowerCase();
+  const phone = bizPhoneKey(b.ownerPhone);
+  const out = [];
+  for (const f of (MOCK_FANS || [])) {
+    const why = [];
+    if (f.linkedBusinessId === b.id) why.push('ברשומת החבר כתוב שהוא בעל העסק הזה');
+    if (mail && [f.email, f.googleEmail].some(e => String(e || '').trim().toLowerCase() === mail)) why.push('אותו מייל');
+    if (phone && phone.length >= 9 && bizPhoneKey(f.phone) === phone) why.push('אותו טלפון');
+    if (why.length) out.push({ f, why });
+  }
+  return out.sort((a, c) => c.why.length - a.why.length).slice(0, 4);
+}
+function bizOwnerLinkBoxHtml(b) {
+  if (b.ownerMemberId && findFan(b.ownerMemberId)) return '';
+  const cands = bizOwnerCandidates(b);
+  const head = b.ownerMemberId ? 'הבעלים המקושר לא קיים יותר' : 'העסק לא מחובר לחשבון אוהד';
+  const body = cands.length
+    ? cands.map(({ f, why }) => `<div style="margin-top:8px"><b>${f.memberNumber ? '#' + esc(String(f.memberNumber)) + ' · ' : ''}${esc(f.name)}</b> · ${f.status === 'approved' ? 'מאושר' : esc(f.status || '')}<br><span style="opacity:.8">${why.map(esc).join(' · ')}</span><br>
+        <button type="button" class="slot-btn" style="margin-top:6px" onclick="linkBizOwner('${esc(b.id)}','${esc(f.id)}')">לחבר אותו כבעל העסק</button></div>`).join('')
+    : '<div style="margin-top:6px">לא נמצא חבר עם אותו מייל או טלפון. צריך לבקש מבעל העסק להירשם כאוהד, ואז לחזור לכאן.</div>';
+  return `<div class="identity-note warn"><div class="identity-note-h">⚠️ ${head}</div><div class="identity-note-v">כל בעל עסק חייב להיות גם אוהד. בלי החיבור, העסק לא מקושר לכרטיס הבעלים במרכז הניהול.${body}</div></div>`;
+}
+window.linkBizOwner = async function(bizId, memberId) {
+  const b = findBiz(bizId), f = findFan(memberId);
+  if (!b || !f) return;
+  if (!confirm(`לחבר את ${f.name}${f.memberNumber ? ' (#' + f.memberNumber + ')' : ''} כבעל העסק "${b.name || ''}"?`)) return;
+  try {
+    await updateDoc(doc(db, 'businesses', bizId), { ownerMemberId: memberId });
+    // הצד של החבר — רק מה שחסר, בלי לדרוס עסק אחר שכבר מקושר אליו
+    const mPatch = {};
+    if (f.isBusinessOwner !== true) mPatch.isBusinessOwner = true;
+    if (!f.linkedBusinessId) mPatch.linkedBusinessId = bizId;
+    if (Object.keys(mPatch).length) await updateDoc(doc(db, 'members', memberId), mPatch);
+    await logActivity('businesses', bizId, { type: 'edit', title: 'חובר בעלים לעסק', field: 'ownerMemberId', before: b.ownerMemberId || null, after: memberId });
+  } catch (e) { console.error('linkBizOwner failed', e); alert('החיבור נכשל: ' + (e.code || e.message)); }
 };
 
 // 3 כפתורי-ההחלטה בכרטיס "אימות בעל העסק" (תואם-handoff, 2026-08-04) — שדה חדש ownerVerificationStatus
