@@ -25398,3 +25398,9 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
   1. `git pull` ← `npx cap sync ios` ← Xcode ← **Signing & Capabilities: לוודא ש-"Associated Domains" מופיע** עם `applinks:yellowzone.co.il`. עם חתימה אוטומטית, Xcode רושם את היכולת ב-App ID לבד. אם מופיעה שגיאת provisioning ← "Try Again" / לבחור את הצוות מחדש.
   2. **בדיקה על המכשיר (Run, לפני Archive):** לשלוח לעצמך את `https://yellowzone.co.il/download` בהודעה או ב-Notes, וללחוץ. האפליקציה צריכה להיפתח. אם נפתח Safari: לחיצה ארוכה ← "פתח ב-Yellow Zone". אפל קוראת את ה-AASA דרך ה-CDN שלה, וזה יכול לקחת עד 24 שעות מהפריסה.
 - **Android:** App Links דורשים `assetlinks.json` עם **SHA-256 של מפתח החתימה של Play** (מ-Play Console ← App integrity), ו-intent-filter עם `autoVerify` ב-`AndroidManifest.xml`, בבנייה חדשה (`versionCode` 3). ממתין לטביעת האצבע מרמי.
+
+### §496 – Android 1.2: App Links (הוכן, ממתין ל-SHA-256 מרמי) (11.10)
+**רמי:** חשוב לו שזה יהיה בהשקה גם באנדרואיד. אנדרואיד נבנה מ-Windows (`gradlew.bat`, ר' [[project_android_release_signing]]), ולא צריך מק.
+- **`AndroidManifest.xml`:** intent-filter שני ל-`MainActivity` עם `android:autoVerify="true"`, VIEW / DEFAULT / BROWSABLE, `https://yellowzone.co.il` בנתיבים `/download`, `/download.html`, `/open`, `/open.html`. אותם נתיבים כמו ב-AASA (§495). ה-XML נבדק.
+- **`build.gradle`:** `versionCode 3`, `versionName "1.2"`.
+- 🔲 **חסר:** `/.well-known/assetlinks.json` עם `package_name: il.co.yellowzone.app` ו-`sha256_cert_fingerprints` = **מפתח החתימה של Play** (Play Console ← Test and release ← App integrity ← App signing ← SHA-256). רמי מחפש. ⚠️ **הקובץ חייב להיות באוויר לפני שהעדכון מגיע למשתמשים**, כי אנדרואיד מאמת בזמן ההתקנה או העדכון. אחר כך: `npx cap sync android` ← בנייה (AAB חתום) ← רמי מעלה לייצור.
