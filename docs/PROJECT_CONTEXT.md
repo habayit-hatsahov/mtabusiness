@@ -25387,3 +25387,14 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - 🔲 **הצעד הבא — קישורים שפותחים את האפליקציה ישירות:** iOS Universal Links (Associated Domains + `/.well-known/apple-app-site-association`) יכולים להיכנס ל-1.0.1. Android App Links (`assetlinks.json` עם SHA-256 של מפתח החתימה + intent-filter `autoVerify`) ייכנסו לבנייה הבאה. אחרי זה `APP_OPEN_URL` יכול להיות קישור רגיל של האתר.
 - **נבדק:** `loginBlockHtml` רונדר בשני המצבים, והקישור הוא `download?src=mail`, בלי `welcome.html`. תחביר ✅. ⚠️ מייל אמיתי לא נשלח. ייבדק באישור הבא.
 - `sw.js` → **v184**.
+
+### §495 – iOS 1.0.1: קישורים שפותחים את האפליקציה ישירות (Universal Links) (11.10)
+**רמי:** "כן תכין גרסה לאפל". ההמשך של §494: הכפתור במייל יפתח את האפליקציה בלי לעבור דרך החנות.
+- **`app/ios/App/App/App.entitlements`:** נוסף `com.apple.developer.associated-domains` = `applinks:yellowzone.co.il`, ליד Sign in with Apple. **בלי הערות בקובץ:** הוא נקרא בחתימה, וההסבר נמצא כאן. `www` הוסר בכוונה: `www.yellowzone.co.il` מפנה לכתובת הראשית, ואפל לא עוקבת אחרי הפניות כשהיא קוראת את ה-AASA.
+- **`.well-known/apple-app-site-association` (חדש, בלי סיומת):** `appIDs` = `MX427CFSV2.il.co.yellowzone.app` (מזהה הצוות מ-`APPLE_TEAM_ID` בוורקר). הנתיבים: `/download`, `/download.html`, `/open`, `/open.html`. ה-`.nojekyll` הקיים מאפשר להגיש את `.well-known`.
+- **`open.html` (חדש):** `/open` = "פתחו את האפליקציה". כשהאפליקציה מותקנת הדף בכלל לא נפתח. בלי אפליקציה הוא מפנה ל-`download.html` עם הפרמטרים.
+- **משמעות:** אחרי 1.0.1, באייפון עם האפליקציה, לחיצה על `yellowzone.co.il/download` (הכפתור במייל, §494, וגם הקישור בפוסט) **פותחת את האפליקציה ישירות**, במסך שבו היא נמצאת. אין צורך במאזין `appUrlOpen`, כי המטרה היא רק לפתוח את האפליקציה, לא לנווט לנתיב מסוים. ⚠️ כניסה שנפתחת כך באפליקציה **לא נספרת** כ-`pageView` של `/download`, כי הדף לא נטען. ⚠️ Universal Link לא נפתח כשמקלידים את הכתובת ב-Safari, או בלחיצה על קישור מאותו דומיין בתוך Safari. זו התנהגות של אפל.
+- **🔲 יום שני (אבירן, על המק) — תוספת לרשימה של §480:**
+  1. `git pull` ← `npx cap sync ios` ← Xcode ← **Signing & Capabilities: לוודא ש-"Associated Domains" מופיע** עם `applinks:yellowzone.co.il`. עם חתימה אוטומטית, Xcode רושם את היכולת ב-App ID לבד. אם מופיעה שגיאת provisioning ← "Try Again" / לבחור את הצוות מחדש.
+  2. **בדיקה על המכשיר (Run, לפני Archive):** לשלוח לעצמך את `https://yellowzone.co.il/download` בהודעה או ב-Notes, וללחוץ. האפליקציה צריכה להיפתח. אם נפתח Safari: לחיצה ארוכה ← "פתח ב-Yellow Zone". אפל קוראת את ה-AASA דרך ה-CDN שלה, וזה יכול לקחת עד 24 שעות מהפריסה.
+- **Android:** App Links דורשים `assetlinks.json` עם **SHA-256 של מפתח החתימה של Play** (מ-Play Console ← App integrity), ו-intent-filter עם `autoVerify` ב-`AndroidManifest.xml`, בבנייה חדשה (`versionCode` 3). ממתין לטביעת האצבע מרמי.
