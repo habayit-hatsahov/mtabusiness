@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>נתוני אפליקציה – דמו</title>
+<!-- §487 — דמו ללוח "אפליקציה ושימוש" (רמי, 11.10: "אינטרקטיבי, קריא, לא כמו מה שיש היום").
+     עצמאי, נתוני דוגמה בלבד — לא קורא Firestore. אחרי אישור: משולב ב-admin-dashboard.html
+     מעל הנתונים האמיתיים של §483 (/download), §485 (signupOs/Surface/Method) ו-§486 (visit/engaged).
+     צבעים: אייפון = כחול, אנדרואיד = זהב — עברו את validate_palette (בהיר וכהה). הזהב מתחת ל-3:1
+     על לבן, ולכן כל סדרה מתויגת ישירות ויש תצוגת טבלה. -->
+<link rel="icon" href="icons/favicon-32.png"/>
+<style>
+@font-face { font-family: 'Rubik'; font-style: normal; font-weight: 300 900; font-display: swap;
+  src: url('fonts/rubik-hebrew.woff2') format('woff2');
+  unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
+
+:root {
+  color-scheme: light;
+  --bg: #F4F4EF; --card: #FFFFFF; --line: #E6E6DE; --grid: #EEEEE8;
+  --ink: #0A2A66; --ink-2: #4F5E7E; --ink-3: #8592AD;
+  --brand: #FFD400; --chip: #F1F1EA; --chip-on: #0A2A66; --chip-on-ink: #FFFFFF;
+  --ios: #2a78d6; --android: #eda100;
+  --good: #1a7f4b; --bad: #b45309;
+  --tip-bg: #0A2A66; --tip-ink: #FFFFFF;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0E1424; --card: #161E33; --line: #26304A; --grid: #1F2840;
+    --ink: #F2F4F8; --ink-2: #B5BED1; --ink-3: #7F8AA3;
+    --chip: #1F2840; --chip-on: #FFD400; --chip-on-ink: #0A2A66;
+    --ios: #3987e5; --android: #c98500;
+    --good: #4ade80; --bad: #f59e0b;
+    --tip-bg: #F2F4F8; --tip-ink: #0A2A66;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0E1424; --card: #161E33; --line: #26304A; --grid: #1F2840;
+  --ink: #F2F4F8; --ink-2: #B5BED1; --ink-3: #7F8AA3;
+  --chip: #1F2840; --chip-on: #FFD400; --chip-on-ink: #0A2A66;
+  --ios: #3987e5; --android: #c98500;
+  --good: #4ade80; --bad: #f59e0b;
+  --tip-bg: #F2F4F8; --tip-ink: #0A2A66;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: 'Rubik', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif; line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 18px 16px 60px; }
+
+/* ── כותרת ── */
+.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.top h1 { font-size: 22px; font-weight: 900; margin: 0; }
+.demo-badge { background: var(--brand); color: #0A2A66; font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 99px; }
+.top .theme { margin-inline-start: auto; }
+
+/* ── מסננים: שורה אחת מעל הכול ── */
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; position: sticky; top: 0; z-index: 5;
+  background: var(--bg); padding: 10px 0; margin-bottom: 6px; }
+.seg { display: inline-flex; background: var(--chip); border-radius: 12px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 14px; font-weight: 700;
+  padding: 7px 13px; border-radius: 9px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.seg button[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-ink); }
+.seg button:focus-visible { outline: 2px solid var(--ios); outline-offset: 1px; }
+.key { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.key.ios { background: var(--ios); } .key.android { background: var(--android); }
+.range-note { font-size: 13px; color: var(--ink-3); }
+
+/* ── מספרים מרכזיים ── */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px 12px; cursor: pointer;
+  transition: border-color .15s, transform .15s; text-align: right; font: inherit; color: inherit; }
+.kpi:hover { border-color: var(--ink-3); }
+.kpi[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+.kpi-lbl { font-size: 13px; color: var(--ink-2); font-weight: 700; }
+.kpi-num { font-size: 30px; font-weight: 900; line-height: 1.15; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.kpi-delta { font-size: 12.5px; font-weight: 700; }
+.kpi-delta.up { color: var(--good); } .kpi-delta.down { color: var(--bad); } .kpi-delta.flat { color: var(--ink-3); }
+.kpi-split { display: flex; gap: 10px; font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
+.kpi-split span { display: inline-flex; align-items: center; gap: 5px; }
+.kpi svg { display: block; width: 100%; height: 30px; margin-top: 6px; }
+
+/* ── כרטיסים ── */
+.grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; min-width: 0; }
+.card.full { grid-column: 1 / -1; }
+.card-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.card-h h2 { font-size: 16px; font-weight: 900; margin: 0; }
+.card-sub { font-size: 13px; color: var(--ink-2); margin: 0 0 12px; }
+.as-table { margin-inline-start: auto; border: 0; background: none; color: var(--ink-2); font: inherit; font-size: 12.5px;
+  font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.legend { display: flex; gap: 14px; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend .ln { width: 14px; height: 2px; border-radius: 2px; display: inline-block; }
+
+/* ── משפך ── */
+.funnel { display: flex; flex-direction: column; gap: 4px; }
+.f-step { display: grid; grid-template-columns: 128px 1fr 64px; align-items: center; gap: 10px; }
+.f-name { font-size: 14px; font-weight: 800; }
+.f-name small { display: block; font-weight: 500; color: var(--ink-3); font-size: 11.5px; }
+.f-bar { height: 30px; display: flex; gap: 2px; }
+.f-seg { height: 100%; border-radius: 4px; position: relative; cursor: default; min-width: 2px; }
+.f-seg.ios { background: var(--ios); } .f-seg.android { background: var(--android); }
+.f-seg:hover, .f-seg:focus { filter: brightness(1.12); outline: none; }
+.f-num { font-size: 18px; font-weight: 900; text-align: left; font-variant-numeric: tabular-nums; }
+.f-conv { grid-column: 2 / 3; font-size: 12px; color: var(--ink-2); padding: 1px 0 3px; display: flex; align-items: center; gap: 6px; }
+.f-conv b { color: var(--ink); }
+.f-conv .arrow { color: var(--ink-3); }
+.f-conv.weak b { color: var(--bad); }
+
+/* ── גרף מגמה ── */
+.metric-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.metric-chips button { border: 1px solid var(--line); background: transparent; color: var(--ink-2); font: inherit; font-size: 13px;
+  font-weight: 700; padding: 5px 11px; border-radius: 99px; cursor: pointer; }
+.metric-chips button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--card); }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: 240px; overflow: visible; }
+.axis-t { font-size: 11px; fill: var(--ink-3); }
+.tip { position: absolute; pointer-events: none; background: var(--tip-bg); color: var(--tip-ink); border-radius: 10px;
+  padding: 8px 11px; font-size: 13px; min-width: 130px; box-shadow: 0 6px 18px rgba(0,0,0,.18); opacity: 0; transition: opacity .1s; z-index: 4; }
+.tip.on { opacity: 1; }
+.tip-d { font-size: 12px; opacity: .75; margin-bottom: 3px; }
+.tip-r { display: flex; align-items: center; gap: 7px; }
+.tip-r b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.tip-r .ln { width: 12px; height: 2px; border-radius: 2px; }
+
+/* ── עמודות אופקיות (זמן, מקורות) ── */
+.hbars { display: flex; flex-direction: column; gap: 9px; }
+.hb { display: grid; grid-template-columns: 92px 1fr 46px; gap: 10px; align-items: center; font-size: 13.5px; }
+.hb-name { color: var(--ink-2); font-weight: 700; }
+.hb-track { height: 18px; display: flex; gap: 2px; }
+.hb-fill { height: 100%; border-radius: 4px; }
+.hb-fill.ios { background: var(--ios); } .hb-fill.android { background: var(--android); } .hb-fill.all { background: var(--ink); }
+.hb-val { font-weight: 800; text-align: left; font-variant-numeric: tabular-nums; }
+.hero { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+.hero b { font-size: 28px; font-weight: 900; }
+.hero span { color: var(--ink-2); font-size: 13.5px; }
+.mini-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.mini { background: var(--chip); border-radius: 12px; padding: 10px 12px; }
+.mini b { display: block; font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.mini span { font-size: 12px; color: var(--ink-2); }
+
+/* ── נרשמים אחרונים ── */
+.regs { display: flex; flex-direction: column; }
+.reg { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 10px 2px; border-top: 1px solid var(--line); align-items: center; }
+.reg:first-child { border-top: 0; }
+.reg-name { font-weight: 800; font-size: 14.5px; }
+.reg-when { font-size: 12.5px; color: var(--ink-3); text-align: left; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; grid-column: 1 / -1; }
+.chip { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: var(--chip); color: var(--ink-2); display: inline-flex; align-items: center; gap: 5px; }
+.chip.st-approved { color: var(--good); } .chip.st-pending { color: var(--bad); }
+
+/* ── טבלה (חלופה לכל גרף) ── */
+table.t { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+table.t th, table.t td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: right; }
+table.t th { color: var(--ink-2); font-weight: 700; font-size: 12.5px; }
+table.t td.n { font-variant-numeric: tabular-nums; font-weight: 700; }
+.tbl-wrap { max-height: 300px; overflow: auto; }
+
+.empty { color: var(--ink-3); font-size: 13.5px; padding: 18px 0; text-align: center; }
+.foot-note { font-size: 12.5px; color: var(--ink-3); margin-top: 18px; line-height: 1.7; }
+
+@media (max-width: 860px) {
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  /* בטלפון המסננים לא נדבקים — שתי שורות דביקות אוכלות חצי מסך */
+  .filters { position: static; }
+  .kpi-delta .long { display: none; }
+}
+@media (max-width: 420px) {
+  .kpi-num { font-size: 26px; }
+  .f-step { grid-template-columns: 92px 1fr 50px; }
+  .hb { grid-template-columns: 80px 1fr 40px; }
+  .seg button { padding: 7px 10px; font-size: 13px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>אפליקציה ושימוש</h1>
+    <span class="demo-badge">דמו · נתוני דוגמה</span>
+    <div class="seg theme" role="group" aria-label="ערכת צבע">
+      <button type="button" data-theme-btn="light">בהיר</button>
+      <button type="button" data-theme-btn="dark">כהה</button>
+    </div>
+  </div>
+
+  <div class="filters" role="group" aria-label="מסננים">
+    <div class="seg" role="group" aria-label="תקופה" id="rangeSeg">
+      <button type="button" data-range="1">היום</button>
+      <button type="button" data-range="7">7 ימים</button>
+      <button type="button" data-range="30">30 ימים</button>
+      <button type="button" data-range="90">90 ימים</button>
+    </div>
+    <div class="seg" role="group" aria-label="מכשיר" id="osSeg">
+      <button type="button" data-os="all">הכול</button>
+      <button type="button" data-os="ios"><span class="key ios"></span>אייפון</button>
+      <button type="button" data-os="android"><span class="key android"></span>אנדרואיד</button>
+    </div>
+    <span class="range-note" id="rangeNote"></span>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid">
+    <div class="card" id="funnelCard">
+      <div class="card-h"><h2>מהקישור עד חבר מאושר</h2><button class="as-table" data-toggle="funnel">הצג כטבלה</button></div>
+      <p class="card-sub">כמה עברו כל שלב, ואיפה נושרים. רחפו על פס לפרטים.</p>
+      <div id="funnel"></div>
+    </div>
+
+    <div class="card" id="useCard">
+      <div class="card-h"><h2>כמה זמן נשארים</h2><button class="as-table" data-toggle="use">הצג כטבלה</button></div>
+      <p class="card-sub">משך ביקור – זמן שהמסך היה פתוח בפועל</p>
+      <div id="use"></div>
+    </div>
+
+    <div class="card full" id="trendCard">
+      <div class="card-h"><h2>לאורך זמן</h2><button class="as-table" data-toggle="trend">הצג כטבלה</button></div>
+      <div class="metric-chips" id="metricChips" role="group" aria-label="מדד"></div>
+      <div class="legend" id="trendLegend"></div>
+      <div class="chart" id="trend"></div>
+    </div>
+
+    <div class="card" id="returnCard">
+      <div class="card-h"><h2>חוזרים</h2><button class="as-table" data-toggle="ret">הצג כטבלה</button></div>
+      <p class="card-sub">מכשירים שהותקנו בתקופה – כמה חזרו אחר כך</p>
+      <div id="ret"></div>
+    </div>
+
+    <div class="card" id="srcCard">
+      <div class="card-h"><h2>מאיפה הגיעו לקישור</h2><button class="as-table" data-toggle="src">הצג כטבלה</button></div>
+      <p class="card-sub">yellowzone.co.il/download – לפי ?src= בקישור</p>
+      <div id="src"></div>
+    </div>
+
+    <div class="card full" id="regCard">
+      <div class="card-h"><h2>נרשמים אחרונים</h2></div>
+      <p class="card-sub">מאיזה מכשיר, מהאפליקציה או מהאתר, ובאיזו שיטה</p>
+      <div class="regs" id="regs"></div>
+    </div>
+  </div>
+
+  <p class="foot-note">
+    "הורדות" = מכשיר שפתח את האפליקציה בפעם הראשונה (מדידה שלנו, §486) – לא מספר ההורדות בחנות.
+    מחיקה והתקנה מחדש נספרת שוב. "פעילים" = מכשירים שונים שהיה להם לפחות ביקור אחד באותו יום.
+  </p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── נתוני דוגמה דטרמיניסטיים (אותו זרע = אותם מספרים בכל טעינה) ─────────────────────────
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const DAYS = 180;   // 90 לתקופה + 90 לתקופה הקודמת (להשוואה)
+  const today = new Date(2026, 9, 11);
+  const days = [];
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const launch = i < 6 ? 2.6 : 1;                     // פוסט ההשקה – קפיצה בימים האחרונים
+    const grow = 0.55 + (DAYS - i) / DAYS * 0.9;
+    const wk = [0.8, 1, 1, 1, 1.05, 1.25, 1.3][d.getDay()];
+    const base = (m) => Math.max(0, Math.round(m * grow * wk * launch * (0.7 + rnd() * 0.6)));
+    const row = { date: d, ios: {}, android: {} };
+    for (const os of ['ios', 'android']) {
+      const share = os === 'ios' ? 0.58 : 0.42;
+      const link = base(26 * share);
+      const first = Math.round(link * (0.48 + rnd() * 0.12));
+      const signup = Math.round(first * (0.34 + rnd() * 0.12));
+      const approved = Math.round(signup * (0.78 + rnd() * 0.15));
+      const active = base(70 * share) + first;
+      row[os] = { link, first, signup, approved, active };
+    }
+    days.push(row);
+  }
+  const SOURCES = [['fb', 'פייסבוק'], ['wa', 'וואטסאפ'], ['ig', 'אינסטגרם'], ['', 'ישיר / לא מסומן']];
+  const srcShare = { ios: [0.46, 0.31, 0.13, 0.10], android: [0.41, 0.38, 0.08, 0.13] };
+  const USE_BUCKETS = ['פחות מ-30 שנ׳', '30 שנ׳–2 דק׳', '2–5 דק׳', '5–15 דק׳', '15–30 דק׳', 'מעל 30 דק׳'];
+  const useShare = { ios: [0.22, 0.27, 0.22, 0.17, 0.08, 0.04], android: [0.26, 0.28, 0.2, 0.15, 0.07, 0.04] };
+  const FIRST = ['אורי', 'נועה', 'יובל', 'מאיה', 'עידו', 'תמר', 'רון', 'שירה', 'איתי', 'ליה', 'דניאל', 'הילה'];
+  const regs = [];
+  for (let i = 0; i < 14; i++) {
+    const os = rnd() < 0.58 ? 'ios' : 'android';
+    const at = new Date(today); at.setHours(21 - i * 3, Math.floor(rnd() * 60));
+    regs.push({
+      name: FIRST[i % FIRST.length] + ' (דוגמה)', num: 270 - i, os,
+      surface: rnd() < 0.85 ? 'app' : 'web',
+      method: os === 'ios' ? (rnd() < 0.55 ? 'apple' : rnd() < 0.5 ? 'google' : 'manual') : (rnd() < 0.7 ? 'google' : 'manual'),
+      status: i < 4 ? 'pending' : 'approved', at,
+    });
+  }
+
+  // ── מצב ──────────────────────────────────────────────────────────────────────────────
+  const state = { range: 7, os: 'all', metric: 'active', tables: {} };
+  const OS_LIST = () => (state.os === 'all' ? ['ios', 'android'] : [state.os]);
+  const OS_NAME = { ios: 'אייפון', android: 'אנדרואיד' };
+  const fmt = (n) => Math.round(n).toLocaleString('he-IL');
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  const dShort = (d) => d.getDate() + '.' + (d.getMonth() + 1);
+
+  function slice(offset) {   // offset 0 = התקופה הנוכחית, 1 = הקודמת
+    const end = days.length - offset * state.range;
+    return days.slice(Math.max(0, end - state.range), end);
+  }
+  function sum(rows, key, os) { return rows.reduce((s, r) => s + r[os][key], 0); }
+  function total(rows, key) { return OS_LIST().reduce((s, os) => s + sum(rows, key, os), 0); }
+
+  const METRICS = [
+    ['link', 'כניסות לקישור', 'כניסות ל-/download'],
+    ['first', 'הורדות', 'פתיחה ראשונה של האפליקציה'],
+    ['signup', 'הרשמות', 'טופס הרשמה שנשלח'],
+    ['approved', 'אושרו', 'חברים שאושרו'],
+  ];
+
+  // ── מספרים מרכזיים — לחיצה על כרטיס מחליפה את הגרף למטה למדד שלו ─────────────────────
+  function sparkPath(vals, w, h) {
+    const max = Math.max(1, ...vals);
+    return vals.map((v, i) => `${i ? 'L' : 'M'}${(w - (i / Math.max(1, vals.length - 1)) * w).toFixed(1)},${(h - 2 - (v / max) * (h - 4)).toFixed(1)}`).join(' ');
+  }
+  function renderKpis() {
+    const box = document.getElementById('kpis'); box.textContent = '';
+    const cur = slice(0), prev = slice(1);
+    for (const [key, label, help] of METRICS) {
+      const now = total(cur, key), before = total(prev, key);
+      const b = el('button', 'kpi'); b.type = 'button'; b.title = help;
+      b.setAttribute('aria-pressed', state.metric === key ? 'true' : 'false');
+      b.onclick = () => { state.metric = key; render(); document.getElementById('trendCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
+      b.append(el('div', 'kpi-lbl', label), el('div', 'kpi-num', fmt(now)));
+      const ch = before ? Math.round(((now - before) / before) * 100) : 0;
+      const dl = el('div', 'kpi-delta ' + (ch > 2 ? 'up' : ch < -2 ? 'down' : 'flat'), (ch >= 0 ? '▲ ' : '▼ ') + Math.abs(ch) + '% ');
+      dl.append(el('span', 'long', state.range === 1 ? 'מאתמול' : 'מהתקופה הקודמת'));
+      dl.title = state.range === 1 ? 'לעומת אתמול' : 'לעומת התקופה הקודמת באותו אורך';
+      b.append(dl);
+      if (state.os === 'all') {
+        const sp = el('div', 'kpi-split');
+        for (const os of ['ios', 'android']) {
+          const s = el('span'); s.append(el('span', 'key ' + os), document.createTextNode(OS_NAME[os] + ' ' + fmt(sum(cur, key, os))));
+          sp.append(s);
+        }
+        b.append(sp);
+      }
+      if (state.range > 1) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 100 30'); svg.setAttribute('preserveAspectRatio', 'none'); svg.setAttribute('aria-hidden', 'true');
+        const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p.setAttribute('d', sparkPath(cur.map((r) => OS_LIST().reduce((s, os) => s + r[os][key], 0)), 100, 30));
+        p.setAttribute('fill', 'none'); p.setAttribute('stroke', 'var(--ink-3)'); p.setAttribute('stroke-width', '1.5');
+        p.setAttribute('vector-effect', 'non-scaling-stroke');
+        svg.append(p); b.append(svg);
+      }
+      box.append(b);
+    }
+  }
+
+  // ── tooltip משותף ────────────────────────────────────────────────────────────────────
+  function tipFor(container) {
+    let t = container.querySelector('.tip');
+    if (!t) { t = el('div', 'tip'); t.setAttribute('role', 'status'); container.append(t); }
+    return t;
+  }
+  function fillTip(t, title, rows) {
+    t.textContent = '';
+    t.append(el('div', 'tip-d', title));
+    for (const [color, val, name] of rows) {
+      const r = el('div', 'tip-r');
+      const k = el('span', 'ln'); k.style.background = color;
+      r.append(k, el('b', null, val), el('span', null, name));
+      t.append(r);
+    }
+  }
+  function placeTip(t, container, x, y) {
+    const cw = container.clientWidth, tw = t.offsetWidth;
+    t.style.left = Math.min(Math.max(0, x - tw / 2), cw - tw) + 'px';
+    t.style.top = Math.max(0, y - t.offsetHeight - 12) + 'px';
+    t.classList.add('on');
+  }
+
+  // ── משפך ─────────────────────────────────────────────────────────────────────────────
+  function renderFunnel() {
+    const box = document.getElementById('funnel'); box.textContent = '';
+    const cur = slice(0);
+    const steps = METRICS.map(([k, label, help]) => ({ k, label, help, by: Object.fromEntries(OS_LIST().map((os) => [os, sum(cur, k, os)])) }));
+    steps.forEach((s) => { s.total = Object.values(s.by).reduce((a, b) => a + b, 0); });
+    if (state.tables.funnel) {
+      const t = el('table', 't'); const h = t.insertRow(); ['שלב', ...OS_LIST().map((o) => OS_NAME[o]), 'סה״כ', 'המשיכו מהשלב הקודם'].forEach((x) => h.append(el('th', null, x)));
+      steps.forEach((s, i) => { const r = t.insertRow(); r.append(el('td', null, s.label)); OS_LIST().forEach((o) => r.append(el('td', 'n', fmt(s.by[o])))); r.append(el('td', 'n', fmt(s.total)), el('td', 'n', i ? pct(s.total, steps[i - 1].total) + '%' : '–')); });
+      box.append(t); return;
+    }
+    const max = Math.max(1, steps[0].total);
+    const f = el('div', 'funnel'); f.style.position = 'relative';
+    const tip = tipFor(f);
+    steps.forEach((s, i) => {
+      if (i) {
+        const c = pct(s.total, steps[i - 1].total);
+        const conv = el('div', 'f-conv' + (c < 40 ? ' weak' : ''));
+        conv.append(el('span', 'arrow', '↓'), el('b', null, c + '%'), document.createTextNode(' המשיכו'));
+        const row = el('div', 'f-step'); row.append(el('div'), conv, el('div')); f.append(row);
+      }
+      const row = el('div', 'f-step');
+      const name = el('div', 'f-name', s.label); name.append(el('small', null, s.help));
+      const bar = el('div', 'f-bar');
+      for (const os of OS_LIST()) {
+        const seg = el('div', 'f-seg ' + os); seg.tabIndex = 0;
+        seg.style.width = (s.by[os] / max) * 100 + '%';
+        seg.setAttribute('aria-label', `${s.label}, ${OS_NAME[os]}: ${s.by[os]}`);
+        const show = (ev) => {
+          const rb = f.getBoundingClientRect(), sb = seg.getBoundingClientRect();
+          fillTip(tip, s.label + ' · ' + OS_NAME[os], [[`var(--${os})`, fmt(s.by[os]), s.total ? pct(s.by[os], s.total) + '% מהשלב' : '']]);
+          placeTip(tip, f, sb.left - rb.left + sb.width / 2, sb.top - rb.top);
+        };
+        seg.addEventListener('pointerenter', show); seg.addEventListener('focus', show);
+        seg.addEventListener('pointerleave', () => tip.classList.remove('on')); seg.addEventListener('blur', () => tip.classList.remove('on'));
+        bar.append(seg);
+      }
+      row.append(name, bar, el('div', 'f-num', fmt(s.total)));
+      f.append(row);
+    });
+    box.append(f);
+  }
+
+  // ── גרף מגמה: קווים + קו-צלב שנצמד ליום הקרוב ──────────────────────────────────────────
+  const TREND_METRICS = [['active', 'מכשירים פעילים'], ...METRICS.map(([k, l]) => [k, l])];
+  function renderTrend() {
+    const chips = document.getElementById('metricChips'); chips.textContent = '';
+    for (const [k, l] of TREND_METRICS) {
+      const b = el('button', null, l); b.type = 'button'; b.setAttribute('aria-pressed', state.metric === k ? 'true' : 'false');
+      b.onclick = () => { state.metric = k; render(); }; chips.append(b);
+    }
+    const lg = document.getElementById('trendLegend'); lg.textContent = '';
+    for (const os of OS_LIST()) { const s = el('span'); const k = el('span', 'ln'); k.style.background = `var(--${os})`; s.append(k, document.createTextNode(OS_NAME[os])); lg.append(s); }
+
+    const box = document.getElementById('trend'); box.textContent = '';
+    const rows = state.range === 1 ? slice(0).concat([]) : slice(0);
+    const series = rows.length < 2 ? days.slice(-14) : rows;   // "היום" — מציגים שבועיים להקשר
+    if (state.tables.trend) {
+      const wrap = el('div', 'tbl-wrap'); const t = el('table', 't'); const h = t.insertRow();
+      ['תאריך', ...OS_LIST().map((o) => OS_NAME[o])].forEach((x) => h.append(el('th', null, x)));
+      series.slice().reverse().forEach((r) => { const tr = t.insertRow(); tr.append(el('td', null, dShort(r.date))); OS_LIST().forEach((o) => tr.append(el('td', 'n', fmt(r[o][state.metric])))); });
+      wrap.append(t); box.append(wrap); return;
+    }
+    const W = Math.max(300, box.clientWidth || 700), H = 240, P = { t: 12, r: 8, b: 26, l: 40 };
+    const iw = W - P.l - P.r, ih = H - P.t - P.b;
+    const max = Math.max(4, ...series.flatMap((r) => OS_LIST().map((o) => r[o][state.metric])));
+    const nice = Math.ceil(max / 4 / 5) * 5 * 4 || 4;
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'גרף ' + TREND_METRICS.find((m) => m[0] === state.metric)[1] + ' לפי יום');
+    // RTL: הזמן זורם מימין לשמאל – היום הכי חדש בצד שמאל, כמו קריאה בעברית
+    const x = (i) => P.l + iw - (i / Math.max(1, series.length - 1)) * iw;
+    const y = (v) => P.t + ih - (v / nice) * ih;
+    for (let g = 0; g <= 4; g++) {
+      const gy = y((nice / 4) * g);
+      const ln = document.createElementNS(NS, 'line'); ln.setAttribute('x1', P.l); ln.setAttribute('x2', W - P.r); ln.setAttribute('y1', gy); ln.setAttribute('y2', gy);
+      ln.setAttribute('stroke', g ? 'var(--grid)' : 'var(--line)'); svg.append(ln);
+      const tx = document.createElementNS(NS, 'text'); tx.setAttribute('x', P.l - 8); tx.setAttribute('y', gy + 4); tx.setAttribute('text-anchor', 'end');
+      tx.setAttribute('class', 'axis-t'); tx.textContent = fmt((nice / 4) * g); svg.append(tx);
+    }
+    const every = Math.ceil(series.length / 7);
+    series.forEach((r, i) => {
+      if ((series.length - 1 - i) % every) return;
+      const tx = document.createElementNS(NS, 'text'); tx.setAttribute('x', x(i)); tx.setAttribute('y', H - 6); tx.setAttribute('text-anchor', 'middle');
+      tx.setAttribute('class', 'axis-t'); tx.textContent = dShort(r.date); svg.append(tx);
+    });
+    // תוויות ישירות בקצה החדש (שמאל): מחושבות מראש כדי להרחיק תוויות שנופלות אחת על השנייה
+    const labelY = OS_LIST().map((os) => [os, y(series[series.length - 1][os][state.metric]) - 7]).sort((a, b) => a[1] - b[1]);
+    for (let i = 1; i < labelY.length; i++) if (labelY[i][1] - labelY[i - 1][1] < 14) labelY[i][1] = labelY[i - 1][1] + 14;
+    const labelAt = Object.fromEntries(labelY.map(([os, v]) => [os, Math.max(P.t + 10, v)]));
+    for (const os of OS_LIST()) {
+      const p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', series.map((r, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(r[os][state.metric]).toFixed(1)}`).join(' '));
+      p.setAttribute('fill', 'none'); p.setAttribute('stroke', `var(--${os})`); p.setAttribute('stroke-width', '2'); p.setAttribute('stroke-linejoin', 'round');
+      svg.append(p);
+      // direction=ltr + start: הטקסט נמשך ימינה, לתוך שטח הגרף — לא שמאלה אל תוויות הציר
+      const lb = document.createElementNS(NS, 'text'); lb.setAttribute('x', x(series.length - 1) + 6); lb.setAttribute('y', labelAt[os]);
+      lb.setAttribute('direction', 'ltr'); lb.setAttribute('text-anchor', 'start');
+      lb.setAttribute('class', 'axis-t'); lb.style.fill = 'var(--ink-2)'; lb.style.fontWeight = '700';
+      // הילה בצבע הכרטיס — התווית נשארת קריאה גם כשקו עובר מתחתיה
+      lb.style.paintOrder = 'stroke'; lb.style.stroke = 'var(--card)'; lb.style.strokeWidth = '4px'; lb.style.strokeLinejoin = 'round';
+      lb.textContent = OS_NAME[os]; svg.append(lb);
+    }
+    const cross = document.createElementNS(NS, 'line'); cross.setAttribute('y1', P.t); cross.setAttribute('y2', P.t + ih);
+    cross.setAttribute('stroke', 'var(--ink-3)'); cross.setAttribute('stroke-dasharray', '3 3'); cross.style.display = 'none'; svg.append(cross);
+    const dots = OS_LIST().map((os) => { const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', 4.5); c.setAttribute('fill', `var(--${os})`); c.setAttribute('stroke', 'var(--card)'); c.setAttribute('stroke-width', 2); c.style.display = 'none'; svg.append(c); return [os, c]; });
+    box.append(svg);
+    const tip = tipFor(box);
+    const at = (clientX) => {
+      const rb = svg.getBoundingClientRect(); const px = ((clientX - rb.left) / rb.width) * W;
+      const i = Math.round(((P.l + iw - px) / iw) * (series.length - 1));
+      return Math.max(0, Math.min(series.length - 1, i));
+    };
+    const show = (i) => {
+      const r = series[i]; const cx = x(i);
+      cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.style.display = '';
+      dots.forEach(([os, c]) => { c.setAttribute('cx', cx); c.setAttribute('cy', y(r[os][state.metric])); c.style.display = ''; });
+      fillTip(tip, r.date.toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'numeric' }),
+        OS_LIST().map((os) => [`var(--${os})`, fmt(r[os][state.metric]), OS_NAME[os]]));
+      const rb = svg.getBoundingClientRect();
+      placeTip(tip, box, (cx / W) * rb.width, (Math.min(...OS_LIST().map((os) => y(r[os][state.metric]))) / H) * rb.height);
+    };
+    const hide = () => { cross.style.display = 'none'; dots.forEach(([, c]) => (c.style.display = 'none')); tip.classList.remove('on'); };
+    svg.addEventListener('pointermove', (e) => show(at(e.clientX)));
+    svg.addEventListener('pointerleave', hide);
+    svg.tabIndex = 0; let ki = series.length - 1;
+    svg.addEventListener('focus', () => show(ki));
+    svg.addEventListener('blur', hide);
+    svg.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') ki = Math.min(series.length - 1, ki + 1); else if (e.key === 'ArrowRight') ki = Math.max(0, ki - 1); else return; e.preventDefault(); show(ki); });
+  }
+
+  // ── עמודות אופקיות (משך ביקור, מקורות) ─────────────────────────────────────────────────
+  function hbars(boxId, tableKey, labels, valuesByOs, unitPct) {
+    const box = document.getElementById(boxId);
+    const totals = labels.map((_, i) => OS_LIST().reduce((s, os) => s + valuesByOs[os][i], 0));
+    const sumAll = totals.reduce((a, b) => a + b, 0) || 1;
+    if (state.tables[tableKey]) {
+      const t = el('table', 't'); const h = t.insertRow(); ['', ...OS_LIST().map((o) => OS_NAME[o]), 'סה״כ'].forEach((x) => h.append(el('th', null, x)));
+      labels.forEach((l, i) => { const r = t.insertRow(); r.append(el('td', null, l)); OS_LIST().forEach((o) => r.append(el('td', 'n', fmt(valuesByOs[o][i])))); r.append(el('td', 'n', unitPct ? pct(totals[i], sumAll) + '%' : fmt(totals[i]))); });
+      box.append(t); return;
+    }
+    const max = Math.max(1, ...totals);
+    const wrap = el('div', 'hbars'); wrap.style.position = 'relative';
+    const tip = tipFor(wrap);
+    labels.forEach((l, i) => {
+      const row = el('div', 'hb'); const tr = el('div', 'hb-track');
+      for (const os of OS_LIST()) {
+        const f = el('div', 'hb-fill ' + os); f.style.width = (valuesByOs[os][i] / max) * 100 + '%'; f.tabIndex = 0;
+        const show = () => { const rb = wrap.getBoundingClientRect(), fb = f.getBoundingClientRect(); fillTip(tip, l, [[`var(--${os})`, fmt(valuesByOs[os][i]), OS_NAME[os]]]); placeTip(tip, wrap, fb.left - rb.left + fb.width / 2, fb.top - rb.top); };
+        f.addEventListener('pointerenter', show); f.addEventListener('focus', show);
+        f.addEventListener('pointerleave', () => tip.classList.remove('on')); f.addEventListener('blur', () => tip.classList.remove('on'));
+        tr.append(f);
+      }
+      row.append(el('div', 'hb-name', l), tr, el('div', 'hb-val', unitPct ? pct(totals[i], sumAll) + '%' : fmt(totals[i])));
+      wrap.append(row);
+    });
+    box.append(wrap);
+  }
+
+  function renderUse() {
+    const box = document.getElementById('use'); box.textContent = '';
+    const visits = OS_LIST().reduce((s, os) => s + sum(slice(0), 'active', os), 0) * 1.6;
+    const by = Object.fromEntries(['ios', 'android'].map((os) => [os, useShare[os].map((p) => Math.round(p * sum(slice(0), 'active', os) * 1.6))]));
+    const hero = el('div', 'hero'); hero.append(el('b', null, state.os === 'android' ? '3.4 דק׳' : '3.9 דק׳'), el('span', null, 'זמן ביקור חציוני · ' + fmt(visits) + ' ביקורים'));
+    box.append(hero);
+    hbars('use', 'use', USE_BUCKETS, by, true);
+  }
+
+  function renderReturn() {
+    const box = document.getElementById('ret'); box.textContent = '';
+    const installs = total(slice(0), 'first');
+    const mk = el('div', 'mini-kpis');
+    const r7 = state.os === 'android' ? 51 : state.os === 'ios' ? 63 : 58;
+    [[r7 + '%', 'חזרו תוך 7 ימים'], [state.os === 'android' ? '2.6' : '3.1', 'ביקורים למכשיר בשבוע'], [fmt(installs), 'הורדות בתקופה']]
+      .forEach(([v, l]) => { const m = el('div', 'mini'); m.append(el('b', null, v), el('span', null, l)); mk.append(m); });
+    box.append(mk);
+    const labels = ['יום אחד', '2–3 ימים', '4–5 ימים', '6–7 ימים'];
+    const by = Object.fromEntries(['ios', 'android'].map((os) => [os, [0.42, 0.31, 0.17, 0.10].map((p) => Math.round(p * sum(slice(0), 'active', os) / 2))]));
+    box.append(el('div', 'card-sub', 'כמה ימים בשבוע מכשיר היה פעיל'));
+    hbars('ret', 'ret', labels, by, true);
+  }
+
+  function renderSrc() {
+    const box = document.getElementById('src'); box.textContent = '';
+    const by = Object.fromEntries(['ios', 'android'].map((os) => [os, srcShare[os].map((p) => Math.round(p * sum(slice(0), 'link', os)))]));
+    hbars('src', 'src', SOURCES.map((s) => s[1]), by, false);
+  }
+
+  const METHOD_NAME = { apple: 'Apple', google: 'Google', manual: 'מילוי ידני' };
+  function renderRegs() {
+    const box = document.getElementById('regs'); box.textContent = '';
+    const list = regs.filter((r) => state.os === 'all' || r.os === state.os);
+    if (!list.length) { box.append(el('div', 'empty', 'אין נרשמים בתקופה הזאת')); return; }
+    for (const r of list) {
+      const row = el('div', 'reg');
+      row.append(el('div', 'reg-name', `#${r.num} · ${r.name}`), el('div', 'reg-when', r.at.toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })));
+      const ch = el('div', 'chips');
+      const osChip = el('span', 'chip'); osChip.append(el('span', 'key ' + r.os), document.createTextNode(OS_NAME[r.os]));
+      ch.append(osChip, el('span', 'chip', r.surface === 'app' ? 'מהאפליקציה' : 'מהאתר'), el('span', 'chip', METHOD_NAME[r.method]),
+        el('span', 'chip st-' + r.status, r.status === 'approved' ? 'אושר' : 'ממתין לאישור'));
+      row.append(ch); box.append(row);
+    }
+  }
+
+  function render() {
+    document.querySelectorAll('#rangeSeg button').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.range === state.range)));
+    document.querySelectorAll('#osSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.os === state.os)));
+    const cur = slice(0);
+    document.getElementById('rangeNote').textContent = state.range === 1 ? 'היום, ' + dShort(today) : `${dShort(cur[0].date)}–${dShort(cur[cur.length - 1].date)}`;
+    document.querySelectorAll('.as-table').forEach((b) => (b.textContent = state.tables[b.dataset.toggle] ? 'הצג כגרף' : 'הצג כטבלה'));
+    renderKpis(); renderFunnel(); renderTrend(); renderUse(); renderReturn(); renderSrc(); renderRegs();
+  }
+
+  document.getElementById('rangeSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { state.range = +b.dataset.range; render(); } });
+  document.getElementById('osSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { state.os = b.dataset.os; render(); } });
+  document.querySelectorAll('.as-table').forEach((b) => b.addEventListener('click', () => { state.tables[b.dataset.toggle] = !state.tables[b.dataset.toggle]; render(); }));
+  document.querySelectorAll('[data-theme-btn]').forEach((b) => b.addEventListener('click', () => {
+    document.documentElement.setAttribute('data-theme', b.dataset.themeBtn);
+    document.querySelectorAll('[data-theme-btn]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(renderTrend, 120); });
+  render();
+})();
+</script>
+</body>
+</html>
