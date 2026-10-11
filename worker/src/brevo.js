@@ -89,15 +89,15 @@ function stripHtml(html) {
 // כשקיים, מחליף גם את הנושא וגם את גוף ההודעה — טקסט חופשי דרך renderMailHtml, כולל תיבת-קוד/
 // כפתור ממותגים אם {code}/{link} יושבים על שורה נפרדת משלהם, וכל סימוני-העיצוב של סרגל הכתיבה.
 export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind = 'welcome', login = null }) {
-  // בניגוד לבעלי-עסקים, לאוהד אין accessToken אישי (הכניסה היא תמיד טלפון+קוד) — אז {link} כאן
-  // הוא כתובת האתר הכללית, זהה לכל אוהד, לא קישור-קסם מותאם-אישית.
-  const vars = { name: toName || '', code, link: 'https://yellowzone.co.il/welcome.html', ...loginVars(login) };
+  // בניגוד לבעלי-עסקים, לאוהד אין accessToken אישי — אז {link} כאן זהה לכל אוהד.
+  // §494 — פותח את האפליקציה (דרך /download), לא את האתר: אוהדים משתמשים רק באפליקציה (§484).
+  const vars = { name: toName || '', code, link: 'https://yellowzone.co.il/download?src=mail', ...loginVars(login) };
   const isResend = kind === 'resend';
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
     : (isResend ? 'קוד הכניסה שלכם ל-Yellow Zone' : 'אתם בפנים – קוד הכניסה שלכם ל-Yellow Zone');
   const htmlContent = tpl?.body
-    ? renderMailHtml(tpl.body, vars, { linkLabel: 'כניסה לאתר' })
+    ? renderMailHtml(tpl.body, vars, { linkLabel: 'לפתיחת האפליקציה' })
     : `
         <div dir="rtl" style="font-family:Arial,sans-serif;text-align:center;padding:24px">
           <h2>${isResend ? 'קוד הכניסה שלכם' : 'אתם בפנים'}</h2>

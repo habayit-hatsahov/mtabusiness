@@ -65,13 +65,18 @@ export function codeBoxHtml(code) {
 
 // כפתור-הכניסה מציג את *כתובת האתר* ולא "כניסה לאתר" — כדי שהנמען יזכור אותה ויוכל להקליד
 // אותה בעצמו בפעם הבאה.
-export function loginButtonHtml(href = SITE_URL) {
+// §494 — הכפתור פותח את **האפליקציה**, לא את האתר (§484: אוהדים נרשמים ומשתמשים רק באפליקציה).
+// עד שיהיו קישורים שפותחים את האפליקציה ישירות (Universal / App Links — דורש בנייה חדשה), הקישור
+// עובר דרך /download: בטלפון עם האפליקציה — עמוד החנות שלה עם כפתור "פתח"; בלי האפליקציה — התקנה;
+// במחשב — דף הנחיתה עם QR. src=mail כדי שמסך "אפליקציה ושימוש" יספור את הכניסות מהמיילים.
+export const APP_OPEN_URL = SITE_URL + '/download?src=mail';
+export function loginButtonHtml(href = APP_OPEN_URL) {
   return `
     <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:16px auto">
       <tr><td style="background:#FFDE00;border-radius:14px">
         <a href="${escapeHtml(href)}"style="display:inline-block;color:#16130a;text-decoration:none;padding:11px 28px;text-align:center;line-height:1.35">
-          <span style="font-size:12px;font-weight:700">לכניסה לחצו</span><br>
-          <span style="font-size:18px;font-weight:900;direction:ltr;unicode-bidi:isolate">yellowzone.co.il</span>
+          <span style="font-size:12px;font-weight:700">לחצו לפתיחת</span><br>
+          <span style="font-size:18px;font-weight:900">אפליקציית Yellow Zone</span>
         </a>
       </td></tr>
     </table>`;
@@ -95,7 +100,8 @@ export function codeBlockHtml(code, withButton = true) {
 // 🔑 **המצב נבחר לפי מה שידוע על הנמען** (loginModeFor): חשבון Google מקושר, או כתובת Gmail
 // → Google. כל כתובת אחרת → הקוד נשאר ראשי, כי אצלו כנראה אין Google באותה כתובת, והכפתור
 // היה שולח אותו לדלת שלא נפתחת (הכניסה עם Google מתאימה רשומה **לפי המייל**, §409).
-export const MEMBER_LOGIN_URL = SITE_URL + '/welcome.html?login=1';
+// §494 — היה welcome.html?login=1 (כניסה באתר). אוהד נכנס עכשיו באפליקציה — ר' APP_OPEN_URL.
+export const MEMBER_LOGIN_URL = APP_OPEN_URL;
 const GMAIL_RX = /@(gmail|googlemail)\.com$/i;
 
 // §465 — 🔑 **מסלול אחד "בלי קוד" ל-Google ול-Apple, לא מצב לכל ספק.** בקשת המשתמש: "שיהיה
@@ -119,7 +125,7 @@ export function loginBlockHtml(vars) {
     // שלא אומרת לו כלום, ונוסח שמשתנה לפי ספק הוא בדיוק הפיצול שהמשתמש ביקש להימנע ממנו.
     return button
       + p('font-size:15px;line-height:1.6;color:#0A2A66',
-          'בחלון שייפתח לחצו על <b>Google</b> או על <b>Apple</b> – לפי החשבון שאיתו נרשמתם – בלי קוד.<br>מאותו רגע האתר זוכר אתכם.')
+          'באפליקציה, במסך הכניסה, לחצו על <b>Google</b> או על <b>Apple</b> – לפי החשבון שאיתו נרשמתם – בלי קוד.<br>מאותו רגע האפליקציה זוכרת אתכם.')
       // ⚠️ משני בגודל ובמיקום — **לא בצבע**. אפור (#888) נדחה: "שיהיה לפחות בצבע שחור שיראו את זה".
       + (code ? p('font-size:14px;line-height:1.6;color:#16130a',
           `מעדיפים קוד? קוד הכניסה: <b style="direction:ltr;unicode-bidi:isolate;letter-spacing:2px;color:#000">${escapeHtml(code)}</b>, יחד עם מספר הטלפון שאיתו נרשמתם.`) : '');
@@ -127,7 +133,7 @@ export function loginBlockHtml(vars) {
   // ⚠️ מצב קוד בלי קוד = אין שום דלת להציע, ולכן כלום — לא כפתור לדף שלא יכניס אותו.
   if (mode === 'code' && code) {
     return codeBoxHtml(code) + button
-      + p('font-size:15px;line-height:1.6;color:#0A2A66', 'נכנסים עם הקוד ומספר הטלפון שאיתו נרשמתם.');
+      + p('font-size:15px;line-height:1.6;color:#0A2A66', 'באפליקציה נכנסים עם הקוד ומספר הטלפון שאיתו נרשמתם.');
   }
   return '';
 }
