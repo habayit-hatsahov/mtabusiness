@@ -139,16 +139,23 @@ a { color: inherit; }
 .preview .sub { color: var(--ink-3); max-width: 640px; margin: -12px auto 18px; font-size: 15px; }
 .frame { background: #fff; border-radius: var(--r-shell); box-shadow: var(--shadow-hover); overflow: hidden; position: relative; text-align: right; }
 .frame-bar { background: var(--field); padding: 9px 14px; font-size: 12.5px; color: var(--ink-3); direction: ltr; text-align: center; }
-.frame-body { padding: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.frame-body { padding: 14px 16px 150px; }
+/* §493 — שתי שורות שנגללות לצדדים: "עסקים נבחרים" ו"הצטרפו לאחרונה" (רמי, 11.10) */
+.lp-row-h { display: flex; align-items: baseline; gap: 8px; margin: 4px 2px 8px; }
+.lp-row-h b { font-size: 16px; font-weight: 900; }
+.lp-row-h span { font-size: 12.5px; color: var(--ink-3); }
+.lp-row { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 10px; margin-bottom: 10px; scrollbar-width: thin; }
+.lp-row .mock { flex: 0 0 calc((100% - 36px) / 4); scroll-snap-align: start; }
+.lp-new { display: inline-block; background: var(--acc); color: var(--ink); font-size: 11px; font-weight: 900; border-radius: 99px; padding: 1px 8px; margin-bottom: 3px; }
 .mock { border-radius: 14px; border: 1px solid var(--line); overflow: hidden; }
 .mock-img { aspect-ratio: 4/3; background: linear-gradient(135deg, #dfe6f3, #f3eed9); }
 .mock-t { padding: 9px 10px 11px; }
 .mock-t b { display: block; font-size: 14px; }
 .mock-t span { font-size: 12px; color: var(--ink-3); }
-.frame-fade { position: absolute; inset: 40% 0 0 0; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 45%); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 18px; text-align: center; }
+.frame-fade { position: absolute; inset: auto 0 0 0; height: 200px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 42%); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 18px; text-align: center; }
 .frame-fade b { font-size: 18px; font-weight: 900; }
 .frame-fade span { color: var(--ink-3); font-size: 14px; margin: 2px 0 12px; }
-@media (max-width: 760px) { .frame-body { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 760px) { .lp-row .mock { flex-basis: 44%; } }
 
 /* ── עסקים ── */
 .biz { background: var(--ink); color: #fff; border-radius: var(--r-shell); padding: 30px 26px; margin: 40px 0 0; display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; align-items: center; }
@@ -241,8 +248,11 @@ html.lp-checking body { visibility: hidden; }
       <p class="sub">גללו והתרשמו – הפתיחה המלאה של כרטיסי עסק, יצירת קשר ושמירת מועדפים שמורה לאוהדים מאושרים, באפליקציה</p>
       <div class="frame">
         <div class="frame-bar">Yellow Zone · אינדקס</div>
-        <div class="frame-body" id="lpCards">
-          <div class="lp-loading">טוענים את העסקים…</div>
+        <div class="frame-body">
+          <div class="lp-row-h"><b>עסקים נבחרים</b></div>
+          <div class="lp-row" id="lpCards"><div class="lp-loading">טוענים את העסקים…</div></div>
+          <div class="lp-row-h" id="lpNewH" hidden><b>הצטרפו לאחרונה</b><span>העסקים החדשים באינדקס</span></div>
+          <div class="lp-row" id="lpNew" hidden></div>
         </div>
         <div class="frame-fade">
           <b>הגישה המלאה לאינדקס – באפליקציה, לאוהדים מאושרים</b>
@@ -428,6 +438,7 @@ const looksLikeImageUrl = (u) => typeof u === 'string' && /^https:\/\//.test(u);
         pos: b.coverPhotoPosition || '',
         cat: (Array.isArray(b.tags) && b.tags[0]) || '',
         isFeatured: !!(b.isFeatured && (!b.featuredUntil || new Date() < new Date(b.featuredUntil))),
+        approvedMs: b.approvedAt && b.approvedAt.toMillis ? b.approvedAt.toMillis() : 0,
       };
     });
     if (members) data.forEach(b => { b.isFeatured = members.has(b.id); });
@@ -437,19 +448,17 @@ const looksLikeImageUrl = (u) => typeof u === 'string' && /^https:\/\//.test(u);
     const rotate = (arr, off) => { if (!arr.length) return arr; const o = ((off % arr.length) + arr.length) % arr.length; return [...arr.slice(o), ...arr.slice(0, o)]; };
     const dayIdx = Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
     const base = shuffle([...data].sort((a, b) => a.id.localeCompare(b.id)), 'yz-landing-strip');
-    const ordered = [...rotate(base.filter(b => b.isFeatured), dayIdx), ...rotate(base.filter(b => !b.isFeatured), dayIdx)].slice(0, 8);
+    const ordered = [...rotate(base.filter(b => b.isFeatured), dayIdx), ...rotate(base.filter(b => !b.isFeatured), dayIdx)].slice(0, 10);
     box.textContent = '';
     if (!ordered.length) { const e = document.createElement('div'); e.className = 'lp-loading'; e.textContent = 'עדיין אין עסקים מאושרים להצגה'; box.append(e); return; }
-    for (const b of ordered) {
-      const card = document.createElement('div'); card.className = 'mock';
-      const im = document.createElement('div'); im.className = 'mock-img';
-      if (b.img) { im.style.backgroundImage = 'url("' + b.img.replace(/"/g, '%22') + '")'; if (b.pos) im.style.backgroundPosition = b.pos; }
-      const t = document.createElement('div'); t.className = 'mock-t';
-      const n = document.createElement('b'); n.textContent = b.name;
-      t.append(n);
-      if (b.cat) { const c = document.createElement('span'); c.textContent = b.cat; t.append(c); }
-      if (b.discount) { const dsc = document.createElement('small'); dsc.textContent = b.discount; t.append(dsc); }
-      card.append(im, t); box.append(card);
+    for (const b of ordered) box.append(lpCard(b, false));
+    // §493 — "הצטרפו לאחרונה": 10 האחרונים לפי approvedAt (אותו שדה ש"חדש אצלנו" באפליקציה נשען עליו).
+    // עסק בלי approvedAt (ותיקים מלפני השדה) לא נכנס — אין לנו מתי הוא הצטרף.
+    const newest = data.filter(b => b.approvedMs).sort((a, b) => b.approvedMs - a.approvedMs).slice(0, 10);
+    if (newest.length) {
+      const nb = document.getElementById('lpNew');
+      for (const b of newest) nb.append(lpCard(b, true));
+      nb.hidden = false; document.getElementById('lpNewH').hidden = false;
     }
   } catch (err) {
     console.warn('landing: businesses failed', err);
@@ -457,6 +466,20 @@ const looksLikeImageUrl = (u) => typeof u === 'string' && /^https:\/\//.test(u);
     const e = document.createElement('div'); e.className = 'lp-loading'; e.textContent = 'העסקים לא נטענו כרגע'; box.append(e);
   }
 })();
+
+function lpCard(b, isNew) {
+      const card = document.createElement('div'); card.className = 'mock';
+      const im = document.createElement('div'); im.className = 'mock-img';
+      if (b.img) { im.style.backgroundImage = 'url("' + b.img.replace(/"/g, '%22') + '")'; if (b.pos) im.style.backgroundPosition = b.pos; }
+      const t = document.createElement('div'); t.className = 'mock-t';
+      if (isNew && Date.now() - b.approvedMs < 30 * 864e5) { const nw = document.createElement('span'); nw.className = 'lp-new'; nw.textContent = 'חדש'; t.append(nw); }
+      const n = document.createElement('b'); n.textContent = b.name;
+      t.append(n);
+      if (b.cat) { const c = document.createElement('span'); c.textContent = b.cat; t.append(c); }
+      if (b.discount) { const dsc = document.createElement('small'); dsc.textContent = b.discount; t.append(dsc); }
+      card.append(im, t);
+      return card;
+}
 </script>
 </body>
 </html>
