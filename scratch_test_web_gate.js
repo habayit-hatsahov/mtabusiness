@@ -5,7 +5,8 @@ const src = fs.readFileSync(__dirname + '/web-gate.js', 'utf8').replace(/^import
 let fail = 0;
 const eq = (n, g, w) => { const ok = g === w; if (!ok) fail++; console.log(ok ? 'OK  ' : 'FAIL', n, ok ? '' : `got ${g} want ${w}`); };
 
-async function run({ gated = true, mid = 'M1', user = { uid: 'M1' }, authSilent = false, member = { status: 'approved' }, getDocThrows = false }) {
+async function run({ gated = true, mid = 'M1', user = { uid: 'M1' }, authSilent = false, member = { status: 'approved' }, getDocThrows = false,
+                     biz = { status: 'approved' }, token = 'TOK123', bizThrows = false }) {
   const classes = new Set(gated ? ['yz-gate'] : []);
   let result = 'pending';
   const env = {
@@ -14,7 +15,13 @@ async function run({ gated = true, mid = 'M1', user = { uid: 'M1' }, authSilent 
     location: { replace: (u) => { if (result === 'pending') result = 'redirect:' + u; } },
     auth: {}, db: {}, console: { warn() {} },
     doc: (_db, c, id) => ({ c, id }),
-    getDoc: async () => { if (getDocThrows) throw new Error('net'); return { exists: () => !!member, data: () => member }; },
+    getDoc: async (ref) => {
+      if (ref.c === 'members') { if (getDocThrows) throw new Error('net'); return { exists: () => !!member, data: () => member }; }
+      if (bizThrows) throw new Error('net');
+      if (ref.c === 'businesses') return { exists: () => !!biz, data: () => biz };
+      if (ref.c === 'bizTokens') return { exists: () => !!token, data: () => ({ accessToken: token }) };
+      throw new Error('unexpected ' + ref.c);
+    },
     onAuthStateChanged: (_a, cb) => { if (!authSilent) setTimeout(() => cb(user), 1); return () => {}; },
     setTimeout: (f, ms) => setTimeout(f, ms > 1000 ? 30 : ms),   // מקצרים את גבולות-הזמן פי ~200
     clearTimeout,
@@ -26,7 +33,11 @@ async function run({ gated = true, mid = 'M1', user = { uid: 'M1' }, authSilent 
 
 (async () => {
   eq('admin stays', await run({ member: { isAdmin: true } }), 'open');
-  eq('business owner stays', await run({ member: { isBusinessOwner: true, linkedBusinessId: 'B1' } }), 'open');
+  const OWNER = { isBusinessOwner: true, linkedBusinessId: 'B1' };
+  eq('approved business owner → his business dashboard', await run({ member: OWNER }), 'redirect:business-dashboard.html?token=TOK123');
+  eq('owner of pending business → landing', await run({ member: OWNER, biz: { status: 'pending' } }), 'redirect:landing.html');
+  eq('owner without token → landing', await run({ member: OWNER, token: '' }), 'redirect:landing.html');
+  eq('owner lookup fails → landing (not fail-open)', await run({ member: OWNER, bizThrows: true }), 'redirect:landing.html');
   eq('owner flag without business → landing', await run({ member: { isBusinessOwner: true } }), 'redirect:landing.html');
   eq('fan → landing', await run({ member: { status: 'approved' } }), 'redirect:landing.html');
   eq('not logged in (no hb_memberId) → landing', await run({ mid: '' }), 'redirect:landing.html');

@@ -395,7 +395,19 @@ const unhide = () => document.documentElement.classList.remove('lp-checking');
     if (!user || user.uid !== mid) { clearTimeout(failsafe); return unhide(); }
     const snap = await getDoc(doc(db, 'members', mid));
     const m = snap.exists() ? snap.data() : null;
-    if (m && (m.isAdmin === true || (m.isBusinessOwner === true && m.linkedBusinessId))) { location.replace('home.html'); return; }
+    if (m && m.isAdmin === true) { location.replace('home.html'); return; }
+    // §497ב — בעל עסק מאושר ← ישר לדשבורד העסק (אותה דרך כמו web-gate.js). ⚠️ לא ל-home.html:
+    // web-gate היה מחזיר בעל עסק שלא אושר לכאן, וכאן שוב ל-home — לולאה אינסופית.
+    if (m && m.isBusinessOwner === true && m.linkedBusinessId) {
+      try {
+        const biz = await getDoc(doc(db, 'businesses', m.linkedBusinessId));
+        if (biz.exists() && biz.data().status === 'approved') {
+          const tok = await getDoc(doc(db, 'bizTokens', m.linkedBusinessId));
+          const token = tok.exists() ? (tok.data().accessToken || '') : '';
+          if (token) { location.replace('business-dashboard.html?token=' + encodeURIComponent(token)); return; }
+        }
+      } catch (e) { console.warn('landing: business lookup failed', e); }
+    }
     if (m && m.status === 'approved') window.lpShowMember && window.lpShowMember();
   } catch (e) { console.warn('landing: member check failed', e); }
   clearTimeout(failsafe);

@@ -3,8 +3,9 @@
 // בדפדפן (לא באפליקציה):
 //   • לא מחובר (אין hb_memberId)          → landing.html מיד.
 //   • מחובר: נקראת רשומת החבר (מותר לקרוא את עצמך) —
-//       מנהל (isAdmin) או בעל עסק (isBusinessOwner + linkedBusinessId) → נשארים (פטורים, §484.6/.8);
-//       אוהד                                                            → landing.html (שם: באנר "הכול עבר לאפליקציה").
+//       מנהל (isAdmin)                         → נשאר (פטור, §484.6);
+//       בעל עסק מאושר                          → business-dashboard.html של העסק שלו (§497ב — לא האינדקס);
+//       אוהד / בעל עסק שעדיין לא אושר          → landing.html (שם: באנר "הכול עבר לאפליקציה").
 // באפליקציה — שום דבר: האפליקציה טוענת את אותו אתר, וזה המקום שבו אוהדים כן משתמשים בו.
 //
 // ⚠️ ההסתרה עצמה (html.yz-gate) נקבעת בסקריפט inline קטן ב-<head> של כל דף, לפני שמשהו מצויר —
@@ -38,9 +39,24 @@ const toLanding = () => location.replace('landing.html');
     const snap = await getDoc(doc(db, 'members', mid));
     const m = snap.exists() ? snap.data() : null;
     clearTimeout(failsafe);
-    if (m && (m.isAdmin === true || (m.isBusinessOwner === true && m.linkedBusinessId))) return open();
+    if (m && m.isAdmin === true) return open();
+    // §497ב — רמי: "בעל עסק לא צריך להישאר באינדקס, יש לו קישור לאזור של העסק שלו וזהו".
+    // אותה דרך בדיוק כמו "העסק שלי" ב-home.html (initBizNavItem): עסק מאושר → הטוקן מ-bizTokens
+    // → דשבורד העסק. עסק שלא אושר / בלי טוקן / כשל בקריאה → כמו אוהד (דף הנחיתה).
+    if (m && m.isBusinessOwner === true && m.linkedBusinessId) {
+      try {
+        const biz = await getDoc(doc(db, 'businesses', m.linkedBusinessId));
+        if (biz.exists() && biz.data().status === 'approved') {
+          const tok = await getDoc(doc(db, 'bizTokens', m.linkedBusinessId));
+          const token = tok.exists() ? (tok.data().accessToken || '') : '';
+          if (token) return location.replace('business-dashboard.html?token=' + encodeURIComponent(token));
+        }
+      } catch (e) { console.warn('web-gate: business lookup failed', e); }
+      return toLanding();
+    }
     return toLanding();
   } catch (e) {
+    // fail-open רק כאן — כשלא ידוע אם זה מנהל. מנהל שננעל בחוץ גרוע מאוהד שרואה את האינדקס פעם אחת.
     console.warn('web-gate: check failed — opening (fail-open)', e);
     clearTimeout(failsafe);
     open();
