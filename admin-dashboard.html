@@ -6402,7 +6402,7 @@ const AU_LIMIT = 10000;
 const AU_SINCE_LABEL = '11.10.2026';
 let auData = null, auError = null, auLoading = false;
 // includeTest — §488ב: רמי חיפש את הפתיחה שלו ולא מצא, כי מנהלים ו-src=test מוסתרים. המתג מציג אותם.
-const auState = { range: 7, os: 'all', metric: 'active', tables: {}, includeTest: false };
+const auState = { range: 7, os: 'all', metric: 'active', tables: {}, includeTest: false, retMonth: '' };
 const AU_OS = ['ios', 'android', 'other'];
 const AU_OS_NAME = { ios: 'אייפון', android: 'אנדרואיד', other: 'מחשב / לא נמדד' };
 const AU_COLOR = { ios: 'var(--au-ios)', android: 'var(--au-android)', other: 'var(--au-other)' };
@@ -6572,26 +6572,60 @@ function auUseHtml(c) {
   return `${total ? `<div class="au-hero"><b>${median}</b><span>ביקור חציוני · ${auFmt(total)} ביקורים</span></div>` : ''}${auHbarsHtml('use', AU_USE_LABELS, by, true)}`;
 }
 
-function auReturnHtml(c) {
+// §488ג — "חוזרים" גם לפי חודש, עם בחירה אחורה (רמי, 11.10). retMonth='' = לפי מסנן התקופה למעלה.
+// חודש = קוהורט: מכשירים שהורידו באותו חודש, וכמה מהם חזרו (גם אם החזרה נפלה בחודש הבא).
+const AU_MONTHS_HE = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+const auMonthKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+const auMonthName = (k) => { const [y, m] = k.split('-'); return AU_MONTHS_HE[+m - 1] + ' ' + y; };
+function auMonthBounds(k) { const [y, m] = k.split('-').map(Number); return [new Date(y, m - 1, 1), new Date(y, m, 1)]; }
+// החודשים שיש בהם נתונים — מהביקור הראשון שנמדד (§486, אוקטובר 2026) ועד החודש הנוכחי, מהחדש לישן
+function auMonthList(c) {
+  const first = c.visits.reduce((m, v) => (!m || v.at < m ? v.at : m), null) || new Date();
+  const out = []; const d = new Date(first.getFullYear(), first.getMonth(), 1); const nowK = auMonthKey(new Date());
+  while (auMonthKey(d) <= nowK) { out.unshift(auMonthKey(d)); d.setMonth(d.getMonth() + 1); }
+  return out;
+}
+// מדדי החזרה לחלון [from, to) — משותף לתקופה ולחודש
+function auRetStats(c, from, to) {
   const oss = auOsList();
-  const inR = c.visits.filter(v => auInRange(v.at) && oss.includes(v.os));
+  const inR = c.visits.filter(v => v.at >= from && v.at < to && oss.includes(v.os));
   const firsts = {}; inR.forEach(v => { if (v.first && (!firsts[v.dev] || v.at < firsts[v.dev])) firsts[v.dev] = v.at; });
   const allByDev = {}; c.visits.forEach(v => (allByDev[v.dev] ||= []).push(v.at));
   const fd = Object.keys(firsts);
-  const back = fd.filter(dev => allByDev[dev].some(t => auDayKey(t) !== auDayKey(firsts[dev]) && t > firsts[dev] && t - firsts[dev] <= 7 * 864e5)).length;
+  const backIn = (days) => fd.filter(dev => allByDev[dev].some(t => t > firsts[dev] && auDayKey(t) !== auDayKey(firsts[dev]) && t - firsts[dev] <= days * 864e5)).length;
   const devDays = {}; inR.forEach(v => (devDays[v.dev] ||= new Set()).add(auDayKey(v.at)));
   const devs = Object.keys(devDays);
-  const weeks = Math.max(1, auState.range / 7);
-  const perWeek = devs.length ? (inR.length / devs.length / weeks) : 0;
-  const labels = ['יום אחד', '2–3 ימים', '4–5 ימים', '6–7 ימים'];
-  const by = Object.fromEntries(AU_OS.map(o => [o, [0, 0, 0, 0]]));
+  const spanDays = Math.max(1, Math.round((Math.min(to, new Date()) - from) / 864e5));
+  const weeks = Math.max(1, spanDays / 7);
   const osOfDev = {}; inR.forEach(v => (osOfDev[v.dev] = v.os));
+  const by = Object.fromEntries(AU_OS.map(o => [o, [0, 0, 0, 0]]));
   devs.forEach(dev => { const w = Math.min(7, devDays[dev].size / weeks); by[osOfDev[dev]][w <= 1 ? 0 : w <= 3 ? 1 : w <= 5 ? 2 : 3]++; });
-  return `<div class="au-minis">
-      <div class="au-mini"><b>${fd.length ? auPct(back, fd.length) + '%' : '–'}</b><span>חזרו תוך 7 ימים${fd.length ? ` (${back} מ-${fd.length})` : ''}</span></div>
-      <div class="au-mini"><b>${perWeek ? perWeek.toFixed(1) : '–'}</b><span>ביקורים למכשיר בשבוע</span></div>
-      <div class="au-mini"><b>${auFmt(devs.length)}</b><span>מכשירים פעילים בתקופה</span></div>
-    </div><p class="au-sub">${auState.range >= 7 ? 'כמה ימים בשבוע מכשיר היה פעיל (ממוצע לתקופה)' : 'ימים פעילים'}</p>${auHbarsHtml('ret', labels, by, true)}`;
+  return { installs: fd.length, back7: backIn(7), back30: backIn(30), devs: devs.length, perWeek: devs.length ? inR.length / devs.length / weeks : 0, by, spanDays };
+}
+function auReturnHtml(c) {
+  const months = auMonthList(c);
+  if (auState.retMonth && !months.includes(auState.retMonth)) auState.retMonth = '';
+  const m = auState.retMonth;
+  let from, to;
+  if (m) [from, to] = auMonthBounds(m);
+  else { from = auDays(0, auState.range)[0]; from.setHours(0, 0, 0, 0); to = new Date(Date.now() + 864e5); }
+  const r = auRetStats(c, from, to);
+  const pick = `<select class="au-note" style="font:inherit;font-size:13px;padding:5px 8px;border-radius:9px;border:1px solid var(--au-line);background:#fff;color:var(--au-ink);margin-bottom:10px" onchange="auSet('retMonth', this.value)" aria-label="בחירת חודש">
+      <option value="" ${m ? '' : 'selected'}>לפי התקופה שלמעלה</option>${months.map(k => `<option value="${k}" ${m === k ? 'selected' : ''}>${auMonthName(k)}</option>`).join('')}</select>`;
+  const labels = ['יום אחד', '2–3 ימים', '4–5 ימים', '6–7 ימים'];
+  const minis = `<div class="au-minis">
+      <div class="au-mini"><b>${r.installs ? auPct(r.back7, r.installs) + '%' : '–'}</b><span>חזרו תוך 7 ימים${r.installs ? ` (${r.back7} מ-${r.installs})` : ''}</span></div>
+      ${m ? `<div class="au-mini"><b>${r.installs ? auPct(r.back30, r.installs) + '%' : '–'}</b><span>חזרו תוך 30 יום${r.installs ? ` (${r.back30} מ-${r.installs})` : ''}</span></div>`
+           : `<div class="au-mini"><b>${r.perWeek ? r.perWeek.toFixed(1) : '–'}</b><span>ביקורים למכשיר בשבוע</span></div>`}
+      <div class="au-mini"><b>${auFmt(r.devs)}</b><span>מכשירים פעילים ${m ? 'בחודש' : 'בתקופה'}</span></div>
+    </div>`;
+  // השוואה בין חודשים — רק במצב חודש, ורק כשיש יותר מחודש אחד להשוות
+  let cohort = '';
+  if (m && months.length > 1) {
+    const rows = months.map(k => { const [f, t] = auMonthBounds(k); const x = auRetStats(c, f, t); return [auMonthName(k), auFmt(x.installs), x.installs ? auPct(x.back7, x.installs) + '%' : '–', x.installs ? auPct(x.back30, x.installs) + '%' : '–', auFmt(x.devs)]; });
+    cohort = `<p class="au-sub" style="margin-top:14px">השוואה בין חודשים</p>${auTable(['חודש', 'הורדות', 'חזרו תוך 7', 'חזרו תוך 30', 'פעילים'], rows)}`;
+  }
+  return `${pick}${minis}<p class="au-sub">כמה ימים בשבוע מכשיר היה פעיל (ממוצע ל${m ? 'חודש' : 'תקופה'})</p>${auHbarsHtml('ret', labels, r.by, true)}${cohort}`;
 }
 
 function auSrcHtml(c) {
@@ -6636,7 +6670,7 @@ function appUsageHtml() {
       <div class="au-card full"><div class="au-card-h"><h3>לאורך זמן</h3>${tbl('trend')}</div>
         <div class="au-chips">${AU_TREND.map(([k, l]) => `<button type="button" class="${auState.metric === k ? 'on' : ''}" onclick="auSet('metric','${k}')">${l}</button>`).join('')}</div>
         <div class="au-legend">${trendLegend}</div><div class="au-chart" id="auTrend"></div></div>
-      <div class="au-card"><div class="au-card-h"><h3>חוזרים</h3>${tbl('ret')}</div><p class="au-sub">מכשירים שהורידו בתקופה – כמה חזרו אחר כך</p>${auReturnHtml(c)}</div>
+      <div class="au-card"><div class="au-card-h"><h3>חוזרים</h3>${tbl('ret')}</div><p class="au-sub">מכשירים שהורידו בתקופה או בחודש שנבחר – כמה חזרו אחר כך</p>${auReturnHtml(c)}</div>
       <div class="au-card"><div class="au-card-h"><h3>מאיפה הגיעו לקישור</h3>${tbl('src')}</div><p class="au-sub">yellowzone.co.il/download – לפי ?src= בקישור (fb / wa / ig)${c.linkDesktop ? ` · ${c.linkDesktop} כניסות ממחשב הועברו לדף הנחיתה` : ''}</p>${auSrcHtml(c)}</div>
       <div class="au-card full"><div class="au-card-h"><h3>נרשמים בתקופה</h3></div><p class="au-sub">מאיזה מכשיר, מהאפליקציה או מהאתר, ובאיזו שיטה. לחיצה פותחת את הכרטיס.</p>${auRegsHtml()}</div>
     </div>
