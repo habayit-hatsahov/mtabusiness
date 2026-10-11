@@ -21,6 +21,7 @@
        מודול בתחתית העמוד, ואי-ודאות בסדר-הריצה כאן היא בדיוק §310/§312. -->
   <!-- §435 — כניסה נייטיב עם Google באפליקציה; חייב לפני google-signup.js. -->
   <script src="native-google.js"></script>
+  <script src="signup-source.js"></script>
   <script src="google-signup.js"></script>
   <!-- §430 — התחברות עם Apple. **אין כאן תגית לספרייה של אפל, בכוונה**: המודול מטעין
        אותה בעצמו ורק אחרי שהוא מוודא ש-`SERVICES_ID` מוגדר (§430). כל עוד חשבון
@@ -1975,6 +1976,9 @@
       photoProofUrl:     '',
       status:            'pending',
       submittedAt:       serverTimestamp(),
+      // §485 — מקור ההרשמה (signupOs / signupSurface / signupMethod). fail-open: מודול שלא
+      // נטען לא חוסם הרשמה, הוא רק משאיר את השדות ריקים.
+      ...(window.hbSignupSource ? window.hbSignupSource.fields() : {}),
     };
 
     // ── §284 — שדות האימות לפי המסלול שנבחר ────────────────────────────────────────────────
@@ -2648,7 +2652,7 @@
     fields: { first: 'firstName', last: 'lastName', email: 'email' },
     // המילוי נשמר לטיוטה מיד: מי שלחץ על גוגל וסגר את הדף יחזור לשדות מלאים, בדיוק כמו
     // מי שהקליד אותם ביד (המסלול הידני נשמר ממילא במעבר לתקנון).
-    onFilled: () => { try { saveRegDraft(); } catch (e) { console.error('draft save after google fill failed', e); } },
+    onFilled: () => { window.hbSignupSource?.markMethod('google'); try { saveRegDraft(); } catch (e) { console.error('draft save after google fill failed', e); } },
     // §411 — המדידה מוזרקת מכאן ולא נקראת מתוך המודול: `logEvent` הוא פונקציה מקומית של
     // הקובץ הזה, ו-`blockId` חייב להיות 'fanRegister' דווקא — אותו מודול משרת גם את טופס
     // העסקים, ובלבול ביניהם היה מייחס הרשמות לטופס הלא-נכון.
@@ -2685,7 +2689,7 @@
     fields: { first: 'firstName', last: 'lastName', email: 'email' },
     apiFetch: hbApiFetch,   // §455 — שליחת ה-authorizationCode ברגע ההרשאה
     redirectReturn: 'fan',  // §468ג — באייפון בדפדפן: מעבר לאפל וחזרה לכאן (ר' APPLE_CALLBACK_RETURN בוורקר)
-    onFilled: () => { try { saveRegDraft(); } catch (e) { console.error('draft save after apple fill failed', e); } },
+    onFilled: () => { window.hbSignupSource?.markMethod('apple'); try { saveRegDraft(); } catch (e) { console.error('draft save after apple fill failed', e); } },
     log: (channel) => {
       if (channel === 'asShown') { try { moveOrAfterApple(); } catch (e) { console.error('apple: הזזת המפריד נכשלה', e); } }
       logEvent('formStep', { blockId: 'fanRegister', channel: channel });

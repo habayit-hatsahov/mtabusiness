@@ -786,6 +786,8 @@ const SUBMIT_MEMBER_STRING_FIELDS = {
   seatArea: 100, seatBlock: 100, seatRow: 100, seatNumber: 100, verifyNote: 0,
   facebookUrl: 2000, instagramUrl: 2000, profileRaw: 2000, profileSource: 60,
   reviewFlag: 60, duplicateOfId: 40,
+  // §485 — מקור ההרשמה (signup-source.js). בלעדיהם כל הרשמה שנפלה לגיבוי נדחית ב-bad_field.
+  signupOs: 20, signupSurface: 20, signupMethod: 20,
 };
 const PROOF_URL_PREFIX = 'https://firebasestorage.googleapis.com/';
 

@@ -33,6 +33,7 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- §435 — כניסה נייטיב עם Google באפליקציה; חייב לפני google-signup.js. -->
   <script src="native-google.js"></script>
+  <script src="signup-source.js"></script>
   <script src="google-signup.js"></script>
   <!-- §445ו — אפל בהרשמה, אותו מודול משותף בדיוק כמו ב-fan-register.html.
        🔑 **ה-SDK של אפל אינו נטען כאן בתגית**, אלא מתוך apple-signup.js ורק אחרי בדיקת
@@ -1951,6 +1952,10 @@
       linkedBusinessId:  bizId,
       status:            'pending',
       submittedAt:       serverTimestamp(),
+      // §485 — מקור ההרשמה, על רשומת הבעלים בלבד (לא על מסמך העסק: העסק "נרשם" דרך הבעלים,
+      // ושדה נוסף על businesses היה עוד שדה שנרמול/אישור עלולים להשמיט בשקט). בענף הדדופ
+      // שמעל (חבר קיים) לא נכתב — המקור של חבר קיים הוא ההרשמה המקורית שלו, לא זו.
+      ...(window.hbSignupSource ? window.hbSignupSource.fields() : {}),
     });
     return memberRef.id;
   }
@@ -4810,7 +4815,7 @@
     warnId: 'warn-ownerEmail',
     fields: { first: 'ownerFirst', last: 'ownerLast', email: 'ownerEmail' },
     autoRender: false,
-    onFilled: () => { Promise.resolve(saveBizRegDraft()).catch(e => console.error('draft save after google fill failed', e)); },
+    onFilled: () => { window.hbSignupSource?.markMethod('google'); Promise.resolve(saveBizRegDraft()).catch(e => console.error('draft save after google fill failed', e)); },
     // §411 — ר' ההערה המקבילה ב-fan-register.html. blockId שונה, אותו מנגנון.
     log: (channel) => logEvent('formStep', { blockId: 'bizForm', channel: channel }),
   });
@@ -4834,7 +4839,7 @@
     fields: { first: 'ownerFirst', last: 'ownerLast', email: 'ownerEmail' },
     apiFetch: hbApiFetch,   // §455 — שליחת ה-authorizationCode ברגע ההרשאה
     autoRender: false,
-    onFilled: () => { Promise.resolve(saveBizRegDraft()).catch(e => console.error('draft save after apple fill failed', e)); },
+    onFilled: () => { window.hbSignupSource?.markMethod('apple'); Promise.resolve(saveBizRegDraft()).catch(e => console.error('draft save after apple fill failed', e)); },
     log: (channel) => {
       if (channel === 'asShown') { try { moveOrAfterApple(); } catch (e) { console.error('apple: הזזת המפריד נכשלה', e); } }
       logEvent('formStep', { blockId: 'bizForm', channel: channel });
