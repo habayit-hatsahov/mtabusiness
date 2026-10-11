@@ -25408,3 +25408,15 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - ✅ **(11.10, 23:24) AAB 1.2 נבנה:** `bundleRelease` מ-`C:\yz-app\android` (`gradlew.bat` דרך `Start-Process cmd` עם `-WorkingDirectory`). `jarsigner`: חתום ומאומת. החותם הוא מפתח ההעלאה `4B:DC…`. במניפסט שבחבילה יש `yellowzone.co.il`, `/download`, `/open`, `autoVerify` ו-`1.2`. הועתק ל-`Desktop\YellowZone-1.2-android.aab` להעלאה ע"י רמי. ✅ ה-`assetlinks.json` באוויר, ו-**Digital Asset Links API של גוגל כבר מחזיר את שתי הטביעות.** 🐛 **מלכודת:** `npx cap sync android` שהורץ מ-`C:\yz-app` פתר את ה-junction לנתיב העברי, וכתב ל-`capacitor.settings.gradle` נתיבים יחסיים `../../Users/User/Desktop/הבית הצהוב/...`. הבנייה נכשלה ב-"project directory does not exist" (הנתיב מוצג משובש ב-cp1255). **הפתרון:** `git checkout` לקובץ. **כשאין שינוי בתוספים, לא צריך sync לבנייה של שינויים נייטיב** (מניפסט / gradle).
 - 🔲 **רמי:** להעלות ל-Play ← ייצור ← גרסה חדשה. אחרי שהיא באוויר: לבדוק על אנדרואיד שלחיצה על `yellowzone.co.il/download` בהודעה פותחת את האפליקציה.
 - ✅ **(11.10, ~23:35) רמי העלה את 1.2 (versionCode 3) לייצור ושלח לבדיקה של גוגל.** בסקירה הופיעו אותן שתי אזהרות לא-חוסמות כמו ב-§476 (deobfuscation, סמלי Native). מכשירים נתמכים: ללא שינוי, 0 מכשירים שירדו. גודל: 4.41MB (+556B). עדכון למכשיר קיים: 67.9KB. 🔲 אחרי האישור: לבדוק על אנדרואיד שלחיצה על `yellowzone.co.il/download` בהודעה פותחת את האפליקציה.
+
+### §497 – האתר נסגר לאוהדים: הדפים הפנימיים מפנים לדף הנחיתה (11.10)
+**רמי: "תבנה עכשיו"** (ההמשך של §484.2: "אני רוצה שלא יהיה אתר, השימוש רק דרך האפליקציה").
+- **`web-gate.js` (חדש, מודול)** נטען ב-`home.html`, `profile.html` ו-`fan-register.html`. בדפדפן:
+  - **אין `hb_memberId`** ← `landing.html` מיד.
+  - **מחובר** ← נקראת רשומת החבר. **מנהל (`isAdmin`) או בעל עסק (`isBusinessOwner` + `linkedBusinessId`) נשארים** (§484.6/.8). אוהד ← `landing.html`, ושם מוצג הבאנר.
+  - session לא קיים או של מישהו אחר ← `landing.html`.
+- **ההסתרה** (`html.yz-gate body {visibility:hidden}`) נקבעת בסקריפט inline מיד אחרי `<meta charset>`. מודול רץ מאוחר מדי, ואוהד היה רואה הבהוב של האינדקס. **רק כשלא באפליקציה** (UA `YellowZoneApp` / `window.Capacitor`) **ורק כשלא בתוך iframe** (מודאל ההרשמה ב-`welcome.html`).
+- **fail-open:** auth שלא עונה תוך 5 שנ', או כשל בקריאת הרשומה ← הדף נפתח. מנהל שננעל בחוץ בגלל רשת גרוע מאוהד שרואה פעם אחת את האינדקס בדפדפן.
+- **פתוח בכוונה** (לא נטען בהם השער): `business.html` (הקישור החיצוני להרשמת עסק), `business-dashboard.html`, `admin-dashboard.html` וכל דפי `admin-*`, `landing.html`, `download.html`, `open.html`, `terms.html`, `delete-account.html`, ו-`welcome.html?login=1`.
+- **נבדק:** `scratch_test_web_gate.js` 10/10, עם mocks ל-Firebase והקוד נטען מהקובץ (מנהל, בעל עסק, דגל בעלים בלי עסק, אוהד, לא מחובר, session ישן, session של אחר, auth שותק, קריאה שנכשלה, לא-gated). 🔨 הסרת הפטור של בעל העסק הכשילה בדיקה. בדפדפן: `home.html`, `fan-register.html`, ו-`profile.html` עם `hb_memberId` מזויף, הגיעו כולם ל-`landing.html`. ⚠️ הפטור של מנהל ובעל עסק לא נבדק עם כניסה אמיתית (רמי בודק: `home.html` בדפדפן כשהוא מחובר כמנהל).
+- `sw.js` → **v185**.
