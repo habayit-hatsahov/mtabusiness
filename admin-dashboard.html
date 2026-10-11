@@ -6401,7 +6401,8 @@ const APP_USAGE_KEY = 'appUsage';
 const AU_LIMIT = 10000;
 const AU_SINCE_LABEL = '11.10.2026';
 let auData = null, auError = null, auLoading = false;
-const auState = { range: 7, os: 'all', metric: 'active', tables: {} };
+// includeTest — §488ב: רמי חיפש את הפתיחה שלו ולא מצא, כי מנהלים ו-src=test מוסתרים. המתג מציג אותם.
+const auState = { range: 7, os: 'all', metric: 'active', tables: {}, includeTest: false };
 const AU_OS = ['ios', 'android', 'other'];
 const AU_OS_NAME = { ios: 'אייפון', android: 'אנדרואיד', other: 'מחשב / לא נמדד' };
 const AU_COLOR = { ios: 'var(--au-ios)', android: 'var(--au-android)', other: 'var(--au-other)' };
@@ -6418,7 +6419,8 @@ const AU_SRC_NAME = { fb: 'פייסבוק', wa: 'וואטסאפ', ig: 'אינס�
 
 window.retryAppUsage = function() { auError = null; renderMain(); };
 window.auSet = function(k, v) {
-  if (k === 'range') auState.range = +v; else if (k === 'table') auState.tables[v] = !auState.tables[v]; else auState[k] = v;
+  if (k === 'range') auState.range = +v; else if (k === 'table') auState.tables[v] = !auState.tables[v];
+  else if (k === 'includeTest') auState.includeTest = !auState.includeTest; else auState[k] = v;
   renderMain();
 };
 
@@ -6449,7 +6451,7 @@ function auOsList() { return auState.os === 'all' ? AU_OS : [auState.os]; }
 
 // כל המונים לפי יום ולפי מערכת-הפעלה, לכל הימים שיש בהם נתונים. נגזר מחדש בכל ציור — זול (אלפי שורות).
 function auCompute() {
-  const admins = adminMemberIds();
+  const admins = auState.includeTest ? new Set() : adminMemberIds();
   const adminDevs = new Set();
   const devOs = {};
   for (const e of auData.usage) {
@@ -6463,7 +6465,7 @@ function auCompute() {
   let linkDesktop = 0;
   for (const e of auData.links) {
     const s = (e.blockId.split(':')[1] || '');
-    if (s === 'test') continue;                       // הבדיקות שלנו (§483)
+    if (s === 'test' && !auState.includeTest) continue;   // הבדיקות שלנו (§483)
     if (e.channel === 'app') continue;                // מתוך האפליקציה עצמה — לא כניסה חדשה
     const os = auOsOf(e.channel);
     if (os === 'other') linkDesktop++;
@@ -6487,7 +6489,7 @@ function auCompute() {
     }
   }
   for (const f of MOCK_FANS) {
-    if (f.isAdmin === true) continue;
+    if (f.isAdmin === true && !auState.includeTest) continue;
     const os = auOsOf(f.signupOs);
     if (f.registeredAtKnown && f.registeredAt) day(f.registeredAt)[os].signup++;
     if (f.approvedAt) day(f.approvedAt)[os].approved++;
@@ -6602,7 +6604,7 @@ function auSrcHtml(c) {
 
 function auRegsHtml() {
   const AU_METHOD = { apple: 'Apple', google: 'Google', manual: 'מילוי ידני' };
-  const list = MOCK_FANS.filter(f => f.isAdmin !== true && f.registeredAtKnown && auInRange(f.registeredAt) && (auState.os === 'all' || auOsOf(f.signupOs) === auState.os))
+  const list = MOCK_FANS.filter(f => (auState.includeTest || f.isAdmin !== true) && f.registeredAtKnown && auInRange(f.registeredAt) && (auState.os === 'all' || auOsOf(f.signupOs) === auState.os))
     .sort((a, b) => b.registeredAt - a.registeredAt).slice(0, 25);
   if (!list.length) return `<div class="au-empty">אין נרשמים בתקופה הזאת</div>`;
   return list.map(f => {
@@ -6619,6 +6621,7 @@ function appUsageHtml() {
   const tbl = (k) => `<button class="au-as-table" onclick="auSet('table','${k}')">${auState.tables[k] ? 'הצג כגרף' : 'הצג כטבלה'}</button>`;
   const head = `<div class="au-top"><h2>אפליקציה ושימוש</h2></div>
     <div class="au-filters">${seg('range', [[1, 'היום'], [7, '7 ימים'], [30, '30 ימים'], [90, '90 ימים']])}${seg('os', [['all', 'הכול'], ['ios', 'אייפון', 'ios'], ['android', 'אנדרואיד', 'android']])}
+    <label class="au-note" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${auState.includeTest ? 'checked' : ''} onchange="auSet('includeTest')"> כולל מנהלים ובדיקות</label>
     <span class="au-note">${(() => { const d = auDays(0, auState.range); return auState.range === 1 ? 'היום, ' + auShort(d[0]) : auShort(d[0]) + '–' + auShort(d[d.length - 1]); })()}</span></div>`;
   if (auError) return `<div class="au-root">${head}<div class="au-card"><div class="au-empty">הטעינה נכשלה: ${esc(auError)} · <button class="au-as-table" onclick="retryAppUsage()">לנסות שוב</button></div></div></div>`;
   if (!auData) return `<div class="au-root">${head}<div class="au-card"><div class="au-empty">טוען נתונים…</div></div></div>`;
@@ -6638,7 +6641,7 @@ function appUsageHtml() {
       <div class="au-card full"><div class="au-card-h"><h3>נרשמים בתקופה</h3></div><p class="au-sub">מאיזה מכשיר, מהאפליקציה או מהאתר, ובאיזו שיטה. לחיצה פותחת את הכרטיס.</p>${auRegsHtml()}</div>
     </div>
     <p class="au-foot">"הורדות" = מכשיר שפתח את האפליקציה בפעם הראשונה (מדידה שלנו, נאספת מ-${AU_SINCE_LABEL}) – לא מספר ההורדות בחנות. בשבועות הראשונים נספרים בה גם מכשירים שהאפליקציה כבר הייתה מותקנת בהם, ומחיקה והתקנה מחדש נספרת שוב.
-    מקור ההרשמה (מכשיר / אפליקציה / שיטה) נשמר מ-${AU_SINCE_LABEL}; נרשמים מלפני כן מופיעים כ"מחשב / לא נמדד". הצפיות והמכשירים של המנהלים לא נספרים.</p>
+    מקור ההרשמה (מכשיר / אפליקציה / שיטה) נשמר מ-${AU_SINCE_LABEL}; נרשמים מלפני כן מופיעים כ"מחשב / לא נמדד". הצפיות והמכשירים של המנהלים, וכניסות עם src=test, לא נספרים – אלא אם מסמנים "כולל מנהלים ובדיקות".</p>
   </div>`;
 }
 
