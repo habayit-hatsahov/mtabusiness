@@ -20,7 +20,17 @@
        נפתח בתוך החלון הקטן. -->
   <script>(function(){try{if(new URLSearchParams(location.search).get('embed')==='1'&&window.top!==window){document.documentElement.classList.add('yz-embed');var b=document.createElement('base');b.target='_top';document.head.appendChild(b);}}catch(e){}})();</script>
   <style>
-    html.yz-embed .topbar, html.yz-embed .site-footer, html.yz-embed .menu-overlay, html.yz-embed #dashBackLink { display:none !important; }
+    html.yz-embed .topbar, html.yz-embed .site-footer, html.yz-embed .menu-overlay, html.yz-embed #dashBackLink, html.yz-embed #dashTabs { display:none !important; }
+    /* §506 — לשוניות האזור במחשב (אותו עיצוב כמו בפרופיל) + מה שהמודולים מצפים לו מהדף (card-section/section-title) */
+    .dash-tabs { display:flex; gap:6px; background:var(--card-bg2); border-radius:14px; padding:4px; margin:14px auto 0; max-width:720px; width:calc(100% - 32px); }
+    .dash-tabs[hidden] { display:none; }
+    .dash-tab { flex:1; border:none; background:none; border-radius:11px; padding:10px 4px; font:inherit; font-size:14px; font-weight:700; color:var(--text-sm); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; }
+    .dash-tab.on { background:#fff; color:var(--text); box-shadow:var(--shadow); }
+    .dash-count { min-width:18px; height:18px; border-radius:9px; background:var(--yellow); color:var(--text); font-size:11px; font-weight:900; display:inline-flex; align-items:center; justify-content:center; padding:0 5px; }
+    .dash-count[hidden] { display:none; }
+    .dash-area-wrap { max-width:720px; margin:14px auto 40px; padding:0 16px; }
+    .dash-area-wrap .card-section { background:var(--card-bg); border-radius:16px; padding:18px; border:1px solid var(--border); margin-bottom:12px; }
+    .dash-area-wrap .section-title { font-size:15px; font-weight:800; margin-bottom:10px; color:var(--text); }
     html.yz-embed body { padding-top:0 !important; }
     .yz-embed-only { display:none; }
     html.yz-embed .yz-embed-only { display:block; }
@@ -1543,6 +1553,18 @@
      ══════════════════════════════════════════════════════ -->
 <div id="mainDashboard" style="display:none">
 
+  <!-- §506 — "כל האזור גם במחשב" (§473כו, רמי: "הכל יהיה להם במחשב, כל האזור הזה לא רק עריכה").
+       לשוניות "העסק שלי / עדכונים / הודעות" — **רק מחוץ ל-iframe**: באפליקציה הדשבורד משובץ בתוך
+       "העסק שלי" של הפרופיל, ולפרופיל יש לשוניות משלו. אותם מודולים בדיוק (area-updates.js,
+       conversations.js) — בזהות של הקישור (uid=העסק), שהחוקים מכירים בה (isLinkedBusinessOwnerOf). -->
+  <div class="dash-tabs" id="dashTabs" hidden>
+    <button type="button" class="dash-tab on" id="dtBiz" onclick="switchView('biz')">העסק שלי</button>
+    <button type="button" class="dash-tab" id="dtUpdates" onclick="switchView('updates')">עדכונים <span class="dash-count" id="dtUpdatesCount" hidden></span></button>
+    <button type="button" class="dash-tab" id="dtMsgs" onclick="switchView('msgs')">הודעות <span class="dash-count" id="dtMsgsCount" hidden></span></button>
+  </div>
+  <div class="view" id="view-updates"><div class="dash-area-wrap" id="dashUpdRoot"></div></div>
+  <div class="view" id="view-msgs"><div class="dash-area-wrap" id="dashConvRoot"></div></div>
+
   <!-- ══ VIEW: העסק שלי ══ -->
   <div class="view active" id="view-biz">
     <div class="biz-hero">
@@ -2722,6 +2744,39 @@ function showDashboard() {
   setupLivePreview();
   // בדיקה תקופתית כדי שפריטים שהושלמו ייעלמו מהרשימה גם בלי אינטראקציה נוספת
   setInterval(() =>{ if (biz) renderCompleteness(getPreviewState()); }, 15000);
+  mountDashArea();
+}
+
+// ── §506 — "עדכונים" ו"הודעות" בדשבורד במחשב (§473כו) ──────────────────────────────────────
+// אותם מודולים כמו בפרופיל, על תיבת החבר הבעלים (biz.ownerMemberId). ⚠️ לא במצב משובץ —
+// שם הפרופיל מסביב כבר מציג אותם, ושני מאזינים על אותה תיבה היו כפילות.
+// ⚠️ import דינמי עטוף: כשל בטעינה מוריד את הלשוניות בלבד, לא את העריכה.
+async function mountDashArea() {
+  if (document.documentElement.classList.contains('yz-embed')) return;
+  if (!biz || !biz.ownerMemberId) return;   // עסק בלי בעלים מקושר — אין תיבה להציג
+  const setCount = (id, n) => { const el = document.getElementById(id); if (el) { el.hidden = !n; el.textContent = n; } };
+  try {
+    const [{ mountUpdates }, { mountConversations }] = await Promise.all([import('./area-updates.js'), import('./conversations.js')]);
+    const upd = mountUpdates({
+      db: bizDb, memberId: biz.ownerMemberId, root: document.getElementById('dashUpdRoot'),
+      isOwner: true, bizName: biz.name || '',
+      onUnread: (n) => setCount('dtUpdatesCount', n),
+      onOpenReplies: () => switchView('msgs'),
+    });
+    const conv = mountConversations({
+      db: bizDb, memberId: biz.ownerMemberId, root: document.getElementById('dashConvRoot'),
+      source: 'bizDashboard', bizId: biz.id,
+      onUnread: (n) => { setCount('dtMsgsCount', n); upd.setReplyUnread(n); },
+    });
+    document.getElementById('dashTabs').hidden = false;
+    // ?tab=msgs / ?conv= / ?tab=updates — כמו בפרופיל (למשל קישור מהמייל "הצוות ענה לך" במחשב).
+    const p = new URLSearchParams(location.search);
+    if (p.get('conv')) { switchView('msgs'); conv.openConv(p.get('conv')); }
+    else if (p.get('tab') === 'msgs') switchView('msgs');
+    else if (p.get('tab') === 'updates') switchView('updates');
+  } catch (e) {
+    console.error('dash area mount failed:', e);
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -4553,8 +4608,11 @@ let _bizScrollY = 0;
 window.switchView = function(view) {
   const wasBiz = document.getElementById('view-biz')?.classList.contains('active');
   if (wasBiz && view !== 'biz') _bizScrollY = window.scrollY;
-  ['biz','terms'].forEach(v =>{
+  ['biz','terms','updates','msgs'].forEach(v =>{   // §506 — + עדכונים/הודעות (במחשב)
     document.getElementById('view-' + v).classList.toggle('active', v === view);
+  });
+  [['biz','dtBiz'],['updates','dtUpdates'],['msgs','dtMsgs']].forEach(([v, id]) =>{
+    document.getElementById(id)?.classList.toggle('on', v === view || (v === 'biz' && view === 'terms'));
   });
   // סרגל-הטיוטה הצף ("בטל"/"סקירה ושליחה") מוצג/מוסתר לפי draftChanges בלבד (ר' renderBizView) —
   // בלי תלות בתצוגה הפעילה, אז הוא נשאר גלוי גם במסך-הסקירה עצמו, מעל כפתור "שלח לאישור מנהל"
@@ -4698,7 +4756,7 @@ function renderWriteUsCard(b) {
   el.innerHTML = `
     <div class="writeus-title">💬 יש לכם שאלה? הצעה? שיתוף פעולה? כתבו לנו</div>
     <div class="writeus-sub">שאלה, הצעה, שיתוף פעולה, בקשה מיוחדת, או כל דבר שחשוב שנדע – ההודעה מגיעה <b>רק לצוות Yellow Zone ולא מוצגת לאוהדים</b>. זו לא בקשת שינוי בכרטיס: היא נשלחת מיד, לא עוברת דרך הסיכום ולא ממתינה לאישור.<br>רוצים לספר על העסק עצמו? זה שייך ל<b>"תיאור העסק"</b> בכרטיס "פרטי העסק" למעלה – שם האוהדים יראו את זה.</div>
-    ${writeUsJustSent ? '<div class="writeus-done">✓ ההודעה נשלחה לצוות. התשובה תגיע אליכם במייל, ובאפליקציה – בפרופיל ← "הודעות", שם נמצאות כל השיחות שלכם איתנו.</div>' : ''}
+    ${writeUsJustSent ? '<div class="writeus-done">✓ ההודעה נשלחה לצוות. התשובה תגיע אליכם במייל ובלשונית "הודעות" – כאן למעלה במחשב, ובאפליקציה בפרופיל. שם נמצאות כל השיחות שלכם איתנו.</div>' : ''}
     ${openNote ? `<div class="writeus-open"><b>ההודעה הפתוחה שלכם אצל הצוות${noteWhenText(b) ? ' (נשלחה ' + noteWhenText(b) + ')' : ''}:</b><br>"${esc(b.note)}"<br><span style="color:var(--text-muted)">הודעה חדשה שתשלחו תצטרף אליה ולא תמחק אותה.</span></div>` : ''}
     <textarea class="writeus-ta" id="writeUsText" oninput="clearWriteUsSent()" placeholder="מה תרצו לשאול, להציע, או לספר לנו?">${esc(writeUsDraft)}</textarea>
     <button class="writeus-btn" id="writeUsBtn" onclick="sendWriteUs()">שליחת ההודעה לצוות</button>`;
