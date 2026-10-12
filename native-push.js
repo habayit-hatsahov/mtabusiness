@@ -250,6 +250,71 @@
     } catch (e) {}
   })();
 
+  // ── §501ב — ערוץ התראות משלנו, בעדיפות גבוהה ──────────────────────────────────────────
+  // 🔴 נמדד ב-§420 ושוב ב-12.10 על המכשיר של רמי: בלי ערוץ משלנו ההתראה נכנסת לערוץ ברירת
+  // המחדל של FCM (importance 3) — בלי לקפוץ על המסך, ולפעמים בלי צליל, "כאילו לא הגיעה".
+  // importance 4 (HIGH) = באנר על המסך + צליל. הוורקר שולח channel_id זהה (fcm.js).
+  // 🔑 createChannel אידמפוטנטי — אפשר לקרוא בכל טעינה. ⚠️ אנדרואיד **לא** משנה importance של
+  // ערוץ קיים, ולכן שינוי עתידי בהגדרות = מזהה ערוץ חדש, לא אותו מזהה.
+  // ערוץ שעוד לא נוצר במכשיר (האפליקציה לא נפתחה מאז) → FCM נופל לברירת המחדל, לא מפיל.
+  const CHANNEL_ID = 'yz_main';
+  (function ensureChannel() {
+    const c = cap();
+    if (!(c && typeof c.nativePromise === 'function') || platform() !== 'android') return;
+    try {
+      c.nativePromise('PushNotifications', 'createChannel', {
+        id: CHANNEL_ID, name: 'הודעות Yellow Zone', description: 'תשובות מהצוות ועדכונים',
+        importance: 4, visibility: 1, vibration: true,
+      }).catch(function () {});
+    } catch (e) {}
+  })();
+
+  // ── §501ב — פוש שמגיע כשהאפליקציה פתוחה ──────────────────────────────────────────────
+  // 🔴 **אנדרואיד לא מציג התראה כשהאפליקציה בחזית** — ההודעה נמסרת רק לקוד (אין
+  // presentationOptions בתצורה, ובכוונה: שינוי שם דורש בנייה חדשה). בלי המאזין הזה, מי
+  // שמסתכל על האפליקציה ברגע התשובה לא רואה כלום — זה מה שקרה לרמי בבדיקה הראשונה.
+  // באנר בראש המסך; לחיצה מנווטת ל-data.link (אותו כלל: נתיב יחסי בלבד).
+  function showBanner(title, body, link) {
+    try {
+      const old = document.getElementById('yzPushBanner');
+      if (old) old.remove();
+      const b = document.createElement('div');
+      b.id = 'yzPushBanner';
+      b.setAttribute('role', 'alert');
+      b.style.cssText = 'position:fixed;top:10px;left:10px;right:10px;z-index:100000;background:#0A2A66;color:#fff;' +
+        'border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-family:inherit;direction:rtl;' +
+        'display:flex;gap:10px;align-items:flex-start;cursor:pointer;border-bottom:3px solid #FFD400';
+      const t = document.createElement('div');
+      t.style.cssText = 'flex:1;min-width:0;line-height:1.45';
+      const h = document.createElement('div'); h.style.cssText = 'font-weight:800;font-size:14.5px'; h.textContent = title || 'Yellow Zone';
+      const p = document.createElement('div'); p.style.cssText = 'font-size:13px;opacity:.9;margin-top:2px'; p.textContent = body || '';
+      t.appendChild(h); t.appendChild(p);
+      const x = document.createElement('button');
+      x.type = 'button'; x.textContent = '✕'; x.setAttribute('aria-label', 'סגירה');
+      x.style.cssText = 'background:none;border:none;color:#fff;font-size:16px;cursor:pointer;padding:0 2px';
+      b.appendChild(t); b.appendChild(x);
+      const close = function () { b.remove(); };
+      x.addEventListener('click', function (e) { e.stopPropagation(); close(); });
+      b.addEventListener('click', function () {
+        close();
+        if (typeof link === 'string' && link.charAt(0) === '/' && link.charAt(1) !== '/' &&
+            location.pathname + location.search !== link) location.href = link;
+      });
+      (document.body || document.documentElement).appendChild(b);
+      setTimeout(close, 12000);
+    } catch (e) {}
+  }
+  (function listenForeground() {
+    const c = cap();
+    if (!(c && typeof c.addListener === 'function')) return;
+    try {
+      c.addListener('PushNotifications', 'pushNotificationReceived', function (n) {
+        const d = (n && n.data) || {};
+        showBanner(n && n.title, n && n.body, d.link);
+      });
+    } catch (e) {}
+  })();
+
   window.YZNativePush = {
     available: available,
     platform: platform,

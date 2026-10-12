@@ -38,9 +38,12 @@ export async function sendFcmToToken(env, accessToken, token, { title, body, dat
       android: {
         priority: 'high',
         notification: {
-          // ⚠️ שם הערוץ חייב להיות זהה למה שהאפליקציה יוצרת, אחרת אנדרואיד 8+
-          // מפיל את ההודעה בשקט. ברירת המחדל של תוסף Capacitor היא הערוץ הכללי,
-          // ולכן לא נקבע כאן ערוץ מפורש עד שניצור אחד משלנו.
+          // §501ב — הערוץ שלנו בעדיפות גבוהה (native-push.js יוצר אותו בכל טעינה) — כדי
+          // שההתראה תקפוץ על המסך ולא תיכנס בשקט למגירה (נמדד: ערוץ ברירת המחדל = importance 3).
+          // 🔑 (תיקון להערה הקודמת כאן): ערוץ שלא נוצר במכשיר **לא** מפיל את ההודעה —
+          // CommonNotificationBuilder.getOrCreateChannel של FCM נופל לערוץ ברירת המחדל
+          // ("Notification Channel requested ... has not been created by the app").
+          channel_id: 'yz_main',
           sound: 'default',
           ...(link ? { click_action: link } : {}),
         },
