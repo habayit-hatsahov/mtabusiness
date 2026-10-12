@@ -1852,7 +1852,7 @@
 import { firebaseConfig, db as sharedDb, auth as sharedAuth, getStorageLazy as sharedStorageLazy } from './firebase-config.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, getDocFromServer, updateDoc, serverTimestamp, collection, query, where, getDocs
+  getFirestore, doc, getDoc, getDocFromServer, updateDoc, serverTimestamp, collection, query, where, getDocs, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import {
   ref, uploadBytes, getDownloadURL
@@ -4627,7 +4627,7 @@ function renderWriteUsCard(b) {
   el.innerHTML = `
     <div class="writeus-title">💬 יש לכם שאלה? הצעה? שיתוף פעולה? כתבו לנו</div>
     <div class="writeus-sub">שאלה, הצעה, שיתוף פעולה, בקשה מיוחדת, או כל דבר שחשוב שנדע – ההודעה מגיעה <b>רק לצוות Yellow Zone ולא מוצגת לאוהדים</b>. זו לא בקשת שינוי בכרטיס: היא נשלחת מיד, לא עוברת דרך הסיכום ולא ממתינה לאישור.<br>רוצים לספר על העסק עצמו? זה שייך ל<b>"תיאור העסק"</b> בכרטיס "פרטי העסק" למעלה – שם האוהדים יראו את זה.</div>
-    ${writeUsJustSent ? '<div class="writeus-done">✓ ההודעה נשלחה לצוות – נחזור אליכם בהקדם.</div>' : ''}
+    ${writeUsJustSent ? '<div class="writeus-done">✓ ההודעה נשלחה לצוות. התשובה תגיע אליכם במייל, ובאפליקציה – בפרופיל ← "הודעות", שם נמצאות כל השיחות שלכם איתנו.</div>' : ''}
     ${openNote ? `<div class="writeus-open"><b>ההודעה הפתוחה שלכם אצל הצוות${noteWhenText(b) ? ' (נשלחה ' + noteWhenText(b) + ')' : ''}:</b><br>"${esc(b.note)}"<br><span style="color:var(--text-muted)">הודעה חדשה שתשלחו תצטרף אליה ולא תמחק אותה.</span></div>` : ''}
     <textarea class="writeus-ta" id="writeUsText" oninput="clearWriteUsSent()" placeholder="מה תרצו לשאול, להציע, או לספר לנו?">${esc(writeUsDraft)}</textarea>
     <button class="writeus-btn" id="writeUsBtn" onclick="sendWriteUs()">שליחת ההודעה לצוות</button>`;
@@ -4645,6 +4645,41 @@ window.sendWriteUs = async function() {
   const text = ta.value.trim();
   if (!text) { showToast('כתבו לנו משהו לפני השליחה'); return; }
   if (btn) { btn.disabled = true; btn.textContent = 'שולח…'; }
+
+  // ── §501 — תיבה אחת לכולם (§473טז): ההודעה נפתחת כשיחה של בעל העסק ─────────────────────
+  // התשובה תגיע אליו במייל, באפליקציה ("הודעות" בפרופיל) ובפוש — במקום שדה note שהתשובה
+  // עליו הייתה רק בוואטסאפ/מייל ידני. השיחה שייכת ל**חבר** (ownerMemberId) ולא לעסק: אותה
+  // תיבה שבה הוא כותב כאוהד. החוקים (isConvOwner) מכירים בשתי דרכי הכניסה לדשבורד.
+  // ⚠️ עסק בלי ownerMemberId (לא אמור להיות — 65/65 מקושרים, §490) נופל לנתיב הישן למטה,
+  // כדי שההודעה לא תאבד.
+  if (biz.ownerMemberId) {
+    try {
+      const s = text.replace(/\s+/g, ' ').trim();
+      const ref = doc(collection(bizDb, 'conversations'));
+      await withBizAuth(() => {
+        const b = writeBatch(bizDb);
+        b.set(ref, {
+          memberId: biz.ownerMemberId, status: 'open', subject: s.length > 80 ? s.slice(0, 79) + '…' : s,
+          source: 'bizDashboard', bizId,
+          createdAt: serverTimestamp(), lastAt: serverTimestamp(), lastFrom: 'member', memberReadAt: serverTimestamp(),
+        });
+        b.set(doc(collection(bizDb, 'conversations', ref.id, 'messages')), { from: 'member', text: text.slice(0, 2000), createdAt: serverTimestamp() });
+        return b.commit();
+      });
+      writeUsJustSent = true;
+      writeUsDraft = '';
+      ta.value = '';
+      showToast(' ההודעה נשלחה לצוות');
+      renderBizView();
+    } catch (e) {
+      console.error(e);
+      reportBizWriteError('writeUsConv', e, text.slice(0, 120));
+      showToast(bizWriteErrorMsg(e));
+      if (btn) { btn.disabled = false; btn.textContent = 'שליחת ההודעה לצוות'; }
+    }
+    return;
+  }
+
   // הודעה פתוחה שהמנהל עוד לא סימן "טופל" לא נדרסת — פנייה שנייה מצטרפת אליה, אחרת הראשונה
   // הייתה נעלמת מהמסך של המנהל בלי שאיש ראה אותה.
   const open = (biz.note && !biz.noteHandled) ? biz.note + '\n– – –\n' : '';

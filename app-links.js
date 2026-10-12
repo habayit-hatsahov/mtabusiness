@@ -28,12 +28,16 @@
   try { hasApp = (typeof c.isPluginAvailable === 'function' && c.isPluginAvailable('App')) || !!(c.Plugins && c.Plugins.App); } catch (e) {}
   if (!hasApp) return;
 
-  function bizFrom(url) {
+  // §501 — גם /open?conv=<id> (הכפתור במייל "הצוות ענה לך") → השיחה בלשונית "הודעות".
+  function targetFrom(url) {
     try {
       var u = new URL(url);
       if (!/^(www\.)?yellowzone\.co\.il$/.test(u.hostname)) return '';
       if (!/^\/open(\.html)?\/?$/.test(u.pathname)) return '';
-      return u.searchParams.get('biz') || '';
+      var conv = u.searchParams.get('conv') || '';
+      if (conv) return 'profile.html?conv=' + encodeURIComponent(conv);
+      var biz = u.searchParams.get('biz') || '';
+      return biz ? 'home.html?biz=' + encodeURIComponent(biz) : '';
     } catch (e) { return ''; }
   }
 
@@ -41,13 +45,13 @@
   // מחזיר אותה בכל טעינת דף עד שהאפליקציה נסגרת — בלי השמירה, כל מעבר דף היה קופץ שוב לעסק.
   var KEY = 'yz_handled_link';
   function go(url, fromLaunch) {
-    var biz = bizFrom(url);
-    if (!biz) return;
+    var target = targetFrom(url);
+    if (!target) return;
     var last = null;
     try { last = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) {}
     if (last && last.url === url && (fromLaunch || Date.now() - last.at < 5000)) return;
     try { sessionStorage.setItem(KEY, JSON.stringify({ url: url, at: Date.now() })); } catch (e) {}
-    location.href = 'home.html?biz=' + encodeURIComponent(biz);
+    location.href = target;
   }
 
   try { c.addListener('App', 'appUrlOpen', function (e) { go(e && e.url, false); }); } catch (e) {}

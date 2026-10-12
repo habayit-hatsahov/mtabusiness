@@ -226,6 +226,30 @@
     return res;
   }
 
+  // ── §501 — לחיצה על פוש פותחת את מה שהוא מדבר עליו ────────────────────────────────────
+  // הוורקר שולח ב-data את `link` (נתיב יחסי, למשל '/profile.html?conv=<id>'). בלי המאזין
+  // הזה הלחיצה פותחת את האפליקציה במסך שבו הייתה, והאדם צריך לחפש את התשובה בעצמו.
+  // ⚠️ רק נתיב שמתחיל ב-'/' ולא '//' — פוש הוא קלט מבחוץ, וניווט לכתובת חיצונית שהגיעה
+  // בו היה פותח דף זר בתוך האפליקציה.
+  // ⚠️ האירוע נשמר עד שיש מאזין (הפעלה קרה), ונמסר בכל דף שנטען — השמירה ב-sessionStorage
+  // מונעת קפיצה חוזרת אחרי שכבר ניווטנו (אותו דפוס של app-links.js).
+  (function listenTaps() {
+    const c = cap();
+    if (!(c && typeof c.addListener === 'function')) return;
+    const KEY = 'yz_push_tap';
+    try {
+      c.addListener('PushNotifications', 'pushNotificationActionPerformed', function (e) {
+        const n = e && e.notification;
+        const link = n && n.data && n.data.link;
+        if (typeof link !== 'string' || link.charAt(0) !== '/' || link.charAt(1) === '/') return;
+        const id = (n && n.id) || link;
+        try { if (sessionStorage.getItem(KEY) === id) return; sessionStorage.setItem(KEY, id); } catch (err) {}
+        if (location.pathname + location.search === link) return;
+        location.href = link;
+      });
+    } catch (e) {}
+  })();
+
   window.YZNativePush = {
     available: available,
     platform: platform,

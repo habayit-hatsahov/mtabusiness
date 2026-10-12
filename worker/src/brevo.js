@@ -159,6 +159,31 @@ export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, 
   });
 }
 
+// ── §501 — "הצוות ענה לך" — תשובה בשיחה ("האזור שלי", §473 שלב 1) ─────────────────────
+// 🔑 **התשובה המלאה בגוף המייל**, ולא רק "יש לך הודעה": בעל עסק שמנהל מהמחשב, ומי שאין לו
+// עדיין גרסה שפותחת את השיחה מהקישור, קוראים אותה כאן בלי לחפש.
+// הטקסט נכנס לתבנית ישירות (ולא כ-{var}) כדי שהפסקאות וירידות השורה שלו יישמרו — paragraphHtml
+// מבריח אותו כמו כל טקסט בתבנית.
+// ⚠️ התג 'convReply' חובה — בלעדיו אירועי המסירה נוחתים על שדות מייל-הקוד (§415, ר' sendBrevoEmail),
+// ו-brevo-webhook.js מדלג עליו במפורש.
+export async function sendConversationReplyEmail(env, { toEmail, toName, replyText, link }) {
+  const body = [
+    'היי {name},',
+    'הצוות של Yellow Zone ענה לך:',
+    String(replyText || '').trim(),
+    '{link}',
+    'אפשר להמשיך את השיחה באפליקציה, בפרופיל ← "הודעות". אפשר גם פשוט להשיב למייל הזה.',
+  ].join('\n\n');
+  const vars = { name: toName || '', link };
+  await sendBrevoEmail(env, {
+    to: [{ email: toEmail, name: toName || '' }],
+    replyTo: { email: REPLY_TO },
+    subject: 'הצוות של Yellow Zone ענה לך',
+    htmlContent: renderMailHtml(body, vars, { linkLabel: 'לפתיחת השיחה באפליקציה', lineHeight: '1.7' }),
+    tag: 'convReply',
+  });
+}
+
 // מייל מאוחד — כשבעל עסק מאושר גם כאוהד וגם כבעל עסק באותה פעולה
 export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl, login = null }) {
   const vars = { name: toName || '', code, business: businessName, link: dashboardLink, ...loginVars(login) };

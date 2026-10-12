@@ -146,6 +146,9 @@ export async function handleBrevoWebhook(request, env) {
     const touch = EVENT_TOUCH_FIELD[evName];
     const email = String(ev.email || '').trim().toLowerCase();
     if ((!status && !touch) || !email) continue;
+    // §501 — מייל "הצוות ענה לך" אינו נמדד כאן. 🔴 **בלי הדילוג הוא היה נופל לענף "בלי תג
+    // מוכר" ודורס את שדות מייל-הקוד** — בדיוק הבאג של §415. מסירת התשובה נראית בשיחה עצמה.
+    if (eventTags(ev).includes('convReply')) continue;
     handled++;
 
     // חותמת-הזמן של האירוע עצמו, לא של הרגע שקיבלנו אותו (Brevo יכול לאחר/לנסות שוב)

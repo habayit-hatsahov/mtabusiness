@@ -11013,7 +11013,7 @@ let selectedTaskKey = null;     // "biz:ID" / "fan:ID" — הכרטיס הפתו
 // §356 — איזה סוג-תקלה מוצג בתוך קוביית "תקלות ופניות". 'all' = הרשימה המאוחדת, שהיא
 // **ברירת המחדל בכוונה**: הבקשה של המשתמש הייתה לראות מיד שיש מה לבדוק, ורשימה שמתחילה
 // על סוג מסוים היא בדיוק החזרה למצב שבו צריך לעבור סוג-סוג.
-let taskIssueKind = 'all';      // 'all' | 'mail' | 'reg' | 'login' | 'help' | 'fanMsg' | 'bizErrors' | 'selfDelete'
+let taskIssueKind = 'all';      // 'all' | 'mail' | 'reg' | 'login' | 'help' | 'fanMsg' | 'conv' | 'bizErrors' | 'selfDelete'
 
 const TASK_CLASS_TILES = [
   { key: 'pendingBiz', primary: 'עסק ממתין לאישור', label: 'עסקים ממתינים לאישור' },
@@ -11078,6 +11078,8 @@ const ISSUE_KINDS = [
   { key: 'help',      label: 'פניות עזרה',    open: () => helpReqOpenList(),       urgent: l => l.length },
   // §472 — הודעות "כתבו לנו" מאוהדים מחוברים (fan-message.js). ⚠️ שונה מ"כתבו לנו" של העסקים,
   // שנשאר ב"בקשות מבעלי עסקים" — שם זה שדה על מסמך העסק, כאן זה מסמך ב-helpRequests.
+  // §501 — שיחות עם הצוות. ממתינה = המילה האחרונה של האדם.
+  { key: 'conv',      label: 'שיחות',         open: () => convPendingList(),       urgent: l => l.length },
   { key: 'fanMsg',    label: 'כתבו לנו – אוהדים', open: () => fanMsgOpenList(),   urgent: l => l.length },
   { key: 'bizErrors', label: 'דשבורד עסק',    open: () => bizWriteErrorList(),     urgent: l => l.length },
   // ⚠️ `urgent: 0` — עזיבה אינה תקלה שלנו ואי אפשר "לתקן" אותה, ולכן היא לא צריכה לצבוע
@@ -11246,6 +11248,15 @@ function unifiedIssueList() {
     markJs: 'markHelpReqHandled(' + [q1(x.id), q1(escJsAttr(x.who || ''))].join(',') + ')',
   }));
 
+  // §501 — שיחה שממתינה לתשובה. הכפתור פותח את השיחה (התשובה היא ה"טיפלתי").
+  convPendingList().forEach(x => out.push({
+    kind: 'conv', at: x.at, urgent: true,
+    who: x.who + (x.num ? ' · ' + x.num : '') + (x.biz ? ' · בעל עסק: ' + (x.biz.name || '') : ''),
+    title: 'ממתינה לתשובה', meta: x.subject || '',
+    entity: x.fan ? { kind: 'fan', id: x.fan.id } : null,
+    markJs: 'openConvAdmin(' + q1(escJsAttr(x.id)) + ')', actLabel: '💬 פתיחת השיחה',
+  }));
+
   // §420ז — אוהד שמחק את עצמו. `urgent: false` — אין כאן מה לתקן, אבל יש מה לדעת.
   selfDeleteOpenList().forEach(x => out.push({
     kind: 'selfDelete', at: x.at, urgent: false,
@@ -11285,7 +11296,7 @@ function unifiedIssueFilteredList() {
   if (q) list = list.filter(x => (x.who + ' ' + x.title + ' ' + x.meta).includes(q));
   return list;
 }
-const ISSUE_KIND_LABELS = { mail: 'מייל', reg: 'הרשמה', login: 'כניסה', help: 'פניית עזרה', fanMsg: 'כתבו לנו', bizErrors: 'דשבורד עסק', selfDelete: 'מחק חשבון' };
+const ISSUE_KIND_LABELS = { mail: 'מייל', reg: 'הרשמה', login: 'כניסה', help: 'פניית עזרה', fanMsg: 'כתבו לנו', conv: 'שיחה', bizErrors: 'דשבורד עסק', selfDelete: 'מחק חשבון' };
 // ── §363 — שורות הרשימה המאוחדת, בפונקציה נפרדת ─────────────────────────────────────
 // הופרד מ-unifiedIssuesTableHtml כדי שאפשר יהיה להציג שורות **יחד עם** אזהרת-טעינה,
 // במקום לבחור בין השתיים. מצב טעינה-חלקית הוא מצב אמיתי: תקלות המייל והפניות זמינות
@@ -11305,7 +11316,7 @@ function unifiedIssueRowsHtml(list) {
       '<div class="mi-actions">' +
         (x.entity ? '<button class="act-btn tiny" onclick="selectTask2(' + "'" + x.entity.kind + "','" + x.entity.id + "'" + ')">' +
           (x.entity.kind === 'biz' ? 'פתיחת כרטיס העסק' : 'פתיחת כרטיס האוהד') + '</button>' : '') +
-        '<button class="act-btn approve tiny" onclick="' + x.markJs + '">✔️ טיפלתי</button>' +
+        '<button class="act-btn approve tiny" onclick="' + x.markJs + '">' + (x.actLabel || '✔️ טיפלתי') + '</button>' +
       '</div>' +
     '</div>').join('') +
   '</div>';
@@ -11393,6 +11404,7 @@ function taskCenterTableHtml() {
       : regIssuesActive() ? regIssuesTableHtml(regIssueFilteredList())
       : helpReqsActive()  ? helpReqsTableHtml(helpReqFilteredList())
       : fanMsgActive()    ? fanMsgTableHtml(fanMsgFilteredList())
+      : convActive()      ? convTableHtml(convFilteredList())
       : loginIssuesActive() ? loginIssuesTableHtml(loginIssueFilteredList())
       : unifiedIssuesTableHtml(unifiedIssueFilteredList()));
   }
@@ -11408,6 +11420,7 @@ function taskCenterCountLabel() {
   if (regIssuesActive()) return `מציג ${regIssueFilteredList().length} מתוך ${regIssueOpenList().length}`;
   if (helpReqsActive()) return `מציג ${helpReqFilteredList().length} מתוך ${helpReqList().length}`;
   if (fanMsgActive()) return `מציג ${fanMsgFilteredList().length} מתוך ${fanMsgList().length}`;
+  if (convActive()) return `מציג ${convFilteredList().length} מתוך ${convList().length}`;
   if (loginIssuesActive()) return `מציג ${loginIssueFilteredList().length} מתוך ${loginFailOpenList().length}`;
   if (handledActive()) return `מציג ${handledFilteredList().length} מתוך ${handledItemsList().length}`;
   return `מציג ${taskFilteredList().length} מתוך ${unifiedTaskItems().length}`;
@@ -15151,6 +15164,7 @@ function nativePushTabHtml() {
       <b>${pushResult.withTokens}</b> מהם רשומים לפוש ·
       <b>${pushResult.devicesSent}</b> מכשירים קיבלו${pushResult.devicesRemoved ? ` · ${pushResult.devicesRemoved} טוקנים מתים נוקו` : ''}
       ${pushResult.withTokens === 0 ? '<br>⚠️ <b>אף אחד מהנמענים אינו רשום לפוש עדיין.</b> זה צפוי עד שיהיו התקנות של האפליקציה.' : ''}
+      ${pushResult.linkDropped ? '<br>⚠️ <b>הקישור לא נשלח</b> (' + esc(pushResult.linkDropped) + ') – פוש פותח רק דפים של yellowzone.co.il בתוך האפליקציה. ההתראה עצמה יצאה.' : ''}
     </div>`;
 
   return `
@@ -15176,6 +15190,7 @@ function nativePushTabHtml() {
     <input type="text" id="pushLink" class="chain-select" dir="ltr"
            value="${esc(pushDraft.link)}" oninput="updatePushDraft('link', this.value)"
            placeholder="https://yellowzone.co.il/home.html" />
+    <div style="font-size:12px;color:var(--text-muted);margin-top:4px">רק דף של yellowzone.co.il – נפתח בתוך האפליקציה בלחיצה על ההתראה.</div>
 
     <div class="tpl-vars-box">
       ⚠️ <b>אין כאן <code>{name}</code> ואין החלפות.</b> ההתראה נשלחת כלשונה לכולם –
@@ -16976,6 +16991,197 @@ function fanMsgTableHtml(list) {
         </div>
       </div>`).join('')}</div>`;
 }
+
+// ══ §501 — שיחות עם הצוות ("האזור שלי", §473 שלב 1) ═════════════════════════════════════
+// כל פנייה של אוהד או בעל עסק = שיחה (conversations/{id} + messages). מחליף את "כתבו לנו"
+// (§472) — הודעות ישנות משם עדיין מוצגות בשבב שלהן. "ממתינה לנו" = פתוחה, והמילה האחרונה
+// של האדם (lastFrom=='member'). 🔑 נגזר מהמצב, לא מאירוע — תשובה שלנו מוציאה אותה מהרשימה.
+// התשובה: כתיבה ל-Firestore (המקור — מופיעה באפליקציה מיד), ואז /notify-conv-reply לוורקר
+// שמודיע במייל ובפוש. כשל בהודעה **לא** מבטל את התשובה, ומוצג במפורש.
+let CONVERSATIONS = [];
+let _convLoadErr = '';
+const _convMs = t => (t && typeof t.toMillis === 'function') ? t.toMillis() : (t instanceof Date ? t.getTime() : Date.now());
+function convActive() { return issuesActive() && taskIssueKind === 'conv'; }
+function _convWho(memberId) {
+  const f = MOCK_FANS.find(m => m.id === memberId) || null;
+  const biz = (MOCK_BUSINESSES || []).find(b => b.ownerMemberId === memberId) || null;
+  return {
+    fan: f, biz,
+    who: f ? f.name : 'הרשומה לא נמצאה (נמחקה?)',
+    num: f && f.memberNumber ? '#' + String(f.memberNumber).padStart(5, '0') : '',
+    phone: f ? (f.phone || '') : '', email: f ? (f.email || '') : '',
+  };
+}
+function convList() {
+  return CONVERSATIONS.map(c => ({ ...c, ..._convWho(c.memberId), at: new Date(_convMs(c.lastAt)),
+    waiting: c.status !== 'closed' && c.lastFrom === 'member' }))
+    .sort((a, b) => (b.waiting - a.waiting) || ((a.status === 'closed') - (b.status === 'closed')) || (b.at - a.at));
+}
+function convPendingList() { return convList().filter(x => x.waiting); }
+function convFilteredList() {
+  const q = taskSearchQ.trim();
+  if (!q) return convList();
+  return convList().filter(x => `${x.who} ${x.num} ${x.phone} ${x.email} ${x.subject} ${x.biz ? x.biz.name : ''}`.includes(q));
+}
+function convStatusBadge(x) {
+  if (x.status === 'closed') return '<span class="treat-badge">סגורה</span>';
+  return x.waiting ? '<span class="warn-badge">ממתינה לתשובה</span>' : '<span class="treat-badge">ענינו · פתוחה</span>';
+}
+function convTableHtml(list) {
+  if (_convLoadErr) return `<div class="mail-issues-note">⚠️ טעינת השיחות נכשלה (${esc(_convLoadErr)}). רעננו את הדף.</div>`;
+  if (!list.length) {
+    return `<div class="placeholder-note">אין שיחות. כאן ינחתו הודעות שאוהדים ובעלי עסקים כותבים לנו מהאפליקציה ("הודעות" בפרופיל, או "כתבו לנו" ב"צור קשר").</div>`;
+  }
+  return `
+    <div class="mail-issues-note">השיחות עם אוהדים ובעלי עסקים. ממתינות לתשובה – למעלה. לוחצים "פתיחת השיחה", עונים, והאדם מקבל את התשובה באפליקציה, במייל ובפוש (באנדרואיד, למי שאישר התראות). "סגירה" – כשהעניין טופל; שאלה חדשה תיפתח כשיחה חדשה.</div>
+    <div class="task-table mail-issues">${list.map(x => `
+      <div class="task-table-row">
+        <div class="task-table-main">
+          <div class="task-table-name">${esc(x.who)}${x.num ? ' · <span style="font-weight:600">' + esc(x.num) + '</span>' : ''}${x.biz ? ' · <span class="treat-badge">בעל עסק: ' + esc(x.biz.name || '') + '</span>' : ''}</div>
+          <!-- ⚠️ esc — טקסט חופשי של משתמש. -->
+          <div class="task-table-meta">${esc(x.subject || '')}</div>
+          <div class="task-table-meta" style="opacity:.75">${[x.phone, x.email].filter(Boolean).map(esc).join(' · ')}</div>
+        </div>
+        <div class="task-table-badges">${convStatusBadge(x)}</div>
+        <div class="mi-addr"></div>
+        <div class="task-table-wait">${agoLabel(x.at)}</div>
+        <div class="mi-actions">
+          <button class="act-btn approve tiny" onclick="openConvAdmin('${escJsAttr(x.id)}')">💬 פתיחת השיחה</button>
+          ${x.fan ? `<button class="act-btn tiny" onclick="selectTask2('fan','${escJsAttr(x.fan.id)}')">כרטיס האוהד</button>` : ''}
+        </div>
+      </div>`).join('')}</div>`;
+}
+
+// ── חלון השיחה ──
+// ⚠️ onSnapshot על ההודעות נפתח רק כשהחלון פתוח, ונסגר איתו — מאזין לכל שיחה היה מאות קריאות.
+let _convView = null; // { id, unsub, msgs, sending, notice }
+function _convModalEl() {
+  let el = document.getElementById('convAdminModal');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'convAdminModal';
+  el.style.cssText = 'display:none;position:fixed;inset:0;z-index:950;background:rgba(16,24,40,.45);align-items:center;justify-content:center;padding:16px';
+  el.addEventListener('click', e => { if (e.target === el) closeConvAdmin(); });
+  document.body.appendChild(el);
+  return el;
+}
+function renderConvAdmin() {
+  if (!_convView) return;
+  const c = CONVERSATIONS.find(x => x.id === _convView.id);
+  const el = _convModalEl();
+  if (!c) { el.innerHTML = '<div style="background:var(--card-bg);border-radius:16px;padding:20px">השיחה לא נמצאה.</div>'; return; }
+  const w = _convWho(c.memberId);
+  const closed = c.status === 'closed';
+  const fmt = t => new Date(_convMs(t)).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+  // שמירת הטיוטה בין רינדורים (הודעה חדשה שנכנסת בזמן הקלדה לא מוחקת אותה)
+  const draft = document.getElementById('convAdminText') ? document.getElementById('convAdminText').value : '';
+  const hadFocus = !!document.getElementById('convAdminText') && document.activeElement === document.getElementById('convAdminText');
+  el.innerHTML = `
+    <div style="background:var(--card-bg);border-radius:16px;width:min(640px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+      <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:800;font-size:15px">${esc(w.who)}${w.num ? ' · ' + esc(w.num) : ''}${w.biz ? ' · בעל עסק: ' + esc(w.biz.name || '') : ''}</div>
+          <div style="font-size:12.5px;color:var(--text-muted);margin-top:2px">${[w.phone, w.email].filter(Boolean).map(esc).join(' · ')}${c.source === 'bizDashboard' ? ' · נכתב מדשבורד העסק' : ''}</div>
+          <div style="font-size:13.5px;margin-top:6px;font-weight:700">${esc(c.subject || '')}</div>
+        </div>
+        ${convStatusBadge({ ...c, waiting: !closed && c.lastFrom === 'member' })}
+        <button class="act-btn tiny" onclick="closeConvAdmin()">✕</button>
+      </div>
+      <div id="convAdminThread" style="padding:14px 18px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:10px;background:var(--bg)">
+        ${_convView.err ? '<div class="mail-issues-note">⚠️ טעינת ההודעות נכשלה: ' + esc(_convView.err) + '</div>' : ''}
+        ${(_convView.msgs || []).map(m => `
+          <div style="display:flex;flex-direction:column;align-items:${m.from === 'admin' ? 'flex-end' : 'flex-start'}">
+            <div style="max-width:84%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.55;white-space:pre-line;word-break:break-word;${m.from === 'admin' ? 'background:var(--accent-bg);border:1px solid var(--border)' : 'background:#FFF4B8'}">${esc(m.text)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${m.from === 'admin' ? 'הצוות' : esc(w.who)} · ${fmt(m.createdAt)}</div>
+          </div>`).join('')}
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+        ${_convView.notice ? '<div class="mail-issues-note" style="margin:0">' + _convView.notice + '</div>' : ''}
+        ${closed ? `<div style="font-size:13px;color:var(--text-sm)">השיחה סגורה. האדם לא יכול להוסיף לה – שאלה חדשה תיפתח כשיחה חדשה. אפשר לפתוח אותה מחדש כדי לענות.</div>
+          <div><button class="act-btn tiny" onclick="setConvStatusAdmin('open')">↺ פתיחה מחדש</button></div>`
+        : `<textarea id="convAdminText" maxlength="2000" placeholder="התשובה שלך… (תגיע באפליקציה, במייל ובפוש)" style="width:100%;box-sizing:border-box;min-height:90px;font:inherit;font-size:14px;padding:10px;border:1px solid var(--border-md);border-radius:10px;resize:vertical"></textarea>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <button class="act-btn approve" ${_convView.sending ? 'disabled' : ''} onclick="sendConvReplyAdmin(false)">${_convView.sending ? 'שולח…' : 'שליחת תשובה'}</button>
+            <button class="act-btn" ${_convView.sending ? 'disabled' : ''} onclick="sendConvReplyAdmin(true)">שליחה וסגירת השיחה</button>
+            <button class="act-btn tiny" style="margin-inline-start:auto" onclick="setConvStatusAdmin('closed')">סגירה בלי תשובה</button>
+          </div>`}
+      </div>
+    </div>`;
+  const ta = document.getElementById('convAdminText');
+  if (ta && draft) ta.value = draft;
+  if (ta && hadFocus) ta.focus();
+  const th = document.getElementById('convAdminThread');
+  if (th) th.scrollTop = th.scrollHeight;
+}
+window.openConvAdmin = function(id) {
+  closeConvAdmin();
+  _convView = { id, msgs: [], unsub: null, sending: false, notice: '', err: '' };
+  _convModalEl().style.display = 'flex';
+  _convView.unsub = onSnapshot(query(collection(db, 'conversations', id, 'messages'), orderBy('createdAt', 'asc')), snap => {
+    if (!_convView || _convView.id !== id) return;
+    _convView.msgs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+    renderConvAdmin();
+  }, err => { if (_convView) { _convView.err = err.message || String(err); renderConvAdmin(); } });
+  renderConvAdmin();
+  const c = CONVERSATIONS.find(x => x.id === id);
+  if (c && c.lastFrom === 'member') updateDoc(doc(db, 'conversations', id), { adminReadAt: serverTimestamp() }).catch(e => console.warn('adminReadAt failed', e));
+};
+window.closeConvAdmin = function() {
+  if (_convView && _convView.unsub) _convView.unsub();
+  _convView = null;
+  const el = document.getElementById('convAdminModal');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+};
+window.sendConvReplyAdmin = async function(andClose) {
+  if (!_convView || _convView.sending) return;
+  const id = _convView.id;
+  const ta = document.getElementById('convAdminText');
+  const text = (ta ? ta.value : '').trim();
+  if (!text) { alert('כתבו תשובה קודם'); return; }
+  _convView.sending = true; _convView.notice = ''; renderConvAdmin();
+  try {
+    const b = writeBatch(db);
+    b.set(doc(collection(db, 'conversations', id, 'messages')), { from: 'admin', text: text.slice(0, 2000), createdAt: serverTimestamp() });
+    b.update(doc(db, 'conversations', id), {
+      lastAt: serverTimestamp(), lastFrom: 'admin', adminReadAt: serverTimestamp(),
+      ...(andClose ? { status: 'closed', closedAt: serverTimestamp() } : {}),
+    });
+    await b.commit();
+  } catch (e) {
+    console.error('conv admin reply failed', e);
+    if (_convView && _convView.id === id) { _convView.sending = false; _convView.notice = '⚠️ התשובה לא נשמרה: ' + esc(e.message || String(e)); renderConvAdmin(); }
+    return;
+  }
+  // התשובה כבר באפליקציה. מכאן — רק ההודעה עליה.
+  const t2 = document.getElementById('convAdminText'); if (t2) t2.value = '';
+  let notice = '✓ התשובה נשמרה ומופיעה לאדם באפליקציה.';
+  try {
+    const idToken = await auth.currentUser.getIdToken();
+    const resp = await hbApiFetch('/notify-conv-reply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, convId: id, text }),
+    });
+    const r = await resp.json();
+    if (r.error) notice += ' <b>⚠️ ההודעה עליה לא יצאה (' + esc(r.error) + ')</b> – כדאי ליצור קשר בטלפון/במייל.';
+    else {
+      const EM = { sent: 'מייל נשלח', failed: '⚠️ המייל נכשל', no_email: 'אין מייל ברשומה', no_member: 'הרשומה לא נמצאה' };
+      const PU = { sent: 'פוש נשלח' + (r.pushDevices > 1 ? ' (' + r.pushDevices + ' מכשירים)' : ''), failed: '⚠️ הפוש נכשל', no_token: 'אין פוש (לא אישר התראות / אייפון)', no_member: '' };
+      notice += ' ' + [EM[r.email] || r.email, PU[r.push] || r.push].filter(Boolean).join(' · ') + '.';
+    }
+  } catch (e) {
+    console.error('notify-conv-reply failed', e);
+    notice += ' <b>⚠️ המייל והפוש לא יצאו (שגיאת רשת)</b> – התשובה עדיין מחכה לו באפליקציה.';
+  }
+  if (_convView && _convView.id === id) { _convView.sending = false; _convView.notice = notice; renderConvAdmin(); }
+};
+window.setConvStatusAdmin = async function(status) {
+  if (!_convView) return;
+  try {
+    await updateDoc(doc(db, 'conversations', _convView.id), status === 'closed'
+      ? { status: 'closed', closedAt: serverTimestamp() }
+      : { status: 'open' });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
 
 // ══ §322 — תקלות כניסה ══════════════════════════════════════════════════════════════════
 // נגזר מאירועי `loginFail` (welcome.html). ⚠️ **מה שהקובייה הזאת לא יכולה לתת: מי.**
@@ -20203,6 +20409,16 @@ onSnapshot(query(collection(db, 'helpRequests'), orderBy('createdAt', 'desc'), l
   });
   refreshTaskCenter();
 }, err => console.error('שגיאה בטעינת פניות מהרשמה:', err));
+
+// §501 — שיחות עם הצוות. onSnapshot: הודעה חדשה מאדם מופיעה בלי רענון, והתשובה שלנו
+// מוציאה אותה מ"ממתינות". orderBy(lastAt) — אינדקס של שדה יחיד, נוצר אוטומטית.
+onSnapshot(query(collection(db, 'conversations'), orderBy('lastAt', 'desc'), limit(300)), snap => {
+  _convLoadErr = '';
+  // 'estimate' — serverTimestamp ממתין הוא null, ותשובה שנשלחה הרגע הייתה קופצת לסוף הרשימה (§501).
+  CONVERSATIONS = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+  refreshTaskCenter();
+  if (_convView) renderConvAdmin();
+}, err => { _convLoadErr = err.message || String(err); console.error('שגיאה בטעינת שיחות:', err); refreshTaskCenter(); });
 
 // §355 — סימוני "טיפלתי" של תקלות כניסה. onSnapshot מאותה סיבה כמו למטה: הסימון מוריד
 // שורה מהמסך, וסימון שלא מתרענן היה נראה כאילו הכפתור לא עשה כלום.

@@ -301,6 +301,17 @@
     .profile-side-panel.ready { opacity: 1; }
     .profile-main-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 
+    /* ══ §501 — לשוניות "הפרטים שלי" / "הודעות" (שלב 1 של "האזור שלי", §473). אותו עיצוב כמו בדמו. ══ */
+    .yz-tabs { display:flex; gap:6px; background:var(--card-bg2); border-radius:14px; padding:4px; margin-bottom:12px; max-width:480px; }
+    .yz-tab { flex:1; border:none; background:none; border-radius:11px; padding:10px 4px; font:inherit; font-size:14px; font-weight:700;
+      color:var(--text-sm); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; }
+    .yz-tab.on { background:#fff; color:var(--text); box-shadow:var(--shadow); }
+    .yz-tab .yz-count { min-width:18px; height:18px; border-radius:9px; background:var(--yellow); color:var(--text); font-size:11px; font-weight:900;
+      display:inline-flex; align-items:center; justify-content:center; padding:0 5px; }
+    .yz-tab .yz-count[hidden] { display:none; }
+    #msgsPanel { max-width:640px; }
+    #msgsPanel[hidden], .profile-split[hidden] { display:none !important; }
+
     @media (max-width: 900px) {
       .content { max-width: 480px; }
       .profile-split { display: block; }
@@ -533,6 +544,14 @@
 </header>
 
 <div class="content">
+<!-- §501 — "הודעות": השיחות עם הצוות (conversations.js). בשלב 4 של §473 הדף כולו הופך ל"האזור שלי",
+     והלשונית עוברת אליו כמו שהיא. ⚠️ ההחלפה בסקריפט הקלאסי למטה (yzProfileTab) — לא במודול,
+     כדי שהלחיצה תעבוד גם לפני שהמודול נטען (§431). -->
+<div class="yz-tabs" role="tablist">
+  <button type="button" class="yz-tab on" id="tabDetails" role="tab" onclick="yzProfileTab('details')">הפרטים שלי</button>
+  <button type="button" class="yz-tab" id="tabMsgs" role="tab" onclick="yzProfileTab('msgs')">הודעות <span class="yz-count" id="msgsCount" hidden></span></button>
+</div>
+<div id="msgsPanel" hidden><div id="convRoot"><div class="card-section" style="text-align:center;color:var(--text-sm);font-size:13px">טוען…</div></div></div>
 <div class="profile-split">
 <div class="profile-side-panel">
 
@@ -700,6 +719,8 @@
 <script src="google-link.js"></script>
 <!-- §472 — "כתבו לנו" לאוהדים בגיליון "צור קשר" (מוזרק ל-#contactOptionsFan). -->
 <script src="fan-message.js"></script>
+<!-- §501 — "רוצים התראה כשנענה?" אחרי שליחת שיחה, ופתיחת השיחה בלחיצה על הפוש. -->
+<script src="native-push.js"></script>
 <!-- §420ב — נטען בשביל YZAppBanner.inApp() בלבד. הקובץ **אינו מצייר דבר מעצמו** —
      הוא רק חושף window.YZAppBanner, ו-render() נקראת מפורשות (וטרם נקראת מאף דף). -->
 <script src="app-banner.js"></script>
@@ -777,6 +798,26 @@
     'closeContactSheet', 'copyContactEmail', 'shareApp', 'shareMyBiz', 'closeShareSheet', 'copyShareLink',
     'startEdit'
   ]);
+
+  // ── §501 — לשוניות "הפרטים שלי" / "הודעות" ─────────────────────────────────────────────
+  // כאן ולא במודול: DOM בלבד, ועובד מהרגע הראשון. ?tab=msgs (מהמייל/מהפוש/מ"כתבו לנו")
+  // פותח ישר על ההודעות; ?conv=<id> פותח שיחה; ?new=1 פותח שיחה חדשה — את שני האחרונים
+  // מבצע המודול כשהוא מוכן (window.__yzConvIntent).
+  window.yzProfileTab = function (t) {
+    var msgs = t === 'msgs';
+    document.getElementById('tabMsgs').classList.toggle('on', msgs);
+    document.getElementById('tabDetails').classList.toggle('on', !msgs);
+    document.getElementById('msgsPanel').hidden = !msgs;
+    document.querySelector('.profile-split').hidden = msgs;
+    window.scrollTo(0, 0);
+  };
+  (function () {
+    try {
+      var p = new URLSearchParams(location.search);
+      window.__yzConvIntent = { conv: p.get('conv') || '', isNew: p.get('new') === '1' };
+      if (p.get('tab') === 'msgs' || p.get('conv') || p.get('new') === '1') window.yzProfileTab('msgs');
+    } catch (e) {}
+  })();
 </script>
 <script type="module">
 import { auth as primaryAuth, db as primaryDb, firebaseConfig } from './firebase-config.js';
@@ -1261,6 +1302,41 @@ async function saveMemberField(updates) {
       });
     }
   } catch (e) { console.error('google link init failed:', e); }
+
+  // ── §501 — "הודעות": השיחות עם הצוות ───────────────────────────────────────────────────
+  // לא בתצוגה המקדימה של מנהל (previewMemberId): שם המזוהה הוא המנהל, ושליחה הייתה נדחית.
+  // ב-bizToken הזהות היא העסק — החוקים מכירים בה (isConvOwner), אבל פוש לא נרשם משם:
+  // הטוקן נכתב על מסמך החבר, ועסק אינו יכול לכתוב אליו.
+  // ⚠️ import דינמי עטוף: כשל בטעינת המודול מוריד את הלשונית בלבד, לא את הפרופיל (§322).
+  if (previewMemberId) {
+    document.querySelector('.yz-tabs').style.display = 'none';
+  } else {
+    try {
+      const { mountConversations } = await import('./conversations.js');
+      const conv = mountConversations({
+        db, memberId, root: document.getElementById('convRoot'),
+        source: bizToken ? 'bizDashboard' : 'app',
+        bizId: bizToken ? (auth.currentUser && auth.currentUser.uid) || null : null,
+        onUnread: (n) => {
+          const el = document.getElementById('msgsCount');
+          el.hidden = !n; el.textContent = n;
+        },
+        savePushToken: bizToken ? null : async (res) => {
+          await updateDoc(doc(db, 'members', memberId), {
+            [`nativePushTokens.${res.installId}`]: { token: res.token, platform: res.platform, updatedAt: new Date().toISOString() },
+          });
+        },
+      });
+      const it = window.__yzConvIntent || {};
+      if (it.conv) conv.openConv(it.conv);
+      else if (it.isNew) conv.startNew();
+      window.yzOpenNewConversation = () => { window.yzProfileTab('msgs'); conv.startNew(); };
+    } catch (e) {
+      console.error('conversations mount failed:', e);
+      document.getElementById('convRoot').innerHTML =
+        '<div class="card-section" style="text-align:center;color:var(--text-sm);font-size:13px;line-height:1.6">לא הצלחנו לטעון את ההודעות. נסו לרענן, או כתבו לנו במייל yellowzonemta@gmail.com</div>';
+    }
+  }
 
   // עדכון ה-cache המקומי לנתונים הטריים — כדי שבכניסה הבאה יהיה מה להציג מיידית (ר' renderIdentity לעיל).
   // רק בגישה הרגילה: bizToken/previewMemberId מציגים פרופיל של מישהו *אחר*, אסור לשמור אותו כ"הפרופיל שלי".

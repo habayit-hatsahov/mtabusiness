@@ -8,7 +8,7 @@ import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, biz
          firestoreCreateDocWithId } from './firestore.js';
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt } from './ratelimit.js';
-import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail } from './brevo.js';
+import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail } from './brevo.js';
 import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
@@ -130,6 +130,10 @@ export default {
       // §420ג — פוש נייטיב. מאומת כמנהל, כמו שידור המייל.
       if (request.method === 'POST' && url.pathname === '/send-native-push') {
         return json(await handleSendNativePush(await request.json(), env), env, request);
+      }
+      // §501 — מייל+פוש אחרי תשובה בשיחה. מאומת כמנהל.
+      if (request.method === 'POST' && url.pathname === '/notify-conv-reply') {
+        return json(await handleNotifyConvReply(await request.json(), env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/send-broadcast-email') {
         return json(await handleSendBroadcastEmail(await request.json(), env), env, request);
@@ -1219,10 +1223,91 @@ async function handleAdminAppleRevoke({ idToken, logId }, env) {
 //  ⚠️ **בחירת הנמענים זהה ל-/send-broadcast-email במכוון** (memberIds או כל המאושרים,
 //  תקרה 500). שני מסכים ששולחים "לאותו קהל" בשתי הגדרות שונות הוא בדיוק המקום שבו
 //  מגלים אחרי ההשקה שחצי מהאנשים לא קיבלו.
+// ── §501 — "הצוות ענה לך": מייל + פוש אחרי תשובה בשיחה ───────────────────────────────────
+// התשובה עצמה כבר נכתבה ל-Firestore ע"י מרכז הניהול (זה המקור; היא מופיעה באפליקציה גם אם
+// הקריאה הזאת נכשלה כולה). כאן רק ההודעה עליה, בשני ערוצים **בלתי תלויים**: כשל במייל לא מבטל
+// את הפוש ולהפך, וכל ערוץ מדווח את התוצאה שלו — מסך שמראה "נשלח" כשרק אחד יצא היה משקר.
+//
+// 🔑 הנמען נשלף מהשיחה (memberId) ולא מהבקשה: מרכז הניהול לא אומר "למי", רק "על איזו שיחה".
+// כך אי אפשר לשלוח בטעות תשובה של אדם אחד למייל של אחר.
+// ⚠️ הפוש נושא את הקישור ב-data.link בלבד (native-push.js מנווט אליו בלחיצה) — **לא**
+// ב-click_action, שבאנדרואיד הוא שם של intent ולא כתובת.
+async function handleNotifyConvReply({ idToken, convId, text }, env) {
+  if (!convId || typeof convId !== 'string' || !text) return { error: 'missing_fields' };
+  try { await verifyAdminIdToken(env, idToken); }
+  catch (e) { return { error: 'not_admin' }; }
+
+  const accessToken = await getGoogleAccessToken(env);
+  const conv = await firestoreGetDoc(env, accessToken, `conversations/${encodeURIComponent(convId)}`);
+  if (!conv) return { error: 'conv_not_found' };
+  const memberId = conv.fields && conv.fields.memberId;
+  const member = memberId ? await firestoreGetDoc(env, accessToken, `members/${memberId}`) : null;
+  if (!member) return { ok: true, email: 'no_member', push: 'no_member' };
+
+  const f = member.fields || {};
+  const name = String(f.firstName || '').trim();
+  const out = { ok: true, email: 'no_email', push: 'no_token' };
+
+  // ── מייל ──
+  const email = String(f.email || '').trim();
+  if (email) {
+    try {
+      await sendConversationReplyEmail(env, {
+        toEmail: email, toName: name, replyText: String(text).slice(0, 2000),
+        link: `https://yellowzone.co.il/open?conv=${encodeURIComponent(convId)}`,
+      });
+      out.email = 'sent';
+    } catch (e) {
+      console.error('conv reply email failed', convId, e);
+      out.email = 'failed';
+    }
+  }
+
+  // ── פוש (נייטיב; באייפון עדיין אין ערוץ — §457) ──
+  const tokens = f.nativePushTokens || {};
+  if (Object.keys(tokens).length) {
+    try {
+      const r = await sendFcmToMember(env, accessToken, tokens, {
+        title: 'יש לך תשובה מהצוות',
+        body: (name ? name + ', ' : '') + 'הצוות של Yellow Zone ענה להודעה שלך. לחצו לקריאה.',
+        data: { link: `/profile.html?conv=${encodeURIComponent(convId)}` },
+      });
+      out.push = r.sent ? 'sent' : 'failed';
+      out.pushDevices = r.sent;
+      // ניקוי טוקנים מתים — אותו כלל בדיוק כמו handleSendNativePush: רק על UNREGISTERED.
+      if (r.deadKeys.length) {
+        const remaining = Object.fromEntries(Object.entries(tokens).filter(([k]) => !r.deadKeys.includes(k)));
+        try { await firestorePatch(env, accessToken, `members/${memberId}`, { nativePushTokens: remaining }); }
+        catch (e) { console.error('conv push cleanup failed', memberId, e); }
+      }
+    } catch (e) {
+      console.error('conv reply push failed', convId, e);
+      out.push = 'failed';
+    }
+  }
+  return out;
+}
+
+// §501 — קישור הפוש הידני → נתיב יחסי ב-data.link (native-push.js מנווט אליו בלחיצה).
+// 🔴 **עד §501 הקישור נשלח ב-click_action**, שבאנדרואיד הוא *שם של intent* ולא כתובת — כלומר
+// לחיצה על פוש עם קישור לא פתחה אותו. כתובת שלנו (yellowzone.co.il) הופכת לנתיב; קישור חיצוני
+// **לא נשלח** (native-push.js מסרב לנווט החוצה מתוך האפליקציה) ומדווח בתשובה, כדי שהמנהל ידע.
+function pushLinkPath(link) {
+  const s = String(link || '').trim();
+  if (!s) return { path: '' };
+  if (s.charAt(0) === '/' && s.charAt(1) !== '/') return { path: s };
+  try {
+    const u = new URL(s);
+    if (/^(www\.)?yellowzone\.co\.il$/.test(u.hostname)) return { path: (u.pathname || '/') + u.search };
+  } catch (e) {}
+  return { path: '', dropped: s };
+}
+
 async function handleSendNativePush({ idToken, title, body, link, memberIds }, env) {
   if (!title || !body) return { error: 'missing_fields' };
   try { await verifyAdminIdToken(env, idToken); }
   catch (e) { return { error: 'not_admin' }; }
+  const lk = pushLinkPath(link);
 
   const accessToken = await getGoogleAccessToken(env);
 
@@ -1248,7 +1333,7 @@ async function handleSendNativePush({ idToken, title, body, link, memberIds }, e
     }
     withTokens++;
 
-    const out = await sendFcmToMember(env, accessToken, tokens, { title, body, link });
+    const out = await sendFcmToMember(env, accessToken, tokens, { title, body, data: lk.path ? { link: lk.path } : undefined });
     totalSent += out.sent;
 
     // ── ניקוי טוקנים מתים ────────────────────────────────────────────────────────────
@@ -1281,6 +1366,7 @@ async function handleSendNativePush({ idToken, title, body, link, memberIds }, e
     withTokens,
     devicesSent: totalSent,
     devicesRemoved: totalDead,
+    ...(lk.dropped ? { linkDropped: lk.dropped } : {}),
     results,
   };
 }

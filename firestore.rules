@@ -804,6 +804,89 @@ service cloud.firestore {
           (request.resource.data.email is string && request.resource.data.email.size() <= 80));
     }
 
+    // ── §501 — שיחות עם הצוות ("האזור שלי", §473 שלב 1) ──────────────────────────────────
+    // כל פנייה = שיחה נפרדת עם היסטוריה (§473טו), תיבה אחת לאדם — אוהד ובעל עסק אותו דבר
+    // (§473טז). הבעלים של שיחה הוא **חבר** (memberId), גם כשבעל עסק כותב מהדשבורד שלו.
+    //
+    // "אני הבעלים של השיחה?" — בשתי דרכי הכניסה של בעל עסק (ר' §397 למעלה):
+    //   • מחובר כחבר → uid == memberId
+    //   • מחובר בטוקן העסק (business-dashboard) → uid == businessId, ו-ownerMemberId == memberId
+    function isConvOwner(memberId) {
+      return request.auth != null && (
+        request.auth.uid == memberId || isLinkedBusinessOwnerOf(memberId)
+      );
+    }
+
+    match /conversations/{convId} {
+      // list עובד רק עם where('memberId','==',X) — הכלל נבדק מול האילוץ של השאילתה.
+      allow read: if isAdmin() || isConvOwner(resource.data.memberId);
+
+      // 🔑 נולדת "פתוחה, ממתינה לנו" — אי אפשר להיוולד סגורה או "נענתה", ולעקוף את הצוות.
+      allow create: if isConvOwner(request.resource.data.memberId)
+        && request.resource.data.keys().hasOnly([
+             'memberId', 'status', 'subject', 'source', 'bizId', 'createdAt', 'lastAt', 'lastFrom', 'memberReadAt'])
+        && request.resource.data.keys().hasAll(['memberId', 'status', 'subject', 'createdAt', 'lastAt', 'lastFrom'])
+        && request.resource.data.memberId is string
+        && request.resource.data.status == 'open'
+        && request.resource.data.lastFrom == 'member'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.lastAt == request.time
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() > 0 && request.resource.data.subject.size() <= 80
+        && request.resource.data.get('source', 'app') in ['app', 'bizDashboard']
+        && (request.resource.data.get('bizId', null) == null
+            || (request.resource.data.bizId is string && request.resource.data.bizId.size() <= 100))
+        && (request.resource.data.get('memberReadAt', null) == null
+            || request.resource.data.memberReadAt == request.time);
+
+      // הבעלים: "נקרא" (תמיד), או הודעה חדשה שלו (רק בשיחה פתוחה — סגורה נפתחת מחדש
+      // כשיחה חדשה, §473טו). לא יכול לסגור, לפתוח מחדש או לסמן "ענינו".
+      // הצוות: סטטוס, נקרא-אצלנו, ו"ענינו".
+      allow update: if
+        (
+          isConvOwner(resource.data.memberId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastAt', 'lastFrom', 'memberReadAt'])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastAt', 'lastFrom'])
+              || (resource.data.status == 'open'
+                  && request.resource.data.lastFrom == 'member'
+                  && request.resource.data.lastAt == request.time))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['memberReadAt'])
+              || request.resource.data.memberReadAt == request.time)
+        )
+        || (
+          isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'closedAt', 'lastAt', 'lastFrom', 'adminReadAt'])
+          && request.resource.data.status in ['open', 'closed']
+          && request.resource.data.lastFrom in ['member', 'admin']
+        );
+
+      // שיחה של אדם אמיתי לא נמחקת בלחיצה — כמו helpRequests.
+      allow delete: if false;
+
+      // ההודעות עצמן. 🔑 **כל צד חותם את הצד שלו בלבד** (כמו businesses/messages למעלה):
+      // בלי זה בעלים היה יכול לשתול "תשובה מהצוות" ולהציג אותה כהבטחה.
+      // ⚠️ getAfter ולא get — ההודעה הראשונה נכתבת **באותו batch** שיוצר את השיחה, ו-get()
+      // רואה את המצב שלפני ה-batch (שיחה שלא קיימת) → כל שיחה חדשה הייתה נדחית.
+      match /messages/{msgId} {
+        allow read: if isAdmin()
+          || isConvOwner(get(/databases/$(database)/documents/conversations/$(convId)).data.memberId);
+        allow create: if request.resource.data.keys().hasOnly(['from', 'text', 'createdAt'])
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
+          && (
+            (isAdmin() && request.resource.data.from == 'admin')
+            || (
+              request.resource.data.from == 'member'
+              && isConvOwner(getAfter(/databases/$(database)/documents/conversations/$(convId)).data.memberId)
+              && getAfter(/databases/$(database)/documents/conversations/$(convId)).data.status == 'open'
+            )
+          );
+        // הודעה שנשלחה אינה ניתנת לעריכה או למחיקה בשום צד — שרשור שאפשר לשנות אינו ראיה.
+        allow update, delete: if false;
+      }
+    }
+
     // ── §303 — בקשות עזרה מטופס ההרשמה ("נתקעתי / משהו לא עובד") ─────────────────────────
     // אוהד שלא מצליח להירשם הוא היום **בלתי-נראה לגמרי**: אין רשומה, אין אירוע, אין שם.
     // האוסף הזה הוא הדרך היחידה שלו להגיד "הייתי כאן ולא הצלחתי". נכתב מ-fan-register.html
