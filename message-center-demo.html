@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>דמו — שליחת הודעה</title>
+<!-- §504 — דמו: זרימה אחת לשליחת הודעה (רמי, 12.10: "אני אסמן מה אני רוצה שיקרה, לאן זה יגיע ולאיפה").
+     מחליף (אחרי אישור) את ארבעת המצבים של "שליחה עכשיו" במרכז ההודעות: שידור המוני / נמענים נבחרים /
+     פוש / עדכון לאזור. קובץ מבודד, לא מקושר, הכל בזיכרון — שום דבר לא נשלח. ר' PROJECT_CONTEXT §504. -->
+<style>
+  :root {
+    --bg:#F5F6F8; --card:#fff; --border:#DDE2E8; --border-md:#E3E7EC; --text:#101828; --text-sm:#475467; --muted:#667085;
+    --accent:#0A2A66; --accent-bg:#EEF2FA; --yellow:#FFD400; --green:#16A34A; --orange:#B54708; --warn-bg:#FFFBEB;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Rubik',system-ui,-apple-system,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); }
+  .demo-bar { background:#1c1c1c; color:#fff; padding:10px 16px; font-size:13px; line-height:1.6; }
+  .demo-bar b { color:var(--yellow); }
+  .wrap { max-width:1180px; margin:0 auto; padding:20px 16px 60px; display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:20px; align-items:start; }
+  @media (max-width:980px) { .wrap { grid-template-columns:1fr; } }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--text-sm); font-size:13.5px; margin-bottom:16px; line-height:1.6; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:18px; margin-bottom:14px; }
+  .step { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .step-n { width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; font-weight:900; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+  .step-t { font-size:16px; font-weight:800; }
+  .step-h { font-size:12.5px; color:var(--muted); margin-inline-start:auto; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { border:1.5px solid var(--border-md); background:#fff; border-radius:12px; padding:9px 14px; font:inherit; font-size:14px; font-weight:700; color:var(--text); cursor:pointer; }
+  .chip small { display:block; font-size:11.5px; font-weight:500; color:var(--muted); margin-top:1px; }
+  .chip.on { border-color:var(--accent); background:var(--accent); color:#fff; }
+  .chip.on small { color:rgba(255,255,255,.75); }
+  .picker { border:1px solid var(--border); border-radius:12px; padding:10px; margin-top:12px; }
+  .picker input[type=text] { width:100%; font:inherit; font-size:14px; padding:9px 11px; border:1px solid var(--border-md); border-radius:10px; }
+  .pick-list { max-height:190px; overflow:auto; margin-top:8px; }
+  .pick-row { display:flex; gap:8px; align-items:center; padding:5px 2px; font-size:13.5px; cursor:pointer; }
+  .pick-row span.m { color:var(--muted); font-size:12px; }
+  .pick-sum { font-size:12.5px; margin-top:8px; }
+  .linkbtn { background:none; border:none; color:var(--accent); font:inherit; font-size:12.5px; font-weight:700; cursor:pointer; text-decoration:underline; padding:0; }
+  label.f { display:block; font-size:13px; font-weight:800; margin:12px 0 5px; }
+  input.t, textarea.t { width:100%; font:inherit; font-size:14.5px; padding:10px 12px; border:1px solid var(--border-md); border-radius:10px; background:#fff; color:var(--text); }
+  textarea.t { min-height:120px; resize:vertical; line-height:1.55; }
+  .hint { font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5; }
+  .chan { display:flex; gap:12px; align-items:flex-start; border:1.5px solid var(--border-md); border-radius:14px; padding:12px 14px; margin-bottom:8px; cursor:pointer; background:#fff; }
+  .chan.on { border-color:var(--accent); background:var(--accent-bg); }
+  .chan.off-dis { opacity:.5; cursor:not-allowed; }
+  .chan input { width:20px; height:20px; margin-top:2px; accent-color:var(--accent); flex-shrink:0; }
+  .chan-t { font-size:15px; font-weight:800; }
+  .chan-d { font-size:12.5px; color:var(--text-sm); margin-top:2px; line-height:1.5; }
+  .chan-n { margin-inline-start:auto; text-align:left; font-size:12.5px; color:var(--text-sm); white-space:nowrap; }
+  .chan-n b { display:block; font-size:18px; color:var(--text); }
+  .note { background:var(--warn-bg); border:1px solid #FDE68A; border-radius:12px; padding:10px 12px; font-size:12.5px; line-height:1.6; margin-top:8px; }
+  .note.info { background:var(--accent-bg); border-color:#cdd8f2; }
+  .send-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .btn { border:none; border-radius:12px; padding:13px 22px; font:inherit; font-size:15px; font-weight:900; cursor:pointer; background:var(--yellow); color:#0A2A66; }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+  .btn.ghost { background:#fff; border:1.5px solid var(--border-md); color:var(--text); }
+  .why { font-size:12.5px; color:var(--orange); }
+  /* תצוגה מקדימה */
+  .side { position:sticky; top:16px; }
+  .pv-tabs { display:flex; gap:6px; background:#ECEEF2; border-radius:12px; padding:4px; margin-bottom:12px; }
+  .pv-tab { flex:1; border:none; background:none; border-radius:9px; padding:8px 4px; font:inherit; font-size:13px; font-weight:700; color:var(--text-sm); cursor:pointer; }
+  .pv-tab.on { background:#fff; color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .pv-tab:disabled { opacity:.4; cursor:not-allowed; }
+  .pv-empty { text-align:center; color:var(--muted); font-size:13px; padding:30px 10px; }
+  .pv-cap { font-size:12px; color:var(--muted); margin-bottom:8px; line-height:1.5; }
+  /* טלפון — אפליקציה */
+  .phone { background:#F6F6F2; border:8px solid #1c1c1c; border-radius:28px; padding:14px 12px; min-height:300px; }
+  .ph-tabs { display:flex; gap:5px; background:#F2F2EC; border-radius:12px; padding:3px; margin-bottom:10px; font-size:12px; font-weight:700; color:#6B7A9B; }
+  .ph-tabs span { flex:1; text-align:center; padding:7px 2px; border-radius:9px; }
+  .ph-tabs span.on { background:#fff; color:#0A2A66; }
+  .au-sec { background:#fff; border:1px solid #E7E7E0; border-radius:14px; overflow:hidden; }
+  .au-sec.biz { border:2px solid #0A2A66; } .au-sec.biz .au-head { background:#0A2A66; color:#fff; } .au-sec.biz .au-sub { color:rgba(255,255,255,.75); }
+  .au-sec.biz2 { border:2px solid #0A2A66; } .au-sec.biz2 .au-head { background:#E8EEFB; }
+  .au-head { padding:11px 13px; border-bottom:1px solid #E7E7E0; }
+  .au-title { font-size:14.5px; font-weight:900; color:inherit; }
+  .au-sub { font-size:11.5px; color:#6B7A9B; margin-top:1px; }
+  .au-item { padding:12px 13px; color:#0A2A66; }
+  .au-new { font-size:10.5px; font-weight:900; background:#FFD400; border-radius:6px; padding:2px 7px; }
+  .au-it { font-size:14.5px; font-weight:800; margin-top:6px; line-height:1.4; }
+  .au-tx { font-size:13px; color:#6B7A9B; margin-top:3px; line-height:1.55; white-space:pre-line; word-break:break-word; }
+  .au-link { display:inline-block; margin-top:8px; font-size:12px; font-weight:800; border:1px solid #E4E4DC; border-radius:9px; padding:5px 9px; background:#fff; }
+  /* טלפון — התראה */
+  .lock { background:linear-gradient(160deg,#2b3a5c,#141b2d); border-radius:28px; border:8px solid #1c1c1c; padding:40px 12px 120px; }
+  .lock-time { color:#fff; text-align:center; font-size:40px; font-weight:300; margin-bottom:22px; letter-spacing:1px; }
+  .notif { background:rgba(255,255,255,.92); border-radius:16px; padding:11px 12px; display:flex; gap:10px; }
+  .notif-ic { width:30px; height:30px; border-radius:50%; background:#0A2A66; color:#FFD400; font-weight:900; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .notif-app { font-size:11px; color:#555; }
+  .notif-t { font-size:13.5px; font-weight:800; color:#111; margin-top:1px; }
+  .notif-b { font-size:13px; color:#333; margin-top:1px; line-height:1.4; }
+  /* מייל */
+  .mail { background:#fff; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .mail-h { padding:10px 12px; border-bottom:1px solid var(--border); font-size:12.5px; color:var(--text-sm); line-height:1.6; }
+  .mail-h b { color:var(--text); }
+  .mail-brand { background:#FFD400; text-align:center; padding:12px; font-weight:900; color:#0A2A66; letter-spacing:.5px; }
+  .mail-b { padding:16px 14px; font-size:14px; line-height:1.7; color:#0A2A66; white-space:pre-line; word-break:break-word; }
+  .mail-btn { display:inline-block; background:#FFD400; color:#0A2A66; font-weight:900; border-radius:20px; padding:9px 18px; margin-top:10px; }
+  /* סיכום + היסטוריה */
+  .res { background:#ECFDF3; border:1px solid #ABEFC6; border-radius:14px; padding:14px; font-size:13.5px; line-height:1.8; }
+  .hist-row { border-top:1px solid var(--border); padding:10px 0; font-size:13px; line-height:1.6; }
+  .hist-row:first-child { border-top:none; }
+  .tag { display:inline-block; font-size:11px; font-weight:800; border-radius:6px; padding:1px 7px; background:var(--accent-bg); color:var(--accent); margin-inline-start:4px; }
+  .modal-bg { position:fixed; inset:0; background:rgba(16,24,40,.45); display:none; align-items:center; justify-content:center; padding:16px; z-index:50; }
+  .modal-bg.open { display:flex; }
+  .modal { background:#fff; border-radius:16px; max-width:460px; width:100%; padding:20px; }
+  .modal h3 { margin:0 0 10px; font-size:18px; }
+  .modal ul { margin:8px 0 14px; padding-inline-start:20px; font-size:14px; line-height:1.8; }
+</style>
+</head>
+<body>
+<div class="demo-bar"><b>דמו</b> – שום דבר לא נשלח. המספרים לדוגמה (בערך כמו היום). מחליף, אחרי אישור, את ארבעת המצבים של "שליחה עכשיו" במרכז ההודעות.</div>
+
+<div class="wrap">
+  <main>
+    <h1>שליחת הודעה</h1>
+    <div class="sub">כותבים פעם אחת, בוחרים למי, ומסמנים איפה זה יגיע. התצוגה מימין מראה בדיוק מה כל אחד יקבל.<br/>
+      שיחה אישית עם אדם אחד – ב"תקלות ופניות" ← "שיחות". המיילים האוטומטיים (אישור, שכחתי קוד) – ב"התבניות הקבועות".</div>
+
+    <div class="card">
+      <div class="step"><span class="step-n">1</span><span class="step-t">למי?</span></div>
+      <div class="chips" id="audChips"></div>
+      <div id="pickerBox"></div>
+    </div>
+
+    <div class="card">
+      <div class="step"><span class="step-n">2</span><span class="step-t">מה כותבים?</span></div>
+      <label class="f" for="fTitle">כותרת</label>
+      <input class="t" id="fTitle" maxlength="80" placeholder="למשל: 5 עסקים חדשים הצטרפו השבוע" />
+      <div class="hint">מופיעה כנושא המייל, ככותרת ההתראה בטלפון וככותרת באפליקציה.</div>
+      <label class="f" for="fText">התוכן</label>
+      <textarea class="t" id="fText" maxlength="1500" placeholder="כל הפרטים. ירידות שורה נשמרות."></textarea>
+      <div class="hint" id="textHint"></div>
+      <label class="f" for="fLink">קישור "לפרטים" (לא חובה)</label>
+      <input class="t" id="fLink" dir="ltr" placeholder="https://yellowzone.co.il/home.html" />
+      <div class="hint">דף של yellowzone.co.il – נפתח בתוך האפליקציה. במייל – כפתור.</div>
+    </div>
+
+    <div class="card">
+      <div class="step"><span class="step-n">3</span><span class="step-t">איפה זה יגיע?</span><span class="step-h" id="defHint"></span></div>
+      <div id="chans"></div>
+      <div id="chanNotes"></div>
+    </div>
+
+    <div class="card">
+      <div class="send-row">
+        <button class="btn" id="sendBtn">שליחה</button>
+        <span class="why" id="whyNot"></span>
+      </div>
+      <div id="result" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <div class="step"><span class="step-t">נשלח לאחרונה</span></div>
+      <div id="hist"></div>
+    </div>
+  </main>
+
+  <aside class="side">
+    <div class="card">
+      <div class="step"><span class="step-t">ככה זה ייראה</span></div>
+      <div class="pv-tabs" id="pvTabs"></div>
+      <div id="pv"></div>
+    </div>
+  </aside>
+</div>
+
+<div class="modal-bg" id="confirmBg">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>לשלוח?</h3>
+    <div id="confirmBody"></div>
+    <div class="send-row"><button class="btn" id="confirmGo">כן, לשלוח</button><button class="btn ghost" id="confirmNo">ביטול</button></div>
+  </div>
+</div>
+
+<script>
+// ── נתונים לדוגמה (בערך כמו המצב היום) ──────────────────────────────────────────────────
+const FANS_APPROVED = 242, FANS_WITH_PUSH = 14, FANS_WITH_EMAIL = 238;
+const BIZ = [
+  ['b1', 'שווארמה רמי', 'אוכל ומסעדות', true, true], ['b2', 'ספורט אנד פול', 'ספורט ופנאי', false, true], ['b3', 'XRAY TLV', 'אופנה, יופי ובריאות', true, true],
+  ['b4', 'גולדה לאירועים', 'אירועים ומתנות', false, true], ['b5', 'מוסך הצפון', 'רכב ולוגיסטיקה', false, false], ['b6', 'טורנדו אפ איקס', 'דיגיטל וטכנולוגיה', true, true],
+  ['b7', 'פלאפל הזהב', 'אוכל ומסעדות', false, true], ['b8', 'סטודיו כושר 12', 'ספורט ופנאי', true, true],
+].map(([id, name, cat, push, email]) => ({ id, name, cat, push, email }));
+const BIZ_TOTAL = 65, BIZ_WITH_PUSH = 9, BIZ_WITH_EMAIL = 63;
+const FAN_LIST = [['f1', 'איל מנדל', '#00412'], ['f2', 'נועה כהן', '#00187'], ['f3', 'אבירן יהב', '#00058'], ['f4', 'דני לוי', '#00233'], ['f5', 'מיכל אברהם', '#00301']]
+  .map(([id, name, num], i) => ({ id, name, num, push: i % 2 === 0, email: true }));
+
+// ── הקהלים ──
+// app/push/mail = ברירת המחדל של הערוצים כשבוחרים את הקהל (רמי מתקן אם צריך).
+const AUDS = [
+  { k: 'fans', t: 'כל האוהדים', s: FANS_APPROVED + ' חברים מאושרים', def: { app: true, push: false, mail: false } },
+  { k: 'biz', t: 'כל בעלי העסקים', s: BIZ_TOTAL + ' עסקים מאושרים', def: { app: true, push: true, mail: false } },
+  { k: 'all', t: 'כולם', s: 'אוהדים + בעלי עסקים', def: { app: true, push: false, mail: false } },
+  { k: 'bizPick', t: 'עסקים מסוימים', s: 'בוחרים מהרשימה', def: { app: true, push: true, mail: false } },
+  { k: 'fanPick', t: 'אוהדים מסוימים', s: 'בוחרים מהרשימה', def: { app: true, push: true, mail: false } },
+];
+const state = { aud: 'biz', picked: new Set(), q: '', ch: { ...AUDS[1].def }, touched: false, pv: 'app', hist: [], result: null };
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const isPick = () => state.aud === 'bizPick' || state.aud === 'fanPick';
+const pickList = () => state.aud === 'fanPick' ? FAN_LIST : BIZ;
+const picked = () => pickList().filter((x) => state.picked.has(x.id));
+
+// כמה יקבלו בכל ערוץ — מוצג ליד כל תיבת סימון, כדי שיהיה ברור לפני השליחה.
+function counts() {
+  if (state.aud === 'fans') return { n: FANS_APPROVED, app: FANS_APPROVED, push: FANS_WITH_PUSH, mail: FANS_WITH_EMAIL };
+  if (state.aud === 'biz') return { n: BIZ_TOTAL, app: BIZ_TOTAL, push: BIZ_WITH_PUSH, mail: BIZ_WITH_EMAIL };
+  if (state.aud === 'all') return { n: FANS_APPROVED, app: FANS_APPROVED, push: FANS_WITH_PUSH, mail: FANS_WITH_EMAIL };   // בעלי עסקים הם גם אוהדים
+  const p = picked();
+  return { n: p.length, app: p.length, push: p.filter((x) => x.push).length, mail: p.filter((x) => x.email).length };
+}
+// איפה זה יופיע באפליקציה — לפי הקהל (הבלוקים של "האזור שלי", §473ב/ג)
+function appBlock() {
+  if (state.aud === 'biz') return { cls: 'biz2', t: 'לבעלי העסקים', s: 'הודעות חשובות מהצוות לכל העסקים באינדקס', where: 'בקובייה "לכל בעלי העסקים"' };
+  if (state.aud === 'bizPick') return { cls: 'biz', t: 'על העסק שלך – ' + (picked()[0] ? picked()[0].name : 'שם העסק'), s: 'הודעות שנשלחו במיוחד לעסק שלך', where: 'בקובייה "על העסק שלך" של כל עסק שנבחר' };
+  return { cls: '', t: 'עדכונים מ-Yellow Zone', s: 'חדשות, הטבות ועדכונים לכל החברים', where: 'ב"עדכונים מ-Yellow Zone"' + (state.aud === 'fans' || state.aud === 'all' ? ' (אצל בעלי עסקים: "לאוהדים")' : '') };
+}
+
+function renderAud() {
+  $('audChips').innerHTML = AUDS.map((a) => `<button class="chip${state.aud === a.k ? ' on' : ''}" data-aud="${a.k}">${a.t}<small>${a.s}</small></button>`).join('');
+  if (!isPick()) { $('pickerBox').innerHTML = ''; return; }
+  const list = pickList().filter((x) => !state.q || (x.name + ' ' + (x.cat || x.num || '')).includes(state.q));
+  const p = picked();
+  $('pickerBox').innerHTML = `<div class="picker">
+      <input type="text" id="pickQ" placeholder="${state.aud === 'fanPick' ? 'חיפוש לפי שם או מספר חבר' : 'חיפוש לפי שם או קטגוריה'}" value="${esc(state.q)}" />
+      <div class="pick-list">${list.map((x) => `<label class="pick-row"><input type="checkbox" data-pick="${x.id}" ${state.picked.has(x.id) ? 'checked' : ''}/>
+        <span>${esc(x.name)}</span><span class="m">${esc(x.cat || x.num)}</span>${x.push ? '' : '<span class="m">· בלי התראות</span>'}</label>`).join('') || '<div class="hint">לא נמצאו</div>'}</div>
+      <div class="pick-sum">${p.length ? `<b>נבחרו ${p.length}:</b> ${esc(p.map((x) => x.name).join(', '))} · <button class="linkbtn" data-clear="1">ניקוי</button>` : '<span class="hint">לא נבחר אף אחד</span>'}</div>
+    </div>`;
+}
+
+function renderChans() {
+  const c = counts();
+  const CH = [
+    { k: 'app', t: '📰 באפליקציה', d: 'נשמר בלשונית "עדכונים", ' + appBlock().where + '. מחכה גם למי שלא אישר התראות.' },
+    { k: 'push', t: '📲 קופץ בטלפון', d: 'התראה עכשיו: הכותרת ושורה מהתוכן. רק למי שאישר התראות (היום – אנדרואיד).' + (state.ch.app ? ' לחיצה עליה פותחת את ההודעה המלאה באפליקציה.' : '') },
+    { k: 'mail', t: '✉️ במייל', d: 'מייל עם הכותרת כנושא והתוכן המלא. מגיע גם למי שלא נכנס לאפליקציה. מעקב מסירה ושליחה חוזרת לנכשלים – כמו היום.' },
+  ];
+  $('chans').innerHTML = CH.map((x) => `<label class="chan${state.ch[x.k] ? ' on' : ''}">
+      <input type="checkbox" data-ch="${x.k}" ${state.ch[x.k] ? 'checked' : ''}/>
+      <div><div class="chan-t">${x.t}</div><div class="chan-d">${x.d}</div></div>
+      <div class="chan-n"><b>${c[x.k]}</b>${x.k === 'push' ? 'מכשירים' : x.k === 'mail' ? 'מיילים' : 'אנשים'}</div>
+    </label>`).join('');
+  $('defHint').textContent = state.touched ? '' : 'מסומן מראש לפי הקהל – אפשר לשנות';
+  const notes = [];
+  if (state.ch.push && !state.ch.app) notes.push('<div class="note">📲 פוש בלי "באפליקציה": ההתראה תקפוץ, אבל לא יהיה לאן לחזור אליה – רק מה שנכנס בשורה אחת. כדאי לסמן גם "באפליקציה".</div>');
+  if (state.ch.push && c.push < c.n) notes.push(`<div class="note info">רק <b>${c.push} מתוך ${c.n}</b> אישרו התראות. השאר לא יקבלו פוש${state.ch.app ? ', אבל יראו את ההודעה באפליקציה' : ''}${state.ch.mail ? ' ובמייל' : ''}.</div>`);
+  if (state.ch.mail && state.aud === 'all') notes.push('<div class="note info">"כולם" במייל: בעל עסק שהוא גם אוהד מקבל מייל אחד, לא שניים.</div>');
+  $('chanNotes').innerHTML = notes.join('');
+}
+
+function pushBody() {
+  const tx = $('fText').value.trim().replace(/\s+/g, ' ');
+  return tx.length > 90 ? tx.slice(0, 88) + '…' : tx;
+}
+function renderPv() {
+  const any = state.ch.app || state.ch.push || state.ch.mail;
+  if (!state.ch[state.pv]) state.pv = ['app', 'push', 'mail'].find((k) => state.ch[k]) || 'app';
+  $('pvTabs').innerHTML = [['app', '📰 באפליקציה'], ['push', '📲 התראה'], ['mail', '✉️ מייל']]
+    .map(([k, l]) => `<button class="pv-tab${state.pv === k && state.ch[k] ? ' on' : ''}" data-pv="${k}" ${state.ch[k] ? '' : 'disabled'}>${l}</button>`).join('');
+  if (!any) { $('pv').innerHTML = '<div class="pv-empty">סמנו לפחות מקום אחד בשלב 3</div>'; return; }
+  const title = $('fTitle').value.trim() || 'הכותרת שלך';
+  const text = $('fText').value.trim() || 'התוכן שלך יופיע כאן.';
+  const link = $('fLink').value.trim();
+  if (state.pv === 'app') {
+    const b = appBlock();
+    $('pv').innerHTML = `<div class="pv-cap">בפרופיל ← "עדכונים" ← ${esc(b.where.replace(/^ב/, ''))}</div>
+      <div class="phone"><div class="ph-tabs"><span class="on">עדכונים</span><span>הודעות</span><span>הפרטים שלי</span></div>
+        <div class="au-sec ${b.cls}"><div class="au-head"><div class="au-title">${esc(b.t)}</div><div class="au-sub">${esc(b.s)}</div></div>
+        <div class="au-item"><span class="au-new">חדש</span><div class="au-it">${esc(title)}</div><div class="au-tx">${esc(text)}</div>
+        ${link ? '<span class="au-link">לפרטים ›</span>' : ''}</div></div></div>`;
+  } else if (state.pv === 'push') {
+    $('pv').innerHTML = `<div class="pv-cap">מסך הנעילה. אנדרואיד חותך טקסט ארוך – רואים כותרת ושורה.${state.ch.app ? ' לחיצה ← ההודעה המלאה באפליקציה.' : ''}</div>
+      <div class="lock"><div class="lock-time">20:45</div>
+        <div class="notif"><div class="notif-ic">Z</div><div><div class="notif-app">Yellow Zone · עכשיו</div>
+        <div class="notif-t">${esc(title)}</div><div class="notif-b">${esc(pushBody() || 'שורה מהתוכן')}</div></div></div></div>`;
+  } else {
+    $('pv').innerHTML = `<div class="pv-cap">השם של כל נמען נכנס אוטומטית. כתובת למענה: yellowzonemta@gmail.com</div>
+      <div class="mail"><div class="mail-h">מאת: <b>Yellow Zone</b><br/>נושא: <b>${esc(title)}</b></div>
+        <div class="mail-brand">YELLOW ZONE</div>
+        <div class="mail-b">היי איל,\n\n${esc(text)}${link ? '\n<span class="mail-btn">לפרטים</span>' : ''}</div></div>`;
+  }
+}
+
+function canSend() {
+  if (!$('fTitle').value.trim()) return 'חסרה כותרת';
+  if (!$('fText').value.trim()) return 'חסר תוכן';
+  if (isPick() && !state.picked.size) return state.aud === 'fanPick' ? 'בחרו לפחות אוהד אחד' : 'בחרו לפחות עסק אחד';
+  if (!state.ch.app && !state.ch.push && !state.ch.mail) return 'סמנו לפחות מקום אחד';
+  return '';
+}
+function renderSend() {
+  const why = canSend();
+  const c = counts();
+  $('sendBtn').disabled = !!why;
+  $('sendBtn').textContent = why ? 'שליחה' : `שליחה ל-${c.n} ${state.aud === 'biz' || state.aud === 'bizPick' ? 'בעלי עסקים' : 'אנשים'}`;
+  $('whyNot').textContent = why;
+  const len = $('fText').value.length;
+  $('textHint').textContent = state.ch.push ? `בהתראה רואים רק את ההתחלה (~90 תווים). באפליקציה ובמייל – הכל. ${len}/1500` : `${len}/1500`;
+}
+function renderHist() {
+  $('hist').innerHTML = state.hist.length ? state.hist.map((h) => `<div class="hist-row"><b>${esc(h.title)}</b> · ${esc(h.aud)}
+      <div>${h.app != null ? `<span class="tag">📰 ${h.app} באפליקציה</span>` : ''}${h.push != null ? `<span class="tag">📲 ${h.push} מכשירים</span>` : ''}${h.mail != null ? `<span class="tag">✉️ ${h.mail} מיילים</span>` : ''}
+      <span class="hint" style="margin-inline-start:6px">${h.at}</span></div></div>`).join('')
+    : '<div class="hint">כל הודעה מופיעה כאן פעם אחת, עם מה שיצא בכל ערוץ.</div>';
+}
+function renderAll() { renderAud(); renderChans(); renderPv(); renderSend(); renderHist(); }
+
+// ── אירועים ──
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('[data-aud]');
+  if (a) {
+    state.aud = a.dataset.aud; state.picked = new Set(); state.q = '';
+    if (!state.touched) state.ch = { ...AUDS.find((x) => x.k === state.aud).def };
+    state.result = null; $('result').innerHTML = '';
+    renderAll(); return;
+  }
+  if (e.target.closest('[data-clear]')) { state.picked = new Set(); renderAll(); return; }
+  const pv = e.target.closest('[data-pv]');
+  if (pv && !pv.disabled) { state.pv = pv.dataset.pv; renderPv(); return; }
+});
+document.addEventListener('change', (e) => {
+  if (e.target.dataset.pick) {
+    if (e.target.checked) state.picked.add(e.target.dataset.pick); else state.picked.delete(e.target.dataset.pick);
+    renderAud(); renderChans(); renderPv(); renderSend(); return;
+  }
+  if (e.target.dataset.ch) {
+    state.ch[e.target.dataset.ch] = e.target.checked; state.touched = true;
+    if (e.target.checked) state.pv = e.target.dataset.ch;
+    renderChans(); renderPv(); renderSend();
+  }
+});
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'pickQ') {
+    state.q = e.target.value;
+    const pos = e.target.selectionStart; renderAud();
+    const el = $('pickQ'); el.focus(); el.setSelectionRange(pos, pos); return;
+  }
+  if (['fTitle', 'fText', 'fLink'].includes(e.target.id)) { renderPv(); renderSend(); }
+});
+
+$('sendBtn').addEventListener('click', () => {
+  const c = counts();
+  const audT = AUDS.find((x) => x.k === state.aud).t + (isPick() ? ' (' + state.picked.size + ')' : '');
+  const lines = [];
+  if (state.ch.app) lines.push(`📰 באפליקציה – ל-${c.app} אנשים, ${appBlock().where}`);
+  if (state.ch.push) lines.push(`📲 פוש – ל-${c.push} מכשירים <b>(אי אפשר לבטל אחרי שנשלח)</b>`);
+  if (state.ch.mail) lines.push(`✉️ מייל – ל-${c.mail} כתובות`);
+  $('confirmBody').innerHTML = `<div style="font-size:14px"><b>"${esc($('fTitle').value.trim())}"</b><br/>למי: ${esc(audT)}</div><ul>${lines.map((l) => '<li>' + l + '</li>').join('')}</ul>`;
+  $('confirmBg').classList.add('open');
+});
+$('confirmNo').addEventListener('click', () => $('confirmBg').classList.remove('open'));
+$('confirmGo').addEventListener('click', () => {
+  $('confirmBg').classList.remove('open');
+  const c = counts();
+  const r = { title: $('fTitle').value.trim(), aud: AUDS.find((x) => x.k === state.aud).t + (isPick() ? ' (' + state.picked.size + ')' : ''),
+    app: state.ch.app ? c.app : null, push: state.ch.push ? c.push : null, mail: state.ch.mail ? c.mail : null,
+    at: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) };
+  state.hist.unshift(r);
+  $('result').innerHTML = `<div class="res"><b>✓ נשלח (בדמו – לא באמת).</b><br/>
+    ${r.app != null ? `📰 נשמר באפליקציה אצל <b>${r.app}</b><br/>` : ''}${r.push != null ? `📲 פוש יצא ל-<b>${r.push}</b> מכשירים<br/>` : ''}${r.mail != null ? `✉️ מייל נשלח ל-<b>${r.mail}</b> (במוצר: נכשלים מסומנים עם "שליחה חוזרת")` : ''}</div>`;
+  $('fTitle').value = ''; $('fText').value = ''; $('fLink').value = '';
+  renderAll();
+});
+
+renderAll();
+</script>
+</body>
+</html>
