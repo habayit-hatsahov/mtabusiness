@@ -384,7 +384,8 @@
 // §481 — v173 (מקף ארוך ' — ' הוחלף במקף בינוני ' – ' בכל הטקסט הגלוי באתר).
 // §501 — v192 (שיחות עם הצוות: conversations.js חדש; profile.html לשונית "הודעות"; fan-message.js קיצור דרך; admin/business-dashboard; native-push.js לחיצה על פוש; app-links.js+open.html ?conv=).
 // §501ב — v193 (native-push.js: ערוץ התראות yz_main בעדיפות גבוהה + באנר כשהאפליקציה פתוחה).
-const CACHE_NAME = 'yz-shell-v193';
+// §502 — v194 (push-ask.js: בקשת התראות במסך ההצלחה של fan-register/business).
+const CACHE_NAME = 'yz-shell-v194';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד
