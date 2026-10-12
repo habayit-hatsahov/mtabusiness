@@ -7550,6 +7550,27 @@ const LANDING_DEFAULTS = {
     { img: 'images/landing/biz-crowd-illustration.png', title: 'כל ההטבות במקום אחד', sub: 'הטבות בלעדיות לחברי Yellow Zone.', pill: 'לאינדקס' }
   ]
 };
+// ── §500ב — בלוקים שקיימים רק בדף הנחיתה באתר (landing.html), לא במסך הפתיחה באפליקציה ──────
+// רמי: "תוסיף כן" (כרטיס ההורדה, איך זה עובד, רשימת היתרונות, הכיתוב מעל התצוגה החיה).
+// ברירות המחדל = הטקסט שב-landing.html היום, מילה במילה (§335: HTML זהה למפורסם = בלי הבזק).
+// מסמך שפורסם לפני §500ב אין בו את השדות האלה — landingEffectiveLive משלים אותם מכאן, אחרת כל
+// הבלוקים היו נראים "נערך" מיד בפתיחה. *כוכביות* = המילים המודגשות בכותרת.
+const LANDING_SITE_DEFAULTS = {
+  dlTitle: 'הצטרפות והטבות – באפליקציה',
+  dlSub: 'מורידים את האפליקציה ונרשמים תוך פחות משתי דקות. חינם לאוהדים ולעסקים.',
+  howKicker: 'איך זה עובד',
+  howTitle: 'שלושה צעדים *ואתם בפנים*',
+  step1Title: 'מורידים את האפליקציה',
+  step1Text: 'מ-App Store או מ-Google Play, בחינם.',
+  step2Title: 'נרשמים כאוהד',
+  step2Text: 'כמה פרטים ואימות קצר שאתם צהובים – עם Google, Apple או ידנית.',
+  step3Title: 'מתחילים לקנות בצהוב',
+  step3Text: 'צריכים משהו? האפליקציה היא המקום הראשון לבדוק – עסקים של אוהדים, והטבות רק לחברים.',
+  bizChecks: 'חשיפה לקהילת אוהדים פעילה\nהצטרפות ופרסום בחינם\nעמוד עסק מקצועי ומעוצב\nהמלצות אמיתיות מלקוחות\nיצירת קשרים עסקיים חדשים\nהגדלת חשיפה והכנסות',
+  fadeTitle: 'הגישה המלאה לאינדקס – באפליקציה, לאוהדים מאושרים',
+  fadeSub: 'עשרות עסקים נוספים, הטבות, המלצות ופרטי יצירת קשר מלאים מחכים בפנים',
+};
+Object.assign(LANDING_DEFAULTS, LANDING_SITE_DEFAULTS);
 const LANDING_MAX_TILES = 6;
 const LANDING_SIZE_RATIO = { small: '16/9', medium: '5/4', large: '4/5' };
 const LANDING_SIZE_LABEL = { small: 'קטן', medium: 'בינוני', large: 'גדול' };
@@ -7559,8 +7580,13 @@ const LANDING_BLOCK_FIELDS = {
   previewBlock: ['previewKicker', 'previewTitle', 'previewSub'],
   bizBox: ['bizEyebrow', 'bizTitle', 'bizText', 'bizBtn'],
   finalBox: ['finalTitle', 'finalSub', 'finalBtn1', 'finalBtn2'],
+  siteDownload: ['dlTitle', 'dlSub'],
+  siteHow: ['howKicker', 'howTitle', 'step1Title', 'step1Text', 'step2Title', 'step2Text', 'step3Title', 'step3Text'],
+  siteFade: ['fadeTitle', 'fadeSub'],
+  siteBizChecks: ['bizChecks'],
 };
-const LANDING_BLOCK_LABELS = { hero: 'כותרת הירו', tiles: 'קוביות תמונה', previewBlock: 'כותרת תצוגה חיה', bizBox: 'ריבוע כחול', finalBox: 'ריבוע צהוב' };
+const LANDING_BLOCK_LABELS = { hero: 'כותרת הירו', tiles: 'קוביות תמונה', previewBlock: 'כותרת תצוגה חיה', bizBox: 'ריבוע כחול', finalBox: 'ריבוע צהוב',
+  siteDownload: 'כרטיס ההורדה (אתר)', siteHow: 'איך זה עובד (אתר)', siteFade: 'הכיתוב מעל התצוגה (אתר)', siteBizChecks: 'רשימת היתרונות (אתר)' };
 const LANDING_FIELD_MAP = {
   heroTitle:     { input: 'lctInHeroTitle',     preview: 'lctPvHeroTitle' },
   heroSlogan:    { input: 'lctInHeroSlogan',    preview: 'lctPvHeroSlogan' },
@@ -7576,6 +7602,8 @@ const LANDING_FIELD_MAP = {
   finalBtn1:     { input: 'lctInFinalBtn1',     preview: 'lctPvFinalBtn1' },
   finalBtn2:     { input: 'lctInFinalBtn2',     preview: 'lctPvFinalBtn2' },
 };
+// §500ב — שדות "באתר בלבד": קלט בלבד, בלי תצוגה מקדימה כאן (onLandingTextFieldInput מדלג כשאין preview)
+Object.keys(LANDING_SITE_DEFAULTS).forEach(k => { LANDING_FIELD_MAP[k] = { input: 'lctIn_' + k }; });
 
 let landingLiveDoc = null;       // raw settings/landingContent (null = מעולם לא פורסם — LANDING_DEFAULTS הם ה"חי" בפועל)
 let landingDraftDoc = null;      // raw settings/landingContentDraft (null = אין טיוטה ממתינה)
@@ -7590,13 +7618,14 @@ let landingPublishing = false;
 let _landingLiveLoaded = false, _landingDraftLoaded = false;
 
 function landingClone(o) { return JSON.parse(JSON.stringify(o)); }
-function landingEffectiveLive() { return landingLiveDoc || LANDING_DEFAULTS; }
+// §500ב — מסמך שפורסם לפני שהיו שדות "באתר בלבד" מקבל אותם מברירת המחדל (= מה שבדף היום)
+function landingEffectiveLive() { return landingLiveDoc ? { ...LANDING_SITE_DEFAULTS, ...landingLiveDoc } : LANDING_DEFAULTS; }
 
 // אתחול חד-פעמי — לא בכל snapshot, אחרת הד הכתיבה העצמית שלנו לטיוטה (מה-debounce) היה
 // דורס את מה שהמנהל מקליד באמצע העריכה.
 function maybeInitLandingWorking() {
   if (!_landingLiveLoaded || !_landingDraftLoaded || landingWorking) return;
-  landingWorking = landingClone(landingDraftDoc || landingEffectiveLive());
+  landingWorking = landingClone(landingDraftDoc ? { ...LANDING_SITE_DEFAULTS, ...landingDraftDoc } : landingEffectiveLive());
   if (activeTab === LANDING_KEY) renderMain();
 }
 
@@ -7831,6 +7860,10 @@ function landingBlockListHtml() {
     { key: 'previewBlock', label: 'כותרת "תצוגה חיה"', sub: 'תגית + כותרת + תת־כותרת' },
     { key: 'bizBox', label: 'ריבוע כחול – לבעלי עסקים', sub: 'תווית, כותרת, טקסט, כפתור' },
     { key: 'finalBox', label: 'ריבוע צהוב – מוכנים להצטרף?', sub: 'כותרת, תת־כותרת, 2 כפתורים' },
+    { key: 'siteDownload', label: '🌐 כרטיס ההורדה', sub: 'באתר בלבד · כותרת + טקסט' },
+    { key: 'siteHow', label: '🌐 איך זה עובד', sub: 'באתר בלבד · כותרת + 3 צעדים' },
+    { key: 'siteFade', label: '🌐 הכיתוב מעל התצוגה החיה', sub: 'באתר בלבד · כותרת + טקסט' },
+    { key: 'siteBizChecks', label: '🌐 רשימת היתרונות לעסקים', sub: 'באתר בלבד · שורה לכל יתרון' },
   ];
   return `
     ${rows.map(r => `
@@ -7928,7 +7961,46 @@ function landingEditorHtml() {
       <div class="lct-field"><label for="lctInBizTitle">כותרת</label><input type="text" id="lctInBizTitle" maxlength="50" value="${esc(w.bizTitle)}" oninput="onLandingTextFieldInput('bizTitle')"></div>
       <div class="lct-field"><label for="lctInBizText">טקסט</label><textarea id="lctInBizText" rows="3" maxlength="220" oninput="onLandingTextFieldInput('bizText')">${esc(w.bizText)}</textarea></div>
       <div class="lct-field"><label for="lctInBizBtn">טקסט כפתור</label><input type="text" id="lctInBizBtn" maxlength="30" value="${esc(w.bizBtn)}" oninput="onLandingTextFieldInput('bizBtn')"></div>
-      <div class="lct-hint">רשימת היתרונות (6 שורות עם ✓) שמתחת לבלוק הזה בדף האמיתי עדיין לא ניתנת לעריכה כאן.</div>`;
+      <div class="lct-hint">רשימת היתרונות (שורות עם ✓) שליד הבלוק הזה באתר נערכת בבלוק "🌐 רשימת היתרונות לעסקים".</div>`;
+  }
+  // ── §500ב — בלוקים "באתר בלבד" (landing.html). אין להם תצוגה מקדימה כאן: התצוגה מימין היא של
+  // מסך הפתיחה באפליקציה, והבלוקים האלה לא קיימים בו. רואים אותם בדף החי אחרי "פרסום לאתר".
+  const siteNote = `<div class="lct-hint">🌐 מופיע רק בדף הנחיתה באתר (yellowzone.co.il), לא באפליקציה. אין לו תצוגה מקדימה כאן – רואים אותו בדף אחרי "פרסום לאתר".</div>`;
+  const fIn = (k, label, max) => `<div class="lct-field"><label for="lctIn_${k}">${label}</label><input type="text" id="lctIn_${k}" maxlength="${max}" value="${esc(w[k] || '')}" oninput="onLandingTextFieldInput('${k}')"></div>`;
+  const fTa = (k, label, max, rows) => `<div class="lct-field"><label for="lctIn_${k}">${label}</label><textarea id="lctIn_${k}" rows="${rows}" maxlength="${max}" oninput="onLandingTextFieldInput('${k}')">${esc(w[k] || '')}</textarea></div>`;
+  if (landingSelectedBlock === 'siteDownload') {
+    return `
+      <div class="lct-editor-title">🌐 כרטיס ההורדה – ראש הדף</div>
+      ${fIn('dlTitle', 'כותרת', 60)}
+      ${fTa('dlSub', 'טקסט', 160, 2)}
+      <div class="lct-hint">לאוהד רשום שחוזר לאתר מוצג נוסח קבוע אחר ("להמשך – מורידים את האפליקציה"), כדי שלא יתבקש להירשם שוב.</div>
+      ${siteNote}`;
+  }
+  if (landingSelectedBlock === 'siteHow') {
+    return `
+      <div class="lct-editor-title">🌐 איך זה עובד</div>
+      ${fIn('howKicker', 'תגית (kicker)', 30)}
+      ${fIn('howTitle', 'כותרת', 60)}
+      <div class="lct-hint" style="margin-top:-4px">מילים בין *כוכביות* מודגשות בכותרת (למשל: שלושה צעדים *ואתם בפנים*).</div>
+      ${fIn('step1Title', 'צעד 1 – כותרת', 40)}${fTa('step1Text', 'צעד 1 – טקסט', 140, 2)}
+      ${fIn('step2Title', 'צעד 2 – כותרת', 40)}${fTa('step2Text', 'צעד 2 – טקסט', 140, 2)}
+      ${fIn('step3Title', 'צעד 3 – כותרת', 40)}${fTa('step3Text', 'צעד 3 – טקסט', 140, 2)}
+      ${siteNote}`;
+  }
+  if (landingSelectedBlock === 'siteFade') {
+    return `
+      <div class="lct-editor-title">🌐 הכיתוב מעל התצוגה החיה</div>
+      ${fIn('fadeTitle', 'כותרת', 80)}
+      ${fTa('fadeSub', 'טקסט', 160, 2)}
+      <div class="lct-hint">מופיע בתחתית מסגרת "ככה נראה האינדקס", מעל כפתור ההורדה.</div>
+      ${siteNote}`;
+  }
+  if (landingSelectedBlock === 'siteBizChecks') {
+    return `
+      <div class="lct-editor-title">🌐 רשימת היתרונות לעסקים</div>
+      ${fTa('bizChecks', 'יתרון בכל שורה', 600, 7)}
+      <div class="lct-hint">כל שורה = יתרון אחד עם ✓. שורות ריקות לא מוצגות.</div>
+      ${siteNote}`;
   }
   if (landingSelectedBlock === 'finalBox') {
     return `

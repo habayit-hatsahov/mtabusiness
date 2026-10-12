@@ -330,9 +330,12 @@ html.lp-checking body { visibility: hidden; }
     document.getElementById('qrRow').hidden = state.dev !== 'desktop';
     const member = state.st === 'member';
     document.getElementById('memberNote').hidden = !member;
-    document.getElementById('dlTitle').textContent = member ? 'להמשך – מורידים את האפליקציה' : 'הצטרפות והטבות – באפליקציה';
-    document.getElementById('dlSub').textContent = member ? 'החשבון שלכם מחכה שם. נכנסים עם Google, Apple או הקוד האישי, כמו תמיד.' : 'מורידים את האפליקציה ונרשמים תוך פחות משתי דקות. חינם לאוהדים ולעסקים.';
+    // §500ב — הנוסח לאורח מגיע מהעורך (window._lpCms, ר' המודול למטה); לחבר שחזר — קבוע.
+    const T = window._lpCms || {};
+    document.getElementById('dlTitle').textContent = member ? 'להמשך – מורידים את האפליקציה' : (T.dlTitle || 'הצטרפות והטבות – באפליקציה');
+    document.getElementById('dlSub').textContent = member ? 'החשבון שלכם מחכה שם. נכנסים עם Google, Apple או הקוד האישי, כמו תמיד.' : (T.dlSub || 'מורידים את האפליקציה ונרשמים תוך פחות משתי דקות. חינם לאוהדים ולעסקים.');
   }
+  window._lpRender = render;
 
   // כל כפתור "להורדת האפליקציה" בדף: בטלפון — ישר לחנות של המכשיר; במחשב — גלילה לכרטיס עם ה-QR
   document.addEventListener('click', (e) => {
@@ -424,9 +427,11 @@ const unhide = () => document.documentElement.classList.remove('lp-checking');
 // המילים המודגשות (span) נשמרות לפי מילה, כמו setTitleKeepYellowWord ב-welcome.html.
 (async () => {
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // הדגשה: *כוכביות* בטקסט (כמו בתבניות המייל) גוברות; בלעדיהן — לפי המילה הקבועה של אותה כותרת.
   const setHl = (el, text, rx) => {
     if (!el || !text) return;
     const safe = esc(text);
+    if (/\*[^*]+\*/.test(safe)) { el.innerHTML = safe.replace(/\*([^*]+)\*/g, '<span>$1</span>'); return; }
     el.innerHTML = rx && rx.test(safe) ? safe.replace(rx, (m) => '<span>' + m + '</span>') : safe;
   };
   const setText = (el, text) => { if (el && text) el.textContent = text; };
@@ -472,6 +477,31 @@ const unhide = () => document.documentElement.classList.remove('lp-checking');
     if (fin) {
       setText(fin.querySelector('h2'), c.finalTitle);
       setText(fin.querySelector('p'), c.finalSub);
+    }
+    // ── §500ב — הבלוקים שקיימים רק באתר (בעורך: "באתר בלבד") ──
+    window._lpCms = { dlTitle: c.dlTitle, dlSub: c.dlSub };
+    if (window._lpRender) window._lpRender();   // כרטיס ההורדה — דרך render(), שמבדיל אורח מחבר שחזר
+    const how = document.querySelector('section.how');
+    if (how) {
+      setText(how.querySelector('.kicker'), c.howKicker);
+      setHl(how.querySelector('.sec-title'), c.howTitle, null);
+      how.querySelectorAll('.step').forEach((st, i) => {
+        setText(st.querySelector('b'), c['step' + (i + 1) + 'Title']);
+        setText(st.querySelector('span'), c['step' + (i + 1) + 'Text']);
+      });
+    }
+    if (c.bizChecks) {
+      const lines = String(c.bizChecks).split('\n').map(s => s.trim()).filter(Boolean);
+      const ul = document.querySelector('section.biz .checks');
+      if (ul && lines.length) {
+        ul.textContent = '';
+        lines.forEach(t => { const li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+      }
+    }
+    const fade = document.querySelector('.frame-fade');
+    if (fade) {
+      setText(fade.querySelector('b'), c.fadeTitle);
+      setText(fade.querySelector('span'), c.fadeSub);
     }
   } catch (e) { console.warn('landing: landingContent unavailable — keeping built-in text', e); }
 })();
