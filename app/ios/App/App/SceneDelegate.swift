@@ -8,7 +8,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = CAPBridgeViewController()
+        // §499 — MainViewController (AppDelegate.swift, §480: רקע אטום מאחורי שורת השעה) ולא
+        // CAPBridgeViewController: החלון נבנה כאן בקוד ודורס את הבקר מה-storyboard, ולכן §480 לא רץ.
+        window?.rootViewController = MainViewController()
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)

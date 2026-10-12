@@ -20,12 +20,33 @@ import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/f
 
 const root = document.documentElement;
 const open = () => root.classList.remove('yz-gate');
-const toLanding = () => location.replace('landing.html');
+// §499 — קישור-שיתוף ישן לעסק (home.html?biz=) → כרטיס-הטיזר של העסק (open.html), לא דף הנחיתה
+// בלי העסק. חל על כל מי שלא מנהל — גם בעל עסק שקיבל קישור לעסק של מישהו אחר.
+let sharedBiz = '';
+try { sharedBiz = new URLSearchParams(location.search).get('biz') || ''; } catch (e) {}
+const toLanding = () => location.replace(sharedBiz ? 'open.html?biz=' + encodeURIComponent(sharedBiz) : 'landing.html');
+
+// §499 — מחיקת חשבון מהדפדפן (delete-account.html → profile.html?delete=1). זו הדלת שגוגל מחייבת
+// (מחיקה בלי להתקין את האפליקציה), ו-§497 סגר אותה בשקט: אוהד הגיע לפרופיל והועבר לדף הנחיתה.
+// הדגל `yz_delete_flow` (sessionStorage — שייך ללשונית) עובר דרך הכניסה: welcome.html נשאר על מסך
+// הכניסה כשהוא קיים (ולא עובר לדף הנחיתה), ואחרי הכניסה home.html → כאן → חזרה לשורת המחיקה.
+const onDeletePage = /\/profile\.html$/.test(location.pathname) &&
+  new URLSearchParams(location.search).get('delete') === '1';
+let deleteFlow = onDeletePage;
+try {
+  if (onDeletePage) sessionStorage.setItem('yz_delete_flow', '1');
+  else deleteFlow = sessionStorage.getItem('yz_delete_flow') === '1';
+} catch (e) {}
 
 (async () => {
   if (!root.classList.contains('yz-gate')) return;   // הסקריפט ב-head החליט שאין מה לבדוק (אפליקציה / iframe)
   let mid = '';
   try { mid = localStorage.getItem('hb_memberId') || ''; } catch (e) {}
+  if (deleteFlow) {
+    if (!mid) return location.replace('welcome.html?login=1');
+    if (onDeletePage) return open();                     // הפרופיל עצמו בודק את הסשן ומפנה לכניסה אם צריך
+    return location.replace('profile.html?delete=1');    // חזרה מהכניסה (home.html) → שורת המחיקה
+  }
   if (!mid) return toLanding();
 
   const failsafe = setTimeout(open, 6000);
@@ -43,7 +64,7 @@ const toLanding = () => location.replace('landing.html');
     // §497ב — רמי: "בעל עסק לא צריך להישאר באינדקס, יש לו קישור לאזור של העסק שלו וזהו".
     // אותה דרך בדיוק כמו "העסק שלי" ב-home.html (initBizNavItem): עסק מאושר → הטוקן מ-bizTokens
     // → דשבורד העסק. עסק שלא אושר / בלי טוקן / כשל בקריאה → כמו אוהד (דף הנחיתה).
-    if (m && m.isBusinessOwner === true && m.linkedBusinessId) {
+    if (m && m.isBusinessOwner === true && m.linkedBusinessId && !sharedBiz) {
       try {
         const biz = await getDoc(doc(db, 'businesses', m.linkedBusinessId));
         if (biz.exists() && biz.data().status === 'approved') {

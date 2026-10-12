@@ -4,11 +4,305 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="robots" content="noindex, nofollow"/>
+<meta name="theme-color" content="#FFD400"/>
 <title>Yellow Zone</title>
 <!-- §495 — /open: קישור כללי "פתחו את האפליקציה". כשהאפליקציה מותקנת (iOS 1.0.1+ עם Universal Links,
-     /.well-known/apple-app-site-association) הדף הזה בכלל לא נפתח — האפליקציה נפתחת במקומו.
-     כשאין אפליקציה / דפדפן במחשב — מתנהג בדיוק כמו /download (הפרמטרים נשמרים, כולל src). -->
-<script>location.replace('download.html' + location.search);</script>
+     Android 1.2+ עם App Links) הדף הזה בכלל לא נפתח — האפליקציה נפתחת במקומו.
+     כשאין אפליקציה / דפדפן במחשב — מתנהג בדיוק כמו /download (הפרמטרים נשמרים, כולל src).
+     §499 — **/open?biz=<slug> = קישור השיתוף של עסק** (shareBiz/shareMyBiz בכל הדפים). היה home.html?biz=,
+     שנשבר ב-§497: האינדקס סגור בדפדפן, ומי שאין לו אפליקציה נחת בדף הנחיתה בלי העסק. עכשיו:
+       • אפליקציה מותקנת → האפליקציה נפתחת (הנתיב כבר רשום ב-AASA וב-assetlinks — בלי בנייה חדשה).
+       • דפדפן → כרטיס-טיזר של העסק (שם, תמונה, תגיות, ההטבה) + הורדה. בלי הפניה אוטומטית לחנות:
+         מי שקיבל קישור לעסק צריך לראות קודם את העסק.
+       • בתוך ה-WebView של האפליקציה (קישור שנלחץ מבפנים) → home.html?biz=, שפותח את הכרטיס (§474).
+     עסק שלא נמצא / כשל בקריאה → download.html, כמו /open רגיל. -->
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="Yellow Zone"/>
+<meta property="og:title" content="Yellow Zone – העסקים וההטבות של אוהדי מכבי"/>
+<meta property="og:description" content="עסקים של אוהדי מכבי, הטבות בלעדיות לאוהדים והמלצות אמיתיות. מורידים את האפליקציה ונרשמים."/>
+<meta property="og:image" content="https://yellowzone.co.il/images/share-z.png"/>
+<meta property="og:image:width" content="1080"/>
+<meta property="og:image:height" content="1080"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:alt" content="Yellow Zone"/>
+<meta property="og:locale" content="he_IL"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:image" content="https://yellowzone.co.il/images/share-z.png"/>
+<script>
+  (function () {
+    var biz = '';
+    try { biz = new URLSearchParams(location.search).get('biz') || ''; } catch (e) {}
+    var inApp = !!window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || '');
+    if (!biz) { location.replace('download.html' + location.search); return; }
+    if (inApp) { location.replace('home.html?biz=' + encodeURIComponent(biz)); return; }
+    window.__yzSharedBiz = biz;
+  })();
+</script>
+<link rel="icon" href="icons/favicon-32.png"/>
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+<link rel="preload" href="fonts/rubik-hebrew.woff2" as="font" type="font/woff2" crossorigin/>
+<style>
+  @font-face { font-family: 'Rubik'; font-style: normal; font-weight: 300 900; font-display: swap;
+    src: url('fonts/rubik-hebrew.woff2') format('woff2');
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
+
+  :root {
+    --yellow: #FFD400; --navy: #0A2A66; --bg: #F6F6F2; --card: #FFFFFF;
+    --text: #0A2A66; --text-sm: #6B7A9B; --border: #E4E4DC;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    font-family: 'Rubik', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+    line-height: 1.6; padding: 24px 16px 40px;
+    display: flex; align-items: flex-start; justify-content: center;
+  }
+  .wrap { width: 100%; max-width: 420px; text-align: center; }
+  .brand img { height: 40px; margin-bottom: 18px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 20px;
+    overflow: hidden; box-shadow: 0 1px 3px rgba(10,42,102,.06);
+  }
+  /* אותו יחס 4:3 כמו הכרטיס באינדקס, כדי שמיקום-המיקוד שהמנהל בחר (coverPhotoPosition) יחול זהה */
+  .cover { position: relative; aspect-ratio: 4 / 3; background: var(--navy); overflow: hidden; }
+  .cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .cover img.fitted { object-fit: contain; transform: scale(var(--cover-zoom, 1)); transform-origin: var(--cover-origin, 50% 50%); }
+  .cover img.bg { object-fit: cover; transform: scale(1.6); filter: blur(30px); }
+  .cover .fill { position: absolute; inset: 0; }
+  .cover .name-only {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 18px; color: var(--yellow); font-size: 26px; font-weight: 900; line-height: 1.25;
+  }
+  .body { padding: 20px 20px 22px; border-top: 6px solid var(--yellow); }
+  h1 { font-size: 23px; font-weight: 900; margin: 0 0 4px; line-height: 1.3; }
+  .tags { color: var(--text-sm); font-size: 14px; margin: 0 0 14px; }
+  .benefit {
+    background: #FFF8D6; border: 1px solid #F2E199; border-radius: 14px;
+    padding: 12px 14px; margin: 0 0 18px; text-align: right;
+  }
+  .benefit small { display: block; font-size: 12.5px; font-weight: 700; color: var(--text-sm); }
+  .benefit b { font-size: 16.5px; font-weight: 800; }
+  .benefit-lock { display: block; font-size: 12.5px; color: var(--text-sm); margin-top: 4px; }
+  .lead { font-size: 15px; margin: 0 0 16px; }
+  .stores { display: flex; flex-direction: column; gap: 12px; }
+  .store {
+    display: block; text-decoration: none; border-radius: 14px; padding: 14px 18px;
+    font-weight: 800; font-size: 16px; border: 2px solid var(--navy);
+    background: var(--card); color: var(--navy);
+  }
+  .store small { display: block; font-weight: 500; font-size: 12.5px; opacity: .8; }
+  /* החנות של המכשיר הנוכחי עולה למעלה ונצבעת — כמו ב-download.html */
+  .store.mine { background: var(--navy); color: #fff; order: -1; }
+  .have { font-size: 13.5px; color: var(--text-sm); margin: 16px 0 0; }
+  .foot { font-size: 13px; color: var(--text-sm); margin-top: 20px; }
+  .foot a { color: var(--text); font-weight: 700; }
+  .loading { padding: 60px 20px; color: var(--text-sm); }
+  [hidden] { display: none !important; }
+</style>
 </head>
-<body><a href="download.html">להורדת האפליקציה</a></body>
+<body>
+  <div class="wrap">
+    <div class="brand"><img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/></div>
+    <div class="card">
+      <div class="loading" id="loading">טוען…</div>
+      <div id="teaser" hidden>
+        <div class="cover" id="cover"></div>
+        <div class="body">
+          <h1 id="bizName"></h1>
+          <p class="tags" id="bizTags"></p>
+          <!-- §499 — רמי: "תשאיר, רק אל תתן לפתוח ולממש". רק הכותרת (discountText) — בלי קוד קופון, בלי
+               פירוט ובלי קישור. המימוש עצמו רק באפליקציה, עם תעודת חבר. -->
+          <div class="benefit" id="benefit" hidden><small>🎁 הטבה בלעדית לאוהדי מכבי</small><b id="benefitText"></b><span class="benefit-lock">🔒 המימוש באפליקציה בלבד, לחברי Yellow Zone</span></div>
+          <p class="lead">הכרטיס המלא, ההטבה ותעודת החבר – באפליקציה של Yellow Zone. מורידים, נרשמים כאוהדים ומממשים.</p>
+          <div class="stores">
+            <a class="store" id="ios" href="https://apps.apple.com/il/app/yellow-zone/id6815345699">
+              להורדה ב-App Store<small>לאייפון ולאייפד</small>
+            </a>
+            <a class="store" id="android" href="https://play.google.com/store/apps/details?id=il.co.yellowzone.app">
+              להורדה ב-Google Play<small>לאנדרואיד</small>
+            </a>
+          </div>
+          <p class="have" id="haveApp"></p>
+        </div>
+      </div>
+    </div>
+    <p class="foot"><a href="welcome.html">מה זה Yellow Zone?</a></p>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+  var param = window.__yzSharedBiz;
+  if (!param) return;   // הסקריפט בראש הדף כבר הפנה (אין biz / בתוך האפליקציה)
+
+  // אותו זיהוי מכשיר כמו download.html / app-banner.js
+  function platform() {
+    var ua = navigator.userAgent || '';
+    if (/android/i.test(ua)) return 'android';
+    if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+    if (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1) return 'ios';
+    return 'other';
+  }
+  var os = platform();
+  if (os === 'ios' || os === 'android') document.getElementById(os).classList.add('mine');
+
+  // זהה ל-slugify ב-home.html (שם נבנה הקישור וגם נפתר) — שינוי באחד מחייב את השני.
+  function slugify(str) {
+    return (str || '').trim().replace(/["'?#&/\\]/g, '').replace(/\s+/g, '-');
+  }
+  // URLSearchParams הופך "+" לרווח; slugify לעולם לא משאיר רווח, אז רווח כאן היה "+" בשם העסק.
+  var wanted = param.replace(/ /g, '+');
+
+  var BASE = 'projects/habayit-hatsahov/databases/(default)/documents';
+  var KEY = 'AIzaSyBfG7AU4BzSAbBpwPyKfA_NzUpy2pxzFu8';
+  var FIELDS = ['name', 'tags', 'hasDiscount', 'discountText', 'coverPhoto', 'coverPhotoThumb',
+    'coverPhotoPosition', 'coverPhotoZoom', 'coverPhotoBg'];
+
+  function fallback() { location.replace('download.html?src=bizshare'); }
+
+  function val(f) {
+    if (!f) return undefined;
+    if ('stringValue' in f) return f.stringValue;
+    if ('booleanValue' in f) return f.booleanValue;
+    if ('doubleValue' in f) return f.doubleValue;
+    if ('integerValue' in f) return Number(f.integerValue);
+    if ('arrayValue' in f) return (f.arrayValue.values || []).map(val);
+    return undefined;
+  }
+
+  // REST ולא ה-SDK — דף קטן שצריך לעלות מהר. השאילתה הציבורית חייבת את הפילטר status==approved
+  // (firestore.rules, businesses list) — עסק ממתין/נדחה לא יוצג, ובצדק.
+  var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+  var timer = setTimeout(function () { if (ctrl) ctrl.abort(); fallback(); }, 8000);
+  fetch('https://firestore.googleapis.com/v1/' + BASE + ':runQuery?key=' + KEY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: ctrl ? ctrl.signal : undefined,
+    body: JSON.stringify({ structuredQuery: {
+      from: [{ collectionId: 'businesses' }],
+      select: { fields: FIELDS.map(function (p) { return { fieldPath: p }; }) },
+      where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'approved' } } },
+    } }),
+  }).then(function (r) {
+    if (!r.ok) throw new Error('http ' + r.status);
+    return r.json();
+  }).then(function (rows) {
+    clearTimeout(timer);
+    var hit = null;
+    (rows || []).some(function (row) {
+      if (!row.document) return false;
+      var id = row.document.name.split('/').pop();
+      var f = row.document.fields || {};
+      var name = val(f.name) || '';
+      if (id === param || slugify(name) === wanted) {
+        hit = { id: id, name: name };
+        FIELDS.forEach(function (k) { hit[k] = val(f[k]); });
+        return true;
+      }
+      return false;
+    });
+    if (!hit) return fallback();
+    render(hit);
+    logVisit(hit.id);
+  }).catch(function (e) {
+    clearTimeout(timer);
+    console.warn('open: business lookup failed', e);
+    fallback();
+  });
+
+  function render(b) {
+    document.title = b.name + ' – Yellow Zone';
+    document.getElementById('bizName').textContent = b.name;
+    var tags = Array.isArray(b.tags) ? b.tags.filter(Boolean) : [];
+    document.getElementById('bizTags').textContent = tags.join(' · ');
+    if (b.hasDiscount && b.discountText) {
+      document.getElementById('benefitText').textContent = b.discountText;
+      document.getElementById('benefit').hidden = false;
+    }
+    document.getElementById('haveApp').textContent =
+      'כבר יש לכם את האפליקציה? פתחו אותה וחפשו את "' + b.name + '".';
+
+    // תמונת השער — אותה לוגיקה כמו bizCardImage ב-home.html: מיקום-מיקוד, ומצב "כל התמונה" (zoom)
+    // עם מילוי שוליים (צבע שהמנהל בחר, או רקע מטושטש מאותה תמונה).
+    var cover = document.getElementById('cover');
+    var src = b.coverPhotoThumb || b.coverPhoto;
+    if (src) {
+      var zoom = parseFloat(b.coverPhotoZoom);
+      var fitted = zoom > 0;
+      var pos = b.coverPhotoPosition || '50% 50%';
+      if (fitted) {
+        if (b.coverPhotoBg) {
+          var fill = document.createElement('span');
+          fill.className = 'fill'; fill.style.background = b.coverPhotoBg;
+          cover.appendChild(fill);
+        } else {
+          var bg = document.createElement('img');
+          bg.className = 'bg'; bg.alt = ''; bg.setAttribute('aria-hidden', 'true'); bg.src = src;
+          bg.onerror = function () { bg.remove(); };
+          cover.appendChild(bg);
+        }
+      }
+      var img = document.createElement('img');
+      img.alt = b.name; img.src = src; img.decoding = 'async';
+      if (fitted) {
+        img.className = 'fitted';
+        img.style.setProperty('--cover-zoom', zoom);
+        img.style.setProperty('--cover-origin', pos);
+      } else {
+        img.style.objectPosition = pos;
+      }
+      // thumb → הקובץ המלא כשהוא מוכן (כמו upgradeCardCover); כשל → שם העסק על רקע כחול
+      if (b.coverPhotoThumb && b.coverPhoto && b.coverPhoto !== b.coverPhotoThumb) {
+        var full = new Image();
+        full.onload = function () { img.src = b.coverPhoto; };
+        full.src = b.coverPhoto;
+      }
+      img.onerror = function () { cover.innerHTML = ''; nameOnly(); };
+      cover.appendChild(img);
+    } else {
+      nameOnly();
+    }
+    function nameOnly() {
+      var d = document.createElement('div');
+      d.className = 'name-only'; d.textContent = b.name;
+      cover.appendChild(d);
+    }
+
+    document.getElementById('loading').hidden = true;
+    document.getElementById('teaser').hidden = false;
+  }
+
+  // ── מדידה: pageView עם bizId — כמה נכנסו לקישור-שיתוף של כל עסק, ומאיזה מכשיר ──
+  // אותה כתיבת REST כמו download.html (שם ההסבר המלא). רק מהדומיין החי.
+  function logVisit(bizId) {
+    if (!/^(www\.)?yellowzone\.co\.il$/.test(location.hostname)) return;
+    try {
+      var sid = 'hb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+      var id = '';
+      for (var i = 0; i < 20; i++) id += 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 62)];
+      var str = function (v) { return v == null ? { nullValue: null } : { stringValue: String(v) }; };
+      fetch('https://firestore.googleapis.com/v1/' + BASE + ':commit?key=' + KEY, {
+        method: 'POST', keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ writes: [{
+          update: { name: BASE + '/events/' + id, fields: {
+            type: str('pageView'),
+            sessionId: str(sid),
+            path: str(location.pathname.slice(0, 200)),
+            referrer: str((document.referrer.split('/')[2] || '').slice(0, 50) || null),
+            device: str(os === 'other' ? 'desktop' : 'mobile'),
+            blockId: str('bizShare'),
+            bizId: str(bizId),
+            channel: str(os),
+          } },
+          updateTransforms: [{ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' }],
+          currentDocument: { exists: false },
+        }] }),
+      }).catch(function () {});
+    } catch (e) {}
+  }
+})();
+</script>
+</body>
 </html>

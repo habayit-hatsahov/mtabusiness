@@ -145,7 +145,7 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
 export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, vars }) {
   const finalSubject = applyVars(subject, vars);
   const htmlContent = renderMailHtml(body, vars, {
-    linkLabel: vars.code ? 'כניסה לאתר' : 'כניסה לאזור העסק שלי',
+    linkLabel: vars.code ? 'לפתיחת האפליקציה' : 'כניסה לאזור העסק שלי',   // §499 — כמו מייל הקוד (§494)
     lineHeight: '1.7',
   });
   await sendBrevoEmail(env, {

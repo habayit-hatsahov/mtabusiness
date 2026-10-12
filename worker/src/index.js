@@ -1305,7 +1305,7 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
     // §444 — בלוק {login} במצב שנגזר מכתובת הבדיקה עצמה, כדי שמייל הבדיקה יראה כמו המכתב האמיתי.
     const loginTestVars = { login_mode: loginModeFor({ email: testEmail }), login_account: testEmail };
     const vars = isFansTest
-      ? { name: 'ישראל ישראלי', code: '123456', link: `${SITE_BASE}home.html`, ...loginTestVars }
+      ? { name: 'ישראל ישראלי', code: '123456', link: `${SITE_BASE}download?src=broadcast`, ...loginTestVars }
       : { name: 'ישראל ישראלי', business: 'עסק לדוגמה', link: `${SITE_BASE}business-dashboard.html?token=demo`, ...loginTestVars };
     try {
       await sendBroadcastEmail(env, { toEmail: testEmail, toName: 'בדיקה', subject: `[בדיקה] ${subject}`, body, vars });
@@ -1342,7 +1342,7 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
     }
     try {
       const vars = isFans
-        ? { name: r.fields.firstName || '', code: await loginCodeFor(env, accessToken, r.id), link: `${SITE_BASE}home.html` }   // §248
+        ? { name: r.fields.firstName || '', code: await loginCodeFor(env, accessToken, r.id), link: `${SITE_BASE}download?src=broadcast` }   // §248; §499 — לאפליקציה (home.html סגור לאוהדים בדפדפן מאז §497)
         : { name: r.fields.ownerFirst || '', business: r.fields.name || '', link: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, r.id)}` };   // §244
       await sendBroadcastEmail(env, { toEmail: email, toName: isFans ? (r.fields.firstName || '') : (r.fields.ownerFirst || ''), subject, body, vars });
       results.push({ id: r.id, name, email, status: 'sent' });
