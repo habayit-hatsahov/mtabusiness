@@ -245,7 +245,7 @@ html.lp-checking body { visibility: hidden; }
     <section class="preview">
       <span class="kicker">תצוגה חיה</span>
       <h2 class="sec-title">ככה נראה <span>האינדקס</span> מבפנים</h2>
-      <p class="sub">גללו והתרשמו – הפתיחה המלאה של כרטיסי עסק, יצירת קשר ושמירת מועדפים שמורה לאוהדים מאושרים, באפליקציה</p>
+      <p class="sub">גללו והתרשמו – הפתיחה המלאה של כרטיסי עסק, יצירת קשר ושמירת מועדפים שמורה לאוהדים מאושרים</p>
       <div class="frame">
         <div class="frame-bar">Yellow Zone · אינדקס</div>
         <div class="frame-body">
@@ -266,7 +266,7 @@ html.lp-checking body { visibility: hidden; }
       <div>
         <div class="eyebrow">לבעלי עסקים</div>
         <h2>יש לכם עסק? <span>מקומכם איתנו.</span></h2>
-        <p>הצטרפו לאינדקס העסקים של אוהדי מכבי תל אביב, הגדילו את החשיפה שלכם, וקבלו לקוחות חדשים שכבר בצד שלכם.</p>
+        <p>הצטרפו לפלטפורמת העסקים של אוהדי מכבי תל אביב, הגדילו את החשיפה שלכם, וקבלו לקוחות חדשים שכבר בצד שלכם.</p>
         <a class="btn btn-yellow" href="business.html?ctx=landing">רשמו את העסק שלכם</a>
       </div>
       <ul class="checks">
@@ -277,7 +277,7 @@ html.lp-checking body { visibility: hidden; }
 
     <section class="final">
       <h2>מוכנים להצטרף?</h2>
-      <p>מורידים את האפליקציה ונרשמים תוך פחות משתי דקות – ואתם בפנים.</p>
+      <p>ההרשמה סגורה רק לאוהדי מכבי</p>
       <div class="stores" id="finalStores"></div>
     </section>
   </main>
@@ -412,6 +412,68 @@ const unhide = () => document.documentElement.classList.remove('lp-checking');
   } catch (e) { console.warn('landing: member check failed', e); }
   clearTimeout(failsafe);
   unhide();
+})();
+
+// ── §500 — הטקסטים מ"תוכן דף הנחיתה" במרכז הניהול (settings/landingContent) ────────────────────
+// רמי: "מה שמעדכנים במרכז הניהול שיראו בדף". אותו מסמך ואותם שדות כמו welcome.html (המסך שבאפליקציה).
+// ⚠️ **בכוונה לא כאן:** תוויות הכפתורים באריחים (pill) ושני כפתורי הסיום (finalBtn1/2) — הן מתארות
+// לאן הלחיצה מובילה, וזה שונה בין הדפים: כאן האריח השני מוביל להורדה (לא "לאינדקס", שסגור בדפדפן),
+// ובסיום יש כפתורי חנות במקום "להרשמה כאוהד".
+// ⚠️ §335 (welcome.html): הטקסט ב-HTML חייב להיות **זהה למפורסם**, אחרת הוא מתחלף מול העיניים כשהתשובה
+// מגיעה. אחרי פרסום חדש יש הבזק אחד עד שה-HTML מסונכרן — זה המחיר, ולא מסתירים בגללו (§335).
+// המילים המודגשות (span) נשמרות לפי מילה, כמו setTitleKeepYellowWord ב-welcome.html.
+(async () => {
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const setHl = (el, text, rx) => {
+    if (!el || !text) return;
+    const safe = esc(text);
+    el.innerHTML = rx && rx.test(safe) ? safe.replace(rx, (m) => '<span>' + m + '</span>') : safe;
+  };
+  const setText = (el, text) => { if (el && text) el.textContent = text; };
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'landingContent'));
+    if (!snap.exists()) return;
+    const c = snap.data();
+    setText(document.querySelector('.lp-hero h1'), c.heroTitle);
+    if (c.heroSlogan) {
+      const parts = String(c.heroSlogan).split('•').map(p => p.trim()).filter(Boolean);
+      const box = document.querySelector('.lp-slogan');
+      if (parts.length && box) {
+        box.textContent = '';
+        parts.forEach(p => { const s = document.createElement('span'); s.textContent = p; box.appendChild(s); });
+      }
+    }
+    if (Array.isArray(c.tiles)) {
+      document.querySelectorAll('.tiles .tile').forEach((tile, i) => {
+        const t = c.tiles[i];
+        if (!t) return;
+        setHl(tile.querySelector('.tile-txt b'), t.title, /צהוב/);
+        setText(tile.querySelector('.tile-txt small'), t.sub);
+        // תמונה — רק כשהיא שונה (§329: השמה של אותה כתובת מפעילה טעינה שנייה)
+        const img = tile.querySelector('img');
+        if (t.img && img && img.getAttribute('src') !== t.img) img.src = t.img;
+      });
+    }
+    const pv = document.querySelector('section.preview');
+    if (pv) {
+      setText(pv.querySelector('.kicker'), c.previewKicker);
+      setHl(pv.querySelector('.sec-title'), c.previewTitle, /האינדקס/);
+      setText(pv.querySelector('p.sub'), c.previewSub);
+    }
+    const biz = document.querySelector('section.biz');
+    if (biz) {
+      setText(biz.querySelector('.eyebrow'), c.bizEyebrow);
+      // החלק שאחרי סימן השאלה מודגש ("יש לכם עסק? <span>מקומכם איתנו.</span>")
+      setHl(biz.querySelector('h2'), c.bizTitle, /(?<=\?\s*)\S.*$/);
+      setText(biz.querySelector('p'), c.bizText);
+      setText(biz.querySelector('.btn'), c.bizBtn);
+    }
+    const fin = document.querySelector('section.final');
+    if (fin) {
+      setText(fin.querySelector('h2'), c.finalTitle);
+      setText(fin.querySelector('p'), c.finalSub);
+    }
+  } catch (e) { console.warn('landing: landingContent unavailable — keeping built-in text', e); }
 })();
 
 // ── העסקים: אותה בחירה בדיוק כמו welcome.html (§413 סבב הוגן של הנבחרים, §414 מדיניות הסקשנים) ──
