@@ -172,7 +172,7 @@ export async function sendConversationReplyEmail(env, { toEmail, toName, replyTe
     'הצוות של Yellow Zone ענה לך:',
     String(replyText || '').trim(),
     '{link}',
-    'אפשר להמשיך את השיחה באפליקציה, בפרופיל ← "הודעות". אפשר גם פשוט להשיב למייל הזה.',
+    'אפשר להמשיך את השיחה באפליקציה, ב"האזור שלי" ← "הודעות". אפשר גם פשוט להשיב למייל הזה.',
   ].join('\n\n');
   const vars = { name: toName || '', link };
   await sendBrevoEmail(env, {

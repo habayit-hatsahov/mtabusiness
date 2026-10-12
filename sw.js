@@ -391,7 +391,8 @@
 // §506 — v198 (business-dashboard.html: לשוניות עדכונים/הודעות במחשב).
 // §507 — v199 (biz-guides.js + redemption-guide.html חדשים; business-dashboard.html: המדריכים).
 // §508 — v200 (biz-stats.js חדש; business-dashboard.html: "השבוע אצלך"; home.html: מנהל/בעלים לא נספרים בחשיפות ובפתיחות).
-const CACHE_NAME = 'yz-shell-v200';
+// §509 — v201 ("האזור שלי" שלב 4: area-badge.js חדש; "פרטים אישיים"→"האזור שלי" בתפריטים; פעמון; אוהד נפתח על עדכונים; "העסק שלי" באפליקציה → הלשונית).
+const CACHE_NAME = 'yz-shell-v201';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד

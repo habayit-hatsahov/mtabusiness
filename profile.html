@@ -8,7 +8,7 @@
   <style>html.yz-gate body{visibility:hidden}</style>
   <script type="module" src="web-gate.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Yellow Zone – הפרופיל שלי</title>
+  <title>Yellow Zone – האזור שלי</title>
   <link rel="manifest" href="manifest.json"/>
   <link rel="icon" href="icons/favicon-32.png"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
@@ -735,6 +735,8 @@
 <script src="google-link.js"></script>
 <!-- §472 — "כתבו לנו" לאוהדים בגיליון "צור קשר" (מוזרק ל-#contactOptionsFan). -->
 <script src="fan-message.js"></script>
+<!-- §509 — "יש חדש": מונה בתפריט, נקודה על ☰ ופעמון (§473ח). -->
+<script src="area-badge.js"></script>
 <!-- §501 — "רוצים התראה כשנענה?" אחרי שליחת שיחה, ופתיחת השיחה בלחיצה על הפוש. -->
 <script src="native-push.js"></script>
 <!-- §420ב — נטען בשביל YZAppBanner.inApp() בלבד. הקובץ **אינו מצייר דבר מעצמו** —
@@ -860,6 +862,8 @@
       else if (p.get('tab') === 'updates') window.yzProfileTab('updates');
       else if (p.get('tab') === 'details') window.yzProfileTab('details');
       else if (owner && plain) window.yzProfileTab('biz');
+      // §509 — "האזור שלי": אוהד נפתח על "עדכונים" (כמו בדמו). בתצוגה מקדימה/bizToken — הפרטים, כמו קודם.
+      else if (plain) window.yzProfileTab('updates');
     } catch (e) {}
   })();
 </script>
@@ -1317,7 +1321,8 @@ if (member.isBusinessOwner) {
       if (token && bizStatus === 'approved') {
         document.getElementById('bizDashBtn').href = `business-dashboard.html?token=${token}`;
         document.getElementById('bizDashBtn').style.display = 'flex';
-        document.getElementById('menuBizItem').href = `business-dashboard.html?token=${token}`;
+        // §509 — באפליקציה: הלשונית כאן; במחשב — הדשבורד.
+        document.getElementById('menuBizItem').href = (!!window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || '')) ? 'profile.html?tab=biz' : `business-dashboard.html?token=${token}`;
         document.getElementById('menuBizItem').style.display = 'flex';
         // רק לעסק מאושר — קישור-שיתוף לעסק לא-מאושר לא יעבוד בכל מקרה (ר' shareMyBiz).
         window._myBizShare = { name: bizName };
@@ -1392,6 +1397,9 @@ async function saveMemberField(updates) {
   if (previewMemberId) {
     document.querySelector('.yz-tabs').style.display = 'none';
   } else {
+    // §509 — מקור אחד לשלושת הסימונים (תפריט, ☰, פעמון): כאן הם מתעדכנים חי, כשמשהו נקרא.
+    window.__yzUnread = { upd: 0, msgs: 0 };
+    window.__yzSyncBadge = () => { if (window.YZAreaBadge) window.YZAreaBadge.set(window.__yzUnread.upd + window.__yzUnread.msgs); };
     // §503 — "עדכונים". נטען לפני השיחות כדי שהפס "יש לך תשובה חדשה" יקבל את המונה שלהן.
     let updates = null;
     try {
@@ -1399,7 +1407,7 @@ async function saveMemberField(updates) {
       updates = mountUpdates({
         db, memberId, root: document.getElementById('updRoot'),
         isOwner: !!(member.isBusinessOwner || bizToken), bizName: myBizName,
-        onUnread: (n) => { const el = document.getElementById('updatesCount'); el.hidden = !n; el.textContent = n; },
+        onUnread: (n) => { const el = document.getElementById('updatesCount'); el.hidden = !n; el.textContent = n; window.__yzUnread.upd = n; window.__yzSyncBadge(); },
         onOpenReplies: () => window.yzProfileTab('msgs'),
       });
     } catch (e) {
@@ -1417,6 +1425,7 @@ async function saveMemberField(updates) {
           const el = document.getElementById('msgsCount');
           el.hidden = !n; el.textContent = n;
           if (updates) updates.setReplyUnread(n);
+          window.__yzUnread.msgs = n; window.__yzSyncBadge();
         },
         savePushToken: bizToken ? null : async (res) => {
           await updateDoc(doc(db, 'members', memberId), {
@@ -1697,7 +1706,7 @@ async function saveMemberField(updates) {
     </a>
     <a class="menu-item active" href="profile.html">
       <span class="menu-item-icon">👤</span>
-      <span class="menu-item-label">פרטים אישיים</span>
+      <span class="menu-item-label">האזור שלי</span>
     </a>
     <button class="menu-item" onclick="openContactSheet()">
       <span class="menu-item-icon">📞</span>
