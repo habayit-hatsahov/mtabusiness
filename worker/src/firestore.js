@@ -284,3 +284,36 @@ export async function firestoreDeleteDoc(env, accessToken, path) {
   if (!resp.ok) throw new Error('firestore_delete_failed: ' + (await resp.text()));
   return true;
 }
+
+// ── §503 — יצירת מסמכים רבים בבקשה אחת (documents:commit) ─────────────────────────────────
+// docs: [{ path: 'members/abc/inbox/xyz', fields: {...} }]. עד 500 כתיבות לבקשה (תקרת Firestore),
+// ולכן נחתך לקבוצות. ⚠️ כל קבוצה אטומית בפני עצמה, אבל **לא** ביחס לקבוצות האחרות: כשל בקבוצה
+// השנייה משאיר את הראשונה כתובה — ולכן מוחזר כמה נכתבו בפועל, ולא רק "נכשל".
+// `currentDocument.exists:false` — יצירה בלבד; מסמך קיים באותו נתיב מכשיל את הקבוצה ולא נדרס.
+export async function firestoreBatchCreate(env, accessToken, docs) {
+  const root = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+  let written = 0;
+  for (let i = 0; i < docs.length; i += 500) {
+    const chunk = docs.slice(i, i + 500);
+    const resp = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}:commit`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        writes: chunk.map((d) => ({
+          update: {
+            name: `${root}/${d.path}`,
+            fields: Object.fromEntries(Object.entries(d.fields).map(([k, v]) => [k, toFirestoreValue(v)])),
+          },
+          currentDocument: { exists: false },
+        })),
+      }),
+    });
+    if (!resp.ok) {
+      const err = new Error('firestore_batch_failed: ' + (await resp.text()).slice(0, 300));
+      err.written = written;
+      throw err;
+    }
+    written += chunk.length;
+  }
+  return written;
+}

@@ -310,7 +310,8 @@
       display:inline-flex; align-items:center; justify-content:center; padding:0 5px; }
     .yz-tab .yz-count[hidden] { display:none; }
     #msgsPanel { max-width:640px; }
-    #msgsPanel[hidden], .profile-split[hidden] { display:none !important; }
+    #updatesPanel { max-width:640px; }
+    #msgsPanel[hidden], #updatesPanel[hidden], .profile-split[hidden] { display:none !important; }
 
     @media (max-width: 900px) {
       .content { max-width: 480px; }
@@ -548,9 +549,12 @@
      והלשונית עוברת אליו כמו שהיא. ⚠️ ההחלפה בסקריפט הקלאסי למטה (yzProfileTab) — לא במודול,
      כדי שהלחיצה תעבוד גם לפני שהמודול נטען (§431). -->
 <div class="yz-tabs" role="tablist">
+  <!-- §503 — "עדכונים" (area-updates.js): מה שהצוות שולח לאזור + כל פוש שנשלח. -->
+  <button type="button" class="yz-tab" id="tabUpdates" role="tab" onclick="yzProfileTab('updates')">עדכונים <span class="yz-count" id="updatesCount" hidden></span></button>
   <button type="button" class="yz-tab on" id="tabDetails" role="tab" onclick="yzProfileTab('details')">הפרטים שלי</button>
   <button type="button" class="yz-tab" id="tabMsgs" role="tab" onclick="yzProfileTab('msgs')">הודעות <span class="yz-count" id="msgsCount" hidden></span></button>
 </div>
+<div id="updatesPanel" hidden><div id="updRoot"><div class="card-section" style="text-align:center;color:var(--text-sm);font-size:13px">טוען…</div></div></div>
 <div id="msgsPanel" hidden><div id="convRoot"><div class="card-section" style="text-align:center;color:var(--text-sm);font-size:13px">טוען…</div></div></div>
 <div class="profile-split">
 <div class="profile-side-panel">
@@ -804,11 +808,13 @@
   // פותח ישר על ההודעות; ?conv=<id> פותח שיחה; ?new=1 פותח שיחה חדשה — את שני האחרונים
   // מבצע המודול כשהוא מוכן (window.__yzConvIntent).
   window.yzProfileTab = function (t) {
-    var msgs = t === 'msgs';
-    document.getElementById('tabMsgs').classList.toggle('on', msgs);
-    document.getElementById('tabDetails').classList.toggle('on', !msgs);
-    document.getElementById('msgsPanel').hidden = !msgs;
-    document.querySelector('.profile-split').hidden = msgs;
+    if (t !== 'msgs' && t !== 'updates') t = 'details';   // §503 — שלוש לשוניות
+    document.getElementById('tabUpdates').classList.toggle('on', t === 'updates');
+    document.getElementById('tabMsgs').classList.toggle('on', t === 'msgs');
+    document.getElementById('tabDetails').classList.toggle('on', t === 'details');
+    document.getElementById('updatesPanel').hidden = t !== 'updates';
+    document.getElementById('msgsPanel').hidden = t !== 'msgs';
+    document.querySelector('.profile-split').hidden = t !== 'details';
     window.scrollTo(0, 0);
   };
   (function () {
@@ -816,6 +822,7 @@
       var p = new URLSearchParams(location.search);
       window.__yzConvIntent = { conv: p.get('conv') || '', isNew: p.get('new') === '1' };
       if (p.get('tab') === 'msgs' || p.get('conv') || p.get('new') === '1') window.yzProfileTab('msgs');
+      else if (p.get('tab') === 'updates') window.yzProfileTab('updates');
     } catch (e) {}
   })();
 </script>
@@ -1244,6 +1251,7 @@ if (member.isAdmin) {
 }
 
 // ── BUSINESS PROFILE ─────────────────────────────────────────────────────
+let myBizName = '';
 if (member.isBusinessOwner) {
   if (member.linkedBusinessId) {
     // קישור קבוע (linkedBusinessId) — לא תלוי בטלפון הנוכחי, לא שביר לעריכות מאוחרות.
@@ -1259,6 +1267,7 @@ if (member.isBusinessOwner) {
       const tokSnap = await getDoc(doc(db, 'bizTokens', member.linkedBusinessId)).catch(() => null);
       const token = (tokSnap && tokSnap.exists() ? tokSnap.data().accessToken : '') || '';
       const bizName = biz.name || 'העסק שלי';
+      myBizName = biz.name || '';   // §503 — לכותרת "על העסק שלך" בעדכונים
       const bizStatus = biz.status || 'pending';
       const statusText = bizStatus === 'approved' ? '✅ מאושר' : bizStatus === 'rejected' ? '❌ נדחה' : '⏳ ממתין לאישור';
       const statusColor = bizStatus === 'approved' ? 'var(--accent)' : 'var(--orange)';
@@ -1311,6 +1320,21 @@ async function saveMemberField(updates) {
   if (previewMemberId) {
     document.querySelector('.yz-tabs').style.display = 'none';
   } else {
+    // §503 — "עדכונים". נטען לפני השיחות כדי שהפס "יש לך תשובה חדשה" יקבל את המונה שלהן.
+    let updates = null;
+    try {
+      const { mountUpdates } = await import('./area-updates.js');
+      updates = mountUpdates({
+        db, memberId, root: document.getElementById('updRoot'),
+        isOwner: !!(member.isBusinessOwner || bizToken), bizName: myBizName,
+        onUnread: (n) => { const el = document.getElementById('updatesCount'); el.hidden = !n; el.textContent = n; },
+        onOpenReplies: () => window.yzProfileTab('msgs'),
+      });
+    } catch (e) {
+      console.error('updates mount failed:', e);
+      document.getElementById('updRoot').innerHTML =
+        '<div class="card-section" style="text-align:center;color:var(--text-sm);font-size:13px;line-height:1.6">לא הצלחנו לטעון את העדכונים. נסו לרענן.</div>';
+    }
     try {
       const { mountConversations } = await import('./conversations.js');
       const conv = mountConversations({
@@ -1320,6 +1344,7 @@ async function saveMemberField(updates) {
         onUnread: (n) => {
           const el = document.getElementById('msgsCount');
           el.hidden = !n; el.textContent = n;
+          if (updates) updates.setReplyUnread(n);
         },
         savePushToken: bizToken ? null : async (res) => {
           await updateDoc(doc(db, 'members', memberId), {

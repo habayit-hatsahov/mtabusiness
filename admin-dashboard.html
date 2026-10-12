@@ -15132,7 +15132,7 @@ let manualPickerSelectedBizIds = new Set();
 let manualPickerSelectedFanIds = new Set();
 // מצב-שליחה — שידור-המוני מול נמענים-נבחרים, מתג אחד עם 2 מצבים (§136, לפי מוקאפ
 // demo-redesign-admin-messages.html) — מחליף 2 אקורדיונים-עצמאיים ישנים (msgOpenSection/toggleMsgSection).
-let msgSendMode = 'broadcast'; // 'broadcast' | 'single' | 'push'  (§420ד)
+let msgSendMode = 'broadcast'; // 'broadcast' | 'single' | 'push'  (§420ד) | 'area' (§503)
 
 // ══════════════════════════════════════════════════════════════════════════════════════
 //  §420ד — שליחת פוש נייטיב
@@ -15150,10 +15150,21 @@ let pushResult = null;   // { recipients, withTokens, devicesSent, devicesRemove
 
 window.updatePushDraft = function(field, v) { pushDraft[field] = v; };
 
+// §503 — קהל הפוש: אוהדים (כמו עד היום) או עסקים מסוימים (§473ו) — הבורר משותף לעדכון לאזור.
+let pushAud = 'fans';   // 'fans' | 'bizIds'
+window.setPushAud = function(a) { pushAud = a; renderMain(); };
+function pushBizOwnerCount() {
+  return new Set(areaApprovedBizList().filter(b => areaPickBizIds.has(b.id)).map(b => b.ownerMemberId).filter(Boolean)).size;
+}
 function nativePushTabHtml() {
-  const audience = broadcastAudienceType === 'fans' && selectedFanIds.size
+  if (pushAud === 'bizIds') return nativePushTabInner(null);
+  return nativePushTabInner(broadcastAudienceType === 'fans' && selectedFanIds.size
     ? Array.from(selectedFanIds)
-    : MOCK_FANS.filter(f => f.status === 'approved').map(f => f.id);
+    : MOCK_FANS.filter(f => f.status === 'approved').map(f => f.id));
+}
+function nativePushTabInner(fanAudience) {
+  const isBiz = pushAud === 'bizIds';
+  const audience = isBiz ? new Array(pushBizOwnerCount()) : fanAudience;
   const usingSelection = selectedFanIds.size > 0;
 
   // ⚠️ הסיכום מוצג **אחרי** השליחה ואינו נמחק ברינדור הבא — מסך שמנקה את התוצאה
@@ -15168,10 +15179,16 @@ function nativePushTabHtml() {
     </div>`;
 
   return `
+    <div class="approve-field-label">למי</div>
+    <div class="seg" style="display:inline-flex;margin-bottom:10px">
+      <div class="${!isBiz ? 'on' : ''}" onclick="setPushAud('fans')">אוהדים</div>
+      <div class="${isBiz ? 'on' : ''}" onclick="setPushAud('bizIds')">עסקים מסוימים</div>
+    </div>
+    ${isBiz ? areaBizPickerHtml() + '<div style="font-size:12.5px;color:var(--text-sm);margin:6px 0 10px">ההתראה נשלחת לבעלי העסקים שבחרת, ונרשמת אצלם ב"התראות שקיבלת" עם הסימון "לעסק שלך".</div>' : ''}
     <div class="aud-summary">
       📲 נשלח <b>רק למי שהתקין את האפליקציה ואישר התראות</b>. מי שאינו רשום פשוט לא מקבל –
       ואינו נספר ככשל.
-      ${usingSelection
+      ${isBiz ? ` נבחרו <b>${audience.length} בעלי עסקים</b>.` : usingSelection
         ? ` קהל נבחר ידנית: <b>${audience.length} אוהדים</b> – <button class="filter-clear" onclick="clearFanSelection()">נקה בחירה</button>`
         : ` כרגע: <b>כל ${audience.length} האוהדים המאושרים</b>. לבחירה ספציפית – סמנ/י ברשימה בטאב "שידור המוני".`}
     </div>
@@ -15198,8 +15215,8 @@ function nativePushTabHtml() {
     </div>
 
     <div class="broadcast-actions">
-      <button class="act-btn approve" onclick="sendNativePushNow()"
-        ${pushSending || !audience.length ? 'disabled' : ''}>${pushSending ? '⏳ שולח...' : `📲 שלח ל-${audience.length} אוהדים`}</button>
+      <button id="pushSendBtn" class="act-btn approve" onclick="sendNativePushNow()"
+        ${pushSending || !audience.length ? 'disabled' : ''}>${pushSending ? '⏳ שולח...' : `📲 שלח ל-${audience.length} ${isBiz ? 'בעלי עסקים' : 'אוהדים'}`}</button>
     </div>
     ${resultHtml}`;
 }
@@ -15215,7 +15232,10 @@ window.sendNativePushNow = async function() {
     ? Array.from(selectedFanIds)
     : MOCK_FANS.filter(f => f.status === 'approved').map(f => f.id);
 
-  const who = selectedFanIds.size ? `${audience.length} אוהדים נבחרים` : `כל ${audience.length} האוהדים המאושרים`;
+  // §503 — עסקים מסוימים: הנמענים הם הבעלים; הוורקר ממיר bizIds → ownerMemberId.
+  const isBiz = pushAud === 'bizIds';
+  if (isBiz && !areaPickBizIds.size) { alert('בחרו לפחות עסק אחד'); return; }
+  const who = isBiz ? `${pushBizOwnerCount()} בעלי עסקים נבחרים` : selectedFanIds.size ? `${audience.length} אוהדים נבחרים` : `כל ${audience.length} האוהדים המאושרים`;
   if (!confirm(`לשלוח התראה ל${who}?\n\n"${title}"\n${body}\n\n⚠️ פוש אי-אפשר לבטל או לתקן אחרי השליחה.`)) return;
 
   pushSending = true;
@@ -15231,7 +15251,8 @@ window.sendNativePushNow = async function() {
         link: (pushDraft.link || '').trim() || undefined,
         // ⚠️ נשלח **רק** כשיש בחירה מפורשת. רשימה ריקה הייתה נקראת בשרת כ"אין נמענים",
         // ורשימה מלאה מיותרת עוקפת את שאילתת-המאושרים ומתיישנת מול המצב האמיתי.
-        memberIds: selectedFanIds.size ? audience : undefined,
+        memberIds: !isBiz && selectedFanIds.size ? audience : undefined,
+        bizIds: isBiz ? Array.from(areaPickBizIds) : undefined,
       }),
     });
     const data = await resp.json();
@@ -15247,6 +15268,174 @@ window.sendNativePushNow = async function() {
 };
 
 window.setMsgSendMode = function(m) { msgSendMode = m; renderMain(); };
+
+// ══════════════════════════════════════════════════════════════════════════════════════
+//  §503 — "עדכון לאזור": מצב רביעי באותו מתג (§473ז), + "עסקים מסוימים" גם לפוש (§473ו)
+// ══════════════════════════════════════════════════════════════════════════════════════
+//  הוורקר (/send-area-update) מעתיק את העדכון לתיבה האישית של כל נמען; האפליקציה מציגה
+//  אותו בלשונית "עדכונים" בבלוק שלו. כל פוש נרשם שם גם הוא (בוורקר, ב-/send-native-push).
+//  🔑 בחירת העסקים **משותפת** לעדכון ולפוש (רמי, §473ו): "הבחירה נשמרת אחרי שליחה, כדי
+//  שאפשר יהיה לשלוח פוש לאותה קבוצה".
+// ההסבר בראש כל מצב — הנוסח מהדמו (§473ז, רמי: "שאדע למה לגשת").
+const MSG_MODE_HELP = {
+  broadcast: { t: 'שידור המוני – מייל לקבוצה גדולה',
+    what: 'מייל אחד שנשלח לכל האוהדים, לכל העסקים, או לחלק שסימנת. השם של כל נמען נכנס אוטומטית.',
+    when: 'הודעה רשמית או ארוכה שחייבת להגיע גם למי שלא פותח את האפליקציה. למשל: עדכון לכל העסקים על שינוי בתקנון, תזכורת לאוהדים שאושרו ולא נכנסו.',
+    who: 'כל מי שיש לו מייל ברשומה. ההודעה נשארת בתיבת המייל שלו – לא באפליקציה.' },
+  single: { t: 'נמענים נבחרים – פנייה אישית לכמה אנשים',
+    what: 'בוחרים עסקים או אוהדים מסוימים, ופונים לכל אחד בנפרד – במייל או בוואטסאפ.',
+    when: 'כשמטפלים בעניין ספציפי מול אנשים מסוימים. למשל: עסק שחסרה לו תמונה, אוהד שהקוד שלו לא הגיע.',
+    who: 'רק מי שבחרת.' },
+  push: { t: 'פוש לאפליקציה – התראה שקופצת בטלפון עכשיו',
+    what: 'כותרת קצרה ושורה אחת שקופצות על המסך של מי שהתקין את האפליקציה ואישר התראות.',
+    when: 'משהו שכדאי לדעת עכשיו: הטבה חדשה, אירוע היום. לא להגזים – הרבה פושים גורמים לאנשים לכבות התראות.',
+    who: 'רק מי שהתקין ואישר (היום – אנדרואיד בלבד). כל פוש נשמר גם באזור של כל מי שנשלח אליו, תחת "התראות שקיבלת". ⚠️ אי אפשר לבטל פוש אחרי שנשלח.' },
+  area: { t: 'עדכון לאזור – הודעה שמחכה באפליקציה',
+    what: 'הודעה שנכנסת ללשונית "עדכונים" באפליקציה ונשארת שם. לא מקפיצה שום דבר בטלפון.',
+    when: 'חדשות וטיפים שלא דחופים: "5 עסקים חדשים הצטרפו השבוע", טיפ לבעלי העסקים.',
+    who: 'כל מי שבקהל שבחרת – גם בלי התראות; יראה בכניסה הבאה. לעסקים מסוימים – מופיע אצל הבעלים ב"על העסק שלך". מי שיצטרף אחר כך לא יראה עדכון שכבר נשלח.' },
+};
+function msgModeGuideHtml() {
+  const row = (m, b, s) => `<button class="action-tab ${msgSendMode === m ? 'active' : ''}" style="text-align:right;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 12px" onclick="setMsgSendMode('${m}')"><b>${b}</b><span style="font-size:12px;font-weight:500;opacity:.8">${s}</span></button>`;
+  const h = MSG_MODE_HELP[msgSendMode];
+  return `
+    <div style="margin-bottom:14px">
+      <div style="font-size:13px;font-weight:800;margin-bottom:8px">איזו דרך לבחור?</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
+        ${row('broadcast', 'שידור המוני', 'צריך שיגיע גם למי שלא נכנס לאפליקציה (מייל)')}
+        ${row('single', 'נמענים נבחרים', 'עניין אישי מול כמה אנשים מסוימים')}
+        ${row('push', '📲 פוש לאפליקציה', 'דחוף, ועכשיו – קופץ בטלפון')}
+        ${row('area', '📰 עדכון לאזור', 'חדשות שיחכו כשייכנסו לאפליקציה')}
+      </div>
+      <div style="font-size:12.5px;color:var(--text-sm);margin-top:8px">💡 שילוב טוב: עדכון לאזור עם כל הפרטים, ופוש קצר שמפנה אליו.</div>
+    </div>
+    ${h ? `<div class="aud-summary" style="margin-bottom:14px;line-height:1.7">
+      <div style="font-weight:800;margin-bottom:4px">${esc(h.t)}</div>
+      <div><b>מה זה:</b> ${esc(h.what)}</div>
+      <div><b>מתי משתמשים:</b> ${esc(h.when)}</div>
+      <div><b>מי מקבל:</b> ${esc(h.who)}</div>
+    </div>` : ''}`;
+}
+
+// ── בורר "עסקים מסוימים" — משותף לעדכון ולפוש ──
+let areaPickBizIds = new Set();
+let areaPickQ = '';
+const areaCatLabel = (b) => (CATEGORIES.find(c => c.key === b.catKey) || {}).label || '';
+function areaApprovedBizList() { return (MOCK_BUSINESSES || []).filter(b => b.status === 'approved'); }
+function areaBizPickerHtml() {
+  const q = areaPickQ.trim();
+  const all = areaApprovedBizList();
+  const list = q ? all.filter(b => `${b.name || ''} ${areaCatLabel(b)}`.includes(q)) : all;
+  const picked = all.filter(b => areaPickBizIds.has(b.id));
+  return `
+    <div style="border:1px solid var(--border);border-radius:12px;padding:10px;margin-top:8px">
+      <input type="text" class="chain-select" placeholder="חיפוש לפי שם או קטגוריה" value="${esc(areaPickQ)}"
+             oninput="areaPickQ=this.value;renderAreaPickList()" />
+      <div id="areaPickList" style="max-height:220px;overflow:auto;margin-top:8px">${areaPickListInner(list)}</div>
+      <div id="areaPickSummary" style="font-size:12.5px;margin-top:8px">${areaPickSummaryInner(picked)}</div>
+    </div>`;
+}
+function areaPickListInner(list) {
+  if (!list.length) return '<div class="picker-empty">לא נמצאו עסקים</div>';
+  return list.slice(0, 200).map(b => `
+    <label style="display:flex;gap:8px;align-items:center;padding:5px 2px;cursor:pointer;font-size:13.5px">
+      <input type="checkbox" ${areaPickBizIds.has(b.id) ? 'checked' : ''} onchange="toggleAreaPick('${escJsAttr(b.id)}', this.checked)" />
+      <span>${esc(b.name || '')}</span><span style="color:var(--text-muted);font-size:12px">${esc(areaCatLabel(b))}</span>
+      ${b.ownerMemberId ? '' : '<span style="color:var(--orange);font-size:11.5px">· אין בעלים מקושר</span>'}
+    </label>`).join('');
+}
+function areaPickSummaryInner(picked) {
+  if (!picked.length) return '<span style="color:var(--text-muted)">לא נבחר אף עסק</span>';
+  return `<b>נבחרו ${picked.length}:</b> ${esc(picked.map(b => b.name).join(', '))} · <button class="filter-clear" onclick="clearAreaPick()">ניקוי הבחירה</button>`;
+}
+// רינדור חלקי — רינדור מלא בכל הקשה היה מאבד את הפוקוס בשדה החיפוש.
+window.renderAreaPickList = function() {
+  const all = areaApprovedBizList();
+  const q = areaPickQ.trim();
+  const el = document.getElementById('areaPickList');
+  if (el) el.innerHTML = areaPickListInner(q ? all.filter(b => `${b.name || ''} ${areaCatLabel(b)}`.includes(q)) : all);
+};
+window.toggleAreaPick = function(id, on) {
+  if (on) areaPickBizIds.add(id); else areaPickBizIds.delete(id);
+  const el = document.getElementById('areaPickSummary');
+  if (el) el.innerHTML = areaPickSummaryInner(areaApprovedBizList().filter(b => areaPickBizIds.has(b.id)));
+  const btn = document.getElementById('areaSendBtn'); if (btn) btn.outerHTML = areaSendBtnHtml();
+  const pbtn = document.getElementById('pushSendBtn'); if (pbtn) renderMain();
+};
+window.clearAreaPick = function() { areaPickBizIds = new Set(); renderMain(); };
+
+// ── עדכון לאזור ──
+let areaDraft = { title: '', text: '', link: '' };
+let areaAud = 'members';   // 'members' | 'biz' | 'bizIds'
+let areaSending = false;
+let areaResult = null;
+let areaHistory = [];
+window.updateAreaDraft = function(f, v) { areaDraft[f] = v; };
+window.setAreaAud = function(a) { areaAud = a; renderMain(); };
+function areaAudCount() {
+  if (areaAud === 'members') return MOCK_FANS.filter(f => f.status === 'approved').length;
+  const bizs = areaAud === 'biz' ? areaApprovedBizList() : areaApprovedBizList().filter(b => areaPickBizIds.has(b.id));
+  return new Set(bizs.map(b => b.ownerMemberId).filter(Boolean)).size;
+}
+function areaSendBtnHtml() {
+  const n = areaAudCount();
+  return `<button id="areaSendBtn" class="act-btn approve" onclick="sendAreaUpdateNow()" ${areaSending || !n ? 'disabled' : ''}>${areaSending ? '⏳ שולח...' : `📰 שליחה ל-${n} ${areaAud === 'members' ? 'חברים' : 'בעלי עסקים'}`}</button>`;
+}
+function areaUpdateTabHtml() {
+  const AUD = [['members', 'כל החברים'], ['biz', 'כל בעלי העסקים'], ['bizIds', 'עסקים מסוימים']];
+  const hist = areaHistory.length ? areaHistory.map(h => `
+      <div style="border-top:1px solid var(--border);padding:8px 0;font-size:12.5px">
+        <b>${esc(h.title || '')}</b> · ${h.kind === 'push' ? '📲 פוש' : '📰 עדכון'} ·
+        ${h.aud === 'members' ? 'כל החברים' : h.aud === 'biz' ? 'כל בעלי העסקים' : h.aud === 'bizIds' ? (h.bizIds || []).length + ' עסקים' : 'נבחרים'}
+        · ${h.written != null ? h.written : '?'}/${h.recipients != null ? h.recipients : '?'} נכתבו
+        <span style="color:var(--text-muted)">· ${h.sentAt ? fmtDateTime(h.sentAt) : ''}</span>
+      </div>`).join('') : '<div style="font-size:12.5px;color:var(--text-muted)">עוד לא נשלח שום עדכון.</div>';
+  return `
+    <div class="approve-field-label">למי</div>
+    <div class="seg" style="display:inline-flex">${AUD.map(([k, l]) => `<div class="${areaAud === k ? 'on' : ''}" onclick="setAreaAud('${k}')">${l}</div>`).join('')}</div>
+    ${areaAud === 'bizIds' ? areaBizPickerHtml() : ''}
+    <div class="approve-field-label" style="margin-top:14px">כותרת</div>
+    <input type="text" class="chain-select" maxlength="80" value="${esc(areaDraft.title)}" oninput="updateAreaDraft('title', this.value)"
+           placeholder="למשל: 5 עסקים חדשים הצטרפו השבוע" />
+    <div class="approve-field-label">התוכן</div>
+    <textarea class="broadcast-body-input" rows="5" maxlength="1500" oninput="updateAreaDraft('text', this.value)"
+              placeholder="הפרטים המלאים. מופיע באפליקציה כמו שנכתב, כולל ירידות שורה.">${esc(areaDraft.text)}</textarea>
+    <div class="approve-field-label">קישור "לפרטים" (לא חובה)</div>
+    <input type="text" class="chain-select" dir="ltr" value="${esc(areaDraft.link)}" oninput="updateAreaDraft('link', this.value)"
+           placeholder="https://yellowzone.co.il/home.html" />
+    <div style="font-size:12px;color:var(--text-muted);margin-top:4px">רק דף של yellowzone.co.il – נפתח בתוך האפליקציה.</div>
+    <div class="broadcast-actions">${areaSendBtnHtml()}</div>
+    ${areaResult ? `<div class="aud-summary" style="margin-top:14px;background:rgba(224,168,122,.13)">
+      <b>הסיכום:</b> נכתב לאזור של <b>${areaResult.written}</b> מתוך ${areaResult.recipients}${areaResult.failed ? ` · ⚠️ <b>${areaResult.failed} נכשלו</b>` : ''}
+      ${areaResult.linkDropped ? '<br>⚠️ <b>הקישור לא נשמר</b> (' + esc(areaResult.linkDropped) + ') – רק דפים של yellowzone.co.il.' : ''}
+    </div>` : ''}
+    <div style="margin-top:18px">
+      <div style="font-size:13px;font-weight:800;margin-bottom:4px">נשלח לאזור לאחרונה (עדכונים ופושים)</div>
+      ${hist}
+    </div>`;
+}
+window.sendAreaUpdateNow = async function() {
+  const title = (areaDraft.title || '').trim(), text = (areaDraft.text || '').trim();
+  if (!title || !text) { alert('חסרה כותרת או תוכן'); return; }
+  if (areaAud === 'bizIds' && !areaPickBizIds.size) { alert('בחרו לפחות עסק אחד'); return; }
+  const n = areaAudCount();
+  const who = areaAud === 'members' ? `כל ${n} החברים` : areaAud === 'biz' ? `כל ${n} בעלי העסקים` : `${n} בעלי עסקים נבחרים`;
+  if (!confirm(`לשלוח עדכון לאזור של ${who}?\n\n"${title}"\n\nהעדכון יופיע אצלם בלשונית "עדכונים". אי אפשר למחוק אותו מכאן אחרי השליחה.`)) return;
+  areaSending = true; areaResult = null; renderMain();
+  try {
+    const idToken = await auth.currentUser.getIdToken();
+    const resp = await hbApiFetch('/send-area-update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, title, text, link: (areaDraft.link || '').trim() || undefined, aud: areaAud,
+        bizIds: areaAud === 'bizIds' ? Array.from(areaPickBizIds) : undefined }),
+    });
+    const data = await resp.json();
+    if (data.error) { alert('שגיאה בשליחה: ' + data.error); return; }
+    areaResult = data;
+    areaDraft = { title: '', text: '', link: '' };
+  } catch (e) { console.error(e); alert('שגיאה בשליחה: ' + e.message); }
+  finally { areaSending = false; renderMain(); }
+};
 
 window.setManualPickerType = function(type) {
   manualPickerType = type;
@@ -15461,10 +15650,12 @@ function sendNowSectionHtml() {
           <div class="${msgSendMode==='broadcast'?'on':''}" onclick="setMsgSendMode('broadcast')">שידור המוני</div>
           <div class="${msgSendMode==='single'?'on':''}" onclick="setMsgSendMode('single')">נמענים נבחרים${singleCount?` (${singleCount})`:''}</div>
           <div class="${msgSendMode==='push'?'on':''}" onclick="setMsgSendMode('push')">📲 פוש לאפליקציה</div>
+          <div class="${msgSendMode==='area'?'on':''}" onclick="setMsgSendMode('area')">📰 עדכון לאזור</div>
         </div>
       </div>
       <div class="msg-section-body">
-        ${msgSendMode === 'push' ? nativePushTabHtml() : (isSingle ? singleSenderBodyHtml() : broadcastTabHtml())}
+        ${msgModeGuideHtml()}
+        ${msgSendMode === 'area' ? areaUpdateTabHtml() : msgSendMode === 'push' ? nativePushTabHtml() : (isSingle ? singleSenderBodyHtml() : broadcastTabHtml())}
       </div>
     </div>`;
 }
@@ -20409,6 +20600,12 @@ onSnapshot(query(collection(db, 'helpRequests'), orderBy('createdAt', 'desc'), l
   });
   refreshTaskCenter();
 }, err => console.error('שגיאה בטעינת פניות מהרשמה:', err));
+
+// §503 — "נשלח לאזור לאחרונה" (עדכונים ופושים) — מוצג במצב "עדכון לאזור".
+onSnapshot(query(collection(db, 'areaUpdates'), orderBy('sentAt', 'desc'), limit(10)), snap => {
+  areaHistory = snap.docs.map(d => { const v = d.data(); return { id: d.id, ...v, sentAt: toJsDate(v.sentAt) }; });
+  if (activeTab === BROADCAST_KEY && msgSendMode === 'area') renderMain();
+}, err => console.error('שגיאה בטעינת יומן העדכונים לאזור:', err));
 
 // §501 — שיחות עם הצוות. onSnapshot: הודעה חדשה מאדם מופיעה בלי רענון, והתשובה שלנו
 // מוציאה אותה מ"ממתינות". orderBy(lastAt) — אינדקס של שדה יחיד, נוצר אוטומטית.

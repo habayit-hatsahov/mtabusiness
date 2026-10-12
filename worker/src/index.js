@@ -2,7 +2,7 @@ import { corsHeaders, handlePreflight, json } from './cors.js';
 import { getGoogleAccessToken, mintFirebaseCustomToken, verifyAdminIdToken, uidFromIdToken } from './jwt.js';
 import { verifyGoogleIdToken } from './google.js';
 import { verifyAppleIdToken, exchangeAppleCode, revokeAppleToken, appleKeyConfigured } from './apple.js';
-import { firestoreRunQuery, firestoreGetDoc, firestorePatch, bizIdFromToken, bizTokenFor,
+import { firestoreRunQuery, firestoreGetDoc, firestorePatch, firestoreBatchCreate, bizIdFromToken, bizTokenFor,
          memberIdFromLoginCode, loginCodeFor,
          firestoreGetDocForSnapshot, firestoreCreateDoc, firestoreDeleteDoc,
          firestoreCreateDocWithId } from './firestore.js';
@@ -130,6 +130,10 @@ export default {
       // §420ג — פוש נייטיב. מאומת כמנהל, כמו שידור המייל.
       if (request.method === 'POST' && url.pathname === '/send-native-push') {
         return json(await handleSendNativePush(await request.json(), env), env, request);
+      }
+      // §503 — עדכון לאזור (העתקה לתיבות האישיות). מאומת כמנהל.
+      if (request.method === 'POST' && url.pathname === '/send-area-update') {
+        return json(await handleSendAreaUpdate(await request.json(), env), env, request);
       }
       // §501 — מייל+פוש אחרי תשובה בשיחה. מאומת כמנהל.
       if (request.method === 'POST' && url.pathname === '/notify-conv-reply') {
@@ -1288,6 +1292,74 @@ async function handleNotifyConvReply({ idToken, convId, text }, env) {
   return out;
 }
 
+// ══ §503 — "האזור שלי" שלב 2: עדכונים לאזור + רישום כל פוש באזור ══════════════════════════
+// כל פריט מועתק לתיבה האישית של כל נמען (members/{id}/inbox) — ר' ההערה ב-firestore.rules.
+// "block" נקבע כאן, ברגע השליחה, לפי הקהל — והאפליקציה רק מציגה אותו בבלוק שלו (§473ב/ג):
+//   myBiz  — "על העסק שלך" (נשלח לעסקים מסוימים) · allBiz — "לבעלי העסקים" ·
+//   members — "עדכונים מ-Yellow Zone" (כל החברים) · push — "התראות שקיבלת"
+// 🔑 בעל עסק מקבל דרך **רשומת החבר שלו** (ownerMemberId) — שם הטוקן שלו ושם התיבה שלו.
+// ⚠️ מי שהצטרף אחרי עדכון לא יראה אותו — העתקה ברגע השליחה. מקובל: אלה חדשות, לא ארכיון.
+async function resolveAreaRecipients(env, accessToken, { aud, bizIds, memberIds }) {
+  const out = new Map();   // memberId → { bizId, bizName } (בעל שני עסקים נבחרים = פריט אחד)
+  if (aud === 'members') {
+    const ms = await firestoreRunQuery(env, accessToken, 'members', 'status', 'approved', 1000);
+    ms.forEach((m) => out.set(m.id, {}));
+  } else if (aud === 'memberIds') {
+    (memberIds || []).filter((x) => typeof x === 'string' && x).slice(0, 1000).forEach((id) => out.set(id, {}));
+  } else if (aud === 'biz' || aud === 'bizIds') {
+    const bizs = aud === 'biz'
+      ? await firestoreRunQuery(env, accessToken, 'businesses', 'status', 'approved', 1000)
+      : (await Promise.all((bizIds || []).filter((x) => typeof x === 'string' && x).slice(0, 300)
+          .map((id) => firestoreGetDoc(env, accessToken, `businesses/${encodeURIComponent(id)}`)))).filter(Boolean);
+    bizs.forEach((b) => {
+      const owner = b.fields && b.fields.ownerMemberId;
+      if (owner && !out.has(owner)) out.set(owner, aud === 'bizIds' ? { bizId: b.id, bizName: String(b.fields.name || '') } : {});
+    });
+  }
+  return out;
+}
+const AREA_BLOCK = { members: 'members', memberIds: 'members', biz: 'allBiz', bizIds: 'myBiz' };
+
+// כתיבת הפריטים לתיבות + רישום ביומן. מחזיר { written, failed }. ⚠️ כשל לא זורק החוצה —
+// הקורא (שליחת פוש) כבר עשה את העיקר, והרישום הוא תוספת; הוא מדווח ולא מפיל.
+async function writeAreaItems(env, accessToken, { kind, aud, bizIds, recipients, title, text, link, sentBy }) {
+  const sentAt = new Date();
+  const logId = await firestoreCreateDoc(env, accessToken, 'areaUpdates', {
+    kind, aud, bizIds: bizIds || [], title, text, link: link || '', sentAt, sentBy: sentBy || '',
+    recipients: recipients.size, written: 0,
+  }).catch((e) => { console.error('areaUpdates log failed', e); return null; });
+  const itemId = logId || ('u' + sentAt.getTime());
+  const docs = [...recipients.entries()].map(([memberId, r]) => ({
+    path: `members/${memberId}/inbox/${itemId}`,
+    fields: {
+      kind, block: kind === 'push' ? 'push' : AREA_BLOCK[aud], title, text, link: link || '',
+      bizId: r.bizId || null, bizName: r.bizName || null, sentAt, readAt: null,
+    },
+  }));
+  let written = 0, failed = 0;
+  try { written = await firestoreBatchCreate(env, accessToken, docs); }
+  catch (e) { console.error('area items write failed', e); written = e.written || 0; failed = docs.length - written; }
+  if (logId) await firestorePatch(env, accessToken, `areaUpdates/${logId}`, { written }).catch(() => {});
+  return { written, failed };
+}
+
+async function handleSendAreaUpdate({ idToken, title, text, link, aud, bizIds }, env) {
+  title = String(title || '').trim().slice(0, 80);
+  text = String(text || '').trim().slice(0, 1500);
+  if (!title || !text) return { error: 'missing_fields' };
+  if (!['members', 'biz', 'bizIds'].includes(aud)) return { error: 'bad_audience' };
+  if (aud === 'bizIds' && !(Array.isArray(bizIds) && bizIds.length)) return { error: 'no_businesses' };
+  let sentBy;
+  try { sentBy = await verifyAdminIdToken(env, idToken); }
+  catch (e) { return { error: 'not_admin' }; }
+  const lk = pushLinkPath(link);
+  const accessToken = await getGoogleAccessToken(env);
+  const recipients = await resolveAreaRecipients(env, accessToken, { aud, bizIds });
+  if (!recipients.size) return { ok: true, recipients: 0, written: 0, failed: 0 };
+  const r = await writeAreaItems(env, accessToken, { kind: 'update', aud, bizIds, recipients, title, text, link: lk.path, sentBy });
+  return { ok: true, recipients: recipients.size, ...r, ...(lk.dropped ? { linkDropped: lk.dropped } : {}) };
+}
+
 // §501 — קישור הפוש הידני → נתיב יחסי ב-data.link (native-push.js מנווט אליו בלחיצה).
 // 🔴 **עד §501 הקישור נשלח ב-click_action**, שבאנדרואיד הוא *שם של intent* ולא כתובת — כלומר
 // לחיצה על פוש עם קישור לא פתחה אותו. כתובת שלנו (yellowzone.co.il) הופכת לנתיב; קישור חיצוני
@@ -1303,13 +1375,25 @@ function pushLinkPath(link) {
   return { path: '', dropped: s };
 }
 
-async function handleSendNativePush({ idToken, title, body, link, memberIds }, env) {
+async function handleSendNativePush({ idToken, title, body, link, memberIds, bizIds }, env) {
   if (!title || !body) return { error: 'missing_fields' };
-  try { await verifyAdminIdToken(env, idToken); }
+  let sentBy;
+  try { sentBy = await verifyAdminIdToken(env, idToken); }
   catch (e) { return { error: 'not_admin' }; }
   const lk = pushLinkPath(link);
 
   const accessToken = await getGoogleAccessToken(env);
+
+  // §503 — פוש לעסקים מסוימים (§473ו): הנמענים הם הבעלים (ownerMemberId) — שם הטוקן שלהם.
+  // מכאן זה ממשיך בדיוק כמו בחירת אוהדים.
+  const areaAud = Array.isArray(bizIds) && bizIds.length ? 'bizIds'
+    : (Array.isArray(memberIds) && memberIds.length ? 'memberIds' : 'members');
+  let areaRecipients = null;
+  if (areaAud === 'bizIds') {
+    areaRecipients = await resolveAreaRecipients(env, accessToken, { aud: 'bizIds', bizIds });
+    memberIds = [...areaRecipients.keys()];
+    if (!memberIds.length) return { ok: true, recipients: 0, withTokens: 0, devicesSent: 0, devicesRemoved: 0, results: [] };
+  }
 
   let recipients;
   if (Array.isArray(memberIds) && memberIds.length) {
@@ -1360,6 +1444,14 @@ async function handleSendNativePush({ idToken, title, body, link, memberIds }, e
     });
   }
 
+  // §503 — כל פוש נרשם גם באזור של **כל** מי שנשלח אליו (§473ז) — גם מי שאין לו טוקן:
+  // התוכן מגיע אליו כשהוא נכנס, גם אם ההתראה לא קפצה. אחרי השליחה, כדי שכשל ברישום לא יעכב פוש.
+  const areaMap = areaRecipients || new Map(recipients.map((r) => [r.id, {}]));
+  const area = await writeAreaItems(env, accessToken, {
+    kind: 'push', aud: areaAud, bizIds: areaAud === 'bizIds' ? bizIds : [], recipients: areaMap,
+    title: String(title).slice(0, 80), text: String(body).slice(0, 300), link: lk.path, sentBy,
+  }).catch((e) => { console.error('push area log failed', e); return { written: 0, failed: areaMap.size }; });
+
   return {
     ok: true,
     recipients: recipients.length,
@@ -1367,6 +1459,7 @@ async function handleSendNativePush({ idToken, title, body, link, memberIds }, e
     devicesSent: totalSent,
     devicesRemoved: totalDead,
     ...(lk.dropped ? { linkDropped: lk.dropped } : {}),
+    area,
     results,
   };
 }

@@ -191,6 +191,30 @@ service cloud.firestore {
         allow read, create: if isAdmin();
         allow update, delete: if false;
       }
+
+      // ── §503 — "האזור שלי" שלב 2: תיבת העדכונים האישית ──────────────────────────────
+      // כל עדכון/פוש מועתק ע"י הוורקר (service account, עוקף את החוקים) לתיבה של כל נמען.
+      // 🔑 העתקה ולא אוסף משותף עם סינון: כך כל אחד קורא **רק את שלו** בלי שאילתת-חוקים
+      // מורכבת, ו"נקרא" הוא שדה על הפריט עצמו.
+      // הבעלים קורא (גם בטוקן העסק — isLinkedBusinessOwnerOf), ומסמן "נקרא" בלבד.
+      // יצירה/מחיקה — רק הוורקר.
+      match /inbox/{itemId} {
+        allow read: if isAdmin()
+          || (request.auth != null && request.auth.uid == memberId)
+          || isLinkedBusinessOwnerOf(memberId);
+        allow update: if
+          ((request.auth != null && request.auth.uid == memberId) || isLinkedBusinessOwnerOf(memberId))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt'])
+          && request.resource.data.readAt == request.time;
+        allow create, delete: if false;
+      }
+    }
+
+    // ── §503 — יומן העדכונים לאזור (מה נשלח, למי, כמה) — לתצוגה במרכז ההודעות.
+    // נכתב ע"י הוורקר בלבד; מנהל קורא.
+    match /areaUpdates/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // ── BUSINESSES ───────────────────────────────────────────────────────
