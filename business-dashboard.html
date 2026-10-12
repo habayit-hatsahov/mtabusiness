@@ -49,7 +49,8 @@
   <script src="phone-check.js"></script>
   <script src="hours.js"></script>
   <script src="social-links.js"></script>
-  <script src="biz-guides.js"></script><!-- §507 — המדריכים לבעל העסק (חשיפה + אישור הטבה) -->
+  <script src="biz-guides.js"></script>
+  <script src="biz-stats.js"></script><!-- §508 — "השבוע אצלך": הנתונים השבועיים לבעל העסק --><!-- §507 — המדריכים לבעל העסק (חשיפה + אישור הטבה) -->
   <!-- §486 — מדידת שימוש. signup-source.js חייב לפני usage-track.js (os/surface). -->
   <script src="signup-source.js"></script>
   <script src="usage-track.js"></script>
@@ -1635,6 +1636,7 @@
     </script>
 
     <!-- §507 — המדריכים: שתי קופסאות סגורות (biz-guides.js). גם במחשב וגם באפליקציה. -->
+    <div id="bizStats" style="padding:0 16px;max-width:1100px;margin:0 auto"></div><!-- §508 -->
     <div id="bizGuides" style="padding:0 16px;max-width:1100px;margin:0 auto"></div>
 
     <div class="dash-split">
@@ -2756,6 +2758,20 @@ function showDashboard() {
       onShare: () => biz.status === 'approved' ? shareMyBiz('hero') : showToast('השיתוף יפעל אחרי שהעסק יאושר'),
     });
   } catch (e) { console.error('biz guides render failed:', e); }
+  // §508 — "השבוע אצלך". רק לעסק מאושר (לפני האישור אין חשיפות ואין כניסות). בקשה אחת לכל
+  // השבועות. אימות: טוקן העסק, ובכניסה כחבר (§397, בלי טוקן) — idToken של הבעלים + מזהה העסק.
+  try {
+    if (biz.status === 'approved' && window.YZBizStats) {
+      window.YZBizStats.render(document.getElementById('bizStats'), {
+        load: async () => {
+          const body = token ? { accessToken: token }
+            : { idToken: sharedAuth.currentUser ? await sharedAuth.currentUser.getIdToken() : '', bizId: biz.id };
+          const r = await hbApiFetch('/biz-weekly-stats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          return r.json();
+        },
+      });
+    }
+  } catch (e) { console.error('biz stats render failed:', e); }
 }
 
 // ── §506 — "עדכונים" ו"הודעות" בדשבורד במחשב (§473כו) ──────────────────────────────────────

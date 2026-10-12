@@ -4541,6 +4541,8 @@ window._recordView = function(id) {
   // החבר; עד שהיא חוזרת הוא undefined, אבל זה קורה בטעינת הדף — הרבה לפני הקליק הראשון.
   // אירועי ה-events עצמם ממשיכים להירשם: אותם *אפשר* לסנן בדיעבד לפי memberId, את המונה לא.
   if (window._hbIsAdmin === true) return;
+  // §508 (0+ב) — וגם לא בעל העסק בכרטיס של עצמו (רמי: "לא לספור את בעל העסק בכרטיס שלו").
+  if (window._hbMyBizId && window._hbMyBizId === id) return;
   updateDoc(doc(db, 'businesses', id), { clicks: increment(1) }).catch(() => {});
 
 // ═══ §418ה — מדידת חשיפות ════════════════════════════════════════════════════════
@@ -4568,6 +4570,9 @@ let _impFlushTimer = null;
 // מנפחת את המונה פי כמה, והמספר שבעל-העסק יראה היה חסר משמעות.
 function _impMark(id) {
   if (!id || _impSeen.has(id) || _impSeen.size >= IMP_MAX_PER_SESSION) return;
+  // §508 (0+ב) — מנהל לא מנפח חשיפות (כמו _recordView, §281), ובעל העסק לא בכרטיס של עצמו.
+  // ⚠️ המונה היומי מצטבר ואין בו "מי" — מה שנספר עד היום אי אפשר לנקות; מכאן והלאה בלבד.
+  if (window._hbIsAdmin === true || (window._hbMyBizId && window._hbMyBizId === id)) return;
   _impSeen.add(id);
   _impPending.add(id);
   try { sessionStorage.setItem(_impKey, JSON.stringify([..._impSeen])); } catch (e) {}
@@ -4881,6 +4886,8 @@ async function initBizNavItem() {
     const adminItem = document.getElementById('menuAdminItem');
     if (adminItem) adminItem.style.display = 'flex';
   }
+  // §508 (0+ב) — בעל העסק לא נספר בכרטיס של עצמו (פתיחות + חשיפות). ר' _recordView/_impMark.
+  if (isBizOwner && linkedBusinessId) window._hbMyBizId = linkedBusinessId;
   if (!isBizOwner) return;
 
   let token = '', approved = false;

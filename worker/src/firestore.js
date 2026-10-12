@@ -317,3 +317,19 @@ export async function firestoreBatchCreate(env, accessToken, docs) {
   }
   return written;
 }
+
+// ── §508 — כל המסמכים בתת-אוסף (למשל businesses/{id}/statsDaily), עם דפדוף ──────────────────
+// מחזיר [{ id, fields }]. maxDocs — תקרה, כדי שאוסף שגדל לא יהפוך לבקשה בלי סוף.
+export async function firestoreListDocs(env, accessToken, path, maxDocs = 2000) {
+  const out = [];
+  let pageToken = '';
+  do {
+    const url = `${BASE(env.FIREBASE_PROJECT_ID)}/${path}?pageSize=300${pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''}`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!resp.ok) throw new Error('firestore_list_failed: ' + (await resp.text()));
+    const j = await resp.json();
+    for (const d of j.documents || []) out.push({ id: docIdFromName(d.name), fields: fieldsToObject(d.fields) });
+    pageToken = j.nextPageToken || '';
+  } while (pageToken && out.length < maxDocs);
+  return out;
+}

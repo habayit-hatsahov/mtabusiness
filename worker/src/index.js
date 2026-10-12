@@ -2,7 +2,7 @@ import { corsHeaders, handlePreflight, json } from './cors.js';
 import { getGoogleAccessToken, mintFirebaseCustomToken, verifyAdminIdToken, uidFromIdToken } from './jwt.js';
 import { verifyGoogleIdToken } from './google.js';
 import { verifyAppleIdToken, exchangeAppleCode, revokeAppleToken, appleKeyConfigured } from './apple.js';
-import { firestoreRunQuery, firestoreGetDoc, firestorePatch, firestoreBatchCreate, bizIdFromToken, bizTokenFor,
+import { firestoreRunQuery, firestoreGetDoc, firestorePatch, firestoreBatchCreate, firestoreListDocs, bizIdFromToken, bizTokenFor,
          memberIdFromLoginCode, loginCodeFor,
          firestoreGetDocForSnapshot, firestoreCreateDoc, firestoreDeleteDoc,
          firestoreCreateDocWithId } from './firestore.js';
@@ -130,6 +130,10 @@ export default {
       // §420ג — פוש נייטיב. מאומת כמנהל, כמו שידור המייל.
       if (request.method === 'POST' && url.pathname === '/send-native-push') {
         return json(await handleSendNativePush(await request.json(), env), env, request);
+      }
+      // §508 — "השבוע אצלך": הנתונים השבועיים של העסק, לבעלים בלבד.
+      if (request.method === 'POST' && url.pathname === '/biz-weekly-stats') {
+        return json(await handleBizWeeklyStats(await request.json(), env), env, request);
       }
       // §505 — "שלחו לי במייל" את קישור הניהול. מאומת בטוקן העסק עצמו.
       if (request.method === 'POST' && url.pathname === '/send-dash-link') {
@@ -1294,6 +1298,71 @@ async function handleNotifyConvReply({ idToken, convId, text }, env) {
     }
   }
   return out;
+}
+
+// ── §508 — "השבוע אצלך": 4 הנתונים לבעל העסק, לפי שבוע (§473יא/טז) ─────────────────────────
+// 👀 חשיפות — businesses/{id}/statsDaily/{YYYY-MM-DD}.imp (§418ה) · 👆 פתיחות — אירועי bizClick ·
+// 📞 פניות — bizContact (לחיצה על חיוג/וואטסאפ, לא שיחה שהתקיימה) · ❤ לבבות חדשים — heart.
+// 🔑 **לכל בעל עסק — רק את שלו:** events ו-statsDaily קריאים למנהל בלבד, ולכן הסיכום כאן.
+// 🔑 **לא נספרים (0+ב):** מנהלים, ובעל העסק בכרטיס של עצמו — באירועים לפי memberId. ⚠️ החשיפות
+// הן מונה יומי מצטבר בלי "מי" — שם הסינון קורה בלקוח מ-§508 והלאה, ומה שנספר לפני כן נשאר.
+// שבוע = ראשון עד שבת, בשעון ישראל. מוחזרים עד 26 שבועות, מהשבוע הנוכחי אחורה, עד השבוע הראשון
+// שיש בו נתונים — הדפדוף בין השבועות בלקוח, בלי בקשה נוספת.
+// אימות: טוקן העסק (הקישור הישיר / האפליקציה), או idToken של חבר שהוא הבעלים (כניסה כחבר, §397).
+const IL_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' });
+function ilDay(d) { return IL_DATE.format(d); }                       // 'YYYY-MM-DD' בשעון ישראל
+function weekStartOf(dayStr) {                                         // ראשון של השבוע של היום הזה
+  const d = new Date(dayStr + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+  return d.toISOString().slice(0, 10);
+}
+async function handleBizWeeklyStats({ accessToken: bizToken, idToken, bizId: reqBizId }, env) {
+  const accessToken = await getGoogleAccessToken(env);
+  let bizId = null;
+  if (bizToken) bizId = await bizIdFromToken(env, accessToken, bizToken);
+  else if (idToken && reqBizId) {
+    let uid = null;
+    try { uid = await uidFromIdToken(env, idToken); } catch (e) { return { error: 'invalid_id_token' }; }
+    const b = await firestoreGetDoc(env, accessToken, `businesses/${encodeURIComponent(reqBizId)}`);
+    if (b && b.fields.ownerMemberId === uid) bizId = b.id;
+  }
+  if (!bizId) return { error: 'not_owner' };
+  const biz = await firestoreGetDoc(env, accessToken, `businesses/${bizId}`);
+  if (!biz) return { error: 'not_owner' };
+  const ownerId = biz.fields.ownerMemberId || '';
+
+  const [admins, events, days] = await Promise.all([
+    firestoreRunQuery(env, accessToken, 'members', 'isAdmin', true, 50),
+    firestoreRunQuery(env, accessToken, 'events', 'bizId', bizId, 5000),
+    firestoreListDocs(env, accessToken, `businesses/${bizId}/statsDaily`, 1000),
+  ]);
+  const skip = new Set(admins.map((a) => a.id));
+  if (ownerId) skip.add(ownerId);
+
+  const weeks = new Map();   // weekStart → { imp, open, contact, hearts }
+  const W = (k) => { if (!weeks.has(k)) weeks.set(k, { imp: 0, open: 0, contact: 0, hearts: 0 }); return weeks.get(k); };
+  const KIND = { bizClick: 'open', bizContact: 'contact', heart: 'hearts' };
+  let skipped = 0;
+  for (const e of events) {
+    const k = KIND[e.fields.type];
+    if (!k || !e.fields.createdAt) continue;
+    if (e.fields.memberId && skip.has(e.fields.memberId)) { skipped++; continue; }
+    W(weekStartOf(ilDay(new Date(e.fields.createdAt))))[k]++;
+  }
+  // ⚠️ מזהה המסמך היומי הוא תאריך UTC (home.html: toISOString) — הפרש של 2–3 שעות בחצות; זניח לשבוע.
+  for (const d of days) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.id)) continue;
+    W(weekStartOf(d.id)).imp += Number(d.fields.imp) || 0;
+  }
+
+  const thisWeek = weekStartOf(ilDay(new Date()));
+  const first = [...weeks.keys()].sort()[0] || thisWeek;
+  const out = [];
+  for (let k = thisWeek, i = 0; i < 26 && k >= first; i++) {
+    out.push({ start: k, ...(weeks.get(k) || { imp: 0, open: 0, contact: 0, hearts: 0 }) });
+    const d = new Date(k + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - 7); k = d.toISOString().slice(0, 10);
+  }
+  return { ok: true, weeks: out, impSince: [...days.map((d) => d.id)].sort()[0] || null, skipped };
 }
 
 // ── §505 — "מעדיפים לנהל מהמחשב?": הקישור הישיר נשלח למייל של הבעלים ─────────────────────
