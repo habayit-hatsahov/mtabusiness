@@ -13,6 +13,18 @@
        ⚠️ crossorigin חובה על preload של גופן גם באותו מקור — אחרת הורדה כפולה.
        ⚠️ טווח 300–900: אותו קובץ משתנה מכסה את כולם (אומת מול Google), ו-fan-register
        משתמש ב-900 בפועל. -->
+  <!-- §505 — מצב משובץ: הדשבורד מוצג בתוך "העסק שלי" בפרופיל (iframe, ?embed=1). בלי הפס העליון,
+       התפריט והפוטר — המסגרת שייכת לדף שמסביב. ⚠️ רק כשבאמת בתוך iframe: קישור עם embed=1 שנפתח
+       ישירות בדפדפן נשאר דשבורד רגיל, אחרת הוא היה דף בלי שום דרך לנווט ממנו.
+       <base target="_top"> — כל קישור רגיל (לאינדקס, לכרטיס, לתקנון) מנווט את כל האפליקציה ולא
+       נפתח בתוך החלון הקטן. -->
+  <script>(function(){try{if(new URLSearchParams(location.search).get('embed')==='1'&&window.top!==window){document.documentElement.classList.add('yz-embed');var b=document.createElement('base');b.target='_top';document.head.appendChild(b);}}catch(e){}})();</script>
+  <style>
+    html.yz-embed .topbar, html.yz-embed .site-footer, html.yz-embed .menu-overlay, html.yz-embed #dashBackLink { display:none !important; }
+    html.yz-embed body { padding-top:0 !important; }
+    .yz-embed-only { display:none; }
+    html.yz-embed .yz-embed-only { display:block; }
+  </style>
   <link rel="preload" href="fonts/rubik-hebrew.woff2" as="font" type="font/woff2" crossorigin/>
   <link rel="preload" href="fonts/rubik-latin.woff2" as="font" type="font/woff2" crossorigin/>
   <style>
@@ -550,6 +562,15 @@
       background: var(--card-bg); border: 1px solid var(--border);
       font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--text);
       cursor: pointer;
+    }
+    /* §505 — 🐛 נמדד ב-375px: שם העסק נמחץ ל-7px (השיתוף+הלבבות+הסטטוס תפסו 314px, והשם
+       nowrap+flex-shrink:0 גלש מתחתם) — בעלי עסקים בטלפון לא ראו את שם העסק שלהם בראש הדשבורד.
+       בטלפון: השם בשורה משלו, והכפתורים בשורה מתחתיו. */
+    @media (max-width: 640px) {
+      .biz-hero { flex-wrap: wrap; padding: 12px 16px; gap: 8px 14px; }
+      .biz-hero-title-group { flex: 1 1 100%; }
+      .biz-hero-name { white-space: normal; flex-shrink: 1; }
+      .biz-hero-likes-wrap { flex-wrap: wrap; gap: 8px 12px; }
     }
     .status-badge.pending { background: #FFF7DB; color: var(--text); border: 1px solid #FFE9A3; }
     .status-badge.approved { background: var(--text); color: #fff; border: 1px solid var(--text); }
@@ -1539,6 +1560,56 @@
         <div id="bizStatusBadge"></div>
       </div>
     </div>
+
+    <!-- §505 — "מעדיפים לנהל מהמחשב?" (§491ב/§473כו) — רק במצב משובץ (באפליקציה). במחשב עצמו
+         הכרטיס מיותר: מי שרואה אותו שם כבר נמצא בדיוק במקום שהקישור מוביל אליו. -->
+    <div class="writeus-card yz-embed-only" id="manageFromPc" style="margin:0 0 12px">
+      <div style="font-size:15.5px;font-weight:900;margin-bottom:4px">מעדיפים לנהל מהמחשב?</div>
+      <div style="font-size:13.5px;color:var(--text-sm);line-height:1.6">נשלח לכם קישור אישי לאזור של העסק. פותחים אותו בדפדפן בכל מחשב, בלי כניסה ובלי סיסמה – והכול כאן מחכה לכם שם: עריכה, נתונים והודעות. הקישור אישי: שלחו אותו רק לעצמכם או למי שמנהל איתכם את העסק.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
+        <button type="button" class="writeus-btn" id="pcMailBtn" onclick="sendDashLinkMail()" style="margin:0">שלחו לי במייל</button>
+        <a class="writeus-btn" id="pcWaBtn" target="_blank" rel="noopener" style="margin:0;text-align:center;text-decoration:none;background:#fff;border:1.5px solid var(--border-md)">שלחו לי בוואטסאפ</a>
+      </div>
+      <div id="pcMsg" style="font-size:13px;margin-top:8px;display:none"></div>
+    </div>
+    <script>
+    // §505 — סקריפט קלאסי ליד הכרטיס, ולא במודול: הכפתור חי מהרגע שהוא נצבע (§425/§431).
+    // הטוקן מה-URL — במצב משובץ הוא תמיד שם (profile.html בונה את הכתובת).
+    (function () {
+      var tok = '';
+      try { tok = new URLSearchParams(location.search).get('token') || ''; } catch (e) {}
+      var link = 'https://yellowzone.co.il/business-dashboard.html?token=' + encodeURIComponent(tok);
+      var wa = document.getElementById('pcWaBtn');
+      if (wa) wa.href = 'https://wa.me/?text=' + encodeURIComponent('הקישור לניהול העסק ב-Yellow Zone (אישי – לא לפרסם):\n' + link);
+      // אותן שלוש כתובות כמו hbApiFetch במודול (§374/§378) — בלי גבול-זמן כאן היה כפתור תקוע.
+      var HOSTS = ['https://api.yellowzone.co.il', 'https://habayit-hatsahov.web.app/api', 'https://habayit-hatsahov-worker.yellowzone.workers.dev'];
+      async function post(path, body) {
+        for (var i = 0; i < HOSTS.length; i++) {
+          var ac = new AbortController();
+          var t = i + 1 < HOSTS.length ? setTimeout(function () { ac.abort(); }, 6000) : null;
+          try {
+            var r = await fetch(HOSTS[i] + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ac.signal });
+            if (t) clearTimeout(t);
+            return await r.json();
+          } catch (e) { if (t) clearTimeout(t); if (i + 1 >= HOSTS.length) throw e; }
+        }
+      }
+      window.sendDashLinkMail = async function () {
+        var btn = document.getElementById('pcMailBtn'), msg = document.getElementById('pcMsg');
+        btn.disabled = true; btn.textContent = 'שולח…'; msg.style.display = 'none';
+        var text;
+        try {
+          var r = await post('/send-dash-link', { accessToken: tok });
+          text = r && r.ok ? '✓ נשלח ל-' + r.sentTo + '. לא הגיע? בדקו בספאם.'
+            : r && r.error === 'rate_limited' ? 'כבר שלחנו כמה פעמים בשעה האחרונה – בדקו בתיבה (וגם בספאם).'
+            : r && r.error === 'no_email' ? 'אין כתובת מייל ברשומה שלכם. אפשר לשלוח בוואטסאפ, או לכתוב לנו.'
+            : 'לא הצלחנו לשלוח עכשיו. נסו שוב, או שלחו בוואטסאפ.';
+        } catch (e) { text = 'לא הצלחנו לשלוח עכשיו. נסו שוב, או שלחו בוואטסאפ.'; }
+        btn.disabled = false; btn.textContent = 'שלחו לי במייל';
+        msg.textContent = text; msg.style.display = 'block';
+      };
+    })();
+    </script>
 
     <div class="dash-split">
 

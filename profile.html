@@ -311,7 +311,11 @@
     .yz-tab .yz-count[hidden] { display:none; }
     #msgsPanel { max-width:640px; }
     #updatesPanel { max-width:640px; }
-    #msgsPanel[hidden], #updatesPanel[hidden], .profile-split[hidden] { display:none !important; }
+    #msgsPanel[hidden], #updatesPanel[hidden], #bizPanel[hidden], .profile-split[hidden] { display:none !important; }
+    /* §505 — בלשונית "העסק שלי" הדשבורד ממלא את המסך וגולל בתוכו; הפוטר של הדף היה יוצר גלילה כפולה. */
+    #bizPanel { max-width:900px; }
+    #bizFrame[hidden], #bizPanelMsg[hidden] { display:none !important; }
+    body.yz-biz-tab .site-footer { display:none; }
 
     @media (max-width: 900px) {
       .content { max-width: 480px; }
@@ -549,10 +553,18 @@
      והלשונית עוברת אליו כמו שהיא. ⚠️ ההחלפה בסקריפט הקלאסי למטה (yzProfileTab) — לא במודול,
      כדי שהלחיצה תעבוד גם לפני שהמודול נטען (§431). -->
 <div class="yz-tabs" role="tablist">
+  <!-- §505 — "העסק שלי" (בעל עסק בלבד, ראשונה — §473כז). מוצגת לפי המטמון כבר בטעינה, והמודול מאשר. -->
+  <button type="button" class="yz-tab" id="tabBiz" role="tab" onclick="yzProfileTab('biz')" hidden>העסק שלי</button>
   <!-- §503 — "עדכונים" (area-updates.js): מה שהצוות שולח לאזור + כל פוש שנשלח. -->
   <button type="button" class="yz-tab" id="tabUpdates" role="tab" onclick="yzProfileTab('updates')">עדכונים <span class="yz-count" id="updatesCount" hidden></span></button>
-  <button type="button" class="yz-tab on" id="tabDetails" role="tab" onclick="yzProfileTab('details')">הפרטים שלי</button>
   <button type="button" class="yz-tab" id="tabMsgs" role="tab" onclick="yzProfileTab('msgs')">הודעות <span class="yz-count" id="msgsCount" hidden></span></button>
+  <button type="button" class="yz-tab on" id="tabDetails" role="tab" onclick="yzProfileTab('details')">הפרטים שלי</button>
+</div>
+<!-- §505 — "העסק שלי": הדשבורד הקיים במצב משובץ (business-dashboard.html?token=…&embed=1). החלון בגובה
+     המסך עם גלילה פנימית — כך החלונות והודעות ה"נשמר" של הדשבורד (position:fixed) נראים במקום. -->
+<div id="bizPanel" hidden>
+  <div id="bizPanelMsg" class="card-section" style="text-align:center;color:var(--text-sm);font-size:13.5px;line-height:1.6">טוען…</div>
+  <iframe id="bizFrame" title="העסק שלי" hidden style="width:100%;border:0;border-radius:16px;background:var(--bg);display:block"></iframe>
 </div>
 <div id="updatesPanel" hidden><div id="updRoot"><div class="card-section" style="text-align:center;color:var(--text-sm);font-size:13px">טוען…</div></div></div>
 <div id="msgsPanel" hidden><div id="convRoot"><div class="card-section" style="text-align:center;color:var(--text-sm);font-size:13px">טוען…</div></div></div>
@@ -808,21 +820,46 @@
   // פותח ישר על ההודעות; ?conv=<id> פותח שיחה; ?new=1 פותח שיחה חדשה — את שני האחרונים
   // מבצע המודול כשהוא מוכן (window.__yzConvIntent).
   window.yzProfileTab = function (t) {
-    if (t !== 'msgs' && t !== 'updates') t = 'details';   // §503 — שלוש לשוניות
+    if (t === 'biz' && document.getElementById('tabBiz').hidden) t = 'details';
+    if (['msgs', 'updates', 'biz'].indexOf(t) < 0) t = 'details';   // §503/§505 — ארבע לשוניות
+    window.__yzTab = t;
+    document.getElementById('tabBiz').classList.toggle('on', t === 'biz');
     document.getElementById('tabUpdates').classList.toggle('on', t === 'updates');
     document.getElementById('tabMsgs').classList.toggle('on', t === 'msgs');
     document.getElementById('tabDetails').classList.toggle('on', t === 'details');
+    document.getElementById('bizPanel').hidden = t !== 'biz';
     document.getElementById('updatesPanel').hidden = t !== 'updates';
     document.getElementById('msgsPanel').hidden = t !== 'msgs';
     document.querySelector('.profile-split').hidden = t !== 'details';
+    document.body.classList.toggle('yz-biz-tab', t === 'biz');
     window.scrollTo(0, 0);
+    if (t === 'biz' && window.yzLoadBizFrame) window.yzLoadBizFrame();
+    if (t === 'biz') window.yzFitBizFrame();
   };
+  // §505 — החלון ממלא את המסך מתחת ללשוניות (גלילה פנימית). מחושב מחדש בכל שינוי גודל.
+  window.yzFitBizFrame = function () {
+    var f = document.getElementById('bizFrame');
+    if (!f || document.getElementById('bizPanel').hidden) return;
+    var top = f.getBoundingClientRect().top + window.scrollY;
+    f.style.height = Math.max(420, window.innerHeight - top - 8) + 'px';
+  };
+  window.addEventListener('resize', function () { window.yzFitBizFrame(); });
   (function () {
     try {
       var p = new URLSearchParams(location.search);
       window.__yzConvIntent = { conv: p.get('conv') || '', isNew: p.get('new') === '1' };
+      // §505 — בעל עסק (לפי המטמון) רואה את "העסק שלי" מיד, ונפתח עליה כשאין כוונה אחרת (§473כז).
+      var owner = false;
+      try {
+        var c = JSON.parse(localStorage.getItem('hb_profile_cache') || 'null');
+        owner = !!(c && c.uid === localStorage.getItem('hb_memberId') && c.isBusinessOwner && c.linkedBusinessId);
+      } catch (e) {}
+      var plain = !p.get('bizToken') && !p.get('previewMemberId');
+      if (owner && plain) document.getElementById('tabBiz').hidden = false;
       if (p.get('tab') === 'msgs' || p.get('conv') || p.get('new') === '1') window.yzProfileTab('msgs');
       else if (p.get('tab') === 'updates') window.yzProfileTab('updates');
+      else if (p.get('tab') === 'details') window.yzProfileTab('details');
+      else if (owner && plain) window.yzProfileTab('biz');
     } catch (e) {}
   })();
 </script>
@@ -1252,6 +1289,7 @@ if (member.isAdmin) {
 
 // ── BUSINESS PROFILE ─────────────────────────────────────────────────────
 let myBizName = '';
+let myBizTab = null;   // §505 — { token, status } של העסק, ל"העסק שלי"
 if (member.isBusinessOwner) {
   if (member.linkedBusinessId) {
     // קישור קבוע (linkedBusinessId) — לא תלוי בטלפון הנוכחי, לא שביר לעריכות מאוחרות.
@@ -1287,7 +1325,41 @@ if (member.isBusinessOwner) {
       } else {
         document.getElementById('bizPendingMsg').style.display = 'block';
       }
+      myBizTab = { token, status: bizStatus };
     }
+  }
+}
+
+// ── §505 — "העסק שלי": מאשרים את מה שהמטמון ניחש, ומחברים את הדשבורד ────────────────────
+// ⚠️ לא ב-bizToken (הגענו מהדשבורד עצמו) ולא בתצוגה מקדימה של מנהל.
+// עסק שעוד לא אושר: הלשונית מוצגת עם הסבר, בלי דשבורד — כמו "כניסה לעריכה" שמוצגת רק לעסק מאושר.
+{
+  const tab = document.getElementById('tabBiz');
+  const msg = document.getElementById('bizPanelMsg');
+  const frame = document.getElementById('bizFrame');
+  if (myBizTab && !bizToken && !previewMemberId) {
+    tab.hidden = false;
+    if (myBizTab.token && myBizTab.status === 'approved') {
+      // נטען רק בפתיחה הראשונה של הלשונית — הדשבורד כבד, ומי שלא נכנס אליו לא צריך לשלם עליו.
+      let loaded = false;
+      window.yzLoadBizFrame = () => {
+        if (loaded) return; loaded = true;
+        frame.src = `business-dashboard.html?token=${encodeURIComponent(myBizTab.token)}&embed=1`;
+        frame.hidden = false; msg.hidden = true;
+        window.yzFitBizFrame();
+      };
+    } else {
+      msg.textContent = myBizTab.status === 'rejected'
+        ? 'הבקשה לעסק לא אושרה. לשאלות – כתבו לנו בלשונית "הודעות".'
+        : 'הבקשה שלך אצל הצוות שלנו – כשהעסק יאושר תקבל מייל עדכון, וכאן תוכל לנהל אותו.';
+      window.yzLoadBizFrame = null;
+    }
+    if (window.__yzTab === 'biz' && window.yzLoadBizFrame) window.yzLoadBizFrame();
+  } else {
+    // המטמון ניחש "בעל עסק" ואין עסק בפועל — יורדים מהלשונית.
+    const wasOn = window.__yzTab === 'biz';
+    tab.hidden = true;
+    if (wasOn) window.yzProfileTab('details');
   }
 }
 

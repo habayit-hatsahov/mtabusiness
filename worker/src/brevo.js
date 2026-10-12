@@ -184,6 +184,27 @@ export async function sendConversationReplyEmail(env, { toEmail, toName, replyTe
   });
 }
 
+// ── §505 — "מעדיפים לנהל מהמחשב?" — הקישור הישיר לניהול העסק, לבעלים עצמו ───────────────
+// נשלח מ"העסק שלי" באפליקציה (§473כו/§491ב). הקישור פותח את כל האזור של העסק בדפדפן, בלי כניסה.
+// ⚠️ הקישור הוא מפתח: מי שמחזיק אותו עורך את העסק — ולכן המייל אומר את זה במפורש.
+// תג 'dashLink' — brevo-webhook.js מדלג עליו (אחרת דורס את שדות מייל-הקוד, §415).
+export async function sendDashboardLinkEmail(env, { toEmail, toName, businessName, link }) {
+  const body = [
+    'היי {name},',
+    'ביקשת את הקישור לניהול "{business}" מהמחשב. פותחים אותו בדפדפן בכל מחשב, בלי כניסה ובלי סיסמה – והכול מחכה לך שם: עריכה, נתונים והודעות.',
+    '{link}',
+    'הקישור אישי: מי שמחזיק בו יכול לערוך את העסק. שלחו אותו רק למי שמנהל איתכם את העסק, ואל תפרסמו אותו.',
+  ].join('\n\n');
+  const vars = { name: toName || '', business: businessName || 'העסק שלך', link };
+  await sendBrevoEmail(env, {
+    to: [{ email: toEmail, name: toName || '' }],
+    replyTo: { email: REPLY_TO },
+    subject: 'הקישור לניהול העסק מהמחשב',
+    htmlContent: renderMailHtml(body, vars, { linkLabel: 'לניהול העסק', lineHeight: '1.7' }),
+    tag: 'dashLink',
+  });
+}
+
 // מייל מאוחד — כשבעל עסק מאושר גם כאוהד וגם כבעל עסק באותה פעולה
 export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl, login = null }) {
   const vars = { name: toName || '', code, business: businessName, link: dashboardLink, ...loginVars(login) };

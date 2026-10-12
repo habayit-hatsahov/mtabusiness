@@ -8,7 +8,7 @@ import { firestoreRunQuery, firestoreGetDoc, firestorePatch, firestoreBatchCreat
          firestoreCreateDocWithId } from './firestore.js';
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt } from './ratelimit.js';
-import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail } from './brevo.js';
+import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail } from './brevo.js';
 import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
@@ -130,6 +130,10 @@ export default {
       // §420ג — פוש נייטיב. מאומת כמנהל, כמו שידור המייל.
       if (request.method === 'POST' && url.pathname === '/send-native-push') {
         return json(await handleSendNativePush(await request.json(), env), env, request);
+      }
+      // §505 — "שלחו לי במייל" את קישור הניהול. מאומת בטוקן העסק עצמו.
+      if (request.method === 'POST' && url.pathname === '/send-dash-link') {
+        return json(await handleSendDashLink(await request.json(), env), env, request);
       }
       // §503 — עדכון לאזור (העתקה לתיבות האישיות). מאומת כמנהל.
       if (request.method === 'POST' && url.pathname === '/send-area-update') {
@@ -1290,6 +1294,35 @@ async function handleNotifyConvReply({ idToken, convId, text }, env) {
     }
   }
   return out;
+}
+
+// ── §505 — "מעדיפים לנהל מהמחשב?": הקישור הישיר נשלח למייל של הבעלים ─────────────────────
+// 🔑 המייל יוצא **רק לכתובת שברשומה** (החבר הבעלים, ואם אין — ownerEmail של העסק), ולא לכתובת
+// שהלקוח שולח: מי שמחזיק טוקן לא יכול להשתמש בזה כדי לשלוח את המפתח למישהו אחר.
+// תקרה: 5 לשעה לעסק — כפתור שנלחץ שוב ושוב לא יציף את התיבה.
+async function handleSendDashLink({ accessToken: bizToken }, env) {
+  if (!bizToken || typeof bizToken !== 'string') return { error: 'missing_token' };
+  const accessToken = await getGoogleAccessToken(env);
+  const bizId = await bizIdFromToken(env, accessToken, bizToken);
+  if (!bizId) return { error: 'invalid_token' };
+  const rlKey = 'dashlink:' + bizId;
+  const n = parseInt((await env.RATE_LIMIT_KV.get(rlKey)) || '0', 10);
+  if (n >= 5) return { error: 'rate_limited' };
+  await env.RATE_LIMIT_KV.put(rlKey, String(n + 1), { expirationTtl: 3600 });
+  const biz = await firestoreGetDoc(env, accessToken, `businesses/${bizId}`);
+  if (!biz) return { error: 'invalid_token' };
+  const bf = biz.fields || {};
+  const owner = bf.ownerMemberId ? await firestoreGetDoc(env, accessToken, `members/${bf.ownerMemberId}`) : null;
+  const of = (owner && owner.fields) || {};
+  const toEmail = String(of.email || bf.ownerEmail || '').trim();
+  if (!toEmail) return { error: 'no_email' };
+  await sendDashboardLinkEmail(env, {
+    toEmail, toName: String(of.firstName || bf.ownerFirst || '').trim(), businessName: String(bf.name || ''),
+    link: `https://yellowzone.co.il/business-dashboard.html?token=${encodeURIComponent(bizToken)}`,
+  });
+  // הכתובת מוסתרת חלקית — הלקוח רק צריך לדעת לאן לחפש.
+  const [u, d] = toEmail.split('@');
+  return { ok: true, sentTo: (u.length > 2 ? u.slice(0, 2) : u.slice(0, 1)) + '•••@' + d };
 }
 
 // ══ §503 — "האזור שלי" שלב 2: עדכונים לאזור + רישום כל פוש באזור ══════════════════════════
