@@ -4501,6 +4501,8 @@ const hbApiFetch = (path, opts) => {
     const snap = /^demo_/.test(memberId || '') ? null : await fetchMemberDocWithRetry(memberId);
     const ok = !!(snap && snap.exists());
     const data = ok ? snap.data() : {};
+    // §521 — lastSeenAt + ספירת כניסות, **אחרי** הקריאה (ר' hbMarkSeen למטה).
+    hbMarkSeen(ok && memberId === auth.currentUser?.uid ? data : null);
     const firstName = data.firstName || '';
     // §377 — דרך המודול המשותף. getIdToken נקרא **בזמן הלחיצה** ולא כאן, כי הטוקן
     // קצר-מועד ועמוד שפתוח שעה היה שולח טוקן שפג.
@@ -4558,8 +4560,37 @@ const hbApiFetch = (path, opts) => {
 // לפני שנוצרה בכלל הבטחה — ולכן ה-.catch() שבסוף לא תופס כלום. זריקה ברמת-המודול עוצרת את
 // כל מה שמתחתיה, כלומר בדיוק אותו נזק שהשער בא למנוע: תעודת-החבר, הלבבות ו-logEvent
 // נשארים לא-מוגדרים. נתפס בבדיקה חיה, לא בקריאת-קוד.
-const _hbSeenUid = auth.currentUser?.uid;
-if (_hbSeenUid) updateDoc(doc(db, 'members', _hbSeenUid), { lastSeenAt: serverTimestamp() }).catch(() => {});
+//
+// ── §521 — ספירת כניסות (visitDays + lastVisitDay) ──────────────────────────────────────
+// עד כאן הייתה רק "כניסה אחרונה", ולכן "נכנס פעם אחת ולא חזר" לא היה ניתן לדעת. עכשיו: יום שבו
+// נכנס = כניסה אחת (כמה טעינות באותו יום, או כמה מכשירים – אחת). החוק (visitCountOk) מוודא +1 ויום חדש.
+// 🔑 **הכתיבה עברה לתוך קריאת הברכה ולא נשארה כאן ברמת-המודול** – כי ההחלטה תלויה במה שהיה על
+// הרשומה לפני הכניסה הזאת: בפעם הראשונה, lastSeenAt מיום קודם = "נכנס כבר לפני שהתחלנו לספור" → 2,
+// כדי שוותיק לא ייספר "נכנס פעם אחת". אם lastSeenAt של **הטעינה הזאת** היה נכתב קודם, הקריאה הייתה
+// רואה "היום" ומחליטה 1 – מרוץ שאי-אפשר לראות.
+// בלי רשומה (קריאה נכשלה / אורח) – רק lastSeenAt, כמו קודם; הספירה תשלים בכניסה הבאה.
+// 'en-CA' נותן YYYY-MM-DD; שעון ישראל, כדי שחצות יחתוך יום כמו שהאוהד חווה אותו.
+function hbIsraelDay(d) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(d); }
+function hbMarkSeen(data) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  const upd = { lastSeenAt: serverTimestamp() };
+  if (data) {
+    const today = hbIsraelDay(new Date());
+    if (!data.lastVisitDay || data.lastVisitDay < today) {
+      if (typeof data.visitDays === 'number') upd.visitDays = data.visitDays + 1;
+      else {
+        const prev = data.lastSeenAt?.toDate?.();
+        upd.visitDays = prev && hbIsraelDay(prev) < today ? 2 : 1;
+      }
+      upd.lastVisitDay = today;
+    }
+  }
+  updateDoc(doc(db, 'members', uid), upd).catch(() => {
+    // מכשיר אחר כבר ספר את היום (החוק דוחה) – lastSeenAt עדיין חשוב, אז בלי הספירה.
+    if (upd.visitDays) updateDoc(doc(db, 'members', uid), { lastSeenAt: serverTimestamp() }).catch(() => {});
+  });
+}
 
 window._likeFirestoreToggle = async function(id, memberId, liked) {
   // §517ב — גם להעתק הציבורי, באותו batch: הדף קורא ממנו, והלב חייב להופיע בו מיד ולא אחרי הסנכרון.

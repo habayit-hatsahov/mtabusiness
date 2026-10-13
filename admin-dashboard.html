@@ -3294,6 +3294,8 @@ function hydrateFan(id, raw) {
     // בלעדיו אי אפשר לענות על "כמה אישרתי ולא נכנסו" — השאלה שמצדיקה או שוללת את כל
     // העבודה על כניסה עם גוגל.
     lastSeenAt: toJsDate(raw.lastSeenAt),
+    // §521 — ימים שבהם נכנס (home.html, פעם ביום, מ-13.10.26). null = עוד לא נספר.
+    visitDays: typeof raw.visitDays === 'number' ? raw.visitDays : null,
     // §400 — נכתבים ע"י /google-link (הבאנר) ו-/google-attach (טופס ההרשמה), **שניהם
     // בדיוק אותם שדות**. עד עכשיו נאספו ולא נקראו במרכז הניהול. ר' googleLinkStats.
     googleEmail: raw.googleEmail || '',
@@ -6935,6 +6937,40 @@ function fanCounts() {
   };
 }
 
+// ── §521 — ספירת כניסות (visitDays) ────────────────────────────────────────────────────
+// "כניסה" = יום שבו פתח את דף הבית (home.html כותב פעם ביום; החוק visitCountOk מוודא +1 ויום חדש).
+// ⚠️ נספר רק מ-HB_VISITS_SINCE. מי שנכנס לפני כן מתחיל מ-2 בכניסה הראשונה שנספרה, כדי ש"פעם אחת"
+// יהיה אמיתי – אבל אצלו המספר הוא **רצפה** ("לפחות"), ולכן "2–5" עלול לכלול ותיקים עם יותר.
+// 🔑 הגדרה אחת לפאנל ולרשימה (fanVisitBucketOf) – אותו לקח של §353/§390.
+const HB_VISITS_SINCE = '13.10.26';
+const FAN_VISIT_BUCKETS = {
+  once:     { label: 'נכנסו פעם אחת בלבד', test: (f) => f.visitDays === 1 },
+  onceGone: { label: 'נכנסו פעם אחת ולא חזרו 30+ יום', test: (f) => f.visitDays === 1 && f.lastSeenAt && (Date.now() - f.lastSeenAt.getTime()) >= 30 * 86400000 },
+  few:      { label: 'נכנסו 2–5 ימים', test: (f) => f.visitDays >= 2 && f.visitDays <= 5 },
+  many:     { label: 'נכנסו 6 ימים ומעלה', test: (f) => f.visitDays >= 6 },
+};
+const fanVisitBucketOf = (f, key) => f.status === 'approved' && f.visitDays != null && FAN_VISIT_BUCKETS[key].test(f);
+function fanVisitStats() {
+  const approved = (MOCK_FANS || []).filter(f => f.status === 'approved');
+  const counted = approved.filter(f => f.visitDays != null);
+  const out = { approved: approved.length, counted: counted.length };
+  Object.keys(FAN_VISIT_BUCKETS).forEach(k => { out[k] = approved.filter(f => fanVisitBucketOf(f, k)).length; });
+  return out;
+}
+// שורה אחת בכרטיס האוהד
+function fanVisitLine(f) {
+  if (f.visitDays != null) return `נכנס ${f.visitDays === 1 ? 'יום אחד' : f.visitDays + ' ימים'}${f.lastSeenAt ? ' · לאחרונה ' + agoLabel(f.lastSeenAt) : ''}`;
+  return f.lastSeenAt ? `נכנס לאחרונה ${agoLabel(f.lastSeenAt)}` : 'עוד לא נכנס';
+}
+let fanVisitBucket = 'all';
+window.goToFanVisits = function(key) {
+  fanClassPill = 'all'; fanEmailBucket = 'all'; fanVisitBucket = key;
+  fanSearch = ''; fanStatusFilter = 'all'; fanDateRangeFilter = 'all'; fanVerifyTypeFilter = 'all';
+  selectedFanDetailId = null;
+  selectTab(ALL_FANS_KEY);
+};
+window.setFanVisitBucket = function(v) { fanVisitBucket = v; renderMain(); };
+
 function fanEntryStats() {
   // §429 — אותה רשימה בדיוק שממנה `fanCounts()` גוזר את `approved`. הפילטר נשאר כאן כי
   // הפונקציה צריכה את **הרשומות** ולא רק את המספר, אבל ההגדרה זהה מילה במילה — וזו הנקודה.
@@ -7245,6 +7281,20 @@ function platformStatsHtml() {
           ${bRow('deliveredNotOpened', eb.deliveredNotOpened, 'הגיע לשרת הדואר')}
           ${bRow('opened', eb.opened, 'ראה את הקוד ולא השתמש בו')}
         </div>`;
+      })()}
+      ${(() => {
+        // §521 — כמה ימים נכנסו. הספירה התחילה ב-HB_VISITS_SINCE, ולכן בהתחלה רוב המאושרים עוד "לא נספרו".
+        const vs = fanVisitStats();
+        const help = `יום שבו האוהד פתח את האפליקציה/האתר = כניסה אחת (כמה פעמים באותו יום, או מכמה מכשירים – אחת). נספר מ-${HB_VISITS_SINCE}. ⚠️ מי שנכנס כבר לפני כן מתחיל מ-2 – כדי ש"פעם אחת" יהיה אמיתי – ולכן אצלו המספר הוא "לפחות".`;
+        const vRow = (key, sub) => platRow(FAN_VISIT_BUCKETS[key].label, vs[key].toLocaleString('he-IL'), sub, help, `goToFanVisits('${key}')`);
+        return `<div class="plat-sect">כמה ימים נכנסו (נספר מ-${HB_VISITS_SINCE})</div>
+        <div class="plat-rows">
+          ${vRow('once', `מתוך ${vs.counted.toLocaleString('he-IL')} שנכנסו מאז שהתחלנו לספור`)}
+          ${vRow('onceGone', 'הזדמנות לפנות אליהם שוב')}
+          ${vRow('few', '')}
+          ${vRow('many', 'האוהדים הפעילים')}
+        </div>
+        ${vs.counted < vs.approved ? `<div class="plat-row-sub" style="padding:4px 2px">${(vs.approved - vs.counted).toLocaleString('he-IL')} מאושרים עוד לא נכנסו מאז שהתחלנו לספור.</div>` : ''}`;
       })()}`;
     })()}
     ${(() => {
@@ -9954,7 +10004,7 @@ window.setFanDateRangeFilter = function(v) { fanDateRangeFilter = v; renderMain(
 window.setFanVerifyTypeFilter = function(v) { fanVerifyTypeFilter = v; renderMain(); };
 // §394 — מעבר לפיל אחר מנקה את סינון-הדלי. בלי זה המנהל היה לוחץ "הכל" ומקבל 12 רשומות,
 // כי שבב-הדלי היה ממשיך לסנן בשקט מתחת לפיל שנראה כאילו הוא מציג את הכול.
-window.setFanClassPill = function(v) { fanClassPill = v; fanEmailBucket = 'all'; renderMain(); };
+window.setFanClassPill = function(v) { fanClassPill = v; fanEmailBucket = 'all'; fanVisitBucket = 'all'; renderMain(); };
 window.setFanEmailBucket = function(v) { fanEmailBucket = v; renderMain(); };
 
 // §394 — הגשר מהפילוח אל האנשים. מגיע מלחיצה על שורת-פילוח ב"מרכז נתונים".
@@ -9970,6 +10020,7 @@ window.goToFanBucket = function(key) {
 window.clearFanFilters = function() {
   fanSearch = ''; fanStatusFilter = 'all'; fanSort = 'waitingTime'; fanDateRangeFilter = 'all'; fanVerifyTypeFilter = 'all'; fanClassPill = 'all';
   fanEmailBucket = 'all';   // §394 — אחרת "נקה סינון" משאיר סינון פעיל, וזו בדיוק ההבטחה שהכפתור מפר
+  fanVisitBucket = 'all';   // §521 — אותו דבר
   renderMain();
 };
 
@@ -10041,7 +10092,8 @@ function fanFilteredList() {
     // שנשמרה כ-`0521234567`. עד עכשיו זו הייתה השוואת-מחרוזת גולמית.
     const matchQ = matchesSearch(q, [f.name, f.email, f.memberNumber], [f.phone]);
     const matchRange = fanDateRangeFilter === 'all' || (now - f.registeredAt.getTime()) <= Number(fanDateRangeFilter) * 86400000;
-    return matchF && matchClass && matchVerify && matchQ && matchRange && matchBucket;
+    const matchVisit = fanVisitBucket === 'all' || fanVisitBucketOf(f, fanVisitBucket);   // §521
+    return matchF && matchClass && matchVerify && matchQ && matchRange && matchBucket && matchVisit;
   });
   return list.sort((a, b) => {
     // "זמן המתנה" — ממתינים-לאישור קודם (הוותיק שבהם ראשון), אחריהם השאר לפי הכי-ותיק. אותו עיקרון כמו bizSort 'waitingLongest'
@@ -10226,7 +10278,8 @@ function fanFullDetailHtml(id, opts) {
   const idDates = [
     `נרשם ${fmtDate(f.registeredAt)}`,
     f.status === 'pending' ? `ממתין ${agoLabel(f.registeredAt)}` : '',
-    f.memberNumber ? `חבר מס' ${f.memberNumber}` : (f.status === 'pending' ? 'טרם הוקצה מספר חבר' : '')
+    f.memberNumber ? `חבר מס' ${f.memberNumber}` : (f.status === 'pending' ? 'טרם הוקצה מספר חבר' : ''),
+    f.status === 'approved' ? fanVisitLine(f) : ''
   ].filter(Boolean).join(' · ');
   const idWaBtn = f.phone ? `<button class="btn-id-wa" onclick="sendFanWA('${f.id}','${f.phone}','${escJsAttr(f.name)}','${f.loginCode||''}')">וואטסאפ</button>` : '';
   const idMailBtn = f.email ? `<button class="btn-id-mail" onclick="sendFanMail('${f.id}','${f.email}','${escJsAttr(f.name)}','${f.loginCode||''}')">מייל</button>` : '';
@@ -10719,6 +10772,19 @@ function fanBucketPillsHtml() {
 // לרשימה קצרה בלי שום סימן למה היא קצרה — ומקבל בדיוק את החוויה של "המספרים לא מסתדרים".
 // המספר נספר מ-fanFilteredList עצמה ולא מהפאנל, ולכן הוא **תמיד** מה שבאמת על המסך.
 function fanBucketBannerHtml() {
+  // §521 — סינון "כמה ימים נכנס" שהגיע ממרכז הנתונים – אותו באנר, כדי שיהיה ברור למה הרשימה קצרה
+  if (fanVisitBucket !== 'all' && FAN_VISIT_BUCKETS[fanVisitBucket]) {
+    return `
+    <div class="fan-bucket-banner">
+      <div class="fan-bucket-head">
+        <span class="fan-bucket-title">${esc(FAN_VISIT_BUCKETS[fanVisitBucket].label)}</span>
+        <span class="fan-bucket-count">${fanFilteredList().length.toLocaleString('he-IL')}</span>
+        <span style="flex:1"></span>
+        <button class="filter-clear" onclick="setFanVisitBucket('all')">✕ הסרת הסינון</button>
+      </div>
+      <div class="fan-bucket-action">כניסות נספרות מ-${HB_VISITS_SINCE} – יום שבו נכנס = כניסה אחת.</div>
+    </div>`;
+  }
   if (fanEmailBucket === 'all') return '';
   const meta = FAN_EMAIL_BUCKETS[fanEmailBucket];
   if (!meta) return '';
@@ -10738,7 +10804,7 @@ function fanBucketBannerHtml() {
 function fanFilterBarHtml(opts) {
   const o = Object.assign({ searchId: '' }, opts || {}); // ר' ההערה ב-bizFilterBarHtml (§254)
   const advancedActiveCount = (fanStatusFilter!=='all'?1:0) + (fanDateRangeFilter!=='all'?1:0);
-  const hasActiveFilters = advancedActiveCount > 0 || fanSearch.trim() || fanSort !== 'waitingTime' || fanVerifyTypeFilter !== 'all' || fanClassPill !== 'all' || fanEmailBucket !== 'all';
+  const hasActiveFilters = advancedActiveCount > 0 || fanSearch.trim() || fanSort !== 'waitingTime' || fanVerifyTypeFilter !== 'all' || fanClassPill !== 'all' || fanEmailBucket !== 'all' || fanVisitBucket !== 'all';
   const counts = fanClassCounts();
   const pill = (key, label) => `<button class="biz-class-pill ${fanClassPill===key?'active':''}" onclick="setFanClassPill('${key}')">${label} · ${counts[key]}</button>`;
   return `
