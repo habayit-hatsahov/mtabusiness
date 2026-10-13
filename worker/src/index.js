@@ -197,6 +197,10 @@ export default {
       if (request.method === 'POST' && url.pathname === '/notify-conv-reply') {
         return json(await handleNotifyConvReply(await request.json(), env), env, request);
       }
+      // §522 — "שליחה עכשיו" החדשה: אפליקציה + פוש + מייל לחבילת נמענים. מאומת כמנהל.
+      if (request.method === 'POST' && url.pathname === '/send-message') {
+        return json(await handleSendMessage(await request.json(), env), env, request);
+      }
       if (request.method === 'POST' && url.pathname === '/send-broadcast-email') {
         return json(await handleSendBroadcastEmail(await request.json(), env), env, request);
       }
@@ -1702,6 +1706,130 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
     }
   }
   return { results };
+}
+
+// ══ §522 — "שליחה עכשיו" החדשה: הודעה אחת, כמה ערוצים, בבקשה אחת (§504) ══════════════════════
+// מחליף את /send-area-update + /send-native-push + /send-broadcast-email כשהם נשלחים מ"שליחה עכשיו"
+// (הישנים נשארים – התבניות והשיחות עדיין משתמשות בחלק מהם).
+//
+// 🔑 **מרכז הניהול שולח בחבילות קטנות (MSG_CHUNK) ולא את כל הקהל בבקשה אחת.** לכל נמען עד ~5
+// קריאות-משנה (המסמך, בעלים, קוד/טוקן, Brevo, FCM), וחבילה של 8 נשארת מתחת ל-50 גם בתוכנית
+// החינמית. הדף מציג התקדמות, וכשל בחבילה אחת לא מפיל את האחרות.
+// 🔑 **הוורקר שולח ומחזיר תוצאה לכל נמען – ולא רושם.** הרישום (שורת הנמען, היומן בכרטיס, חותמת
+// המייל של §415) נכתב מהדפדפן ב-writeBatch, כמו השידור הישן – אותו נימוק של תקרת הקריאות.
+//
+// recipients: [{ t: 'm' | 'b', id }] — 'b' = עסק; ההודעה באפליקציה/בפוש הולכת לבעלים (ownerMemberId),
+//   המייל – ל-ownerEmail של העסק (כמו השידור הישן). מרכז הניהול כבר איחד בעלים כפולים.
+// block: members (לכל האוהדים) · personal (אוהדים נבחרים) · allBiz · myBiz (עם bizId/bizName).
+// פוש **רק יחד עם app** (§504ו) – הוא ה"צלצול" של הפריט, ו-data.link פותח את "האזור שלי".
+// mail.scope: 'all' | 'missing' — 'missing' = רק מי שלא קיבל באפליקציה (§504ז).
+const MSG_CHUNK = 8;
+const MSG_BLOCKS = ['members', 'personal', 'allBiz', 'myBiz'];
+async function handleSendMessage({ idToken, messageId, block, recipients, app, push, mail }, env) {
+  if (!/^[A-Za-z0-9_-]{6,40}$/.test(String(messageId || ''))) return { error: 'bad_message_id' };
+  if (!MSG_BLOCKS.includes(block)) return { error: 'bad_block' };
+  if (!Array.isArray(recipients) || !recipients.length) return { error: 'no_recipients' };
+  if (recipients.length > MSG_CHUNK) return { error: 'chunk_too_big' };
+  const A = app && String(app.title || '').trim() && String(app.text || '').trim()
+    ? { title: String(app.title).trim().slice(0, 80), text: String(app.text).trim().slice(0, 1500), link: pushLinkPath(app.link) } : null;
+  const P = A && push && String(push.title || '').trim() && String(push.body || '').trim()
+    ? { title: String(push.title).trim().slice(0, 60), body: String(push.body).trim().slice(0, 160) } : null;
+  const M = mail && String(mail.subject || '').trim() && String(mail.body || '').trim()
+    ? { subject: String(mail.subject).trim().slice(0, 150), body: String(mail.body), scope: mail.scope === 'missing' ? 'missing' : 'all' } : null;
+  if (push && !A) return { error: 'push_needs_app' };
+  if (!A && !M) return { error: 'no_channel' };
+  try { await verifyAdminIdToken(env, idToken); }
+  catch (e) { return { error: 'not_admin' }; }
+
+  const accessToken = await getGoogleAccessToken(env);
+  const sentAt = new Date();
+  // 1) המסמכים – אוהד: הרשומה; עסק: העסק + רשומת הבעלים (שם הטוקנים והתיבה)
+  const rows = await Promise.all(recipients.filter((r) => r && (r.t === 'm' || r.t === 'b') && typeof r.id === 'string' && r.id)
+    .map(async (r) => {
+      if (r.t === 'm') {
+        const m = await firestoreGetDoc(env, accessToken, `members/${encodeURIComponent(r.id)}`);
+        return { r, member: m, biz: null };
+      }
+      const b = await firestoreGetDoc(env, accessToken, `businesses/${encodeURIComponent(r.id)}`);
+      const ownerId = b && b.fields && b.fields.ownerMemberId;
+      const m = ownerId ? await firestoreGetDoc(env, accessToken, `members/${encodeURIComponent(ownerId)}`) : null;
+      return { r, member: m, biz: b };
+    }));
+
+  const out = rows.map(({ r, member, biz }) => {
+    const mf = (member && member.fields) || {}, bf = (biz && biz.fields) || {};
+    const gone = r.t === 'm' ? !member : !biz;
+    // באפליקציה: רק לרשומת חבר מאושרת (כמו "עדכון לאזור"); עסק – גם העסק מאושר.
+    const appOk = !gone && !!member && mf.status === 'approved' && (r.t === 'm' || bf.status === 'approved');
+    return {
+      id: r.id, t: r.t, memberId: member ? member.id : null, gone,
+      name: r.t === 'm' ? `${mf.firstName || ''} ${mf.lastName || ''}`.trim() : String(bf.name || ''),
+      email: r.t === 'm' ? (mf.email || '') : (bf.ownerEmail || ''),
+      appOk, tokens: appOk ? (mf.nativePushTokens || {}) : {}, mf, bf,
+      app: A ? (appOk ? 'pending' : 'none') : null, push: P ? 'none' : null, mail: M ? 'none' : null,
+    };
+  });
+
+  // 2) באפליקציה – פריט אחד לכל נמען, באותו מזהה של ההודעה (הפוש מפנה אליו)
+  if (A) {
+    const docs = out.filter((o) => o.app === 'pending').map((o) => ({
+      path: `members/${o.memberId}/inbox/${messageId}`,
+      fields: {
+        kind: 'update', block, title: A.title, text: A.text, link: A.link.path || '',
+        bizId: block === 'myBiz' && o.t === 'b' ? o.id : null,
+        bizName: block === 'myBiz' && o.t === 'b' ? String(o.bf.name || '') : null,
+        pushed: !!P, sentAt, readAt: null,
+      },
+    }));
+    let ok = true;
+    if (docs.length) {
+      try { await firestoreBatchCreate(env, accessToken, docs); }
+      catch (e) { console.error('message inbox write failed', e); ok = false; }
+    }
+    out.forEach((o) => { if (o.app === 'pending') o.app = ok ? 'written' : 'failed'; });
+  }
+
+  // 3) פוש – רק למי שהפריט נכתב אצלו
+  if (P) {
+    for (const o of out) {
+      if (o.app !== 'written') continue;
+      if (!Object.keys(o.tokens).length) { o.push = 'noToken'; continue; }
+      const res = await sendFcmToMember(env, accessToken, o.tokens, { title: P.title, body: P.body, data: { link: '/profile.html?tab=updates' } });
+      o.push = res.sent ? 'sent' : 'failed';
+      o.pushDevices = res.sent;
+      if (res.deadKeys.length) {
+        const remaining = Object.fromEntries(Object.entries(o.tokens).filter(([k]) => !res.deadKeys.includes(k)));
+        await firestorePatch(env, accessToken, `members/${o.memberId}`, { nativePushTokens: remaining })
+          .catch((e) => console.error('native push cleanup failed for', o.memberId, e));
+      }
+    }
+  }
+
+  // 4) מייל – כמו השידור הישן (אותם משתנים, תג broadcast), עם הגבלת "רק מי שלא קיבל באפליקציה"
+  if (M) {
+    for (const o of out) {
+      if (o.gone) continue;
+      if (M.scope === 'missing' && o.app === 'written') { o.mail = 'skipped'; continue; }
+      if (!o.email) { o.mail = 'noEmail'; continue; }
+      try {
+        const vars = o.t === 'm'
+          ? { name: o.mf.firstName || '', code: await loginCodeFor(env, accessToken, o.id), link: `${SITE_BASE}download?src=broadcast` }
+          : { name: o.bf.ownerFirst || '', business: o.bf.name || '', link: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, o.id)}` };
+        const r = await sendBroadcastEmail(env, { toEmail: o.email, toName: vars.name, subject: M.subject, body: M.body, vars });
+        o.mail = 'sent';
+        if (r && r.messageId) o.mailId = String(r.messageId);
+      } catch (e) {
+        o.mail = 'failed';
+        o.mailError = String((e && e.message) || e).slice(0, 200);
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    results: out.map(({ id, t, memberId, gone, name, email, app, push, pushDevices, mail, mailId, mailError }) =>
+      ({ id, t, memberId, gone, name, email, app, push, pushDevices, mail, mailId, mailError })),
+  };
 }
 
 // כשחבר הוא גם בעל עסק שממתין לאותו מייל אישור — נשלח מייל אחד מאוחד (קוד כניסה + קישור לדשבורד)

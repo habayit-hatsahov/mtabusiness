@@ -53,6 +53,9 @@ async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent, 
     }),
   });
   if (!resp.ok) throw new Error('brevo_send_failed: ' + (await resp.text()));
+  // §522 — { messageId } של Brevo. מרכז ההודעות שומר אותו לכל נמען, כדי שהמסירה/הפתיחה יותאמו
+  // **להודעה** ולא רק לכתובת (שלב 4). הקוראים האחרים מתעלמים מהערך – לא משנה להם דבר.
+  return resp.json().catch(() => ({}));
 }
 
 // html->text גס, לגרסת הטקסט-החלופי שנשלחת לצד ה-HTML (textContent). מספיק ל-alt-text, לא
@@ -148,7 +151,7 @@ export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, 
     linkLabel: vars.code ? 'לפתיחת האפליקציה' : 'כניסה לאזור העסק שלי',   // §499 — כמו מייל הקוד (§494)
     lineHeight: '1.7',
   });
-  await sendBrevoEmail(env, {
+  return sendBrevoEmail(env, {
     to: [{ email: toEmail, name: toName || '' }],
     replyTo: { email: REPLY_TO },
     subject: finalSubject,
