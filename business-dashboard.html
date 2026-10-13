@@ -4945,7 +4945,9 @@ function normForCompare(v, key) {
   return v;
 }
 
-function stageChanges(updates, flashZone) {
+// noChangeMsg (§511) — כשמשהו כן נשמר מחוץ למנגנון הזה (תאריך הלידה, ישר לרשומת החבר), "לא נמצא
+// שינוי לשמירה" היה שקר. המתקשר מעביר את ההודעה הנכונה.
+function stageChanges(updates, flashZone, noChangeMsg) {
   const prev = { ...biz, ...(biz.pendingChanges || {}), ...draftChanges };
   const realChanges = {};
   for (const [k, v] of Object.entries(updates)) {
@@ -4955,7 +4957,7 @@ function stageChanges(updates, flashZone) {
   // על המסך הייתה זו של תחילת-הפעולה ("שומר מדיה...") — כלומר בעל-העסק ראה "שומר" ואז כלום,
   // וזה נראה בדיוק כמו שמירה שנבלעה. עכשיו כל לחיצת "שמירת השלב" מסתיימת בהודעה כלשהי.
   if (!Object.keys(realChanges).length) {
-    showToast('לא נמצא שינוי לשמירה');
+    showToast(noChangeMsg || 'לא נמצא שינוי לשמירה');
     renderBizView();
     return;
   }
@@ -5066,36 +5068,44 @@ async function saveOwnerBirthDate() {
   const cur = (ownerMember && ownerMember.birthDate) || '';
 
   if (!d || !m || !y) {
-    if (cur) showToast('אי אפשר למחוק תאריך לידה שכבר מולא');
-    return;
+    if (cur) { showToast('אי אפשר למחוק תאריך לידה שכבר מולא'); return 'invalid'; }
+    return 'same';
   }
   const dt = new Date(y, m - 1, d);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   // הרכבה תמימה של 31/02 מחליקה ל-3 במרץ — בודקים שהתאריך חזר בדיוק כמו שנבחר
   if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d || dt > today) {
-    showToast('תאריך לידה לא תקין'); return;
+    showToast('תאריך לידה לא תקין'); return 'invalid';
   }
   const val = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  if (val === cur) return;
-  if (!ownerMember) { showToast('לא ניתן לשמור תאריך לידה – רשומת החבר לא נטענה'); return; }
+  if (val === cur) return 'same';
+  if (!ownerMember) { showToast('לא ניתן לשמור תאריך לידה – רשומת החבר לא נטענה'); return 'failed'; }
 
   try {
     await updateDoc(doc(bizDb, 'members', ownerMember.id), { birthDate: val });
     ownerMember.birthDate = val;
+    return 'saved';
   } catch (e) {
     console.error('birthDate save failed:', e.code || '', e.message);
     showToast('שמירת תאריך הלידה נכשלה – נסו שוב');
+    return 'failed';
   }
 }
 
-window.saveOwner = function() {
-  saveOwnerBirthDate();   // עצמאי מ-stageChanges, ר' ההערה מעל
-  stageChanges({
+// §511 — עד כאן saveOwnerBirthDate רץ **בלי await**, ו-stageChanges מיד אחריו צייר את הכרטיס מחדש
+// עם התאריך הישן; כששונה רק התאריך — גם "לא נמצא שינוי לשמירה". רמי (13.10): "ערכתי ושמרתי ולא
+// נשלחה בקשה" — התאריך כן נשמר (נבדק ברשומה), המסך אמר שלא. עכשיו: ממתינים, ואז מציירים.
+// תאריך לא תקין / כשל → הטופס נשאר פתוח (ההודעה כבר הוצגה) — לא מציירים מעליו.
+window.saveOwner = async function() {
+  const updates = {
     ownerFirst: document.getElementById('editOwnerFirst').value.trim(),
     ownerLast: document.getElementById('editOwnerLast').value.trim(),
     ownerPhone: document.getElementById('editOwnerPhone').value.trim(),
     ownerEmail: document.getElementById('editOwnerEmail').value.trim().toLowerCase(),   // ר' PROJECT_CONTEXT §221
-  });
+  };
+  const birth = await saveOwnerBirthDate();   // עצמאי מ-stageChanges, ר' ההערה מעל
+  if (birth === 'invalid' || birth === 'failed') return;
+  stageChanges(updates, undefined, birth === 'saved' ? 'תאריך הלידה נשמר ✓' : null);
 };
 
 // שתי-השאלות (2026-08-05) — כרטיס-לחיץ שלם (לא toggle-pill נפרד), זהה בהתנהגות ל-toggleWeekly ב-
