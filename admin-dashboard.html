@@ -1179,26 +1179,6 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
 .tpl-vars-box { font-size: 11px; color: var(--text-muted); margin: 0 0 10px; }
 .tpl-vars-box code { background: rgba(var(--accent-rgb),.08); color: var(--accent); padding: 1px 6px; border-radius: 5px; font-family: monospace; }
 
-/* ── עמוד "התבניות הקבועות" — §137 המשך, tpl-row/tpl-detail במקום chain-block/chain-label ── */
-.tpl-filters { padding: 15px 20px 13px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.tpl-filter { padding: 5px 11px; border-radius: 99px; font-size: 12px; font-weight: 500; background: var(--card-bg); border: 1px solid var(--border); color: var(--text-sm); cursor: pointer; }
-.tpl-filter.on { background: var(--text); color: #fff; border-color: var(--text); font-weight: 600; }
-.tpl-filter:hover:not(.on) { background: var(--nav-bg); }
-.tpl-list { border-top: 1px solid var(--border-md); display: flex; flex-direction: column; gap: 1px; background: var(--border); margin-top: 10px; }
-.tpl-row { padding: 13px 20px; background: var(--card-bg); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; cursor: pointer; }
-.tpl-row:hover { background: var(--nav-bg); }
-.tpl-row .name { font-size: 13.5px; font-weight: 600; }
-.tpl-row .sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
-.tpl-badge { font-size: 10.5px; font-weight: 600; border-radius: 6px; padding: 2px 8px; flex-shrink: 0; }
-.tpl-badge.auto { background: var(--accent-bg); color: var(--accent); }
-.tpl-badge.manual { background: var(--nav-bg); color: var(--text-sm); }
-.tpl-vars { flex: 0 0 128px; font-size: 11.5px; color: var(--text-muted); }
-.tpl-chev { font-size: 15px; color: var(--text-muted); flex-shrink: 0; }
-.tpl-detail { padding: 15px 20px 18px; background: var(--nav-bg); }
-.tpl-detail-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 12px; margin-bottom: 13px; }
-.tpl-detail-card { background: var(--card-bg); border-radius: 10px; padding: 11px 13px; }
-.tpl-detail-card .h { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 3px; }
-.tpl-detail-card .v { font-size: 12.5px; color: var(--text-sm); line-height: 1.5; }
 /* תצוגה מקדימה של שידור (שלב 5א) */
 /* מעטפת-מייל מדומה (§149, תואם-handoff) — "מייל" לבן עם מסגרת בתוך רקע-אפור, במקום קופסת-טקסט שטוחה */
 .broadcast-preview { background: var(--nav-bg); border-radius: 11px; padding: 15px 16px; margin: 10px 0 14px; }
@@ -14687,11 +14667,11 @@ function broadcastAudience() {
 // (אותם מזהי-שדה/Firestore docs/מפתחות localStorage בדיוק — אין מיגרציה, אין כפילות נתונים;
 // admin-messages.html הישן ממשיך להראות/לערוך בדיוק אותם ערכים). מטרה: מסך אחד "מול העיניים"
 // שכולל גם עריכת תבניות אוטומטיות/תקנון/הצלחה וגם שליחה ידנית לנמען בודד — לא רק שידור המוני.
+// §527 — מכאן נשארו **הנתונים בלבד**: ברירות המחדל (MESSAGE_TEMPLATE_ITEMS), המטמון מ-onSnapshot
+// ו-tplFieldValue. הלשונית עצמה היא §526 (m2Tpl*, ליד m2); הלשונית הישנה (tpl-row/templateGroupHtml) נמחקה.
 // ══════════════════════════════════════════════════════════════════════════
 const TPL_SETTINGS_DOC = () => doc(db, 'settings', 'messageTemplates');
 const TPL_SITE_TEXTS_DOC = () => doc(db, 'settings', 'siteTexts');
-const TPL_REPLY_TO_ADDRESS = 'yellowzonemta@gmail.com';
-const TPL_FROM_ADDRESS = 'info@yellowzone.co.il';   // = SENDER_EMAIL ב-wrangler.toml (§460ב); כרגע לא מוצג
 
 const MESSAGE_TEMPLATE_ITEMS = [
   {
@@ -14910,61 +14890,12 @@ const MESSAGE_TEMPLATE_ITEMS = [
 
 let tplFirestoreData = {};
 let tplSiteTextsData = {};
-let openTemplateId = null;
-window.toggleTemplateItem = function(id) {
-  openTemplateId = (openTemplateId === id) ? null : id;
-  renderMain();
-};
-
 function tplGetLocal(key, fallback) { return localStorage.getItem('_hb_tpl_' + key) || fallback; }
-function tplSetLocal(key, val) { localStorage.setItem('_hb_tpl_' + key, val); }
 function findMessageTemplate(id) { return MESSAGE_TEMPLATE_ITEMS.find(i => i.id === id); }
 function tplFieldValue(item, f) {
   return item.storage === 'firestore' ? (tplFirestoreData[f.key] ?? item.defaults[f.key])
     : item.storage === 'firestoreSite' ? (tplSiteTextsData[f.key] ?? item.defaults[f.key])
     : tplGetLocal(f.key, item.defaults[f.key]);
-}
-
-window.saveTemplateItem = async function(id) {
-  const item = findMessageTemplate(id);
-  const values = {};
-  item.fields.forEach(f => values[f.key] = document.getElementById('tplField_' + f.key).value);
-  if (item.storage === 'firestore' || item.storage === 'firestoreSite') {
-    const targetDoc = item.storage === 'firestore' ? TPL_SETTINGS_DOC() : TPL_SITE_TEXTS_DOC();
-    const cache = item.storage === 'firestore' ? tplFirestoreData : tplSiteTextsData;
-    try {
-      await setDoc(targetDoc, values, { merge: true });
-      Object.assign(cache, values);
-      alert('✅ נשמר');
-    } catch (e) {
-      // קוד השגיאה (permission-denied / unavailable / invalid-argument) הוא מה שמבדיל בין
-      // "אין הרשאה" ל"אין רשת" ל"נתון פסול" — בלעדיו הדיווח הוא תמיד 'לא נשמר, יש שגיאה'.
-      console.error('[שמירת תבנית]', e);
-      alert('שגיאה בשמירה\n\nקוד: ' + (e.code || 'לא ידוע') + '\n' + (e.message || ''));
-    }
-  } else {
-    Object.entries(values).forEach(([k, v]) => tplSetLocal(k, v));
-    alert('✅ נשמר');
-  }
-  renderMain();
-};
-
-window.resetTemplateItem = function(id) {
-  const item = findMessageTemplate(id);
-  item.fields.forEach(f => { const el = document.getElementById('tplField_' + f.key); if (el) el.value = item.defaults[f.key]; });
-};
-
-function templateFieldHtml(item, f) {
-  const raw = tplFieldValue(item, f);
-  const val = esc(raw);
-  const preview = item.group === 'auto' ? ` oninput="updateTemplatePreview('${item.id}')"` : '';
-  // סרגל העיצוב רק על גוף מייל שהוורקר מרנדר (group='auto'). תבניות WhatsApp/מייל-ידני נפתחות
-  // ב-Gmail/וואטסאפ כטקסט גולמי, וטקסטי-האתר (תקנון/הצלחה) אינם מייל בכלל — שם הסימונים היו
-  // מוצגים לנמען כתווים מיותרים. ר' האזהרה ליד mailToolbarHtml.
-  const bar = item.group === 'auto' && f.type === 'textarea' ? mailToolbarHtml('tplField_' + f.key, item.id, raw) : '';
-  return f.type === 'textarea'
-    ? `<div class="approve-field-label" style="margin-top:10px">${f.label}</div>${bar}<textarea class="broadcast-body-input" id="tplField_${f.key}" rows="${f.rows||8}"${preview}>${val}</textarea>${bar ? mailFmtHintHtml() : ''}`
-    : `<div class="approve-field-label" style="margin-top:10px">${f.label}</div><input class="chain-select" type="text" id="tplField_${f.key}" value="${val}"${preview}>`;
 }
 
 // ── תצוגה מקדימה אמיתית של המייל ──────────────────────────────────────────────────────────
@@ -15200,194 +15131,10 @@ window.mailFmt = function(targetId, action, value, tplId) {
   else if (action === 'link') mailFmtInsertBlock(ta, '{link}');
   else if (action === 'font') mailFmtSetFont(ta, value);
   mailFmtSyncBar(ta);
-  if (tplId) updateTemplatePreview(tplId); else updateBroadcastPreview();
+  updateBroadcastPreview();   // §527 — m2 מסתנכרן דרך מאזין ה-input; tplId נשאר בחתימה ולא בשימוש
 };
 
-const AUTO_TPL_SAMPLE_VARS = {
-  // §498 — זהה ל-{link} שהוורקר שולח באמת (brevo.js, §494)
-  login: { name: 'ישראל ישראלי', code: '123456', link: 'https://yellowzone.co.il/download?src=mail' },
-  resend: { name: 'ישראל ישראלי', code: '123456', link: 'https://yellowzone.co.il/download?src=mail' },
-  biz: { name: 'ישראל ישראלי', business: 'עסק לדוגמה', link: 'https://yellowzone.co.il/business-dashboard.html?token=demo' },
-  combined: { name: 'ישראל ישראלי', code: '123456', business: 'עסק לדוגמה', link: 'https://yellowzone.co.il/business-dashboard.html?token=demo' },
-};
-// §444 — התצוגה המקדימה מציגה את בלוק {login} בשני מצביו; המתג בחלון התצוגה בוחר איזה.
-let tplPreviewLoginMode = 'google';
-window.setTplPreviewLoginMode = function(id, mode) {
-  tplPreviewLoginMode = mode;
-  window.updateTemplatePreview(id);
-};
 const AUTO_TPL_LINK_LABEL = { login: 'כניסה לאתר', resend: 'כניסה לאתר', biz: 'כניסה לאזור העסק שלי', combined: 'כניסה לאזור העסק שלי' };
-
-// לא קורא ל-renderMain() בכוונה — זה היה בונה מחדש את שדה-הטקסט מהערך השמור/דיפולטי (tplFieldValue)
-// ומוחק כל מה שהמשתמש הקליד ועדיין לא שמר. עדכון ישיר של קופסת-התצוגה+הכפתור בלבד, כמו
-// updateTemplatePreview — הקלט עצמו (הטקסטארה) לא נוגעים בו בכלל.
-let openTemplatePreviewId = null;
-window.toggleTemplatePreview = function(id) {
-  openTemplatePreviewId = openTemplatePreviewId === id ? null : id;
-  const box = document.getElementById('tplPreviewBox_' + id);
-  const btn = document.getElementById('tplPreviewBtn_' + id);
-  const item = findMessageTemplate(id);
-  const isOpen = openTemplatePreviewId === id;
-  if (box && item) box.innerHTML = isOpen ? autoTemplatePreviewHtml(item) : '';
-  if (btn) btn.textContent = isOpen ? '👁 סגירת התצוגה המקדימה' : '👁 תצוגה מקדימה';
-};
-function autoTemplatePreviewHtml(item) {
-  const vars = { ...AUTO_TPL_SAMPLE_VARS[item.id], login_mode: tplPreviewLoginMode };   // §465 — הכתובת כבר לא מוצגת בבלוק
-  const modeBtn = (m, label) => `<button class="act-btn${tplPreviewLoginMode === m ? ' approve' : ''}" onclick="setTplPreviewLoginMode('${item.id}','${m}')">${label}</button>`;
-  const subjEl = document.getElementById('tplField_' + item.fields[0].key);
-  const bodyEl = document.getElementById('tplField_' + item.fields[1].key);
-  const subject = subjEl ? subjEl.value : tplFieldValue(item, item.fields[0]);
-  const body = bodyEl ? bodyEl.value : tplFieldValue(item, item.fields[1]);
-  return `
-    <div class="broadcast-preview">
-      <div class="broadcast-preview-label">כך המייל ייראה (נתוני-דוגמה: ${esc(vars.name)})</div>
-      <div class="broadcast-actions" style="margin:6px 0 10px;align-items:center">בלוק {login} אצל מי ש: ${modeBtn('google', 'בלי קוד – חיבר Google / Apple או נרשם עם Gmail')} ${modeBtn('code', 'כל השאר – קוד')}</div>
-      <div class="broadcast-preview-envelope" style="padding:0;overflow:hidden">
-        <div class="broadcast-preview-head" style="padding:12px 16px">
-          <div class="broadcast-preview-meta">מ־ Yellow Zone</div>
-          <div class="broadcast-preview-subject">${esc(applyBroadcastVars(subject, vars))}</div>
-        </div>
-        ${mailPreviewDocHtml(body, vars, AUTO_TPL_LINK_LABEL[item.id])}
-      </div>
-      <div class="broadcast-preview-note">נתוני-דוגמה בלבד, שום מייל לא נשלח. {login} / {code} / {link} / {login_link} / {social} מקבלים את העיצוב הממותג רק כשהם בפסקה נפרדת (שורה ריקה משני הצדדים). {social} בגוף מבטל אוטומטית את שורת הרשתות בפוטר</div>
-    </div>`;
-}
-window.updateTemplatePreview = function(id) {
-  if (openTemplatePreviewId !== id) return;
-  const box = document.getElementById('tplPreviewBox_' + id);
-  const item = findMessageTemplate(id);
-  if (box && item) box.innerHTML = autoTemplatePreviewHtml(item);
-};
-
-// §137 המשך — שורה+פרוט בסגנון tpl-row/tpl-detail (מוקאף), במקום chain-block/chain-label הישנים.
-// אותה לוגיקה בדיוק (openTemplateId יחיד, saveTemplateItem/resetTemplateItem/tplFieldValue) —
-// רק "למי/מתי/תשובה-למייל" עברו מפסקה חופשית אחת ל-3 כרטיסי-פרוט נפרדים (tpl-detail-grid).
-// גוף-הפרטים (grid למי/מתי/תשובה-למייל + משתנים + שדות + שמירה/איפוס) — מופרד מ-templateCardHtml
-// כדי שגם templateCombinedRowHtml (תקנון/הודעת-הצלחה, ר' למטה) יוכל להשתמש באותו גוף בדיוק
-// לפריט-האודיינס הפעיל, בלי כפילות-קוד.
-// ══ §444 — "מה קורה בפועל": הסבר על בלוק הכניסה בכל מייל אוטומטי אחרי אישור ══════════════
-// בקשת המשתמש: "חשוב לי שיהיה לי את כל המידע הזה בדשבורד ... הסבר על כל מצב מה קורה בפועל".
-// ⚠️ כל משפט כאן נבדק מול הקוד: loginModeFor/loginBlockHtml (mail-format.js), memberLoginFor
-// ו-runEmailSweeps (worker/src/index.js), openLoginModal + ?login=1 (welcome.html), §409.
-// שינוי באחד מהם → לעדכן כאן, אחרת הדשבורד ישקר למי שמחליט לפיו.
-function templateLoginStatesHtml(kind) {
-  const extra = {
-    combined: '<li><b>בעל עסק:</b> אותו בלוק בדיוק. מה שמסביב – אישור העסק ו-{link} לניהול העסק – כתוב בתבנית.</li>',
-    biz: '<li><b>במייל הזה אין קוד</b> (הוא נשלח רק למי שאין לו). לכן: מצב בלי-קוד – בלי שורת הקוד; מצב קוד – <b>הבלוק לא מוצג כלל</b>.</li>',
-    resend: '<li><b>כאן מומלץ להשאיר {code}:</b> האדם לחץ "שכחתי את הקוד" וביקש את הקוד. בחלון שממנו ביקש, Google ו-Apple כבר מוצגים ראשונים. אם תעדיף – אפשר לשים גם כאן {login}.</li>',
-  }[kind] || '';
-  return `
-    <div class="tpl-detail-card" style="margin-top:10px">
-      <div class="h">🔑 בלוק הכניסה {login} – מה קורה בפועל</div>
-      <div class="v"><ul style="margin:4px 0 0;padding-inline-start:18px;line-height:1.7">
-        <li><b>המערכת בוחרת לכל נמען לבד:</b>
-          <br>• <b>חיבר Google, חיבר Apple, או נרשם עם כתובת Gmail</b> → כפתור "לפתיחת אפליקציית Yellow Zone" + "באפליקציה, במסך הכניסה, לחצו על <i>Google</i> או על <i>Apple</i> – לפי החשבון שאיתו נרשמתם – בלי קוד" (נוסח אחד לכולם, בלי הכתובת). הקוד מופיע מתחת ("מעדיפים קוד?"), בקטן, בשחור.
-          <br>• <b>כל השאר</b> → הקוד בגדול בריבוע הצהוב + כפתור פתיחת האפליקציה, בלי אזכור של Google/Apple (כנראה אין לו חשבון כזה באותה כתובת).</li>
-        <li><b>הכפתור פותח את האפליקציה, לא את האתר</b> (§494): הוא עובר דרך yellowzone.co.il/download – בטלפון שהאפליקציה מותקנת בו נפתח עמוד החנות שלה עם כפתור "פתח", בלי האפליקציה – התקנה, ובמחשב – דף הנחיתה עם קוד QR. הכניסות מהמיילים נספרות במסך "אפליקציה ושימוש" (src=mail).</li>
-        <li><b>לוחץ Google או Apple, והכתובת זהה לזו שנרשם איתה (או שהחשבון כבר מחובר)</b> → נכנס מיד, והחשבון מתחבר לתמיד.
-          <br><b>לוחץ עם כתובת אחרת</b> → הודעה שהחשבון לא מחובר, והפניה לכניסה עם קוד.</li>
-        <li><b>אחרי כניסה אחת</b> האפליקציה זוכרת אותו – עד שהוא מתנתק או נכנס ממכשיר אחר.</li>
-        <li><b>רשומת אוהד שלא אושרה</b> → הבלוק לא מוצג (לא מבטיחים דלת נעולה).</li>
-        ${extra}
-        <li><b>מלל לפני / אחרי:</b> כתבו אותו בגוף ההודעה מעל או מתחת לשורה <code>{login}</code>. השורה חייבת לעמוד לבד – שורה ריקה מעליה ומתחתיה. המלל שלכם זהה לכל הנמענים; רק הבלוק משתנה.</li>
-        <li><b>תבנית בלי {login}</b> נשלחת בלי שום אזכור של Google או Apple. <code>{code}</code> ממשיך לעבוד כמו תמיד – הקוד בגדול לכולם.</li>
-      </ul></div>
-    </div>`;
-}
-
-function templateDetailBodyHtml(item) {
-  const varsShortHtml = item.vars.length
-    ? `<div class="tpl-vars-box">משתנים זמינים: ${item.vars.map(([k,d]) => `<code>{${k}}</code>=${esc(d)}`).join(' · ')}</div>`
-    : '';
-  const replyToVal = item.replyTo ? `כן – ${TPL_REPLY_TO_ADDRESS}` : (item.group === 'auto' ? 'אין – כתובת ללא מענה' : '–');
-  const fieldsHtml = item.fields.map(f => templateFieldHtml(item, f)).join('');
-  const previewOpen = openTemplatePreviewId === item.id;
-  const previewHtml = item.group === 'auto' ? `
-    <div class="broadcast-actions" style="margin-top:10px">
-      <button class="act-btn" id="tplPreviewBtn_${item.id}" onclick="toggleTemplatePreview('${item.id}')">👁 ${previewOpen ? 'סגירת התצוגה המקדימה' : 'תצוגה מקדימה'}</button>
-    </div>
-    <div id="tplPreviewBox_${item.id}">${previewOpen ? autoTemplatePreviewHtml(item) : ''}</div>` : '';
-  return `
-    <div class="tpl-detail-grid">
-      <div class="tpl-detail-card"><div class="h">למי</div><div class="v">${item.who}</div></div>
-      <div class="tpl-detail-card"><div class="h">מתי</div><div class="v">${item.when}</div></div>
-      <div class="tpl-detail-card"><div class="h">תשובה למייל</div><div class="v">${esc(replyToVal)}</div></div>
-    </div>
-    ${item.states ? templateLoginStatesHtml(item.states) : ''}
-    ${varsShortHtml}
-    ${fieldsHtml}
-    ${previewHtml}
-    <div class="broadcast-actions" style="margin-top:12px">
-      <button class="act-btn" onclick="resetTemplateItem('${item.id}')">↩ ברירת מחדל</button>
-      <button class="act-btn approve" onclick="saveTemplateItem('${item.id}')">💾 שמור</button>
-    </div>`;
-}
-
-function templateCardHtml(item) {
-  if (!item) return '';
-  const isOpen = openTemplateId === item.id;
-  const badgeClass = item.group === 'auto' ? 'auto' : 'manual';
-  const badgeLabel = item.group === 'auto' ? 'אוטומטי' : (item.group === 'terms' || item.group === 'success') ? 'טקסט באתר' : 'שליחה ידנית';
-  const varsShortLabel = item.vars.length ? `משתנים: ${item.vars.map(([k]) => k).join(', ')}` : '';
-  return `
-    <div class="tpl-row" onclick="toggleTemplateItem('${item.id}')">
-      <div style="flex:1 1 210px;min-width:0">
-        <div class="name">${item.icon} ${esc(item.title)}</div>
-        <div class="sub">${esc(item.sub)}</div>
-      </div>
-      <span class="tpl-badge ${badgeClass}">${badgeLabel}</span>
-      ${varsShortLabel ? `<div class="tpl-vars">${esc(varsShortLabel)}</div>` : ''}
-      <span class="tpl-chev">${isOpen ? '⌄' : '›'}</span>
-    </div>
-    ${isOpen ? `<div class="tpl-detail">${templateDetailBodyHtml(item)}</div>` : ''}`;
-}
-
-// שורה-משולבת ל-2 גרסאות-אודיינס של אותו סוג-תוכן (תקנון-אוהדים/עסקים, הבקשה-התקבלה-אוהדים/עסקים)
-// — תואם ל-handoff שמציג את שניהם כשורה אחת עם "2 גרסאות", לא 2 שורות נפרדות. הנתונים עצמם
-// (MESSAGE_TEMPLATE_ITEMS, Firestore doc, save/reset) לא משתנים בכלל — רק האיחוד בתצוגה, ומתג-אודיינס
-// פנימי (openTemplateSubAudience) שבוחר איזה מהשניים מוצג/נערך ברגע נתון.
-let openTemplateSubAudience = 'fan'; // 'fan' | 'biz'
-window.setOpenTemplateSubAudience = function(v) { openTemplateSubAudience = v; renderMain(); };
-function templateCombinedRowHtml(idFan, idBiz, combinedTitle, combinedSub, icon) {
-  const comboKey = 'combo:' + idFan;
-  const isOpen = openTemplateId === comboKey;
-  const active = findMessageTemplate(openTemplateSubAudience === 'fan' ? idFan : idBiz);
-  return `
-    <div class="tpl-row" onclick="toggleTemplateItem('${comboKey}')">
-      <div style="flex:1 1 210px;min-width:0">
-        <div class="name">${icon} ${esc(combinedTitle)}</div>
-        <div class="sub">${esc(combinedSub)}</div>
-      </div>
-      <span class="tpl-badge manual">טקסט באתר</span>
-      <div class="tpl-vars">2 גרסאות</div>
-      <span class="tpl-chev">${isOpen ? '⌄' : '›'}</span>
-    </div>
-    ${isOpen ? `
-    <div class="tpl-detail">
-      <div class="broadcast-audience-toggle" style="margin-bottom:12px">
-        <button class="filter-pill ${openTemplateSubAudience==='fan'?'active':''}" onclick="event.stopPropagation();setOpenTemplateSubAudience('fan')">👥 אוהדים</button>
-        <button class="filter-pill ${openTemplateSubAudience==='biz'?'active':''}" onclick="event.stopPropagation();setOpenTemplateSubAudience('biz')">🏪 עסקים</button>
-      </div>
-      ${templateDetailBodyHtml(active)}
-    </div>` : ''}`;
-}
-
-function templateGroupHtml(group) {
-  if (group === 'site') {
-    return `<div class="tpl-list">
-      ${templateCombinedRowHtml('termsFan', 'termsBiz', 'תקנון – אוהדים ועסקים', 'הטקסט המשפטי בעמוד התקנון (terms.html)', '📜')}
-      ${templateCombinedRowHtml('successFan', 'successBiz', '"הבקשה התקבלה" – אוהדים ועסקים', 'המסך שמוצג מיד אחרי שליחת טופס ההרשמה', '✅')}
-    </div>`;
-  }
-  const items = MESSAGE_TEMPLATE_ITEMS.filter(i => i.group === group);
-  if (!items.length) return '';
-  return `<div class="tpl-list">${items.map(templateCardHtml).join('')}</div>`;
-}
-// מספר-השורות-המוצגות (לא מספר-רשומות-הדאטה) — תקנון+הצלחה נספרים כשורה אחת כל אחד (תואם-handoff · 7),
-// לא 4 כמו MESSAGE_TEMPLATE_ITEMS.length בפועל (9, כי כל גרסת-אודיינס נשמרת כרשומה נפרדת ב-Firestore).
-function messageTemplateRowCount() {
-  return MESSAGE_TEMPLATE_ITEMS.filter(i => i.group === 'auto' || i.group === 'manual').length + 2;
-}
 
 // ── "הודעה בודדת/למספר נמענים" — חיפוש+בחירה מרובה (checkboxes) של עסקים/אוהדים, ואז שליחה
 // ידנית לכל אחד בנפרד (מיד קיים: sendBizWA/sendBizMail/sendFanWA/sendFanMail, שורות ~1821) —
@@ -15902,9 +15649,7 @@ function broadcastSelectedChipsHtml() {
 // הפעילים (הודעה בודדת + שידור המוני, עדיין נפתחים/נסגרים בפני עצמם עם toggleMsgSection כרגיל),
 // "תבניות קבועות" = 4 קבוצות-ההגדרות עם סינון-צ'יפים ביניהן.
 let msgMainTab = 'send';       // 'send' | 'templates'
-let msgTemplateGroupFilter = 'all'; // 'all' | 'manual' | 'auto' | 'site' — 'site' מכסה גם 'success' וגם 'terms' (ר' templateGroupHtml)
 window.setMsgMainTab = function(v) { msgMainTab = v; renderMain(); };
-window.setMsgTemplateGroupFilter = function(v) { msgTemplateGroupFilter = v; renderMain(); };
 // כרטיס "שליחה עכשיו" מאוחד — מתג (שידור המוני / נמענים נבחרים) בכותרת, גוף מוחלף לפי המצב
 // (§136, לפי מוקאפ). מחליף 2 אקורדיונים-עצמאיים ישנים (manualSenderHtml+broadcastTabHtml
 // היו כל אחד עם עטיפת-כרטיס+כותרת-קיפול משלו) — עכשיו הם רק ספקי-תוכן (body-only).
@@ -16955,8 +16700,6 @@ function msgContentHeadHtml() {
 }
 
 function messageCenterHtml() {
-  const total = messageTemplateRowCount();
-  const showGroup = (g) => msgTemplateGroupFilter === 'all' || msgTemplateGroupFilter === g;
   // §522 — "שליחה עכשיו" החדשה: מסגרת ברוחב מלא (עמודה + תצוגה), m2Mount ממלא אחרי הרינדור
   if (msgMainTab === 'send') return `
     ${msgContentHeadHtml()}
@@ -16973,40 +16716,6 @@ function messageCenterHtml() {
       <button class="action-tab active" onclick="setMsgMainTab('templates')"><span class="cnt">${M2_TPLS.length}</span>התבניות הקבועות</button>
     </div>
     ${m2TplFrameHtml()}`;
-  // eslint-disable-next-line no-unreachable — המסך הישן, יימחק בניקוי
-  return `
-    ${msgContentHeadHtml()}
-    <div class="msg-layout">
-      <div class="msg-col-main">
-        <div class="action-tabs">
-          <button class="action-tab ${msgMainTab==='send'?'active':''}" onclick="setMsgMainTab('send')">📨 שליחה עכשיו</button>
-          <button class="action-tab ${msgMainTab==='templates'?'active':''}" onclick="setMsgMainTab('templates')"><span class="cnt">${total}</span>התבניות הקבועות</button>
-        </div>
-        ${msgMainTab === 'send' ? `
-          ${sendNowSectionHtml()}
-        ` : `
-          <div class="msg-section">
-            <div class="tpl-filters">
-              <div class="card-head-title" style="margin-inline-end:4px">התבניות הקבועות</div>
-              <button class="tpl-filter ${msgTemplateGroupFilter==='all'?'on':''}" onclick="setMsgTemplateGroupFilter('all')">הכל · ${total}</button>
-              <button class="tpl-filter ${msgTemplateGroupFilter==='auto'?'on':''}" onclick="setMsgTemplateGroupFilter('auto')">✉️ מיילים אוטומטיים</button>
-              <button class="tpl-filter ${msgTemplateGroupFilter==='manual'?'on':''}" onclick="setMsgTemplateGroupFilter('manual')">📨 הודעות ידניות</button>
-              <button class="tpl-filter ${msgTemplateGroupFilter==='site'?'on':''}" onclick="setMsgTemplateGroupFilter('site')">📜 טקסטים באתר</button>
-            </div>
-            <div class="msg-section-body" style="padding-top:2px">
-              ${showGroup('auto') ? `<div class="msg-group-label">✉️ מיילים אוטומטיים <span class="hint">– נשלחים לבד ע"י המערכת, אין כפתור לחיצה</span></div>${templateGroupHtml('auto')}` : ''}
-              ${showGroup('manual') ? `<div class="msg-group-label">📨 תבניות קבועות (WhatsApp/מייל ידני) <span class="hint">– הטקסט ש-📲/✉️ ליד עסק/אוהד ברשימות, וגם ב"הודעה בודדת" ב"שליחה עכשיו", משתמשים בו</span></div>${templateGroupHtml('manual')}` : ''}
-              ${showGroup('site') ? `<div class="msg-group-label">📜 טקסטים באתר <span class="hint">– תקנון (terms.html) והודעת "הבקשה התקבלה" – כל אחד ב-2 גרסאות, אוהדים ועסקים</span></div>${templateGroupHtml('site')}` : ''}
-            </div>
-          </div>
-        `}
-      </div>
-      <div class="msg-col-side">
-        ${messageHistorySidebarHtml()}
-        ${messageSingleBizJournalNoteHtml()}
-        ${messageNotBuiltYetHtml()}
-      </div>
-    </div>`;
 }
 
 // גוף-בלבד (בלי עטיפת-כרטיס/כותרת-קיפול משלו) — §136: מוצג בתוך sendNowSectionHtml כשמצב
