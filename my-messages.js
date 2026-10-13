@@ -104,16 +104,20 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
     }));
     return inbox.concat(convs).sort((a, b) => b.at - a.at);
   }
+  // §523ב (רמי, 14.10): בלי לבבות; "אליך" לא היה מובן → "הודעה אישית"; והודעות לכולם בסינון משלהן
+  // ("מ-Yellow Zone" ערבב לכולם + אישיות). push ישן – תמיד שודר לקבוצה, ולכן עם "לכל האוהדים".
+  const isPersonal = (r) => r.t === 'in' && r.block === 'personal';
+  const isFanMass = (r) => r.t === 'in' && r.side === 'fan' && r.block !== 'personal';
   const FILTERS = () => isOwner
-    ? [['all', 'הכל', () => true], ['biz', '🏪 העסק שלי', (r) => r.t === 'in' && r.side === 'biz'], ['fan', '🧡 כאוהד', (r) => r.t === 'in' && r.side === 'fan'], ['cv', '💬 שיחות', (r) => r.t === 'cv']]
-    : [['all', 'הכל', () => true], ['fan', '🧡 מ-Yellow Zone', (r) => r.t === 'in'], ['cv', '💬 השיחות שלי', (r) => r.t === 'cv']];
+    ? [['all', 'הכל', () => true], ['biz', '🏪 העסק שלי', (r) => r.t === 'in' && r.side === 'biz'], ['mass', 'לכל האוהדים', isFanMass], ['personal', 'אישיות', isPersonal], ['cv', '💬 שיחות', (r) => r.t === 'cv']]
+    : [['all', 'הכל', () => true], ['mass', 'לכל האוהדים', isFanMass], ['personal', 'אישיות', isPersonal], ['cv', '💬 השיחות שלי', (r) => r.t === 'cv']];
   function label(r) {
     if (r.t === 'cv') return `<span class="mm-lbl conv">💬 שיחה עם הצוות${isOwner ? (r.side === 'biz' ? ' · על העסק' : ' · כאוהד') : ''}</span>`;
     if (r.block === 'myBiz') return `<span class="mm-lbl biz">🏪 לעסק שלך${(r.bizName || bizName) ? ' · ' + esc(r.bizName || bizName) : ''}</span>`;
     if (r.block === 'allBiz') return '<span class="mm-lbl biz2">🏪 לכל בעלי העסקים</span>';
-    if (r.block === 'personal') return '<span class="mm-lbl fan">💛 אליך</span>';
-    if (r.block === 'push') return '<span class="mm-lbl fan">📲 התראה שקיבלת</span>';
-    return '<span class="mm-lbl fan">🧡 לכל האוהדים</span>';
+    if (r.block === 'personal') return '<span class="mm-lbl fan">הודעה אישית</span>';
+    if (r.block === 'push') return '<span class="mm-lbl fan">📲 התראה לכל האוהדים</span>';
+    return '<span class="mm-lbl fan">לכל האוהדים</span>';
   }
   function itemHtml(r) {
     if (r.t === 'cv') {
