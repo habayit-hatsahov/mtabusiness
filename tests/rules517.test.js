@@ -166,6 +166,30 @@ async function check(name, p) {
   await check('בעלים (טוקן העסק) קורא', assertSucceeds(gd(doc(real, 'businesses/realBiz'))));
   await check('מנהל קורא ומונה', assertSucceeds(gds(col(admin, 'businesses'))));
 
+  console.log('זהות מאומתת בלי רשומת חבר (Phone Auth / כל ספק) – לא שולחת הודעות');
+  const stranger = env.authenticatedContext('smsUser123').firestore();
+  const { serverTimestamp: sts, writeBatch: wb2, collection: col2 } = require('firebase/firestore');
+  const convOf = (mid) => ({ memberId: mid, status: 'open', subject: 'שלום', source: 'app', createdAt: sts(), lastAt: sts(), lastFrom: 'member', memberReadAt: sts() });
+  await check('לא פותח שיחה', assertFails((() => {
+    const b = wb2(stranger); const r = doc(col2(stranger, 'conversations'));
+    b.set(r, convOf('smsUser123'));
+    b.set(doc(col2(stranger, 'conversations', r.id, 'messages')), { from: 'member', text: 'ספאם', createdAt: sts() });
+    return b.commit();
+  })()));
+  await check('לא שולח "כתבו לנו"', assertFails(setDoc(doc(stranger, 'helpRequests/h_sms'), { contact: 'x', message: 'ספאם', source: 'fanMessage', memberId: 'smsUser123', status: 'new', createdAt: sts() })));
+  await check('חבר אמיתי עדיין פותח שיחה', assertSucceeds((() => {
+    const b = wb2(other); const r = doc(col2(other, 'conversations'));
+    b.set(r, convOf('other'));
+    b.set(doc(col2(other, 'conversations', r.id, 'messages')), { from: 'member', text: 'היי', createdAt: sts() });
+    return b.commit();
+  })()));
+  await check('בעל עסק (טוקן) עדיין פותח שיחה בשם החבר שלו', assertSucceeds((() => {
+    const b = wb2(real); const r = doc(col2(real, 'conversations'));
+    b.set(r, { ...convOf('victim'), source: 'bizDashboard', bizId: 'realBiz' });
+    b.set(doc(col2(real, 'conversations', r.id, 'messages')), { from: 'member', text: 'היי', createdAt: sts() });
+    return b.commit();
+  })()));
+
   console.log('חשיפות (statsDaily)');
   const day = new Date().toISOString().slice(0, 10);
   const { setDoc: sd } = require('firebase/firestore');

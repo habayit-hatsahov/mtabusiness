@@ -900,7 +900,10 @@ service cloud.firestore {
 
       // 🔑 נולדת "פתוחה, ממתינה לנו" — אי אפשר להיוולד סגורה או "נענתה", ולעקוף את הצוות.
       // §516 — אורח קורא (רשימה ריקה), לא כותב.
+      // §517 — וגם **חבר אמיתי** (רשומת חבר קיימת) או בעל עסק מקושר. ספק Phone Auth (SMS) עדיין מופעל
+      // בפרויקט: כל אחד יכול היה לקבל זהות מאומתת ב-SMS ולפתוח שיחות "בשם" עצמו – בלי להיות חבר.
       allow create: if isConvOwner(request.resource.data.memberId) && !isDemo()
+        && (exists(/databases/$(database)/documents/members/$(request.auth.uid)) || isLinkedBusinessOwnerOf(request.resource.data.memberId))
         && request.resource.data.keys().hasOnly([
              'memberId', 'status', 'subject', 'source', 'bizId', 'createdAt', 'lastAt', 'lastFrom', 'memberReadAt'])
         && request.resource.data.keys().hasAll(['memberId', 'status', 'subject', 'createdAt', 'lastAt', 'lastFrom'])
@@ -1009,7 +1012,8 @@ service cloud.firestore {
         (!('source' in request.resource.data) || request.resource.data.source == null ||
           request.resource.data.source in ['stuck', 'question', 'photoFail', 'submitFail', 'loginFail', 'fanMessage']) &&
         (request.resource.data.get('source', null) != 'fanMessage' ||
-          (request.auth != null && !isDemo() && request.resource.data.get('memberId', null) == request.auth.uid)) &&
+          (request.auth != null && !isDemo() && request.resource.data.get('memberId', null) == request.auth.uid &&
+           exists(/databases/$(database)/documents/members/$(request.auth.uid)))) &&
         (!('device' in request.resource.data) || request.resource.data.device == null ||
           request.resource.data.device in ['mobile', 'desktop']) &&
         (!('lastField' in request.resource.data) || request.resource.data.lastField == null ||
