@@ -399,7 +399,8 @@
 // §504ז — v221 (message-center-demo.html: מייל רק למי שלא יקבל באפליקציה).
 // §521 — v222 (home.html: ספירת כניסות visitDays/lastVisitDay; admin-dashboard.html: "כמה ימים נכנסו" במרכז הנתונים + בכרטיס האוהד).
 // §522 — v223 (admin-dashboard.html: "שליחה עכשיו" החדשה – למי/איפה/מה, ארבעה ערוצים, היסטוריה ב-messages).
-const CACHE_NAME = 'yz-shell-v223';
+// §522ג — v224 (area-updates.js: פריט שלא נקרא צבוע עד הלחיצה).
+const CACHE_NAME = 'yz-shell-v224';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד

@@ -69,6 +69,9 @@ function injectStyle() {
   .au-time{font-size:11px;color:var(--text-muted);margin-inline-start:auto}
   .au-it{font-size:15.5px;font-weight:800;line-height:1.4}
   .au-item.read .au-it{font-weight:600}
+  /* §522ג — פריט שלא נקרא צבוע (רקע צהוב-רך + פס צהוב בצד), ונשאר צבוע עד שלוחצים עליו (רמי, 14.10:
+     "רשם חדש אבל צריך לצבוע"). הצבע יוצא רק ב-markRead – לחיצה או "סימון הכל כנקרא", לא בצפייה. */
+  .au-item:not(.read){background:#FFFCEB;box-shadow:inset -4px 0 0 var(--yellow);margin:0 -16px;padding:14px 18px;width:calc(100% + 32px);box-sizing:border-box}
   .au-tx{font-size:14px;color:var(--text-sm);line-height:1.55;margin-top:3px;white-space:pre-line;word-break:break-word}
   .au-link{display:inline-block;margin-top:8px;font-size:12.5px;font-weight:800;color:var(--text);border:1px solid var(--border-md);border-radius:10px;padding:6px 10px;background:#fff}
   .au-empty{text-align:center;padding:22px 10px;color:var(--text-sm);font-size:13px}
