@@ -16224,7 +16224,7 @@ function m2RenderBoxes() {
     ${mailToolbarHtml('m2mB', '', d.mail.body)}${m2Ta('m2mB', 'mail.body', 0, d.mail.body, 'שלום {name},', 'mail')}
     ${mailFmtHintHtml()}
     <div class="m2-hint">לחיצה על פרט אישי מכניסה אותו במקום הסמן. בטקסט הוא נראה כמו <code>{name}</code>, ואצל כל אחד מתחלף בפרטים שלו – רואים בתצוגה.</div>
-    <div class="m2-row" style="margin-top:12px"><input class="m2-t" id="m2TestTo" type="email" dir="ltr" style="flex:1;min-width:180px" placeholder="המייל שלך" value="${esc(m2.testTo)}" oninput="m2.testTo=this.value"/>
+    <div class="m2-row" style="margin-top:12px"><input class="m2-t" id="m2TestTo" type="email" dir="ltr" style="flex:1;min-width:180px" placeholder="המייל שלך" value="${esc(m2.testTo)}" oninput="m2SetTestTo(this.value)"/>
       <button class="m2-btn ghost sm" onclick="m2TestMail()">🧪 מייל בדיקה אליי</button></div></div>`);
   }
   if (d.ch.wa) out.push(`<div class="m2-box"><div class="m2-boxh">${M2_CH.wa.t}${m2CopyFrom('wa')}</div>
@@ -16340,12 +16340,12 @@ function m2RenderPv() {
   const any = M2_CH_KEYS.some((k) => d.ch[k]);
   const ok = (k) => k === 'card' ? any : d.ch[k];
   if (!ok(m2.pv)) m2.pv = tabs.map((x) => x[0]).find(ok) || 'app';
-  m2$('m2PvTabs').innerHTML = tabs.map(([k, l]) => `<button class="m2-pvtab${m2.pv === k && ok(k) ? ' on' : ''}" ${ok(k) ? '' : 'disabled'} onclick="m2.pv='${k}';m2RenderPv()">${l}</button>`).join('');
+  m2$('m2PvTabs').innerHTML = tabs.map(([k, l]) => `<button class="m2-pvtab${m2.pv === k && ok(k) ? ' on' : ''}" ${ok(k) ? '' : 'disabled'} onclick="m2SetPv('${k}')">${l}</button>`).join('');
   const r = m2Recipients();
   if (!any || !r.length) { m2$('m2PvWho').innerHTML = ''; m2$('m2Pv').innerHTML = `<div class="m2-empty">${!r.length ? 'עוד לא נבחר אף אחד בשלב 1' : 'סמנו לפחות מקום אחד'}</div>`; return; }
   if (m2.who >= r.length) m2.who = 0;
   const p = r[m2.who], vars = m2Vars();
-  m2$('m2PvWho').innerHTML = `<span>אצל:</span><select onchange="m2.who=+this.value;m2RenderPv();m2RenderBoxes()">${r.slice(0, 40).map((x, i) => `<option value="${i}" ${i === m2.who ? 'selected' : ''}>${esc(m2Label(x))}</option>`).join('')}</select>`;
+  m2$('m2PvWho').innerHTML = `<span>אצל:</span><select onchange="m2SetWho(this.value)">${r.slice(0, 40).map((x, i) => `<option value="${i}" ${i === m2.who ? 'selected' : ''}>${esc(m2Label(x))}</option>`).join('')}</select>`;
   const warn = (k, msg) => m2Can[k](p) ? '' : `<b style="color:var(--orange)">${msg}</b><br>`;
   let html = '';
   if (m2.pv === 'app') {
@@ -16534,7 +16534,7 @@ const m2Engaged = (r) => !!(r.appReadAt || r.pushOpenedAt || r.mailOpenedAt || r
 function m2RenderHist() {
   const el = m2$('m2Hist'); if (!el) return;
   const hf = m2.hf;
-  const B = (k, v, l) => `<button class="${hf[k] === v ? 'on' : ''}" onclick="m2.hf.${k}='${v}';m2RenderHist()">${l}</button>`;
+  const B = (k, v, l) => `<button class="${hf[k] === v ? 'on' : ''}" onclick="m2SetHf('${k}','${v}')">${l}</button>`;
   const bar = `<div class="m2-hfilt">
     <div class="m2-hfr"><b>למי</b>${B('who', 'all', 'הכל')}${B('who', 'fans', 'אוהדים')}${B('who', 'biz', 'בעלי עסקים')}</div>
     <div class="m2-hfr"><b>סוג</b>${B('kind', 'all', 'הכל')}${B('kind', 'mass', 'תפוצה (לכולם)')}${B('kind', 'pick', 'אישיות (נבחרים)')}</div>
@@ -16553,6 +16553,12 @@ function m2RenderHist() {
         ${open ? m2StatsHtml(h) : ''}</div>`;
     }).join(''));
 }
+// §524ב — 🐛 onclick מוטבע רץ ב-scope הגלובלי: "m2.pv=…" / "m2.hf.ch=…" זרקו (m2 של המודול לא נראה משם)
+// ולכן סינון ההיסטוריה, לשוניות התצוגה ובורר "אצל:" לא הגיבו. מעכשיו – רק דרך פונקציות על window.
+window.m2SetHf = function (k, v) { if (['who', 'kind', 'ch'].includes(k)) { m2.hf[k] = v; m2.openStats = null; m2RenderHist(); } };
+window.m2SetPv = function (k) { m2.pv = k; m2RenderPv(); };
+window.m2SetWho = function (v) { m2.who = +v || 0; m2RenderPv(); m2RenderBoxes(); };
+window.m2SetTestTo = function (v) { m2.testTo = v; };
 window.m2ToggleStats = function (id) { m2.openStats = m2.openStats === id ? null : id; if (m2.openStats) m2LoadRows(id); m2RenderHist(); };
 window.m2RefreshStats = function (id) { m2LoadRows(id, true); };
 window.m2StatsFlt = function (v) { m2.statsFlt = v; m2RenderHist(); };

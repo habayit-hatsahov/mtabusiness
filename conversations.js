@@ -256,6 +256,9 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
     closeView();
     state.newMeta = meta || null;
     state.composing = true;
+    // §524ב — 🐛 ב-embedded closeView() הסתיר את כל אזור הרשימה (composing עוד היה false), והכתיבה
+    // נפתחה בתוך אזור מוסתר – "כתבו לנו" נראה תקוע. מציגים אותו מחדש אחרי שהדגל הודלק.
+    show('list', true);
     show('new', true);
     renderList();
     const ta = $('newText');

@@ -403,7 +403,8 @@
 // §523 — v225 ("הודעות" אחת באזור שלי: my-messages.js חדש; profile/business-dashboard בלי "עדכונים"; conversations.js embedded; הפעמון ל-?tab=msgs).
 // §523ב — v226 (my-messages.js: בלי לבבות, "הודעה אישית" במקום "אליך", סינון "לכל האוהדים" + "אישיות").
 // §524 — v227 (סטטיסטיקה מלאה להודעה במרכז הניהול; my-messages.js רושם clickedAt/pushOpenedAt).
-const CACHE_NAME = 'yz-shell-v227';
+// §524ב — v228 (מרכז הניהול: סינון ההיסטוריה/לשוניות התצוגה/"אצל:" לא הגיבו – onclick מוטבע ראה m2; conversations.js: "כתבו לנו" נפתח באזור מוסתר).
+const CACHE_NAME = 'yz-shell-v228';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד
