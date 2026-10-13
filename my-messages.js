@@ -151,7 +151,7 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
     // ?item=<id> (מהפוש): פותח ומסמן כשהפריט הגיע
     if (state.pendingItem && state.items.some((x) => x.id === state.pendingItem)) {
       const id = state.pendingItem; state.pendingItem = '';
-      state.f = 'all'; state.expanded[id] = true; markRead([id]); renderFeed();
+      state.f = 'all'; state.expanded[id] = true; markTouch(id, 'pushOpenedAt'); renderFeed();   // §524 — נפתח מהפוש
       const el = root.querySelector('[data-in="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
       if (el) el.scrollIntoView({ block: 'center' });
     }
@@ -179,13 +179,30 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
     un.forEach((it) => b.update(doc(db, 'members', memberId, 'inbox', it.id), { readAt: serverTimestamp() }));
     b.commit().catch((e) => console.warn('inbox mark-read failed:', e && (e.code || e.message)));
   }
+  // §524 — לסטטיסטיקה של ההודעה במרכז הניהול: לחץ "לפרטים" / נפתח מהפוש. פעם אחת לכל פריט,
+  // ויחד עם "נקרא" אם עוד לא. החוק מתיר רק את השדות האלה, ורק "עכשיו".
+  function markTouch(id, field) {
+    const it = state.items.find((x) => x.id === id);
+    if (!it || it[field]) return;
+    const upd = { [field]: serverTimestamp() };
+    if (!it.readAt) upd.readAt = serverTimestamp();
+    const b = writeBatch(db);
+    b.update(doc(db, 'members', memberId, 'inbox', id), upd);
+    b.commit().catch((e) => console.warn('inbox ' + field + ' failed:', e && (e.code || e.message)));
+  }
 
   root.addEventListener('click', (e) => {
     const t = e.target.closest('[data-go],[data-in],[data-mmcv],[data-f],[data-write],[data-readall],[data-about]');
     // ⚠️ data-mmcv ולא data-cv: conversations.js (בתוך אותו root) משתמש ב-data-cv לכפתורים שלו –
     // שם משותף גרם ל"חזרה"/"שליחה" שלו להיתפס כאן כ"פתיחת שיחה" (נתפס בהרנס).
     if (!t || !root.contains(t) || t.closest('[data-mm="convRoot"]')) return;
-    if (t.dataset.go) { e.stopPropagation(); const l = safeLink(t.dataset.go); if (l && location.pathname + location.search !== l) location.href = l; return; }
+    if (t.dataset.go) {
+      e.stopPropagation();
+      const itEl = t.closest('[data-in]'); if (itEl) markTouch(itEl.dataset.in, 'clickedAt');   // §524
+      const l = safeLink(t.dataset.go);
+      if (l && location.pathname + location.search !== l) setTimeout(() => { location.href = l; }, 150);   // זמן לכתיבה לצאת
+      return;
+    }
     if (t.dataset.f) { state.f = t.dataset.f; renderFeed(); return; }
     if (t.dataset.write) { startCompose(); return; }
     if (t.dataset.readall) { const fn = FILTERS().find((f) => f[0] === state.f)[2]; markRead(rows().filter(fn).filter((r) => r.t === 'in' && r.unread).map((r) => r.id)); return; }

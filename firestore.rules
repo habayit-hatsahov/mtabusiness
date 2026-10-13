@@ -238,10 +238,14 @@ service cloud.firestore {
         allow read: if isAdmin()
           || (request.auth != null && request.auth.uid == memberId)
           || isLinkedBusinessOwnerOf(memberId);
+        // §524 — גם clickedAt (לחץ "לפרטים") ו-pushOpenedAt (נפתח מהפוש), לסטטיסטיקה של ההודעה.
+        // כל אחד – רק "עכשיו" (request.time), ורק השדות האלה; אף שדה של התוכן לא נוגע.
         allow update: if
           ((request.auth != null && request.auth.uid == memberId) || isLinkedBusinessOwnerOf(memberId))
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt'])
-          && request.resource.data.readAt == request.time;
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'clickedAt', 'pushOpenedAt'])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['readAt']) || request.resource.data.readAt == request.time)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['clickedAt']) || request.resource.data.clickedAt == request.time)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['pushOpenedAt']) || request.resource.data.pushOpenedAt == request.time);
         allow create, delete: if false;
       }
     }

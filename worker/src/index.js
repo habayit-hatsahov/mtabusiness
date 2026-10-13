@@ -1815,7 +1815,7 @@ async function handleSendMessage({ idToken, messageId, block, recipients, app, p
         const vars = o.t === 'm'
           ? { name: o.mf.firstName || '', code: await loginCodeFor(env, accessToken, o.id), link: `${SITE_BASE}download?src=broadcast` }
           : { name: o.bf.ownerFirst || '', business: o.bf.name || '', link: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, o.id)}` };
-        const r = await sendBroadcastEmail(env, { toEmail: o.email, toName: vars.name, subject: M.subject, body: M.body, vars });
+        const r = await sendBroadcastEmail(env, { toEmail: o.email, toName: vars.name, subject: M.subject, body: M.body, vars, msgTag: 'msg_' + messageId });
         o.mail = 'sent';
         if (r && r.messageId) o.mailId = String(r.messageId);
       } catch (e) {

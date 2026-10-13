@@ -196,6 +196,20 @@ export async function firestorePatch(env, accessToken, path, fieldsObj) {
   return resp.json();
 }
 
+// §524 — עדכון רק אם המסמך כבר קיים (currentDocument.exists=true). מחזיר false כשאינו קיים –
+// בלי ליצור מסמך-רפאים. משמש את ה-webhook: שורת נמען של הודעה מתעדכנת רק אם היא באמת קיימת.
+export async function firestorePatchIfExists(env, accessToken, path, fieldsObj) {
+  const maskParams = Object.keys(fieldsObj).map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+  const resp = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}/${path}?${maskParams}&currentDocument.exists=true`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: Object.fromEntries(Object.entries(fieldsObj).map(([k, v]) => [k, toFirestoreValue(v)])) }),
+  });
+  if (resp.status === 404 || resp.status === 400 || resp.status === 412) return false;
+  if (!resp.ok) throw new Error('firestore_patch_failed: ' + (await resp.text()));
+  return true;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════════════════
 //  §420 — מה שנדרש למחיקת-חשבון עצמית: צילום נאמן, יצירת מסמך, ומחיקה
 // ══════════════════════════════════════════════════════════════════════════════════════════

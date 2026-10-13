@@ -13,7 +13,7 @@
 // אימות: Brevo לא יודע לשלוח headers מותאמים ל-webhook, רק URL — לכן הסוד יושב ב-query string
 // (?key=...), בדיוק כמו שהתיעוד שלהם ממליץ. זה לא סוד-משתמש ולא מידע אישי, רק מפתח-קריאה לשירות.
 import { getGoogleAccessToken } from './jwt.js';
-import { firestoreRunQuery, firestorePatch } from './firestore.js';
+import { firestoreRunQuery, firestorePatch, firestorePatchIfExists } from './firestore.js';
 
 // מיפוי שמות-האירועים של Brevo למילון פנימי אחד. אירוע שלא ברשימה (request/unsubscribed וכו')
 // לא מעניין אותנו כאן ופשוט מדולג — לא שגיאה.
@@ -201,6 +201,19 @@ export async function handleBrevoWebhook(request, env) {
     for (const m of memberList) {
       await firestorePatch(env, accessToken, `members/${m.id}`, memberPatch);
       matched++;
+    }
+
+    // §524 — הודעה ממרכז ההודעות (תג msg_<messageId>): גם לשורת הנמען **של ההודעה הזאת**, כדי שהמסירה
+    // והפתיחה יישמרו לכל הודעה בנפרד (השדות על המסמך שומרים רק את השידור האחרון – ראו §415).
+    // מזהה השורה = מזהה העסק/החבר (כך מרכז הניהול כותב אותה); עדכון רק אם השורה קיימת – כתובת שמשותפת
+    // לעסק ולחבר לא תיצור שורת-רפאים אצל מי שלא היה בהודעה.
+    const msgTag = eventTags(ev).find((t) => /^msg_[A-Za-z0-9_-]{6,40}$/.test(t));
+    if (msgTag) {
+      const msgId = msgTag.slice(4);
+      const rowPatch = touch ? { [`mail${touch}At`]: at } : { mailDelivery: status, mailDeliveryAt: at, mailDeliveryReason: reason };
+      for (const d of bizList.concat(memberList)) {
+        if (await firestorePatchIfExists(env, accessToken, `messages/${msgId}/recipients/${d.id}`, rowPatch)) matched++;
+      }
     }
   }
 

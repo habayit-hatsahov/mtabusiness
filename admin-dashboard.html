@@ -1069,6 +1069,16 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
 .m2-tbl th { text-align:right; font-size:11.5px; color:var(--text-muted); font-weight:800; padding:5px 6px; border-bottom:1px solid var(--border); position:sticky; top:0; background:#FCFCFD; }
 .m2-tbl td { padding:5px 6px; border-bottom:1px solid #F0F2F5; white-space:nowrap; }
 .m2-tbl .ok { color:var(--green); font-weight:800; } .m2-tbl .bad { color:var(--red); font-weight:800; } .m2-tbl .dim { color:#98A2B3; }
+.m2-ssum { background:var(--accent-bg); border-radius:10px; padding:9px 11px; font-size:13px; line-height:1.7; margin-bottom:12px; }
+.m2-sch { margin-bottom:12px; }
+.m2-scht { font-size:13px; font-weight:900; margin-bottom:4px; }
+.m2-sline { display:grid; grid-template-columns:150px 1fr 80px; gap:8px; align-items:center; font-size:12.5px; margin:3px 0; }
+.m2-bar { height:8px; border-radius:6px; background:#EEF0F3; overflow:hidden; }
+.m2-bar i { display:block; height:100%; background:var(--accent); border-radius:6px; }
+.m2-bar.g i { background:var(--green); } .m2-bar.r i { background:var(--red); }
+.m2-snum { text-align:left; font-weight:800; }
+.m2-stats .ok { color:var(--green); font-weight:800; } .m2-stats .bad { color:var(--red); font-weight:800; } .m2-stats .dim { color:#98A2B3; }
+@media (max-width:600px) { .m2-sline { grid-template-columns:110px 1fr 70px; } }
 .m2-wago { background:#25D366; color:#fff; border:none; border-radius:8px; padding:3px 9px; font:inherit; font-size:12px; font-weight:800; cursor:pointer; }
 .m2-modal-bg { position:fixed; inset:0; background:rgba(16,24,40,.45); display:none; align-items:center; justify-content:center; padding:16px; z-index:200; }
 .m2-modal-bg.open { display:flex; }
@@ -16497,12 +16507,30 @@ function m2SubscribeHist() {
     if (m2$('m2Hist')) m2RenderHist();
   }, (e) => { console.error('messages snapshot failed', e); m2.histErr = e.message; if (m2$('m2Hist')) m2RenderHist(); });
 }
-async function m2LoadRows(id) {
-  if (m2.rows[id]) return;
-  try { const s = await getDocs(collection(db, 'messages', id, 'recipients')); m2.rows[id] = s.docs.map((x) => x.data()); }
-  catch (e) { console.error(e); m2.rows[id] = []; }
+// §524 — השורות + מה שקרה אחר כך: באפליקציה (readAt/clickedAt/pushOpenedAt על הפריט בתיבה של כל נמען),
+// ובמייל (mailDelivery/mailOpenedAt/mailClickedAt – ה-webhook כותב לשורה לפי התג msg_<id>).
+// קריאת הפריטים: getDoc לכל מי שהפריט נכתב אצלו, בחבילות של 25 – רק כשפותחים את הסטטיסטיקה.
+async function m2LoadRows(id, force) {
+  if (m2.rows[id] && !force) return;
+  try {
+    const s = await getDocs(collection(db, 'messages', id, 'recipients'));
+    const rows = s.docs.map((x) => ({ ...x.data(), id: x.data().id || x.id }));
+    const withApp = rows.filter((r) => r.app === 'written' && r.memberId);
+    for (let i = 0; i < withApp.length; i += 25) {
+      await Promise.all(withApp.slice(i, i + 25).map(async (r) => {
+        try {
+          const it = await getDoc(doc(db, 'members', r.memberId, 'inbox', id));
+          if (it.exists()) { const d = it.data(); r.appReadAt = toJsDate(d.readAt); r.appClickedAt = toJsDate(d.clickedAt); r.pushOpenedAt = toJsDate(d.pushOpenedAt); }
+        } catch (e) { /* פריט שלא נקרא – נשאר בלי */ }
+      }));
+    }
+    m2.rows[id] = rows;
+  } catch (e) { console.error(e); m2.rows[id] = []; }
   m2RenderHist();
 }
+const M2_MAIL_BAD = { bounced: 'חזר – הכתובת לא קיימת', bounced_soft: 'חזר זמנית (תיבה מלאה/שרת)', blocked: 'נחסם', spam: 'סומן כספאם', invalid: 'כתובת לא תקינה', error: 'שגיאה' };
+const m2MailBad = (r) => r.mail === 'failed' || !!M2_MAIL_BAD[r.mailDelivery];
+const m2Engaged = (r) => !!(r.appReadAt || r.pushOpenedAt || r.mailOpenedAt || r.mailClickedAt || r.wa === 'done');
 function m2RenderHist() {
   const el = m2$('m2Hist'); if (!el) return;
   const hf = m2.hf;
@@ -16521,28 +16549,105 @@ function m2RenderHist() {
       if (h.ch && h.ch.wa) tags.push(`💬 ${t.wa ?? '…'} וואטסאפ`);
       const open = m2.openStats === h.id;
       return `<div class="m2-hrow"><b>${esc(h.title || '')}</b> · ${esc(h.audLabel || '')} (${h.total || 0}) <span class="m2-tag gray">${h.kind === 'mass' ? 'תפוצה' : 'אישית'}</span><span class="m2-hint">· ${h.sentAt ? fmtDateTime(h.sentAt) : ''}${h.status === 'sending' ? ' · ⏳ בשליחה' : ''}</span>
-        <div>${tags.map((x) => `<span class="m2-tag">${x}</span>`).join('')} <button class="m2-link" onclick="m2ToggleStats('${h.id}')">${open ? 'סגירה' : '📊 מי קיבל מה'}</button></div>
+        <div>${tags.map((x) => `<span class="m2-tag">${x}</span>`).join('')} <button class="m2-link" onclick="m2ToggleStats('${h.id}')">${open ? 'סגירה' : '📊 סטטיסטיקה מלאה'}</button></div>
         ${open ? m2StatsHtml(h) : ''}</div>`;
     }).join(''));
 }
 window.m2ToggleStats = function (id) { m2.openStats = m2.openStats === id ? null : id; if (m2.openStats) m2LoadRows(id); m2RenderHist(); };
+window.m2RefreshStats = function (id) { m2LoadRows(id, true); };
+window.m2StatsFlt = function (v) { m2.statsFlt = v; m2RenderHist(); };
+// §524 — סטטיסטיקה מלאה להודעה: סיכום, פס לכל שלב בכל ערוץ, טבלה "מי קיבל מה" עם סינון, שליחה חוזרת לנכשלים,
+// והודעה חדשה רק למי שלא פתח.
 function m2StatsHtml(h) {
   const R = m2.rows[h.id];
   if (!R) return '<div class="m2-stats"><div class="m2-hint">טוען…</div></div>';
+  const n = R.length, cnt = (f) => R.filter(f).length;
+  const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+  const line = (lbl, a, of, cls) => `<div class="m2-sline"><span>${lbl}</span><span class="m2-bar ${cls || ''}"><i style="width:${pct(a, of)}%"></i></span><span class="m2-snum">${a}${of ? ` <span class="dim">(${pct(a, of)}%)</span>` : ''}</span></div>`;
+  const parts = [];
+  if (h.ch && h.ch.app) {
+    const s = cnt((r) => r.app === 'written');
+    parts.push(`<div class="m2-sch"><div class="m2-scht">${M2_CH.app.t}</div>${line('נשמרה אצל', s, n)}${line('נקראה', cnt((r) => r.appReadAt), s, 'g')}${line('לחצו "לפרטים"', cnt((r) => r.appClickedAt), s)}
+      ${n - s ? `<div class="m2-hint">${n - s} לא קיבלו – אין חשבון מאושר${cnt((r) => r.app === 'failed') ? ` (${cnt((r) => r.app === 'failed')} נכשלו בכתיבה)` : ''}</div>` : ''}</div>`);
+  }
+  if (h.ch && h.ch.push) {
+    const s = cnt((r) => r.push === 'sent');
+    parts.push(`<div class="m2-sch"><div class="m2-scht">${M2_CH.push.t}</div>${line('הגיע למכשיר', s, cnt((r) => r.app === 'written'), 'g')}${line('נפתח מהפוש', cnt((r) => r.pushOpenedAt), s)}
+      <div class="m2-hint">${cnt((r) => r.push === 'noToken')} לא אישרו פוש${cnt((r) => r.push === 'failed') ? ` · <b class="bad">${cnt((r) => r.push === 'failed')} נכשלו</b>` : ''} · נמדד רק לחיצה על הפוש עצמו (פתיחה רגילה של האפליקציה נספרת ב"נקראה").</div></div>`);
+  }
+  if (h.ch && h.ch.mail) {
+    const s = cnt((r) => r.mail === 'sent'), bad = R.filter(m2MailBad);
+    parts.push(`<div class="m2-sch"><div class="m2-scht">${M2_CH.mail.t}</div>${line('נשלח', s, cnt((r) => r.mail && r.mail !== 'none' && r.mail !== 'skipped' && r.mail !== 'noEmail'))}${line('נמסר', cnt((r) => r.mailDelivery === 'delivered'), s, 'g')}${line('נפתח', cnt((r) => r.mailOpenedAt), s)}${line('לחצו על קישור', cnt((r) => r.mailClickedAt), s)}${line('נכשל / חזר', bad.length, s || bad.length, 'r')}
+      ${bad.length ? `<div class="m2-hint">${bad.map((r) => esc(r.name) + ' – ' + esc(M2_MAIL_BAD[r.mailDelivery] || (r.mailError ? r.mailError.slice(0, 60) : 'נכשל'))).join(' · ')} · <button class="m2-link" onclick="m2ResendFailed('${h.id}')">שליחה חוזרת לנכשלים</button></div>` : ''}
+      ${cnt((r) => r.mail === 'skipped') ? `<div class="m2-hint">${cnt((r) => r.mail === 'skipped')} לא קיבלו מייל כי קיבלו באפליקציה ("רק מי שלא יקבל").</div>` : ''}
+      <div class="m2-hint">"נפתח" נמדד בתמונה במייל – Outlook ואחרים חוסמים, אז זה מינימום.${h.resent ? ' · ' + esc(h.resent) : ''}</div></div>`);
+  }
+  if (h.ch && h.ch.wa) parts.push(`<div class="m2-sch"><div class="m2-scht">${M2_CH.wa.t}</div>${line('פתחת', cnt((r) => r.wa === 'done'), cnt((r) => r.wa && r.wa !== 'none'), 'g')}<div class="m2-hint">הכפתורים – בטבלה למטה.</div></div>`);
+  const eng = cnt(m2Engaged), notEng = R.filter((r) => !m2Engaged(r));
+  const flt = m2.statsFlt || 'all';
+  const rows = R.filter((r) => flt === 'all' || (flt === 'yes' ? m2Engaged(r) : flt === 'no' ? !m2Engaged(r) : (r.app === 'none' || r.app === 'failed' || r.push === 'failed' || m2MailBad(r))));
   const keys = M2_CH_KEYS.filter((k) => h.ch && h.ch[k]);
-  const M = { written: ['ok', '✓ נשמרה'], none: ['dim', '—'], failed: ['bad', '✗ נכשל'], sent: ['ok', '✓ נשלח'], noToken: ['dim', 'לא אישר'], skipped: ['dim', 'קיבל באפליקציה'], noEmail: ['dim', 'אין מייל'], todo: ['', ''], done: ['ok', '✓ נפתח'] };
   const cell = (k, r) => {
     const v = r[k]; if (v == null) return '';
-    if (k === 'wa') return v === 'none' ? '<span class="dim">אין טלפון</span>' : `<button class="m2-wago" onclick="m2OpenWa('${h.id}','${escJsAttr(r.id)}')">${v === 'done' ? '✓ נפתח · שוב' : 'פתיחה'}</button>`;
-    const [cl, tx] = M[v] || ['', v]; return `<span class="${cl}" ${k === 'mail' && r.mailError ? `title="${esc(r.mailError)}"` : ''}>${tx}</span>`;
+    if (k === 'app') return v === 'written' ? (r.appClickedAt ? '<span class="ok">✓ לחץ</span>' : r.appReadAt ? '<span class="ok">✓ נקראה</span>' : 'לא נקראה') : v === 'failed' ? '<span class="bad">✗ נכשל</span>' : '<span class="dim">—</span>';
+    if (k === 'push') return v === 'sent' ? (r.pushOpenedAt ? '<span class="ok">✓ נפתח</span>' : 'הגיע') : v === 'failed' ? '<span class="bad">✗ נכשל</span>' : `<span class="dim">${v === 'noToken' ? 'לא אישר' : '—'}</span>`;
+    if (k === 'mail') {
+      if (v === 'sent') return m2MailBad(r) ? `<span class="bad" title="${esc(r.mailDeliveryReason || '')}">✗ ${esc(M2_MAIL_BAD[r.mailDelivery] || 'נכשל')}</span>` : r.mailClickedAt ? '<span class="ok">✓ לחץ</span>' : r.mailOpenedAt ? '<span class="ok">✓ נפתח</span>' : r.mailDelivery === 'delivered' ? 'נמסר' : 'נשלח';
+      return v === 'failed' ? `<span class="bad" title="${esc(r.mailError || '')}">✗ נכשל</span>` : `<span class="dim">${{ skipped: 'קיבל באפליקציה', noEmail: 'אין מייל' }[v] || '—'}</span>`;
+    }
+    return v === 'none' ? '<span class="dim">אין טלפון</span>' : `<button class="m2-wago" onclick="m2OpenWa('${h.id}','${escJsAttr(r.id)}')">${v === 'done' ? '✓ נפתח · שוב' : 'פתיחה'}</button>`;
   };
-  const failed = R.filter((r) => r.mail === 'failed');
+  const F = [['all', 'כולם'], ['yes', 'פתחו'], ['no', 'לא פתחו'], ['bad', 'לא הגיע / נכשל']];
   return `<div class="m2-stats">
+    <div class="m2-ssum">נשלח ל-<b>${n}</b> · <b>${eng}</b> פתחו לפחות בערוץ אחד (${pct(eng, n)}%) · <b>${notEng.length}</b> לא פתחו בשום ערוץ
+      ${notEng.length ? `<br><button class="m2-link" onclick="m2AgainNotOpened('${h.id}')">↩ הודעה חדשה רק למי שלא פתח (${notEng.length})</button>` : ''}
+      · <button class="m2-link" onclick="m2RefreshStats('${h.id}')">רענון</button></div>
+    ${parts.join('')}
+    <div class="m2-scht">מי קיבל מה</div>
+    <div class="m2-hfr" style="margin-bottom:6px">${F.map(([k, l]) => `<button class="${flt === k ? 'on' : ''}" onclick="m2StatsFlt('${k}')">${l}</button>`).join('')}</div>
     <div class="m2-tblw"><table class="m2-tbl"><thead><tr><th>שם</th>${keys.map((k) => `<th>${M2_CH[k].short}</th>`).join('')}</tr></thead>
-      <tbody>${R.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he')).map((r) => `<tr><td>${esc(r.name || r.id)}</td>${keys.map((k) => `<td>${cell(k, r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
-    ${failed.length ? `<div class="m2-hint" style="margin-top:6px">✉️ נכשלו: ${failed.map((r) => esc(r.name) + (r.mailError ? ' (' + esc(r.mailError.slice(0, 60)) + ')' : '')).join(' · ')}</div>` : ''}
-    <div class="m2-hint" style="margin-top:6px">מסירה ופתיחה של המייל, וקריאה באפליקציה – יתווספו לכאן בשלב הסטטיסטיקה.</div></div>`;
+      <tbody>${rows.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he')).map((r) => `<tr><td>${esc(r.name || r.id)}</td>${keys.map((k) => `<td>${cell(k, r)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${keys.length + 1}" class="dim">אין</td></tr>`}</tbody></table></div>
+  </div>`;
 }
+// "↩ הודעה חדשה רק למי שלא פתח" — ממלא את שלב 1 ב"מסוימים" עם האנשים האלה, וגולל למעלה
+window.m2AgainNotOpened = function (id) {
+  const h = m2.hist.find((x) => x.id === id), R = m2.rows[id] || [];
+  const ids = R.filter((r) => !m2Engaged(r)).map((r) => r.id);
+  if (!h || !ids.length) return;
+  m2.aud = h.who === 'biz' ? 'bizPick' : 'fanPick'; m2.f = {}; m2.fOpen = null; m2.q = ''; m2.who = 0;
+  m2.picked = new Set(ids); m2.doc = m2Blank(); m2.result = '';
+  m2RenderAud(); m2Refresh();
+  const top = m2$('m2Aud'); if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  m2Toast(`נבחרו ${ids.length} שלא פתחו – כתבו להם הודעה חדשה`);
+};
+// "שליחה חוזרת לנכשלים" — רק המייל, רק למי שנכשל/חזר (לא "חזר – הכתובת לא קיימת": לשם לא כדאי שוב)
+window.m2ResendFailed = async function (id) {
+  const h = m2.hist.find((x) => x.id === id), R = m2.rows[id] || [];
+  if (!h || !h.mail) return;
+  const list = R.filter((r) => m2MailBad(r) && r.mailDelivery !== 'bounced' && r.mailDelivery !== 'invalid');
+  const skipped = R.filter((r) => r.mailDelivery === 'bounced' || r.mailDelivery === 'invalid').length;
+  if (!list.length) { alert('אין למי לשלוח שוב' + (skipped ? ` – ${skipped} חזרו כי הכתובת לא קיימת; צריך לתקן אותה בכרטיס.` : '.')); return; }
+  if (!confirm(`לשלוח שוב את המייל ל-${list.length}?${skipped ? `\n(${skipped} עם כתובת שלא קיימת – לא נשלח אליהם)` : ''}`)) return;
+  let ok = 0, bad = 0;
+  for (let i = 0; i < list.length; i += 8) {
+    const chunk = list.slice(i, i + 8);
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const resp = await hbApiFetch('/send-message', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, messageId: id, block: h.block, recipients: chunk.map((r) => ({ t: r.t, id: r.id })), app: null, push: null, mail: { ...h.mail, scope: 'all' } }) });
+      const data = await resp.json(); if (data.error) throw new Error(data.error);
+      for (const r of chunk) {
+        const res = (data.results || []).find((x) => x.id === r.id) || {};
+        const upd = { mail: res.mail || 'failed', mailId: res.mailId || null, mailError: res.mailError || null, mailDelivery: deleteField(), mailDeliveryAt: deleteField(), mailDeliveryReason: deleteField(), resentAt: serverTimestamp() };
+        await updateDoc(doc(db, 'messages', id, 'recipients', r.id), upd).catch((e) => console.error(e));
+        if (res.mail === 'sent') ok++; else bad++;
+      }
+    } catch (e) { console.error(e); bad += chunk.length; }
+  }
+  const note = `נשלח שוב ל-${ok}${bad ? `, ${bad} נכשלו שוב` : ''}${skipped ? ` · ${skipped} עם כתובת לא קיימת – לתקן בכרטיס` : ''}`;
+  await updateDoc(doc(db, 'messages', id), { resent: note, resentAt: serverTimestamp() }).catch(() => {});
+  m2Toast(note); m2LoadRows(id, true);
+};
 window.m2OpenWa = async function (msgId, rid) {
   const r = (m2.rows[msgId] || []).find((x) => x.id === rid); if (!r || !r.waPhone) return;
   window.open(waLink(r.waPhone, r.waText || ''), '_blank');

@@ -47,7 +47,7 @@ async function sendBrevoEmail(env, { sender, to, replyTo, subject, htmlContent, 
       // הקוד של כל 108 הנמענים — ואיתם את ארבעת הדליים ב"אושרו ולא נכנסו" (§390/§394),
       // שכל ההחלטה "למי לשלוח וואטסאפ" נשענת עליהם. הדריסה הייתה שקטה לחלוטין.
       // התג הוא מה שמאפשר ל-webhook לדעת על **איזה מכתב** מדובר, ולכתוב לשדות הנכונים.
-      ...(tag ? { tags: [tag] } : {}),
+      ...(tag ? { tags: Array.isArray(tag) ? tag : [tag] } : {}),   // §524 — גם כמה תגים (broadcast + msg_<id>)
       htmlContent: finalHtml,
       textContent: stripHtml(finalHtml),
     }),
@@ -145,7 +145,7 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
 
 // שידור חד-פעמי לקהל (מרכז הודעות, admin-dashboard.html) — subject/body מגיעים מהמנהל
 // (טיוטה ב-settings/broadcastDraft), עם placeholders {name}/{business}/{link} שמוחלפים לכל נמען בנפרד.
-export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, vars }) {
+export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, vars, msgTag = '' }) {
   const finalSubject = applyVars(subject, vars);
   const htmlContent = renderMailHtml(body, vars, {
     linkLabel: vars.code ? 'לפתיחת האפליקציה' : 'כניסה לאזור העסק שלי',   // §499 — כמו מייל הקוד (§494)
@@ -158,7 +158,8 @@ export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, 
     htmlContent,
     // §415 — ⚠️ **התג הזה הוא כל ההפרדה.** בלעדיו אירועי המסירה של השידור נוחתים על שדות
     // מייל-הקוד ומוחקים את התמונה שלפיה מחליטים למי לשלוח וואטסאפ. ר' ההערה ב-sendBrevoEmail.
-    tag: 'broadcast',
+    // §524 — msg_<messageId>: ה-webhook כותב את המסירה/הפתיחה גם לשורת הנמען של ההודעה הזאת
+    tag: msgTag ? ['broadcast', msgTag] : 'broadcast',
   });
 }
 
