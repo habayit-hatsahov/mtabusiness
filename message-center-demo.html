@@ -360,7 +360,7 @@ const V = {
 };
 
 // ═════ התבניות הקבועות (admin-dashboard.html MESSAGE_TEMPLATE_ITEMS) ═════
-const blank = () => ({ ch: { app: false, push: false, mail: false, wa: false }, app: { title: '', text: '', link: '' }, push: { title: '', body: '', link: '' }, mail: { subject: '', body: '' }, wa: { text: '' }, once: { title: '', text: '' } });
+const blank = () => ({ mailScope: 'all', ch: { app: false, push: false, mail: false, wa: false }, app: { title: '', text: '', link: '' }, push: { title: '', body: '', link: '' }, mail: { subject: '', body: '' }, wa: { text: '' }, once: { title: '', text: '' } });
 const withMail = (subject, body, wa) => { const d = blank(); d.ch.mail = true; d.mail = { subject, body }; if (wa != null) { d.ch.wa = true; d.wa.text = wa; } return d; };
 const NOAPP_REG = 'עוד לא נכנס לאפליקציה – אין לאן לשלוח';
 const TPLS = [
@@ -443,7 +443,15 @@ function recipients() {
   if (state.aud === 'bizAll') return BIZ.filter((p) => p.status === 'approved');
   return baseList().filter((p) => state.picked.has(p.id));
 }
-function counts(people) { const r = people || recipients(); const o = { n: r.length, r }; CH_KEYS.forEach((k) => { o[k] = r.filter(can[k]).length; }); return o; }
+const mailMissingOnly = (d) => d && d.mailScope === 'missing' && (d.ch.app || d.ch.push);
+// מי מקבל מייל בפועל: כולם, או רק מי שלא יקבל באפליקציה
+const getsMail = (p, d) => can.mail(p) && (!mailMissingOnly(d) || !can.app(p));
+function counts(people) {
+  const r = people || recipients(); const o = { n: r.length, r }; CH_KEYS.forEach((k) => { o[k] = r.filter(can[k]).length; });
+  o.missing = r.filter((p) => !can.app(p)).length; o.missingMail = r.filter((p) => !can.app(p) && can.mail(p)).length;
+  if (state.view === 'send' && mailMissingOnly(state.doc)) o.mail = o.missingMail;
+  return o;
+}
 function appBlock(p) {
   if (state.view === 'send' && state.aud === 'bizAll') return { cls: 'biz2', t: 'לבעלי העסקים', s: 'הודעות חשובות מהצוות לכל העסקים', where: 'בקובייה "לכל בעלי העסקים"' };
   if (p && p.kind === 'biz') return { cls: 'biz', t: 'על העסק שלך – ' + p.name, s: 'הודעות שנשלחו במיוחד לעסק שלך', where: 'בקובייה "על העסק שלך"' };
@@ -558,7 +566,14 @@ function renderChans() {
   $('chans').innerHTML = chanRowsHtml(c, {});
   const d = state.doc, notes = [];
   const notApp = c.n - c.app;
-  if ((d.ch.app || d.ch.push) && notApp) notes.push(`<div class="note info"><b>${notApp} מהנבחרים</b> לא יקבלו באפליקציה ובפוש – ${audKind() === 'biz' ? 'אין לבעל העסק חשבון חבר' : 'ממתינים / נדחו'}.${d.ch.mail ? ' במייל – כן.' : ' רוצים שיגיע אליהם? סמנו גם מייל.'}</div>`);
+  if ((d.ch.app || d.ch.push) && notApp) {
+    const why = audKind() === 'biz' ? 'אין לבעל העסק חשבון חבר' : 'ממתינים / נדחו';
+    const only = mailMissingOnly(d) && d.ch.mail;
+    notes.push(`<div class="note info"><b>${notApp} מהנבחרים</b> לא יקבלו באפליקציה ובפוש – ${why}.
+      ${only ? ` ✉️ יקבלו מייל – <b>רק הם</b> (${c.missingMail}${c.missingMail < notApp ? ', לשאר אין מייל' : ''}). <button class="linkbtn" data-mailscope="all">מייל לכולם</button>`
+        : d.ch.mail ? ' במייל – כן (המייל יוצא לכולם). <button class="linkbtn" data-mailscope="missing">מייל רק ל-' + notApp + ' האלה</button>'
+        : ` <button class="linkbtn" data-mailscope="missing">✉️ לשלוח מייל רק ל-${notApp} האלה</button>`}</div>`);
+  }
   if (d.ch.push && c.push < c.app) notes.push(`<div class="note info">רק <b>${c.push} מתוך ${c.app}</b> אישרו פוש. השאר לא יקבלו אותו, אבל יראו את ההודעה באפליקציה.</div>`);
   if (d.ch.wa && c.wa > 25) notes.push(`<div class="note">💬 וואטסאפ ידני ל-<b>${c.wa}</b> אנשים = ${c.wa} לחיצות. לקבוצה גדולה עדיף מייל או אפליקציה.</div>`);
   $('chanNotes').innerHTML = notes.join('');
@@ -614,7 +629,11 @@ function renderBoxes() {
     <div class="hint">לחיצה על הפוש פותחת את ההודעה המלאה ב"הודעות" (מתיבת "התראה באפליקציה").</div>
     <div class="hint">בלי פרטים אישיים – הפוש מוצג גם על מסך נעול.</div></div>`);
   if (d.ch.mail) {
+    const cc = c.send ? counts() : null;
     out.push(`<div class="box"><div class="box-h">${CH.mail.t}${copyFrom('mail')}</div>
+    ${c.send && (d.ch.app || d.ch.push) && cc.missing ? `<div class="row2" style="margin-top:8px;font-size:13px"><b>למי במייל:</b>
+      <label><input type="radio" name="mscope" data-mailscope="all" ${mailMissingOnly(d) ? '' : 'checked'}/> לכולם (${cc.r.filter(can.mail).length})</label>
+      <label><input type="radio" name="mscope" data-mailscope="missing" ${mailMissingOnly(d) ? 'checked' : ''}/> רק למי שלא יקבל באפליקציה (${cc.missingMail})</label></div>` : ''}
     <label class="f" for="mSubject">נושא ${clip('mSubject')} ${cnt(d.mail.subject, LIM.mailSubject)}</label>
     ${varStrip('mSubject', { subject: true })}
     <input class="t" id="mSubject" data-f="mail.subject" maxlength="${LIM.mailSubject.max}" value="${esc(d.mail.subject)}" placeholder="למשל: יש לך הטבה חדשה"/>
@@ -748,12 +767,12 @@ function renderSend() {
   $('draftHint').textContent = state.draft ? `טיוטה שמורה מ-${state.draft.at} – קהל, ערוצים וכל התיבות.` : 'הטיוטה שומרת הכל – קהל, ערוצים וכל התיבות.';
 }
 // תוצאות לכל נמען – מה שבמוצר מגיע מ: readAt בתיבה (קיים), FCM (קיים), Brevo webhook (קיים), לחיצות על פוש/קישור (חדש)
-function simulate(people, ch) {
+function simulate(people, ch, doc) {
   return people.map((p) => {
     const o = { id: p.id, name: label(p), p };
     o.app = !ch.app ? null : !can.app(p) ? 'none' : rnd() < .55 ? (rnd() < .4 ? 'clicked' : 'read') : 'unread';
     o.push = !ch.push ? null : !can.push(p) ? 'none' : rnd() < .06 ? 'failed' : rnd() < .35 ? 'clicked' : 'sent';
-    o.mail = !ch.mail ? null : !can.mail(p) ? 'none' : rnd() < .03 ? 'failed' : (() => { const x = rnd(); return x < .15 ? 'clicked' : x < .45 ? 'opened' : 'delivered'; })();
+    o.mail = !ch.mail ? null : !getsMail(p, doc) ? (can.mail(p) ? null : 'none') : rnd() < .03 ? 'failed' : (() => { const x = rnd(); return x < .15 ? 'clicked' : x < .45 ? 'opened' : 'delivered'; })();
     if (o.mail === 'failed') o.mailWhy = rnd() < .5 ? 'כתובת לא קיימת' : 'תיבה מלאה – זמני';
     o.wa = !ch.wa ? null : !can.wa(p) ? 'none' : 'todo';
     return o;
@@ -885,6 +904,7 @@ document.addEventListener('click', async (e) => {
   if ((x = q('[data-var]'))) { e.preventDefault(); const el = $(x.dataset.target); if (el) insertAt(el, '{' + x.dataset.var + '}'); return; }
   if ((x = q('[data-clip]'))) { e.preventDefault(); const el = $(x.dataset.clip); if (el && await toClipboard(el.value)) toast('📋 הועתק – אפשר להדביק איפה שרוצים'); return; }
   if ((x = q('[data-copy]'))) { const [from, to] = x.dataset.copy.split('>'); const d = ctx().doc; putInto(to, d, contentOf(from, d)); refreshEdit(); toast('הועתק מ' + CH[from].short + ' – אפשר לתקן'); return; }
+  if ((x = q('[data-mailscope]')) && x.tagName !== 'INPUT') { const d = state.doc; d.mailScope = x.dataset.mailscope; if (d.mailScope === 'missing') { d.ch.mail = true; state.pv = 'mail'; } refreshEdit(); return; }
   if (q('[data-fillall]')) { const d = ctx().doc; CH_KEYS.filter((k) => d.ch[k]).forEach((k) => putInto(k, d, d.once)); refreshEdit(); toast('מולא בכל הערוצים – עברו ותקנו מה שצריך'); return; }
   if (q('[data-test]')) { const to = ($('mTestTo') || {}).value || ''; if (!/^\S+@\S+\.\S+$/.test(to)) { toast('כתבו כתובת מייל לבדיקה'); return; } toast('🧪 נשלח מייל בדיקה ל-' + to + ' (בדמו – לא באמת)'); return; }
   if (q('[data-draft]')) { state.draft = { at: now(), json: JSON.stringify(state.doc), aud: state.aud, picked: [...state.picked] }; toast('💾 הטיוטה נשמרה (בדמו – בזיכרון)'); renderSend(); renderBoxes(); return; }
@@ -908,7 +928,7 @@ document.addEventListener('click', async (e) => {
     const c = counts(), d = state.doc, lines = [];
     if (d.ch.app) lines.push(`${CH.app.t} – ל-${c.app} אנשים`);
     if (d.ch.push) lines.push(`${CH.push.t} – ל-${c.push} <b>(אי אפשר לבטל)</b>`);
-    if (d.ch.mail) lines.push(`${CH.mail.t} – ל-${c.mail} כתובות <b>(אי אפשר לבטל)</b>`);
+    if (d.ch.mail) lines.push(`${CH.mail.t} – ל-${c.mail} כתובות${mailMissingOnly(d) ? ' – רק מי שלא יקבל באפליקציה' : ''} <b>(אי אפשר לבטל)</b>`);
     if (d.ch.wa) lines.push(`${CH.wa.t} – ${c.wa} כפתורים, כל אחד אתה שולח בעצמך`);
     const names = c.r.slice(0, 4).map(label).join(', ') + (c.n > 4 ? ` ועוד ${c.n - 4}` : '');
     $('confirmBody').innerHTML = `<div style="font-size:14px;line-height:1.7">למי: <b>${esc(AUDS.find((a) => a.k === state.aud).t)}</b> – ${c.n}<br><span class="hint">${esc(names)}</span></div><ul>${lines.map((l) => '<li>' + l + '</li>').join('')}</ul>`;
@@ -928,6 +948,7 @@ document.addEventListener('change', (e) => {
     // פוש תמיד מוביל להודעה ב"הודעות" – אין פוש לבד (רמי, 13.10)
     if (d.ch === 'push' && t.checked && !ch.app) { ch.app = true; toast('סומנה גם "התראה באפליקציה" – הפוש מוביל אליה'); }
     if (d.ch === 'app' && !t.checked && ch.push) { ch.push = false; toast('גם הפוש בוטל – אין פוש בלי הודעה באפליקציה'); } if (state.view === 'tpl') { renderMain(); renderPv(); } else refreshEdit(); return; }
+  if (d.mailscope) { state.doc.mailScope = d.mailscope; refreshEdit(); return; }
   if (t.id === 'pvWhoSel') { state.who = +t.value; renderPv(); renderBoxes(); return; }
   if (t.id === 'mFont') { const el = $('mBody'); const body = el.value.replace(/^[ \t]*\{font:\s*[a-zA-Z ]+\}[ \t]*(\r?\n)*/, ''); setField(el, t.value === 'default' ? body : '{font:' + t.value + '}\n' + body, 0); return; }
   if (t.id === 'docStart') {
@@ -954,7 +975,7 @@ $('confirmNo').addEventListener('click', () => $('confirmBg').classList.remove('
 $('confirmGo').addEventListener('click', () => {
   $('confirmBg').classList.remove('open');
   const c = counts(), d = state.doc;
-  const h = { title: d.app.title || d.push.title || d.mail.subject || d.wa.text.slice(0, 40), who: audKind(), kind: isPick() ? 'pick' : 'mass', aud: AUDS.find((a) => a.k === state.aud).t + ' (' + c.n + ')', at: 'היום ' + now(), ch: { ...d.ch }, rows: simulate(c.r, d.ch) };
+  const h = { title: d.app.title || d.push.title || d.mail.subject || d.wa.text.slice(0, 40), who: audKind(), kind: isPick() ? 'pick' : 'mass', aud: AUDS.find((a) => a.k === state.aud).t + ' (' + c.n + ')', at: 'היום ' + now(), ch: { ...d.ch }, rows: simulate(c.r, d.ch, d) };
   state.hist.unshift(h); state.openStats = h.ch.wa ? 0 : -1; state.hf = { who: 'all', kind: 'all', ch: 'all' };
   state.doc = blank(); renderAud(); refreshEdit(); renderHist();
   $('result').innerHTML = `<div class="res"><b>✓ נשלח (בדמו – לא באמת).</b> ההודעה בראש "נשלח לאחרונה" – הסטטיסטיקה ב-📊.${h.ch.wa ? '<br>💬 הסטטיסטיקה נפתחה כי כפתורי הוואטסאפ מחכים לך בטבלה שם.' : ''}</div>`;
