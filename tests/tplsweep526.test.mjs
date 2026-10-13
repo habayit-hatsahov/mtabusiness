@@ -93,7 +93,7 @@ console.log('\nApp+Push דלוקים בכל התבניות');
 const on = (title, text) => ({ on: true, title, text, link: 'https://yellowzone.co.il/home.html' });
 const pon = (title, body) => ({ on: true, title, body });
 reset({
-  loginApp: on('ברוך הבא {name}', 'שלום {name}, אושרת!'), loginPush: pon('פוש לוגין', 'לא אמור לצאת'),
+  loginApp: on('ברוך הבא {name}', 'שלום {name}, אושרת!'), loginPush: pon('פוש לוגין', 'שורה'),
   resendApp: on('לא אמור', 'לצאת'), resendPush: pon('לא', 'לא'),
   combinedApp: on('{business} אושר', 'היי {name}, {business} באינדקס'), combinedPush: pon('העסק שלך אושר', 'לחצו לפרטים'),
   bizApp: on('{business} אושר', 'היי {name}'), bizPush: pon('העסק אושר', 'פרטים'),
@@ -101,8 +101,8 @@ reset({
 await sweep();
 const inbox = (mid, id) => db[`members/${mid}/inbox/tpl_${id}`];
 check('login: פריט אצל האוהד, personal, משתנים הוחלפו', inbox('fanA', 'login') && inbox('fanA', 'login').block === 'personal' && inbox('fanA', 'login').title === 'ברוך הבא איל' && inbox('fanA', 'login').link === '/home.html', inbox('fanA', 'login'));
-check('login: אין פוש (אסור בתבנית הזאת) גם עם טוקן', !fcm.some((x) => x.token === 'tokA') && row('login', 'fanA').push === null && inbox('fanA', 'login').pushed === false);
-check('resend: אין פריט ואין פוש (שכח קוד = לא מחובר)', !inbox('fanR', 'resend') && row('resend', 'fanR').app === null);
+check('login: פוש (§526ב) למי שיש לו טוקן, עם קישור לפריט', fcm.some((x) => x.token === 'tokA' && x.data && x.data.link === '/profile.html?tab=msgs&item=tpl_login') && row('login', 'fanA').push === 'sent' && inbox('fanA', 'login').pushed === true);
+check('resend: אין פריט ואין פוש (שכח קוד = לא מחובר) גם כשהוגדר', !inbox('fanR', 'resend') && row('resend', 'fanR').app === null);
 check('combined: פריט myBiz עם העסק', inbox('own1', 'combined') && inbox('own1', 'combined').block === 'myBiz' && inbox('own1', 'combined').bizId === 'biz1' && inbox('own1', 'combined').title === 'פלאפל הזהב אושר');
 check('combined: פוש לבעלים עם קישור לפריט', fcm.some((x) => x.token === 'tokO' && x.data && x.data.link === '/profile.html?tab=msgs&item=tpl_combined'), fcm);
 check('combined: שורה app=written push=sent', row('combined', 'own1').app === 'written' && row('combined', 'own1').push === 'sent');

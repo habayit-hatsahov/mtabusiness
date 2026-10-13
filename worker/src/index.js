@@ -1872,9 +1872,10 @@ function memberLoginFor(fields) {
 // 🔑 **מזהה השורה = מזהה מי שהמייל נשלח לכתובת שלו** (חבר ב-login/resend/combined, עסק ב-biz):
 //   ה-webhook מתאים לפי כתובת ומעדכן רק שורה קיימת (תג msg_tpl_<id>, ר' brevo-webhook.js §524).
 //   שליחה חוזרת לאותו אדם דורסת את השורה – "מה קרה בפעם האחרונה" – ומאפסת את נתוני המסירה הישנים.
-// מי יכול לקבל מה (כמו הדמו): שכחתי-קוד = לא מחובר → רק מייל; אוהד חדש עוד לא נכנס → אין לו פוש.
+// מי יכול לקבל מה: שכחתי-קוד = לא מחובר → רק מייל. §526ב – פוש פתוח גם ב-login (רמי, 14.10): אוהד חדש לרוב
+// עוד בלי טוקן (push=noToken), אבל שליחה חוזרת למי שכבר באפליקציה כן מגיעה – ושתי התבניות מתנהגות אותו דבר.
 const TPL_APP_OK = { login: true, resend: false, biz: true, combined: true };
-const TPL_PUSH_OK = { login: false, resend: false, biz: true, combined: true };
+const TPL_PUSH_OK = { login: true, resend: false, biz: true, combined: true };
 export function tplExtras(templates, id) {
   const a = templates[id + 'App'], p = templates[id + 'Push'];
   const A = TPL_APP_OK[id] && a && a.on === true && String(a.title || '').trim() && String(a.text || '').trim()
