@@ -18,7 +18,14 @@
   function go() {
     // בפרופיל עצמו — בלי טעינה מחדש: סוגרים את הגיליון ופותחים שיחה חדשה במקום.
     if (typeof window.yzOpenNewConversation === 'function') {
-      try { if (typeof window.closeContactSheet === 'function') window.closeContactSheet(); } catch (e) {}
+      // §515 — לא closeContactSheet(): היא **פותחת מחדש את התפריט הצדדי** (חזרה לתפריט שממנו
+      // הגיעו), והתפריט כיסה את השיחה החדשה — "לא פותח שיחה חדשה". סוגרים כאן את שניהם.
+      try {
+        var ov = document.getElementById('contactOverlay');
+        if (ov) ov.classList.remove('open');
+        if (typeof window.closeMenu === 'function') window.closeMenu();
+        document.body.style.overflow = '';
+      } catch (e) {}
       window.yzOpenNewConversation();
       return;
     }
