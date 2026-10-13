@@ -3,69 +3,118 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>דמו — שליחת הודעה</title>
-<!-- §504 — דמו: זרימה אחת לשליחת הודעה (רמי, 12.10: "אני אסמן מה אני רוצה שיקרה, לאן זה יגיע ולאיפה").
-     מחליף (אחרי אישור) את ארבעת המצבים של "שליחה עכשיו" במרכז ההודעות: שידור המוני / נמענים נבחרים /
-     פוש / עדכון לאזור. קובץ מבודד, לא מקושר, הכל בזיכרון — שום דבר לא נשלח. ר' PROJECT_CONTEXT §504. -->
+<title>דמו – שליחת הודעה</title>
+<!-- §504 – דמו: זרימה אחת לשליחת הודעה (רמי, 12.10: "אני אסמן מה אני רוצה שיקרה, לאן זה יגיע ולאיפה").
+     סבב 2 (13.10, הערות רמי): הסדר למי → איפה → מה; לכל ערוץ מסומן תיבה משלו עם מגבלות התווים שלו;
+     בלי סימון מראש; סינון קהל בתיבות סימון; משתנים במייל עם מקרא שמכניס בלחיצה; סרגל עיצוב,
+     מייל בדיקה, טיוטה ותבנית; מעקב מסירה ושליחה חוזרת לנכשלים; תצוגת "בכרטיס שלו".
+     מחליף (אחרי אישור) את ארבעת המצבים של "שליחה עכשיו" במרכז ההודעות. קובץ מבודד, לא מקושר,
+     הכל בזיכרון – שום דבר לא נשלח. התצוגה של המייל מרונדרת ב-mail-format.js האמיתי. ר' PROJECT_CONTEXT §504. -->
 <style>
   :root {
     --bg:#F5F6F8; --card:#fff; --border:#DDE2E8; --border-md:#E3E7EC; --text:#101828; --text-sm:#475467; --muted:#667085;
-    --accent:#0A2A66; --accent-bg:#EEF2FA; --yellow:#FFD400; --green:#16A34A; --orange:#B54708; --warn-bg:#FFFBEB;
+    --accent:#0A2A66; --accent-bg:#EEF2FA; --yellow:#FFD400; --green:#16A34A; --orange:#B54708; --red:#B42318; --warn-bg:#FFFBEB;
   }
   * { box-sizing:border-box; }
   body { margin:0; font-family:'Rubik',system-ui,-apple-system,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); }
   .demo-bar { background:#1c1c1c; color:#fff; padding:10px 16px; font-size:13px; line-height:1.6; }
   .demo-bar b { color:var(--yellow); }
-  .wrap { max-width:1180px; margin:0 auto; padding:20px 16px 60px; display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:20px; align-items:start; }
-  @media (max-width:980px) { .wrap { grid-template-columns:1fr; } }
+  .wrap { max-width:1200px; margin:0 auto; padding:20px 16px 60px; display:grid; grid-template-columns:minmax(0,1fr) 410px; gap:20px; align-items:start; }
+  @media (max-width:980px) { .wrap { grid-template-columns:1fr; } .side { position:static !important; } }
   h1 { font-size:22px; margin:0 0 4px; }
   .sub { color:var(--text-sm); font-size:13.5px; margin-bottom:16px; line-height:1.6; }
   .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:18px; margin-bottom:14px; }
-  .step { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .step { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
   .step-n { width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; font-weight:900; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
   .step-t { font-size:16px; font-weight:800; }
-  .step-h { font-size:12.5px; color:var(--muted); margin-inline-start:auto; }
+  .step-h { font-size:12.5px; color:var(--muted); }
   .chips { display:flex; flex-wrap:wrap; gap:8px; }
   .chip { border:1.5px solid var(--border-md); background:#fff; border-radius:12px; padding:9px 14px; font:inherit; font-size:14px; font-weight:700; color:var(--text); cursor:pointer; }
   .chip small { display:block; font-size:11.5px; font-weight:500; color:var(--muted); margin-top:1px; }
   .chip.on { border-color:var(--accent); background:var(--accent); color:#fff; }
   .chip.on small { color:rgba(255,255,255,.75); }
-  .picker { border:1px solid var(--border); border-radius:12px; padding:10px; margin-top:12px; }
+  /* סינון */
+  .filters { border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-top:12px; }
+  .fl-row { display:flex; gap:8px; align-items:flex-start; padding:6px 0; border-top:1px dashed var(--border-md); }
+  .fl-row:first-child { border-top:none; }
+  .fl-t { font-size:12.5px; font-weight:800; color:var(--text-sm); width:110px; flex-shrink:0; padding-top:5px; }
+  .fl-opts { display:flex; flex-wrap:wrap; gap:6px; }
+  .fl-opt { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border-md); border-radius:9px; padding:4px 9px; font-size:12.5px; cursor:pointer; background:#fff; user-select:none; }
+  .fl-opt.on { border-color:var(--accent); background:var(--accent-bg); font-weight:700; }
+  .fl-opt input { margin:0; accent-color:var(--accent); }
+  .fl-opt .c { color:var(--muted); font-size:11.5px; }
+  .fl-foot { display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:6px; }
+  .picker { border:1px solid var(--border); border-radius:12px; padding:10px; margin-top:10px; }
   .picker input[type=text] { width:100%; font:inherit; font-size:14px; padding:9px 11px; border:1px solid var(--border-md); border-radius:10px; }
-  .pick-list { max-height:190px; overflow:auto; margin-top:8px; }
+  .pick-list { max-height:230px; overflow:auto; margin-top:8px; }
   .pick-row { display:flex; gap:8px; align-items:center; padding:5px 2px; font-size:13.5px; cursor:pointer; }
-  .pick-row span.m { color:var(--muted); font-size:12px; }
-  .pick-sum { font-size:12.5px; margin-top:8px; }
+  .pick-row .m { color:var(--muted); font-size:12px; }
+  .pick-row .x { color:var(--orange); font-size:11.5px; }
+  .pick-sum { font-size:13px; margin-top:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .linkbtn { background:none; border:none; color:var(--accent); font:inherit; font-size:12.5px; font-weight:700; cursor:pointer; text-decoration:underline; padding:0; }
-  label.f { display:block; font-size:13px; font-weight:800; margin:12px 0 5px; }
-  input.t, textarea.t { width:100%; font:inherit; font-size:14.5px; padding:10px 12px; border:1px solid var(--border-md); border-radius:10px; background:#fff; color:var(--text); }
-  textarea.t { min-height:120px; resize:vertical; line-height:1.55; }
-  .hint { font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5; }
+  /* ערוצים */
   .chan { display:flex; gap:12px; align-items:flex-start; border:1.5px solid var(--border-md); border-radius:14px; padding:12px 14px; margin-bottom:8px; cursor:pointer; background:#fff; }
   .chan.on { border-color:var(--accent); background:var(--accent-bg); }
-  .chan.off-dis { opacity:.5; cursor:not-allowed; }
   .chan input { width:20px; height:20px; margin-top:2px; accent-color:var(--accent); flex-shrink:0; }
   .chan-t { font-size:15px; font-weight:800; }
   .chan-d { font-size:12.5px; color:var(--text-sm); margin-top:2px; line-height:1.5; }
-  .chan-n { margin-inline-start:auto; text-align:left; font-size:12.5px; color:var(--text-sm); white-space:nowrap; }
+  .chan-n { margin-inline-start:auto; text-align:left; font-size:12px; color:var(--text-sm); white-space:nowrap; }
   .chan-n b { display:block; font-size:18px; color:var(--text); }
   .note { background:var(--warn-bg); border:1px solid #FDE68A; border-radius:12px; padding:10px 12px; font-size:12.5px; line-height:1.6; margin-top:8px; }
   .note.info { background:var(--accent-bg); border-color:#cdd8f2; }
+  /* תיבות התוכן */
+  .box { border:1.5px solid var(--accent); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .box-h { display:flex; align-items:center; gap:8px; font-size:15px; font-weight:900; margin-bottom:2px; flex-wrap:wrap; }
+  .box-h .copy { margin-inline-start:auto; }
+  .box-empty { text-align:center; color:var(--muted); font-size:13px; padding:20px 10px; border:1.5px dashed var(--border-md); border-radius:14px; }
+  label.f { display:flex; align-items:baseline; gap:8px; font-size:13px; font-weight:800; margin:12px 0 5px; }
+  label.f .cnt { margin-inline-start:auto; font-size:11.5px; font-weight:600; color:var(--muted); }
+  label.f .cnt.over { color:var(--orange); }
+  input.t, textarea.t, select.t { width:100%; font:inherit; font-size:14.5px; padding:10px 12px; border:1px solid var(--border-md); border-radius:10px; background:#fff; color:var(--text); }
+  textarea.t { min-height:110px; resize:vertical; line-height:1.55; }
+  textarea.t.mail { min-height:200px; border-top-left-radius:0; border-top-right-radius:0; }
+  .hint { font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5; }
+  .hint code, .vars code { direction:ltr; unicode-bidi:isolate; background:#F2F4F7; border-radius:5px; padding:0 4px; font-size:12px; }
+  .row2 { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .row2 > select.t { width:auto; flex:1; min-width:200px; }
+  /* סרגל העיצוב – כמו במרכז הניהול */
+  .fmt { display:flex; flex-wrap:wrap; gap:4px; align-items:center; border:1px solid var(--border-md); border-bottom:none; border-radius:10px 10px 0 0; padding:6px; background:#FAFBFC; }
+  .fmt button { border:1px solid var(--border-md); background:#fff; border-radius:7px; padding:4px 8px; font:inherit; font-size:12px; cursor:pointer; }
+  .fmt .sep { width:1px; height:20px; background:var(--border-md); margin:0 3px; }
+  .fmt select { font:inherit; font-size:12px; padding:3px 6px; border:1px solid var(--border-md); border-radius:7px; }
+  /* פרטים אישיים – שורת כפתורים צמודה לשדה (במקום מקרא) */
+  .vstrip { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 0 6px; }
+  .vs-l { font-size:12px; font-weight:800; color:var(--text-sm); }
+  .vbtn { display:inline-flex; flex-direction:column; align-items:flex-start; border:1.5px solid var(--accent); background:var(--accent-bg); color:var(--accent); border-radius:10px; padding:4px 10px; font:inherit; font-size:13px; font-weight:800; cursor:pointer; line-height:1.25; }
+  .vbtn:hover { background:var(--accent); color:#fff; } .vbtn:hover .vx { color:rgba(255,255,255,.8); }
+  .vx { font-size:10.5px; font-weight:500; color:var(--muted); max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:auto; }
+  /* וואטסאפ */
+  .wa-scr { background:#E5DDD5; border:8px solid #1c1c1c; border-radius:28px; padding:14px 12px 40px; min-height:240px; }
+  .wa-top { background:#075E54; color:#fff; margin:-14px -12px 12px; padding:10px 12px; border-radius:20px 20px 0 0; font-size:13px; font-weight:700; }
+  .wa-b { background:#DCF8C6; border-radius:10px; padding:8px 10px; font-size:13.5px; line-height:1.5; white-space:pre-line; word-break:break-word; max-width:88%; margin-inline-start:auto; box-shadow:0 1px 1px rgba(0,0,0,.1); }
+  .wa-list { margin-top:8px; max-height:260px; overflow:auto; border:1px solid var(--border); border-radius:10px; }
+  .wa-row { display:flex; align-items:center; gap:8px; padding:7px 10px; border-top:1px solid var(--border); font-size:13px; }
+  .wa-row:first-child { border-top:none; } .wa-row.done { color:var(--muted); }
+  .wa-row .btn { margin-inline-start:auto; background:#25D366; color:#fff; padding:6px 12px; font-size:12.5px; }
+  .wa-row.done .btn { background:#E4E7EC; color:var(--text-sm); }
   .send-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
   .btn { border:none; border-radius:12px; padding:13px 22px; font:inherit; font-size:15px; font-weight:900; cursor:pointer; background:var(--yellow); color:#0A2A66; }
   .btn:disabled { opacity:.45; cursor:not-allowed; }
   .btn.ghost { background:#fff; border:1.5px solid var(--border-md); color:var(--text); }
+  .btn.sm { padding:8px 12px; font-size:13px; border-radius:10px; }
   .why { font-size:12.5px; color:var(--orange); }
   /* תצוגה מקדימה */
   .side { position:sticky; top:16px; }
-  .pv-tabs { display:flex; gap:6px; background:#ECEEF2; border-radius:12px; padding:4px; margin-bottom:12px; }
-  .pv-tab { flex:1; border:none; background:none; border-radius:9px; padding:8px 4px; font:inherit; font-size:13px; font-weight:700; color:var(--text-sm); cursor:pointer; }
+  .pv-tabs { display:flex; gap:4px; background:#ECEEF2; border-radius:12px; padding:4px; margin-bottom:10px; flex-wrap:wrap; }
+  .pv-tab { flex:1; border:none; background:none; border-radius:9px; padding:8px 4px; font:inherit; font-size:12.5px; font-weight:700; color:var(--text-sm); cursor:pointer; white-space:nowrap; }
   .pv-tab.on { background:#fff; color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,.06); }
   .pv-tab:disabled { opacity:.4; cursor:not-allowed; }
+  .pv-who { font-size:12.5px; margin-bottom:10px; display:flex; gap:6px; align-items:center; }
+  .pv-who select { font:inherit; font-size:12.5px; padding:4px 6px; border:1px solid var(--border-md); border-radius:8px; flex:1; min-width:0; }
   .pv-empty { text-align:center; color:var(--muted); font-size:13px; padding:30px 10px; }
   .pv-cap { font-size:12px; color:var(--muted); margin-bottom:8px; line-height:1.5; }
-  /* טלפון — אפליקציה */
-  .phone { background:#F6F6F2; border:8px solid #1c1c1c; border-radius:28px; padding:14px 12px; min-height:300px; }
+  .pv-lbl { font-size:11.5px; font-weight:800; color:var(--muted); margin:12px 0 5px; }
+  .phone { background:#F6F6F2; border:8px solid #1c1c1c; border-radius:28px; padding:14px 12px; min-height:260px; }
   .ph-tabs { display:flex; gap:5px; background:#F2F2EC; border-radius:12px; padding:3px; margin-bottom:10px; font-size:12px; font-weight:700; color:#6B7A9B; }
   .ph-tabs span { flex:1; text-align:center; padding:7px 2px; border-radius:9px; }
   .ph-tabs span.on { background:#fff; color:#0A2A66; }
@@ -77,80 +126,87 @@
   .au-sub { font-size:11.5px; color:#6B7A9B; margin-top:1px; }
   .au-item { padding:12px 13px; color:#0A2A66; }
   .au-new { font-size:10.5px; font-weight:900; background:#FFD400; border-radius:6px; padding:2px 7px; }
-  .au-it { font-size:14.5px; font-weight:800; margin-top:6px; line-height:1.4; }
+  .au-it { font-size:14.5px; font-weight:800; margin-top:6px; line-height:1.4; word-break:break-word; }
   .au-tx { font-size:13px; color:#6B7A9B; margin-top:3px; line-height:1.55; white-space:pre-line; word-break:break-word; }
   .au-link { display:inline-block; margin-top:8px; font-size:12px; font-weight:800; border:1px solid #E4E4DC; border-radius:9px; padding:5px 9px; background:#fff; }
-  /* טלפון — התראה */
-  .lock { background:linear-gradient(160deg,#2b3a5c,#141b2d); border-radius:28px; border:8px solid #1c1c1c; padding:40px 12px 120px; }
-  .lock-time { color:#fff; text-align:center; font-size:40px; font-weight:300; margin-bottom:22px; letter-spacing:1px; }
-  .notif { background:rgba(255,255,255,.92); border-radius:16px; padding:11px 12px; display:flex; gap:10px; }
+  .lock { background:linear-gradient(160deg,#2b3a5c,#141b2d); border-radius:28px; border:8px solid #1c1c1c; padding:34px 12px 40px; }
+  .lock-time { color:#fff; text-align:center; font-size:40px; font-weight:300; margin-bottom:18px; letter-spacing:1px; }
+  .lock-lbl { color:rgba(255,255,255,.6); font-size:11px; margin:10px 4px 5px; }
+  .notif { background:rgba(255,255,255,.93); border-radius:16px; padding:11px 12px; display:flex; gap:10px; }
   .notif-ic { width:30px; height:30px; border-radius:50%; background:#0A2A66; color:#FFD400; font-weight:900; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .notif > div:last-child { min-width:0; flex:1; }
   .notif-app { font-size:11px; color:#555; }
-  .notif-t { font-size:13.5px; font-weight:800; color:#111; margin-top:1px; }
-  .notif-b { font-size:13px; color:#333; margin-top:1px; line-height:1.4; }
-  /* מייל */
+  .notif-t { font-size:13.5px; font-weight:800; color:#111; margin-top:1px; word-break:break-word; }
+  .notif-b { font-size:13px; color:#333; margin-top:1px; line-height:1.4; word-break:break-word; }
+  .notif.col .notif-t, .notif.col .notif-b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .inbox-row { background:#fff; border:1px solid var(--border); border-radius:12px; padding:9px 11px; font-size:13px; margin-bottom:10px; }
+  .inbox-row .s { font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .inbox-row .p { color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .mail { background:#fff; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
-  .mail-h { padding:10px 12px; border-bottom:1px solid var(--border); font-size:12.5px; color:var(--text-sm); line-height:1.6; }
+  .mail-h { padding:10px 12px; border-bottom:1px solid var(--border); font-size:12.5px; color:var(--text-sm); line-height:1.6; word-break:break-word; }
   .mail-h b { color:var(--text); }
-  .mail-brand { background:#FFD400; text-align:center; padding:12px; font-weight:900; color:#0A2A66; letter-spacing:.5px; }
-  .mail-b { padding:16px 14px; font-size:14px; line-height:1.7; color:#0A2A66; white-space:pre-line; word-break:break-word; }
-  .mail-btn { display:inline-block; background:#FFD400; color:#0A2A66; font-weight:900; border-radius:20px; padding:9px 18px; margin-top:10px; }
+  .mail-doc { max-height:520px; overflow:auto; }
+  .act { border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#fff; }
+  .act-h { background:#F9FAFB; padding:9px 12px; font-size:12.5px; font-weight:800; border-bottom:1px solid var(--border); }
+  .act-row { padding:9px 12px; border-top:1px solid var(--border); font-size:12.5px; line-height:1.55; }
+  .act-row:first-of-type { border-top:none; }
+  .act-row .d { color:var(--muted); font-size:11.5px; }
   /* סיכום + היסטוריה */
   .res { background:#ECFDF3; border:1px solid #ABEFC6; border-radius:14px; padding:14px; font-size:13.5px; line-height:1.8; }
-  .hist-row { border-top:1px solid var(--border); padding:10px 0; font-size:13px; line-height:1.6; }
+  .hist-row { border-top:1px solid var(--border); padding:11px 0; font-size:13px; line-height:1.6; }
   .hist-row:first-child { border-top:none; }
-  .tag { display:inline-block; font-size:11px; font-weight:800; border-radius:6px; padding:1px 7px; background:var(--accent-bg); color:var(--accent); margin-inline-start:4px; }
+  .tag { display:inline-block; font-size:11.5px; font-weight:800; border-radius:6px; padding:1px 7px; background:var(--accent-bg); color:var(--accent); margin-inline-end:4px; margin-top:3px; }
+  .deliv { margin-top:6px; background:#F9FAFB; border:1px solid var(--border); border-radius:10px; padding:8px 10px; font-size:12.5px; }
+  .deliv .ok { color:var(--green); font-weight:800; } .deliv .bad { color:var(--red); font-weight:800; }
+  .fail-list { margin:6px 0 0; padding-inline-start:18px; color:var(--text-sm); }
   .modal-bg { position:fixed; inset:0; background:rgba(16,24,40,.45); display:none; align-items:center; justify-content:center; padding:16px; z-index:50; }
   .modal-bg.open { display:flex; }
-  .modal { background:#fff; border-radius:16px; max-width:460px; width:100%; padding:20px; }
+  .modal { background:#fff; border-radius:16px; max-width:480px; width:100%; padding:20px; max-height:90vh; overflow:auto; }
   .modal h3 { margin:0 0 10px; font-size:18px; }
   .modal ul { margin:8px 0 14px; padding-inline-start:20px; font-size:14px; line-height:1.8; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#101828; color:#fff; padding:10px 16px; border-radius:12px; font-size:13.5px; z-index:60; display:none; max-width:90vw; }
+  .toast.show { display:block; }
 </style>
 </head>
 <body>
-<div class="demo-bar"><b>דמו</b> – שום דבר לא נשלח. המספרים לדוגמה (בערך כמו היום). מחליף, אחרי אישור, את ארבעת המצבים של "שליחה עכשיו" במרכז ההודעות.</div>
+<div class="demo-bar"><b>דמו</b> – שום דבר לא נשלח. האנשים והמספרים מומצאים (בערך בגודל של היום). מחליף, אחרי אישור, את ארבעת המצבים של "שליחה עכשיו" במרכז ההודעות.</div>
 
 <div class="wrap">
   <main>
     <h1>שליחת הודעה</h1>
-    <div class="sub">כותבים פעם אחת, בוחרים למי, ומסמנים איפה זה יגיע. התצוגה מימין מראה בדיוק מה כל אחד יקבל.<br/>
+    <div class="sub">בוחרים למי, מסמנים איפה זה יגיע, ולכל מקום שמסמנים נפתחת תיבה משלו. התצוגה מימין מראה בדיוק מה כל אחד יקבל.<br/>
       שיחה אישית עם אדם אחד – ב"תקלות ופניות" ← "שיחות". המיילים האוטומטיים (אישור, שכחתי קוד) – ב"התבניות הקבועות".</div>
 
     <div class="card">
       <div class="step"><span class="step-n">1</span><span class="step-t">למי?</span></div>
-      <div class="chips" id="audChips"></div>
+      <div class="chips" id="grpChips"></div>
+      <div id="filtersBox"></div>
       <div id="pickerBox"></div>
     </div>
 
     <div class="card">
-      <div class="step"><span class="step-n">2</span><span class="step-t">מה כותבים?</span></div>
-      <label class="f" for="fTitle">כותרת</label>
-      <input class="t" id="fTitle" maxlength="80" placeholder="למשל: 5 עסקים חדשים הצטרפו השבוע" />
-      <div class="hint">מופיעה כנושא המייל, ככותרת ההתראה בטלפון וככותרת באפליקציה.</div>
-      <label class="f" for="fText">התוכן</label>
-      <textarea class="t" id="fText" maxlength="1500" placeholder="כל הפרטים. ירידות שורה נשמרות."></textarea>
-      <div class="hint" id="textHint"></div>
-      <label class="f" for="fLink">קישור "לפרטים" (לא חובה)</label>
-      <input class="t" id="fLink" dir="ltr" placeholder="https://yellowzone.co.il/home.html" />
-      <div class="hint">דף של yellowzone.co.il – נפתח בתוך האפליקציה. במייל – כפתור.</div>
-    </div>
-
-    <div class="card">
-      <div class="step"><span class="step-n">3</span><span class="step-t">איפה זה יגיע?</span><span class="step-h" id="defHint"></span></div>
+      <div class="step"><span class="step-n">2</span><span class="step-t">איפה זה יגיע?</span><span class="step-h">אפשר לסמן כמה – לכל אחד תיפתח תיבה למטה</span></div>
       <div id="chans"></div>
       <div id="chanNotes"></div>
     </div>
 
     <div class="card">
+      <div class="step"><span class="step-n">3</span><span class="step-t">מה כותבים?</span></div>
+      <div id="boxes"></div>
+    </div>
+
+    <div class="card">
       <div class="send-row">
         <button class="btn" id="sendBtn">שליחה</button>
+        <button class="btn ghost sm" id="draftBtn">💾 שמירת טיוטה</button>
         <span class="why" id="whyNot"></span>
       </div>
+      <div class="hint" id="draftHint"></div>
       <div id="result" style="margin-top:12px"></div>
     </div>
 
     <div class="card">
-      <div class="step"><span class="step-t">נשלח לאחרונה</span></div>
+      <div class="step"><span class="step-t">נשלח לאחרונה</span><span class="step-h">כל הודעה פעם אחת, עם מה שיצא בכל ערוץ</span></div>
       <div id="hist"></div>
     </div>
   </main>
@@ -159,6 +215,7 @@
     <div class="card">
       <div class="step"><span class="step-t">ככה זה ייראה</span></div>
       <div class="pv-tabs" id="pvTabs"></div>
+      <div class="pv-who" id="pvWho"></div>
       <div id="pv"></div>
     </div>
   </aside>
@@ -171,195 +228,521 @@
     <div class="send-row"><button class="btn" id="confirmGo">כן, לשלוח</button><button class="btn ghost" id="confirmNo">ביטול</button></div>
   </div>
 </div>
+<div class="toast" id="toast"></div>
 
-<script>
-// ── נתונים לדוגמה (בערך כמו המצב היום) ──────────────────────────────────────────────────
-const FANS_APPROVED = 242, FANS_WITH_PUSH = 14, FANS_WITH_EMAIL = 238;
-const BIZ = [
-  ['b1', 'שווארמה רמי', 'אוכל ומסעדות', true, true], ['b2', 'ספורט אנד פול', 'ספורט ופנאי', false, true], ['b3', 'XRAY TLV', 'אופנה, יופי ובריאות', true, true],
-  ['b4', 'גולדה לאירועים', 'אירועים ומתנות', false, true], ['b5', 'מוסך הצפון', 'רכב ולוגיסטיקה', false, false], ['b6', 'טורנדו אפ איקס', 'דיגיטל וטכנולוגיה', true, true],
-  ['b7', 'פלאפל הזהב', 'אוכל ומסעדות', false, true], ['b8', 'סטודיו כושר 12', 'ספורט ופנאי', true, true],
-].map(([id, name, cat, push, email]) => ({ id, name, cat, push, email }));
-const BIZ_TOTAL = 65, BIZ_WITH_PUSH = 9, BIZ_WITH_EMAIL = 63;
-const FAN_LIST = [['f1', 'איל מנדל', '#00412'], ['f2', 'נועה כהן', '#00187'], ['f3', 'אבירן יהב', '#00058'], ['f4', 'דני לוי', '#00233'], ['f5', 'מיכל אברהם', '#00301']]
-  .map(([id, name, num], i) => ({ id, name, num, push: i % 2 === 0, email: true }));
+<script type="module">
+import { MAIL_FONTS, mailFontKey, renderMailHtml, footerHtml } from './mail-format.js';
 
-// ── הקהלים ──
-// app/push/mail = ברירת המחדל של הערוצים כשבוחרים את הקהל (רמי מתקן אם צריך).
-const AUDS = [
-  { k: 'fans', t: 'כל האוהדים', s: FANS_APPROVED + ' חברים מאושרים', def: { app: true, push: false, mail: false } },
-  { k: 'biz', t: 'כל בעלי העסקים', s: BIZ_TOTAL + ' עסקים מאושרים', def: { app: true, push: true, mail: false } },
-  { k: 'all', t: 'כולם', s: 'אוהדים + בעלי עסקים', def: { app: true, push: false, mail: false } },
-  { k: 'bizPick', t: 'עסקים מסוימים', s: 'בוחרים מהרשימה', def: { app: true, push: true, mail: false } },
-  { k: 'fanPick', t: 'אוהדים מסוימים', s: 'בוחרים מהרשימה', def: { app: true, push: true, mail: false } },
+// ── מגבלות התווים (מקור אחד – מוצג ליד כל שדה) ──────────────────────────────────────────
+// max = מה שהשדה מקבל (בוורקר: עדכון לאזור 80/1500 – index.js; פוש – כמו בטופס הפוש של היום 60/160).
+// seen = כמה רואים בפועל לפני שזה נחתך על המסך.
+const LIM = {
+  appTitle: { max: 80, seen: 0 }, appText: { max: 1500, seen: 0 },
+  pushTitle: { max: 60, seen: 40, seenTxt: 'בהתראה סגורה רואים ~40' },
+  pushBody: { max: 160, seen: 90, seenTxt: 'בהתראה סגורה רואים ~90 (שורה אחת), בפתוחה – הכל' },
+  mailSubject: { max: 100, seen: 50, seenTxt: 'בטלפון רואים ~50 בתיבת הדואר' },
+};
+
+// ── נתונים מומצאים (מחולל קבוע – אותם אנשים בכל טעינה) ─────────────────────────────────
+let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const FIRST = ['איל', 'נועה', 'אבירן', 'דני', 'מיכל', 'יוסי', 'שירן', 'עומר', 'טל', 'רוני', 'גיל', 'הדס', 'אורי', 'ליאור', 'מאיה', 'עידו', 'שי', 'קרן', 'אסף', 'נטע'];
+const LAST = ['מנדל', 'כהן', 'יהב', 'לוי', 'אברהם', 'פרץ', 'ביטון', 'מזרחי', 'פרידמן', 'שפירא', 'אזולאי', 'דהן', 'גולן', 'רוזן'];
+const CATS = ['אוכל ומסעדות', 'ספורט ופנאי', 'אופנה, יופי ובריאות', 'אירועים ומתנות', 'רכב ולוגיסטיקה', 'דיגיטל וטכנולוגיה', 'בית ושיפוצים'];
+const BIZN = ['שווארמה', 'סטודיו', 'מוסך', 'פלאפל', 'קפה', 'ספורט', 'מספרה', 'פיצה', 'גלריה', 'מאפייה', 'דיגיטל', 'צילום'];
+const BIZS = ['הזהב', 'הצפון', 'כחול-צהוב', 'TLV', '12', 'בלומפילד', 'יד אליהו', 'המכבי', 'אפ', 'הכיכר'];
+const pick = (a) => a[Math.floor(rnd() * a.length)];
+const FANS = Array.from({ length: 280 }, (_, i) => {
+  const st = i < 242 ? 'approved' : i < 270 ? 'pending' : 'rejected';
+  const first = pick(FIRST);
+  return { id: 'f' + i, kind: 'fan', first, name: first + ' ' + pick(LAST), num: '#' + String(100 + i * 3).padStart(5, '0'), status: st,
+    sub: rnd() < .55, owner: i < 60, entered: st === 'approved' ? rnd() < .8 : false,
+    push: st === 'approved' && rnd() < .07, email: rnd() < .985, phone: rnd() < .97, days: Math.floor(rnd() * 160) };
+});
+FANS.find((f) => f.id === 'f0').push = true;
+const BIZ = Array.from({ length: 80 }, (_, i) => {
+  const st = i < 65 ? 'approved' : i < 76 ? 'pending' : 'rejected';
+  const linked = i < 60 || (i >= 65 && i < 72);
+  const owner = linked ? FANS[i < 60 ? i : i + 130] : null;
+  if (owner) owner.owner = true;
+  const first = owner ? owner.first : pick(FIRST);
+  return { id: 'b' + i, kind: 'biz', name: pick(BIZN) + ' ' + pick(BIZS), cat: pick(CATS), type: pick(['physical', 'online', 'pro']),
+    ownerFirst: first, ownerName: owner ? owner.name : first + ' ' + pick(LAST), ownerFanId: owner ? owner.id : null,
+    status: st, linked, reviewed: rnd() < .7, health: rnd() < .12 ? 'broken' : rnd() < .5 ? 'full' : 'part',
+    push: linked && st === 'approved' && owner && owner.push, email: rnd() < .97, phone: rnd() < .95, days: Math.floor(rnd() * 160) };
+});
+// "כולם" = כל החברים (בעלי עסקים מקושרים הם חברים – מקבלים פעם אחת) + בעלי עסקים בלי חשבון חבר (מייל בלבד)
+const ALL = FANS.concat(BIZ.filter((b) => !b.linked).map((b) => ({ ...b, kind: 'bizNoAcc' })));
+
+// ── מי יכול לקבל באיזה ערוץ ──
+const canApp = (p) => p.kind === 'fan' ? p.status === 'approved' : p.kind === 'biz' ? p.status === 'approved' && p.linked : false;
+const canPush = (p) => canApp(p) && !!p.push;
+const canMail = (p) => !!p.email;
+const canWa = (p) => !!p.phone;
+
+// ── הסינונים (כולם בתיבות סימון; בתוך קבוצה = "או", בין קבוצות = "וגם"; single = בחירה אחת) ──
+const yesNo = (k) => (p, v) => !!p[k] === (v === 'yes');
+const F_STATUS = { k: 'status', t: 'סטטוס', opts: [['approved', 'מאושרים'], ['pending', 'ממתינים לאישור'], ['rejected', 'נדחו']], test: (p, v) => p.status === v };
+const F_PUSH = { k: 'push', t: 'התראות', opts: [['yes', 'אישרו התראות'], ['no', 'לא אישרו']], test: yesNo('push') };
+const F_DAYS = { k: 'days', t: 'נרשמו', single: true, opts: [['7', 'ב-7 הימים האחרונים'], ['30', 'ב-30 הימים'], ['90', 'ב-90 הימים']], test: (p, v) => p.days <= +v };
+const FILTERS = {
+  fans: [F_STATUS,
+    { k: 'sub', t: 'מנוי', opts: [['yes', 'מנוי פעיל'], ['no', 'לא מנוי']], test: yesNo('sub') },
+    { k: 'owner', t: 'בעלות על עסק', opts: [['yes', 'בעלי עסק'], ['no', 'לא בעלי עסק']], test: yesNo('owner') },
+    { k: 'entered', t: 'כניסה לאפליקציה', opts: [['yes', 'נכנסו'], ['no', 'מעולם לא נכנסו']], test: yesNo('entered') },
+    F_PUSH, F_DAYS],
+  biz: [F_STATUS,
+    { k: 'cat', t: 'קטגוריה', opts: CATS.map((c) => [c, c]), test: (p, v) => p.cat === v },
+    { k: 'type', t: 'סוג העסק', opts: [['physical', '🏪 חנות פיזית'], ['online', '🌐 אונליין'], ['pro', '🔧 בעל מקצוע']], test: (p, v) => p.type === v },
+    { k: 'reviewed', t: 'סקירה', opts: [['yes', 'נסקר במלואו'], ['no', 'לא נסקר במלואו']], test: yesNo('reviewed') },
+    { k: 'health', t: 'הכרטיס', opts: [['full', 'מלא (100%)'], ['part', 'לא שלם'], ['broken', '🔗 קישור שבור']], test: (p, v) => p.health === v },
+    { k: 'linked', t: 'חשבון בעלים', opts: [['yes', 'מקושר לחבר'], ['no', 'בלי חשבון (מייל בלבד)']], test: yesNo('linked') },
+    F_PUSH, F_DAYS],
+  all: [F_STATUS,
+    { k: 'role', t: 'מי', opts: [['fan', 'אוהדים שאינם בעלי עסק'], ['owner', 'בעלי עסקים']], test: (p, v) => v === 'owner' ? (p.kind !== 'fan' || p.owner) : (p.kind === 'fan' && !p.owner) },
+    F_PUSH, F_DAYS],
+};
+const GROUPS = [
+  { k: 'fans', t: 'אוהדים', s: FANS.length + ' חברים רשומים', list: FANS },
+  { k: 'biz', t: 'בעלי עסקים', s: BIZ.length + ' עסקים רשומים', list: BIZ },
+  { k: 'all', t: 'כולם', s: 'אוהדים + בעלי עסקים, כל אחד פעם אחת', list: ALL },
 ];
-const state = { aud: 'biz', picked: new Set(), q: '', ch: { ...AUDS[1].def }, touched: false, pv: 'app', hist: [], result: null };
+
+// ── משתנים (מייל בלבד) – מה שהוורקר מחליף היום בשידור (§61/§499); "all" – רק מה שיש לכולם ──
+// [מפתח, הכיתוב על הכפתור, מה זה, הערך אצל נמען, נכנס גם לנושא?]
+// רמי (13.10): "המקרא לא נוח" – במקום טבלה של {קודים}, כפתורים בעברית צמודים לשדה, שמכניסים במקום הסמן.
+const VARS = {
+  fans: [['name', '👤 שם', 'השם הפרטי של האוהד', (p) => p.first, true], ['code', '🔑 קוד כניסה', 'קוד הכניסה האישי שלו', () => '482915'],
+    ['link', '🔗 קישור לאפליקציה', 'קישור להורדת האפליקציה', () => 'https://yellowzone.co.il/download?src=broadcast']],
+  biz: [['name', '👤 שם', 'השם הפרטי של בעל העסק', (p) => p.ownerFirst, true], ['business', '🏪 שם העסק', 'שם העסק', (p) => p.name, true],
+    ['link', '🔗 קישור לניהול העסק', 'הקישור האישי שלו לניהול העסק', () => 'https://yellowzone.co.il/business-dashboard.html?token=…']],
+  all: [['name', '👤 שם', 'השם הפרטי (של האוהד או של בעל העסק)', (p) => p.first || p.ownerFirst, true]],
+};
+// שורת הכפתורים מעל שדה. inSubject = רק מה שמתאים לשורת נושא (בלי קוד/קישור).
+function varStrip(target, inSubject, mail) {
+  const p = sample();
+  const vs = (VARS[state.grp] || []).filter((v) => !inSubject || v[4]);
+  const btn = ([k, lbl, d, fn]) => {
+    const ex = p ? fn(p) : '';
+    const tip = d + (ex ? ' – אצל ' + (p.first || p.ownerFirst) + ': ' + ex : '') + (mail && (k === 'code' || k === 'link') ? '. בשורה נפרדת במייל – ' + (k === 'code' ? 'תיבת קוד צהובה' : 'כפתור צהוב') : '');
+    return `<button type="button" class="vbtn" data-var="${k}" data-target="${target}" title="${esc(tip)}">${lbl}<span class="vx">${esc(ex.length > 22 ? ex.slice(0, 20) + '…' : ex)}</span></button>`;
+  };
+  return `<div class="vstrip"><span class="vs-l">הוספת פרט אישי:</span>${vs.map(btn).join('')}</div>`;
+}
+const VAR_HINT = 'לחיצה מכניסה במקום הסמן. בטקסט זה נראה כמו <code>{name}</code>, ואצל כל נמען מתחלף בפרטים שלו – רואים בתצוגה מימין.';
+const TEMPLATES = {
+  fans: { t: 'הודעה לאוהד', subject: 'ברוך הבא ל-Yellow Zone', body: 'שלום {name},\n\nשמחים לבשר שהצטרפותך ל-Yellow Zone אושרה!\n\nלפתיחת האפליקציה:\n\n{link}\n\nבמסך הכניסה לוחצים על Google או על Apple – לפי החשבון שאיתו נרשמת. אפשר גם עם מספר הטלפון וקוד הכניסה:\n\n{code}\n\nבאהבה,\nצוות Yellow Zone' },
+  biz: { t: 'הודעה לבעל עסק', subject: 'העסק שלך אושר לאינדקס Yellow Zone', body: 'שלום {name},\n\nשמחים לבשר שהעסק "{business}" אושר לאינדקס הבלעדי שלנו!\n\n{link}\n\nבאהבה,\nצוות Yellow Zone' },
+};
+
+// ── מצב ──
+const freshFilters = () => ({ status: new Set(['approved']) });
+const state = {
+  grp: 'biz', f: freshFilters(), excl: new Set(), q: '',
+  ch: { app: false, push: false, mail: false, wa: false },
+  app: { title: '', text: '', link: '' }, push: { title: '', body: '', link: '' }, mail: { subject: '', body: '' }, wa: { text: '' },
+  pv: 'app', who: 0, hist: [], draft: null, testTo: '',
+};
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const isPick = () => state.aud === 'bizPick' || state.aud === 'fanPick';
-const pickList = () => state.aud === 'fanPick' ? FAN_LIST : BIZ;
-const picked = () => pickList().filter((x) => state.picked.has(x.id));
+const grp = () => GROUPS.find((g) => g.k === state.grp);
+const toast = (t) => { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 2600); };
+const personLabel = (p) => p.kind === 'fan' ? p.name : p.ownerName + ' – ' + p.name;
+const varsFor = (p) => Object.fromEntries((VARS[state.grp] || []).map(([k, , , fn]) => [k, p ? fn(p) || '' : '']));
 
-// כמה יקבלו בכל ערוץ — מוצג ליד כל תיבת סימון, כדי שיהיה ברור לפני השליחה.
+function filtered() {
+  const defs = FILTERS[state.grp];
+  return grp().list.filter((p) => defs.every((d) => { const s = state.f[d.k]; return !s || !s.size || [...s].some((v) => d.test(p, v)); }));
+}
+const recipients = () => filtered().filter((p) => !state.excl.has(p.id));
 function counts() {
-  if (state.aud === 'fans') return { n: FANS_APPROVED, app: FANS_APPROVED, push: FANS_WITH_PUSH, mail: FANS_WITH_EMAIL };
-  if (state.aud === 'biz') return { n: BIZ_TOTAL, app: BIZ_TOTAL, push: BIZ_WITH_PUSH, mail: BIZ_WITH_EMAIL };
-  if (state.aud === 'all') return { n: FANS_APPROVED, app: FANS_APPROVED, push: FANS_WITH_PUSH, mail: FANS_WITH_EMAIL };   // בעלי עסקים הם גם אוהדים
-  const p = picked();
-  return { n: p.length, app: p.length, push: p.filter((x) => x.push).length, mail: p.filter((x) => x.email).length };
+  const r = recipients();
+  return { n: r.length, app: r.filter(canApp).length, push: r.filter(canPush).length, mail: r.filter(canMail).length, wa: r.filter(canWa).length, r };
 }
-// איפה זה יופיע באפליקציה — לפי הקהל (הבלוקים של "האזור שלי", §473ב/ג)
-function appBlock() {
-  if (state.aud === 'biz') return { cls: 'biz2', t: 'לבעלי העסקים', s: 'הודעות חשובות מהצוות לכל העסקים באינדקס', where: 'בקובייה "לכל בעלי העסקים"' };
-  if (state.aud === 'bizPick') return { cls: 'biz', t: 'על העסק שלך – ' + (picked()[0] ? picked()[0].name : 'שם העסק'), s: 'הודעות שנשלחו במיוחד לעסק שלך', where: 'בקובייה "על העסק שלך" של כל עסק שנבחר' };
-  return { cls: '', t: 'עדכונים מ-Yellow Zone', s: 'חדשות, הטבות ועדכונים לכל החברים', where: 'ב"עדכונים מ-Yellow Zone"' + (state.aud === 'fans' || state.aud === 'all' ? ' (אצל בעלי עסקים: "לאוהדים")' : '') };
+// איפה זה יופיע באפליקציה (הבלוקים של "האזור שלי", §503): לכל העסקים המאושרים → "לכל בעלי העסקים";
+// לחלק מהם → "על העסק שלך" אצל כל אחד מהם.
+function appBlock(p) {
+  if (state.grp === 'biz') {
+    const allApproved = BIZ.filter(canApp).length, mine = recipients().filter(canApp).length;
+    if (mine === allApproved) return { cls: 'biz2', t: 'לבעלי העסקים', s: 'הודעות חשובות מהצוות לכל העסקים באינדקס', where: 'בקובייה "לכל בעלי העסקים"' };
+    return { cls: 'biz', t: 'על העסק שלך – ' + (p ? p.name : 'שם העסק'), s: 'הודעות שנשלחו במיוחד לעסק שלך', where: 'בקובייה "על העסק שלך" של כל עסק שנבחר' };
+  }
+  return { cls: '', t: 'עדכונים מ-Yellow Zone', s: 'חדשות, הטבות ועדכונים לכל החברים', where: 'ב"עדכונים מ-Yellow Zone" (אצל בעלי עסקים: בקובייה "לאוהדים")' };
 }
 
-function renderAud() {
-  $('audChips').innerHTML = AUDS.map((a) => `<button class="chip${state.aud === a.k ? ' on' : ''}" data-aud="${a.k}">${a.t}<small>${a.s}</small></button>`).join('');
-  if (!isPick()) { $('pickerBox').innerHTML = ''; return; }
-  const list = pickList().filter((x) => !state.q || (x.name + ' ' + (x.cat || x.num || '')).includes(state.q));
-  const p = picked();
+// ── שלב 1 ──
+function renderGroups() {
+  $('grpChips').innerHTML = GROUPS.map((g) => `<button class="chip${state.grp === g.k ? ' on' : ''}" data-grp="${g.k}">${g.t}<small>${g.s}</small></button>`).join('');
+}
+function renderFilters() {
+  const base = grp().list;
+  const rows = FILTERS[state.grp].map((d) => `<div class="fl-row"><div class="fl-t">${d.t}</div><div class="fl-opts">${d.opts.map(([v, l]) => {
+    const on = state.f[d.k] && state.f[d.k].has(v);
+    const n = base.filter((p) => d.test(p, v)).length;
+    return `<label class="fl-opt${on ? ' on' : ''}"><input type="checkbox" data-fk="${d.k}" data-fv="${esc(v)}" ${on ? 'checked' : ''}/>${esc(l)} <span class="c">${n}</span></label>`;
+  }).join('')}</div></div>`).join('');
+  const active = Object.values(state.f).reduce((s, x) => s + x.size, 0);
+  $('filtersBox').innerHTML = `<div class="filters">${rows}
+    <div class="fl-foot">בלי סימון בשורה = כולם בשורה הזאת. כמה סימונים באותה שורה = כל אחד מהם.${active ? ' · <button class="linkbtn" data-fclear="1">ניקוי כל הסינונים</button>' : ''}</div></div>`;
+}
+function renderPicker() {
+  const all = filtered();
+  const q = state.q.trim();
+  const shown = q ? all.filter((p) => (personLabel(p) + ' ' + (p.num || '') + ' ' + (p.cat || '')).includes(q)) : all;
+  const sel = all.filter((p) => !state.excl.has(p.id)).length;
+  const row = (p) => {
+    const sub = p.kind === 'fan' ? p.num + (p.owner ? ' · גם בעל עסק' : '') : p.kind === 'bizNoAcc' ? 'בעל עסק · בלי חשבון חבר' : p.cat;
+    const stat = p.status === 'approved' ? '' : p.status === 'pending' ? ' · ממתין' : ' · נדחה';
+    const miss = [!canApp(p) && 'לא באפליקציה', !canMail(p) && 'אין מייל', !canWa(p) && 'אין טלפון'].filter(Boolean).join(' · ');
+    return `<label class="pick-row"><input type="checkbox" data-pick="${p.id}" ${state.excl.has(p.id) ? '' : 'checked'}/>
+      <span>${esc(personLabel(p))}</span><span class="m">${esc(sub + stat)}</span>${p.push ? '<span class="m">· 📲</span>' : ''}${miss ? `<span class="x">· ${miss}</span>` : ''}</label>`;
+  };
   $('pickerBox').innerHTML = `<div class="picker">
-      <input type="text" id="pickQ" placeholder="${state.aud === 'fanPick' ? 'חיפוש לפי שם או מספר חבר' : 'חיפוש לפי שם או קטגוריה'}" value="${esc(state.q)}" />
-      <div class="pick-list">${list.map((x) => `<label class="pick-row"><input type="checkbox" data-pick="${x.id}" ${state.picked.has(x.id) ? 'checked' : ''}/>
-        <span>${esc(x.name)}</span><span class="m">${esc(x.cat || x.num)}</span>${x.push ? '' : '<span class="m">· בלי התראות</span>'}</label>`).join('') || '<div class="hint">לא נמצאו</div>'}</div>
-      <div class="pick-sum">${p.length ? `<b>נבחרו ${p.length}:</b> ${esc(p.map((x) => x.name).join(', '))} · <button class="linkbtn" data-clear="1">ניקוי</button>` : '<span class="hint">לא נבחר אף אחד</span>'}</div>
+      <input type="text" id="pickQ" placeholder="חיפוש לפי שם${state.grp === 'biz' ? ', עסק או קטגוריה' : ' או מספר חבר'}" value="${esc(state.q)}" />
+      <div class="pick-list">${shown.slice(0, 80).map(row).join('') || '<div class="hint">אין אף אחד שמתאים</div>'}
+        ${shown.length > 80 ? `<div class="hint">ועוד ${shown.length - 80} – כולם מסומנים. חיפוש מצמצם את הרשימה.</div>` : ''}</div>
+      <div class="pick-sum"><b>נבחרו ${sel} מתוך ${all.length}</b> שמתאימים לסינון
+        <button class="linkbtn" data-selall="1">סימון הכל</button><button class="linkbtn" data-selnone="1">ניקוי הכל</button></div>
     </div>`;
 }
 
+// ── שלב 2 ──
 function renderChans() {
   const c = counts();
   const CH = [
-    { k: 'app', t: '📰 באפליקציה', d: 'נשמר בלשונית "עדכונים", ' + appBlock().where + '. מחכה גם למי שלא אישר התראות.' },
-    { k: 'push', t: '📲 קופץ בטלפון', d: 'התראה עכשיו: הכותרת ושורה מהתוכן. רק למי שאישר התראות (היום – אנדרואיד).' + (state.ch.app ? ' לחיצה עליה פותחת את ההודעה המלאה באפליקציה.' : '') },
-    { k: 'mail', t: '✉️ במייל', d: 'מייל עם הכותרת כנושא והתוכן המלא. מגיע גם למי שלא נכנס לאפליקציה. מעקב מסירה ושליחה חוזרת לנכשלים – כמו היום.' },
+    { k: 'app', t: '📰 באפליקציה', u: 'אנשים', d: 'נשמר ב"האזור שלי" ← "עדכונים", ' + appBlock().where + '. מחכה גם למי שלא אישר התראות.' },
+    { k: 'push', t: '📲 קופץ בטלפון', u: 'אנשים עם התראות', d: 'התראה עכשיו – כותרת ושורה קצרה. רק למי שאישר התראות (היום – אנדרואיד).' + (state.ch.app ? ' לחיצה פותחת את ההודעה המלאה באפליקציה.' : '') },
+    { k: 'mail', t: '✉️ במייל', u: 'מיילים', d: 'מייל מעוצב, עם שם הנמען ושאר הפרטים האישיים. מגיע גם למי שלא נכנס לאפליקציה. מעקב מסירה ושליחה חוזרת לנכשלים.' },
+    { k: 'wa', t: '💬 וואטסאפ (ידני)', u: 'עם טלפון', d: 'אחרי "שליחה" מקבלים כפתור לכל נמען – לחיצה פותחת וואטסאפ עם ההודעה האישית שלו, ואתה לוחץ "שלח". מתאים לקבוצה קטנה.' },
   ];
   $('chans').innerHTML = CH.map((x) => `<label class="chan${state.ch[x.k] ? ' on' : ''}">
       <input type="checkbox" data-ch="${x.k}" ${state.ch[x.k] ? 'checked' : ''}/>
       <div><div class="chan-t">${x.t}</div><div class="chan-d">${x.d}</div></div>
-      <div class="chan-n"><b>${c[x.k]}</b>${x.k === 'push' ? 'מכשירים' : x.k === 'mail' ? 'מיילים' : 'אנשים'}</div>
-    </label>`).join('');
-  $('defHint').textContent = state.touched ? '' : 'מסומן מראש לפי הקהל – אפשר לשנות';
+      <div class="chan-n"><b>${c[x.k]}</b>${x.u}</div></label>`).join('');
   const notes = [];
-  if (state.ch.push && !state.ch.app) notes.push('<div class="note">📲 פוש בלי "באפליקציה": ההתראה תקפוץ, אבל לא יהיה לאן לחזור אליה – רק מה שנכנס בשורה אחת. כדאי לסמן גם "באפליקציה".</div>');
-  if (state.ch.push && c.push < c.n) notes.push(`<div class="note info">רק <b>${c.push} מתוך ${c.n}</b> אישרו התראות. השאר לא יקבלו פוש${state.ch.app ? ', אבל יראו את ההודעה באפליקציה' : ''}${state.ch.mail ? ' ובמייל' : ''}.</div>`);
-  if (state.ch.mail && state.aud === 'all') notes.push('<div class="note info">"כולם" במייל: בעל עסק שהוא גם אוהד מקבל מייל אחד, לא שניים.</div>');
+  const notApp = c.n - c.app;
+  if ((state.ch.app || state.ch.push) && notApp) notes.push(`<div class="note info"><b>${notApp} מהנבחרים</b> לא יקבלו באפליקציה ובפוש – ${state.grp === 'biz' ? 'עסק שלא אושר, או שאין לו בעלים מקושר לחשבון' : 'ממתינים / נדחו' + (state.grp === 'all' ? ', או בעלי עסק בלי חשבון' : '')}.${state.ch.mail ? ' במייל – כן.' : ' רוצים שיגיע אליהם? סמנו גם מייל.'}</div>`);
+  if (state.ch.push && !state.ch.app) notes.push('<div class="note">📲 <b>פוש בלי "באפליקציה":</b> הנמען רואה רק את הכותרת והשורה הקצרה. ב"האזור שלי" זה יישמר תחת "התראות שקיבלת" – אותו טקסט קצר, בלי הסבר מלא. אם יש מה להרחיב – סמנו גם "באפליקציה", ואז לחיצה על ההתראה פותחת את ההודעה המלאה.</div>');
+  if (state.ch.push && c.push < c.app) notes.push(`<div class="note info">רק <b>${c.push} מתוך ${c.app}</b> אישרו התראות. השאר לא יקבלו פוש${state.ch.app ? ', אבל יראו את ההודעה באפליקציה' : ''}${state.ch.mail ? ' ובמייל' : ''}.</div>`);
+  if (state.ch.wa && c.wa > 25) notes.push(`<div class="note">💬 וואטסאפ ידני ל-<b>${c.wa}</b> אנשים = ${c.wa} לחיצות, ובכל אחת "שלח" בוואטסאפ. לקבוצה גדולה עדיף מייל או אפליקציה.</div>`);
+  if (state.ch.mail && state.grp === 'all') notes.push('<div class="note info">"כולם" במייל: בעל עסק שהוא גם אוהד מקבל מייל אחד, לא שניים.</div>');
   $('chanNotes').innerHTML = notes.join('');
 }
 
-function pushBody() {
-  const tx = $('fText').value.trim().replace(/\s+/g, ' ');
-  return tx.length > 90 ? tx.slice(0, 88) + '…' : tx;
+// ── שלב 3: תיבה לכל ערוץ מסומן ──
+const cnt = (v, L) => { const n = (v || '').length; const over = L.seen && n > L.seen; return `<span class="cnt${over ? ' over' : ''}" data-cnt-for>${n}/${L.max}${over ? ' · ' + L.seenTxt : L.seenTxt ? ' · ' + L.seenTxt : ''}</span>`; };
+function renderBoxes() {
+  const out = [];
+  if (state.ch.app) out.push(`<div class="box"><div class="box-h">📰 באפליקציה</div>
+    <label class="f" for="aTitle">כותרת ${cnt(state.app.title, LIM.appTitle)}</label>
+    <input class="t" id="aTitle" data-f="app.title" maxlength="${LIM.appTitle.max}" value="${esc(state.app.title)}" placeholder="למשל: 5 עסקים חדשים הצטרפו השבוע"/>
+    <label class="f" for="aText">התוכן ${cnt(state.app.text, LIM.appText)}</label>
+    <textarea class="t" id="aText" data-f="app.text" maxlength="${LIM.appText.max}" placeholder="כל הפרטים. ירידות שורה נשמרות.">${esc(state.app.text)}</textarea>
+    <label class="f" for="aLink">קישור "לפרטים" (לא חובה)</label>
+    <input class="t" id="aLink" data-f="app.link" dir="ltr" value="${esc(state.app.link)}" placeholder="https://yellowzone.co.il/home.html"/>
+    <div class="hint">רק דף של yellowzone.co.il – נפתח בתוך האפליקציה.</div></div>`);
+  if (state.ch.push) out.push(`<div class="box"><div class="box-h">📲 קופץ בטלפון${state.ch.app ? '<button class="linkbtn copy" data-copy="push">⤵ העתקה מ"באפליקציה"</button>' : ''}</div>
+    <label class="f" for="pTitle">כותרת ההתראה ${cnt(state.push.title, LIM.pushTitle)}</label>
+    <input class="t" id="pTitle" data-f="push.title" maxlength="${LIM.pushTitle.max}" value="${esc(state.push.title)}" placeholder="למשל: הטבה חדשה בפלאפל הזהב"/>
+    <label class="f" for="pBody">שורת ההתראה ${cnt(state.push.body, LIM.pushBody)}</label>
+    <textarea class="t" id="pBody" data-f="push.body" maxlength="${LIM.pushBody.max}" style="min-height:70px" placeholder="משפט אחד שגורם ללחוץ.">${esc(state.push.body)}</textarea>
+    ${state.ch.app ? '<div class="hint">בלחיצה על ההתראה נפתחת ההודעה המלאה מ"באפליקציה".</div>'
+      : `<label class="f" for="pLink">מה נפתח בלחיצה (לא חובה)</label>
+    <input class="t" id="pLink" data-f="push.link" dir="ltr" value="${esc(state.push.link)}" placeholder="https://yellowzone.co.il/home.html"/>
+    <div class="hint">רק דף של yellowzone.co.il. ריק – נפתחת האפליקציה.</div>`}
+    <div class="hint">אין משתנים בהתראה – נשלחת כלשונה לכולם, ומוצגת גם על מסך נעול.</div></div>`);
+  if (state.ch.mail) {
+    const tpl = TEMPLATES[state.grp];
+    const vars = VARS[state.grp];
+    const p0 = sample();
+    out.push(`<div class="box"><div class="box-h">✉️ במייל${state.ch.app ? '<button class="linkbtn copy" data-copy="mail">⤵ העתקה מ"באפליקציה"</button>' : ''}</div>
+    <div class="row2" style="margin-top:8px"><select class="t" id="mStart">
+      <option value="">התחלה מ… (לא חובה)</option>
+      ${tpl ? `<option value="tpl">התבנית הקבועה · ${tpl.t}</option>` : ''}
+      ${state.draft ? '<option value="draft">הטיוטה השמורה</option>' : ''}
+    </select><span class="hint">עריכה כאן לא משנה את התבנית הקבועה</span></div>
+    <label class="f" for="mSubject">נושא ${cnt(state.mail.subject, LIM.mailSubject)}</label>
+    <input class="t" id="mSubject" data-f="mail.subject" maxlength="${LIM.mailSubject.max}" value="${esc(state.mail.subject)}" placeholder="למשל: יש לך הטבה חדשה"/>
+    ${varStrip('mSubject', true, true)}
+    <label class="f" for="mBody">גוף המייל <span class="cnt">בלי מגבלה</span></label>
+    ${varStrip('mBody', false, true)}
+    <div class="fmt">
+      <button data-fmt="bold"><b>B</b></button><button data-fmt="italic"><i>I</i></button><span class="sep"></span>
+      <button data-fmt="big">כותרת גדולה</button><button data-fmt="mid">כותרת</button><button data-fmt="small">קטן</button><span class="sep"></span>
+      <button data-fmt="center">⇔ מרכוז</button><button data-fmt="bullet">• רשימה</button><button data-fmt="quote">▎הדגשה</button><button data-fmt="hr">– קו מפריד</button>
+      ${vars.some((v) => v[0] === 'link') ? '<button data-fmt="button">🔗 כפתור</button>' : ''}<span class="sep"></span>
+      <select id="mFont">${MAIL_FONTS.map((f) => `<option value="${f.key}" ${f.key === mailFontKey(state.mail.body) ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select>
+    </div>
+    <textarea class="t mail" id="mBody" data-f="mail.body" placeholder="שלום {name},&#10;&#10;…">${esc(state.mail.body)}</textarea>
+    <div class="hint">אפשר גם להקליד: <code>*מודגש*</code> · <code>_נטוי_</code> · <code>- פריט</code> · <code>&gt; הדגשה</code> · <code>---</code></div>
+    <div class="hint">${VAR_HINT}${state.grp === 'all' ? ' ב"כולם" יש רק שם – קוד, שם עסק וקישור אישי קיימים רק לחלק מהנמענים.' : ''}</div>
+    <div class="row2" style="margin-top:12px">
+      <input class="t" id="mTestTo" type="email" dir="ltr" style="flex:1;min-width:180px" placeholder="המייל שלך" value="${esc(state.testTo)}"/>
+      <button class="btn ghost sm" data-test="1">🧪 מייל בדיקה אליי</button>
+    </div>
+    <div class="hint">מייל הבדיקה יוצא עם הערכים של ${p0 ? esc(p0.first || p0.ownerFirst) : 'הנמען הראשון'} – בדיוק כמו בתצוגה.</div></div>`);
+  }
+  if (state.ch.wa) out.push(`<div class="box"><div class="box-h">💬 וואטסאפ (ידני)${state.ch.app ? '<button class="linkbtn copy" data-copy="wa">⤵ העתקה מ"באפליקציה"</button>' : ''}</div>
+    <label class="f" for="wText">ההודעה <span class="cnt">כדאי קצר – זו הודעה אישית</span></label>
+    ${varStrip('wText', false, false)}
+    <textarea class="t" id="wText" data-f="wa.text" placeholder="היי {name} 👋&#10;…">${esc(state.wa.text)}</textarea>
+    <div class="hint">${VAR_HINT} בוואטסאפ <code>*מודגש*</code> עובד בעצמו; קישור מופיע כקישור רגיל.</div>
+    <div class="hint">נשלח מהוואטסאפ שלך – לא אוטומטית, ואין דיווח אם נקרא.</div></div>`);
+  $('boxes').innerHTML = out.join('') || '<div class="box-empty">סמנו בשלב 2 איפה זה יגיע – והתיבות ייפתחו כאן</div>';
 }
+
+// ── תצוגה מקדימה ──
+function sample() { const r = counts().r; return r[Math.min(state.who, r.length - 1)] || null; }
 function renderPv() {
-  const any = state.ch.app || state.ch.push || state.ch.mail;
-  if (!state.ch[state.pv]) state.pv = ['app', 'push', 'mail'].find((k) => state.ch[k]) || 'app';
-  $('pvTabs').innerHTML = [['app', '📰 באפליקציה'], ['push', '📲 התראה'], ['mail', '✉️ מייל']]
-    .map(([k, l]) => `<button class="pv-tab${state.pv === k && state.ch[k] ? ' on' : ''}" data-pv="${k}" ${state.ch[k] ? '' : 'disabled'}>${l}</button>`).join('');
-  if (!any) { $('pv').innerHTML = '<div class="pv-empty">סמנו לפחות מקום אחד בשלב 3</div>'; return; }
-  const title = $('fTitle').value.trim() || 'הכותרת שלך';
-  const text = $('fText').value.trim() || 'התוכן שלך יופיע כאן.';
-  const link = $('fLink').value.trim();
+  const tabs = [['app', '📰 אפליקציה'], ['push', '📲 התראה'], ['mail', '✉️ מייל'], ['wa', '💬 וואטסאפ'], ['card', '🗂️ בכרטיס']];
+  const any = state.ch.app || state.ch.push || state.ch.mail || state.ch.wa;
+  const okTab = (k) => k === 'card' ? any : state.ch[k];
+  if (!okTab(state.pv)) state.pv = tabs.map((t) => t[0]).find(okTab) || 'app';
+  $('pvTabs').innerHTML = tabs.map(([k, l]) => `<button class="pv-tab${state.pv === k && okTab(k) ? ' on' : ''}" data-pv="${k}" ${okTab(k) ? '' : 'disabled'}>${l}</button>`).join('');
+  const r = counts().r;
+  if (!any || !r.length) { $('pvWho').innerHTML = ''; $('pv').innerHTML = `<div class="pv-empty">${!r.length ? 'לא נבחר אף אחד בשלב 1' : 'סמנו לפחות מקום אחד בשלב 2'}</div>`; return; }
+  const p = sample();
+  $('pvWho').innerHTML = `<span>אצל:</span><select id="pvWhoSel">${r.slice(0, 30).map((x, i) => `<option value="${i}" ${i === state.who ? 'selected' : ''}>${esc(personLabel(x))}</option>`).join('')}</select>`;
+  const pvDiv = $('pv');
   if (state.pv === 'app') {
-    const b = appBlock();
-    $('pv').innerHTML = `<div class="pv-cap">בפרופיל ← "עדכונים" ← ${esc(b.where.replace(/^ב/, ''))}</div>
+    const b = appBlock(p);
+    const a = state.app;
+    pvDiv.innerHTML = `<div class="pv-cap">"האזור שלי" ← "עדכונים" ← ${esc(b.where.replace(/^ב/, ''))}${canApp(p) ? '' : '<br><b style="color:var(--orange)">לנמען הזה זה לא יגיע – הוא לא מאושר באפליקציה.</b>'}</div>
       <div class="phone"><div class="ph-tabs"><span class="on">עדכונים</span><span>הודעות</span><span>הפרטים שלי</span></div>
         <div class="au-sec ${b.cls}"><div class="au-head"><div class="au-title">${esc(b.t)}</div><div class="au-sub">${esc(b.s)}</div></div>
-        <div class="au-item"><span class="au-new">חדש</span><div class="au-it">${esc(title)}</div><div class="au-tx">${esc(text)}</div>
-        ${link ? '<span class="au-link">לפרטים ›</span>' : ''}</div></div></div>`;
+        <div class="au-item"><span class="au-new">חדש</span><div class="au-it">${esc(a.title || 'הכותרת שלך')}</div><div class="au-tx">${esc(a.text || 'התוכן שלך יופיע כאן.')}</div>
+        ${a.link ? '<span class="au-link">לפרטים ›</span>' : ''}</div></div></div>`;
   } else if (state.pv === 'push') {
-    $('pv').innerHTML = `<div class="pv-cap">מסך הנעילה. אנדרואיד חותך טקסט ארוך – רואים כותרת ושורה.${state.ch.app ? ' לחיצה ← ההודעה המלאה באפליקציה.' : ''}</div>
+    const t = state.push.title || 'כותרת ההתראה', bd = state.push.body || 'שורת ההתראה';
+    const n = (cls) => `<div class="notif ${cls}"><div class="notif-ic">Z</div><div><div class="notif-app">Yellow Zone · עכשיו</div><div class="notif-t">${esc(t)}</div><div class="notif-b">${esc(bd)}</div></div></div>`;
+    pvDiv.innerHTML = `<div class="pv-cap">${canPush(p) ? '' : '<b style="color:var(--orange)">לנמען הזה לא תקפוץ התראה – לא אישר התראות.</b><br>'}${state.ch.app ? 'לחיצה ← ההודעה המלאה באפליקציה.' : state.push.link ? 'לחיצה ← הקישור שכתבת.' : 'לחיצה ← פותחת את האפליקציה.'}</div>
       <div class="lock"><div class="lock-time">20:45</div>
-        <div class="notif"><div class="notif-ic">Z</div><div><div class="notif-app">Yellow Zone · עכשיו</div>
-        <div class="notif-t">${esc(title)}</div><div class="notif-b">${esc(pushBody() || 'שורה מהתוכן')}</div></div></div></div>`;
+        <div class="lock-lbl">ככה רואים קודם (סגורה)</div>${n('col')}
+        <div class="lock-lbl">אחרי משיכה למטה (פתוחה)</div>${n('')}</div>`;
+  } else if (state.pv === 'mail') {
+    const vars = varsFor(p);
+    const subj = Object.entries(vars).reduce((s, [k, v]) => s.split('{' + k + '}').join(v), state.mail.subject || 'הנושא שלך');
+    const body = state.mail.body || 'שלום {name},\n\nהתוכן שלך יופיע כאן.';
+    let html;
+    try { html = renderMailHtml(body, vars, { linkLabel: state.grp === 'fans' ? 'לפתיחת האפליקציה' : 'כניסה לאזור העסק שלי', padding: '16px 18px', extraStyle: 'background:#fff', lineHeight: 1.7 }); html += `<div style="padding:0 18px 16px">${footerHtml(html)}</div>`; }
+    catch (e) { html = `<div style="padding:16px;white-space:pre-line">${esc(body)}</div>`; }
+    pvDiv.innerHTML = `<div class="pv-cap">${canMail(p) ? '' : '<b style="color:var(--orange)">לנמען הזה אין מייל.</b><br>'}מעוצב בדיוק כמו שיישלח (אותו מנוע). כתובת למענה: yellowzonemta@gmail.com</div>
+      <div class="pv-lbl">בתיבת הדואר בטלפון</div>
+      <div class="inbox-row"><div class="s">Yellow Zone · ${esc(subj)}</div><div class="p">${esc((Object.entries(vars).reduce((s, [k, v]) => s.split('{' + k + '}').join(k === 'link' ? '' : v), stripMeta(body)).replace(/\{[a-z]+\}/g, '').replace(/(^|\n)[ \t]*(---|[-•>])[ \t]*/g, ' ').replace(/[*_]/g, '').replace(/\s+/g, ' ')).trim().slice(0, 80))}</div></div>
+      <div class="pv-lbl">המייל עצמו</div>
+      <div class="mail"><div class="mail-h">מאת: <b>Yellow Zone</b> · אל: ${esc(p.kind === 'fan' ? p.first : p.ownerFirst)}<br/>נושא: <b>${esc(subj)}</b></div><div class="mail-doc">${html}</div></div>`;
+  } else if (state.pv === 'wa') {
+    const txt = waTextFor(p);
+    pvDiv.innerHTML = `<div class="pv-cap">${canWa(p) ? '' : '<b style="color:var(--orange)">לנמען הזה אין טלפון.</b><br>'}ככה ההודעה תיפתח אצלך בוואטסאפ, מוכנה – נשאר ללחוץ "שלח".</div>
+      <div class="wa-scr"><div class="wa-top">${esc(personLabel(p))}</div><div class="wa-b">${waHtml(txt || 'ההודעה שלך')}</div></div>`;
   } else {
-    $('pv').innerHTML = `<div class="pv-cap">השם של כל נמען נכנס אוטומטית. כתובת למענה: yellowzonemta@gmail.com</div>
-      <div class="mail"><div class="mail-h">מאת: <b>Yellow Zone</b><br/>נושא: <b>${esc(title)}</b></div>
-        <div class="mail-brand">YELLOW ZONE</div>
-        <div class="mail-b">היי איל,\n\n${esc(text)}${link ? '\n<span class="mail-btn">לפרטים</span>' : ''}</div></div>`;
+    // 🗂️ בכרטיס שלו – תשובה ל"זה נכנס להיסטוריה האישית?": מה נרשם בכרטיס במרכז הניהול, ומה מופיע לו ב"האזור שלי"
+    const title = state.app.title || state.push.title || state.mail.subject || 'הכותרת';
+    const rows = [];
+    if (state.ch.app) rows.push(canApp(p) ? `📰 <b>עדכון לאזור</b> · "${esc(state.app.title || 'הכותרת')}"<div class="d">${esc(appBlock(p).where)} · נקרא / לא נקרא</div>` : `📰 עדכון לאזור – <b>לא נשלח</b><div class="d">לא מאושר באפליקציה</div>`);
+    if (state.ch.push) rows.push(canPush(p) ? `📲 <b>פוש</b> · "${esc(state.push.title || 'כותרת ההתראה')}"<div class="d">יצא ל-1 מכשיר · אנדרואיד</div>` : `📲 פוש – <b>לא נשלח</b><div class="d">${canApp(p) ? 'לא אישר התראות' : 'לא מאושר באפליקציה'}</div>`);
+    if (state.ch.mail) rows.push(canMail(p) ? `✉️ <b>מייל</b> · נושא: "${esc(state.mail.subject || 'הנושא')}"<div class="d">נמסר · נפתח (מתעדכן לבד)</div>` : `✉️ מייל – <b>לא נשלח</b><div class="d">אין מייל ברשומה</div>`);
+    if (state.ch.wa) rows.push(canWa(p) ? `💬 <b>וואטסאפ</b> · נפתח ידנית<div class="d">נרשם כשלוחצים על הכפתור שלו – אין דיווח אם נשלח או נקרא</div>` : `💬 וואטסאפ – <b>לא נשלח</b><div class="d">אין טלפון ברשומה</div>`);
+    const area = [];
+    if (state.ch.app && canApp(p)) area.push(`"${esc(state.app.title || 'הכותרת')}" ב"עדכונים"${state.ch.push ? ' – פריט אחד, שאליו גם הפוש מוביל' : ''}`);
+    else if (state.ch.push && canApp(p)) area.push(`"${esc(state.push.title || 'כותרת ההתראה')}" תחת "התראות שקיבלת"`);
+    pvDiv.innerHTML = `<div class="pv-cap">כל הודעה נרשמת אצל כל נמען – גם מה שנכשל, כדי שיהיה ברור למה לא הגיע.</div>
+      <div class="pv-lbl">אצלך – בכרטיס של ${esc(personLabel(p))} במרכז הניהול</div>
+      <div class="act"><div class="act-h">יומן פעילות · היום 20:45 · "${esc(title)}"</div>${rows.map((x) => `<div class="act-row">${x}</div>`).join('')}</div>
+      <div class="pv-lbl">אצלו – ב"האזור שלי"</div>
+      <div class="act"><div class="act-row">${area.length ? area.join('<br>') : 'שום דבר – ' + ((state.ch.mail || state.ch.wa) && !state.ch.app && !state.ch.push ? 'מייל וּוואטסאפ לא נכנסים לאזור. רוצים שיופיע גם שם? סמנו "באפליקציה".' : 'לא מאושר באפליקציה.')}</div></div>`;
   }
 }
 
+// ── וואטסאפ: הטקסט האישי לכל נמען (משתנים מוחלפים; בלי עיצוב-מייל) ──
+function waTextFor(p) { const v = varsFor(p); return Object.entries(v).reduce((s2, [k, x]) => s2.split('{' + k + '}').join(x), state.wa.text || ''); }
+const waHtml = (t) => esc(t).replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/_([^_\n]+)_/g, '<i>$1</i>');
+
+// ── שליחה ──
 function canSend() {
-  if (!$('fTitle').value.trim()) return 'חסרה כותרת';
-  if (!$('fText').value.trim()) return 'חסר תוכן';
-  if (isPick() && !state.picked.size) return state.aud === 'fanPick' ? 'בחרו לפחות אוהד אחד' : 'בחרו לפחות עסק אחד';
-  if (!state.ch.app && !state.ch.push && !state.ch.mail) return 'סמנו לפחות מקום אחד';
+  const c = counts();
+  if (!c.n) return 'לא נבחר אף אחד';
+  if (!state.ch.app && !state.ch.push && !state.ch.mail && !state.ch.wa) return 'סמנו לפחות מקום אחד';
+  if (state.ch.app && (!state.app.title.trim() || !state.app.text.trim())) return 'חסרה כותרת או תוכן באפליקציה';
+  if (state.ch.push && (!state.push.title.trim() || !state.push.body.trim())) return 'חסרה כותרת או שורה בהתראה';
+  if (state.ch.mail && (!state.mail.subject.trim() || !stripMeta(state.mail.body))) return 'חסר נושא או גוף במייל';
+  if (state.ch.wa && !state.wa.text.trim()) return 'חסרה הודעת וואטסאפ';
   return '';
 }
+const stripMeta = (s) => String(s || '').replace(/^\s*\{font:[^}]*\}\s*/, '').trim();
 function renderSend() {
-  const why = canSend();
-  const c = counts();
+  const why = canSend(), c = counts();
   $('sendBtn').disabled = !!why;
-  $('sendBtn').textContent = why ? 'שליחה' : `שליחה ל-${c.n} ${state.aud === 'biz' || state.aud === 'bizPick' ? 'בעלי עסקים' : 'אנשים'}`;
+  $('sendBtn').textContent = why ? 'שליחה' : `שליחה ל-${c.n} ${state.grp === 'biz' ? 'בעלי עסקים' : 'אנשים'}`;
   $('whyNot').textContent = why;
-  const len = $('fText').value.length;
-  $('textHint').textContent = state.ch.push ? `בהתראה רואים רק את ההתחלה (~90 תווים). באפליקציה ובמייל – הכל. ${len}/1500` : `${len}/1500`;
+  $('draftHint').textContent = state.draft ? `טיוטה שמורה מ-${state.draft.at} – כל התיבות, הערוצים והקהל.` : 'הטיוטה שומרת את כל מה שכאן – קהל, ערוצים וכל התיבות.';
 }
 function renderHist() {
-  $('hist').innerHTML = state.hist.length ? state.hist.map((h) => `<div class="hist-row"><b>${esc(h.title)}</b> · ${esc(h.aud)}
-      <div>${h.app != null ? `<span class="tag">📰 ${h.app} באפליקציה</span>` : ''}${h.push != null ? `<span class="tag">📲 ${h.push} מכשירים</span>` : ''}${h.mail != null ? `<span class="tag">✉️ ${h.mail} מיילים</span>` : ''}
-      <span class="hint" style="margin-inline-start:6px">${h.at}</span></div></div>`).join('')
-    : '<div class="hint">כל הודעה מופיעה כאן פעם אחת, עם מה שיצא בכל ערוץ.</div>';
+  $('hist').innerHTML = state.hist.length ? state.hist.map((h, i) => {
+    const m = h.mail;
+    const deliv = !m ? '' : m.pending ? `<div class="deliv">✉️ ${m.n} מיילים – ממתינים לדיווח מסירה…</div>`
+      : `<div class="deliv">✉️ ${m.n} מיילים: <span class="ok">${m.n - m.failed.length} נמסרו</span> · ${m.opened} נפתחו${m.failed.length ? ` · <span class="bad">${m.failed.length} נכשלו</span>
+          · <button class="linkbtn" data-resend="${i}">שליחה חוזרת לנכשלים</button> · <button class="linkbtn" data-fails="${i}">${h.showFails ? 'הסתרה' : 'מי?'}</button>` : ' · אין נכשלים ✓'}
+          ${h.showFails && m.failed.length ? `<ul class="fail-list">${m.failed.map((f) => `<li>${esc(f.name)} – ${esc(f.why)}</li>`).join('')}</ul>` : ''}
+          ${m.resent ? `<div class="hint">נשלח שוב ל-${m.resent} · ${m.failed.length ? 'נשארו ' + m.failed.length + ' (כתובת שלא קיימת – צריך לתקן בכרטיס)' : 'הכל נמסר'}</div>` : ''}</div>`;
+    return `<div class="hist-row"><b>${esc(h.title)}</b> · ${esc(h.aud)} <span class="hint">· ${h.at}</span>
+      <div>${h.app != null ? `<span class="tag">📰 ${h.app} באפליקציה</span>` : ''}${h.push != null ? `<span class="tag">📲 פוש ל-${h.push} אנשים</span>` : ''}</div>${deliv}${waHist(h, i)}</div>`;
+  }).join('') : '<div class="hint">כל הודעה מופיעה כאן פעם אחת, עם מה שיצא בכל ערוץ. במייל – כמה נמסרו, נפתחו ונכשלו, ושליחה חוזרת לנכשלים.</div>';
 }
-function renderAll() { renderAud(); renderChans(); renderPv(); renderSend(); renderHist(); }
+function waHist(h, i) {
+  if (!h.wa) return '';
+  const done = h.wa.filter((x) => x.done).length;
+  return `<div class="deliv">💬 וואטסאפ ידני: <b>${done} מתוך ${h.wa.length}</b> נפתחו
+    · <button class="linkbtn" data-waopen="${i}">${h.waOpen ? 'הסתרה' : 'לרשימה'}</button>
+    ${h.waOpen ? `<div class="wa-list">${h.wa.map((x, j) => `<div class="wa-row${x.done ? ' done' : ''}">${x.done ? '✓' : '○'} <span>${esc(x.name)}</span>
+      <button class="btn" data-wa="${i}.${j}">${x.done ? 'פתיחה שוב' : 'פתיחה בוואטסאפ'}</button></div>`).join('')}</div>
+      <div class="hint">כל לחיצה פותחת וואטסאפ עם ההודעה האישית שלו. הרשימה נשמרת – אפשר להמשיך מאוחר יותר.</div>` : ''}</div>`;
+}
+function renderAll() { renderGroups(); renderFilters(); renderPicker(); renderChans(); renderBoxes(); renderPv(); renderSend(); renderHist(); }
+function renderAfterAudience() { renderFilters(); renderPicker(); renderChans(); if (state.ch.mail || state.ch.wa) renderBoxes(); renderPv(); renderSend(); }
+
+// ── עריכת טקסט (סרגל העיצוב + משתנים) ──
+function setField(el, v, selS, selE) {
+  el.value = v; el.focus(); if (selS != null) el.setSelectionRange(selS, selE == null ? selS : selE);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function insertAt(el, text) {
+  const s = el.selectionStart, e = el.selectionEnd;
+  setField(el, el.value.slice(0, s) + text + el.value.slice(e), s + text.length);
+}
+function paraRange(v, s, e) {
+  const a = v.lastIndexOf('\n\n', s - 1); const start = a < 0 ? 0 : a + 2;
+  const b = v.indexOf('\n\n', e); const end = b < 0 ? v.length : b;
+  return [start, end];
+}
+function fmt(action) {
+  const el = $('mBody'); if (!el) return;
+  const v = el.value, s = el.selectionStart, e = el.selectionEnd;
+  if (action === 'bold' || action === 'italic') {
+    const m = action === 'bold' ? '*' : '_';
+    return setField(el, v.slice(0, s) + m + v.slice(s, e) + m + v.slice(e), s + 1, e + 1);
+  }
+  if (['big', 'mid', 'small', 'center'].includes(action)) {
+    const [ps, pe] = paraRange(v, s, e); let para = v.slice(ps, pe); const tag = '{' + action + '}';
+    if (para.includes(tag)) para = para.replace(tag, '');
+    else { if (action !== 'center') para = para.replace(/\{(big|mid|small)\}/g, ''); para = tag + para; }
+    return setField(el, v.slice(0, ps) + para + v.slice(pe), ps + para.length);
+  }
+  if (action === 'bullet' || action === 'quote') {
+    const pre = action === 'bullet' ? '- ' : '> ';
+    const ls = v.lastIndexOf('\n', s - 1) + 1; let le = v.indexOf('\n', e); if (le < 0) le = v.length;
+    const lines = v.slice(ls, le).split('\n'); const all = lines.every((l) => l.startsWith(pre));
+    const out = lines.map((l) => all ? l.slice(pre.length) : (l.startsWith(pre) ? l : pre + l)).join('\n');
+    return setField(el, v.slice(0, ls) + out + v.slice(le), ls + out.length);
+  }
+  if (action === 'hr') return insertAt(el, '\n\n---\n\n');
+  if (action === 'button') return insertAt(el, '\n\n{link}\n\n');
+}
 
 // ── אירועים ──
 document.addEventListener('click', (e) => {
-  const a = e.target.closest('[data-aud]');
-  if (a) {
-    state.aud = a.dataset.aud; state.picked = new Set(); state.q = '';
-    if (!state.touched) state.ch = { ...AUDS.find((x) => x.k === state.aud).def };
-    state.result = null; $('result').innerHTML = '';
-    renderAll(); return;
+  const t = e.target;
+  const g = t.closest('[data-grp]');
+  if (g) { state.grp = g.dataset.grp; state.f = freshFilters(); state.excl = new Set(); state.q = ''; state.who = 0; $('result').innerHTML = ''; renderAll(); return; }
+  if (t.closest('[data-fclear]')) { state.f = {}; renderAfterAudience(); return; }
+  if (t.closest('[data-selall]')) { filtered().forEach((p) => state.excl.delete(p.id)); renderAfterAudience(); return; }
+  if (t.closest('[data-selnone]')) { filtered().forEach((p) => state.excl.add(p.id)); renderAfterAudience(); return; }
+  const pv = t.closest('[data-pv]'); if (pv && !pv.disabled) { state.pv = pv.dataset.pv; renderPv(); return; }
+  const fb = t.closest('[data-fmt]'); if (fb) { e.preventDefault(); fmt(fb.dataset.fmt); return; }
+  const vb = t.closest('[data-var]');
+  if (vb) { e.preventDefault(); const el = $(vb.dataset.target); if (el) insertAt(el, '{' + vb.dataset.var + '}'); return; }
+  const wo = t.closest('[data-waopen]'); if (wo) { const h = state.hist[+wo.dataset.waopen]; h.waOpen = !h.waOpen; renderHist(); return; }
+  const wb = t.closest('[data-wa]');
+  if (wb) { const [i, j] = wb.dataset.wa.split('.').map(Number); const x = state.hist[i].wa[j]; x.done = true; renderHist();
+    toast('בדמו לא נפתח. במוצר: וואטסאפ אל ' + x.name + ' עם "' + x.text.slice(0, 40) + (x.text.length > 40 ? '…"' : '"')); return; }
+  const cp = t.closest('[data-copy]');
+  if (cp) {
+    if (cp.dataset.copy === 'push') {
+      state.push.title = state.app.title.slice(0, LIM.pushTitle.max);
+      const one = state.app.text.trim().replace(/\s+/g, ' ');
+      state.push.body = one.length > LIM.pushBody.max ? one.slice(0, LIM.pushBody.max - 1) + '…' : one;
+    } else if (cp.dataset.copy === 'wa') { state.wa.text = 'היי {name},\n\n' + (state.app.title ? '*' + state.app.title + '*\n' : '') + state.app.text;
+    } else { state.mail.subject = state.app.title; state.mail.body = 'שלום {name},\n\n' + state.app.text; }
+    renderBoxes(); renderPv(); renderSend(); return;
   }
-  if (e.target.closest('[data-clear]')) { state.picked = new Set(); renderAll(); return; }
-  const pv = e.target.closest('[data-pv]');
-  if (pv && !pv.disabled) { state.pv = pv.dataset.pv; renderPv(); return; }
+  if (t.closest('[data-test]')) {
+    const to = ($('mTestTo') || {}).value || '';
+    if (!/^\S+@\S+\.\S+$/.test(to)) { toast('כתבו כתובת מייל לבדיקה'); return; }
+    toast('🧪 נשלח מייל בדיקה ל-' + to + ' (בדמו – לא באמת)'); return;
+  }
+  const rs = t.closest('[data-resend]');
+  if (rs) { const m = state.hist[+rs.dataset.resend].mail; m.resent = m.failed.length; m.opened += 0; m.failed = m.failed.filter((f) => f.hard); renderHist(); toast('נשלח שוב לנכשלים (בדמו)'); return; }
+  const fl = t.closest('[data-fails]'); if (fl) { const h = state.hist[+fl.dataset.fails]; h.showFails = !h.showFails; renderHist(); return; }
 });
 document.addEventListener('change', (e) => {
-  if (e.target.dataset.pick) {
-    if (e.target.checked) state.picked.add(e.target.dataset.pick); else state.picked.delete(e.target.dataset.pick);
-    renderAud(); renderChans(); renderPv(); renderSend(); return;
+  const d = e.target.dataset;
+  if (d.fk) {
+    const def = FILTERS[state.grp].find((x) => x.k === d.fk);
+    let s = state.f[d.fk] || new Set();
+    if (def.single) s = e.target.checked ? new Set([d.fv]) : new Set(); else if (e.target.checked) s.add(d.fv); else s.delete(d.fv);
+    state.f[d.fk] = s; state.who = 0; renderAfterAudience(); return;
   }
-  if (e.target.dataset.ch) {
-    state.ch[e.target.dataset.ch] = e.target.checked; state.touched = true;
-    if (e.target.checked) state.pv = e.target.dataset.ch;
-    renderChans(); renderPv(); renderSend();
+  if (d.pick) { if (e.target.checked) state.excl.delete(d.pick); else state.excl.add(d.pick); state.who = 0; renderAfterAudience(); return; }
+  if (d.ch) { state.ch[d.ch] = e.target.checked; if (e.target.checked) state.pv = d.ch; renderChans(); renderBoxes(); renderPv(); renderSend(); return; }
+  if (e.target.id === 'pvWhoSel') { state.who = +e.target.value; renderPv(); if (state.ch.mail || state.ch.wa) renderBoxes(); return; }
+  if (e.target.id === 'mFont') {
+    const el = $('mBody'); const body = el.value.replace(/^[ \t]*\{font:\s*[a-zA-Z ]+\}[ \t]*(\r?\n)*/, '');
+    setField(el, e.target.value === 'default' ? body : '{font:' + e.target.value + '}\n' + body, 0); return;
+  }
+  if (e.target.id === 'mStart') {
+    const v = e.target.value;
+    if (v === 'tpl') { const tp = TEMPLATES[state.grp]; state.mail.subject = tp.subject; state.mail.body = tp.body; }
+    if (v === 'draft' && state.draft) Object.assign(state, JSON.parse(state.draft.json));
+    renderAll(); return;
   }
 });
 document.addEventListener('input', (e) => {
-  if (e.target.id === 'pickQ') {
-    state.q = e.target.value;
-    const pos = e.target.selectionStart; renderAud();
-    const el = $('pickQ'); el.focus(); el.setSelectionRange(pos, pos); return;
+  const t = e.target;
+  if (t.id === 'pickQ') { state.q = t.value; const pos = t.selectionStart; renderPicker(); const el = $('pickQ'); el.focus(); el.setSelectionRange(pos, pos); return; }
+  if (t.id === 'mTestTo') { state.testTo = t.value; return; }
+  if (t.dataset.f) {
+    const [a, b] = t.dataset.f.split('.'); state[a][b] = t.value;
+    const lab = t.previousElementSibling && t.previousElementSibling.matches('label.f') ? t.previousElementSibling : document.querySelector(`label[for="${t.id}"]`);
+    const key = { 'app.title': 'appTitle', 'app.text': 'appText', 'push.title': 'pushTitle', 'push.body': 'pushBody', 'mail.subject': 'mailSubject' }[t.dataset.f];
+    if (lab && key) { const old = lab.querySelector('.cnt'); if (old) old.outerHTML = cnt(t.value, LIM[key]); }
+    renderPv(); renderSend();
   }
-  if (['fTitle', 'fText', 'fLink'].includes(e.target.id)) { renderPv(); renderSend(); }
 });
 
+$('draftBtn').addEventListener('click', () => {
+  const { grp: g, ch, app, push, mail, wa } = state;
+  state.draft = { at: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }), json: JSON.stringify({ grp: g, ch, app, push, mail, wa }) };
+  toast('💾 הטיוטה נשמרה (בדמו – בזיכרון; במוצר – נשמרת במרכז הניהול)'); renderSend(); if (state.ch.mail) renderBoxes();
+});
 $('sendBtn').addEventListener('click', () => {
   const c = counts();
-  const audT = AUDS.find((x) => x.k === state.aud).t + (isPick() ? ' (' + state.picked.size + ')' : '');
   const lines = [];
   if (state.ch.app) lines.push(`📰 באפליקציה – ל-${c.app} אנשים, ${appBlock().where}`);
-  if (state.ch.push) lines.push(`📲 פוש – ל-${c.push} מכשירים <b>(אי אפשר לבטל אחרי שנשלח)</b>`);
-  if (state.ch.mail) lines.push(`✉️ מייל – ל-${c.mail} כתובות`);
-  $('confirmBody').innerHTML = `<div style="font-size:14px"><b>"${esc($('fTitle').value.trim())}"</b><br/>למי: ${esc(audT)}</div><ul>${lines.map((l) => '<li>' + l + '</li>').join('')}</ul>`;
+  if (state.ch.push) lines.push(`📲 פוש – ל-${c.push} אנשים עם התראות <b>(אי אפשר לבטל אחרי שנשלח)</b>`);
+  if (state.ch.mail) lines.push(`✉️ מייל – ל-${c.mail} כתובות <b>(אי אפשר לבטל)</b>`);
+  if (state.ch.wa) lines.push(`💬 וואטסאפ – רשימה של ${c.wa} כפתורים, אתה שולח כל אחד בעצמו`);
+  const names = c.r.slice(0, 4).map(personLabel).join(', ') + (c.n > 4 ? ` ועוד ${c.n - 4}` : '');
+  $('confirmBody').innerHTML = `<div style="font-size:14px;line-height:1.7">למי: <b>${esc(grp().t)}</b> – ${c.n}<br><span class="hint">${esc(names)}</span></div><ul>${lines.map((l) => '<li>' + l + '</li>').join('')}</ul>`;
   $('confirmBg').classList.add('open');
 });
 $('confirmNo').addEventListener('click', () => $('confirmBg').classList.remove('open'));
 $('confirmGo').addEventListener('click', () => {
   $('confirmBg').classList.remove('open');
   const c = counts();
-  const r = { title: $('fTitle').value.trim(), aud: AUDS.find((x) => x.k === state.aud).t + (isPick() ? ' (' + state.picked.size + ')' : ''),
-    app: state.ch.app ? c.app : null, push: state.ch.push ? c.push : null, mail: state.ch.mail ? c.mail : null,
-    at: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) };
-  state.hist.unshift(r);
+  const h = { title: state.app.title || state.push.title || state.mail.subject, aud: grp().t + ' (' + c.n + ')',
+    app: state.ch.app ? c.app : null, push: state.ch.push ? c.push : null,
+    mail: state.ch.mail ? { n: c.mail, pending: true } : null,
+    wa: state.ch.wa ? c.r.filter(canWa).map((p) => ({ name: personLabel(p), text: waTextFor(p), done: false })) : null, waOpen: true, at: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) };
+  state.hist.unshift(h);
   $('result').innerHTML = `<div class="res"><b>✓ נשלח (בדמו – לא באמת).</b><br/>
-    ${r.app != null ? `📰 נשמר באפליקציה אצל <b>${r.app}</b><br/>` : ''}${r.push != null ? `📲 פוש יצא ל-<b>${r.push}</b> מכשירים<br/>` : ''}${r.mail != null ? `✉️ מייל נשלח ל-<b>${r.mail}</b> (במוצר: נכשלים מסומנים עם "שליחה חוזרת")` : ''}</div>`;
-  $('fTitle').value = ''; $('fText').value = ''; $('fLink').value = '';
+    ${h.app != null ? `📰 נשמר באפליקציה אצל <b>${h.app}</b><br/>` : ''}${h.push != null ? `📲 פוש יצא ל-<b>${h.push}</b><br/>` : ''}${h.mail ? `✉️ מייל יצא ל-<b>${h.mail.n}</b> – המסירה מתעדכנת למטה ב"נשלח לאחרונה"<br/>` : ''}${h.wa ? `💬 וואטסאפ: <b>${h.wa.length}</b> כפתורים מחכים לך למטה ב"נשלח לאחרונה"<br/>` : ''}
+    🗂️ נרשם בכרטיס של כל נמען.</div>`;
+  if (h.mail) setTimeout(() => {
+    const mails = c.r.filter(canMail);
+    const failed = mails.length > 3 ? [{ name: personLabel(mails[2]), why: 'כתובת לא קיימת', hard: true }, { name: personLabel(mails[mails.length - 1]), why: 'תיבה מלאה – זמני' }] : [];
+    Object.assign(h.mail, { pending: false, failed, opened: Math.round((mails.length - failed.length) * .38) }); renderHist();
+  }, 1800);
+  state.app = { title: '', text: '', link: '' }; state.push = { title: '', body: '', link: '' }; state.mail = { subject: '', body: '' }; state.wa = { text: '' };
   renderAll();
 });
 
