@@ -42,10 +42,14 @@ service cloud.firestore {
 
     // "אני עסק מחובר (role: business_owner) שמקושר ל-memberId הזה?" —
     // מאפשר ל-profile.html?bizToken= לקרוא את המסמך של בעל העסק שלו בלבד.
+    // §517 — **רק עסק מאושר.** עסק pending נוצר ע"י כל אחד, ו-ownerMemberId שלו נכתב בהרשמה בלי
+    // אימות; יחד עם bizTokens + /mint-biz-token זה נתן לכל אחד זהות "בעלים מקושר" של כל חבר –
+    // קריאת רשומת החבר, התיבה והשיחות שלו. אישור עסק הוא בדיקה ידנית של מנהל.
     function isLinkedBusinessOwnerOf(memberId) {
       return request.auth != null &&
         exists(/databases/$(database)/documents/businesses/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/businesses/$(request.auth.uid)).data.ownerMemberId == memberId;
+        get(/databases/$(database)/documents/businesses/$(request.auth.uid)).data.ownerMemberId == memberId &&
+        get(/databases/$(database)/documents/businesses/$(request.auth.uid)).data.status == 'approved';
     }
 
     // ── §397 — "אני בעל העסק הזה?", בשתי דרכי הכניסה ─────────────────────
@@ -93,7 +97,22 @@ service cloud.firestore {
       allow create: if isAdmin()
         || (
           request.resource.data.status == 'pending' &&
-          !('isAdmin' in request.resource.data)
+          !('isAdmin' in request.resource.data) &&
+          // §517 — שדות שהמערכת סומכת עליהם לזהות, לאישור או לשליחת מייל לא נולדים מטופס ציבורי.
+          // googleSub/appleSub שתול חוסם את כניסת הבעלים האמיתי; *EmailStatus:'pending' הופך את
+          // סריקת המיילים לממסר ספאם. fan-register/business.html לא שולחים אף אחד מהם (נבדק 13.10).
+          !request.resource.data.keys().hasAny([
+            'googleSub', 'googleEmail', 'googleLinkedAt', 'appleSub', 'appleEmail', 'appleLinkedAt',
+            'memberNumber', 'approvedAt', 'adminVerified', 'adminNote', 'loginCode',
+            'loginCodeEmailStatus', 'loginCodeEmailKind', 'loginCodeCreatedAt', 'loginCodeEmailQueuedAt',
+            'lastCodeResendAt', 'nativePushTokens', 'pushSubscriptions'
+          ]) &&
+          // בעל עסק חדש (business.html) נולד מקושר לעסק – רק לעסק קיים שממתין לאישור.
+          (request.resource.data.get('linkedBusinessId', null) == null || (
+            request.resource.data.linkedBusinessId is string &&
+            exists(/databases/$(database)/documents/businesses/$(request.resource.data.linkedBusinessId)) &&
+            get(/databases/$(database)/documents/businesses/$(request.resource.data.linkedBusinessId)).data.status == 'pending'
+          ))
         );
 
       allow update: if isAdmin()
@@ -247,7 +266,18 @@ service cloud.firestore {
 
       // אורח יוצר בקשת עסק חדשה: חובה status=='pending'.
       allow create: if isAdmin()
-        || request.resource.data.status == 'pending';
+        || (
+          request.resource.data.status == 'pending' &&
+          // §517 — עסק מטופס ציבורי לא נולד עם בעלים, אישור, מיילים, חשיפה או לבבות. ownerMemberId
+          // שתול היה הופך את היוצר ל"בעלים מקושר" של כל חבר (קריאת רשומה/תיבה/שיחות).
+          // business.html לא שולח אף אחד מהם ביצירה (נבדק 13.10).
+          !request.resource.data.keys().hasAny([
+            'ownerMemberId', 'approvedAt', 'ownerEmailStatus', 'ownerEmailSentAt', 'ownerEmailQueuedAt',
+            'welcomeEmailKind', 'likedBy', 'clicks', 'isFeatured', 'featuredUntil', 'exposurePriority',
+            'isNew', 'newUntil', 'sectionTurn', 'sectionDeals', 'sectionAnswers', 'reviewedSections',
+            'changeDecisions', 'pendingChanges', 'noteHandled', 'accessToken'
+          ])
+        );
 
       allow update: if isAdmin()
 
@@ -341,7 +371,18 @@ service cloud.firestore {
         || (
           isSignedInMember() &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['likedBy', 'clicks'])
+            .hasOnly(['likedBy', 'clicks']) &&
+          // §517 — חבר מוסיף/מסיר **רק את עצמו** (arrayUnion/arrayRemove ב-home.html), ולא משכתב
+          // את הרשימה של כולם; clicks עולה ב-1 בדיוק (increment(1)). קודם כל חבר יכול היה למחוק
+          // את כל הלבבות של עסק או לנפח לו כניסות.
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['likedBy']) || (
+            request.resource.data.likedBy is list &&
+            request.resource.data.likedBy.toSet().difference(resource.data.get('likedBy', []).toSet())
+              .union(resource.data.get('likedBy', []).toSet().difference(request.resource.data.likedBy.toSet()))
+              .hasOnly([request.auth.uid])
+          )) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['clicks']) ||
+            request.resource.data.clicks == resource.data.get('clicks', 0) + 1)
         );
 
       allow delete: if isAdmin();

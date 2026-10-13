@@ -75,6 +75,58 @@ async function check(name, p) {
   await check('החבר עצמו מחליף טלפון ומייל (ענף ב)', assertSucceeds(updateDoc(doc(victimSelf, 'members/victim'), { phone: '0505555555', email: 'new@x.co' })));
   await check('מנהל מחליף מייל לחבר', assertSucceeds(updateDoc(doc(admin, 'members/other'), { email: 'fixed@x.co' })));
 
+  // ══ שלב א' של §517 — לבבות, כניסות, ויצירת רשומות ══
+  await seed();
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'businesses/bizLiked'), { status: 'approved', name: 'עם לבבות', likedBy: ['victim', 'noname'], clicks: 10 });
+  });
+  const { arrayUnion, arrayRemove, increment } = require('firebase/firestore');
+
+  console.log('לבבות וכניסות');
+  await check('חבר מוסיף את עצמו', assertSucceeds(updateDoc(doc(other, 'businesses/bizLiked'), { likedBy: arrayUnion('other') })));
+  await check('חבר מסיר את עצמו', assertSucceeds(updateDoc(doc(other, 'businesses/bizLiked'), { likedBy: arrayRemove('other') })));
+  await check('חבר לא מסיר לב של אחר', assertFails(updateDoc(doc(other, 'businesses/bizLiked'), { likedBy: arrayRemove('victim') })));
+  await check('חבר לא מוחק את כל הלבבות', assertFails(updateDoc(doc(other, 'businesses/bizLiked'), { likedBy: [] })));
+  await check('חבר לא מוסיף לב בשם אחר', assertFails(updateDoc(doc(other, 'businesses/bizLiked'), { likedBy: arrayUnion('fake1') })));
+  await check('כניסה +1', assertSucceeds(updateDoc(doc(other, 'businesses/bizLiked'), { clicks: increment(1) })));
+  await check('לא +1000', assertFails(updateDoc(doc(other, 'businesses/bizLiked'), { clicks: increment(1000) })));
+  await check('לא איפוס כניסות', assertFails(updateDoc(doc(other, 'businesses/bizLiked'), { clicks: 0 })));
+  await check('אנונימי לא נוגע בלבבות', assertFails(updateDoc(doc(anon, 'businesses/bizLiked'), { likedBy: arrayUnion('x') })));
+
+  console.log('יצירת חבר');
+  const fan = { status: 'pending', firstName: 'דנה', lastName: 'כהן', phone: '0506666666', email: 'd@x.co', isSubscriber: 'no', verifyMethod: 'standsPhoto', verifyTrust: 'low', photoProofUrl: '', createdAt: new Date(), reviewFlag: 'possible_duplicate', duplicateOfId: 'victim' };
+  await check('fan-register (כמו בפועל) עובר', assertSucceeds(setDoc(doc(anon, 'members/newFan1'), fan)));
+  for (const k of ['googleSub', 'appleSub', 'loginCodeEmailStatus', 'memberNumber', 'approvedAt', 'nativePushTokens']) {
+    await check(`יצירה עם ${k} – נחסמת`, assertFails(setDoc(doc(anon, 'members/bad_' + k), { ...fan, [k]: k === 'loginCodeEmailStatus' ? 'pending' : 'x' })));
+  }
+  await check('יצירה כ-approved – נחסמת', assertFails(setDoc(doc(anon, 'members/badApproved'), { ...fan, status: 'approved' })));
+  await check('בעל עסק חדש מקושר לעסק pending – עובר', assertSucceeds(setDoc(doc(anon, 'members/newOwner'), { ...fan, isBusinessOwner: true, linkedBusinessId: 'bizPending' })));
+  await check('מקושר לעסק מאושר – נחסם', assertFails(setDoc(doc(anon, 'members/badOwner'), { ...fan, isBusinessOwner: true, linkedBusinessId: 'bizApproved' })));
+
+  console.log('יצירת עסק');
+  const biz = { status: 'pending', name: 'עסק', ownerFirst: 'א', ownerLast: 'ב', ownerPhone: '0507777777', ownerEmail: 'o@x.co', discountCode: 'X', agreedTermsAt: new Date(), submittedAt: new Date() };
+  await check('business.html (כמו בפועל) עובר', assertSucceeds(setDoc(doc(anon, 'businesses/newBiz1'), biz)));
+  for (const k of ['ownerMemberId', 'ownerEmailStatus', 'approvedAt', 'likedBy', 'isFeatured', 'exposurePriority']) {
+    await check(`עסק עם ${k} – נחסם`, assertFails(setDoc(doc(anon, 'businesses/bad_' + k), { ...biz, [k]: k === 'likedBy' ? ['x'] : (k === 'exposurePriority' ? 9 : 'pending') })));
+  }
+  await check('עסק כ-approved – נחסם', assertFails(setDoc(doc(anon, 'businesses/badApprovedBiz'), { ...biz, status: 'approved' })));
+
+  console.log('"בעלים מקושר" – רק עסק מאושר');
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const d = ctx.firestore();
+    await setDoc(doc(d, 'businesses/evilBiz'), { status: 'pending', name: 'מזויף', ownerMemberId: 'victim' });
+    await setDoc(doc(d, 'businesses/realBiz'), { status: 'approved', name: 'אמיתי', ownerMemberId: 'victim' });
+    await setDoc(doc(d, 'members/victim/inbox/i1'), { text: 'פרטי' });
+  });
+  const evil = env.authenticatedContext('evilBiz', { role: 'business_owner' }).firestore();
+  const real = env.authenticatedContext('realBiz', { role: 'business_owner' }).firestore();
+  const { getDoc: gd } = require('firebase/firestore');
+  await check('עסק pending לא קורא את רשומת החבר', assertFails(gd(doc(evil, 'members/victim'))));
+  await check('עסק pending לא קורא את התיבה', assertFails(gd(doc(evil, 'members/victim/inbox/i1'))));
+  await check('עסק pending לא משנה תאריך לידה', assertFails(updateDoc(doc(evil, 'members/victim'), { birthDate: '1999-09-09' })));
+  await check('עסק מאושר (הבעלים האמיתי) קורא', assertSucceeds(gd(doc(real, 'members/victim'))));
+  await check('עסק מאושר קורא את התיבה', assertSucceeds(gd(doc(real, 'members/victim/inbox/i1'))));
+
   await env.cleanup();
   console.log(`\n${fail ? '❌' : '✅'} ${pass} עברו, ${fail} נכשלו`);
   process.exit(fail ? 1 : 0);

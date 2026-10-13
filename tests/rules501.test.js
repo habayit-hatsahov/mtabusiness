@@ -50,7 +50,8 @@ function openConv(db, id, c, m) {
     await setDoc(doc(d, 'members/m1'), { status: 'approved', firstName: 'איל' });
     await setDoc(doc(d, 'members/m2'), { status: 'approved', firstName: 'אחר' });
     await setDoc(doc(d, 'members/adm'), { status: 'approved', isAdmin: true });
-    await setDoc(doc(d, 'businesses/b1'), { name: 'שווארמה', ownerMemberId: 'm1' });
+    // §517 — "בעלים מקושר" רק לעסק מאושר (isLinkedBusinessOwnerOf). כמו במציאות: דשבורד = עסק מאושר.
+    await setDoc(doc(d, 'businesses/b1'), { status: 'approved', name: 'שווארמה', ownerMemberId: 'm1' });
     // שיחה סגורה של m1, ושיחה של m2
     await setDoc(doc(d, 'conversations/closed1'), { ...conv(), status: 'closed', createdAt: new Date(), lastAt: new Date(), memberReadAt: new Date() });
     await setDoc(doc(d, 'conversations/other'), { ...conv({ memberId: 'm2' }), createdAt: new Date(), lastAt: new Date(), memberReadAt: new Date() });

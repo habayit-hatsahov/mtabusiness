@@ -24,3 +24,14 @@ export async function recordAttempt(kv, phoneDigits, ip) {
     bump(kv, `attempts:ip:${ip || 'unknown'}`, IP_WINDOW_SEC),
   ]);
 }
+
+// ── §517 — מכסה כללית לפי IP לנתיבים ציבוריים בלי אימות (בלי טלפון/קוד שאפשר למנות לפיו) ──────
+// סופר כל קריאה (לא רק כשל) ומחזיר true כשעברה המכסה. /check-member-exists בלי מכסה איפשר למפות
+// כל טלפון/מייל למזהה-חבר ולשאלה "רשום או לא"; /resend-login-code — שליחת מיילים בכמות.
+export async function overIpQuota(kv, bucket, ip, limit, windowSec) {
+  const key = `quota:${bucket}:${ip || 'unknown'}`;
+  const n = parseInt((await kv.get(key)) || '0', 10);
+  if (n >= limit) return true;
+  await kv.put(key, String(n + 1), { expirationTtl: windowSec });
+  return false;
+}

@@ -7,7 +7,7 @@ import { firestoreRunQuery, firestoreGetDoc, firestorePatch, firestoreBatchCreat
          firestoreGetDocForSnapshot, firestoreCreateDoc, firestoreDeleteDoc,
          firestoreCreateDocWithId } from './firestore.js';
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
-import { isRateLimited, recordAttempt } from './ratelimit.js';
+import { isRateLimited, recordAttempt, overIpQuota } from './ratelimit.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail } from './brevo.js';
 import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
@@ -92,9 +92,13 @@ export default {
         return json(await handleUploadBizMedia(request, env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/resend-login-code') {
+        // §517 — 10 ל-IP ב-15 דק' (הקירור של 60 שנ' הוא לכל חבר, לא לכל שולח)
+        if (await overIpQuota(env.RATE_LIMIT_KV, 'resend', clientIp(request, env), 10, 15 * 60)) return json({ ok: true }, env, request);
         return json(await handleResendCode(await request.json(), env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/check-member-exists') {
+        // §517 — 30 ל-IP ב-15 דק' (טופס הרשמה קורא כמה פעמים לכל היותר)
+        if (await overIpQuota(env.RATE_LIMIT_KV, 'checkmember', clientIp(request, env), 30, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request);
         return json(await handleCheckMemberExists(await request.json(), env), env, request);
       }
       // §462 — נתיב-גיבוי לשליחת טופס האוהד כש-Firestore בדפדפן לא מאשר את הכתיבה.
@@ -1690,12 +1694,23 @@ async function runEmailSweeps(env) {
 
   for (const m of pendingMembers) {
     if (processed >= MAX_SWEEP_RECIPIENTS) break;
+    // §517 — רק חבר מאושר שיש לו קוד. בלי זה כל אחד יכול היה ליצור רשומה עם
+    // loginCodeEmailStatus:'pending' ומייל של מישהו אחר – והסריקה שולחת (ממסר ספאם בשם האתר,
+    // ומרעיב את המיילים האמיתיים: 10 לדקה). הרשומה מסומנת ולא נשארת בתור לנצח.
+    if (m.fields.status !== 'approved') {
+      await firestorePatch(env, accessToken, `members/${m.id}`, { loginCodeEmailStatus: 'skipped', loginCodeEmailError: 'not_approved' });
+      continue;
+    }
+    // מאושר בלי קוד (עדיין) – לא שולחים מייל עם קוד ריק; נשאר בתור לסבב הבא (באישור הקוד נשמר לפני הדגל).
+    if (!(await loginCodeFor(env, accessToken, m.id))) continue;
     processed++;
     try {
       let business = null;
       if (m.fields.isBusinessOwner === true && m.fields.linkedBusinessId) {
         const biz = await firestoreGetDoc(env, accessToken, `businesses/${m.fields.linkedBusinessId}`);
-        if (biz && biz.fields.ownerEmailStatus === 'pending') business = biz;
+        // §517 — וגם עסק מאושר שהחבר הזה הוא באמת הבעלים שלו (linkedBusinessId לבד ניתן לכתיבה בהרשמה).
+        if (biz && biz.fields.ownerEmailStatus === 'pending' && biz.fields.status === 'approved' &&
+            biz.fields.ownerMemberId === m.id) business = biz;
       }
 
       if (business) {
@@ -1752,6 +1767,12 @@ async function runEmailSweeps(env) {
   for (const b of pendingBiz) {
     if (handledBusinessIds.has(b.id)) continue;
     if (processed >= MAX_SWEEP_RECIPIENTS) break;
+    // §517 — רק עסק שאושר בפועל. עד כאן עסק pending (שכל אחד יוצר, עם כל ownerEmail) קיבל
+    // "ברוכים הבאים" עם קישור לדשבורד – לכתובת שהיוצר בחר.
+    if (b.fields.status !== 'approved' || !b.fields.approvedAt) {
+      await firestorePatch(env, accessToken, `businesses/${b.id}`, { ownerEmailStatus: 'skipped', ownerEmailError: 'not_approved' });
+      continue;
+    }
 
     // ── רשת-ביטחון א': חלון-חסד אחרי האישור ──────────────────────────────────────────────────
     // הלולאה הזו רואה מצב-עולם *מאוחר* מזה של לולאת-החברים למעלה (השאילתה שלה רצה עד ~40 שניות

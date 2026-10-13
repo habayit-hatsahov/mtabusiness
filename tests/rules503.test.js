@@ -28,7 +28,8 @@ async function check(name, p) {
     await setDoc(doc(d, 'members/m1'), { status: 'approved' });
     await setDoc(doc(d, 'members/m2'), { status: 'approved' });
     await setDoc(doc(d, 'members/adm'), { status: 'approved', isAdmin: true });
-    await setDoc(doc(d, 'businesses/b1'), { name: 'שווארמה', ownerMemberId: 'm1' });
+    // §517 — "בעלים מקושר" רק לעסק מאושר (isLinkedBusinessOwnerOf). כמו במציאות: דשבורד = עסק מאושר.
+    await setDoc(doc(d, 'businesses/b1'), { status: 'approved', name: 'שווארמה', ownerMemberId: 'm1' });
     await setDoc(doc(d, 'members/m1/inbox/i1'), item);
     await setDoc(doc(d, 'members/m1/inbox/i2'), item);
     await setDoc(doc(d, 'members/m2/inbox/j1'), item);
