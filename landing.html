@@ -30,6 +30,7 @@
   try { if (localStorage.getItem('hb_memberId') && !window._lpGuest) document.documentElement.classList.add('lp-checking'); } catch (e) {}
 </script>
 <script src="signup-source.js"></script>
+<script src="event-send.js"></script><!-- §519 — אירועי מדידה דרך הוורקר (App Check) -->
 <script src="usage-track.js"></script>
 <script src="categories.js"></script>
 <script src="sections-policy.js"></script>
@@ -361,9 +362,8 @@ html.lp-checking body { visibility: hidden; }
       for (let i = 0; i < 20; i++) id += A[Math.floor(Math.random() * 62)];
       const base = 'projects/habayit-hatsahov/databases/(default)/documents';
       const str = (v) => (v == null || v === '' ? { nullValue: null } : { stringValue: String(v) });
-      fetch('https://firestore.googleapis.com/v1/' + base + ':commit?key=AIzaSyBfG7AU4BzSAbBpwPyKfA_NzUpy2pxzFu8', {
-        method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ writes: [{
+      // §519 — דרך הוורקר (event-send.js), REST הישיר רק כנפילה
+      const lpBody = { writes: [{
           update: { name: base + '/events/' + id, fields: {
             type: str('pageView'), sessionId: str(sid), path: str(location.pathname.slice(0, 200)),
             referrer: str((document.referrer.split('/')[2] || '').slice(0, 50)),
@@ -372,8 +372,11 @@ html.lp-checking body { visibility: hidden; }
           } },
           updateTransforms: [{ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' }],
           currentDocument: { exists: false },
-        }] }),
+        }] };
+      const lpRest = () => fetch('https://firestore.googleapis.com/v1/' + base + ':commit?key=AIzaSyBfG7AU4BzSAbBpwPyKfA_NzUpy2pxzFu8', {
+        method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lpBody),
       }).catch(() => {});
+      if (window.yzSendEvent) window.yzSendEvent(lpBody, lpRest); else lpRest();
     } catch (e) {}
   }
 })();

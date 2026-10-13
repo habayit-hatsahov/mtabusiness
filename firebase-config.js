@@ -1,5 +1,6 @@
 // ── Firebase Configuration — Yellow Zone ──
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { attachAppCheck } from "./app-check.js";   // §519 — App Check (שלב מדידה, בלי אכיפה)
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import { getAuth }       from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
@@ -13,6 +14,8 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+// §519 — לפני כל שירות אחר (Firestore/Auth למטה), כדי שגם הבקשה הראשונה תישא תעודה. measure: רק כאן.
+attachAppCheck(app, { measure: true });
 
 // מטמון מקומי מתמיד (IndexedDB) — ביקור חוזר באפליקציה מקבל onSnapshot ראשוני מיידי מתוך
 // המכשיר עצמו (בלי לחכות לרשת) ומתעדכן ברקע ברגע שהנתונים האמיתיים חוזרים משרת. משפיע בעיקר

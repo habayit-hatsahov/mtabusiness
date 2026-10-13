@@ -2,7 +2,8 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <script src="fresh-page.js"></script><!-- §514 — דף ישן ממטמון ה-HTTP (עד 10 דק' אחרי פריסה) → טעינה מחדש אחת -->
+  <script src="fresh-page.js"></script>
+  <script src="event-send.js"></script><!-- §519 --><!-- §514 — דף ישן ממטמון ה-HTTP (עד 10 דק' אחרי פריסה) → טעינה מחדש אחת -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#FFD400" />
   <title>האפליקציה של Yellow Zone</title>
@@ -143,11 +144,15 @@
           currentDocument: { exists: false },
         }] };
         // keepalive — הבקשה ממשיכה גם אחרי שהדף עובר לחנות.
-        var req = fetch('https://firestore.googleapis.com/v1/' + base + ':commit?key=AIzaSyBfG7AU4BzSAbBpwPyKfA_NzUpy2pxzFu8', {
-          method: 'POST', keepalive: true,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        }).catch(function () {});
+        // §519 — דרך הוורקר (event-send.js); REST הישיר רק כנפילה (נחסם כשנאכוף App Check)
+        var rest = function () {
+          return fetch('https://firestore.googleapis.com/v1/' + base + ':commit?key=AIzaSyBfG7AU4BzSAbBpwPyKfA_NzUpy2pxzFu8', {
+            method: 'POST', keepalive: true,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }).catch(function () {});
+        };
+        var req = window.yzSendEvent ? window.yzSendEvent(body, rest) : rest();
         // לא מחכים לנצח: מדידה לעולם לא מעכבת את ההפניה יותר מ-700ms.
         return Promise.race([req, new Promise(function (r) { setTimeout(r, 700); })]);
       } catch (e) { return Promise.resolve(); }

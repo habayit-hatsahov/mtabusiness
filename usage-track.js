@@ -72,9 +72,11 @@
         updateTransforms: [{ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' }],
         currentDocument: { exists: false },
       }] };
-      fetch('https://firestore.googleapis.com/v1/' + base + ':commit?key=AIzaSyBfG7AU4BzSAbBpwPyKfA_NzUpy2pxzFu8', {
+      // §519 — דרך הוורקר (event-send.js); REST הישיר רק כנפילה (נחסם כשנאכוף App Check)
+      const rest = () => fetch('https://firestore.googleapis.com/v1/' + base + ':commit?key=AIzaSyBfG7AU4BzSAbBpwPyKfA_NzUpy2pxzFu8', {
         method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       }).catch(() => {});
+      if (window.yzSendEvent) window.yzSendEvent(body, rest); else rest();
     } catch (e) {}
   }
 

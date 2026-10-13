@@ -23,8 +23,19 @@ import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js'
 import { handleDemoSession } from './demo.js';
 import { syncBizPublic } from './bizpublic.js';
 import { handleLinkBizOwner } from './bizowner.js';
+import { handleEvent } from './events.js';
 
 const SITE_BASE = 'https://yellowzone.co.il/';
+
+// §519 — מונה קצב בזיכרון (לכל isolate). לא מדויק בין מופעים, אבל בלי עלות ובלי מכסת KV.
+const _memQ = new Map();
+function memQuota(bucket, ip, limit, windowSec) {
+  const k = bucket + ':' + (ip || 'unknown'), now = Date.now();
+  let e = _memQ.get(k);
+  if (!e || e.reset <= now) { e = { n: 0, reset: now + windowSec * 1000 }; _memQ.set(k, e); if (_memQ.size > 5000) _memQ.clear(); }
+  e.n++;
+  return e.n > limit;
+}
 
 // ── §374 — מי הלקוח, כשהבקשה הגיעה דרך הכתובת השלישית ────────────────────────────────────
 // §364 העביר את ה-API ל-`api.yellowzone.co.il` והשאיר את `workers.dev` כגיבוי — **ושתיהן
@@ -51,6 +62,13 @@ export default {
 
     const url = new URL(request.url);
     try {
+      // §519 — אירועי מדידה מהדפים הקלים (בלי SDK). מכסה נדיבה: usage-track שולח כמה לכל ביקור.
+      if (request.method === 'POST' && url.pathname === '/event') {
+        // ⚠️ לא KV: מכסת הכתיבה החינמית של KV היא 1,000 ליום, ואירוע לכל ביקור היה מכלה אותה (ואז כל
+        //    הנתיבים שנשענים על KV נופלים). מונה בזיכרון ה-isolate – מאמץ-סביר; ההגנה האמיתית: App Check.
+        if (memQuota('event', clientIp(request, env), 300, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
+        return json(await handleEvent(await request.json(), env), env, request);
+      }
       // §517ג — קישור בעל העסק לרשומת חבר בהרשמת עסק (במקום כתיבה אנונימית מהדף). ר' bizowner.js.
       if (request.method === 'POST' && url.pathname === '/link-biz-owner') {
         if (await overIpQuota(env.RATE_LIMIT_KV, 'linkowner', clientIp(request, env), 20, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request);

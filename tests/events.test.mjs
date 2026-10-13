@@ -1,0 +1,21 @@
+// בדיקת §519 — /event (worker/src/events.js): אותה סכמה כמו match /events ב-firestore.rules.
+import { validateEvent } from '../worker/src/events.js';
+let pass = 0, fail = 0;
+const check = (n, ok) => { if (ok) { pass++; console.log('  ✓ ' + n); } else { fail++; console.log('  ✗ ' + n); } };
+const base = { type: 'visit', sessionId: 'hb_abc', device: 'mobile' };
+check('אירוע תקין', !!validateEvent({ ...base, channel: 'app:ios:first', blockId: 'd_x', path: '/home.html', memberId: 'm1' }));
+check('appCheck (§519)', !!validateEvent({ ...base, type: 'appCheck', channel: 'app:android:ok' }));
+check('null/ריק → נשמט', JSON.stringify(validateEvent({ ...base, memberId: null, path: '' })) === JSON.stringify(base));
+check('סוג לא מוכר – נדחה', !validateEvent({ ...base, type: 'hack' }));
+check('device לא חוקי – נדחה', !validateEvent({ ...base, device: 'tv' }));
+check('שדה זר – נדחה', !validateEvent({ ...base, isAdmin: true }));
+check('createdAt מהלקוח – נדחה', !validateEvent({ ...base, createdAt: '2020-01-01' }));
+check('channel ארוך מ-50 – נדחה', !validateEvent({ ...base, channel: 'x'.repeat(51) }));
+check('path ארוך מ-200 – נדחה', !validateEvent({ ...base, path: 'x'.repeat(201) }));
+check('בלי sessionId – נדחה', !validateEvent({ type: 'visit', device: 'mobile' }));
+check('sessionId לא מחרוזת – נדחה', !validateEvent({ ...base, sessionId: 5 }));
+check('ערך שאינו מחרוזת – נדחה', !validateEvent({ ...base, channel: { a: 1 } }));
+check('מערך – נדחה', !validateEvent([base]));
+check('null – נדחה', !validateEvent(null));
+console.log(`\n${fail ? '❌' : '✅'} ${pass} עברו, ${fail} נכשלו`);
+process.exit(fail ? 1 : 0);
