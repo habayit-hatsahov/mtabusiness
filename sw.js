@@ -404,7 +404,8 @@
 // §523ב — v226 (my-messages.js: בלי לבבות, "הודעה אישית" במקום "אליך", סינון "לכל האוהדים" + "אישיות").
 // §524 — v227 (סטטיסטיקה מלאה להודעה במרכז הניהול; my-messages.js רושם clickedAt/pushOpenedAt).
 // §524ב — v228 (מרכז הניהול: סינון ההיסטוריה/לשוניות התצוגה/"אצל:" לא הגיבו – onclick מוטבע ראה m2; conversations.js: "כתבו לנו" נפתח באזור מוסתר).
-const CACHE_NAME = 'yz-shell-v228';
+// §525 — v229 (ניווט שנכשל בלי עותק / 5xx → דף "מתחברים…" שמנסה שוב לבד, במקום מסך "אין חיבור" של האפליקציה).
+const CACHE_NAME = 'yz-shell-v229';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד
@@ -421,6 +422,20 @@ const IMG_PATH_RE = /\.(png|jpe?g|webp|gif|svg|ico)$/i;
 // בכל פתיחה. 4 שניות מכסות ניווט סלולרי אמיתי בלי לפגוע במה שפסק-הזמן נועד לו: offline
 // אמיתי נכשל מיד ברמת הרשת ולא ממתין בכלל, ולכן הזמן הזה נגבה רק מחיבור גרוע-אך-קיים.
 const NAV_TIMEOUT_MS = 4000;
+
+// §525 — דף "מתחברים…" לניווט שנכשל בלי עותק שמור. טוען את אותה כתובת שוב: אחרי 1.5, 3, 5, 8 שנ' ואז כל 10,
+// ומיד כשהדפדפן מדווח שהרשת חזרה. נשאר בתוך האתר (לא דף שגיאה של האפליקציה), ולכן ניסיון חוזר באמת טוען אותו.
+// עברית ומקף בינוני; בלי משאבים חיצוניים (אין רשת).
+function navRetryPage() {
+  const html = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Yellow Zone</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0A2A66;color:#fff;font-family:-apple-system,"Segoe UI",Arial,sans-serif;text-align:center;padding:24px}
+.w{max-width:320px}.d{width:56px;height:56px;border-radius:50%;background:#FFD400;margin:0 auto 20px;animation:p 1.2s ease-in-out infinite}@keyframes p{50%{opacity:.4}}
+h1{font-size:20px;margin:0 0 8px}p{font-size:14.5px;line-height:1.6;color:#c9d3ea;margin:0 0 22px}button{font:inherit;font-weight:700;font-size:15px;background:#FFD400;color:#0A2A66;border:0;border-radius:12px;padding:13px 30px;width:100%}</style></head>
+<body><div class="w"><div class="d"></div><h1>מתחברים…</h1><p>נראה שהחיבור עוד לא מוכן. ננסה שוב לבד – רגע אחד.</p><button onclick="location.reload()">לנסות עכשיו</button></div>
+<script>(function(){var w=[1500,3000,5000,8000,10000],n=0,now=Date.now();try{var s=JSON.parse(sessionStorage.getItem('yzNavRetry')||'null');if(s&&now-s.t<60000)n=s.n+1;sessionStorage.setItem('yzNavRetry',JSON.stringify({n:n,t:now}))}catch(e){}
+function go(){location.reload()}function wait(){setTimeout(function(){if(navigator.onLine!==false)go();else wait()},w[Math.min(n,w.length-1)])}window.addEventListener('online',go);wait()})()</script></body></html>`;
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
 // הגופנים נכנסים ל-precache: הם נדרשים לציור הראשון של דף-הנחיתה (§336, אירוח עצמי),
 // ובלעדיהם הביקור הראשון-אחרי-התקנה עדיין משלם על הורדתם.
 const PRECACHE_URLS = ['home.html', 'manifest.json', 'firebase-config.js',
@@ -487,6 +502,9 @@ self.addEventListener('fetch', event => {
           const res = await fetch(req, { signal: controller.signal, cache: 'no-cache' });
           clearTimeout(timer);
           if (res.ok) cache.put(req, res.clone());
+          // §525 — שגיאת שרת (5xx) בניווט: באפליקציה זה מפיל ל"אין חיבור" (Capacitor errorPath).
+          // עדיף העותק השמור, ואם אין – דף ההמתנה שמנסה שוב לבד.
+          if (res.status >= 500) return cached || navRetryPage();
           return res;
         } catch (e) {
           // הבקשה-עם-timeout לא הספיקה תוך פסק-הזמן (בדיוק החיבור-האיטי שהיה אמור ליהנות הכי הרבה
@@ -496,7 +514,11 @@ self.addEventListener('fetch', event => {
           // בין אם הוגש עכשיו (אין cache בכלל) ובין אם הוגש cache-ישן והרשת עדיין ממשיכה ברקע.
           const retry = fetch(req, { cache: 'no-cache' }).then(res => { if (res.ok) cache.put(req, res.clone()); return res; }).catch(() => null);
           if (cached) { retry.catch(() => {}); return cached; }
-          return (await retry) || cached;
+          // §525 — 🐛 בלי רשת ובלי עותק, respondWith קיבל undefined → הניווט נכשל → באפליקציה מסך
+          // "אין חיבור לאינטרנט" (app/www/error.html), שכפתור "נסו שוב" שלו טוען **את עצמו** ולא את האתר —
+          // רמי: "באתי לפתוח… רושם אין חיבור, יוצא ונכנס וזה עובד". קורה ברגע הפתיחה, לפני שהרשת עלתה.
+          // עכשיו: דף "מתחברים…" שמנסה שוב לבד (ובחזרת הרשת מיד), במקום מבוי סתום.
+          return (await retry) || navRetryPage();
         }
       })
     );
