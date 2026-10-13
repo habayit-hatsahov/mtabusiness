@@ -392,7 +392,7 @@
 // §507 — v199 (biz-guides.js + redemption-guide.html חדשים; business-dashboard.html: המדריכים).
 // §508 — v200 (biz-stats.js חדש; business-dashboard.html: "השבוע אצלך"; home.html: מנהל/בעלים לא נספרים בחשיפות ובפתיחות).
 // §509 — v201 ("האזור שלי" שלב 4: area-badge.js חדש; "פרטים אישיים"→"האזור שלי" בתפריטים; פעמון; אוהד נפתח על עדכונים; "העסק שלי" באפליקציה → הלשונית).
-const CACHE_NAME = 'yz-shell-v204';
+const CACHE_NAME = 'yz-shell-v205';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד
@@ -469,7 +469,10 @@ self.addEventListener('fetch', event => {
         try {
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), NAV_TIMEOUT_MS);
-          const res = await fetch(req, { signal: controller.signal });
+          // §513 — cache:'no-cache': GitHub Pages מגיש HTML עם max-age=600, ו-fetch רגיל קיבל את הדף
+          // ממטמון ה-HTTP עד 10 דק' אחרי פריסה (רמי, §512: "סגרתי ופתחתי ועדיין מופיע"). no-cache
+          // = שאלת "השתנה?" (ETag/Last-Modified) בכל ניווט — 304 קטן כשלא השתנה, הדף החדש כשכן.
+          const res = await fetch(req, { signal: controller.signal, cache: 'no-cache' });
           clearTimeout(timer);
           if (res.ok) cache.put(req, res.clone());
           return res;
@@ -479,7 +482,7 @@ self.addEventListener('fetch', event => {
           // ב-cache, אז ביקור-איטי חוזר ממשיך לקבל תוכן ישן שוב ושוב, בלי שהמטמון מתעדכן.
           // עכשיו: הניסיון-החוזר (בלי timeout) תמיד ממשיך ברקע וכותב ל-cache כשהוא מסתיים —
           // בין אם הוגש עכשיו (אין cache בכלל) ובין אם הוגש cache-ישן והרשת עדיין ממשיכה ברקע.
-          const retry = fetch(req).then(res => { if (res.ok) cache.put(req, res.clone()); return res; }).catch(() => null);
+          const retry = fetch(req, { cache: 'no-cache' }).then(res => { if (res.ok) cache.put(req, res.clone()); return res; }).catch(() => null);
           if (cached) { retry.catch(() => {}); return cached; }
           return (await retry) || cached;
         }

@@ -1534,7 +1534,34 @@ async function saveMemberField(updates) {
     setDetailsEditMode(false);
   }
 
-  function saveDetails() {
+  // §513 — טלפון/מייל חדש ששייך לחבר **פעיל** אחר (לא שנדחה) → לא נשמר. אותו כלל כמו בהרשמה (§510),
+  // ואותה נקודה בוורקר (`registered`). נשלח **רק** השדה שהשתנה — אחרת הרשומה שלי עצמי הייתה נמצאת
+  // לפי השדה השני ונחסמת. כשל/פסק-זמן → fail-open, כמו בהרשמה: עדיף כפילות שמנהל יצליב מחבר
+  // שלא יכול לתקן טלפון בגלל רשת.
+  async function takenByOther(field, value) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const resp = await hbApiFetch('/check-member-exists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+        signal: ctl.signal,
+      });
+      const data = await resp.json();
+      return data.registered === true && data.memberId !== memberId;
+    } catch (e) {
+      console.error('takenByOther failed:', field, e);
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  let detailsSaving = false;
+
+  async function saveDetails() {
+    if (detailsSaving) return;
     const updates = {};
 
     // תאריך לידה
@@ -1577,6 +1604,29 @@ async function saveMemberField(updates) {
     }
 
     if (!Object.keys(updates).length) { cancelEdit(); return; }
+
+    // §513 — שינוי פורמט בלבד (052-640-4878 → 0526404878) הוא אותו מספר: לא בודקים, אחרת הבדיקה
+    // מוצאת את הרשומה שלי עצמי (הוורקר מחפש את כל וריאציות הטלפון).
+    const norm = window.normalizeILPhone || (v => String(v || '').replace(/\D/g, ''));
+    const checkPhone = 'phone' in updates && norm(updates.phone) !== norm(member.phone);
+    const checkEmail = 'email' in updates;
+    if (checkPhone || checkEmail) {
+      const btn = document.querySelector('#detailsEditActions .save-inline-btn');
+      detailsSaving = true;
+      btn.disabled = true; btn.textContent = 'בודק...';
+      const [phoneTaken, emailTaken] = await Promise.all([
+        checkPhone ? takenByOther('phone', updates.phone) : false,
+        checkEmail ? takenByOther('email', updates.email) : false,
+      ]);
+      detailsSaving = false;
+      btn.disabled = false; btn.textContent = 'שמירה';
+      if (phoneTaken || emailTaken) {
+        showToast(phoneTaken && emailTaken ? 'הטלפון והמייל כבר רשומים אצל חבר אחר'
+                : phoneTaken ? 'מספר הטלפון הזה כבר רשום אצל חבר אחר'
+                : 'כתובת המייל הזו כבר רשומה אצל חבר אחר');
+        return;   // נשארים במצב עריכה, כדי לתקן
+      }
+    }
 
     // אופטימי, כמו קודם (כתיבה ל-Firestore בלי רשת לא נכשלת — היא ממתינת). אבל כשל אמיתי
     // (הרשאות) כבר לא נבלע: הערכים חוזרים לקודמים והמשתמש יודע שלא נשמר.
