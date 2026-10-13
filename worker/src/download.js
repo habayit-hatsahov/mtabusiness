@@ -22,6 +22,17 @@ function extractObjectPath(imgUrl, bucket) {
 async function fetchStorageObject(env, imgUrl) {
   const encodedPath = extractObjectPath(imgUrl, env.FIREBASE_STORAGE_BUCKET);
   if (!encodedPath) return null;
+  // §517 — **תמונות אימות (members/proofs/) לא דרך מפתח השירות.** הנתיב הזה בלי אימות קרא כל קובץ
+  // ב-bucket ועקף את storage.rules – ו-16 קבצי-אימות ישנים יושבים בשם צפוי ({id}_fan). כאן דורשים
+  // את טוקן-ההורדה של הקובץ עצמו (מה שמרכז הניהול מחזיק), ושולפים דרך Firebase – שמאמת אותו.
+  let objectPath = '';
+  try { objectPath = decodeURIComponent(encodedPath); } catch (e) { return null; }
+  if (objectPath.includes('..')) return null;
+  if (objectPath.startsWith('members/')) {
+    const m = /[?&]token=([0-9a-f-]{20,})/i.exec(imgUrl);
+    if (!m) return null;
+    return fetch(`https://firebasestorage.googleapis.com/v0/b/${env.FIREBASE_STORAGE_BUCKET}/o/${encodedPath}?alt=media&token=${m[1]}`);
+  }
   const accessToken = await getGoogleAccessToken(env);
   const gcsUrl = `https://storage.googleapis.com/storage/v1/b/${env.FIREBASE_STORAGE_BUCKET}/o/${encodedPath}?alt=media`;
   return fetch(gcsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });

@@ -99,7 +99,10 @@ service firebase.storage {
       //
       // `list` נשאר למנהל בלבד: בלעדיו אפשר היה פשוט למנות את כל התיקייה ולעקוף את
       // האקראיות. **בלי השורה הזאת ה-get הפתוח היה חור אמיתי.**
-      allow get: if true;
+      // §517 — **קבצים ישנים בשם צפוי** (`{id}_fan`, לפני §293/§382): 16 נמצאו ב-13.10, ומזהי עסקים
+      // ציבוריים (bizPublic). קריאה ישירה שלהם – מנהל בלבד. כתובת-הורדה עם טוקן (מה שמרכז הניהול מחזיק)
+      // ממשיכה לעבוד – הטוקן עוקף את החוקים.
+      allow get: if isAdmin() || !fileName.matches('.*_fan([.].*)?');
       allow list: if isAdmin();
 
       // ── §288: תנאי-ההרשאה הוסר — הוא היה **הסיבה** ל-storage/unauthorized ──────────────────
@@ -118,7 +121,9 @@ service firebase.storage {
       // שנרשם). הוספת "גם מחובר" לא מרחיבה את החשיפה ולו במעט; היא רק מפסיקה להעניש
       // דווקא את מי שכן התחבר. ההגנה האמיתית כאן היא `allow read: if isAdmin()` למעלה —
       // ההוכחות נשארות קריאות למנהל בלבד. isImage()+underSizeLimit() נשמרים כמו שהם.
-      allow write: if isImage() && underSizeLimit();
+      // §517 — **יצירה בלבד** (resource == null). עד כאן כל מי שידע שם-קובץ יכול היה **לדרוס** תמונת
+      // אימות של מישהו אחר. ההעלאות הלגיטימיות תמיד לנתיב חדש (מזהה + אקראי / זמן); מנהל – גם דריסה.
+      allow write: if isImage() && underSizeLimit() && (resource == null || isAdmin());
     }
 
     // ── §422 — נתיב-ביניים: מדיה של עסק שעולה **לפני** שמסמך העסק קיים ──────
@@ -144,7 +149,8 @@ service firebase.storage {
     match /bizUploads/{uploadId}/{fileName} {
       allow get: if true;
       allow list: if isAdmin();
-      allow write: if isImage() && underSizeLimit();
+      // §517 — יצירה בלבד (כמו members/proofs): uploadId אקראי לכל העלאה, אז דריסה אינה זרימה לגיטימית.
+      allow write: if isImage() && underSizeLimit() && (resource == null || isAdmin());
     }
 
     // ── תמונות-קוביה בתוכן דף הנחיתה (landing/tiles/{fileName}) — שלב 6 ──────
