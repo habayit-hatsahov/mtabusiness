@@ -41,6 +41,7 @@ const help = (memberId) => ({
     await setDoc(doc(d, 'members/admin1'), { status: 'approved', isAdmin: true });
     await setDoc(doc(d, 'members/m1'), { status: 'approved', firstName: 'איל' });
     await setDoc(doc(d, 'businesses/b1'), { status: 'approved', name: 'עסק', likedBy: [] });
+    await setDoc(doc(d, 'bizPublic/b1'), { status: 'approved', name: 'עסק', likedBy: [] });
     await setDoc(doc(d, 'settings/siteTexts'), { a: 1 });
     await setDoc(doc(d, 'demoLinks/TOKENtokenTOKENtoken1234'), { guestName: 'יוסי', revoked: false });
     await setDoc(doc(d, 'conversations/c_m1'), conv('m1'));
@@ -52,7 +53,8 @@ const help = (memberId) => ({
   const anon = env.unauthenticatedContext().firestore();
 
   console.log('אורח – קריאה');
-  await check('קורא עסק מאושר', assertSucceeds(getDoc(doc(demo, 'businesses/b1'))));
+  await check('קורא עסק מאושר (העתק ציבורי)', assertSucceeds(getDoc(doc(demo, 'bizPublic/b1'))));
+  await check('לא קורא את המסמך המלא (§517ב)', assertFails(getDoc(doc(demo, 'businesses/b1'))));
   await check('קורא הגדרות ציבוריות', assertSucceeds(getDoc(doc(demo, 'settings/siteTexts'))));
   await check('רשימת השיחות שלו (ריקה)', assertSucceeds(getDocs(query(collection(demo, 'conversations'), where('memberId', '==', 'demo_TOKENtokenTO')))));
   await check('לא קורא שיחה של חבר אחר', assertFails(getDoc(doc(demo, 'conversations/c_m1'))));

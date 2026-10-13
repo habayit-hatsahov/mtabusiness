@@ -155,6 +155,17 @@ async function check(name, p) {
   await check('כניסה +1 ב-bizPublic', assertSucceeds(updateDoc(doc(other, 'bizPublic/bizLiked'), { clicks: increment(1) })));
   await check('אנונימי לא יוצר bizPublic', assertFails(setDoc(doc(anon, 'bizPublic/fake'), { status: 'approved', name: 'מזויף' })));
 
+  console.log('§517ב – המסמך המלא סגור');
+  const { query: q, where: wh } = require('firebase/firestore');
+  await check('אנונימי לא קורא עסק מאושר', assertFails(gd(doc(anon, 'businesses/bizApproved'))));
+  await check('אנונימי לא מונה עסקים מאושרים', assertFails(gds(q(col(anon, 'businesses'), wh('status', '==', 'approved')))));
+  await check('חבר (לא בעלים) לא קורא', assertFails(gd(doc(other, 'businesses/realBiz'))));
+  await check('חבר לא מונה עסקים', assertFails(gds(q(col(other, 'businesses'), wh('status', '==', 'approved')))));
+  await check('בעלים (כחבר) קורא את העסק שלו', assertSucceeds(gd(doc(victimSelf, 'businesses/realBiz'))));
+  await check('בעלים (כחבר) – השאילתה של הדשבורד', assertSucceeds(gds(q(col(victimSelf, 'businesses'), wh('status', '==', 'approved'), wh('ownerMemberId', '==', 'victim')))));
+  await check('בעלים (טוקן העסק) קורא', assertSucceeds(gd(doc(real, 'businesses/realBiz'))));
+  await check('מנהל קורא ומונה', assertSucceeds(gds(col(admin, 'businesses'))));
+
   await env.cleanup();
   console.log(`\n${fail ? '❌' : '✅'} ${pass} עברו, ${fail} נכשלו`);
   process.exit(fail ? 1 : 0);

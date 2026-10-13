@@ -256,13 +256,15 @@ service cloud.firestore {
       // שאיפשר לכל אדם לשלוף אותו ב-curl אנונימי ולהיכנס לדשבורד של כל עסק ולערוך
       // אותו. הוא הועבר ל-bizTokens/{businessId} בתחתית הקובץ. כל שדה-סוד עתידי
       // (טוקן/קוד/מפתח) חייב לשבת שם ולא כאן.
-      allow get: if isAdmin()
-        || isBizOwner(businessId)
-        || resource.data.status == 'approved';
+      // ══ §517ב — 🔒 המסמך המלא כבר **לא ציבורי** ═══════════════════════════════════════════
+      // עד 13.10 כל עסק מאושר היה קריא לכל אחד בלי התחברות – כולל טלפון/מייל של הבעלים, מנוי,
+      // פרטי אימות וקודי קופון. מעכשיו: מנהל ובעל העסק בלבד. הדפים הציבוריים קוראים את bizPublic
+      // (רשימת-היתר, worker/src/bizpublic.js), והקודים – מ-bizCodes (חברים בלבד).
+      allow get: if isAdmin() || isBizOwner(businessId);
 
-      // שאילתה ציבורית עם where('status','==','approved') בלבד — Firestore
-      // אוכף את זה ברמת ה-query (שאילתה בלי הפילטר הזה תיכשל כולה).
-      allow list: if isAdmin() || resource.data.status == 'approved';
+      // list: בעל עסק מחובר כחבר (business-dashboard, loadBusinessAsMember) שואל
+      // where('ownerMemberId','==',uid) – Firestore מוכיח את התנאי מתוך השאילתה עצמה.
+      allow list: if isAdmin() || (request.auth != null && resource.data.ownerMemberId == request.auth.uid);
 
       // אורח יוצר בקשת עסק חדשה: חובה status=='pending'.
       allow create: if isAdmin()
