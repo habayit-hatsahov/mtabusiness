@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>דמו – הודעות באזור שלי</title>
+<!-- §504ה – דמו: "האזור שלי" – לשונית אחת "הודעות" במקום "עדכונים" + "הודעות" (רמי, 13.10: "קצת מבלבל –
+     עדכון מ-Yellow Zone, הודעות, הודעות לכולם"; "חשוב שהתווית תופיע והוא גם יוכל לסנן... להפריד בין ההודעות
+     של אוהד והודעות של עסק שבעלי עסקים לא יתבלבלו"). מבודד, בזיכרון, לא מקושר. העיצוב – הטוקנים של profile.html,
+     area-updates.js ו-conversations.js. ר' PROJECT_CONTEXT §504ה. -->
+<style>
+  :root {
+    --yellow:#FFD400; --bg:#F6F6F2; --card-bg:#FFFFFF; --card-bg2:#F2F2EC; --border:#E7E7E0; --border-md:#E4E4DC;
+    --text:#0A2A66; --text-sm:#6B7A9B; --text-muted:#9AA6C0; --shadow:0 1px 3px rgba(10,42,102,.08);
+    --biz-soft:#E8EEFB; --fan-soft:#FFF6CC;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Rubik',system-ui,-apple-system,'Segoe UI',sans-serif; background:#E9EBEF; color:var(--text); }
+  .demo-bar { background:#1c1c1c; color:#fff; padding:10px 16px; font-size:13px; line-height:1.6; }
+  .demo-bar b { color:var(--yellow); }
+  .wrap { max-width:1100px; margin:0 auto; padding:20px 16px 60px; display:grid; grid-template-columns:400px minmax(0,1fr); gap:28px; align-items:start; }
+  @media (max-width:860px) { .wrap { grid-template-columns:minmax(0,1fr); } }
+  /* צד ההסבר */
+  .side h1 { font-size:22px; margin:0 0 6px; }
+  .side p { font-size:14px; line-height:1.7; color:#334; margin:0 0 12px; }
+  .ctl { background:#fff; border-radius:16px; padding:16px; margin-bottom:14px; border:1px solid #DDE2E8; }
+  .ctl h3 { margin:0 0 10px; font-size:15px; }
+  .seg { display:flex; gap:6px; background:#ECEEF2; border-radius:12px; padding:4px; }
+  .seg button { flex:1; border:none; background:none; border-radius:9px; padding:9px 6px; font:inherit; font-size:14px; font-weight:800; color:#475467; cursor:pointer; }
+  .seg button.on { background:#fff; color:var(--text); box-shadow:var(--shadow); }
+  .sim { display:flex; flex-wrap:wrap; gap:6px; }
+  .sim button { border:1px solid #DDE2E8; background:#fff; border-radius:10px; padding:7px 10px; font:inherit; font-size:12.5px; cursor:pointer; }
+  .cmp { width:100%; border-collapse:collapse; font-size:13px; }
+  .cmp th, .cmp td { text-align:right; padding:7px 6px; border-bottom:1px solid #EEF0F3; vertical-align:top; line-height:1.5; }
+  .cmp th { font-size:12px; color:#667085; }
+  .legend { display:flex; flex-direction:column; gap:7px; font-size:13px; }
+  /* הטלפון */
+  .phone { width:400px; max-width:100%; background:var(--bg); border:10px solid #1c1c1c; border-radius:36px; overflow:hidden; position:sticky; top:16px; }
+  .ph-bar { background:var(--text); color:#fff; padding:12px 14px; display:flex; align-items:center; gap:10px; font-weight:900; }
+  .ph-bar .bell { margin-inline-start:auto; position:relative; font-size:18px; }
+  .ph-bar .bell i { position:absolute; top:-6px; left:-10px; background:var(--yellow); color:var(--text); font-style:normal; font-size:10.5px; font-weight:900; border-radius:9px; padding:1px 5px; }
+  .ph-body { padding:14px 12px 24px; height:690px; overflow:auto; }
+  .yz-tabs { display:flex; gap:6px; background:var(--card-bg2); border-radius:14px; padding:4px; margin-bottom:12px; }
+  .yz-tab { flex:1; border:none; background:none; border-radius:11px; padding:10px 4px; font:inherit; font-size:14px; font-weight:700; color:var(--text-sm); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; }
+  .yz-tab.on { background:#fff; color:var(--text); box-shadow:var(--shadow); }
+  .yz-count { min-width:18px; height:18px; border-radius:9px; background:var(--yellow); color:var(--text); font-size:11px; font-weight:900; display:inline-flex; align-items:center; justify-content:center; padding:0 5px; }
+  .mh { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .mh h2 { margin:0; font-size:18px; }
+  .btn { border:none; border-radius:12px; padding:9px 14px; font:inherit; font-size:13.5px; font-weight:900; cursor:pointer; background:var(--yellow); color:var(--text); margin-inline-start:auto; }
+  .fchips { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .fchip { flex-shrink:0; border:1.5px solid var(--border-md); background:#fff; border-radius:20px; padding:6px 11px; font:inherit; font-size:12.5px; font-weight:800; color:var(--text-sm); cursor:pointer; display:inline-flex; gap:5px; align-items:center; }
+  .fchip.on { background:var(--text); border-color:var(--text); color:#fff; }
+  .fchip .n { background:var(--yellow); color:var(--text); border-radius:9px; font-size:10.5px; padding:0 6px; }
+  .day { font-size:12px; font-weight:800; color:var(--text-muted); margin:14px 2px 6px; }
+  /* פריט */
+  .it { display:block; width:100%; text-align:right; background:var(--card-bg); border:1px solid var(--border); border-radius:14px; padding:12px 14px 12px 12px; margin-bottom:8px; cursor:pointer; color:var(--text); font:inherit; border-inline-start:5px solid var(--border); }
+  .it.biz { border-inline-start-color:var(--text); }
+  .it.fan { border-inline-start-color:var(--yellow); }
+  .it.conv { border-inline-start-color:#9DB3E6; }
+  .it.unread { background:#FFFCEB; border-top-color:#F3DC7A; border-bottom-color:#F3DC7A; border-left-color:#F3DC7A; }
+  .top { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-bottom:5px; }
+  .lbl { font-size:11px; font-weight:900; border-radius:7px; padding:2px 8px; white-space:nowrap; }
+  .lbl.biz { background:var(--text); color:#fff; }
+  .lbl.biz2 { background:var(--biz-soft); color:var(--text); }
+  .lbl.fan { background:var(--fan-soft); color:#7A5B00; }
+  .lbl.conv { background:#E8EEFB; color:var(--text); }
+  .new { font-size:11px; font-weight:900; background:var(--yellow); border-radius:6px; padding:2px 7px; }
+  .pushed { font-size:10.5px; color:var(--text-sm); }
+  .time { font-size:11px; color:var(--text-muted); margin-inline-start:auto; }
+  .tt { font-size:15px; font-weight:800; line-height:1.4; }
+  .it:not(.unread) .tt { font-weight:600; }
+  .tx { font-size:13.5px; color:var(--text-sm); line-height:1.55; margin-top:3px; white-space:pre-line; word-break:break-word; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .it.open .tx { -webkit-line-clamp:unset; display:block; }
+  .lnk { display:inline-block; margin-top:8px; font-size:12.5px; font-weight:800; border:1px solid var(--border-md); border-radius:10px; padding:6px 10px; background:#fff; }
+  .st { font-size:11.5px; font-weight:900; border-radius:20px; padding:2px 9px; }
+  .st.wait { background:var(--card-bg2); color:var(--text-sm); } .st.closed { background:var(--card-bg2); color:var(--text-muted); }
+  .readall { display:block; margin:6px auto 0; border:none; background:none; font:inherit; font-size:12.5px; font-weight:700; color:var(--text-sm); cursor:pointer; text-decoration:underline; }
+  .empty { text-align:center; color:var(--text-sm); font-size:13px; padding:28px 10px; }
+  /* שיחה */
+  .back { border:none; background:none; font:inherit; font-size:14px; font-weight:800; color:var(--text); cursor:pointer; padding:4px 0; }
+  .cv-subject { font-size:16px; font-weight:900; margin:8px 0 12px; line-height:1.4; }
+  .thread { display:flex; flex-direction:column; gap:10px; }
+  .bw { display:flex; flex-direction:column; }
+  .bw.member { align-items:flex-start; } .bw.admin { align-items:flex-end; }
+  .bubble { max-width:84%; padding:10px 12px; border-radius:16px; font-size:14px; line-height:1.55; white-space:pre-line; word-break:break-word; }
+  .bw.member .bubble { background:var(--yellow); border-bottom-right-radius:4px; }
+  .bw.admin .bubble { background:var(--card-bg2); border:1px solid var(--border); border-bottom-left-radius:4px; }
+  .meta { font-size:10.5px; color:var(--text-muted); margin-top:3px; padding:0 4px; }
+  .composer { display:flex; flex-direction:column; gap:8px; margin-top:12px; border-top:1px solid var(--border); padding-top:12px; }
+  .composer textarea { width:100%; min-height:90px; resize:vertical; font:inherit; font-size:15px; line-height:1.5; color:var(--text); background:var(--bg); border:1.5px solid var(--border-md); border-radius:12px; padding:10px 12px; }
+  .about { display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:13px; }
+  .about button { border:1.5px solid var(--border-md); background:#fff; border-radius:20px; padding:6px 12px; font:inherit; font-size:13px; font-weight:800; color:var(--text-sm); cursor:pointer; }
+  .about button.on { border-color:var(--text); background:var(--text); color:#fff; }
+  .muted { font-size:12.5px; color:var(--text-sm); line-height:1.6; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#101828; color:#fff; padding:10px 16px; border-radius:12px; font-size:13.5px; z-index:60; display:none; }
+  .toast.show { display:block; }
+</style>
+</head>
+<body>
+<div class="demo-bar"><b>דמו</b> – "האזור שלי" באפליקציה. שום דבר לא נשמר. ההודעות לדוגמה.</div>
+<div class="wrap">
+  <div class="phone" id="phone"></div>
+  <div class="side">
+    <h1>הכל במקום אחד: "הודעות"</h1>
+    <p>במקום "עדכונים" + "הודעות" (ובתוכם "עדכונים מ-Yellow Zone", "התראות שקיבלת", "לכל בעלי העסקים"…) – לשונית אחת. כל מה שקיבל מאיתנו, ותשובות הצוות, לפי הזמן. על כל פריט – <b>תווית</b> שאומרת למי זה נשלח, ולמעלה <b>סינון</b>.</p>
+    <div class="ctl"><h3>מציג כ:</h3><div class="seg" id="who"></div></div>
+    <div class="ctl"><h3>התוויות</h3><div class="legend">
+      <div><span class="lbl biz">🏪 לעסק שלך</span> – נשלח רק לעסק שלו</div>
+      <div><span class="lbl biz2">🏪 לכל בעלי העסקים</span> – לכל העסקים באינדקס</div>
+      <div><span class="lbl fan">🧡 לכל האוהדים</span> – לכל החברים (גם לבעל העסק, כאוהד)</div>
+      <div><span class="lbl conv">💬 שיחה עם הצוות</span> – מה שהוא כתב לנו, והתשובה</div>
+      <div class="muted">ובצד ימין של כל פריט – פס צבע: <b style="color:var(--text)">כחול</b> = העסק, <b style="color:#B88A00">צהוב</b> = כאוהד, תכלת = שיחה. כך בעל עסק רואה במבט אחד מה שייך לעסק ומה אליו כאוהד.</div>
+      <div class="muted">"📲 קפץ בטלפון" – כשההודעה נשלחה גם כפוש. לחיצה על הפוש פותחת בדיוק את הפריט הזה.</div>
+    </div></div>
+    <div class="ctl"><h3>לדמות הודעה שמגיעה</h3><div class="sim" id="sim"></div></div>
+    <div class="ctl"><h3>מה משתנה לעומת היום</h3>
+      <table class="cmp"><tr><th>היום</th><th>בדמו</th></tr>
+        <tr><td>שתי לשוניות: "עדכונים" ו"הודעות"</td><td>לשונית אחת: "הודעות"</td></tr>
+        <tr><td>בעל עסק: 4 קוביות (על העסק שלך / לבעלי העסקים / לאוהדים / התראות בטלפון), רואים קובייה אחת בכל פעם</td><td>רשימה אחת לפי זמן, תווית על כל פריט, וסינון: העסק שלי / כאוהד / שיחות</td></tr>
+        <tr><td>"התראות שקיבלת לטלפון" – בלוק נפרד, פוש ועדכון נרשמים פעמיים</td><td>פריט אחד, עם "📲 קפץ בטלפון"</td></tr>
+        <tr><td>"כתבו לנו" – בלשונית "הודעות" בלבד</td><td>"✍️ כתבו לנו" בראש הרשימה; בעל עסק בוחר "על העסק" או "משהו אחר"</td></tr>
+        <tr><td>שני מונים נפרדים</td><td>מונה אחד – בלשונית ובפעמון</td></tr>
+      </table></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const BIZ_NAME = 'שווארמה הזהב';
+const H = 3600e3, D = 24 * H, NOW = Date.now();
+// kind: myBiz / allBiz / members / conv. pushed = נשלח גם כפוש. pushOnly = רק פוש (טקסט קצר).
+let ITEMS = [
+  { id: 'c1', kind: 'conv', about: 'biz', title: 'איך מעלים עוד תמונות לגלריה?', at: NOW - 1 * H, read: false, status: 'open',
+    msgs: [{ from: 'member', text: 'היי, ניסיתי להעלות 3 תמונות לגלריה ורק אחת עלתה. מה עושים?', at: NOW - 5 * H }, { from: 'admin', text: 'היי! אפשר עד 8 תמונות. נסה להעלות אחת-אחת מהמחשב – ואם זה לא עובד, שלח לנו כאן והעלינו בשבילך 🙂', at: NOW - 1 * H }] },
+  { id: 'u1', kind: 'myBiz', title: 'לכרטיס שלך חסרה תמונה ראשית', text: 'עסקים עם תמונה ראשית מקבלים פי 3 פתיחות. לוקח דקה – לחצו כאן והעלו.', link: true, pushed: true, at: NOW - 2 * H, read: false },
+  { id: 'u2', kind: 'allBiz', title: '5 עסקים חדשים הצטרפו השבוע', text: 'ברוכים הבאים למוסך הצפון, סטודיו 12, פיצה הכיכר, גלישה TLV וקפה בלומפילד.\nשתפו את הכרטיס שלכם – כל שיתוף מקפיץ אתכם למעלה.', pushed: true, at: NOW - 20 * H, read: false },
+  { id: 'u3', kind: 'members', title: 'משחק בשבת – הנחות בדוכנים', text: 'מציגים את התעודה הדיגיטלית בדוכנים ליד שער 11 ומקבלים 10% הנחה.', pushed: true, at: NOW - 26 * H, read: true },
+  { id: 'p1', kind: 'members', pushOnly: true, title: 'הטבה חדשה בפלאפל הזהב', text: 'מנה שנייה ב-50% לחברי Yellow Zone', pushed: true, at: NOW - 3 * D, read: true },
+  { id: 'u4', kind: 'allBiz', title: 'טיפ: איך לקבל יותר חשיפה', text: 'שלושה דברים שעובדים: תמונה ראשית חדה, הטבה ברורה בכותרת, ושיתוף בקבוצות האוהדים.', link: true, at: NOW - 5 * D, read: true },
+  { id: 'c2', kind: 'conv', about: 'fan', title: 'הקוד שלי לא עובד', at: NOW - 7 * D, read: true, status: 'closed',
+    msgs: [{ from: 'member', text: 'מנסה להיכנס עם הקוד ולא עובד', at: NOW - 8 * D }, { from: 'admin', text: 'תוקן – אפשר גם להיכנס עם Google בלי קוד.', at: NOW - 7 * D }] },
+  { id: 'u5', kind: 'members', title: 'ברוכים הבאים לעונה החדשה', text: 'העונה מתחילה – ואיתה 12 עסקים חדשים באינדקס. כל ההטבות מחכות לכם בדף הבית.', at: NOW - 9 * D, read: true },
+];
+const state = { who: 'owner', tab: 'msgs', f: 'all', open: null, conv: null, compose: false, about: 'biz', expanded: {} };
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const toast = (t) => { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 2400); };
+const isOwner = () => state.who === 'owner';
+const side = (it) => it.kind === 'myBiz' || it.kind === 'allBiz' || (it.kind === 'conv' && it.about === 'biz') ? 'biz' : 'fan';
+const visible = () => ITEMS.filter((it) => isOwner() || (it.kind !== 'myBiz' && it.kind !== 'allBiz' && !(it.kind === 'conv' && it.about === 'biz'))).sort((a, b) => b.at - a.at);
+const FILTERS = () => isOwner()
+  ? [['all', 'הכל', () => true], ['biz', '🏪 העסק שלי', (it) => side(it) === 'biz' && it.kind !== 'conv'], ['fan', '🧡 כאוהד', (it) => side(it) === 'fan' && it.kind !== 'conv'], ['conv', '💬 שיחות', (it) => it.kind === 'conv']]
+  : [['all', 'הכל', () => true], ['fan', '🧡 מ-Yellow Zone', (it) => it.kind !== 'conv'], ['conv', '💬 השיחות שלי', (it) => it.kind === 'conv']];
+const unread = (list) => list.filter((it) => !it.read).length;
+function ago(t) {
+  const m = Math.round((NOW - t) / 60000);
+  if (m < 60) return 'לפני ' + Math.max(1, m) + ' דק\'';
+  if (m < 24 * 60) return 'לפני ' + Math.round(m / 60) + ' שע\'';
+  const d = Math.round(m / 1440); return d === 1 ? 'אתמול' : 'לפני ' + d + ' ימים';
+}
+function dayGroup(t) { const d = (NOW - t) / D; return d < 1 ? 'היום' : d < 7 ? 'השבוע' : 'קודם'; }
+function label(it) {
+  if (it.kind === 'myBiz') return `<span class="lbl biz">🏪 לעסק שלך · ${esc(BIZ_NAME)}</span>`;
+  if (it.kind === 'allBiz') return '<span class="lbl biz2">🏪 לכל בעלי העסקים</span>';
+  if (it.kind === 'members') return '<span class="lbl fan">🧡 לכל האוהדים</span>';
+  return `<span class="lbl conv">💬 שיחה עם הצוות${isOwner() ? (it.about === 'biz' ? ' · על העסק' : ' · כאוהד') : ''}</span>`;
+}
+
+function render() {
+  const all = visible(), n = unread(all);
+  const tabs = (isOwner() ? [['biz', 'העסק שלי']] : []).concat([['msgs', 'הודעות'], ['me', 'הפרטים שלי']]);
+  let body;
+  if (state.tab !== 'msgs') body = `<div class="empty">${state.tab === 'biz' ? 'כאן הדשבורד של העסק – כמו היום' : 'כאן הפרטים האישיים – כמו היום'}</div>`;
+  else if (state.conv) body = convHtml(ITEMS.find((x) => x.id === state.conv));
+  else if (state.compose) body = composeHtml();
+  else body = feedHtml(all);
+  $('phone').innerHTML = `<div class="ph-bar">Yellow Zone · האזור שלי<span class="bell">🔔${n ? `<i>${n}</i>` : ''}</span></div>
+    <div class="ph-body"><div class="yz-tabs">${tabs.map(([k, l]) => `<button class="yz-tab${state.tab === k ? ' on' : ''}" data-tab="${k}">${l}${k === 'msgs' && n ? `<span class="yz-count">${n}</span>` : ''}</button>`).join('')}</div>${body}</div>`;
+  $('who').innerHTML = [['fan', 'אוהד'], ['owner', 'בעל עסק']].map(([k, l]) => `<button class="${state.who === k ? 'on' : ''}" data-who="${k}">${l}</button>`).join('');
+  $('sim').innerHTML = [['reply', '💬 תשובה מהצוות'], ['members', '🧡 עדכון לכל האוהדים + פוש']].concat(isOwner() ? [['myBiz', '🏪 הודעה לעסק שלו'], ['allBiz', '🏪 לכל בעלי העסקים']] : [])
+    .map(([k, l]) => `<button data-sim="${k}">${l}</button>`).join('');
+}
+function feedHtml(all) {
+  const F = FILTERS(); if (!F.some((f) => f[0] === state.f)) state.f = 'all';
+  const fn = F.find((f) => f[0] === state.f)[2];
+  const list = all.filter(fn);
+  let last = '', out = '';
+  list.forEach((it) => { const g = dayGroup(it.at); if (g !== last) { out += `<div class="day">${g}</div>`; last = g; } out += itemHtml(it); });
+  return `<div class="mh"><h2>הודעות</h2><button class="btn" data-compose="1">✍️ כתבו לנו</button></div>
+    <div class="fchips">${F.map(([k, l, f]) => { const u = unread(all.filter(f)); return `<button class="fchip${state.f === k ? ' on' : ''}" data-f="${k}">${l}${u ? `<span class="n">${u}</span>` : ''}</button>`; }).join('')}</div>
+    ${out || '<div class="empty">אין כאן עדיין כלום</div>'}
+    ${unread(list) > 1 ? '<button class="readall" data-readall="1">סימון הכל כנקרא</button>' : ''}`;
+}
+function itemHtml(it) {
+  const cls = it.kind === 'conv' ? 'conv' : side(it);
+  if (it.kind === 'conv') {
+    const lastM = it.msgs[it.msgs.length - 1];
+    const st = it.status === 'closed' ? '<span class="st closed">סגורה</span>' : lastM.from === 'member' ? '<span class="st wait">ממתינה לתשובה</span>' : '';
+    return `<button class="it conv${it.read ? '' : ' unread'}" data-conv="${it.id}"><div class="top">${it.read ? '' : '<span class="new">תשובה חדשה</span>'}${label(it)}<span class="time">${ago(it.at)}</span></div>
+      <div class="tt">${esc(it.title)}</div><div class="tx">${lastM.from === 'admin' ? 'הצוות: ' : 'את/ה: '}${esc(lastM.text)}</div>${st ? `<div style="margin-top:6px">${st}</div>` : ''}</button>`;
+  }
+  return `<button class="it ${cls}${it.read ? '' : ' unread'}${state.expanded[it.id] ? ' open' : ''}" data-item="${it.id}"><div class="top">${it.read ? '' : '<span class="new">חדש</span>'}${label(it)}${it.pushed ? '<span class="pushed">📲 קפץ בטלפון</span>' : ''}<span class="time">${ago(it.at)}</span></div>
+    <div class="tt">${esc(it.title)}</div>${it.text ? `<div class="tx">${esc(it.text)}</div>` : ''}${it.link && state.expanded[it.id] ? '<span class="lnk">לפרטים ›</span>' : ''}</button>`;
+}
+function convHtml(c) {
+  return `<button class="back" data-back="1">→ חזרה להודעות</button><div>${label(c)}</div><div class="cv-subject">${esc(c.title)}</div>
+    <div class="thread">${c.msgs.map((m) => `<div class="bw ${m.from}"><div class="bubble">${esc(m.text)}</div><div class="meta">${m.from === 'admin' ? 'צוות Yellow Zone · ' : ''}${ago(m.at)}</div></div>`).join('')}</div>
+    ${c.status === 'closed' ? '<div class="muted" style="margin-top:14px;background:var(--card-bg2);border-radius:12px;padding:12px">השיחה נסגרה. יש עוד משהו? <button class="back" data-compose="1">פתחו שיחה חדשה</button></div>'
+      : `<div class="composer"><textarea id="reply" placeholder="להוסיף לשיחה…"></textarea><div><button class="btn" style="margin:0" data-reply="${c.id}">שליחה</button></div></div>`}`;
+}
+function composeHtml() {
+  return `<button class="back" data-back="1">→ חזרה להודעות</button><div class="cv-subject">✍️ כתבו לנו</div>
+    ${isOwner() ? `<div class="about"><span class="muted">בנושא:</span>${[['biz', '🏪 העסק שלי'], ['fan', 'משהו אחר']].map(([k, l]) => `<button class="${state.about === k ? 'on' : ''}" data-about="${k}">${l}</button>`).join('')}</div>` : ''}
+    <div class="composer" style="border-top:none"><textarea id="newMsg" placeholder="מה קרה? נשמח לעזור"></textarea><div><button class="btn" style="margin:0" data-send="1">שליחה</button></div>
+    <div class="muted">התשובה תגיע לכאן${isOwner() ? '' : ''}, ובמייל. אם אישרת פוש – גם תקפוץ בטלפון.</div></div>`;
+}
+
+document.addEventListener('click', (e) => {
+  const q = (s) => e.target.closest(s); let x;
+  if ((x = q('[data-who]'))) { state.who = x.dataset.who; state.tab = 'msgs'; state.conv = null; state.compose = false; state.f = 'all'; render(); return; }
+  if ((x = q('[data-tab]'))) { state.tab = x.dataset.tab; state.conv = null; state.compose = false; render(); return; }
+  if ((x = q('[data-f]'))) { state.f = x.dataset.f; render(); return; }
+  if ((x = q('[data-item]'))) { const it = ITEMS.find((i) => i.id === x.dataset.item); it.read = true; state.expanded[it.id] = !state.expanded[it.id]; render(); return; }
+  if ((x = q('[data-conv]'))) { const c = ITEMS.find((i) => i.id === x.dataset.conv); c.read = true; state.conv = c.id; render(); return; }
+  if (q('[data-back]')) { state.conv = null; state.compose = false; render(); return; }
+  if (q('[data-compose]')) { state.conv = null; state.compose = true; state.about = 'biz'; render(); return; }
+  if ((x = q('[data-about]'))) { state.about = x.dataset.about; render(); return; }
+  if (q('[data-readall]')) { visible().forEach((it) => { it.read = true; }); render(); return; }
+  if ((x = q('[data-reply]'))) { const t = ($('reply').value || '').trim(); if (!t) return; const c = ITEMS.find((i) => i.id === x.dataset.reply); c.msgs.push({ from: 'member', text: t, at: Date.now() }); c.at = Date.now(); render(); toast('נשלח – התשובה תגיע לכאן'); return; }
+  if (q('[data-send]')) {
+    const t = ($('newMsg').value || '').trim(); if (!t) { toast('כתבו משהו קודם'); return; }
+    ITEMS.unshift({ id: 'c' + Date.now(), kind: 'conv', about: isOwner() ? state.about : 'fan', title: t.slice(0, 60), at: Date.now(), read: true, status: 'open', msgs: [{ from: 'member', text: t, at: Date.now() }] });
+    state.compose = false; state.f = 'all'; render(); toast('נשלח – מופיע ברשימה "ממתינה לתשובה"'); return;
+  }
+  if ((x = q('[data-sim]'))) {
+    const k = x.dataset.sim, t = Date.now();
+    if (k === 'reply') {
+      const c = ITEMS.find((i) => i.kind === 'conv' && i.status === 'open' && (isOwner() || i.about === 'fan'));
+      if (c) { c.msgs.push({ from: 'admin', text: 'קיבלנו, תודה! טיפלנו בזה 👍', at: t }); c.at = t; c.read = false; }
+      else ITEMS.unshift({ id: 'c' + t, kind: 'conv', about: 'fan', title: 'שאלה על ההטבה', at: t, read: false, status: 'open', msgs: [{ from: 'member', text: 'איך מממשים את ההטבה?', at: t - H }, { from: 'admin', text: 'מציגים את התעודה בקופה 🙂', at: t }] });
+    } else ITEMS.unshift({ id: 'u' + t, kind: k, title: { members: 'הגרלה למנויים – כרטיסים לדרבי', myBiz: 'השינוי שביקשת בכרטיס אושר', allBiz: 'חדש: סטטיסטיקה שבועית בדשבורד' }[k], text: { members: 'כל מי שמממש הטבה השבוע נכנס להגרלה.', myBiz: 'התמונה החדשה כבר באוויר.', allBiz: 'בלשונית "העסק שלי" – כמה ראו, פתחו ופנו אליכם השבוע.' }[k], pushed: k !== 'allBiz', at: t, read: false });
+    state.conv = null; state.compose = false; state.tab = 'msgs'; render(); toast('הגיעה הודעה חדשה'); return;
+  }
+});
+render();
+</script>
+</body>
+</html>
