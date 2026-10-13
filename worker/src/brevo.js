@@ -91,7 +91,9 @@ function stripHtml(html) {
 // tpl אופציונלי — override מ-settings/messageTemplates (Firestore), נערך במרכז ההודעות.
 // כשקיים, מחליף גם את הנושא וגם את גוף ההודעה — טקסט חופשי דרך renderMailHtml, כולל תיבת-קוד/
 // כפתור ממותגים אם {code}/{link} יושבים על שורה נפרדת משלהם, וכל סימוני-העיצוב של סרגל הכתיבה.
-export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind = 'welcome', login = null }) {
+// §526 — msgTag: תג msg_tpl_<id> נוסף ל-'login', כדי שה-webhook יכתוב גם לשורת הסטטיסטיקה של התבנית
+// (messages/tpl_<id>/recipients). מחזיר את { messageId } של Brevo (כמו sendBroadcastEmail).
+export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind = 'welcome', login = null, msgTag = '' }) {
   // בניגוד לבעלי-עסקים, לאוהד אין accessToken אישי — אז {link} כאן זהה לכל אוהד.
   // §494 — פותח את האפליקציה (דרך /download), לא את האתר: אוהדים משתמשים רק באפליקציה (§484).
   const vars = { name: toName || '', code, link: 'https://yellowzone.co.il/download?src=mail', ...loginVars(login) };
@@ -109,17 +111,17 @@ export async function sendLoginCodeEmail(env, { toEmail, toName, code, tpl, kind
           <p>נכנסים איתו יחד עם מספר הטלפון שאיתו נרשמתם.</p>
         </div>`;
 
-  await sendBrevoEmail(env, {
+  return sendBrevoEmail(env, {
     to: [{ email: toEmail, name: toName || '' }],
     replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
-    tag: 'login',
+    tag: msgTag ? ['login', msgTag] : 'login',
   });
 }
 
 // מייל שני, נפרד מקוד הכניסה — נשלח כשעסק (לא רק החברות של הבעלים) מאושר לאינדקס
-export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, businessName, dashboardLink, tpl, login = null }) {
+export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, businessName, dashboardLink, tpl, login = null, msgTag = '' }) {
   const vars = { name: ownerName || '', business: businessName, link: dashboardLink, ...loginVars(login) };
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
@@ -134,12 +136,12 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
           <p style="color:#888;font-size:13px">עריכת פרטים, תמונות ועוד – הקישור אישי ולא ניתן להעברה</p>
         </div>`;
 
-  await sendBrevoEmail(env, {
+  return sendBrevoEmail(env, {
     to: [{ email: toEmail, name: ownerName || '' }],
     replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
-    tag: 'bizApproved',
+    tag: msgTag ? ['bizApproved', msgTag] : 'bizApproved',
   });
 }
 
@@ -210,7 +212,7 @@ export async function sendDashboardLinkEmail(env, { toEmail, toName, businessNam
 }
 
 // מייל מאוחד — כשבעל עסק מאושר גם כאוהד וגם כבעל עסק באותה פעולה
-export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl, login = null }) {
+export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl, login = null, msgTag = '' }) {
   const vars = { name: toName || '', code, business: businessName, link: dashboardLink, ...loginVars(login) };
   const subject = tpl?.subject
     ? applyVars(tpl.subject, vars)
@@ -228,11 +230,11 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
           <p><a href="${dashboardLink}" style="display:inline-block;background:#FFDE00;color:#16130a;font-weight:900;text-decoration:none;padding:12px 24px;border-radius:14px;margin-top:8px">לניהול העסק שלך</a></p>
         </div>`;
 
-  await sendBrevoEmail(env, {
+  return sendBrevoEmail(env, {
     to: [{ email: toEmail, name: toName || '' }],
     replyTo: { email: REPLY_TO },
     subject,
     htmlContent,
-    tag: 'combined',
+    tag: msgTag ? ['combined', msgTag] : 'combined',
   });
 }

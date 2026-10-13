@@ -1841,7 +1841,9 @@ async function handleSendMessage({ idToken, messageId, block, recipients, app, p
 // ה-subrequests של Cloudflare Workers (50 בתוכנית חינמית להרצה) ומפיל את ההרצה באמצע, עם נמענים
 // שנשארים 'failed' לצמיתות בלי ניסיון-חוזר אוטומטי. עם התקרה, השאר פשוט נשארים 'pending' ומטופלים
 // בהרצת-הדקה הבאה — תור גדול מתרוקן תוך כמה דקות, בלי סיכון למכסה בשום תוכנית.
-const MAX_SWEEP_RECIPIENTS = 10;
+// §526 — ירד מ-10 ל-6: לכל נמען נוספו עד 3 קריאות (פריט באפליקציה, פוש, שורת סטטיסטיקה). 6 בדקה עדיין
+// מרוקן אישור של 46 עסקים בפחות מ-8 דקות.
+const MAX_SWEEP_RECIPIENTS = 6;
 
 // BIZ_SEND_GRACE_MS — כמה זמן להמתין אחרי אישור עסק לפני שמותר לשלוח לו מייל-עסק *בודד*.
 // אישור עסק במרכז הניהול כותב את מסמך העסק ואת מסמך החבר המקושר; מאז 18.8 זו כתיבה אטומית אחת
@@ -1860,6 +1862,78 @@ function memberLoginFor(fields) {
     account: fields.googleEmail || fields.email || '',
   };
 }
+
+// ══ §526 — התבניות הקבועות באותה זרימה (§504ג, שלב 5) ══════════════════════════════════════════
+// לכל תבנית אוטומטית, מעבר למייל: "התראה באפליקציה" ופוש (settings/messageTemplates:
+// <id>App = { on, title, text, link } · <id>Push = { on, title, body }), ושורה לכל שליחה ב-
+// messages/tpl_<id>/recipients/<rowId> – ממנה מרכז הניהול מציג "ב-30 הימים האחרונים".
+// 🔑 **רץ אחרי שהמייל יצא, ולא זורק אף פעם.** המייל הוא העיקר (בו הקוד/הקישור); כשל באפליקציה,
+//   בפוש או בשורה לא יסמן אותו 'failed' ולא יחזיר אותו לתור (= מייל כפול).
+// 🔑 **מזהה השורה = מזהה מי שהמייל נשלח לכתובת שלו** (חבר ב-login/resend/combined, עסק ב-biz):
+//   ה-webhook מתאים לפי כתובת ומעדכן רק שורה קיימת (תג msg_tpl_<id>, ר' brevo-webhook.js §524).
+//   שליחה חוזרת לאותו אדם דורסת את השורה – "מה קרה בפעם האחרונה" – ומאפסת את נתוני המסירה הישנים.
+// מי יכול לקבל מה (כמו הדמו): שכחתי-קוד = לא מחובר → רק מייל; אוהד חדש עוד לא נכנס → אין לו פוש.
+const TPL_APP_OK = { login: true, resend: false, biz: true, combined: true };
+const TPL_PUSH_OK = { login: false, resend: false, biz: true, combined: true };
+export function tplExtras(templates, id) {
+  const a = templates[id + 'App'], p = templates[id + 'Push'];
+  const A = TPL_APP_OK[id] && a && a.on === true && String(a.title || '').trim() && String(a.text || '').trim()
+    ? { title: String(a.title).trim().slice(0, 80), text: String(a.text).trim().slice(0, 1500), link: pushLinkPath(a.link).path || '' } : null;
+  const P = A && TPL_PUSH_OK[id] && p && p.on === true && String(p.title || '').trim() && String(p.body || '').trim()
+    ? { title: String(p.title).trim().slice(0, 60), body: String(p.body).trim().slice(0, 160) } : null;
+  return { A, P };
+}
+const tplFill = (str, v) => String(str || '').replace(/\{(name|business)\}/g, (m, k) => v[k] || '');
+export async function tplDeliver(env, accessToken, templates, { id, rowId, t, member, biz, email, name, mail, mailId = null, mailError = null }) {
+  const msgId = 'tpl_' + id;
+  const row = {
+    id: rowId, t, memberId: member ? member.id : null, name: name || '', email: email || '', tpl: id,
+    mail, mailId: mailId ? String(mailId) : null, mailError: mailError ? String(mailError).slice(0, 200) : null,
+    app: null, push: null, pushDevices: 0, sentAt: new Date(),
+    mailDelivery: null, mailDeliveryAt: null, mailDeliveryReason: null, mailOpenedAt: null, mailClickedAt: null,
+  };
+  try {
+    const { A, P } = mail === 'sent' ? tplExtras(templates, id) : { A: null, P: null };
+    const mf = (member && member.fields) || {};
+    if (A) {
+      row.app = 'none';
+      // רק לרשומת חבר מאושרת (ובעסק – גם העסק מאושר), כמו handleSendMessage
+      if (member && mf.status === 'approved' && (!biz || biz.fields.status === 'approved')) {
+        const v = { name: mf.firstName || '', business: biz ? (biz.fields.name || '') : '' };
+        try {
+          await firestorePatch(env, accessToken, `members/${member.id}/inbox/${msgId}`, {
+            kind: 'update', block: biz ? 'myBiz' : 'personal',
+            title: tplFill(A.title, v).slice(0, 80), text: tplFill(A.text, v).slice(0, 1500), link: A.link,
+            bizId: biz ? biz.id : null, bizName: biz ? String(biz.fields.name || '') : null,
+            pushed: !!P, sentAt: new Date(), readAt: null, clickedAt: null, pushOpenedAt: null, tpl: id,
+          });
+          row.app = 'written';
+        } catch (e) { console.error('tpl inbox write failed', id, rowId, e); row.app = 'failed'; }
+      }
+    }
+    if (P) {
+      row.push = 'none';
+      if (row.app === 'written') {
+        const tokens = mf.nativePushTokens || {};
+        if (!Object.keys(tokens).length) row.push = 'noToken';
+        else {
+          const res = await sendFcmToMember(env, accessToken, tokens, { title: P.title, body: P.body, data: { link: `/profile.html?tab=msgs&item=${msgId}` } });
+          row.push = res.sent ? 'sent' : 'failed';
+          row.pushDevices = res.sent || 0;
+          if (res.deadKeys && res.deadKeys.length) {
+            const remaining = Object.fromEntries(Object.entries(tokens).filter(([k]) => !res.deadKeys.includes(k)));
+            await firestorePatch(env, accessToken, `members/${member.id}`, { nativePushTokens: remaining })
+              .catch((e) => console.error('native push cleanup failed for', member.id, e));
+          }
+        }
+      }
+    }
+  } catch (e) { console.error('tpl extras failed', id, rowId, e); }
+  try { await firestorePatch(env, accessToken, `messages/${msgId}/recipients/${rowId}`, row); }
+  catch (e) { console.error('tpl stats row failed', id, rowId, e); }
+  return row;
+}
+const tplName = (f) => `${(f && f.firstName) || ''} ${(f && f.lastName) || ''}`.trim();
 
 async function runEmailSweeps(env) {
   const accessToken = await getGoogleAccessToken(env);
@@ -1881,6 +1955,7 @@ async function runEmailSweeps(env) {
     // מאושר בלי קוד (עדיין) – לא שולחים מייל עם קוד ריק; נשאר בתור לסבב הבא (באישור הקוד נשמר לפני הדגל).
     if (!(await loginCodeFor(env, accessToken, m.id))) continue;
     processed++;
+    let att = null;   // §526 — מה ניסינו לשלוח, לשורת הסטטיסטיקה גם כשנכשל
     try {
       let business = null;
       if (m.fields.isBusinessOwner === true && m.fields.linkedBusinessId) {
@@ -1891,7 +1966,9 @@ async function runEmailSweeps(env) {
       }
 
       if (business) {
-        await sendCombinedWelcomeEmail(env, {
+        att = { id: 'combined', rowId: m.id, t: 'm', member: m, biz: business, email: m.fields.email, name: tplName(m.fields) };
+        const sent = await sendCombinedWelcomeEmail(env, {
+          msgTag: 'msg_tpl_combined',
           toEmail: m.fields.email,
           toName: m.fields.firstName,
           code: await loginCodeFor(env, accessToken, m.id),   // §248
@@ -1910,6 +1987,7 @@ async function runEmailSweeps(env) {
           welcomeEmailKind: 'combined',
         });
         handledBusinessIds.add(business.id);
+        await tplDeliver(env, accessToken, templates, { ...att, mail: 'sent', mailId: sent && sent.messageId });
       } else {
         // §306 — שני מכתבים נפרדים: אישור ראשוני מול "שכחתי קוד". נפילה-לאחור לתבנית
         // הראשית אם השדות החדשים עוד לא נשמרו ב-Firestore (מסמך התבניות נערך ידנית).
@@ -1917,7 +1995,9 @@ async function runEmailSweeps(env) {
         const loginTpl = isResend
           ? { subject: templates.resendSubject || templates.loginSubject, body: templates.resendBody || templates.loginBody }
           : { subject: templates.loginSubject, body: templates.loginBody };
-        await sendLoginCodeEmail(env, {
+        att = { id: isResend ? 'resend' : 'login', rowId: m.id, t: 'm', member: m, biz: null, email: m.fields.email, name: tplName(m.fields) };
+        const sent = await sendLoginCodeEmail(env, {
+          msgTag: 'msg_tpl_' + att.id,
           toEmail: m.fields.email,
           toName: m.fields.firstName,
           code: await loginCodeFor(env, accessToken, m.id),   // §248
@@ -1930,12 +2010,14 @@ async function runEmailSweeps(env) {
           loginCodeEmailSentAt: new Date(),
           loginCodeEmailKind: null,
         });
+        await tplDeliver(env, accessToken, templates, { ...att, mail: 'sent', mailId: sent && sent.messageId });
       }
     } catch (e) {
       await firestorePatch(env, accessToken, `members/${m.id}`, {
         loginCodeEmailStatus: 'failed',
         loginCodeEmailError: String(e).slice(0, 500),
       });
+      if (att) await tplDeliver(env, accessToken, templates, { ...att, mail: 'failed', mailError: String(e) });
     }
   }
 
@@ -1961,6 +2043,7 @@ async function runEmailSweeps(env) {
     if (approvedAtMs && Date.now() - approvedAtMs < BIZ_SEND_GRACE_MS) continue;
 
     processed++;
+    let att = null;   // §526
     try {
       const ownerName = `${b.fields.ownerFirst || ''} ${b.fields.ownerLast || ''}`.trim();
       const dashboardLink = `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, b.id)}`;   // §244
@@ -1984,7 +2067,9 @@ async function runEmailSweeps(env) {
       const ownerHasCode = !!owner && owner.fields.status === 'approved' && !!ownerCode;
 
       if (ownerHasCode) {
-        await sendCombinedWelcomeEmail(env, {
+        att = { id: 'combined', rowId: owner.id, t: 'm', member: owner, biz: b, email: owner.fields.email || b.fields.ownerEmail, name: tplName(owner.fields) };
+        const sent = await sendCombinedWelcomeEmail(env, {
+          msgTag: 'msg_tpl_combined',
           toEmail: owner.fields.email || b.fields.ownerEmail,
           toName: owner.fields.firstName,
           code: ownerCode,
@@ -2006,10 +2091,13 @@ async function runEmailSweeps(env) {
           ownerEmailSentAt: new Date(),
           welcomeEmailKind: 'combined',
         });
+        await tplDeliver(env, accessToken, templates, { ...att, mail: 'sent', mailId: sent && sent.messageId });
         continue;
       }
 
-      await sendBusinessApprovedEmail(env, {
+      att = { id: 'biz', rowId: b.id, t: 'b', member: owner, biz: b, email: b.fields.ownerEmail, name: String(b.fields.name || '') };
+      const sent = await sendBusinessApprovedEmail(env, {
+        msgTag: 'msg_tpl_biz',
         toEmail: b.fields.ownerEmail,
         ownerName,
         businessName: b.fields.name,
@@ -2027,11 +2115,13 @@ async function runEmailSweeps(env) {
         // שליחה חוזרת דורסת את ownerEmailSentAt ומטשטשת כל ניחוש כזה.
         welcomeEmailKind: 'bizOnly',
       });
+      await tplDeliver(env, accessToken, templates, { ...att, mail: 'sent', mailId: sent && sent.messageId });
     } catch (e) {
       await firestorePatch(env, accessToken, `businesses/${b.id}`, {
         ownerEmailStatus: 'failed',
         ownerEmailError: String(e).slice(0, 500),
       });
+      if (att) await tplDeliver(env, accessToken, templates, { ...att, mail: 'failed', mailError: String(e) });
     }
   }
 }
