@@ -124,33 +124,34 @@ service cloud.firestore {
         // ⚠️ הדבר הזה חוזר בשלושה מקומות בקובץ (כאן · `businesses` update (א) ·
         // `bizTokens` create). כולם הוסרו יחד ב-§419 — הסרה חלקית הייתה משאירה את אותו
         // באג חי בחצי מהזרימה, וזה בדיוק מה שקרה בין §288 לכאן.
+        //
+        // ══ §517 — 🔴 השתלטות על חשבון: הענף הזה איפשר לכל אחד, בלי להתחבר, להחליף טלפון ומייל ══
+        // על **כל** רשומת חבר (גם מנהל) – ואז "שליחת קוד חוזרת" לטלפון החדש שלחה את קוד הכניסה
+        // למייל החדש, של התוקף. ה-memberId זמין בלי התחברות (/check-member-exists, ownerMemberId,
+        // likedBy). נמצא בביקורת 13.10; אין קוד לגיטימי ששולח כאן phone/email (fan-register כבר
+        // לא מעדכן רשומה קיימת; business.html:linkOrCreateOwnerMember שולח רק את חמשת השדות למטה).
+        // 🔑 **לכן הענף צומצם בדיוק למה ש-business.html שולח, ורק כהשלמה – אף פעם לא כדריסה:**
+        //   • isBusinessOwner – רק true.
+        //   • linkedBusinessId – רק לעסק קיים ו-pending (העסק שנוצר באותה הרשמה). ⚠️ דריסה של קישור קיים
+        //     נשארת מותרת – בעל עסק רשאי להוסיף עסק שני (12.10). הסיכון (קישור לעסק זר) אינו השתלטות,
+        //     ונסגר בסבב העסקים של §517.
+        //   • birthDate – רק אם לא היה. firstName/lastName – רק אם לא היה שם.
+        //   • status ו-isAdmin – לא משתנים (אינם ברשימה).
+        // ⚠️ כל שדה אחר (טלפון, מייל, אימות, googleSub...) – מנהל, או החבר עצמו בענף (ב).
         || (
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly([
-              'firstName', 'lastName', 'birthDate', 'phone', 'email',
-              'isSubscriber', 'subscriberSection', 'subscriberNumber',
-              'wasSubscriber', 'facebookUrl',
-              // §284 — מסלולי-אימות. verifyMethod/verifyTrust מתארים *איך* אומת, ו-seat*
-              // /verifyNote הם התוכן של שני מסלולים שאין להם קובץ. בלי הרשימה הזאת עדכון
-              // דדופ אנונימי היה נדחה כולו (hasOnly = כל-או-כלום), כלומר הרשמה חוזרת של
-              // אוהד קיים הייתה נכשלת בשקט.
-              'verifyMethod', 'verifyTrust', 'seatBlock', 'seatRow', 'seatNumber', 'verifyNote',
-              'isBusinessOwner', 'linkedBusinessId', 'photoProofUrl',
-              'reviewFlag', 'reviewFlagAt', 'submittedAt', 'nameConflict'
-            ]) &&
-          // status: מותר להישאר זהה, או לרדת ל-'pending' בלבד (למשל אי-התאמת שם
-          // בהרשמה כפולה) — לעולם לא לעלות ל-'approved' מנתיב לא-מאומת.
-          (request.resource.data.status == resource.data.status ||
-           request.resource.data.status == 'pending') &&
-          (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin) &&
-          // הגנה נוספת (אירוע אמיתי 2026-07-24: הרשמה עם טלפון של חבר אמיתי
-          // דרסה את השם/מייל שלו עצמו) — כשנכתב nameConflict, השדות האישיים
-          // של הרשומה הקיימת חייבים להישאר בדיוק כמו שהיו, בלי יוצא מן הכלל.
-          (!('nameConflict' in request.resource.data) ||
-            (request.resource.data.firstName == resource.data.firstName &&
-             request.resource.data.lastName  == resource.data.lastName &&
-             request.resource.data.email     == resource.data.email &&
-             request.resource.data.phone     == resource.data.phone))
+            .hasOnly(['isBusinessOwner', 'linkedBusinessId', 'birthDate', 'firstName', 'lastName']) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isBusinessOwner']) ||
+            request.resource.data.isBusinessOwner == true) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['linkedBusinessId']) || (
+            request.resource.data.linkedBusinessId is string &&
+            exists(/databases/$(database)/documents/businesses/$(request.resource.data.linkedBusinessId)) &&
+            get(/databases/$(database)/documents/businesses/$(request.resource.data.linkedBusinessId)).data.status == 'pending'
+          )) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['birthDate']) ||
+            resource.data.get('birthDate', null) in [null, '']) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['firstName', 'lastName']) ||
+            resource.data.get('firstName', null) in [null, ''])
         )
 
         // (ב) חבר מחובר עורך את המסמך של עצמו — home.html/profile.html.
