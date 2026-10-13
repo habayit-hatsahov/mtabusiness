@@ -65,11 +65,14 @@ async function check(name, p) {
   await check('לא מקשר לעסק מאושר', assertFails(updateDoc(doc(anon, 'members/victim'), { linkedBusinessId: 'bizApproved' })));
   await check('לא מקשר לעסק שלא קיים', assertFails(updateDoc(doc(anon, 'members/victim'), { linkedBusinessId: 'nope' })));
 
-  console.log('🔑 business.html – הזרימה האמיתית עובדת');
-  await check('קישור בעל עסק קיים (isBusinessOwner+linkedBusinessId)', assertSucceeds(updateDoc(doc(anon, 'members/victim'), { isBusinessOwner: true, linkedBusinessId: 'bizPending' })));
-  await check('השלמת שם כשאין', assertSucceeds(updateDoc(doc(anon, 'members/noname'), { isBusinessOwner: true, linkedBusinessId: 'bizPending', firstName: 'דנה', lastName: 'כהן' })));
-  await check('השלמת תאריך לידה כשאין', assertSucceeds(updateDoc(doc(anon, 'members/noname'), { birthDate: '1985-05-05' })));
-  await check('גם כשמחובר כחבר אחר (§419)', assertSucceeds(updateDoc(doc(other, 'members/other'), { isBusinessOwner: true, linkedBusinessId: 'bizPending' })));
+  console.log('§517ג – הקישור עבר לוורקר: שום כתיבה אנונימית על רשומת חבר קיימת');
+  await check('אנונימי לא מקשר בעל עסק (עבר לוורקר)', assertFails(updateDoc(doc(anon, 'members/victim'), { isBusinessOwner: true, linkedBusinessId: 'bizPending' })));
+  await check('אנונימי לא משלים שם', assertFails(updateDoc(doc(anon, 'members/noname'), { isBusinessOwner: true, linkedBusinessId: 'bizPending', firstName: 'דנה', lastName: 'כהן' })));
+  await check('אנונימי לא משלים תאריך לידה', assertFails(updateDoc(doc(anon, 'members/noname'), { birthDate: '1985-05-05' })));
+  await check('חבר אחר לא מקשר', assertFails(updateDoc(doc(other, 'members/other'), { isBusinessOwner: true, linkedBusinessId: 'bizPending' })));
+
+  await check('עסק pending: אנונימי לא כותב ownerMemberId', assertFails(updateDoc(doc(anon, 'businesses/bizPending'), { ownerMemberId: 'victim' })));
+  await check('עסק pending: אנונימי עדיין מעדכן תמונות (הרשמה)', assertSucceeds(updateDoc(doc(anon, 'businesses/bizPending'), { photos: [{ url: 'x', name: 'y' }] })));
 
   console.log('רגרסיה');
   await check('החבר עצמו מחליף טלפון ומייל (ענף ב)', assertSucceeds(updateDoc(doc(victimSelf, 'members/victim'), { phone: '0505555555', email: 'new@x.co' })));

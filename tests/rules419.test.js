@@ -57,8 +57,9 @@ async function check(name, p) {
     assertFails(setDoc(doc(member, 'bizTokens/bAppr'), { accessToken: 'נחטף' })));
 
   console.log('\n══ businesses · העדכון שאחרי היצירה (ownerMemberId + תמונות) ══');
-  await check('🔑 חבר מחובר כותב ownerMemberId לעסק ממתין — עובר (התיקון)',
-    assertSucceeds(updateDoc(doc(member, 'businesses/bPend'), { ownerMemberId: 'm1' })));
+  // §517ג — ownerMemberId נכתב רק בוורקר (/link-biz-owner, טוקן העסק כהוכחה). §419 התיר אותו לכל מחובר.
+  await check('§517ג: ownerMemberId לעסק ממתין – כבר לא מהדף (עבר לוורקר)',
+    assertFails(updateDoc(doc(member, 'businesses/bPend'), { ownerMemberId: 'm1' })));
   await check('🔑 חבר מחובר כותב תמונות לעסק ממתין — עובר (התיקון)',
     assertSucceeds(updateDoc(doc(member, 'businesses/bPend'), { coverPhoto: 'https://x/c.jpg', logo: 'https://x/l.png', photos: [{ url: 'https://x/1.jpg', name: '1' }] })));
   await check('אנונימי כותב תמונות — עדיין עובר (רגרסיה)',
@@ -71,10 +72,11 @@ async function check(name, p) {
     assertFails(updateDoc(doc(member, 'businesses/bPend'), { status: 'approved', coverPhoto: 'https://x/c.jpg' })));
 
   console.log('\n══ members · עדכון הדדופ (isBusinessOwner / linkedBusinessId) ══');
-  await check('🔑 חבר מחובר מסמן רשומה קיימת כבעלת-עסק — עובר (התיקון)',
-    assertSucceeds(updateDoc(doc(member, 'members/dedup1'), { isBusinessOwner: true, linkedBusinessId: 'bPend' })));
-  await check('אנונימי מסמן — עדיין עובר (רגרסיה)',
-    assertSucceeds(updateDoc(doc(anon, 'members/dedup2'), { isBusinessOwner: true, linkedBusinessId: 'bPend2' })));
+  // §517ג — ענף (א) של members הוסר: הקישור לחבר קיים נעשה בוורקר. זה היה פתח להשתלטות (§517).
+  await check('§517ג: חבר מחובר לא מסמן רשומה קיימת (עבר לוורקר)',
+    assertFails(updateDoc(doc(member, 'members/dedup1'), { isBusinessOwner: true, linkedBusinessId: 'bPend' })));
+  await check('§517ג: אנונימי לא מסמן רשומה קיימת',
+    assertFails(updateDoc(doc(anon, 'members/dedup2'), { isBusinessOwner: true, linkedBusinessId: 'bPend2' })));
   await check('חבר מחובר · העלאת status ל-approved — עדיין נדחה',
     assertFails(updateDoc(doc(member, 'members/dedup1'), { status: 'approved' })));
   await check('חבר מחובר · כתיבת isAdmin — עדיין נדחה',

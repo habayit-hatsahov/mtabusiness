@@ -1220,7 +1220,8 @@
       const data = await resp.json();
       // §510 — registered: רשומה פעילה (לא נדחתה) עם אותו טלפון/מייל → ההרשמה נחסמת.
       // `=== true` ולא `!!`: ורקר ישן (בלי השדה) או תשובת-שגיאה → לא חוסמים (fail-open).
-      return { memberId: data.memberId || null, nameMismatch: !!data.nameMismatch, registered: data.registered === true, ok: true };
+      // §517 — הוורקר כבר לא מחזיר memberId (מיפוי טלפון/מייל → מזהה-חבר לכל אחד). exists מספיק לדגל.
+      return { exists: data.exists === true, memberId: data.memberId || null, nameMismatch: !!data.nameMismatch, registered: data.registered === true, ok: true };
     } catch (e) {
       console.error('fan-register.html: לא ניתן היה לבדוק כפילות מול השרת.', e);
       // ok:false — הבדיקה לא באמת רצה. חשוב לחימום למטה: תוצאה כזאת לא נשמרת לשימוש חוזר,
@@ -2181,11 +2182,12 @@
       // התאמת טלפון/מייל לרשומה קיימת — מסמנים דגל להצלבה ידנית ע"י מנהל
       // (admin-dashboard.html, "כל האוהדים") במקום לגעת ברשומה הקיימת בכלל.
       // §510 — הבדיקה עצמה רצה למעלה (לפני התמונה); כאן מגיעה רק התאמה לרשומה שנדחתה.
-      const existingId = dedup.memberId;
-      if (existingId) {
+      // §517 — בלי duplicateOfId: הוורקר כבר לא מחזיר מזהה-חבר. מרכז הניהול מוצא את הרשומה הקיימת
+      // בעצמו לפי טלפון/מייל (admin-dashboard, 'כפילות אפשרית').
+      if (dedup.exists || dedup.memberId) {
         data.reviewFlag   = 'possible_duplicate';
         data.reviewFlagAt = serverTimestamp();
-        data.duplicateOfId = existingId;
+        if (dedup.memberId) data.duplicateOfId = dedup.memberId;
       }
       // setDoc על מזהה שנוצר מראש, במקום addDoc — התמונה כבר בפנים ב-data, ואין יותר
       // כתיבה שנייה (updateDoc) שיכולה להיכשל בנפרד ולהשאיר רשומה בלי קישור לתמונה.

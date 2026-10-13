@@ -157,21 +157,9 @@ service cloud.firestore {
         //   • birthDate – רק אם לא היה. firstName/lastName – רק אם לא היה שם.
         //   • status ו-isAdmin – לא משתנים (אינם ברשימה).
         // ⚠️ כל שדה אחר (טלפון, מייל, אימות, googleSub...) – מנהל, או החבר עצמו בענף (ב).
-        || (
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['isBusinessOwner', 'linkedBusinessId', 'birthDate', 'firstName', 'lastName']) &&
-          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isBusinessOwner']) ||
-            request.resource.data.isBusinessOwner == true) &&
-          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['linkedBusinessId']) || (
-            request.resource.data.linkedBusinessId is string &&
-            exists(/databases/$(database)/documents/businesses/$(request.resource.data.linkedBusinessId)) &&
-            get(/databases/$(database)/documents/businesses/$(request.resource.data.linkedBusinessId)).data.status == 'pending'
-          )) &&
-          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['birthDate']) ||
-            resource.data.get('birthDate', null) in [null, '']) &&
-          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['firstName', 'lastName']) ||
-            resource.data.get('firstName', null) in [null, ''])
-        )
+        // ══ §517ג — ענף (א) **הוסר** (13.10). הקישור של בעל עסק לחבר קיים נעשה בוורקר
+        // (/link-biz-owner, worker/src/bizowner.js) עם טוקן העסק כהוכחה. אין יותר שום היתר-כתיבה
+        // אנונימי על רשומת חבר קיימת. אל תחזירו ענף כזה: זו הייתה השתלטות על חשבונות (§517).
 
         // (ב) חבר מחובר עורך את המסמך של עצמו — home.html/profile.html.
         // pushSubscriptions: מיפוי מכשיר→מנוי, נכתב מ-home.html כשחבר מאשר הרשאת Web Push (ר' §51/52) —
@@ -291,7 +279,7 @@ service cloud.firestore {
           resource.data.status == 'pending' &&
           request.resource.data.status == 'pending' &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['ownerMemberId', 'photoProofUrl', 'logo', 'coverPhoto', 'photos'])
+            .hasOnly(['photoProofUrl', 'logo', 'coverPhoto', 'photos'])   // §517ג — ownerMemberId: רק הוורקר (/link-biz-owner)
         )
 
         // (ב) בעל עסק מחובר עורך את pendingChanges של עצמו בלבד —
