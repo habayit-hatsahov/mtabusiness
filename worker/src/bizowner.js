@@ -73,5 +73,30 @@ export async function handleLinkBizOwner(input, env) {
   return { memberId: existing.id, created: false };
 }
 
+// ══ כותרת ההטבה הקצרה בהרשמת עסק (13.10) ════════════════════════════════════════════════════
+// עד היום business.html קיצר ב-AI וכתב `discountText` בעצמו – והחוקים (businesses update, ענף (א))
+// דחו את הכתיבה מאז ומעולם, בשקט. כל עסק הגיע לאישור עם כותרת ריקה, והמנהל יצר אותה ב"✨ צור מתיאור".
+// POST /biz-short-title { bizId, accessToken, title } → שומר את הכותרת שהדף יצר (/shorten-benefit +
+// מדידת רוחב הכרטיס בפיקסלים – בדיוק כמו "✨ צור מתיאור" במרכז הניהול; את המדידה אפשר לעשות רק בדפדפן).
+// רק לעסק pending שעדיין אין לו כותרת, ורק למי שמחזיק את טוקן העסק. כותרת שתולה אינה מוסיפה כוח:
+// אותו אדם כותב ממילא את `discountTextFull`, והמנהל רואה ועורך את שניהם לפני האישור.
+export async function handleBizShortTitle(input, env) {
+  const { bizId, accessToken, title } = (input && typeof input === 'object') ? input : {};
+  if (typeof bizId !== 'string' || !ID_RE.test(bizId) || typeof accessToken !== 'string' || !TOKEN_RE.test(accessToken)) {
+    return { error: 'invalid_request' };
+  }
+  const t = typeof title === 'string' ? title.replace(/\s+/g, ' ').trim() : '';
+  if (!t || t.length > 60) return { error: 'invalid_title' };
+  const at = await getGoogleAccessToken(env);
+  if ((await claimBizToken(env, at, bizId, accessToken)) !== bizId) return { error: 'not_authorized' };
+  const bizDoc = await firestoreGetDoc(env, at, `businesses/${bizId}`);
+  if (!bizDoc) return { error: 'not_found' };
+  const biz = bizDoc.fields;
+  if (biz.status !== 'pending') return { error: 'not_pending' };
+  if (!empty(biz.discountText)) return { already: true };   // לא דורסים כותרת שהמנהל כבר כתב
+  await firestorePatch(env, at, `businesses/${bizId}`, { discountText: t });
+  return { ok: true };
+}
+
 // לבדיקות בלבד
 export const _test = { findExistingMember, normalizePhoneDigits };

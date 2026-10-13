@@ -22,7 +22,7 @@ import { handleUploadBizMedia } from './bizmedia.js';
 import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js';
 import { handleDemoSession } from './demo.js';
 import { syncBizPublic, handlePublicBizList } from './bizpublic.js';
-import { handleLinkBizOwner } from './bizowner.js';
+import { handleLinkBizOwner, handleBizShortTitle } from './bizowner.js';
 import { handleEvent } from './events.js';
 import { APPCHECK_PATHS, sampleAppCheck } from './appcheck.js';
 
@@ -84,6 +84,11 @@ export default {
       if (request.method === 'POST' && url.pathname === '/link-biz-owner') {
         if (await overIpQuota(env.RATE_LIMIT_KV, 'linkowner', clientIp(request, env), 20, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request);
         return json(await handleLinkBizOwner(await request.json(), env), env, request);
+      }
+      // 13.10 — כותרת ההטבה הקצרה בהרשמת עסק (במקום כתיבה מהדף שהחוקים דחו). ר' bizowner.js.
+      if (request.method === 'POST' && url.pathname === '/biz-short-title') {
+        if (await overIpQuota(env.RATE_LIMIT_KV, 'bizshort', clientIp(request, env), 20, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request);
+        return json(await handleBizShortTitle(await request.json(), env), env, request);
       }
       // §516 — לינק תצוגה לאורח (demo.html / demo-mode.js). ר' demo.js.
       if (request.method === 'POST' && url.pathname === '/demo-session') {

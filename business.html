@@ -3261,10 +3261,19 @@
         }).catch(e => console.error('weekly_interest save failed:', e.message));
       }
 
-      if (fullDiscountText) {
-        shortenBenefitAI(fullDiscountText)
-          .then(shortText => updateDoc(doc(db, 'businesses', bizDocRef.id), { discountText: shortText }))
-          .catch(e => console.error('shorten-benefit background update failed:', e));
+      // כותרת ההטבה הקצרה לכרטיס. עד 13.10 נכתבה כאן ב-updateDoc – והחוקים דחו אותה מאז ומעולם
+      // (ענף (א) מתיר לעסק pending רק תמונות), כך שכל עסק הגיע לאישור בלי כותרת. עכשיו הוורקר
+      // שומר אותה (/biz-short-title, טוקן העסק כהוכחה). ממתינים לה לפני מסך ההצלחה (§292).
+      let shortTitlePromise = null;
+      if (fullDiscountText && bizTokenPromise) {
+        shortTitlePromise = Promise.all([shortenBenefitAI(fullDiscountText), bizTokenPromise])
+          .then(([title]) => hbApiFetch('/biz-short-title', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bizId: bizDocRef.id, accessToken, title }),
+          }))
+          .then(r => r.json())
+          .then(d => { if (!d || d.error) console.error('biz-short-title:', (d && d.error) || 'no_response'); })
+          .catch(e => console.error('biz-short-title failed:', e.message));
       }
 
       // תמונות/לוגו/קאבר/הוכחת-אוהד מועלים דרך ה-Worker (/upload-biz-media), לא דרך ה-Client SDK —
@@ -3390,6 +3399,10 @@
       if (bizTokenPromise) {
         await withTimeout(bizTokenPromise, 10000, 'BizTokenTimeout')
           .catch(e => console.error('biz token wait:', e.name));
+      }
+      if (shortTitlePromise) {
+        await withTimeout(shortTitlePromise, 12000, 'ShortTitleTimeout')
+          .catch(e => console.error('short title wait:', e.name));
       }
 
       // §295 — החלפת-המסך היחידה בזרימה המוצלחת: מהטופס ישירות למסך ההצלחה.
