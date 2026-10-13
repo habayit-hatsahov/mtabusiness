@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<script src="fresh-page.js"></script><!-- §514 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex, nofollow"/>
+<meta name="referrer" content="no-referrer"/>
+<title>Yellow Zone – תצוגה</title>
+<!-- §516 — כניסה מלינק תצוגה לאורח: demo.html?t=<token>.
+     הוורקר (/demo-session) מאמת את הלינק (קיים, לא כובה, לא פג, לא מכשיר עודף) ומחזיר custom token
+     עם uid=demo_… ו-role:'demo'. מכאן האורח מסייר באתר האמיתי; demo-mode.js נועל את המימוש ובודק
+     תוקף בכל דף. demo.html?dead=1 – ניתוק (demo-mode.js מפנה לכאן כשהלינק כבר לא תקף). -->
+<style>
+  @font-face { font-family: 'Rubik'; font-style: normal; font-weight: 300 900; font-display: swap;
+    src: url('fonts/rubik-hebrew.woff2') format('woff2');
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
+  @font-face { font-family: 'Rubik'; font-style: normal; font-weight: 300 900; font-display: swap;
+    src: url('fonts/rubik-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+20AA, U+2122, U+2212; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { font-family: 'Rubik', sans-serif; background: #FFD400; color: #0A2A66;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+    padding: 30px 16px; text-align: center; min-height: 100dvh; }
+  img.logo { width: min(240px, 60vw); height: auto; }
+  .hi { font-size: 20px; font-weight: 900; }
+  .sub { font-size: 14px; line-height: 1.65; max-width: 340px; margin: 8px auto 0; }
+  .go { background: #0A2A66; color: #fff; border: none; border-radius: 14px; padding: 14px 28px;
+    font: inherit; font-size: 16px; font-weight: 900; cursor: pointer; text-decoration: none; display: inline-block; }
+  .small { font-size: 12px; opacity: .75; }
+  .spin { width: 28px; height: 28px; border-radius: 50%; border: 3px solid rgba(10,42,102,.2); border-top-color: #0A2A66; animation: s 0.8s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <img class="logo" src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
+  <div id="loading"><div class="spin"></div></div>
+  <div id="ok" hidden>
+    <div class="hi" id="hi"></div>
+    <div class="sub">הזמנו אותך להציץ ב-Yellow Zone – מועדון ההטבות של אוהדי מכבי תל אביב. אפשר לסייר בחופשיות בכל האתר, כולל האזור האישי של אוהד ושל בעל עסק.</div>
+  </div>
+  <a class="go" id="goBtn" href="home.html" hidden>להתחיל לסייר</a>
+  <div class="small" id="until" hidden></div>
+  <div id="dead" hidden>
+    <div class="hi">הלינק כבר לא פעיל</div>
+    <div class="sub">הלינק הזה לתצוגה של Yellow Zone פג או נסגר. אם קיבלתם אותו מהצוות – בקשו לינק חדש.</div>
+  </div>
+  <a class="go" id="deadBtn" href="landing.html?guest=1" hidden>להכיר את Yellow Zone</a>
+  <div id="member" hidden>
+    <div class="hi">את/ה כבר חבר/ה ב-Yellow Zone 💛</div>
+    <div class="sub">הלינק הזה מיועד לאורחים. במכשיר הזה כבר מחובר חשבון חבר, אז אין צורך בתצוגה.</div>
+  </div>
+  <a class="go" id="memberBtn" href="home.html" hidden>לאתר</a>
+
+<script type="module">
+import { auth } from './firebase-config.js';
+import { signInWithCustomToken, signOut } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
+
+const API_HOSTS = [
+  'https://api.yellowzone.co.il',
+  'https://habayit-hatsahov.web.app/api',
+  'https://habayit-hatsahov-worker.yellowzone.workers.dev',
+];
+const $ = (id) => document.getElementById(id);
+const show = (...ids) => { $('loading').hidden = true; ids.forEach((id) => { $(id).hidden = false; }); };
+const ls = {
+  get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+  del: (k) => { try { localStorage.removeItem(k); } catch (e) {} },
+};
+const DEMO_KEYS = ['hb_memberId', 'hb_demo', 'hb_greeting_cache', 'hb_profile_cache', 'hb_uid', 'hb_phone'];
+
+async function clearDemo() {
+  if (/^demo_/.test(ls.get('hb_memberId') || '')) {
+    DEMO_KEYS.forEach(ls.del);
+    try { await signOut(auth); } catch (e) {}
+  }
+}
+function dead() { try { history.replaceState(null, '', 'demo.html'); } catch (e) {} show('dead', 'deadBtn'); }
+
+async function api(path, body) {
+  let lastErr;
+  for (const host of API_HOSTS) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const r = await fetch(host + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal });
+      clearTimeout(timer);
+      return await r.json();
+    } catch (e) { clearTimeout(timer); lastErr = e; }
+  }
+  throw lastErr || new Error('network');
+}
+
+function deviceId() {
+  let d = ls.get('yz_demo_device');
+  if (!d) {
+    const a = new Uint8Array(16); crypto.getRandomValues(a);
+    d = Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
+    ls.set('yz_demo_device', d);
+  }
+  return d;
+}
+
+(async () => {
+  const p = new URLSearchParams(location.search);
+  const t = p.get('t') || '';
+  // הטוקן לא נשאר בשורת הכתובת (העתקה/צילום מסך מתוך האתר) – אבל רק אחרי הכרעה: בכשל רשת
+  // הוא נשאר, כדי שרענון יוכל לנסות שוב.
+  const dropToken = () => { try { history.replaceState(null, '', 'demo.html'); } catch (e) {} };
+
+  if (p.get('dead') === '1') { await clearDemo(); return dead(); }
+
+  const mid = ls.get('hb_memberId') || '';
+  // חבר אמיתי שפתח את הלינק – לא דורסים לו את הסשן.
+  if (mid && !/^demo_/.test(mid)) return show('member', 'memberBtn');
+  if (!t) return dead();
+
+  try {
+    const d = await api('/demo-session', { t, deviceId: deviceId() });
+    if (!d || !d.customToken) { await clearDemo(); return dead(); }
+    const cred = await signInWithCustomToken(auth, d.customToken);
+    const uid = cred.user.uid;
+    const name = (d.name || '').trim();
+    ls.set('hb_memberId', uid);
+    ls.set('hb_demo', JSON.stringify({ t, name, expiresAt: d.expiresAt || '' }));
+    // מה שהאתר מציג מהמטמון המקומי – לאורח אין רשומת חבר, אז זו "הרשומה" שלו לתצוגה.
+    ls.set('hb_greeting_cache', JSON.stringify({ uid, firstName: name || 'אורח' }));
+    ls.set('hb_profile_cache', JSON.stringify({
+      uid, firstName: name || 'אורח', lastName: '', memberId: 0, approvedDate: new Date().toISOString(),
+      isSubscriber: false, subscriberSection: null, phone: '050-0000000', email: 'guest@example.com',
+      isBusinessOwner: false, isAdmin: false, linkedBusinessId: null, status: 'approved',
+    }));
+    ls.del('hb_phone');
+    dropToken();
+    $('hi').textContent = 'שלום' + (name ? ' ' + name : '') + ' 👋';
+    const exp = d.expiresAt ? new Date(d.expiresAt) : null;
+    if (exp && !isNaN(exp)) $('until').textContent = 'תצוגה בלבד · הלינק אישי ותקף עד ' + exp.toLocaleDateString('he-IL');
+    show('ok', 'goBtn', 'until');
+  } catch (e) {
+    console.error('demo entry failed:', e);
+    $('loading').innerHTML = '<div class="sub">לא הצלחנו להתחבר. בדקו את החיבור לאינטרנט ונסו לפתוח את הלינק שוב.</div>';
+  }
+})();
+</script>
+</body>
+</html>

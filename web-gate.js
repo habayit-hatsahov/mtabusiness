@@ -57,6 +57,9 @@ try {
     });
     if (user === undefined) { clearTimeout(failsafe); return open(); }   // auth לא ענה — fail-open
     if (!user || user.uid !== mid) { clearTimeout(failsafe); return toLanding(); }
+    // §516 — אורח בלינק תצוגה (uid=demo_… מהוורקר): הלינק הוא בדיוק "לראות בלי אפליקציה".
+    // תוקף/כיבוי נבדקים ב-demo-mode.js בכל טעינה; החוקים חוסמים כתיבה.
+    if (/^demo_/.test(mid)) { clearTimeout(failsafe); return open(); }
     const snap = await getDoc(doc(db, 'members', mid));
     const m = snap.exists() ? snap.data() : null;
     clearTimeout(failsafe);

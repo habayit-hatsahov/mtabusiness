@@ -20,6 +20,7 @@ import { sendFcmToMember } from './fcm.js';
 import { handleDownloadImage, handleViewImage } from './download.js';
 import { handleUploadBizMedia } from './bizmedia.js';
 import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js';
+import { handleDemoSession } from './demo.js';
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -48,6 +49,10 @@ export default {
 
     const url = new URL(request.url);
     try {
+      // §516 — לינק תצוגה לאורח (demo.html / demo-mode.js). ר' demo.js.
+      if (request.method === 'POST' && url.pathname === '/demo-session') {
+        return json(await handleDemoSession(await request.json(), clientIp(request, env), env), env, request);
+      }
       if (request.method === 'POST' && url.pathname === '/mint-member-token') {
         return json(await handleMemberLogin(await request.json(), request, env), env, request);
       }

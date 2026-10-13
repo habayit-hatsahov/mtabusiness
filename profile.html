@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <script src="fresh-page.js"></script><!-- §514 — דף ישן ממטמון ה-HTTP (עד 10 דק' אחרי פריסה) → טעינה מחדש אחת -->
+  <script src="demo-mode.js"></script><!-- §516 — מצב תצוגה לאורח (פעיל רק בסשן demo_…) -->
   <!-- §497 — סגירת האתר לאוהדים: מוסתר עד ש-web-gate.js מכריע (מנהל/בעל עסק נשארים, אוהד → landing.html).
        רק בדפדפן — לא באפליקציה (UA YellowZoneApp / Capacitor) ולא בתוך iframe. -->
   <script>(function(){var a=!!window.Capacitor||/YellowZoneApp/i.test(navigator.userAgent||'');if(!a&&window.top===window)document.documentElement.classList.add('yz-gate');})();</script>
@@ -1265,7 +1266,9 @@ let member;
 // האם הנתונים הגיעו בפועל מהשרת — רק אז מותר לדרוס איתם את המטמון המקומי (למטה)
 let memberFromServer = false;
 if (memberId) {
-  const memberSnap = await fetchMemberDocWithRetry(memberId).catch(() => null);
+  // §516 — אורח (לינק תצוגה) אין לו רשומת חבר: בלי 4 ניסיונות (~3 שנ') על מסמך שלא קיים.
+  // הנתונים לתצוגה מגיעים מ-hb_profile_cache, שנכתב ב-demo.html.
+  const memberSnap = /^demo_/.test(memberId) ? null : await fetchMemberDocWithRetry(memberId).catch(() => null);
   // memberSnap עלול להיות null (אין רשת וגם המטמון ריק) — .exists() על null זורק והורג את כל המודול.
   let data = (memberSnap && memberSnap.exists()) ? memberSnap.data() : null;
   // לא הצלחנו לקרוא כלום — משתמשים במטמון המקומי שנכתב בטעינה הקודמת (או ע"י home.html).
@@ -1315,6 +1318,8 @@ if (member.isAdmin) {
 // ── BUSINESS PROFILE ─────────────────────────────────────────────────────
 let myBizName = '';
 let myBizTab = null;   // §505 — { token, status } של העסק, ל"העסק שלי"
+// §516 — אורח בלינק התצוגה רואה גם "העסק שלי" – עם עסק מומצא (business-dashboard.html?demo=1).
+if (/^demo_/.test(memberId || '') && !bizToken && !previewMemberId) myBizTab = { demo: true, status: 'approved' };
 if (member.isBusinessOwner) {
   if (member.linkedBusinessId) {
     // קישור קבוע (linkedBusinessId) — לא תלוי בטלפון הנוכחי, לא שביר לעריכות מאוחרות.
@@ -1365,12 +1370,13 @@ if (member.isBusinessOwner) {
   const frame = document.getElementById('bizFrame');
   if (myBizTab && !bizToken && !previewMemberId) {
     tab.hidden = false;
-    if (myBizTab.token && myBizTab.status === 'approved') {
+    if ((myBizTab.token || myBizTab.demo) && myBizTab.status === 'approved') {
       // נטען רק בפתיחה הראשונה של הלשונית — הדשבורד כבד, ומי שלא נכנס אליו לא צריך לשלם עליו.
       let loaded = false;
       window.yzLoadBizFrame = () => {
         if (loaded) return; loaded = true;
-        frame.src = `business-dashboard.html?token=${encodeURIComponent(myBizTab.token)}&embed=1`;
+        frame.src = myBizTab.demo ? 'business-dashboard.html?demo=1&embed=1'
+          : `business-dashboard.html?token=${encodeURIComponent(myBizTab.token)}&embed=1`;
         frame.hidden = false; msg.hidden = true;
         window.yzFitBizFrame();
       };

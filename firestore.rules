@@ -29,6 +29,12 @@ service cloud.firestore {
     // הגעה ל-request.auth.uid שמפנה למסמך חבר קיים כבר מרמזת על אישור
     // (ה-Worker לא מנפיק custom token אלא לחברים עם status=='approved',
     // ר' worker/src/index.js handleMemberLogin) — חוסך get() מיותר.
+    // §516 — אורח בלינק תצוגה (custom token מהוורקר, uid=demo_…, claim role:'demo').
+    // סיור בלבד: כל היתר-כתיבה שנשען על uid בלבד (בלי רשומת חבר) חייב לשלול אותו במפורש.
+    function isDemo() {
+      return request.auth != null && request.auth.token.get('role', '') == 'demo';
+    }
+
     function isSignedInMember() {
       return request.auth != null &&
         exists(/databases/$(database)/documents/members/$(request.auth.uid));
@@ -846,7 +852,8 @@ service cloud.firestore {
       allow read: if isAdmin() || isConvOwner(resource.data.memberId);
 
       // 🔑 נולדת "פתוחה, ממתינה לנו" — אי אפשר להיוולד סגורה או "נענתה", ולעקוף את הצוות.
-      allow create: if isConvOwner(request.resource.data.memberId)
+      // §516 — אורח קורא (רשימה ריקה), לא כותב.
+      allow create: if isConvOwner(request.resource.data.memberId) && !isDemo()
         && request.resource.data.keys().hasOnly([
              'memberId', 'status', 'subject', 'source', 'bizId', 'createdAt', 'lastAt', 'lastFrom', 'memberReadAt'])
         && request.resource.data.keys().hasAll(['memberId', 'status', 'subject', 'createdAt', 'lastAt', 'lastFrom'])
@@ -868,7 +875,7 @@ service cloud.firestore {
       // הצוות: סטטוס, נקרא-אצלנו, ו"ענינו".
       allow update: if
         (
-          isConvOwner(resource.data.memberId)
+          isConvOwner(resource.data.memberId) && !isDemo()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastAt', 'lastFrom', 'memberReadAt'])
           && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastAt', 'lastFrom'])
               || (resource.data.status == 'open'
@@ -901,7 +908,7 @@ service cloud.firestore {
           && (
             (isAdmin() && request.resource.data.from == 'admin')
             || (
-              request.resource.data.from == 'member'
+              request.resource.data.from == 'member' && !isDemo()
               && isConvOwner(getAfter(/databases/$(database)/documents/conversations/$(convId)).data.memberId)
               && getAfter(/databases/$(database)/documents/conversations/$(convId)).data.status == 'open'
             )
@@ -955,7 +962,7 @@ service cloud.firestore {
         (!('source' in request.resource.data) || request.resource.data.source == null ||
           request.resource.data.source in ['stuck', 'question', 'photoFail', 'submitFail', 'loginFail', 'fanMessage']) &&
         (request.resource.data.get('source', null) != 'fanMessage' ||
-          (request.auth != null && request.resource.data.get('memberId', null) == request.auth.uid)) &&
+          (request.auth != null && !isDemo() && request.resource.data.get('memberId', null) == request.auth.uid)) &&
         (!('device' in request.resource.data) || request.resource.data.device == null ||
           request.resource.data.device in ['mobile', 'desktop']) &&
         (!('lastField' in request.resource.data) || request.resource.data.lastField == null ||
@@ -973,6 +980,13 @@ service cloud.firestore {
     // statsDaily — אגרגציה יומית כלל-פלטפורמה (מקביל ל-businesses/{id}/statsDaily למעלה).
     // ייכתב בפועל רק ע"י ה-Worker (service-account, עוקף rules) בשלב האגרגציה העתידי.
     match /statsDaily/{dateId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── §516 — לינקים לתצוגה (demoLinks/{token}) ─────────────────────────────────────────
+    // מזהה המסמך **הוא** הלינק – ולכן מנהל בלבד, גם קריאה. הוורקר (service account) מאמת
+    // ורושם כניסות/מכשירים; המנהל יוצר, מאריך ומכבה ממרכז הניהול.
+    match /demoLinks/{token} {
       allow read, write: if isAdmin();
     }
 

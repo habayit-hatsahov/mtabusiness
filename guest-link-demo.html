@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex"/>
+<title>דמו – לינק תצוגה לאורח</title>
+<!-- §516 – דמו בלבד. קובץ מבודד: לא מקושר מאף דף, לא נטען ע"י אף דף, לא קורא ולא כותב לשום מקום.
+     הכול בזיכרון, והעסקים מומצאים. מטרתו: לאשר את המראה של "לינק תצוגה" (אורח שמסייר באתר האמיתי
+     בלי הטבות) ושל ניהול הלינקים במרכז הניהול – לפני שנוגעים בדפים החיים. ר' PROJECT_CONTEXT §516. -->
+<style>
+  @font-face { font-family: 'Rubik'; font-style: normal; font-weight: 300 900; font-display: swap;
+    src: url('fonts/rubik-hebrew.woff2') format('woff2');
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
+  @font-face { font-family: 'Rubik'; font-style: normal; font-weight: 300 900; font-display: swap;
+    src: url('fonts/rubik-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+20AA, U+2122, U+2212; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:#F6F6F2; --surface:#FFFFFF; --ink:#0A2A66; --ink-2:#3A4C7A; --ink-3:#6B7A9B;
+    --line:#E7E7E0; --field:#F2F2EC; --field-line:#E4E4DC;
+    --acc:#FFD400; --acc-ink:#0A2A66; --acc-soft:#FFF7DB; --acc-line:#FFE9A3;
+    --r-card:16px; --shadow:0 1px 2px rgba(10,42,102,.06);
+  }
+  body { font-family:'Rubik',sans-serif; background:var(--bg); color:var(--ink); min-height:100dvh; }
+  button { font-family:inherit; }
+  [hidden] { display:none !important; }
+
+  /* ── פס הדמו (לא חלק מהמוצר) ── */
+  .demo-bar { background:#1c1c1c; color:#fff; padding:10px 12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center; position:sticky; top:0; z-index:500; }
+  .demo-bar-label { font-size:12px; opacity:.7; margin-inline-end:4px; }
+  .demo-bar button { border:1px solid #555; background:#2b2b2b; color:#fff; border-radius:20px; padding:7px 13px; font-size:12.5px; font-weight:700; cursor:pointer; }
+  .demo-bar button.on { background:var(--acc); color:var(--ink); border-color:var(--acc); }
+  .demo-note { max-width:480px; margin:10px auto 0; padding:0 16px; font-size:12px; color:var(--ink-3); line-height:1.65; }
+  .demo-note b { color:var(--ink); }
+
+  /* ── מעטפת ── */
+  .app { max-width:480px; margin:10px auto 40px; background:var(--bg); min-height:640px; position:relative; overflow:hidden; border-radius:18px; box-shadow:0 0 0 1px var(--line); }
+  .top-nav { background:#fff; padding:7px 16px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:3px solid var(--acc); box-shadow:0 3px 0 0 var(--ink); position:relative; z-index:20; }
+  .icon-btn { width:40px; height:40px; border-radius:11px; background:var(--field); border:none; color:var(--ink);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .hbg { display:flex; flex-direction:column; gap:4px; } .hbg span { width:16px; height:2px; border-radius:2px; background:currentColor; }
+  .nav-logo img { height:30px; display:block; }
+
+  /* ══ פס "מצב תצוגה" – קבוע בכל דף, מתחת לסרגל העליון ══ */
+  .guest-strip { background:var(--ink); color:#fff; padding:9px 14px; display:flex; align-items:center; gap:10px; font-size:12.5px; line-height:1.45; position:relative; z-index:15; }
+  .guest-strip .eye { width:26px; height:26px; border-radius:8px; background:rgba(255,212,0,.18); color:var(--acc); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .guest-strip b { color:var(--acc); font-weight:800; }
+  .guest-strip .join { margin-inline-start:auto; background:var(--acc); color:var(--ink); border:none; border-radius:20px; padding:6px 12px; font-size:12px; font-weight:900; cursor:pointer; white-space:nowrap; }
+
+  .content { padding:16px; display:flex; flex-direction:column; gap:14px; }
+
+  /* ── דף הבית ── */
+  .hello { font-size:21px; font-weight:900; }
+  .hello-sub { font-size:13px; color:var(--ink-3); margin-top:3px; }
+  .search { height:44px; border-radius:12px; background:#fff; border:1px solid var(--line); display:flex; align-items:center; padding:0 14px; color:var(--ink-3); font-size:14px; gap:8px; }
+  .chips { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
+  .chip { flex-shrink:0; border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 13px; font-size:13px; font-weight:700; }
+  .chip.on { background:var(--acc); border-color:var(--acc); }
+  .sec-head { display:flex; justify-content:space-between; align-items:baseline; }
+  .sec-title { font-size:17px; font-weight:900; }
+  .see-all { font-size:13px; font-weight:700; color:var(--ink-3); }
+  .row { display:flex; gap:12px; overflow-x:auto; padding-bottom:4px; scrollbar-width:none; }
+  .row::-webkit-scrollbar { display:none; }
+  .bcard { flex-shrink:0; width:200px; background:#fff; border:1px solid var(--line); border-radius:var(--r-card); overflow:hidden; cursor:pointer; text-align:right; padding:0; color:var(--ink); }
+  .bcard .cover { height:112px; position:relative; }
+  .bcard .cover .disc { position:absolute; bottom:8px; right:8px; background:var(--acc); border-radius:999px; padding:4px 10px; font-size:12px; font-weight:900; }
+  .bcard .body { padding:10px 12px 12px; }
+  .bcard .name { font-size:14.5px; font-weight:800; }
+  .bcard .meta { font-size:12px; color:var(--ink-3); margin-top:3px; }
+  .bcard .heart { position:absolute; top:8px; left:8px; width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,.92); display:flex; align-items:center; justify-content:center; font-size:14px; }
+
+  /* ── כרטיס עסק (גיליון) ── */
+  .sheet-wrap { position:absolute; inset:0; background:rgba(10,20,40,.45); z-index:40; display:flex; align-items:flex-end; }
+  .sheet { background:var(--bg); width:100%; max-height:92%; overflow-y:auto; border-radius:20px 20px 0 0; }
+  .sheet-cover { height:170px; position:relative; }
+  .sheet-close { position:absolute; top:12px; left:12px; width:34px; height:34px; border-radius:50%; border:none; background:rgba(255,255,255,.95); font-size:15px; cursor:pointer; }
+  .sheet-body { padding:16px; }
+  .sheet-name { font-size:21px; font-weight:900; }
+  .sheet-cat { font-size:13px; color:var(--ink-3); margin-top:3px; }
+  .sheet-desc { font-size:14px; line-height:1.6; color:var(--ink-2); margin-top:12px; }
+  .benefit-box { background:var(--acc-soft); border:1px solid var(--acc-line); border-radius:var(--r-card); padding:14px; margin-top:16px; }
+  .benefit-tag { font-size:11px; font-weight:700; color:var(--ink-3); margin-bottom:4px; letter-spacing:.03em; }
+  .benefit-text { font-size:17px; font-weight:800; line-height:1.35; }
+  .benefit-type { font-size:12.5px; color:var(--ink-3); margin-top:6px; }
+  .redeem-card { background:#fff; border:1px solid var(--line); border-radius:var(--r-card); padding:14px; margin-top:12px; }
+  .redeem-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .redeem-title { font-size:15px; font-weight:800; }
+  .redeem-desc { font-size:12.5px; color:var(--ink-3); margin-top:4px; line-height:1.5; }
+  .redeem-icon-sq { width:34px; height:34px; border-radius:10px; flex-shrink:0; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; }
+  .redeem-btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; height:46px; margin-top:12px; border:none; border-radius:12px; font-size:15px; font-weight:800; cursor:pointer; }
+  /* האורח: הכפתור לא צהוב – צהוב = "לחצו לקבל", וכאן אין מה לקבל */
+  .redeem-btn.locked { background:var(--field); color:var(--ink-2); border:1px dashed var(--field-line); }
+  .lock-panel { margin-top:12px; background:var(--acc-soft); border:1px solid var(--acc-line); border-radius:12px; padding:14px; font-size:13.5px; line-height:1.65; }
+  .lock-panel b { display:block; font-size:15px; margin-bottom:4px; }
+  .lock-actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .btn-y { background:var(--acc); color:var(--ink); border:none; border-radius:12px; padding:10px 16px; font-size:14px; font-weight:900; cursor:pointer; }
+  .btn-g { background:#fff; color:var(--ink-2); border:1px solid var(--field-line); border-radius:12px; padding:10px 16px; font-size:14px; font-weight:700; cursor:pointer; }
+  .info-row { display:flex; gap:10px; align-items:center; font-size:13.5px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .info-row:last-child { border-bottom:none; }
+
+  /* ── האזור שלי ── */
+  .tabs { display:flex; gap:6px; background:var(--field); border-radius:14px; padding:4px; }
+  .tab { flex:1; border:none; background:none; border-radius:11px; padding:10px 4px; font-size:13.5px; font-weight:700; color:var(--ink-3); cursor:pointer; }
+  .tab.on { background:#fff; color:var(--ink); box-shadow:var(--shadow); }
+  .card-section { background:#fff; border:1px solid var(--line); border-radius:var(--r-card); padding:14px; }
+  .section-title { font-size:15px; font-weight:900; margin-bottom:10px; }
+  .mcard { border-radius:18px; padding:18px; background:linear-gradient(135deg,#0A2A66,#1a3f8a); color:#fff; position:relative; overflow:hidden; min-height:170px; }
+  .mcard .lbl { font-size:11px; opacity:.7; letter-spacing:.05em; }
+  .mcard .nm { font-size:20px; font-weight:900; margin-top:4px; }
+  .mcard .num { font-size:15px; font-weight:800; color:var(--acc); margin-top:2px; }
+  .mcard .logo { position:absolute; top:16px; left:16px; height:22px; filter:brightness(0) invert(1); opacity:.9; }
+  .mcard .stamp { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+  .mcard .stamp span { transform:rotate(-14deg); border:3px solid var(--acc); color:var(--acc); font-size:26px; font-weight:900; padding:4px 18px; border-radius:10px; opacity:.85; letter-spacing:.04em; background:rgba(10,42,102,.35); }
+  .field-row { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .field-row:last-child { border-bottom:none; }
+  .field-row .k { color:var(--ink-3); font-size:12.5px; }
+  .muted-note { font-size:12.5px; color:var(--ink-3); line-height:1.6; }
+  .upd { padding:12px 0; border-bottom:1px solid var(--line); }
+  .upd:last-child { border-bottom:none; }
+  .upd .t { font-size:14px; font-weight:800; }
+  .upd .s { font-size:13px; color:var(--ink-2); margin-top:3px; line-height:1.55; }
+  .upd .d { font-size:11.5px; color:var(--ink-3); margin-top:4px; }
+  .ta-disabled { width:100%; min-height:84px; border-radius:12px; border:1.5px dashed var(--field-line); background:var(--field); color:var(--ink-3); font-size:14px; padding:12px; line-height:1.55; }
+
+  /* ── כניסה מהלינק ── */
+  .splash { position:absolute; inset:0; background:var(--acc); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; padding:30px; text-align:center; z-index:30; }
+  .splash img { width:min(240px,60vw); }
+  .splash .hi { font-size:20px; font-weight:900; }
+  .splash .sub { font-size:14px; line-height:1.65; max-width:320px; }
+  .splash .go { background:var(--ink); color:#fff; border:none; border-radius:14px; padding:14px 28px; font-size:16px; font-weight:900; cursor:pointer; }
+  .splash .small { font-size:12px; opacity:.75; }
+
+  /* ── לינק לא תקף ── */
+  .dead { padding:60px 26px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .dead .ic { width:64px; height:64px; border-radius:20px; background:var(--field); display:flex; align-items:center; justify-content:center; }
+  .dead h2 { font-size:20px; font-weight:900; }
+  .dead p { font-size:14px; line-height:1.65; color:var(--ink-2); max-width:320px; }
+
+  /* ══ מרכז הניהול – כהה (admin.*) ══ */
+  .admin { background:#0f1524; color:#e8ecf5; min-height:640px; }
+  .admin .ah { padding:16px; border-bottom:1px solid #222b40; display:flex; justify-content:space-between; align-items:center; }
+  .admin .ah h1 { font-size:18px; font-weight:900; }
+  .admin .ah .sub { font-size:12px; color:#8a95ad; margin-top:2px; }
+  .admin .ab { padding:16px; display:flex; flex-direction:column; gap:14px; }
+  .acard { background:#161e31; border:1px solid #232c42; border-radius:14px; padding:14px; }
+  .acard h3 { font-size:14px; font-weight:900; margin-bottom:10px; }
+  .af { display:flex; flex-direction:column; gap:5px; margin-bottom:10px; }
+  .af label { font-size:12px; color:#8a95ad; font-weight:700; }
+  .af input, .af select { height:40px; border-radius:10px; border:1px solid #2c3650; background:#0f1524; color:#e8ecf5; padding:0 12px; font:inherit; font-size:14px; }
+  .af-row { display:flex; gap:10px; } .af-row .af { flex:1; }
+  .abtn { background:var(--acc); color:var(--ink); border:none; border-radius:10px; padding:10px 16px; font-weight:900; font-size:14px; cursor:pointer; }
+  .abtn.ghost { background:transparent; color:#cfd6e6; border:1px solid #2f3a55; font-weight:700; font-size:12.5px; padding:7px 11px; }
+  .abtn.danger { background:transparent; color:#ff8a80; border:1px solid #5a2a2a; font-weight:700; font-size:12.5px; padding:7px 11px; }
+  .lnk { border-top:1px solid #232c42; padding:12px 0; }
+  .lnk:first-of-type { border-top:none; padding-top:0; }
+  .lnk-top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .lnk-name { font-size:14.5px; font-weight:800; }
+  .pill { font-size:11px; font-weight:900; border-radius:20px; padding:3px 9px; white-space:nowrap; }
+  .pill.ok { background:rgba(80,200,120,.15); color:#7ee2a0; }
+  .pill.exp { background:#232c42; color:#8a95ad; }
+  .pill.off { background:rgba(255,100,90,.14); color:#ff8a80; }
+  .lnk-meta { font-size:12px; color:#8a95ad; margin-top:5px; line-height:1.6; }
+  .lnk-meta b { color:#cfd6e6; font-weight:700; }
+  .lnk-url { margin-top:8px; font-size:12px; direction:ltr; text-align:left; background:#0f1524; border:1px solid #232c42; border-radius:8px; padding:7px 10px; color:#cfd6e6; font-family:ui-monospace,Consolas,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lnk-actions { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .warn { font-size:12px; color:#ffcf66; background:rgba(255,212,0,.07); border:1px solid rgba(255,212,0,.25); border-radius:10px; padding:8px 10px; margin-top:6px; line-height:1.55; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:12px; font-size:13.5px; font-weight:700; z-index:900; opacity:0; transition:opacity .2s; pointer-events:none; }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <span class="demo-bar-label">דמו · מסך:</span>
+  <button data-s="entry" class="on">1. כניסה מהלינק</button>
+  <button data-s="home">2. דף הבית</button>
+  <button data-s="biz">3. כרטיס עסק</button>
+  <button data-s="area">4. האזור שלי</button>
+  <button data-s="dead">5. לינק לא תקף</button>
+  <button data-s="admin">6. מרכז הניהול</button>
+</div>
+<div class="demo-note" id="note"></div>
+
+<div class="app" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ══ נתונים מומצאים בלבד ══
+var GUEST = 'יוסי';
+var BIZ = [
+  { id:'b1', name:'קפה הצפון', cat:'בית קפה · תל אביב', disc:'15% הנחה', g:'linear-gradient(135deg,#f4c27a,#c47a3a)', desc:'בית קפה שכונתי עם מאפים טריים כל בוקר. אוהדי מכבי מקבלים יחס של בית.', type:'במקום ובאתר', benefit:'15% הנחה על כל התפריט' },
+  { id:'b2', name:'סטודיו כושר 12', cat:'חדר כושר · רמת גן', disc:'חודש ראשון חינם', g:'linear-gradient(135deg,#9bc1ff,#3a5fb0)', desc:'אימונים אישיים וקבוצות קטנות.', type:'מול נותן השירות', benefit:'חודש ראשון חינם במנוי שנתי' },
+  { id:'b3', name:'פיצה בגבעה', cat:'מסעדה · גבעתיים', disc:'1+1 על משפחתית', g:'linear-gradient(135deg,#ffb199,#d4553a)', desc:'פיצה בתנור אבן, משלוחים לכל האזור.', type:'במקום', benefit:'1+1 על פיצה משפחתית' },
+  { id:'b4', name:'חנות הספורט', cat:'אונליין', disc:'20% בקוד', g:'linear-gradient(135deg,#b8f0c8,#3a9a5e)', desc:'ציוד ספורט ומדים, משלוח עד הבית.', type:'באתר', benefit:'20% הנחה על כל האתר' },
+];
+var NOTES = {
+  entry: '<b>מה האורח רואה ברגע שהוא לוחץ על הלינק.</b> הסשן נפתח לבד, בלי הרשמה וקוד. השם מגיע מהלינק שיצרת ("יוסי").',
+  home: '<b>האתר האמיתי, כמו אצל חבר.</b> הדבר היחיד שונה: הפס הכחול "מצב תצוגה" – קבוע בכל דף. הלב מוסתר (אורח לא שומר מועדפים).',
+  biz: '<b>ההטבה עצמה גלויה</b> (מה מקבלים) – <b>אבל לא איך מממשים.</b> הכפתור אפור ולא צהוב, ולחיצה מסבירה. אין קוד, אין תעודת חבר, אין "העתק". לחצו על הכפתור.',
+  area: '<b>"האזור שלי" עם נתוני דוגמה.</b> תעודת חבר עם חותמת "דוגמה" (אי-אפשר להציג אותה בקופה), פרטים לקריאה בלבד, ו"הודעות" בלי אפשרות לשלוח.',
+  dead: '<b>לינק שפג תוקפו, שכובה, או שנפתח במכשיר שלישי.</b> הנוסח אחיד בכוונה – לא מסגירים למי שקיבל לינק מועבר למה הוא נחסם.',
+  admin: '<b>לשונית חדשה במרכז הניהול.</b> יוצרים לינק לכל אדם, רואים כניסות ומכשירים, מכבים בלחיצה. נסו ליצור לינק.'
+};
+
+var NAV = '<div class="top-nav"><button class="icon-btn"><span class="hbg"><span></span><span></span><span></span></span></button>' +
+  '<a class="nav-logo"><img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/></a><span style="width:40px"></span></div>';
+var EYE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+var LOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+var TAG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>';
+var STRIP = '<div class="guest-strip"><span class="eye">' + EYE + '</span><div><b>מצב תצוגה</b> · ההטבות זמינות לחברי Yellow Zone בלבד</div>' +
+  '<button class="join" onclick="toast(\'→ דף ההצטרפות (fan-register)\')">להצטרפות</button></div>';
+
+function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(function(){t.classList.remove('show');},2000); }
+
+function cardHtml(b){
+  return '<button class="bcard" onclick="openBiz(\'' + b.id + '\')"><div class="cover" style="background:' + b.g + '"><span class="disc">' + esc(b.disc) + '</span></div>' +
+    '<div class="body"><div class="name">' + esc(b.name) + '</div><div class="meta">' + esc(b.cat) + '</div></div></button>';
+}
+function homeHtml(){
+  return NAV + STRIP + '<div class="content">' +
+    '<div><div class="hello">שלום ' + esc(GUEST) + ' 👋</div><div class="hello-sub">ככה נראית Yellow Zone מבפנים</div></div>' +
+    '<div class="search">🔍 חיפוש עסק, הטבה או קטגוריה</div>' +
+    '<div class="chips"><span class="chip on">הכול</span><span class="chip">אוכל</span><span class="chip">ספורט</span><span class="chip">אונליין</span><span class="chip">שירותים</span></div>' +
+    '<div class="sec-head"><div class="sec-title">חדש אצלנו</div><span class="see-all">הכל ›</span></div>' +
+    '<div class="row">' + BIZ.map(cardHtml).join('') + '</div>' +
+    '<div class="sec-head"><div class="sec-title">הכי פופולריים</div><span class="see-all">הכל ›</span></div>' +
+    '<div class="row">' + BIZ.slice().reverse().map(cardHtml).join('') + '</div>' +
+  '</div>';
+}
+function bizSheet(b){
+  var online = b.type === 'באתר';
+  return '<div class="sheet-wrap" onclick="if(event.target===this)closeBiz()"><div class="sheet">' +
+    '<div class="sheet-cover" style="background:' + b.g + '"><button class="sheet-close" onclick="closeBiz()">✕</button></div>' +
+    '<div class="sheet-body">' +
+      '<div class="sheet-name">' + esc(b.name) + '</div><div class="sheet-cat">' + esc(b.cat) + '</div>' +
+      '<div class="sheet-desc">' + esc(b.desc) + '</div>' +
+      '<div class="benefit-box"><div class="benefit-tag">ההטבה לחברי Yellow Zone</div><div class="benefit-text">' + esc(b.benefit) + '</div><div class="benefit-type">מימוש: ' + esc(b.type) + '</div></div>' +
+      '<div class="redeem-card"><div class="redeem-top"><div><div class="redeem-title">' + (online ? 'מימוש באתר' : 'מימוש בעסק') + '</div>' +
+        '<div class="redeem-desc">' + (online ? 'קוד קופון לשימוש בקנייה אונליין' : 'מציגים את תעודת החבר בעסק') + '</div></div>' +
+        '<div class="redeem-icon-sq">' + (online ? TAG : LOCK) + '</div></div>' +
+        '<button class="redeem-btn locked" onclick="showLock(this)">' + LOCK + ' זמין לחברים בלבד</button>' +
+        '<div class="lock-panel" hidden><b>ההטבה הזאת שמורה לחברי Yellow Zone</b>' +
+          'אתם במצב תצוגה – אפשר לראות את כל העסקים וההטבות, אבל ' + (online ? 'קוד הקופון' : 'תעודת החבר') + ' נפתח רק לחברים רשומים. ההצטרפות חינם ולוקחת דקה.' +
+          '<div class="lock-actions"><button class="btn-y" onclick="toast(\'→ דף ההצטרפות (fan-register)\')">להצטרפות</button><button class="btn-g" onclick="hideLock(this)">להמשיך לסייר</button></div></div>' +
+      '</div>' +
+      '<div class="card-section" style="margin-top:12px"><div class="info-row">📍 רחוב הדוגמה 12, תל אביב</div><div class="info-row">🕒 פתוח עכשיו · עד 22:00</div><div class="info-row">📞 04-000-0000</div></div>' +
+    '</div></div></div>';
+}
+function areaHtml(tab){
+  tab = tab || 'details';
+  var t = function(k,l){ return '<button class="tab' + (tab===k?' on':'') + '" onclick="area(\'' + k + '\')">' + l + '</button>'; };
+  var body;
+  if (tab === 'updates') {
+    body = '<div class="card-section"><div class="section-title">עדכונים</div>' +
+      '<div class="upd"><div class="t">הטבה חדשה ב"קפה הצפון"</div><div class="s">15% על כל התפריט לחברים, גם בהזמנה מהאתר.</div><div class="d">לפני 2 שע׳ · דוגמה</div></div>' +
+      '<div class="upd"><div class="t">ברוכים הבאים ל-Yellow Zone</div><div class="s">כאן יופיעו עדכונים מהעסקים שאהבתם ומהצוות.</div><div class="d">אתמול · דוגמה</div></div></div>';
+  } else if (tab === 'msgs') {
+    body = '<div class="card-section"><div class="section-title">השיחות שלך עם הצוות</div>' +
+      '<div class="muted-note" style="margin-bottom:10px">חברים כותבים לנו כאן ומקבלים תשובה באפליקציה ובמייל.</div>' +
+      '<div class="ta-disabled">' + LOCK + ' שליחת הודעות זמינה לחברים בלבד</div></div>';
+  } else {
+    body = '<div class="mcard"><div class="lbl">תעודת חבר</div><div class="nm">' + esc(GUEST) + '</div><div class="num">#00000</div>' +
+      '<div style="font-size:12px;opacity:.75;margin-top:26px">חבר מאז 10.2026</div><div class="stamp"><span>דוגמה</span></div></div>' +
+      '<div class="card-section"><div class="section-title">הפרטים שלי</div>' +
+      '<div class="field-row"><span class="k">שם</span><span>' + esc(GUEST) + '</span></div>' +
+      '<div class="field-row"><span class="k">טלפון</span><span>050-0000000</span></div>' +
+      '<div class="field-row"><span class="k">מייל</span><span>guest@example.com</span></div>' +
+      '<div class="muted-note" style="margin-top:8px">' + LOCK + ' במצב תצוגה הפרטים לקריאה בלבד.</div></div>';
+  }
+  return NAV + STRIP + '<div class="content"><div class="hello">האזור שלי</div>' +
+    '<div class="tabs">' + t('updates','עדכונים') + t('msgs','הודעות') + t('details','הפרטים שלי') + '</div>' + body + '</div>';
+}
+function entryHtml(){
+  return '<div class="splash"><img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>' +
+    '<div><div class="hi">שלום ' + esc(GUEST) + ' 👋</div><div class="sub" style="margin-top:8px">הזמנו אותך להציץ ב-Yellow Zone – מועדון ההטבות של אוהדי מכבי תל אביב. אפשר לסייר בחופשיות בכל האתר.</div></div>' +
+    '<button class="go" onclick="go(\'home\')">להתחיל לסייר</button>' +
+    '<div class="small">תצוגה בלבד · הלינק אישי ותקף עד 20.10.2026</div></div>';
+}
+function deadHtml(){
+  return NAV + '<div class="dead"><div class="ic">' + LOCK + '</div><h2>הלינק כבר לא פעיל</h2>' +
+    '<p>הלינק הזה לתצוגה של Yellow Zone פג או נסגר. אם קיבלתם אותו מהצוות – בקשו לינק חדש.</p>' +
+    '<button class="btn-y" onclick="toast(\'→ דף הנחיתה (landing)\')">להכיר את Yellow Zone</button></div>';
+}
+
+// ── מרכז הניהול ──
+var LINKS = [
+  { name:'יוסי – משקיע', created:'13.10', until:'20.10', dev:1, max:2, last:'היום 14:52', views:23, st:'ok', id:'k7Q2mX' },
+  { name:'דנה – עיתונאית', created:'11.10', until:'18.10', dev:2, max:2, last:'אתמול 21:10', views:41, st:'ok', id:'Rp83vA', blocked:1 },
+  { name:'רון – שותף אפשרי', created:'2.10', until:'9.10', dev:1, max:2, last:'5.10 10:03', views:9, st:'exp', id:'Zt5nL1' },
+  { name:'הדגמה בכנס', created:'28.9', until:'5.10', dev:2, max:2, last:'30.9 18:40', views:12, st:'off', id:'Wm2cJ9' },
+];
+function linkHtml(l, i){
+  var pill = l.st==='ok' ? '<span class="pill ok">פעיל</span>' : l.st==='exp' ? '<span class="pill exp">פג תוקף</span>' : '<span class="pill off">כובה</span>';
+  return '<div class="lnk"><div class="lnk-top"><span class="lnk-name">' + esc(l.name) + '</span>' + pill + '</div>' +
+    '<div class="lnk-meta">נוצר <b>' + l.created + '</b> · תקף עד <b>' + l.until + '</b> · מכשירים <b>' + l.dev + '/' + l.max + '</b><br/>כניסה אחרונה <b>' + l.last + '</b> · <b>' + l.views + '</b> צפיות בדפים</div>' +
+    (l.blocked ? '<div class="warn">⚠️ מכשיר שלישי ניסה להיכנס (אתמול 22:31) ונחסם – ייתכן שהלינק הועבר הלאה.</div>' : '') +
+    (l.st==='ok' ? '<div class="lnk-url">yellowzone.co.il/demo.html?t=' + l.id + '…</div>' +
+      '<div class="lnk-actions"><button class="abtn ghost" onclick="toast(\'הלינק הועתק\')">העתקה</button><button class="abtn ghost" onclick="toast(\'נפתח שיתוף לוואטסאפ\')">שליחה בוואטסאפ</button>' +
+      '<button class="abtn ghost" onclick="extend(' + i + ')">+7 ימים</button><button class="abtn danger" onclick="kill(' + i + ')">כיבוי</button></div>'
+    : '<div class="lnk-actions"><button class="abtn ghost" onclick="revive(' + i + ')">הפעלה מחדש ל-7 ימים</button></div>') + '</div>';
+}
+function adminHtml(){
+  return '<div class="admin"><div class="ah"><div><h1>לינקים לתצוגה</h1><div class="sub">אורחים שמסיירים באתר בלי להיות חברים – בלי הטבות</div></div></div>' +
+    '<div class="ab"><div class="acard"><h3>לינק חדש</h3>' +
+      '<div class="af"><label>למי (רק אתה רואה את זה; השם הפרטי מופיע לאורח בברכה)</label><input id="nName" placeholder="למשל: יוסי – משקיע"/></div>' +
+      '<div class="af-row"><div class="af"><label>תוקף</label><select id="nDays"><option value="2">48 שעות</option><option value="7" selected>7 ימים</option><option value="30">30 יום</option></select></div>' +
+      '<div class="af"><label>מכשירים</label><select id="nDev"><option>1</option><option selected>2</option><option>3</option></select></div></div>' +
+      '<button class="abtn" onclick="create()">יצירת לינק</button></div>' +
+    '<div class="acard"><h3>הלינקים שלך</h3>' + LINKS.map(linkHtml).join('') + '</div></div></div>';
+}
+function create(){
+  var n = document.getElementById('nName').value.trim();
+  if (!n) { toast('צריך שם'); return; }
+  var d = +document.getElementById('nDays').value;
+  LINKS.unshift({ name:n, created:'13.10', until: d===2?'15.10':d===7?'20.10':'12.11', dev:0, max:+document.getElementById('nDev').value, last:'עוד לא נכנסו', views:0, st:'ok', id:Math.random().toString(36).slice(2,8) });
+  go('admin'); toast('הלינק נוצר – אפשר להעתיק או לשלוח');
+}
+function kill(i){ LINKS[i].st='off'; go('admin'); toast('הלינק כובה – מי שבפנים ינותק בדף הבא'); }
+function extend(i){ LINKS[i].until='27.10'; go('admin'); toast('התוקף הוארך'); }
+function revive(i){ LINKS[i].st='ok'; LINKS[i].until='20.10'; LINKS[i].dev=0; go('admin'); toast('הופעל מחדש, המכשירים אופסו'); }
+
+// ── ניווט ──
+var cur = 'entry';
+function go(s){
+  cur = s;
+  document.querySelectorAll('.demo-bar button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-s')===s || (s==='biz' && b.getAttribute('data-s')==='biz')); });
+  document.getElementById('note').innerHTML = NOTES[s] || '';
+  var app = document.getElementById('app');
+  app.innerHTML = s==='entry' ? entryHtml() : s==='home' ? homeHtml() : s==='biz' ? homeHtml() + bizSheet(BIZ[0]) : s==='area' ? areaHtml() : s==='dead' ? deadHtml() : adminHtml();
+}
+function openBiz(id){ var b = BIZ.filter(function(x){return x.id===id;})[0]; var w=document.createElement('div'); w.innerHTML=bizSheet(b); document.getElementById('app').appendChild(w.firstChild); }
+function closeBiz(){ var s=document.querySelector('.sheet-wrap'); if(s) s.remove(); if(cur==='biz') go('home'); }
+function showLock(btn){ btn.hidden = true; btn.nextElementSibling.hidden = false; }
+function hideLock(btn){ var p = btn.closest('.lock-panel'); p.hidden = true; p.previousElementSibling.hidden = false; }
+function area(t){ document.getElementById('app').innerHTML = areaHtml(t); }
+document.querySelectorAll('.demo-bar button').forEach(function(b){ b.addEventListener('click', function(){ go(b.getAttribute('data-s')); }); });
+go('entry');
+</script>
+</body>
+</html>
