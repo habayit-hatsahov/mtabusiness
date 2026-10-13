@@ -143,3 +143,29 @@ export async function syncBizPublic(env, accessToken, { force = false } = {}) {
   if (wrote || removed) await kv.put(HASH_KEY, JSON.stringify(hashes));
   return { approved: approved.size, wrote, removed, pending };
 }
+
+// ══ §519 — open.html דרך הוורקר (POST /public-biz-list) ═════════════════════════════════════════
+// open.html (טיזר לעסק למי שלא מחובר) קרא את bizPublic ב-REST ישיר בלי SDK. כשנאכוף App Check על
+// Firestore, REST בלי תעודה ייחסם – לכן אותה שאילתה בדיוק, דרך הוורקר, **באותו פורמט תשובה** (runQuery),
+// כך שקוד הפענוח בדף לא משתנה. רק השדות שהטיזר צריך (כולם ממילא ציבוריים ב-bizPublic). מטמון 5 דק'.
+const TEASER_FIELDS = ['name', 'tags', 'hasDiscount', 'discountText', 'coverPhoto', 'coverPhotoThumb',
+  'coverPhotoPosition', 'coverPhotoZoom', 'coverPhotoBg'];
+export async function handlePublicBizList(env, accessToken, ctx) {
+  const cache = caches.default;
+  const key = new Request('https://cache.yellowzone.internal/public-biz-list/v1');
+  const hit = await cache.match(key);
+  if (hit) return hit.text();
+  const r = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}:runQuery`, {
+    method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ structuredQuery: {
+      from: [{ collectionId: 'bizPublic' }],
+      select: { fields: TEASER_FIELDS.map((p) => ({ fieldPath: p })) },
+      where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'approved' } } },
+    } }),
+  });
+  if (!r.ok) throw new Error('public-biz-list query failed: ' + r.status);
+  const text = await r.text();
+  const put = cache.put(key, new Response(text, { headers: { 'Cache-Control': 'public, max-age=300' } }));
+  if (ctx && ctx.waitUntil) ctx.waitUntil(put); else await put;
+  return text;
+}

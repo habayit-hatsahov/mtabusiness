@@ -180,16 +180,26 @@
   // (firestore.rules, businesses list) — עסק ממתין/נדחה לא יוצג, ובצדק.
   var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
   var timer = setTimeout(function () { if (ctrl) ctrl.abort(); fallback(); }, 8000);
-  fetch('https://firestore.googleapis.com/v1/' + BASE + ':runQuery?key=' + KEY, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: ctrl ? ctrl.signal : undefined,
-    body: JSON.stringify({ structuredQuery: {
-      from: [{ collectionId: 'bizPublic' }],   // §517ב — ההעתק הציבורי, ר' worker/src/bizpublic.js
-      select: { fields: FIELDS.map(function (p) { return { fieldPath: p }; }) },
-      where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'approved' } } },
-    } }),
-  }).then(function (r) {
+  function restQuery() {
+    return fetch('https://firestore.googleapis.com/v1/' + BASE + ':runQuery?key=' + KEY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: ctrl ? ctrl.signal : undefined,
+      body: JSON.stringify({ structuredQuery: {
+        from: [{ collectionId: 'bizPublic' }],   // §517ב — ההעתק הציבורי, ר' worker/src/bizpublic.js
+        select: { fields: FIELDS.map(function (p) { return { fieldPath: p }; }) },
+        where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'approved' } } },
+      } }),
+    });
+  }
+  // §519 — קודם דרך הוורקר (אותה שאילתה, אותו פורמט; לא תלוי ב-App Check), REST הישיר רק כנפילה
+  function viaWorker() {
+    return fetch('https://api.yellowzone.co.il/public-biz-list', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      signal: ctrl ? ctrl.signal : undefined,
+    }).then(function (r) { if (!r.ok) throw new Error('worker ' + r.status); return r; });
+  }
+  viaWorker().catch(restQuery).then(function (r) {
     if (!r.ok) throw new Error('http ' + r.status);
     return r.json();
   }).then(function (rows) {

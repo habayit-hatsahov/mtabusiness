@@ -92,6 +92,10 @@ exports.yzApiProxy = onRequest(
     // והדפדפן יחסום את התשובה גם כשהיא תקינה לחלוטין.
     const origin = req.get('origin');
     if (origin) headers['Origin'] = origin;
+    // §519 — טוקן App Check חייב לעבור לוורקר, אחרת כל בקשה דרך נתיב-הגיבוי תיראה "בלי טוקן"
+    // (ואחרי האכיפה – תיחסם). זה בדיוק הנתיב של מי שקלאודפלייר חסום אצלו.
+    const appCheck = req.get('x-firebase-appcheck');
+    if (appCheck) headers['X-Firebase-AppCheck'] = appCheck;
 
     let last = null;
     for (const base of TARGETS) {

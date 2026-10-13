@@ -24,6 +24,36 @@ function hideBadge() {
   } catch (e) {}
 }
 
+// ── §519 — טוקן App Check לכל בקשה לוורקר (שלב מדידה בוורקר: רושם, לא חוסם) ───────────────────
+// 8 עותקים של hbApiFetch בדפים, כולל זרימות הכניסה – שינוי בכל אחד הוא סיכון. לכן עוטפים את fetch
+// פעם אחת, כאן: רק לשלוש כתובות הוורקר, רק אם יש App Check, ועם תקרת המתנה של 1.5 שנ' לטוקן –
+// טוקן איטי/שנכשל לעולם לא מעכב בקשה (נשלחת בלעדיו). כל השאר עובר כמו שהוא.
+const API_PREFIXES = ['https://api.yellowzone.co.il/', 'https://habayit-hatsahov.web.app/api/', 'https://habayit-hatsahov-worker.yellowzone.workers.dev/'];
+let _acForFetch = null;
+function wrapFetchOnce() {
+  if (window.__yzFetchWrapped || typeof window.fetch !== 'function') return;
+  window.__yzFetchWrapped = true;
+  const orig = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    try {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      // רק POST: כותרת מותאמת ב-GET (למשל /download-image במרכז הניהול) מחייבת preflight, והוורקר
+      // מתיר בו רק POST – ההורדה הייתה נשברת. כל הנתיבים הרגישים הם POST ממילא.
+      const method = String((init && init.method) || 'GET').toUpperCase();
+      if (!_acForFetch || method !== 'POST' || !API_PREFIXES.some((p) => url.startsWith(p)) || typeof input !== 'string') return orig(input, init);
+      const withTimeout = Promise.race([getToken(_acForFetch, false).then((r) => r && r.token), new Promise((r) => setTimeout(() => r(''), 1500))]);
+      return withTimeout.catch(() => '').then((tok) => {
+        if (!tok) return orig(input, init);
+        const opts = Object.assign({}, init || {});
+        const h = new Headers(opts.headers || {});
+        if (!h.has('X-Firebase-AppCheck')) h.set('X-Firebase-AppCheck', tok);
+        opts.headers = h;
+        return orig(input, opts);
+      });
+    } catch (e) { return orig(input, init); }
+  };
+}
+
 export function attachAppCheck(app, { measure = false } = {}) {
   if (typeof location === 'undefined' || !LIVE_HOST.test(location.hostname)) return null;
   let ac = null;
@@ -34,7 +64,11 @@ export function attachAppCheck(app, { measure = false } = {}) {
     console.warn('App Check init failed:', e && (e.code || e.message));
     return null;
   }
-  if (measure) measureOnce(ac);
+  if (measure) {
+    measureOnce(ac);
+    // מהמופע הראשי בלבד (default) – הוא קיים בכל דף שמדבר עם הוורקר
+    if (!_acForFetch) { _acForFetch = ac; wrapFetchOnce(); }
+  }
   return ac;
 }
 

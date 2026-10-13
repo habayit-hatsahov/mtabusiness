@@ -46,6 +46,15 @@ const meta = { contentType: 'image/png' };
   await check('מנהל דורס', assertSucceeds(uploadBytes(ref(admin, 'members/proofs/BIZ123_fan'), IMG, meta)));
   await check('bizUploads – העלאה חדשה', assertSucceeds(uploadBytes(ref(anon, 'bizUploads/up2/cover_bbbb'), IMG, meta)));
   await check('bizUploads – לא דורס', assertFails(uploadBytes(ref(anon, 'bizUploads/up1/cover_aaaa'), IMG, meta)));
+  console.log('businesses/{bizId} – עסק pending');
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'businesses/bizPend1'), { status: 'pending', name: 'ממתין' });
+  });
+  const bizOwner = env.authenticatedContext('bizPend1').storage();
+  await check('אנונימי לא מעלה לעסק pending (הענף הוסר)', assertFails(uploadBytes(ref(anon, 'businesses/bizPend1/cover_x'), IMG, meta)));
+  await check('בעל העסק (טוקן) מעלה', assertSucceeds(uploadBytes(ref(bizOwner, 'businesses/bizPend1/cover_y'), IMG, meta)));
+  await check('מנהל מעלה', assertSucceeds(uploadBytes(ref(admin, 'businesses/bizPend1/logo_z'), IMG, meta)));
+
   await check('לא תמונה – נחסם', assertFails(uploadBytes(ref(anon, 'members/proofs/m3_x'), IMG, { contentType: 'text/html' })));
 
   await env.cleanup();

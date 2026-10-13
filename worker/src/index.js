@@ -21,9 +21,10 @@ import { handleDownloadImage, handleViewImage } from './download.js';
 import { handleUploadBizMedia } from './bizmedia.js';
 import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js';
 import { handleDemoSession } from './demo.js';
-import { syncBizPublic } from './bizpublic.js';
+import { syncBizPublic, handlePublicBizList } from './bizpublic.js';
 import { handleLinkBizOwner } from './bizowner.js';
 import { handleEvent } from './events.js';
+import { APPCHECK_PATHS, sampleAppCheck } from './appcheck.js';
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -61,7 +62,17 @@ export default {
     if (request.method === 'OPTIONS') return handlePreflight(env, request);
 
     const url = new URL(request.url);
+    // §519 — מדידת App Check (מדגם, ברקע, לא חוסם). ר' appcheck.js
+    if (request.method === 'POST' && APPCHECK_PATHS.has(url.pathname)) {
+      ctx.waitUntil(sampleAppCheck(request, env, url.pathname).catch(() => {}));
+    }
     try {
+      // §519 — open.html: רשימת העסקים לטיזר, דרך הוורקר (App Check). אותו פורמט כמו runQuery.
+      if (request.method === 'POST' && url.pathname === '/public-biz-list') {
+        if (memQuota('publist', clientIp(request, env), 120, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
+        const text = await handlePublicBizList(env, await getGoogleAccessToken(env), ctx);
+        return new Response(text, { status: 200, headers: corsHeaders(env, request) });
+      }
       // §519 — אירועי מדידה מהדפים הקלים (בלי SDK). מכסה נדיבה: usage-track שולח כמה לכל ביקור.
       if (request.method === 'POST' && url.pathname === '/event') {
         // ⚠️ לא KV: מכסת הכתיבה החינמית של KV היא 1,000 ליום, ואירוע לכל ביקור היה מכלה אותה (ואז כל
