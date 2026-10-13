@@ -8,21 +8,12 @@
 // אותו גשר ישיר כמו native-push.js (`nativePromise` / `addListener`) — בלי לארוז Capacitor באתר.
 // בלי התוסף (iOS 1.0 / Android 1.2, ודפדפן) — שום דבר לא קורה, והאפליקציה פשוט נפתחת כמו קודם.
 //
-// נוסף: "➕ הוסיפו עסק" בתפריט הצד הוא target="_blank" — באפליקציה זה הוציא את המשתמש לדפדפן
-// (רמי: "אני לא רוצה שזה יוציא את האנשים מהאפליקציה"). באפליקציה הקישור נפתח באותו מסך.
+// §510 — "➕ הוסיפו עסק" כבר לא נושא target="_blank" במרקאפ עצמו (4 הדפים). §499 הסיר אותו כאן
+// בזמן-ריצה, ובכל זאת רמי דיווח (12.10) שבאפליקציה זה עדיין יוצא לדפדפן — ההסרה מהמקור לא
+// תלויה בשום תנאי-זיהוי או סדר-טעינה.
 (function () {
   'use strict';
   var c = window.Capacitor;
-  var inApp = !!c || /YellowZoneApp/i.test(navigator.userAgent || '');
-  if (!inApp) return;
-
-  function keepInApp() {
-    var links = document.querySelectorAll('a.menu-add-biz[target]');
-    for (var i = 0; i < links.length; i++) links[i].removeAttribute('target');
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', keepInApp);
-  else keepInApp();
-
   if (!c || typeof c.addListener !== 'function' || typeof c.nativePromise !== 'function') return;
   var hasApp = false;
   try { hasApp = (typeof c.isPluginAvailable === 'function' && c.isPluginAvailable('App')) || !!(c.Plugins && c.Plugins.App); } catch (e) {}

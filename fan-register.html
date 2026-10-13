@@ -662,6 +662,12 @@
           <input type="email" id="email" placeholder="israel@gmail.com" autocomplete="email" inputmode="email" />
           <div class="field-error" id="err-email">נא להזין כתובת אימייל תקינה</div>
           <div class="field-warn" id="warn-email"></div>
+          <!-- §510 — כבר רשום (טלפון או מייל של רשומה פעילה) — ההרשמה חסומה. ר' showAlreadyRegistered -->
+          <div class="field-warn" id="warn-registered">
+            נראה שכבר נרשמת ל-Yellow Zone עם הטלפון או המייל האלה, ולכן אי אפשר להירשם שוב.
+            אם הבקשה שלך כבר אושרה – פשוט נכנסים. אם היא עדיין ממתינה – אין צורך לעשות כלום, נעדכן אותך במייל.
+            <div class="field-warn-actions"><button type="button" onclick="goLoginFromDup()">לכניסה</button></div>
+          </div>
         </div>
       </div>
 
@@ -1211,12 +1217,14 @@
         signal: ctl.signal
       });
       const data = await resp.json();
-      return { memberId: data.memberId || null, nameMismatch: !!data.nameMismatch, ok: true };
+      // §510 — registered: רשומה פעילה (לא נדחתה) עם אותו טלפון/מייל → ההרשמה נחסמת.
+      // `=== true` ולא `!!`: ורקר ישן (בלי השדה) או תשובת-שגיאה → לא חוסמים (fail-open).
+      return { memberId: data.memberId || null, nameMismatch: !!data.nameMismatch, registered: data.registered === true, ok: true };
     } catch (e) {
       console.error('fan-register.html: לא ניתן היה לבדוק כפילות מול השרת.', e);
       // ok:false — הבדיקה לא באמת רצה. חשוב לחימום למטה: תוצאה כזאת לא נשמרת לשימוש חוזר,
       // אחרת כשלון רגעי בזמן המילוי היה מבטל את בדיקת-הכפילות של השליחה עצמה.
-      return { memberId: null, nameMismatch: false, ok: false };
+      return { memberId: null, nameMismatch: false, registered: false, ok: false };
     } finally {
       clearTimeout(timer);
     }
@@ -2059,6 +2067,26 @@
       return;
     }
 
+    // ── §510 — בדיקת-הכפילות רצה כאן, **לפני** התמונה והשליחה ─────────────────────────────
+    // רמי (12.10): "אני בכלל לא רוצה שתהיה אופציה לאוהד להירשם פעם שנייה". רשומה פעילה עם
+    // אותו טלפון או מייל → עוצרים עם "כנראה כבר רשום" (רשומה שנדחתה — כן מותר לנסות שוב, ואז
+    // היא מסומנת למנהל כמו קודם). לפני התמונה כדי לא להעלות הוכחה של הרשמה שלא תקרה.
+    // אם החימום כבר רץ על אותם פרטים בדיוק — אוספים את התוצאה המוכנה במקום לצאת שוב לרשת.
+    // ok:false (הבדיקה נכשלה/נקטעה בזמן המילוי) מריץ אותה מחדש — לא "חוסכים" בדיקה שלא קרתה.
+    // כשל של הבדיקה עצמה → fail-open, כמו תמיד: עדיף כפילות שמנהל יצליב מאוהד חסום בגלל רשת.
+    const warmed = dedupKey === dedupKeyFor(data) ? await dedupPromise : null;
+    const dedup = (warmed && warmed.ok)
+      ? warmed
+      : await findExistingMemberId(data.phone, data.email, data.firstName, data.lastName);
+    if (dedup.registered) {
+      resetSubmitBtn();
+      showAlreadyRegistered(true);
+      logEvent('formError', { blockId: 'fanRegister', channel: 'already_registered', ...(dedup.memberId ? { memberId: dedup.memberId } : {}) });
+      setSubmitStatus('ההרשמה לא נשלחה – נראה שכבר נרשמת עם הטלפון או המייל האלה (ר\' ההודעה ליד שדה האימייל).', 'err');
+      document.getElementById('warn-registered').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     // ── §292 — התמונה עולה **לפני** השליחה, לא אחריה ────────────────────────────────────────
     // עד עכשיו ההרשמה נגמרה, מסך ההצלחה עלה, ורק אז רצה מאחוריו שורת-מצב "שומרים את תמונת
     // האימות…". המשתמש: *"אי אפשר שהפעולה הזאת תקרה לפני השליחה? זה לא מקצועי"* — צודק.
@@ -2151,12 +2179,8 @@
       // של חבר קיים יכול "לדרוס" את הטלפון שלו לטלפון שבשליטתו. אם ה-Worker מוצא
       // התאמת טלפון/מייל לרשומה קיימת — מסמנים דגל להצלבה ידנית ע"י מנהל
       // (admin-dashboard.html, "כל האוהדים") במקום לגעת ברשומה הקיימת בכלל.
-      // אם החימום כבר רץ על אותם פרטים בדיוק — אוספים את התוצאה המוכנה במקום לצאת שוב לרשת.
-      // ok:false (הבדיקה נכשלה/נקטעה בזמן המילוי) מריץ אותה מחדש — לא "חוסכים" בדיקה שלא קרתה.
-      const warmed = dedupKey === dedupKeyFor(data) ? await dedupPromise : null;
-      const { memberId: existingId } = (warmed && warmed.ok)
-        ? warmed
-        : await findExistingMemberId(data.phone, data.email, data.firstName, data.lastName);
+      // §510 — הבדיקה עצמה רצה למעלה (לפני התמונה); כאן מגיעה רק התאמה לרשומה שנדחתה.
+      const existingId = dedup.memberId;
       if (existingId) {
         data.reviewFlag   = 'possible_duplicate';
         data.reviewFlagAt = serverTimestamp();
@@ -2640,12 +2664,28 @@
     if (key === dedupKey) return;
     dedupKey = key;
     dedupPromise = findExistingMemberId(v.phone, v.email, v.firstName, v.lastName);
+    // §510 — "כבר רשום" מוצג כבר כאן, ביציאה מפרטי הזיהוי — לא אחרי שמילא את כל הטופס
+    // והעלה תמונה. תשובה שחזרה אחרי שהפרטים השתנו — נזרקת (המפתח כבר אחר).
+    dedupPromise.then(r => { if (dedupKey === key) showAlreadyRegistered(r.ok && r.registered); });
+  }
+
+  // ── §510 — "כנראה כבר רשום" ─────────────────────────────────────────────────────────────
+  function showAlreadyRegistered(on) {
+    document.getElementById('warn-registered').classList.toggle('show', !!on);
+  }
+  // בתוך המודאל ב-welcome.html — מנגנון הכניסה של הדף העוטף; אחרת — welcome.html?login=1
+  // (§444: פותח את חלון הכניסה מיד, גם בדפדפן וגם באפליקציה).
+  function goLoginFromDup() {
+    if (window.parent && window.parent !== window) { embedGoLogin(); return; }
+    location.href = 'welcome.html?login=1';
   }
 
   // 'change' על input טקסט נורה ביציאה מהשדה — בדיוק הרגע שבו הערך סופי
   ['firstName', 'lastName', 'phone', 'email'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', warmDedupCheck);
+    // שינוי בטלפון/במייל מוריד את ההודעה עד לבדיקה הבאה — היא שייכת לפרטים הקודמים
+    if (el && (id === 'phone' || id === 'email')) el.addEventListener('input', () => showAlreadyRegistered(false));
   });
 
   // ── §386 — הרשמה עם Google ─────────────────────────────────────────────────────────────
@@ -2781,6 +2821,7 @@
   window.setFanSport          = setFanSport;
   window.setVerifiedSport     = setVerifiedSport;
   window.embedGoLogin         = embedGoLogin;
+  window.goLoginFromDup       = goLoginFromDup;   // §510
   window.saveRegDraft         = saveRegDraft;
   // §284 — נקרא מ-onclick על כרטיסי המסלולים. בלי החשיפה המפורשת הזאת הוא פשוט לא קיים
   // ל-onclick (module scope), והבורר "לא מגיב" בלי שום שגיאה בקונסול.

@@ -769,20 +769,32 @@ async function handleCheckMemberExists({ phone, email, firstName, lastName }, en
     !!(firstName || lastName) &&
     (normName(existing.firstName) !== normName(firstName) || normName(existing.lastName) !== normName(lastName));
 
+  // §510 — כל ההתאמות נאספות (ולא רק הראשונה), בשביל `registered`: רשומה פעילה (לא 'rejected')
+  // עם אותו מייל **או** טלפון. fan-register.html חוסם לפיו הרשמה שנייה ("כנראה כבר רשום") —
+  // ורשומה שנדחתה לא תסתיר רשומה פעילה שנמצאה בשאילתה אחרת.
+  // השדות האחרים — **ללא שינוי**: ההתאמה הראשונה, מייל לפני טלפון (business.html מקשר לפיה).
+  // business.html **לא** חוסם לפי registered — בעל עסק רשאי להוסיף עסק שני (רמי, 12.10).
+  const matches = [];
   const emailLower = (email || '').trim().toLowerCase();
   if (emailLower) {
-    const byEmail = await firestoreRunQuery(env, accessToken, 'members', 'email', emailLower);
-    if (byEmail.length) return { exists: true, memberId: byEmail[0].id, nameMismatch: nameMismatch(byEmail[0].fields), hasName: !!byEmail[0].fields.firstName, hasBirthDate: !!byEmail[0].fields.birthDate };
+    matches.push(...await firestoreRunQuery(env, accessToken, 'members', 'email', emailLower));
   }
-
   if (phone) {
     for (const candidate of phoneCandidates(phone)) {
-      const byPhone = await firestoreRunQuery(env, accessToken, 'members', 'phone', candidate);
-      if (byPhone.length) return { exists: true, memberId: byPhone[0].id, nameMismatch: nameMismatch(byPhone[0].fields), hasName: !!byPhone[0].fields.firstName, hasBirthDate: !!byPhone[0].fields.birthDate };
+      matches.push(...await firestoreRunQuery(env, accessToken, 'members', 'phone', candidate));
     }
   }
 
-  return { exists: false, memberId: null };
+  if (!matches.length) return { exists: false, memberId: null, registered: false };
+  const first = matches[0];
+  return {
+    exists: true,
+    memberId: first.id,
+    nameMismatch: nameMismatch(first.fields),
+    hasName: !!first.fields.firstName,
+    hasBirthDate: !!first.fields.birthDate,
+    registered: matches.some(m => m.fields.status !== 'rejected'),
+  };
 }
 
 // ── §462 — נתיב-גיבוי לשליחת טופס האוהד ────────────────────────────────────────────────────
