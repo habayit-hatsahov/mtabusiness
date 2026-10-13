@@ -25868,3 +25868,13 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - **נשאר בכוונה (בשימוש):** `MESSAGE_TEMPLATE_ITEMS` (ברירות המחדל ל"חזרה לנוסח המקורי" ולנוסחים הקבועים של "שליחה עכשיו"), `tplFirestoreData`/`tplSiteTextsData` + ה-onSnapshot, `tplFieldValue`/`tplGetLocal`/`findMessageTemplate`, `AUTO_TPL_LINK_LABEL`, סרגל העיצוב (`mailToolbarHtml`/`mailFmt` – עכשיו מרענן רק את התצוגה של השידור; m2 מסתנכרן דרך מאזין ה-input), `mailPreviewDocHtml`, `.tpl-vars-box`/`.msg-group-label` (משמשים את המסכים הישנים של "שליחה עכשיו").
 - **בדיקות:** הרנס התבניות 42/42, m2 58/58, תחביר 2/2.
 - **עוד לא נוקה:** ארבעת המצבים הישנים של "שליחה עכשיו" (`sendNowSectionHtml`, `broadcastTabHtml`, `singleSenderBodyHtml`, `nativePushTabHtml`, `areaUpdateTabHtml`…) – כבר לא נקראים מהטאב; `area-updates.js`; הדף הנפרד `admin-messages.html` (עורך את אותן תבניות, לא מכיר את App/Push – שמירה בו לא מוחקת אותם, merge).
+
+### §528 – ניקוי: המסכים הישנים של "שליחה עכשיו", area-updates.js ו-admin-messages.html (14.10) – 🚀 נפרס (sw v233)
+- **admin-dashboard.html (~985 שורות, כולל 37 כללי CSS):** ארבעת המצבים הישנים (שידור המוני / נמענים נבחרים / 📲 פוש / 📰 עדכון לאזור) – הבוררים, הטיוטה (`settings/broadcastDraft` – כבר לא נקרא), התצוגה, השליחה, "שליחה חוזרת לנכשלים" של השידור, הסיידבר "שידורים אחרונים", וגם המאזינים של `broadcastDraft` ו-`areaUpdates`.
+  - **נשאר בכוונה:** `messageBroadcastHistory` + המאזין של `messageBroadcasts` – היומן "📧 מיילים שנשלחו לעסק/לאוהד הזה" בכרטיס (שידורים עד 13.10). `openBroadcastFor` ("📣 שלח הודעה לנבחרים" ברשימות) – רק מסמן ב-m2. `msgMainTab`/`setMsgMainTab`.
+  - **הקובייה השלישית בכותרת:** "הודעות שנשלחו לאחרונה" = `m2.hist.length` (עד 30) במקום "שידורים אחרונים" הישנים.
+  - "📜 שידורים מהמסך הישן" ירד מלשונית התבניות.
+  - סרגל העיצוב (`mailFmt`) מפעיל `input` על השדה במקום `updateBroadcastPreview` (שנמחקה).
+- **נמחקו קבצים:** `area-updates.js` (הוחלף ב-`my-messages.js`, §523; לא נטען מאף דף) · `admin-messages.html` (הדף הישן לעריכת התבניות; לא היה מקושר). הערות בדפים אחרים עודכנו.
+- **אימות:** סקריפט שמשווה לפני/אחרי – 77 הגדרות נמחקו, **אפס הפניות שנותרו** בקוד, ואין פונקציה חדשה שנשארה יתומה. הרנס התבניות 42/42, m2 58/58, תחביר 2/2.
+- **לא נגעתי:** נקודות הקצה הישנות בוורקר (`/send-area-update`, `/send-native-push`) – כבר לא נקראות ממרכז הניהול; `/send-broadcast-email` עדיין בשימוש (מייל בדיקה). הנתונים ב-Firestore (`areaUpdates`, `messageBroadcasts`, `settings/broadcastDraft`) נשארו.
