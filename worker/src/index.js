@@ -777,7 +777,10 @@ async function handleResendCode({ phone }, env) {
 // (nameMismatch הוא בוליאני בלבד, לא חושף את השם הקיים בפועל).
 const normName = (s) => (s || '').trim().toLowerCase();
 
-async function handleCheckMemberExists({ phone, email, firstName, lastName }, env) {
+// ══ §517 — **בלי memberId בתשובה.** הנתיב פתוח לכל אחד, והחזרת המזהה מיפתה כל טלפון/מייל למזהה-חבר.
+// business.html כבר לא צריך אותו (הקישור בוורקר, /link-biz-owner); fan-register מסמן כפילות לפי exists,
+// ומרכז הניהול מוצא את הרשומה הקיימת בעצמו; profile.html שולח excludeMemberId (המזהה שלו) ומקבל רק כן/לא.
+async function handleCheckMemberExists({ phone, email, firstName, lastName, excludeMemberId }, env) {
   if (!phone && !email) return { error: 'invalid_request' };
 
   const accessToken = await getGoogleAccessToken(env);
@@ -805,15 +808,16 @@ async function handleCheckMemberExists({ phone, email, firstName, lastName }, en
     }
   }
 
-  if (!matches.length) return { exists: false, memberId: null, registered: false };
-  const first = matches[0];
+  const exclude = typeof excludeMemberId === 'string' ? excludeMemberId : '';
+  const others = exclude ? matches.filter((m) => m.id !== exclude) : matches;
+  if (!others.length) return { exists: false, registered: false };
+  const first = others[0];
   return {
     exists: true,
-    memberId: first.id,
     nameMismatch: nameMismatch(first.fields),
     hasName: !!first.fields.firstName,
     hasBirthDate: !!first.fields.birthDate,
-    registered: matches.some(m => m.fields.status !== 'rejected'),
+    registered: others.some(m => m.fields.status !== 'rejected'),
   };
 }
 
