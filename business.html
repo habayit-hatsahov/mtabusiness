@@ -1891,42 +1891,25 @@
   document.body.classList.add('has-back-btn');
 
   // ── קישור/יצירת רשומת חבר לבעל העסק ──
-  async function findExistingMemberId(phone, email) {
-    try {
-      const resp = await hbApiFetch('/check-member-exists', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, email })
-      });
-      const data = await resp.json();
-      return { memberId: data.memberId || null, hasName: !!data.hasName, hasBirthDate: !!data.hasBirthDate };
-    } catch (e) {
-      console.error('business.html: לא ניתן היה לבדוק כפילות מול השרת.', e);
-      return { memberId: null, hasName: false, hasBirthDate: true };  // ספק — לא נוגעים בשדה קיים
-    }
+  // ══ §517ג — הקישור עבר לוורקר (/link-biz-owner, worker/src/bizowner.js) ════════════════════════
+  // עד כאן הדף (אנונימי) כתב בעצמו על רשומת חבר קיימת ועל ownerMemberId של העסק – שני היתרי-כתיבה
+  // אנונימיים על רשומות של אנשים אחרים (ר' §517). עכשיו ההוכחה היא טוקן העסק שהדף הזה יצר,
+  // והוורקר מוצא את החבר לפי הטלפון/המייל **שעל מסמך העסק**, משלים אותו (רק שדות חסרים), ומקשר.
+  // חבר חדש – הדף יוצר אותו כמו קודם (members create), והוורקר רק מאמת ומקשר.
+  async function linkBizOwnerCall(body) {
+    const resp = await hbApiFetch('/link-biz-owner', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    return resp.json();
   }
-  async function linkOrCreateOwnerMember(data, bizId) {
-    const { memberId: existingId, hasName, hasBirthDate } = await findExistingMemberId(data.ownerPhone, data.ownerEmail);
+  async function linkOrCreateOwnerMember(data, bizId, accessToken) {
     // ⚠️ נקרא מה-DOM ולא מ-data בכוונה: data נכתב **כמו שהוא** למסמך העסק, שנקרא ציבורית
     // במלואו לכל עסק מאושר (§244). תאריך לידה הוא מידע אישי ולכן חי רק על רשומת החבר.
     const ownerBirthDate = document.getElementById('ownerBirthDate').value;
-    if (existingId) {
-      const patch = { isBusinessOwner: true, linkedBusinessId: bizId };
-      // תאריך לידה מושלם רק אם אין כזה על הרשומה הקיימת — בדיוק כמו hasName מתחת. טופס ציבורי
-      // ולא-מאומת לעולם לא דורס מידע אישי קיים: ההתאמה היא לפי טלפון/מייל, ואלה יכולים להיות
-      // משותפים לשני אנשים שונים (אירוע אמיתי 2026-07-24, ר' nameConflict ב-firestore.rules).
-      if (!hasBirthDate && ownerBirthDate) patch.birthDate = ownerBirthDate;
-      // אם לרשומה הקיימת אין עדיין שם (למשל נוצרה ריקה בעבר) — משלימים מהטופס,
-      // בלי לדרוס שם אמיתי קיים (יכול להיות שונה מהבעלים הרשמי, למשל בן-משפחה שנרשם בשם קרוב).
-      // hasName מגיע מה-Worker (יש לו גישת-אדמין, קורא ישירות מ-Firestore) — לקוח אנונימי
-      // לא יכול לקרוא members/{id} של מישהו אחר (firestore.rules), אז אי-אפשר לבדוק את זה ישירות מכאן.
-      if (!hasName) {
-        patch.firstName = data.ownerFirst;
-        patch.lastName = data.ownerLast;
-      }
-      await updateDoc(doc(db, 'members', existingId), patch);
-      return existingId;
-    }
+    const found = await linkBizOwnerCall({ bizId, accessToken, ownerBirthDate: ownerBirthDate || undefined });
+    if (found && found.memberId) return found.memberId;
+    if (!found || found.error) throw new Error('link-biz-owner: ' + ((found && found.error) || 'no_response'));
+    // אין חבר קיים – יוצרים רשומה חדשה (כמו קודם), והוורקר מקשר אותה לעסק
     const memberRef = await addDoc(collection(db, 'members'), {
       firstName:         data.ownerFirst,
       lastName:          data.ownerLast,
@@ -1962,6 +1945,8 @@
       // שמעל (חבר קיים) לא נכתב — המקור של חבר קיים הוא ההרשמה המקורית שלו, לא זו.
       ...(window.hbSignupSource ? window.hbSignupSource.fields() : {}),
     });
+    const linked = await linkBizOwnerCall({ bizId, accessToken, newMemberId: memberRef.id });
+    if (!linked || linked.memberId !== memberRef.id) throw new Error('link-biz-owner(new): ' + ((linked && linked.error) || 'no_response'));
     return memberRef.id;
   }
 
@@ -3203,8 +3188,9 @@
         ownerLinkPromise = (async () => {
           let ownerMemberId = null;
           try {
-            ownerMemberId = await linkOrCreateOwnerMember(data, bizDocRef.id);
-            await updateDoc(doc(db, 'businesses', bizDocRef.id), { ownerMemberId });
+            // §517ג — הטוקן קודם (הוורקר מאמת מולו); ownerMemberId נכתב בוורקר, לא כאן
+            await bizTokenPromise;
+            ownerMemberId = await linkOrCreateOwnerMember(data, bizDocRef.id, accessToken);
           } catch (e) { console.error('owner member link failed:', e.message); }
           // ── §386 — קישור חשבון הגוגל לרשומת החבר של הבעלים ──────────────────────────────
           // ⚠️ **מחוץ ל-try שמעליו, בכוונה**: אם `updateDoc` נכשל אחרי ש-linkOrCreateOwnerMember

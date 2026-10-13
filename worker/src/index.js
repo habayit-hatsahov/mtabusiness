@@ -22,6 +22,7 @@ import { handleUploadBizMedia } from './bizmedia.js';
 import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js';
 import { handleDemoSession } from './demo.js';
 import { syncBizPublic } from './bizpublic.js';
+import { handleLinkBizOwner } from './bizowner.js';
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -50,6 +51,11 @@ export default {
 
     const url = new URL(request.url);
     try {
+      // §517ג — קישור בעל העסק לרשומת חבר בהרשמת עסק (במקום כתיבה אנונימית מהדף). ר' bizowner.js.
+      if (request.method === 'POST' && url.pathname === '/link-biz-owner') {
+        if (await overIpQuota(env.RATE_LIMIT_KV, 'linkowner', clientIp(request, env), 20, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request);
+        return json(await handleLinkBizOwner(await request.json(), env), env, request);
+      }
       // §516 — לינק תצוגה לאורח (demo.html / demo-mode.js). ר' demo.js.
       if (request.method === 'POST' && url.pathname === '/demo-session') {
         return json(await handleDemoSession(await request.json(), clientIp(request, env), env), env, request);
