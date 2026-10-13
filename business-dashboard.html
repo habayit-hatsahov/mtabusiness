@@ -1563,10 +1563,9 @@
        conversations.js) — בזהות של הקישור (uid=העסק), שהחוקים מכירים בה (isLinkedBusinessOwnerOf). -->
   <div class="dash-tabs" id="dashTabs" hidden>
     <button type="button" class="dash-tab on" id="dtBiz" onclick="switchView('biz')">העסק שלי</button>
-    <button type="button" class="dash-tab" id="dtUpdates" onclick="switchView('updates')">עדכונים <span class="dash-count" id="dtUpdatesCount" hidden></span></button>
+    <!-- §523 — "הודעות" אחת (my-messages.js) במקום "עדכונים" + "הודעות" -->
     <button type="button" class="dash-tab" id="dtMsgs" onclick="switchView('msgs')">הודעות <span class="dash-count" id="dtMsgsCount" hidden></span></button>
   </div>
-  <div class="view" id="view-updates"><div class="dash-area-wrap" id="dashUpdRoot"></div></div>
   <div class="view" id="view-msgs"><div class="dash-area-wrap" id="dashConvRoot"></div></div>
 
   <!-- ══ VIEW: העסק שלי ══ -->
@@ -2834,24 +2833,19 @@ async function mountDashArea() {
   if (!biz || !biz.ownerMemberId) return;   // עסק בלי בעלים מקושר — אין תיבה להציג
   const setCount = (id, n) => { const el = document.getElementById(id); if (el) { el.hidden = !n; el.textContent = n; } };
   try {
-    const [{ mountUpdates }, { mountConversations }] = await Promise.all([import('./area-updates.js'), import('./conversations.js')]);
-    const upd = mountUpdates({
-      db: bizDb, memberId: biz.ownerMemberId, root: document.getElementById('dashUpdRoot'),
-      isOwner: true, bizName: biz.name || '',
-      onUnread: (n) => setCount('dtUpdatesCount', n),
-      onOpenReplies: () => switchView('msgs'),
-    });
-    const conv = mountConversations({
+    // §523 — "הודעות" אחת: תיבת הבעלים + השיחות שלו, עם תוויות וסינון (כמו בפרופיל)
+    const p = new URLSearchParams(location.search);
+    const { mountMessages } = await import('./my-messages.js');
+    mountMessages({
       db: bizDb, memberId: biz.ownerMemberId, root: document.getElementById('dashConvRoot'),
+      isOwner: true, bizName: biz.name || '', ownerBizId: biz.id,
       source: 'bizDashboard', bizId: biz.id,
-      onUnread: (n) => { setCount('dtMsgsCount', n); upd.setReplyUnread(n); },
+      onUnread: (n) => setCount('dtMsgsCount', n),
+      openItem: p.get('item') || '', openConv: p.get('conv') || '',
     });
     document.getElementById('dashTabs').hidden = false;
-    // ?tab=msgs / ?conv= / ?tab=updates — כמו בפרופיל (למשל קישור מהמייל "הצוות ענה לך" במחשב).
-    const p = new URLSearchParams(location.search);
-    if (p.get('conv')) { switchView('msgs'); conv.openConv(p.get('conv')); }
-    else if (p.get('tab') === 'msgs') switchView('msgs');
-    else if (p.get('tab') === 'updates') switchView('updates');
+    // ?tab=msgs / ?tab=updates (ישן) / ?conv= / ?item= — כמו בפרופיל (למשל קישור מהמייל "הצוות ענה לך" במחשב).
+    if (p.get('conv') || p.get('item') || p.get('tab') === 'msgs' || p.get('tab') === 'updates') switchView('msgs');
   } catch (e) {
     console.error('dash area mount failed:', e);
   }
@@ -4686,10 +4680,11 @@ let _bizScrollY = 0;
 window.switchView = function(view) {
   const wasBiz = document.getElementById('view-biz')?.classList.contains('active');
   if (wasBiz && view !== 'biz') _bizScrollY = window.scrollY;
-  ['biz','terms','updates','msgs'].forEach(v =>{   // §506 — + עדכונים/הודעות (במחשב)
+  if (view === 'updates') view = 'msgs';   // §523 — אוחדה לתוך "הודעות"
+  ['biz','terms','msgs'].forEach(v =>{   // §506/§523 — + הודעות (במחשב)
     document.getElementById('view-' + v).classList.toggle('active', v === view);
   });
-  [['biz','dtBiz'],['updates','dtUpdates'],['msgs','dtMsgs']].forEach(([v, id]) =>{
+  [['biz','dtBiz'],['msgs','dtMsgs']].forEach(([v, id]) =>{
     document.getElementById(id)?.classList.toggle('on', v === view || (v === 'biz' && view === 'terms'));
   });
   // סרגל-הטיוטה הצף ("בטל"/"סקירה ושליחה") מוצג/מוסתר לפי draftChanges בלבד (ר' renderBizView) —

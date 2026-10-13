@@ -570,8 +570,8 @@
 <div class="yz-tabs" role="tablist">
   <!-- §505 — "העסק שלי" (בעל עסק בלבד, ראשונה — §473כז). מוצגת לפי המטמון כבר בטעינה, והמודול מאשר. -->
   <button type="button" class="yz-tab" id="tabBiz" role="tab" onclick="yzProfileTab('biz')" hidden>העסק שלי</button>
-  <!-- §503 — "עדכונים" (area-updates.js): מה שהצוות שולח לאזור + כל פוש שנשלח. -->
-  <button type="button" class="yz-tab" id="tabUpdates" role="tab" onclick="yzProfileTab('updates')">עדכונים <span class="yz-count" id="updatesCount" hidden></span></button>
+  <!-- §523 — "הודעות" אחת (my-messages.js): כל מה שנשלח אליו + השיחות עם הצוות, עם תוויות וסינון.
+       במקום "עדכונים" (§503) + "הודעות" (§501). ?tab=updates הישן מוביל לכאן. -->
   <button type="button" class="yz-tab" id="tabMsgs" role="tab" onclick="yzProfileTab('msgs')">הודעות <span class="yz-count" id="msgsCount" hidden></span></button>
   <button type="button" class="yz-tab on" id="tabDetails" role="tab" onclick="yzProfileTab('details')">הפרטים שלי</button>
 </div>
@@ -581,7 +581,6 @@
   <div id="bizPanelMsg" class="card-section" style="text-align:center;color:var(--text-sm);font-size:13.5px;line-height:1.6">טוען…</div>
   <iframe id="bizFrame" title="העסק שלי" hidden style="width:100%;border:0;border-radius:16px;background:var(--bg);display:block"></iframe>
 </div>
-<div id="updatesPanel" hidden><div id="updRoot"><div class="card-section" style="text-align:center;color:var(--text-sm);font-size:13px">טוען…</div></div></div>
 <div id="msgsPanel" hidden><div id="convRoot"><div class="card-section" style="text-align:center;color:var(--text-sm);font-size:13px">טוען…</div></div></div>
 <div class="profile-split">
 <div class="profile-side-panel">
@@ -843,14 +842,13 @@
   // מבצע המודול כשהוא מוכן (window.__yzConvIntent).
   window.yzProfileTab = function (t) {
     if (t === 'biz' && document.getElementById('tabBiz').hidden) t = 'details';
-    if (['msgs', 'updates', 'biz'].indexOf(t) < 0) t = 'details';   // §503/§505 — ארבע לשוניות
+    if (t === 'updates') t = 'msgs';   // §523 — "עדכונים" אוחדה לתוך "הודעות" (קישורים ישנים, הפעמון)
+    if (['msgs', 'biz'].indexOf(t) < 0) t = 'details';
     window.__yzTab = t;
     document.getElementById('tabBiz').classList.toggle('on', t === 'biz');
-    document.getElementById('tabUpdates').classList.toggle('on', t === 'updates');
     document.getElementById('tabMsgs').classList.toggle('on', t === 'msgs');
     document.getElementById('tabDetails').classList.toggle('on', t === 'details');
     document.getElementById('bizPanel').hidden = t !== 'biz';
-    document.getElementById('updatesPanel').hidden = t !== 'updates';
     document.getElementById('msgsPanel').hidden = t !== 'msgs';
     document.querySelector('.profile-split').hidden = t !== 'details';
     document.body.classList.toggle('yz-biz-tab', t === 'biz');
@@ -869,7 +867,7 @@
   (function () {
     try {
       var p = new URLSearchParams(location.search);
-      window.__yzConvIntent = { conv: p.get('conv') || '', isNew: p.get('new') === '1' };
+      window.__yzConvIntent = { conv: p.get('conv') || '', isNew: p.get('new') === '1', item: p.get('item') || '' };
       // §505 — בעל עסק (לפי המטמון) רואה את "העסק שלי" מיד, ונפתח עליה כשאין כוונה אחרת (§473כז).
       var owner = false;
       try {
@@ -878,12 +876,11 @@
       } catch (e) {}
       var plain = !p.get('bizToken') && !p.get('previewMemberId');
       if (owner && plain) document.getElementById('tabBiz').hidden = false;
-      if (p.get('tab') === 'msgs' || p.get('conv') || p.get('new') === '1') window.yzProfileTab('msgs');
-      else if (p.get('tab') === 'updates') window.yzProfileTab('updates');
+      if (p.get('tab') === 'msgs' || p.get('tab') === 'updates' || p.get('conv') || p.get('new') === '1' || p.get('item')) window.yzProfileTab('msgs');
       else if (p.get('tab') === 'details') window.yzProfileTab('details');
       else if (owner && plain) window.yzProfileTab('biz');
-      // §509 — "האזור שלי": אוהד נפתח על "עדכונים" (כמו בדמו). בתצוגה מקדימה/bizToken — הפרטים, כמו קודם.
-      else if (plain) window.yzProfileTab('updates');
+      // §509/§523 — "האזור שלי": אוהד נפתח על "הודעות". בתצוגה מקדימה/bizToken — הפרטים, כמו קודם.
+      else if (plain) window.yzProfileTab('msgs');
     } catch (e) {}
   })();
 </script>
@@ -1428,45 +1425,30 @@ async function saveMemberField(updates) {
     document.querySelector('.yz-tabs').style.display = 'none';
   } else {
     // §509 — מקור אחד לשלושת הסימונים (תפריט, ☰, פעמון): כאן הם מתעדכנים חי, כשמשהו נקרא.
-    window.__yzUnread = { upd: 0, msgs: 0 };
-    window.__yzSyncBadge = () => { if (window.YZAreaBadge) window.YZAreaBadge.set(window.__yzUnread.upd + window.__yzUnread.msgs); };
-    // §503 — "עדכונים". נטען לפני השיחות כדי שהפס "יש לך תשובה חדשה" יקבל את המונה שלהן.
-    let updates = null;
+    // §523 — "הודעות" אחת (my-messages.js): מונה אחד – הודעות שלא נקראו + שיחות עם תשובה חדשה.
     try {
-      const { mountUpdates } = await import('./area-updates.js');
-      updates = mountUpdates({
-        db, memberId, root: document.getElementById('updRoot'),
-        isOwner: !!(member.isBusinessOwner || bizToken), bizName: myBizName,
-        onUnread: (n) => { const el = document.getElementById('updatesCount'); el.hidden = !n; el.textContent = n; window.__yzUnread.upd = n; window.__yzSyncBadge(); },
-        onOpenReplies: () => window.yzProfileTab('msgs'),
-      });
-    } catch (e) {
-      console.error('updates mount failed:', e);
-      document.getElementById('updRoot').innerHTML =
-        '<div class="card-section" style="text-align:center;color:var(--text-sm);font-size:13px;line-height:1.6">לא הצלחנו לטעון את העדכונים. נסו לרענן.</div>';
-    }
-    try {
-      const { mountConversations } = await import('./conversations.js');
-      const conv = mountConversations({
+      const { mountMessages } = await import('./my-messages.js');
+      const it = window.__yzConvIntent || {};
+      const isOwner = !!(member.isBusinessOwner || bizToken);
+      const msgs = mountMessages({
         db, memberId, root: document.getElementById('convRoot'),
+        isOwner, bizName: myBizName,
+        ownerBizId: bizToken ? ((auth.currentUser && auth.currentUser.uid) || null) : (member.isBusinessOwner ? (member.linkedBusinessId || null) : null),
         source: bizToken ? 'bizDashboard' : 'app',
         bizId: bizToken ? (auth.currentUser && auth.currentUser.uid) || null : null,
         onUnread: (n) => {
           const el = document.getElementById('msgsCount');
           el.hidden = !n; el.textContent = n;
-          if (updates) updates.setReplyUnread(n);
-          window.__yzUnread.msgs = n; window.__yzSyncBadge();
+          if (window.YZAreaBadge) window.YZAreaBadge.set(n);
         },
         savePushToken: bizToken ? null : async (res) => {
           await updateDoc(doc(db, 'members', memberId), {
             [`nativePushTokens.${res.installId}`]: { token: res.token, platform: res.platform, updatedAt: new Date().toISOString() },
           });
         },
+        openItem: it.item || '', openConv: it.conv || '', compose: !!it.isNew,
       });
-      const it = window.__yzConvIntent || {};
-      if (it.conv) conv.openConv(it.conv);
-      else if (it.isNew) conv.startNew();
-      window.yzOpenNewConversation = () => { window.yzProfileTab('msgs'); conv.startNew(); };
+      window.yzOpenNewConversation = () => { window.yzProfileTab('msgs'); msgs.compose(); };
     } catch (e) {
       console.error('conversations mount failed:', e);
       document.getElementById('convRoot').innerHTML =

@@ -105,15 +105,17 @@ function injectStyle() {
 //  db, memberId — של הדף (ב-profile.html?bizToken= זה app מבודד בזהות העסק; החוקים מכירים בשתיהן).
 //  root — האלמנט שבו מציירים. onUnread(n) — לסימון בלשונית/בתפריט.
 //  savePushToken(res) — אופציונלי: כתיבת טוקן הפוש (הדף מחזיק את הזהות; המודול לא כותב לחבר).
-export function mountConversations({ db, memberId, root, onUnread, savePushToken, source = 'app', bizId = null }) {
+//  §523 — embedded: בתוך "הודעות" המאוחד (my-messages.js). הרשימה שלנו לא מוצגת (השיחות מופיעות
+//  ברשימה המאוחדת), נשארים רק השרשור והכתיבה; "חזרה" וביטול קוראים ל-onBack.
+export function mountConversations({ db, memberId, root, onUnread, savePushToken, source = 'app', bizId = null, embedded = false, onBack = null }) {
   injectStyle();
-  const state = { convs: [], loaded: false, loadErr: false, openId: null, msgs: [], msgsErr: false, composing: false, pushOffer: false };
+  const state = { convs: [], loaded: false, loadErr: false, openId: null, msgs: [], msgsErr: false, composing: false, pushOffer: false, newMeta: null };
   let unsubMsgs = null;
 
   root.innerHTML = `
-    <p class="cv-intro"><b>השיחות שלך עם הצוות.</b> כל פנייה היא שיחה נפרדת. נחזור אליך כאן ובמייל. שיחות שנסגרו נשמרות למטה, ואפשר לקרוא אותן.</p>
+    ${embedded ? '' : '<p class="cv-intro"><b>השיחות שלך עם הצוות.</b> כל פנייה היא שיחה נפרדת. נחזור אליך כאן ובמייל. שיחות שנסגרו נשמרות למטה, ואפשר לקרוא אותן.</p>'}
     <div class="card-section" data-cv="list">
-      <div class="cv-head">
+      <div class="cv-head"${embedded ? ' data-cv-hidden' : ''}>
         <div class="section-title" style="margin:0">השיחות שלך</div>
         <button type="button" class="cv-btn" data-cv="newBtn">+ שיחה חדשה</button>
       </div>
@@ -132,7 +134,7 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
       <div data-cv="closedList"></div>
     </div>
     <div class="card-section" data-cv="view" data-cv-hidden>
-      <button type="button" class="cv-chip" data-cv="back">› חזרה לכל השיחות</button>
+      <button type="button" class="cv-chip" data-cv="back">${embedded ? '› חזרה להודעות' : '› חזרה לכל השיחות'}</button>
       <div class="cv-view-head">
         <div class="cv-subject" data-cv="subject"></div>
         <span class="cv-status" data-cv="status"></span>
@@ -177,6 +179,10 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
       </button>`;
   }
   function renderList() {
+    if (embedded) {   // §523 — הרשימה המאוחדת מציגה את השיחות; כאן רק הכתיבה, כשכותבים
+      $('openList').innerHTML = ''; $('closedList').innerHTML = ''; show('closedHead', false);
+      return;
+    }
     if (state.loadErr) {
       $('openList').innerHTML = `<div class="cv-empty">לא הצלחנו לטעון את השיחות. בדקו את החיבור ונסו לרענן.<br/>אפשר תמיד לכתוב לנו במייל ${CONTACT_MAIL}</div>`;
       $('closedList').innerHTML = ''; show('closedHead', false);
@@ -194,7 +200,7 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
   // ── שיחה פתוחה ──
   function renderView() {
     const c = state.convs.find((x) => x.id === state.openId);
-    show('list', !c); show('view', !!c);
+    show('list', !c && (!embedded || state.composing)); show('view', !!c);
     if (!c) return;
     $('subject').textContent = c.subject;
     const st = $('status');
@@ -243,9 +249,12 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
     state.openId = null; state.pushOffer = false;
     render();
   }
+  function back() { closeView(); if (embedded && onBack) onBack(); }
 
-  function startNew() {
+  // §523 — meta: { source, bizId } לשיחה הזאת (בעל עסק בוחר "על העסק" / "משהו אחר" ב"הודעות" המאוחד)
+  function startNew(meta) {
     closeView();
+    state.newMeta = meta || null;
     state.composing = true;
     show('new', true);
     renderList();
@@ -257,6 +266,7 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
     state.composing = false;
     show('new', false); show('newErr', false);
     renderList();
+    if (embedded && onBack) { show('list', false); onBack(); }
   }
 
   async function sendNew() {
@@ -268,9 +278,11 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
     try {
       const ref = doc(collection(db, 'conversations'));
       const b = writeBatch(db);
+      const nm = state.newMeta || {};
+      const src = nm.source || source, bid = nm.bizId !== undefined ? nm.bizId : bizId;
       b.set(ref, {
-        memberId, status: 'open', subject: subjectFrom(text), source,
-        ...(bizId ? { bizId } : {}),
+        memberId, status: 'open', subject: subjectFrom(text), source: src,
+        ...(bid ? { bizId: bid } : {}),
         createdAt: serverTimestamp(), lastAt: serverTimestamp(), lastFrom: 'member', memberReadAt: serverTimestamp(),
       });
       b.set(doc(collection(db, 'conversations', ref.id, 'messages')), { from: 'member', text: text.slice(0, MAX), createdAt: serverTimestamp() });
@@ -347,7 +359,7 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
     else if (k === 'newCancel') cancelNew();
     else if (k === 'newSend') sendNew();
     else if (k === 'replySend') sendReply();
-    else if (k === 'back') closeView();
+    else if (k === 'back') back();
     else if (k === 'pushYes') acceptPush();
     else if (k === 'pushNo') { state.pushOffer = false; renderView(); }
   });
@@ -366,5 +378,5 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
     (e) => { console.error('conversations load failed:', e && (e.code || e.message)); state.loadErr = true; render(); });
 
   render();
-  return { startNew, openConv };
+  return { startNew, openConv, closeView };
 }

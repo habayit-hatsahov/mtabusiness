@@ -1721,7 +1721,7 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
 // recipients: [{ t: 'm' | 'b', id }] — 'b' = עסק; ההודעה באפליקציה/בפוש הולכת לבעלים (ownerMemberId),
 //   המייל – ל-ownerEmail של העסק (כמו השידור הישן). מרכז הניהול כבר איחד בעלים כפולים.
 // block: members (לכל האוהדים) · personal (אוהדים נבחרים) · allBiz · myBiz (עם bizId/bizName).
-// פוש **רק יחד עם app** (§504ו) – הוא ה"צלצול" של הפריט, ו-data.link פותח את "האזור שלי".
+// פוש **רק יחד עם app** (§504ו) – הוא ה"צלצול" של הפריט, ו-data.link פותח **את הפריט עצמו** ב"הודעות" (§523).
 // mail.scope: 'all' | 'missing' — 'missing' = רק מי שלא קיבל באפליקציה (§504ז).
 const MSG_CHUNK = 8;
 const MSG_BLOCKS = ['members', 'personal', 'allBiz', 'myBiz'];
@@ -1794,7 +1794,7 @@ async function handleSendMessage({ idToken, messageId, block, recipients, app, p
     for (const o of out) {
       if (o.app !== 'written') continue;
       if (!Object.keys(o.tokens).length) { o.push = 'noToken'; continue; }
-      const res = await sendFcmToMember(env, accessToken, o.tokens, { title: P.title, body: P.body, data: { link: '/profile.html?tab=updates' } });
+      const res = await sendFcmToMember(env, accessToken, o.tokens, { title: P.title, body: P.body, data: { link: `/profile.html?tab=msgs&item=${messageId}` } });
       o.push = res.sent ? 'sent' : 'failed';
       o.pushDevices = res.sent;
       if (res.deadKeys.length) {

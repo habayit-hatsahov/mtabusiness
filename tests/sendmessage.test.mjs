@@ -100,7 +100,7 @@ check('הפריט: בלוק, קישור כנתיב, pushed, readAt=null', db['me
 check('כתיבה אחת מרוכזת לתיבות', commits.length === 1 && commits[0] === 3, commits);
 check('פוש: fanA נשלח, fanB בלי טוקן', by(r, 'fanA').push === 'sent' && by(r, 'fanB').push === 'noToken', r.results);
 check('פוש לא לממתין', by(r, 'fanP').push === 'none');
-check('פוש: data.link לאזור, בערוץ yz_main', fcm[0].data.link === '/profile.html?tab=updates' && fcm[0].android.notification.channel_id === 'yz_main', fcm[0]);
+check('פוש: data.link לפריט עצמו, בערוץ yz_main', fcm[0].data.link === '/profile.html?tab=msgs&item=msg_test01' && fcm[0].android.notification.channel_id === 'yz_main', fcm[0]);
 check('טוקן מת נוקה, החי נשאר', by(r, 'fanDead').push === 'sent' && patches.includes('members/fanDead') && Object.keys(db['members/fanDead'].nativePushTokens).join() === 'i2', db['members/fanDead']);
 check('מייל: fanA/fanB/ממתין נשלחו, fanDead בלי מייל', by(r, 'fanA').mail === 'sent' && by(r, 'fanB').mail === 'sent' && by(r, 'fanP').mail === 'sent' && by(r, 'fanDead').mail === 'noEmail', r.results);
 check('מייל: משתנים הוחלפו בנושא', mails.some((m) => m.subject === 'שלום איל') && mails.some((m) => m.subject === 'שלום נועה'), mails.map((m) => m.subject));

@@ -48,7 +48,7 @@
       var nav = tog.parentNode;
       if (nav && !document.getElementById('yzBell')) {
         var b = document.createElement('a');
-        b.id = 'yzBell'; b.className = 'yz-bell'; b.href = 'profile.html?tab=updates';
+        b.id = 'yzBell'; b.className = 'yz-bell'; b.href = 'profile.html?tab=msgs';
         b.setAttribute('aria-label', 'עדכונים'); b.title = 'עדכונים';
         b.innerHTML = BELL_SVG + '<span class="yz-bell-n" hidden></span>';
         nav.insertBefore(b, tog.nextSibling);
