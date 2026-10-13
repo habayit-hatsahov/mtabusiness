@@ -4179,7 +4179,15 @@ function computeDiscountTypesLive(bizTypes, hasCode, redeemMode) {
   return [((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
 }
 
-onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')), snap => {
+// ══ §517ב — הרשימה מההעתק הציבורי (bizPublic), והקודים בנפרד (bizCodes, חברים בלבד) ══════════
+// מסמך העסק המלא (businesses) כולל טלפון/מייל של הבעלים, מנוי, אימות וקודי קופון – והיה קריא לכל אחד.
+// ההעתק נבנה בוורקר (worker/src/bizpublic.js) מרשימת-היתר של שדות; במקום הקוד יש בו hasCode.
+// שני המאזינים (למטה) שומרים את מה שקיבלו, וכל אחד מהם מצייר מחדש דרך הפונקציה הזאת.
+let _hbPubSnap = null;
+window._hbCodes = window._hbCodes || {};
+function _hbRenderBusinesses() {
+  const snap = _hbPubSnap;
+  if (!snap) return;
   // ── snapshot ריק שהגיע מהמטמון-המקומי (offline) — מתעלמים ממנו לגמרי ─────────────────────
   // firebase-config.js מפעיל persistentLocalCache, ולכן onSnapshot יורה מיד גם בלי רשת, עם מה
   // שיש במטמון-המכשיר. אם המטמון עדיין ריק (התקנה טרייה / פינוי-אחסון של iOS / מחיקת נתוני-אתר)
@@ -4196,8 +4204,9 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
   if (snap.empty) window._hbServerSaidEmpty = true;
   const data = snap.docs.map(doc => {
     const b = doc.data();
+    const codes = window._hbCodes[doc.id] || null;
     const bizTypes = b.bizTypes || [];
-    const types = b.hasDiscount ? computeDiscountTypesLive(bizTypes, !!b.discountCode, b.discountRedeemMode) : (b.discountTypes || []);
+    const types = b.hasDiscount ? computeDiscountTypesLive(bizTypes, !!(b.hasCode || b.discountCode), b.discountRedeemMode) : (b.discountTypes || []);
     return {
       id:           doc.id,
       name:         b.name || '',
@@ -4208,11 +4217,12 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
       discount:     b.discountText || '',
       discountFull: b.discountTextFull || '',
       discountTypes: types,
-      additionalDiscounts: (b.additionalDiscounts || []).map(d => ({
+      additionalDiscounts: (b.additionalDiscounts || []).map((d, i) => ({
         ...d,
-        redeemTypes: computeDiscountTypesLive(bizTypes, !!d.code, d.redeemMode),
+        code: (codes && codes.extraCodes && codes.extraCodes[i]) || '',
+        redeemTypes: computeDiscountTypesLive(bizTypes, !!(d.hasCode || d.code), d.redeemMode),
       })),
-      coupon:       b.discountCode || '',
+      coupon:       (codes && codes.discountCode) || '',
       // §414ב — buildNew נשען על approvedAt בלבד: "חדש אצלנו" הוא חלון-זמן מרגע
       // האישור, ולא דגל. isNew/newUntil נשארים כי הם עדיין קובעים כשהמדיניות כבויה.
       approvedAt:   b.approvedAt || null,
@@ -4262,6 +4272,10 @@ onSnapshot(query(collection(db, 'businesses'), where('status', '==', 'approved')
   // רק רשימה לא-ריקה נשמרת — ר’ ההסבר למעלה: [] שנדרס על מטמון תקין השאיר את האפליקציה
   // ריקה גם בפתיחה הבאה. אין מצב שבו כדאי לשמור "אין עסקים" כתמונת-פתיחה למחר.
   if (data.length) { try { localStorage.setItem('hb_businesses_cache', JSON.stringify(data)); } catch (e) {} }
+}
+onSnapshot(query(collection(db, 'bizPublic'), where('status', '==', 'approved')), snap => {
+  _hbPubSnap = snap;
+  _hbRenderBusinesses();
 }, err => {
   console.error('Firebase load error:', err);
 });
@@ -4374,6 +4388,17 @@ await new Promise(resolve => {
     openGate();
   });
 });
+
+// §517ב — קודי הקופון. firestore.rules פותחות את bizCodes רק לחבר רשום; לאורח (demo_) לא מאזינים
+// בכלל (היה נדחה). כשל = אין קודים בכרטיס, שאר הדף עובד.
+if (!/^demo_/.test(localStorage.getItem('hb_memberId') || '')) {
+  onSnapshot(collection(db, 'bizCodes'), snap => {
+    const m = {};
+    snap.docs.forEach(d => { m[d.id] = d.data(); });
+    window._hbCodes = m;
+    _hbRenderBusinesses();
+  }, err => console.warn('bizCodes load failed:', err && (err.code || err.message)));
+}
 
 // ══ §372 — חיבור חשבון Google מהתפריט ═══════════════════════════════════════════════════
 // הנתיב החזק של §370: שתי הוכחות זהות — אחת מגוגל, ואחת שלנו (הוא כבר מחובר לדף הזה).
@@ -4532,9 +4557,12 @@ const _hbSeenUid = auth.currentUser?.uid;
 if (_hbSeenUid) updateDoc(doc(db, 'members', _hbSeenUid), { lastSeenAt: serverTimestamp() }).catch(() => {});
 
 window._likeFirestoreToggle = async function(id, memberId, liked) {
-  await updateDoc(doc(db, 'businesses', id), {
-    likedBy: liked ? arrayRemove(memberId) : arrayUnion(memberId)
-  });
+  // §517ב — גם להעתק הציבורי, באותו batch: הדף קורא ממנו, והלב חייב להופיע בו מיד ולא אחרי הסנכרון.
+  const change = { likedBy: liked ? arrayRemove(memberId) : arrayUnion(memberId) };
+  const b = writeBatch(db);
+  b.update(doc(db, 'businesses', id), change);
+  b.update(doc(db, 'bizPublic', id), change);
+  await b.commit();
 };
 // §431 — מרגע זה יש מנוע-כתיבה. כל לב שנלחץ קודם (בין ציור-הכרטיסים מהמטמון לבין סיום
 // המודול) ממתין בתור ונשלח עכשיו. ⚠️ חייב לשבת **מיד** אחרי ההגדרה ולא בסוף הקובץ: כל שורה
@@ -4548,7 +4576,11 @@ window._recordView = function(id) {
   if (window._hbIsAdmin === true) return;
   // §508 (0+ב) — וגם לא בעל העסק בכרטיס של עצמו (רמי: "לא לספור את בעל העסק בכרטיס שלו").
   if (window._hbMyBizId && window._hbMyBizId === id) return;
-  updateDoc(doc(db, 'businesses', id), { clicks: increment(1) }).catch(() => {});
+  // §517ב — לשני המסמכים (ר' _likeFirestoreToggle)
+  const _vb = writeBatch(db);
+  _vb.update(doc(db, 'businesses', id), { clicks: increment(1) });
+  _vb.update(doc(db, 'bizPublic', id), { clicks: increment(1) });
+  _vb.commit().catch(() => {});
 
 // ═══ §418ה — מדידת חשיפות ════════════════════════════════════════════════════════
 // 🔑 **"חשיפה" = הכרטיס באמת נראה על המסך**, לא נטען ל-DOM. בלי זה אי אפשר לענות

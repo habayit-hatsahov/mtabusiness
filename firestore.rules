@@ -1025,6 +1025,30 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ── §517ב — העתק ציבורי של העסקים + קודי קופון לחברים בלבד ────────────────────────────
+    // נכתבים רק ע"י הוורקר (worker/src/bizpublic.js, service account – עוקף את החוקים), כל דקה.
+    // bizPublic: רק עסקים מאושרים, רק שדות מרשימת-היתר – קריא לכולם. חבר מחובר מעדכן בו לב/כניסה
+    // **של עצמו בלבד** (אותו כלל כמו ב-businesses), באותו batch עם המסמך המלא – כך הלב מגיב מיד.
+    match /bizPublic/{bizId} {
+      allow get, list: if true;
+      allow update: if isSignedInMember() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy', 'clicks']) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['likedBy']) || (
+          request.resource.data.likedBy is list &&
+          request.resource.data.likedBy.toSet().difference(resource.data.get('likedBy', []).toSet())
+            .union(resource.data.get('likedBy', []).toSet().difference(request.resource.data.likedBy.toSet()))
+            .hasOnly([request.auth.uid])
+        )) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['clicks']) ||
+          request.resource.data.clicks == resource.data.get('clicks', 0) + 1);
+      allow create, delete: if isAdmin();
+    }
+    // bizCodes: קודי הקופון – רק חבר רשום (יש לו רשומת חבר; אורח בלינק תצוגה – אין) או מנהל.
+    match /bizCodes/{bizId} {
+      allow get, list: if isSignedInMember() || isAdmin();
+      allow write: if false;
+    }
+
     // ── §516 — לינקים לתצוגה (demoLinks/{token}) ─────────────────────────────────────────
     // מזהה המסמך **הוא** הלינק – ולכן מנהל בלבד, גם קריאה. הוורקר (service account) מאמת
     // ורושם כניסות/מכשירים; המנהל יוצר, מאריך ומכבה ממרכז הניהול.

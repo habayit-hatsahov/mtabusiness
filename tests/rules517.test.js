@@ -127,6 +127,34 @@ async function check(name, p) {
   await check('עסק מאושר (הבעלים האמיתי) קורא', assertSucceeds(gd(doc(real, 'members/victim'))));
   await check('עסק מאושר קורא את התיבה', assertSucceeds(gd(doc(real, 'members/victim/inbox/i1'))));
 
+  console.log('§517ב – bizPublic / bizCodes');
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const d = ctx.firestore();
+    await setDoc(doc(d, 'bizPublic/bizLiked'), { status: 'approved', name: 'עם לבבות', likedBy: ['victim'], clicks: 10 });
+    await setDoc(doc(d, 'bizCodes/bizLiked'), { discountCode: 'MACCABI10', extraCodes: [] });
+  });
+  const demo = env.authenticatedContext('demo_ABCDEFGHIJKL', { role: 'demo' }).firestore();
+  const { getDocs: gds, collection: col, writeBatch: wb } = require('firebase/firestore');
+  await check('אנונימי קורא bizPublic', assertSucceeds(gd(doc(anon, 'bizPublic/bizLiked'))));
+  await check('אנונימי מונה bizPublic', assertSucceeds(gds(col(anon, 'bizPublic'))));
+  await check('אנונימי לא קורא קודים', assertFails(gd(doc(anon, 'bizCodes/bizLiked'))));
+  await check('אנונימי לא מונה קודים', assertFails(gds(col(anon, 'bizCodes'))));
+  await check('אורח (לינק תצוגה) לא קורא קודים', assertFails(gd(doc(demo, 'bizCodes/bizLiked'))));
+  await check('חבר קורא קודים', assertSucceeds(gd(doc(other, 'bizCodes/bizLiked'))));
+  await check('חבר מונה קודים', assertSucceeds(gds(col(other, 'bizCodes'))));
+  await check('חבר לא כותב קודים', assertFails(updateDoc(doc(other, 'bizCodes/bizLiked'), { discountCode: 'X' })));
+  await check('לב לשני המסמכים ב-batch (כמו home.html)', assertSucceeds((() => {
+    const b = wb(other);
+    b.update(doc(other, 'businesses/bizLiked'), { likedBy: arrayUnion('other') });
+    b.update(doc(other, 'bizPublic/bizLiked'), { likedBy: arrayUnion('other') });
+    return b.commit();
+  })()));
+  await check('לא מוחק לב של אחר ב-bizPublic', assertFails(updateDoc(doc(other, 'bizPublic/bizLiked'), { likedBy: arrayRemove('victim') })));
+  await check('לא משנה שם ב-bizPublic', assertFails(updateDoc(doc(other, 'bizPublic/bizLiked'), { name: 'פרוץ' })));
+  await check('אנונימי לא כותב bizPublic', assertFails(updateDoc(doc(anon, 'bizPublic/bizLiked'), { clicks: 11 })));
+  await check('כניסה +1 ב-bizPublic', assertSucceeds(updateDoc(doc(other, 'bizPublic/bizLiked'), { clicks: increment(1) })));
+  await check('אנונימי לא יוצר bizPublic', assertFails(setDoc(doc(anon, 'bizPublic/fake'), { status: 'approved', name: 'מזויף' })));
+
   await env.cleanup();
   console.log(`\n${fail ? '❌' : '✅'} ${pass} עברו, ${fail} נכשלו`);
   process.exit(fail ? 1 : 0);

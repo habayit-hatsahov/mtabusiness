@@ -21,6 +21,7 @@ import { handleDownloadImage, handleViewImage } from './download.js';
 import { handleUploadBizMedia } from './bizmedia.js';
 import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js';
 import { handleDemoSession } from './demo.js';
+import { syncBizPublic } from './bizpublic.js';
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -205,6 +206,10 @@ export default {
       return;
     }
     ctx.waitUntil(runEmailSweeps(env));
+    // §517ב — העתק ציבורי של העסקים (bizPublic) + קודים לחברים (bizCodes). כשל כאן לא נוגע במיילים.
+    ctx.waitUntil(getGoogleAccessToken(env).then((t) => syncBizPublic(env, t))
+      .then((r) => { if (r.wrote || r.removed) console.log('bizPublic sync', JSON.stringify(r)); })
+      .catch((e) => console.error('bizPublic sync failed', String(e))));
   },
 };
 
