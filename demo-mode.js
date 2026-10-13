@@ -51,7 +51,7 @@
     '.yz-demo-note{font-size:13px;color:#3A4C7A;background:#F2F2EC;border:1.5px dashed #E4E4DC;border-radius:12px;padding:12px;margin:0 0 12px;display:flex;gap:8px;align-items:center;font-family:Rubik,sans-serif}' +
     'html.yz-demo #memberCardEl{position:relative}' +
     '.yz-stamp{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:5}' +
-    '.yz-stamp span{transform:rotate(-14deg);border:3px solid #FFD400;color:#FFD400;font-size:26px;font-weight:900;padding:4px 18px;border-radius:10px;background:rgba(10,42,102,.45);letter-spacing:.04em;font-family:Rubik,sans-serif}';
+    '.yz-stamp span{transform:rotate(-14deg);border:3px solid #0A2A66;color:#0A2A66;font-size:26px;font-weight:900;padding:4px 18px;border-radius:10px;background:rgba(255,255,255,.75);letter-spacing:.04em;font-family:Rubik,sans-serif}';
   (document.head || root).appendChild(css);
 
   function lockPanelHtml(isCoupon) {
