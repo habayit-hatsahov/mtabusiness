@@ -458,13 +458,16 @@ service cloud.firestore {
       // בלבד: לא ניתן להוסיף שדות, ולא ניתן לגעת בשום מסמך אחר.
       match /statsDaily/{dateId} {
         allow read: if isAdmin() || isBizOwner(businessId);
+        // §517 — בדיוק כמו ש-home.html כותב (increment(1) בכל flush): נולד ב-1, עולה ב-1. קודם
+        // כתיבה אחת יכלה לקפוץ ל-100,000 – ניפוח "השבוע אצלך" של כל עסק בבקשה בודדת. מזהה = תאריך,
+        // ורק לעסק קיים (בלי זה – אוסף זבל אינסופי תחת מזהים מומצאים).
         allow create: if request.resource.data.keys().hasOnly(['imp'])
-                      && request.resource.data.imp is number
-                      && request.resource.data.imp > 0 && request.resource.data.imp <= 500;
+                      && request.resource.data.imp == 1
+                      && dateId.matches('^20[0-9][0-9]-[01][0-9]-[0-3][0-9]$')
+                      && exists(/databases/$(database)/documents/businesses/$(businessId));
         // ⚠️ `affectedKeys` ולא `keys` — במסמך קיים `keys()` מחזיר גם שדות שלא נגעו בהם.
         allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['imp'])
-                      && request.resource.data.imp is number
-                      && request.resource.data.imp <= 100000;
+                      && request.resource.data.imp == resource.data.imp + 1;
         allow write: if isAdmin();
       }
     }

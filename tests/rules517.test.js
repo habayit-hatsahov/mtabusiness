@@ -166,6 +166,16 @@ async function check(name, p) {
   await check('בעלים (טוקן העסק) קורא', assertSucceeds(gd(doc(real, 'businesses/realBiz'))));
   await check('מנהל קורא ומונה', assertSucceeds(gds(col(admin, 'businesses'))));
 
+  console.log('חשיפות (statsDaily)');
+  const day = new Date().toISOString().slice(0, 10);
+  const { setDoc: sd } = require('firebase/firestore');
+  await check('חשיפה ראשונה (increment(1), כמו home.html)', assertSucceeds(sd(doc(anon, `businesses/realBiz/statsDaily/${day}`), { imp: increment(1) }, { merge: true })));
+  await check('חשיפה נוספת +1', assertSucceeds(sd(doc(anon, `businesses/realBiz/statsDaily/${day}`), { imp: increment(1) }, { merge: true })));
+  await check('לא קפיצה של +1000', assertFails(sd(doc(anon, `businesses/realBiz/statsDaily/${day}`), { imp: increment(1000) }, { merge: true })));
+  await check('לא נולד ב-500', assertFails(sd(doc(anon, 'businesses/realBiz/statsDaily/2026-01-01'), { imp: 500 })));
+  await check('לא לעסק שלא קיים', assertFails(sd(doc(anon, `businesses/nope/statsDaily/${day}`), { imp: increment(1) }, { merge: true })));
+  await check('לא מזהה שאינו תאריך', assertFails(sd(doc(anon, 'businesses/realBiz/statsDaily/junk'), { imp: increment(1) }, { merge: true })));
+
   await env.cleanup();
   console.log(`\n${fail ? '❌' : '✅'} ${pass} עברו, ${fail} נכשלו`);
   process.exit(fail ? 1 : 0);
