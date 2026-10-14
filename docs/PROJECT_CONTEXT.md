@@ -25879,3 +25879,8 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - **אימות:** סקריפט שמשווה לפני/אחרי – 77 הגדרות נמחקו, **אפס הפניות שנותרו** בקוד, ואין פונקציה חדשה שנשארה יתומה. הרנס התבניות 42/42, m2 58/58, תחביר 2/2.
 - **לא נגעתי:** נקודות הקצה הישנות בוורקר (`/send-area-update`, `/send-native-push`) – כבר לא נקראות ממרכז הניהול; `/send-broadcast-email` עדיין בשימוש (מייל בדיקה). הנתונים ב-Firestore (`areaUpdates`, `messageBroadcasts`, `settings/broadcastDraft`) נשארו.
 - **§528ב (בדיקה חיה בכרום):** הקובייה "הודעות שנשלחו לאחרונה" הראתה 0 – צוירה לפני שההיסטוריה הגיעה. עכשיו כל snapshot של ההודעות מעדכן גם אותה (m2KpiSent). sw v234.
+
+### §529 – ניקוי בוורקר: /send-area-update ו-/send-native-push הוסרו (14.10) – 🚀 נפרס
+- **הוסר מ-worker/src/index.js (~165 שורות):** שני הנתיבים, `handleSendAreaUpdate` (§503), `handleSendNativePush` (§420ג), והעוזרים שרק הם השתמשו בהם – `resolveAreaRecipients`, `writeAreaItems`, `AREA_BLOCK`. מאז §528 אף מסך לא קרא להם.
+- **נשאר:** `pushLinkPath` (בשימוש ב-/send-message ובתבניות, §526), `/send-broadcast-email` (מייל הבדיקה של "שליחה עכשיו"), `/notify-conv-reply`. האוסף `areaUpdates` ב-Firestore והפריטים הישנים בתיבות נשארו.
+- **אימות:** אפס הפניות שנותרו ואין פונקציה יתומה (אותו סקריפט של §528); כל בדיקות הוורקר עוברות – sendmessage 31/31, tplsweep526 31/31, webhook524 10/10, bizowner 22, bizpublic 102, biztoken 16, demosession 24, events 14. חי: הנתיבים שהוסרו מחזירים "לא נמצא", ו-/send-message עונה.
