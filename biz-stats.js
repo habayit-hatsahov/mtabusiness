@@ -42,8 +42,11 @@
       var W = state.weeks;
       if (!W || !W.length) { sum.textContent = 'עדיין אין נתונים'; body.innerHTML = '<div class="bs-note">הנתונים יופיעו כאן כשאוהדים יתחילו לראות את העסק שלך.</div>'; return; }
       var cur = W[state.off], prev = W[state.off + 1];
-      // שורת הסיכום — גלויה גם כשהקופסה סגורה, תמיד על השבוע הנוכחי
-      sum.textContent = 'השבוע: ' + W[0].imp + ' חשיפות · ' + W[0].open + ' פתיחות · ' + W[0].contact + ' פניות · ' + W[0].hearts + ' לבבות';
+      // שורת הסיכום — גלויה גם כשהקופסה סגורה. §534: כשהשבוע הנוכחי עוד ריק (בתחילת שבוע) והיה שבוע
+      // קודם — הסיכום על השבוע שעבר, כדי שעסק פעיל לא ייראה "מת" ביום ראשון בבוקר.
+      var S = state.lastWeekSum ? W[1] : W[0];
+      sum.textContent = (state.lastWeekSum ? 'השבוע עוד אין פעילות · שבוע שעבר: ' : 'השבוע: ') +
+        S.imp + ' חשיפות · ' + S.open + ' פתיחות · ' + S.contact + ' פניות · ' + S.hearts + ' לבבות';
       var s = new Date(cur.start + 'T12:00:00Z'), e = new Date(s); e.setUTCDate(s.getUTCDate() + 6);
       var title = state.off === 0 ? 'השבוע' : state.off === 1 ? 'שבוע שעבר' : 'לפני ' + state.off + ' שבועות';
       var delta = function (a, b) {
@@ -68,7 +71,11 @@
     });
     Promise.resolve().then(opts.load).then(function (r) {
       if (!r || !r.ok) throw new Error((r && r.error) || 'failed');
-      state.weeks = r.weeks || []; draw();
+      state.weeks = r.weeks || [];
+      // §534 — השבוע הנוכחי כולו אפסים ויש שבוע קודם → הסיכום על שבוע שעבר, והקופסה נפתחת עליו
+      var W = state.weeks, empty = function (w) { return !(w.imp || w.open || w.contact || w.hearts); };
+      if (W.length > 1 && empty(W[0]) && !empty(W[1])) { state.lastWeekSum = true; state.off = 1; }
+      draw();
     }).catch(function (e) { console.error('weekly stats failed:', e); state.err = true; draw(); });
   }
 
