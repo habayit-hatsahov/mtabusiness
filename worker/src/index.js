@@ -807,6 +807,22 @@ async function handleResendCode({ phone }, env) {
 // (nameMismatch הוא בוליאני בלבד, לא חושף את השם הקיים בפועל).
 const normName = (s) => (s || '').trim().toLowerCase();
 
+// כל רשומות החבר עם אותו מייל (אותיות קטנות) או אחת מווריאציות הטלפון.
+// משותף ל-/check-member-exists ול-/submit-member (§530) – אותה הגדרה של "אותו אדם" בשניהם.
+async function findMembersByContact(env, accessToken, phone, email) {
+  const matches = [];
+  const emailLower = (email || '').trim().toLowerCase();
+  if (emailLower) {
+    matches.push(...await firestoreRunQuery(env, accessToken, 'members', 'email', emailLower));
+  }
+  if (phone) {
+    for (const candidate of phoneCandidates(phone)) {
+      matches.push(...await firestoreRunQuery(env, accessToken, 'members', 'phone', candidate));
+    }
+  }
+  return matches;
+}
+
 // ══ §517 — **בלי memberId בתשובה.** הנתיב פתוח לכל אחד, והחזרת המזהה מיפתה כל טלפון/מייל למזהה-חבר.
 // business.html כבר לא צריך אותו (הקישור בוורקר, /link-biz-owner); fan-register מסמן כפילות לפי exists,
 // ומרכז הניהול מוצא את הרשומה הקיימת בעצמו; profile.html שולח excludeMemberId (המזהה שלו) ומקבל רק כן/לא.
@@ -827,16 +843,7 @@ async function handleCheckMemberExists({ phone, email, firstName, lastName, excl
   // ורשומה שנדחתה לא תסתיר רשומה פעילה שנמצאה בשאילתה אחרת.
   // השדות האחרים — **ללא שינוי**: ההתאמה הראשונה, מייל לפני טלפון (business.html מקשר לפיה).
   // business.html **לא** חוסם לפי registered — בעל עסק רשאי להוסיף עסק שני (רמי, 12.10).
-  const matches = [];
-  const emailLower = (email || '').trim().toLowerCase();
-  if (emailLower) {
-    matches.push(...await firestoreRunQuery(env, accessToken, 'members', 'email', emailLower));
-  }
-  if (phone) {
-    for (const candidate of phoneCandidates(phone)) {
-      matches.push(...await firestoreRunQuery(env, accessToken, 'members', 'phone', candidate));
-    }
-  }
+  const matches = await findMembersByContact(env, accessToken, phone, email);
 
   const exclude = typeof excludeMemberId === 'string' ? excludeMemberId : '';
   const others = exclude ? matches.filter((m) => m.id !== exclude) : matches;
@@ -904,6 +911,16 @@ async function handleSubmitMember({ memberId, data } = {}, env) {
   out.submitPath = 'worker';
 
   const accessToken = await getGoogleAccessToken(env);
+
+  // §530 — אוהד לא נרשם פעמיים (§510) גם כשעוקפים את הטופס: רשומה פעילה (לא 'rejected') עם אותו
+  // טלפון או מייל → לא נוצרת. הרשומה עצמה (אותו memberId, כשהכתיבה מהדפדפן כבר נקלטה) לא נספרת –
+  // אחרת הגיבוי היה חוסם את ההרשמה של עצמו. מי שנדחה רשאי לנסות שוב, כמו בטופס.
+  const others = (await findMembersByContact(env, accessToken, out.phone, out.email)).filter((m) => m.id !== memberId);
+  if (others.some((m) => m.fields.status !== 'rejected')) {
+    console.log(`submit-member: already_registered ${memberId}`);
+    return { error: 'already_registered' };
+  }
+
   const created = await firestoreCreateDocWithId(env, accessToken, 'members', memberId, out);
   console.log(`submit-member: ${created ? 'created' : 'already_exists'} ${memberId}`);
   return { ok: true, created };

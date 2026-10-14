@@ -20,6 +20,16 @@ globalThis.fetch = async (input, init = {}) => {
     db['members/' + id] = JSON.parse(init.body).fields;
     return res(200, { name: 'projects/p/databases/(default)/documents/members/' + id });
   }
+  // §530 — runQuery על members לפי email/phone, מתוך db המדומה
+  if (url.endsWith(':runQuery') && method === 'POST') {
+    const q = JSON.parse(init.body).structuredQuery;
+    const f = q.where.fieldFilter;
+    const want = f.value.stringValue;
+    const rows = Object.entries(db)
+      .filter(([k, v]) => k.startsWith(q.from[0].collectionId + '/') && v[f.field.fieldPath]?.stringValue === want)
+      .map(([k, v]) => ({ document: { name: 'projects/p/databases/(default)/documents/' + k, fields: v } }));
+    return res(200, rows.length ? rows : [{ readTime: 'x' }]);
+  }
   throw new Error('unmocked: ' + method + ' ' + url);
 };
 
@@ -83,6 +93,30 @@ out = await call({ memberId: ID, data: { ...good(), photoProofUrl: '', reviewFla
 const s2 = db['members/' + ID];
 check('reviewFlag → גם reviewFlagAt', out.ok && !!s2?.reviewFlagAt?.timestampValue, JSON.stringify(out));
 check('photoProofUrl ריק מתקבל', s2?.photoProofUrl?.stringValue === '');
+
+// ── §530 — כפילות: רשומה פעילה אחרת עם אותו טלפון/מייל ────────────────────────────────
+const OTHER = 'ZzZzZzZzZzZzZzZzZzZz';
+const existing = (status, phone, email) => ({
+  status: { stringValue: status }, phone: { stringValue: phone }, email: { stringValue: email },
+});
+const dupCase = async (name, other, data, expectBlocked) => {
+  db = { ['members/' + OTHER]: other }; calls = [];
+  const o = await call({ memberId: ID, data });
+  const made = !!db['members/' + ID];
+  if (expectBlocked) check(name + ' → נחסם', o.error === 'already_registered' && !made, JSON.stringify(o));
+  else check(name + ' → נוצר', o.ok && o.created === true && made, JSON.stringify(o));
+};
+await dupCase('מאושר עם אותו טלפון', existing('approved', '0501234567', 'x@y.co'), good(), true);
+await dupCase('ממתין עם אותו מייל', existing('pending', '0549999999', 'a@b.co'), good(), true);
+await dupCase('מייל באותיות גדולות בטופס', existing('approved', '0549999999', 'a@b.co'), { ...good(), email: 'A@B.CO' }, true);
+await dupCase('טלפון בפורמט 972+', existing('approved', '+972501234567', 'x@y.co'), good(), true);
+await dupCase('נדחה עם אותו טלפון – מותר לנסות שוב', existing('rejected', '0501234567', 'a@b.co'), { ...good(), reviewFlag: 'possible_duplicate' }, false);
+await dupCase('אין התאמה', existing('approved', '0549999999', 'x@y.co'), good(), false);
+
+// הגיבוי אחרי שהכתיבה מהדפדפן כבר נקלטה: הרשומה של עצמו לא חוסמת
+db = { ['members/' + ID]: existing('pending', '0501234567', 'a@b.co') }; calls = [];
+out = await call({ memberId: ID, data: good() });
+check('הרשומה של עצמו (אותו memberId) → ok, created:false', out.ok && out.created === false, JSON.stringify(out));
 
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);
