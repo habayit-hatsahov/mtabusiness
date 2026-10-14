@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>דמו – מסך פתיחה מתחלף</title>
+<!-- §536 — דמו בלבד: מסך הפתיחה של האפליקציה עם תמונה מתחלפת על כל המסך.
+     הרצף: (1) המסך הנייטיב – צהוב נקי #ECC94B (כמו בבנייה החדשה) → (2) התמונה הבאה בתור נכנסת בעמעום
+     ונשארת לפחות 1.5 שנ' → (3) דף הבית (מדומה). בכל "פתיחה" התמונה הבאה, לפי הסדר. -->
+<style>
+  :root { --splash: #ECC94B; --blue: #0A2A66; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif; background: #F6F6F1; color: var(--blue); }
+  .home { padding: 24px 16px 120px; max-width: 520px; margin: 0 auto; }
+  .home h1 { font-size: 22px; margin: 8px 0 4px; }
+  .home p { font-size: 15px; line-height: 1.6; color: #44506B; margin: 0 0 16px; }
+  .card { background: #fff; border: 1px solid #E7E7E0; border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  .card b { display: block; margin-bottom: 4px; }
+  .bar { position: fixed; inset: auto 0 0 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid #E7E7E0; display: flex; gap: 8px; justify-content: center; z-index: 5; }
+  .bar button { font: inherit; font-weight: 800; font-size: 15px; border: 0; border-radius: 24px; padding: 12px 20px; background: var(--blue); color: #fff; cursor: pointer; }
+  .bar button.sec { background: #F2F2EC; color: var(--blue); }
+  .thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .thumbs img { width: 100%; aspect-ratio: 9/16; object-fit: cover; border-radius: 10px; border: 3px solid transparent; }
+  .thumbs img.next { border-color: var(--blue); }
+
+  /* מסך הפתיחה */
+  #splash { position: fixed; inset: 0; z-index: 10; background: var(--splash); transition: opacity .35s ease; }
+  #splash img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .25s ease; }
+  #splash img.on { opacity: 1; }
+  #splash.out { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="splash"><img id="splashImg" alt=""></div>
+
+<main class="home">
+  <h1>דף הבית (מדומה)</h1>
+  <p>כך מסך הפתיחה ייראה באפליקציה. כל לחיצה על "פתיחה נוספת" מדמה פתיחה חדשה של האפליקציה – ובכל פעם התמונה הבאה בתור.</p>
+  <div class="card"><b>מה רואים</b>צהוב נקי לרגע (המסך של האפליקציה עצמה) ← התמונה נכנסת בעמעום ← לפחות שנייה וחצי ← דף הבית.</div>
+  <div class="card"><b>התמונות לפי הסדר</b><div class="thumbs" id="thumbs"></div></div>
+</main>
+
+<div class="bar">
+  <button type="button" id="again">פתיחה נוספת</button>
+  <button type="button" class="sec" id="slow">בחיבור איטי</button>
+</div>
+
+<script>
+(function () {
+  var IMGS = ['images/splash/splash-1.jpg', 'images/splash/splash-2.jpg', 'images/splash/splash-3.jpg',
+    'images/splash/splash-4.jpg', 'images/splash/splash-5.jpg', 'images/splash/splash-6.jpg'];
+  var NATIVE_MS = 400;      // המסך הנייטיב (צהוב נקי) עד שהאתר מתחיל
+  var MIN_MS = 1500;        // התמונה מוצגת לפחות כך
+  var splash = document.getElementById('splash'), img = document.getElementById('splashImg');
+  var idx = 0;
+  try { idx = (parseInt(localStorage.getItem('yzSplashDemoIdx') || '0', 10) || 0) % IMGS.length; } catch (e) {}
+
+  function drawThumbs() {
+    document.getElementById('thumbs').innerHTML = IMGS.map(function (s, i) {
+      return '<img src="' + s + '" alt=""' + (i === idx ? ' class="next"' : '') + '>';
+    }).join('');
+  }
+  // הבאה בתור נטענת מראש – באפליקציה האמיתית היא כבר במטמון מהפתיחה הקודמת
+  function preload(i) { var p = new Image(); p.src = IMGS[i]; }
+
+  function open(loadMs) {
+    var cur = idx;
+    idx = (idx + 1) % IMGS.length;
+    try { localStorage.setItem('yzSplashDemoIdx', String(idx)); } catch (e) {}
+    splash.classList.remove('out'); img.classList.remove('on'); img.removeAttribute('src');
+    window.scrollTo(0, 0);
+    setTimeout(function () {
+      var t0 = Date.now();
+      img.onload = function () { img.classList.add('on'); };
+      img.src = IMGS[cur];
+      if (img.complete) img.classList.add('on');
+      // "הדף נטען" אחרי loadMs; יוצאים כשגם הדף נטען וגם עברה שנייה וחצי מהתמונה
+      setTimeout(function () {
+        var wait = Math.max(0, MIN_MS - (Date.now() - t0));
+        setTimeout(function () { splash.classList.add('out'); preload(idx); drawThumbs(); }, wait);
+      }, loadMs);
+    }, NATIVE_MS);
+  }
+
+  document.getElementById('again').onclick = function () { open(600); };
+  document.getElementById('slow').onclick = function () { open(3000); };
+  drawThumbs();
+  preload(idx);
+  open(600);
+})();
+</script>
+</body>
+</html>
