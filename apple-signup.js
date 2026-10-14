@@ -261,7 +261,6 @@
   // ביטול — השדות **נשארים מלאים** (הם נכונים), רק הקישור יורד והמייל נפתח לעריכה.
   function clearToken() {
     token = null;
-    dropPending();
     lockEmail(false);
     lockName(false);
     clearEmailWarn();
@@ -393,97 +392,10 @@
                                    function (e) { closeIt(); throw e; });
   }
 
-  // ══ §468ג — זרימת-ההפניה (אייפון בדפדפן) ═══════════════════════════════════════════════
-  // iPadOS מציג את עצמו כ-Mac — ולכן גם MacIntel עם מגע.
+  // אייפון/אייפד בדפדפן — שם הכפתור לא מוצג (§531). iPadOS מציג את עצמו כ-Mac — ולכן גם MacIntel עם מגע.
   function isIOSWeb() {
     var ua = navigator.userAgent || '';
     return /iP(hone|od|ad)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  }
-  var CALLBACK_URL = 'https://api.yellowzone.co.il/apple-callback';
-  var NONCE_KEY = 'hb_as_nonce';
-
-  // ══ §468ז — רשת-ביטחון: החיבור ל-Apple שורד טעינה מחדש של הטופס ═══════════════════════════
-  // נמדד 6.10: אחרי החזרה מאפל המודאל נסגר ונפתח, ה-iframe נטען מחדש, והטוקן (שחי בזיכרון
-  // המודול בלבד) אבד. השדות שוחזרו מהטיוטה, ולכן הטופס **נראה** מחובר — ונשלח בלי appleSub.
-  // 🔑 שומרים את התשובה ב-sessionStorage (אותה לשונית בלבד) ל-9 דקות — ה-id_token של אפל פג
-  // אחרי 10 — ומשחזרים בטעינה הבאה של הטופס. נמחק אחרי attach מוצלח או "זה לא החשבון שלי".
-  var PENDING_KEY = 'hb_as_pending';
-  var PENDING_MAX_MS = 9 * 60 * 1000;
-  function savePending(res) {
-    try {
-      sessionStorage.setItem(PENDING_KEY, JSON.stringify({
-        t: res.authorization.id_token, u: res.user || null, at: Date.now() }));
-    } catch (_) {}
-  }
-  function dropPending() { try { sessionStorage.removeItem(PENDING_KEY); } catch (_) {} }
-  function restorePending() {
-    if (token) return;
-    var p = null;
-    try { p = JSON.parse(sessionStorage.getItem(PENDING_KEY) || 'null'); } catch (_) {}
-    if (!p || !p.t) return;
-    if (!(Date.now() - p.at < PENDING_MAX_MS)) { dropPending(); return; }
-    var res = { authorization: { id_token: p.t, code: null }, _serverExchanged: 'restored' };
-    if (p.u) res.user = p.u;
-    track('asRestored');
-    onAuthorized(res);
-  }
-
-  // ⚠️ בלי ה-SDK: כתובת ה-authorize נבנית כאן. `form_post` חובה כשמבקשים name/email — ולכן
-  // החזרה עוברת דרך הוורקר (`/apple-callback`), שמחזיר לכאן עם `#as=`.
-  function onClickRedirect() {
-    var nonce = '';
-    try {
-      var a = new Uint8Array(12); crypto.getRandomValues(a);
-      nonce = Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
-      sessionStorage.setItem(NONCE_KEY, nonce);
-    } catch (e) {
-      // בלי sessionStorage אין דרך לאמת את החזרה — עדיף טופס ידני מזהות שאי-אפשר לאמת.
-      setCap('⚠️ הדפדפן חוסם את ההתחברות עם Apple. אפשר פשוט למלא את הטופס ידנית.');
-      track('asRedirect:noStorage');
-      return;
-    }
-    track('asRedirect');
-    var q = {
-      client_id: SERVICES_ID,
-      redirect_uri: CALLBACK_URL,
-      response_type: 'code id_token',
-      response_mode: 'form_post',
-      scope: 'name email',
-      state: cfg.redirectReturn + '.' + nonce,
-    };
-    var url = 'https://appleid.apple.com/auth/authorize?' +
-      Object.keys(q).map(function (k) { return k + '=' + encodeURIComponent(q[k]); }).join('&');
-    // 🐛 §468ד — **הלשונית כולה, לא המסגרת.** נמדד 6.10: הטופס יושב בתוך iframe במודאל של
-    // welcome.html (`joinModal`), ו-`location.assign` העביר רק את המסגרת — ואפל שולחת
-    // `X-Frame-Options: DENY`, כלומר מסך לבן. `top` הוא אותו origin ולכן מותר; החזרה נוחתת
-    // על fan-register.html כדף עצמאי, ו-sessionStorage (ה-nonce) משותף לאותה לשונית.
-    try { (window.top || window).location.assign(url); }
-    catch (e) { location.assign(url); }
-  }
-
-  // החזרה מאפל: `#as=<base64url(JSON)>` → {s: state, t: id_token, u: {name}, x: תוצאת-ההחלפה, e: שגיאה}
-  function consumeRedirectReturn() {
-    var m = /[#&]as=([A-Za-z0-9_-]+)/.exec(location.hash || '');
-    if (!m) { restorePending(); return; }
-    // ⚠️ מוחקים את ה-fragment **לפני** כל דבר אחר — הוא נושא טוקן, ואסור שיישאר בהיסטוריה.
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
-    var d = null;
-    try {
-      var b = m[1].replace(/-/g, '+').replace(/_/g, '/');
-      d = JSON.parse(decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4)))));
-    } catch (e) { track('asReturn:bad'); return; }
-    var expected = '';
-    try { expected = sessionStorage.getItem(NONCE_KEY) || ''; sessionStorage.removeItem(NONCE_KEY); } catch (_) {}
-    var got = String((d && d.s) || '').split('.')[1] || '';
-    if (!expected || got !== expected) { track('asReturn:nonce'); return; }   // לא אנחנו שלחנו אותו לאפל
-    if (d.e) {
-      track(('asReturn:' + d.e).slice(0, 50));
-      if (d.e !== 'user_cancelled_authorize') setCap('⚠️ משהו השתבש מול Apple. אפשר פשוט למלא את הטופס ידנית.');
-      return;
-    }
-    var res = { authorization: { id_token: d.t, code: null }, _serverExchanged: d.x || 'unknown' };
-    if (d.u && d.u.name) res.user = { name: d.u.name };
-    onAuthorized(res);
   }
 
   async function onClick() {
@@ -636,23 +548,11 @@
       return;
     }
 
-    // ══ §468ג — אייפון בדפדפן: זרימת-הפניה, או בלי כפתור ═══════════════════════════════
+    // ══ אייפון בדפדפן: בלי כפתור ═══════════════════════════════════════════════════════════
     // באייפון חלון אפל נשאר פתוח מעל האתר ואי-אפשר לסגור אותו (`asPopup:closedAlready`, §468ב).
-    // 🔑 דף שמסר `redirectReturn` (טופס האוהד — הכפתור בראש הטופס, אין מה לאבד) עובר לאפל
-    // וחוזר. דף שלא מסר (טופס העסק — הכפתור בשלב 5, ומעבר היה מוחק את שלבים 1–4) **לא מציג
-    // את הכפתור באייפון בדפדפן**. החלטת רמי (6.10). אפליקציה/מחשב/אנדרואיד — ללא שינוי.
-    // ⚠️ **לפני `loadSdk()`** — בזרימת-הפניה אין שום צורך ב-SDK.
-    if (isIOSWeb()) {
-      if (!cfg.redirectReturn) { host.style.display = 'none'; track('asHiddenIOS'); return; }
-      var rbtn = part('.hb-as-btn');
-      if (rbtn && !rbtn._hbBound) { rbtn.addEventListener('click', onClickRedirect); rbtn._hbBound = true; }
-      setCap(defaultCap());
-      host.style.display = '';
-      track('asShown');
-      // ⚠️ בתור, לא מיד: init רץ באמצע הסקריפט של הדף, ו-onFilled עלול לגעת בקבועים שעוד לא הוגדרו.
-      setTimeout(consumeRedirectReturn, 0);
-      return;
-    }
+    // זרימת-ההפניה שעקפה את זה (§468ג, `/apple-callback`) הוסרה ב-§531: אוהדים כבר לא נרשמים
+    // בדפדפן (§497), וטופס העסק ממילא לא הציג כאן את הכפתור. אפליקציה/מחשב/אנדרואיד — ללא שינוי.
+    if (isIOSWeb()) { host.style.display = 'none'; track('asHiddenIOS'); return; }
 
     // 🔲 בלי Services ID אין מה לצייר, וזה המצב עד שחשבון המפתחים יאושר.
     // ⚠️ `cfg.clientId` קיים כדי שהדמו (ובהמשך, אם נרצה, דף מסוים) יוכל להזין מזהה
@@ -706,11 +606,6 @@
   // התוצאה נרשמת בערוץ המדידה בלבד, כדי ש"לא נשלח קוד" ייראה בנתונים ולא ייעלם.
   // ⚠️ **כתובת-ממסר אינה מגיעה לכאן** — `onAuthorized` יוצא לפני הקריאה, והטוקן שלה נזרק.
   function exchangeCode(res, idToken) {
-    // §468ג — בזרימת-ההפניה הוורקר כבר החליף את הקוד (`/apple-callback`); רק רושמים את התוצאה.
-    if (res && res._serverExchanged) {
-      if (res._serverExchanged !== 'restored') { track(('asExchange:' + res._serverExchanged).slice(0, 50)); savePending(res); }
-      return null;
-    }
     var code = res && res.authorization && res.authorization.code;
     if (!code) { track('asExchange:no_code'); return null; }
     if (!cfg || typeof cfg.apiFetch !== 'function') {
@@ -759,7 +654,7 @@
         signal: AbortSignal.timeout(ATTACH_TIMEOUT_MS),
       });
       var out = await resp.json();
-      if (out && out.ok) { dropPending(); return out; }
+      if (out && out.ok) return out;
       console.error('apple-signup: /apple-attach לא השלים –', (out && out.error) || 'unknown');
       return out || { error: 'unknown' };
     } catch (e) {

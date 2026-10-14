@@ -1,8 +1,8 @@
-// §468ג — בדיקות לזרימת-ההפניה של apple-signup.js (אייפון בדפדפן).
-// מריץ את הקובץ האמיתי ב-JSDOM, עם UA של אייפון, ובודק: הכפתור מוצג בלי SDK · לחיצה שומרת nonce
-// ובונה כתובת authorize נכונה · חזרה עם #as= ממלאת את הטופס רק כשה-nonce תואם · דף בלי
-// redirectReturn (טופס העסק) מסתיר את הכפתור באייפון · במחשב — זרימת החלון כמו קודם.
+// §531 (במקום §468ג) — זרימת-ההפניה לאייפון בדפדפן הוסרה. מריץ את apple-signup.js האמיתי ב-JSDOM ובודק:
+// באייפון בדפדפן הכפתור מוסתר תמיד (גם בדף שמוסר את redirectReturn הישן), בלי SDK, ו-#as= ישן בכתובת
+// או hb_as_pending ישן לא ממלאים את הטופס; במחשב — זרימת החלון כמו קודם.
 // הרצה:  node scratch_test_apple_redirect.js
+
 
 const fs = require('fs');
 const path = require('path');
@@ -46,93 +46,32 @@ function makePage(opts) {
   };
 }
 
+
 (async () => {
-  console.log('\n== אייפון + redirectReturn (טופס האוהד) ==');
+  console.log('\n== אייפון + redirectReturn (הפרמטר הישן של טופס האוהד) ==');
   {
     const p = makePage({ ua: IOS, redirectReturn: 'fan' });
-    check('הכפתור מוצג', p.host().style.display === '' && !!p.btn(), p.host().style.display);
+    check('הכפתור מוסתר', p.host().style.display === 'none', p.host().style.display);
     check('בלי SDK של אפל', p.sdk() === 0, p.sdk());
-    check('asShown נרשם', p.events.includes('asShown'), p.events.join(','));
-    try { p.btn().click(); } catch (_) {}
-    const nonce = p.w.sessionStorage.getItem('hb_as_nonce');
-    check('לחיצה שומרת nonce (24 תווי hex)', /^[0-9a-f]{24}$/.test(nonce || ''), nonce);
-    check('asRedirect נרשם', p.events.includes('asRedirect'), p.events.join(','));
+    check('asHiddenIOS נרשם, בלי asShown', p.events.includes('asHiddenIOS') && !p.events.includes('asShown'), p.events.join(','));
   }
 
-  console.log('\n== חזרה מאפל (#as=) ==');
+  console.log('\n== #as= ישן בכתובת לא ממלא כלום ==');
   {
     const frag = b64url({ s: 'fan.abc', t: TOKEN, x: 'ok', u: { name: { firstName: 'דנה', lastName: 'לוי' } } });
     const p = makePage({ ua: IOS, redirectReturn: 'fan', nonce: 'abc', hash: '#as=' + frag });
     await tick(20);
-    check('המייל מולא בכתובת-הממסר', p.val('email') === 'xyz@privaterelay.appleid.com', p.val('email'));
-    check('השם מולא מ-user', p.val('firstName') === 'דנה' && p.val('lastName') === 'לוי', p.val('firstName') + ' ' + p.val('lastName'));
-    check('asUsed + asRelay', p.events.includes('asUsed') && p.events.includes('asRelay'), p.events.join(','));
-    check('asExchange:ok (ההחלפה נעשתה בוורקר)', p.events.includes('asExchange:ok'), p.events.join(','));
-    check('ה-fragment נמחק', !/as=/.test(p.w.location.href), p.w.location.href);
-    check('ה-nonce נמחק', p.w.sessionStorage.getItem('hb_as_nonce') === null);
-    check('הטוקן זמין ל-attach', p.w.hbAppleSignup.token() === TOKEN);
+    check('🔑 הטופס לא מולא ואין טוקן', p.val('email') === '' && p.w.hbAppleSignup.token() === null, p.val('email'));
   }
   {
-    const frag = b64url({ s: 'fan.EVIL', t: TOKEN, x: 'ok' });
-    const p = makePage({ ua: IOS, redirectReturn: 'fan', nonce: 'abc', hash: '#as=' + frag });
-    await tick(20);
-    check('🔑 nonce לא תואם → הטופס לא מולא', p.val('email') === '' && p.w.hbAppleSignup.token() === null, p.val('email'));
-    check('asReturn:nonce נרשם', p.events.includes('asReturn:nonce'), p.events.join(','));
-  }
-  {
-    const frag = b64url({ s: 'fan.abc', t: TOKEN });
-    const p = makePage({ ua: IOS, redirectReturn: 'fan', hash: '#as=' + frag });
-    await tick(20);
-    check('🔑 אין nonce שמור → הטופס לא מולא', p.val('email') === '');
-  }
-  {
-    const frag = b64url({ s: 'fan.abc', e: 'user_cancelled_authorize' });
-    const p = makePage({ ua: IOS, redirectReturn: 'fan', nonce: 'abc', hash: '#as=' + frag });
-    await tick(20);
-    const cap = (p.host().querySelector('.hb-as-cap') || {}).textContent || '';
-    check('ביטול → בלי מילוי ובלי "משהו השתבש"', p.val('email') === '' && !/השתבש/.test(cap), cap);
-  }
-  {
-    const p = makePage({ ua: IOS, redirectReturn: 'fan', nonce: 'abc', hash: '#as=%%%' });
-    await tick(20);
-    check('fragment פגום → לא נופל', p.val('email') === '');
-  }
-
-  console.log('\n== §468ז — החיבור שורד טעינה מחדש של הטופס ==');
-  {
-    const frag = b64url({ s: 'fan.abc', t: TOKEN, x: 'ok' });
-    const p1 = makePage({ ua: IOS, redirectReturn: 'fan', nonce: 'abc', hash: '#as=' + frag });
-    await tick(20);
-    const saved = JSON.parse(p1.w.sessionStorage.getItem('hb_as_pending') || 'null');
-    check('אחרי החזרה — התשובה נשמרה ב-sessionStorage', !!saved && saved.t === TOKEN, JSON.stringify(saved));
-    // "טעינה מחדש" של ה-iframe: דף חדש בלי hash, עם אותו sessionStorage
-    const p2 = makePage({ ua: IOS, redirectReturn: 'fan' });
-    p2.w.sessionStorage.setItem('hb_as_pending', JSON.stringify(saved));
-    p2.w.hbAppleSignup.render();
-    await tick(20);
-    check('🔑 טעינה מחדש בלי hash → הטוקן שוחזר', p2.w.hbAppleSignup.token() === TOKEN, String(p2.w.hbAppleSignup.token()));
-    check('המייל מולא שוב', p2.val('email') === 'xyz@privaterelay.appleid.com', p2.val('email'));
-    check('asRestored נרשם, ובלי asExchange כפול', p2.events.includes('asRestored') && !p2.events.some((e) => /^asExchange/.test(e)), p2.events.join(','));
-    const r = await p2.w.hbAppleSignup.attach(async () => ({ json: async () => ({ ok: true }) }), 'm1');
-    check('attach מוצלח → השמירה נמחקה', r.ok && p2.w.sessionStorage.getItem('hb_as_pending') === null);
-  }
-  {
-    const p = makePage({ ua: IOS, redirectReturn: 'fan' });
-    p.w.sessionStorage.setItem('hb_as_pending', JSON.stringify({ t: TOKEN, at: Date.now() - 10 * 60 * 1000 }));
-    p.w.hbAppleSignup.render();
-    await tick(20);
-    check('שמירה בת יותר מ-9 דקות → לא משוחזרת, ונמחקת', p.w.hbAppleSignup.token() === null && p.w.sessionStorage.getItem('hb_as_pending') === null);
-  }
-  {
-    const p = makePage({ ua: IOS, redirectReturn: 'fan' });
+    const p = makePage({ ua: IOS });
     p.w.sessionStorage.setItem('hb_as_pending', JSON.stringify({ t: TOKEN, at: Date.now() }));
     p.w.hbAppleSignup.render();
     await tick(20);
-    p.w.hbAppleSignup.clear();
-    check('"זה לא החשבון שלי" → השמירה נמחקת', p.w.sessionStorage.getItem('hb_as_pending') === null);
+    check('🔑 hb_as_pending ישן (§468ז) לא משוחזר', p.w.hbAppleSignup.token() === null && p.val('email') === '');
   }
 
-  console.log('\n== אייפון בלי redirectReturn (טופס העסק) ==');
+  console.log('\n== אייפון בלי redirectReturn (טופס העסק) – כמו קודם ==');
   {
     const p = makePage({ ua: IOS });
     check('הכפתור מוסתר', p.host().style.display === 'none', p.host().style.display);
@@ -142,9 +81,9 @@ function makePage(opts) {
 
   console.log('\n== בקרת-נגד: מחשב ==');
   {
-    const p = makePage({ ua: MAC, redirectReturn: 'fan', appleId: true });
+    const p = makePage({ ua: MAC, appleId: true });
     check('מחשב → זרימת החלון (init עם usePopup:true)', !!p.initCfg() && p.initCfg().usePopup === true, JSON.stringify(p.initCfg()));
-    check('הכפתור מוצג', p.host().style.display === '');
+    check('הכפתור מוצג', p.host().style.display === '' && !!p.btn());
   }
 
   console.log('\n' + (fail ? '❌ ' : '✅ ') + pass + '/' + (pass + fail) + ' עברו');

@@ -68,7 +68,7 @@ function makeEnv(opts) {
   // `navigator.userAgent`, ולכן זה המקום היחיד שצריך לדרוס.
   // ר' [[feedback_test_harness_anchor_by_content]] — הרנס ששיקר גרוע מהרנס שנפל.
   Object.defineProperty(w.navigator, 'userAgent', {
-    // §468ג — ברירת-המחדל היא **מחשב**: באייפון בדפדפן זרימת-החלון הוחלפה בזרימת-הפניה (ר' redirectTests).
+    // ברירת-המחדל היא **מחשב**: באייפון בדפדפן הכפתור לא מוצג (§531, ר' redirectTests).
     value: opts.ua || 'Mozilla/5.0 (Macintosh) Safari', configurable: true,
   });
   w._hbEnvTag = 'test';
@@ -399,68 +399,41 @@ async function nativeTests() {
   }
 }
 
-// ══ §468ג — אייפון בדפדפן: זרימת-הפניה במקום חלון ═══════════════════════════════════════
+// ══ §531 — אייפון בדפדפן: בלי כפתור Apple (זרימת-ההפניה /apple-callback הוסרה) ══════════════
 async function redirectTests() {
-  console.log('\n§468ג — זרימת-הפניה באייפון');
-  const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) Safari';
-  const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  console.log("\n§531 — אייפון בדפדפן: הכפתור מוסתר");
+  const IOS = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) Safari";
+  const IPAD = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari";
   {
     const w = makeEnv({ ua: IOS });
     w.hbRenderAppleLoginBtn();
-    check('iOS: ה-SDK **לא** מוזרק', sdkTags(w) === 0, sdkTags(w));
-    check('iOS: הכפתור מוצג', hostOf(w).style.display === 'flex' && !!btnOf(w), hostOf(w).style.display);
-    try { btnOf(w).click(); } catch (_) {}   // הניווט עצמו לא ממומש ב-jsdom — מה שנבדק הוא ה-nonce והכתובת
-    const nonce = w.sessionStorage.getItem('hb_as_nonce');
-    const assigned = nonce ? w.hbAppleAuthorizeUrl(nonce) : null;
-    const u = assigned ? new URL(assigned) : null;
-    check('לחיצה → נשמר nonce, והכתובת היא appleid.apple.com/auth/authorize', !!u && u.origin === 'https://appleid.apple.com' && u.pathname === '/auth/authorize', assigned);
-    check('redirect_uri = /apple-callback בוורקר', u && u.searchParams.get('redirect_uri') === 'https://api.yellowzone.co.il/apple-callback');
-    check('response_mode = form_post', u && u.searchParams.get('response_mode') === 'form_post');
-    check("scope = 'email' בלבד", u && u.searchParams.get('scope') === 'email');
-    const st = u ? u.searchParams.get('state') : '';
-    check('state = login.<nonce>, וה-nonce נשמר ב-sessionStorage', !!nonce && st === 'login.' + nonce, st + ' / ' + nonce);
+    check("iOS: ה-SDK **לא** מוזרק", sdkTags(w) === 0, sdkTags(w));
+    check("iOS: הבלוק מוסתר ואין כפתור", hostOf(w).style.display === "none" && !btnOf(w), hostOf(w).style.display);
+    check("iOS: הפונקציות של זרימת-ההפניה לא קיימות", typeof w.hbAppleAuthorizeUrl === "undefined" && typeof w.hbConsumeAppleReturn === "undefined");
   }
-  const back = async (frag, nonce, token) => {
-    const w = makeEnv({ ua: IOS, url: 'x' });
-    if (nonce) w.sessionStorage.setItem('hb_as_nonce', nonce);
-    w.history.replaceState(null, '', '/welcome.html?login=1#as=' + frag);
+  {
+    const w = makeEnv({ ua: IOS, url: "x" });
+    w.sessionStorage.setItem("hb_as_nonce", "abc");
+    const frag = Buffer.from(JSON.stringify({ s: "login.abc", t: RAW_TOKEN, x: "ok" })).toString("base64url");
+    w.history.replaceState(null, "", "/welcome.html?login=1#as=" + frag);
     const calls = [];
     w.heroAppleLogin = (t) => calls.push(t);
     w.hbRenderAppleLoginBtn();
     await tick(20);
-    return { w, calls };
-  };
-  {
-    const { w, calls } = await back(enc({ s: 'login.abc', t: RAW_TOKEN, x: 'ok' }), 'abc');
-    check('חזרה תקינה → heroAppleLogin עם ה-id_token', calls.length === 1 && calls[0] === RAW_TOKEN, JSON.stringify(calls));
-    check('ה-fragment נמחק מהכתובת', !/as=/.test(w.location.href), w.location.href);
-    check('?login=1 נשאר', /login=1/.test(w.location.href));
-    check('ה-nonce נמחק אחרי שימוש', w.sessionStorage.getItem('hb_as_nonce') === null);
+    check("🔑 #as= ישן בכתובת → לא נכנסים", calls.length === 0, JSON.stringify(calls));
   }
   {
-    const { calls } = await back(enc({ s: 'login.EVIL', t: RAW_TOKEN, x: 'ok' }), 'abc');
-    check('🔑 nonce לא תואם → **לא** נכנסים (הגנת login-CSRF)', calls.length === 0, JSON.stringify(calls));
-  }
-  {
-    const { calls } = await back(enc({ s: 'login.abc', t: RAW_TOKEN }), null);
-    check('🔑 אין nonce שמור (לא אנחנו שלחנו לאפל) → לא נכנסים', calls.length === 0);
-  }
-  {
-    const { w, calls } = await back(enc({ s: 'login.abc', e: 'user_cancelled_authorize' }), 'abc');
-    check('ביטול אצל אפל → בלי כניסה ובלי הודעת שגיאה', calls.length === 0 && !msgOf(w).classList.contains('show'));
-  }
-  {
-    const { w, calls } = await back(enc({ s: 'login.abc', e: 'invalid_request' }), 'abc');
-    check('שגיאה אחרת → הודעת אזהרה', calls.length === 0 && msgOf(w).classList.contains('show'), msgOf(w).innerHTML);
-  }
-  {
-    const { calls } = await back('%%%garbage', 'abc');
-    check('fragment פגום → לא נופל ולא נכנס', calls.length === 0);
-  }
-  {
-    const w = makeEnv({ ua: 'Mozilla/5.0 (Macintosh) Safari', appleId: appleOk(RAW_TOKEN) });
+    const w = makeEnv({ ua: IPAD });
+    Object.defineProperty(w.navigator, "platform", { value: "MacIntel", configurable: true });
+    Object.defineProperty(w.navigator, "maxTouchPoints", { value: 5, configurable: true });
     w.hbRenderAppleLoginBtn();
-    check('בקרת-נגד: מחשב → זרימת החלון (SDK מוזרק / init עם usePopup)', (w.AppleID.auth._cfg || {}).usePopup === true, JSON.stringify(w.AppleID.auth._cfg));
+    check("אייפד (MacIntel עם מגע) → גם מוסתר", hostOf(w).style.display === "none" && !btnOf(w), hostOf(w).style.display);
+  }
+  {
+    const w = makeEnv({ ua: "Mozilla/5.0 (Macintosh) Safari", appleId: appleOk(RAW_TOKEN) });
+    w.hbRenderAppleLoginBtn();
+    check("בקרת-נגד: מחשב → זרימת החלון (SDK מוזרק / init עם usePopup)", (w.AppleID.auth._cfg || {}).usePopup === true, JSON.stringify(w.AppleID.auth._cfg));
+    check("בקרת-נגד: מחשב → הכפתור מוצג", hostOf(w).style.display === "flex" && !!btnOf(w), hostOf(w).style.display);
   }
 }
 
