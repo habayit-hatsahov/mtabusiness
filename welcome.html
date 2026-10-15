@@ -1142,6 +1142,14 @@ html.lp-checking .lp-splash { display: flex; }
      visibility:hidden שיורש מ-html.lp-checking body, כדי שהאלמנט הזה יישאר גלוי מעל התוכן
      המוסתר מתחתיו. -->
 <div class="lp-splash"><img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/></div>
+<!-- §536 — מסך פתיחה עם תמונה מתחלפת (באפליקציה בלבד). סינכרוני בכוונה: השכבה היא הציור הראשון.
+     יורדת ב-yzSplashPhotoDone: אורח – ב-DOMContentLoaded; מחובר – כשהשער נפתח (ומעבר ל-home ממשיך אותה שם). -->
+<script src="splash-photo.js"></script>
+<script>
+  if (!document.documentElement.classList.contains('lp-checking')) {
+    document.addEventListener('DOMContentLoaded', function () { window.yzSplashPhotoDone(); });
+  }
+</script>
 
 <!-- ══ שאר-הגיליון (היה ב-head, הוזז לכאן — ר' הערה למעלה ב-CSS-הקריטי, זהה ל-home.html) ══ -->
 <style>
@@ -2292,6 +2300,12 @@ const app  = initializeApp(firebaseConfig);
 attachAppCheck(app, { measure: true });   // §519 — welcome מאתחל default משלו (לא firebase-config.js)
 const db   = getFirestore(app);
 const auth = getAuth(app);
+// §536 — רשימת תמונות הפתיחה (באפליקציה בלבד), לפתיחה הבאה. ברקע, כשלון שקט. ר' splash-photo.js
+if (window.yzSplashPhotoInApp) {
+  getDoc(doc(db, 'settings', 'splashScreen'))
+    .then(snap => window.yzSplashPhotoStore(snap.exists() ? snap.data() : null))
+    .catch(() => {});
+}
 // ── §374 — שלוש כתובות על שתי רשתות שונות ────────────────────────────────────────────────
 // §364 הניח שהבעיה היא **השם** `workers.dev` (סיומת גנרית שעל רשימות סינון), ולכן הוסיף שם
 // משלנו. שובל צרפתי (2.9, 10:31–10:32) הפריך את ההנחה: שלוש שורות `loginFail` רצופות
@@ -2698,6 +2712,8 @@ await new Promise(resolve => {
     if (opened) return;
     opened = true;
     document.documentElement.classList.remove('lp-checking');
+    // §536 — הדף נחשף → תמונת הפתיחה יורדת. לא כשכבר בדרך ל-home: שם היא ממשיכה ויורדת עם המסך הצהוב.
+    if (!window._yzGoingHome) window.yzSplashPhotoDone();
     resolve();
   };
   setTimeout(openGate, HERO_AUTH_GATE_MS);
@@ -2705,7 +2721,7 @@ await new Promise(resolve => {
   // ב-heroLogin על signInWithCustomToken שנתקע *אחרי* ש-auth כבר הצליח בפועל.
   onAuthStateChanged(auth, async user => {
     const storedId = localStorage.getItem('hb_memberId');
-    if (!window._hbForceGuest && user && storedId && user.uid === storedId) { location.href = 'home.html'; return; }
+    if (!window._hbForceGuest && user && storedId && user.uid === storedId) { window._yzGoingHome = true; location.href = 'home.html'; return; }
     // ── §360 — `null` אינו הוכחה שהוא התנתק ──────────────────────────────────────────────
     // המשתמש דיווח על אוהד שנתבקש קוד למרות שכבר נכנס. הענף הזה מחק את הזיהוי מהמכשיר בכל
     // פעם ש-onAuthStateChanged החזיר `user === null` — וזה **לא** אומר "התנתק": Firebase

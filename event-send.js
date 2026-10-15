@@ -1,13 +1,19 @@
-// ══ §519 — אירוע מדידה דרך הוורקר (/event), עם נפילה ל-REST הישיר ═══════════════════════════════
+// ══ §519 — אירוע מדידה דרך הוורקר (/event), בלי REST ישיר ═══════════════════════════════════════
 // לדפים הקלים שכותבים אירועים בלי ה-SDK (download.html, landing.html, usage-track.js). כשנאכוף App Check
 // על Firestore, REST ישיר בלי תעודה ייחסם – הוורקר כותב עם מפתח השירות ולא תלוי בזה.
-// window.yzSendEvent(restBody, restFallback):
-//   restBody – אותו גוף :commit שהדף בנה עד היום (writes[0].update.fields בפורמט Firestore);
-//   restFallback – פונקציה שמריצה את ה-fetch הישן. רצה רק אם הוורקר נכשל (עד האכיפה – עובד).
+// window.yzSendEvent(restBody):
+//   restBody – אותו גוף :commit שהדף בנה עד היום (writes[0].update.fields בפורמט Firestore).
+//   §537 – הנפילה ל-REST הוסרה (הארגומנט השני, אם עוד מועבר, לא בשימוש). במקומה – שלוש כתובות
+//   הוורקר לפי הסדר, כמו HB_API_HOSTS בשאר האתר: מי שקלאודפלייר חסום אצלו עובר דרך גוגל.
 // מחזיר הבטחה שתמיד מתממשת (מדידה לעולם לא מפילה דף). סקריפט קלאסי, ES5 – גם ל-download.html.
 (function () {
   'use strict';
-  window.yzSendEvent = function (restBody, restFallback) {
+  var HOSTS = [
+    'https://api.yellowzone.co.il',                             // קלאודפלייר — השם שלנו
+    'https://habayit-hatsahov.web.app/api',                     // גוגל — רשת אחרת
+    'https://habayit-hatsahov-worker.yellowzone.workers.dev',   // קלאודפלייר — הישנה, אחרונה
+  ];
+  window.yzSendEvent = function (restBody) {
     var ev = {};
     try {
       var f = restBody.writes[0].update.fields;
@@ -15,11 +21,18 @@
         if (Object.prototype.hasOwnProperty.call(f, k) && f[k] && typeof f[k].stringValue === 'string') ev[k] = f[k].stringValue;
       }
     } catch (e) { return Promise.resolve(); }
-    var fallback = function () { try { return Promise.resolve(restFallback && restFallback()).catch(function () {}); } catch (e) { return Promise.resolve(); } };
-    try {
-      return fetch('https://api.yellowzone.co.il/event', {
-        method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ev),
-      }).then(function (r) { if (!r.ok) return fallback(); }, fallback);
-    } catch (e) { return fallback(); }
+    var body = JSON.stringify(ev);
+    function attempt(i) {
+      if (i >= HOSTS.length) return Promise.resolve();
+      try {
+        return fetch(HOSTS[i] + '/event', {
+          method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: body,
+        }).then(function (r) {
+          // 429 = מכסה – כתובת אחרת מגיעה לאותו וורקר עם אותו IP, אין טעם לנסות שוב
+          if (!r.ok && r.status !== 429) return attempt(i + 1);
+        }, function () { return attempt(i + 1); });
+      } catch (e) { return attempt(i + 1); }
+    }
+    return attempt(0);
   };
 })();

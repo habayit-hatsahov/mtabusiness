@@ -159,8 +159,6 @@
   // URLSearchParams הופך "+" לרווח; slugify לעולם לא משאיר רווח, אז רווח כאן היה "+" בשם העסק.
   var wanted = param.replace(/ /g, '+');
 
-  var BASE = 'projects/habayit-hatsahov/databases/(default)/documents';
-  var KEY = 'AIzaSyBfG7AU4BzSAbBpwPyKfA_NzUpy2pxzFu8';
   var FIELDS = ['name', 'tags', 'hasDiscount', 'discountText', 'coverPhoto', 'coverPhotoThumb',
     'coverPhotoPosition', 'coverPhotoZoom', 'coverPhotoBg'];
 
@@ -176,30 +174,27 @@
     return undefined;
   }
 
-  // REST ולא ה-SDK — דף קטן שצריך לעלות מהר. השאילתה הציבורית חייבת את הפילטר status==approved
-  // (firestore.rules, businesses list) — עסק ממתין/נדחה לא יוצג, ובצדק.
+  // §519/§537 — רק דרך הוורקר (`/public-biz-list`: השאילתה על bizPublic, status==approved, שדות הטיזר
+  // בלבד, אותו פורמט כמו runQuery). REST ישיר ל-Firestore הוסר – ייחסם באכיפת App Check. במקומו – שלוש
+  // כתובות הוורקר לפי הסדר (כמו HB_API_HOSTS בשאר האתר): מי שקלאודפלייר חסום אצלו עובר דרך גוגל.
+  var HOSTS = [
+    'https://api.yellowzone.co.il',                             // קלאודפלייר — השם שלנו
+    'https://habayit-hatsahov.web.app/api',                     // גוגל — רשת אחרת
+    'https://habayit-hatsahov-worker.yellowzone.workers.dev',   // קלאודפלייר — הישנה, אחרונה
+  ];
   var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
   var timer = setTimeout(function () { if (ctrl) ctrl.abort(); fallback(); }, 8000);
-  function restQuery() {
-    return fetch('https://firestore.googleapis.com/v1/' + BASE + ':runQuery?key=' + KEY, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: ctrl ? ctrl.signal : undefined,
-      body: JSON.stringify({ structuredQuery: {
-        from: [{ collectionId: 'bizPublic' }],   // §517ב — ההעתק הציבורי, ר' worker/src/bizpublic.js
-        select: { fields: FIELDS.map(function (p) { return { fieldPath: p }; }) },
-        where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'approved' } } },
-      } }),
-    });
-  }
-  // §519 — קודם דרך הוורקר (אותה שאילתה, אותו פורמט; לא תלוי ב-App Check), REST הישיר רק כנפילה
-  function viaWorker() {
-    return fetch('https://api.yellowzone.co.il/public-biz-list', {
+  function viaWorker(i) {
+    return fetch(HOSTS[i] + '/public-biz-list', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
       signal: ctrl ? ctrl.signal : undefined,
-    }).then(function (r) { if (!r.ok) throw new Error('worker ' + r.status); return r; });
+    }).then(function (r) { if (!r.ok) throw new Error('worker ' + r.status); return r; })
+      .catch(function (e) {
+        if (i + 1 >= HOSTS.length || (ctrl && ctrl.signal.aborted)) throw e;
+        return viaWorker(i + 1);
+      });
   }
-  viaWorker().catch(restQuery).then(function (r) {
+  viaWorker(0).then(function (r) {
     if (!r.ok) throw new Error('http ' + r.status);
     return r.json();
   }).then(function (rows) {
@@ -289,32 +284,29 @@
   }
 
   // ── מדידה: pageView עם bizId — כמה נכנסו לקישור-שיתוף של כל עסק, ומאיזה מכשיר ──
-  // אותה כתיבת REST כמו download.html (שם ההסבר המלא). רק מהדומיין החי.
+  // §537 — דרך הוורקר (`/event`, אותה סכמה כמו match /events), לא REST ישיר. רק מהדומיין החי.
   function logVisit(bizId) {
     if (!/^(www\.)?yellowzone\.co\.il$/.test(location.hostname)) return;
     try {
-      var sid = 'hb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
-      var id = '';
-      for (var i = 0; i < 20; i++) id += 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 62)];
-      var str = function (v) { return v == null ? { nullValue: null } : { stringValue: String(v) }; };
-      fetch('https://firestore.googleapis.com/v1/' + BASE + ':commit?key=' + KEY, {
-        method: 'POST', keepalive: true,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ writes: [{
-          update: { name: BASE + '/events/' + id, fields: {
-            type: str('pageView'),
-            sessionId: str(sid),
-            path: str(location.pathname.slice(0, 200)),
-            referrer: str((document.referrer.split('/')[2] || '').slice(0, 50) || null),
-            device: str(os === 'other' ? 'desktop' : 'mobile'),
-            blockId: str('bizShare'),
-            bizId: str(bizId),
-            channel: str(os),
-          } },
-          updateTransforms: [{ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' }],
-          currentDocument: { exists: false },
-        }] }),
-      }).catch(function () {});
+      var ev = {
+        type: 'pageView',
+        sessionId: 'hb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10),
+        path: location.pathname.slice(0, 200),
+        device: os === 'other' ? 'desktop' : 'mobile',
+        blockId: 'bizShare',
+        bizId: bizId,
+        channel: os,
+      };
+      var ref = (document.referrer.split('/')[2] || '').slice(0, 50);
+      if (ref) ev.referrer = ref;
+      var body = JSON.stringify(ev);
+      var send = function (i) {
+        if (i >= HOSTS.length) return;
+        fetch(HOSTS[i] + '/event', {
+          method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: body,
+        }).then(function (r) { if (!r.ok && r.status !== 429) send(i + 1); }, function () { send(i + 1); });
+      };
+      send(0);
     } catch (e) {}
   }
 })();
