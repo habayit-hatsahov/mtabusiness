@@ -142,7 +142,7 @@ function ok(name, cond) { if (cond) pass++; else fail++; console.log((cond ? '�
     // מצב תצוגה (splash-preview.html): התמונה מהקישור, בגודל מהקישור, בלי לגעת במונה/סשן
     const pv = boot({ app: false }, (win) => { win.YZ_SPLASH_PREVIEW = 'https://yellowzone.co.il/images/splash/splash-7.jpg'; win.YZ_SPLASH_SIZE = 0.6; });
     const imgs = pv.document.querySelectorAll('#yzSplashPhoto img');
-    ok('תצוגה: התמונה מהקישור', imgs.length === 2 && imgs[0].src.endsWith('splash-7.jpg'));
+    ok('תצוגה: התמונה מהקישור, בלי רקע מטושטש', imgs.length === 1 &&imgs[0].src.endsWith('splash-7.jpg'));
     ok('תצוגה: הגודל מהקישור', /scale\(0\.6\)/.test(imgs[0].style.transform));
     ok('תצוגה: לא נוגע במונה ובסשן', pv.localStorage.getItem('yz_splash_idx') === null && pv.sessionStorage.getItem('yz_splash_pick') === null);
   }

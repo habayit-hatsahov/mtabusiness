@@ -87,21 +87,16 @@
   var img = document.createElement('img');
   img.alt = '';
   // §536ג (רמי: "הדמות גדולה מדי") – התמונה כולה נכנסת למסך (contain) במקום למלא אותו (cover).
-  // בטלפון צר-וגבוה נשארים פסים למעלה/למטה – ממלאים אותם בעותק מטושטש ומוגדל של אותה תמונה
-  // (אותו קובץ מהמטמון), כך שהרקע ממשיך את צבעי התמונה בלי קו חיתוך.
+  // סביב התמונה – הצהוב של השכבה (#ECC94B). §536ו: הרקע המטושטש שהיה כאן הוסר (רמי: "לא אוהב").
   var size = readSize();
   img.style.cssText = 'position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .25s ease;' +
     'transform:scale(' + size + ')';
-  var back = document.createElement('img');
-  back.alt = '';
-  back.style.cssText = 'position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;filter:blur(24px);transform:scale(1.15);opacity:0;transition:opacity .25s ease';
   el.appendChild(img);
-  el.appendChild(back);
   (document.body || document.documentElement).appendChild(el);
   if (preview) {
     el.onclick = function () { location.reload(); };
-    img.onload = function () { img.style.opacity = '1'; back.style.opacity = '1'; };
-    img.src = pick; back.src = pick;
+    img.onload = function () { img.style.opacity = '1'; };
+    img.src = pick;
     return;
   }
 
@@ -111,12 +106,9 @@
     if (!shownAt) { shownAt = Date.now(); ss(SS_T0, String(shownAt)); img.style.transition = 'opacity .25s ease'; }
     else img.style.transition = 'none';      // ממשיכים מהדף הקודם – מיד, בלי עמעום שני
     img.style.opacity = '1';
-    back.style.transition = img.style.transition;
-    back.style.opacity = '1';
   }
   img.onload = show;
   img.src = pick;
-  back.src = pick;
   if (img.complete && img.naturalWidth) show();
 
   function hide() {
