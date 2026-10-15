@@ -415,7 +415,9 @@
 // §536ב/§537 — v239 (splash-photo.js – תמונת פתיחה מתחלפת באפליקציה, welcome/home; לשונית "מסך פתיחה";
 //   event-send.js/open.html בלי REST ישיר ל-Firestore – שלוש כתובות הוורקר).
 // §536ג — v240 (splash-photo.js: התמונה כולה במסך – contain + רקע מטושטש, במקום cover).
-const CACHE_NAME = 'yz-shell-v240';
+// §536ד/ה — v241 (גודל הדמות נשלט מהניהול, ברירת מחדל 80%; splash-preview.html לבדיקה בטלפון; רקע צהוב
+//   בהפעלה באפליקציה במקום מסך לבן – index/welcome/home).
+const CACHE_NAME = 'yz-shell-v241';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד

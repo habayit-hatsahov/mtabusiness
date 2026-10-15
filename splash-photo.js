@@ -12,12 +12,25 @@
 //     שבפתיחה הבאה היא כבר במטמון ותופיע מיד. פתיחה ראשונה אחרי התקנה = צהוב בלבד (אין עדיין רשימה).
 //   • אין רשימה / הכול כבוי / דפדפן – כלום לא משתנה, הלוגו כמו קודם.
 // ?splashtest=1 – תצוגה בדפדפן (לבדיקה בלבד).
+// §536ד – window.YZ_SPLASH_PREVIEW = כתובת: מצב תצוגה (splash-preview.html) – אותה תמונה, אותו עיצוב, בלי
+//   תור/מונה/sessionStorage, נשארת על המסך; לחיצה = פתיחה מחדש.
+// §536ד – html.yz-app-boot (נקבע בראש welcome/home באפליקציה): רקע צהוב עד שהשכבה יורדת, במקום מסך לבן
+//   בזמן שהדף עוד לא צויר. מוסר כאן בכל מסלול (גם כשאין תמונה), כדי שלא יישאר צהוב ב"קפיצת" הגלילה.
 (function () {
   'use strict';
   var LS_CFG = 'yz_splash_cfg', LS_IDX = 'yz_splash_idx';
   var SS_PICK = 'yz_splash_pick', SS_T0 = 'yz_splash_t0', SS_DONE = 'yz_splash_done';
   var MIN_MS = 1500, MAX_MS = 12000, BG = '#ECC94B';
+  // §536ה – גודל התמונה ביחס למסך (רמי: "השור עדיין גדול"). נקבע בלשונית; הרקע המטושטש ממלא את השאר.
+  var DEF_SIZE = 0.8;
+  function readSize() {
+    if (typeof window.YZ_SPLASH_SIZE === 'number') return window.YZ_SPLASH_SIZE;
+    try { var c = JSON.parse(ls(LS_CFG) || 'null'); if (c && +c.size >= 0.5 && +c.size <= 1) return +c.size; } catch (e) {}
+    return DEF_SIZE;
+  }
+  var preview = typeof window.YZ_SPLASH_PREVIEW === 'string' ? window.YZ_SPLASH_PREVIEW : '';
   var inApp = /YellowZoneApp/i.test(navigator.userAgent || '') || /[?&]splashtest=1/.test(location.search);
+  function unboot() { document.documentElement.classList.remove('yz-app-boot'); }
 
   function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} return null; }
   function ss(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v); } catch (e) {} return null; }
@@ -35,7 +48,8 @@
     var items = data && Array.isArray(data.items) ? data.items : [];
     var urls = items.filter(function (it) { return it && it.on !== false && typeof it.url === 'string' && it.url; })
       .map(function (it) { return it.url; });
-    ls(LS_CFG, JSON.stringify({ enabled: !!(data && data.enabled), urls: urls }));
+    var size = data && +data.size >= 0.5 && +data.size <= 1 ? +data.size : DEF_SIZE;
+    ls(LS_CFG, JSON.stringify({ enabled: !!(data && data.enabled), urls: urls, size: size }));
     var list = readCfg();
     if (!list.length) return;
     // נקודת ההתחלה האקראית נקבעת כבר כאן, כדי שהתמונה שנטענת מראש היא זו שתוצג בפתיחה הבאה
@@ -45,9 +59,9 @@
 
   window.yzSplashPhotoInApp = inApp;   // הדפים קוראים את settings/splashScreen רק כשזה true
   window.yzSplashPhotoDone = function () {};
-  if (!inApp || ss(SS_DONE) === '1') return;
+  if (!preview && (!inApp || ss(SS_DONE) === '1')) { unboot(); return; }
 
-  var pick = ss(SS_PICK);
+  var pick = preview || ss(SS_PICK);
   if (pick === null) {
     // פתיחה חדשה של האפליקציה – הבאה בתור
     var list = readCfg();
@@ -61,7 +75,7 @@
     }
     ss(SS_PICK, pick);
   }
-  if (!pick) { ss(SS_DONE, '1'); return; }
+  if (!pick) { ss(SS_DONE, '1'); unboot(); return; }
 
   // ── השכבה ──
   // visibility:visible – דורס את visibility:hidden של body ב-lp-checking/hb-checking (כמו .lp-splash)
@@ -75,13 +89,21 @@
   // §536ג (רמי: "הדמות גדולה מדי") – התמונה כולה נכנסת למסך (contain) במקום למלא אותו (cover).
   // בטלפון צר-וגבוה נשארים פסים למעלה/למטה – ממלאים אותם בעותק מטושטש ומוגדל של אותה תמונה
   // (אותו קובץ מהמטמון), כך שהרקע ממשיך את צבעי התמונה בלי קו חיתוך.
-  img.style.cssText = 'position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .25s ease';
+  var size = readSize();
+  img.style.cssText = 'position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .25s ease;' +
+    'transform:scale(' + size + ')';
   var back = document.createElement('img');
   back.alt = '';
   back.style.cssText = 'position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;filter:blur(24px);transform:scale(1.15);opacity:0;transition:opacity .25s ease';
   el.appendChild(img);
   el.appendChild(back);
   (document.body || document.documentElement).appendChild(el);
+  if (preview) {
+    el.onclick = function () { location.reload(); };
+    img.onload = function () { img.style.opacity = '1'; back.style.opacity = '1'; };
+    img.src = pick; back.src = pick;
+    return;
+  }
 
   var shownAt = +ss(SS_T0) || 0, ready = false, gone = false;
   function show() {
@@ -101,6 +123,7 @@
     if (gone) return;
     gone = true;
     ss(SS_DONE, '1');
+    unboot();
     el.style.opacity = '0';
     el.style.pointerEvents = 'none';
     setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 400);

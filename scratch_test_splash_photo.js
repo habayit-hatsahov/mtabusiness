@@ -123,6 +123,39 @@ function ok(name, cond) { if (cond) pass++; else fail++; console.log((cond ? '�
     const q = page({ storage: { ls: p.dump().ls, ss: {} } });
     ok('store קובע את ההתחלה, והיא מה שמוצג', idx !== undefined && q.img().src.endsWith(['a.jpg', 'b.jpg', 'c.jpg'][+idx]));
   }
+  // 9ג. רקע צהוב בהפעלה (yz-app-boot) – מוסר בכל מסלול
+  {
+    const boot = (opts, pre) => {
+      const dom = new JSDOM('<!doctype html><html class="yz-app-boot"><body></body></html>', {
+        url: 'https://yellowzone.co.il/welcome.html' + (opts.app === false ? '' : '?splashtest=1'), runScripts: 'outside-only' });
+      for (const [k, v] of Object.entries(opts.ls || {})) dom.window.localStorage.setItem(k, v);
+      if (pre) pre(dom.window);
+      dom.window.eval(SRC);
+      return dom.window;
+    };
+    ok('boot: דפדפן – מוסר מיד', !boot({ app: false }).document.documentElement.classList.contains('yz-app-boot'));
+    ok('boot: בלי רשימה – מוסר מיד', !boot({}).document.documentElement.classList.contains('yz-app-boot'));
+    const w = boot({ ls: { yz_splash_cfg: CFG(['a.jpg']) } });
+    ok('boot: עם תמונה – נשאר עד שהשכבה יורדת', w.document.documentElement.classList.contains('yz-app-boot'));
+    w.yzSplashPhotoDone();
+    ok('boot: done – מוסר', !w.document.documentElement.classList.contains('yz-app-boot'));
+    // מצב תצוגה (splash-preview.html): התמונה מהקישור, בגודל מהקישור, בלי לגעת במונה/סשן
+    const pv = boot({ app: false }, (win) => { win.YZ_SPLASH_PREVIEW = 'https://yellowzone.co.il/images/splash/splash-7.jpg'; win.YZ_SPLASH_SIZE = 0.6; });
+    const imgs = pv.document.querySelectorAll('#yzSplashPhoto img');
+    ok('תצוגה: התמונה מהקישור', imgs.length === 2 && imgs[0].src.endsWith('splash-7.jpg'));
+    ok('תצוגה: הגודל מהקישור', /scale\(0\.6\)/.test(imgs[0].style.transform));
+    ok('תצוגה: לא נוגע במונה ובסשן', pv.localStorage.getItem('yz_splash_idx') === null && pv.sessionStorage.getItem('yz_splash_pick') === null);
+  }
+  // 9ד. גודל: ברירת מחדל 0.8, ונשמר מהמסמך
+  {
+    const p = page({ storage: { ls: { yz_splash_cfg: CFG(['a.jpg']) }, ss: {} } });
+    ok('גודל: ברירת מחדל 80%', /scale\(0\.8\)/.test(p.img().style.transform));
+    p.w.yzSplashPhotoStore({ enabled: true, size: 0.7, items: [{ url: 'a.jpg' }] });
+    const q = page({ storage: { ls: p.dump().ls, ss: {} } });
+    ok('גודל: 70% מהמסמך', /scale\(0\.7\)/.test(q.img().style.transform));
+    p.w.yzSplashPhotoStore({ enabled: true, size: 5, items: [{ url: 'a.jpg' }] });
+    ok('גודל: ערך לא חוקי → 80%', JSON.parse(p.dump().ls.yz_splash_cfg).size === 0.8);
+  }
   // 10. רשת ביטחון – לעולם לא תקועים
   {
     const p = page({ storage: { ls: { yz_splash_cfg: CFG(['a.jpg']) }, ss: {} } });
