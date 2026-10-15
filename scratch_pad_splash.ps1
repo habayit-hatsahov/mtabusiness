@@ -1,4 +1,6 @@
-﻿param([string]$SrcDir, [string]$OutDir, [double]$Grow = 1.10)
+﻿param([string]$SrcDir, [string]$OutDir, [double]$Grow = 1.10, [int[]]$Names = (1..7), [switch]$AnchorTop)
+# -AnchorTop: כל הרקע הנוסף למטה (התמונה צמודה לקצה העליון) – כשמשהו בתמונה חייב להגיע עד למעלה (עשן, §536יב).
+# -Grow 1.0 = בלי שוליים בצדדים. -Names = אילו splash-N.jpg לעבד.
 # §536יא — מרחיב את רקע תמונות הפתיחה כדי שהדמות תיראה קטנה יותר על כל המסך (cover), בלי מסגרת:
 # הקנבס החדש ביחס 9:19.5 (טלפון), רחב פי $Grow מהמקור; השוליים מתמלאים בהמשך של צבעי הקצה של התמונה
 # עצמה (ממוצע פס הקצה, מוחלק לאורך), שנמוג לאט לצבע הממוצע של כל הקצוות; ומעבר רך (feather) בתפר.
@@ -13,11 +15,13 @@ public static class Pad {
       o[i] = new double[]{s0/c,s1/c,s2/c}; }
     return o;
   }
-  public static Bitmap Run(Bitmap src, double grow) {
+  public static Bitmap Run(Bitmap src, double grow, bool anchorTop) {
     int sw = src.Width, sh = src.Height;
     int W = (int)Math.Round(sw * grow); int H = (int)Math.Round(W * 19.5 / 9.0);
     if (H < sh + 20) H = sh + 20;
-    int ox = (W - sw) / 2, oy = (H - sh) / 2;
+    int ox = (W - sw) / 2, oy = anchorTop ? 0 : (H - sh) / 2;
+    bool pT = oy > 0, pB = H - oy - sh > 0, pL = ox > 0, pR = W - ox - sw > 0;
+    Func<int,int,double> padDist = (qx,qy) => { double m = 1e9; if (pT) m = Math.Min(m, qy); if (pB) m = Math.Min(m, sh-1-qy); if (pL) m = Math.Min(m, qx); if (pR) m = Math.Min(m, sw-1-qx); return m; };
     var s = new byte[sw*sh*4];
     var sd = src.LockBits(new Rectangle(0,0,sw,sh), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
     Marshal.Copy(sd.Scan0, s, 0, s.Length); src.UnlockBits(sd);
@@ -49,7 +53,7 @@ public static class Pad {
       {
         
         double sum = wT+wB+wL+wR;
-        if (!outside) { double m = Math.Min(Math.Min(sy, sh-1-sy), Math.Min(sx, sw-1-sx));
+        if (!outside) { double m = padDist(sx, sy);
           if (m == sy) { wT=1; } else if (m == sh-1-sy) { wB=1; } else if (m == sx) { wL=1; } else { wR=1; } sum=1; }
         for (int ch = 0; ch < 3; ch++) {
           double fT = Math.Min(1.0, Math.Max(0,dT)/220.0), fB = Math.Min(1.0, Math.Max(0,dB)/220.0);
@@ -60,7 +64,7 @@ public static class Pad {
       }
       if (outside) { for (int ch=0;ch<3;ch++) o[i+ch]=(byte)Math.Max(0,Math.Min(255,Math.Round(ext[ch]))); }
       else {
-        double m = Math.Min(Math.Min(sy, sh-1-sy), Math.Min(sx, sw-1-sx));
+        double m = padDist(sx, sy);
         double a = m >= feather ? 1.0 : m / (double)feather;   
         for (int ch=0;ch<3;ch++) { double v = px(sx,sy,ch)*a + ext[ch]*(1-a); o[i+ch]=(byte)Math.Max(0,Math.Min(255,Math.Round(v))); }
       }
@@ -76,9 +80,9 @@ public static class Pad {
 $enc = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
 $p = New-Object System.Drawing.Imaging.EncoderParameters 1
 $p.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality), 84L
-foreach ($n in 1..7) {
+foreach ($n in $Names) {
   $src = [System.Drawing.Bitmap]::FromFile((Join-Path $SrcDir "splash-$n.jpg"))
-  $out = [Pad]::Run($src, $Grow)
+  $out = [Pad]::Run($src, $Grow, [bool]$AnchorTop)
   $dst = Join-Path $OutDir "splash-$n-s.jpg"
   $out.Save($dst, $enc, $p)
   "{0}: {1}x{2} -> {3}x{4} {5}KB" -f $n, $src.Width, $src.Height, $out.Width, $out.Height, [int]((Get-Item $dst).Length/1024)

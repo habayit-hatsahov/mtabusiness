@@ -27,9 +27,12 @@ async function getToken() {
   let changed = 0;
   for (const v of items) {
     const url = v.mapValue.fields.url.stringValue;
-    const m = /^https:\/\/yellowzone\.co\.il\/images\/splash\/splash-([1-6])\.jpg$/.exec(url);
+    // §536יא: 1–6 → -s · §536יב: 7 (אבוקה, עשן צהוב-כחול) → 8-s (אבוקה כחולה חדשה מרמי, רקע רק למטה)
+    const m = /^https:\/\/yellowzone\.co\.il\/images\/splash\/splash-([1-7])\.jpg$/.exec(url);
     if (!m) { console.log('  =', url); continue; }
-    v.mapValue.fields.url.stringValue = `https://yellowzone.co.il/images/splash/splash-${m[1]}-s.jpg`;
+    v.mapValue.fields.url.stringValue = m[1] === '7'
+      ? 'https://yellowzone.co.il/images/splash/splash-8-s.jpg'
+      : `https://yellowzone.co.il/images/splash/splash-${m[1]}-s.jpg`;
     changed++;
     console.log('  →', v.mapValue.fields.url.stringValue);
   }
