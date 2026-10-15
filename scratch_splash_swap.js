@@ -23,8 +23,14 @@ async function getToken() {
   const write = process.argv.includes('--write');
   const token = await getToken();
   const doc = await (await fetch(`https://firestore.googleapis.com/v1/${DOC}`, { headers: { Authorization: `Bearer ${token}` } })).json();
-  const items = doc.fields.items.arrayValue.values;
   let changed = 0;
+  // §536יג (רמי: "לא אהבתי את תמונה 7, תמחק אותה") – האבוקה הכחולה יוצאת מהרשימה
+  const before = doc.fields.items.arrayValue.values.length;
+  doc.fields.items.arrayValue.values = doc.fields.items.arrayValue.values
+    .filter(v => v.mapValue.fields.url.stringValue !== 'https://yellowzone.co.il/images/splash/splash-8-s.jpg');
+  const removed = before - doc.fields.items.arrayValue.values.length;
+  if (removed) { changed += removed; console.log('  ✕ splash-8-s.jpg הוסרה'); }
+  const items = doc.fields.items.arrayValue.values;
   for (const v of items) {
     const url = v.mapValue.fields.url.stringValue;
     // §536יא: 1–6 → -s · §536יב: 7 (אבוקה, עשן צהוב-כחול) → 8-s (אבוקה כחולה חדשה מרמי, רקע רק למטה)
