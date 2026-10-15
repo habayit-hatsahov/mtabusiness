@@ -139,22 +139,20 @@ function ok(name, cond) { if (cond) pass++; else fail++; console.log((cond ? '�
     ok('boot: עם תמונה – נשאר עד שהשכבה יורדת', w.document.documentElement.classList.contains('yz-app-boot'));
     w.yzSplashPhotoDone();
     ok('boot: done – מוסר', !w.document.documentElement.classList.contains('yz-app-boot'));
-    // מצב תצוגה (splash-preview.html): התמונה מהקישור, בגודל מהקישור, בלי לגעת במונה/סשן
-    const pv = boot({ app: false }, (win) => { win.YZ_SPLASH_PREVIEW = 'https://yellowzone.co.il/images/splash/splash-7.jpg'; win.YZ_SPLASH_SIZE = 0.6; });
+    // מצב תצוגה (splash-preview.html): התמונה מהקישור, בלי לגעת במונה/סשן
+    const pv = boot({ app: false }, (win) => { win.YZ_SPLASH_PREVIEW = 'https://yellowzone.co.il/images/splash/splash-7.jpg'; });
     const imgs = pv.document.querySelectorAll('#yzSplashPhoto img');
-    ok('תצוגה: התמונה מהקישור, בלי רקע מטושטש', imgs.length === 1 &&imgs[0].src.endsWith('splash-7.jpg'));
-    ok('תצוגה: הגודל מהקישור', imgs[0].style.maxWidth === '60%' && imgs[0].style.maxHeight === '60%');
+    ok('תצוגה: התמונה מהקישור, תמונה אחת', imgs.length === 1 && imgs[0].src.endsWith('splash-7.jpg'));
+    ok('תצוגה: על כל המסך, כמו באפליקציה', imgs[0].style.objectFit === 'cover');
     ok('תצוגה: לא נוגע במונה ובסשן', pv.localStorage.getItem('yz_splash_idx') === null && pv.sessionStorage.getItem('yz_splash_pick') === null);
   }
-  // 9ד. גודל: ברירת מחדל 0.8, ונשמר מהמסמך
+  // 9ד. §536ח – התמונה כמו שהיא: על כל המסך, בלי הקטנה/מסכה/טשטוש
   {
     const p = page({ storage: { ls: { yz_splash_cfg: CFG(['a.jpg']) }, ss: {} } });
-    ok('גודל: ברירת מחדל 80%', p.img().style.maxWidth === '80%');
-    p.w.yzSplashPhotoStore({ enabled: true, size: 0.7, items: [{ url: 'a.jpg' }] });
-    const q = page({ storage: { ls: p.dump().ls, ss: {} } });
-    ok('גודל: 70% מהמסמך', q.img().style.maxWidth === '70%');
-    p.w.yzSplashPhotoStore({ enabled: true, size: 5, items: [{ url: 'a.jpg' }] });
-    ok('גודל: ערך לא חוקי → 80%', JSON.parse(p.dump().ls.yz_splash_cfg).size === 0.8);
+    const st = p.img().style;
+    ok('כמו שהיא: cover על כל המסך', st.objectFit === 'cover' && st.width === '100%' && st.height === '100%');
+    ok('כמו שהיא: בלי הקטנה ובלי מסכה', !st.maxWidth && !/mask/.test(p.img().getAttribute('style')) && !/scale/.test(st.transform || ''));
+    ok('כמו שהיא: תמונה אחת (בלי רקע מטושטש)', p.el().querySelectorAll('img').length === 1);
   }
   // 10. רשת ביטחון – לעולם לא תקועים
   {

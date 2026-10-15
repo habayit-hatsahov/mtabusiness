@@ -21,22 +21,10 @@
   var LS_CFG = 'yz_splash_cfg', LS_IDX = 'yz_splash_idx';
   var SS_PICK = 'yz_splash_pick', SS_T0 = 'yz_splash_t0', SS_DONE = 'yz_splash_done';
   var MIN_MS = 1500, MAX_MS = 12000, BG = '#ECC94B';
-  // §536ה – גודל התמונה ביחס למסך (רמי: "השור עדיין גדול"). נקבע בלשונית; הרקע המטושטש ממלא את השאר.
-  var DEF_SIZE = 0.8;
-  var FADE = 'linear-gradient(to right,transparent,#000 14%,#000 86%,transparent),' +
-    'linear-gradient(to bottom,transparent,#000 10%,#000 95%,transparent)';
-  function SPLASH_IMG_CSS(size) {
-    var pct = Math.round(size * 100) + '%';
-    return 'position:absolute;left:50%;top:50%;z-index:1;width:auto;height:auto;max-width:' + pct + ';max-height:' + pct +
-      ';transform:translate(-50%,-50%);-webkit-mask-image:' + FADE + ';mask-image:' + FADE +
-      ';-webkit-mask-composite:source-in;mask-composite:intersect';
-  }
-  // ⚠️ עותק של העיצוב הזה ב-admin-dashboard.html (splashPreview, "תצוגה בטלפון") – שינוי כאן מחייב שם
-  function readSize() {
-    if (typeof window.YZ_SPLASH_SIZE === 'number') return window.YZ_SPLASH_SIZE;
-    try { var c = JSON.parse(ls(LS_CFG) || 'null'); if (c && +c.size >= 0.5 && +c.size <= 1) return +c.size; } catch (e) {}
-    return DEF_SIZE;
-  }
+  // §536ח (רמי: "שים אותן איך שהן, הן עם רקע צהוב – כרגע זה נראה תמונה בתוך רקע") – התמונה על כל המסך
+  // (cover), בלי הקטנה, בלי מסגרת ובלי טשטוש. נוסו ונדחו: contain+טשטוש (§536ג), צהוב חלק סביב (§536ו),
+  // קצוות נמסים (§536ז). ⚠️ עותק של העיצוב ב-admin-dashboard.html (".sp-phone img") – שינוי כאן מחייב שם.
+  var IMG_CSS = 'position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:cover;object-position:center';
   var preview = typeof window.YZ_SPLASH_PREVIEW === 'string' ? window.YZ_SPLASH_PREVIEW : '';
   var inApp = /YellowZoneApp/i.test(navigator.userAgent || '') || /[?&]splashtest=1/.test(location.search);
   function unboot() { document.documentElement.classList.remove('yz-app-boot'); }
@@ -57,8 +45,7 @@
     var items = data && Array.isArray(data.items) ? data.items : [];
     var urls = items.filter(function (it) { return it && it.on !== false && typeof it.url === 'string' && it.url; })
       .map(function (it) { return it.url; });
-    var size = data && +data.size >= 0.5 && +data.size <= 1 ? +data.size : DEF_SIZE;
-    ls(LS_CFG, JSON.stringify({ enabled: !!(data && data.enabled), urls: urls, size: size }));
+    ls(LS_CFG, JSON.stringify({ enabled: !!(data && data.enabled), urls: urls }));
     var list = readCfg();
     if (!list.length) return;
     // נקודת ההתחלה האקראית נקבעת כבר כאן, כדי שהתמונה שנטענת מראש היא זו שתוצג בפתיחה הבאה
@@ -95,13 +82,7 @@
     ';transition:opacity .35s ease;pointer-events:auto';
   var img = document.createElement('img');
   img.alt = '';
-  // §536ג (רמי: "הדמות גדולה מדי") – התמונה כולה נכנסת למסך (contain) במקום למלא אותו (cover).
-  // סביב התמונה – הצהוב של השכבה (#ECC94B). §536ו: הרקע המטושטש שהיה כאן הוסר (רמי: "לא אוהב").
-  // §536ז (רמי: "נראית ממוסגרת, צריך רקע צהוב חלק") – קצוות התמונה נמסים לתוך הצהוב (מסכת שקיפות),
-  // כך שאין מלבן. לכן התמונה בגודלה האמיתי (max-width/height באחוזים, היחס נשמר) ולא object-fit על
-  // כל המסך – המסכה חלה על קופסת האלמנט, והיא חייבת להיות קופסת התמונה עצמה. למטה מעט (הרגליים).
-  var size = readSize();
-  img.style.cssText = SPLASH_IMG_CSS(size) + ';opacity:0;transition:opacity .25s ease';
+  img.style.cssText = IMG_CSS + ';opacity:0;transition:opacity .25s ease';
   el.appendChild(img);
   (document.body || document.documentElement).appendChild(el);
   if (preview) {

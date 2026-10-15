@@ -2044,12 +2044,7 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
 .sp-preview { position: fixed; inset: 0; z-index: 10000; background: rgba(10, 20, 40, .82); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; cursor: zoom-out; }
 .sp-phone { width: min(300px, 70vw); aspect-ratio: 375 / 812; border-radius: 28px; overflow: hidden; background: #ECC94B; border: 6px solid #111; }
 .sp-phone { position: relative; }
-.sp-phone img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
-/* §536ז — זהה ל-SPLASH_IMG_CSS ב-splash-photo.js: קופסת התמונה עצמה, וקצוות שנמסים לתוך הצהוב */
-.sp-phone img.sp-fade { inset: auto; left: 50%; top: 50%; width: auto; height: auto; transform: translate(-50%, -50%);
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent), linear-gradient(to bottom, transparent, #000 10%, #000 95%, transparent);
-  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent), linear-gradient(to bottom, transparent, #000 10%, #000 95%, transparent);
-  -webkit-mask-composite: source-in; mask-composite: intersect; }
+.sp-phone img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }   /* §536ח – כמו splash-photo.js */
 .sp-send { background: #fff; color: var(--text); border-radius: 14px; padding: 18px; max-width: 360px; font-size: 13px; line-height: 1.7; cursor: default; display: flex; flex-direction: column; gap: 10px; }
 .sp-send b { font-size: 15px; }
 .sp-send-btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -18369,11 +18364,9 @@ window.reviveDemoLink = function(id) {
 const SPLASH_DEFAULTS = [1, 2, 3, 4, 5, 6, 7].map(n => ({
   id: 'd' + n, url: `https://yellowzone.co.il/images/splash/splash-${n}.jpg`, path: '', on: true,
 }));
-// §536ה — גודל התמונה ביחס למסך (0.5–1). ברירת מחדל זהה ל-DEF_SIZE ב-splash-photo.js.
-const SPLASH_DEF_SIZE = 0.8;
-const splashSize = c => (c && +c.size >= 0.5 && +c.size <= 1 ? +c.size : SPLASH_DEF_SIZE);
-// §536ד — "בדיקה בטלפון": דף תצוגה שמריץ את splash-photo.js עם התמונה והגודל – בדיוק כמו באפליקציה
-const splashPreviewUrl = (url, size) => 'https://yellowzone.co.il/splash-preview.html?s=' + size + '&u=' + encodeURIComponent(url);
+// §536ד — "בדיקה בטלפון": דף תצוגה שמריץ את splash-photo.js עם התמונה – בדיוק כמו באפליקציה.
+// (§536ח: בחירת הגודל הוסרה – התמונה תמיד על כל המסך, כמו שהיא.)
+const splashPreviewUrl = url => 'https://yellowzone.co.il/splash-preview.html?u=' + encodeURIComponent(url);
 let splashSaved = null;         // מה שב-Firestore (null = המסמך לא קיים)
 let splashWork = null;           // העותק שעורכים
 let splashState = 'idle';        // idle | loading | ready | error
@@ -18389,8 +18382,8 @@ async function loadSplash(force) {
     const snap = await getDoc(doc(db, 'settings', 'splashScreen'));
     splashSaved = snap.exists() ? snap.data() : null;
     splashWork = splashSaved
-      ? { enabled: !!splashSaved.enabled, size: splashSize(splashSaved), items: (splashSaved.items || []).map(it => ({ ...it })) }
-      : { enabled: true, size: SPLASH_DEF_SIZE, items: SPLASH_DEFAULTS.map(it => ({ ...it })) };
+      ? { enabled: !!splashSaved.enabled, items: (splashSaved.items || []).map(it => ({ ...it })) }
+      : { enabled: true, items: SPLASH_DEFAULTS.map(it => ({ ...it })) };
     splashState = 'ready'; splashError = '';
   } catch (e) {
     console.error('splash load failed:', e);
@@ -18403,7 +18396,7 @@ window.retrySplash = function() { loadSplash(true); };
 function splashDirty() {
   if (!splashWork) return false;
   if (!splashSaved) return true;
-  const strip = c => JSON.stringify({ e: !!c.enabled, s: splashSize(c), i: (c.items || []).map(x => [x.id, x.url, !!x.on]) });
+  const strip = c => JSON.stringify({ e: !!c.enabled, i: (c.items || []).map(x => [x.id, x.url, !!x.on]) });
   return strip(splashWork) !== strip(splashSaved);
 }
 
@@ -18441,9 +18434,6 @@ function splashHtml() {
   const bar = `<div class="sp-bar">
     <label class="sp-switch"><input type="checkbox" ${splashWork.enabled ? 'checked' : ''} onchange="splashSetEnabled(this.checked)">
       <span>${splashWork.enabled ? 'מסך הפתיחה עם תמונות – פעיל' : 'כבוי – באפליקציה מופיע הלוגו'}</span></label>
-    <label class="sp-switch">גודל הדמות<select onchange="splashSetSize(this.value)">
-      ${[0.6, 0.7, 0.8, 0.9, 1].map(v => `<option value="${v}" ${splashWork.size === v ? 'selected' : ''}>${Math.round(v * 100)}%${v === 1 ? ' (כל הרוחב)' : ''}</option>`).join('')}
-    </select></label>
     <span style="flex:1"></span>
     <button class="act-btn tiny" onclick="document.getElementById('spFileInput').click()" ${splashUploading ? 'disabled' : ''}>${splashUploading ? `מעלה ${splashUploading}…` : '+ הוספת תמונות'}</button>
     ${dirty && splashSaved ? `<button class="act-btn tiny" onclick="splashRevert()">ביטול שינויים</button>` : ''}
@@ -18517,7 +18507,6 @@ window.splashSave = async function() {
   try {
     const data = {
       enabled: !!splashWork.enabled,
-      size: splashSize(splashWork),
       items: splashWork.items.map(it => ({ id: it.id, url: it.url, path: it.path || '', on: !!it.on })),
       updatedAt: serverTimestamp(),
       updatedBy: auth.currentUser?.uid || '',
@@ -18532,19 +18521,18 @@ window.splashSave = async function() {
   splashSaving = false;
   renderMain();
 };
-window.splashSetSize = function(v) { splashWork.size = splashSize({ size: v }); renderMain(); };
 // §536ד — בדיקה בטלפון: בטלפון – פותח את דף התצוגה (מסך מלא, כמו באפליקציה); במחשב – שליחה לוואטסאפ
 // של עצמך (הקישור נפתח בדפדפן של הטלפון ומציג את התמונה בדיוק כמו בפתיחת האפליקציה), או העתקה.
 window.splashPhoneTest = function(i) {
   const it = splashWork.items[i];
   if (!it) return;
-  const url = splashPreviewUrl(it.url, splashSize(splashWork));
+  const url = splashPreviewUrl(it.url);
   if (window.matchMedia('(max-width: 760px)').matches) { window.open(url, '_blank'); return; }
   const ov = document.createElement('div');
   ov.className = 'sp-preview';
   ov.innerHTML = `<div class="sp-send" onclick="event.stopPropagation()">
       <b>בדיקה בטלפון</b>
-      <div>שלחו לעצמכם את הקישור ופתחו אותו בטלפון – התמונה תופיע על כל המסך בדיוק כמו בפתיחת האפליקציה, בגודל שנבחר כאן (גם לפני "שמירה").</div>
+      <div>שלחו לעצמכם את הקישור ופתחו אותו בטלפון – התמונה תופיע על כל המסך בדיוק כמו בפתיחת האפליקציה (גם לפני "שמירה").</div>
       <div class="sp-send-btns">
         <a class="act-btn" href="https://wa.me/?text=${encodeURIComponent(url)}" target="_blank" rel="noopener">שליחה בוואטסאפ</a>
         <button class="act-btn tiny" id="spCopyBtn">העתקת קישור</button>
@@ -18555,13 +18543,13 @@ window.splashPhoneTest = function(i) {
   document.getElementById('spCopyBtn').onclick = () =>
     navigator.clipboard.writeText(url).then(() => dlFlash('הקישור הועתק'), () => prompt('העתיקו את הקישור:', url));
 };
-// תצוגה בטלפון: מסגרת 375×812 (אייפון רגיל) – contain בגודל שנבחר + רקע מטושטש, כמו splash-photo.js
+// תצוגה בטלפון: מסגרת 375×812 (אייפון רגיל) – התמונה על כל המסך (cover), כמו splash-photo.js
 window.splashPreview = function(i) {
   const it = splashWork.items[i];
   if (!it) return;
   const ov = document.createElement('div');
   ov.className = 'sp-preview';
-  ov.innerHTML = `<div class="sp-phone"><img class="sp-fade" src="${esc(it.url)}" alt="" style="max-width:${Math.round(splashSize(splashWork) * 100)}%;max-height:${Math.round(splashSize(splashWork) * 100)}%"></div><div class="sp-preview-hint">לחיצה בכל מקום לסגירה</div>`;
+  ov.innerHTML = `<div class="sp-phone"><img src="${esc(it.url)}" alt=""></div><div class="sp-preview-hint">לחיצה בכל מקום לסגירה</div>`;
   ov.onclick = () => ov.remove();
   document.body.appendChild(ov);
 };
