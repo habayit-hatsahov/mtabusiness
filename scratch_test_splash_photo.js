@@ -80,7 +80,7 @@ function ok(name, cond) { if (cond) pass++; else fail++; console.log((cond ? '�
   }
   // 7. welcome → home באותה פתיחה: אותה תמונה, המונה לא זז שוב, הזמן ממשיך
   {
-    const a = page({ storage: { ls: { yz_splash_cfg: CFG(['a.jpg', 'b.jpg']) }, ss: {} } });
+    const a = page({ storage: { ls: { yz_splash_cfg: CFG(['a.jpg', 'b.jpg']), yz_splash_idx: '0' }, ss: {} } });
     a.load();
     await wait(1000);
     const st = a.dump();               // "ניווט" – בלי done בעמוד הראשון
