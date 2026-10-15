@@ -143,16 +143,16 @@ function ok(name, cond) { if (cond) pass++; else fail++; console.log((cond ? '�
     const pv = boot({ app: false }, (win) => { win.YZ_SPLASH_PREVIEW = 'https://yellowzone.co.il/images/splash/splash-7.jpg'; win.YZ_SPLASH_SIZE = 0.6; });
     const imgs = pv.document.querySelectorAll('#yzSplashPhoto img');
     ok('תצוגה: התמונה מהקישור, בלי רקע מטושטש', imgs.length === 1 &&imgs[0].src.endsWith('splash-7.jpg'));
-    ok('תצוגה: הגודל מהקישור', /scale\(0\.6\)/.test(imgs[0].style.transform));
+    ok('תצוגה: הגודל מהקישור', imgs[0].style.maxWidth === '60%' && imgs[0].style.maxHeight === '60%');
     ok('תצוגה: לא נוגע במונה ובסשן', pv.localStorage.getItem('yz_splash_idx') === null && pv.sessionStorage.getItem('yz_splash_pick') === null);
   }
   // 9ד. גודל: ברירת מחדל 0.8, ונשמר מהמסמך
   {
     const p = page({ storage: { ls: { yz_splash_cfg: CFG(['a.jpg']) }, ss: {} } });
-    ok('גודל: ברירת מחדל 80%', /scale\(0\.8\)/.test(p.img().style.transform));
+    ok('גודל: ברירת מחדל 80%', p.img().style.maxWidth === '80%');
     p.w.yzSplashPhotoStore({ enabled: true, size: 0.7, items: [{ url: 'a.jpg' }] });
     const q = page({ storage: { ls: p.dump().ls, ss: {} } });
-    ok('גודל: 70% מהמסמך', /scale\(0\.7\)/.test(q.img().style.transform));
+    ok('גודל: 70% מהמסמך', q.img().style.maxWidth === '70%');
     p.w.yzSplashPhotoStore({ enabled: true, size: 5, items: [{ url: 'a.jpg' }] });
     ok('גודל: ערך לא חוקי → 80%', JSON.parse(p.dump().ls.yz_splash_cfg).size === 0.8);
   }
