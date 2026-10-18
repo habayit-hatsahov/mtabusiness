@@ -3003,8 +3003,9 @@
     // ממתינים לה, כך שנסיעת-הרשת הזאת רצה במקביל לדחיסת התמונות ולא מוסיפה זמן למסלול
     // הקריטי — בדיוק ההיגיון של §361ב. אם כבר יש חותם מקומי אין בכלל מה לשאול.
     const serverDupPromise = prior ? null : checkBizExistsOnServer(data.ownerPhone, data.ownerEmail, data.name);
-    data.pendingChanges = null;
-    data.logo           = '';
+    // 🔴 §547 — בלי `data.pendingChanges = null`: מ-§517 (13.10) החוק אוסר את המפתח ביצירה
+    // (`keys().hasAny`, וגם ערך null נחשב מפתח קיים) — השורה הזו דחתה כל הרשמת עסק עד 18.10.
+    data.logo          = '';
     data.coverPhoto      = '';
     data.photos         = [];
     data.photoProofUrl  = '';
@@ -3136,11 +3137,20 @@
           // כך שדחייה שם הייתה באמת תקלת-הרשאות. `prior` הוא בדיוק התנאי הזה.
           // זהו הענף שסוגר את המקרה שדווח: הכתיבה הראשונה נקלטה, בעל-העסק ויתר ושלח שוב,
           // והשנייה נדחית — והוא רואה מסך הצלחה תקין על הרשומה האחת שקיימת.
+          // 🔴 §547 — `prior` לבדו **אינו** הוכחה לקיום: הוא נכתב לפני הכתיבה, גם כשהכתיבה
+          // הראשונה נדחתה. 18.10 החוקים דחו כל יצירה (pendingChanges), הלחיצה השנייה נכנסה
+          // לכאן, ובעל-העסק קיבל מסך הצלחה על עסק שלא נשמר. לכן מאמתים מול השרת; כל תשובה
+          // שאינה "קיים" (כולל כשל-רשת) = מסך כשל עם "נסו שוב", לא הצלחה.
           if (e.code === 'permission-denied' && prior) {
-            console.warn('§361 – המסמך כבר קיים משליחה קודמת; ממשיכים אליו.');
-            bizDocRef = bizRef;
-            alreadyExisted = true;
-            break;
+            if (await checkBizExistsOnServer(data.ownerPhone, data.ownerEmail, data.name)) {
+              console.warn('§361 – המסמך כבר קיים משליחה קודמת; ממשיכים אליו.');
+              bizDocRef = bizRef;
+              alreadyExisted = true;
+              break;
+            }
+            saveErr = e;
+            console.error('§547 – permission-denied והמסמך לא קיים בשרת; לא מציגים הצלחה.');
+            break;   // דחיית חוקים אינה מתחלפת בניסיון חוזר
           }
           saveErr = e;
           console.error(`Firestore save failed (attempt ${attempt}):`, e.code || '', e.message);
