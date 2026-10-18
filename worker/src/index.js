@@ -24,6 +24,7 @@ import { handleDemoSession } from './demo.js';
 import { syncBizPublic, handlePublicBizList } from './bizpublic.js';
 import { handleLinkBizOwner, handleBizShortTitle } from './bizowner.js';
 import { handleEvent } from './events.js';
+import { handleBizRegFailed } from './bizregfail.js';
 import { APPCHECK_PATHS, sampleAppCheck } from './appcheck.js';
 
 const SITE_BASE = 'https://yellowzone.co.il/';
@@ -89,6 +90,11 @@ export default {
       if (request.method === 'POST' && url.pathname === '/biz-short-title') {
         if (await overIpQuota(env.RATE_LIMIT_KV, 'bizshort', clientIp(request, env), 20, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request);
         return json(await handleBizShortTitle(await request.json(), env), env, request);
+      }
+      // §548 — תקלה בהרשמת עסק: גיבוי הטופס + מייל ופוש למנהל. ר' bizregfail.js.
+      if (request.method === 'POST' && url.pathname === '/biz-reg-failed') {
+        if (await overIpQuota(env.RATE_LIMIT_KV, 'bizregfail', clientIp(request, env), 8, 60 * 60)) return json({ error: 'too_many_attempts' }, env, request);
+        return json(await handleBizRegFailed(await request.json(), env, await getGoogleAccessToken(env)), env, request);
       }
       // §516 — לינק תצוגה לאורח (demo.html / demo-mode.js). ר' demo.js.
       if (request.method === 'POST' && url.pathname === '/demo-session') {

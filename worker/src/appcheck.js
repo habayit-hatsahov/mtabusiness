@@ -28,7 +28,7 @@ export async function checkAppCheck(request) {
 export const APPCHECK_PATHS = new Set([
   '/check-member-exists', '/resend-login-code', '/mint-member-token', '/submit-member', '/check-biz-exists',
   '/demo-session', '/link-biz-owner', '/biz-short-title', '/event', '/public-biz-list', '/shorten-benefit', '/suggest-fallback-images',
-  '/upload-biz-media', '/google-login', '/apple-login',
+  '/upload-biz-media', '/google-login', '/apple-login', '/biz-reg-failed',
 ]);
 
 export async function sampleAppCheck(request, env, path) {

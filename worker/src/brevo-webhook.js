@@ -148,7 +148,7 @@ export async function handleBrevoWebhook(request, env) {
     if ((!status && !touch) || !email) continue;
     // §501 — מייל "הצוות ענה לך" אינו נמדד כאן. 🔴 **בלי הדילוג הוא היה נופל לענף "בלי תג
     // מוכר" ודורס את שדות מייל-הקוד** — בדיוק הבאג של §415. מסירת התשובה נראית בשיחה עצמה.
-    if (eventTags(ev).some((t) => t === 'convReply' || t === 'dashLink')) continue;   // §505 — גם קישור הניהול
+    if (eventTags(ev).some((t) => t === 'convReply' || t === 'dashLink' || t === 'adminAlert')) continue;   // §505 — גם קישור הניהול; §548 — התראת מנהל
     handled++;
 
     // חותמת-הזמן של האירוע עצמו, לא של הרגע שקיבלנו אותו (Brevo יכול לאחר/לנסות שוב)

@@ -2279,6 +2279,34 @@
     } finally { clearTimeout(timer); }
   }
 
+  // ── §548 — דיווח תקלה למנהל (מייל + פוש) וגיבוי הטופס ─────────────────────────────────────
+  // §547: 5 ימים של הרשמות שנדחו, ואיש לא ידע. kind='save' שולח את כל הטופס (בלי תמונות) כדי
+  // שאפשר יהיה ליצור את העסק בלי שבעל העסק ימלא שוב. מחזיר true רק אם השרת אישר שקיבל.
+  // ⚠️ serverTimestamp() הוא אובייקט-סימון של ה-SDK – מוחלף ב-null לפני JSON.
+  async function reportBizRegFailure(kind, data, extra) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const formJson = kind === 'save'
+        ? JSON.stringify(data, (k, v) => (v && typeof v === 'object' && !Array.isArray(v) && v.constructor && v.constructor.name !== 'Object') ? null : v)
+        : '';
+      const resp = await hbApiFetch('/biz-reg-failed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind, formJson, device: /iPhone|iPad|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop',
+          name: data.name, ownerFirst: data.ownerFirst, ownerLast: data.ownerLast,
+          ownerPhone: data.ownerPhone, ownerEmail: data.ownerEmail, ...extra,
+        }),
+        signal: ctl.signal,
+      });
+      return !!(await resp.json()).ok;
+    } catch (e) {
+      console.error('§548 biz-reg-failed report failed:', e.name, e.message);
+      return false;
+    } finally { clearTimeout(timer); }
+  }
+
   function setSubmitBusy(busy) {
     for (const btn of [document.getElementById('submitBtn'), document.getElementById('retryBtn')]) {
       if (!btn) continue;
@@ -3028,6 +3056,7 @@
     const effectiveLogoFile  = coverPhotoFile ? logoFile : null;
     const hasMediaToUpload = !!(fanPhotoFile || effectiveCoverFile || effectiveLogoFile || galleryFiles.length);
     let mediaUploadFailed = false;   // ר' סוף handleSubmit — נקבע מתשובת /upload-biz-media
+    let mediaFailCode = '';          // §548 — הערוץ האחרון שנכשל, לדיווח למנהל
 
     // ── §361ב — הדחיסה מתחילה **בלחיצה**, לא אחרי חמש נסיעות-רשת ──────────────────────────
     // המשתמש: *"יש אפשרות לנסות גם לצמצם את הזמן של הנשלח?"*. הדחיסה של עד 8 תמונות
@@ -3219,6 +3248,9 @@
       }
 
       if (!bizDocRef) {
+        // §548 — לפני מסך הכשל: הפרטים נשלחים למנהל. בלי רשת אין טעם (וגם לא יגיע).
+        const reported = navigator.onLine === false ? false
+          : await reportBizRegFailure('save', data, { code: (saveErr && saveErr.code) || 'unknown' });
         // §295 — רק עכשיו הטופס יורד מהמסך, כשיש תשובה סופית.
         clearSubmitWaitTimers();
         setSubmitWait('');
@@ -3228,7 +3260,10 @@
         if (failBody) {
           failBody.textContent = navigator.onLine === false
             ? 'נראה שאין חיבור לאינטרנט. הפרטים שמילאתם נשמרו כאן – נסו שוב כשהחיבור חוזר.'
-            : `משהו השתבש בדרך אלינו${saveErr && saveErr.code ? ` (${saveErr.code})` : ''}. הפרטים שמילאתם נשמרו – אפשר לנסות שוב.`;
+            : reported
+              // §548 — אמת בלבד: נכתב רק כשהשרת אישר שקיבל את הפרטים
+              ? 'משהו השתבש אצלנו, ואנחנו כבר מטפלים בזה. הפרטים שמילאתם הגיעו אלינו ונחזור אליכם בהקדם – לא צריך למלא שוב. אפשר גם לנסות לשלוח שוב עכשיו.'
+              : `משהו השתבש בדרך אלינו${saveErr && saveErr.code ? ` (${saveErr.code})` : ''}. הפרטים שמילאתם נשמרו – אפשר לנסות שוב.`;
         }
         // ── §284 — "ניסה להירשם ונכשל" ───────────────────────────────────────────────────
         // עד היום כשל כאן היה גלוי רק לבעל-העסק (מסך + console). מי שנתקל בו ולא התלונן פשוט
@@ -3369,7 +3404,8 @@
             // ⚠️ ≤50 תווים (firestore.rules) — שדה חורג מוחק את כל האירוע בשקט.
             const why = result.error
               || (Array.isArray(result.failed) && result.failed.length ? 'files:' + result.failed.length : 'failed');
-            logEvent('formError', { blockId: 'bizForm', bizId: bizDocRef.id, channel: `bm:${tag}:${String(why).slice(0, 24)}` });
+            mediaFailCode = `bm:${tag}:${String(why).slice(0, 24)}`;
+            logEvent('formError', { blockId: 'bizForm', bizId: bizDocRef.id, channel: mediaFailCode });
           }
           })(), 120000, 'MediaPhaseTimeout');
         } catch (e) {
@@ -3384,7 +3420,8 @@
           // לנתיב האוהד שבו המזהה נוצר מראש.
           // §381 — התג נכנס לערוץ. בלעדיו "bm:TimeoutError" לא אומר אם אבדה ראיית-האימות
           // (חוסם אישור של בעל-עסק) או תמונת גלריה (מטרד). ≤50 תווים, ר' firestore.rules.
-          logEvent('formError', { blockId: 'bizForm', bizId: bizDocRef.id, channel: `bm:${tag}:${(e.name || 'err').slice(0, 18)}` });
+          mediaFailCode = `bm:${tag}:${(e.name || 'err').slice(0, 18)}`;
+          logEvent('formError', { blockId: 'bizForm', bizId: bizDocRef.id, channel: mediaFailCode });
         }
         };
 
@@ -3393,6 +3430,8 @@
           mediaFormPromise ? sendMediaForm(mediaFormPromise, 'rest')  : null,
         ].filter(Boolean));
       }
+      // §548 — התמונות/האימות לא עלו: המנהל מקבל מייל+פוש עם שם העסק. לא חוסם את מסך ההצלחה.
+      if (mediaUploadFailed && bizDocRef) reportBizRegFailure('media', data, { code: mediaFailCode || 'media', bizId: bizDocRef.id });
 
       showMediaWarnIfNeeded();
       // §361ב — סוגרים את מה שרץ במקביל. ה-catch כבר בתוך ownerLinkPromise, ולכן זה לא

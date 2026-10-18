@@ -238,3 +238,18 @@ export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, bus
     tag: msgTag ? ['combined', msgTag] : 'combined',
   });
 }
+
+// ── §548 — התראת מנהל (תקלה בהרשמת עסק) ─────────────────────────────────────────────────────
+// טבלה פשוטה, בלי תבנית: זה מייל עבודה למנהל, לא מכתב לקהל. כל ערך עובר בריחה – הוא מגיע מטופס ציבורי.
+// תג 'adminAlert' – brevo-webhook.js מדלג עליו (אחרת דורס את שדות מייל-הקוד של חבר עם אותה כתובת, §415).
+const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+export async function sendAdminAlertEmail(env, { to, subject, rows }) {
+  const tr = rows.filter(([, v]) => v).map(([k, v]) =>
+    `<tr><td style="padding:6px 10px;color:#666;white-space:nowrap">${escHtml(k)}</td><td style="padding:6px 10px;font-weight:700">${escHtml(v)}</td></tr>`).join('');
+  return sendBrevoEmail(env, {
+    to: [{ email: to }],
+    subject: String(subject).slice(0, 150),
+    htmlContent: `<div dir="rtl" style="font-family:Arial,sans-serif;padding:16px"><table style="border-collapse:collapse">${tr}</table></div>`,
+    tag: 'adminAlert',
+  });
+}
