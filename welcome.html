@@ -189,6 +189,7 @@ function openJoinModal() {
 }
 function openLoginModal() {
   window.logEvent && window.logEvent('formOpen', { blockId: 'loginModal' });
+  window.heroNlReset && window.heroNlReset();   // §545
   // §312 — איפוס מצב הכפתור בכל פתיחה. בלי זה, ניסיון קודם שנתקע השאיר את הכפתור disabled עם
   // הכיתוב "בודק...", וכל פתיחה מחדש של המודאל החזירה **כפתור מת** — כך תקלה רגעית אחת נעלה את
   // הכניסה עד רענון מלא של הדף. קרה בפועל לאוהד ב-28.8: הוא פתח את המודאל שלוש פעמים נוספות,
@@ -331,6 +332,82 @@ window.heroOpenForgotFromGoogle = function () {
   if (!f) return;
   try { f.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { f.scrollIntoView(); }
   f.focus();
+};
+
+// ══ §545 — "נראה שעוד לא נרשמתם" ═══════════════════════════════════════════════════════════
+// 🔑 נמדד (§541–§543): אנשים חדשים לוחצים "כניסה" (9 מתוך 10), ומי שקיבל "לא מחובר" עם Google/
+// Apple ראה הודעת-כשל שמדברת אל חבר, וההרשמה בשורה קטנה בתחתית. כאן המסך מתהפך: הרשמה ראשית,
+// והחשבון שכבר נבחר עובר לטופס (fan-register.html, hbApplyRegPrefill) – בלי לבחור אותו שוב.
+// ⚠️ הטוקן נשמר ב-sessionStorage (נמחק עם הלשונית/האפליקציה, ונצרך פעם אחת בטופס). גוגל: שעה;
+// אפל: 10 דקות — הטופס בודק את התפוגה בעצמו.
+var HB_NL_ICONS = {
+  google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.2-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>',
+  apple: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.37 12.6c.02 2.4 2.1 3.2 2.13 3.21-.02.06-.33 1.14-1.1 2.26-.66.97-1.35 1.94-2.43 1.96-1.06.02-1.4-.63-2.62-.63-1.21 0-1.6.61-2.6.65-1.05.04-1.85-1.05-2.52-2.02-1.37-1.98-2.41-5.6-1.01-8.04.7-1.21 1.94-1.98 3.29-2 1.03-.02 2 .69 2.62.69.63 0 1.81-.85 3.05-.73.52.02 1.98.21 2.92 1.58-.08.05-1.74 1.02-1.73 3.07ZM14.4 5.04c.55-.67.92-1.6.82-2.53-.79.03-1.75.53-2.32 1.2-.51.59-.96 1.54-.84 2.44.88.07 1.79-.45 2.34-1.11Z"/></svg>',
+};
+var _hbNl = null;
+// פענוח לתצוגה בלבד (שם ומייל על המסך). שום הכרעה לא נשענת עליו — הוורקר הוא שקבע "לא מחובר".
+function hbNlDecode(jwt) {
+  try {
+    var b = String(jwt).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(decodeURIComponent(atob(b).split('').map(function (c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join('')));
+  } catch (e) { return null; }
+}
+window.heroShowNotRegistered = function (prov, token, email) {
+  var panel = document.getElementById('nlPanel');
+  var main = document.querySelector('#loginOverlay .login-modal-body:not(.nl-panel)');
+  if (!panel || !main) return false;
+  var p = hbNlDecode(token) || {};
+  var name = prov === 'google' ? String(p.name || ((p.given_name || '') + ' ' + (p.family_name || ''))).trim() : '';
+  _hbNl = { prov: prov, token: token, at: Date.now() };
+  document.getElementById('nlName').textContent = name || (prov === 'apple' ? 'חשבון Apple' : 'חשבון Google');
+  document.getElementById('nlEmail').textContent = email || p.email || '';
+  document.getElementById('nlAv').innerHTML = HB_NL_ICONS[prov] || '';
+  main.classList.add('nl-off');
+  panel.classList.remove('nl-off');
+  var box = panel.closest('.modal-box');
+  if (box) box.scrollTop = 0;
+  return true;
+};
+window.heroNlReset = function () {
+  var panel = document.getElementById('nlPanel');
+  var main = document.querySelector('#loginOverlay .login-modal-body:not(.nl-panel)');
+  if (panel) panel.classList.add('nl-off');
+  if (main) main.classList.remove('nl-off');
+};
+// "חשבון אחר" / "כניסה עם טלפון וקוד" / "קוד חדש למייל" — חזרה לגוף הכניסה הרגיל
+window.heroNlBack = function (mode) {
+  _hbNl = null;
+  window.heroNlReset();
+  if (mode === 'code' || mode === 'forgot') window.heroShowCodePath && window.heroShowCodePath();
+  if (mode === 'forgot') window.heroOpenForgotFromGoogle && window.heroOpenForgotFromGoogle();
+};
+window.heroNlRegister = function () {
+  var nl = _hbNl;
+  try { if (nl) sessionStorage.setItem('yz_reg_prefill', JSON.stringify(nl)); } catch (e) {}
+  // ⚠️ formOpen שאינו loginModal = "התחיל הרשמה" במסך "מה קרה אחרי ההורדה" (§542) — וזה נכון כאן.
+  window.logEvent && window.logEvent('formOpen', { blockId: 'notLinkedReg' });
+  // ⚠️ iframe שכבר נטען ולא נמצא במסך הצלחה — openJoinModal לא יטען אותו מחדש, ולכן המילוי
+  // מופעל ישירות. בכל מקרה אחר (טרם נטען / ייטען מחדש) הטופס צורך את המפתח בעצמו בטעינה.
+  // הבדיקה **לפני** openJoinModal: אחריו כבר אי אפשר להבחין בין מסמך ישן לחדש.
+  var f = document.getElementById('joinFrame');
+  var live = false;
+  try {
+    var w = f && f.contentWindow, d = f && f.contentDocument;
+    var ok = d && d.getElementById('successState');
+    // אותה השוואה בדיוק כמו ב-openJoinModal (מתעלמת מ-cache-buster ‎&r=)
+    var base = (f.getAttribute('src') || '').replace(/#.*$/, '').replace(/[?&]r=\d+/, '');
+    live = !!(w && typeof w.hbApplyRegPrefill === 'function' && base === 'fan-register.html?embed=1' &&
+      !(ok && getComputedStyle(ok).display !== 'none'));
+  } catch (e) {}
+  // 🔴 **מעבר בין המודאלים בלי closeModal:** closeModal עובר דרך history.back(), וה-popstate
+  // שלו מגיע **אחרי** openJoinModal וסוגר גם אותו (yzCloseModalsDom סוגר את כולם). כך רשומת-
+  // ההיסטוריה האחת נשארת, ו"חזור" סוגר את טופס ההרשמה.
+  document.getElementById('loginOverlay').classList.remove('open');
+  window.heroNlReset();
+  openJoinModal();
+  if (live) { try { f.contentWindow.hbApplyRegPrefill(); } catch (e) {} }
 };
 
 // ── §322 — פאנל "לא מצליחים להיכנס? כתבו לנו" ─────────────────────────────────────────────
@@ -1626,6 +1703,23 @@ button { font-family: inherit; }
 .gs-login-or { display: flex; align-items: center; gap: 10px; color: var(--ink-3); font-size: 12.5px; }
 .gs-login-or::before, .gs-login-or::after { content: ''; flex: 1; height: 1px; background: var(--line, #E7E7E0); }
 
+/* ══ §545 — "נראה שעוד לא נרשמתם" ═══════════════════════════════════════════════════════
+   מחליף את גוף חלון הכניסה כשחשבון Google/Apple לא שייך לאף חבר. ההרשמה ראשית, "כבר חברים?"
+   משני. ⚠️ ".login-modal-body" הוא display:flex, וזה גובר על [hidden] — ולכן מחלקה מפורשת. */
+#loginOverlay .login-modal-body.nl-off, #loginOverlay .nl-panel.nl-off { display: none; }
+.nl-acct { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--field); border: 1px solid var(--field-line); }
+.nl-av { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto; background: #fff; border: 1px solid var(--field-line); }
+.nl-av svg { width: 18px; height: 18px; }
+.nl-who { min-width: 0; flex: 1; }
+.nl-who b { display: block; font-size: 14px; color: var(--ink); }
+.nl-who span { display: block; font-size: 12.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.nl-swap { background: none; border: 0; color: var(--ink-3); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; flex: 0 0 auto; }
+.nl-primary { width: 100%; min-height: 52px; border-radius: var(--r-btn); background: var(--acc); border: 0; color: var(--acc-ink); font: inherit; font-weight: 800; font-size: 16px; cursor: pointer; box-shadow: 0 2px 0 rgba(10,42,102,.12); }
+.nl-member { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.nl-member p { font-size: 13px; color: var(--ink-2); line-height: 1.55; }
+.nl-outline { width: 100%; min-height: 46px; border-radius: var(--r-btn); background: #fff; border: 1.5px solid var(--field-line); color: var(--ink); font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; }
+.nl-link { background: none; border: 0; color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+
 /* ══ §446 — כניסה עם Apple, מתחת לכפתור Google ══════════════════════════════════════════
    ⚠️ **הסגנון כאן אינו זהה ל-`apple-signup.js`, ובכוונה.** שם הכפתור הוא `border-radius:8px`
    כי כפתור גוגל שלצידו מצויר `shape:'rectangular'`. **כאן** כפתור גוגל מצויר `shape:'pill'`
@@ -2232,6 +2326,25 @@ button { font-family: inherit; }
       <div class="login-help-done" id="heroLoginHelpDone">
         <b>✓ קיבלנו</b>
         <span>נחזור אליכם בהקדם. אפשר לסגור את החלון.</span>
+      </div>
+    </div>
+    <!-- §545 — "נראה שעוד לא נרשמתם" (דמו §544, אושר ע"י רמי). מוצג רק כשחשבון Google/Apple
+         לא שייך לאף חבר (הוורקר לא מצא גם התאמה לפי מייל). השם והמייל מוזנים ב-JS עם textContent. -->
+    <div class="login-modal-body nl-panel nl-off" id="nlPanel">
+      <div>
+        <div class="login-modal-title">נראה שעוד לא נרשמתם</div>
+        <div class="login-modal-sub">אין עדיין חבר ב-Yellow Zone עם החשבון הזה. ההרשמה חינם ולוקחת פחות משתי דקות.</div>
+      </div>
+      <div class="nl-acct">
+        <div class="nl-av" id="nlAv"></div>
+        <div class="nl-who"><b id="nlName"></b><span id="nlEmail" dir="ltr"></span></div>
+        <button type="button" class="nl-swap" onclick="heroNlBack()">חשבון אחר</button>
+      </div>
+      <button type="button" class="nl-primary" onclick="heroNlRegister()">להרשמה – השם והמייל יוזנו אוטומטית</button>
+      <div class="nl-member">
+        <p><b>כבר חברים?</b> כנראה נרשמתם עם מייל אחר.</p>
+        <button type="button" class="nl-outline" onclick="heroNlBack('code')">כניסה עם טלפון וקוד</button>
+        <button type="button" class="nl-link" onclick="heroNlBack('forgot')">לא זוכרים את הקוד? שלחו לי קוד חדש למייל</button>
       </div>
     </div>
   </div>
@@ -3306,6 +3419,18 @@ async function heroGoogleLogin(res) {
       return;
     }
     if (data.error === 'google_not_linked') {
+      // §545 — המסך "נראה שעוד לא נרשמתם" במקום הודעת-הכשל. אותה מדידה בדיוק כמו ב-fail()
+      // (loginFail google:notLinked + המייל, §407), בלי ⚠️ ובלי לפתוח את שדות הקוד.
+      // ההודעה הישנה למטה נשארת רק כנפילה-לאחור, אם המסך לא קיים בדף.
+      if (window.heroShowNotRegistered && document.getElementById('nlPanel')) {
+        window.logEvent && window.logEvent('loginFail', {
+          channel: 'google:notLinked', blockId: heroEnvTagAt(t0, api), ...(data.email ? { email: data.email } : {}),
+        });
+        window.hbBumpNetFail && window.hbBumpNetFail('notLinked');
+        heroGClearMsg();
+        window.heroShowNotRegistered('google', credential, data.email || '');
+        return;
+      }
       fail('notLinked',
         // §399ז — 🔑 **"לא מחובר אצלנו" נקרא כפסק-דין על החברות, ולא על הקישור.** דווח ע"י
         // המשתמש אחרי שראה את המסך: *"המשפט הזה מבלבל, יכולים להסיק מזה שהם לא רשומים
@@ -3347,7 +3472,7 @@ async function heroGoogleLogin(res) {
         // היחיד שחסר לו. הכפתור פותח את הפאנל שכבר קיים במודאל, בלי שום מנגנון חדש.
         '<button type="button" class="gs-login-act" onclick="heroOpenForgotFromGoogle()">' +
         'לא זוכרים את הקוד? שלחו לי קוד חדש למייל</button>' +
-        '<b>עדיין לא נרשמתם?</b> <a href="#" onclick="event.preventDefault();closeModal(\'loginOverlay\');openJoinModal();">הצטרפו כאן</a>',
+        '<b>עדיין לא נרשמתם?</b> <a href="#" onclick="event.preventDefault();heroNlRegister();">הצטרפו כאן</a>',
         // §407 — הפרמטר השלישי. זה **הענף היחיד** שבו יש אדם אמיתי בלי שום דרך אחרת לזהות
         // אותו: אין טלפון (במסלול הזה לא מקלידים), ואין memberId אם הוא לא רשום אצלנו.
         data.email || '');
@@ -3566,6 +3691,15 @@ async function heroAppleLogin(idToken) {
       // החברות ולא על הקישור. הנושא הוא **פעולה שלא נעשתה** ("עדיין לא חיברתם"), לא טענה
       // על מי שקורא. ושלושה סוגי אנשים נוחתים כאן — חבר מאושר שלא חיבר · מי שלא נרשם
       // מעולם · מי שממתין לאישור — ולכן ההודעה מנוסחת בתנאים ולא בהוראה אחת (§354).
+      // §545 — כמו בגוגל: המסך "נראה שעוד לא נרשמתם", אותה מדידה, וההודעה למטה רק כנפילה-לאחור.
+      if (window.heroShowNotRegistered && document.getElementById('nlPanel')) {
+        window.logEvent && window.logEvent('loginFail', {
+          channel: 'apple:notLinked', blockId: heroEnvTagAt(t0, api), ...(data.email ? { email: data.email } : {}),
+        });
+        window.hbBumpNetFail && window.hbBumpNetFail('notLinked');
+        window.heroShowNotRegistered('apple', idToken, data.email || '');
+        return;
+      }
       fail('notLinked',
         'עדיין לא חיברתם את חשבון ה-Apple הזה' + (data.email ? ' (<b>' + heroEsc(data.email) + '</b>)' : '') +
         ' לכניסה ל-Yellow Zone.' +
@@ -3578,7 +3712,7 @@ async function heroAppleLogin(idToken) {
         // §399ב — פעולה, לא הוראה: מי שלחץ על אפל עשה את זה כי הוא לא זוכר את הקוד.
         '<button type="button" class="as-login-act" onclick="heroOpenForgotFromGoogle()">' +
         'לא זוכרים את הקוד? שלחו לי קוד חדש למייל</button>' +
-        '<b>עדיין לא נרשמתם?</b> <a href="#" onclick="event.preventDefault();closeModal(\'loginOverlay\');openJoinModal();">הצטרפו כאן</a>',
+        '<b>עדיין לא נרשמתם?</b> <a href="#" onclick="event.preventDefault();heroNlRegister();">הצטרפו כאן</a>',
         // §407 — הענף היחיד שבו יש אדם אמיתי בלי שום דרך אחרת לזהות אותו.
         data.email || '');
       return;

@@ -2746,6 +2746,24 @@
     },
   });
 
+  // ── §545 — "נראה שעוד לא נרשמתם": החשבון שנבחר במסך הכניסה עובר לכאן ───────────────
+  // welcome.html שומר ב-sessionStorage את הטוקן של Google/Apple כשהחשבון לא שייך לאף חבר,
+  // ופותח את הטופס הזה (iframe באותו origin, אותו sessionStorage). כאן הוא נצרך פעם אחת
+  // ונמחק — פתיחה חוזרת של הטופס לא תמלא שוב. ⚠️ חשוף ל-window: כשה-iframe כבר נטען
+  // קודם, welcome קורא לזה ישירות (הטעינה כבר עברה).
+  window.hbApplyRegPrefill = function () {
+    let pf = null;
+    try { pf = JSON.parse(sessionStorage.getItem('yz_reg_prefill') || 'null'); sessionStorage.removeItem('yz_reg_prefill'); } catch (e) {}
+    if (!pf || !pf.token || Date.now() - (pf.at || 0) > 60 * 60 * 1000) return false;
+    const mod = pf.prov === 'apple' ? window.hbAppleSignup : window.hbGoogleSignup;
+    // חשבון מהספק השני שכבר מילא את הטופס קודם — יורד, אחרת שני טוקנים על מייל אחד
+    // ו-attach של הישן נכשל בשקט (המייל כבר לא שלו).
+    const other = pf.prov === 'apple' ? window.hbGoogleSignup : window.hbAppleSignup;
+    try { if (other && other.token && other.token()) other.clear(); } catch (e) {}
+    try { return !!(mod && mod.prefill && mod.prefill(pf.token)); }
+    catch (e) { console.error('reg prefill נכשל', e); return false; }
+  };
+
   // ── טיוטת טופס — נשמרת לפני מעבר לתקנון, כדי לא לאבד מה שמולא ──
   const DRAFT_KEY = '_hb_regDraft';
 
@@ -2816,6 +2834,8 @@
     if (d.verifyRoute && ROUTES[d.verifyRoute]) pickRoute(d.verifyRoute);
   }
   restoreRegDraft();
+  // §545 — אחרי שחזור הטיוטה ולא לפניו: השחזור כותב שם ומייל ישירות לשדות, והיה דורס את המילוי.
+  window.hbApplyRegPrefill();
 
   // ── EXPOSE TO INLINE HANDLERS ──
   window.handleSubscriber     = handleSubscriber;

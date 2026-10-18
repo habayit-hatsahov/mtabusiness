@@ -285,7 +285,10 @@
     lockName(true);
   }
 
-  function onAuthorized(res) {
+  // §545 — opts.prefill: הטוקן הגיע ממסך הכניסה, שכבר שלח את ה-authorizationCode ל-/apple-exchange
+  // ברגע ההרשאה (welcome.html, hbAppleExchange). כאן אין קוד, ולכן אין החלפה שנייה.
+  function onAuthorized(res, opts) {
+    var pre = !!(opts && opts.prefill);
     var raw = res && res.authorization && res.authorization.id_token;
     var p = raw ? decodeForDisplay(raw) : null;
     if (!p || !p.email) {
@@ -296,7 +299,7 @@
     var relay = isPrivateRelay(p);
 
     token = raw;
-    var exchanged = exchangeCode(res, raw);
+    var exchanged = pre ? null : exchangeCode(res, raw);
     // 🐛 **מונמך לאותיות קטנות, ובכוונה — כאן ולא רק בשרת.** הערך הזה נכתב לשדה, ומשם
     // לתוך `members.email`. השרת אמנם משווה שני הצדדים ב-toLowerCase ולכן הקישור עצמו
     // היה עובד — אבל הכתובת הייתה **נשמרת** עם אות גדולה, וזה כבר קרה כאן: כתובת עם
@@ -352,8 +355,11 @@
 
     // נרשם רק אחרי שהשדות מולאו בפועל, לא בלחיצה: לחיצה שנגמרה בביטול אצל אפל אינה
     // "שימוש", וספירה שלה הייתה מנפחת מונה שאמור למדוד הצלחה.
-    track('asUsed');
-    if (relay) track('asRelay');   // §460ב — עד אז הערוץ היה 'asPrivateEmail' (= נחסם)
+    track(pre ? 'asPrefill' : 'asUsed');
+    if (relay) track('asRelay');
+    // §545 — הבלוק עשוי להיות עדיין מוסתר (הכפתור טרם מוכן), והכיתוב חייב להיראות.
+    var hostEl = el(cfg.hostId);
+    if (hostEl) hostEl.style.display = '';   // §460ב — עד אז הערוץ היה 'asPrivateEmail' (= נחסם)
     if (typeof cfg.onFilled === 'function') {
       try { cfg.onFilled(p); } catch (e) { console.error('apple-signup: onFilled נכשל', e); }
     }
@@ -534,7 +540,7 @@
       setTimeout(function () { render(tries + 1); }, 150);
       return;
     }
-    if (mode === 'blocked') { host.style.display = 'none'; return; }
+    if (mode === 'blocked') { if (!token) host.style.display = 'none'; return; }
 
     if (mode === 'native') {
       // 🔑 **הכפתור כבר קיים** — `buildBlock` בנה אותו ב-`init`, והוא זהה לזה של ה-web.
@@ -542,7 +548,7 @@
       // ציור מחדש היה דורס את `.hb-as-cap`, ואיתו את כל הכיתובים ש-`onAuthorized` כותב.
       var nbtn = part('.hb-as-btn');
       if (nbtn && !nbtn._hbBound) { nbtn.addEventListener('click', onClickNative); nbtn._hbBound = true; }
-      setCap(defaultCap());
+      if (!token) setCap(defaultCap());   // §545 — לא לדרוס מילוי ממסך הכניסה
       host.style.display = '';
       track('asShown');
       return;
@@ -583,7 +589,7 @@
       }
       var btn = part('.hb-as-btn');
       if (btn && !btn._hbBound) { btn.addEventListener('click', onClick); btn._hbBound = true; }
-      setCap(defaultCap());
+      if (!token) setCap(defaultCap());   // §545
       host.style.display = '';
       track('asShown');
       return;
@@ -683,8 +689,24 @@
   }
 
   // ⚠️ החשיפה מיידית ובראש הקובץ-הנטען ולא בתוך callback — ר' §310/§312.
+  // §545 — מילוי מטוקן של מסך הכניסה. ⚠️ הטוקן של אפל פג אחרי 10 דקות; כשנשארו פחות מ-3
+  // ממלאים את המייל בלבד, בלי נעילה ובלי קישור (כמו הקלדה).
+  function prefill(idToken) {
+    if (!cfg) return false;
+    var p = idToken ? decodeForDisplay(idToken) : null;
+    if (!p || !p.email) return false;
+    if (!p.exp || p.exp * 1000 - Date.now() < 3 * 60 * 1000) {
+      setField(cfg.fields.email, String(p.email).trim().toLowerCase());
+      track('asPrefillExpired');
+      return true;
+    }
+    onAuthorized({ authorization: { id_token: idToken } }, { prefill: true });
+    return true;
+  }
+
   window.hbAppleSignup = {
     init: init,
+    prefill: prefill,
     render: function () { render(0); },
     attach: attach,
     token: function () { return token; },

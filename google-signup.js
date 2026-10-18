@@ -158,7 +158,9 @@
     if (e) e.focus();
   }
 
-  function onCredential(res) {
+  // §545 — opts.prefill: הטוקן הגיע ממסך הכניסה ("נראה שעוד לא נרשמתם", welcome.html) ולא
+  // מלחיצה כאן. אותו מילוי ואותו קישור בסוף ההרשמה; רק ערוץ המדידה שונה.
+  function onCredential(res, opts) {
     var raw = res && res.credential;
     var p = raw ? decodeForDisplay(raw) : null;
     if (!p || !p.email) {
@@ -179,7 +181,11 @@
     if (undo) undo.addEventListener('click', clearToken);
     // §411 — נרשם אחרי שהשדות כבר מולאו בפועל, לא בלחיצה: לחיצה שנגמרה בביטול אצל גוגל
     // אינה "שימוש", והספירה שלה הייתה מנפחת את המונה שאמור למדוד הצלחה.
-    track('gsUsed');
+    track(opts && opts.prefill ? 'gsPrefill' : 'gsUsed');
+    // §545 — במילוי ממסך הכניסה הבלוק עשוי להיות עדיין מוסתר (הכפתור טרם צויר), והכיתוב
+    // עם "זה לא החשבון שלי" חייב להיראות.
+    var hostEl = el(cfg.hostId);
+    if (hostEl) hostEl.style.display = '';
     if (typeof cfg.onFilled === 'function') {
       try { cfg.onFilled(p); } catch (e) { console.error('google-signup: onFilled נכשל', e); }
     }
@@ -205,6 +211,9 @@
     var btnHost = el('hbGsBtnHost');
     if (!host || !btnHost) return;
     if (btnHost.childElementCount) { host.style.display = ''; return; }   // כבר צויר
+    // §545 — ⚠️ מילוי ממסך הכניסה יכול לקרות **לפני** הציור. משם ואילך: לא לדרוס את
+    // הכיתוב "✅ המייל אומת" ב-defaultCap, ולא להסתיר את הבלוק (הוא נושא את "זה לא החשבון שלי").
+    var capFor = function () { if (!token) setCap(defaultCap()); };
     // הרוחב נגזר מהמכל בפועל: בתוך המודאל של welcome.html הטופס יושב ב-iframe של 343px,
     // וכפתור ברוחב קבוע היה חורג ממנו. 0 = המכל עדיין מוסתר (שלב 5 בטופס העסק) → 300.
     var w = Math.max(200, Math.min(400, host.clientWidth || 300));
@@ -214,12 +223,12 @@
       window.YZNativeGoogle.renderButton(btnHost, {
         label: 'הרשמה עם Google', width: w, onCredential: onCredential,
       });
-      setCap(defaultCap());
+      capFor();
       host.style.display = '';
       track('gsShown');
       return;
     }
-    if (gMode === 'blocked') {
+    if (gMode === 'blocked' && !token) {
       // ⚠️ **בלי track('gsBlocked') בכוונה:** הערוץ ההוא מודד "origin לא מאושר / גוגל לא
       // נטענה" (§411), וגרסת-אפליקציה ישנה היא סיבה אחרת לגמרי עם תיקון אחר.
       host.style.display = 'none';
@@ -233,7 +242,7 @@
         theme: 'filled_blue', size: 'large', shape: 'rectangular',
         text: 'signup_with', locale: 'he', width: w,
       });
-      setCap(defaultCap());
+      capFor();
       host.style.display = '';
       // §411 — נרשם רק כשהכפתור **באמת** על המסך (הבדיקה מתחת), ולא כשניסינו לצייר.
       // בלי ההבחנה הזאת "כמה ראו" היה סופר גם את מי שראה קו-מפריד ריק.
@@ -242,7 +251,7 @@
       // childElementCount ולא גובה — המכל עשוי להיות מוסתר לגמרי (שלב שעוד לא נפתח).
       setTimeout(function () {
         if (!btnHost.childElementCount) {
-          host.style.display = 'none';
+          if (!token) host.style.display = 'none';
           console.warn('google-signup: כפתור Google לא צויר (origin לא מאושר?) – הבלוק הוסתר');
           // 🔑 **זה האירוע החשוב מכולם.** עד §411 הכשל הזה היה `console.warn` בלבד, כלומר
           // בלתי-נראה לחלוטין — ולא הייתה שום דרך לדעת אם "37% נרשמו עם Google" פירושו
@@ -316,8 +325,28 @@
   }
 
   // ⚠️ החשיפה מיידית ובראש הקובץ-הנטען ולא בתוך callback — ר' §310/§312.
+  // §545 — מילוי מטוקן שכבר קיים (מסך הכניסה). ⚠️ טוקן שפג (גוגל: שעה) או עומד לפוג לא
+  // ננעל ולא נשמר: /google-attach היה נכשל בשקט, והמייל היה נעול בלי סיבה. אז ממלאים את
+  // השדות בלבד, כמו הקלדה, והכפתור הרגיל נשאר לחיבור.
+  function prefill(credential) {
+    if (!cfg) return false;
+    var p = credential ? decodeForDisplay(credential) : null;
+    if (!p || !p.email) return false;
+    if (!p.exp || p.exp * 1000 - Date.now() < 5 * 60 * 1000) {
+      var full = String(p.name || '').trim().split(/\s+/);
+      setField(cfg.fields.first, p.given_name || full[0] || '');
+      setField(cfg.fields.last, p.family_name || full.slice(1).join(' ') || '');
+      setField(cfg.fields.email, String(p.email).trim());
+      track('gsPrefillExpired');
+      return true;
+    }
+    onCredential({ credential: credential }, { prefill: true });
+    return true;
+  }
+
   window.hbGoogleSignup = {
     init: init,
+    prefill: prefill,
     render: function () { render(0); },
     attach: attach,
     token: function () { return token; },
