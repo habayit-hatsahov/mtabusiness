@@ -339,22 +339,13 @@ html.lp-checking body { visibility: hidden; }
   }
   window._lpRender = render;
 
-  // כל כפתור "להורדת האפליקציה" בדף: בטלפון — ישר לחנות של המכשיר; במחשב — גלילה לכרטיס עם ה-QR
-  document.addEventListener('click', (e) => {
-    const a = e.target.closest('[data-dl]');
-    if (!a) return;
-    e.preventDefault();
-    if (state.dev === 'ios') location.href = IOS;
-    else if (state.dev === 'android') location.href = PLAY;
-    else document.getElementById('dlCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  });
-  render();
-  // מודול החבר (למטה) קורא לזה כשהתברר שמחובר כאן אוהד רגיל
-  window.lpShowMember = () => { state.st = 'member'; render(); };
-
-  // ── pageView — כדי שמרכז הנתונים ימשיך לספור את דף הנחיתה (isLanding כולל 'landing', §492).
-  // REST כמו download.html; createdAt בשרת; רק מהדומיין החי.
-  if (/^(www\.)?yellowzone\.co\.il$/.test(location.hostname)) {
+  // ── מדידה: pageView בטעינה + landingBlockClick בכל לחיצה על חנות (§541) ─────────────────
+  // דרך הוורקר (event-send.js, §519); createdAt בשרת; רק מהדומיין החי. ?src=ig / fb / … נשמר בשניהם,
+  // כך שאפשר לראות לכל ערוץ גם כמה הגיעו וגם כמה מהם לחצו על חנות.
+  const LIVE = /^(www\.)?yellowzone\.co\.il$/.test(location.hostname);
+  const lpSrc = (new URLSearchParams(location.search).get('src') || '').replace(/[^\w-]/g, '').slice(0, 30);
+  function lpEvent(type, blockId) {
+    if (!LIVE) return;
     try {
       let sid = sessionStorage.getItem('hb_session_id');
       if (!sid) { sid = 'hb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); sessionStorage.setItem('hb_session_id', sid); }
@@ -362,16 +353,13 @@ html.lp-checking body { visibility: hidden; }
       for (let i = 0; i < 20; i++) id += A[Math.floor(Math.random() * 62)];
       const base = 'projects/habayit-hatsahov/databases/(default)/documents';
       const str = (v) => (v == null || v === '' ? { nullValue: null } : { stringValue: String(v) });
-      const lpSrc = (new URLSearchParams(location.search).get('src') || '').replace(/[^\w-]/g, '').slice(0, 30);
-      // §519 — דרך הוורקר (event-send.js), REST הישיר רק כנפילה
       const lpBody = { writes: [{
           update: { name: base + '/events/' + id, fields: {
-            type: str('pageView'), sessionId: str(sid), path: str(location.pathname.slice(0, 200)),
+            type: str(type), sessionId: str(sid), path: str(location.pathname.slice(0, 200)),
             referrer: str((document.referrer.split('/')[2] || '').slice(0, 50)),
-            device: str(innerWidth <= 700 ? 'mobile' : 'desktop'), channel: str('web'),
+            device: str(innerWidth <= 700 ? 'mobile' : 'desktop'), channel: str(type === 'pageView' ? 'web' : state.dev),
             memberId: str((localStorage.getItem('hb_memberId') || '').slice(0, 100)),
-            // ?src=ig / fb / … — מאיזה ערוץ הגיעו לדף הנחיתה (כמו storeLink:<src> ב-download.html)
-            blockId: str(lpSrc ? 'landing:' + lpSrc : ''),
+            blockId: str(blockId),
           } },
           updateTransforms: [{ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' }],
           currentDocument: { exists: false },
@@ -382,6 +370,27 @@ html.lp-checking body { visibility: hidden; }
       if (window.yzSendEvent) window.yzSendEvent(lpBody, lpRest); else lpRest();
     } catch (e) {}
   }
+  // blockId = store:<ios|android>:<src> – לאיזו חנות לחצו (≤40 תווים; החוקים והוורקר מתירים 50)
+  const storeClick = (os) => lpEvent('landingBlockClick', 'store:' + os + ':' + lpSrc);
+
+  // כל כפתור "להורדת האפליקציה" בדף: בטלפון — ישר לחנות של המכשיר; במחשב — גלילה לכרטיס עם ה-QR.
+  // כפתורי החנות עצמם (.store) הם קישורים רגילים – נספרים כאן, והניווט נשאר של הדפדפן (keepalive).
+  document.addEventListener('click', (e) => {
+    const st = e.target.closest('a.store');
+    if (st) { storeClick(st.href === IOS ? 'ios' : 'android'); return; }
+    const a = e.target.closest('[data-dl]');
+    if (!a) return;
+    e.preventDefault();
+    if (state.dev === 'ios') { storeClick('ios'); location.href = IOS; }
+    else if (state.dev === 'android') { storeClick('android'); location.href = PLAY; }
+    else document.getElementById('dlCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  render();
+  // מודול החבר (למטה) קורא לזה כשהתברר שמחובר כאן אוהד רגיל
+  window.lpShowMember = () => { state.st = 'member'; render(); };
+
+  // pageView — כדי שמרכז הנתונים ימשיך לספור את דף הנחיתה (isLanding כולל 'landing', §492)
+  lpEvent('pageView', lpSrc ? 'landing:' + lpSrc : '');
 })();
 </script>
 

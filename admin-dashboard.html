@@ -6599,12 +6599,14 @@ async function loadAppUsage() {
   if (auData || auError || auLoading) return;
   auLoading = true;
   try {
-    const [u, l] = await Promise.all([
+    const [u, l, lp] = await Promise.all([
       statsWithTimeout(getDocs(query(collection(db, 'events'), where('type', 'in', ['visit', 'engaged']), limit(AU_LIMIT)))),
       statsWithTimeout(getDocs(query(collection(db, 'events'), where('path', '==', '/download'), limit(AU_LIMIT)))),
+      // §541 — דף הבית של האתר: pageView (blockId landing:<src>) ולחיצות על חנות (landingBlockClick, store:<os>:<src>)
+      statsWithTimeout(getDocs(query(collection(db, 'events'), where('path', '==', '/landing.html'), limit(AU_LIMIT)))),
     ]);
     const map = (snap) => { const out = []; snap.forEach(d => { const e = d.data(); const at = toJsDate(e.createdAt); if (at) out.push({ at, type: e.type, channel: e.channel || '', blockId: e.blockId || '', memberId: e.memberId || '', sessionId: e.sessionId || '' }); }); return out; };
-    auData = { usage: map(u), links: map(l), truncated: u.size >= AU_LIMIT || l.size >= AU_LIMIT };
+    auData = { usage: map(u), links: map(l), landing: map(lp), truncated: u.size >= AU_LIMIT || l.size >= AU_LIMIT || lp.size >= AU_LIMIT };
   } catch (err) {
     console.error('loadAppUsage failed:', err);
     auError = statsErrLabel(err);
@@ -6665,7 +6667,18 @@ function auCompute() {
     if (f.registeredAtKnown && f.registeredAt) day(f.registeredAt)[os].signup++;
     if (f.approvedAt) day(f.approvedAt)[os].approved++;
   }
-  return { byDay, src, visits, miles, linkDesktop };
+  // §541 — דף הבית: כניסות ולחיצות על חנות לפי ?src=. בלי מנהלים ובלי src=test (אלא אם "כולל מנהלים ובדיקות").
+  const landing = [];
+  for (const e of auData.landing || []) {
+    if (e.memberId && admins.has(e.memberId)) continue;
+    let kind = '', os = '', s = '';
+    if (e.type === 'pageView') { kind = 'view'; s = e.blockId.startsWith('landing:') ? e.blockId.slice(8) : ''; }
+    else if (e.type === 'landingBlockClick' && e.blockId.startsWith('store:')) { kind = 'store'; const p = e.blockId.split(':'); os = p[1]; s = p.slice(2).join(':'); }
+    else continue;
+    if (s === 'test' && !auState.includeTest) continue;
+    landing.push({ at: e.at, kind, os, src: s, sid: e.sessionId });
+  }
+  return { byDay, src, visits, miles, linkDesktop, landing };
 }
 
 // ימי התקופה (offset 0 = נוכחית, 1 = קודמת), מהישן לחדש
@@ -6807,6 +6820,26 @@ function auSrcHtml(c) {
   return auHbarsHtml('src', keys.map(s => AU_SRC_NAME[s] || s), Object.fromEntries(AU_OS.map(o => [o, keys.map(s => agg[s][o])])), false);
 }
 
+// §541 — "מאיפה הגיעו לדף הבית": לכל מקור – כניסות (סשנים), כמה לחצו על App Store / Google Play, ואחוז הלוחצים.
+// סשן = hb_session_id; כמה טעינות או כמה לחיצות באותו סשן נספרות פעם אחת. מסנן המכשיר חל על הלחיצות (לפי החנות).
+function auLandingHtml(c) {
+  const rows = {};
+  const row = (s) => (rows[s] ||= { views: new Set(), ios: new Set(), android: new Set(), any: new Set() });
+  c.landing.forEach(e => {
+    if (!auInRange(e.at)) return;
+    const r = row(e.src);
+    if (e.kind === 'view') r.views.add(e.sid);
+    else if (e.os === 'ios' || e.os === 'android') { if (auState.os !== 'all' && auState.os !== e.os) return; r[e.os].add(e.sid); r.any.add(e.sid); }
+  });
+  const keys = Object.keys(rows).sort((a, b) => rows[b].views.size - rows[a].views.size);
+  if (!keys.length) return `<div class="au-empty">אין עדיין נתונים בתקופה הזאת</div>`;
+  const tot = { views: 0, ios: 0, android: 0, any: 0 };
+  const body = keys.map(k => { const r = rows[k]; ['views', 'ios', 'android', 'any'].forEach(f => (tot[f] += r[f].size));
+    return [AU_SRC_NAME[k] || k, auFmt(r.views.size), auFmt(r.ios.size), auFmt(r.android.size), r.views.size ? auPct(r.any.size, r.views.size) + '%' : '–']; });
+  if (keys.length > 1) body.push(['סה״כ', auFmt(tot.views), auFmt(tot.ios), auFmt(tot.android), tot.views ? auPct(tot.any, tot.views) + '%' : '–']);
+  return auTable(['מקור', 'כניסות', 'לחצו על App Store', 'לחצו על Google Play', 'לחצו על חנות'], body);
+}
+
 function auRegsHtml() {
   const AU_METHOD = { apple: 'Apple', google: 'Google', manual: 'מילוי ידני' };
   const list = MOCK_FANS.filter(f => (auState.includeTest || f.isAdmin !== true) && f.registeredAtKnown && auInRange(f.registeredAt) && (auState.os === 'all' || auOsOf(f.signupOs) === auState.os))
@@ -6843,6 +6876,7 @@ function appUsageHtml() {
         <div class="au-legend">${trendLegend}</div><div class="au-chart" id="auTrend"></div></div>
       <div class="au-card"><div class="au-card-h"><h3>חוזרים</h3>${tbl('ret')}</div><p class="au-sub">מכשירים שהורידו בתקופה או בחודש שנבחר – כמה חזרו אחר כך</p>${auReturnHtml(c)}</div>
       <div class="au-card"><div class="au-card-h"><h3>מאיפה הגיעו לקישור</h3>${tbl('src')}</div><p class="au-sub">yellowzone.co.il/download – לפי ?src= בקישור (fb / wa / ig)${c.linkDesktop ? ` · ${c.linkDesktop} כניסות ממחשב הועברו לדף הנחיתה` : ''}</p>${auSrcHtml(c)}</div>
+      <div class="au-card full"><div class="au-card-h"><h3>מאיפה הגיעו לדף הבית</h3></div><p class="au-sub">yellowzone.co.il – לפי ?src= בקישור (למשל ?src=ig בביו באינסטגרם), וכמה מהם לחצו על כפתור חנות. נמדד מ-18.10.2026; כניסות מלפני כן מופיעות כ"ישיר / לא מסומן", ולחיצות לא נמדדו.</p>${auLandingHtml(c)}</div>
       <div class="au-card full"><div class="au-card-h"><h3>נרשמים בתקופה</h3></div><p class="au-sub">מאיזה מכשיר, מהאפליקציה או מהאתר, ובאיזו שיטה. לחיצה פותחת את הכרטיס.</p>${auRegsHtml()}</div>
     </div>
     <p class="au-foot">"הורדות" = מכשיר שפתח את האפליקציה בפעם הראשונה (מדידה שלנו, נאספת מ-${AU_SINCE_LABEL}) – לא מספר ההורדות בחנות. בשבועות הראשונים נספרים בה גם מכשירים שהאפליקציה כבר הייתה מותקנת בהם, ומחיקה והתקנה מחדש נספרת שוב.
