@@ -82,7 +82,7 @@ export async function handleUploadBizMedia(request, env) {
     const proofPath = `members/proofs/${bizId}_${crypto.randomUUID()}`;
     tasks.push(
       fanPhoto.arrayBuffer()
-        .then((bytes) => uploadToFirebaseStorage(env, googleToken, proofPath, bytes, fanPhoto.type || 'image/jpeg'))
+        .then((bytes) => uploadToFirebaseStorage(env, googleToken, proofPath, bytes, fanPhoto.type || 'image/jpeg', { withToken: true }))   // §549
         .then((url) => firestorePatch(env, googleToken, `bizProofs/${bizId}`, { photoProofUrl: url, at: new Date() }))
         .catch((e) => { console.error('fan photo upload failed:', e.message); failed.push('fanPhoto'); })
     );
