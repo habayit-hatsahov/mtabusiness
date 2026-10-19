@@ -63,7 +63,11 @@
     // 🔑 **כאן ולא ב-home.html:** זה השער היחיד — `updatePushMenuItem` מסתיר את הפריט כשהוא
     // false, ו-`enableNativePush` אינו מנסה להירשם. אנדרואיד **אינו מושפע** (§420ט, עובד).
     // ⚠️ **להסרה רק יחד עם שלושת החלקים למעלה** — ר' §457 ב-PROJECT_CONTEXT.
-    if (platform() === 'ios') return false;
+    // ── §558 — שלושת החלקים נבנו (AppDelegate + aps-environment + Firebase Messaging) ──────
+    // אבל רק בבנייה החדשה. הבנייה שבחנות (1.0) עדיין בלעדיהם, והאתר החי משרת את שתיהן. לכן
+    // השער לפי סימן שהבנייה החדשה מוסיפה ל-User-Agent (`ios.appendUserAgent` ב-capacitor.config.json):
+    // `YZPush/1`. בלעדיו – כמו קודם, בלי כפתור. כך אפשר לפרוס את האתר לפני שהגרסה מאושרת.
+    if (platform() === 'ios' && !/YZPush\/1/.test((typeof navigator !== 'undefined' && navigator.userAgent) || '')) return false;
     return true;
   }
 

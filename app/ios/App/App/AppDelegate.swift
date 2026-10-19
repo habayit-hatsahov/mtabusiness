@@ -1,6 +1,8 @@
 import UIKit
 import WebKit
 import Capacitor
+import FirebaseCore
+import FirebaseMessaging
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -8,8 +10,37 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // §457 — Firebase רק כשקובץ ההגדרות באמת בחבילה: configure() בלעדיו מפיל את האפליקציה בפתיחה.
+        if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
+            FirebaseApp.configure()
+        }
         return true
+    }
+
+    // ── §457 — פוש באייפון ────────────────────────────────────────────────────────────────
+    // אפל נותנת טוקן APNs (בייטים), אבל הוורקר שולח דרך FCM (fcm.js) – כמו באנדרואיד. לכן
+    // ממירים כאן ל-טוקן FCM ומעבירים אותו לתוסף כמחרוזת: התוסף מקבל גם String ויורה איתו את
+    // האירוע `registration` שהאתר (native-push.js) כבר מחכה לו. בלי שתי הפונקציות האלה
+    // האירוע לא נורה כלל וההרשמה נגמרת ב-timeout.
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        guard FirebaseApp.app() != nil else {
+            NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications,
+                                            object: NSError(domain: "YZPush", code: 1, userInfo: [NSLocalizedDescriptionKey: "firebase_not_configured"]))
+            return
+        }
+        Messaging.messaging().apnsToken = deviceToken
+        Messaging.messaging().token { token, error in
+            if let token = token, !token.isEmpty {
+                NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: token)
+            } else {
+                NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications,
+                                                object: error ?? NSError(domain: "YZPush", code: 2, userInfo: [NSLocalizedDescriptionKey: "empty_fcm_token"]))
+            }
+        }
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

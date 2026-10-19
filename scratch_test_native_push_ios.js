@@ -17,7 +17,7 @@ function check(name, cond, detail) {
   else { fail++; console.log('  ✗ ' + name + (detail !== undefined ? '  — ' + detail : '')); }
 }
 
-function load(platform) {
+function load(platform, ua) {
   const calls = [];
   const store = {};
   const win = {
@@ -35,7 +35,7 @@ function load(platform) {
         return { remove() {} }; },
     };
   }
-  const ctx = { window: win, localStorage: win.localStorage, setTimeout, clearTimeout, console, Promise };
+  const ctx = { window: win, navigator: { userAgent: ua || '' }, localStorage: win.localStorage, setTimeout, clearTimeout, console, Promise };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
   return { api: win.YZNativePush, calls };
@@ -47,8 +47,20 @@ function load(platform) {
   check('🔑 iOS → available() = false', ios.api.available() === false);
   const r = await ios.api.register();
   check('iOS → register() מחזיר no_bridge', r.ok === false && r.reason === 'no_bridge', JSON.stringify(r));
-  check('🔑 iOS → אף קריאה לתוסף (לא נשרפה בקשת-הרשאה)', ios.calls.length === 0, ios.calls.join(','));
+  // מאזיני הלחיצה/החזית (§501) נרשמים בכל טעינה ואינם בקשה – נספרות רק קריאות לתוסף
+  const iosReq = ios.calls.filter((c) => !c.startsWith('listen:pushNotification'));
+  check('🔑 iOS → אף קריאה לתוסף (לא נשרפה בקשת-הרשאה)', iosReq.length === 0, iosReq.join(','));
   check('iOS → permissionState = unavailable', (await ios.api.permissionState()) === 'unavailable');
+
+  // §558 — בנייה חדשה (YZPush/1 ב-User-Agent): באייפון נפתח ונרשם
+  const ios2 = load('ios', 'Mozilla/5.0 (iPhone) AppleWebKit YellowZoneApp YZPush/1');
+  check('🔑 iOS עם YZPush/1 → available() = true', ios2.api.available() === true);
+  const r2 = await ios2.api.register();
+  check('iOS עם YZPush/1 → register() מחזיר טוקן', r2.ok === true && r2.token === 'tok-ios' && r2.platform === 'ios', JSON.stringify(r2));
+  const ios3 = load('ios', 'Mozilla/5.0 (iPhone) AppleWebKit YellowZoneApp');
+  check('🔑 iOS בנייה ישנה (בלי YZPush) → available() = false', ios3.api.available() === false);
+  const and2 = load('android', 'Mozilla/5.0 (Linux; Android 14) YellowZoneApp YZSplash/2');
+  check('אנדרואיד עם UA אמיתי → available() = true', and2.api.available() === true);
 
   const and = load('android');
   check('אנדרואיד → available() = true (ללא שינוי)', and.api.available() === true);

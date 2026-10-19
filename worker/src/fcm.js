@@ -48,6 +48,12 @@ export async function sendFcmToToken(env, accessToken, token, { title, body, dat
           ...(link ? { click_action: link } : {}),
         },
       },
+      // §558 — אייפון (טוקן FCM מ-AppDelegate): עדיפות מיידית + צליל. FCM מתעלם מהבלוק הזה
+      // בטוקן של אנדרואיד, ולהפך – כך ששליחה אחת משרתת את שתי הפלטפורמות.
+      apns: {
+        headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
+        payload: { aps: { sound: 'default' } },
+      },
     },
   };
 
