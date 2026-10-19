@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>דמו – הורדות לפי מקור</title>
+<!-- §555 — דמו עצמאי לכרטיס "הורדות לפי מקור" במסך "אפליקציה ושימוש" (admin-dashboard.html).
+     מספרים לדוגמה בלבד, בלי Firestore ובלי מדידה. אותם טוקנים כמו .au-* במרכז הניהול.
+     המקור האמיתי (§554): אפל – App Downloads Detailed ← Campaign; גוגל – store_performance traffic_source ← UTM source. -->
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root { --au-ios: #2a78d6; --au-android: #eda100; --au-other: #9AA3B5; --au-line: #E6E6DE;
+    --au-ink: #0A2A66; --au-ink2: #4F5E7E; --au-ink3: #8592AD; --au-chip: #F1F1EA; --bg: #F7F7F3; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); font-family: 'Heebo', sans-serif; color: var(--au-ink); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 20px 16px 48px; }
+  .demo { background: #FFF6CC; border: 1px solid #F0D96B; color: #7A5B00; border-radius: 12px; padding: 9px 13px; font-size: 13px; font-weight: 700; margin-bottom: 16px; }
+  .card { background: #fff; border: 1px solid var(--au-line); border-radius: 16px; padding: 16px; }
+  .h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .h h3 { font-size: 16px; font-weight: 900; margin: 0; }
+  .upd { margin-inline-start: auto; font-size: 12px; color: var(--au-ink3); }
+  .sub { font-size: 13px; color: var(--au-ink2); margin: 4px 0 12px; line-height: 1.6; }
+  .filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .seg { display: inline-flex; background: var(--au-chip); border-radius: 12px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: none; font: inherit; font-size: 13px; font-weight: 700; color: var(--au-ink2); padding: 6px 12px; border-radius: 9px; cursor: pointer; }
+  .seg button.on { background: #fff; color: var(--au-ink); box-shadow: 0 1px 3px rgba(10,42,102,.12); }
+  .hero { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .hero b { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .hero span { color: var(--au-ink2); font-size: 13.5px; }
+  .legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--au-ink2); margin: 10px 0 12px; flex-wrap: wrap; }
+  .key { width: 10px; height: 10px; border-radius: 3px; display: inline-block; vertical-align: -1px; margin-inline-end: 5px; }
+  .grp { font-size: 12px; font-weight: 800; color: var(--au-ink3); margin: 14px 0 8px; letter-spacing: .02em; }
+  .row { display: grid; grid-template-columns: 150px 1fr 92px; gap: 12px; align-items: center; margin-bottom: 10px; }
+  .name { font-size: 13.5px; font-weight: 800; }
+  .name small { display: block; font-size: 11.5px; font-weight: 500; color: var(--au-ink3); }
+  .track { height: 20px; display: flex; gap: 2px; }
+  .fill { height: 100%; border-radius: 4px; min-width: 2px; }
+  .val { text-align: left; font-variant-numeric: tabular-nums; }
+  .val b { font-size: 16px; font-weight: 900; }
+  .val span { display: block; font-size: 11.5px; color: var(--au-ink3); }
+  .foot { border-top: 1px solid var(--au-line); margin-top: 14px; padding-top: 10px; font-size: 12px; color: var(--au-ink3); line-height: 1.7; }
+  @media (max-width: 600px) {
+    .row { grid-template-columns: 1fr 70px; gap: 4px 10px; }
+    .row .name { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="demo">דמו – המספרים לדוגמה. אחרי אישור: מתעדכן לבד כל יום מ-App Store Connect ומ-Play Console.</div>
+
+  <div class="card">
+    <div class="h"><h3>הורדות לפי מקור</h3><span class="upd" id="upd"></span></div>
+    <p class="sub">מאיפה הגיעו מי שהורידו את האפליקציה – לפי הקישור שעליו לחצו (<code>?src=</code>). הנתונים מהחנויות עצמן, באיחור של יום-יומיים.</p>
+
+    <div class="filters">
+      <div class="seg" id="range"><button data-v="7">7 ימים</button><button data-v="30" class="on">30 יום</button><button data-v="90">90 יום</button></div>
+      <div class="seg" id="dev"><button data-v="all" class="on">הכל</button><button data-v="ios">אייפון</button><button data-v="android">אנדרואיד</button></div>
+    </div>
+
+    <div class="hero" id="hero"></div>
+    <div class="legend"><span><i class="key" style="background:var(--au-ios)"></i>אייפון (App Store)</span><span><i class="key" style="background:var(--au-android)"></i>אנדרואיד (Google Play)</span></div>
+
+    <div id="rows"></div>
+
+    <div class="foot">
+      <b>מה נספר:</b> הורדה ראשונה של האפליקציה, לפי החנות. <b>לא נספר:</b> מי מהם נרשם – החנויות לא מוסרות את זה.<br>
+      <b>"לא מזוהה":</b> החנויות מסתירות מקור עם מעט הורדות (פרטיות), ואפל מציגה קמפיין רק אחרי 5 הורדות ממנו.
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  // מספרים לדוגמה ל-30 יום; 7/90 – קנה מידה (בדמו בלבד).
+  const DATA = [
+    { grp: 'הקישורים שלנו', src: 'ig', name: 'ביו באינסטגרם', ios: 9, android: 6 },
+    { grp: 'הקישורים שלנו', src: 'fb', name: 'עמוד הפייסבוק', ios: 3, android: 5 },
+    { grp: 'הקישורים שלנו', src: 'fbpost', name: 'פוסט בפייסבוק', ios: 4, android: 7 },
+    { grp: 'הקישורים שלנו', src: 'igstory', name: 'סטורי באינסטגרם', ios: 5, android: 2 },
+    { grp: 'הקישורים שלנו', src: 'wa', name: 'וואטסאפ', ios: 6, android: 4 },
+    { grp: 'הקישורים שלנו', src: 'share', name: 'שיתוף מהאפליקציה', hint: '"הזמינו חברים"', ios: 3, android: 3 },
+    { grp: 'הקישורים שלנו', src: 'bizshare', name: 'שיתוף עסק', ios: 2, android: 1 },
+    { grp: 'הקישורים שלנו', src: 'mail', name: 'מיילים', ios: 1, android: 2 },
+    { grp: 'הקישורים שלנו', src: 'print', name: 'QR מודפס', ios: 0, android: 1 },
+    { grp: 'בלי קישור שלנו', src: '', name: 'חיפוש בחנות / ישיר', hint: 'חיפשו "Yellow Zone" בחנות', ios: 11, android: 8, other: true },
+    { grp: 'בלי קישור שלנו', src: '?', name: 'לא מזוהה', hint: 'מוסתר ע"י החנות', ios: 4, android: 3, other: true },
+  ];
+  const SCALE = { 7: 0.27, 30: 1, 90: 2.6 };
+  const state = { range: 30, dev: 'all' };
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function render() {
+    const k = SCALE[state.range];
+    const rows = DATA.map((d) => {
+      const ios = state.dev === 'android' ? 0 : Math.round(d.ios * k);
+      const android = state.dev === 'ios' ? 0 : Math.round(d.android * k);
+      return { ...d, ios, android, total: ios + android };
+    });
+    const all = rows.reduce((a, r) => a + r.total, 0);
+    const ours = rows.filter((r) => !r.other).reduce((a, r) => a + r.total, 0);
+    const max = Math.max(1, ...rows.map((r) => r.total));
+    document.getElementById('hero').innerHTML = `<b>${ours}</b><span>הורדות מהקישורים שלנו, מתוך ${all} הורדות בסך הכל (${all ? Math.round(ours / all * 100) : 0}%)</span>`;
+    let lastGrp = '';
+    document.getElementById('rows').innerHTML = rows
+      .filter((r) => r.other || r.total > 0)
+      .sort((a, b) => (!!a.other - !!b.other) || (b.total - a.total))
+      .map((r) => {
+        const g = r.grp !== lastGrp ? `<div class="grp">${esc(r.grp)}</div>` : ''; lastGrp = r.grp;
+        const w = (n) => (n / max * 100).toFixed(1) + '%';
+        const bar = (r.ios ? `<div class="fill" style="width:${w(r.ios)};background:${r.other ? 'var(--au-other)' : 'var(--au-ios)'}"></div>` : '')
+          + (r.android ? `<div class="fill" style="width:${w(r.android)};background:${r.other ? '#C5CBD8' : 'var(--au-android)'}"></div>` : '');
+        const dot = (c) => `<i class="key" style="background:${c};width:7px;height:7px;margin-inline-end:3px"></i>`;
+        const split = state.dev === 'all' ? `<span>${dot(r.other ? 'var(--au-other)' : 'var(--au-ios)')}${r.ios} &nbsp;${dot(r.other ? '#C5CBD8' : 'var(--au-android)')}${r.android}</span>` : '';
+        return g + `<div class="row"><div class="name">${esc(r.name)}${r.hint ? `<small>${esc(r.hint)}</small>` : ''}</div>
+          <div class="track">${bar}</div><div class="val"><b>${r.total}</b>${split}</div></div>`;
+      }).join('');
+    const d = new Date(Date.now() - 2 * 864e5);
+    document.getElementById('upd').textContent = 'נתונים עד ' + d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' }) + ' · עודכן היום 06:00';
+  }
+  for (const id of ['range', 'dev']) {
+    document.getElementById(id).addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      document.querySelectorAll('#' + id + ' button').forEach((x) => x.classList.toggle('on', x === b));
+      state[id] = id === 'range' ? +b.dataset.v : b.dataset.v;
+      render();
+    });
+  }
+  render();
+})();
+</script>
+</body>
+</html>
