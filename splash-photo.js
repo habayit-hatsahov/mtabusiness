@@ -93,6 +93,10 @@
     return;
   }
 
+  // §557ב (רמי: "אני לא רוצה שזה יקרה בכלל") – דף-מעבר (index, ו-welcome כשבדרך ל-home) לא מציג את התמונה:
+  // השכבה נשארת לבנה והתמונה רק נטענת ברקע. היא מופיעה פעם אחת, בדף האחרון, וממשיכה בו עד הסוף –
+  // כך אין מעבר-דף באמצע התמונה ואין מה שיקפוץ. הדף מסמן window.YZ_SPLASH_HOLD = true לפני הסקריפט.
+  var hold = window.YZ_SPLASH_HOLD === true;
   var shownAt = +ss(SS_T0) || 0, ready = false, gone = false;
   // §557 (רמי, סרטון 19.10: "קפיצה אחת") – במעבר index → welcome → home כל דף בונה את השכבה מחדש, והתמונה
   // מצוירת רק אחרי שהיא נטענת ומפוענחת שוב → ~0.3 שנ' לבן באמצע. התיקון: בדף הראשון שומרים עותק זעיר של
@@ -112,7 +116,7 @@
     img.decoding = 'sync';                   // אם התמונה כבר בזיכרון – לצייר אותה כבר בציור הראשון
   }
   function show() {
-    if (gone || ready && !shownAt) return;   // הדף כבר מוכן והתמונה עוד לא הופיעה – לא מציגים לרגע
+    if (hold || gone || ready && !shownAt) return;   // הדף כבר מוכן והתמונה עוד לא הופיעה – לא מציגים לרגע
     if (!shownAt) {
       shownAt = Date.now(); ss(SS_T0, String(shownAt)); img.style.transition = 'opacity .25s ease';
       saveThumb();
