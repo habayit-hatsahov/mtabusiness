@@ -26,6 +26,7 @@ import { handleLinkBizOwner, handleBizShortTitle } from './bizowner.js';
 import { handleEvent } from './events.js';
 import { handleBizRegFailed } from './bizregfail.js';
 import { APPCHECK_PATHS, sampleAppCheck } from './appcheck.js';
+import { runStoreDownloadsSync } from './storedl.js';
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -179,6 +180,12 @@ export default {
       if (request.method === 'POST' && url.pathname === '/admin-apple-revoke') {
         return json(await handleAdminAppleRevoke(await request.json(), env), env, request);
       }
+      // §556 — "רענון עכשיו" במסך "הורדות לפי מקור". מאומת כמנהל.
+      if (request.method === 'POST' && url.pathname === '/admin-store-sync') {
+        const { idToken } = await request.json();
+        try { await verifyAdminIdToken(env, idToken); } catch (e) { return json({ error: 'not_admin' }, env, request, 403); }
+        return json({ ok: true, status: await runStoreDownloadsSync(env) }, env, request);
+      }
       // §508 — "השבוע אצלך": הנתונים השבועיים של העסק, לבעלים בלבד.
       if (request.method === 'POST' && url.pathname === '/biz-weekly-stats') {
         return json(await handleBizWeeklyStats(await request.json(), env), env, request);
@@ -241,6 +248,8 @@ export default {
   async scheduled(event, env, ctx) {
     if (event && event.cron === PURGE_CRON) {
       ctx.waitUntil(runDeletionLogPurge(env));
+      // §556 – הורדות לפי מקור מהחנויות, פעם ביום על אותו טריגר. כשל כאן לא נוגע בניקוי.
+      ctx.waitUntil(runStoreDownloadsSync(env).then((r) => console.log('storeDownloads', JSON.stringify(r))).catch((e) => console.error('storeDownloads failed', String(e))));
       return;
     }
     ctx.waitUntil(runEmailSweeps(env));

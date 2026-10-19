@@ -2374,6 +2374,19 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
   color: var(--au-ink); }
 .au-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
 .au-top h2 { font-size: 22px; font-weight: 900; margin: 0; }
+/* §556 — לשוניות "שימוש" / "הורדות לפי מקור" + שורות המקורות */
+.au-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--au-line); margin: 8px 0 4px; }
+.au-tabs button { border: 0; background: none; font: inherit; font-size: 14px; font-weight: 800; color: var(--au-ink2); padding: 9px 14px; border-bottom: 3px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.au-tabs button.on { color: var(--au-ink); border-bottom-color: #FFD400; }
+.sd-status { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+.sd-grp { font-size: 12px; font-weight: 800; color: var(--au-ink3); margin: 14px 0 8px; }
+.sd-row { display: grid; grid-template-columns: 170px 1fr 96px; gap: 12px; align-items: center; margin-bottom: 10px; }
+.sd-name { font-size: 13.5px; font-weight: 800; }
+.sd-name small { display: block; font-size: 11.5px; font-weight: 500; color: var(--au-ink3); }
+.sd-val { text-align: left; font-variant-numeric: tabular-nums; }
+.sd-val b { font-size: 16px; font-weight: 900; }
+.sd-val span { display: block; font-size: 11.5px; color: var(--au-ink3); }
+@media (max-width: 600px) { .sd-row { grid-template-columns: 1fr 76px; gap: 4px 10px; } .sd-row .sd-name { grid-column: 1 / -1; } }
 .au-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 10px 0 12px; }
 .au-seg { display: inline-flex; background: var(--au-chip); border-radius: 12px; padding: 3px; gap: 2px; }
 .au-seg button { border: 0; background: transparent; color: var(--au-ink2); font: inherit; font-size: 14px; font-weight: 700;
@@ -6594,7 +6607,7 @@ const AU_LIMIT = 10000;
 const AU_SINCE_LABEL = '11.10.2026';
 let auData = null, auError = null, auLoading = false;
 // includeTest — §488ב: רמי חיפש את הפתיחה שלו ולא מצא, כי מנהלים ו-src=test מוסתרים. המתג מציג אותם.
-const auState = { range: 7, os: 'all', metric: 'active', tables: {}, includeTest: false, retMonth: '' };
+const auState = { range: 7, os: 'all', metric: 'active', tables: {}, includeTest: false, retMonth: '', view: 'usage' };
 const AU_OS = ['ios', 'android', 'other'];
 const AU_OS_NAME = { ios: 'אייפון', android: 'אנדרואיד', other: 'מחשב / לא נמדד' };
 const AU_COLOR = { ios: 'var(--au-ios)', android: 'var(--au-android)', other: 'var(--au-other)' };
@@ -6955,10 +6968,103 @@ function auRegsHtml() {
   }).join('');
 }
 
+// ══ §556 — לשונית "הורדות לפי מקור" (רמי: "לשונית נפרדת – הנתונים בנפרד מהפעולות") ═══════════════════
+// מקור: storeDownloads/{YYYY-MM-DD} = { date, ios: {src: n}, android: {src: n} } + _status, נכתב ע"י הוורקר
+// (worker/src/storedl.js) פעם ביום ובכפתור "רענון עכשיו". הדמו שאושר: downloads-by-source-demo.html (§555).
+let sdData = null, sdError = null, sdLoading = false, sdSyncing = false, sdSyncMsg = '';
+const sdState = { range: 30, dev: 'all' };
+const SD_NAME = { direct: 'חיפוש בחנות / ישיר', hidden: 'לא מזוהה', bizshare: 'שיתוף עסק', share: 'שיתוף מהאפליקציה', approval: 'הודעות אישור' };
+const SD_HINT = { direct: 'חיפשו בחנות או הגיעו בלי קישור שלנו', hidden: 'החנות מסתירה מקור עם מעט הורדות', share: '"הזמינו חברים"' };
+const sdYmd = (d) => d.toISOString().slice(0, 10);
+async function loadStoreDl(force) {
+  if (!force && (sdData || sdError || sdLoading)) return;
+  sdLoading = true;
+  try {
+    const start = sdYmd(new Date(Date.now() - 100 * 864e5));
+    const [st, q] = await Promise.all([
+      statsWithTimeout(getDoc(doc(db, 'storeDownloads', '_status'))),
+      statsWithTimeout(getDocs(query(collection(db, 'storeDownloads'), where('date', '>=', start)))),
+    ]);
+    sdData = { status: st.exists() ? st.data() : {}, days: q.docs.map((d) => d.data()) };
+    sdError = null;
+  } catch (e) { sdError = e.message || String(e); }
+  finally { sdLoading = false; if (activeTab === APP_USAGE_KEY && auState.view === 'stores') renderMain(); }
+}
+window.sdSet = function (k, v) { sdState[k] = k === 'range' ? +v : v; renderMain(); };
+window.sdSyncNow = async function () {
+  if (sdSyncing) return;
+  sdSyncing = true; sdSyncMsg = ''; renderMain();
+  try {
+    const idToken = await auth.currentUser.getIdToken();
+    const r = await (await hbApiFetch('/admin-store-sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) })).json();
+    sdSyncMsg = r.ok ? '✓ עודכן מהחנויות' : '⚠️ ' + (r.error || 'הרענון נכשל');
+  } catch (e) { sdSyncMsg = '⚠️ הרענון נכשל: ' + (e.message || e); }
+  sdSyncing = false;
+  await loadStoreDl(true);
+};
+function sdStoreLine(name, s) {
+  if (!s || !s.at) return `<span>${name}: עוד לא נבדק</span>`;
+  const at = s.at.toDate ? s.at.toDate() : new Date(s.at);
+  const when = at.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' }) + ' ' + at.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  if (!s.ok) {
+    const e = String(s.error || '');
+    const why = /play 403/.test(e) ? 'גוגל עוד לא פתחה גישה לדוחות (עד יום אחרי ההזמנה)' : /asc 40[13]/.test(e) ? 'אפל דחתה את המפתח' : e.slice(0, 80);
+    return `<span style="color:var(--au-bad)">${name}: ⚠️ ${esc(why)} · נבדק ${when}</span>`;
+  }
+  const thr = s.through ? 'נתונים עד ' + s.through.slice(8, 10) + '.' + s.through.slice(5, 7) : (s.note === 'report_not_ready' ? 'מכינה את הדוח הראשון (יום-יומיים)' : 'עוד אין נתונים');
+  return `<span>${name}: ${thr} · נבדק ${when}</span>`;
+}
+function storeDlHtml() {
+  const seg = (k, opts) => `<div class="au-seg" role="group">${opts.map(([v, l, os]) => `<button type="button" class="${String(sdState[k]) === String(v) ? 'on' : ''}" onclick="sdSet('${k}','${v}')">${os ? `<span class="au-key" style="background:${AU_COLOR[os]}"></span>` : ''}${l}</button>`).join('')}</div>`;
+  const filters = `<div class="au-filters">${seg('range', [[7, '7 ימים'], [30, '30 ימים'], [90, '90 ימים']])}${seg('dev', [['all', 'הכול'], ['ios', 'אייפון', 'ios'], ['android', 'אנדרואיד', 'android']])}
+    <button class="au-as-table" onclick="sdSyncNow()" ${sdSyncing ? 'disabled' : ''}>${sdSyncing ? 'מעדכן מהחנויות…' : '↻ רענון עכשיו'}</button>${sdSyncMsg ? `<span class="au-note">${esc(sdSyncMsg)}</span>` : ''}</div>`;
+  const card = (body) => `${filters}<div class="au-card"><div class="au-card-h"><h3>הורדות לפי מקור</h3></div>
+    <p class="au-sub">מאיפה הגיעו מי שהורידו את האפליקציה – לפי הקישור שעליו לחצו (<code>?src=</code>). הנתונים מהחנויות עצמן, באיחור של יום-יומיים.</p>${body}</div>`;
+  if (sdError) return card(`<div class="au-empty">הטעינה נכשלה: ${esc(sdError)} · <button class="au-as-table" onclick="loadStoreDl(true)">לנסות שוב</button></div>`);
+  if (!sdData) return card('<div class="au-empty">טוען נתונים…</div>');
+  const st = sdData.status || {};
+  const status = `<div class="au-note sd-status">${sdStoreLine('אפל', st.apple)}${sdStoreLine('גוגל', st.google)}</div>`;
+  const from = sdYmd(new Date(Date.now() - sdState.range * 864e5));
+  const tot = {};
+  for (const d of sdData.days) {
+    if (!d.date || d.date < from) continue;
+    for (const os of ['ios', 'android']) {
+      if (sdState.dev !== 'all' && sdState.dev !== os) continue;
+      for (const [src, n] of Object.entries(d[os] || {})) { const t = tot[src] || (tot[src] = { ios: 0, android: 0 }); t[os] += Number(n) || 0; }
+    }
+  }
+  const rows = Object.entries(tot).map(([src, t]) => ({ src, ...t, total: t.ios + t.android, other: src === 'direct' || src === 'hidden' })).filter((r) => r.total > 0);
+  if (!rows.length) return card(status + '<div class="au-empty">עוד אין הורדות בתקופה הזאת. הנתונים מתעדכנים כל יום בבוקר – ואפשר ללחוץ "רענון עכשיו".</div>');
+  const all = rows.reduce((a, r) => a + r.total, 0), ours = rows.filter((r) => !r.other).reduce((a, r) => a + r.total, 0);
+  const max = Math.max(...rows.map((r) => r.total));
+  rows.sort((a, b) => (a.other - b.other) || (b.total - a.total));
+  let grp = '';
+  const list = rows.map((r) => {
+    const g = (r.other ? 'בלי קישור שלנו' : 'הקישורים שלנו');
+    const head = g !== grp ? `<div class="sd-grp">${g}</div>` : ''; grp = g;
+    const w = (n) => (n / max * 100).toFixed(1) + '%';
+    const ci = r.other ? 'var(--au-other)' : AU_COLOR.ios, ca = r.other ? '#C5CBD8' : AU_COLOR.android;
+    const dot = (c) => `<span class="au-key" style="background:${c};width:7px;height:7px"></span>`;
+    return head + `<div class="sd-row"><div class="sd-name">${esc(SD_NAME[r.src] || AU_SRC_NAME[r.src] || r.src)}${SD_HINT[r.src] ? `<small>${esc(SD_HINT[r.src])}</small>` : ''}</div>
+      <div class="au-hb-track">${r.ios ? `<div class="au-seg-fill" style="width:${w(r.ios)};background:${ci}"></div>` : ''}${r.android ? `<div class="au-seg-fill" style="width:${w(r.android)};background:${ca}"></div>` : ''}</div>
+      <div class="sd-val"><b>${r.total}</b>${sdState.dev === 'all' ? `<span>${dot(ci)} ${r.ios} &nbsp;${dot(ca)} ${r.android}</span>` : ''}</div></div>`;
+  }).join('');
+  return card(`${status}<div class="au-hero"><b>${ours}</b><span>הורדות מהקישורים שלנו, מתוך ${all} הורדות בסך הכל (${Math.round(ours / all * 100)}%)</span></div>
+    <div class="au-legend"><span><span class="au-key" style="background:${AU_COLOR.ios}"></span>אייפון (App Store)</span><span><span class="au-key" style="background:${AU_COLOR.android}"></span>אנדרואיד (Google Play)</span></div>
+    ${list}
+    <p class="au-foot" style="margin-top:12px"><b>מה נספר:</b> הורדה ראשונה לפי החנות (בגוגל – התקנות דרך דף החנות). <b>לא נספר:</b> מי מהם נרשם – החנויות לא מוסרות את זה.
+    "לא מזוהה" – החנויות מסתירות מקור עם מעט הורדות (פרטיות); אפל מציגה קמפיין רק אחרי 5 הורדות ממנו.</p>`);
+}
+window.loadStoreDl = loadStoreDl;
+window.auView = function (v) { auState.view = v; renderMain(); };
+
 function appUsageHtml() {
+  // §556 — שתי לשוניות: מה שעושים באתר ובאפליקציה (המדידה שלנו) · הורדות לפי מקור (מהחנויות)
+  const tabs = `<div class="au-tabs"><button class="${auState.view !== 'stores' ? 'on' : ''}" onclick="auView('usage')">שימוש באתר ובאפליקציה</button><button class="${auState.view === 'stores' ? 'on' : ''}" onclick="auView('stores')">הורדות לפי מקור</button></div>`;
+  if (auState.view === 'stores') return `<div class="au-root"><div class="au-top"><h2>אפליקציה ושימוש</h2></div>${tabs}${storeDlHtml()}</div>`;
   const seg = (k, opts) => `<div class="au-seg" role="group">${opts.map(([v, l, os]) => `<button type="button" class="${String(auState[k]) === String(v) ? 'on' : ''}" onclick="auSet('${k}','${v}')">${os ? `<span class="au-key" style="background:${AU_COLOR[os]}"></span>` : ''}${l}</button>`).join('')}</div>`;
   const tbl = (k) => `<button class="au-as-table" onclick="auSet('table','${k}')">${auState.tables[k] ? 'הצג כגרף' : 'הצג כטבלה'}</button>`;
-  const head = `<div class="au-top"><h2>אפליקציה ושימוש</h2></div>
+  const head = `<div class="au-top"><h2>אפליקציה ושימוש</h2></div>${tabs}
     <div class="au-filters">${seg('range', [[1, 'היום'], [7, '7 ימים'], [30, '30 ימים'], [90, '90 ימים']])}${seg('os', [['all', 'הכול'], ['ios', 'אייפון', 'ios'], ['android', 'אנדרואיד', 'android']])}
     <label class="au-note" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${auState.includeTest ? 'checked' : ''} onchange="auSet('includeTest')"> כולל מנהלים ובדיקות</label>
     <span class="au-note">${(() => { const d = auDays(0, auState.range); return auState.range === 1 ? 'היום, ' + auShort(d[0]) : auShort(d[0]) + '–' + auShort(d[d.length - 1]); })()}</span></div>`;
@@ -18981,6 +19087,7 @@ function renderMainInner() {
   // §488 — אותו דפוס: HTML מ-globals, טעינה עצלה פעם אחת. bindAppUsage אחרי כל ציור (הגרף צריך רוחב אמיתי).
   if (activeTab === APP_USAGE_KEY) {
     wrap.innerHTML = appUsageHtml();
+    if (auState.view === 'stores') { loadStoreDl(); return; }   // §556
     bindAppUsage();
     loadAppUsage();
     return;
