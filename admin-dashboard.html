@@ -2089,6 +2089,10 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
 .ll-more > summary { cursor: pointer; font-weight: 700; color: var(--text-sm); }
 .ll-mini { display: flex; justify-content: space-between; gap: 12px; padding: 6px 2px; border-bottom: 1px dashed var(--border-md); }
 .ll-foot { margin-top: 12px; font-size: 11.5px; color: var(--text-muted); }
+.qr-card { display: flex; align-items: center; gap: 12px; background: var(--card-bg); border: 1px solid var(--border-md); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.qr-thumb { width: 88px; height: 88px; flex: none; border-radius: 8px; border: 1px solid var(--border-md); background: #fff; }
+.qr-acts { display: flex; flex-direction: column; gap: 6px; flex: none; }
+@media (max-width: 560px) { .qr-card { flex-wrap: wrap; } .qr-acts { flex-direction: row; } }
 .ll-grp { font-size: 15px; font-weight: 800; color: var(--text); margin: 4px 0 8px; }
 @media (max-width: 760px) { .ll-cols { grid-template-columns: 1fr; } }
 .del-note { background: var(--nav-bg); border: 1px solid var(--border-md); border-radius: 10px; padding: 12px 14px; font-size: 12px; line-height: 1.75; color: var(--text-sm); margin-bottom: 14px; }
@@ -6905,7 +6909,7 @@ function auSrcHtml(c) {
   const agg = {};
   cur.forEach(k => Object.entries(c.src[k] || {}).forEach(([s, v]) => { const a = (agg[s] ||= { ios: 0, android: 0, other: 0 }); AU_OS.forEach(o => (a[o] += v[o])); }));
   const keys = Object.keys(agg).sort((a, b) => AU_OS.reduce((s, o) => s + agg[b][o] - agg[a][o], 0));
-  return auHbarsHtml('src', keys.map(s => AU_SRC_NAME[s] || s), Object.fromEntries(AU_OS.map(o => [o, keys.map(s => agg[s][o])])), false);
+  return auHbarsHtml('src', keys.map(s => srcName(s)), Object.fromEntries(AU_OS.map(o => [o, keys.map(s => agg[s][o])])), false);
 }
 
 // §542 — "מה קרה אחרי ההורדה": הורדות בתקופה (ומסנן המכשיר), לפי התוצאה הגבוהה שהמכשיר הגיע אליה.
@@ -6949,7 +6953,7 @@ function auLandingHtml(c) {
   if (!keys.length) return `<div class="au-empty">אין עדיין נתונים בתקופה הזאת</div>`;
   const tot = { views: 0, ios: 0, android: 0, any: 0 };
   const body = keys.map(k => { const r = rows[k]; ['views', 'ios', 'android', 'any'].forEach(f => (tot[f] += r[f].size));
-    return [AU_SRC_NAME[k] || k, auFmt(r.views.size), auFmt(r.ios.size), auFmt(r.android.size), r.views.size ? auPct(r.any.size, r.views.size) + '%' : '–']; });
+    return [srcName(k), auFmt(r.views.size), auFmt(r.ios.size), auFmt(r.android.size), r.views.size ? auPct(r.any.size, r.views.size) + '%' : '–']; });
   if (keys.length > 1) body.push(['סה״כ', auFmt(tot.views), auFmt(tot.ios), auFmt(tot.android), tot.views ? auPct(tot.any, tot.views) + '%' : '–']);
   return auTable(['מקור', 'כניסות', 'לחצו על App Store', 'לחצו על Google Play', 'לחצו על חנות'], body);
 }
@@ -7045,7 +7049,7 @@ function storeDlHtml() {
     const w = (n) => (n / max * 100).toFixed(1) + '%';
     const ci = r.other ? 'var(--au-other)' : AU_COLOR.ios, ca = r.other ? '#C5CBD8' : AU_COLOR.android;
     const dot = (c) => `<span class="au-key" style="background:${c};width:7px;height:7px"></span>`;
-    return head + `<div class="sd-row"><div class="sd-name">${esc(SD_NAME[r.src] || AU_SRC_NAME[r.src] || r.src)}${SD_HINT[r.src] ? `<small>${esc(SD_HINT[r.src])}</small>` : ''}</div>
+    return head + `<div class="sd-row"><div class="sd-name">${esc(SD_NAME[r.src] || srcName(r.src))}${SD_HINT[r.src] ? `<small>${esc(SD_HINT[r.src])}</small>` : ''}</div>
       <div class="au-hb-track">${r.ios ? `<div class="au-seg-fill" style="width:${w(r.ios)};background:${ci}"></div>` : ''}${r.android ? `<div class="au-seg-fill" style="width:${w(r.android)};background:${ca}"></div>` : ''}</div>
       <div class="sd-val"><b>${r.total}</b>${sdState.dev === 'all' ? `<span>${dot(ci)} ${r.ios} &nbsp;${dot(ca)} ${r.android}</span>` : ''}</div></div>`;
   }).join('');
@@ -18546,7 +18550,7 @@ const LINK_LEGEND = [
     { where: 'הודעת וואטסאפ', url: 'https://yellowzone.co.il/download?src=wa', manual: true,
       how: 'הודעה אישית או בקבוצה, שכבר אומרת מה זה. הקישור בשורה האחרונה – וואטסאפ הופך אותו ללחיץ.' },
     { where: 'QR מודפס', url: 'https://yellowzone.co.il/download?src=print', manual: true,
-      how: 'מכניסים את הקישור למחולל QR ומדפיסים (שלט, פלאייר, דוכן). בטלפון פותח את החנות.' },
+      how: 'קישור כללי. למקום/תאריך מסוים – "קודי QR להדפסה" למטה: קוד משלו, וכך רואים כמה הורידו ממנו.' },
     { where: '"הזמינו חברים" באפליקציה', url: 'https://yellowzone.co.il/download?src=share' },
     { where: 'מיילים (קוד, אישור, עסק אושר)', url: 'https://yellowzone.co.il/download?src=mail' },
     { where: 'הודעות אישור ידניות', url: 'https://yellowzone.co.il/download?src=approval' },
@@ -18586,6 +18590,119 @@ window.copyLegendLink = async function (n) {
   catch (e) { prompt('העתיקו את הקישור:', it.url); }
 };
 
+// ── §557 — קודי QR מודפסים, אחד לכל תאריך/מקום (רמי: "שאוכל ליצור לפי תאריך, וככה אדע כמה הורידו מכל QR").
+// כל קוד = src משלו: qr + YYMMDD (+ אות אם יש כמה באותו יום), למשל qr261020 / qr261020b. הקישור הוא /download?src=…,
+// ולכן נספר בשני המקומות שכבר קיימים: "מאיפה הגיעו" (סריקות, מיד) ו"הורדות לפי מקור" (מהחנויות, באיחור).
+// השמות נשמרים ב-settings/qrCodes ({items:[{src,label,date}]}) – החוק הכללי של settings: מנהל בלבד.
+const QR_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+var qrCodes = [], qrState = 'idle', qrError = '';   // var: srcName נקרא גם מרינדור שעלול לרוץ לפני השורה הזאת
+async function loadQrCodes(force) {
+  if (qrState === 'loading' || (!force && (qrState === 'ready' || qrState === 'error'))) return;
+  qrState = 'loading';
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'qrCodes'));
+    qrCodes = snap.exists() && Array.isArray(snap.data().items) ? snap.data().items : [];
+    qrState = 'ready'; qrError = '';
+  } catch (e) { console.error('qr codes load failed:', e); qrState = 'error'; qrError = e.message || String(e); }
+  if (activeTab === DEMO_LINKS_KEY || activeTab === APP_USAGE_KEY) renderMain();
+}
+const qrUrl = (src) => 'https://yellowzone.co.il/download?src=' + src;
+const qrDateHe = (ymd) => ymd ? ymd.slice(8, 10) + '.' + ymd.slice(5, 7) + '.' + ymd.slice(2, 4) : '';
+// שם מקור לתצוגה בכל מסכי הנתונים: QR שנוצר כאן ← השם שלו; QR בלי שם (למשל שהמסמך לא נטען) ← לפי התאריך שבקוד.
+function srcName(s) {
+  const q = qrCodes.find((x) => x.src === s);
+  if (q) return 'QR: ' + q.label + ' (' + qrDateHe(q.date) + ')';
+  const m = /^qr(\d\d)(\d\d)(\d\d)[a-z]?$/.exec(s || '');
+  if (m) return 'QR מ-' + m[3] + '.' + m[2] + '.' + m[1];
+  return AU_SRC_NAME[s] || s;
+}
+var qrLibP = null;
+function qrLib() {
+  return qrLibP ||= new Promise((ok, bad) => {
+    if (window.qrcode) return ok(window.qrcode);
+    const s = document.createElement('script'); s.src = QR_LIB;
+    s.onload = () => ok(window.qrcode); s.onerror = () => { qrLibP = null; bad(new Error('ספריית ה-QR לא נטענה')); };
+    document.head.appendChild(s);
+  });
+}
+// ציור ה-QR על canvas: ריבועים כחולים כהים על לבן, עם שוליים של 4 ריבועים (נדרש לסריקה)
+function qrCanvas(qr, px) {
+  const n = qr.getModuleCount(), cell = Math.floor(px / (n + 8)), size = cell * (n + 8);
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, size, size); g.fillStyle = '#0A2A66';
+  for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (qr.isDark(r, k)) g.fillRect((k + 4) * cell, (r + 4) * cell, cell, cell);
+  return c;
+}
+async function qrMake(src) { const q = (await qrLib())(0, 'M'); q.addData(qrUrl(src)); q.make(); return q; }
+function qrSectionHtml() {
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+  const list = qrState === 'error' ? `<div class="placeholder-note">לא ניתן לטעון את הקודים: ${esc(qrError)}</div>`
+    : qrState !== 'ready' ? '<div class="placeholder-note">טוען…</div>'
+    : !qrCodes.length ? '<div class="placeholder-note">עוד אין קודים. ממלאים איפה ומתי – ונוצר קוד להדפסה.</div>'
+    : [...qrCodes].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.src || '').localeCompare(a.src || '')).map((q) => `
+      <div class="qr-card"><canvas class="qr-thumb" data-src="${esc(q.src)}" width="88" height="88"></canvas>
+        <div class="ll-txt"><b>${esc(q.label)}</b><span>${qrDateHe(q.date)} · נספר כ-<b>${esc(srcName(q.src))}</b></span><code>${esc(qrUrl(q.src).replace(/^https:\/\//, ''))}</code></div>
+        <div class="qr-acts"><button class="act-btn tiny" onclick="qrDownload('${esc(q.src)}')">הורדת תמונה</button>
+          <button class="act-btn tiny" onclick="qrCopy('${esc(q.src)}')">העתקת קישור</button></div></div>`).join('');
+  return `<div class="ll-grp" style="font-size:15px;margin:4px 0 8px">🔳 קודי QR להדפסה</div>
+    <div class="del-note">לכל מקום/תאריך – קוד משלו. סורקים בטלפון ← החנות (או האפליקציה, אם מותקנת).
+      כמה <b>סרקו</b> – מיד, ב"אפליקציה ושימוש" ← "מאיפה הגיעו". כמה <b>הורידו</b> – ב"הורדות לפי מקור", באיחור של יום-יומיים
+      (אפל מציגה קוד רק אחרי 5 הורדות ממנו).</div>
+    <div class="dl-form">
+      <label style="flex:1;min-width:200px">איפה / מה (רק אצלך)<input id="qrLabel" maxlength="50" placeholder="למשל: בלומפילד – מכבי נגד הפועל"></label>
+      <label>תאריך<input id="qrDate" type="date" value="${today}"></label>
+      <button class="act-btn" id="qrCreateBtn" onclick="qrCreate()">יצירת QR</button>
+    </div>${list}`;
+}
+// ציור התמונות הקטנות אחרי שה-HTML נכנס לדף
+async function qrPaintThumbs() {
+  const els = document.querySelectorAll('canvas.qr-thumb');
+  if (!els.length) return;
+  try {
+    for (const el of els) {
+      const c = qrCanvas(await qrMake(el.dataset.src), 264);
+      el.width = c.width; el.height = c.height; el.getContext('2d').drawImage(c, 0, 0);
+    }
+  } catch (e) { console.error('qr thumbs failed:', e); }
+}
+window.qrCreate = async function () {
+  const label = (document.getElementById('qrLabel').value || '').trim();
+  const date = document.getElementById('qrDate').value;
+  if (!label) { alert('צריך לכתוב איפה / מה'); return; }
+  if (!/^\d{4}-\d\d-\d\d$/.test(date)) { alert('צריך תאריך'); return; }
+  const btn = document.getElementById('qrCreateBtn'); btn.disabled = true; btn.textContent = 'יוצר…';
+  try {
+    // קריאה טרייה לפני הכתיבה – שלא יידרס קוד שנוצר בינתיים ממחשב אחר
+    const snap = await getDoc(doc(db, 'settings', 'qrCodes'));
+    const items = snap.exists() && Array.isArray(snap.data().items) ? snap.data().items : [];
+    const base = 'qr' + date.slice(2, 4) + date.slice(5, 7) + date.slice(8, 10);
+    let src = base;
+    for (let i = 0; items.some((x) => x.src === src); i++) src = base + 'bcdefghijklmnopqrstuvwxyz'[i];
+    items.push({ src, label: label.slice(0, 50), date, createdAt: new Date().toISOString() });
+    await setDoc(doc(db, 'settings', 'qrCodes'), { items });
+    qrCodes = items;
+    renderMain();
+    dlFlash('הקוד נוצר – אפשר להוריד תמונה');
+  } catch (e) {
+    console.error('qr create failed:', e);
+    alert('יצירת הקוד נכשלה: ' + (e.code || e.message));
+    btn.disabled = false; btn.textContent = 'יצירת QR';
+  }
+};
+window.qrDownload = async function (src) {
+  try {
+    const c = qrCanvas(await qrMake(src), 1600);
+    const q = qrCodes.find((x) => x.src === src);
+    const a = document.createElement('a');
+    a.download = 'yellowzone-qr-' + (q ? q.date : src) + (src.length > 8 ? '-' + src.slice(8) : '') + '.png';
+    a.href = c.toDataURL('image/png'); a.click();
+  } catch (e) { alert('ההורדה נכשלה: ' + (e.message || e)); }
+};
+window.qrCopy = async function (src) {
+  try { await navigator.clipboard.writeText(qrUrl(src)); dlFlash('הקישור הועתק'); }
+  catch (e) { prompt('העתיקו את הקישור:', qrUrl(src)); }
+};
+
 function demoLinksHtml() {
   const active = demoLinks.filter(l => dlStatus(l) === 'ok').length;
   const head = `
@@ -18601,7 +18718,7 @@ function demoLinksHtml() {
       </div>
     </div>`;
   // §552 — המקרא בראש הדף, לפני הלינקים לאורח (נכנס לכל המצבים דרך note)
-  const note = `${linkLegendHtml()}<div class="ll-grp" style="font-size:15px;margin:4px 0 8px">👤 לינקים אישיים לאורח</div><div class="del-note">
+  const note = `${linkLegendHtml()}${qrSectionHtml()}<div class="ll-grp" style="font-size:15px;margin:4px 0 8px">👤 לינקים אישיים לאורח</div><div class="del-note">
     לינק אישי לאדם שרוצה לראות את Yellow Zone בלי להיות חבר (משקיע, עיתונאי, שותף). הוא מסייר באתר האמיתי –
     כולל "האזור שלי" של אוהד ושל בעל עסק (עסק מומצא) – <b>בלי הטבות ובלי אפשרות לכתוב שום דבר</b>.<br>
     הלינק עובד במספר מכשירים מוגבל; מכשיר נוסף נחסם ונרשם כאן. <b>כיבוי</b> מנתק גם את מי שכבר בפנים, בדף הבא שהוא פותח.
@@ -19087,6 +19204,7 @@ function renderMainInner() {
   // §488 — אותו דפוס: HTML מ-globals, טעינה עצלה פעם אחת. bindAppUsage אחרי כל ציור (הגרף צריך רוחב אמיתי).
   if (activeTab === APP_USAGE_KEY) {
     wrap.innerHTML = appUsageHtml();
+    loadQrCodes();   // §557 — שמות קודי ה-QR בטבלאות המקור
     if (auState.view === 'stores') { loadStoreDl(); return; }   // §556
     bindAppUsage();
     loadAppUsage();
@@ -19094,6 +19212,7 @@ function renderMainInner() {
   }
   if (activeTab === DEMO_LINKS_KEY) {
     wrap.innerHTML = demoLinksHtml();
+    loadQrCodes(); qrPaintThumbs();   // §557
     loadDemoLinks();   // §516 — טעינה עצלה פעם אחת, אותו דפוס
     return;
   }

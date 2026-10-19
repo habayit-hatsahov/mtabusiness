@@ -94,9 +94,29 @@
   }
 
   var shownAt = +ss(SS_T0) || 0, ready = false, gone = false;
+  // §557 (רמי, סרטון 19.10: "קפיצה אחת") – במעבר index → welcome → home כל דף בונה את השכבה מחדש, והתמונה
+  // מצוירת רק אחרי שהיא נטענת ומפוענחת שוב → ~0.3 שנ' לבן באמצע. התיקון: בדף הראשון שומרים עותק זעיר של
+  // התמונה (sessionStorage), ובדפים הבאים הוא רקע השכבה מהציור הראשון – במקום לבן; התמונה החדה מכסה אותו.
+  var SS_THUMB = 'yz_splash_thumb';
+  function saveThumb() {
+    try {
+      var w = 72, h = Math.round(w * img.naturalHeight / img.naturalWidth);
+      var c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      ss(SS_THUMB, c.toDataURL('image/jpeg', 0.7));
+    } catch (e) {}   // תמונה מדומיין אחר (canvas נגוע) – בלי עותק, כמו קודם
+  }
+  if (shownAt) {
+    var thumb = ss(SS_THUMB);
+    if (thumb) el.style.background = BG + ' url("' + thumb + '") center / cover no-repeat';
+    img.decoding = 'sync';                   // אם התמונה כבר בזיכרון – לצייר אותה כבר בציור הראשון
+  }
   function show() {
     if (gone || ready && !shownAt) return;   // הדף כבר מוכן והתמונה עוד לא הופיעה – לא מציגים לרגע
-    if (!shownAt) { shownAt = Date.now(); ss(SS_T0, String(shownAt)); img.style.transition = 'opacity .25s ease'; }
+    if (!shownAt) {
+      shownAt = Date.now(); ss(SS_T0, String(shownAt)); img.style.transition = 'opacity .25s ease';
+      saveThumb();
+    }
     else img.style.transition = 'none';      // ממשיכים מהדף הקודם – מיד, בלי עמעום שני
     img.style.opacity = '1';
   }
