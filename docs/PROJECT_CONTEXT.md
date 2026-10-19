@@ -26158,3 +26158,16 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - **איפה:** `landing.html` (`STORE_SRC` → `IOS`/`PLAY`; זיהוי החנות בלחיצה עבר ל-`/apps\.apple\.com/` כי הקישור נושא פרמטרים), `download.html` (מוסיף ל-`#ios`/`#android` לפני ההפניה), `open.html` (קבוע: `bizshare`). בלי `src` – קישור רגיל.
 - **נבדק:** תחביר 3 דפים; `landing.html?src=fbpost` – שני כפתורי החנות עם `ct=fbpost` / `utm_source=fbpost`; `download.html?src=wa` במכשיר אנדרואיד מדומה הועבר בפועל ל-`play.google.com/...&referrer=utm_source%3Dwa...`. ⚠️ ההפניה לאפל לא נבדקה במכשיר (אותו קוד).
 - **מה עדיין לא ידוע:** מי מהנרשמים הגיע מאיפה. מה שיש: הורדות לפי ערוץ (בחנויות) + יחס הורדות←הרשמות כולל (§542, "אפליקציה ושימוש").
+
+### §554 – הכנה למשיכת "הורדות לפי מקור" משתי החנויות למרכז הניהול (19.10) – ⏳ ממתין לנתונים
+**רמי:** "תבדוק קודם ששתי החנויות נותנות את הנתון… תעשה מה שצריך בשביל שנמשוך את הנתון הזה".
+- **נבדק – הנתון קיים בשתיהן:**
+  - **אפל:** Analytics Reports API, דוח **"App Downloads Detailed"** – יש עמודת `Campaign` (= ה-`ct=` של §553). יומי, סופי אחרי ~2 ימים; אפל משמיטה שורות קטנות (פרטיות).
+  - **גוגל:** הקובץ החודשי `stats/store_performance/store_performance_il.co.yellowzone.app_<YYYYMM>_traffic_source.csv` בדלי `pubsite_prod_6330796939543476603` (UTF-16). **עמודות שאומתו בקובץ האמיתי:** `Date, Package name, Traffic source, Search term, UTM source, UTM campaign, Store listing acquisitions, Store listing visitors, Store listing conversion rate`. באוקטובר עד 19.10 – 2 שורות, הכול "Other" (לפני §553). הקובץ שהורד לבדיקה נמחק.
+- **גוגל – הרשאה:** רמי הזמין ב-Play Console ← משתמשים והרשאות את `firebase-adminsdk-fbsvc@habayit-hatsahov.iam.gserviceaccount.com` (חשבון השירות של Firebase/הוורקר) עם **"הצגת פרטי האפליקציה והורדת דוחות בכמות גדולה (לקריאה בלבד)"** בלבד. סטטוס "פעיל". ⏳ ב-19.10 13:55 הקריאה מהדלי עדיין **403** (`storage.objects.get`) – אצל גוגל ההרשאה לדלי מתעדכנת עד ~24 שעות. לבדוק שוב (scope `devstorage.read_only`).
+- **אפל – מפתחות API (App Store Connect ← Users and Access ← Integrations ← Team Keys):** Issuer ID `24a64034-0616-4fa1-8cea-a26d28408363`.
+  - `Q2QFHLXLG3` "Yellow Zone – נתונים", **Admin** – שימש פעם אחת ליצירת **בקשת דוח ONGOING** לאפליקציה `6815345699`: `analyticsReportRequests/635e46dd-7e90-4b01-ab3a-246f679f8806` (201). הקובץ נמחק. 🔲 **רמי צריך לבטל (Revoke) את המפתח הזה.**
+  - `4PS4L63JYH` "Yellow Zone – דוחות", **Sales and Reports** – אומת שקורא את בקשת הדוח (200). נשמר כסוד וורקר **`ASC_API_KEY_P8`**; הקובץ נמחק מ-Downloads. ה-Key ID וה-Issuer אינם סוד (ייכנסו ל-`wrangler.toml` בשלב הבנייה).
+  - ⚠️ הקובץ `AuthKey_2U878J959V.p8` ב-Downloads הוא מפתח "כניסה עם Apple" (§455) – לא קשור, לא למחוק.
+- **מה מתוכנן (אחרי שיש נתונים, דמו לפני חיבור):** בדיקה יומית בוורקר (cron) – אפל: מופעי הדוח `APP_DOWNLOADS_DETAILED` → קטעים (TSV מכווץ) → סיכום לפי `Campaign`; גוגל: הקובץ החודשי → סיכום `Store listing acquisitions` לפי `UTM source`. שמירה במסמך ב-Firestore, וכרטיס **"הורדות לפי מקור"** ב"אפליקציה ושימוש" (ערוץ × אייפון/אנדרואיד).
+- ⚠️ ניסיון שלי לתת את ההרשאות בעצמי (הזמנה ב-Play Console) נחסם ע"י מנגנון ההגנה של Claude Code ("Permission Grant") – הרשאות ומפתחות יוצר רמי בעצמו.
