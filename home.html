@@ -523,6 +523,21 @@
     }
     .hero-title span { color: var(--ink); }
     .hero-flag { vertical-align: -4px; margin-inline-start: 6px; transform: scaleX(-1); }
+    /* §569 — כרטיס התראות חד-פעמי. אותו עיצוב כמו בסוף ההרשמה (push-ask.js). */
+    #pushCard { margin: 12px 16px 0; background: #E8EEFB; border: 1px solid #cdd8f2; border-radius: 16px;
+      padding: 14px; color: #0A2A66; line-height: 1.55; transition: opacity .25s, transform .25s; }
+    #pushCard.leaving { opacity: 0; transform: translateY(-6px); }
+    #pushCard .pc-h { font-weight: 800; font-size: 15.5px; }
+    #pushCard .pc-b { margin-top: 4px; font-size: 14px; color: #33466f; }
+    #pushCard .pc-actions { display: flex; align-items: center; gap: 14px; margin-top: 11px; }
+    #pushCard .pc-yes { border: none; border-radius: 12px; padding: 11px 18px; font: inherit; font-size: 14px;
+      font-weight: 900; background: #FFD400; color: #0A2A66; cursor: pointer; }
+    #pushCard .pc-yes:disabled { opacity: .6; cursor: default; }
+    #pushCard .pc-later { background: none; border: none; font: inherit; font-size: 13.5px; color: #6B7A9B;
+      cursor: pointer; padding: 6px 2px; text-decoration: underline; text-underline-offset: 3px; }
+    #pushCard .pc-msg { margin-top: 8px; font-size: 13.5px; }
+    #pushCard .pc-msg.ok { color: #1f7a4d; font-weight: 700; }
+    @media (min-width: 900px) { #pushCard { max-width: 520px; } }
     .search-bar {
       display: flex; align-items: center;
       background: var(--field); border-radius: var(--r-field);
@@ -1719,6 +1734,9 @@
     </button>
   </div>
 </div>
+
+<!-- §569 — כרטיס התראות חד-פעמי (אפליקציה בלבד). ממולא ע"י maybeShowPushCard במודול. -->
+<div id="pushCard" hidden></div>
 
 <!-- §444 — באנר "חברו חשבון Google" (§388) וההודעה "✅ חובר" (§410) הוסרו לבקשת המשתמש
      ("מרגיש לי עמוס ומלכלך את האתר"). מי שכתובת ה-Google שלו זהה לכתובת ההרשמה מתחבר
@@ -5048,6 +5066,57 @@ initBizNavItem();
     // נשאר בפיקדון בכוונה. ר' ההערה למעלה.
     console.error('push stash flush failed (will retry next load):', e);
   }
+})();
+
+// ══ §569 — כרטיס התראות חד-פעמי בדף הבית ═══════════════════════════════════════════════════
+// נמדד (20.10): מתוך 317 מאושרים – טוקן פוש **1**. הבקשה הייתה רק בסוף ההרשמה (§502) ובתפריט,
+// ורוב האוהדים נרשמו באתר לפני האפליקציה – כלומר מעולם לא נשאלו. דמו: push-card-demo.html.
+//   · אפליקציה בלבד (גשר פוש), ורק כשמערכת ההפעלה עוד **לא שאלה** את המכשיר ('prompt').
+//   · "לא עכשיו" → פעם אחת למכשיר (localStorage). ההפעלה נשארת בתפריט.
+//   · חלון המערכת רק אחרי לחיצה על "כן" – באייפון אפשר לשאול פעם אחת בלבד.
+// אחרי enableNativePush ולא registerAndStash: כאן כבר יש זהות, והטוקן נכתב ישר לרשומה.
+const PUSH_CARD_KEY = 'yz_pushcard_dismissed';
+(async function maybeShowPushCard() {
+  const box = document.getElementById('pushCard');
+  if (!box) return;
+  try {
+    const np = window.YZNativePush;
+    if (!np || !np.available() || !auth.currentUser) return;
+    try { if (localStorage.getItem(PUSH_CARD_KEY)) return; } catch (e) {}
+    const st = await np.permissionState();
+    if (st !== 'prompt' && st !== 'prompt-with-rationale') return;
+  } catch (e) { return; }
+
+  box.innerHTML =
+    '<div class="pc-h">רוצים שנעדכן אתכם?</div>' +
+    '<div class="pc-b">נשלח לכם התראה כשהצוות עונה לכם, ועל עדכונים חשובים.</div>' +
+    '<div class="pc-actions"><button type="button" class="pc-yes">כן, להפעיל התראות</button>' +
+    '<button type="button" class="pc-later">לא עכשיו</button></div>' +
+    '<div class="pc-msg" style="display:none"></div>';
+  box.hidden = false;
+  const remove = () => { box.classList.add('leaving'); setTimeout(() => { box.hidden = true; box.innerHTML = ''; }, 260); };
+  const forget = () => { try { localStorage.setItem(PUSH_CARD_KEY, '1'); } catch (e) {} };
+  const say = (text, ok) => {
+    box.querySelector('.pc-actions').style.display = 'none';
+    const m = box.querySelector('.pc-msg');
+    m.textContent = text; m.className = 'pc-msg' + (ok ? ' ok' : ''); m.style.display = 'block';
+  };
+  box.querySelector('.pc-later').addEventListener('click', () => { forget(); remove(); });
+  box.querySelector('.pc-yes').addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
+    btn.disabled = true; btn.textContent = 'רגע…';
+    let r;
+    try { r = await window.enableNativePush(); }
+    catch (e) { console.error('push card failed:', e); r = { ok: false, reason: 'error' }; }
+    if (r.ok) { forget(); say('✓ התראות הופעלו.', true); setTimeout(remove, 1500); }
+    else if (r.reason === 'denied' || r.reason === 'declined') {
+      forget(); say('בסדר, בלי התראות. אפשר להפעיל אותן בכל זמן מהתפריט.', false); setTimeout(remove, 2500);
+    } else {
+      // כשל טכני (לא סירוב) – לא שורפים את הכרטיס: יופיע שוב בטעינה הבאה.
+      say('לא הצלחנו להפעיל התראות עכשיו. ננסה שוב בפעם הבאה, או מהתפריט.', false); setTimeout(remove, 3000);
+    }
+    if (window.updatePushMenuItem) updatePushMenuItem();
+  });
 })();
 
 // ── תעודת חבר מוטמעת בגיליון עסק (הוכחת חברות מול ההטבה) ──
