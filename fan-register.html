@@ -1528,6 +1528,13 @@
   const PROOF_URL_MS      = 12000;   // getDownloadURL אחרי העלאה שהצליחה
   const PROOF_RESCUE_MS   = 12000;   // חלון ה"אולי בכל זאת הגיע" אחרי חריגה
   const PROOF_RESCUE_GAP  = 2500;    // כל כמה זמן לבדוק בתוך החלון הזה
+  // ── §565 — גיבוי דרך הוורקר כשה-SDK תקוע ─────────────────────────────────────────────────
+  // 20.10: 264KB מאפליקציית האנדרואיד, 45 שניות בלי שהקובץ הגיע ל-bucket – וההרשמה נשמרה בלי
+  // תמונה. אותו דפוס של §462 (Firestore תקוע בזמן שהוורקר עונה). בלי התקדמות STALL_MS – אותו
+  // קובץ נשלח גם דרך /upload-member-proof, **במקביל** (ה-SDK לא מבוטל, §381), והראשון מנצח.
+  // גם כשל מהיר של ה-SDK מפעיל את הגיבוי מיד. ר' worker/src/memberproof.js.
+  const PROOF_STALL_MS    = 10000;   // כמה זמן בלי שום בייט שזז עד שמפעילים את הגיבוי
+  const PROOF_WORKER_MS   = 30000;   // תקרה לבקשת הגיבוי עצמה
 
   // ⚠️ המזהה נוצר **פעם אחת לטעינת דף** ולא בכל לחיצת-שליחה. `doc()` מייצר מזהה מקומית,
   // בלי רשת ובלי ליצור מסמך (§292), ולכן זה חינם — ושתי תועלות: נתיב-התמונה ידוע כבר ברגע
@@ -1686,26 +1693,89 @@
           contentType,
           cacheControl: 'public, max-age=31536000, immutable',
         });
-        if (onProgress) {
-          task.on('state_changed', s => { if (s.totalBytes) onProgress(s.bytesTransferred / s.totalBytes); },
-                  () => {});   // ⚠️ בלי מאזין-שגיאה כאן, דחייה של המשימה נספרת כלא-מטופלת
-        }
-        try {
-          // ⚠️ Promise.resolve — UploadTask הוא thenable ולא Promise, ואין לו `.finally`
-          // ש-withTimeout משתמש בו. בלי העטיפה זו TypeError בכל העלאה.
-          await withTimeout(Promise.resolve(task), Math.max(1000, deadlineAt - Date.now()), 'upload-timeout');
-          return await withTimeout(getDownloadURL(storageRef), PROOF_URL_MS, 'url-timeout');
-        } catch (e) {
-          console.error('uploadFile failed:', e.code || '', e.message);
-          // 🔑 **לא מבטלים את המשימה.** `task.cancel()` היה מוחק את מה שכבר הועלה — כלומר
-          // הורס בדיוק את מה שההצלה הבאה מנסה למצוא. משאירים אותה לרוץ ובודקים אם נחתה.
-          const rescued = await findLandedUpload(storageRef, PROOF_RESCUE_MS);
-          if (rescued) {
-            console.warn('§381 – ההעלאה חרגה מהזמן, אבל הקובץ הגיע ל-bucket. הכתובת שוחזרה.');
-            return rescued;
+        // §565 — מצב ההתקדמות נשמר גם לגיבוי (מתי זז בייט אחרון) וגם לאבחון בכשל (כמה אחוז).
+        const st = { pct: 0, movedAt: Date.now(), worker: '' };   // worker: '' | run | ok | f | t
+        task.on('state_changed', s => {
+          if (!s.totalBytes) return;
+          const p = s.bytesTransferred / s.totalBytes;
+          if (p > st.pct) { st.pct = p; st.movedAt = Date.now(); }
+          if (onProgress) onProgress(p);
+        }, () => {});   // ⚠️ בלי מאזין-שגיאה כאן, דחייה של המשימה נספרת כלא-מטופלת
+        const sdkPath = async () => {
+          try {
+            // ⚠️ Promise.resolve — UploadTask הוא thenable ולא Promise, ואין לו `.finally`
+            // ש-withTimeout משתמש בו. בלי העטיפה זו TypeError בכל העלאה.
+            await withTimeout(Promise.resolve(task), Math.max(1000, deadlineAt - Date.now()), 'upload-timeout');
+            return await withTimeout(getDownloadURL(storageRef), PROOF_URL_MS, 'url-timeout');
+          } catch (e) {
+            console.error('uploadFile failed:', e.code || '', e.message);
+            // 🔑 **לא מבטלים את המשימה.** `task.cancel()` היה מוחק את מה שכבר הועלה — כלומר
+            // הורס בדיוק את מה שההצלה הבאה מנסה למצוא. משאירים אותה לרוץ ובודקים אם נחתה.
+            const rescued = await findLandedUpload(storageRef, PROOF_RESCUE_MS);
+            if (rescued) {
+              console.warn('§381 – ההעלאה חרגה מהזמן, אבל הקובץ הגיע ל-bucket. הכתובת שוחזרה.');
+              return rescued;
+            }
+            throw e;
           }
-          throw e;
-        }
+        };
+        // §565 — אותו קובץ (כבר דחוס) דרך הוורקר. כתובת שחוזרת היא כתובת-הורדה עם טוקן, בדיוק
+        // כמו של getDownloadURL, ולכן הרשומה והמנהל לא יודעים מאיזה נתיב היא הגיעה.
+        const workerPath = async () => {
+          st.worker = 'run';
+          const ac = new AbortController();
+          const t = setTimeout(() => ac.abort(), Math.max(3000, Math.min(PROOF_WORKER_MS, deadlineAt + PROOF_RESCUE_MS - Date.now())));
+          try {
+            const fd = new FormData();
+            fd.append('memberId', memberRef.id);
+            fd.append('file', file, 'proof');
+            // ⚠️ **לא hbApiFetch**: הוא נותן לכל כתובת 3.5 שניות (נבנה לבקשות JSON קטנות), וקובץ
+            // ברשת איטית – בדיוק המקרה שבשבילו הגיבוי קיים – היה נקטע ונדחף לכתובת האחרונה.
+            // כאן אותו סדר כתובות, ו-12 שניות לכל אחת עד האחרונה. רק כשל-רשת מקדם (כמו שם).
+            let resp = null;
+            for (let i = 0; i < HB_API_HOSTS.length && !resp; i++) {
+              const last = i + 1 >= HB_API_HOSTS.length;
+              const hc = new AbortController();
+              const onOuter = () => hc.abort();
+              ac.signal.addEventListener('abort', onOuter);
+              const ht = last ? null : setTimeout(() => hc.abort(), 12000);
+              try {
+                resp = await fetch(HB_API_HOSTS[i] + '/upload-member-proof', { method: 'POST', body: fd, signal: hc.signal });
+              } catch (e) {
+                if (ac.signal.aborted || last) throw e;
+              } finally { if (ht) clearTimeout(ht); ac.signal.removeEventListener('abort', onOuter); }
+            }
+            const j = await resp.json().catch(() => ({}));
+            if (resp.ok && j.ok && j.url) { st.worker = 'ok'; return j.url; }
+            st.worker = 'f';
+            throw Object.assign(new Error('worker ' + (j.error || resp.status)), { code: 'worker-' + (j.error || resp.status) });
+          } catch (e) {
+            if (st.worker === 'run') st.worker = 't';
+            throw e;
+          } finally { clearTimeout(t); }
+        };
+        return await new Promise((resolve, reject) => {
+          let done = false, sdkErr = null, wp = null;
+          const finish = (fn, v) => { if (done) return; done = true; clearInterval(dog); fn(v); };
+          const fail = () => {
+            if (!sdkErr || (wp && st.worker === 'run')) return;   // מחכים לגיבוי שעוד רץ
+            sdkErr.proofPct = Math.round(st.pct * 100);
+            sdkErr.proofWorker = st.worker || '0';
+            finish(reject, sdkErr);
+          };
+          const startWorker = () => {
+            if (wp || done) return;
+            wp = workerPath().then(url => {
+              // 📊 כמה הרשמות ניצלו דרך הגיבוי – בלי זה אין דרך לדעת אם הוא בכלל נחוץ.
+              logEvent('formStep', { blockId: 'fanRegister', channel: 'proofWorker:' + Math.round(st.pct * 100) });
+              finish(resolve, url);
+            }, e => { console.error('§565 גיבוי ההעלאה נכשל:', e.code || '', e.message); fail(); });
+          };
+          const dog = setInterval(() => {
+            if (st.pct < 1 && Date.now() - st.movedAt >= PROOF_STALL_MS) startWorker();
+          }, 1000);
+          sdkPath().then(url => finish(resolve, url), e => { sdkErr = e; startWorker(); fail(); });
+        });
   }
 
   // ── VALIDATION HELPERS ──
@@ -2157,7 +2227,10 @@
           // שלא נוצר. מרכז הניהול מטפל בזה במפורש ("הרשומה לא נוצרה") — עדיף מזהה שאפשר
           // לבדוק מאשר שום מזהה.
           memberId: memberRef.id,
-          channel: `pu:${(err.code || '?').replace('storage/', '')}|${Math.round((fInfo.size || 0) / 1024)}k|${(fInfo.type || 'none').replace('image/', '')}`,
+          // §565 — `|p<אחוז>|w<גיבוי>`: כמה מהקובץ עלה לפני הכשל, ומה עלה בגורל הגיבוי דרך
+          // הוורקר (0 = לא הופעל, f = נדחה, t = לא ענה). בלי זה "upload-timeout" לא מבדיל בין
+          // חיבור שלא נפתח בכלל (p0) להעלאה איטית (p80). חתוך ל-50 – שדה חורג מוחק את האירוע.
+          channel: `pu:${(err.code || '?').replace('storage/', '')}|${Math.round((fInfo.size || 0) / 1024)}k|${(fInfo.type || 'none').replace('image/', '')}|p${err.proofPct ?? '-'}|w${err.proofWorker || '-'}`.slice(0, 50),
         });
       } finally {
         clearInterval(pct);

@@ -16969,10 +16969,14 @@ function classifyRegError(e) {
 
   // §290 ואילך: `pu:<code>|<KB>k|<type>`. §288 ומטה: `proof-upload:storage/<code>`.
   if (ch.startsWith('pu:') || ch.startsWith('proof-upload:')) {
-    const [rawCode, kb, type] = ch.replace(/^pu:|^proof-upload:/, '').replace('storage/', '').split('|');
+    const [rawCode, kb, type, pp, ww] = ch.replace(/^pu:|^proof-upload:/, '').replace('storage/', '').split('|');
     const parts = [UPLOAD_ERR_LABELS[rawCode] || rawCode || 'סיבה לא ידועה'];
     if (kb) parts.push(kb.replace(/k$/, '') + 'KB');
     if (type) parts.push(type);
+    // §565 — כמה עלה לפני הכשל, ומה עלה בגורל הגיבוי דרך הוורקר. "0%" = החיבור לא נפתח בכלל.
+    if (pp && pp !== 'p-') parts.push(pp.slice(1) + '% עלו');
+    const W = { w0: 'הגיבוי לא הופעל', wf: 'גם הגיבוי נדחה', wt: 'גם הגיבוי לא ענה' };
+    if (ww && W[ww]) parts.push(W[ww]);
     return {
       kind: 'photoFailed',
       title: `תמונת האימות של ${who} לא עלתה – ההרשמה כן נקלטה`,
@@ -17439,8 +17443,13 @@ function hbLoginFailParts(ch) {
   let s = String(ch || '');
   const google = s.indexOf('google:') === 0;
   if (google) s = s.slice(7);
+  // §566 — 🔴 **Apple קיבלה קידומת בכתיבה (`apple:`, §445) ולא בקריאה** – בדיוק המלכודת שההערה
+  // למעלה מתארת, בפעם הרביעית. כל ערוץ Apple הוצג "סיבה לא מוכרת", ו-`apple:fetchTimeout`
+  // נשבר לבסיס 'apple' ולכן **לא נספר כתקלה אצלנו**. עכשיו מפורק בדיוק כמו google.
+  const apple = !google && s.indexOf('apple:') === 0;
+  if (apple) s = s.slice(6);
   // §403 — קידומת שלישית: `google:link:` = כשל של פעולת-הקישור, לא של הכניסה.
-  const link = google && s.indexOf('link:') === 0;
+  const link = (google || apple) && s.indexOf('link:') === 0;
   if (link) s = s.slice(5);
   const late = s.indexOf('late:') === 0;
   if (late) s = s.slice(5);
@@ -17450,7 +17459,7 @@ function hbLoginFailParts(ch) {
   const ci = s.indexOf(':');
   const code = ci > 0 ? s.slice(ci + 1) : '';
   if (ci > 0) s = s.slice(0, ci);
-  return { google, link, late, base: s, code };
+  return { google, apple, link, late, base: s, code };
 }
 // §353 — הסיבה עצמה זהה ('late:badCode' הוא badCode), ולכן התווית נגזרת מהבסיס ורק מסומנת
 // כמאוחרת — אחרת היו נוצרות כאן שורות כפולות שאומרות בדיוק את אותו דבר. §402 — אותו נימוק
@@ -17469,6 +17478,16 @@ const GOOGLE_FAIL_LABELS = {
   // שנדע כמה מהמסך הזה קיבלו הצעה מול כמה ראו את ההודעה הכללית. ⚠️ מוצג בירוק ("לא תקלה")
   // ולכן חשוב שהתווית תסביר את עצמה — אחרת זה נראה כמו כשל שסווג לא נכון.
   canLink:              'הוצע לחבר חשבון Google לרשומה קיימת',
+};
+// §566 — סיבות שקיימות **רק** במסלול Apple (welcome.html: hbAppleLoginClick*, heroAppleLogin).
+// סיבות משותפות (pending, fetchTimeout…) נלקחות מ-LOGIN_FAIL_LABELS ומסומנות "דרך Apple".
+const APPLE_FAIL_LABELS = {
+  notLinked:    'חשבון Apple שעדיין לא חובר לרשומה',
+  // ⚠️ "הסתר את המייל שלי": אפל מסרה כתובת-ממסר, ולכן אי אפשר לזהות על איזו רשומה מדובר.
+  privateEmail: 'Apple הסתירה את המייל – אי אפשר לזהות את הרשומה',
+  canLink:      'חשבון Apple חובר לרשומה קיימת',
+  sdk:          '⚠️ חלון Apple נכשל (בדפדפן)',
+  native:       '⚠️ חלון Apple נכשל (באפליקציה)',
 };
 // §403 — כשלים של **פעולת הקישור עצמה** (`google:link:<סיבה>`), אחרי שהאדם כבר לחץ "כן,
 // זה אני". ⚠️ 🔑 **`email_mismatch` ו-`already_attached` הם תקלה אצלנו ולא טעות שלו**:
@@ -17504,13 +17523,17 @@ const HB_LOGIN_FAIL_OURS = ['timeout', 'fetchTimeout', 'authTimeout', 'moduleTim
                             'google_already_linked'];
 function hbLoginFailLabel(ch) {
   const p = hbLoginFailParts(ch);
+  // §566 — ביטול של חלון Apple באפליקציה ('apple:native:canceled') הוא החלטה של האדם, לא כשל.
+  if (p.apple && p.base === 'native' && p.code === 'canceled') return 'סגר את חלון Apple בלי להיכנס';
+  const own = p.google ? GOOGLE_FAIL_LABELS : p.apple ? APPLE_FAIL_LABELS : {};
   const label = (p.link && GOOGLE_LINK_FAIL_LABELS[p.base])
-             || (p.google && GOOGLE_FAIL_LABELS[p.base]) || LOGIN_FAIL_LABELS[p.base]
+             || own[p.base] || LOGIN_FAIL_LABELS[p.base]
              || ('סיבה לא מוכרת: ' + (ch || '–'));
   // ⚠️ הסימון "דרך Google" נוסף רק לסיבות **משותפות**. על `notLinked` הוא היה כפילות
   // רועשת — הטקסט כבר אומר Google — ובשבבי-הסיכום למעלה הוא היה גולש לשורה שנייה.
   return label
     + (p.google && !p.link && !GOOGLE_FAIL_LABELS[p.base] ? ' · דרך Google' : '')
+    + (p.apple && !APPLE_FAIL_LABELS[p.base] ? (p.link ? ' · Apple' : ' · דרך Apple') : '')
     // §406 — הקוד האמיתי, כשיש. ⚠️ **אחרי התווית ולא במקומה**: 'auth/network-request-failed'
     // אומר הכל למי שמכיר ואפס למי שלא, והשורה נקראת ע"י שניהם.
     + (p.code ? ' · ' + p.code : '')
@@ -18017,9 +18040,14 @@ function hbOutcomeBadge(o) {
   return `<span class="${cls}">${t}</span>`;
 }
 
+// §566 — 'canLink' (google/apple) **אינו כשל**: הרשומה זוהתה לפי המייל המאומת והחשבון חובר
+// אוטומטית (§409). נרשם כ-loginFail רק כדי לספור חיבורים אוטומטיים. ב-20.10 היו 8 מתוך 27
+// השורות הפתוחות, וכל ה-8 נכנסו תוך 3–6 שניות – רעש שהסתיר את מי שבאמת נשאר בחוץ.
+// יורד מהשורות ומהמונים, ונספר בשורת-סיכום אחת בטאב "כניסה".
+const hbIsAutoLink = (ch) => { const p = hbLoginFailParts(ch); return !p.link && p.base === 'canLink'; };
 function loginFailList() {
   return (platformEvents || [])
-    .filter(e => e.type === 'loginFail')
+    .filter(e => e.type === 'loginFail' && !hbIsAutoLink(e.channel))
     .map(e => ({
       at: e.at,
       reason: e.channel || 'unknown',
@@ -18109,6 +18137,7 @@ function loginIssuesTableHtml(list) {
   const gotIn   = list.filter(x => x.outcome.kind === 'sess' || x.outcome.kind === 'mem').length;
   const leftOut = list.filter(x => x.outcome.kind === 'none' && !x.outcome.weak).length;
   const unknown = list.filter(x => x.outcome.kind === 'none' && x.outcome.weak).length;
+  const autoLinks = (platformEvents || []).filter(e => e.type === 'loginFail' && hbIsAutoLink(e.channel)).length;
   return `
     <div class="mail-issues-note">
       ניסיונות כניסה שנכשלו ב-30 הימים האחרונים.
@@ -18123,6 +18152,7 @@ function loginIssuesTableHtml(list) {
         ${gotIn ? `<b style="color:#0a7c2f">${gotIn} נכנסו בכל זאת</b>` : 'אף אחד לא נכנס אחרי הכשל'}${
           leftOut ? ` · <b style="color:#b42318">🔴 ${leftOut} לא נכנסו – אלה שצריך לפנות אליהם</b>` : ''}${
           unknown ? ` · ${unknown} ללא טלפון, ולכן אי אפשר לדעת מעבר לסשן עצמו` : ''}
+        ${autoLinks ? `<div style="margin-top:4px">✅ בנוסף, ${autoLinks} חיבורים אוטומטיים של חשבון Google/Apple לרשומה קיימת – הצלחה ולא תקלה, ולכן לא מוצגים כשורות.</div>` : ''}
         <div style="opacity:.75;margin-top:4px">נגזר מכך ש-home.html רושם אירוע עם מזהה-החבר: אירוע כזה **אחרי** הכשל = הוא בפנים. ⚠️ מזהה-הסשן מת עם סגירת הטאב, ולכן "לא נמצאה כניסה" בשורה בלי טלפון אינו אומר שהוא נשאר בחוץ.</div>
       </div>
       <div class="class-tile-chips" style="margin-top:8px">${chips}</div>

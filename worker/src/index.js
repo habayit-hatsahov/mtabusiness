@@ -19,6 +19,7 @@ import { sendWebPush } from './push.js';
 import { sendFcmToMember } from './fcm.js';
 import { handleDownloadImage, handleViewImage } from './download.js';
 import { handleUploadBizMedia } from './bizmedia.js';
+import { handleUploadMemberProof } from './memberproof.js';
 import { handleBrevoWebhook, handleSetupBrevoWebhook } from './brevo-webhook.js';
 import { handleDemoSession } from './demo.js';
 import { syncBizPublic, handlePublicBizList } from './bizpublic.js';
@@ -138,6 +139,17 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/upload-biz-media') {
         return json(await handleUploadBizMedia(request, env), env, request);
+      }
+      if (request.method === 'POST' && url.pathname === '/upload-member-proof') {
+        // §565 — גיבוי לתמונת-האימות כשה-SDK של Storage תקוע. 8 ל-IP ב-15 דק': נרשם אחד מעלה
+        // תמונה אחת, ולכל היותר מחליף אותה כמה פעמים. ר' memberproof.js.
+        if (await overIpQuota(env.RATE_LIMIT_KV, 'proofup', clientIp(request, env), 8, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request);
+        try {
+          return json(await handleUploadMemberProof(request, env), env, request);
+        } catch (e) {
+          console.error('upload-member-proof failed:', e.message);
+          return json({ error: 'upload_failed' }, env, request);
+        }
       }
       if (request.method === 'POST' && url.pathname === '/resend-login-code') {
         // §517 — 10 ל-IP ב-15 דק' (הקירור של 60 שנ' הוא לכל חבר, לא לכל שולח)
