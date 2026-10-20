@@ -117,6 +117,7 @@
 
   var cfg = null;
   var token = null;        // ה-id_token הגולמי שאפל החזירה
+  var ticket = null;       // §582 — כרטיס-זיהוי מהוורקר (3 שעות), לקישור אחרי שהטוקן של אפל פג
 
   function el(id) { return id ? document.getElementById(id) : null; }
 
@@ -261,6 +262,7 @@
   // ביטול — השדות **נשארים מלאים** (הם נכונים), רק הקישור יורד והמייל נפתח לעריכה.
   function clearToken() {
     token = null;
+    ticket = null;
     lockEmail(false);
     lockName(false);
     clearEmailWarn();
@@ -299,7 +301,9 @@
     var relay = isPrivateRelay(p);
 
     token = raw;
+    if (!pre) ticket = null;   // §582 — הרשאה חדשה מאפל: הכרטיס יגיע מההחלפה
     var exchanged = pre ? null : exchangeCode(res, raw);
+    if (exchanged) Promise.resolve(exchanged).then(function (out) { if (out && out.ticket) ticket = out.ticket; });
     // 🐛 **מונמך לאותיות קטנות, ובכוונה — כאן ולא רק בשרת.** הערך הזה נכתב לשדה, ומשם
     // לתוך `members.email`. השרת אמנם משווה שני הצדדים ב-toLowerCase ולכן הקישור עצמו
     // היה עובד — אבל הכתובת הייתה **נשמרת** עם אות גדולה, וזה כבר קרה כאן: כתובת עם
@@ -656,7 +660,7 @@
       var resp = await apiFetch('/apple-attach', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: token, memberId: memberId }),
+        body: JSON.stringify({ idToken: token, memberId: memberId, ticket: ticket }),   // §582
         signal: AbortSignal.timeout(ATTACH_TIMEOUT_MS),
       });
       var out = await resp.json();
@@ -691,11 +695,13 @@
   // ⚠️ החשיפה מיידית ובראש הקובץ-הנטען ולא בתוך callback — ר' §310/§312.
   // §545 — מילוי מטוקן של מסך הכניסה. ⚠️ הטוקן של אפל פג אחרי 10 דקות; כשנשארו פחות מ-3
   // ממלאים את המייל בלבד, בלי נעילה ובלי קישור (כמו הקלדה).
-  function prefill(idToken) {
+  // §582 — עם כרטיס-זיהוי (tk) הקישור עובד גם אחרי שהטוקן פג, ולכן ממלאים ונועלים כרגיל.
+  function prefill(idToken, tk) {
     if (!cfg) return false;
     var p = idToken ? decodeForDisplay(idToken) : null;
     if (!p || !p.email) return false;
-    if (!p.exp || p.exp * 1000 - Date.now() < 3 * 60 * 1000) {
+    if (tk) ticket = tk;
+    if (!tk && (!p.exp || p.exp * 1000 - Date.now() < 3 * 60 * 1000)) {
       setField(cfg.fields.email, String(p.email).trim().toLowerCase());
       track('asPrefillExpired');
       return true;

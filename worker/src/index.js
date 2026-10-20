@@ -260,6 +260,8 @@ export default {
   async scheduled(event, env, ctx) {
     if (event && event.cron === PURGE_CRON) {
       ctx.waitUntil(runDeletionLogPurge(env));
+      // §582 – כרטיסי-זיהוי של Apple שפגו (3 שעות) ולא נוצלו.
+      ctx.waitUntil(purgeExpiredAppleTickets(env).then((n) => console.log('appleTickets purged', n)).catch((e) => console.error('appleTickets purge failed', String(e))));
       // §556 – הורדות לפי מקור מהחנויות, פעם ביום על אותו טריגר. כשל כאן לא נוגע בניקוי.
       ctx.waitUntil(runStoreDownloadsSync(env).then((r) => console.log('storeDownloads', JSON.stringify(r))).catch((e) => console.error('storeDownloads failed', String(e))));
       return;
@@ -511,6 +513,46 @@ async function membersByAppleSub(env, accessToken, sub) {
   return firestoreRunQuery(env, accessToken, 'members', 'appleSub', sub, 2);
 }
 
+// ── §582 — כרטיס-זיהוי של Apple, להרשמה שלוקחת יותר מ-10 דקות ─────────────────────────────
+// 🔴 נמדד (20.10): שני אוהדים לחצו Apple, מילאו את הטופס כשעה, ונרשמו – אבל `/apple-attach`
+// דחה (הטוקן של אפל פג אחרי 10 דק'), ו-Apple לא חובר. רמי: "תסדר שהרשמה עם Apple תתחבר גם
+// אם לקחה יותר מ-10 דקות". 🔑 כשאנחנו מאמתים את הטוקן של אפל, נשמר `appleTickets/{מזהה אקראי}`
+// עם מה שאפל אישרה (sub, מייל), לשלוש שעות. attach מקבל את הכרטיס במקום טוקן שפג – **ושאר
+// הבדיקות זהות** (המייל על הרשומה חייב להיות המייל שאפל אישרה). האוסף בלי `allow` – לקוח לא
+// קורא ולא כותב. 192 ביט אקראיים – לא ניתן לניחוש. נמחק אחרי שימוש.
+const APPLE_TICKET_TTL_MS = 3 * 60 * 60 * 1000;
+async function mintAppleTicket(env, accessToken, a) {
+  try {
+    const b = new Uint8Array(24);
+    crypto.getRandomValues(b);
+    const id = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+    await firestorePatch(env, accessToken, `appleTickets/${id}`, {
+      sub: a.sub, email: a.email || '', emailVerified: !!a.emailVerified, isPrivateRelay: !!a.isPrivateRelay,
+      createdAt: new Date(), expiresAtMs: Date.now() + APPLE_TICKET_TTL_MS,
+    });
+    return id;
+  } catch (e) { console.error('apple ticket mint failed', e); return null; }
+}
+async function purgeExpiredAppleTickets(env) {
+  const accessToken = await getGoogleAccessToken(env);
+  const rows = await firestoreListDocs(env, accessToken, 'appleTickets', 2000);
+  let n = 0;
+  for (const r of rows) {
+    if (Number(r.fields && r.fields.expiresAtMs) > Date.now()) continue;
+    await firestoreDeleteDoc(env, accessToken, `appleTickets/${r.id}`).catch(() => {});
+    n++;
+  }
+  return n;
+}
+async function appleFromTicket(env, accessToken, ticket) {
+  if (typeof ticket !== 'string' || !/^[0-9a-f]{48}$/.test(ticket)) return null;
+  const d = await firestoreGetDoc(env, accessToken, `appleTickets/${ticket}`).catch(() => null);
+  if (!d || !d.fields || !d.fields.sub) return null;
+  if (!(Number(d.fields.expiresAtMs) > Date.now())) return null;
+  return { sub: d.fields.sub, email: d.fields.email || '', emailVerified: d.fields.emailVerified === true,
+           isPrivateRelay: d.fields.isPrivateRelay === true };
+}
+
 async function handleAppleLogin({ idToken }, request, env) {
   let a;
   try { a = await verifyAppleIdToken(env, idToken); }
@@ -526,7 +568,8 @@ async function handleAppleLogin({ idToken }, request, env) {
   // בלי הדגל הזה המסך היה מציג "לא מצאנו רשומה" למי שהרשומה שלו קיימת ומחכה לו.
   if (!member) return { error: 'apple_not_linked', email: a.email,
                         isPrivateRelay: a.isPrivateRelay,
-                        linkable: await linkableByVerifiedEmail(env, accessToken, a, 'appleSub') };
+                        linkable: await linkableByVerifiedEmail(env, accessToken, a, 'appleSub'),
+                        ticket: await mintAppleTicket(env, accessToken, a) };   // §582 – להרשמה שתבוא אחרי
   if (member.fields.status !== 'approved') {
     return { error: member.fields.status === 'pending' ? 'pending' : 'rejected' };
   }
@@ -572,14 +615,22 @@ async function handleAppleLink({ idToken, memberIdToken }, env) {
 // §460ב — **כתובת-ממסר עוברת כאן כמו כל מייל.** טופס ההרשמה ממלא אותה כמייל של הרשומה
 // ונועל אותה, ולכן ההשוואה למטה מצליחה. (עד §460ב נחסמה ב-`apple_private_email` —
 // Guideline 4.8 של אפל דורשת שמי שבחר להסתיר את המייל יוכל להירשם ולהיכנס.)
-async function handleAppleAttach({ idToken, memberId }, request, env) {
-  let a;
-  try { a = await verifyAppleIdToken(env, idToken); } catch (e) { return { error: 'invalid_apple_token' }; }
+async function handleAppleAttach({ idToken, memberId, ticket }, request, env) {
+  let a = null;
+  try { a = await verifyAppleIdToken(env, idToken); } catch (e) { if (!ticket) return { error: 'invalid_apple_token' }; }
   if (!memberId || typeof memberId !== 'string') return { error: 'invalid_request' };
+
+  const accessToken = await getGoogleAccessToken(env);
+  // §582 — הטוקן של אפל פג (10 דק') אבל יש כרטיס-זיהוי שהנפקנו כשאפל אימתה אותו.
+  let fromTicket = false;
+  if (!a) {
+    a = await appleFromTicket(env, accessToken, ticket);
+    if (!a) return { error: 'invalid_apple_token' };
+    fromTicket = true;
+  }
 
   if (!a.emailVerified || !a.email) return { error: 'apple_email_unverified' };
 
-  const accessToken = await getGoogleAccessToken(env);
   const existing = await membersByAppleSub(env, accessToken, a.sub);
   if (existing.some((m) => m.id !== memberId)) return { error: 'apple_already_linked' };
 
@@ -598,6 +649,11 @@ async function handleAppleAttach({ idToken, memberId }, request, env) {
   await firestorePatch(env, accessToken, `members/${memberId}`, {
     appleSub: a.sub, appleEmail: a.email, appleLinkedAt: new Date(),
   });
+  // §582 — כרטיס מנוצל פעם אחת. (גם כשהקישור נעשה בטוקן החי – אין בו עוד צורך.)
+  if (typeof ticket === 'string' && /^[0-9a-f]{48}$/.test(ticket)) {
+    await firestoreDeleteDoc(env, accessToken, `appleTickets/${ticket}`).catch(() => {});
+  }
+  if (fromTicket) console.log('apple-attach: linked via ticket');
 
   // ⚠️ **רק ל-approved** — זהה לנתיב של גוגל (§403). מי שעבר את השער כבר הוכיח שליטה
   // בתיבה שעל הרשומה, כלומר בדיוק מה שנדרש כדי לקבל קוד-כניסה ולהיכנס איתו. רשומה
@@ -659,7 +715,9 @@ async function handleAppleExchange({ idToken, code, redirectUri, name }, env) {
   catch (e) { return { error: 'invalid_apple_token' }; }
   const accessToken = await getGoogleAccessToken(env);
   const nm = await rememberAppleName(env, accessToken, a.sub, name);   // §469
-  const withName = (o) => (nm ? { ...o, name: nm } : o);
+  // §582 — כרטיס-זיהוי לכל תשובה (גם כשההחלפה נכשלה): הקישור בהרשמה לא תלוי בה.
+  const tk = await mintAppleTicket(env, accessToken, a);
+  const withName = (o) => { const x = tk ? { ...o, ticket: tk } : o; return nm ? { ...x, name: nm } : x; };
   // נבדק **אחרי** האימות, במכוון: "לא הוגדר מפתח" אינו מידע שמגיע למי שלא הוכיח זהות.
   if (!appleKeyConfigured(env)) {
     console.log('apple-exchange: skipped – apple_key_not_configured');

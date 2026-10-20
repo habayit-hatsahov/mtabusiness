@@ -39,7 +39,7 @@
        נופל להתנהגות הקודמת (הסתרה באפליקציה), ולכן היא נוספת דף-דף ולא בבת-אחת.
        ר' [[feedback_staged_rollout]]. -->
   <script src="native-apple.js"></script>
-  <script src="apple-signup.js"></script>
+  <script src="apple-signup.js?v=582"></script>
   <script>
 
   // ── §431ג — תור לפונקציות שמוגדרות במודול ונקראות מ-onclick שנצבע קודם ──────────────────
@@ -2924,13 +2924,15 @@
   window.hbApplyRegPrefill = function () {
     let pf = null;
     try { pf = JSON.parse(sessionStorage.getItem('yz_reg_prefill') || 'null'); sessionStorage.removeItem('yz_reg_prefill'); } catch (e) {}
-    if (!pf || !pf.token || Date.now() - (pf.at || 0) > 60 * 60 * 1000) return false;
+    // §582 — עד 3 שעות (תוקף כרטיס-הזיהוי של Apple); בלי כרטיס apple-signup ממלא מייל בלבד כשהטוקן פג.
+    if (!pf || !pf.token) return false;
+    if (Date.now() - (pf.at || 0) > ((pf.prov === 'apple' && pf.ticket) ? 3 * 60 : 60) * 60 * 1000) return false;
     const mod = pf.prov === 'apple' ? window.hbAppleSignup : window.hbGoogleSignup;
     // חשבון מהספק השני שכבר מילא את הטופס קודם — יורד, אחרת שני טוקנים על מייל אחד
     // ו-attach של הישן נכשל בשקט (המייל כבר לא שלו).
     const other = pf.prov === 'apple' ? window.hbGoogleSignup : window.hbAppleSignup;
     try { if (other && other.token && other.token()) other.clear(); } catch (e) {}
-    try { return !!(mod && mod.prefill && mod.prefill(pf.token)); }
+    try { return !!(mod && mod.prefill && mod.prefill(pf.token, pf.ticket || null)); }
     catch (e) { console.error('reg prefill נכשל', e); return false; }
   };
 
