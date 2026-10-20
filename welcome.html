@@ -192,6 +192,7 @@ function openJoinModal() {
 function openLoginModal() {
   window.logEvent && window.logEvent('formOpen', { blockId: 'loginModal' });
   window.heroNlReset && window.heroNlReset();   // §545
+  window.heroExitAppleStep && window.heroExitAppleStep();   // §584 — כל פתיחה מתחילה במסך הרגיל
   // §312 — איפוס מצב הכפתור בכל פתיחה. בלי זה, ניסיון קודם שנתקע השאיר את הכפתור disabled עם
   // הכיתוב "בודק...", וכל פתיחה מחדש של המודאל החזירה **כפתור מת** — כך תקלה רגעית אחת נעלה את
   // הכניסה עד רענון מלא של הדף. קרה בפועל לאוהד ב-28.8: הוא פתח את המודאל שלוש פעמים נוספות,
@@ -1711,6 +1712,18 @@ button { font-family: inherit; }
    מחליף את גוף חלון הכניסה כשחשבון Google/Apple לא שייך לאף חבר. ההרשמה ראשית, "כבר חברים?"
    משני. ⚠️ ".login-modal-body" הוא display:flex, וזה גובר על [hidden] — ולכן מחלקה מפורשת. */
 #loginOverlay .login-modal-body.nl-off, #loginOverlay .nl-panel.nl-off { display: none; }
+/* §584 — מצב "צעד אחד": כותרת + חשבון Apple, אחריהם טלפון+קוד, ו-Google והרשמה בסוף. */
+.ap-step { display: flex; flex-direction: column; gap: 12px; }
+.ap-step[hidden], .ap-or[hidden], .ap-reg[hidden] { display: none; }
+.ap-av { background: #000 !important; border-color: #000 !important; }
+.ap-mode #loginHead, .ap-mode #asLoginHost, .ap-mode #heroCodeToggle,
+.ap-mode #gsLoginNote, .ap-mode .code-path-note, .ap-mode .gs-login-or { display: none !important; }   /* הסברי המסך הרגיל – מבלבלים כאן */
+.ap-mode .ap-or { order: 20; display: flex; align-items: center; gap: 10px; color: var(--ink-3); font-size: 12.5px; }
+.ap-mode .ap-or::before, .ap-mode .ap-or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.ap-mode #gsLoginHost { order: 21; }
+.ap-mode .ap-reg { order: 22; border-top: 1px solid var(--line); padding-top: 12px; text-align: center; font-size: 13px; color: var(--ink-2); }
+.ap-mode .ap-reg a { color: var(--ink); font-weight: 700; }
+.ap-mode #heroLoginHelpCta, .ap-mode #heroLoginHelpPanel, .ap-mode #heroLoginHelpDone { order: 23; }
 .nl-acct { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--field); border: 1px solid var(--field-line); }
 .nl-av { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto; background: #fff; border: 1px solid var(--field-line); }
 .nl-av svg { width: 18px; height: 18px; }
@@ -2160,7 +2173,17 @@ button { font-family: inherit; }
   <div class="modal-box">
     <button class="modal-close" onclick="closeModal('loginOverlay')">✕</button>
     <div class="login-modal-body">
-      <div>
+      <!-- §584 — "נשאר צעד אחד – פעם אחת ונגמר": Apple לא זוהה (מייל מוסתר / מייל אחר). אותו
+           מודאל ואותם שדות טלפון+קוד – רק כותרת וחשבון ה-Apple מעליהם, ו-Apple מתחבר בכניסה.
+           דמו: apple-one-step-demo.html. מופעל ע"י heroEnterAppleStep. -->
+      <div class="ap-step" id="apStep" hidden>
+        <div class="login-modal-title">נשאר צעד אחד –<br>פעם אחת ונגמר</div>
+        <div class="nl-acct"><div class="nl-av ap-av" aria-hidden="true"><svg width="16" height="18" viewBox="0 0 16 19" fill="#fff"><path d="M13.2 10.1c0-2.4 2-3.6 2.1-3.6-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8C3.2 4.7 1.7 5.7.9 7.2c-1.7 3-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.1-1.2 2.9-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.4-.9-2.4-4zM10.8 3c.7-.8 1.1-1.9 1-3-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.2-.6 2.9-1.4z"/></svg></div>
+          <div class="nl-who"><b>חשבון Apple</b><span id="apEmail" dir="ltr"></span></div>
+          <button type="button" class="nl-swap" onclick="heroExitAppleStep()">חשבון אחר</button></div>
+        <div class="login-modal-sub" id="apText"></div>
+      </div>
+      <div id="loginHead">
         <div class="login-modal-title">התחברות</div>
         <!-- §387 — הנוסח כאן מדבר על הקוד בלבד, ומוחלף ל"Google או קוד" **רק אם הכפתור
              באמת צויר** (hbRenderGoogleLoginBtn). אותו כלל בדיוק כמו הבלוק עצמו: אסור
@@ -2185,6 +2208,7 @@ button { font-family: inherit; }
            ⚠️ הבלוק עדיין מוסתר עד שהכפתור צויר בפועל (ר' hbRenderGoogleLoginBtn) — קו
            מפריד עם כותרת, בלי כפתור מתחתיו, גרוע מלא-להציע-גוגל-בכלל. **וזה גם התנאי
            שקובע אם מסלול הקוד מתקפל** — ר' ההערה על .code-path מתחת. -->
+      <div class="ap-or" id="apOr" hidden>או – כניסה עם Google, ונחבר את Apple</div>
       <div class="gs-login-host" id="gsLoginHost">
         <!-- §415 — 🔑 **השאלה הוחלפה בתנאי, כי היא הפכה לא-נכונה.** "כבר חיברתם?" נכתב
              ב-§399 כשהכפתור באמת עבד רק למי שקישר מראש, וכל השאר קיבלו שגיאה — ואז הסינון
@@ -2308,6 +2332,7 @@ button { font-family: inherit; }
            אין פנייה, ואין לו שום דרך להגיע אלינו — הוא פשוט מפסיק לנסות. זה בדיוק מה שקרה
            ב-§322 עצמו. הפאנל **בתוך המודאל** ולא דף נפרד, מאותה סיבה כמו §303: מי שנתקע
            ונשלח למקום אחר לא חוזר. -->
+      <div class="ap-reg" id="apReg" hidden>עוד לא נרשמתם? <a href="#" onclick="event.preventDefault();heroNlRegister();">להרשמה</a> – Apple יתחבר להרשמה.</div>
       <button class="login-help-cta" id="heroLoginHelpCta" onclick="openLoginHelp()">לא מצליחים להיכנס? כתבו לנו ונטפל בזה</button>
       <div class="login-help-panel" id="heroLoginHelpPanel">
         <div class="login-help-sub" id="heroLoginHelpSub">ספרו לנו מה קרה ונחזור אליכם. אין צורך להירשם מחדש – החשבון שלכם קיים.</div>
@@ -3117,6 +3142,36 @@ const HB_PENDING_LOGIN_KEY = 'hb_pending_loginOk';
 // הנתיב החזק שקיים בוורקר מ-§456 ומקבל גם מייל מוסתר). מאותו רגע Apple מכניס אותו ישר.
 // ⚠️ הטוקן של אפל תקף כ-10 דק' – כניסה בקוד שלוקחת יותר לא תחבר (ינסה שוב בלחיצה הבאה על Apple).
 const HB_APPLE_LINK_KEY = 'yz_apple_link_pending';
+let _hbApInline = null;   // §584 — {idToken, why, t} כשהמודאל במצב "צעד אחד"
+const HB_AP_TEXT = {
+  privateEmail: 'בחרתם להסתיר את המייל ב-Apple, ולכן עוד לא יודעים מי אתם. היכנסו <b>פעם אחת</b> עם הטלפון וקוד הכניסה – ונחבר את Apple לחשבון שלכם.<br>מהפעם הבאה – לחיצה על Apple ונכנסים.',
+  notLinked: 'המייל הזה לא מופיע אצלנו – כנראה נרשמתם עם מייל אחר. היכנסו <b>פעם אחת</b> עם הטלפון וקוד הכניסה – ונחבר את Apple לחשבון שלכם.<br>מהפעם הבאה – לחיצה על Apple ונכנסים.',
+};
+window.heroEnterAppleStep = function (why, idToken, email, ticket) {
+  const step = document.getElementById('apStep');
+  const body = step && step.closest('.login-modal-body');
+  if (!step || !body || !idToken) return false;
+  _hbApInline = { idToken, why, t: Date.now() };
+  _hbNl = { prov: 'apple', token: idToken, at: Date.now(), ticket: ticket || null };   // "להרשמה" בתחתית
+  document.getElementById('apEmail').textContent = email || '';
+  document.getElementById('apText').innerHTML = HB_AP_TEXT[why] || HB_AP_TEXT.notLinked;
+  ['apStep', 'apOr', 'apReg'].forEach((id) => { const e = document.getElementById(id); if (e) e.hidden = false; });
+  body.classList.add('ap-mode');
+  const btn = document.getElementById('heroLoginBtn');
+  if (btn) { if (!btn.dataset.apOrig) btn.dataset.apOrig = btn.textContent; btn.textContent = 'כניסה וחיבור Apple'; }
+  window.heroShowCodePath && window.heroShowCodePath();
+  const box = body.closest('.modal-box'); if (box) box.scrollTop = 0;
+  return true;
+};
+window.heroExitAppleStep = function () {
+  _hbApInline = null;
+  const step = document.getElementById('apStep');
+  const body = step && step.closest('.login-modal-body');
+  ['apStep', 'apOr', 'apReg'].forEach((id) => { const e = document.getElementById(id); if (e) e.hidden = true; });
+  if (body) body.classList.remove('ap-mode');
+  const btn = document.getElementById('heroLoginBtn');
+  if (btn && btn.dataset.apOrig) btn.textContent = btn.dataset.apOrig;
+};
 function heroRememberAppleForLink(idToken, why) {
   if (!idToken) return;
   try { sessionStorage.setItem(HB_APPLE_LINK_KEY, JSON.stringify({ idToken, why, t: Date.now() })); } catch (e) {}
@@ -3135,7 +3190,30 @@ function heroFinishLogin(uid, phoneDigits) {
   // §359 — האיפוס חייב לשבת כאן, בנקודת-הסיום היחידה: כניסה שהגיעה מרשת-ההצלה המאוחרת
   // עוברת רק דרך הפונקציה הזאת, ובלי זה מי שנכנס בזכותה נושא מונה-חסימה דולף לכניסה הבאה.
   try { localStorage.removeItem(window.HB_NETFAIL_KEY); } catch (_) {}
+  // §584 — נכנס מתוך "צעד אחד" (קוד או Google): מחברים את ה-Apple שלו לפני הבית. בלי שאלה –
+  // הוא עצמו לחץ Apple והוא עצמו נכנס, באותו חלון. כשל → הכרטיס בבית (§581) כגיבוי.
+  const ap = _hbApInline;
+  if (ap && ap.idToken && Date.now() - ap.t < 9 * 60000 && auth.currentUser && auth.currentUser.uid === uid) {
+    _hbApInline = null;
+    heroAppleLinkInline(ap).finally(heroGoHome);
+    return;
+  }
   heroGoHome();
+}
+async function heroAppleLinkInline(ap) {
+  let res = null;
+  try {
+    const memberIdToken = await auth.currentUser.getIdToken();
+    const r = await hbApiFetch('/apple-link', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: ap.idToken, memberIdToken }), signal: AbortSignal.timeout(6000) });
+    res = await r.json().catch(() => null);
+  } catch (e) { console.warn('apple-link inline failed:', e); }
+  window.logEvent && window.logEvent('formStep', { blockId: 'appleLinkInline', channel: res && res.ok ? 'ok:' + ap.why : 'err:' + ((res && res.error) || 'network') });
+  if (res && res.ok) {
+    try { sessionStorage.removeItem(HB_APPLE_LINK_KEY); } catch (e) {}   // אין צורך בכרטיס בבית
+    heroAMsg('✓ Apple חובר לחשבון שלכם. מעכשיו – לחיצה על Apple ונכנסים.');
+    await new Promise((r) => setTimeout(r, 1200));
+  }
 }
 
 // §322 — הכניסה נחשבת מוצלחת ברגע ש-auth מדווח על משתמש, ולא רק כשההבטחה של
@@ -3680,7 +3758,12 @@ async function heroAppleLogin(idToken) {
       // לעולם אינו זהה למייל שעל הרשומה שלו. ⚠️ בלי הענף הזה הוא היה מקבל את ההודעה
       // הגנרית ("עדיין לא חיברתם") ויוצא לחפש טעות שאינה קיימת. ר' [[feedback_state_not_event_detection]].
       if (data.isPrivateRelay && !(data.linkable && data.linkable.memberId)) {
-        heroRememberAppleForLink(idToken, 'privateEmail');   // §581
+        heroRememberAppleForLink(idToken, 'privateEmail');   // §581 – גיבוי: הכרטיס בדף הבית
+        // §584 — "נשאר צעד אחד": אותה מדידה (loginFail), ובמקום הודעה – מצב-הצעד במודאל.
+        window.logEvent && window.logEvent('loginFail', { channel: 'apple:privateEmail', blockId: heroEnvTagAt(t0, api) });
+        window.hbBumpNetFail && window.hbBumpNetFail('privateEmail');
+        heroAMsg('');
+        if (window.heroEnterAppleStep && window.heroEnterAppleStep('privateEmail', idToken, data.email || '', data.ticket || null)) return;
         fail('privateEmail',
           // §458ד — בלי "נסו שוב": אפל לא שואלת שוב, וניסיון חוזר מחזיר אותו ממסר.
           'בחרתם <b>להסתיר את המייל</b> מ-Apple, ולכן איננו יכולים לזהות את הרשומה שלכם.<br>' +
@@ -3720,6 +3803,9 @@ async function heroAppleLogin(idToken) {
         });
         window.hbBumpNetFail && window.hbBumpNetFail('notLinked');
         heroRememberAppleForLink(idToken, 'notLinked');   // §581
+        // §584 — רמי: "במייל אחר להציג קודם את הכניסה" – מצב-הצעד, וההרשמה בתחתיתו.
+        heroAMsg('');
+        if (window.heroEnterAppleStep && window.heroEnterAppleStep('notLinked', idToken, data.email || '', data.ticket || null)) return;
         window.heroShowNotRegistered('apple', idToken, data.email || '', data.ticket || null);
         return;
       }
