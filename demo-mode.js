@@ -43,7 +43,7 @@
     '.yz-lock-panel a{background:#FFD400;color:#0A2A66;border:none}' +
     '.yz-lock-panel button{background:#fff;color:#3A4C7A;border:1px solid #E4E4DC;font-weight:700}' +
     // כל מה שכותב או מוביל לפעולה של חבר
-    'html.yz-demo .biz-card-like,html.yz-demo .sheet-hero-like,html.yz-demo #glBanner,html.yz-demo #menuPushItem,html.yz-demo #pushCard,' +
+    'html.yz-demo .biz-card-like,html.yz-demo .sheet-hero-like,html.yz-demo #glBanner,html.yz-demo #menuPushItem,html.yz-demo #pushCard,html.yz-demo #appleLinkCard,' +
     'html.yz-demo #detailsEditBtn,html.yz-demo #deleteAccountRow,html.yz-demo .fanmsg-option,html.yz-demo #menuShareBizItem,' +
     'html.yz-demo #convRoot [data-cv="newBtn"],html.yz-demo #convRoot [data-cv="new"],html.yz-demo #convRoot [data-cv="reply"],' +
     'html.yz-demo #convRoot [data-cv="closedNew"]{display:none!important}' +

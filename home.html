@@ -524,20 +524,20 @@
     .hero-title span { color: var(--ink); }
     .hero-flag { vertical-align: -4px; margin-inline-start: 6px; transform: scaleX(-1); }
     /* §569 — כרטיס התראות חד-פעמי. אותו עיצוב כמו בסוף ההרשמה (push-ask.js). */
-    #pushCard { margin: 12px 16px 0; background: #E8EEFB; border: 1px solid #cdd8f2; border-radius: 16px;
+    #pushCard, #appleLinkCard { margin: 12px 16px 0; background: #E8EEFB; border: 1px solid #cdd8f2; border-radius: 16px;
       padding: 14px; color: #0A2A66; line-height: 1.55; transition: opacity .25s, transform .25s; }
-    #pushCard.leaving { opacity: 0; transform: translateY(-6px); }
-    #pushCard .pc-h { font-weight: 800; font-size: 15.5px; }
-    #pushCard .pc-b { margin-top: 4px; font-size: 14px; color: #33466f; }
-    #pushCard .pc-actions { display: flex; align-items: center; gap: 14px; margin-top: 11px; }
-    #pushCard .pc-yes { border: none; border-radius: 12px; padding: 11px 18px; font: inherit; font-size: 14px;
+    #pushCard.leaving, #appleLinkCard.leaving { opacity: 0; transform: translateY(-6px); }
+    #pushCard .pc-h, #appleLinkCard .pc-h { font-weight: 800; font-size: 15.5px; }
+    #pushCard .pc-b, #appleLinkCard .pc-b { margin-top: 4px; font-size: 14px; color: #33466f; }
+    #pushCard .pc-actions, #appleLinkCard .pc-actions { display: flex; align-items: center; gap: 14px; margin-top: 11px; }
+    #pushCard .pc-yes, #appleLinkCard .pc-yes { border: none; border-radius: 12px; padding: 11px 18px; font: inherit; font-size: 14px;
       font-weight: 900; background: #FFD400; color: #0A2A66; cursor: pointer; }
-    #pushCard .pc-yes:disabled { opacity: .6; cursor: default; }
-    #pushCard .pc-later { background: none; border: none; font: inherit; font-size: 13.5px; color: #6B7A9B;
+    #pushCard .pc-yes:disabled, #appleLinkCard .pc-yes:disabled { opacity: .6; cursor: default; }
+    #pushCard .pc-later, #appleLinkCard .pc-later { background: none; border: none; font: inherit; font-size: 13.5px; color: #6B7A9B;
       cursor: pointer; padding: 6px 2px; text-decoration: underline; text-underline-offset: 3px; }
-    #pushCard .pc-msg { margin-top: 8px; font-size: 13.5px; }
-    #pushCard .pc-msg.ok { color: #1f7a4d; font-weight: 700; }
-    @media (min-width: 900px) { #pushCard { max-width: 520px; } }
+    #pushCard .pc-msg, #appleLinkCard .pc-msg { margin-top: 8px; font-size: 13.5px; }
+    #pushCard .pc-msg.ok, #appleLinkCard .pc-msg.ok { color: #1f7a4d; font-weight: 700; }
+    @media (min-width: 900px) { #pushCard, #appleLinkCard { max-width: 520px; } }
     .search-bar {
       display: flex; align-items: center;
       background: var(--field); border-radius: var(--r-field);
@@ -1736,6 +1736,8 @@
 </div>
 
 <!-- §569 — כרטיס התראות חד-פעמי (אפליקציה בלבד). ממולא ע"י maybeShowPushCard במודול. -->
+<!-- §581 — חיבור Apple אחרי כניסה בקוד/Google, כש-Apple לא זוהה באותו סשן. -->
+<div id="appleLinkCard" hidden></div>
 <div id="pushCard" hidden></div>
 
 <!-- §444 — באנר "חברו חשבון Google" (§388) וההודעה "✅ חובר" (§410) הוסרו לבקשת המשתמש
@@ -5066,6 +5068,50 @@ initBizNavItem();
     // נשאר בפיקדון בכוונה. ר' ההערה למעלה.
     console.error('push stash flush failed (will retry next load):', e);
   }
+})();
+
+// ══ §581 — חיבור Apple אחרי כניסה בקוד / Google ════════════════════════════════════════════
+// welcome.html שומר את הזיהוי של Apple כשהוא לא זוהה (מייל מוסתר / מייל אחר). אם באותו סשן
+// החבר נכנס בדרך אחרת – שאלה אחת: לחבר? "כן" → `/apple-link` (טוקן Apple + טוקן החבר). מאותו
+// רגע Apple מכניס אותו ישר. 🔑 **שואלים ולא מחברים לבד:** אם אדם אחר נכנס מאותו טלפון תוך
+// דקות, ה-Apple של הראשון היה מתחבר לחשבון של השני – ונכנס אליו בלחיצה. שאלה אחת חוסמת את זה.
+// הטוקן של אפל תקף ~10 דק'; ישן מזה – לא שואלים (לא יעבוד).
+(async function maybeOfferAppleLink() {
+  const box = document.getElementById('appleLinkCard');
+  let pend = null;
+  try { pend = JSON.parse(sessionStorage.getItem('yz_apple_link_pending') || 'null'); } catch (e) {}
+  if (!box || !pend || !pend.idToken) return;
+  try { sessionStorage.removeItem('yz_apple_link_pending'); } catch (e) {}   // שאלה אחת בלבד
+  if (Date.now() - (pend.t || 0) > 9 * 60000 || !auth.currentUser) return;
+  box.innerHTML =
+    '<div class="pc-h">להיכנס בפעם הבאה עם Apple?</div>' +
+    '<div class="pc-b">ניסיתם להיכנס עם Apple ולא זיהינו את החשבון' + (pend.why === 'privateEmail' ? ' (המייל הוסתר)' : '') +
+    '. אם זה חשבון ה-Apple שלכם – נחבר אותו, ומעכשיו הכניסה תהיה בלחיצה אחת.</div>' +
+    '<div class="pc-actions"><button type="button" class="pc-yes">כן, לחבר את Apple</button>' +
+    '<button type="button" class="pc-later">לא, תודה</button></div><div class="pc-msg" style="display:none"></div>';
+  box.hidden = false;
+  const remove = (ms) => setTimeout(() => { box.classList.add('leaving'); setTimeout(() => { box.hidden = true; box.innerHTML = ''; }, 260); }, ms || 0);
+  const say = (text, ok) => {
+    box.querySelector('.pc-actions').style.display = 'none';
+    const m = box.querySelector('.pc-msg'); m.textContent = text; m.className = 'pc-msg' + (ok ? ' ok' : ''); m.style.display = 'block';
+  };
+  box.querySelector('.pc-later').addEventListener('click', () => remove());
+  box.querySelector('.pc-yes').addEventListener('click', async (ev) => {
+    ev.currentTarget.disabled = true; ev.currentTarget.textContent = 'רגע…';
+    let res = null;
+    try {
+      const memberIdToken = await auth.currentUser.getIdToken();
+      const r = await hbApiFetch('/apple-link', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: pend.idToken, memberIdToken }) });
+      res = await r.json().catch(() => null);
+    } catch (e) { console.error('apple-link failed:', e); }
+    const err = res && res.error;
+    window.logEvent && window.logEvent('formStep', { blockId: 'appleLinkAfter', channel: res && res.ok ? 'ok:' + (pend.why || '') : 'err:' + (err || 'network') });
+    if (res && res.ok) { say('✓ Apple חובר. מעכשיו אפשר להיכנס עם Apple.', true); remove(2500); }
+    else if (err === 'apple_already_linked') { say('חשבון ה-Apple הזה כבר מחובר לחשבון אחר אצלנו.', false); remove(4000); }
+    else if (err === 'invalid_apple_token') { say('עבר יותר מדי זמן מהניסיון עם Apple. בפעם הבאה – לחצו Apple ומיד אחר כך היכנסו כאן, ונחבר.', false); remove(5000); }
+    else { say('לא הצלחנו לחבר עכשיו. אפשר לנסות שוב בכניסה הבאה.', false); remove(4000); }
+  });
 })();
 
 // ══ §569 — כרטיס התראות חד-פעמי בדף הבית ═══════════════════════════════════════════════════

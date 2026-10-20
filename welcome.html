@@ -3108,6 +3108,20 @@ let _hbLoginVia = 'code';
 // עכשיו: נשמר ב-sessionStorage (סינכרוני, שורד ניווט באותה לשונית, ושם גם ה-sessionId),
 // ו-home.html שולח אותו מיד אחרי ה-pageView שלו — בדף שלא עומד להיסגר.
 const HB_PENDING_LOGIN_KEY = 'hb_pending_loginOk';
+// ── §581 — Apple שלא זוהה מתחבר אוטומטית בכניסה הבאה באותו סשן ─────────────────────────
+// רמי (20.10): *"זה ממש בעיה… רוב המשתמשים באייפון"*. נמדד היום: 11 כשלי privateEmail + 3
+// notLinked – Apple מסרה מייל שאינו על הרשומה (מוסתר, או מייל אחר), ולכן אין זיהוי, **ובכל
+// כניסה הבאה זה חוזר** – לא היה שום מסלול שמחבר את Apple לחשבון. (שורת "חיבור Apple" בפרופיל
+// הוסרה ב-§456ד: "סתם מעיק".) עכשיו בלי שום שורה: הזיהוי מ-Apple נשמר ל-sessionStorage, ואם
+// באותו סשן החבר נכנס בקוד או ב-Google – home.html קורא ל-`/apple-link` (טוקן Apple + טוקן החבר,
+// הנתיב החזק שקיים בוורקר מ-§456 ומקבל גם מייל מוסתר). מאותו רגע Apple מכניס אותו ישר.
+// ⚠️ הטוקן של אפל תקף כ-10 דק' – כניסה בקוד שלוקחת יותר לא תחבר (ינסה שוב בלחיצה הבאה על Apple).
+const HB_APPLE_LINK_KEY = 'yz_apple_link_pending';
+function heroRememberAppleForLink(idToken, why) {
+  if (!idToken) return;
+  try { sessionStorage.setItem(HB_APPLE_LINK_KEY, JSON.stringify({ idToken, why, t: Date.now() })); } catch (e) {}
+}
+
 function heroFinishLogin(uid, phoneDigits) {
   try {
     sessionStorage.setItem(HB_PENDING_LOGIN_KEY,
@@ -3666,6 +3680,7 @@ async function heroAppleLogin(idToken) {
       // לעולם אינו זהה למייל שעל הרשומה שלו. ⚠️ בלי הענף הזה הוא היה מקבל את ההודעה
       // הגנרית ("עדיין לא חיברתם") ויוצא לחפש טעות שאינה קיימת. ר' [[feedback_state_not_event_detection]].
       if (data.isPrivateRelay && !(data.linkable && data.linkable.memberId)) {
+        heroRememberAppleForLink(idToken, 'privateEmail');   // §581
         fail('privateEmail',
           // §458ד — בלי "נסו שוב": אפל לא שואלת שוב, וניסיון חוזר מחזיר אותו ממסר.
           'בחרתם <b>להסתיר את המייל</b> מ-Apple, ולכן איננו יכולים לזהות את הרשומה שלכם.<br>' +
@@ -3704,9 +3719,11 @@ async function heroAppleLogin(idToken) {
           channel: 'apple:notLinked', blockId: heroEnvTagAt(t0, api), ...(data.email ? { email: data.email } : {}),
         });
         window.hbBumpNetFail && window.hbBumpNetFail('notLinked');
+        heroRememberAppleForLink(idToken, 'notLinked');   // §581
         window.heroShowNotRegistered('apple', idToken, data.email || '');
         return;
       }
+      heroRememberAppleForLink(idToken, 'notLinked');   // §581
       fail('notLinked',
         'עדיין לא חיברתם את חשבון ה-Apple הזה' + (data.email ? ' (<b>' + heroEsc(data.email) + '</b>)' : '') +
         ' לכניסה ל-Yellow Zone.' +
