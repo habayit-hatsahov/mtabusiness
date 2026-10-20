@@ -45,8 +45,23 @@
   // לא קורה, וההמתנה עליו נתקעת לנצח. ר' [[feedback_bound_every_network_await]].
   const REGISTER_TIMEOUT_MS = 15000;
 
-  function cap() {
+  function localCap() {
     return (typeof window !== 'undefined' && window.Capacitor) || null;
+  }
+  // ── §573 — הרשמה בתוך מסגרת (iframe) ─────────────────────────────────────────────────────
+  // רמי (20.10, אנדרואיד): "עדיין אין" תיבת התראות בהרשמה. באפליקציה ההרשמה נפתחת
+  // ב-welcome.html בתוך `<iframe id="joinFrame" src="fan-register.html?embed=1">`, ו-Capacitor
+  // מזריק את הגשר **רק לדף העליון**. בתוך המסגרת `window.Capacitor` לא קיים → available()=false
+  // → אין תיבה, ואין גם את כרטיס §502 שקדם לה – כלומר בהרשמה באפליקציה **אף פעם** לא נשאלו.
+  // המסגרת היא same-origin, ולכן משתמשים בגשר של ההורה. ההאזנות (לחיצה על התראה, באנר,
+  // ערוץ) נשארות `localCap()` – רק בדף העליון, אחרת היו נרשמות פעמיים ומנווטות את המסגרת.
+  function cap() {
+    const c = localCap();
+    if (c) return c;
+    try {
+      if (window.parent && window.parent !== window && window.parent.Capacitor) return window.parent.Capacitor;
+    } catch (e) {}   // הורה מדומיין אחר – אין גישה, וזה בסדר
+    return null;
   }
 
   // 🔑 הבדיקה היא על הפונקציות עצמן ולא על isPluginAvailable/Plugins — ר' ההערה בראש.
@@ -238,7 +253,7 @@
   // ⚠️ האירוע נשמר עד שיש מאזין (הפעלה קרה), ונמסר בכל דף שנטען — השמירה ב-sessionStorage
   // מונעת קפיצה חוזרת אחרי שכבר ניווטנו (אותו דפוס של app-links.js).
   (function listenTaps() {
-    const c = cap();
+    const c = localCap();   // §573 — רק בדף העליון: מסגרת פנימית לא מנווטת ולא מציגה באנר
     if (!(c && typeof c.addListener === 'function')) return;
     const KEY = 'yz_push_tap';
     try {
@@ -263,7 +278,7 @@
   // ערוץ שעוד לא נוצר במכשיר (האפליקציה לא נפתחה מאז) → FCM נופל לברירת המחדל, לא מפיל.
   const CHANNEL_ID = 'yz_main';
   (function ensureChannel() {
-    const c = cap();
+    const c = localCap();
     if (!(c && typeof c.nativePromise === 'function') || platform() !== 'android') return;
     try {
       c.nativePromise('PushNotifications', 'createChannel', {
@@ -309,7 +324,7 @@
     } catch (e) {}
   }
   (function listenForeground() {
-    const c = cap();
+    const c = localCap();
     if (!(c && typeof c.addListener === 'function')) return;
     try {
       c.addListener('PushNotifications', 'pushNotificationReceived', function (n) {
