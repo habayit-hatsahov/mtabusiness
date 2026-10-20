@@ -65,9 +65,23 @@
   // כך שכרטיס דף-הבית (§569) יופיע אחרי האישור.
   // אותם תנאים כמו mount: אפליקציה + גשר + עוד לא נשאל. אחרת התיבה לא מוצגת.
   // רמי: "גם לאוהד וגם לבעל העסק" – fan-register.html ו-business.html. mount נשאר לשימוש עתידי.
+  // §572 — התיבה מוצגת גם כשההרשאה **כבר 'granted'**. רמי (20.10, אנדרואיד): "לא רואה את
+  // תיבת הסימון". באנדרואיד 12 ומטה ההרשאה ניתנת אוטומטית בהתקנה, וגם מכשיר שכבר אישר נשאר
+  // 'granted' – ושם 'prompt' לא מתקיים אף פעם. כלומר אף אחד מהם לא נרשם להתראות. כש-granted,
+  // registerAndStash לא פותח שום חלון (ensurePermission חוזר מיד) – רק מוציא טוקן.
+  // 'denied' – לא מוצגת: אין מה לעשות מכאן.
+  async function canOptIn() {
+    try {
+      const np = window.YZNativePush;
+      if (!np || !np.available()) return false;
+      const st = await np.permissionState();
+      return st === 'prompt' || st === 'prompt-with-rationale' || st === 'granted';
+    } catch (e) { return false; }
+  }
+
   async function mountCheckbox(beforeEl) {
     if (!beforeEl || document.getElementById('yzPushOpt')) return;
-    if (!(await shouldAsk())) return;
+    if (!(await canOptIn())) return;
     const row = document.createElement('label');
     row.className = 'yz-pushopt';
     row.style.cssText = 'display:flex;gap:10px;align-items:flex-start;margin:4px 0 14px;font-size:14px;' +

@@ -5082,8 +5082,21 @@ const PUSH_CARD_KEY = 'yz_pushcard_dismissed';
   try {
     const np = window.YZNativePush;
     if (!np || !np.available() || !auth.currentUser) return;
-    try { if (localStorage.getItem(PUSH_CARD_KEY)) return; } catch (e) {}
     const st = await np.permissionState();
+    // §572 — ההרשאה כבר ניתנה (אנדרואיד 12 ומטה – אוטומטית בהתקנה; או שאושרה בעבר) → אין מה
+    // לשאול, אבל ייתכן שאין טוקן על **החבר הזה** (מעולם לא נרשם / חבר אחר באותו מכשיר / טוקן
+    // שהתחלף). רישום שקט, בלי שום חלון, פעם בשבוע לכל חבר במכשיר.
+    if (st === 'granted') {
+      const k = 'yz_push_synced_' + auth.currentUser.uid;
+      let lastSync = 0;
+      try { lastSync = +localStorage.getItem(k) || 0; } catch (e) {}
+      if (Date.now() - lastSync < 7 * 86400000) return;
+      const r = await window.enableNativePush();
+      if (r && r.ok) { try { localStorage.setItem(k, String(Date.now())); } catch (e) {} }
+      else console.warn('silent push sync failed:', r && r.reason);
+      return;
+    }
+    try { if (localStorage.getItem(PUSH_CARD_KEY)) return; } catch (e) {}
     if (st !== 'prompt' && st !== 'prompt-with-rationale') return;
   } catch (e) { return; }
 
