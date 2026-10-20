@@ -72,10 +72,21 @@
     row.className = 'yz-pushopt';
     row.style.cssText = 'display:flex;gap:10px;align-items:flex-start;margin:4px 0 14px;font-size:14px;' +
       'line-height:1.5;color:#0A2A66;cursor:pointer';
+    // ⚠️ תיבה **מצוירת**, לא הפקד של הדפדפן: ב-business.html עיצוב ה-input הכללי של הדף
+    // מוחק את הפקד, והתיבה הופיעה ריקה ואפורה למרות שסומנה (נתפס בצילום, 20.10). אותה שיטה
+    // של "קראתי ואני מסכים" שם: input שקוף מעל ריבוע שאנחנו צובעים.
     row.innerHTML =
-      '<input type="checkbox" id="yzPushOpt" checked style="width:20px;height:20px;margin:1px 0 0;flex:0 0 auto;accent-color:#0A2A66;color-scheme:light">' +
+      '<span style="position:relative;width:22px;height:22px;flex:0 0 auto;margin-top:1px">' +
+        '<input type="checkbox" id="yzPushOpt" checked style="position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;z-index:2;cursor:pointer">' +
+        '<span class="yz-pushopt-box" style="position:absolute;inset:0;border:2px solid #0A2A66;border-radius:6px;display:flex;' +
+          'align-items:center;justify-content:center;font-size:15px;font-weight:900;line-height:1;pointer-events:none"></span>' +
+      '</span>' +
       '<span>לקבל התראות כשהצוות עונה לי ועל עדכונים חשובים</span>';
     beforeEl.parentNode.insertBefore(row, beforeEl);
+    const cb = row.querySelector('#yzPushOpt'), box = row.querySelector('.yz-pushopt-box');
+    const paint = () => { box.textContent = cb.checked ? '✓' : ''; box.style.background = cb.checked ? '#0A2A66' : 'transparent'; box.style.color = '#fff'; };
+    cb.addEventListener('change', paint);
+    paint();
   }
 
   // אחרי שהבקשה נקלטה. רק אם התיבה הוצגה **ומסומנת**. הטוקן נשמר במכשיר (אין עדיין זהות),

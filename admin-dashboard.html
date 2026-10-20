@@ -2896,6 +2896,29 @@ function socialProofValHtml(kind, raw, allowGuess) {
          (guessed ? `<span class="social-src">(כתובת שהושלמה מהשם)</span>` : '');
 }
 
+// ── §571 — האם החבר מחובר להתראות ──────────────────────────────────────────────────────
+// רמי (20.10): *"אני רוצה שתוסיף בכרטיס אוהד ועסק אם הוא מחובר להתראות"*. המקור: שדות
+// החבר עצמו – `nativePushTokens` (אפליקציה, מפתח = התקנה) ו-`pushSubscriptions` (דפדפן).
+// בעסק – החבר-הבעלים (ownerMemberId), כי ההתראה נשלחת לבעלים ולא לעסק.
+const PUSH_OS_NAME = { android: 'אנדרואיד', ios: 'אייפון' };
+function memberPushInfo(m) {
+  const nat = Object.values((m && m.nativePushTokens) || {}).filter(t => t && t.token);
+  const web = Object.keys((m && m.pushSubscriptions) || {}).length;
+  const last = nat.map(t => t.updatedAt).filter(Boolean).sort().pop() || null;
+  return { app: nat.length, web, platforms: [...new Set(nat.map(t => t.platform || '?'))], last };
+}
+function pushStatusCellHtml(m, label) {
+  const lbl = `<div class="form-field-label">${esc(label || 'התראות')}</div>`;
+  if (!m) return `<div>${lbl}<div class="form-field-val empty">אין חבר-בעלים מקושר</div></div>`;
+  const p = memberPushInfo(m);
+  if (!p.app && !p.web) return `<div>${lbl}<div class="form-field-val empty">לא מחובר</div></div>`;
+  const parts = [];
+  if (p.app) parts.push('באפליקציה – ' + p.platforms.map(x => PUSH_OS_NAME[x] || x).join(', ') + (p.app > 1 ? ` (${p.app} מכשירים)` : ''));
+  if (p.web) parts.push('בדפדפן');
+  const since = p.last ? ' · מ-' + fmtDate(new Date(p.last)) : '';
+  return `<div>${lbl}<div class="form-field-val" style="color:#1f7a4d;font-weight:700">✓ מחובר ${esc(parts.join(' + '))}${esc(since)}</div></div>`;
+}
+
 // ── §567 — קישור ישיר אחד, לא ניחושים ────────────────────────────────────────────────────
 // רמי (20.10): *"אני חייב וודאות… תמיד יש שני קישורים, אני צריך לבדוק את שניהם – בזבוז זמן"*.
 // הטופס כבר לא מקבל שם-משתמש בלי רשת (בורר "אינסטגרם / פייסבוק"), ולכן רשומה חדשה מגיעה
@@ -7106,6 +7129,28 @@ function storeDlHtml() {
 window.loadStoreDl = loadStoreDl;
 window.auView = function (v) { auState.view = v; renderMain(); };
 
+// §571 — רמי: *"אני רוצה שיהיה לי נתונים על כמה הפעילו התראות, שים את זה באפליקציה ושימוש"*.
+// נספר מ-MOCK_FANS (כולל בעלי עסקים – הם חברים מאושרים עם isBusinessOwner). מנהלים מחוץ לספירה
+// אלא אם "כולל מנהלים ובדיקות" מסומן – אותו כלל של שאר הלוח.
+function auPushHtml() {
+  const all = (MOCK_FANS || []).filter(f => f.status === 'approved' && (auState.includeTest || !f.isAdmin));
+  const on = all.filter(f => { const p = memberPushInfo(f); return p.app || p.web; });
+  const owners = all.filter(f => f.isBusinessOwner), ownersOn = on.filter(f => f.isBusinessOwner);
+  const fans = all.length - owners.length, fansOn = on.length - ownersOn.length;
+  const cnt = { android: 0, ios: 0, web: 0 };
+  on.forEach(f => { const p = memberPushInfo(f); p.platforms.forEach(x => { if (cnt[x] != null) cnt[x]++; }); if (p.web) cnt.web++; });
+  const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
+  const row = (l, a, b) => `<tr><td>${l}</td><td class="n"><b>${a}</b></td><td class="n">${b}</td><td class="n">${pct(a, b)}</td></tr>`;
+  const list = on.slice().sort((a, b) => String(memberPushInfo(b).last || '').localeCompare(String(memberPushInfo(a).last || ''))).slice(0, 30)
+    .map(f => { const p = memberPushInfo(f);
+      return `<tr style="cursor:pointer" onclick="openFanFullCard('${f.id}')"><td>${esc(f.name)}${f.isBusinessOwner ? ' <small>(בעל עסק)</small>' : ''}</td><td>${esc([...p.platforms.map(x => PUSH_OS_NAME[x] || x), ...(p.web ? ['דפדפן'] : [])].join(', '))}</td><td>${p.last ? esc(fmtDate(new Date(p.last))) : '–'}</td></tr>`; }).join('');
+  return `<div class="au-hero"><b>${on.length}</b><span>מחוברים להתראות, מתוך ${all.length} חברים מאושרים (${pct(on.length, all.length)})</span></div>
+    <div class="au-tbl-wrap" style="margin-top:8px"><table class="au-t"><thead><tr><th></th><th>מחוברים</th><th>מאושרים</th><th>%</th></tr></thead><tbody>
+      ${row('אוהדים', fansOn, fans)}${row('בעלי עסקים', ownersOn.length, owners.length)}</tbody></table></div>
+    <p class="au-sub" style="margin-top:10px">לפי מכשיר: אנדרואיד ${cnt.android} · אייפון ${cnt.ios} · דפדפן ${cnt.web}. באייפון ההתראות נפתחות מגרסה 1.0.1.</p>
+    ${list ? `<div class="au-tbl-wrap" style="margin-top:6px"><table class="au-t"><thead><tr><th>מי</th><th>איפה</th><th>מתי חובר</th></tr></thead><tbody>${list}</tbody></table></div>` : '<div class="au-empty">עוד אף אחד לא מחובר.</div>'}`;
+}
+
 function appUsageHtml() {
   // §556 — שתי לשוניות: מה שעושים באתר ובאפליקציה (המדידה שלנו) · הורדות לפי מקור (מהחנויות)
   const tabs = `<div class="au-tabs"><button class="${auState.view !== 'stores' ? 'on' : ''}" onclick="auView('usage')">שימוש באתר ובאפליקציה</button><button class="${auState.view === 'stores' ? 'on' : ''}" onclick="auView('stores')">הורדות לפי מקור</button></div>`;
@@ -7136,6 +7181,7 @@ function appUsageHtml() {
       <div class="au-card full"><div class="au-card-h"><h3>ההורדות בתקופה</h3></div><p class="au-sub">כל מכשיר שפתח את האפליקציה בפעם הראשונה (עד 30 אחרונים), ומה קרה איתו</p>${auDownloadsListHtml(c)}</div>
       <div class="au-card full"><div class="au-card-h"><h3>מאיפה הגיעו לדף הבית</h3></div><p class="au-sub">yellowzone.co.il – לפי ?src= בקישור (למשל ?src=ig בביו באינסטגרם), וכמה מהם לחצו על כפתור חנות. נמדד מ-18.10.2026; כניסות מלפני כן מופיעות כ"ישיר / לא מסומן", ולחיצות לא נמדדו.</p>${auLandingHtml(c)}</div>
       <div class="au-card full"><div class="au-card-h"><h3>נרשמים בתקופה</h3></div><p class="au-sub">מאיזה מכשיר, מהאפליקציה או מהאתר, ובאיזו שיטה. לחיצה פותחת את הכרטיס.</p>${auRegsHtml()}</div>
+      <div class="au-card full"><div class="au-card-h"><h3>התראות</h3></div><p class="au-sub">מי מהחברים המאושרים מחובר היום להתראות – מצב נוכחי, לא לפי התקופה שנבחרה. לחיצה פותחת את הכרטיס.</p>${auPushHtml()}</div>
     </div>
     <p class="au-foot">"הורדות" = מכשיר שפתח את האפליקציה בפעם הראשונה (מדידה שלנו, נאספת מ-${AU_SINCE_LABEL}) – לא מספר ההורדות בחנות. בשבועות הראשונים נספרים בה גם מכשירים שהאפליקציה כבר הייתה מותקנת בהם, ומחיקה והתקנה מחדש נספרת שוב.
     מקור ההרשמה (מכשיר / אפליקציה / שיטה) נשמר מ-${AU_SINCE_LABEL}; נרשמים מלפני כן מופיעים כ"מחשב / לא נמדד". הצפיות והמכשירים של המנהלים, וכניסות עם src=test, לא נספרים – אלא אם מסמנים "כולל מנהלים ובדיקות".</p>
@@ -9116,6 +9162,7 @@ function bizFullDetailHtml(id, opts) {
               : b.status === 'rejected' ? esc(fmtDate(b.rejectedAt || b.registeredAt))
               : esc(agoLabel(b.registeredAt))
           }</div></div>
+          ${pushStatusCellHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null, 'התראות (בעל העסק)')}   <!-- §571 -->
         </div>
         ${socialProofRowHtml('facebook',  'פייסבוק',  b.ownerFacebookUrl,  '')}   <!-- §342 – מציג עכשיו גם את הערך הגולמי -->
         ${socialProofRowHtml('instagram', 'אינסטגרם', b.ownerFanInstagram, '')}
@@ -10868,6 +10915,7 @@ function fanFullDetailHtml(id, opts) {
         <div class="form-field"><div class="form-field-label">שם פרטי ומשפחה</div><div class="form-field-val">${esc(f.name)}</div></div>
         <div class="form-field"><div class="form-field-label">טלפון</div><div class="form-field-val">${esc(f.phone||'–')}</div></div>
         <div class="form-field"><div class="form-field-label">אימייל</div><div class="form-field-val">${esc(f.email||'–')}</div></div>
+        <div class="form-field">${pushStatusCellHtml(f)}</div>   <!-- §571 -->
         <div class="form-field"><div class="form-field-label">תאריך לידה</div><div class="form-field-val">${
           // "לא מולא בהרשמה" נאמר עד עכשיו גם על מי שנרשם ביוני, חודשיים לפני שהשדה
           // בכלל נוסף לטופס — כלומר טען שהוא דילג על שאלה שמעולם לא נשאל.
