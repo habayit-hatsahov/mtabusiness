@@ -11703,11 +11703,13 @@ function unifiedIssueList() {
     kind: 'login', at: x.at, urgent: x.ours,
     who: x.fan ? x.fan.name : (x.phone || 'לא מזוהה'),
     title: x.label,
-    meta: [x.phone && x.fan ? x.phone : '',
+    // §564 — "מה קרה בסוף" בשורה ראשונה, כמו בשורות ההרשמה (§563).
+    meta: [hbOutcomeText(x.outcome || { kind: 'unknown' }), [
+           x.phone && x.fan ? x.phone : '',
            x.phone && !x.fan ? 'המספר הזה לא רשום אצלנו' : '',
            x.fan && x.fan.status && x.fan.status !== 'approved'
              ? 'הרשומה שלו ' + (x.fan.status === 'pending' ? 'ממתינה לאישור' : 'נדחתה') : '',
-           x.env ? hbEnvLabel(x.env) : ''].filter(Boolean).join(' · '),
+           x.env ? hbEnvLabel(x.env) : ''].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
     entity: x.fan ? { kind: 'fan', id: x.fan.id } : null,
     markJs: 'markLoginIssueHandled(' + [q1(esc(x.key)),
              q1(escJsAttr((x.fan ? x.fan.name + ' · ' : '') + (x.phone || x.label)))].join(',') + ')',
@@ -17995,16 +17997,22 @@ function hbDurLabel(s) {
   if (s < 5400) return Math.round(s / 60) + " דק'";
   return (s / 3600).toFixed(1) + " שע'";
 }
-function hbOutcomeBadge(o) {
-  if (o.kind === 'sess')    return `<span class="treat-badge">✅ נכנס אחרי ${hbDurLabel(o.secs)}</span>`;
-  if (o.kind === 'mem')     return `<span class="treat-badge">✅ נכנס – מסשן אחר, ${hbDurLabel(o.secs)}</span>`;
-  if (o.kind === 'fresh')   return `<span class="warn-badge">⏳ טרם – הכשל ממש עכשיו</span>`;
+// §564 — הטקסט הופרד מהתג כדי שגם הרשימה המאוחדת (טקסט בלבד, מוברח) תאמר אותו דבר
+// בדיוק כמו טאב "כניסה". שני ניסוחים נפרדים היו נסחפים זה מזה (§353).
+function hbOutcomeText(o) {
+  if (o.kind === 'sess')    return `✅ נכנס אחרי ${hbDurLabel(o.secs)}`;
+  if (o.kind === 'mem')     return `✅ נכנס – מסשן אחר, ${hbDurLabel(o.secs)}`;
+  if (o.kind === 'fresh')   return '⏳ טרם – הכשל ממש עכשיו';
   if (o.kind === 'unknown') return '';
   // ⚠️ שני ניסוחים שונים, וזו לא קוסמטיקה: על שורה בלי טלפון יש רק ההצלבה לפי סשן,
   // והיא נשברת מסגירת טאב. "לא נמצאה" מזמין בדיקה; "לא נכנס" היה פסק-דין שגוי.
-  return o.weak
-    ? `<span class="warn-badge">❔ לא נמצאה כניסה (סשן בלבד)</span>`
-    : `<span class="miss-badge">🔴 לא נכנס – שווה לפנות אליו</span>`;
+  return o.weak ? '❔ לא נמצאה כניסה (סשן בלבד)' : '🔴 לא נכנס – שווה לפנות אליו';
+}
+function hbOutcomeBadge(o) {
+  const t = hbOutcomeText(o);
+  if (!t) return '';
+  const cls = (o.kind === 'sess' || o.kind === 'mem') ? 'treat-badge' : (o.kind === 'none' && !o.weak) ? 'miss-badge' : 'warn-badge';
+  return `<span class="${cls}">${t}</span>`;
 }
 
 function loginFailList() {
