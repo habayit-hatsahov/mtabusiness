@@ -29,7 +29,7 @@
 
 import {
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
-  serverTimestamp, query, orderBy, limit
+  serverTimestamp, query, orderBy, limit, where
 } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
 import { getAuth } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 
@@ -130,6 +130,15 @@ export async function logAndDelete(db, collectionName, docId, actor, source) {
   try { await updateDoc(logRef, { state: 'deleted' }); }
   catch (e) { console.error('deletion-log state update failed:', e); }
   if (collectionName === 'members' && data.appleSub) revokeAppleAfterDelete(logRef.id);
+  // ── §578 — קוד הכניסה נמחק עם החבר ───────────────────────────────────────────────────────
+  // רמי (20.10): "תסדר שמחיקת חבר תמחק גם את הקוד שלו". הקוד יושב באוסף נפרד
+  // (`memberCodes/{memberId}`, §248), ומחיקת החבר השאירה אותו – 6 קודים יתומים נמצאו.
+  // נמחק **דרך היומן** (רשומת-יומן משלו), כדי ש-restoreDeleted יחזיר אותו עם החבר – חבר
+  // משוחזר בלי קוד לא יכול להיכנס. כשל כאן לא מבטל את מחיקת החבר שכבר קרתה – הקוד פשוט נשאר.
+  if (collectionName === 'members') {
+    try { await logAndDelete(db, 'memberCodes', docId, actor, (source || 'admin') + ':withMember'); }
+    catch (e) { console.error('memberCodes delete with member failed (code left in place):', e); }
+  }
   return { ok: true, logId: logRef.id, name };
 }
 
@@ -195,5 +204,20 @@ export async function restoreDeleted(db, logId, actor) {
     restoredAt: serverTimestamp(),
     restoredBy: (actor && actor.name) || '(לא ידוע)',
   });
-  return { ok: true, name: entry.label || entry.docId };
+  // §578 — חבר משוחזר מקבל בחזרה את קוד הכניסה שנמחק איתו (רשומת-היומן האחרונה של memberCodes
+  // לאותו מזהה, במצב 'deleted'). אם כבר יש קוד – לא נוגעים. כשל כאן לא מבטל את שחזור החבר.
+  let codeRestored = false;
+  if (entry.collectionName === 'members') {
+    try {
+      const s = await getDocs(query(collection(db, DELETION_LOG), where('docId', '==', entry.docId)));
+      const codeLog = s.docs.map(d => Object.assign({ id: d.id }, d.data()))
+        .filter(e => e.collectionName === 'memberCodes' && e.state === 'deleted' && e.data)
+        .sort((x, y) => ((y.deletedAt && y.deletedAt.toMillis ? y.deletedAt.toMillis() : 0) - (x.deletedAt && x.deletedAt.toMillis ? x.deletedAt.toMillis() : 0)))[0];
+      if (codeLog) {
+        const r = await restoreDeleted(db, codeLog.id, actor);
+        codeRestored = !!r.ok;
+      }
+    } catch (e) { console.error('memberCodes restore with member failed:', e); }
+  }
+  return { ok: true, name: entry.label || entry.docId, codeRestored };
 }

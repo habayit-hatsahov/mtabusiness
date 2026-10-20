@@ -2560,7 +2560,7 @@ import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/fireba
 import { MAIL_FONTS, mailFontKey, renderMailHtml, footerHtml as mailFooterHtml } from './mail-format.js';
 // §393 — יומן מחיקות ושחזור. אותו קובץ בדיוק שמייבאים admin-members.html ו-admin-businesses.html,
 // כדי ששלוש הדלתות שמוחקות חבר/עסק יריצו את **אותו** מנגנון ולא שלושה חיקויים שמתיישנים בנפרד.
-import { logAndDelete, restoreDeleted, fetchDeletionLog, deletionConfirmText, deletionLabel } from './deletion-log.js';
+import { logAndDelete, restoreDeleted, fetchDeletionLog, deletionConfirmText, deletionLabel } from './deletion-log.js?v=578';
 
 // ── §244 — טוקן הכניסה לדשבורד יושב ב-bizTokens/{businessId}, לא על מסמך העסק ────────────────
 // מסמך עסק approved קריא ציבורית לגמרי, ולכן טוקן-כניסה שיושב עליו שקול לפרסום סיסמה.
@@ -19289,7 +19289,8 @@ async function loadDeletionLog(force) {
   deletionLogState = 'loading';
   if (force && activeTab === TRASH_KEY) renderMain();
   try {
-    deletionLogEntries = await fetchDeletionLog(db, 200);
+    // §578 — רשומות memberCodes הן חלק ממחיקת החבר (נמחקות ומשוחזרות איתו) – לא שורה נפרדת.
+    deletionLogEntries = (await fetchDeletionLog(db, 200)).filter(e => e.collectionName !== 'memberCodes');
     deletionLogState = 'ready';
     deletionLogError = '';
   } catch (e) {
@@ -19319,7 +19320,9 @@ window.restoreDeletedRecord = async function(logId) {
   try {
     const res = await restoreDeleted(db, logId, CURRENT_ADMIN);
     if (!res.ok) { alert(RESTORE_FAIL_MSG[res.reason] || 'השחזור לא בוצע.'); return; }
-    alert(`✓ "${res.name}" שוחזר.`);
+    alert(`✓ "${res.name}" שוחזר.` + (entry.collectionName === 'members' ? (res.codeRestored ? '
+גם קוד הכניסה שלו שוחזר.' : '
+(קוד כניסה לא נמצא ביומן – אם צריך, להנפיק לו קוד חדש בכרטיס.)') : ''));
     loadDeletionLog(true);
   } catch (e) { console.error(e); alert('השחזור נכשל, ולא נכתב דבר: ' + (e && e.message ? e.message : e)); }
 };
