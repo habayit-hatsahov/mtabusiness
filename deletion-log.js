@@ -35,6 +35,14 @@ import { getAuth } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-aut
 
 export const DELETION_LOG = 'deletionLog';
 
+// §578/§579 — מסמכים נלווים באוספים נפרדים, באותו מזהה, שנמחקים ומשוחזרים יחד עם הרשומה.
+// כל אחד נרשם ביומן ברשומה משלו (כדי שיהיה אפשר להחזיר אותו), ומוסתר ממסך "מחיקות ושחזור".
+export const SIDE_DOCS = {
+  members: ['memberCodes'],               // קוד הכניסה (§248)
+  businesses: ['bizTokens', 'bizProofs'], // קישור הדשבורד (§248) + תמונת-האימות של הבעלים (§382)
+};
+export const SIDE_COLLECTIONS = Object.values(SIDE_DOCS).flat();
+
 // ── תווית-זיהוי לרשומה שנמחקת ───────────────────────────────────────────────────────────────
 // 🔑 **זה השורש המדויק של §392.** חלון-האישור הציג שם בלבד — ובאותו ערב היו במערכת *שתי*
 // רשומות בשם "רמי בנטולילה" (האמיתית, ורשומת-בדיקה שנרשמה עם חשבון העבודה). אישור שמציג
@@ -135,9 +143,11 @@ export async function logAndDelete(db, collectionName, docId, actor, source) {
   // (`memberCodes/{memberId}`, §248), ומחיקת החבר השאירה אותו – 6 קודים יתומים נמצאו.
   // נמחק **דרך היומן** (רשומת-יומן משלו), כדי ש-restoreDeleted יחזיר אותו עם החבר – חבר
   // משוחזר בלי קוד לא יכול להיכנס. כשל כאן לא מבטל את מחיקת החבר שכבר קרתה – הקוד פשוט נשאר.
-  if (collectionName === 'members') {
-    try { await logAndDelete(db, 'memberCodes', docId, actor, (source || 'admin') + ':withMember'); }
-    catch (e) { console.error('memberCodes delete with member failed (code left in place):', e); }
+  // §579 — אותו דבר לעסק: קישור הדשבורד (`bizTokens`) ותמונת-האימות של הבעלים (`bizProofs`) –
+  // 15 ו-4 יתומים נמצאו. bizPublic/bizCodes **לא כאן**: הוורקר מסנכרן אותם מהעסק ומוחק מה שאין לו עסק.
+  for (const side of (SIDE_DOCS[collectionName] || [])) {
+    try { await logAndDelete(db, side, docId, actor, (source || 'admin') + ':with:' + collectionName); }
+    catch (e) { console.error(side + ' delete with ' + collectionName + ' failed (left in place):', e); }
   }
   return { ok: true, logId: logRef.id, name };
 }
@@ -206,18 +216,20 @@ export async function restoreDeleted(db, logId, actor) {
   });
   // §578 — חבר משוחזר מקבל בחזרה את קוד הכניסה שנמחק איתו (רשומת-היומן האחרונה של memberCodes
   // לאותו מזהה, במצב 'deleted'). אם כבר יש קוד – לא נוגעים. כשל כאן לא מבטל את שחזור החבר.
-  let codeRestored = false;
-  if (entry.collectionName === 'members') {
+  // §579 — כל מסמך נלווה (SIDE_DOCS) משוחזר מרשומת-היומן האחרונה שלו במצב 'deleted'.
+  const sideRestored = [];
+  if (SIDE_DOCS[entry.collectionName]) {
     try {
       const s = await getDocs(query(collection(db, DELETION_LOG), where('docId', '==', entry.docId)));
-      const codeLog = s.docs.map(d => Object.assign({ id: d.id }, d.data()))
-        .filter(e => e.collectionName === 'memberCodes' && e.state === 'deleted' && e.data)
-        .sort((x, y) => ((y.deletedAt && y.deletedAt.toMillis ? y.deletedAt.toMillis() : 0) - (x.deletedAt && x.deletedAt.toMillis ? x.deletedAt.toMillis() : 0)))[0];
-      if (codeLog) {
-        const r = await restoreDeleted(db, codeLog.id, actor);
-        codeRestored = !!r.ok;
+      const all = s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+      const ms = (e) => (e.deletedAt && e.deletedAt.toMillis ? e.deletedAt.toMillis() : 0);
+      for (const side of SIDE_DOCS[entry.collectionName]) {
+        const last = all.filter(e => e.collectionName === side && e.state === 'deleted' && e.data).sort((x, y) => ms(y) - ms(x))[0];
+        if (!last) continue;
+        try { const r = await restoreDeleted(db, last.id, actor); if (r.ok) sideRestored.push(side); }
+        catch (e) { console.error(side + ' restore failed:', e); }
       }
-    } catch (e) { console.error('memberCodes restore with member failed:', e); }
+    } catch (e) { console.error('side docs restore failed:', e); }
   }
-  return { ok: true, name: entry.label || entry.docId, codeRestored };
+  return { ok: true, name: entry.label || entry.docId, codeRestored: sideRestored.includes('memberCodes'), sideRestored };
 }
