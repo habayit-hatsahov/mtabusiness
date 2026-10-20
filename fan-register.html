@@ -3014,7 +3014,26 @@
   window.hbApplyRegPrefill();
 
   // §570 — תיבת "לקבל התראות" מעל כפתור השליחה (רק באפליקציה, רק כשעוד לא נשאל).
-  try { window.YZPushAsk && window.YZPushAsk.mountCheckbox(document.getElementById('submitBtn')); } catch (e) {}
+  // §574 — אבחון: רמי (אנדרואיד) לא רואה את התיבה גם אחרי §572–§573, ואין לנו מכשיר. אירוע
+  // אחד לכל פתיחת טופס **באפליקציה בלבד**, עם מה שהקוד ראה: L=גשר מקומי, P=גשר בהורה, F=בתוך
+  // מסגרת, K=תוסף הפוש קיים, A=available(), מצב ההרשאה, b=התיבה הוצגה, S=גרסת UA.
+  (async () => {
+    try { window.YZPushAsk && await window.YZPushAsk.mountCheckbox(document.getElementById('submitBtn')); } catch (e) {}
+    try {
+      const ua = navigator.userAgent || '';
+      if (!/YellowZoneApp/.test(ua)) return;
+      const framed = window.parent !== window;
+      let pc = null; try { pc = framed ? window.parent.Capacitor : null; } catch (e) {}
+      const c = window.Capacitor || pc;
+      let plug = '?'; try { plug = c && c.isPluginAvailable ? (c.isPluginAvailable('PushNotifications') ? '1' : '0') : '?'; } catch (e) {}
+      const np = window.YZNativePush;
+      const avail = !!(np && np.available());
+      let st = '-'; try { if (np && c) st = await np.permissionState(); } catch (e) { st = 'err'; }
+      const s = (ua.match(/YZSplash\/(\d+)/) || [])[1] || '0';
+      logEvent('formStep', { blockId: 'pushDiag',
+        channel: `L${+!!window.Capacitor}P${+!!pc}F${+framed}K${plug}A${+avail}:${st}:b${+!!document.getElementById('yzPushOpt')}:S${s}`.slice(0, 50) });
+    } catch (e) {}
+  })();
 
   // ── EXPOSE TO INLINE HANDLERS ──
   window.handleSubscriber     = handleSubscriber;
