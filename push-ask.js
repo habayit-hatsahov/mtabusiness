@@ -64,7 +64,7 @@
   // נפתח חלון המערכת (afterSubmit). הוסר הסימון → לא שואלים בכלל, וההרשאה נשארת 'prompt',
   // כך שכרטיס דף-הבית (§569) יופיע אחרי האישור.
   // אותם תנאים כמו mount: אפליקציה + גשר + עוד לא נשאל. אחרת התיבה לא מוצגת.
-  // business.html ממשיך עם mount (הכרטיס במסך ההצלחה) – לא שונה.
+  // רמי: "גם לאוהד וגם לבעל העסק" – fan-register.html ו-business.html. mount נשאר לשימוש עתידי.
   async function mountCheckbox(beforeEl) {
     if (!beforeEl || document.getElementById('yzPushOpt')) return;
     if (!(await shouldAsk())) return;
@@ -73,7 +73,7 @@
     row.style.cssText = 'display:flex;gap:10px;align-items:flex-start;margin:4px 0 14px;font-size:14px;' +
       'line-height:1.5;color:#0A2A66;cursor:pointer';
     row.innerHTML =
-      '<input type="checkbox" id="yzPushOpt" checked style="width:20px;height:20px;margin:1px 0 0;flex:0 0 auto;accent-color:#0A2A66">' +
+      '<input type="checkbox" id="yzPushOpt" checked style="width:20px;height:20px;margin:1px 0 0;flex:0 0 auto;accent-color:#0A2A66;color-scheme:light">' +
       '<span>לקבל התראות כשהצוות עונה לי ועל עדכונים חשובים</span>';
     beforeEl.parentNode.insertBefore(row, beforeEl);
   }
