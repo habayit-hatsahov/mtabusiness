@@ -40,6 +40,84 @@
   }
   function preload(url) { if (url) { var im = new Image(); im.decoding = 'async'; im.src = url; } }
 
+  // ══ §559 — בנייה עם תמונה נייטיב (UA "YZPhoto/1": iOS 1.0.1+, Android 1.3+) ══════════════════
+  // רמי: "אין אופציה לבטל את המסך הלבן ושיהיה ישר את התמונות?". האפליקציה מציגה את התמונה הבאה
+  // בתור כבר בפריים הראשון (YZSplash ב-AppDelegate.swift / YZSplash.java) ובוחרת אותה בעצמה.
+  // כאן רק ממשיכים אותה: שואלים `current`, מציירים מתחת **את אותה כתובת**, ורק אחרי שהתמונה
+  // מפוענחת ומצוירת – `hide`. כל הזמן יש על המסך אותה תמונה, אז אין רגע ריק ואין קפיצה.
+  // דף-מעבר (YZ_SPLASH_HOLD) לא עושה כלום – התמונה של האפליקציה מכסה גם את המעברים בין הדפים.
+  // בנייה ישנה בלי הסימן – הכול כמו קודם (הקוד שמתחת).
+  var nativeMode = inApp && /YZPhoto\/1/.test(navigator.userAgent || '') &&
+    !!(window.Capacitor && typeof window.Capacitor.nativePromise === 'function');
+  function nat(method, opts) {
+    try { return window.Capacitor.nativePromise('YZSplash', method, opts || {}); }
+    catch (e) { return Promise.reject(e); }
+  }
+  function natQuiet(method, opts) { nat(method, opts).catch(function () {}); }
+  function runNative() {
+    if (ss(SS_DONE) === '1') { natQuiet('hide'); return; }
+    if (window.YZ_SPLASH_HOLD === true) {
+      // דף-מעבר. אם בכל זאת נחשף (welcome שהתברר שהוא אורח) – התמונה של האפליקציה יורדת
+      window.yzSplashPhotoDone = function () { ss(SS_DONE, '1'); natQuiet('hide'); };
+      return;
+    }
+    var el = document.createElement('div');
+    el.id = 'yzSplashPhoto';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.cssText = 'position:fixed;inset:0;z-index:1000000;visibility:visible;background:' + BG +
+      ';transition:opacity .35s ease;pointer-events:auto';
+    var img = document.createElement('img');
+    img.alt = '';
+    img.style.cssText = IMG_CSS + ';opacity:0';
+    el.appendChild(img);
+    (document.body || document.documentElement).appendChild(el);
+
+    var ready = false, handed = false, gone = false, shownAt = 0;
+    function finish() {                       // השכבה של האתר יורדת (התמונה של האפליקציה כבר ירדה)
+      if (gone) return;
+      gone = true; ss(SS_DONE, '1');
+      el.style.opacity = '0'; el.style.pointerEvents = 'none';
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 400);
+    }
+    function abort() {                        // אין תמונה להמשיך – בלי שכבה לבנה ביניים
+      if (gone) return;
+      gone = true; ss(SS_DONE, '1');
+      if (el.parentNode) el.parentNode.removeChild(el);
+      natQuiet('hide');
+    }
+    function maybeFinish() {
+      if (!handed || !ready || gone) return;
+      var left = MIN_MS - (Date.now() - shownAt);
+      if (left > 0) setTimeout(finish, left); else finish();
+    }
+    window.yzSplashPhotoDone = function () { if (gone) return; ready = true; maybeFinish(); };
+    // התמונה לא נטענה בזמן סביר – לא מחזיקים את האפליקציה בגללה
+    var timer = setTimeout(abort, 6000);
+    nat('current').then(function (r) {
+      if (gone) return;
+      if (!r || !r.shown || !r.url) { clearTimeout(timer); abort(); return; }
+      shownAt = +r.shownAt || Date.now();
+      img.onerror = function () { clearTimeout(timer); abort(); };
+      img.onload = function () {
+        var painted = function () {
+          if (gone) return;
+          img.style.opacity = '1';
+          // שני פריימים + מרווח קטן: התמונה באמת על המסך לפני שהעליונה יורדת
+          requestAnimationFrame(function () { requestAnimationFrame(function () {
+            setTimeout(function () {
+              if (gone) return;
+              clearTimeout(timer); handed = true;
+              natQuiet('hide');
+              maybeFinish();
+            }, 60);
+          }); });
+        };
+        if (img.decode) img.decode().then(painted, painted); else painted();
+      };
+      img.src = r.url;
+    }, function () { clearTimeout(timer); abort(); });
+  }
+
   // ── שמירת הרשימה (נקרא מהמודול של הדף אחרי getDoc(settings/splashScreen)) ──
   window.yzSplashPhotoStore = function (data) {
     if (!inApp) return;
@@ -47,6 +125,8 @@
     var urls = items.filter(function (it) { return it && it.on !== false && typeof it.url === 'string' && it.url; })
       .map(function (it) { return it.url; });
     ls(LS_CFG, JSON.stringify({ enabled: !!(data && data.enabled), urls: urls }));
+    // §559 — בבנייה עם תמונה נייטיב: אותה רשימה עוברת לאפליקציה, שמורידה את התמונות לפתיחה הבאה
+    if (nativeMode) nat('setList', { enabled: !!(data && data.enabled), urls: urls });
     var list = readCfg();
     if (!list.length) return;
     // נקודת ההתחלה האקראית נקבעת כבר כאן, כדי שהתמונה שנטענת מראש היא זו שתוצג בפתיחה הבאה
@@ -56,6 +136,7 @@
 
   window.yzSplashPhotoInApp = inApp;   // הדפים קוראים את settings/splashScreen רק כשזה true
   window.yzSplashPhotoDone = function () {};
+  if (nativeMode && !preview) { runNative(); return; }
   if (!preview && (!inApp || ss(SS_DONE) === '1')) { unboot(); return; }
 
   var pick = preview || ss(SS_PICK);
