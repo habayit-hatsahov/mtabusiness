@@ -1421,6 +1421,9 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
 .social-val .social-bad { font-size: 12px; font-weight: 600; color: var(--orange); white-space: nowrap; }
 .social-val .social-src { font-size: 11.5px; color: var(--text-muted); }
 .owner-verify-fb .social-bad { font-size: 12.5px; font-weight: 600; color: var(--orange); }
+/* §567 — קישורי-איתור (שם-משתמש בלי רשת / שם בלבד) */
+.social-find { display: inline-flex; flex-wrap: wrap; gap: 10px; font-size: 12.5px; color: var(--text-muted); }
+.social-find a { font-weight: 600; color: var(--accent); white-space: nowrap; }
 .owner-verify-hint { background: var(--nav-bg); border-radius: 9px; padding: 9px 11px; font-size: 12px; color: var(--text-sm); line-height: 1.5; }
 /* §298 — במסך צר הכרטיס גולש לשתי שורות, ואז `flex: 0 0 232px` השאיר את התמונה ברוחב
    קבוע עם שטח מת לצידה. ברוחב מלא היא גם נקראת טוב יותר — וזו הראיה שהמנהל בא לראות.
@@ -2884,12 +2887,36 @@ function socialProofValHtml(kind, raw, allowGuess) {
     const ig = window.HB_LINKS ? window.HB_LINKS.normalize('instagram', raw) : null;
     const looksLikeHandle = !!(n && n.ok && guessed) ||
                             !!(ig && ig.ok && ig.confidence === 'guessed');
-    return rawHtml + `<span class="social-bad">${looksLikeHandle ? 'שם משתמש – לחיפוש בפייסבוק/אינסטגרם' : 'לא כתובת – אין מה לפתוח'}</span>`;
+    return rawHtml + `<span class="social-bad">${looksLikeHandle ? 'שם משתמש – לא נמסרה רשת' : 'לא כתובת'}</span>` +
+           profileFindLinksHtml(raw);
   }
   // 'guessed' = הוקלד שם-משתמש בלבד והורכבה ממנו כתובת. חייב להיאמר במפורש שזו השלמה שלנו
   // ולא מה שהאוהד מסר — אחרת פרופיל שגוי ייראה כמו ראיה שהוא עצמו סיפק.
   return rawHtml + `<a href="${esc(url)}" target="_blank" rel="noopener">פתיחה ←</a>` +
          (guessed ? `<span class="social-src">(כתובת שהושלמה מהשם)</span>` : '');
+}
+
+// ── §567 — תמיד יש מה לפתוח ─────────────────────────────────────────────────────────────
+// רמי (20.10): *"אני רוצה תמיד שיהיה לי אופציה לפתוח את זה כקישור ושזה ימצא את האוהד"*.
+// עד עכשיו שם-משתמש עירום (sagiyur, ronyankilov_9) הוצג כטקסט בלבד, והחיפוש נעשה ידנית.
+// שם-משתמש → קישור ישיר לפרופיל בשתי הרשתות (פייסבוק: רק אם השם חוקי שם, אחרת חיפוש);
+// טקסט חופשי / שם → חיפוש בפייסבוק ובגוגל-על-אינסטגרם. אלה **קישורי-חיפוש של המנהל**, לא
+// ראיה שהאוהד מסר — ולכן הם מסומנים "לחפש" ולא "פתיחה".
+function profileFindLinksHtml(raw) {
+  const v = String(raw || '').trim().replace(/^@/, '');
+  if (!v) return '';
+  const L = window.HB_LINKS;
+  const ig = L ? L.normalize('instagram', v) : null;
+  const fb = L ? L.normalize('facebook',  v) : null;
+  const isHandle = !!((ig && ig.ok && ig.confidence === 'guessed') || (fb && fb.ok && fb.confidence === 'guessed'));
+  const q = encodeURIComponent(v);
+  const a = (href, t) => `<a href="${esc(href)}" target="_blank" rel="noopener">${t}</a>`;
+  const links = isHandle
+    ? [ig && ig.ok ? a(ig.url, 'באינסטגרם ←') : a('https://www.google.com/search?q=' + encodeURIComponent('site:instagram.com ' + v), 'חיפוש באינסטגרם ←'),
+       fb && fb.ok ? a(fb.url, 'בפייסבוק ←')  : a('https://www.facebook.com/search/people/?q=' + q, 'חיפוש בפייסבוק ←')]
+    : [a('https://www.facebook.com/search/people/?q=' + q, 'חיפוש בפייסבוק ←'),
+       a('https://www.google.com/search?q=' + encodeURIComponent('site:instagram.com ' + v), 'חיפוש באינסטגרם ←')];
+  return `<span class="social-find">${links.join(' ')}</span>`;
 }
 
 // תא ברשת האימות. המשתמש: *"תכניס את זה לאימות שלא יהיה ככה בנפרד, שנדע מאיפה זה נכנס"* —
@@ -3142,7 +3169,8 @@ function optionalFieldEmptyHtml(f, key) {
 function socialProofEmptyCellHtml(f) {
   const required = !f.isSubscriber;
   const body = required
-    ? '<span class="opt-empty warn">חסר – במסלול הזה הפרופיל הוא שדה חובה</span>'
+    ? '<span class="opt-empty warn">חסר – במסלול הזה הפרופיל הוא שדה חובה</span>' +
+      (f.name ? ' <span class="social-find">לפי השם: </span>' + profileFindLinksHtml(f.name) : '')   // §567
     : optionalFieldEmptyHtml(f, 'socialOpt');
   return '<div><div class="form-field-label">פרופיל חברתי · ' + (required ? 'שדה חובה, לא-מנוי' : 'שדה רשות') + '</div>' +
          '<div class="form-field-val empty">' + body + '</div></div>';
@@ -3165,7 +3193,7 @@ function socialProofWeakCellHtml(f) {
   if (!raw) return '';
   const msg = isProfileRefusal(raw)
     ? 'לא נמסר פרופיל – מה שהוקלד אינו שם משתמש. אין על מה לאשר.'
-    : 'שם משתמש בלי קישור – לחפש בפייסבוק ובאינסטגרם לפני אישור.';
+    : 'שם משתמש בלי קישור – לפתוח בקישורים למעלה ולוודא שזה האוהד לפני אישור.';
   return '<div><div class="form-field-label">⚠️ בדיקת הפרופיל</div>' +
          '<div class="form-field-val"><span class="opt-empty warn">' + esc(msg) + '</span></div></div>';
 }
@@ -12553,9 +12581,37 @@ window.approveFan = async function(id) {
       memberNumber, loginCodeCreatedAt: serverTimestamp(),
       loginCodeEmailStatus: 'pending', loginCodeEmailQueuedAt: serverTimestamp(),
     });
+    // §567 — רמי: *"כשאני מאשר אוהד אני רוצה שהחלון יעלם ויפתח ישירות את הכרטיס הבא"*.
+    // הבחירה עוברת **לפני** logActivity: ה-onSnapshot של העדכון כבר מרנדר מחדש, ואם הבחירה
+    // עדיין על האוהד שאושר הוא היה נשאר פתוח.
+    goToNextPendingFan(id);
     await logActivity('members', id, { type: 'status', title: 'האוהד אושר', detail: `"${f.name}" אושר, הוקצה חבר מס' ${memberNumber}`, field: 'status', before: f.status, after: 'approved' });
   } catch (e) { console.error(e); alert('שגיאה באישור: ' + e.message); }
 };
+// §567 — האוהד הממתין הבא **באותה רשימה שהמנהל רואה** (אותו סינון ואותו מיון), אחרי זה
+// שאושר; אם הוא היה האחרון – הראשון שנשאר. אין ממתין נוסף → המגירה נסגרת.
+function goToNextPendingFan(id) {
+  const pick = (ids) => {
+    const i = ids.indexOf(id);
+    const rest = ids.filter(x => x !== id);
+    if (!rest.length) return null;
+    const after = i >= 0 ? ids.slice(i + 1).filter(x => x !== id) : [];
+    return after[0] || rest[0];
+  };
+  if (selectedTaskKey === 'fan:' + id) {
+    const ids = taskFilteredList()
+      .filter(x => x.kind === 'fan' && (x.entity.status === 'pending' || x.id === id))
+      .map(x => x.id);
+    const next = pick(ids);
+    selectedTaskKey = next ? 'fan:' + next : null;
+    renderMain();
+  } else if (selectedFanDetailId === id) {
+    const ids = fanFilteredList().filter(x => x.status === 'pending' || x.id === id).map(x => x.id);
+    const next = pick(ids);
+    if (next) selectFanDetail(next);
+    else fanBackToList();
+  }
+}
 window.rejectFan = async function(id) {
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return;

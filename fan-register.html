@@ -914,6 +914,17 @@
             <input type="url" id="facebookUrl" placeholder="facebook.com/yourname או instagram.com/yourname" inputmode="url" />
             <div class="field-error" id="err-facebookUrl">צריך כתובת פרופיל (facebook.com/… או instagram.com/…) או שם המשתמש שלך. שם מלא בעברית לא מאפשר לנו למצוא אותך.</div>
             <div class="field-note" id="note-facebookUrl"></div>
+            <!-- §567 – שם-משתמש עירום ("sagiyur") לא אומר באיזו רשת הוא. במקום לנחש – שואלים.
+                 מוצג רק כשהערך הוא שם-משתמש בלי קישור, ואז הוא חובה. -->
+            <div id="profileNetBlock" style="display:none;margin-top:10px">
+              <label>זה שם המשתמש שלך ב… <span class="req">*</span></label>
+              <div class="toggle-row" id="profileNetRow">
+                <button type="button" class="toggle-btn" id="profileNetIg" data-net="instagram">אינסטגרם</button>
+                <button type="button" class="toggle-btn" id="profileNetFb" data-net="facebook">פייסבוק</button>
+              </div>
+              <input type="hidden" id="profileNet" value="" />
+              <div class="field-error" id="err-profileNet">נא לבחור באיזו רשת שם המשתמש הזה</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1802,7 +1813,7 @@
     if (!el) return true;
     // isSubscriber/fanSport/verifiedSport מיוצגים ויזואלית ע"י כפתורי-toggle, לא ה-select
     // (מוסתר) — צובעים גם את השורה שלהם
-    const TOGGLE_ROW_MAP = { isSubscriber: 'subscriberToggleRow', fanSport: 'sportToggleRow', verifiedSport: 'verifiedSportToggleRow' };
+    const TOGGLE_ROW_MAP = { isSubscriber: 'subscriberToggleRow', fanSport: 'sportToggleRow', verifiedSport: 'verifiedSportToggleRow', profileNet: 'profileNetRow' };
     const toggleRow = TOGGLE_ROW_MAP[id] ? document.getElementById(TOGGLE_ROW_MAP[id]) : null;
     if (!ok) {
       el.classList.add('error');
@@ -1958,6 +1969,8 @@
       // ⚠️ זה השדה **היחיד** בטופס שדורש שהכתובת תהיה באמת פייסבוק. בכל מקום אחר די
       // ב"ניתן לפתיחה", ובשדה-הרשות אין בדיקה בכלל (§341).
       ok = vf('facebookUrl', profileFieldOk(_v('facebookUrl'))) && ok;   // §343
+      // §567 — שם-משתמש בלי קישור: חייבים לדעת באיזו רשת לחפש.
+      if (profileNeedsNet(_v('facebookUrl'))) ok = vf('profileNet', !!_v('profileNet')) && ok;
     }
 
     return ok;
@@ -2100,9 +2113,15 @@
     //   לא-מנוי: שדה חובה — הדרך היחידה לזהות מי האדם.
     //   מנוי:    שדה רשות, בלי שום בדיקה.
     const optVal   = isSub === 'yes' ? _v('socialUrl')   : '';
-    const reqVal   = isSub === 'no'  ? _v('facebookUrl') : '';
+    const reqRaw   = isSub === 'no'  ? _v('facebookUrl') : '';
     const optKind  = socialFieldPlatform(optVal);
-    const reqKind  = socialFieldPlatform(reqVal);
+    // §567 — שם-משתמש עירום + רשת שהנרשם **בחר בעצמו** → קישור מלא לאותה רשת. זה לא ניחוש
+    // (§345): הרשת נמסרה ממנו. profileRaw ממשיך לשמור את מה שהוקלד, ולכן במרכז הניהול
+    // רואים גם את הכתובת שהורכבה וגם את המקור.
+    const pickedNet = (isSub === 'no' && profileNeedsNet(reqRaw)) ? _v('profileNet') : '';
+    const pickedUrl = pickedNet && window.HB_LINKS ? (window.HB_LINKS.normalize(pickedNet, reqRaw).url || '') : '';
+    const reqVal   = pickedUrl || reqRaw;
+    const reqKind  = pickedUrl ? pickedNet : socialFieldPlatform(reqVal);
 
     // שדה-החובה גובר על שדה-הרשות — הם ממילא לא מופיעים יחד (מנוי/לא-מנוי), והסדר כאן
     // מתעד את העדיפות במפורש במקום להסתמך על כך שאחד מהם תמיד ריק.
@@ -2119,7 +2138,7 @@
     // (בעיקר) כשלא: שם-משתמש עירום בשדה-החובה, או טקסט חופשי בשדה-הרשות שאינו חוסם.
     // בלי השדה הזה כל ערך שלא זוהתה ממנו רשת היה נמחק בשקט — כלומר הנרשם מסר לנו פרט
     // ואיש לא היה יודע שהוא קיים.
-    data.profileRaw = reqVal || optVal || null;
+    data.profileRaw = reqRaw || optVal || null;
 
     // §343 — השם הוא `profileSource` ולא `facebookUrlSource`: מרגע שהשדה מקבל גם אינסטגרם,
     // שם שמדבר על פייסבוק בלבד היה מטעה את מי שיקרא את הרשומה בעוד חצי שנה.
@@ -2614,6 +2633,28 @@
   ['facebookUrl', 'socialUrl'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', () => refreshSocialNote(id));
   });
+
+  // ── §567 — שם-משתמש בלי קישור: שואלים באיזו רשת ──────────────────────────────────────────
+  // רמי (20.10): *"אני צריך לאתר לפי השם ומאוד מקשה עלי"*. 17 מתוך 45 לא-מנויים מסרו
+  // שם-משתמש עירום (sagiyur, ronyankilov_9) — ובלי רשת אין קישור שנפתח ישר לפרופיל.
+  function profileNeedsNet(raw) {
+    const v = String(raw || '').trim();
+    return !!v && !socialFieldPlatform(v) && profileFieldOk(v);
+  }
+  function setProfileNet(net) {
+    document.getElementById('profileNet').value = net;
+    document.getElementById('profileNetIg').classList.toggle('on', net === 'instagram');
+    document.getElementById('profileNetFb').classList.toggle('on', net === 'facebook');
+    if (net) vf('profileNet', true);
+  }
+  function refreshProfileNet() {
+    const show = profileNeedsNet(_v('facebookUrl'));
+    document.getElementById('profileNetBlock').style.display = show ? 'block' : 'none';
+    if (!show) setProfileNet('');
+  }
+  document.getElementById('facebookUrl')?.addEventListener('input', refreshProfileNet);
+  document.querySelectorAll('#profileNetRow .toggle-btn').forEach(b =>
+    b.addEventListener('click', () => setProfileNet(b.dataset.net)));
   const _v = id => (document.getElementById(id)?.value || '').trim();
   const _hasFile = id => !!document.getElementById(id)?.files?.length;
 
@@ -2856,7 +2897,8 @@
       subscriberNumber:  document.getElementById('subscriberNumber').value,
       wasSubscriber:     document.getElementById('wasSubscriber').value,
       facebookUrl:       document.getElementById('facebookUrl').value,
-      socialUrl:         document.getElementById('socialUrl').value,
+      profileNet:        document.getElementById('profileNet').value,
+      socialUrl:        document.getElementById('socialUrl').value,
       // §284 — בלי אלה, מעבר לתקנון וחזרה היה מאפס את בחירת מסלול-האימות ואת מה שמולא בו.
       // קבצים לא נשמרים בטיוטה (אי אפשר) — ולכן מסלול שמבוסס-תמונה יידרש לצרף שוב.
       verifyRoute:       document.getElementById('verifyRoute').value,
@@ -2899,7 +2941,9 @@
     document.getElementById('subscriberNumber').value  = d.subscriberNumber  || '';
     document.getElementById('wasSubscriber').value     = d.wasSubscriber     || '';
     document.getElementById('facebookUrl').value       = d.facebookUrl       || '';
-    document.getElementById('socialUrl').value         = d.socialUrl         || '';
+    refreshProfileNet();
+    setProfileNet(profileNeedsNet(d.facebookUrl) ? (d.profileNet || '') : '');
+    document.getElementById('socialUrl').value        = d.socialUrl         || '';
     // §284 — קודם ממלאים את השדות ורק אז pickRoute, כדי שהוא יפתח כרטיס שכבר יש בו תוכן
     document.getElementById('seatArea').value          = d.seatArea          || '';
     document.getElementById('seatBlock').value          = d.seatBlock         || '';
