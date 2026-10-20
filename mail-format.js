@@ -168,9 +168,12 @@ export function socialRowHtml(inBody = false) {
 
 // כתובת-פיזית קטנה בתחתית כל מייל — לא לשם יצירת-קשר בפועל (הפרויקט קהילתי, בלי משרד רשום),
 // רק כי Gmail/פילטרי-ספאם מצפים לראות כתובת-דואר-כלשהי בפוטר מייל אוטומטי; חסרה = סמן-ספאם.
+// §560 — "מכתב אישי" (data-personal-letter, ר' renderMailHtml) בלי שורת הרשתות: מבנה של ניוזלטר
+// הוא מה ששולח את המכתב ל"קידומי מכירות" ב-Gmail. שורת הכתובת הקטנה נשארת (סמן-ספאם בהיעדרה).
 export function footerHtml(bodyHtml) {
   const socialInBody = String(bodyHtml || '').includes('data-social-row');
-  return (socialInBody ? '' : socialRowHtml()) + `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px;line-height:1.6">
+  const personal = String(bodyHtml || '').includes('data-personal-letter');
+  return (socialInBody || personal ? '' : socialRowHtml()) + `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px;line-height:1.6">
     אם המייל הזה נחת בתיקיית הספאם/קידומים, נשמח שתסמנו אותו כ"לא ספאם" – כך מיילים עתידיים יגיעו ישר לתיבה הראשית.<br>
     Yellow Zone · תל אביב, ישראל
   </div>`;
@@ -313,7 +316,7 @@ function paragraphHtml(para, vars) {
 // פסקה שהיא בדיוק "{code}"/"{link}"/"{login_link}"/"{social}" בשורה משל עצמה מקבלת את העיצוב
 // הממותג (תיבת-קוד/כפתור/שורת-רשתות) במקום טקסט רגיל. שימוש רגיל של המשתנים בתוך משפט
 // ממשיך להתחלף לטקסט פשוט כרגיל.
-export function richBodyHtml(bodyTemplate, vars, linkLabel) {
+export function richBodyHtml(bodyTemplate, vars, linkLabel, personal = false) {
   const paras = stripFontDirective(bodyTemplate).split('\n\n');
   // האם התבנית מציגה כפתור-כניסה משלה? אם כן, תיבת-הקוד לא תחזור על כתובת האתר מתחתיה.
   const hasLoginButton = paras.some((p) => p.trim() === '{login_link}');
@@ -321,7 +324,7 @@ export function richBodyHtml(bodyTemplate, vars, linkLabel) {
     const trimmed = para.trim();
     if (trimmed === '{login}') return loginBlockHtml(vars || {});
     if (trimmed === '{code}' && vars && vars.code) return codeBlockHtml(vars.code, !hasLoginButton);
-    if (trimmed === '{link}' && vars && vars.link) return linkButtonHtml(vars.link, linkLabel || 'כניסה');
+    if (trimmed === '{link}' && vars && vars.link) return personal ? plainLinkHtml(vars.link) : linkButtonHtml(vars.link, linkLabel || 'כניסה');
     if (trimmed === '{login_link}') return loginButtonHtml();
     if (trimmed === '{social}') return socialRowHtml(true);
     return paragraphHtml(para, vars);
@@ -331,9 +334,17 @@ export function richBodyHtml(bodyTemplate, vars, linkLabel) {
 // המכתב השלם (בלי הפוטר — הוא נוסף ריכוזית ב-sendBrevoEmail, ובתצוגה המקדימה בנפרד).
 // lineHeight נשאר פרמטר ולא ערך-קבוע כדי לא לשנות בדרך-אגב את מרווח-השורות של המיילים
 // האוטומטיים הקיימים (רק השידור ההמוני משתמש ב-1.7 מאז ומתמיד).
+// §560 — personal: "מכתב אישי" – בלי לוגו, {link} כקישור טקסט ולא כפתור, ובלי שורת הרשתות בפוטר
+// (footerHtml מזהה את data-personal-letter). נשלח בשם "רמי מ-Yellow Zone" (ר' sendBroadcastEmail).
 export function renderMailHtml(body, vars, opts = {}) {
-  const { linkLabel, lineHeight, padding = '24px', extraStyle = '' } = opts;
+  const { linkLabel, lineHeight, padding = '24px', extraStyle = '', personal = false } = opts;
   const style = `font-family:${mailFontCss(body)};padding:${padding}`
     + (lineHeight ? `;line-height:${lineHeight}` : '') + (extraStyle ? ';' + extraStyle : '');
-  return `<div dir="rtl" style="${style}">${boundedColumnHtml(brandHeaderHtml() + richBodyHtml(body, vars, linkLabel))}</div>`;
+  return `<div dir="rtl"${personal ? ' data-personal-letter' : ''} style="${style}">${boundedColumnHtml((personal ? '' : brandHeaderHtml()) + richBodyHtml(body, vars, linkLabel, personal))}</div>`;
+}
+
+// §560 — הקישור במכתב אישי: הכתובת עצמה (בלי https://) כקישור רגיל, כמו שאדם מדביק במייל.
+export function plainLinkHtml(link) {
+  const shown = String(link).replace(/^https?:\/\//, '').replace(/\/$/, '');
+  return `<p style="margin:0 0 14px 0"><a href="${escapeHtml(link)}" style="color:#0A2A66;font-weight:700">${escapeHtml(shown)}</a></p>`;
 }

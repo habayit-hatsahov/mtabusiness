@@ -12,6 +12,10 @@ import {
 // אוהדים יוכלו להשיב למייל שלהם, כדי לאפשר שיתופי-פעולה שמתחילים מתגובה חופשית.
 const REPLY_TO = 'yellowzonemta@gmail.com';
 
+// §560 — שם השולח ב"מכתב אישי" (שם של אדם, לא של מותג – פחות "קידומי מכירות" ב-Gmail).
+// אותה כתובת (SENDER_EMAIL, הדומיין המאומת ב-Brevo) – רק השם משתנה.
+export const PERSONAL_SENDER_NAME = 'רמי מ-Yellow Zone';
+
 
 // ══ §444 — בלוקי ה-Google שמעל/מתחת לגוף המכתב הוסרו ═══════════════════════════════════
 // §389 (תזכורת למקושרים, בתחתית) ו-§415 (הזמנה ללא-מקושרים, קופסה צהובה בראש) הוחלפו בבלוק
@@ -147,13 +151,15 @@ export async function sendBusinessApprovedEmail(env, { toEmail, ownerName, busin
 
 // שידור חד-פעמי לקהל (מרכז הודעות, admin-dashboard.html) — subject/body מגיעים מהמנהל
 // (טיוטה ב-settings/broadcastDraft), עם placeholders {name}/{business}/{link} שמוחלפים לכל נמען בנפרד.
-export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, vars, msgTag = '' }) {
+export async function sendBroadcastEmail(env, { toEmail, toName, subject, body, vars, msgTag = '', personal = false }) {
   const finalSubject = applyVars(subject, vars);
   const htmlContent = renderMailHtml(body, vars, {
     linkLabel: vars.code ? 'לפתיחת האפליקציה' : 'כניסה לאזור העסק שלי',   // §499 — כמו מייל הקוד (§494)
     lineHeight: '1.7',
+    personal,   // §560 — "מכתב אישי"
   });
   return sendBrevoEmail(env, {
+    ...(personal ? { sender: { name: PERSONAL_SENDER_NAME, email: env.SENDER_EMAIL } } : {}),
     to: [{ email: toEmail, name: toName || '' }],
     replyTo: { email: REPLY_TO },
     subject: finalSubject,

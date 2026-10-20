@@ -15091,8 +15091,8 @@ function tplFieldValue(item, f) {
 // הייתה חייבת להיכתב פעמיים כדי שהתצוגה לא תשקר. עכשיו שני הצדדים מייבאים את mail-format.js —
 // renderMailHtml כאן ו-renderMailHtml שם הם אותה פונקציה, ולכן התצוגה **היא** המייל.
 // mailPreviewDocHtml בונה את מה שנשלח בפועל: גוף המכתב + הפוטר שמתווסף ריכוזית ב-sendBrevoEmail.
-function mailPreviewDocHtml(body, vars, linkLabel) {
-  const html = renderMailHtml(body, vars, { linkLabel, padding: '16px 24px', extraStyle: 'background:#fff' });
+function mailPreviewDocHtml(body, vars, linkLabel, personal = false) {
+  const html = renderMailHtml(body, vars, { linkLabel, padding: '16px 24px', extraStyle: 'background:#fff', personal });   // §560
   return `<div style="background:#fff">${html}<div style="padding:0 18px 16px">${mailFooterHtml(html)}</div></div>`;
 }
 
@@ -15357,7 +15357,7 @@ const M2_AUDS = [
   { k: 'fanPick', t: 'אוהדים מסוימים', s: 'בוחרים אחד-אחד או לפי סינון' },
   { k: 'bizPick', t: 'עסקים מסוימים', s: 'בוחרים אחד-אחד או לפי סינון' },
 ];
-const m2Blank = () => ({ mailScope: 'all', ch: { app: false, push: false, mail: false, wa: false }, app: { title: '', text: '', link: '' }, push: { title: '', body: '' }, mail: { subject: '', body: '' }, wa: { text: '' }, once: { title: '', text: '' } });
+const m2Blank = () => ({ mailScope: 'all', ch: { app: false, push: false, mail: false, wa: false }, app: { title: '', text: '', link: '' }, push: { title: '', body: '' }, mail: { subject: '', body: '', personal: false }, wa: { text: '' }, once: { title: '', text: '' } });
 const m2 = {
   aud: 'bizAll', f: { status: new Set(['approved']) }, fOpen: null, picked: new Set(), q: '',
   doc: m2Blank(), pv: 'app', who: 0, testTo: '', sending: null, result: '',
@@ -15654,6 +15654,7 @@ function m2RenderBoxes() {
       <label><input type="radio" name="m2scope" ${m2MailOnlyMissing(d) ? '' : 'checked'} onchange="m2MailScope('all')"/> לכולם (${c.r.filter(m2Can.mail).length})</label>
       <label><input type="radio" name="m2scope" ${m2MailOnlyMissing(d) ? 'checked' : ''} onchange="m2MailScope('missing')"/> רק למי שלא יקבל באפליקציה (${c.missingMail})</label></div>` : ''}
     <label class="m2-f" for="m2mS">נושא ${m2Clip('m2mS')} ${m2Cnt(d.mail.subject, M2_LIM.mailSubject)}</label>${m2VarStrip('m2mS', { subject: true })}${m2Inp('m2mS', 'mail.subject', 100, d.mail.subject, 'למשל: יש לך הטבה חדשה')}
+    ${T ? '' : `<label class="m2-row" style="margin-top:10px;font-size:13px;gap:6px;align-items:flex-start;cursor:pointer"><input type="checkbox" ${d.mail.personal ? 'checked' : ''} onchange="m2MailPersonal(this.checked)" style="margin-top:3px"/><span><b>✉️ מכתב אישי</b> – בלי לוגו, בלי כפתור ובלי שורת הרשתות, נשלח בשם "רמי מ-Yellow Zone". נראה כמו מייל שאדם כתב, ולכן פחות נוחת ב"קידומי מכירות" של Gmail.</span></label>`}
     <label class="m2-f" for="m2mB">גוף המייל ${m2Clip('m2mB')} <span class="m2-cnt">בלי מגבלה</span></label>${m2VarStrip('m2mB', {})}
     ${mailToolbarHtml('m2mB', '', d.mail.body)}${m2Ta('m2mB', 'mail.body', 0, d.mail.body, 'שלום {name},', 'mail')}
     ${mailFmtHintHtml()}
@@ -15753,6 +15754,8 @@ window.m2SaveDraft = async function () {
   try { await setDoc(doc(db, 'settings', 'messageDraft'), dr); m2.draft = dr; m2RenderBoxes(); m2RenderSend(); m2Toast('💾 הטיוטה נשמרה'); }
   catch (e) { console.error(e); alert('שמירת הטיוטה נכשלה: ' + e.message); }
 };
+// §560 — "מכתב אישי": נשמר על d.mail.personal, עובר לוורקר עם המייל (גם בנוסח שמור ובטיוטה)
+window.m2MailPersonal = function (on) { m2.doc.mail.personal = !!on; m2RenderPv(); };
 window.m2TestMail = async function () {
   const to = (m2.testTo || '').trim();
   if (!/^\S+@\S+\.\S+$/.test(to)) { alert('כתבו כתובת מייל לבדיקה'); return; }
@@ -15760,7 +15763,7 @@ window.m2TestMail = async function () {
   try {
     const idToken = await auth.currentUser.getIdToken();
     const resp = await hbApiFetch('/send-broadcast-email', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, subject: m2.doc.mail.subject, body: m2.doc.mail.body, audienceType: m2Kind() === 'fans' ? 'fans' : 'businesses', testEmail: to }) });
+      body: JSON.stringify({ idToken, subject: m2.doc.mail.subject, body: m2.doc.mail.body, personal: !!m2.doc.mail.personal, audienceType: m2Kind() === 'fans' ? 'fans' : 'businesses', testEmail: to }) });
     const data = await resp.json();
     const r = data.results && data.results[0];
     if (r && r.status === 'sent') m2Toast('🧪 מייל בדיקה נשלח ל-' + to); else alert('מייל הבדיקה נכשל: ' + ((r && r.error) || data.error || 'שגיאה'));
@@ -15803,12 +15806,12 @@ function m2RenderPv() {
     if (T) v.login_mode = m2.loginMode;
     const subj = m2Fill(d.mail.subject || 'הנושא', p, vars);
     let body;
-    try { body = mailPreviewDocHtml(d.mail.body || 'שלום {name},\n\nהתוכן יופיע כאן.', v, T ? AUTO_TPL_LINK_LABEL[T.id] : v.code !== undefined ? 'לפתיחת האפליקציה' : 'כניסה לאזור העסק שלי'); }
+    try { body = mailPreviewDocHtml(d.mail.body || 'שלום {name},\n\nהתוכן יופיע כאן.', v, T ? AUTO_TPL_LINK_LABEL[T.id] : v.code !== undefined ? 'לפתיחת האפליקציה' : 'כניסה לאזור העסק שלי', !T && !!d.mail.personal); }
     catch (e) { body = `<div style="padding:16px;white-space:pre-line">${esc(d.mail.body)}</div>`; }
     const lm = (m, l) => `<button class="m2-link${m2.loginMode === m ? ' on' : ''}" onclick="m2SetLoginMode('${m}')">${l}</button>`;
     html = `<div class="m2-cap">${warn('mail', 'לו אין מייל.')}מעוצב בדיוק כמו שיישלח (אותו מנוע).${!T && m2MailOnlyMissing(d) && m2CanApp(p) ? '<br><b style="color:var(--orange)">לו לא יישלח מייל – הוא מקבל באפליקציה ("רק מי שלא יקבל").</b>' : ''}
       ${T && /\{login\}/.test(d.mail.body) ? `<br>בלוק הכניסה אצל מי ש: ${lm('google', 'נכנס עם Google / Apple')} · ${lm('code', 'נכנס עם קוד')}` : ''}</div>
-      <div class="m2-mail"><div class="m2-mailh">מאת: <b>Yellow Zone</b> · אל: ${esc((p._k === 'b' ? p.ownerEmail : p.email) || '–')}<br>נושא: <b>${esc(subj)}</b></div><div class="m2-maildoc">${body}</div></div>`;
+      <div class="m2-mail"><div class="m2-mailh">מאת: <b>${!T && d.mail.personal ? 'רמי מ-Yellow Zone' : 'Yellow Zone'}</b> · אל: ${esc((p._k === 'b' ? p.ownerEmail : p.email) || '–')}<br>נושא: <b>${esc(subj)}</b></div><div class="m2-maildoc">${body}</div></div>`;
   } else if (m2.pv === 'wa') {
     html = `<div class="m2-cap">${warn('wa', 'לו אין טלפון.')}נפתח אצלך בוואטסאפ מוכן – נשאר ללחוץ "שלח".</div>
       <div class="m2-wascr"><div class="m2-watop">${esc(m2Label(p))}</div><div class="m2-wab">${m2WaHtml(m2Fill(d.wa.text, p, vars) || 'ההודעה')}</div></div>`;

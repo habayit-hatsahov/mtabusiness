@@ -1462,7 +1462,7 @@ function pushLinkPath(link) {
 // הקיימים כבר ב"כל העסקים"/"כל האוהדים"). נקרא ישירות מדפדפן, לא curl בלבד, ולכן מאומת בפועל דרך
 // verifyAdminIdToken (לא סוד סטטי — ר' PROJECT_CONTEXT.md). לולאה סדרתית מכוונת (לא batched) —
 // מספיק ליחס הנוכחי (עשרות נמענים, לא מאות).
-async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, businessIds, memberIds, testEmail }, env) {
+async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, businessIds, memberIds, testEmail, personal }, env) {
   if (!subject || !body) return { error: 'missing_fields' };
   try {
     await verifyAdminIdToken(env, idToken);
@@ -1480,7 +1480,7 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
       ? { name: 'ישראל ישראלי', code: '123456', link: `${SITE_BASE}download?src=broadcast`, ...loginTestVars }
       : { name: 'ישראל ישראלי', business: 'עסק לדוגמה', link: `${SITE_BASE}business-dashboard.html?token=demo`, ...loginTestVars };
     try {
-      await sendBroadcastEmail(env, { toEmail: testEmail, toName: 'בדיקה', subject: `[בדיקה] ${subject}`, body, vars });
+      await sendBroadcastEmail(env, { toEmail: testEmail, toName: 'בדיקה', subject: `[בדיקה] ${subject}`, body, vars, personal: personal === true });   // §560
       return { results: [{ id: 'test', name: testEmail, email: testEmail, status: 'sent' }], isTest: true };
     } catch (e) {
       return { results: [{ id: 'test', name: testEmail, email: testEmail, status: 'failed', error: String(e).slice(0, 300) }], isTest: true };
@@ -1552,7 +1552,7 @@ async function handleSendMessage({ idToken, messageId, block, recipients, app, p
   const P = A && push && String(push.title || '').trim() && String(push.body || '').trim()
     ? { title: String(push.title).trim().slice(0, 60), body: String(push.body).trim().slice(0, 160) } : null;
   const M = mail && String(mail.subject || '').trim() && String(mail.body || '').trim()
-    ? { subject: String(mail.subject).trim().slice(0, 150), body: String(mail.body), scope: mail.scope === 'missing' ? 'missing' : 'all' } : null;
+    ? { subject: String(mail.subject).trim().slice(0, 150), body: String(mail.body), scope: mail.scope === 'missing' ? 'missing' : 'all', personal: mail.personal === true } : null;   // §560 personal = "מכתב אישי"
   if (push && !A) return { error: 'push_needs_app' };
   if (!A && !M) return { error: 'no_channel' };
   try { await verifyAdminIdToken(env, idToken); }
@@ -1632,7 +1632,7 @@ async function handleSendMessage({ idToken, messageId, block, recipients, app, p
         const vars = o.t === 'm'
           ? { name: o.mf.firstName || '', code: await loginCodeFor(env, accessToken, o.id), link: `${SITE_BASE}download?src=broadcast` }
           : { name: o.bf.ownerFirst || '', business: o.bf.name || '', link: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, o.id)}` };
-        const r = await sendBroadcastEmail(env, { toEmail: o.email, toName: vars.name, subject: M.subject, body: M.body, vars, msgTag: 'msg_' + messageId });
+        const r = await sendBroadcastEmail(env, { toEmail: o.email, toName: vars.name, subject: M.subject, body: M.body, vars, msgTag: 'msg_' + messageId, personal: M.personal });
         o.mail = 'sent';
         if (r && r.messageId) o.mailId = String(r.messageId);
       } catch (e) {
