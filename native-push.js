@@ -45,7 +45,12 @@
   // לא קורה, וההמתנה עליו נתקעת לנצח. ר' [[feedback_bound_every_network_await]].
   const REGISTER_TIMEOUT_MS = 15000;
 
+  // §576 — במסגרת הגשר המקומי קיים אבל לא עונה (ר' למטה), ולכן הוא לא נחשב: במסגרת localCap()
+  // = null, וההאזנות (לחיצה על התראה, באנר, ערוץ) רצות רק בדף העליון.
+  let FRAMED = false;
+  try { FRAMED = window.parent !== window; } catch (e) { FRAMED = true; }
   function localCap() {
+    if (FRAMED) return null;
     return (typeof window !== 'undefined' && window.Capacitor) || null;
   }
   // ── §573 — הרשמה בתוך מסגרת (iframe) ─────────────────────────────────────────────────────
@@ -345,7 +350,10 @@
   // parent.Capacitor (§573) – שם התשובה לא חזרה (§574ב: HTML חדש, אף שורת אבחון).
   let parentNP = null;
   try {
-    if (!localCap() && window.parent && window.parent !== window && window.parent.YZNativePush) parentNP = window.parent.YZNativePush;
+    // §576 — **גם כשיש גשר מקומי.** אבחון מהטלפון (19:30): במסגרת `window.Capacitor` *קיים*
+    // (L1) אבל לא עונה – checkPermissions נגמר ב-timeout. התשובות של הגשר נשלחות לדף העליון
+    // בלבד. לכן במסגרת – תמיד האובייקט של ההורה כשהוא קיים.
+    if (window.parent && window.parent !== window && window.parent.YZNativePush) parentNP = window.parent.YZNativePush;
   } catch (e) {}
   window.YZNativePush = parentNP || {
     available: available,
