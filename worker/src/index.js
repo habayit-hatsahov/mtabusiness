@@ -759,6 +759,9 @@ async function handleResendCode({ phone }, env) {
         // ומאפסת אותו אחרי השליחה כדי שאישור-מחדש עתידי יקבל שוב את מכתב-הפתיחה.
         loginCodeEmailKind: 'resend',
         lastCodeResendAt: new Date(),
+        // §562 — כניסה חדשה לתור. בלעדיה גלאי "יצא באיחור" מדד מהאישור המקורי (לפני שבועות)
+        // וכל "שכחתי קוד" של אוהד ותיק הופיע כאיחור של מאות שעות.
+        loginCodeEmailQueuedAt: new Date(),
       });
     }
   }

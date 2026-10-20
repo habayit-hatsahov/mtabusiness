@@ -3473,6 +3473,7 @@ function hydrateFan(id, raw) {
     rejectedAt: toJsDate(raw.rejectedAt),
     loginCodeCreatedAt: toJsDate(raw.loginCodeCreatedAt),
     loginCodeEmailQueuedAt: toJsDate(raw.loginCodeEmailQueuedAt), // מתי נכנס לתור השליחה — בסיס למדידת איחור
+    lastCodeResendAt: toJsDate(raw.lastCodeResendAt),             // §562 — "שכחתי קוד" (וורקר) — גם הוא כניסה לתור
     loginCodeEmailSentAt: toJsDate(raw.loginCodeEmailSentAt),
     loginCodeEmailDeliveryAt: toJsDate(raw.loginCodeEmailDeliveryAt),   // מ-webhook המסירה של Brevo, §205
     loginCodeEmailOpenedAt: toJsDate(raw.loginCodeEmailOpenedAt),       // פתיחה בפועל, §206
@@ -11771,6 +11772,9 @@ function unifiedIssueList() {
 }
 function unifiedIssueFilteredList() {
   let list = unifiedIssueList();
+  // §562 — סוג שאין לו תצוגה משלו ("מחקו חשבון") מגיע לכאן. בלי הסינון הלחצן הציג את כל
+  // התקלות מכל הסוגים, ואוהדים עם תקלת מייל נראו כאילו מחקו את החשבון.
+  if (taskIssueKind !== 'all') list = list.filter(x => x.kind === taskIssueKind);
   // סינון עסקים/אוהדים — שורה בלי ישות (פניית עזרה של מי שאין לו רשומה) יורדת בשני
   // המצבים, כי היא איננה אף אחד מהם. זו הסיבה ש-'הכל' הוא ברירת-המחדל.
   if (taskEntityFilter !== 'all') list = list.filter(x => x.entity && x.entity.kind === taskEntityFilter);
@@ -11829,6 +11833,10 @@ function unifiedIssuesTableHtml(list) {
         : '<b>אי אפשר לדעת אם יש תקלות הרשמה או כניסה.</b> הרשימה ריקה כי לא הסתכלנו, לא כי אין.') +
       '<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatformStats()">נסה שוב</button></div></div>' +
       (list.length ? unifiedIssueRowsHtml(list) : '');
+  }
+  if (!list.length && taskIssueKind === 'selfDelete') {
+    return '<div class="placeholder-note">' + (delPending ? 'יומן המחיקות נטען…'
+      : 'אף אוהד לא מחק את החשבון שלו (מחיקות שבוצעו מכאן לא נספרות).') + '</div>';
   }
   if (!list.length) {
     return '<div class="placeholder-note">' + (pending
@@ -11895,6 +11903,7 @@ function taskCenterTableHtml() {
 }
 function taskCenterCountLabel() {
   if (issuesActive() && taskIssueKind === 'all') return `מציג ${unifiedIssueFilteredList().length} מתוך ${unifiedIssueList().length}`;
+  if (issuesActive() && taskIssueKind === 'selfDelete') return `מציג ${unifiedIssueFilteredList().length} מתוך ${selfDeleteOpenList().length}`;
   if (mailIssuesActive()) return `מציג ${mailFilteredList().length} מתוך ${mailIssueList().length}`;
   if (bizErrorsActive()) return `מציג ${bizErrorFilteredList().length} מתוך ${bizWriteErrorList().length}`;
   // §355 — "מתוך" נספר על **הפתוחים**, כי הרשימה מציגה רק אותם. ספירה מול הרשימה המלאה
@@ -16443,6 +16452,14 @@ function mailLateMinutes(queuedAt, sentAt) {
   const mins = Math.round((sentAt.getTime() - queuedAt.getTime()) / 60000);
   return mins >= MAIL_LATE_MINUTES ? mins : 0;
 }
+// §562 — לאוהד יש שתי דלתות לתור: אישור/שליחה-חוזרת מכאן (loginCodeEmailQueuedAt) ו"שכחתי קוד"
+// בוורקר (lastCodeResendAt). עד 20.10 הוורקר לא עדכן את חותמת-התור, ו-3 אוהדים שביקשו קוד
+// אחרי השידור הוצגו כ"יצא באיחור – 1,150 שעות" על מייל שיצא תוך פחות מדקה. נמדד מהמאוחרת.
+function fanQueuedAt(f) {
+  const a = f.loginCodeEmailQueuedAt, b = f.lastCodeResendAt;
+  if (!a || !b) return a || null;   // בלי חותמת תור מקורית – כמו קודם: לא ממציאים איחור
+  return b > a ? b : a;
+}
 function lateLabel(mins) {
   if (mins < 60) return mins + ' דקות';
   const h = Math.floor(mins / 60), m = mins % 60;
@@ -16553,9 +16570,9 @@ function mailIssueList() {
       add('fan', f.id, f.name, '', 2, 'אין כתובת מייל', 'האוהד מאושר אבל אין למי לשלוח את קוד הכניסה.', f.approvedAt, false);
     } else if (approved && f.loginCode && f.loginCodeEmailStatus !== 'sent' && f.approvedAt && (now - f.approvedAt.getTime()) > MAIL_STUCK_MINUTES * 60000) {
       add('fan', f.id, f.name, f.email, 2, 'תקוע בתור', `אושר ${agoLabel(f.approvedAt)} וקוד הכניסה עדיין לא יצא.`, f.approvedAt, true);
-    } else if (approved && mailLateMinutes(f.loginCodeEmailQueuedAt, f.loginCodeEmailSentAt)) {
+    } else if (approved && mailLateMinutes(fanQueuedAt(f), f.loginCodeEmailSentAt)) {
       add('fan', f.id, f.name, f.email, 2, 'יצא באיחור',
-        `קוד הכניסה נכנס לתור ויצא בפועל רק ${lateLabel(mailLateMinutes(f.loginCodeEmailQueuedAt, f.loginCodeEmailSentAt))} אחר כך. ה-cron רץ כל דקה – כדאי לבדוק שהמייל אכן התקבל.`,
+        `קוד הכניסה נכנס לתור ויצא בפועל רק ${lateLabel(mailLateMinutes(fanQueuedAt(f), f.loginCodeEmailSentAt))} אחר כך. ה-cron רץ כל דקה – כדאי לבדוק שהמייל אכן התקבל.`,
         f.loginCodeEmailSentAt, !!f.loginCode);
     } else if (approved && mailUnopenedTooLong(f.loginCodeEmailStatus, f.loginCodeEmailDelivery, f.loginCodeEmailOpenedAt, f.loginCodeEmailClickedAt, f.loginCodeEmailSentAt, now)) {
       add('fan', f.id, f.name, f.email, 3, 'נמסר ולא נפתח', MAIL_UNOPENED_DETAIL(f.loginCodeEmailSentAt), f.loginCodeEmailSentAt, !!f.loginCode);
