@@ -15879,6 +15879,20 @@ window.m2DoSend = async function () {
   for (let i = 0; i < recips.length; i += 8) {
     const chunk = recips.slice(i, i + 8);
     let got = null, chunkErr = '';
+    // §561 — **לפני** השליחה: שורת הנמען נוצרת והשדות של השידור הקודם מתאפסים. Brevo מדווח מסירה תוך
+    // 2–3 שנ', וה-webhook כותב לשורה רק אם היא קיימת – כשהשורה נוצרה והאיפוס נכתב רק בסוף השליחה,
+    // 227/238 דיווחי מסירה נמחקו בשידור של 20.10 (ושורות הנמענים לא קיבלו אותם בכלל).
+    try {
+      const pre = writeBatch(db);
+      chunk.forEach((p) => {
+        pre.set(doc(db, 'messages', msgId, 'recipients', p.id), { id: p.id, t: p._k, name: m2Label(p), createdAt: serverTimestamp() }, { merge: true });
+        if (d.ch.mail && m2Can.mail(p) && !(m2MailOnlyMissing(d) && m2CanApp(p))) {
+          pre.update(doc(db, p._k === 'b' ? 'businesses' : 'members', p.id), { broadcastEmailDelivery: deleteField(), broadcastEmailDeliveryAt: deleteField(),
+            broadcastEmailDeliveryReason: deleteField(), broadcastEmailOpenedAt: deleteField(), broadcastEmailClickedAt: deleteField() });
+        }
+      });
+      await pre.commit();
+    } catch (e) { console.error('m2 pre-record failed', e); }
     if (serverCh) {
       try {
         const idToken = await auth.currentUser.getIdToken();
@@ -15909,7 +15923,7 @@ window.m2DoSend = async function () {
     let batch = writeBatch(db), ops = 0;
     const flush = async () => { if (ops) { await batch.commit(); batch = writeBatch(db); ops = 0; } };
     for (const r of results) {
-      batch.set(doc(db, 'messages', msgId, 'recipients', r.id), { ...r, createdAt: serverTimestamp() }); ops++;
+      batch.set(doc(db, 'messages', msgId, 'recipients', r.id), r, { merge: true }); ops++;   // §561 — merge: לא לדרוס mailDelivery/mailOpenedAt שה-webhook כבר כתב
       if (r.app === 'written') tally.app++; if (r.push === 'sent') tally.push++; if (r.mail === 'sent') tally.mail++;
       if (r.mail === 'failed') tally.mailFailed++; if (r.wa === 'todo') tally.wa++;
       if (r.app === 'failed' || r.push === 'failed') tally.failed++;
@@ -15924,9 +15938,8 @@ window.m2DoSend = async function () {
         messageId: msgId, actorUid: CURRENT_ADMIN.uid, actorName: CURRENT_ADMIN.name, source: 'admin', createdAt: serverTimestamp(),
       }); ops++;
       if (r.mail === 'sent') {
-        batch.update(doc(db, coll, r.id), { broadcastEmailSentAt: serverTimestamp(), broadcastEmailSubject: d.mail.subject,
-          broadcastEmailDelivery: deleteField(), broadcastEmailDeliveryAt: deleteField(), broadcastEmailDeliveryReason: deleteField(),
-          broadcastEmailOpenedAt: deleteField(), broadcastEmailClickedAt: deleteField() }); ops++;
+        // §561 — בלי האיפוס כאן: הוא עבר לפני השליחה (למעלה), אחרת הוא מוחק את מה ש-Brevo כבר דיווח
+        batch.update(doc(db, coll, r.id), { broadcastEmailSentAt: serverTimestamp(), broadcastEmailSubject: d.mail.subject }); ops++;
       }
       if (ops >= 400) await flush();
     }
