@@ -58,5 +58,47 @@
     });
   }
 
-  window.YZPushAsk = { mount: mount };
+  // ══ §570 — אוהדים: תיבת-סימון מסומנת מראש מעל כפתור השליחה ═════════════════════════════
+  // רמי (20.10): *"לעבור בהרשמה לצ'קבוקס מסומן מראש… אוהד שלא רוצה פשוט לא מסמן ויקבל את זה
+  // בדף הבית"*. התיבה **לא** נותנת הרשאה – רק חלון המערכת נותן. מסומנת → אחרי שהשליחה הצליחה
+  // נפתח חלון המערכת (afterSubmit). הוסר הסימון → לא שואלים בכלל, וההרשאה נשארת 'prompt',
+  // כך שכרטיס דף-הבית (§569) יופיע אחרי האישור.
+  // אותם תנאים כמו mount: אפליקציה + גשר + עוד לא נשאל. אחרת התיבה לא מוצגת.
+  // business.html ממשיך עם mount (הכרטיס במסך ההצלחה) – לא שונה.
+  async function mountCheckbox(beforeEl) {
+    if (!beforeEl || document.getElementById('yzPushOpt')) return;
+    if (!(await shouldAsk())) return;
+    const row = document.createElement('label');
+    row.className = 'yz-pushopt';
+    row.style.cssText = 'display:flex;gap:10px;align-items:flex-start;margin:4px 0 14px;font-size:14px;' +
+      'line-height:1.5;color:#0A2A66;cursor:pointer';
+    row.innerHTML =
+      '<input type="checkbox" id="yzPushOpt" checked style="width:20px;height:20px;margin:1px 0 0;flex:0 0 auto;accent-color:#0A2A66">' +
+      '<span>לקבל התראות כשהצוות עונה לי ועל עדכונים חשובים</span>';
+    beforeEl.parentNode.insertBefore(row, beforeEl);
+  }
+
+  // אחרי שהבקשה נקלטה. רק אם התיבה הוצגה **ומסומנת**. הטוקן נשמר במכשיר (אין עדיין זהות),
+  // ו-home.html כותב אותו לרשומה בכניסה הראשונה (flushPushStash).
+  async function afterSubmit(host) {
+    const cb = document.getElementById('yzPushOpt');
+    if (!cb || !cb.checked || !host) return;
+    let text;
+    try {
+      const r = await window.YZNativePush.registerAndStash();
+      text = r.ok ? '✓ התראות הופעלו.'
+        : (r.reason === 'denied' || r.reason === 'declined')
+          ? 'בסדר, בלי התראות.'
+          : 'לא הצלחנו להפעיל התראות עכשיו. אפשר להפעיל אחרי הכניסה, מהתפריט.';
+    } catch (e) {
+      console.error('push opt-in failed:', e);
+      text = 'לא הצלחנו להפעיל התראות עכשיו. אפשר להפעיל אחרי הכניסה, מהתפריט.';
+    }
+    const msg = document.createElement('div');
+    msg.style.cssText = 'margin:14px auto 0;max-width:360px;text-align:center;font-size:13.5px;color:#0A2A66';
+    msg.textContent = text;
+    host.appendChild(msg);
+  }
+
+  window.YZPushAsk = { mount: mount, mountCheckbox: mountCheckbox, afterSubmit: afterSubmit };
 })();
