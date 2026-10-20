@@ -11693,7 +11693,8 @@ function unifiedIssueList() {
   regIssueOpenList().forEach(x => out.push({
     kind: 'reg', at: x.at, urgent: true,
     who: x.fans.length ? x.fans.map(f => f.name).join(' · ') : (x.bizRef ? x.bizRef.name : '–'),
-    title: x.title, meta: x.detail,
+    // §563 — "מה קרה בסוף" בשורה נפרדת מעל הפרטים: זה מה שקובע אם יש מה לעשות.
+    title: x.title, meta: [x.outcomeText, x.detail].filter(Boolean).join('\n'),
     entity: x.fans.length ? { kind: 'fan', id: x.fans[0].id } : (x.bizRef ? { kind: 'biz', id: x.bizRef.id } : null),
     markJs: 'markRegIssueHandled(' + [q1(esc(x.key)), q1(escJsAttr(x.title))].join(',') + ')',
   }));
@@ -17008,6 +17009,17 @@ function classifyRegError(e) {
           detail: tag === 'rest' ? reason + ' · לוגו/תמונה מייצגת/גלריה' : reason };
   }
 
+  // §563 — "כבר נרשמת" (§510) אינו כשל אלא חסימה מכוונת של מי שכבר יש לו רשומה. הכותרת
+  // הכללית למטה ("נכשלה – אין רשומה") אמרה בדיוק את ההפך – ושלחה לחפש נרשם אבוד.
+  if (ch === 'already_registered') {
+    return {
+      kind: 'failed',
+      title: `${who} רשום מילא שוב את טופס ההרשמה – נחסם`,
+      detail: 'הטלפון או המייל כבר רשומים אצלנו (חסימת הרשמה כפולה)',
+      badge: 'כבר רשום',
+    };
+  }
+
   return {
     kind: 'failed',
     title: `הרשמת ${who} נכשלה – אין רשומה`,
@@ -17062,6 +17074,43 @@ window.unmarkLoginIssueHandled = async function(key) {
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
 
+// ── §563 — "מה קרה בסוף" גם בכשלי ההרשמה (בקשת רמי, 20.10) ─────────────────────────────
+// *"כמו שרשמת לי בבעיות כניסה שאחרי זה נכנס, גם פה תרשום לי מה קרה בסוף. כי אם זה נפתר אין
+// צורך לטפל"*. אותו עיקרון של §402: כל אירוע עם memberId/bizId באותו סשן **אחרי** הכשל הוא
+// הוכחה. שני סופים שונים, ובכוונה לא ממוזגים:
+//   submit — שלח את ההרשמה בהצלחה (formSubmit באותו טופס).
+//   in     — נכנס לחשבון קיים. זה הסוף הרגיל של "כבר נרשמת": אוהד רשום שלחץ "הצטרפות".
+// ⚠️ loginFail אינו הוכחה (§404) — הוא נושא memberId גם כשהכניסה נכשלה.
+// ⚠️ "לא נמצא המשך" אינו "נשאר בחוץ": sessionId מת עם הטאב (ר' §402).
+let _regOutSrc = null, _regOutIdx = null;
+function regFailOutcome(e) {
+  if (_regOutSrc !== platformEvents || !_regOutIdx) {
+    _regOutIdx = new Map();
+    for (const x of (platformEvents || [])) {
+      if (!x.sessionId || !x.at || x.type === 'loginFail' || !(x.memberId || x.bizId)) continue;
+      (_regOutIdx.get(x.sessionId) || _regOutIdx.set(x.sessionId, []).get(x.sessionId)).push(x);
+    }
+    for (const a of _regOutIdx.values()) a.sort((p, q) => p.at - q.at);
+    _regOutSrc = platformEvents;
+  }
+  const t = e.at ? e.at.getTime() : 0;
+  if (!t || !e.sessionId) return { kind: 'unknown' };
+  const later = (_regOutIdx.get(e.sessionId) || []).filter(x => x.at.getTime() > t);
+  const sub = later.find(x => x.type === 'formSubmit' && x.blockId === e.blockId);
+  const hit = sub || later[0];
+  if (hit) return { kind: sub ? 'submit' : 'in', secs: Math.round((hit.at.getTime() - t) / 1000),
+                    memberId: hit.memberId || null, bizId: hit.bizId || null };
+  if (Date.now() - t < HB_OUTCOME_GRACE_MS) return { kind: 'fresh' };
+  return { kind: 'none' };
+}
+function regOutcomeText(o) {
+  if (o.kind === 'submit') return `✅ שלח את ההרשמה אחרי ${hbDurLabel(o.secs)}`;
+  if (o.kind === 'in')     return `✅ נכנס לחשבון אחרי ${hbDurLabel(o.secs)} – אין מה לטפל`;
+  if (o.kind === 'fresh')  return '⏳ טרם – הכשל ממש עכשיו';
+  if (o.kind === 'none')   return '❔ לא נמצא המשך באותו סשן';
+  return '';
+}
+
 // כשלי-שליחה מתוך collection 'events'. אותו מקור בדיוק של פאנל "פלטפורמה" (§281) —
 // נטען פעם אחת ל-30 יום ומשמש את שניהם.
 function regFailureList() {
@@ -17078,8 +17127,11 @@ function regFailureList() {
       // היה מתחיל לעבוד רק מהכשל הבא. אותו סשן = אותה הרשמה, זו הצלבה בטוחה.
       const paired = (e.memberId || e.bizId) ? null
         : (platformEvents || []).find(s => s.type === 'formSubmit' && s.sessionId === e.sessionId && s.blockId === e.blockId);
-      const memberId = e.memberId || (paired ? paired.memberId : null);
-      const bizId    = e.bizId    || (paired ? paired.bizId    : null);
+      // §563 — ומה קרה אחרי. כשהכשל עצמו לא נושא זהות ("כבר נרשמת" לא חושף מי), הכניסה
+      // שאחריו כן — ממנה השם, הטלפון וכפתור הכרטיס.
+      const outcome = regFailOutcome(e);
+      const memberId = e.memberId || (paired ? paired.memberId : null) || outcome.memberId || null;
+      const bizId    = e.bizId    || (paired ? paired.bizId    : null) || outcome.bizId    || null;
       const fan = memberId ? MOCK_FANS.find(f => f.id === memberId) : null;
       const biz = bizId ? MOCK_BUSINESSES.find(x => x.id === bizId) : null;
       // ⚠️ מזהה שקיים אך אין לו רשומה = ההרשמה עצמה נכשלה אחרי שהמזהה כבר נוצר (ר' ההערה
@@ -17095,6 +17147,7 @@ function regFailureList() {
         bizRef: biz ? { id: biz.id, name: biz.name } : null,
         handled: h || null,
         title: c.title,
+        outcome, outcomeText: regOutcomeText(outcome),
         detail: `${who ? who + ' · ' : ''}${c.detail} · ${e.device === 'mobile' ? 'מובייל' : 'דסקטופ'}${missing}`,
         badge: c.badge,
       };
@@ -18194,7 +18247,9 @@ function regIssuesTableHtml(list) {
         </div>
         <!-- §355 – הרשימה כאן היא **פתוחים בלבד** (regIssueOpenList), ולכן הענף "טופל"
              שהיה כאן הוא קוד מת. הסגירות עברו לקוביית "בקשות שטופלו", ומשם גם מבטלים. -->
-        <div class="task-table-badges"><span class="warn-badge">${esc(x.badge)}</span></div>
+        <div class="task-table-badges"><span class="warn-badge">${esc(x.badge)}</span>${
+          x.outcomeText ? ` <span class="${x.outcome.kind === 'submit' || x.outcome.kind === 'in' ? 'treat-badge' : 'warn-badge'}">${esc(x.outcomeText)}</span>` : ''
+        }</div>
         <div class="mi-addr"></div>
         <div class="task-table-wait">${x.at ? agoLabel(x.at) : '–'}</div>
         <!-- §302 – פעולות בשורה: פתיחת הכרטיס של מי שנכשל, וסימון "טיפלתי".
