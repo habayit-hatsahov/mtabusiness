@@ -1988,6 +1988,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // פעולות חד-פעמיות (פתיחת עסק מקישור-שיתוף) ממתינות לנתונים האמיתיים כדי לא לרוץ פעמיים.
 window.loadFirebaseData = function(data, isPreview) {
   businesses = data;
+  if (!isPreview) _hbLiveData = true; // §585 — מובילי פופולריים/אהובים מוקפאים רק מנתונים חיים, לא מה-cache
+
   // §431 — כל snapshot דורס את המערך כולו, ולכן לחיצת-לב שטרם אושרה ע"י השרת חייבת להיות
   // מוחלת מחדש **כאן**. בלי השורה הזאת הלב היה מתמלא בלחיצה וקופץ אחורה שנייה אחר כך.
   _applyPendingLikes();
@@ -2468,6 +2470,10 @@ function _restoreScrollAnchor(anchor) {
   if (delta) window.scrollBy(0, delta);
 }
 
+// §585 — ר' "_reserved" ב-renderSections.
+let _hbLiveData = false;
+let _dataLeadersFrozen = null; // { n: מספר-הביקור, ids: Set }
+
 function renderSections() {
   // בראש הדף (למשל הטעינה הראשונה — פעמיים ברצף: תצוגת cache ואז נתונים חיים) אין מה "לשמר" —
   // עוגן שנתפס בטעות בשלב הזה יכול לגרור גלילה מלאכותית למטה כשגובה הסקשנים משתנה בין שני הרינדורים.
@@ -2526,6 +2532,20 @@ function renderSections() {
                            .sort((a,b) => (b.likedBy||[]).length - (a.likedBy||[]).length)
                            .slice(0,10);
   _writeSectionIfChanged('loved', 'lovedBizScroll', loved, b => buildCard(b), _emptyRowHtml('אף עסק עדיין לא קיבל לייק'));
+
+  // §585 — 🐛 XRAY הוביל גם את "פופולריים" וגם את "קניה אונליין", גולדה גם את "נבחרים" וגם את
+  // "פופולריים": ההחרגה למעלה פטרה את הסקשנים המסוחררים מלהתחשב במובילי הדירוג. עכשיו מקומות 1-2
+  // של פופולריים/אהובים **שמורים** — הסקשנים המסוחררים עוקפים אותם (הדירוג עצמו לא זז).
+  // כדי שלייק לא יזיז את הסקשנים המסוחררים באמצע הביקור (הסיבה המקורית להחרגה), המובילים
+  // **מוקפאים לכל ביקור** מהנתונים החיים הראשונים; ביקור חדש (_visitState().n) מחשב מחדש.
+  const _vn = _visitState().n;
+  let _reserved;
+  if (_dataLeadersFrozen && _dataLeadersFrozen.n === _vn) _reserved = _dataLeadersFrozen.ids;
+  else {
+    _reserved = new Set([...popular.slice(0, 2), ...loved.slice(0, 2)].map(b => b.id));
+    if (_hbLiveData) _dataLeadersFrozen = { n: _vn, ids: _reserved };
+  }
+  _reserved.forEach(id => usedLeaders.add(id));
 
   // featured=eager (src ישיר, בלי lazy) — הסקשן הראשון שנראה בכניסה, תמיד גלוי, מעט פריטים.
   // §414 — מי **נכנס** לסקשן מגיע מהמדיניות (אם הופעלה); הסדר **בתוכו** נשאר בדיוק כמו
