@@ -120,11 +120,12 @@
   async function ensurePermission() {
     const c = cap();
     let st;
-    try { st = await c.nativePromise('PushNotifications', 'checkPermissions', {}); }
+    try { st = await Promise.race([c.nativePromise('PushNotifications', 'checkPermissions', {}), new Promise((res) => setTimeout(() => res({ receive: 'timeout' }), 4000))]); }   // §575
     catch (e) { return { ok: false, reason: 'check_failed' }; }
 
     if (st && st.receive === 'granted') return { ok: true };
     if (st && st.receive === 'denied') return { ok: false, reason: 'denied' };
+    if (st && st.receive === 'timeout') return { ok: false, reason: 'timeout' };
 
     let res;
     try { res = await c.nativePromise('PushNotifications', 'requestPermissions', {}); }
@@ -193,8 +194,13 @@
   // האם המשתמש כבר אישר, בלי לבקש כלום — לצורך תצוגת מצב הכפתור.
   async function permissionState() {
     if (!available()) return 'unavailable';
+    // §575 — גבול-זמן. קריאה לגשר שלא חוזרת (חשד: מתוך מסגרת, §573) הייתה תוקעת את כל מי
+    // שממתין לה – התיבה בהרשמה ואבחון §574 – בלי שום סימן.
     try {
-      const st = await cap().nativePromise('PushNotifications', 'checkPermissions', {});
+      const st = await Promise.race([
+        cap().nativePromise('PushNotifications', 'checkPermissions', {}),
+        new Promise((res) => setTimeout(() => res({ receive: 'timeout' }), 4000)),
+      ]);
       return (st && st.receive) || 'unknown';
     } catch (e) { return 'unknown'; }
   }
@@ -334,7 +340,14 @@
     } catch (e) {}
   })();
 
-  window.YZNativePush = {
+  // §575 — בתוך מסגרת, בלי גשר מקומי: להשתמש ב-YZNativePush **של הדף העליון** (welcome.html
+  // טוען את הקובץ הזה). כך כל קריאה לגשר נעשית בדף שהגשר שייך לו, ולא מתוך המסגרת דרך
+  // parent.Capacitor (§573) – שם התשובה לא חזרה (§574ב: HTML חדש, אף שורת אבחון).
+  let parentNP = null;
+  try {
+    if (!localCap() && window.parent && window.parent !== window && window.parent.YZNativePush) parentNP = window.parent.YZNativePush;
+  } catch (e) {}
+  window.YZNativePush = parentNP || {
     available: available,
     platform: platform,
     installId: installId,
