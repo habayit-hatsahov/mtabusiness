@@ -113,6 +113,26 @@
     return { ok: ok, url: url, confidence: confidence, reason: reason, raw: raw };
   }
 
+  // ── §567 — טקסט "שיתוף פרופיל" של אינסטגרם ───────────────────────────────────────────────
+  // אוהד ממתין (20.10) הדביק: "I'm on Instagram as @adi_haboosha. Install the app to follow
+  // my photos and videos. https://www.instagram.com/invites/contact/?utm_content=…". הקישור
+  // שבהודעה הוא **קישור-הזמנה כללי** (instagram.com/invites/…) שנפתח לאינסטגרם ולא לפרופיל,
+  // והוא היה הטוקן היחיד שנראה כמו קישור — ולכן נבחר. הפרופיל עצמו יושב ב-@ שבטקסט.
+  // מחזיר { handle } כשנמצא, { handle:null } כשזו הזמנה בלי שם, או null כשזה לא המקרה.
+  function instagramShareText(s) {
+    var isInvite = /instagram\.com\/invites\//i.test(s);
+    var isShare  = /on instagram as @/i.test(s) || /באינסטגרם[^@]{0,20}@/.test(s);
+    if (!isInvite && !isShare) return null;
+    // בנוסח העברי ה-@ מגיע **אחרי** השם ("אני באינסטגרם בתור amgar_or@.") — היפוך-כיוון של
+    // הטקסט המעורב. נמצא אצל אוהד רשום (20.10).
+    var cands = [s.match(/@([A-Za-z0-9._]{1,30})/), s.match(/([A-Za-z0-9._]{1,30})@/)];
+    for (var i = 0; i < cands.length; i++) {
+      var h = cands[i] ? cands[i][1].replace(/^\.+|\.+$/g, '') : '';
+      if (h && IG_HANDLE_RE.test(h) && hasLetter(h)) return { handle: h };
+    }
+    return { handle: null };
+  }
+
   // kind: 'website' | 'facebook' | 'instagram'
   // מחזיר { ok, url, confidence:'exact'|'guessed'|null, reason, raw }
   //   exact   — הערך עצמו הוא כתובת/דומיין, רק הושלם לו https
@@ -123,6 +143,17 @@
   function normalize(kind, raw) {
     var s = String(raw == null ? '' : raw).trim();
     if (!s) return result(false, null, null, 'empty', s);
+
+    // §567 — שם-המשתמש מתוך הודעת-השיתוף. 'exact': השם נמסר ע"י האוהד עצמו, לא הורכב מניחוש.
+    // הזמנה בלי שם → 'invite': אין ממנה שום דרך להגיע לפרופיל.
+    if (kind === 'instagram') {
+      var share = instagramShareText(s);
+      if (share) {
+        return share.handle
+          ? result(true, 'https://www.instagram.com/' + share.handle, 'exact', 'share_text', raw)
+          : result(false, null, null, 'invite', raw);
+      }
+    }
 
     // שני קישורים באותה שורה, או קישור עם טקסט לידו ("z-zol.co.il   www.intex-pool.co.il")
     // — לוקחים את הטוקן הראשון שנראה כמו קישור. אם אין כזה, ממשיכים עם המחרוזת המלאה.
@@ -201,6 +232,7 @@
              (r.suggest ? ', כלומר ' + r.suggest : '') + '.';
     }
     if (r.reason === 'bad_url') return 'הכתובת של ' + what + ' לא תקינה.';
+    if (r.reason === 'invite') return 'זה קישור-הזמנה כללי של אינסטגרם ולא הקישור לפרופיל. כתבו את שם המשתמש (מה שמופיע אחרי @).';
     return 'זה נראה כמו שם ולא כמו כתובת. הדביקו את הקישור המלא ל' + what + ' (מתחיל ב-https://), לא את השם.';
   }
 

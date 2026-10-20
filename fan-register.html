@@ -888,7 +888,17 @@
           <div class="form-group" style="margin-top:14px">
             <label for="socialUrl">פייסבוק או אינסטגרם <span class="opt">(רשות)</span></label>
             <input type="url" id="socialUrl" placeholder="https://facebook.com/... או https://instagram.com/..." inputmode="url" />
+            <div class="field-error" id="err-socialUrl">זה לא קישור לפרופיל וגם לא שם משתמש. אפשר להדביק את הקישור לפרופיל, לכתוב את שם המשתמש – או להשאיר ריק.</div>
             <div class="field-note" id="note-socialUrl"></div>
+            <div id="socialNetBlock" style="display:none;margin-top:10px">
+              <label>זה שם המשתמש שלך ב… <span class="req">*</span></label>
+              <div class="toggle-row" id="socialNetRow">
+                <button type="button" class="toggle-btn" id="socialNetIg" data-net="instagram">אינסטגרם</button>
+                <button type="button" class="toggle-btn" id="socialNetFb" data-net="facebook">פייסבוק</button>
+              </div>
+              <input type="hidden" id="socialNet" value="" />
+              <div class="field-error" id="err-socialNet">נא לבחור באיזו רשת שם המשתמש הזה</div>
+            </div>
             <div class="hint">עוזר לנו לאימות מהיר.</div>
           </div>
         </div>
@@ -1813,7 +1823,7 @@
     if (!el) return true;
     // isSubscriber/fanSport/verifiedSport מיוצגים ויזואלית ע"י כפתורי-toggle, לא ה-select
     // (מוסתר) — צובעים גם את השורה שלהם
-    const TOGGLE_ROW_MAP = { isSubscriber: 'subscriberToggleRow', fanSport: 'sportToggleRow', verifiedSport: 'verifiedSportToggleRow', profileNet: 'profileNetRow' };
+    const TOGGLE_ROW_MAP = { isSubscriber: 'subscriberToggleRow', fanSport: 'sportToggleRow', verifiedSport: 'verifiedSportToggleRow', profileNet: 'profileNetRow', socialNet: 'socialNetRow' };
     const toggleRow = TOGGLE_ROW_MAP[id] ? document.getElementById(TOGGLE_ROW_MAP[id]) : null;
     if (!ok) {
       el.classList.add('error');
@@ -1958,6 +1968,14 @@
       // §341 — שדה הרשות **אינו נבדק כאן בכוונה**. כתוב עליו "לא חובה", והוא הפרט הכי שולי
       // בטופס; לעצור בגללו שליחה שלמה זה להחליף נתון-לוואי חסר בהרשמה חסרה. מה שנכתב בו
       // נשמר גולמי בכל מקרה (`socialUrl`), ומה שלא זוהה כרשת פשוט לא מקודם ל"הפייסבוק של האוהד".
+      // ⚠️ §567 — **ההחלטה הזו השתנתה חלקית.** ריק עדיין מותר; אבל מה שנכתב חייב להיות פרופיל
+      // שאפשר לפתוח ישירות. רמי: *"אני חייב וודאות… שהאוהד ישים קישור או שהשם יהפוך לקישור
+      // ישיר"* — "Ben" עבר כאן ולא הוביל לשום פרופיל.
+      const sv = _v('socialUrl');
+      if (sv) {
+        ok = vf('socialUrl', profileFieldOk(sv)) && ok;
+        if (profileNeedsNet(sv)) ok = vfNet('socialUrl') && ok;
+      }
     }
     if (isSub === 'no') {
       ok = vf('wasSubscriber', document.getElementById('wasSubscriber').value !== '') && ok;
@@ -1970,7 +1988,7 @@
       // ב"ניתן לפתיחה", ובשדה-הרשות אין בדיקה בכלל (§341).
       ok = vf('facebookUrl', profileFieldOk(_v('facebookUrl'))) && ok;   // §343
       // §567 — שם-משתמש בלי קישור: חייבים לדעת באיזו רשת לחפש.
-      if (profileNeedsNet(_v('facebookUrl'))) ok = vf('profileNet', !!_v('profileNet')) && ok;
+      if (profileNeedsNet(_v('facebookUrl'))) ok = vfNet('facebookUrl') && ok;
     }
 
     return ok;
@@ -2112,16 +2130,17 @@
     // ── §345 — הפרופיל נאסף בשני שדות, ושניהם מקבלים פייסבוק **או** אינסטגרם ──────────────
     //   לא-מנוי: שדה חובה — הדרך היחידה לזהות מי האדם.
     //   מנוי:    שדה רשות, בלי שום בדיקה.
-    const optVal   = isSub === 'yes' ? _v('socialUrl')   : '';
+    // §567 — נשמרת **הכתובת הישירה** (profileUrlFor), לא הטקסט: שם-משתמש + הרשת שהנרשם בחר
+    // בעצמו (לא ניחוש, §345), או שם-המשתמש מתוך הודעת-שיתוף של אינסטגרם. profileRaw ממשיך
+    // לשמור את מה שהוקלד, ולכן במרכז הניהול רואים גם את הכתובת וגם את המקור.
+    const optRaw   = isSub === 'yes' ? _v('socialUrl')   : '';
     const reqRaw   = isSub === 'no'  ? _v('facebookUrl') : '';
-    const optKind  = socialFieldPlatform(optVal);
-    // §567 — שם-משתמש עירום + רשת שהנרשם **בחר בעצמו** → קישור מלא לאותה רשת. זה לא ניחוש
-    // (§345): הרשת נמסרה ממנו. profileRaw ממשיך לשמור את מה שהוקלד, ולכן במרכז הניהול
-    // רואים גם את הכתובת שהורכבה וגם את המקור.
-    const pickedNet = (isSub === 'no' && profileNeedsNet(reqRaw)) ? _v('profileNet') : '';
-    const pickedUrl = pickedNet && window.HB_LINKS ? (window.HB_LINKS.normalize(pickedNet, reqRaw).url || '') : '';
-    const reqVal   = pickedUrl || reqRaw;
-    const reqKind  = pickedUrl ? pickedNet : socialFieldPlatform(reqVal);
+    const optPick  = isSub === 'yes' ? profileUrlFor('socialUrl')   : { url: '', kind: null };
+    const reqPick  = isSub === 'no'  ? profileUrlFor('facebookUrl') : { url: '', kind: null };
+    const optVal   = optPick.url || optRaw;
+    const reqVal   = reqPick.url || reqRaw;
+    const optKind  = optPick.url ? optPick.kind : socialFieldPlatform(optVal);
+    const reqKind  = reqPick.url ? reqPick.kind : socialFieldPlatform(reqVal);
 
     // שדה-החובה גובר על שדה-הרשות — הם ממילא לא מופיעים יחד (מנוי/לא-מנוי), והסדר כאן
     // מתעד את העדיפות במפורש במקום להסתמך על כך שאחד מהם תמיד ריק.
@@ -2138,7 +2157,7 @@
     // (בעיקר) כשלא: שם-משתמש עירום בשדה-החובה, או טקסט חופשי בשדה-הרשות שאינו חוסם.
     // בלי השדה הזה כל ערך שלא זוהתה ממנו רשת היה נמחק בשקט — כלומר הנרשם מסר לנו פרט
     // ואיש לא היה יודע שהוא קיים.
-    data.profileRaw = reqRaw || optVal || null;
+    data.profileRaw = reqRaw || optRaw || null;
 
     // §343 — השם הוא `profileSource` ולא `facebookUrlSource`: מרגע שהשדה מקבל גם אינסטגרם,
     // שם שמדבר על פייסבוק בלבד היה מטעה את מי שיקרא את הרשומה בעוד חצי שנה.
@@ -2608,10 +2627,16 @@
         ? 'נראה שהסדר התהפך – השם צריך לבוא אחרי הדומיין, כלומר: ' + rev.suggest
         : 'נראה שהסדר התהפך – הכתובת מתחילה בשם הרשת, ואחריו השם שלך.';
     }
+    // §567 — קישור-הזמנה של אינסטגרם בלי שם-משתמש: נפתח לאינסטגרם, לא לפרופיל.
+    if (window.HB_LINKS && socialFieldPlatform(v) === 'instagram' &&
+        window.HB_LINKS.normalize('instagram', v).reason === 'invite') {
+      return window.HB_LINKS.problemText('instagram', v);
+    }
     if (id === 'socialUrl') {
-      return socialFieldPlatform(v)
+      // §567 — השדה עדיין רשות (ריק מותר), אבל מה שנכתב בו חייב להוביל לפרופיל.
+      return (socialFieldPlatform(v) || profileFieldOk(v))
         ? ''
-        : 'לא זיהינו כאן קישור לפרופיל – אפשר לשלוח ככה, נשמור את מה שכתבת. קישור מלא (facebook.com/…) פשוט מזרז לנו את האישור.';
+        : 'לא זיהינו כאן פרופיל. אפשר להדביק את הקישור לפרופיל, לכתוב את שם המשתמש – או להשאיר ריק.';
     }
     // §342 — הנוסח כאן **לא** אומר "אפשר לשלוח ככה": בשדה הזה זה כבר לא נכון, הוא חוסם.
     // הערה רכה שמבטיחה משהו שהכפתור יסתור כעבור שנייה גרועה מאין-הערה בכלל.
@@ -2641,20 +2666,49 @@
     const v = String(raw || '').trim();
     return !!v && !socialFieldPlatform(v) && profileFieldOk(v);
   }
-  function setProfileNet(net) {
-    document.getElementById('profileNet').value = net;
-    document.getElementById('profileNetIg').classList.toggle('on', net === 'instagram');
-    document.getElementById('profileNetFb').classList.toggle('on', net === 'facebook');
-    if (net) vf('profileNet', true);
+  // שני שדות-פרופיל, לכל אחד בורר-רשת משלו: חובה (לא-מנוי) ורשות (מנוי).
+  const NET_OF = { facebookUrl: 'profileNet', socialUrl: 'socialNet' };
+  function setNet(field, net) {
+    const id = NET_OF[field];
+    document.getElementById(id).value = net;
+    document.getElementById(id + 'Ig').classList.toggle('on', net === 'instagram');
+    document.getElementById(id + 'Fb').classList.toggle('on', net === 'facebook');
+    if (net) vfNet(field);
   }
-  function refreshProfileNet() {
-    const show = profileNeedsNet(_v('facebookUrl'));
-    document.getElementById('profileNetBlock').style.display = show ? 'block' : 'none';
-    if (!show) setProfileNet('');
+  function setProfileNet(net) { setNet('facebookUrl', net); }
+  function refreshNet(field) {
+    const show = profileNeedsNet(_v(field));
+    document.getElementById(NET_OF[field] + 'Block').style.display = show ? 'block' : 'none';
+    if (!show) setNet(field, '');
   }
-  document.getElementById('facebookUrl')?.addEventListener('input', refreshProfileNet);
-  document.querySelectorAll('#profileNetRow .toggle-btn').forEach(b =>
-    b.addEventListener('click', () => setProfileNet(b.dataset.net)));
+  function refreshProfileNet() { refreshNet('facebookUrl'); }
+  // הכתובת הישירה שתישמר: { url, kind } — url ריק כשעדיין אין כזו.
+  function profileUrlFor(field) {
+    const v = _v(field);
+    if (!v || !window.HB_LINKS) return { url: '', kind: null };
+    const plat = socialFieldPlatform(v);
+    if (plat) { const n = window.HB_LINKS.normalize(plat, v); return { url: n.ok ? n.url : '', kind: plat }; }
+    const net = profileNeedsNet(v) ? _v(NET_OF[field]) : '';
+    if (!net) return { url: '', kind: null };
+    const n = window.HB_LINKS.normalize(net, v);
+    return { url: n.ok ? n.url : '', kind: net };
+  }
+  // נבחרה רשת → השם חייב להיות חוקי בה. קו-תחתון פסול בפייסבוק: "ronyankilov_9" + פייסבוק
+  // היה מוביל לפרופיל שלא קיים.
+  function vfNet(field) {
+    const id = NET_OF[field];
+    const net = _v(id);
+    const err = document.getElementById('err-' + id);
+    if (!net) { if (err) err.textContent = 'נא לבחור באיזו רשת שם המשתמש הזה'; return vf(id, false); }
+    const okUrl = !!profileUrlFor(field).url;
+    if (err) err.textContent = okUrl ? '' : 'שם המשתמש הזה לא יכול להיות בפייסבוק (אין שם קו-תחתון). אולי זה אינסטגרם? או הדביקו את הקישור לפרופיל.';
+    return vf(id, okUrl);
+  }
+  Object.keys(NET_OF).forEach(field => {
+    document.getElementById(field)?.addEventListener('input', () => refreshNet(field));
+    document.querySelectorAll('#' + NET_OF[field] + 'Row .toggle-btn').forEach(b =>
+      b.addEventListener('click', () => setNet(field, b.dataset.net)));
+  });
   const _v = id => (document.getElementById(id)?.value || '').trim();
   const _hasFile = id => !!document.getElementById(id)?.files?.length;
 
@@ -2898,6 +2952,7 @@
       wasSubscriber:     document.getElementById('wasSubscriber').value,
       facebookUrl:       document.getElementById('facebookUrl').value,
       profileNet:        document.getElementById('profileNet').value,
+      socialNet:         document.getElementById('socialNet').value,
       socialUrl:        document.getElementById('socialUrl').value,
       // §284 — בלי אלה, מעבר לתקנון וחזרה היה מאפס את בחירת מסלול-האימות ואת מה שמולא בו.
       // קבצים לא נשמרים בטיוטה (אי אפשר) — ולכן מסלול שמבוסס-תמונה יידרש לצרף שוב.
@@ -2944,6 +2999,8 @@
     refreshProfileNet();
     setProfileNet(profileNeedsNet(d.facebookUrl) ? (d.profileNet || '') : '');
     document.getElementById('socialUrl').value        = d.socialUrl         || '';
+    refreshNet('socialUrl');
+    setNet('socialUrl', profileNeedsNet(d.socialUrl) ? (d.socialNet || '') : '');
     // §284 — קודם ממלאים את השדות ורק אז pickRoute, כדי שהוא יפתח כרטיס שכבר יש בו תוכן
     document.getElementById('seatArea').value          = d.seatArea          || '';
     document.getElementById('seatBlock').value          = d.seatBlock         || '';

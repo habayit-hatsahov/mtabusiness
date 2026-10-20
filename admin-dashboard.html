@@ -2887,7 +2887,7 @@ function socialProofValHtml(kind, raw, allowGuess) {
     const ig = window.HB_LINKS ? window.HB_LINKS.normalize('instagram', raw) : null;
     const looksLikeHandle = !!(n && n.ok && guessed) ||
                             !!(ig && ig.ok && ig.confidence === 'guessed');
-    return rawHtml + `<span class="social-bad">${looksLikeHandle ? 'שם משתמש – לא נמסרה רשת' : 'לא כתובת'}</span>` +
+    return rawHtml + `<span class="social-bad">${looksLikeHandle ? 'שם משתמש – לא נמסרה רשת' : 'לא פרופיל – אין קישור ישיר'}</span>` +
            profileFindLinksHtml(raw);
   }
   // 'guessed' = הוקלד שם-משתמש בלבד והורכבה ממנו כתובת. חייב להיאמר במפורש שזו השלמה שלנו
@@ -2896,27 +2896,40 @@ function socialProofValHtml(kind, raw, allowGuess) {
          (guessed ? `<span class="social-src">(כתובת שהושלמה מהשם)</span>` : '');
 }
 
-// ── §567 — תמיד יש מה לפתוח ─────────────────────────────────────────────────────────────
-// רמי (20.10): *"אני רוצה תמיד שיהיה לי אופציה לפתוח את זה כקישור ושזה ימצא את האוהד"*.
-// עד עכשיו שם-משתמש עירום (sagiyur, ronyankilov_9) הוצג כטקסט בלבד, והחיפוש נעשה ידנית.
-// שם-משתמש → קישור ישיר לפרופיל בשתי הרשתות (פייסבוק: רק אם השם חוקי שם, אחרת חיפוש);
-// טקסט חופשי / שם → חיפוש בפייסבוק ובגוגל-על-אינסטגרם. אלה **קישורי-חיפוש של המנהל**, לא
-// ראיה שהאוהד מסר — ולכן הם מסומנים "לחפש" ולא "פתיחה".
+// ── §567 — קישור ישיר אחד, לא ניחושים ────────────────────────────────────────────────────
+// רמי (20.10): *"אני חייב וודאות… תמיד יש שני קישורים, אני צריך לבדוק את שניהם – בזבוז זמן"*.
+// הטופס כבר לא מקבל שם-משתמש בלי רשת (בורר "אינסטגרם / פייסבוק"), ולכן רשומה חדשה מגיעה
+// עם קישור ישיר אחד. כאן נשאר רק הטיפול ברשומות שנרשמו **לפני** כן:
+//   · שם-משתמש שחוקי ברשת אחת בלבד (קו-תחתון → רק אינסטגרם) → קישור ישיר אחד.
+//   · חוקי בשתיהן (sagiyur) → שני קישורים, ומסומן במפורש "רשומה ישנה – לא נמסרה רשת".
+//   · לא שם-משתמש ("Ben", שם בעברית) → **אין קישור**: כל קישור כאן היה ניחוש.
 function profileFindLinksHtml(raw) {
   const v = String(raw || '').trim().replace(/^@/, '');
-  if (!v) return '';
+  if (!v || isProfileRefusal(v)) return '';
   const L = window.HB_LINKS;
-  const ig = L ? L.normalize('instagram', v) : null;
-  const fb = L ? L.normalize('facebook',  v) : null;
-  const isHandle = !!((ig && ig.ok && ig.confidence === 'guessed') || (fb && fb.ok && fb.confidence === 'guessed'));
-  const q = encodeURIComponent(v);
+  if (!L) return '';
+  const ig = L.normalize('instagram', v), fb = L.normalize('facebook', v);
   const a = (href, t) => `<a href="${esc(href)}" target="_blank" rel="noopener">${t}</a>`;
-  const links = isHandle
-    ? [ig && ig.ok ? a(ig.url, 'באינסטגרם ←') : a('https://www.google.com/search?q=' + encodeURIComponent('site:instagram.com ' + v), 'חיפוש באינסטגרם ←'),
-       fb && fb.ok ? a(fb.url, 'בפייסבוק ←')  : a('https://www.facebook.com/search/people/?q=' + q, 'חיפוש בפייסבוק ←')]
-    : [a('https://www.facebook.com/search/people/?q=' + q, 'חיפוש בפייסבוק ←'),
-       a('https://www.google.com/search?q=' + encodeURIComponent('site:instagram.com ' + v), 'חיפוש באינסטגרם ←')];
-  return `<span class="social-find">${links.join(' ')}</span>`;
+  const nets = [];
+  if (ig.ok && ig.confidence === 'guessed') nets.push(a(ig.url, 'פתיחה באינסטגרם ←'));
+  if (fb.ok && fb.confidence === 'guessed') nets.push(a(fb.url, 'פתיחה בפייסבוק ←'));
+  if (!nets.length) return '';
+  return `<span class="social-find">${nets.join(' ')}${nets.length > 1 ? ' <span>(רשומה ישנה – לא נמסרה רשת)</span>' : ''}</span>`;
+}
+// §567 — הערה בתווית התא: הכתובת הורכבה משם-משתמש + הרשת שהנרשם בחר בטופס.
+function typedNote(f, kind) {
+  const url = kind === 'facebook' ? f.facebookUrl : f.instagramUrl;
+  return (f.profileRaw && f.profileRaw !== url && sameProfile(f.profileRaw, url, kind))
+    ? ' · הוקלד "' + f.profileRaw + '", הרשת נבחרה בטופס' : '';
+}
+// §567 — האם הטקסט שהוקלד הוא אותו פרופיל כמו הכתובת שנשמרה (שם + רשת שנבחרה בטופס).
+// אם כן – תא "כפי שנמסר" נפרד רק משכפל את הקישור, ולכן הטקסט מוצג כהערה בתא עצמו.
+function sameProfile(raw, url, kind) {
+  if (!raw || !url || !window.HB_LINKS) return false;
+  const k = (s) => String(s || '').toLowerCase().replace(/[?#].*$/, '').replace(/\/+$/, '');
+  const n = window.HB_LINKS.normalize(kind, String(raw).trim().replace(/^@/, ''));
+  const u = window.HB_LINKS.normalize(kind, url);
+  return !!(n.ok && u.ok && k(n.url) === k(u.url));
 }
 
 // תא ברשת האימות. המשתמש: *"תכניס את זה לאימות שלא יהיה ככה בנפרד, שנדע מאיפה זה נכנס"* —
@@ -3169,8 +3182,7 @@ function optionalFieldEmptyHtml(f, key) {
 function socialProofEmptyCellHtml(f) {
   const required = !f.isSubscriber;
   const body = required
-    ? '<span class="opt-empty warn">חסר – במסלול הזה הפרופיל הוא שדה חובה</span>' +
-      (f.name ? ' <span class="social-find">לפי השם: </span>' + profileFindLinksHtml(f.name) : '')   // §567
+    ? '<span class="opt-empty warn">חסר – במסלול הזה הפרופיל הוא שדה חובה</span>'
     : optionalFieldEmptyHtml(f, 'socialOpt');
   return '<div><div class="form-field-label">פרופיל חברתי · ' + (required ? 'שדה חובה, לא-מנוי' : 'שדה רשות') + '</div>' +
          '<div class="form-field-val empty">' + body + '</div></div>';
@@ -3193,7 +3205,7 @@ function socialProofWeakCellHtml(f) {
   if (!raw) return '';
   const msg = isProfileRefusal(raw)
     ? 'לא נמסר פרופיל – מה שהוקלד אינו שם משתמש. אין על מה לאשר.'
-    : 'שם משתמש בלי קישור – לפתוח בקישורים למעלה ולוודא שזה האוהד לפני אישור.';
+    : 'שם משתמש בלי רשת (רשומה ישנה) – לפתוח בקישור למעלה ולוודא שזה האוהד לפני אישור.';
   return '<div><div class="form-field-label">⚠️ בדיקת הפרופיל</div>' +
          '<div class="form-field-val"><span class="opt-empty warn">' + esc(msg) + '</span></div></div>';
 }
@@ -10814,15 +10826,16 @@ function fanFullDetailHtml(id, opts) {
             <!-- §342 – הפרופיל הוא **תא ברשת האימות**, לא שורה נספחת מתחתיה. הוא אחד
                  הנתונים שעליהם ההחלטה נשענת (ולא-מנוי – הנתון המרכזי שלה), והפרדה ממנה
                  גרמה לו להיקרא כמו מטא-דאטה. התווית נושאת את מקור-השדה. -->
-            ${socialProofCellHtml('facebook',  'פייסבוק',  f.facebookUrl,  fanProfileSourceShort(f))}
-            ${socialProofCellHtml('instagram', 'אינסטגרם', f.instagramUrl, fanProfileSourceShort(f))}
+            ${socialProofCellHtml('facebook',  'פייסבוק',  f.facebookUrl,  fanProfileSourceShort(f) + typedNote(f, 'facebook'))}
+            ${socialProofCellHtml('instagram', 'אינסטגרם', f.instagramUrl, fanProfileSourceShort(f) + typedNote(f, 'instagram'))}
             <!-- §345 – מה שהנרשם הקליד מילה-במילה, כשהוא **לא** זה שכבר מוצג למעלה. שני
                  המקרים שמגיעים לכאן: שם-משתמש עירום בשדה-החובה של לא-מנוי (מתקבל, אבל לא
                  ידוע לאיזו רשת הוא שייך), וטקסט חופשי בשדה-הרשות של מנוי (שאינו חוסם).
                  allowGuess=false – הטופס מסרב לנחש רשת מערך עמום, והתצוגה מסרבת באותה
                  מידה: קישור שנפתח יפה אל האדם הלא-נכון גרוע מטקסט שדורש חיפוש. -->
             ${socialProofCellHtml('facebook', 'כפי שנמסר',
-                (f.profileRaw && f.profileRaw !== f.facebookUrl && f.profileRaw !== f.instagramUrl) ? f.profileRaw : '',
+                (f.profileRaw && f.profileRaw !== f.facebookUrl && f.profileRaw !== f.instagramUrl &&
+                 !sameProfile(f.profileRaw, f.facebookUrl, 'facebook') && !sameProfile(f.profileRaw, f.instagramUrl, 'instagram')) ? f.profileRaw : '',
                 fanProfileSourceShort(f) + ' · לא זוהתה רשת', false)}
             <!-- ── שדה-רשות ריק הוא נתון, לא היעדר-נתון ────────────────────────────────
                  שלושת התאים שמעל מחזירים מחרוזת ריקה כשאין להם ערך, ולכן אוהד שלא מסר
