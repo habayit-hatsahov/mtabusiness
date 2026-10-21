@@ -6826,7 +6826,9 @@ function auCompute() {
     const a = (devActs[dev] ||= { submit: false, ok: false, start: false, fail: '', open: false });
     if (e.type === 'formSubmit') a.submit = true;
     else if (e.type === 'loginOk') a.ok = true;
-    else if (e.type === 'formStep' || (e.type === 'formOpen' && e.blockId !== 'loginModal')) a.start = true;
+    // §586 — 'loginResend' ("שלחו לי קוד") הוא ניסיון-כניסה, לא התחלת הרשמה.
+    else if ((e.type === 'formStep' && e.blockId !== 'loginResend') || (e.type === 'formOpen' && e.blockId !== 'loginModal')) a.start = true;
+    else if (e.type === 'formStep') a.open = true;
     else if (e.type === 'loginFail') { a.fail = auFailLabel(e.channel); fails.push({ at: e.at, dev, label: a.fail }); }
     else if (e.type === 'formOpen') a.open = true;
   }
@@ -11793,8 +11795,9 @@ function unifiedIssueList() {
 
   loginFailOpenList().forEach(x => out.push({
     kind: 'login', at: x.at, urgent: x.ours,
-    who: x.fan ? x.fan.name : (x.phone || 'לא מזוהה'),
-    title: x.label,
+    who: x.fan ? x.fan.name : (x.phone || x.email || 'לא מזוהה'),
+    // §586 — הסוג קודם, ומספר הניסיונות כשיש כמה (שורה אחת לאדם).
+    title: HB_LOGIN_CAT[x.cat].label + ' – ' + [...(x.reasons || [x.label])].join(' / ') + (x.count > 1 ? ' · ' + x.count + ' ניסיונות' : ''),
     // §564 — "מה קרה בסוף" בשורה ראשונה, כמו בשורות ההרשמה (§563).
     meta: [hbOutcomeText(x.outcome || { kind: 'unknown' }), [
            x.phone && x.fan ? x.phone : '',
@@ -11803,7 +11806,7 @@ function unifiedIssueList() {
              ? 'הרשומה שלו ' + (x.fan.status === 'pending' ? 'ממתינה לאישור' : 'נדחתה') : '',
            x.env ? hbEnvLabel(x.env) : ''].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
     entity: x.fan ? { kind: 'fan', id: x.fan.id } : null,
-    markJs: 'markLoginIssueHandled(' + [q1(esc(x.key)),
+    markJs: 'markLoginIssueHandled(' + [q1(esc((x.keys || [x.key]).join(','))),
              q1(escJsAttr((x.fan ? x.fan.name + ' · ' : '') + (x.phone || x.label)))].join(',') + ')',
   }));
 
@@ -17189,9 +17192,10 @@ window.markLoginIssueHandled = async function(key, title) {
   const note = prompt('סימון תקלת הכניסה של "' + title + '" כטופלה.' + '\n\n' + 'מה נעשה? (אופציונלי – נשמר ב"בקשות שטופלו")', '');
   if (note === null) return;
   try {
-    await setDoc(doc(db, 'settings', 'handledLoginIssues'), {
-      [key]: { at: new Date().toISOString(), title: String(title || '').slice(0, 200), note: (note || '').trim(), by: auth.currentUser ? auth.currentUser.uid : '' },
-    }, { merge: true });
+    // §586 — שורה מקובצת נושאת כמה חתימות (מופרדות בפסיק) – כל הניסיונות של אותו אדם נסגרים יחד.
+    const val = { at: new Date().toISOString(), title: String(title || '').slice(0, 200), note: (note || '').trim(), by: auth.currentUser ? auth.currentUser.uid : '' };
+    await setDoc(doc(db, 'settings', 'handledLoginIssues'),
+      Object.fromEntries(String(key).split(',').filter(Boolean).map(k => [k, val])), { merge: true });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
 window.unmarkLoginIssueHandled = async function(key) {
@@ -18104,6 +18108,13 @@ function hbLoginOutcomeIndex() {
   // (loadPlatformStats), ומטמון שנשען על אורך היה מחזיר אינדקס ישן אחרי רענון.
   if (_hbOutcomeSrc === platformEvents && _hbOutcomeIdx) return _hbOutcomeIdx;
   const bySess = new Map(), byMember = new Map();
+  // §586 — מזהה-המכשיר של האפליקציה (`d_…` ב-blockId של visit/appCheck/engaged) שורד סגירה
+  // ופתיחה מחדש, בניגוד ל-sessionId. נמדד 21.10: רוב שורות "ממתין לאישור" ו"Apple הסתירה
+  // את המייל" נגמרו בכניסה **מסשן אחר באותו מכשיר** – ובלי ההצלבה הזאת נראו "לא נכנס".
+  const sessDev = new Map(), byDev = new Map();
+  for (const e of (platformEvents || [])) {
+    if (e.sessionId && typeof e.blockId === 'string' && e.blockId.indexOf('d_') === 0) sessDev.set(e.sessionId, e.blockId);
+  }
   for (const e of (platformEvents || [])) {
     if (!e.memberId || !e.at) continue;
     // §404 — 🔴 **`loginFail` לעולם אינו הוכחת-כניסה**, וזה הפך לקריטי ברגע ש-welcome.html
@@ -18114,11 +18125,14 @@ function hbLoginOutcomeIndex() {
     const t = e.at.getTime();
     if (e.sessionId) (bySess.get(e.sessionId) || bySess.set(e.sessionId, []).get(e.sessionId)).push({ t, m: e.memberId });
     (byMember.get(e.memberId) || byMember.set(e.memberId, []).get(e.memberId)).push(t);
+    const d = e.sessionId ? sessDev.get(e.sessionId) : null;
+    if (d) (byDev.get(d) || byDev.set(d, []).get(d)).push({ t, m: e.memberId });
   }
   for (const a of bySess.values()) a.sort((x, y) => x.t - y.t);
   for (const a of byMember.values()) a.sort((x, y) => x - y);
+  for (const a of byDev.values()) a.sort((x, y) => x.t - y.t);
   _hbOutcomeSrc = platformEvents;
-  _hbOutcomeIdx = { bySess, byMember };
+  _hbOutcomeIdx = { bySess, byMember, sessDev, byDev };
   return _hbOutcomeIdx;
 }
 // ⚠️ הסף הזה קיים כדי לא להכריז "לא נכנס" על כשל שקרה **לפני רגע**: האוהד אולי מקליד
@@ -18134,6 +18148,10 @@ function hbLoginOutcome(fail) {
   const mid = fail.fan ? fail.fan.id : null;
   const inMem = mid ? (idx.byMember.get(mid) || []).find(x => x > t) : null;
   if (inMem) return { kind: 'mem', secs: Math.round((inMem - t) / 1000), memberId: mid };
+  // §586 — אותו מכשיר (אפליקציה בלבד). ר' sessDev למעלה.
+  const dev = idx.sessDev.get(fail.sessionId);
+  const inDev = dev ? (idx.byDev.get(dev) || []).find(x => x.t > t) : null;
+  if (inDev) return { kind: 'dev', secs: Math.round((inDev.t - t) / 1000), memberId: inDev.m };
   if (Date.now() - t < HB_OUTCOME_GRACE_MS) return { kind: 'fresh' };
   return { kind: 'none', weak: !fail.fan };
 }
@@ -18149,6 +18167,7 @@ function hbDurLabel(s) {
 function hbOutcomeText(o) {
   if (o.kind === 'sess')    return `✅ נכנס אחרי ${hbDurLabel(o.secs)}`;
   if (o.kind === 'mem')     return `✅ נכנס – מסשן אחר, ${hbDurLabel(o.secs)}`;
+  if (o.kind === 'dev')     return `✅ נכנס – מאותו מכשיר, אחרי ${hbDurLabel(o.secs)}`;
   if (o.kind === 'fresh')   return '⏳ טרם – הכשל ממש עכשיו';
   if (o.kind === 'unknown') return '';
   // ⚠️ שני ניסוחים שונים, וזו לא קוסמטיקה: על שורה בלי טלפון יש רק ההצלבה לפי סשן,
@@ -18158,7 +18177,7 @@ function hbOutcomeText(o) {
 function hbOutcomeBadge(o) {
   const t = hbOutcomeText(o);
   if (!t) return '';
-  const cls = (o.kind === 'sess' || o.kind === 'mem') ? 'treat-badge' : (o.kind === 'none' && !o.weak) ? 'miss-badge' : 'warn-badge';
+  const cls = (o.kind === 'sess' || o.kind === 'mem' || o.kind === 'dev') ? 'treat-badge' : (o.kind === 'none' && !o.weak) ? 'miss-badge' : 'warn-badge';
   return `<span class="${cls}">${t}</span>`;
 }
 
@@ -18167,9 +18186,24 @@ function hbOutcomeBadge(o) {
 // השורות הפתוחות, וכל ה-8 נכנסו תוך 3–6 שניות – רעש שהסתיר את מי שבאמת נשאר בחוץ.
 // יורד מהשורות ומהמונים, ונספר בשורת-סיכום אחת בטאב "כניסה".
 const hbIsAutoLink = (ch) => { const p = hbLoginFailParts(ch); return !p.link && p.base === 'canLink'; };
+// §586 — "שלחו לי קוד למייל" נרשם מעכשיו בכל לחיצה (welcome.html, formStep/loginResend),
+// ולא רק כשהבקשה נכשלה ברשת. מקרה נוי מרינה (20.10): "שלחתי קוד ולא הגיע" – ובוורקר לא
+// נרשמה שום בקשה עם הטלפון שלו, כלומר לא היה לנו שום סימן. עכשיו השורה אומרת אם הטלפון
+// שהוקלד בכלל רשום אצלנו (= האם נשלח מייל).
+const hbIsResendAsk = (e) => e.type === 'formStep' && e.blockId === 'loginResend';
 function loginFailList() {
+  // §586 — זיהוי לפי סשן: שורת `google:notLinked` לא נושאת טלפון, אבל אם באותו סשן הוקלד
+  // טלפון של חבר (badCode / "שלחו לי קוד") – זה אותו אדם. מקרה אור אמגר (21.10): נרשם עם
+  // walla, ניסה Google עם Gmail אחר – והשורה הייתה "המייל הזה אינו רשום – שווה להזמין אותו".
+  const sessFan = new Map();
+  for (const e of (platformEvents || [])) {
+    if (!e.phone || !e.sessionId || sessFan.has(e.sessionId)) continue;
+    const f = hbFanByPhone(e.phone);
+    if (f) sessFan.set(e.sessionId, f);
+  }
   return (platformEvents || [])
-    .filter(e => e.type === 'loginFail' && !hbIsAutoLink(e.channel))
+    .filter(e => (e.type === 'loginFail' && !hbIsAutoLink(e.channel)) || hbIsResendAsk(e))
+    .map(e => hbIsResendAsk(e) ? { ...e, channel: 'resendAsk', blockId: '' } : e)
     .map(e => ({
       at: e.at,
       reason: e.channel || 'unknown',
@@ -18212,9 +18246,12 @@ function loginFailList() {
       // כלומר בדיוק בשורה שצריך להתקשר אליה.
       const byEvent = !x.fan && x.memberId ? hbFanById(x.memberId) : null;
       const byEntry = !x.fan && !byEvent && outcome.memberId ? hbFanById(outcome.memberId) : null;
-      return { ...x, outcome,
-               fanVia: x.fan ? 'phone' : byEvent ? 'event' : byEntry ? 'entry' : null,
-               fan: x.fan || byEvent || byEntry };
+      const bySess  = !x.fan && !byEvent && !byEntry ? (sessFan.get(x.sessionId) || null) : null;
+      const y = { ...x, outcome,
+               fanVia: x.fan ? 'phone' : byEvent ? 'event' : byEntry ? 'entry' : bySess ? 'session' : null,
+               fan: x.fan || byEvent || byEntry || bySess };
+      y.cat = hbLoginCat(y);
+      return y;
     })
     .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
@@ -18222,10 +18259,76 @@ function loginFailList() {
 // ("טיפלתי לא מפנה את השורה"): רשימה שבה כל מה שנסגר נשאר על המסך חוזרת להיות אותה ערימה
 // שממנה ברחנו, והכפתור מאבד את המשמעות שלו. הפריט לא נמחק — הוא עובר לקוביית "בקשות
 // שטופלו", ומשם אפשר להחזיר אותו לפתוח.
-function loginFailOpenList() { return loginFailList().filter(x => !x.handled); }
+// ══ §586 — סיווג לפי סוג, ושורה אחת לאדם ══════════════════════════════════════════════
+// רמי (21.10): *"68 מאתמול… אני רוצה לצמצם את זה שאדע להתעסק רק במה שרלוונטי"*, *"אוהד
+// שלא רשום אצלנו – לא בטוח שצריך להציג את זה בבעיות כניסה, זה לא בעיה"*, *"יש כאלה שסוגרים
+// את החלון של גוגל"*, *"אם הוא הצליח להיכנס למה זה מציג שהייתה בעיה"*.
+// נמדד על 21–22.10: מתוך ~110 שורות, ~45 נכנסו בסוף, ~20 סגרו את החלון, ~17 ממתינים לאישור
+// (נרשמו דקות לפני), ~20 מיילים לא רשומים – ומה שנשאר לטפל בו הוא חד-ספרתי.
+// 🔑 'in' גובר על כל סוג: מי שנכנס בסוף – אין מה לעשות, גם אם בדרך הייתה תקלה טכנית.
+// ⚠️ `needs:false` **אינו מחיקה** – השורות נשארות בשבב שלהן, רק לא נספרות כמשימה.
+const HB_LOGIN_CATS = [
+  { key: 'tech',      label: '⚠️ תקלה טכנית',             needs: true },
+  { key: 'resend',    label: 'ביקש קוד למייל',            needs: true },
+  { key: 'badCode',   label: 'קוד/טלפון שגוי – רשום',     needs: true },
+  { key: 'otherMail', label: 'רשום – ניסה מייל אחר',      needs: true },
+  { key: 'apple',     label: 'Apple הסתירה את המייל',     needs: true },
+  { key: 'other',     label: 'אחר',                       needs: true },
+  { key: 'notReg',    label: 'לא רשום אצלנו',             needs: false },
+  { key: 'pending',   label: 'ממתין לאישור / נדחה',       needs: false },
+  { key: 'closed',    label: 'סגר את החלון בלי להיכנס',   needs: false },
+  { key: 'in',        label: '✅ נכנס בסוף',              needs: false },
+];
+const HB_LOGIN_CAT = Object.fromEntries(HB_LOGIN_CATS.map(c => [c.key, c]));
+function hbLoginCat(x) {
+  const k = x.outcome && x.outcome.kind;
+  if (k === 'sess' || k === 'mem' || k === 'dev') return 'in';
+  if (x.reason === 'resendAsk') return x.fan ? 'resend' : 'notReg';
+  // רשומה שעדיין לא אושרה (או נדחתה) – זה ההסבר לכשל, מה שלא יהיה הערוץ. התור הוא באישור.
+  if (x.fan && x.fan.status && x.fan.status !== 'approved') return 'pending';
+  const p = hbLoginFailParts(x.reason);
+  if (p.base === 'native' && p.code === 'canceled') return 'closed';
+  if (x.ours || p.base === 'native' || p.base === 'sdk' || p.base === 'invalid_google_token') return 'tech';
+  if (p.base === 'pending' || p.base === 'rejected') return 'pending';
+  if (p.base === 'privateEmail') return 'apple';
+  // notLinked עם **אותו** מייל שעל הרשומה = הרשומה עוד לא אושרה באותו רגע (עד §586 הוורקר
+  // החזיר לזה notLinked במקום pending). מייל שונה = רשום, אבל ניסה חשבון אחר.
+  if (p.base === 'notLinked') return !x.fan ? 'notReg'
+    : String(x.email || '').toLowerCase() === String(x.fan.email || '').toLowerCase() ? 'pending' : 'otherMail';
+  if (p.base === 'badCode' || p.base === 'tooManyAttempts') return (x.phone && !x.fan) ? 'notReg' : 'badCode';
+  return 'other';
+}
+// שורה אחת לאדם: sagiyur ניסה 7 פעמים Google עם אותו מייל – זו פנייה אחת, לא 7.
+// "טיפלתי" על השורה המקובצת מסמן את כל הניסיונות שבה (keys).
+// הסוג של הקבוצה: אם הניסיון **האחרון** נגמר בכניסה – 'in'. אחרת הסוג הדחוף ביותר מבין
+// הניסיונות (הסדר ב-HB_LOGIN_CATS), כדי ש"Apple הסתירה" + "קוד שגוי" של אותו אדם יהיו שורה אחת.
+const HB_CAT_RANK = Object.fromEntries(HB_LOGIN_CATS.map((c, i) => [c.key, i]));
+function hbLoginGroups(list) {
+  const groups = new Map();
+  const sessDev = hbLoginOutcomeIndex().sessDev;
+  for (const x of list) {   // list ממוין מהחדש לישן – הראשון בקבוצה הוא האחרון בזמן
+    const who = (x.fan && x.fan.id) || x.email || (x.phone && hbPhoneKey(x.phone)) ||
+                sessDev.get(x.sessionId) || x.sessionId || x.key;
+    const g = groups.get(who);
+    if (!g) { groups.set(who, { ...x, count: 1, keys: [x.key], reasons: new Set([x.label]) }); continue; }
+    g.count++; g.keys.push(x.key); g.reasons.add(x.label);
+    if (g.cat !== 'in' && x.cat !== 'in' && HB_CAT_RANK[x.cat] < HB_CAT_RANK[g.cat]) g.cat = x.cat;
+    if (!g.fan && x.fan) { g.fan = x.fan; g.fanVia = x.fanVia; }
+    if (!g.phone && x.phone) g.phone = x.phone;
+    if (!g.email && x.email) g.email = x.email;
+  }
+  return [...groups.values()];
+}
+let loginCatFilter = 'needs';   // 'needs' | 'all' | מפתח מ-HB_LOGIN_CATS
+window.setLoginCatFilter = function(v) { loginCatFilter = v; refreshTaskCenter(); };
+function loginFailOpenAll() { return hbLoginGroups(loginFailList().filter(x => !x.handled)); }
+// מה שנספר כמשימה – בטאב, בקוביה וברשימה המאוחדת.
+function loginFailOpenList() { return loginFailOpenAll().filter(x => HB_LOGIN_CAT[x.cat].needs); }
 function loginIssueFilteredList() {
   const q = taskSearchQ.trim();
-  let list = loginFailOpenList();
+  let list = loginFailOpenAll();
+  if (loginCatFilter === 'needs') list = list.filter(x => HB_LOGIN_CAT[x.cat].needs);
+  else if (loginCatFilter !== 'all') list = list.filter(x => x.cat === loginCatFilter);
   // §338 — env נכלל בחיפוש כדי שאפשר יהיה לבודד "pwa" או "idb-stuck" בשאילתה אחת.
   // §355 — הטלפון והשם נכללים, כי מעכשיו זו הדרך הטבעית לחפש כאן: אוהד מתקשר, מקלידים
   // את המספר שלו, ורואים מיד אם ומתי הוא נכשל.
@@ -18239,54 +18342,29 @@ function loginIssuesTableHtml(list) {
   const pending = platformEvents === null && !platformStatsError;
   if (pending) return `<div class="placeholder-note">טוען ניסיונות-כניסה מ-30 הימים האחרונים…</div>`;
   if (platformStatsError) return `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(platformStatsError)}) – אי אפשר להציג תקלות כניסה.<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatformStats()">נסה שוב</button></div></div>`;
-  if (!list.length) {
-    return `<div class="placeholder-note">אף ניסיון כניסה לא נכשל ב-30 הימים האחרונים 🎉</div>`;
-  }
-  // סיכום לפי סיבה — לפני השורות. עשרות שורות "קוד שגוי" הן רעש; "3 מהן פסק-זמן" היא הידיעה.
-  const byReason = {};
-  list.forEach(x => { byReason[x.reason] = (byReason[x.reason] || 0) + 1; });
-  const chips = Object.entries(byReason)
-    .sort((a, b) => b[1] - a[1])
-    // §353 — אותה רשימה בדיוק כמו `ours` בשורות (ר' ההערה על HB_LOGIN_FAIL_OURS). לפני כן
-    // זו הייתה רשימה שנייה ועצמאית, שכבר פספסה את fetchTimeout/authTimeout של §350.
-    .map(([r, n]) => `<span class="${HB_LOGIN_FAIL_OURS.includes(hbLoginFailBase(r)) ? 'warn-badge' : 'treat-badge'}">${esc(hbLoginFailLabel(r))} ${n}</span>`)
-    .join('');
-  const oursCount = list.filter(x => x.ours).length;
-  const withPhone = list.filter(x => x.phone).length;
-  // §402 — הספירה שקובעת מה עושים עכשיו. ⚠️ 'fresh' (הכשל לפני פחות מ-3 דק') **אינו נספר
-  // באף אחד מהשניים** — הוא עדיין לא הוכרע, וספירה שלו כ"לא נכנס" הייתה מייצרת התראה
-  // שנרגעת מעצמה דקה אחר כך.
-  const gotIn   = list.filter(x => x.outcome.kind === 'sess' || x.outcome.kind === 'mem').length;
-  const leftOut = list.filter(x => x.outcome.kind === 'none' && !x.outcome.weak).length;
-  const unknown = list.filter(x => x.outcome.kind === 'none' && x.outcome.weak).length;
+  // §586 — שבבי-סינון לפי סוג במקום ההסבר הארוך ושבבי-הסיבה. הספירה = אנשים (שורות מקובצות),
+  // לא ניסיונות. ברירת-המחדל "דורש טיפול" – מה שהאוהד באמת נתקע בו.
+  const all = loginFailOpenAll();
+  const byCat = {};
+  all.forEach(x => { byCat[x.cat] = (byCat[x.cat] || 0) + 1; });
+  const needsN = all.filter(x => HB_LOGIN_CAT[x.cat].needs).length;
+  const chip = (key, label, n, warn) => `<button class="${warn ? 'warn-badge' : 'treat-badge'}" style="cursor:pointer;border:${loginCatFilter === key ? '2px solid currentColor' : '1px solid transparent'};font:inherit" onclick="setLoginCatFilter('${key}')">${esc(label)} ${n}</button>`;
+  const chips = chip('needs', '🔴 דורש טיפול', needsN, true)
+    + HB_LOGIN_CATS.filter(c => byCat[c.key]).map(c => chip(c.key, c.label, byCat[c.key], c.needs)).join('')
+    + chip('all', 'הכל', all.length, false);
   const autoLinks = (platformEvents || []).filter(e => e.type === 'loginFail' && hbIsAutoLink(e.channel)).length;
-  return `
+  const head = `
     <div class="mail-issues-note">
-      ניסיונות כניסה שנכשלו ב-30 הימים האחרונים.
-      ${oursCount
-        ? `<b>⚠️ ${oursCount} מהם תקלה אצלנו ולא טעות של האוהד</b> – פסק-זמן או דף שלא נטען.`
-        : 'כולם טעויות קוד/טלפון או המתנה לאישור – אף אחד מהם אינו תקלה אצלנו.'}
-      <!-- §402 – 🔑 **המשפט שהופך את הרשימה מלוג לרשימת-שיחות.** "תקלה אצלנו" נקרא עד היום
-           כ"נשאר בחוץ", ובפועל רוב הכשלים נגמרים בכניסה תוך שניות (רשת-ההצלה של §350/§353).
-           בלי השורה הזאת אותה עבודה בדיוק מושקעת בשורה שנפתרה מעצמה ובשורה של אדם שממתין. -->
-      <div style="margin-top:8px">
-        <b>מה קרה בפועל:</b>
-        ${gotIn ? `<b style="color:#0a7c2f">${gotIn} נכנסו בכל זאת</b>` : 'אף אחד לא נכנס אחרי הכשל'}${
-          leftOut ? ` · <b style="color:#b42318">🔴 ${leftOut} לא נכנסו – אלה שצריך לפנות אליהם</b>` : ''}${
-          unknown ? ` · ${unknown} ללא טלפון, ולכן אי אפשר לדעת מעבר לסשן עצמו` : ''}
-        ${autoLinks ? `<div style="margin-top:4px">✅ בנוסף, ${autoLinks} חיבורים אוטומטיים של חשבון Google/Apple לרשומה קיימת – הצלחה ולא תקלה, ולכן לא מוצגים כשורות.</div>` : ''}
-        <div style="opacity:.75;margin-top:4px">נגזר מכך ש-home.html רושם אירוע עם מזהה-החבר: אירוע כזה **אחרי** הכשל = הוא בפנים. ⚠️ מזהה-הסשן מת עם סגירת הטאב, ולכן "לא נמצאה כניסה" בשורה בלי טלפון אינו אומר שהוא נשאר בחוץ.</div>
-      </div>
+      ניסיונות כניסה שלא הצליחו ב-30 הימים האחרונים – <b>שורה אחת לאדם</b>, מסווגות לפי סוג.
+      "דורש טיפול" מסתיר את מי שנכנס בסוף, מי שסגר את חלון Google/Apple, מי שאינו רשום ומי שממתין לאישור – הם נשארים בשבב שלהם.
+      ${autoLinks ? `<div style="margin-top:4px;opacity:.8">✅ בנוסף ${autoLinks} חיבורים אוטומטיים של Google/Apple לרשומה קיימת – הצלחה, לא מוצגים.</div>` : ''}
       <div class="class-tile-chips" style="margin-top:8px">${chips}</div>
-      <div style="margin-top:8px;opacity:.8">${
-        // §355 — המשפט הזה אמר עד עכשיו "אין כאן שמות". עכשיו יש, אבל **רק מ-§355 והלאה**:
-        // אירועים ישנים נרשמו בלי טלפון וימשיכו להופיע בלי, ולכן ההסבר נגזר מהנתונים בפועל
-        // ולא נכתב כקביעה. שורה בלי טלפון היא כשל שקרה לפני שהטופס בכלל נשלח (moduleTimeout).
-        withPhone
-          ? `${withPhone} מתוך ${list.length} השורות נושאות את הטלפון שהוקלד – אפשר לחזור אליהם ישירות.${list.length - withPhone ? ' בשאר אין טלפון: או שהכשל קרה לפני שהטופס נשלח, או שהאירוע נרשם לפני שהמדידה הזאת נוספה.' : ''}`
-          : 'אין כאן טלפונים: כל השורות נרשמו לפני שהמדידה הזאת נוספה, או שהכשל קרה עוד לפני שהטופס נשלח. מי שהשאיר פרטים מופיע ב"פניות עזרה".'
-      }</div>
-    </div>
+    </div>`;
+  if (!list.length) {
+    return head + `<div class="placeholder-note">${loginCatFilter === 'needs' ? 'אין כרגע אף אחד שנתקע בכניסה ודורש טיפול 🎉' : 'אין שורות בסוג הזה.'}</div>`;
+  }
+  return `
+    ${head}
     <div class="task-table mail-issues">${list.slice(0, 200).map(x => `
       <div class="task-table-row">
         <div class="task-table-main">
@@ -18305,8 +18383,12 @@ function loginIssuesTableHtml(list) {
           }${x.fan && (x.phone || x.fan.phone)
               ? ` · <span style="font-weight:600;direction:ltr;display:inline-block">${esc(x.phone || x.fan.phone)}</span>` : ''
           }${x.fanVia === 'entry' || x.fanVia === 'event'
-              ? ` <span style="font-weight:500;opacity:.7;font-size:11px">· זוהה ${x.fanVia === 'event' ? 'מהמייל' : 'מהכניסה'}</span>` : ''}</div>
-          <div class="task-table-meta">${esc(x.label)}${
+              ? ` <span style="font-weight:500;opacity:.7;font-size:11px">· זוהה ${x.fanVia === 'event' ? 'מהמייל' : 'מהכניסה'}</span>` : ''
+          }${x.fanVia === 'session' ? ` <span style="font-weight:500;opacity:.7;font-size:11px">· זוהה מהטלפון שהקליד באותו סשן</span>` : ''}</div>
+          <div class="task-table-meta">${esc([...(x.reasons || [x.label])].join(' / '))}${x.count > 1 ? ` · <b>${x.count} ניסיונות</b>` : ''}${
+            // §586 — רשום, אבל ניסה Google/Apple עם מייל אחר מזה שעל הרשומה.
+            x.cat === 'otherMail' && x.fan.email ? ' · רשום עם ' + esc(x.fan.email) : ''
+          }${x.reason === 'resendAsk' && x.fan ? ' · המייל יצא ל-' + esc(x.fan.email || '–') : ''}${
             // ⚠️ סטטוס שאינו "מאושר" הוא לרוב **ההסבר עצמו** לכשל ולא נתון-לוואי: אוהד
             // שממתין לאישור ונכשל ב-'pending' אינו תקלה אלא תור שתלוי בנו.
             x.fan && x.fan.status && x.fan.status !== 'approved'
@@ -18328,14 +18410,14 @@ function loginIssuesTableHtml(list) {
         </div>
         <!-- §402 – שני תגים, ובסדר הזה: מה קרה **במערכת**, ואז מה קרה **לאדם**. השני הוא
              זה שקובע אם מרימים טלפון, ולכן הוא לא מוסתר בשורת-המטא הקטנה שמתחת. -->
-        <div class="task-table-badges"><span class="${x.ours ? 'warn-badge' : 'treat-badge'}">${x.ours ? 'תקלה אצלנו' : 'לא תקלה'}</span>${hbOutcomeBadge(x.outcome)}</div>
+        <div class="task-table-badges"><span class="${HB_LOGIN_CAT[x.cat].needs ? 'warn-badge' : 'treat-badge'}">${esc(HB_LOGIN_CAT[x.cat].label)}</span>${hbOutcomeBadge(x.outcome)}</div>
         <div class="mi-addr"></div>
         <!-- §355 – חתימת-זמן ולא "היום": כל הכשלים של היום-ואתמול נראו כאן שורה זהה, ודווקא
              בהם צריך להצליב מול שעת-פריסה או מול שיחה עם האוהד. -->
         <div class="task-table-wait">${agoTimeLabel(x.at)}</div>
         <div class="mi-actions">
           ${x.fan ? `<button class="act-btn tiny" onclick="selectTask2('fan','${x.fan.id}')">פתיחת ${esc(x.fan.name)}</button>` : ''}
-          <button class="act-btn approve tiny" onclick="markLoginIssueHandled('${esc(x.key)}','${escJsAttr((x.fan ? x.fan.name + ' · ' : '') + (x.phone || x.label))}')">✔️ טיפלתי</button>
+          <button class="act-btn approve tiny" onclick="markLoginIssueHandled('${esc((x.keys || [x.key]).join(','))}','${escJsAttr((x.fan ? x.fan.name + ' · ' : '') + (x.phone || x.email || x.label))}')">✔️ טיפלתי</button>
         </div>
       </div>`).join('')}
     </div>

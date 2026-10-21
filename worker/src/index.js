@@ -342,8 +342,13 @@ async function handleGoogleLogin({ idToken }, request, env) {
   const member = rows[0];
   // ⚠️ 'לא מקושר' אינו שגיאה — זו הפעם הראשונה שלו. הקליינט הופך את זה למסך שמסביר
   // איך לקשור, ולכן המייל מוחזר: כדי שהמסך יוכל לומר לו באיזה חשבון הוא השתמש.
-  if (!member) return { error: 'google_not_linked', email: g.email,
-                        linkable: await linkableByVerifiedEmail(env, accessToken, g, 'googleSub') };
+  if (!member) {
+    const linkable = await linkableByVerifiedEmail(env, accessToken, g, 'googleSub');
+    // §586 — ר' unapprovedByVerifiedEmail: נרשם עם המייל הזה ועדיין לא אושר.
+    const un = linkable ? null : await unapprovedByVerifiedEmail(env, accessToken, g);
+    if (un) return { error: un };
+    return { error: 'google_not_linked', email: g.email, linkable };
+  }
   if (member.fields.status !== 'approved') {
     return { error: member.fields.status === 'pending' ? 'pending' : 'rejected' };
   }
@@ -376,6 +381,20 @@ async function handleGoogleLogin({ idToken }, request, env) {
 // §437 — תקרת הסריקה החסינה-לרישיות. 3,000 מול ~250 חברים היום, כלומר מרווח של פי עשרה,
 // ועדיין הרחק מתקרת השאילתה של Firestore. ר' ההערה בגוף הפונקציה.
 const MEMBER_EMAIL_SCAN_LIMIT = 3000;
+
+// ── §586 — נרשם עם המייל הזה, ועדיין לא אושר ─────────────────────────────────────────────
+// נמדד 20.10: אוהד שנרשם וחיכה לאישור לחץ 7 פעמים על Google עם **אותו מייל שעל הרשומה**,
+// וכל פעם קיבל "עדיין לא חיברתם את חשבון ה-Google… עדיין לא נרשמתם? הצטרפו כאן" – כי
+// linkableByVerifiedEmail מסנן (בצדק) רשומה שלא אושרה, והתוצאה נראתה כמו "לא רשום".
+// התשובה הנכונה היא אותה 'pending' ש-/google-login מחזיר למי שכבר מקושר.
+// ⚠️ חושף "יש הרשמה ממתינה" רק למי שהוכיח עכשיו שליטה בתיבה (מייל מאומת אצל הספק) –
+// אותה ראיה שעליה נשען כל המסלול. רשומה מאושרת עם אותו מייל = לא כאן (זה מסלול הקישור).
+async function unapprovedByVerifiedEmail(env, accessToken, g) {
+  if (!g.emailVerified || !g.email) return null;
+  const rows = await firestoreRunQuery(env, accessToken, 'members', 'email', String(g.email).toLowerCase(), 3);
+  if (!rows.length || rows.some((m) => m.fields.status === 'approved')) return null;
+  return rows.some((m) => m.fields.status === 'pending') ? 'pending' : 'rejected';
+}
 
 async function linkableByVerifiedEmail(env, accessToken, g, subField) {
   if (!subField) throw new Error('linkable_sub_field_required');
@@ -566,10 +585,14 @@ async function handleAppleLogin({ idToken }, request, env) {
   // ⚠️ 'לא מקושר' אינו שגיאה — זו הפעם הראשונה שלו. `isPrivateRelay` מוחזר כדי שהמסך
   // יוכל לומר לו **למה** אין לו מסלול-קישור מהיר: לא תקלה, אלא שהוא בחר להסתיר את המייל.
   // בלי הדגל הזה המסך היה מציג "לא מצאנו רשומה" למי שהרשומה שלו קיימת ומחכה לו.
-  if (!member) return { error: 'apple_not_linked', email: a.email,
-                        isPrivateRelay: a.isPrivateRelay,
-                        linkable: await linkableByVerifiedEmail(env, accessToken, a, 'appleSub'),
-                        ticket: await mintAppleTicket(env, accessToken, a) };   // §582 – להרשמה שתבוא אחרי
+  if (!member) {
+    const linkable = await linkableByVerifiedEmail(env, accessToken, a, 'appleSub');
+    const un = linkable ? null : await unapprovedByVerifiedEmail(env, accessToken, a);   // §586
+    if (un) return { error: un };
+    return { error: 'apple_not_linked', email: a.email,
+             isPrivateRelay: a.isPrivateRelay, linkable,
+             ticket: await mintAppleTicket(env, accessToken, a) };   // §582 – להרשמה שתבוא אחרי
+  }
   if (member.fields.status !== 'approved') {
     return { error: member.fields.status === 'pending' ? 'pending' : 'rejected' };
   }
