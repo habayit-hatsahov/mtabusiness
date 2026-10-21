@@ -45,6 +45,21 @@
 
   var DAY_MS = 86400000;
 
+  // §589 — 🐛 **approvedAt מגיע בשלוש צורות, ו-new Date() מבין רק שתיים.** מרכז הניהול
+  // ממיר ל-Date (toJsDate), אבל home.html מעביר את ה-Timestamp של Firestore כמו שהוא,
+  // ומהמטמון המקומי הוא חוזר כ-{seconds, nanoseconds}. new Date(Timestamp) = NaN, ו-NaN
+  // עובר את כל הבדיקות ("NaN < cut" הוא false) — כלומר **כל** 76 העסקים נכנסו לחלון,
+  // והמדף הציג 12 שרירותיים במקום 11 שאושרו השבוע. מרכז הניהול הראה את הרשימה הנכונה,
+  // ולכן איש לא ראה את הפער. null = אין תאריך תקין.
+  function toMs(v) {
+    if (v == null || v === '') return null;
+    var t;
+    if (typeof v.toMillis === 'function') t = v.toMillis();
+    else if (typeof v === 'object' && !(v instanceof Date) && typeof v.seconds === 'number') t = v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
+    else t = new Date(v).getTime();
+    return isFinite(t) ? t : null;
+  }
+
   // ── מדיניות ברירת-מחדל ────────────────────────────────────────────────────────
   // enabled:false בכוונה — כל עוד המנהל לא הפעיל, שני הסקשנים מתנהגים **בדיוק** כמו
   // קודם (isFeatured/isNew הידניים). אין שינוי באתר החי ברגע שהקובץ נטען.
@@ -280,7 +295,7 @@
     if (key === 'leastClicks') return -(Number(b.clicks) || 0);
     if (key === 'completeProfile') return profileScore(b);
     if (key === 'lovedButUnseen') return ((b.likedBy || []).length + 1) / ((Number(b.clicks) || 0) + 3);
-    if (key === 'newestFirst') return b.approvedAt ? new Date(b.approvedAt).getTime() : 0;
+    if (key === 'newestFirst') return toMs(b.approvedAt) || 0;
     // ⚠️ נשמר כמספר על מסמך העסק (0–3). `Number(undefined) || 0` מכסה גם עסקים ישנים
     // שאין להם את השדה בכלל — הם פשוט 0, כלומר "רגיל".
     if (key === 'manualPriority') return Math.max(0, Math.min(3, Number(b.exposurePriority) || 0));
@@ -450,7 +465,7 @@
       // ⚠️ עסק שתאריך-האישור שלו בעתיד אינו מוצג, גם אם החלון "מכסה" אותו. זה נראה
       // תיאורטי, אבל לפני ההשקה **כל** מנת-ההשקה מקבלת תאריך-התחלה אפקטיבי עתידי
       // (יום ההשקה) — ובלי ההפרדה הזאת לא היה אפשר להבדיל בין השניים.
-      if (new Date(b.approvedAt || 0).getTime() > now) return false;
+      if ((toMs(b.approvedAt) || 0) > now) return false;
       var eff = effectiveNewStart(b, pol);
       if (eff == null || eff < cut) return false;
       for (var i = 0; i < filters.length; i++) if (!filters[i].test(b)) return false;
@@ -461,7 +476,7 @@
       // היה נקבע לפי מזהה — כלומר שרירותי. כך מי שנרשם אחרון עדיין מוצג ראשון.
       var d = effectiveNewStart(b, pol) - effectiveNewStart(a, pol);
       if (d !== 0) return d;
-      var d2 = new Date(b.approvedAt || 0) - new Date(a.approvedAt || 0);
+      var d2 = (toMs(b.approvedAt) || 0) - (toMs(a.approvedAt) || 0);
       return d2 !== 0 ? d2 : String(a.id).localeCompare(String(b.id));
     });
 
@@ -509,8 +524,8 @@
       var inList = {};
       list.forEach(function (b) { inList[b.id] = 1; });
       var spare = businesses.filter(function (b) {
-        if (inList[b.id] || !b.approvedAt) return false;
-        if (new Date(b.approvedAt).getTime() > now) return false;
+        if (inList[b.id] || toMs(b.approvedAt) == null) return false;
+        if (toMs(b.approvedAt) > now) return false;
         for (var i = 0; i < filters.length; i++) if (!filters[i].test(b)) return false;
         return true;
       }).sort(function (a, b) {
@@ -538,8 +553,8 @@
   }
   // מאיזה רגע נספרים ה"ימים כחדש" — הרגע שבו אוהד יכול היה לראות את העסק לראשונה.
   function effectiveNewStart(b, policy) {
-    if (!b.approvedAt) return null;
-    var t = new Date(b.approvedAt).getTime();
+    var t = toMs(b.approvedAt);
+    if (t == null) return null;
     var pol = policy && policy.featured ? policy : normalizePolicy(policy);
     if (!pol.launchAt) return t;
     var L = new Date(pol.launchAt).getTime();
@@ -548,8 +563,9 @@
   // עסק שאושר לפני ההשקה — כלומר כזה שהחלון שלו נמדד מיום ההשקה ולא מהאישור
   function isLaunchCohort(b, policy) {
     var pol = policy && policy.featured ? policy : normalizePolicy(policy);
-    if (!pol.launchAt || !b.approvedAt) return false;
-    return new Date(b.approvedAt).getTime() < new Date(pol.launchAt).getTime();
+    var t = toMs(b.approvedAt);
+    if (!pol.launchAt || t == null) return false;
+    return t < new Date(pol.launchAt).getTime();
   }
   // מתי עסק מסוים יוצא מ"חדש אצלנו" — לכרטיס העסק ולתצוגת המנהל
   function newExitDate(b, policy) {
