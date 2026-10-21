@@ -80,6 +80,58 @@ const isRetryPage = r => !!r && typeof r.body === 'string' && r.body.includes('�
   r = await fetchSW(mkReq('home.html?biz=y'));
   ok(r && r.body === 'HOME-Y', 'כתובת מדויקת שנשמרה קודמת לכללית');
 
+  // ── §592 — באמפ: עותקי הדפים עוברים מהמטמון הישן, ושרשרת הפתיחה נשמרת מראש ─────────────
+  {
+    const st = new Map([['yz-shell-v1', new Map([
+      [ORIGIN + '/', mkRes('ROOT-OLD')],
+      [ORIGIN + '/welcome.html', mkRes('WELCOME-OLD')],
+      [ORIGIN + '/profile.html', mkRes('PROFILE-OLD')],
+      [ORIGIN + '/app-links.js', mkRes('JS-OLD')],
+    ])]]);
+    // install כשהרשת למטה: ה-precache נכשל, ונשאר רק מה שעובר מהמטמון הישן
+    const run = async (net, type, req) => {
+      const handlers = {};
+      const sandbox = {
+        self: { location: { origin: ORIGIN }, addEventListener: (t, f) => { handlers[t] = f; }, skipWaiting() {}, clients: { claim: async () => {} }, registration: {} },
+        caches: makeCaches(st), fetch: async (r, o) => net(r, o),
+        Response: class { constructor(body, init) { this.body = body; this.status = (init && init.status) || 200; this.ok = this.status < 400; this.headers = { get: () => 'text/html' }; } clone() { return this; } },
+        URL, AbortController, setTimeout, clearTimeout, console, Promise,
+      };
+      vm.createContext(sandbox); vm.runInContext(SRC, sandbox);
+      let p = null;
+      handlers[type]({ request: req, waitUntil: x => { p = x; }, respondWith: x => { p = x; } });
+      return p ? await p : undefined;
+    };
+    const down = async () => { throw new Error('offline'); };
+    await run(down, 'install');
+    await run(down, 'activate');
+    const cur = st.get(CACHE);
+    ok(!st.has('yz-shell-v1'), 'activate: המטמון הישן נמחק');
+    ok(cur && cur.get(ORIGIN + '/') && cur.get(ORIGIN + '/').body === 'ROOT-OLD', 'activate: עותק "/" עבר למטמון החדש');
+    ok(cur && cur.get(ORIGIN + '/welcome.html') && cur.get(ORIGIN + '/welcome.html').body === 'WELCOME-OLD', 'activate: עותק welcome.html עבר');
+    ok(cur && cur.get(ORIGIN + '/profile.html'), 'activate: גם דפים אחרים שנשמרו עוברים');
+    ok(cur && !cur.get(ORIGIN + '/app-links.js'), 'activate: קבצי JS לא מועברים (נטענים מחדש עם ?v=)');
+    const r1 = await run(down, 'fetch', mkReq(''));
+    ok(r1 && r1.body === 'ROOT-OLD', 'פתיחה בלי רשת מיד אחרי באמפ: "/" מהעותק ולא "מתחברים…" (' + (isRetryPage(r1) ? 'מתחברים…' : r1 && r1.body) + ')');
+
+    // עותק שכבר נשמר בגרסה החדשה (precache מהרשת) לא נדרס בישן
+    const st2 = new Map([['yz-shell-v1', new Map([[ORIGIN + '/welcome.html', mkRes('WELCOME-OLD')]])]]);
+    const runIn = async (store, net, type) => {
+      const handlers = {};
+      const sandbox = {
+        self: { location: { origin: ORIGIN }, addEventListener: (t, f) => { handlers[t] = f; }, skipWaiting() {}, clients: { claim: async () => {} }, registration: {} },
+        caches: makeCaches(store), fetch: async (r, o) => net(r, o), URL, AbortController, setTimeout, clearTimeout, console, Promise,
+      };
+      vm.createContext(sandbox); vm.runInContext(SRC, sandbox);
+      let p = null; handlers[type]({ waitUntil: x => { p = x; } }); return p ? await p : undefined;
+    };
+    // cache.add במוק לא מושך מהרשת — מדמים precache מוצלח בכתיבה ישירה לפני activate
+    st2.set(CACHE, new Map([[ORIGIN + '/welcome.html', mkRes('WELCOME-NEW')]]));
+    await runIn(st2, down, 'activate');
+    ok(st2.get(CACHE).get(ORIGIN + '/welcome.html').body === 'WELCOME-NEW', 'activate: עותק חדש מה-precache לא נדרס בישן');
+  }
+  ok(/PRECACHE_URLS = \[[^\]]*'\.\/'[^\]]*'index\.html'[^\]]*'welcome\.html'/.test(SRC), 'precache: "./", index.html, welcome.html');
+
   console.log(failures ? `✗ ${failures} נכשלו` : '✓ הכל עבר');
   process.exit(failures ? 1 : 0);
 })();

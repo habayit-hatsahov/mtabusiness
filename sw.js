@@ -430,7 +430,8 @@
 // §589 — v316 (sections-policy.js: approvedAt כ-Timestamp של Firestore נקרא NaN – "חדש אצלנו" בדף הבית הציג 12 עסקים שרירותיים במקום שאושרו לאחרונה; ?v=589 בתגיות).
 // §590 — v317 (home.html: תגית "חדש" על הכרטיס מאותו מנוע של "חדש אצלנו" – newBadgeFor; מי שנוסף מהרצפה בלי תגית).
 // §591 — v318 (קישור לעסק באפליקציה: בדף הבית נפתח במקום בלי טעינה שנייה – app-links.js+home.html yzOpenSharedBiz; ניווט שנכשל מקבל את אותו דף מהמטמון גם עם פרמטרים אחרים – ignoreSearch; ?v=591).
-const CACHE_NAME = 'yz-shell-v318';
+// §592 — v319 (באמפ לא מוחק עוד את עותקי הדפים – עוברים למטמון החדש; './', index.html, welcome.html ב-precache – "מתחברים…" בפתיחה אחרי פריסה).
+const CACHE_NAME = 'yz-shell-v319';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד
@@ -463,7 +464,9 @@ function go(){location.reload()}function wait(){setTimeout(function(){if(navigat
 }
 // הגופנים נכנסים ל-precache: הם נדרשים לציור הראשון של דף-הנחיתה (§336, אירוח עצמי),
 // ובלעדיהם הביקור הראשון-אחרי-התקנה עדיין משלם על הורדתם.
-const PRECACHE_URLS = ['home.html', 'manifest.json', 'firebase-config.js',
+// §592 — גם שרשרת הפתיחה של האפליקציה ('./' → index.html → welcome.html): בלעדיה, אחרי כל באמפ
+// אין לכתובת שהאפליקציה נפתחת בה שום עותק, וכשל-רשת ברגע הפתיחה = "מתחברים…".
+const PRECACHE_URLS = ['./', 'index.html', 'welcome.html', 'home.html', 'manifest.json', 'firebase-config.js',
                        'fonts/rubik-hebrew.woff2', 'fonts/rubik-latin.woff2'];
 
 self.addEventListener('install', event => {
@@ -491,6 +494,24 @@ self.addEventListener('activate', event => {
             if (await img.match(req)) continue;
             const res = await c.match(req);
             if (res) await img.put(req, res);
+          }
+        }
+      } catch (e) {}
+      // §592 — 🐛 גם עותקי הדפים עוברים למטמון החדש (רק מה שאין בו עדיין). בלי זה כל באמפ השאיר
+      // את הניווט בלי שום גיבוי: רמי (22.10) קיבל "מתחברים…" בפתיחה מקישור 2 ו-7 דק' אחרי פריסה,
+      // ובאירועים – welcome נטען 10 פעמים ב-23 שנ'; ב-00:55, בלי פריסה באמצע, אותו קישור עבד.
+      // עותק ישן הוא רק גיבוי: הניווט תמיד מנסה קודם את הרשת ומחליף אותו בתשובה הראשונה שמצליחה.
+      try {
+        const cur = await caches.open(CACHE_NAME);
+        for (const k of old) {
+          if (k.indexOf('yz-shell-') !== 0) continue;
+          const c = await caches.open(k);
+          for (const req of await c.keys()) {
+            const p = new URL(req.url).pathname;
+            if (!(p.endsWith('/') || p.endsWith('.html'))) continue;
+            if (await cur.match(req)) continue;
+            const res = await c.match(req);
+            if (res) await cur.put(req, res);
           }
         }
       } catch (e) {}
