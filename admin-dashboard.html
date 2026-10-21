@@ -6639,6 +6639,7 @@ async function loadPlatformStats() {
       const at = e.createdAt && e.createdAt.toDate ? e.createdAt.toDate() : null;
       if (!at) return;   // אירוע שעדיין לא קיבל חותמת-שרת — אין לו יום לשייך אליו
       rows.push({
+        id: docSnap.id,   // §586 — לאיחוד עם issueEvents בלי כפילויות
         at, type: e.type, path: (e.path || '').toLowerCase(), blockId: e.blockId || null,
         memberId: e.memberId || null, sessionId: e.sessionId || null,
         device: e.device || null, referrer: e.referrer || null,
@@ -6667,6 +6668,71 @@ async function loadPlatformStats() {
   platformLoading = false;
   renderMain();
 }
+
+// ══ §586 — שאילתה ממוקדת לתקלות כניסה/הרשמה: 30 יום אמיתיים ═══════════════════════════════
+// platformEvents הוא 10,000 האירועים האחרונים מכל הסוגים – מאז 20.10 זה ~3 ימים בלבד, וטעינה
+// של ~27 שנ'. טאבי "כניסה" ו"הרשמה" צריכים 4 סוגים בלבד (~7% מהאירועים), ולכן הם נטענים כאן
+// בנפרד, עם האינדקס המורכב type+createdAt (firestore.indexes.json).
+// מה כל סוג נותן:  loginFail – השורות · loginOk – הוכחת "נכנס בסוף" (נושא מזהה-מכשיר מ-§586)
+//                  formError – שורות ההרשמה · formSubmit – "שלח את ההרשמה" + זיהוי.
+// "שלחו לי קוד" (formStep/loginResend) בשאילתה שנייה לפי blockId – אינדקס של שדה יחיד.
+// ⚠️ issueEvs() ממזג עם platformEvents כשהוא נטען (visit/pageView של 3 הימים האחרונים מוסיפים
+// הוכחות-כניסה וזיהוי-מכשיר לאירועים ישנים מ-§586) – אבל **לא מחכה לו**.
+const ISSUE_EVENT_TYPES = ['loginFail', 'loginOk', 'formError', 'formSubmit'];
+const ISSUE_EVENT_LIMIT = 20000;
+let issueEvents = null, issueEventsError = null, issueLoading = false;
+function hbEvRow(docSnap) {
+  const e = docSnap.data();
+  const at = e.createdAt && e.createdAt.toDate ? e.createdAt.toDate() : null;
+  if (!at) return null;
+  return { id: docSnap.id, at, type: e.type, path: (e.path || '').toLowerCase(), blockId: e.blockId || null,
+           memberId: e.memberId || null, sessionId: e.sessionId || null, device: e.device || null,
+           referrer: e.referrer || null, channel: e.channel || null, bizId: e.bizId || null,
+           phone: e.phone || null, email: e.email || null };
+}
+async function loadIssueEvents() {
+  if (issueEvents || issueEventsError || issueLoading) return;
+  issueLoading = true;
+  try {
+    const since = new Date(Date.now() - PLATFORM_WINDOW_DAYS * 864e5);
+    const [a, b] = await statsWithTimeout(Promise.all([
+      getDocs(query(collection(db, 'events'), where('type', 'in', ISSUE_EVENT_TYPES),
+        where('createdAt', '>=', since), orderBy('createdAt', 'desc'), limit(ISSUE_EVENT_LIMIT))),
+      getDocs(query(collection(db, 'events'), where('blockId', '==', 'loginResend'), limit(2000))),
+    ]), 60000);
+    const rows = [];
+    a.forEach(d => { const r = hbEvRow(d); if (r) rows.push(r); });
+    b.forEach(d => { const r = hbEvRow(d); if (r && r.at >= since) rows.push(r); });
+    rows.sort((x, y) => y.at - x.at);
+    issueEvents = rows;
+    if (a.size >= ISSUE_EVENT_LIMIT) console.warn('loadIssueEvents: הגיע לתקרה', ISSUE_EVENT_LIMIT);
+  } catch (err) {
+    console.error('loadIssueEvents failed:', err);
+    issueEventsError = statsErrLabel(err);
+  }
+  issueLoading = false;
+  renderMain();
+}
+window.retryIssueEvents = function() { issueEventsError = null; renderMain(); };
+// המקור של כל חישובי התקלות. ממוין מהחדש לישן, בלי כפילויות (אותו id בשני המקורות).
+let _issueEvsSrc = [null, null], _issueEvs = null;
+function issueEvs() {
+  if (_issueEvs && _issueEvsSrc[0] === issueEvents && _issueEvsSrc[1] === platformEvents) return _issueEvs;
+  const seen = new Set(), out = [];
+  for (const src of [issueEvents || [], platformEvents || []]) {
+    for (const e of src) {
+      const k = e.id || ('p|' + e.sessionId + '|' + e.type + '|' + (e.at ? e.at.getTime() : 0));
+      if (seen.has(k)) continue;
+      seen.add(k); out.push(e);
+    }
+  }
+  out.sort((x, y) => y.at - x.at);
+  _issueEvsSrc = [issueEvents, platformEvents];
+  _issueEvs = out;
+  return out;
+}
+// המצב שהטאבים בודקים: טרם נטען / נכשל / מוכן.
+const issuePending = () => issueEvents === null && !issueEventsError;
 
 // ═══ §488 — "אפליקציה ושימוש": הדמו של §487 על הנתונים האמיתיים ═══════════════════════════
 // מקורות: (1) events.path=='/download' (§483) — כניסות לקישור, channel=ios/android/app/other,
@@ -11911,7 +11977,7 @@ function unifiedIssueRowsHtml(list) {
 function unifiedIssuesTableHtml(list) {
   // אותה זהירות כמו בשתי הרשימות שנשענות על המדידה: האירועים נטענים עצלנית,
   // ואסור להכריז "אין תקלות" לפני שהגיעו (§296).
-  if (platformEvents === null && !platformStatsError) loadPlatformStats();
+  if (issuePending()) loadIssueEvents();   // §586 — השאילתה הממוקדת, לא 10,000 האחרונים
   // ── §420ז — יומן המחיקות נטען עצלנית בדיוק כמו המדידה ──────────────────────────────
   // 🔑 `deletionLogEntries` נשאר `[]` עד שפותחים את טאב "מחיקות ושחזור" — כלומר בלי
   // הטעינה הזאת השורה "מחק את החשבון שלו" **לא הייתה מופיעה כאן לעולם**, והמסך היה
@@ -11919,7 +11985,7 @@ function unifiedIssuesTableHtml(list) {
   // **מקור שישי שנוסף למסך המאוחד יורש את חובות-האמינות של כולם.**
   if (deletionLogState === 'idle') loadDeletionLog();
   const delPending = deletionLogState === 'idle' || deletionLogState === 'loading';
-  const pending = (platformEvents === null && !platformStatsError) || delPending;
+  const pending = issuePending() || delPending;
   // ── §363 — ⚠️ **שקט אינו שלום** ─────────────────────────────────────────────────────
   // שניים מחמשת הסוגים (הרשמה, כניסה) נשענים על platformEvents. כשהטעינה **נכשלת** שתי
   // הרשימות ריקות — לא כי אין בהן תקלות אלא כי לא הסתכלנו — והמסך היה מכריז 🎉.
@@ -11927,12 +11993,12 @@ function unifiedIssuesTableHtml(list) {
   // בנפרד, והמסך המאוחד הוא רשימה שישית שלא ירשה אותה. **מסקנה כללית: כל מסך חדש שמאחד
   // מקורות יורש את חובות-האמינות של כולם, ולא אף אחת מההגנות שלהם.**
   // "נסה שוב" הוא חובה ולא נוחות — פסק-זמן בלי דרך חזרה כיבה את הפאנל ל-24 שעות ב-§351.
-  if (platformStatsError) {
-    return '<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (' + esc(platformStatsError) + ') – ' +
+  if (issueEventsError) {
+    return '<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (' + esc(issueEventsError) + ') – ' +
       (list.length
         ? 'מוצגות תקלות מייל, דשבורד עסק ופניות עזרה בלבד. <b>תקלות ההרשמה והכניסה חסרות מהרשימה הזאת.</b>'
         : '<b>אי אפשר לדעת אם יש תקלות הרשמה או כניסה.</b> הרשימה ריקה כי לא הסתכלנו, לא כי אין.') +
-      '<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatformStats()">נסה שוב</button></div></div>' +
+      '<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryIssueEvents()">נסה שוב</button></div></div>' +
       (list.length ? unifiedIssueRowsHtml(list) : '');
   }
   if (!list.length && taskIssueKind === 'selfDelete') {
@@ -11942,7 +12008,7 @@ function unifiedIssuesTableHtml(list) {
   if (!list.length) {
     return '<div class="placeholder-note">' + (pending
       ? 'אין תקלות במיילים ובהצלבות. ' +
-        [platformEvents === null && !platformStatsError ? 'כשלי ההרשמה והכניסה מ-30 הימים האחרונים' : '',
+        [issuePending() ? 'כשלי ההרשמה והכניסה מ-30 הימים האחרונים' : '',
          delPending ? 'מחיקות חשבון' : ''].filter(Boolean).join(' ו') + ' עדיין נטענים…'
       : 'אין תקלות פתוחות 🎉 אף מייל לא נכשל, אף הרשמה לא נתקעה, אף כניסה לא נכשלה באשמתנו, אף אחד לא ביקש עזרה, אף אוהד לא כתב לנו ואף אחד לא מחק את החשבון שלו.') + '</div>';
   }
@@ -12043,14 +12109,14 @@ function taskTilesHtml() {
   // אליה. המשתמש: *"חשוב לי לדעת על כל כשל כזה בדשבורד ניהול הכללי"* — וקובייה שמראה 0
   // כי היא לא בדקה היא גרועה יותר מקריאה אחת מיותרת. loadPlatformStats ממילא ממוזערת
   // (30 יום, נטענת פעם אחת לסשן ומשותפת עם פאנל "פלטפורמה"), והמשתמש כאן הוא מנהל יחיד.
-  if (platformEvents === null && !platformStatsError) loadPlatformStats();
+  if (issuePending()) loadIssueEvents();   // §586
   // §302 — המונה סופר **פתוחים בלבד**. שורה שסומנה "טיפלתי" נשארת ברשימה (לביטול) אבל
   // אינה מתריעה יותר — אחרת "טיפלתי" לא היה מנקה כלום והכפתור היה חסר-משמעות.
   // §356 — המונים הפרטניים שהיו כאן (מייל/דשבורד/הרשמה/פניות/כניסה) ירדו עם חמש
   // הקוביות שהם שירתו. issueKindCounts() מחשב אותם מ-ISSUE_KINDS, מקור-אמת אחד.
   // ⚠️ §296 — האירועים נטענים עצלנית, ולכן עד שהם מגיעים אסור להכריז "אף הרשמה לא נכשלה".
   // זו הייתה **הכרזת-שלום שקרית**: הקובייה הראתה 0 ירוק בדיוק כשעוד לא היה לה מושג.
-  const regEventsPending = platformEvents === null && !platformStatsError;
+  const regEventsPending = issuePending();
   const tile = (t, num, sub) => `
     <div class="class-tile ${taskClassFilter===t.key?'active':''} ${t.key==='pendingBiz'&&taskClassFilter==='all'?'primary':(taskClassFilter===t.key?'primary':'')}" onclick="setTaskClassFilter('${t.key}')">
       <div class="class-tile-top"><span class="class-tile-num">${num}</span><span class="class-tile-label">${t.label}</span></div>
@@ -17217,14 +17283,14 @@ window.unmarkLoginIssueHandled = async function(key) {
 // ⚠️ "לא נמצא המשך" אינו "נשאר בחוץ": sessionId מת עם הטאב (ר' §402).
 let _regOutSrc = null, _regOutIdx = null;
 function regFailOutcome(e) {
-  if (_regOutSrc !== platformEvents || !_regOutIdx) {
+  if (_regOutSrc !== issueEvs() || !_regOutIdx) {
     _regOutIdx = new Map();
-    for (const x of (platformEvents || [])) {
+    for (const x of issueEvs()) {
       if (!x.sessionId || !x.at || x.type === 'loginFail' || !(x.memberId || x.bizId)) continue;
       (_regOutIdx.get(x.sessionId) || _regOutIdx.set(x.sessionId, []).get(x.sessionId)).push(x);
     }
     for (const a of _regOutIdx.values()) a.sort((p, q) => p.at - q.at);
-    _regOutSrc = platformEvents;
+    _regOutSrc = issueEvs();
   }
   const t = e.at ? e.at.getTime() : 0;
   if (!t || !e.sessionId) return { kind: 'unknown' };
@@ -17247,7 +17313,7 @@ function regOutcomeText(o) {
 // כשלי-שליחה מתוך collection 'events'. אותו מקור בדיוק של פאנל "פלטפורמה" (§281) —
 // נטען פעם אחת ל-30 יום ומשמש את שניהם.
 function regFailureList() {
-  return (platformEvents || [])
+  return issueEvs()   // §586
     .filter(e => e.type === 'formError')
     .map(e => {
       const c = classifyRegError(e);
@@ -17259,7 +17325,7 @@ function regFailureList() {
       // מאותו סשן כן נושא אותו. בלי זה כל התקלות ההיסטוריות היו נשארות בלי שם לנצח, והתיקון
       // היה מתחיל לעבוד רק מהכשל הבא. אותו סשן = אותה הרשמה, זו הצלבה בטוחה.
       const paired = (e.memberId || e.bizId) ? null
-        : (platformEvents || []).find(s => s.type === 'formSubmit' && s.sessionId === e.sessionId && s.blockId === e.blockId);
+        : issueEvs().find(s => s.type === 'formSubmit' && s.sessionId === e.sessionId && s.blockId === e.blockId);
       // §563 — ומה קרה אחרי. כשהכשל עצמו לא נושא זהות ("כבר נרשמת" לא חושף מי), הכניסה
       // שאחריו כן — ממנה השם, הטלפון וכפתור הכרטיס.
       const outcome = regFailOutcome(e);
@@ -17507,7 +17573,11 @@ function regIssueList() {
     .sort((a, b) => (a.handled ? 1 : 0) - (b.handled ? 1 : 0)
                  || (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
-function regIssueOpenList() { return regIssueList().filter(x => !x.handled); }
+// §586ג — כשל-שליחה שנגמר בהצלחה (שלח את ההרשמה / נכנס לחשבון) **אינו תקלה פתוחה**: רמי,
+// "כל מה שהוא לא תקלה אל תציג לי לטפל". §563 כבר כתב על השורה "אין מה לטפל" – עכשיו היא יורדת.
+// ⚠️ רק לכשל-שליחה ('failed', שם outcomeText מחושב): בכשל-תמונה ההרשמה נשלחה ובכל זאת חסרה תמונה.
+const regResolved = (x) => !!x.outcomeText && x.outcome && (x.outcome.kind === 'submit' || x.outcome.kind === 'in');
+function regIssueOpenList() { return regIssueList().filter(x => !x.handled && !regResolved(x)); }
 
 // ══ §303 — פניות עזרה מטופס ההרשמה ══════════════════════════════════════════════════════
 let HELP_REQUESTS = [];
@@ -18035,6 +18105,7 @@ function hbEnvLabel(env) {
     // ציר-זמן לכל סשן כדי להבדיל ביניהן. מ-x2 ומעלה זו כמעט תמיד חסימת-רשת אצל האוהד
     // (סינון סלולרי על `*.workers.dev`), ולא איטיות שתיפתר בניסיון נוסף.
     if (/^x[0-9]+$/.test(p)) return `🔴 כשל-רשת רצוף מס' ${p.slice(1)}`;
+    if (/^d_[a-z0-9]{12}$/.test(p)) return null;   // §586 — מזהה-מכשיר, לא לתצוגה
     return p;                          // ערך שלא מוכר לנו — מוצג כמו שהוא, לא נבלע
   }).filter(Boolean).join(' · ');
 }
@@ -18109,16 +18180,20 @@ let _hbOutcomeIdx = null, _hbOutcomeSrc = null;
 function hbLoginOutcomeIndex() {
   // ⚠️ ממומו על **זהות המערך** ולא על אורכו: platformEvents מוחלף כולו בטעינה מחדש
   // (loadPlatformStats), ומטמון שנשען על אורך היה מחזיר אינדקס ישן אחרי רענון.
-  if (_hbOutcomeSrc === platformEvents && _hbOutcomeIdx) return _hbOutcomeIdx;
+  const src = issueEvs();   // §586
+  if (_hbOutcomeSrc === src && _hbOutcomeIdx) return _hbOutcomeIdx;
   const bySess = new Map(), byMember = new Map();
   // §586 — מזהה-המכשיר של האפליקציה (`d_…` ב-blockId של visit/appCheck/engaged) שורד סגירה
   // ופתיחה מחדש, בניגוד ל-sessionId. נמדד 21.10: רוב שורות "ממתין לאישור" ו"Apple הסתירה
   // את המייל" נגמרו בכניסה **מסשן אחר באותו מכשיר** – ובלי ההצלבה הזאת נראו "לא נכנס".
   const sessDev = new Map(), byDev = new Map();
-  for (const e of (platformEvents || [])) {
-    if (e.sessionId && typeof e.blockId === 'string' && e.blockId.indexOf('d_') === 0) sessDev.set(e.sessionId, e.blockId);
+  // מ-§586 המזהה נוסע גם בזנב ה-blockId של loginFail/loginOk ('web|idb-ok|…|d_xxxx').
+  for (const e of src) {
+    if (!e.sessionId || typeof e.blockId !== 'string') continue;
+    const d = e.blockId.split('|').find(x => /^d_[a-z0-9]{12}$/.test(x));
+    if (d) sessDev.set(e.sessionId, d);
   }
-  for (const e of (platformEvents || [])) {
+  for (const e of src) {
     if (!e.memberId || !e.at) continue;
     // §404 — 🔴 **`loginFail` לעולם אינו הוכחת-כניסה**, וזה הפך לקריטי ברגע ש-welcome.html
     // התחיל לרשום memberId גם על כשלים (הזיהוי של §403). בלי השורה הזאת, שני כשלים רצופים
@@ -18134,7 +18209,7 @@ function hbLoginOutcomeIndex() {
   for (const a of bySess.values()) a.sort((x, y) => x.t - y.t);
   for (const a of byMember.values()) a.sort((x, y) => x - y);
   for (const a of byDev.values()) a.sort((x, y) => x.t - y.t);
-  _hbOutcomeSrc = platformEvents;
+  _hbOutcomeSrc = src;
   _hbOutcomeIdx = { bySess, byMember, sessDev, byDev };
   return _hbOutcomeIdx;
 }
@@ -18199,12 +18274,12 @@ function loginFailList() {
   // טלפון של חבר (badCode / "שלחו לי קוד") – זה אותו אדם. מקרה אור אמגר (21.10): נרשם עם
   // walla, ניסה Google עם Gmail אחר – והשורה הייתה "המייל הזה אינו רשום – שווה להזמין אותו".
   const sessFan = new Map();
-  for (const e of (platformEvents || [])) {
+  for (const e of issueEvs()) {
     if (!e.phone || !e.sessionId || sessFan.has(e.sessionId)) continue;
     const f = hbFanByPhone(e.phone);
     if (f) sessFan.set(e.sessionId, f);
   }
-  return (platformEvents || [])
+  return issueEvs()
     .filter(e => (e.type === 'loginFail' && !hbIsAutoLink(e.channel)) || hbIsResendAsk(e))
     .map(e => hbIsResendAsk(e) ? { ...e, channel: 'resendAsk', blockId: '' } : e)
     .map(e => ({
@@ -18253,6 +18328,9 @@ function loginFailList() {
       const y = { ...x, outcome,
                fanVia: x.fan ? 'phone' : byEvent ? 'event' : byEntry ? 'entry' : bySess ? 'session' : null,
                fan: x.fan || byEvent || byEntry || bySess };
+      // §586 — זיהוי שהגיע רק עכשיו (מייל/סשן) מאפשר את ההצלבה לפי חבר. נמדד: מנחם שרעבי –
+      // שורת ה-Apple בלי טלפון נראתה "לא נכנס", למרות loginOk שלו 3 דקות אחר כך מסשן אחר.
+      if (!x.fan && y.fan && (outcome.kind === 'none' || outcome.kind === 'fresh')) y.outcome = hbLoginOutcome(y);
       y.cat = hbLoginCat(y);
       return y;
     })
@@ -18270,13 +18348,17 @@ function loginFailList() {
 // (נרשמו דקות לפני), ~20 מיילים לא רשומים – ומה שנשאר לטפל בו הוא חד-ספרתי.
 // 🔑 'in' גובר על כל סוג: מי שנכנס בסוף – אין מה לעשות, גם אם בדרך הייתה תקלה טכנית.
 // ⚠️ `needs:false` **אינו מחיקה** – השורות נשארות בשבב שלהן, רק לא נספרות כמשימה.
+// §586ג — רמי: *"כל מה שהוא לא תקלה אל תציג לי לטפל, ומה שזה תקלה שלנו לעבוד על זה שיקרה
+// כמה שפחות"*. לכן `needs` = **תקלה שלנו בלבד** (טכנית, או סיבה לא מוכרת שאולי שלנו).
+// קוד שגוי / מייל אחר / Apple שהסתירה – טעות או בחירה של המשתמש: בשבב, לא במשימות.
+// מה שעושים איתן הוא מוצר, לא שיחה: כפתור "שלחו לי את הקוד" אחרי קוד שגוי (welcome.html).
 const HB_LOGIN_CATS = [
-  { key: 'tech',      label: '⚠️ תקלה טכנית',             needs: true },
-  { key: 'resend',    label: 'ביקש קוד למייל',            needs: true },
-  { key: 'badCode',   label: 'קוד/טלפון שגוי – רשום',     needs: true },
-  { key: 'otherMail', label: 'רשום – ניסה מייל אחר',      needs: true },
-  { key: 'apple',     label: 'Apple הסתירה את המייל',     needs: true },
-  { key: 'other',     label: 'אחר',                       needs: true },
+  { key: 'tech',      label: '⚠️ תקלה שלנו',              needs: true },
+  { key: 'other',     label: 'סיבה לא מוכרת',             needs: true },
+  { key: 'badCode',   label: 'קוד/טלפון שגוי – רשום',     needs: false },
+  { key: 'otherMail', label: 'רשום – ניסה מייל אחר',      needs: false },
+  { key: 'apple',     label: 'Apple הסתירה את המייל',     needs: false },
+  { key: 'resend',    label: 'ביקש קוד למייל',            needs: false },
   { key: 'notReg',    label: 'לא רשום אצלנו',             needs: false },
   { key: 'pending',   label: 'ממתין לאישור / נדחה',       needs: false },
   { key: 'closed',    label: 'סגר את החלון בלי להיכנס',   needs: false },
@@ -18291,6 +18373,9 @@ function hbLoginCat(x) {
   if (x.fan && x.fan.status && x.fan.status !== 'approved') return 'pending';
   const p = hbLoginFailParts(x.reason);
   if (p.base === 'native' && p.code === 'canceled') return 'closed';
+  // §586ג — 'timeout' בחלון הנייטיב = 3 דקות (SIGNIN_TIMEOUT_MS) שבהן בורר-החשבונות נשאר פתוח
+  // בלי בחירה. האדם עזב את החלון – זה "סגר", לא תקלה.
+  if (p.base === 'native' && p.code === 'timeout') return 'closed';
   if (x.ours || p.base === 'native' || p.base === 'sdk' || p.base === 'invalid_google_token') return 'tech';
   if (p.base === 'pending' || p.base === 'rejected') return 'pending';
   if (p.base === 'privateEmail') return 'apple';
@@ -18341,10 +18426,9 @@ function loginIssueFilteredList() {
 }
 function loginIssuesTableHtml(list) {
   // אותו דפוס כמו regIssues: האירועים נטענים עצלנית, ולכן אסור להכריז "אין תקלות" לפני שהגיעו.
-  if (platformEvents === null && !platformStatsError) loadPlatformStats();
-  const pending = platformEvents === null && !platformStatsError;
-  if (pending) return `<div class="placeholder-note">טוען ניסיונות-כניסה מ-30 הימים האחרונים…</div>`;
-  if (platformStatsError) return `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(platformStatsError)}) – אי אפשר להציג תקלות כניסה.<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatformStats()">נסה שוב</button></div></div>`;
+  if (issuePending()) loadIssueEvents();   // §586
+  if (issuePending()) return `<div class="placeholder-note">טוען ניסיונות-כניסה מ-30 הימים האחרונים…</div>`;
+  if (issueEventsError) return `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(issueEventsError)}) – אי אפשר להציג תקלות כניסה.<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryIssueEvents()">נסה שוב</button></div></div>`;
   // §586 — שבבי-סינון לפי סוג במקום ההסבר הארוך ושבבי-הסיבה. הספירה = אנשים (שורות מקובצות),
   // לא ניסיונות. ברירת-המחדל "דורש טיפול" – מה שהאוהד באמת נתקע בו.
   const all = loginFailOpenAll();
@@ -18352,19 +18436,19 @@ function loginIssuesTableHtml(list) {
   all.forEach(x => { byCat[x.cat] = (byCat[x.cat] || 0) + 1; });
   const needsN = all.filter(x => HB_LOGIN_CAT[x.cat].needs).length;
   const chip = (key, label, n, warn) => `<button class="${warn ? 'warn-badge' : 'treat-badge'}" style="cursor:pointer;border:${loginCatFilter === key ? '2px solid currentColor' : '1px solid transparent'};font:inherit" onclick="setLoginCatFilter('${key}')">${esc(label)} ${n}</button>`;
-  const chips = chip('needs', '🔴 דורש טיפול', needsN, true)
+  const chips = chip('needs', '🔴 תקלה שלנו – לטפל', needsN, true)
     + HB_LOGIN_CATS.filter(c => byCat[c.key]).map(c => chip(c.key, c.label, byCat[c.key], c.needs)).join('')
     + chip('all', 'הכל', all.length, false);
-  const autoLinks = (platformEvents || []).filter(e => e.type === 'loginFail' && hbIsAutoLink(e.channel)).length;
+  const autoLinks = issueEvs().filter(e => e.type === 'loginFail' && hbIsAutoLink(e.channel)).length;
   const head = `
     <div class="mail-issues-note">
       ניסיונות כניסה שלא הצליחו ב-30 הימים האחרונים – <b>שורה אחת לאדם</b>, מסווגות לפי סוג.
-      "דורש טיפול" מסתיר את מי שנכנס בסוף, מי שסגר את חלון Google/Apple, מי שאינו רשום ומי שממתין לאישור – הם נשארים בשבב שלהם.
+      "תקלה שלנו" מציג רק כשל שהוא באשמתנו. כל השאר – נכנס בסוף, סגר את החלון, לא רשום, ממתין לאישור, קוד שגוי, מייל אחר – אינו תקלה ונשאר בשבב שלו בלי להיספר.
       ${autoLinks ? `<div style="margin-top:4px;opacity:.8">✅ בנוסף ${autoLinks} חיבורים אוטומטיים של Google/Apple לרשומה קיימת – הצלחה, לא מוצגים.</div>` : ''}
       <div class="class-tile-chips" style="margin-top:8px">${chips}</div>
     </div>`;
   if (!list.length) {
-    return head + `<div class="placeholder-note">${loginCatFilter === 'needs' ? 'אין כרגע אף אחד שנתקע בכניסה ודורש טיפול 🎉' : 'אין שורות בסוג הזה.'}</div>`;
+    return head + `<div class="placeholder-note">${loginCatFilter === 'needs' ? 'אין כרגע אף תקלת כניסה שלנו 🎉' : 'אין שורות בסוג הזה.'}</div>`;
   }
   return `
     ${head}
@@ -18452,12 +18536,13 @@ function regIssueFilteredList() {
 function regIssuesTableHtml(list) {
   // האירועים נטענים עצלנית (אותה קריאה של פאנל "פלטפורמה") — עד שהם מגיעים מוצגות
   // ההצלבות בלבד, עם אמירה מפורשת שחלק מהנתונים עוד בדרך.
-  if (platformEvents === null && !platformStatsError) loadPlatformStats();
+  if (issuePending()) loadIssueEvents();   // §586 — השורות
+  if (platformEvents === null && !platformStatsError) loadPlatformStats();   // המשפכים בלבד
   const ab = regAbandonStats();
-  const loadingNote = platformEvents === null && !platformStatsError
+  const loadingNote = issuePending()
     ? '<div class="mail-issues-note">טוען כשלי-שליחה מתוך המדידה… ההצלבות למטה כבר מלאות.</div>'
-    : platformStatsError
-      ? `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(platformStatsError)}) – מוצגות הצלבות בלבד.<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatformStats()">נסה שוב</button></div></div>`
+    : issueEventsError
+      ? `<div class="mail-issues-note">⚠️ טעינת המדידה נכשלה (${esc(issueEventsError)}) – מוצגות הצלבות בלבד.<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryIssueEvents()">נסה שוב</button></div></div>`
       // §304 — המשפט "X נטשו" נשאר כסיכום, ומתחתיו המשפך שאומר **איפה** הם עזבו.
       // "72% נטשו" הוא מספר שאי אפשר לפעול לפיו; הצניחה בין שני שלבים סמוכים כן.
       : `<div class="mail-issues-note">הצלבה אוטומטית בין הצהרות האוהדים + כשלי שליחה אמיתיים מ-30 הימים האחרונים.${
@@ -18475,7 +18560,7 @@ function regIssuesTableHtml(list) {
   if (!list.length) {
     // §296 — "אין תקלות 🎉" רק כשבאמת בדקנו. כשהאירועים עוד בדרך זו הכרזה שאין לה כיסוי.
     return `${loadingNote}<div class="placeholder-note">${
-      platformEvents === null && !platformStatsError
+      issuePending()
         ? 'ההצלבות נקיות. כשלי-השליחה מ-30 הימים האחרונים עדיין נטענים…'
         : 'אין תקלות הרשמה 🎉 אין שני אוהדים על אותו מושב, אין מספר מנוי כפול או מומצא, אף הרשמה לא נכשלה ואף תמונה לא אבדה בדרך.'
     }</div>${funnels}`;

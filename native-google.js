@@ -243,7 +243,9 @@
         try {
           if (typeof window.logEvent === 'function') {
             window.logEvent('loginFail', {
-              channel: ('google:native:' + r.reason).slice(0, 50),
+              // §586 — הקוד האמיתי בזנב כשזו שגיאה לא-מסווגת, כדי שאפשר יהיה לאבחן אותה.
+              channel: ('google:native:' + r.reason + ((r.reason === 'error' || r.reason === 'init_failed') && r.detail
+                ? ':' + String(r.detail).replace(/[^\w.-]+/g, '_') : '')).slice(0, 50),
               blockId: (window._hbEnvTag || 'app').slice(0, 50),
             });
           }

@@ -55,7 +55,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <!-- §435 — כניסה נייטיב עם Google באפליקציה. בלי defer: hbRenderGoogleLoginBtn קורא ל-mode()
      ברגע פתיחת המודאל, והקובץ חייב להתקיים לפני כן (§310/§312). -->
-<script src="native-google.js"></script>
+<script src="native-google.js?v=586"></script>
 <!-- §486 — מדידת שימוש. signup-source.js חייב לפני usage-track.js (os/surface). -->
 <script src="signup-source.js"></script>
 <!-- §575 — הגשר להתראות לטופס ההרשמה שבמסגרת (#joinFrame): fan-register משתמש ב-YZNativePush של הדף הזה. -->
@@ -952,7 +952,10 @@ async function hbAppleLoginClickNative() {
     // ⚠️ **גם ביטול נרשם** — ההבדל בין "התחרט" לבין "נכשל בשקט אחרי האישור" הוא כל
     // האבחון, ובלעדיו שניהם נראים כמו מסך שחזר לעצמו. ר' §439.
     window.logEvent && window.logEvent('loginFail', {
-      channel: ('apple:native:' + r.reason).slice(0, 50),
+      // §586 — הקוד האמיתי בזנב (`:1000` וכו') כשזו שגיאה. 3 שורות "חלון Apple נכשל" ב-30 יום
+      // ואין שום דרך לדעת למה – עכשיו מרכז הניהול מציג אותו (hbLoginFailParts מפרק את הזנב).
+      channel: ('apple:native:' + r.reason + (r.reason === 'error' && r.detail
+        ? ':' + String(r.detail).replace(/[^\w.-]+/g, '_') : '')).slice(0, 50),
       blockId: window._hbEnvTag,
     });
     if (r.reason === 'canceled') { window.hbAsMsg(''); return; }
@@ -2663,6 +2666,19 @@ function _hbSurface() {
   } catch (e) {}
   return null;
 }
+// §586 — מזהה-המכשיר (usage-track.js, `yz_dev`) נוסף ל-blockId של loginFail/loginOk בלבד.
+// מרכז הניהול טוען עכשיו רק אירועי כניסה/הרשמה (שאילתה ממוקדת, 30 יום), ובלי זה לא היה יודע
+// ש"נכנס מאותו מכשיר אחרי שסגר ופתח" – המידע ישב רק על אירועי visit, שאינם נטענים שם.
+// ⚠️ רק כשהתוצאה עדיין ≤50 תווים: firestore.rules אוכפת blockId.size() <= 50, ושדה חורג
+// **מוחק את כל האירוע בשקט** – עדיף אירוע בלי מכשיר מאשר בלי אירוע.
+function _hbWithDev(type, b) {
+  if (type !== 'loginFail' && type !== 'loginOk') return b;
+  let d = null;
+  try { d = localStorage.getItem('yz_dev'); } catch (err) {}
+  if (!d || !/^d_[a-z0-9]{12}$/.test(d)) return b;
+  if (!b) return d;
+  return (b + '|' + d).length <= 50 ? b + '|' + d : b;
+}
 
 window.logEvent = function(type, extra) {
 // §315+§324 — **רשימת-היתר של מארחים, לא רשימת-חסימה.** §315 חסם את localhost בלבד, אחרי
@@ -2698,7 +2714,7 @@ if (!['yellowzone.co.il', 'www.yellowzone.co.il'].includes(location.hostname)) r
     // המארח גם ממילא הוא מה שרוצים ב"מקורות תנועה", לא הנתיב המלא.
     referrer: (document.referrer.split('/')[2] || '').slice(0, 50) || null,
     device: window.innerWidth <= 700 ? 'mobile' : 'desktop',
-    blockId: e.blockId ?? null,
+    blockId: _hbWithDev(type, e.blockId ?? null),
     // §438 — על `pageView` בלבד, ורק כשאין ערך מפורש. שאר סוגי האירועים משתמשים ב-`channel`
     // למשמעויות משלהם (קוד-שגיאה, מסלול כניסה), ודריסה שם הייתה הורסת מדידות קיימות.
     channel: e.channel ?? (type === 'pageView' ? _hbSurface() : null),
@@ -2986,6 +3002,25 @@ function setTitleKeepYellowWord(el, text) {
 function heroShowErr(msg) {
   const el = document.getElementById('heroLoginErr');
   el.textContent = msg; el.classList.add('show');
+}
+// §586 — אחרי קוד שגוי: "שלחו לי את הקוד למייל" בלחיצה אחת, עם הטלפון שכבר הוקלד.
+// נמדד 20–21.10: 5 מתוך 9 האנשים שנשארו בחוץ היו חברים מאושרים שהקלידו קוד שגוי ולא
+// מצאו את "שכחתי את הקוד" (קישור קטן מתחת לכפתור). הכפתור נמחק עם ההודעה (heroHideErr
+// בהקלדה, heroShowErr הבא דורס את התוכן), ולכן אין צורך לנקות אותו.
+function heroOfferResend(phoneRaw) {
+  const el = document.getElementById('heroLoginErr');
+  if (!el || !phoneRaw) return;
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'gs-login-act';
+  b.textContent = 'לא זוכרים את הקוד? שלחו לי אותו למייל';
+  b.onclick = () => {
+    const f = document.getElementById('heroForgotPhoneInput');
+    if (f) f.value = phoneRaw;
+    window._hbResendVia = 'fromBadCode';
+    window.heroOpenForgotFromGoogle && window.heroOpenForgotFromGoogle();
+    window.heroRequestResend && window.heroRequestResend();
+  };
+  el.appendChild(b);
 }
 function heroNormalizePhoneDigits(raw) {
   let d = (raw || '').replace(/\D/g, '');
@@ -4024,7 +4059,7 @@ window.heroLogin = async function() {
     if (data.error === 'pending') heroShowErr('הבקשה שלכם עדיין ממתינה לאישור – ברגע שתאושר תישלח אליכם הודעת מייל עם קוד כניסה.');
     else if (data.error === 'rejected') heroShowErr('הבקשה שלכם נדחתה. לפרטים צרו קשר עם הצוות.');
     else if (data.error === 'too_many_attempts') heroShowErr('יותר מדי ניסיונות – נסו שוב בעוד כמה דקות.');
-    else heroShowErr('מספר טלפון או קוד שגויים');
+    else { heroShowErr('מספר טלפון או קוד שגויים'); heroOfferResend(phoneRaw); }
   } catch (e) {
     // 'timeout' ≠ 'error': הראשון אומר שההמתנה נגמרה בלי תשובה (הכשל של §322 עצמו),
     // השני שקיבלנו תשובה שבורה. שתי בעיות שונות לגמרי, ואסור שיתמזגו לשורה אחת.
@@ -4223,10 +4258,11 @@ window.heroRequestResend = async function() {
     // ולא היה שום סימן לבקשה – לא ידענו אם לחץ, ובאיזה מספר. מרכז הניהול מצליב את הטלפון
     // מול הרשומות ואומר אם בכלל יצא מייל (טאב "כניסה" → "ביקש קוד למייל").
     window.logEvent && window.logEvent('formStep', {
-      blockId: 'loginResend', channel: 'sent',
+      blockId: 'loginResend', channel: window._hbResendVia || 'sent',   // 'fromBadCode' = מהכפתור שאחרי קוד שגוי
       phone: heroNormalizePhoneDigits(phoneRaw),
     });
   }
+  window._hbResendVia = null;
   msgEl.textContent = timedOut
     ? HERO_TIMEOUT_MSG
     : 'אם המספר קיים במערכת המאושרת – הקוד יישלח למייל שנרשם בהקדם.';
