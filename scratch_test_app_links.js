@@ -6,7 +6,7 @@ let fail = 0;
 const eq = (n, g, w) => { const ok = JSON.stringify(g) === JSON.stringify(w); if (!ok) fail++; console.log(ok ? 'OK  ' : 'FAIL', n, ok ? '' : `got ${JSON.stringify(g)} want ${JSON.stringify(w)}`); };
 
 // session = sessionStorage משותף בין טעינות-דף באותה הפעלה של האפליקציה
-async function load({ capacitor = true, plugin = true, launchUrl = null, ua = 'YellowZoneApp', session = {} } = {}) {
+async function load({ capacitor = true, plugin = true, launchUrl = null, ua = 'YellowZoneApp', session = {}, path = null, hook = null } = {}) {
   const nav = [];
   let listener = null;
   const link = { attrs: { target: '_blank' }, removeAttribute(k) { delete this.attrs[k]; } };
@@ -14,10 +14,11 @@ async function load({ capacitor = true, plugin = true, launchUrl = null, ua = 'Y
     window: {},
     navigator: { userAgent: ua },
     document: { readyState: 'complete', querySelectorAll: (q) => (q.startsWith('a.menu-add-biz') && link.attrs.target ? [link] : []), addEventListener() {} },
-    location: { set href(u) { nav.push(u); } },
+    location: path ? { pathname: path, get href() { return 'https://yellowzone.co.il' + path; }, set href(u) { nav.push(u); } } : { set href(u) { nav.push(u); } },
     sessionStorage: { getItem: (k) => (k in session ? session[k] : null), setItem: (k, v) => { session[k] = String(v); } },
     URL, JSON, Date,
   };
+  if (hook) env.window.yzOpenSharedBiz = hook;
   if (capacitor) env.window.Capacitor = {
     isPluginAvailable: (p) => plugin && p === 'App',
     addListener: (p, ev, cb) => { if (p === 'App' && ev === 'appUrlOpen') listener = cb; },
@@ -63,6 +64,31 @@ const TARGET = 'home.html?biz=' + encodeURIComponent('שחר-גייזר');
   eq('browser: add-business link keeps target=_blank', t.link.attrs.target, '_blank');
   t = await load({ plugin: false });
   eq('app (even old build): add-business opens in the app', t.link.attrs.target, undefined);
+
+  // §591 — כבר בדף הבית: פותחים במקום, בלי טעינה שנייה
+  let got = [];
+  t = await load({ path: '/home.html', hook: (b) => { got.push(b); return true; } });
+  t.fire(BIZ);
+  eq('§591 on home: card opened in place, no reload', [t.nav, got], [[], ['שחר-גייזר']]);
+  t = await load({ path: '/home', hook: () => true });
+  t.fire(BIZ);
+  eq('§591 on /home (no .html): also in place', t.nav, []);
+  t = await load({ path: '/home.html', hook: () => false });
+  t.fire(BIZ);
+  eq('§591 business not found → regular navigation', t.nav, [TARGET]);
+  t = await load({ path: '/home.html', hook: () => { throw new Error('x'); } });
+  t.fire(BIZ);
+  eq('§591 hook throws → regular navigation', t.nav, [TARGET]);
+  got = [];
+  t = await load({ path: '/welcome.html', hook: (b) => { got.push(b); return true; } });
+  t.fire(BIZ);
+  eq('§591 on welcome: navigation as before (hook not called)', [t.nav, got], [[TARGET], []]);
+  t = await load({ path: '/home.html' });
+  t.fire(BIZ);
+  eq('§591 home without the hook (old cached page) → navigation', t.nav, [TARGET]);
+  t = await load({ path: '/home.html', hook: () => true });
+  t.fire('https://yellowzone.co.il/open?conv=abc');
+  eq('§591 conversation link from home → profile as before', t.nav, ['profile.html?conv=abc']);
 
   console.log(fail ? `${fail} FAILED` : 'all passed');
   process.exit(fail ? 1 : 0);

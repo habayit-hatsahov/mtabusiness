@@ -42,6 +42,12 @@
     try { last = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) {}
     if (last && last.url === url && (fromLaunch || Date.now() - last.at < 5000)) return;
     try { sessionStorage.setItem(KEY, JSON.stringify({ url: url, at: Date.now() })); } catch (e) {}
+    // §591 — כבר בדף הבית? פותחים את הכרטיס במקום, בלי טעינה שנייה של הדף (ר' yzOpenSharedBiz).
+    var biz = '';
+    try { biz = new URL(target, location.href).searchParams.get('biz') || ''; } catch (e) {}
+    if (biz && /\/home(\.html)?$/.test(location.pathname) && typeof window.yzOpenSharedBiz === 'function') {
+      try { if (window.yzOpenSharedBiz(biz)) return; } catch (e) {}
+    }
     location.href = target;
   }
 

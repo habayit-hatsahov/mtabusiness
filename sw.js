@@ -429,7 +429,8 @@
 // §561 — v276 (מרכז הניהול: שורת הנמען והאיפוס נכתבים לפני השליחה – דיווחי המסירה של Brevo לא נמחקים).
 // §589 — v316 (sections-policy.js: approvedAt כ-Timestamp של Firestore נקרא NaN – "חדש אצלנו" בדף הבית הציג 12 עסקים שרירותיים במקום שאושרו לאחרונה; ?v=589 בתגיות).
 // §590 — v317 (home.html: תגית "חדש" על הכרטיס מאותו מנוע של "חדש אצלנו" – newBadgeFor; מי שנוסף מהרצפה בלי תגית).
-const CACHE_NAME = 'yz-shell-v317';
+// §591 — v318 (קישור לעסק באפליקציה: בדף הבית נפתח במקום בלי טעינה שנייה – app-links.js+home.html yzOpenSharedBiz; ניווט שנכשל מקבל את אותו דף מהמטמון גם עם פרמטרים אחרים – ignoreSearch; ?v=591).
+const CACHE_NAME = 'yz-shell-v318';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד
@@ -516,7 +517,10 @@ self.addEventListener('fetch', event => {
   if (req.mode === 'navigate') {
     event.respondWith(
       caches.open(CACHE_NAME).then(async cache => {
-        const cached = await cache.match(req);
+        // §591 — עותק של אותו דף גם כשהפרמטרים שונים: home.html?biz=<עסק> מקישור-שיתוף מעולם לא
+        // נשמר בכתובת הזאת, ובכשל-רשת ברגע הפתיחה נפל ל"מתחברים…" בזמן ש-home.html כן היה שמור.
+        // הדפים קוראים את הפרמטרים מ-location, ולכן העותק הכללי נכון לכל כתובת שלהם.
+        const cached = (await cache.match(req)) || (await cache.match(req, { ignoreSearch: true }));
         try {
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), NAV_TIMEOUT_MS);
