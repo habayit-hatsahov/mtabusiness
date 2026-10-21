@@ -54,12 +54,14 @@ export function applyVars(text, vars) {
 // ── בלוקים ממותגים ────────────────────────────────────────────────────────────────────────
 // ריבוע צהוב עם קוד הכניסה. אין ולא יכול להיות "כפתור העתקה" במייל — Gmail/Outlook מסירים
 // JavaScript לפני שהמייל מוצג. הקוד עצמו הוא הממשק: גופן גדול ומרווח, בלי שום דבר שמתחרה בו.
+// 🔴 §588 — צילום מ-walla (אור אמגר, 21.10): הריבוע הצהוב הוצג **ריק, וכל המייל שאחריו נעלם**.
+// הקוד ישב ב-<div> עם `direction:ltr;unicode-bidi:isolate` – ערך CSS חריג שמסנני-דואר לא תמיד
+// מכירים. עכשיו: הקוד ישירות בתא, הכיוון כמאפיין `dir` (HTML רגיל שכל לקוח מכיר) ו-`bgcolor`
+// כגיבוי לרקע. ⚠️ לא להחזיר CSS כיווני לבלוקים של מייל – רק `dir`.
 export function codeBoxHtml(code) {
   return `
     <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:20px auto">
-      <tr><td style="width:260px;background:#FFDE00;border-radius:20px;padding:22px 20px;text-align:center">
-        <div style="font-size:38px;font-weight:900;letter-spacing:8px;color:#0A2A66;line-height:1.15;direction:ltr;unicode-bidi:isolate">${escapeHtml(code)}</div>
-      </td></tr>
+      <tr><td bgcolor="#FFDE00" dir="ltr" style="width:260px;background:#FFDE00;border-radius:20px;padding:22px 20px;text-align:center;font-size:38px;font-weight:900;letter-spacing:8px;color:#0A2A66;line-height:1.15">${escapeHtml(code)}</td></tr>
     </table>`;
 }
 
@@ -74,7 +76,7 @@ export function loginButtonHtml(href = APP_OPEN_URL) {
   return `
     <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:16px auto">
       <tr><td style="background:#FFDE00;border-radius:14px">
-        <a href="${escapeHtml(href)}"style="display:inline-block;color:#16130a;text-decoration:none;padding:11px 28px;text-align:center;line-height:1.35">
+        <a href="${escapeHtml(href)}" style="display:inline-block;color:#16130a;text-decoration:none;padding:11px 28px;text-align:center;line-height:1.35">
           <span style="font-size:12px;font-weight:700">לחצו לפתיחת</span><br>
           <span style="font-size:18px;font-weight:900">אפליקציית Yellow Zone</span>
         </a>
@@ -128,7 +130,7 @@ export function loginBlockHtml(vars) {
           'באפליקציה, במסך הכניסה, לחצו על <b>Google</b> או על <b>Apple</b> – לפי החשבון שאיתו נרשמתם – בלי קוד.<br>מאותו רגע האפליקציה זוכרת אתכם.')
       // ⚠️ משני בגודל ובמיקום — **לא בצבע**. אפור (#888) נדחה: "שיהיה לפחות בצבע שחור שיראו את זה".
       + (code ? p('font-size:14px;line-height:1.6;color:#16130a',
-          `מעדיפים קוד? קוד הכניסה: <b style="direction:ltr;unicode-bidi:isolate;letter-spacing:2px;color:#000">${escapeHtml(code)}</b>, יחד עם מספר הטלפון שאיתו נרשמתם.`) : '');
+          `מעדיפים קוד? קוד הכניסה: <b dir="ltr" style="letter-spacing:2px;color:#000">${escapeHtml(code)}</b>, יחד עם מספר הטלפון שאיתו נרשמתם.`) : '');
   }
   // ⚠️ מצב קוד בלי קוד = אין שום דלת להציע, ולכן כלום — לא כפתור לדף שלא יכניס אותו.
   if (mode === 'code' && code) {
