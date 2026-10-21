@@ -14,7 +14,7 @@ const TAG_TO_QUERY = {
   'אטרקציות ומתנפחים': 'party inflatable attraction',
   'אוכל ואלכוהול לאירועים': 'event catering bar drinks',
   'צילום ומדיה': 'photography camera studio',
-  'עיצוב והפקת אירועים': 'event decoration design',
+  'הפקה, עיצוב וציוד לאירועים': 'event production equipment rental',
   'מוסכים וחלקי חילוף': 'car garage mechanic auto parts',
   'מצברים וחשמלאות': 'car battery electrician',
   'ציוד ואביזרי רכיבה': 'motorcycle riding gear',
