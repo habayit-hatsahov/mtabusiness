@@ -2558,6 +2558,9 @@ import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/fireba
 // מנוע העיצוב של גוף המייל — אותו קובץ בדיוק שהוורקר מייבא (worker/src/brevo.js), כדי שהתצוגה
 // המקדימה במרכז ההודעות תהיה מה שנשלח בפועל ולא חיקוי שלו. ר' ההערה בראש mail-format.js.
 import { MAIL_FONTS, mailFontKey, renderMailHtml, footerHtml as mailFooterHtml } from './mail-format.js';
+// §587 — סיכום יומי של פאנל הפלטפורמה. אותו קובץ שהוורקר מריץ (worker/src/platformdaily.js), כדי
+// שהיום החי (מחושב כאן) והימים שנסגרו (מחושבים שם) ייספרו באותה הגדרה בדיוק.
+import { aggregatePlatformDay, mergePlatformDays, ilDayKey, ilDayKeysBack, ilDayRange } from './platform-agg.js?v=587';
 // §393 — יומן מחיקות ושחזור. אותו קובץ בדיוק שמייבאים admin-members.html ו-admin-businesses.html,
 // כדי ששלוש הדלתות שמוחקות חבר/עסק יריצו את **אותו** מנגנון ולא שלושה חיקויים שמתיישנים בנפרד.
 import { logAndDelete, restoreDeleted, fetchDeletionLog, deletionConfirmText, deletionLabel, SIDE_COLLECTIONS } from './deletion-log.js?v=579';
@@ -6734,6 +6737,58 @@ function issueEvs() {
 // המצב שהטאבים בודקים: טרם נטען / נכשל / מוכן.
 const issuePending = () => issueEvents === null && !issueEventsError;
 
+// ══ §587 — פאנל הפלטפורמה ומשפכי ההרשמה: 30 יום אמיתיים מסיכום יומי ═════════════════════════
+// עד כאן: 10,000 האירועים האחרונים מכל הסוגים. עד 20.10 זה כיסה כמעט 30 יום (~100 אירועים ביום);
+// מאז שהאפליקציה עלתה – 2,000–5,000 ביום, כלומר כמה ימים בלבד, ו-27 שנ' טעינה.
+// עכשיו: מסמך אחד לכל יום שנסגר (platformDaily/{YYYY-MM-DD}, הוורקר כותב ב-PURGE_CRON) + אירועי
+// היום (ואתמול, אם הסיכום שלו עוד לא נכתב) שמחושבים כאן באותה פונקציה.
+// ⚠️ מבקרים ייחודיים / סשנים במשפך = סכום של ספירות יומיות (סשן שחצה חצות נספר פעמיים – נדיר).
+let platDaily = null, platLive = null, platDailyError = null, platDailyLoading = false, platLiveFrom = null;
+async function loadPlatDaily() {
+  if (platDaily || platDailyError || platDailyLoading) return;
+  platDailyLoading = true;
+  try {
+    const snap = await statsWithTimeout(getDocs(collection(db, 'platformDaily')), 30000);
+    const map = {};
+    snap.forEach(d => { map[d.id] = d.data(); });
+    const today = ilDayKey(new Date());
+    const yest = ilDayKey(new Date(Date.now() - 864e5));
+    platLiveFrom = ilDayRange(map[yest] ? today : yest)[0];
+    const ev = await statsWithTimeout(getDocs(query(collection(db, 'events'),
+      where('createdAt', '>=', platLiveFrom), orderBy('createdAt', 'desc'), limit(10000))), 60000);
+    const rows = [];
+    ev.forEach(d => { const r = hbEvRow(d); if (r) rows.push(r); });
+    platLive = rows;
+    platDaily = map;
+  } catch (err) {
+    console.error('loadPlatDaily failed:', err);
+    platDailyError = statsErrLabel(err);
+  }
+  platDailyLoading = false;
+  renderMain();
+}
+window.retryPlatDaily = function() { platDailyError = null; renderMain(); };
+const platDailyPending = () => platDaily === null && !platDailyError;
+let _platLiveAgg = { src: null, admins: '', byKey: {} };
+function platDayAgg(key) {
+  const start = ilDayRange(key)[0];
+  if (!(platLiveFrom && start >= platLiveFrom)) return platDaily[key] || null;
+  const admins = adminMemberIds();
+  const sig = [...admins].sort().join(',');
+  if (_platLiveAgg.src !== platLive || _platLiveAgg.admins !== sig) {
+    const by = {};
+    for (const e of (platLive || [])) (by[ilDayKey(e.at)] ||= []).push(e);
+    _platLiveAgg = { src: platLive, admins: sig,
+      byKey: Object.fromEntries(Object.entries(by).map(([k, evs]) => [k, aggregatePlatformDay(evs, admins)])) };
+  }
+  return _platLiveAgg.byKey[key] || aggregatePlatformDay([], admins);
+}
+function platRangeAgg(days) {
+  const keys = ilDayKeysBack(days);
+  const list = keys.map(platDayAgg);
+  return { agg: mergePlatformDays(list), keys, missing: keys.filter((k, i) => !list[i]) };
+}
+
 // ═══ §488 — "אפליקציה ושימוש": הדמו של §487 על הנתונים האמיתיים ═══════════════════════════
 // מקורות: (1) events.path=='/download' (§483) — כניסות לקישור, channel=ios/android/app/other,
 // blockId='storeLink[:src]'. (2) events.type in visit/engaged (§486) — channel="<surface>:<os>:<first|return>"
@@ -7354,61 +7409,22 @@ function adminMemberIds() {
 
 // מחשב את כל המונים מהמערך שכבר בזיכרון. days = כמה ימי-לוח אחורה כולל היום.
 function computePlatformStats(days, includeAdmins) {
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-  from.setDate(from.getDate() - (days - 1));
-  const admins = adminMemberIds();
-
-  const a = {
-    from, days,
-    landing: 0, home: 0,
-    landingSessions: new Set(), homeSessions: new Set(),
-    fanOpen: 0, fanSubmit: 0, bizOpen: 0, bizSubmit: 0, loginOpen: 0,
-    device: { mobile: 0, desktop: 0 },
-    sources: {}, direct: 0,
-    adminHidden: 0, inRange: 0,
-    // §326 — עומק-גלילה בדף הנחיתה, סשנים ייחודיים לכל אבן-דרך
-    depth: { regCard: new Set(), preview: new Set(), final: new Set() },
+  // §587 — מהסיכום היומי (platform-agg.js). אותו מבנה החזרה כמו קודם, כדי שהמסך לא ישתנה:
+  // ספירות-סשנים עטופות ב-{ size } כמו ה-Set-ים שהיו כאן.
+  const { agg, keys, missing } = platRangeAgg(days);
+  const v = (includeAdmins ? agg.all : agg.noAdmin) || {};
+  const n = (x) => x || 0;
+  const S = (x) => ({ size: n(x) });
+  const dv = v.device || {}, dp = v.depth || {};
+  return {
+    from: ilDayRange(keys[keys.length - 1])[0], days, missing,
+    landing: n(v.landing), home: n(v.home),
+    landingSessions: S(v.landingSessions), homeSessions: S(v.homeSessions),
+    fanOpen: n(v.fanOpen), fanSubmit: n(v.fanSubmit), bizOpen: n(v.bizOpen), bizSubmit: n(v.bizSubmit), loginOpen: n(v.loginOpen),
+    device: { mobile: n(dv.mobile), desktop: n(dv.desktop) },
+    sources: v.sources || {}, direct: n(v.direct), adminHidden: n(v.adminHidden), inRange: n(v.inRange),
+    depth: { regCard: S(dp.regCard), preview: S(dp.preview), final: S(dp.final) },
   };
-
-  (platformEvents || []).forEach(e => {
-    if (e.at < from) return;
-    // ⚠️ אפשר לזהות רק אירוע שנשא memberId. אירוע של מנהל **מנותק** (למשל כניסה לדף הנחיתה
-    // בלי session פעיל) נראה בדיוק כמו אורח ואי אפשר להוציא אותו — מוצג כהסתייגות על המסך.
-    const isAdminEvent = e.memberId && admins.has(e.memberId);
-    if (isAdminEvent) { a.adminHidden++; if (!includeAdmins) return; }
-    a.inRange++;
-
-    // index.html הוא redirect לדף הנחיתה, ולכן נספר איתו ולא כדף נפרד
-    // §492 — בדפדפן דף הנחיתה הוא landing.html (welcome.html מפנה אליו), ולכן גם הוא נספר
-    const isLanding = e.path.includes('welcome') || e.path.includes('landing') || e.path.includes('index') || e.path === '/' || e.path === '';
-    const isHome    = e.path.includes('home');
-
-    if (e.type === 'pageView') {
-      // דף שאינו נחיתה/בית לא נספר בכלל. היום אין כזה (רק welcome/home רושמים pageView),
-      // אבל אם יתווסף — בלי היציאה הזאת הוא היה מזליג ל"מקורות תנועה"/"מובייל" בלי להופיע
-      // באף אחד משני מוני-הכניסות.
-      if (!isLanding && !isHome) return;
-      if (e.device === 'mobile' || e.device === 'desktop') a.device[e.device]++;
-      // נספר במפורש ולא בחיסור — חיסור נשבר בשקט בכל פעם שמישהו מוסיף pageView חדש
-      if (e.referrer) a.sources[e.referrer] = (a.sources[e.referrer] || 0) + 1; else a.direct++;
-      if (isLanding) { a.landing++; if (e.sessionId) a.landingSessions.add(e.sessionId); }
-      else           { a.home++;    if (e.sessionId) a.homeSessions.add(e.sessionId); }
-    } else if (e.type === 'scrollDepth') {
-      // §326 — **לפי סשן ולא לפי אירוע.** אבן-דרך נורית פעם אחת לסשן ממילא, אבל ספירת
-      // אירועים הייתה שוברת את המונוטוניות ברגע שמישהו יפתח את הדף פעמיים באותו טאב.
-      if (e.sessionId && a.depth[e.blockId]) a.depth[e.blockId].add(e.sessionId);
-    } else if (e.type === 'formOpen') {
-      // joinModal = נפתח מתוך welcome.html; fanRegister = כניסה ישירה לדף ההרשמה
-      if (e.blockId === 'joinModal' || e.blockId === 'fanRegister') a.fanOpen++;
-      else if (e.blockId === 'bizForm') a.bizOpen++;
-      else if (e.blockId === 'loginModal') a.loginOpen++;
-    } else if (e.type === 'formSubmit') {
-      if (e.blockId === 'bizForm') a.bizSubmit++; else a.fanSubmit++;
-    }
-  });
-
-  return a;
 }
 
 const platPct = (n, of) => of > 0 ? Math.round((n / of) * 100) + '%' : '–';
@@ -7653,23 +7669,18 @@ function googleLinkStats() {
 // ⚠️ **לפי סשן ולא לפי אירוע**: הכפתור מנסה להיצייר שוב בכל פתיחת-שלב, ומונה-אירועים
 // היה סופר את אותו אדם כמה פעמים.
 function googleSignupButtonStats(block) {
-  if (!Array.isArray(platformEvents)) return null;   // ר' ההערה על googleLoginFailCount
-  const pick = (ch) => new Set(platformEvents
-    .filter(e => e.type === 'formStep' && e.blockId === block && e.channel === ch)
-    .map(e => e.sessionId).filter(Boolean));
-  const shown = pick('gsShown'), used = pick('gsUsed'), blocked = pick('gsBlocked');
-  // ⚠️ סשן שראה **וגם** נחסם (ניסיון ראשון נכשל והשני הצליח) נספר כ"ראה" בלבד — הוא
-  // בסוף כן קיבל כפתור, וספירה כפולה הייתה מנפחת את בעיית-הנראוּת.
-  for (const id of shown) blocked.delete(id);
-  return { shown: shown.size, used: used.size, blocked: blocked.size,
-           pct: shown.size ? Math.round(used.size / shown.size * 100) : null };
+  // §587 — מהסיכום היומי, 30 יום. נמדד לטופס האוהד בלבד (זה הקורא היחיד).
+  if (!platDaily || block !== 'fanRegister') return null;
+  const g = platRangeAgg(PLATFORM_WINDOW_DAYS).agg.gsFan || {};
+  const shown = g.shown || 0, used = g.used || 0, blocked = g.blocked || 0;
+  return { shown, used, blocked, pct: shown ? Math.round(used / shown * 100) : null };
 }
 
 // מד-הנגד: מי ניסה להיכנס עם גוגל ולא הצליח. ⚠️ מחזיר null כשהאירועים עדיין לא נטענו —
 // **0 ו"לא יודעים" אינם אותו דבר**, ואפס-מזויף כאן היה קורא "אף אחד לא נכשל".
 function googleLoginFailCount() {
-  if (!Array.isArray(platformEvents)) return null;
-  return platformEvents.filter(e => e.type === 'loginFail' && String(e.channel || '').startsWith('google:')).length;
+  if (!platDaily) return null;   // §587 — מהסיכום היומי, 30 יום
+  return platRangeAgg(PLATFORM_WINDOW_DAYS).agg.googleFail || 0;
 }
 
 // ── §415ב — באיזה מסלול אנשים באמת נכנסים ────────────────────────────────────────────────
@@ -7681,12 +7692,9 @@ function googleLoginFailCount() {
 // ⚠️ **המדידה מתחילה מהפריסה של §415ב** — לפני כן האירוע לא נשלח כלל, ולכן חלון של 30
 // יום יראה בהתחלה מספרים נמוכים שאינם ירידה אלא היעדר-היסטוריה.
 function loginPathStats() {
-  if (!Array.isArray(platformEvents)) return null;
-  const rows = platformEvents.filter(e => e.type === 'loginOk');
-  const by = (c) => rows.filter(e => String(e.channel || '') === c).length;
-  const google = by('google') + by('googleLink');
-  const code = by('code');
-  return { google, googleLink: by('googleLink'), code, total: rows.length };
+  if (!platDaily) return null;   // §587 — מהסיכום היומי, 30 יום
+  const l = platRangeAgg(PLATFORM_WINDOW_DAYS).agg.loginOk || {};
+  return { google: (l.google || 0) + (l.googleLink || 0), googleLink: l.googleLink || 0, code: l.code || 0, total: l.total || 0 };
 }
 
 const BIZ_READY_REASONS = {
@@ -7759,11 +7767,12 @@ function platFunnel(openN, submitN, openHelp, submitHelp) {
 
 function platformStatsHtml() {
   const head = `<div class="plat-title">🌐 פלטפורמה – כניסות ומשפך הרשמה</div>`;
-  if (platformStatsError) {
-    return `<div class="plat-panel">${head}<div class="plat-sub">לא ניתן לטעון את נתוני האירועים: ${esc(platformStatsError)}</div>
-      <div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatformStats()">נסה שוב</button></div></div>`;
+  if (platDailyPending()) loadPlatDaily();   // §587
+  if (platDailyError) {
+    return `<div class="plat-panel">${head}<div class="plat-sub">לא ניתן לטעון את נתוני האירועים: ${esc(platDailyError)}</div>
+      <div style="margin-top:8px"><button class="act-btn tiny" onclick="retryPlatDaily()">נסה שוב</button></div></div>`;
   }
-  if (!platformEvents) {
+  if (!platDaily) {
     return `<div class="plat-panel">${head}<div class="plat-sub">טוען נתוני כניסות…</div></div>`;
   }
 
@@ -7778,7 +7787,8 @@ function platformStatsHtml() {
       <div style="flex:1;min-width:200px">
         ${head}
         <div class="plat-sub">${esc(rangeLabel)} · מ-${fmtDate(a.from)} · ${a.inRange.toLocaleString('he-IL')} אירועים${
-          platformTruncated ? ` · <b style="color:var(--orange)">נשלפו ${PLATFORM_EVENT_LIMIT.toLocaleString('he-IL')} האירועים האחרונים בלבד</b>` : ''}</div>
+          // §587 — ימים בלי סיכום (לפני שהמדידה הזאת התחילה, או לילה שהוורקר נכשל) נאמרים במפורש
+          a.missing.length ? ` · <b style="color:var(--orange)">חסר סיכום ל-${a.missing.length} ימים</b>` : ''}</div>
       </div>
       <select class="filter-select" onchange="setPlatformRange(this.value)">
         ${PLATFORM_RANGES.map(r => `<option value="${r.d}" ${platformRange === r.d ? 'selected' : ''}>${r.label}</option>`).join('')}
@@ -17446,14 +17456,10 @@ function missingMediaList() {
 
 // כמה פתחו את הטופס ולא שלחו — מוצג כמשפט-סיכום בלבד, ר' ההערה למעלה.
 function regAbandonStats() {
-  const opened = {}, submitted = new Set();
-  (platformEvents || []).forEach(e => {
-    if (!e.sessionId) return;
-    if (e.type === 'formOpen' && (e.blockId === 'fanRegister' || e.blockId === 'joinModal')) opened[e.sessionId] = true;
-    if (e.type === 'formSubmit' && e.blockId === 'fanRegister') submitted.add(e.sessionId);
-  });
-  const openedIds = Object.keys(opened);
-  return { opened: openedIds.length, abandoned: openedIds.filter(s => !submitted.has(s)).length };
+  // §587 — מהסיכום היומי, 30 יום.
+  if (!platDaily) return { opened: 0, abandoned: 0 };
+  const a = platRangeAgg(PLATFORM_WINDOW_DAYS).agg.abandon || {};
+  return { opened: a.opened || 0, abandoned: a.abandoned || 0 };
 }
 
 // ── §304 — משפך ההרשמה: איפה עוזבים ─────────────────────────────────────────────────────
@@ -17497,35 +17503,14 @@ const BIZ_FUNNEL = {
 };
 
 function funnelStats(spec) {
-  const S = {}; spec.steps.forEach(s => S[s.key] = new Set());
-  (platformEvents || []).forEach(e => {
-    if (!e.sessionId) return;
-    if (e.type === 'formOpen' && spec.openBlocks.includes(e.blockId)) S.opened.add(e.sessionId);
-    if (e.type === 'formSubmit' && e.blockId === spec.block) S.submitted.add(e.sessionId);
-    if (e.type === 'formStep' && e.blockId === spec.block && S[e.channel]) S[e.channel].add(e.sessionId);
-  });
-  // ⚠️ סשן ששלח נספר גם בכל השלבים שלפניו, גם אם האירוע עצמו חסר (נרשם לפני §304, או
-  // אבד ברשת). בלי זה המשפך היה מציג "שלחו יותר ממה שהגיעו לשלב האימות" — מספר שנראה
-  // כמו באג ומאבד את אמון הקורא.
-  //
-  // 🔴 §324 — הגלגול רץ **רק על שלבי-החובה**. 'proof' אופציונלי (רק חלק ממסלולי-האימות
-  // כוללים קובץ), וגלגול לתוכו הציג "בחרו תמונת אימות: 26" בזמן שבפועל **אפס** נרשמים
-  // צירפו תמונה — לא רק מספר שגוי, אלא בדיוק ההיפך מהמסקנה הנכונה (מסלול-התמונה אינו
-  // בשימוש כלל). נתפס בהרצת הפונקציה מול נתוני-אמת מהפרודקשן, לא בקריאת קוד.
-  const chain = spec.steps.filter(s => !s.optional).map(s => s.key);
-  for (let i = chain.length - 1; i > 0; i--)
-    for (const id of S[chain[i]]) S[chain[i - 1]].add(id);
-  // כל שלב מושווה לשלב-**החובה** שלפניו: שלב אופציונלי אינו בסיס-השוואה למי שבא אחריו,
-  // אחרת "שלחו בפועל" היה מחולק באפס ברגע שאיש לא צירף תמונה.
+  // §587 — מהסיכום היומי ל-30 יום. הגלגול-לאחור (§304/§324) נעשה ב-platform-agg.js, לכל יום.
+  const c = platDaily ? platRangeAgg(PLATFORM_WINDOW_DAYS).agg.funnel[spec.block === 'bizForm' ? 'biz' : 'fan'] : {};
+  // כל שלב מושווה לשלב-**החובה** שלפניו (ר' §324 – שלב אופציונלי אינו בסיס-השוואה).
   let prevKey = null;
   return spec.steps.map(s => {
-    const n = S[s.key].size;
-    const prev = prevKey ? S[prevKey].size : n;
-    const row = {
-      ...s, n,
-      dropped: (prevKey && !s.optional) ? prev - n : 0,
-      pct: prev ? Math.round(n / prev * 100) : 0,
-    };
+    const n = c[s.key] || 0;
+    const prev = prevKey ? (c[prevKey] || 0) : n;
+    const row = { ...s, n, dropped: (prevKey && !s.optional) ? prev - n : 0, pct: prev ? Math.round(n / prev * 100) : 0 };
     if (!s.optional) prevKey = s.key;
     return row;
   });
@@ -17536,10 +17521,10 @@ function funnelStats(spec) {
 // ברגע שמישהו שוכח לעדכן אותו אחרי פריסה, ואז המשפך משקר בשקט. בלי ההערה הזאת, טופס
 // שאבני-הדרך שלו טרם נאספו מציג את **גלגול-האחורה** כאילו כולם הגיעו לשלב האחרון.
 function stepMeasureNote(spec) {
-  const evs = (platformEvents || []).filter(e => e.type === 'formStep' && e.blockId === spec.block && e.at);
-  if (!evs.length) return ' <span class="warn-badge">אבני-הדרך טרם נאספו – רק "פתחו" ו"שלחו" אמיתיים כאן</span>';
-  const first  = Math.min(...evs.map(e => e.at.getTime()));
-  const oldest = Math.min(...(platformEvents || []).filter(e => e.at).map(e => e.at.getTime()));
+  if (!platDaily) return '';
+  const first = platRangeAgg(PLATFORM_WINDOW_DAYS).agg.firstStep[spec.block];
+  if (!first) return ' <span class="warn-badge">אבני-הדרך טרם נאספו – רק "פתחו" ו"שלחו" אמיתיים כאן</span>';
+  const oldest = ilDayRange(ilDayKeysBack(PLATFORM_WINDOW_DAYS).pop())[0].getTime();
   // הפרש של פחות מיממה מקצה-החלון = המדידה קדמה לחלון, ואין מה להעיר
   if (first - oldest < 864e5) return '';
   return ` <span style="opacity:.7">(אבני-הדרך נמדדות מ-${new Date(first).toLocaleDateString('he-IL')})</span>`;
@@ -18540,7 +18525,7 @@ function regIssuesTableHtml(list) {
   // האירועים נטענים עצלנית (אותה קריאה של פאנל "פלטפורמה") — עד שהם מגיעים מוצגות
   // ההצלבות בלבד, עם אמירה מפורשת שחלק מהנתונים עוד בדרך.
   if (issuePending()) loadIssueEvents();   // §586 — השורות
-  if (platformEvents === null && !platformStatsError) loadPlatformStats();   // המשפכים בלבד
+  if (platDailyPending()) loadPlatDaily();   // המשפכים – §587, מהסיכום היומי
   const ab = regAbandonStats();
   const loadingNote = issuePending()
     ? '<div class="mail-issues-note">טוען כשלי-שליחה מתוך המדידה… ההצלבות למטה כבר מלאות.</div>'
@@ -18553,7 +18538,7 @@ function regIssuesTableHtml(list) {
         }</div>`;
   // §365 — המשפכים נפרדו מ-loadingNote ועברו אחרי השורות, מקופלים. ⚠️ הם עדיין מוצגים
   // גם כשאין אף תקלה — שם הם התוכן היחיד, ואין מה להסתיר מאחוריו.
-  const funnels = (platformEvents === null || platformStatsError) ? '' :
+  const funnels = !platDaily ? '' :
     `<details style="margin-top:14px">
        <summary style="cursor:pointer;font-size:12px;font-weight:800;color:var(--text-sm);padding:6px 0">
          📉 משפכי הנטישה – איפה עוזבים בטופס (${ab.opened} פתחו, ${ab.abandoned} לא שלחו)
@@ -19627,7 +19612,8 @@ function renderMainInner() {
     // כך שאין לולאת-רינדור.
     loadRedeemStats();
     // §281 — אותו דפוס בדיוק: טעינה עצלה, פעם אחת, וקריאה ל-renderMain בסיום
-    loadPlatformStats();
+    loadPlatformStats();   // הקליקים של המנהלים ונתוני-העסק עדיין משתמשים בזה
+    loadPlatDaily();       // §587 — הפאנל והמשפכים
     return;
   }
   // §488 — אותו דפוס: HTML מ-globals, טעינה עצלה פעם אחת. bindAppUsage אחרי כל ציור (הגרף צריך רוחב אמיתי).

@@ -28,6 +28,7 @@ import { handleEvent } from './events.js';
 import { handleBizRegFailed } from './bizregfail.js';
 import { APPCHECK_PATHS, sampleAppCheck } from './appcheck.js';
 import { runStoreDownloadsSync } from './storedl.js';
+import { runPlatformDaily } from './platformdaily.js';   // §587
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -264,6 +265,9 @@ export default {
       ctx.waitUntil(purgeExpiredAppleTickets(env).then((n) => console.log('appleTickets purged', n)).catch((e) => console.error('appleTickets purge failed', String(e))));
       // §556 – הורדות לפי מקור מהחנויות, פעם ביום על אותו טריגר. כשל כאן לא נוגע בניקוי.
       ctx.waitUntil(runStoreDownloadsSync(env).then((r) => console.log('storeDownloads', JSON.stringify(r))).catch((e) => console.error('storeDownloads failed', String(e))));
+      // §587 – סיכום יומי לפאנל הפלטפורמה (platformDaily/{יום}). כשל כאן לא נוגע בשאר.
+      ctx.waitUntil(getGoogleAccessToken(env).then((t) => runPlatformDaily(env, t))
+        .then((r) => console.log('platformDaily', JSON.stringify(r))).catch((e) => console.error('platformDaily failed', String(e))));
       return;
     }
     ctx.waitUntil(runEmailSweeps(env));
