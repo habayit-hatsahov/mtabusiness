@@ -667,7 +667,8 @@
           <div class="field-warn" id="warn-registered">
             נראה שכבר נרשמת ל-Yellow Zone עם הטלפון או המייל האלה, ולכן אי אפשר להירשם שוב.
             אם הבקשה שלך כבר אושרה – פשוט נכנסים. אם היא עדיין ממתינה – אין צורך לעשות כלום, נעדכן אותך במייל.
-            <div class="field-warn-actions"><button type="button" onclick="goLoginFromDup()">לכניסה</button></div>
+            <div class="field-warn-actions"><button type="button" onclick="goLoginFromDup()">לכניסה</button><button type="button" class="ghost" id="dupResendBtn" onclick="dupSendCode()">שלחו לי את קוד הכניסה למייל</button></div>
+            <div id="dupResendMsg" style="margin-top:6px;font-size:13px"></div>
           </div>
         </div>
       </div>
@@ -1208,6 +1209,9 @@
       referrer: (document.referrer.split('/')[2] || '').slice(0, 50) || null,
       device: w <= 700 ? 'mobile' : 'desktop',
       blockId: e.blockId ?? null,
+      // §586 — הטלפון, רק כשנמסר במפורש (בקשת "שלחו לי קוד" מתוך "כבר נרשמת"). המפתח נשלח רק
+      // כשיש ערך: firestore.rules אוכפת hasOnly + phone.size() <= 20.
+      ...(e.phone ? { phone: String(e.phone).slice(0, 20) } : {}),
       // ⚠️ 50 תווים ב-firestore.rules — ערך ארוך יותר מפיל את **כל** האירוע ב-permission-denied,
       // בדיוק כמו שקרה ל-referrer (§281). קודי-שגיאה של Firebase קצרים, אבל חותכים ליתר ביטחון.
       // §438 — משטח הגלישה (app/pwa/web), על pageView בלבד. ר' ההערה ב-welcome.html.
@@ -2852,6 +2856,33 @@
     if (window.parent && window.parent !== window) { embedGoLogin(); return; }
     location.href = 'welcome.html?login=1';
   }
+  // §586 — "שלחו לי את קוד הכניסה למייל" ישירות מ"כבר נרשמת". נמדד 21.10: 3 חברים רשומים
+  // מילאו שוב את טופס ההרשמה ולא נכנסו – מי שנרשם שוב כמעט תמיד לא זוכר את הקוד, ו"לכניסה"
+  // לבד מחזיר אותו לאותו מסך שבו נתקע. אותו נתיב בדיוק כמו "שכחתי את הקוד" ב-welcome.html
+  // (`/resend-login-code`: שולח רק למאושר עם קוד, ועונה ok גם כשלא נמצא – לא חושף מי רשום).
+  async function dupSendCode() {
+    const btn = document.getElementById('dupResendBtn');
+    const msg = document.getElementById('dupResendMsg');
+    const phone = normalizePhone(document.getElementById('phone').value.trim());
+    if (!phone) { msg.textContent = 'נא למלא מספר טלפון למעלה.'; return; }
+    btn.disabled = true; btn.textContent = 'שולח…';
+    let ok = false;
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 12000);
+    try {
+      const r = await hbApiFetch('/resend-login-code', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }), signal: ac.signal,
+      });
+      ok = !!(r && r.ok);
+    } catch (e) {}
+    clearTimeout(t);
+    logEvent('formStep', { blockId: 'loginResend', channel: ok ? 'fromDupReg' : 'fromDupReg:fail', phone });
+    msg.textContent = ok
+      ? 'אם הטלפון הזה רשום ומאושר – קוד הכניסה נשלח עכשיו למייל שאיתו נרשמת. אחר כך לחצו "לכניסה".'
+      : 'השליחה לא הצליחה – נסו שוב בעוד רגע.';
+    btn.disabled = false; btn.textContent = 'שלחו לי את קוד הכניסה למייל';
+  }
 
   // 'change' על input טקסט נורה ביציאה מהשדה — בדיוק הרגע שבו הערך סופי
   ['firstName', 'lastName', 'phone', 'email'].forEach(id => {
@@ -3026,6 +3057,7 @@
   window.setVerifiedSport     = setVerifiedSport;
   window.embedGoLogin         = embedGoLogin;
   window.goLoginFromDup       = goLoginFromDup;   // §510
+  window.dupSendCode          = dupSendCode;      // §586
   window.saveRegDraft         = saveRegDraft;
   // §284 — נקרא מ-onclick על כרטיסי המסלולים. בלי החשיפה המפורשת הזאת הוא פשוט לא קיים
   // ל-onclick (module scope), והבורר "לא מגיב" בלי שום שגיאה בקונסול.
