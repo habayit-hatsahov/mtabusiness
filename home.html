@@ -1917,9 +1917,14 @@ let sectionAnchorsDoc = {};
 let sectionPolicyDoc = null;
 let sectionStateDoc = { log: [] };
 
+// §590 — מי מקבל את תגית "חדש" על הכרטיס, כשהמנוע של "חדש אצלנו" פעיל. null = המנוע כבוי,
+// והתגית חוזרת לדגל הידני isNew/newUntil (ר' newBadgeFor). נקבע ב-sectionMembersFor('new').
+let _newBadgeIds = null;
+
 // מחזיר Set של מזהי-עסקים לסקשן, או null = "אין מדיניות פעילה — התנהג בדיוק כמו קודם".
 function sectionMembersFor(key) {
   const S = window.HB_SECTIONS;
+  if (key === 'new') _newBadgeIds = null;
   // fail-open אם sections-policy.js לא נטען — כמו הגארד על hours.js/social-links.js.
   if (!S || !sectionPolicyDoc) return null;
   const pol = S.normalizePolicy(sectionPolicyDoc);
@@ -1932,6 +1937,9 @@ function sectionMembersFor(key) {
   // רק ב-approvedAt ובמדיניות, ושניהם זהים בשני המסכים.
   if (key === 'new') {
     const built = S.buildNew(businesses, pol, {});
+    // §590 — התגית רק למי שבתוך החלון. מי שנוסף מהרצפה (משלים מדף שהתרוקן) אינו חדש.
+    const floor = new Set((built.floorAdded || []).map(b => b.id));
+    _newBadgeIds = new Set(built.list.filter(b => !floor.has(b.id)).map(b => b.id));
     return new Set(built.list.map(b => b.id));
   }
   const entries = S.historyFor(sectionStateDoc, key);   // ממוין: התקופה החדשה ראשונה
@@ -2082,6 +2090,12 @@ function applyAnchors(autoList, sectionKey) {
 
 function isNew(biz) {
   return !!(biz.isNew && biz.newUntil && new Date() < new Date(biz.newUntil));
+}
+
+// §590 — תגית "חדש" על הכרטיס = אותו מנוע של הסקשן "חדש אצלנו" (sections-policy.js).
+// לפני כן היא נשענה רק על הדגל הידני, וכל 11 העסקים שאושרו ב-20–21.10 הופיעו בסקשן בלי תגית.
+function newBadgeFor(biz) {
+  return _newBadgeIds ? _newBadgeIds.has(biz.id) : isNew(biz);
 }
 
 function isFeatured(biz) {
@@ -2292,7 +2306,7 @@ function likeBadge(biz) {
 // ── CARD BUILDER ─────────────────────────────────────────────────────────────
 // eager=true — רק לקריאה מהסקשן הראשון שנראה בכניסה ("מומלצים"), ר' bizCardImage/renderSections.
 function buildCard(biz, showNewBadge, eager) {
-  const newTag   = (showNewBadge && isNew(biz)) ? `<div class="biz-badge">חדש</div>` : '';
+  const newTag   = (showNewBadge && newBadgeFor(biz)) ? `<div class="biz-badge">חדש</div>` : '';
   const tags    = (biz.tags || []).slice(0,2);
   const extraCount = (biz.additionalDiscounts || []).filter(d => d && d.text).length;
   return `
