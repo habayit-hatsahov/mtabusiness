@@ -2,14 +2,15 @@
 // regAbandonStats + googleSignupButtonStats + loginPathStats + googleLoginFailCount), על אירועי-אמת
 // של יום אחד. חייבים לצאת זהים. הרצה: node scratch_test_platform_agg.mjs <events.json> <YYYY-MM-DD>
 import fs from 'node:fs';
-import { aggregatePlatformDay, ilDayRange, ilDayKey } from './platform-agg.js';
+import { aggregatePlatformDay, ilDayRange, ilDayKey, AGG_TYPES } from './platform-agg.js';
 
 const [file, day] = process.argv.slice(2);
 const { evs, members } = JSON.parse(fs.readFileSync(file, 'utf8'));
 const V = v => v == null ? null : v.stringValue ?? v.integerValue ?? v.booleanValue ?? (v.timestampValue ? new Date(v.timestampValue) : null);
 const all = evs.map(e => { const o = {}; for (const [k, v] of Object.entries(e.f)) o[k] = V(v); o.at = o.createdAt; o.path = String(o.path || '').toLowerCase(); return o; });
 const [s, t] = ilDayRange(day);
-const dayEvs = all.filter(e => e.at >= s && e.at < t);
+// v2: שני הצדדים מקבלים רק את AGG_TYPES – שאר הסוגים לא נוגעים באף מונה מלבד "N אירועים".
+const dayEvs = all.filter(e => e.at >= s && e.at < t && AGG_TYPES.includes(e.type));
 const admins = ['__none__'];   // members.json כאן בלי isAdmin – הבדיקה על וריאנט "הכל"
 
 // ── החישוב הישן, מועתק מהקובץ עצמו ולא נכתב מחדש ──

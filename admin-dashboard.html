@@ -2560,7 +2560,7 @@ import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/fireba
 import { MAIL_FONTS, mailFontKey, renderMailHtml, footerHtml as mailFooterHtml } from './mail-format.js';
 // §587 — סיכום יומי של פאנל הפלטפורמה. אותו קובץ שהוורקר מריץ (worker/src/platformdaily.js), כדי
 // שהיום החי (מחושב כאן) והימים שנסגרו (מחושבים שם) ייספרו באותה הגדרה בדיוק.
-import { aggregatePlatformDay, mergePlatformDays, ilDayKey, ilDayKeysBack, ilDayRange } from './platform-agg.js?v=587';
+import { aggregatePlatformDay, mergePlatformDays, ilDayKey, ilDayKeysBack, ilDayRange, AGG_TYPES } from './platform-agg.js?v=587b';
 // §393 — יומן מחיקות ושחזור. אותו קובץ בדיוק שמייבאים admin-members.html ו-admin-businesses.html,
 // כדי ששלוש הדלתות שמוחקות חבר/עסק יריצו את **אותו** מנגנון ולא שלושה חיקויים שמתיישנים בנפרד.
 import { logAndDelete, restoreDeleted, fetchDeletionLog, deletionConfirmText, deletionLabel, SIDE_COLLECTIONS } from './deletion-log.js?v=579';
@@ -6754,8 +6754,10 @@ async function loadPlatDaily() {
     const today = ilDayKey(new Date());
     const yest = ilDayKey(new Date(Date.now() - 864e5));
     platLiveFrom = ilDayRange(map[yest] ? today : yest)[0];
+    // רק 7 הסוגים שהחישוב קורא (~70% מהאירועים), עם האינדקס type+createdAt של §586.
     const ev = await statsWithTimeout(getDocs(query(collection(db, 'events'),
-      where('createdAt', '>=', platLiveFrom), orderBy('createdAt', 'desc'), limit(10000))), 60000);
+      where('type', 'in', AGG_TYPES), where('createdAt', '>=', platLiveFrom),
+      orderBy('createdAt', 'desc'), limit(10000))), 60000);
     const rows = [];
     ev.forEach(d => { const r = hbEvRow(d); if (r) rows.push(r); });
     platLive = rows;
@@ -19612,8 +19614,10 @@ function renderMainInner() {
     // כך שאין לולאת-רינדור.
     loadRedeemStats();
     // §281 — אותו דפוס בדיוק: טעינה עצלה, פעם אחת, וקריאה ל-renderMain בסיום
-    loadPlatformStats();   // הקליקים של המנהלים ונתוני-העסק עדיין משתמשים בזה
     loadPlatDaily();       // §587 — הפאנל והמשפכים
+    // הקליקים של המנהלים ונתוני-העסק עדיין משתמשים ב-10,000 האחרונים. ⚠️ **רק אחרי שהסיכום נטען**:
+    // בבדיקה החיה שתי השאילתות יצאו יחד, ה-10,000 (~27 שנ') חסמה את הסיכום והפאנל נכשל אחרי 30 שנ'.
+    if (!platDailyPending()) loadPlatformStats();
     return;
   }
   // §488 — אותו דפוס: HTML מ-globals, טעינה עצלה פעם אחת. bindAppUsage אחרי כל ציור (הגרף צריך רוחב אמיתי).

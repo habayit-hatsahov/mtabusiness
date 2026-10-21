@@ -10,7 +10,11 @@
 // זה נדיר (sessionId מת עם הטאב) ונאמר על המסך.
 // ⚠️ שינוי בהגדרה כאן חל רק על ימים שיחושבו מעכשיו. ימים קיימים נשארים כפי שחושבו –
 // להעלות את PLATFORM_AGG_VERSION ולהריץ מחדש את scratch_platform_daily_backfill.mjs.
-export const PLATFORM_AGG_VERSION = 1;
+export const PLATFORM_AGG_VERSION = 2;   // 2 — סופר רק את AGG_TYPES (גם ב"N אירועים" ובאירועי-מנהלים)
+
+// הסוגים היחידים שמונה כלשהו כאן קורא. מרכז הניהול טוען את היום החי רק בהם (~70% מהאירועים),
+// ולכן גם הימים השמורים סופרים רק אותם – אחרת "N אירועים" של היום ושל אתמול לא היו באותה יחידה.
+export const AGG_TYPES = ['pageView', 'scrollDepth', 'formOpen', 'formStep', 'formSubmit', 'loginOk', 'loginFail'];
 
 // ── יום-לוח ישראלי ────────────────────────────────────────────────────────────────────────
 // הפאנל תמיד ספר ימים לפי השעון של המנהל (ישראל). הוורקר רץ ב-UTC, ולכן הגבולות מחושבים
@@ -102,7 +106,8 @@ function statsDay(evs, adminIds, includeAdmins) {
   return a;
 }
 
-export function aggregatePlatformDay(evs, adminIds) {
+export function aggregatePlatformDay(evsIn, adminIds) {
+  const evs = (evsIn || []).filter(e => AGG_TYPES.includes(e.type));
   const admins = adminIds instanceof Set ? adminIds : new Set(adminIds || []);
   // regAbandonStats
   const opened = new Set(), submitted = new Set();
