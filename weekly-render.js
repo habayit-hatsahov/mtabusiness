@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData';
+  var KEY = 'wkDemoData2';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -42,8 +42,10 @@
   function DEFAULTS() {
     return {
       ben: {
-        badge: 'מבצע השקה',
+        badge: 'הטבה בלעדית משתנה', tag2: 'מבצע השקה',
         slideTitle: 'קעקוע של מכבי במחיר מוזל',
+        explainTitle: 'הטבה בלעדית שמתחלפת כל חצי חודש',
+        explain: 'ב-1 וב-16 בכל חודש עולה כאן הטבה בלעדית חדשה – רק לחברי Yellow Zone, ורק לזמן מוגבל. ההטבה הזאת בתוקף עד {end}, והבאה מתחילה ב-{next}. שווה לא לפספס.',
         title: 'קעקוע של מכבי',
         intro: 'קעקוע של מכבי במחיר מיוחד לחברי Yellow Zone – לזמן מוגבל.',
         prices: [{ size: '6 ס"מ', price: '400 ₪', was: '' }, { size: '12 ס"מ', price: '800 ₪', was: '' }],
@@ -58,26 +60,27 @@
       },
       fan: {
         biz: 'פטריקס פארק רחובות', owner: 'דורון', fanTag: 'מנוי מכבי ת"א בכדורגל', showFan: true,
-        cadence: '2 עסקים בחודש',
+        cadence: '2 בחודש · הבא ב-{next}',
+        explainTitle: '2 אוהדים עם עסק בכל חודש',
         title: 'מהיציע אל הבר',
         slideLine: 'מהיציע אל הבר – פאב-מסעדה עם ליין אחר בכל ערב',
         text: 'דורון, מנוי של מכבי בכדורגל, מחזיק ברחובות פאב-מסעדה עם ליין אחר בכל ערב.',
         chips: 'פאב · מסעדה, רחובות, א–ה מ-18:00 · ש מ-20:30',
         hasStory: true, quote: '', stand: '', how: '', why: '',
-        cadenceNote: 'כל חודש אנחנו מכירים 2 אוהדים שיש להם עסק – אחד ב-1 ואחד ב-16. הבא מתחלף ב-{next}.'
+        cadenceNote: 'כל חודש אנחנו מכירים לכם 2 אוהדים שיש להם עסק – אחד ב-1 ואחד ב-16. הכירו את הסיפור, תנו להם לייק, והבא מגיע ב-{next}.'
       },
       usDir: 'a',
       pages: {
         us: pageFromDir('a'),
         redeem: {
-          theme: 'soft', badge: 'למשתמשים', slideTitle: 'איך מממשים הטבה?', slideLine: 'שלושה צעדים פשוטים, בכל עסק',
-          heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: 'בחנות, מול נותן שירות או באתר', steps: true,
+          theme: 'soft', badge: 'למשתמשים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע או באתר',
+          heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: 'הכול מתחיל בכרטיס העסק ← "מימוש ההטבה"', steps: false,
           sections: [
-            { h: 'נכנסים לכרטיס העסק', p: 'בוחרים עסק – לפי קטגוריה, חיפוש או מה שקרוב אליכם – ורואים את ההטבה שלו.' },
-            { h: 'בחנות או מול נותן שירות', p: 'בכרטיס העסק, ב"מימוש ההטבה", נפתחת תעודת החבר שלכם עם שם העסק ושעון חי. מציגים אותה בקופה או לנותן השירות – ולפעמים יבקשו גם תעודה מזהה.' },
-            { h: 'באתר או אונליין', p: 'בעסקים עם קוד קופון – מעתיקים את הקוד מהכרטיס ומזינים בהזמנה. הקוד מוצג רק לחברים.' },
-            { h: 'משהו לא עבד?', p: 'כתבו לנו ב"האזור שלי" ← "הודעות", ונטפל.' }
+            { h: 'בחנות', p: 'נכנסים לכרטיס העסק ← "מימוש ההטבה", ומציגים בקופה את תעודת החבר: שם העסק בפס הכחול ושעון חי. לפעמים יבקשו גם תעודה מזהה.' },
+            { h: 'בעל מקצוע או נותן שירות', p: 'בפגישה – מציגים את תעודת החבר, כמו בחנות. בהזמנה בטלפון או בוואטסאפ, נותן השירות עשוי לבקש הוכחה: מצלמים מסך של תעודת החבר מתוך הכרטיס שלו ושולחים לו. ככה זה נראה:', img: 'Casual tattoo' },
+            { h: 'באתר / אונליין', p: 'בעסקים עם קוד קופון – מעתיקים את הקוד מהכרטיס של העסק ומזינים אותו בהזמנה באתר שלהם. הקוד מוצג רק לחברים.' }
           ],
+          note: 'משהו לא עבד? כתבו לנו ב"האזור שלי" ← "הודעות".',
           cta: { label: '', act: '' }
         },
         forbiz: {
@@ -150,27 +153,26 @@
   var X = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
   function act(ctx, js) { return ctx.preview ? '' : ' onclick="' + js + '"'; }
   function bizInfo(b) { var k = KNOWN[b.name] || {}; return { id: k.id || '', logo: k.logo || '', area: b.area || k.area || '' }; }
+  function tok(s, t) { return String(s || '').split('{end}').join(t.end).split('{next}').join(t.next); }
   function leftHtml(t) { return t.left === 1 ? '<b>היום אחרון!</b>' : 'נשארו <b>' + t.left + '</b> ימים'; }
   var ORDER = ['ben', 'fan', 'us', 'redeem', 'forbiz', 'invite'];
 
   function slideHtml(kind, d, ctx) {
     var t = ctx.t, o = act(ctx, "WK.open('" + kind + "')");
     if (kind === 'ben') {
-      var b = d.ben, filled = b.biz.filter(function (x) { return x.name; });
-      var logos = b.biz.slice(0, 6).map(function (x, i) {
-        var inf = bizInfo(x);
-        return inf.logo ? '<img src="' + esc(inf.logo) + '" alt="">' : '<span>' + esc(x.name ? x.name.charAt(0) : (i + 1)) + '</span>';
-      }).join('');
-      return '<div class="wk-slide wk-s-ben' + (t.left <= 3 ? ' urgent' : '') + '"' + o + '>' +
-        '<div><span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.slideTitle) + '</div>' +
-        '<div class="wk-logos">' + logos + '<em>' + b.biz.length + ' ' + esc(b.bizNoun || 'עסקים') + '</em></div></div>' +
-        '<div class="timer"><span class="left">' + leftHtml(t) + '</span><span class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></span></div>' +
+      // בחוץ – שמות העסקים (לא לוגואים, רמי סבב 9): "אצל צ'ומפי · Casual tattoo · ועוד 3 בקרוב"
+      var b = d.ben, named = b.biz.filter(function (x) { return x.name; }).map(function (x) { return esc(x.name); }), tbd = b.biz.length - named.length;
+      var names = named.length ? 'אצל ' + named.join(' · ') + (tbd ? ' <em>· ועוד ' + tbd + ' בקרוב</em>' : '') : (tbd ? 'אצל ' + tbd + ' ' + esc(b.bizNoun || 'עסקים') + ' – בקרוב' : '');
+      return '<div class="wk-slide wk-s-ben"' + o + '>' +
+        '<div><div class="wk-tags"><span class="wk-badge">' + esc(b.badge) + '</span>' + (b.tag2 ? '<span class="wk-badge wk-badge2">' + esc(b.tag2) + '</span>' : '') + '</div><div class="t">' + esc(b.slideTitle) + '</div>' +
+        (names ? '<div class="wk-names">' + names + '</div>' : '') + '</div>' +
+        '<div class="timer"><span class="left">' + (t.left === 1 ? '<b>יום אחרון!</b>' : 'מתחלפת בעוד <b>' + t.left + '</b> ימים') + '</span><span class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></span></div>' +
         '<span class="wk-go">' + GO + '</span></div>';
     }
     if (kind === 'fan') {
       var f = d.fan, cover = (KNOWN[f.biz] || {}).cover || '';
       return '<div class="wk-slide wk-s-fan"' + o + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' +
-        '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span>' + (f.cadence ? '<span class="wk-cad">' + esc(f.cadence) + '</span>' : '') + '</div>' +
+        '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span>' + (f.cadence ? '<span class="wk-cad">' + esc(tok(f.cadence, t)) + '</span>' : '') + '</div>' +
         (f.owner ? '<div class="who">' + esc(f.owner) + (f.showFan && f.fanTag ? ' · ' + esc(f.fanTag) : '') + '</div>' : '') +
         '<div class="t">' + esc(f.biz || 'בחרו עסק') + '</div>' +
         (f.slideLine ? '<div class="s">' + esc(f.slideLine) + '</div>' : '') +
@@ -182,6 +184,17 @@
       '<div><div class="t">' + esc(p.slideTitle) + (p.slideAccent ? '<span>' + esc(p.slideAccent) + '</span>' : '') + '</div>' +
       (p.slideLine ? '<div class="s">' + esc(p.slideLine) + '</div>' : '') + '</div>' +
       '<span class="wk-go">' + GO + '</span></div>';
+  }
+
+  // דוגמה לתעודת החבר במימוש – אותו מראה כמו ב-redemption-guide.html (תעודה צהובה + פס כחול עם שם העסק ושעה)
+  function passHtml(bizName) {
+    var n = new Date(), clk = n.toLocaleDateString('he-IL') + ' · ' + n.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return '<div class="wk-pass"><div class="wk-pass-ph">' +
+      '<div class="yz"><img class="wm" src="images/yellowzone-watermark.png" alt=""><div class="in"><div class="mid"><div><div class="lab">תעודת חבר</div><div class="nm">ישראל ישראלי</div></div>' +
+      '<img class="logo" src="images/yellowzone-logo-horizontal.png" alt=""></div><div class="flds"><div><div class="fl">מספר חבר</div><div class="fv">#00042</div></div><div><div class="fl">הצטרפות</div><div class="fv">07/26</div></div></div></div></div>' +
+      '<div class="st"><div class="h"><div class="r1"><span class="dot"></span><span class="cap">אימות בתוקף עבור ההטבה</span></div><span class="mk">YELLOW ZONE</span></div>' +
+      '<div class="ft"><span class="bz">' + esc(bizName) + '</span><span class="clk">' + esc(clk) + '</span></div></div>' +
+      '</div><div class="wk-pass-cap">דוגמה: צילום מסך למימוש אצל ' + esc(bizName) + '. נותן השירות רואה את שם העסק שלו ואת השעה העדכנית.</div></div>';
   }
 
   function closeBtn(kind, ctx) { return ctx.preview ? '' : '<button type="button" class="wk-close" onclick="WK.close(\'' + kind + '\')" aria-label="סגירה">' + X + '</button>'; }
@@ -203,8 +216,9 @@
           (inf.logo ? '<img class="wk-logo" src="' + esc(inf.logo) + '" alt="">' : '<div class="wk-logo wk-logo-l">' + esc(x.name.charAt(0)) + '</div>') +
           '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>';
       }).join('');
-      return '<div class="wk-hero ben">' + closeBtn(kind, ctx) + '<span class="wk-badge">' + esc(b.badge) + ' · הטבה בלעדית לזמן מוגבל</span><div class="t">' + esc(b.title) + '</div></div>' +
+      return '<div class="wk-hero ben">' + closeBtn(kind, ctx) + '<span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span><div class="t">' + esc(b.title) + '</div></div>' +
         '<div class="wk-in">' +
+        (b.explain ? '<div class="wk-rot"><b>' + esc(b.explainTitle || '') + '</b><p>' + esc(tok(b.explain, t)) + '</p></div>' : '') +
         '<div class="wk-timer"><div class="row"><span>' + leftHtml(t) + '</span><span>עד ' + t.end + '</span></div><div class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></div></div>' +
         (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
         '<div class="wk-price">' + prices + '</div>' +
@@ -219,8 +233,9 @@
       var chips = String(f.chips || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
       var bizId = (KNOWN[f.biz] || {}).id || '';
       return '<div class="wk-hero"' + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' + closeBtn(kind, ctx) +
-        '<span class="wk-badge">האוהד שמאחורי העסק</span><div class="who">עד ' + t.end + (f.cadence ? ' · ' + esc(f.cadence) : '') + '</div><div class="t">' + esc(f.biz || 'בחרו עסק') + '</div></div>' +
+        '<span class="wk-badge">האוהד שמאחורי העסק</span><div class="who">עד ' + t.end + (f.cadence ? ' · ' + esc(tok(f.cadence, t)) : '') + '</div><div class="t">' + esc(f.biz || 'בחרו עסק') + '</div></div>' +
         '<div class="wk-in">' +
+        (f.cadenceNote ? '<div class="wk-rot navy"><b>' + esc(f.explainTitle || '') + '</b><p>' + esc(tok(f.cadenceNote, t)) + '</p></div>' : '') +
         (f.owner ? '<div class="wk-owner"><div class="wk-avatar">' + esc(f.owner.charAt(0)) + '</div><div><div class="wk-owner-name">' + esc(f.owner) + '</div>' +
           '<div class="wk-owner-role">בעל העסק' + (f.showFan && f.fanTag ? ' <span class="wk-fan">✓ ' + esc(f.fanTag) + '</span>' : '') + '</div></div></div>' : '') +
         '<div class="wk-lead">' + (f.title ? '<b>' + esc(f.title) + '</b>' : '') + fill(f.text, 'טקסט על האוהד ועל העסק') + '</div>' +
@@ -229,14 +244,14 @@
           '<div class="wk-sec"><h3>ביציע</h3><p>' + fill(f.stand, 'ממתי במגרש, איפה יושב, עם מי, רגע שלא יישכח – ימולא אחרי השיחה') + '</p></div>' +
           '<div class="wk-sec"><h3>איך הגיע לעסק</h3><p>' + fill(f.how, 'איך נפתח העסק ומה הקשר ליציע – ימולא אחרי השיחה') + '</p></div>' +
           '<div class="wk-sec"><h3>למה Yellow Zone</h3><p>' + fill(f.why, 'במילים שלו: למה חשוב שאוהדים יקנו מאוהדים') + '</p></div>' : '') +
-        (f.cadenceNote ? '<div class="wk-small">' + esc(f.cadenceNote.split('{next}').join(t.next)) + '</div>' : '') +
-        '</div>' +
+                '</div>' +
         '<div class="wk-bar-btn"><button type="button"' + (bizId ? act(ctx, "WK.biz('" + bizId + "')") : '') + '>לכרטיס העסק וההטבה</button></div>';
     }
     var p = d.pages[kind];
     var secs = p.steps
       ? '<ol class="wk-steps">' + p.sections.map(function (s, i) { return '<li><i>' + (i + 1) + '</i><div><b>' + esc(s.h) + '</b>' + esc(s.p) + '</div></li>'; }).join('') + '</ol>'
-      : p.sections.map(function (s) { return '<div class="wk-sec">' + (s.h ? '<h3>' + esc(s.h) + '</h3>' : '') + '<p>' + esc(s.p) + '</p></div>'; }).join('');
+      : p.sections.map(function (s) { return '<div class="wk-sec">' + (s.h ? '<h3>' + esc(s.h) + '</h3>' : '') + '<p>' + esc(s.p) + '</p>' + (s.img ? passHtml(s.img) : '') + '</div>'; }).join('');
+    secs += p.note ? '<div class="wk-small">' + esc(p.note) + '</div>' : '';
     var cta = function (c) { return c && c.label ? '<button type="button" class="wk-cta"' + act(ctx, "WK.act('" + esc(c.act) + "')") + '>' + esc(c.label) + '</button>' : ''; };
     return '<div class="wk-hero page wk-th-' + esc(p.theme || 'navy') + '">' + closeBtn(kind, ctx) +
       (p.heroWho ? '<div class="who">' + esc(p.heroWho) + '</div>' : '') + '<div class="t">' + esc(p.heroTitle) + '</div>' +
@@ -256,23 +271,52 @@
     '.wk-dots i{width:6px;height:6px;border-radius:999px;background:#D5D9E2;transition:width .2s,background .2s}',
     '.wk-dots i.on{width:18px;background:#0A2A66}',
     '.wk-badge{display:inline-block;align-self:flex-start;padding:4px 10px;border-radius:999px;background:#FFD400;color:#0A2A66;font-size:11px;font-weight:800;letter-spacing:.02em}',
+    '.wk-tags{display:flex;gap:5px;flex-wrap:wrap}',
+    '.wk-s-ben .wk-badge2{background:#fff;color:#0A2A66}',
+    '.wk-rot{background:#FFF7DB;border:1px solid #FFE9A3;border-radius:14px;padding:12px 14px}',
+    '.wk-rot b{display:block;font-size:15px;color:#0A2A66;margin-bottom:3px}',
+    '.wk-rot p{margin:0;font-size:14px;line-height:1.6;color:#3A4C7A}',
+    '.wk-rot.navy{background:#0A2A66;border-color:#0A2A66}.wk-rot.navy b{color:#FFD400}.wk-rot.navy p{color:#fff;opacity:.92}',
+    '.wk{position:relative}',
+    '.wk-arr{display:none;position:absolute;top:calc(50% - 30px);width:40px;height:40px;border-radius:50%;border:0;background:#fff;color:#0A2A66;box-shadow:0 2px 10px rgba(10,42,102,.22);cursor:pointer;z-index:2;align-items:center;justify-content:center}',
+    '.wk-arr[hidden]{display:none!important}',
+    '.wk-arr.prev{right:6px}.wk-arr.next{left:6px}',
+    '@media (hover:hover) and (pointer:fine){.wk-arr{display:flex}}',
     '.wk-fill{background:#FFF0B3;color:#6B5200;border-radius:4px;padding:0 4px;font-weight:700}',
     '.wk-go{position:absolute;left:14px;bottom:14px;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center}',
     // 1 – הטבה
     '.wk-s-ben{background:#FFD400;color:#0A2A66;justify-content:space-between}',
     '.wk-s-ben .wk-badge{background:#0A2A66;color:#FFD400}',
     '.wk-s-ben .t{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.12;margin-top:7px}',
-    '.wk-logos{display:flex;align-items:center;margin-top:8px}',
-    '.wk-logos img,.wk-logos span{width:30px;height:30px;border-radius:50%;border:2px solid #FFD400;background:#fff;object-fit:contain;margin-inline-start:-7px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#0A2A66}',
-    '.wk-logos > :first-child{margin-inline-start:0}',
-    '.wk-logos span{background:#FFF7DB}',
-    '.wk-logos em{font-style:normal;font-size:12.5px;font-weight:800;margin-inline-start:8px}',
+    '.wk-names{font-size:13.5px;font-weight:800;margin-top:6px;line-height:1.35;margin-inline-end:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+    '.wk-names em{font-style:normal;font-weight:600;opacity:.75}',
+    // דוגמת תעודת החבר
+    '.wk-pass{margin-top:12px}',
+    '.wk-pass-ph{border:3px solid #0A2A66;border-radius:24px;padding:12px 10px;background:#FBF8EE;max-width:280px;margin:0 auto;color:#0A2A66}',
+    '.wk-pass .yz{border-radius:14px;position:relative;overflow:hidden;background:#FFD400}',
+    '.wk-pass .yz img.wm{position:absolute;top:-24px;left:-28px;width:150px;opacity:.13;mix-blend-mode:multiply}',
+    '.wk-pass .in{position:relative;padding:13px 15px 14px}',
+    '.wk-pass .mid{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}',
+    '.wk-pass .lab,.wk-pass .fl{color:rgba(10,42,102,.62);font-size:9.5px;font-weight:700;letter-spacing:.1em}',
+    '.wk-pass .nm{font-size:18px;font-weight:800}',
+    '.wk-pass .logo{height:15px}',
+    '.wk-pass .flds{margin-top:18px;display:flex;gap:16px}',
+    '.wk-pass .fv{font-size:14px;font-weight:800;direction:ltr;unicode-bidi:isolate}',
+    '.wk-pass .st{margin-top:8px;background:linear-gradient(140deg,#0A2A66 0%,#123A82 100%);border-radius:12px;padding:10px 12px 9px;color:#fff}',
+    '.wk-pass .st .h{display:flex;justify-content:space-between;align-items:center;gap:6px}',
+    '.wk-pass .r1{display:flex;align-items:center;gap:6px}',
+    '.wk-pass .dot{width:7px;height:7px;border-radius:50%;background:#22C55E}',
+    '.wk-pass .cap,.wk-pass .mk{font-size:9.5px;font-weight:700;color:#FFD400}',
+    '.wk-pass .mk{font-size:9px;font-weight:800;letter-spacing:.06em}',
+    '.wk-pass .ft{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.14)}',
+    '.wk-pass .bz{font-size:15px;font-weight:800}',
+    '.wk-pass .clk{font-size:9.5px;font-weight:700;color:#C9D8F5;background:rgba(255,255,255,.1);border-radius:6px;padding:3px 7px;direction:ltr;white-space:nowrap}',
+    '.wk-pass-cap{font-size:12px;color:#6B7A9B;text-align:center;margin-top:8px;line-height:1.5}',
     '.wk-s-ben .timer{display:flex;align-items:center;gap:8px;margin-inline-end:46px}',
     '.wk-s-ben .left{font-size:14px;font-weight:800;white-space:nowrap}',
     '.wk-s-ben .left b{font-size:20px}',
     '.wk-s-ben .bar{flex:1;height:6px;background:rgba(10,42,102,.18);border-radius:999px;overflow:hidden}',
     '.wk-s-ben .bar i{display:block;height:100%;background:#0A2A66;border-radius:999px}',
-    '.wk-s-ben.urgent .left{color:#B42318}.wk-s-ben.urgent .bar i{background:#D92D20}',
     '.wk-s-ben .wk-go{background:#0A2A66;color:#FFD400}',
     // 2 – האוהד שמאחורי העסק
     '.wk-s-fan{background:#0A2A66 center/cover no-repeat}',
@@ -381,7 +425,9 @@
     var d = state.d = load(), ctx = { t: timing(new Date()) };
     root.innerHTML = '<section class="wk" aria-label="הטבה בלעדית, האוהד שמאחורי העסק, Yellow Zone"><div class="wk-track" id="wkTrack">' +
       ORDER.map(function (k) { return slideHtml(k, d, ctx); }).join('') + '</div><div class="wk-dots" id="wkDots">' +
-      ORDER.map(function (k, i) { return '<i' + (i ? '' : ' class="on"') + '></i>'; }).join('') + '</div></section>';
+      ORDER.map(function (k, i) { return '<i' + (i ? '' : ' class="on"') + '></i>'; }).join('') + '</div>' +
+      '<button type="button" class="wk-arr prev" aria-label="הקודם" onclick="WK.step(-1)" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="m10 6 6 6-6 6"/></svg></button>' +
+      '<button type="button" class="wk-arr next" aria-label="הבא" onclick="WK.step(1)">' + GO + '</button></section>';
     ORDER.forEach(function (k) {
       var old = document.getElementById('wkSheet-' + k); if (old) old.remove();
       var el = document.createElement('div'); el.className = 'wk-sheet'; el.id = 'wkSheet-' + k; el.setAttribute('aria-hidden', 'true');
@@ -392,7 +438,23 @@
       var s = tr.children, best = 0, bd = 1e9, r = tr.getBoundingClientRect();
       for (var i = 0; i < s.length; i++) { var b = s[i].getBoundingClientRect(), dd = Math.abs(b.right - r.right); if (dd < bd) { bd = dd; best = i; } }
       for (var j = 0; j < dots.length; j++) dots[j].classList.toggle('on', j === best);
+      arrows();
     }, { passive: true });
+    arrows();
+  }
+  // RTL: scrollLeft מתחיל ב-0 ויורד לשליליים כשמתקדמים שמאלה
+  function arrows() {
+    var tr = document.getElementById('wkTrack'); if (!tr) return;
+    var max = tr.scrollWidth - tr.clientWidth, pos = Math.abs(tr.scrollLeft);
+    var p = document.querySelector('.wk-arr.prev'), n = document.querySelector('.wk-arr.next');
+    if (p) p.hidden = pos < 8; if (n) n.hidden = pos > max - 8;
+  }
+  function step(dir) {
+    var tr = document.getElementById('wkTrack'), sl = tr && tr.children[0]; if (!sl) return;
+    var from = tr.scrollLeft, to = from - dir * (sl.getBoundingClientRect().width + 10);
+    tr.scrollTo({ left: to, behavior: 'smooth' });
+    // גלילה חלקה לא זזה בכל דפדפן (נמדד: נשארה על 0) – אם לא זזה, קופצים ישר
+    setTimeout(function () { if (Math.abs(tr.scrollLeft - from) < 2) { tr.scrollLeft = to; arrows(); } }, 450);
   }
   function open(k) {
     var el = document.getElementById('wkSheet-' + k); if (!el) return;
@@ -428,6 +490,6 @@
     DEFAULTS: DEFAULTS, pageFromDir: pageFromDir, load: load, save: save, reset: reset,
     period: period, dm: dm, timing: timing, esc: esc,
     slideHtml: slideHtml, sheetInner: sheetInner, injectCss: injectCss,
-    mount: mount, open: open, close: close, biz: biz, act: doAct
+    mount: mount, step: step, tok: tok, open: open, close: close, biz: biz, act: doAct
   };
 })();

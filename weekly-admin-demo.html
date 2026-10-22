@@ -110,15 +110,21 @@
   .btn.danger { color: var(--red); }
   .btn:disabled { opacity: .45; cursor: default; }
   .warnbox { font-size: 12.5px; color: #B54708; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 10px; padding: 8px 10px; line-height: 1.5; }
+  .to-pv { display: none; position: fixed; bottom: 14px; left: 14px; z-index: 50; font: 800 13px Rubik, sans-serif; border: 0; border-radius: 999px; padding: 10px 14px; background: var(--accent); color: #fff; box-shadow: 0 4px 14px rgba(10,42,102,.3); }
+  .editor:not(.open) .to-pv { display: none !important; }
   .okmsg { font-size: 12.5px; font-weight: 700; color: #067647; }
 
-  .preview { position: sticky; top: 12px; align-self: start; }
+  .preview { position: sticky; top: 12px; align-self: start; min-width: 0; }
+  .pv-seg { display: flex; width: 340px; max-width: 100%; margin: 0 auto 8px; }
+  .pv-seg button { flex: 1; }
+  .pv-home { padding: 6px 0 20px; }
+  .pv-hint { text-align: center; font-size: 11.5px; color: var(--muted); margin-top: 14px; }
+  .ed-form, .editor > * { min-width: 0; }
   .preview-h { font-size: 12px; font-weight: 800; color: var(--muted); margin-bottom: 6px; text-align: center; }
-  .phone { width: 340px; max-width: 100%; margin: 0 auto; border: 10px solid #111827; border-radius: 34px; background: #F6F6F2; overflow: hidden; height: 640px; overflow-y: auto; }
+  .phone { width: 340px; max-width: 100%; position: relative; transform: translateZ(0); margin: 0 auto; border: 10px solid #111827; border-radius: 34px; background: #F6F6F2; overflow: hidden; height: 640px; overflow-y: auto; }
   .pv-lbl { font-size: 10.5px; font-weight: 800; color: var(--muted); text-align: center; padding: 8px 0 2px; letter-spacing: .05em; }
   .pv-slide .wk-track { padding: 4px 12px; overflow: visible; }
   .pv-slide .wk-slide { flex-basis: 100%; cursor: default; }
-  .pv-sheet { margin-top: 8px; border-top: 1px solid var(--border); }
 
   .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 
@@ -146,7 +152,9 @@
     .live, .un-slots, .cards { grid-template-columns: 1fr; }
     .period { grid-template-columns: 1fr; }
     .editor.open { grid-template-columns: 1fr; }
-    .preview { position: static; }
+    .preview { position: static; order: -1; }
+    .phone { height: 72vh; }
+    .to-pv { display: block; }
     .tr { grid-template-columns: 1fr 1fr; }
   }
 </style>
@@ -219,7 +227,7 @@
   <div class="editor" id="editor"></div>
 </div>
 
-<script src="weekly-render.js?v=539g"></script>
+<script src="weekly-render.js?v=539i"></script>
 <script>
   WK.injectCss();
   var D = WK.load(), DAY = 86400000, now = new Date();
@@ -251,8 +259,8 @@
   }
   function emptyFor(k) {
     var d = WK.DEFAULTS();
-    if (track(k) === 'ben') return { badge: 'הטבה בלעדית', slideTitle: '', title: '', intro: '', prices: [], after: '', whereTitle: 'איפה מממשים', bizNoun: 'עסקים', howTo: d.ben.howTo, biz: [] };
-    return { biz: '', owner: '', fanTag: 'מנוי מכבי ת"א בכדורגל', showFan: false, cadence: d.fan.cadence, title: '', slideLine: '', text: '', chips: '', hasStory: false, quote: '', stand: '', how: '', why: '', cadenceNote: d.fan.cadenceNote };
+    if (track(k) === 'ben') return { badge: d.ben.badge, tag2: '', explainTitle: d.ben.explainTitle, explain: d.ben.explain, slideTitle: '', title: '', intro: '', prices: [], after: '', whereTitle: 'איפה מממשים', bizNoun: 'עסקים', howTo: d.ben.howTo, biz: [] };
+    return { explainTitle: d.fan.explainTitle, biz: '', owner: '', fanTag: 'מנוי מכבי ת"א בכדורגל', showFan: false, cadence: d.fan.cadence, title: '', slideLine: '', text: '', chips: '', hasStory: false, quote: '', stand: '', how: '', why: '', cadenceNote: d.fan.cadenceNote };
   }
   function slotName(k) { var s = getSlot(k); if (!s) return ''; return track(k) === 'biz' ? s.biz : (s.title || s.slideTitle); }
   function readiness(k, s) {
@@ -406,7 +414,8 @@
     if (kind === 'ben') {
       return dl +
         '<div class="group"><div class="group-h">בחוץ – התיבה בקרוסלה</div>' +
-          f('badge', 'תווית (למשל "מבצע השקה")', { max: 24 }) + f('slideTitle', 'כותרת על התיבה', { max: 44, hint: 'הלוגואים של העסקים והספירה לאחור מתווספים לבד.' }) + '</div>' +
+          f('badge', 'תווית ראשית', { max: 24 }) + f('tag2', 'תווית נוספת (רשות – למשל "מבצע השקה")', { max: 20 }) + f('slideTitle', 'כותרת על התיבה', { max: 44, hint: 'הלוגואים של העסקים ו"מתחלפת בעוד X ימים" מתווספים לבד.' }) + '</div>' +
+        '<div class="group"><div class="group-h">בפנים – למעלה: ההסבר שזו הטבה משתנה</div>' + f('explainTitle', 'כותרת ההסבר', { max: 50 }) + f('explain', 'טקסט ההסבר ({end} = עד מתי, {next} = מתי הבאה)', { area: true, max: 260 }) + '</div>' +
         '<div class="group"><div class="group-h">בפנים – מעל המחירים</div>' + f('title', 'כותרת הגיליון', { max: 40 }) + f('intro', 'טקסט מעל המחירים', { area: true, max: 220 }) + '</div>' +
         '<div class="group"><div class="group-h">המחירים <span class="hint" style="font-weight:600">העיגול גדל לפי המספר בגודל</span></div><div class="rowlist">' +
           draft.prices.map(function (p, i) { return '<div class="row-in"><div class="cols h"><input type="text" data-p="prices.' + i + '.size" value="' + esc(p.size) + '" placeholder="גודל"><input type="text" data-p="prices.' + i + '.price" value="' + esc(p.price) + '" placeholder="מחיר"><input type="text" data-p="prices.' + i + '.was" value="' + esc(p.was) + '" placeholder="מחיר רגיל (רשות)"></div>' + rowTools('prices', i) + '</div>'; }).join('') +
@@ -421,12 +430,13 @@
       return dl +
         f('biz', 'עסק', { list: true, hint: 'קודם מי שביקש. עסק שכבר הופיע בחצי השנה האחרונה יסומן באזהרה.' }) +
         '<div class="group"><div class="group-h">בחוץ – התיבה בקרוסלה</div>' +
-          f('cadence', 'תווית תדירות (ליד "האוהד שמאחורי העסק")', { max: 24 }) + f('slideLine', 'שורה על התיבה', { max: 80 }) + '</div>' +
+          f('cadence', 'תווית תדירות (ליד "האוהד שמאחורי העסק"; {next} = מתי הבא)', { max: 30 }) + f('slideLine', 'שורה על התיבה', { max: 80 }) + '</div>' +
         '<div class="group"><div class="group-h">בפנים – הכרטיס</div>' +
           f('owner', 'שם בעל העסק כפי שיוצג', { max: 30, hint: 'שם פרטי מספיק. ריק = בלי שורת בעל העסק.' }) +
           chk('showFan', 'להציג תג אוהד מאומת') + f('fanTag', 'נוסח התג (מהאימות שלו)', { max: 40 }) +
           f('title', 'כותרת', { max: 40 }) + f('text', 'טקסט על האוהד ועל העסק (בלי ההטבה)', { area: true, max: 320 }) +
-          f('chips', 'תגיות (מופרדות בפסיק)', { max: 120 }) + f('cadenceNote', 'שורה בתחתית ({next} = תאריך ההחלפה)', { area: true, max: 160, rows: 2 }) + '</div>' +
+          f('chips', 'תגיות (מופרדות בפסיק)', { max: 120 }) + '</div>' +
+        '<div class="group"><div class="group-h">בפנים – למעלה: ההסבר שזה מתחלף</div>' + f('explainTitle', 'כותרת ההסבר', { max: 50 }) + f('cadenceNote', 'טקסט ההסבר ({next} = מתי הבא)', { area: true, max: 220, rows: 3 }) + '</div>' +
         '<div class="group"><div class="group-h">הסיפור המלא ' + chk('hasStory', 'יש סיפור') + '</div>' +
           (draft.hasStory ? f('quote', 'ציטוט – משפט אחד שלו', { max: 120 }) + f('stand', 'ביציע', { area: true, max: 600 }) + f('how', 'איך הגיע לעסק', { area: true, max: 600 }) + f('why', 'למה Yellow Zone', { area: true, max: 400 }) : '<div class="hint">בלי סיפור – הכרטיס בחוץ הוא הכול, והכפתור מוביל ישר לכרטיס העסק.</div>') + '</div>';
     }
@@ -440,8 +450,10 @@
       '<div class="group"><div class="group-h">בפנים – ראש הגיליון</div>' + f('heroWho', 'שורה קטנה מעל', { max: 30 }) + f('heroTitle', 'כותרת', { max: 40 }) + f('heroTag', 'שורה מתחת לכותרת', { max: 80 }) +
         (isUs ? f('quote', 'ציטוט מודגש (רשות)', { area: true, max: 140, rows: 2 }) : '') + '</div>' +
       '<div class="group"><div class="group-h">בפנים – הסעיפים ' + chk('steps', 'כשלבים ממוספרים') + '</div><div class="rowlist">' +
-        p.sections.map(function (s, i) { return '<div class="row-in"><div class="cols"><input type="text" data-p="sections.' + i + '.h" value="' + esc(s.h) + '" placeholder="כותרת הסעיף"><textarea data-p="sections.' + i + '.p" placeholder="הטקסט">' + esc(s.p) + '</textarea></div>' + rowTools('sections', i) + '</div>'; }).join('') +
-        '<button type="button" class="addrow" onclick="addRow(\'sections\')">+ סעיף</button></div></div>' +
+        p.sections.map(function (s, i) { return '<div class="row-in"><div class="cols"><input type="text" data-p="sections.' + i + '.h" value="' + esc(s.h) + '" placeholder="כותרת הסעיף"><textarea data-p="sections.' + i + '.p" placeholder="הטקסט">' + esc(s.p) + '</textarea>' +
+          '<input type="text" list="bizDL" data-p="sections.' + i + '.img" value="' + esc(s.img || '') + '" placeholder="תמונת דוגמה של תעודת חבר – שם העסק (ריק = בלי)"></div>' + rowTools('sections', i) + '</div>'; }).join('') +
+        '<button type="button" class="addrow" onclick="addRow(\'sections\')">+ סעיף</button></div>' + f('note', 'שורה קטנה בסוף (רשות)', { max: 120 }) + '</div>' +
+        '<datalist id="bizDL">' + ALL.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
       '<div class="group"><div class="group-h">כפתורים</div>' + f('cta.label', isInv ? 'כפתור 1 – שיתוף לאוהד' : 'כפתור (ריק = בלי כפתור)', { max: 30 }) +
         (isInv ? f('fanText', 'ההודעה שנשלחת לאוהד', { area: true, max: 300 }) + f('cta2.label', 'כפתור 2 – שיתוף לבעל עסק', { max: 30 }) + f('bizText', 'ההודעה שנשלחת לבעל עסק', { area: true, max: 300 }) : '') + '</div>';
   }
@@ -470,7 +482,10 @@
         (isPeriod ? '<button type="button" class="btn danger" onclick="clearSlot()">להוציא מהתקופה</button>' : '<button type="button" class="btn danger" onclick="origPage()">הנוסח ההתחלתי</button>') + '<span id="edMsg"></span></div>' +
         (isPeriod ? '<div class="hint" style="font-size:11.5px;color:var(--muted)">"להוציא מהתקופה" – המקום מתרוקן, והעסק חוזר לרשימת "מי הביע עניין" כדי לשבץ אותו בתקופה אחרת. שום דבר לא נמחק אצל העסק.</div>' : '') +
       '</div>' +
-      '<div class="preview"><div class="preview-h">כך זה ייראה בטלפון – בול</div><div class="phone"><div id="pv"></div></div></div>';
+      '<button type="button" class="to-pv" onclick="toPv()">לראות בטלפון ↑</button>' +
+      '<div class="preview"><div class="preview-h">כך זה ייראה בטלפון – בול</div>' +
+      '<div class="seg pv-seg"><button type="button" data-pv="out" onclick="setPv(\'out\')">בחוץ – בקרוסלה</button><button type="button" data-pv="in" onclick="setPv(\'in\')">בפנים – אחרי לחיצה</button></div>' +
+      '<div class="phone"><div id="pv"></div></div></div>';
     ed.classList.add('open');
     preview();
   }
@@ -500,14 +515,18 @@
     else setSlot(open, null);
     persist(); closeEd();
   };
+  window.toPv = function () { document.querySelector('.preview').scrollIntoView({ behavior: 'smooth' }); };
+  var PV = 'out';
+  window.setPv = function (v) { PV = v; var ph = document.querySelector('.phone'); if (ph) ph.scrollTop = 0; preview(); };
   function preview() {
     var k = open, kind = kindOf(k), tmp = JSON.parse(JSON.stringify(D));
     if (kind === 'ben') tmp.ben = draft; else if (kind === 'fan') tmp.fan = draft; else tmp.pages[kind] = draft;
     var idx = k.indexOf('page-') === 0 ? 0 : +k.split('-')[0];
     var ctx = { preview: true, t: WK.timing(idx ? PERIODS[idx].start : now) };
-    document.getElementById('pv').innerHTML =
-      '<div class="pv-lbl">בחוץ – בקרוסלה</div><div class="pv-slide"><div class="wk-track">' + WK.slideHtml(kind, tmp, ctx) + '</div></div>' +
-      '<div class="pv-lbl">בפנים – אחרי לחיצה</div><div class="pv-sheet"><div class="wk-sheet wk-inline">' + WK.sheetInner(kind, tmp, ctx) + '</div></div>';
+    [].forEach.call(document.querySelectorAll('[data-pv]'), function (b) { b.classList.toggle('on', b.getAttribute('data-pv') === PV); });
+    document.getElementById('pv').innerHTML = PV === 'out'
+      ? '<div class="pv-home"><div class="pv-lbl">דף הבית – מתחת לקטגוריות</div><div class="pv-slide"><div class="wk-track">' + WK.slideHtml(kind, tmp, ctx) + '</div></div><div class="pv-hint">לחיצה על "בפנים" למעלה מראה מה נפתח</div></div>'
+      : '<div class="wk-sheet wk-inline">' + WK.sheetInner(kind, tmp, ctx) + '</div>';
     if (k.indexOf('page-') !== 0) {
       document.getElementById('readyBox').innerHTML = pills(k, draft);
       var dup = kind === 'fan' && draft.biz && Object.keys(D.future).concat(['0-biz']).some(function (x) { return x !== k && track(x) === 'biz' && (getSlot(x) || {}).biz === draft.biz; });
