@@ -80,7 +80,11 @@
       maxShown: 12,      // 🔒 תקרה — לעולם לא יותר מזה על המדף. 0 = בלי תקרה.
       minShown: 6,       // 🔒 רצפה — לעולם לא פחות מזה. משלימים מהעסקים הבאים בתור.
       periodDays: 7,     // ⚠️ **רק לרישום ההיסטוריה.** אינו משפיע על מי מוצג — ר' buildNew.
-      criteria: []       // סינון בלבד
+      criteria: [],      // סינון בלבד
+      // §594 — כמה עסקים מקטגוריה מסוימת יכולים להיות על המדף **באותו יום**. מי שמעבר
+      // לזה לא נעלם: הם מתחלפים ביניהם כל יום (ר' limitCats). רמי: פיננסים ומשפט "לא
+      // עסקים אטרקטיביים" – שיקבלו את התור, אבל לא במקביל, כדי לפנות מקום לאחרים.
+      catCaps: { finance: 2 }
     },
     startAt: null,       // ISO — מתי התקופה הראשונה של הסבב ב"נבחרים" מתחילה. null = מיד.
 
@@ -497,8 +501,12 @@
     // גוברת על הסבב. הסבב מחלק רק את מה שנשאר.
     var cap = cfg.maxShown > 0 ? cfg.maxShown : inWindow.length;
 
+    // §594 — תקרה לקטגוריה: מי שמעבר לה היום עובר ל-trimmed, והמקום שלו הולך לבא בתור.
+    var held = limitCats(inWindow, cfg.catCaps, now);
+    var eligible = inWindow.filter(function (b) { return !held[b.id]; });
+
     var genuinelyNew = [], cohort = [];
-    inWindow.forEach(function (b) {
+    eligible.forEach(function (b) {
       (isLaunchCohort(b, pol) ? cohort : genuinelyNew).push(b);
     });
 
@@ -522,16 +530,23 @@
     var floorAdded = [];
     if (cfg.minShown > 0 && list.length < cfg.minShown) {
       var inList = {};
-      list.forEach(function (b) { inList[b.id] = 1; });
+      var catUsed = {};
+      list.forEach(function (b) { inList[b.id] = 1; var k = catKeyOf(b); catUsed[k] = (catUsed[k] || 0) + 1; });
       var spare = businesses.filter(function (b) {
-        if (inList[b.id] || toMs(b.approvedAt) == null) return false;
+        if (inList[b.id] || held[b.id] || toMs(b.approvedAt) == null) return false;
         if (toMs(b.approvedAt) > now) return false;
         for (var i = 0; i < filters.length; i++) if (!filters[i].test(b)) return false;
         return true;
       }).sort(function (a, b) {
         return effectiveNewStart(b, pol) - effectiveNewStart(a, pol);
       });
-      floorAdded = spare.slice(0, cfg.minShown - list.length);
+      var caps = cfg.catCaps || {};
+      for (var s = 0; s < spare.length && list.length + floorAdded.length < cfg.minShown; s++) {
+        var ck = catKeyOf(spare[s]);
+        if (caps[ck] != null && (catUsed[ck] || 0) >= caps[ck]) continue;
+        catUsed[ck] = (catUsed[ck] || 0) + 1;
+        floorAdded.push(spare[s]);
+      }
       list = list.concat(floorAdded);
     }
 
@@ -550,6 +565,30 @@
         ? Math.ceil(cohort.length / (cap - genuinelyNew.length)) : 0,
       launchCohort: businesses.filter(function (b) { return isLaunchCohort(b, pol); }).length
     };
+  }
+  // §594 — הקטגוריה כמו שדף הבית מציג אותה (mapCatKey ב-home.html: legal → finance).
+  function catKeyOf(b) {
+    var c = b && b.categoryPrimary;
+    return c === 'legal' ? 'finance' : (c || '');
+  }
+  // מחזיר {id:1} של מי שנדחה **היום** בגלל תקרת-הקטגוריה. 🔑 לא "החדש ביותר מנצח":
+  // אז מי שהצטרף שני מתוך שלושה היה מחכה עד שהראשון יוצא מהחלון, ואולי לא מגיע בכלל.
+  // במקום זה סבב יומי דטרמיניסטי (אותו מנגנון כמו מנת-ההשקה) – כל אחד מקבל ימים על
+  // המדף לאורך החלון, ואותו יום נראה אותו דבר בכל המכשירים ובמרכז הניהול.
+  function limitCats(list, caps, now) {
+    var held = {};
+    if (!caps) return held;
+    Object.keys(caps).forEach(function (k) {
+      var max = Math.max(0, Number(caps[k]) || 0);
+      var group = list.filter(function (b) { return catKeyOf(b) === k; });
+      if (group.length <= max) return;
+      var base = stableShuffle(group, 'yz-new-cat-' + k);
+      var keep = {};
+      rotate(base, (localDayIndex(now) * max) % base.length).slice(0, max)
+        .forEach(function (b) { keep[b.id] = 1; });
+      group.forEach(function (b) { if (!keep[b.id]) held[b.id] = 1; });
+    });
+    return held;
   }
   // מאיזה רגע נספרים ה"ימים כחדש" — הרגע שבו אוהד יכול היה לראות את העסק לראשונה.
   function effectiveNewStart(b, policy) {
@@ -606,6 +645,7 @@
         // הרצפה לא יכולה לחרוג מהתקרה — אחרת התקרה חותכת ואז הרצפה מוסיפה בחזרה, בלולאה
         // שנראית כאילו התקרה פשוט אינה עובדת.
         if (o.maxShown > 0 && o.minShown > o.maxShown) o.minShown = o.maxShown;
+        if (!o.catCaps || typeof o.catCaps !== 'object' || Array.isArray(o.catCaps)) o.catCaps = d.catCaps;
       }
       p[k] = o;
     });
