@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData3';
+  var KEY = 'wkDemoData6';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -81,10 +81,13 @@
           theme: 'soft', badge: 'למשתמשים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע או באתר',
           heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: 'הכול מתחיל בכרטיס העסק ← "מימוש ההטבה"', steps: true,
           sections: [
-            { h: 'בחנות', p: 'נכנסים לכרטיס העסק ← "מימוש ההטבה", ומציגים בקופה את תעודת החבר: שם העסק בפס הכחול ושעון חי. לפעמים יבקשו גם תעודה מזהה.' },
-            { h: 'בעל מקצוע או נותן שירות', p: 'בפגישה – מציגים את תעודת החבר, כמו בחנות. בהזמנה בטלפון או בוואטסאפ, נותן השירות עשוי לבקש הוכחה: מצלמים מסך של תעודת החבר מתוך הכרטיס שלו ושולחים לו. ככה זה נראה:', img: 'לארט אופנועים - LS2' },
-            { h: 'באתר / אונליין', p: 'בעסקים עם קוד קופון – מעתיקים את הקוד מהכרטיס של העסק ומזינים אותו בהזמנה באתר שלהם. הקוד מוצג רק לחברים.' }
+            { h: 'בחנות', p: 'נכנסים לכרטיס העסק ← "מימוש ההטבה", ומציגים בקופה את תעודת החבר: שם העסק בפס הכחול ושעון חי. לפעמים יבקשו גם תעודה מזהה (דוגמה בסוף).' },
+            { h: 'בעל מקצוע או נותן שירות', p: 'תמיד במעמד הרכישה – בפגישה, בטלפון או בוואטסאפ. מציגים לו את תעודת החבר, או שולחים לו צילום שלה – לפי מה שהוא מבקש: מצלמים מסך מתוך כרטיס העסק שלו (דוגמה בסוף).' },
+            { h: 'באתר / אונליין', p: 'בכרטיס העסק מעתיקים את קוד הקופון, ולוחצים על "לרכישה באתר" – זה מעביר ישר לאתר של העסק. בהזמנה מדביקים את הקוד. הקוד מוצג רק לחברים.' }
           ],
+          // הדוגמה בסוף, לא בין הסעיפים הממוספרים (רמי, סבב 11: "בטלפון לא נראה טוב שבין המספרים יש תמונה")
+          exTitle: 'ככה נראית תעודת החבר', exBiz: 'לארט אופנועים - LS2',
+          exCap: 'דוגמה: צילום מסך למימוש אצל {biz}. נותן השירות רואה את שם העסק שלו ואת השעה העדכנית בעת הרכישה.',   // {biz} = שם העסק בדוגמה
           note: 'משהו לא עבד? כתבו לנו ב"האזור שלי" ← "הודעות".',
           cta: { label: '', act: '' }
         },
@@ -167,7 +170,9 @@
     if (kind === 'ben') {
       // בחוץ – שמות העסקים (לא לוגואים, רמי סבב 9): "אצל צ'ומפי · Casual tattoo · ועוד 3 בקרוב"
       var b = d.ben, named = b.biz.filter(function (x) { return x.name; }).map(function (x) { return esc(x.name); }), tbd = b.biz.length - named.length;
-      var names = named.length ? 'אצל ' + named.join(' · ') + (tbd ? ' <em>· ועוד ' + tbd + ' בקרוב</em>' : '') : (tbd ? 'אצל ' + tbd + ' ' + esc(b.bizNoun || 'עסקים') + ' – בקרוב' : '');
+      // אחד מתחת לשני (רמי, סבב 11) – לא בשורה אחת
+      var names = (named.length || tbd) ? '<ul>' + named.map(function (n) { return '<li>' + n + '</li>'; }).join('') +
+        (tbd ? '<li class="tbd">' + (named.length ? 'ועוד ' + tbd + ' בקרוב' : tbd + ' ' + esc(b.bizNoun || 'עסקים') + ' – בקרוב') + '</li>' : '') + '</ul>' : '';
       return '<div class="wk-slide wk-s-ben"' + o + '>' +
         '<div><div class="wk-tags"><span class="wk-badge">' + esc(b.badge) + '</span>' + (b.tag2 ? '<span class="wk-badge wk-badge2">' + esc(b.tag2) + '</span>' : '') + '</div><div class="t">' + esc(b.slideTitle) + '</div>' +
         (names ? '<div class="wk-names">' + names + '</div>' : '') + '</div>' +
@@ -192,14 +197,14 @@
   }
 
   // דוגמה לתעודת החבר במימוש – אותו מראה כמו ב-redemption-guide.html (תעודה צהובה + פס כחול עם שם העסק ושעה)
-  function passHtml(bizName) {
+  function passHtml(bizName, cap) {
     var n = new Date(), clk = n.toLocaleDateString('he-IL') + ' · ' + n.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     return '<div class="wk-pass"><div class="wk-pass-ph">' +
       '<div class="yz"><img class="wm" src="images/yellowzone-watermark.png" alt=""><div class="in"><div class="mid"><div><div class="lab">תעודת חבר</div><div class="nm">שומע מ</div></div>' +
       '<img class="logo" src="images/yellowzone-logo-horizontal.png" alt=""></div><div class="flds"><div><div class="fl">מספר חבר</div><div class="fv">#00042</div></div><div><div class="fl">הצטרפות</div><div class="fv">07/26</div></div></div></div></div>' +
       '<div class="st"><div class="h"><div class="r1"><span class="dot"></span><span class="cap">אימות בתוקף עבור ההטבה</span></div><span class="mk">YELLOW ZONE</span></div>' +
       '<div class="ft"><span class="bz">' + esc(bizName) + '</span><span class="clk">' + esc(clk) + '</span></div></div>' +
-      '</div><div class="wk-pass-cap">דוגמה: צילום מסך למימוש אצל ' + esc(bizName) + '. נותן השירות רואה את שם העסק שלו ואת השעה העדכנית.</div></div>';
+      '</div>' + (cap ? '<div class="wk-pass-cap">' + esc(String(cap).split('{biz}').join(bizName)) + '</div>' : '') + '</div>';
   }
 
   function closeBtn(kind, ctx) { return ctx.preview ? '' : '<button type="button" class="wk-close" onclick="WK.close(\'' + kind + '\')" aria-label="סגירה">' + X + '</button>'; }
@@ -254,8 +259,9 @@
     }
     var p = d.pages[kind];
     var secs = p.steps
-      ? '<ol class="wk-steps">' + p.sections.map(function (s, i) { return '<li><i>' + (i + 1) + '</i><div><b>' + esc(s.h) + '</b><span class="wk-sp">' + esc(s.p) + '</span>' + (s.img ? passHtml(s.img) : '') + '</div></li>'; }).join('') + '</ol>'
-      : p.sections.map(function (s) { return '<div class="wk-sec">' + (s.h ? '<h3>' + esc(s.h) + '</h3>' : '') + '<p>' + esc(s.p) + '</p>' + (s.img ? passHtml(s.img) : '') + '</div>'; }).join('');
+      ? '<ol class="wk-steps">' + p.sections.map(function (s, i) { return '<li><i>' + (i + 1) + '</i><div><b>' + esc(s.h) + '</b><span class="wk-sp">' + esc(s.p) + '</span>' + (s.img ? passHtml(s.img, s.imgCap) : '') + '</div></li>'; }).join('') + '</ol>'
+      : p.sections.map(function (s) { return '<div class="wk-sec">' + (s.h ? '<h3>' + esc(s.h) + '</h3>' : '') + '<p>' + esc(s.p) + '</p>' + (s.img ? passHtml(s.img, s.imgCap) : '') + '</div>'; }).join('');
+    secs += p.exBiz ? '<div class="wk-sec wk-ex">' + (p.exTitle ? '<h3>' + esc(p.exTitle) + '</h3>' : '') + passHtml(p.exBiz, p.exCap) + '</div>' : '';
     secs += p.note ? '<div class="wk-small">' + esc(p.note) + '</div>' : '';
     var cta = function (c) { return c && c.label ? '<button type="button" class="wk-cta"' + act(ctx, "WK.act('" + esc(c.act) + "')") + '>' + esc(c.label) + '</button>' : ''; };
     return '<div class="wk-hero page wk-th-' + esc(p.theme || 'navy') + '">' + closeBtn(kind, ctx) +
@@ -270,7 +276,7 @@
     '.wk{padding:16px 0 4px}',
     '.wk-track{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding:2px 16px 4px;scroll-padding:0 16px;scrollbar-width:none}',
     '.wk-track::-webkit-scrollbar{display:none}',
-    '.wk-slide{position:relative;flex:0 0 86%;height:196px;border-radius:20px;overflow:hidden;scroll-snap-align:start;cursor:pointer;display:flex;flex-direction:column;justify-content:flex-end;padding:14px 16px;color:#fff;-webkit-tap-highlight-color:transparent;box-shadow:0 1px 2px rgba(10,42,102,.08);box-sizing:border-box;font-family:Rubik,sans-serif}',
+    '.wk-slide{position:relative;flex:0 0 86%;height:212px;border-radius:20px;overflow:hidden;scroll-snap-align:start;cursor:pointer;display:flex;flex-direction:column;justify-content:flex-end;padding:14px 16px;color:#fff;-webkit-tap-highlight-color:transparent;box-shadow:0 1px 2px rgba(10,42,102,.08);box-sizing:border-box;font-family:Rubik,sans-serif}',
     '.wk-slide:active{transform:scale(.985)}',
     '.wk-dots{display:flex;justify-content:center;gap:5px;margin-top:10px}',
     '.wk-dots i{width:6px;height:6px;border-radius:999px;background:#D5D9E2;transition:width .2s,background .2s}',
@@ -293,8 +299,11 @@
     '.wk-s-ben{background:#FFD400;color:#0A2A66;justify-content:space-between}',
     '.wk-s-ben .wk-badge{background:#0A2A66;color:#FFD400}',
     '.wk-s-ben .t{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.12;margin-top:7px}',
-    '.wk-names{font-size:13.5px;font-weight:800;margin-top:6px;line-height:1.35;margin-inline-end:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
-    '.wk-names em{font-style:normal;font-weight:600;opacity:.75}',
+    '.wk-names ul{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:1px}',
+    '.wk-names li{font-size:13px;font-weight:800;line-height:1.3;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.wk-names li::before{content:"";width:5px;height:5px;border-radius:50%;background:#0A2A66;flex:none}',
+    '.wk-names li.tbd{font-weight:600;opacity:.7}',
+    '.wk-names li.tbd::before{background:transparent;border:1.5px solid #0A2A66;width:3px;height:3px}',
     // דוגמת תעודת החבר
     '.wk-pass{margin-top:12px}',
     '.wk-pass-ph{border:3px solid #0A2A66;border-radius:24px;padding:12px 10px;background:#FBF8EE;max-width:280px;margin:0 auto;color:#0A2A66}',
@@ -350,7 +359,7 @@
     '.wk-th-yellow{background:#FFD400;color:#0A2A66}',
     '.wk-th-yellow .wk-badge{background:#0A2A66;color:#FFD400}',
     '.wk-s-page.wk-th-yellow::after{background:rgba(10,42,102,.08)}',
-    '@media (min-width:761px){.wk{width:100%;max-width:1410px;margin-inline:auto;padding:22px 0 4px}.wk-track{padding:2px 20px 4px;scroll-padding:0 20px}.wk-slide{flex-basis:calc((100% - 20px) / 2.6);height:220px}}',
+    '@media (min-width:761px){.wk{width:100%;max-width:1410px;margin-inline:auto;padding:22px 0 4px}.wk-track{padding:2px 20px 4px;scroll-padding:0 20px}.wk-slide{flex-basis:calc((100% - 20px) / 2.6);height:228px}}',
     // גיליונות
     '.wk-sheet{position:fixed;inset:0;z-index:9999;background:#fff;overflow-y:auto;-webkit-overflow-scrolling:touch;transform:translateY(100%);transition:transform .28s ease;font-family:Rubik,sans-serif;color:#3A4C7A}',
     '.wk-sheet.open{transform:none}',
