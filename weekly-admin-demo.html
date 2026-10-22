@@ -141,6 +141,13 @@
   .task-row { display: block; line-height: 1.5; padding: 8px 10px; border-radius: 10px; background: var(--red-bg); color: #B42318; font-weight: 700; font-size: 13px; }
   .task-row.y { background: var(--warn-bg); color: #B54708; }
 
+  /* שאלון */
+  .qbox { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .qbox textarea { width: 100%; font: 14px/1.6 Rubik, sans-serif; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; resize: vertical; color: var(--text); }
+  .qbox textarea:focus { outline: 2px solid var(--accent-bg); border-color: var(--accent); }
+  .qbox .hint { font-size: 11.5px; color: var(--muted); }
+  .qmsg { font-size: 12.5px; font-weight: 700; color: #067647; }
+
   /* לשוניות */
   .tabs { display: flex; gap: 4px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 4px; margin-bottom: 4px; }
   .tabs button { flex: 1; font: 800 14px Rubik, sans-serif; border: 0; background: transparent; color: var(--text-sm); border-radius: 9px; padding: 10px 12px; cursor: pointer; }
@@ -209,6 +216,17 @@
   <div id="paneNext" style="display:none">
     <h2>התקופות הבאות <span class="sub">כל חצי חודש נוצר לבד – רק לבחור עסקים ולמלא תוכן</span></h2>
     <div class="periods" id="periods"></div>
+
+    <h2>שאלון להכרות עם בעל העסק <span class="sub">אותו נוסח לכולם · <b>{עסק}</b> מתחלף לבד בשם העסק כששולחים</span></h2>
+    <div class="qbox">
+      <textarea id="qText" rows="16" oninput="qSave()"></textarea>
+      <div class="actions">
+        <button type="button" class="btn primary" onclick="qCopy()">העתקה</button>
+        <button type="button" class="btn" onclick="qReset()">חזרה לנוסח המקורי</button>
+        <span class="qmsg" id="qMsg"></span>
+      </div>
+      <div class="hint">בדמו העריכה נשמרת רק במכשיר הזה. "וואטסאפ" ברשימה למטה פותח את השאלון עם שם העסק.</div>
+    </div>
 
     <h2>מי הביע עניין <span class="sub">14 עסקים סימנו בטופס או באזור האישי · לחיצה על "לשבץ" ממלאת את המקום הריק הקרוב</span></h2>
     <div class="tbl" id="interest"></div>
@@ -313,7 +331,7 @@
         var used = Object.keys(S).some(function (k) { var s = S[k]; return s.biz === n || (s.bizList || []).indexOf(n) > -1; });
         return '<div class="tr"><div class="n">' + esc(n) + '</div><div>' + (/צ'ומפי|יהב|DJ ANAV|אלון|שרים/.test(n) ? 'עסק' : 'עסק + הטבה') + '</div>' +
           '<div>' + (used ? '<span class="pill ok">משובץ</span>' : '<span class="pill warn">ממתין לשיחה</span>') + '</div>' +
-          '<div class="acts"><button type="button">וואטסאפ</button><button type="button" onclick="quickAssign(\'' + esc(n).replace(/'/g, "\\'") + '\')">לשבץ</button></div></div>';
+          '<div class="acts"><button type="button" onclick="qWhatsApp(\'' + esc(n).replace(/'/g, "\\'") + '\')">וואטסאפ</button><button type="button" onclick="quickAssign(\'' + esc(n).replace(/'/g, "\\'") + '\')">לשבץ</button></div></div>';
       }).join('');
   }
 
@@ -444,6 +462,40 @@
     // עדכון הכרטיסים מאחור (מוכן/חסר) בלי לבנות את העורך מחדש
     var keep = open; render(); open = keep;
   }
+
+  // ── שאלון להכרות עם בעל העסק – נוסח אחד לכולם, ניתן לעריכה ──────────────
+  var Q_DEFAULT = [
+    'היי, מה נשמע? 😊',
+    'אנחנו ב-Yellow Zone פותחים פינה חדשה באפליקציה – "האוהד שמאחורי העסק". כל חצי חודש מכירים לקהילה אוהד אחד שיש לו עסק, ונשמח מאוד שתהיו חלק מזה 💛',
+    '',
+    'כמה שאלות קצרות – אפשר לענות בהודעה קולית או כתובה, איך שנוח:',
+    '1. ממתי מכבי בחיים שלך, ואיך זה התחיל?',
+    '2. איפה רואים אותך במשחקים – באיזה יציע, ועם מי?',
+    '3. משחק או רגע אחד שלא יישכח.',
+    '4. במשפט אחד: מה מכבי בשבילך?',
+    '5. ספרו לנו על {עסק} – איך זה התחיל ומה מיוחד בו?',
+    '6. יש קשר בין היציע לעסק? (שם, עיצוב, לקוחות, ערבי משחק…)',
+    '7. מה מחכה לאוהד שמגיע אליכם?',
+    '8. למה חשוב לך שאוהדים יקנו מאוהדים?',
+    '9. ותמונה אחת שלך – ביציע או בעסק – עם אישור לפרסם אותה עם השם הפרטי.',
+    '',
+    'תודה ענקית! 🟡🔵'
+  ].join('\n');
+  var Q_KEY = 'wkAdminDemoQuestions';
+  function qGet() { try { return localStorage.getItem(Q_KEY) || Q_DEFAULT; } catch (e) { return Q_DEFAULT; } }
+  function qMsg(t) { var e = document.getElementById('qMsg'); e.textContent = t; clearTimeout(qMsg.t); qMsg.t = setTimeout(function () { e.textContent = ''; }, 2000); }
+  window.qSave = function () { try { localStorage.setItem(Q_KEY, document.getElementById('qText').value); } catch (e) {} };
+  window.qReset = function () { document.getElementById('qText').value = Q_DEFAULT; try { localStorage.removeItem(Q_KEY); } catch (e) {} qMsg('חזר לנוסח המקורי'); };
+  window.qCopy = function () {
+    var t = document.getElementById('qText').value;
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { qMsg('הועתק ✓'); }, function () {
+      var a = document.getElementById('qText'); a.select(); try { document.execCommand('copy'); qMsg('הועתק ✓'); } catch (e) { qMsg('סמנו והעתיקו ידנית'); } });
+  };
+  window.qWhatsApp = function (biz) {
+    var t = document.getElementById('qText').value.split('{עסק}').join(biz);
+    window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank');
+  };
+  document.getElementById('qText').value = qGet();
 
   render();
 </script>
