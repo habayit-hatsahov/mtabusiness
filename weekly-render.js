@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData2';
+  var KEY = 'wkDemoData3';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -16,7 +16,10 @@
   var KNOWN = {
     'פטריקס פארק רחובות': { id: 'PSp6yTsBMgJv2u6H6u7f', cover: IMG.patrix },
     "צ'ומפי": { id: 'a1QIIkYOZBGdWKpLTkKe', logo: IMG.chompy, area: 'ירושלים · רחובות' },
-    'Casual tattoo': { id: '20rLIqD5Pym3Tt3h3kXZ', logo: IMG.casual, area: 'רחובות' }
+    'Casual tattoo': { id: '20rLIqD5Pym3Tt3h3kXZ', logo: IMG.casual, area: 'רחובות' },
+    'אולטראס טאטו': { id: 'AmOjD8WcCP3Zw5SvdDHh' },
+    'Kind tattoo shop': { id: 'VLGLZPgme3rNgsG72z57', logo: STORAGE + 'bizUploads%2F183513db-16b1-4bf5-830b-34364f4c10ba%2Flogo_ffcf5294-0ad1-418a-8aed-efd545607fe6?alt=media&token=e95678c8-e145-485f-b985-7315fcc6b6b4' },
+    'לארט אופנועים - LS2': { id: 'Tk69An2mwkpNMSjZYVEa' }
   };
 
   // ── שלושה כיווני נוסח ל"מי אנחנו" (§539 סבב 6) ──────────────────────────────────────────
@@ -55,7 +58,9 @@
         biz: [
           { name: "צ'ומפי", area: 'ירושלים · רחובות' },
           { name: 'Casual tattoo', area: 'רחובות' },
-          { name: '', area: '' }, { name: '', area: '' }, { name: '', area: '' }
+          { name: 'אולטראס טאטו', area: '' },
+          { name: 'Kind tattoo shop', area: '' },
+          { name: '', area: '' }
         ]
       },
       fan: {
@@ -74,10 +79,10 @@
         us: pageFromDir('a'),
         redeem: {
           theme: 'soft', badge: 'למשתמשים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע או באתר',
-          heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: 'הכול מתחיל בכרטיס העסק ← "מימוש ההטבה"', steps: false,
+          heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: 'הכול מתחיל בכרטיס העסק ← "מימוש ההטבה"', steps: true,
           sections: [
             { h: 'בחנות', p: 'נכנסים לכרטיס העסק ← "מימוש ההטבה", ומציגים בקופה את תעודת החבר: שם העסק בפס הכחול ושעון חי. לפעמים יבקשו גם תעודה מזהה.' },
-            { h: 'בעל מקצוע או נותן שירות', p: 'בפגישה – מציגים את תעודת החבר, כמו בחנות. בהזמנה בטלפון או בוואטסאפ, נותן השירות עשוי לבקש הוכחה: מצלמים מסך של תעודת החבר מתוך הכרטיס שלו ושולחים לו. ככה זה נראה:', img: 'Casual tattoo' },
+            { h: 'בעל מקצוע או נותן שירות', p: 'בפגישה – מציגים את תעודת החבר, כמו בחנות. בהזמנה בטלפון או בוואטסאפ, נותן השירות עשוי לבקש הוכחה: מצלמים מסך של תעודת החבר מתוך הכרטיס שלו ושולחים לו. ככה זה נראה:', img: 'לארט אופנועים - LS2' },
             { h: 'באתר / אונליין', p: 'בעסקים עם קוד קופון – מעתיקים את הקוד מהכרטיס של העסק ומזינים אותו בהזמנה באתר שלהם. הקוד מוצג רק לחברים.' }
           ],
           note: 'משהו לא עבד? כתבו לנו ב"האזור שלי" ← "הודעות".',
@@ -190,7 +195,7 @@
   function passHtml(bizName) {
     var n = new Date(), clk = n.toLocaleDateString('he-IL') + ' · ' + n.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     return '<div class="wk-pass"><div class="wk-pass-ph">' +
-      '<div class="yz"><img class="wm" src="images/yellowzone-watermark.png" alt=""><div class="in"><div class="mid"><div><div class="lab">תעודת חבר</div><div class="nm">ישראל ישראלי</div></div>' +
+      '<div class="yz"><img class="wm" src="images/yellowzone-watermark.png" alt=""><div class="in"><div class="mid"><div><div class="lab">תעודת חבר</div><div class="nm">שומע מ</div></div>' +
       '<img class="logo" src="images/yellowzone-logo-horizontal.png" alt=""></div><div class="flds"><div><div class="fl">מספר חבר</div><div class="fv">#00042</div></div><div><div class="fl">הצטרפות</div><div class="fv">07/26</div></div></div></div></div>' +
       '<div class="st"><div class="h"><div class="r1"><span class="dot"></span><span class="cap">אימות בתוקף עבור ההטבה</span></div><span class="mk">YELLOW ZONE</span></div>' +
       '<div class="ft"><span class="bz">' + esc(bizName) + '</span><span class="clk">' + esc(clk) + '</span></div></div>' +
@@ -249,7 +254,7 @@
     }
     var p = d.pages[kind];
     var secs = p.steps
-      ? '<ol class="wk-steps">' + p.sections.map(function (s, i) { return '<li><i>' + (i + 1) + '</i><div><b>' + esc(s.h) + '</b>' + esc(s.p) + '</div></li>'; }).join('') + '</ol>'
+      ? '<ol class="wk-steps">' + p.sections.map(function (s, i) { return '<li><i>' + (i + 1) + '</i><div><b>' + esc(s.h) + '</b><span class="wk-sp">' + esc(s.p) + '</span>' + (s.img ? passHtml(s.img) : '') + '</div></li>'; }).join('') + '</ol>'
       : p.sections.map(function (s) { return '<div class="wk-sec">' + (s.h ? '<h3>' + esc(s.h) + '</h3>' : '') + '<p>' + esc(s.p) + '</p>' + (s.img ? passHtml(s.img) : '') + '</div>'; }).join('');
     secs += p.note ? '<div class="wk-small">' + esc(p.note) + '</div>' : '';
     var cta = function (c) { return c && c.label ? '<button type="button" class="wk-cta"' + act(ctx, "WK.act('" + esc(c.act) + "')") + '>' + esc(c.label) + '</button>' : ''; };
@@ -405,7 +410,9 @@
     '.wk-steps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:14px}',
     '.wk-steps li{display:flex;gap:12px;align-items:flex-start;font-size:15.5px;line-height:1.6}',
     '.wk-steps li i{flex:none;width:28px;height:28px;border-radius:50%;background:#FFD400;color:#0A2A66;font:800 14px Rubik,sans-serif;display:flex;align-items:center;justify-content:center;font-style:normal}',
-    '.wk-steps li b{display:block;color:#0A2A66;font-size:16px}',
+    '.wk-steps li b{display:block;color:#0A2A66;font-size:17px;font-weight:800;margin-bottom:3px}',
+    '.wk-steps li > div{flex:1;min-width:0}',
+    '.wk-sp{white-space:pre-line}',
     '.wk-ctas{display:flex;flex-direction:column;gap:8px}',
     '.wk-cta{display:block;width:100%;height:48px;border-radius:12px;border:0;background:#0A2A66;color:#fff;font:800 16px Rubik,sans-serif;cursor:pointer}',
     '.wk-ctas .wk-cta + .wk-cta{background:#FFD400;color:#0A2A66}',
