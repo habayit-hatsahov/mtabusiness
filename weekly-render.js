@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData16';
+  var KEY = 'wkDemoData17';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -66,6 +66,7 @@
         // (רמי, 24.10) בחוץ: "+ הנחה על תוספות" אחרי הגדלים, "לפרטים" ליד החץ, השור עם סמל מכבי על הזרוע.
         // התמונות – הדמיה זמנית (סמל מכבי הודבק על הזרוע של השור); השור המקעקע בפנים – ממתין לתמונה מרמי.
         sizeExtra: '+ הנחה על תוספות', more: 'לפרטים',
+        bg: 'images/weekly/emblem-bg.png',   // סמל מכבי כרקע בתיבה, כמו בתפריט הקטגוריות (רמי, 24.10)
         img: '', heroImg: '',   // (רמי, 24.10) השור הורד – בלי תמונה בתיבה ובגיליון
         howTitle: 'איך זה עובד',
         how: '• ההטבה לכל מי שקובע תור לקעקוע אצל אחד המקעקעים, עד {end}\n• את הכול – העיצוב, המועד והתשלום – סוגרים ישירות מול המקעקע\n• לוחצים על הכרטיס של המקעקע ופונים אליו',
@@ -147,6 +148,7 @@
     return { theme: 'navy', badge: '', logo: true, slideTitle: 'מי אנחנו? ', slideAccent: 'Yellow Zone', slideLine: v.slideLine,
       heroWho: 'מי אנחנו', heroTitle: 'Yellow Zone', heroTag: v.heroTag, quote: v.quote || '',
       sections: v.sections.map(function (s) { return { h: s.h, p: s.p }; }),
+      bg: 'images/weekly/megaphone-bg.png',   // המגפון כרקע (רמי, 24.10)
       cta: { label: 'לרישום העסק', act: 'bizSignup' } };
   }
 
@@ -208,6 +210,7 @@
         (b.sizeExtra ? ' ' + esc(b.sizeExtra) : '') + '</span></div></div>';
       // (רמי, 24.10) השור עם סמל מכבי על הזרוע – משמאל למטה; החץ הופך ל"לפרטים"
       return '<div class="wk-slide wk-s-ben' + (b.img ? ' has-img' : '') + '"' + o + '>' +
+        (b.bg ? '<img class="wk-bgmark" src="' + esc(b.bg) + '" alt="">' : '') +
         (b.img ? '<img class="wk-ben-img" src="' + esc(b.img) + '" alt="">' : '') +
         '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.slideTitle) + '</div>' +
         (b.hint ? '<div class="wk-hint">' + esc(String(b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
@@ -225,7 +228,8 @@
         '<span class="wk-go">' + GO + '</span></div>';
     }
     var p = d.pages[kind];
-    return '<div class="wk-slide wk-s-page wk-th-' + esc(p.theme || 'navy') + '"' + o + '>' +
+    return '<div class="wk-slide wk-s-page wk-th-' + esc(p.theme || 'navy') + (p.bg ? ' has-bg' : '') + '"' + o + '>' +
+      (p.bg ? '<img class="wk-bgmark" src="' + esc(p.bg) + '" alt="">' : '') +
       (p.logo ? '<img class="logo" src="images/yellowzone-mark-square.png" alt="">' : (p.badge ? '<span class="wk-badge">' + esc(p.badge) + '</span>' : '<span></span>')) +
       '<div><div class="t">' + esc(p.slideTitle) + (p.slideAccent ? '<span>' + esc(p.slideAccent) + '</span>' : '') + '</div>' +
       (p.slideLine ? '<div class="s">' + esc(p.slideLine) + '</div>' : '') + '</div>' +
@@ -424,6 +428,11 @@
     // 3–6 – עמודים קבועים
     '.wk-s-page{justify-content:space-between}',
     '.wk-s-page::after{content:"";position:absolute;left:-40px;top:-40px;width:170px;height:170px;border-radius:50%;background:rgba(255,212,0,.12)}',
+    // סמל ברקע התיבה (רמי, 24.10): מכבי בהטבה, מגפון ב"מי אנחנו"
+    '.wk-bgmark{position:absolute!important;z-index:0!important;pointer-events:none;user-select:none}',
+    '.wk-s-ben .wk-bgmark{width:180px;height:180px;left:-22px;top:-4px;opacity:.13;transform:rotate(-12deg)}',
+    '.wk-s-page.has-bg::after{display:none}',
+    '.wk-s-page .wk-bgmark{width:132px;height:132px;left:-6px;top:-4px;opacity:.9;transform:rotate(-12deg)}',
     '.wk-s-page > *{position:relative;z-index:1}',
     '.wk-s-page .logo{width:46px;height:46px;border-radius:12px;background:#fff;padding:6px;box-sizing:border-box}',
     '.wk-s-page .t{font-size:22px;font-weight:800;line-height:1.15}',
