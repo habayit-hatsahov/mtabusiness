@@ -1674,6 +1674,9 @@
 
           <div id="contactNoteBanner" style="display:none"></div>
 
+          <!-- §598 — משימה: קוד קופון בלי תשובה על כפל מבצעים (עסקים שנרשמו לפני §597). נעלם כשנענה. -->
+          <div id="stackTaskCard" style="display:none"></div>
+
           <!-- מומלץ מחשב — רק במסכי מובייל, מעל מד השלמות כדי שתהיה ההערה הראשונה שרואים -->
           <div class="desktop-tip-banner">
             <div class="desktop-tip-banner-title">העריכה מותאמת למחשב – לא לטלפון</div>
@@ -2874,6 +2877,7 @@ function renderBizView(flashZone) {
   bizHeroLikesEl.title = 'מספר האוהדים שסימנו לב לעסק שלך באינדקס';
   document.getElementById('bizHeroLikesHint').textContent = 'אוהדים שסימנו לב לעסק שלך';
 
+  renderStackTask(w);   // §598
   const s = biz.status || 'pending';
   document.getElementById('bizStatusBadge').innerHTML =
     `<span class="status-badge ${s}">${STATUS_HE[s] || s}</span>`;
@@ -5103,6 +5107,32 @@ window.submitAllChanges = async function() {
     showToast(bizWriteErrorMsg(e));
     return false;
   }
+};
+
+// ── §598 — משימה: "הקוד כולל כפל מבצעים?" ────────────────────────────────────────────────
+// לעסקים עם קוד קופון שלא ענו (השאלה נוספה בהרשמה רק ב-§597). תשובה בלחיצה אחת נשלחת לאישור
+// (pendingChanges) – אלא אם יש לבעל העסק שינויים אחרים שטרם נשלחו: אז היא רק מצטרפת לטיוטה,
+// כדי לא לשלוח בשמו עריכות שעוד לא סיים.
+function renderStackTask(w) {
+  const box = document.getElementById('stackTaskCard');
+  if (!box) return;
+  if (!w.discountCode || w.discountStacking) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div class="pending-banner" style="background:#FFF8D6;border-color:#F2E199">
+      <div class="pending-banner-title">📌 שאלה אחת מהצוות</div>
+      <div class="pending-banner-sub">קוד הקופון שלכם <b dir="ltr">${esc(w.discountCode)}</b> כולל כפל מבצעים? כלומר, אפשר לממש אותו גם על מוצר שכבר במבצע באתר.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button type="button" class="btn-save-sec" onclick="answerStackTask('yes')">כן, כולל כפל מבצעים</button>
+        <button type="button" class="btn-save-sec" style="background:#fff;color:var(--text);border:1.5px solid var(--border)" onclick="answerStackTask('no')">לא, לא כולל</button>
+      </div>
+    </div>`;
+}
+window.answerStackTask = async function(v) {
+  const hadOtherDrafts = Object.keys(draftChanges).length > 0;
+  discStacking = v;
+  stageChanges({ discountStacking: v });
+  if (!hadOtherDrafts) await submitAllChanges();
 };
 
 window.discardAllChanges = function() {
