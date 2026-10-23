@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData15';
+  var KEY = 'wkDemoData16';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -54,7 +54,7 @@
       ben: {
         badge: 'הטבה בלעדית משתנה', tag2: 'מבצע השקה',
         slideTitle: 'קעקוע של מכבי במחיר מוזל',
-        hint: '{n} מקעקעים מאזורים שונים משתתפים בהטבה זאת',   // רמז בתיבה במקום השמות; {n} = מספר המקומות (רמי, 24.10) – דמו: להשוואה בין חלופות לתיבה
+        hint: '{n} מקעקעים מאזורים שונים',   // רמז בתיבה במקום השמות; {n} = מספר המקומות (רמי, 24.10) – דמו: להשוואה בין חלופות לתיבה
         explainTitle: 'הטבה בלעדית שמתחלפת כל חצי חודש',
         explain: 'ב-1 וב-16 בכל חודש עולה כאן הטבה בלעדית חדשה – רק לחברי Yellow Zone, ורק לזמן מוגבל. ההטבה הזאת בתוקף עד {end}, והבאה מתחילה ב-{next}. שווה לא לפספס.',
         title: 'קעקוע של מכבי',
@@ -66,7 +66,7 @@
         // (רמי, 24.10) בחוץ: "+ הנחה על תוספות" אחרי הגדלים, "לפרטים" ליד החץ, השור עם סמל מכבי על הזרוע.
         // התמונות – הדמיה זמנית (סמל מכבי הודבק על הזרוע של השור); השור המקעקע בפנים – ממתין לתמונה מרמי.
         sizeExtra: '+ הנחה על תוספות', more: 'לפרטים',
-        img: 'images/weekly/bull-tattoo-arm.jpg', heroImg: 'images/weekly/bull-tattoo-arm.jpg',
+        img: '', heroImg: '',   // (רמי, 24.10) השור הורד – בלי תמונה בתיבה ובגיליון
         howTitle: 'איך זה עובד',
         how: '• ההטבה לכל מי שקובע תור לקעקוע אצל אחד המקעקעים, עד {end}\n• את הכול – העיצוב, המועד והתשלום – סוגרים ישירות מול המקעקע\n• לוחצים על הכרטיס של המקעקע ופונים אליו',
         biz: [
@@ -370,7 +370,7 @@
     '.wk-ring .dial b,.wk-ring .dial small{position:relative}',
     '.wk-ring .dial b{font-size:23px;font-weight:800}',
     '.wk-ring .dial small{font-size:10.5px;font-weight:800;margin-top:1px}',
-    '.wk-pfrom{line-height:1.05;margin-inline-end:52px}',
+    '.wk-pfrom{line-height:1.05;margin-inline-end:96px}',
     '.wk-pfrom small{display:block;font-size:11.5px;font-weight:800;opacity:.75;margin-bottom:1px}',
     '.wk-pfrom div{display:flex;flex-direction:column;align-items:flex-start;gap:2px}',
     // השור עם סמל מכבי על הזרוע (משמאל למטה) + "לפרטים" ליד החץ (רמי, 24.10)
