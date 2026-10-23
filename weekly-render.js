@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData13';
+  var KEY = 'wkDemoData14';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -121,8 +121,8 @@
           // "שתפו ועקבו" (רמי, 24.10) – שיתוף + מעקב ברשתות באותה תיבה, לא תיבה שביעית
           theme: 'yellow', badge: 'קהילה', slideTitle: 'שתפו ועקבו', slideLine: 'הזמינו חברים ועקבו אחרינו ברשתות',
           heroWho: 'שתפו ועקבו', heroTitle: 'מביאים עוד אוהדים', heroTag: 'כל מי שמצטרף מחזק את כולנו',
-          followTitle: 'עקבו אחרינו',   // כתובת ריקה = הכפתור לא מוצג (פייסבוק – רמי ישלח)
-          follow: [{ label: 'אינסטגרם', url: 'https://www.instagram.com/Yellowzone.mta' }, { label: 'פייסבוק', url: '' }],
+          followTitle: 'עקבו אחרינו',   // כתובת ריקה = הכפתור לא מוצג
+          follow: [{ label: 'אינסטגרם', url: 'https://www.instagram.com/Yellowzone.mta' }, { label: 'פייסבוק', url: 'https://www.facebook.com/profile.php?id=61593146773605' }],
           sections: [
             { h: 'חבר אוהד', p: 'כל אוהד שמצטרף מחזק את העסקים של כולנו – ומקבל הטבות אצלם.' },
             { h: 'מכירים אוהד עם עסק?', p: 'שלחו לו – כל עסק חדש זה עוד הטבה לקהילה.' }
