@@ -472,6 +472,15 @@
     // גלילה חלקה לא זזה בכל דפדפן (נמדד: נשארה על 0) – אם לא זזה, קופצים ישר
     setTimeout(function () { if (Math.abs(tr.scrollLeft - from) < 2) { tr.scrollLeft = to; arrows(); } }, 450);
   }
+  // דמו: החלפת כיוון הנוסח של "מי אנחנו" ישר מדף הבית (נשמר כמו עריכה בניהול)
+  function setUsDir(dir) {
+    if (!state.d || !US_DIRS[dir]) return;
+    var theme = state.d.pages.us.theme;
+    state.d.pages.us = pageFromDir(dir); state.d.pages.us.theme = theme; state.d.usDir = dir; save(state.d);
+    var ctx = { t: timing(new Date()) }, sh = document.getElementById('wkSheet-us'), tr = document.getElementById('wkTrack');
+    if (sh) { var top = sh.scrollTop; sh.innerHTML = sheetInner('us', state.d, ctx); sh.scrollTop = top; }
+    if (tr) { var i = ORDER.indexOf('us'), tmp = document.createElement('div'); tmp.innerHTML = slideHtml('us', state.d, ctx); tr.replaceChild(tmp.firstChild, tr.children[i]); }
+  }
   function open(k) {
     var el = document.getElementById('wkSheet-' + k); if (!el) return;
     state.open = k; el.classList.add('open'); el.setAttribute('aria-hidden', 'false'); el.scrollTop = 0;
@@ -506,6 +515,6 @@
     DEFAULTS: DEFAULTS, pageFromDir: pageFromDir, load: load, save: save, reset: reset,
     period: period, dm: dm, timing: timing, esc: esc,
     slideHtml: slideHtml, sheetInner: sheetInner, injectCss: injectCss,
-    mount: mount, step: step, tok: tok, open: open, close: close, biz: biz, act: doAct
+    mount: mount, step: step, tok: tok, setUsDir: setUsDir, usDir: function () { return state.d && state.d.usDir; }, open: open, close: close, biz: biz, act: doAct
   };
 })();
