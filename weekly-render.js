@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData12';
+  var KEY = 'wkDemoData13';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -99,8 +99,8 @@
           // הדוגמה בסוף, לא בין הסעיפים הממוספרים (רמי, סבב 11: "בטלפון לא נראה טוב שבין המספרים יש תמונה")
           exTitle: 'ככה נראית תעודת החבר', exBiz: 'לארט אופנועים - LS2',
           exCap: 'דוגמה: צילום מסך למימוש אצל {biz}. נותן השירות רואה את שם העסק שלו ואת השעה העדכנית בעת הרכישה.',   // {biz} = שם העסק בדוגמה
-          // לבעל העסק: המדריך להורדה מחכה באזור האישי של העסק (⚠️ עוד לא קיים שם – לבנייה)
-          bizNote: 'יש לכם עסק ב-Yellow Zone? המדריך המלא להורדה, לכם ולצוות, מחכה באזור האישי של העסק שלכם.',
+          // לבעל העסק: המדריך להורדה באזור האישי של העסק – קיים (biz-guides.js → redemption-guide.html, §507)
+          bizNote: 'יש לכם עסק ב-Yellow Zone? באזור האישי של העסק מחכה לכם מדריך להורדה – עם שם העסק שלכם ודוגמה איך זה נראה אצלכם. לכם ולצוות.',
           note: 'משהו לא עבד? כתבו לנו ב"האזור שלי" ← "הודעות".',
           cta: { label: '', act: '' }
         },
@@ -110,16 +110,19 @@
           // הערך לעסק (רמי, 24.10): הזדמנויות עסקיות, חיבורים עם בעלי מקצוע, הלקוחות, רישום בחינם
           sections: [
             { h: 'מה מקבלים', p: '• לקוחות מהקהילה – אוהדים שכיף לעבוד איתם, ושחוזרים\n• חיבורים עם בעלי מקצוע אוהדים כמוך\n• הזדמנויות עסקיות ושיתופי פעולה בתוך הקהילה\n• כרטיס עסק באפליקציה עם תמונות, פרטים וההטבה שלכם' },
-            // רמי, 24.10 – ⚠️ סטטיסטיקות והמלצות עוד לא קיימים בדשבורד העסק
-            { h: 'בניהול העסק שלכם', p: '• עריכה זמינה בכל רגע – תמונות, פרטים והטבה\n• סטטיסטיקות על הכרטיס שלכם\n• המלצות לקידום העסק' },
+            // רמי, 24.10 – סטטיסטיקות ירדו (עוד אין); "המלצות" = טיפים לחשיפה
+            { h: 'בניהול העסק שלכם', p: '• עריכה זמינה בכל רגע – תמונות, פרטים והטבה\n• טיפים לקבלת חשיפה גדולה וקידום העסק' },
             { h: 'איך מצטרפים', p: 'ממלאים טופס קצר עם פרטי העסק וההטבה. הצוות עובר ומאשר, ואז העסק עולה לאוויר. הרישום בחינם.' },
             { h: 'להופיע בראש דף הבית', p: 'פעמיים בחודש אנחנו מציגים בראש דף הבית הטבה בלעדית ועסק של אוהד עם הסיפור שלו. רוצים להשתתף? מסמנים עניין בטופס או ב"האזור שלי".' }
           ],
           cta: { label: 'לרישום העסק – בחינם', act: 'bizSignup' }
         },
         invite: {
-          theme: 'yellow', badge: 'שתפו', slideTitle: 'הזמינו חברים', slideLine: 'אוהדים ובעלי עסקים – כמה שיותר, יותר טוב',
-          heroWho: 'הזמינו ושתפו', heroTitle: 'מביאים עוד אוהדים', heroTag: 'כל מי שמצטרף מחזק את כולנו',
+          // "שתפו ועקבו" (רמי, 24.10) – שיתוף + מעקב ברשתות באותה תיבה, לא תיבה שביעית
+          theme: 'yellow', badge: 'קהילה', slideTitle: 'שתפו ועקבו', slideLine: 'הזמינו חברים ועקבו אחרינו ברשתות',
+          heroWho: 'שתפו ועקבו', heroTitle: 'מביאים עוד אוהדים', heroTag: 'כל מי שמצטרף מחזק את כולנו',
+          followTitle: 'עקבו אחרינו',   // כתובת ריקה = הכפתור לא מוצג (פייסבוק – רמי ישלח)
+          follow: [{ label: 'אינסטגרם', url: 'https://www.instagram.com/Yellowzone.mta' }, { label: 'פייסבוק', url: '' }],
           sections: [
             { h: 'חבר אוהד', p: 'כל אוהד שמצטרף מחזק את העסקים של כולנו – ומקבל הטבות אצלם.' },
             { h: 'מכירים אוהד עם עסק?', p: 'שלחו לו – כל עסק חדש זה עוד הטבה לקהילה.' }
@@ -243,6 +246,15 @@
     return out;
   }
 
+  // "עקבו אחרינו" – כפתורי רשתות; כתובת ריקה = לא מוצג
+  function followHtml(p, ctx) {
+    var f = (p.follow || []).filter(function (x) { return x && x.url; });
+    if (!f.length) return '';
+    return '<div class="wk-sec wk-follow">' + (p.followTitle ? '<h3>' + esc(p.followTitle) + '</h3>' : '') + '<div>' + f.map(function (x) {
+      return '<a class="wk-fbtn" href="' + esc(x.url) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : '') + '>' + esc(x.label) + '</a>';
+    }).join('') + '</div></div>';
+  }
+
   function closeBtn(kind, ctx) { return ctx.preview ? '' : '<button type="button" class="wk-close" onclick="WK.close(\'' + kind + '\')" aria-label="סגירה">' + X + '</button>'; }
 
   function sheetInner(kind, d, ctx) {
@@ -306,7 +318,7 @@
       (p.heroWho ? '<div class="who">' + esc(p.heroWho) + '</div>' : '') + '<div class="t">' + esc(p.heroTitle) + '</div>' +
       (p.heroTag ? '<div class="tag">' + esc(p.heroTag) + '</div>' : '') + '</div>' +
       '<div class="wk-in">' + (p.quote ? '<div class="wk-quote">' + esc(p.quote) + '</div>' : '') + secs +
-      (cta(p.cta) || cta(p.cta2) ? '<div class="wk-ctas">' + cta(p.cta) + cta(p.cta2) + '</div>' : '') + '</div>';
+      (cta(p.cta) || cta(p.cta2) ? '<div class="wk-ctas">' + cta(p.cta) + cta(p.cta2) + '</div>' : '') + followHtml(p, ctx) + '</div>';
   }
 
   // ── עיצוב (משותף לשני הדמואים) ─────────────────────────────────────────────────────────
@@ -470,6 +482,8 @@
     '.wk-steps li > div{flex:1;min-width:0}',
     '.wk-sp{white-space:pre-line}',
     '.wk-ctas{display:flex;flex-direction:column;gap:8px}',
+    '.wk-follow > div{display:flex;gap:8px}',
+    '.wk-fbtn{flex:1;display:flex;align-items:center;justify-content:center;height:44px;border-radius:12px;border:1.5px solid #0A2A66;background:#fff;color:#0A2A66;font:800 15px Rubik,sans-serif;text-decoration:none}',
     '.wk-cta{display:block;width:100%;height:48px;border-radius:12px;border:0;background:#0A2A66;color:#fff;font:800 16px Rubik,sans-serif;cursor:pointer}',
     '.wk-ctas .wk-cta + .wk-cta{background:#FFD400;color:#0A2A66}',
     '.wk-bar-btn{position:fixed;bottom:0;left:0;right:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to top,#fff 70%,rgba(255,255,255,0));z-index:3}',
