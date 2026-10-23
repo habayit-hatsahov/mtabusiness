@@ -726,7 +726,11 @@
       <span class="setting-arrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></span>
     </a>
     <div class="setting-row" style="cursor:pointer;" onclick="signOutUser()">
-      <div class="setting-label" style="color:#000;">התנתקות</div>
+      <div class="setting-label" style="color:#000;" id="signOutLabel">התנתקות</div>
+    </div>
+    <!-- §600 — מנהל בדפדפן: "התנתקות" למעלה הופכת ל"חזרה למרכז הניהול" (בלי signOut), והתנתקות אמיתית כאן -->
+    <div class="setting-row" id="adminRealSignOut" style="cursor:pointer;display:none" onclick="signOutUser(true)">
+      <div class="setting-label" style="color:#B42318;">התנתקות מלאה (גם ממרכז הניהול בכל הלשוניות)</div>
     </div>
     <!-- §420 — דרישת Google Play: מסלול מחיקת חשבון **מתוך האפליקציה**.
          §420ב — ⚠️ **display:none הוא ברירת המחדל, ולא סגנון.** המערכת חיה, והמשתמש
@@ -1079,7 +1083,12 @@ window.confirmDeleteAccount = async function () {
 // ── SIGN OUT ──────────────────────────────────────────────────────────────
 // מוגדר מוקדם ככל האפשר (לפני ה-Auth guard למטה) — כדי שכפתור ההתנתקות תמיד
 // יעבוד, גם אם טעינת הנתונים/ה-Auth guard נתקעת/נכשלת בהמשך הדף.
-window.signOutUser = async function() {
+// §600 — רמי (23.10): "התנתקתי באינדקס וזה ניתק אותי מהדשבורד בלשונית אחרת". החיבור משותף לכל
+// הלשוניות של הדומיין, ולכן signOut כאן מנתק גם את מרכז הניהול. מנהל בדפדפן חוזר למרכז הניהול
+// ונשאר מחובר; התנתקות אמיתית – רק מהשורה האדומה (force).
+window.signOutUser = async function(force) {
+  if (window._yzAdminWeb && force !== true) { location.href = 'admin-dashboard.html'; return; }
+  if (window._yzAdminWeb && !confirm('ההתנתקות תנתק גם את מרכז הניהול בכל הלשוניות הפתוחות. להתנתק?')) return;
   try { await signOut(auth); } catch (e) {}
   ['hb_uid', 'hb_phone', 'hb_memberId'].forEach(k => localStorage.removeItem(k));
   try { sessionStorage.removeItem('yz_delete_flow'); } catch (e) {}   // §499
@@ -1314,6 +1323,12 @@ if (memberId) {
 if (member.isAdmin) {
   const adminItem = document.getElementById('menuAdminItem');
   if (adminItem) adminItem.style.display = 'flex';
+  // §600 — בדפדפן בלבד (באפליקציה אין מרכז ניהול, וההתנתקות שם רגילה)
+  if (!window.Capacitor && !/YellowZoneApp/i.test(navigator.userAgent || '')) {
+    window._yzAdminWeb = true;
+    const l = document.getElementById('signOutLabel'); if (l) l.textContent = 'חזרה למרכז הניהול (נשארים מחוברים)';
+    const r = document.getElementById('adminRealSignOut'); if (r) r.style.display = '';
+  }
 }
 
 // ── BUSINESS PROFILE ─────────────────────────────────────────────────────
