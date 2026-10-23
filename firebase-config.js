@@ -34,14 +34,17 @@ attachAppCheck(app, { measure: true });
 // הלשוניות ממילא לא נחוץ, והפתיחה המהירה נשענת בפועל על המטמונים ב-localStorage של כל דף
 // (hb_businesses_cache, hb_greeting_cache וכו'), לא על המטמון של Firestore.
 // ⚠️ **בדפדפן — ללא שינוי** (שם זה עובד, ושם יש באמת כמה לשוניות). ⚠️ זהה לזיהוי ב-app-banner.js.
+// ══ §599 — 🔴 גם בדפדפן: מטמון בזיכרון ═══════════════════════════════════════════════════════
+// רמי (23.10) עובד במרכז הניהול בכמה לשוניות. נצפה באותו יום: בלשונית אחת `setDoc` של "שליחה
+// עכשיו" לא יצא לשרת דקות ארוכות (נשמר רק בתור המקומי ב-IndexedDB, והשליחה עצמה לא קרתה), ו"אפליקציה
+// ושימוש" לא הציג נתונים בדפדפן – באפליקציה (זיכרון) כן. אותה משפחה כמו §466: המטמון המתמיד
+// ותיאום-הלשוניות נתקעים. מאז §497 אוהדים לא משתמשים באתר בדפדפן, ולכן היתרון (פתיחה מהירה
+// מהמטמון) כמעט לא קיים, והסיכון – כתיבות-ניהול שלא יוצאות – גבוה.
+// ⚠️ לא להחזיר persistentLocalCache בלי לבדוק כמה לשוניות של מרכז הניהול במקביל.
 const HB_IN_APP = /YellowZoneApp/i.test((typeof navigator !== 'undefined' && navigator.userAgent) || '');
 let db;
 try {
-  db = initializeFirestore(app, {
-    localCache: HB_IN_APP
-      ? memoryLocalCache()
-      : persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-  });
+  db = initializeFirestore(app, { localCache: memoryLocalCache() });
 } catch (e) {
   console.error('Firestore persistent cache init failed, falling back to memory cache:', e);
   db = getFirestore(app);

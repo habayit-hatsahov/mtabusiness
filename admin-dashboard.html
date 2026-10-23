@@ -9378,6 +9378,7 @@ function bizFullDetailHtml(id, opts) {
           <label class="step-reviewed"><input type="checkbox" ${step4Reviewed ? 'checked' : ''} onchange="toggleSecReviewed('${b.id}',4,this.checked)"> נסקר</label>
           <button class="btn-step-edit" id="stepEditBtn4_${b.id}" onclick="toggleBizSecEdit('${b.id}',4)">${step4Changes.length ? 'סגירה' : 'עריכה'}</button>
         </div>
+        ${stackNoteHtml(b)}
         ${(b.wantsBusinessOfWeek || b.wantsBenefitOfWeek) ? `<div style="padding:0 24px 14px;font-size:12.5px;color:var(--text-sm);line-height:1.6;">${b.wantsBusinessOfWeek ? 'הביעו עניין ב<strong>עסק השבוע</strong> (סקירה + באנר בדף הבית). ' : ''}${b.wantsBenefitOfWeek ? 'הביעו עניין ב<strong>הטבת השבוע</strong> (הטבה חד-פעמית). ' : ''}שיבוץ בפועל מתבצע ממסך "עסק השבוע" בסרגל הצד.</div>` : ''}
         <!-- בעבר מוצג רק אם כבר יש discountFullText/בקשה-ממתינה, ואז הוחלף ל-hasDiscount בלבד. אבל
              נמצא בפועל (עיצוב שיער קובי / חבילות תקשורת לבית, 2026-08-08): עסק יכול להיות עם
@@ -9674,9 +9675,29 @@ window.reopenBizSecEdit = function(id, n) {
 
 // ── סימון "נסקר" לכל שלב — בקרה ידנית של המנהל על עסק pending לפני אישור, לא קשור לבריאות פרופיל ──
 // סימון "נסקר" — עכשיו שדה אמיתי (businesses/{id}.reviewedSections, מפה {1:bool,...}) — נכתב מיד בכל טוגל
+// ── §598 — כפל מבצעים בשלב ההטבות ─────────────────────────────────────────────────────────
+// רמי מוסיף ידנית לנוסח ההטבה "כולל כפל מבצעים" כשבעל העסק ענה כן. התזכורת מוצגת בשלב, ו"נסקר"
+// על שלב ההטבות שואל לפני סימון כשהקוד כולל כפל מבצעים והנוסח לא מזכיר את זה.
+function stackMentioned(b) { return /כפל\s*מבצע/.test(`${b.discountFullText || ''} ${b.discountText || ''}`); }
+function stackNeedsMention(b) { return !!b.discountCode && b.discountStacking === 'yes' && !stackMentioned(b); }
+function stackNoteHtml(b) {
+  if (!b.discountCode) return '';
+  const box = (bg, bd, html) => `<div style="margin:0 24px 14px;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.6;background:${bg};border:1px solid ${bd}">${html}</div>`;
+  if (b.discountStacking === 'yes') return stackMentioned(b)
+    ? box('#ECFDF3', '#ABEFC6', '✓ הקוד <b>כולל כפל מבצעים</b> – וזה מצוין בנוסח ההטבה.')
+    : box('#FFF4E5', '#F5C27A', '⚠️ <b>הקוד כולל כפל מבצעים</b> – לבדוק שנוסח ההטבה מציין את זה (למשל "כולל כפל מבצעים"). לעריכה: "עריכה" בשלב הזה.');
+  if (b.discountStacking === 'no') return box('#F2F4F7', '#D0D5DD', 'הקוד <b>לא כולל</b> כפל מבצעים.');
+  return box('#F2F4F7', '#D0D5DD', '⏳ בעל העסק עוד לא ענה אם הקוד כולל כפל מבצעים (מחכה לו משימה באזור העסק).');
+}
+
 window.toggleSecReviewed = async function(id, n, checked) {
   const b = findBiz(id);
   if (!b) return;
+  if (n === 4 && checked && stackNeedsMention(b) &&
+      !confirm('הקוד של העסק כולל כפל מבצעים, ונוסח ההטבה לא מזכיר את זה.\nלסמן "נסקר" בכל זאת?')) {
+    document.querySelectorAll(`input[onchange*="toggleSecReviewed('${id}',4"]`).forEach(el => { el.checked = false; });
+    return;
+  }
   const reviewedSections = { ...(b.reviewedSections || {}), [n]: checked };
   await saveSectionUpdates(id, { reviewedSections });
 };
