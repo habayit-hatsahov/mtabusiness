@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData14';
+  var KEY = 'wkDemoData15';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -62,7 +62,13 @@
         prices: [{ size: '6 ס"מ', price: '400 ₪', was: '' }, { size: '12 ס"מ', price: '800 ₪', was: '' }],
         after: 'רוצים להוסיף כיתוב, דמות או סקיצה? 20% הנחה על התוספת.',
         whereTitle: 'איפה מממשים', bizNoun: 'מקעקעים',
-        howTo: 'בוחרים את הקרוב אליכם, נכנסים לכרטיס שלו ומתאמים מולו.',
+        howTo: 'בוחרים את הקרוב אליכם ולוחצים על הכרטיס שלו כדי לפנות אליו.',
+        // (רמי, 24.10) בחוץ: "+ הנחה על תוספות" אחרי הגדלים, "לפרטים" ליד החץ, השור עם סמל מכבי על הזרוע.
+        // התמונות – הדמיה זמנית (סמל מכבי הודבק על הזרוע של השור); השור המקעקע בפנים – ממתין לתמונה מרמי.
+        sizeExtra: '+ הנחה על תוספות', more: 'לפרטים',
+        img: 'images/weekly/bull-tattoo-arm.jpg', heroImg: 'images/weekly/bull-tattoo-arm.jpg',
+        howTitle: 'איך זה עובד',
+        how: '• ההטבה לכל מי שקובע תור לקעקוע אצל אחד המקעקעים, עד {end}\n• את הכול – העיצוב, המועד והתשלום – סוגרים ישירות מול המקעקע\n• לוחצים על הכרטיס של המקעקע ופונים אליו',
         biz: [
           { name: "צ'ומפי", area: 'ירושלים · רחובות' },
           { name: 'Casual tattoo', area: 'רחובות' },
@@ -198,12 +204,16 @@
       var ring = '<div class="wk-ring" style="--p:' + (100 - t.pct).toFixed(1) + '"><span class="cap">' + (t.left === 1 ? 'יום אחרון!' : 'מתחלפת בעוד') + '</span>' +
         '<span class="dial"><b>' + t.left + '</b><small>' + (t.left === 1 ? 'יום' : 'ימים') + '</small></span></div>';
       var price = !lo ? '' : '<div class="wk-pfrom"><div><b>' + (range ? '<bdi dir="ltr">' + lo.n + '–' + hi.n + '</bdi>&nbsp;' + esc(String(hi.p.price).replace(/^[\d.,\s]+/, '')) : esc(lo.p.price)) + '</b>' +
-        '<span>' + (range && !isNaN(lo.s) && !isNaN(hi.s) ? lo.s + ' עד ' + hi.s + ' ' + esc(String(hi.p.size).replace(/^[\d.\s]+/, '')) : esc(lo.p.size)) + '</span></div></div>';
-      return '<div class="wk-slide wk-s-ben"' + o + '>' +
+        '<span>' + (range && !isNaN(lo.s) && !isNaN(hi.s) ? lo.s + ' עד ' + hi.s + ' ' + esc(String(hi.p.size).replace(/^[\d.\s]+/, '')) : esc(lo.p.size)) +
+        (b.sizeExtra ? ' ' + esc(b.sizeExtra) : '') + '</span></div></div>';
+      // (רמי, 24.10) השור עם סמל מכבי על הזרוע – משמאל למטה; החץ הופך ל"לפרטים"
+      return '<div class="wk-slide wk-s-ben' + (b.img ? ' has-img' : '') + '"' + o + '>' +
+        (b.img ? '<img class="wk-ben-img" src="' + esc(b.img) + '" alt="">' : '') +
         '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.slideTitle) + '</div>' +
         (b.hint ? '<div class="wk-hint">' + esc(String(b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
-        ring + price +
-        '<span class="wk-go">' + GO + '</span></div>';
+        // עם השור – העיגול מכסה את הראש, אז הספירה עוברת לתווית קטנה בפינה עם עיגול זעיר
+        (b.img ? '<div class="wk-days" style="--p:' + (100 - t.pct).toFixed(1) + '"><i></i>' + (t.left === 1 ? 'יום אחרון!' : 'עוד ' + t.left + ' ימים') + '</div>' : ring) + price +
+        (b.more ? '<span class="wk-more">' + esc(b.more) + GO + '</span>' : '<span class="wk-go">' + GO + '</span>') + '</div>';
     }
     if (kind === 'fan') {
       var f = d.fan, cover = (KNOWN[f.biz] || {}).cover || '';
@@ -261,11 +271,9 @@
     var t = ctx.t;
     if (kind === 'ben') {
       var b = d.ben;
-      var maxN = 0; b.prices.forEach(function (p) { var n = parseFloat(p.size) || 0; if (n > maxN) maxN = n; });
+      // (רמי, 24.10) בלי עיגול-הדמיית-הגודל ליד כל מחיר – גודל ומחיר בלבד
       var prices = b.prices.map(function (p) {
-        var n = parseFloat(p.size) || 0, dia = maxN ? Math.round(22 + 34 * n / maxN) : 40;
-        return '<div class="wk-pc"><div class="ring"><i style="width:' + dia + 'px;height:' + dia + 'px"></i></div><b>' + esc(p.size) + '</b>' +
-          (p.was ? '<s>' + esc(p.was) + '</s>' : '') + '<span>' + esc(p.price) + '</span></div>';
+        return '<div class="wk-pc"><b>' + esc(p.size) + '</b>' + (p.was ? '<s>' + esc(p.was) + '</s>' : '') + '<span>' + esc(p.price) + '</span></div>';
       }).join('');
       var rows = b.biz.map(function (x, i) {
         var inf = bizInfo(x);
@@ -274,13 +282,16 @@
           (inf.logo ? '<img class="wk-logo" src="' + esc(inf.logo) + '" alt="">' : '<div class="wk-logo wk-logo-l">' + esc(x.name.charAt(0)) + '</div>') +
           '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>';
       }).join('');
-      return '<div class="wk-hero ben">' + closeBtn(kind, ctx) + '<span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span><div class="t">' + esc(b.title) + '</div></div>' +
+      return '<div class="wk-hero ben' + (b.heroImg ? ' has-img' : '') + '">' + closeBtn(kind, ctx) + (b.heroImg ? '<img class="wk-hero-img" src="' + esc(b.heroImg) + '" alt="">' : '') +
+        '<span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span><div class="t">' + esc(b.title) + '</div></div>' +
         '<div class="wk-in">' +
         (b.explain ? '<div class="wk-rot"><b>' + esc(b.explainTitle || '') + '</b><p>' + esc(tok(b.explain, t)) + '</p></div>' : '') +
         '<div class="wk-timer"><div class="row"><span>' + leftHtml(t) + '</span><span>עד ' + t.end + '</span></div><div class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></div></div>' +
         (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
         '<div class="wk-price">' + prices + '</div>' +
         (b.after ? '<p class="wk-p">' + esc(b.after) + '</p>' : '') +
+        // איך זה עובד – סוגרים מול המקעקע (רמי, 24.10)
+        (b.how ? '<div class="wk-rot navy"><b>' + esc(b.howTitle || '') + '</b>' + paraHtml(tok(b.how, t)) + '</div>' : '') +
         '<div class="wk-sec"><h3>' + esc(b.whereTitle) + ' · ' + b.biz.length + ' ' + esc(b.bizNoun || 'עסקים') + '</h3><div class="wk-rows">' + rows + '</div>' +
         (b.howTo ? '<div class="wk-small" style="margin-top:8px">' + esc(b.howTo) + '</div>' : '') + '</div>' +
         '<div class="wk-small">כל חצי חודש – ב-1 וב-16 – הטבה בלעדית חדשה. הבאה מתחילה ב-' + t.next + '.</div>' +
@@ -362,7 +373,20 @@
     '.wk-pfrom{line-height:1.05;margin-inline-end:52px}',
     '.wk-pfrom small{display:block;font-size:11.5px;font-weight:800;opacity:.75;margin-bottom:1px}',
     '.wk-pfrom div{display:flex;flex-direction:column;align-items:flex-start;gap:2px}',
-    '.wk-pfrom b{font-size:30px;font-weight:800;letter-spacing:-.02em;white-space:nowrap}',
+    // השור עם סמל מכבי על הזרוע (משמאל למטה) + "לפרטים" ליד החץ (רמי, 24.10)
+    '.wk-ben-img{position:absolute;left:0;bottom:0;height:100%;width:auto;z-index:0;pointer-events:none;-webkit-mask-image:linear-gradient(to right,#000 62%,transparent);mask-image:linear-gradient(to right,#000 62%,transparent)}',
+    '.wk-s-ben .wk-ben-top,.wk-s-ben .wk-pfrom{position:relative;z-index:1}.wk-s-ben .wk-ring,.wk-s-ben .wk-go,.wk-more{z-index:1}',
+    '.wk-s-ben.has-img .wk-ben-top,.wk-s-ben.has-img .wk-pfrom{margin-inline-end:112px}',
+    '.wk-s-ben.has-img .wk-ring{position:absolute}',
+    '.wk-days{position:absolute;left:10px;top:10px;z-index:1;display:flex;align-items:center;gap:5px;height:26px;padding:0 9px 0 5px;border-radius:999px;background:#fff;color:#0A2A66;font-size:12px;font-weight:800;box-shadow:0 1px 4px rgba(10,42,102,.18)}',
+    '.wk-days i{width:16px;height:16px;border-radius:50%;background:conic-gradient(#0A2A66 calc(var(--p) * 1%),rgba(10,42,102,.18) 0);-webkit-mask:radial-gradient(circle,transparent 4px,#000 4.5px);mask:radial-gradient(circle,transparent 4px,#000 4.5px)}',
+    '.wk-more{position:absolute!important;left:10px;bottom:12px;display:flex;align-items:center;gap:2px;height:32px;padding:0 11px 0 6px;border-radius:999px;background:#0A2A66;color:#FFD400;font-size:13px;font-weight:800;box-shadow:0 2px 8px rgba(10,42,102,.25)}',
+    '.wk-hero.ben.has-img{min-height:230px;padding-top:70px;justify-content:flex-end}',
+    '.wk-hero-img{position:absolute!important;left:0;bottom:0;height:100%;width:auto;pointer-events:none;-webkit-mask-image:linear-gradient(to right,#000 65%,transparent);mask-image:linear-gradient(to right,#000 65%,transparent)}',
+    '.wk-hero.ben.has-img > .t{margin-inline-end:42%}',
+    '.wk-rot.navy .wk-ul li{color:#fff}',
+    '.wk-rot.navy .wk-ul li::before{background:#FFD400;box-shadow:none}',
+    '.wk-pfrom b{font-size:26px;font-weight:800;letter-spacing:-.02em;white-space:nowrap}',
     '.wk-pfrom span{font-size:12.5px;font-weight:700;opacity:.8;white-space:nowrap}',
     // דוגמת תעודת החבר
     '.wk-pass{margin-top:12px}',
