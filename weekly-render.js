@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData6';
+  var KEY = 'wkDemoData12';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -22,23 +22,30 @@
     'לארט אופנועים - LS2': { id: 'Tk69An2mwkpNMSjZYVEa' }
   };
 
-  // ── שלושה כיווני נוסח ל"מי אנחנו" (§539 סבב 6) ──────────────────────────────────────────
+  // ── שלושה כיווני נוסח ל"מי אנחנו" (§539 סבב 6; נכתבו מחדש 24.10 לפי הנקודות של רמי: למה קם,
+  //    הערך לקהילה, לאוהד, לעסק, בחינם, מה יש בפנים). שורות שמתחילות ב-"• " מוצגות כרשימה.
   var US_DIRS = {
-    a: { slideLine: 'הבית של האוהדים, גם מחוץ למגרש', heroTag: 'אוהדים ועסקים, קהילה צהובה אחת', sections: [
-      { h: 'מה זה', p: 'Yellow Zone היא הבית של אוהדי מכבי גם מחוץ למגרש. כאן מוצאים עסקים של אוהדים – מקעקעים, מסעדות, עורכי דין, די-ג\'יים ועוד – וכל אחד מהם נותן הטבה לחברי הקהילה.' },
-      { h: 'למה זה חשוב', p: 'כשאתם קונים אצל אוהד, הכסף נשאר בבית. אתם מקבלים הטבה, והוא מקבל לקוח שמדבר את השפה שלו.' },
-      { h: 'מה עוד יש כאן', p: 'פעמיים בחודש – ב-1 וב-16 – הטבה בלעדית חדשה לזמן מוגבל, והיכרות עם אוהד שמאחורי עסק: 2 עסקים בכל חודש.' },
-      { h: 'יש לכם עסק?', p: 'אתם אוהדים ויש לכם עסק? הצטרפו, תנו הטבה לקהילה – ותכירו לקוחות שכבר אוהבים אתכם.' }
+    // א – הכיוון שרמי בחר (24.10), מחובר עם ב: הציטוט, "למה זה חשוב", ההיכרות והבמה
+    a: { slideLine: 'נולד מחוויות אישיות עם עסקים של אוהדים', heroTag: 'אוהד שקונה מאוהד – מקבל יותר', quote: 'ביציע אנחנו עומדים כתף אל כתף. כאן זה ממשיך גם ביום-יום.', sections: [
+      { h: 'איך זה התחיל', p: 'מחוויות אישיות: שוב ושוב עבדנו עם בעלי מקצוע שהם אוהדי מכבי – ותמיד קיבלנו קצת יותר. הנחה בלי שביקשנו, שירות מעל המצופה וחוויה טובה. Yellow Zone קמה כדי שכל אוהד ייהנה מזה.' },
+      { h: 'למה זה חשוב', p: 'כל קנייה אצל אוהד מחזקת עוד משפחה מהיציע. ככה בונים קהילה – לא רק ב-90 דקות.' },
+      { h: 'מה זה נותן לכם', p: '• הטבה אמיתית כמעט אצל כל עסק\n• בעל עסק שמבין אתכם מהמשפט הראשון\n• היכרות עם האנשים שמאחורי העסקים\n• כסף שנשאר בתוך המשפחה הצהובה' },
+      { h: 'ולבעלי העסקים', p: '• לקוחות שכיף לעבוד איתם – ושחוזרים\n• חיבורים עם בעלי מקצוע אוהדים\n• הזדמנויות עסקיות מתוך הקהילה\n• במה בראש דף הבית – פעמיים בחודש' },
+      { h: 'מה קורה כאן', p: '• מעל 100 עסקים של אוהדים, כל אחד באישור הצוות\n• פעמיים בחודש – הטבה בלעדית חדשה\n• פעמיים בחודש – מכירים את האוהד שמאחורי העסק' },
+      { h: 'כמה זה עולה?', p: 'כלום. בחינם לאוהדים ולעסקים – בלי אותיות קטנות.' }
     ] },
-    b: { slideLine: 'מה שמחבר ביציע – ממשיך גם אחרי השריקה', heroTag: 'מה שמחבר אותנו ביציע – ממשיך גם אחרי השריקה', quote: 'ביציע אנחנו עומדים כתף אל כתף. למה שזה ייגמר בשריקת הסיום?', sections: [
-      { h: 'הרעיון', p: 'בין האוהדים יש בעלי מסעדות, מקעקעים, עורכי דין, מאמנים ודי-ג\'יים. Yellow Zone מחברת ביניהם לבין שאר האוהדים – כדי שכשמישהו מאיתנו צריך שירות, הוא יגיע קודם לאחד משלנו.' },
-      { h: 'מה אתם מרוויחים', p: 'הטבה אמיתית אצל כל עסק, ועסק שמבין מה זה מכבי. ופעמיים בחודש – הטבה בלעדית חדשה והסיפור של אוהד אחד שמאחורי העסק שלו.' },
-      { h: 'יש לכם עסק?', p: 'גם אתם אוהדים עם עסק? זה המקום שלכם. רושמים את העסק, בוחרים הטבה, והקהילה מגיעה.' }
+    b: { slideLine: 'כשאוהדים קונים מאוהדים – כולנו מרוויחים', heroTag: 'הקהילה הצהובה, גם מחוץ למגרש', quote: 'ביציע אנחנו עומדים כתף אל כתף. כאן זה ממשיך גם ביום-יום.', sections: [
+      { h: 'למה זה חשוב', p: 'כל קנייה אצל אוהד מחזקת עוד משפחה מהיציע. ככה בונים קהילה – לא רק ב-90 דקות. והכול התחיל מחוויות שלנו: אצל בעלי מקצוע אוהדי מכבי תמיד קיבלנו קצת יותר.' },
+      { h: 'לאוהד', p: '• הטבות אצל עסקים של אוהדים\n• שירות של "אחד משלנו"\n• היכרות עם האנשים שמאחורי העסקים' },
+      { h: 'לעסק', p: '• לקוחות מהקהילה, שכיף לעבוד איתם\n• חיבורים עם בעלי מקצוע כמוך\n• במה: פעמיים בחודש עסק אחר בראש דף הבית' },
+      { h: 'מה מחכה לכם בפנים', p: '• מעל 100 עסקים של אוהדים\n• הטבה בלעדית שמתחלפת כל חצי חודש\n• "האוהד שמאחורי העסק" – 2 סיפורים בחודש' },
+      { h: 'ובחינם', p: 'לאוהדים ולעסקים. בלי אותיות קטנות.' }
     ] },
-    c: { slideLine: 'הטבות אצל עסקים של אוהדי מכבי', heroTag: 'הטבות אצל עסקים של אוהדי מכבי', sections: [
-      { h: 'מה זה', p: 'אפליקציה של הטבות אצל עסקים של אוהדי מכבי. כל עסק עובר אישור של הצוות לפני שהוא מופיע כאן.' },
-      { h: 'פעמיים בחודש', p: 'ב-1 וב-16 בכל חודש: הטבה בלעדית חדשה לזמן מוגבל, ועסק חדש בפינת "האוהד שמאחורי העסק" – 2 עסקים בחודש.' },
-      { h: 'יש לכם עסק?', p: 'רישום העסק לוקח כמה דקות. אחרי אישור הצוות הוא מופיע כאן עם ההטבה שלכם.' }
+    c: { slideLine: 'עסקים של אוהדים. הטבות לאוהדים. בחינם.', heroTag: 'עסקים של אוהדים. הטבות לאוהדים. בחינם.', sections: [
+      { h: 'בשורה אחת', p: 'גילינו שוב ושוב שאצל בעל מקצוע שהוא אוהד מכבי מקבלים יותר – הנחה, יחס, חוויה. אז ריכזנו את כולם במקום אחד.' },
+      { h: 'אוהד מקבל', p: '• הטבות אצל מעל 100 עסקים\n• הטבה בלעדית חדשה כל חצי חודש\n• עסק שמדבר את השפה שלו' },
+      { h: 'עסק מקבל', p: '• לקוחות שכיף לעבוד איתם\n• חיבורים והזדמנויות עסקיות בקהילה\n• במה בראש דף הבית – פעמיים בחודש' },
+      { h: 'כמה זה עולה?', p: 'כלום. בחינם לאוהדים ולעסקים.' }
     ] }
   };
 
@@ -47,6 +54,7 @@
       ben: {
         badge: 'הטבה בלעדית משתנה', tag2: 'מבצע השקה',
         slideTitle: 'קעקוע של מכבי במחיר מוזל',
+        hint: '{n} מקעקעים מאזורים שונים משתתפים בהטבה זאת',   // רמז בתיבה במקום השמות; {n} = מספר המקומות (רמי, 24.10) – דמו: להשוואה בין חלופות לתיבה
         explainTitle: 'הטבה בלעדית שמתחלפת כל חצי חודש',
         explain: 'ב-1 וב-16 בכל חודש עולה כאן הטבה בלעדית חדשה – רק לחברי Yellow Zone, ורק לזמן מוגבל. ההטבה הזאת בתוקף עד {end}, והבאה מתחילה ב-{next}. שווה לא לפספס.',
         title: 'קעקוע של מכבי',
@@ -78,8 +86,11 @@
       pages: {
         us: pageFromDir('a'),
         redeem: {
-          theme: 'soft', badge: 'למשתמשים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע או באתר',
-          heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: 'הכול מתחיל בכרטיס העסק ← "מימוש ההטבה"', steps: true,
+          // למשתמשים ולבעלי עסקים – המדריך מכוון גם את בעל העסק (רמי, 24.10)
+          theme: 'soft', badge: 'לאוהדים ולעסקים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע או נותן שירות, או באתר',
+          heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: 'לאוהדים – וגם לבעלי העסקים, שיידעו מה לבדוק', steps: true,
+          // כותרת שמסבירה מעל 3 הסעיפים (רמי, 24.10)
+          introTitle: 'הכול מתחיל בכרטיס העסק ← "מימוש ההטבה"', intro: 'משם זה תלוי איפה קונים – בחנות, אצל בעל מקצוע או נותן שירות, או באתר:',
           sections: [
             { h: 'בחנות', p: 'נכנסים לכרטיס העסק ← "מימוש ההטבה", ומציגים בקופה את תעודת החבר: שם העסק בפס הכחול ושעון חי. לפעמים יבקשו גם תעודה מזהה (דוגמה בסוף).' },
             { h: 'בעל מקצוע או נותן שירות', p: 'תמיד במעמד הרכישה – בפגישה, בטלפון או בוואטסאפ. מציגים לו את תעודת החבר, או שולחים לו צילום שלה – לפי מה שהוא מבקש: מצלמים מסך מתוך כרטיס העסק שלו (דוגמה בסוף).' },
@@ -88,18 +99,23 @@
           // הדוגמה בסוף, לא בין הסעיפים הממוספרים (רמי, סבב 11: "בטלפון לא נראה טוב שבין המספרים יש תמונה")
           exTitle: 'ככה נראית תעודת החבר', exBiz: 'לארט אופנועים - LS2',
           exCap: 'דוגמה: צילום מסך למימוש אצל {biz}. נותן השירות רואה את שם העסק שלו ואת השעה העדכנית בעת הרכישה.',   // {biz} = שם העסק בדוגמה
+          // לבעל העסק: המדריך להורדה מחכה באזור האישי של העסק (⚠️ עוד לא קיים שם – לבנייה)
+          bizNote: 'יש לכם עסק ב-Yellow Zone? המדריך המלא להורדה, לכם ולצוות, מחכה באזור האישי של העסק שלכם.',
           note: 'משהו לא עבד? כתבו לנו ב"האזור שלי" ← "הודעות".',
           cta: { label: '', act: '' }
         },
         forbiz: {
-          theme: 'navy', badge: 'לבעלי עסקים', slideTitle: 'יש לכם עסק?', slideLine: 'הצטרפו לעסקים של האוהדים',
+          theme: 'navy', badge: 'לבעלי עסקים', slideTitle: 'יש לכם עסק?', slideLine: 'לקוחות, חיבורים והזדמנויות – והרישום בחינם',
           heroWho: 'לבעלי עסקים', heroTitle: 'העסק שלכם ב-Yellow Zone', heroTag: 'אוהדים קונים מאוהדים',
+          // הערך לעסק (רמי, 24.10): הזדמנויות עסקיות, חיבורים עם בעלי מקצוע, הלקוחות, רישום בחינם
           sections: [
-            { h: 'למה להצטרף', p: 'הקהילה של אוהדי מכבי מחפשת עסקים של אוהדים. העסק שלכם מופיע באפליקציה עם תמונות, פרטים והטבה לחברים.' },
-            { h: 'איך מצטרפים', p: 'ממלאים טופס קצר עם פרטי העסק וההטבה. הצוות עובר ומאשר, ואז העסק עולה לאוויר.' },
+            { h: 'מה מקבלים', p: '• לקוחות מהקהילה – אוהדים שכיף לעבוד איתם, ושחוזרים\n• חיבורים עם בעלי מקצוע אוהדים כמוך\n• הזדמנויות עסקיות ושיתופי פעולה בתוך הקהילה\n• כרטיס עסק באפליקציה עם תמונות, פרטים וההטבה שלכם' },
+            // רמי, 24.10 – ⚠️ סטטיסטיקות והמלצות עוד לא קיימים בדשבורד העסק
+            { h: 'בניהול העסק שלכם', p: '• עריכה זמינה בכל רגע – תמונות, פרטים והטבה\n• סטטיסטיקות על הכרטיס שלכם\n• המלצות לקידום העסק' },
+            { h: 'איך מצטרפים', p: 'ממלאים טופס קצר עם פרטי העסק וההטבה. הצוות עובר ומאשר, ואז העסק עולה לאוויר. הרישום בחינם.' },
             { h: 'להופיע בראש דף הבית', p: 'פעמיים בחודש אנחנו מציגים בראש דף הבית הטבה בלעדית ועסק של אוהד עם הסיפור שלו. רוצים להשתתף? מסמנים עניין בטופס או ב"האזור שלי".' }
           ],
-          cta: { label: 'לרישום העסק', act: 'bizSignup' }
+          cta: { label: 'לרישום העסק – בחינם', act: 'bizSignup' }
         },
         invite: {
           theme: 'yellow', badge: 'שתפו', slideTitle: 'הזמינו חברים', slideLine: 'אוהדים ובעלי עסקים – כמה שיותר, יותר טוב',
@@ -109,7 +125,7 @@
             { h: 'מכירים אוהד עם עסק?', p: 'שלחו לו – כל עסק חדש זה עוד הטבה לקהילה.' }
           ],
           cta: { label: 'שיתוף לחבר אוהד', act: 'shareFan' },
-          cta2: { label: 'שיתוף לבעל עסק', act: 'shareBiz' },
+          cta2: { label: 'שיתוף לאוהד בעל עסק', act: 'shareBiz' },
           fanText: 'אוהדי מכבי קונים כחול־צהוב 💛\nכל העסקים של אוהדי מכבי תל אביב במקום אחד – עם הטבות בלעדיות לחברים. מורידים ונרשמים:',
           bizText: 'יש לך עסק ואתה אוהד מכבי? 💛\nב-Yellow Zone העסקים של האוהדים מגיעים לאוהדים, עם הטבה לחברי הקהילה. נרשמים בכמה דקות:'
         }
@@ -168,15 +184,22 @@
   function slideHtml(kind, d, ctx) {
     var t = ctx.t, o = act(ctx, "WK.open('" + kind + "')");
     if (kind === 'ben') {
-      // בחוץ – שמות העסקים (לא לוגואים, רמי סבב 9): "אצל צ'ומפי · Casual tattoo · ועוד 3 בקרוב"
-      var b = d.ben, named = b.biz.filter(function (x) { return x.name; }).map(function (x) { return esc(x.name); }), tbd = b.biz.length - named.length;
-      // אחד מתחת לשני (רמי, סבב 11) – לא בשורה אחת
-      var names = (named.length || tbd) ? '<ul>' + named.map(function (n) { return '<li>' + n + '</li>'; }).join('') +
-        (tbd ? '<li class="tbd">' + (named.length ? 'ועוד ' + tbd + ' בקרוב' : tbd + ' ' + esc(b.bizNoun || 'עסקים') + ' – בקרוב') + '</li>' : '') + '</ul>' : '';
+      // (רמי, 24.10) בלי שמות המקעקעים בחוץ – רק רמז ("אצל 5 מקעקעים מאזורים שונים"); השמות בגיליון.
+      // מבנה: למעלה מימין תווית + כותרת + רמז, למעלה משמאל עיגול הימים; למטה מימין המחיר, משמאל החץ.
+      // "מבצע השקה" (tag2) מוצג רק בפנים.
+      var b = d.ben;
+      // המחיר כטווח (רמי, 24.10): "400–800 ₪" ו"6–12 ס"מ"; מחיר אחד – כמו שהוא
+      var pr = b.prices.map(function (p) { return { n: parseFloat(String(p.price).replace(/[^\d.]/g, '')), s: parseFloat(p.size), p: p }; })
+        .filter(function (x) { return !isNaN(x.n); }).sort(function (x, y) { return x.n - y.n; });
+      var lo = pr[0], hi = pr[pr.length - 1], range = pr.length > 1 && hi.n > lo.n;
+      var ring = '<div class="wk-ring" style="--p:' + (100 - t.pct).toFixed(1) + '"><span class="cap">' + (t.left === 1 ? 'יום אחרון!' : 'מתחלפת בעוד') + '</span>' +
+        '<span class="dial"><b>' + t.left + '</b><small>' + (t.left === 1 ? 'יום' : 'ימים') + '</small></span></div>';
+      var price = !lo ? '' : '<div class="wk-pfrom"><div><b>' + (range ? '<bdi dir="ltr">' + lo.n + '–' + hi.n + '</bdi>&nbsp;' + esc(String(hi.p.price).replace(/^[\d.,\s]+/, '')) : esc(lo.p.price)) + '</b>' +
+        '<span>' + (range && !isNaN(lo.s) && !isNaN(hi.s) ? lo.s + ' עד ' + hi.s + ' ' + esc(String(hi.p.size).replace(/^[\d.\s]+/, '')) : esc(lo.p.size)) + '</span></div></div>';
       return '<div class="wk-slide wk-s-ben"' + o + '>' +
-        '<div><div class="wk-tags"><span class="wk-badge">' + esc(b.badge) + '</span>' + (b.tag2 ? '<span class="wk-badge wk-badge2">' + esc(b.tag2) + '</span>' : '') + '</div><div class="t">' + esc(b.slideTitle) + '</div>' +
-        (names ? '<div class="wk-names">' + names + '</div>' : '') + '</div>' +
-        '<div class="timer"><span class="left">' + (t.left === 1 ? '<b>יום אחרון!</b>' : 'מתחלפת בעוד <b>' + t.left + '</b> ימים') + '</span><span class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></span></div>' +
+        '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.slideTitle) + '</div>' +
+        (b.hint ? '<div class="wk-hint">' + esc(String(b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
+        ring + price +
         '<span class="wk-go">' + GO + '</span></div>';
     }
     if (kind === 'fan') {
@@ -205,6 +228,19 @@
       '<div class="st"><div class="h"><div class="r1"><span class="dot"></span><span class="cap">אימות בתוקף עבור ההטבה</span></div><span class="mk">YELLOW ZONE</span></div>' +
       '<div class="ft"><span class="bz">' + esc(bizName) + '</span><span class="clk">' + esc(clk) + '</span></div></div>' +
       '</div>' + (cap ? '<div class="wk-pass-cap">' + esc(String(cap).split('{biz}').join(bizName)) + '</div>' : '') + '</div>';
+  }
+
+  // טקסט סעיף: שורות שמתחילות ב-"• " הופכות לרשימה (אפשר לערבב עם שורות רגילות)
+  function paraHtml(txt) {
+    var lines = String(txt || '').split('\n'), out = '', li = [];
+    var flush = function () { if (li.length) { out += '<ul class="wk-ul">' + li.join('') + '</ul>'; li = []; } };
+    lines.forEach(function (l) {
+      var m = /^\s*•\s*(.*)$/.exec(l);
+      if (m) li.push('<li>' + esc(m[1]) + '</li>');
+      else { flush(); if (l.trim()) out += '<p>' + esc(l) + '</p>'; }
+    });
+    flush();
+    return out;
   }
 
   function closeBtn(kind, ctx) { return ctx.preview ? '' : '<button type="button" class="wk-close" onclick="WK.close(\'' + kind + '\')" aria-label="סגירה">' + X + '</button>'; }
@@ -260,8 +296,10 @@
     var p = d.pages[kind];
     var secs = p.steps
       ? '<ol class="wk-steps">' + p.sections.map(function (s, i) { return '<li><i>' + (i + 1) + '</i><div><b>' + esc(s.h) + '</b><span class="wk-sp">' + esc(s.p) + '</span>' + (s.img ? passHtml(s.img, s.imgCap) : '') + '</div></li>'; }).join('') + '</ol>'
-      : p.sections.map(function (s) { return '<div class="wk-sec">' + (s.h ? '<h3>' + esc(s.h) + '</h3>' : '') + '<p>' + esc(s.p) + '</p>' + (s.img ? passHtml(s.img, s.imgCap) : '') + '</div>'; }).join('');
+      : p.sections.map(function (s) { return '<div class="wk-sec">' + (s.h ? '<h3>' + esc(s.h) + '</h3>' : '') + paraHtml(s.p) + (s.img ? passHtml(s.img, s.imgCap) : '') + '</div>'; }).join('');
+    if (p.introTitle || p.intro) secs = '<div class="wk-rot"><b>' + esc(p.introTitle || '') + '</b>' + (p.intro ? '<p>' + esc(p.intro) + '</p>' : '') + '</div>' + secs;
     secs += p.exBiz ? '<div class="wk-sec wk-ex">' + (p.exTitle ? '<h3>' + esc(p.exTitle) + '</h3>' : '') + passHtml(p.exBiz, p.exCap) + '</div>' : '';
+    secs += p.bizNote ? '<div class="wk-rot navy"><b>לבעלי עסקים</b><p>' + esc(p.bizNote) + '</p></div>' : '';
     secs += p.note ? '<div class="wk-small">' + esc(p.note) + '</div>' : '';
     var cta = function (c) { return c && c.label ? '<button type="button" class="wk-cta"' + act(ctx, "WK.act('" + esc(c.act) + "')") + '>' + esc(c.label) + '</button>' : ''; };
     return '<div class="wk-hero page wk-th-' + esc(p.theme || 'navy') + '">' + closeBtn(kind, ctx) +
@@ -298,12 +336,22 @@
     // 1 – הטבה
     '.wk-s-ben{background:#FFD400;color:#0A2A66;justify-content:space-between}',
     '.wk-s-ben .wk-badge{background:#0A2A66;color:#FFD400}',
-    '.wk-s-ben .t{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.12;margin-top:7px}',
-    '.wk-names ul{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:1px}',
-    '.wk-names li{font-size:13px;font-weight:800;line-height:1.3;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '.wk-names li::before{content:"";width:5px;height:5px;border-radius:50%;background:#0A2A66;flex:none}',
-    '.wk-names li.tbd{font-weight:600;opacity:.7}',
-    '.wk-names li.tbd::before{background:transparent;border:1.5px solid #0A2A66;width:3px;height:3px}',
+    // (24.10) למעלה מימין: תווית + כותרת + רמז; למעלה משמאל: עיגול הימים; למטה מימין: המחיר; למטה משמאל: החץ
+    '.wk-ben-top{display:flex;flex-direction:column;align-items:flex-start;margin-inline-end:80px}',
+    '.wk-s-ben .t{font-size:23px;font-weight:800;letter-spacing:-.02em;line-height:1.12;margin-top:8px;text-wrap:balance}',
+    '.wk-hint{font-size:13px;font-weight:700;margin-top:6px;opacity:.78}',
+    '.wk-ring{position:absolute;left:14px;top:12px;display:flex;flex-direction:column;align-items:center;gap:3px}',
+    '.wk-ring .cap{font-size:10.5px;font-weight:800;white-space:nowrap}',
+    '.wk-ring .dial{width:62px;height:62px;border-radius:50%;background:conic-gradient(#0A2A66 calc(var(--p) * 1%),rgba(10,42,102,.16) 0);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;line-height:1}',
+    '.wk-ring .dial::before{content:"";position:absolute;inset:6px;border-radius:50%;background:#FFD400}',
+    '.wk-ring .dial b,.wk-ring .dial small{position:relative}',
+    '.wk-ring .dial b{font-size:23px;font-weight:800}',
+    '.wk-ring .dial small{font-size:10.5px;font-weight:800;margin-top:1px}',
+    '.wk-pfrom{line-height:1.05;margin-inline-end:52px}',
+    '.wk-pfrom small{display:block;font-size:11.5px;font-weight:800;opacity:.75;margin-bottom:1px}',
+    '.wk-pfrom div{display:flex;flex-direction:column;align-items:flex-start;gap:2px}',
+    '.wk-pfrom b{font-size:30px;font-weight:800;letter-spacing:-.02em;white-space:nowrap}',
+    '.wk-pfrom span{font-size:12.5px;font-weight:700;opacity:.8;white-space:nowrap}',
     // דוגמת תעודת החבר
     '.wk-pass{margin-top:12px}',
     '.wk-pass-ph{border:3px solid #0A2A66;border-radius:24px;padding:12px 10px;background:#FBF8EE;max-width:280px;margin:0 auto;color:#0A2A66}',
@@ -326,11 +374,6 @@
     '.wk-pass .bz{font-size:15px;font-weight:800}',
     '.wk-pass .clk{font-size:9.5px;font-weight:700;color:#C9D8F5;background:rgba(255,255,255,.1);border-radius:6px;padding:3px 7px;direction:ltr;white-space:nowrap}',
     '.wk-pass-cap{font-size:12px;color:#6B7A9B;text-align:center;margin-top:8px;line-height:1.5}',
-    '.wk-s-ben .timer{display:flex;align-items:center;gap:8px;margin-inline-end:46px}',
-    '.wk-s-ben .left{font-size:14px;font-weight:800;white-space:nowrap}',
-    '.wk-s-ben .left b{font-size:20px}',
-    '.wk-s-ben .bar{flex:1;height:6px;background:rgba(10,42,102,.18);border-radius:999px;overflow:hidden}',
-    '.wk-s-ben .bar i{display:block;height:100%;background:#0A2A66;border-radius:999px}',
     '.wk-s-ben .wk-go{background:#0A2A66;color:#FFD400}',
     // 2 – האוהד שמאחורי העסק
     '.wk-s-fan{background:#0A2A66 center/cover no-repeat}',
@@ -393,6 +436,10 @@
     '.wk-quote{font-size:20px;font-weight:800;line-height:1.4;color:#0A2A66;padding-right:14px;border-right:4px solid #FFD400}',
     '.wk-sec h3{font-size:13px;font-weight:800;letter-spacing:.04em;color:#6B7A9B;margin:0 0 6px}',
     '.wk-sec p{font-size:15.5px;line-height:1.7;margin:0;white-space:pre-line}',
+    '.wk-sec p+p,.wk-sec p+.wk-ul,.wk-sec .wk-ul+p{margin-top:6px}',
+    '.wk-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}',
+    '.wk-ul li{position:relative;padding-right:18px;font-size:15.5px;line-height:1.55;color:#3A4C7A}',
+    '.wk-ul li::before{content:"";position:absolute;right:2px;top:.62em;width:7px;height:7px;border-radius:50%;background:#FFD400;box-shadow:0 0 0 1.5px #0A2A66}',
     '.wk-timer{background:#fff;border:1px solid #FFE9A3;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}',
     '.wk-timer .row{display:flex;justify-content:space-between;font-weight:800;color:#0A2A66}',
     '.wk-timer .row span:last-child{font-size:12px;color:#6B7A9B}',
