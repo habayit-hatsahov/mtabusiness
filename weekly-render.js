@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData17';
+  var KEY = 'wkDemoData18';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -26,7 +26,7 @@
   //    הערך לקהילה, לאוהד, לעסק, בחינם, מה יש בפנים). שורות שמתחילות ב-"• " מוצגות כרשימה.
   var US_DIRS = {
     // א – הכיוון שרמי בחר (24.10), מחובר עם ב: הציטוט, "למה זה חשוב", ההיכרות והבמה
-    a: { slideLine: 'נולד מחוויות אישיות עם עסקים של אוהדים', heroTag: 'אוהד שקונה מאוהד – מקבל יותר', quote: 'ביציע אנחנו עומדים כתף אל כתף. כאן זה ממשיך גם ביום-יום.', sections: [
+    a: { slideLine: 'אוהדים קונים מאוהדים – וכולם מרוויחים', heroTag: 'אוהד שקונה מאוהד – מקבל יותר', quote: 'ביציע אנחנו עומדים כתף אל כתף. כאן זה ממשיך גם ביום-יום.', sections: [
       { h: 'איך זה התחיל', p: 'מחוויות אישיות: שוב ושוב עבדנו עם בעלי מקצוע שהם אוהדי מכבי – ותמיד קיבלנו קצת יותר. הנחה בלי שביקשנו, שירות מעל המצופה וחוויה טובה. Yellow Zone קמה כדי שכל אוהד ייהנה מזה.' },
       { h: 'למה זה חשוב', p: 'כל קנייה אצל אוהד מחזקת עוד משפחה מהיציע. ככה בונים קהילה – לא רק ב-90 דקות.' },
       { h: 'מה זה נותן לכם', p: '• הטבה אמיתית כמעט אצל כל עסק\n• בעל עסק שמבין אתכם מהמשפט הראשון\n• היכרות עם האנשים שמאחורי העסקים\n• כסף שנשאר בתוך המשפחה הצהובה' },
@@ -56,7 +56,7 @@
         slideTitle: 'קעקוע של מכבי במחיר מוזל',
         hint: '{n} מקעקעים מאזורים שונים',   // רמז בתיבה במקום השמות; {n} = מספר המקומות (רמי, 24.10) – דמו: להשוואה בין חלופות לתיבה
         explainTitle: 'הטבה בלעדית שמתחלפת כל חצי חודש',
-        explain: 'ב-1 וב-16 בכל חודש עולה כאן הטבה בלעדית חדשה – רק לחברי Yellow Zone, ורק לזמן מוגבל. ההטבה הזאת בתוקף עד {end}, והבאה מתחילה ב-{next}. שווה לא לפספס.',
+        explain: 'ב-1 וב-16 בכל חודש – הטבה בלעדית חדשה, רק לחברי Yellow Zone ורק לזמן מוגבל.',
         title: 'קעקוע של מכבי',
         intro: 'קעקוע של מכבי במחיר מיוחד לחברי Yellow Zone – לזמן מוגבל.',
         prices: [{ size: '6 ס"מ', price: '400 ₪', was: '' }, { size: '12 ס"מ', price: '800 ₪', was: '' }],
@@ -290,6 +290,13 @@
         '<span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span><div class="t">' + esc(b.title) + '</div></div>' +
         '<div class="wk-in">' +
         (b.explain ? '<div class="wk-rot"><b>' + esc(b.explainTitle || '') + '</b><p>' + esc(tok(b.explain, t)) + '</p></div>' : '') +
+        // (רמי, 24.10) המקעקעים גם למעלה – שורה קומפקטית של לוגואים, בלי לדחוק את ההסבר; הרשימה המלאה נשארת למטה
+        '<div class="wk-strip"><h3>' + b.biz.length + ' ' + esc(b.bizNoun || 'עסקים') + ' בהטבה</h3><div>' + b.biz.map(function (x) {
+          var inf = bizInfo(x);
+          if (!x.name) return '<span class="wk-av tbd"><i>?</i><em>בקרוב</em></span>';
+          return '<span class="wk-av"' + (inf.id ? act(ctx, "WK.biz('" + inf.id + "')") : '') + '>' +
+            (inf.logo ? '<img src="' + esc(inf.logo) + '" alt="">' : '<i>' + esc(x.name.charAt(0)) + '</i>') + '<em>' + esc(x.name) + '</em></span>';
+        }).join('') + '</div></div>' +
         '<div class="wk-timer"><div class="row"><span>' + leftHtml(t) + '</span><span>עד ' + t.end + '</span></div><div class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></div></div>' +
         (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
         '<div class="wk-price">' + prices + '</div>' +
@@ -480,6 +487,13 @@
     '.wk-chips{display:flex;flex-wrap:wrap;gap:6px}',
     '.wk-chips span{font-size:12px;font-weight:700;color:#0A2A66;background:#F2F2EC;border-radius:999px;padding:4px 10px}',
     '.wk-quote{font-size:20px;font-weight:800;line-height:1.4;color:#0A2A66;padding-right:14px;border-right:4px solid #FFD400}',
+    '.wk-strip h3{font-size:13px;font-weight:800;letter-spacing:.04em;color:#6B7A9B;margin:0 0 8px}',
+    '.wk-strip > div{display:flex;gap:6px}',
+    '.wk-av{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer}',
+    '.wk-av img,.wk-av i{width:52px;height:52px;border-radius:50%;border:2px solid #FFD400;background:#fff;object-fit:contain;padding:4px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:800;font-size:18px;color:#0A2A66}',
+    '.wk-av i{background:#FFF7DB}',
+    '.wk-av em{font-style:normal;font-size:11px;font-weight:700;line-height:1.25;color:#0A2A66;max-width:100%;text-align:center;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;unicode-bidi:plaintext}',
+    '.wk-av.tbd{cursor:default}.wk-av.tbd i{border:2px dashed #C9CFDB;background:#F2F2EC;color:#98A2B3}.wk-av.tbd em{color:#98A2B3}',
     '.wk-sec h3{font-size:13px;font-weight:800;letter-spacing:.04em;color:#6B7A9B;margin:0 0 6px}',
     '.wk-sec p{font-size:15.5px;line-height:1.7;margin:0;white-space:pre-line}',
     '.wk-sec p+p,.wk-sec p+.wk-ul,.wk-sec .wk-ul+p{margin-top:6px}',
