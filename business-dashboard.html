@@ -2160,6 +2160,7 @@ function birthOptionsHtml(kind, cur) {
 }
 let weeklySchedule = []; // שיבוץ עסק-השבוע/הטבת-השבוע ששייך לעסק הזה (weekly_schedule, ר' loadBusiness)
 let discEditOn = false;
+let discStacking = '';   // §597 — כפל מבצעים לקוד הקופון: 'yes' | 'no' | ''
 let discRedeemMode = []; // בחירה מרובה — יכול להיות גם "בחנות" וגם "באתר" בו-זמנית
 let redeemMode2 = [], redeemMode3 = []; // הטבות נוספות (עד 3 סה"כ)
 let benefitCount = 1;
@@ -2183,7 +2184,7 @@ const FIELD_GROUPS = {
   owner: ['ownerFirst','ownerLast','ownerPhone','ownerEmail'],
   cathours: ['bizTypes','name','categoryPrimary','cat','tags','tagSecondSuggestion','noTagFits','tagSuggestion','alsoCategorySuggestion'],
   bizdetails: ['desc','branches','city','address','phone','whatsapp','serviceEmail','regions','hours','website','instagram','facebook'],
-  discount: ['hasDiscount','discountText','discountTextFull','discountCode','discountTypes','discountRedeemMode','discountBuilder','additionalDiscounts','wantsBusinessOfWeek','wantsBenefitOfWeek'],
+  discount: ['hasDiscount','discountText','discountTextFull','discountCode','discountStacking','discountTypes','discountRedeemMode','discountBuilder','additionalDiscounts','wantsBusinessOfWeek','wantsBenefitOfWeek'],
   media: ['coverPhoto','coverPhotoThumb','logo','logoThumb','photos'],
 };
 
@@ -2280,7 +2281,7 @@ const FIELD_LABELS = {
   regions:'אזורי פעילות',
   phone:'טלפון עסק', whatsapp:'WhatsApp', serviceEmail:'מייל שירות',
   categoryPrimary:'קטגוריה ראשית', cat:'קטגוריה ראשית', tags:'תגיות', tagSecondSuggestion:'הצעת תגית שנייה', noTagFits:'אין תגית מתאימה', tagSuggestion:'הצעת תגית', alsoCategorySuggestion:'הצעה למופיע גם תחת', alsoCategoryNote:'הערה לגבי קטגוריה נוספת', hours:'שעות פעילות',
-  hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTextFull:'תיאור ההטבה', discountCode:'קוד קופון', discountTypes:'איפה ניתן לממש', discountRedeemMode:'מקום מימוש', additionalDiscounts:'הטבות נוספות',
+  hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTextFull:'תיאור ההטבה', discountCode:'קוד קופון', discountStacking:'כפל מבצעים', discountTypes:'איפה ניתן לממש', discountRedeemMode:'מקום מימוש', additionalDiscounts:'הטבות נוספות',
   wantsBusinessOfWeek:'עסק השבוע', wantsBenefitOfWeek:'הטבת השבוע',
   website:'אתר', instagram:'אינסטגרם', facebook:'פייסבוק',
   coverPhoto:'תמונה מייצגת', coverPhotoThumb:'תמונה מייצגת (ממוזערת)', logo:'לוגו', logoThumb:'לוגו (ממוזער)', photos:'גלריית תמונות',
@@ -3602,6 +3603,7 @@ function weeklyQuestionsHtml(wow, wob, wowStatus, wobStatus, interactive) {
 
 function renderDiscountCard(w) {
   discEditOn = !!w.hasDiscount;
+  discStacking = w.discountStacking || '';
   // תאימות לאחור: עסק ישן עם קוד קופון (מהמודל הקודם, לפני שהמימוש הפך לבחירה ידנית) הוצג בפועל כ"אונליין" —
   // ברירת המחדל כאן שומרת על זה עד שבעל העסק בוחר במפורש אחרת, כדי לא "לאבד" את הסטטוס בשקט בשמירה הראשונה
   discRedeemMode = toRedeemArr(w.discountRedeemMode);
@@ -3671,6 +3673,15 @@ function renderDiscountCard(w) {
           <div class="form-group" id="editOnlineCodeWrap" style="display:none;">
             <label class="form-label">קוד קופון <span style="font-weight:400;color:var(--text-muted);">(האוהדים יזינו אותו באתר שלכם למימוש)</span></label>
             <input type="text" class="form-input" id="editDiscountCode" value="${esc(w.discountCode)}" placeholder="לדוג׳: MACCABI10" style="letter-spacing:1px;text-transform:uppercase;" oninput="onDiscBuilderInput()" />
+            <!-- §597 – כפל מבצעים: חובה כשיש קוד -->
+            <div id="editStackWrap" style="display:none;margin-top:12px;">
+              <label class="form-label">הקוד כולל כפל מבצעים? <span style="color:#B54708;">*</span> <span style="font-weight:400;color:var(--text-muted);">(אפשר לממש אותו גם על מוצר שכבר במבצע באתר)</span></label>
+              <div class="disc-type-chip-wrap" id="editStackGrid">
+                <div class="disc-type-chip${discStacking === 'yes' ? ' selected' : ''}" data-v="yes" onclick="selectStacking('yes')">כן, כולל כפל מבצעים</div>
+                <div class="disc-type-chip${discStacking === 'no' ? ' selected' : ''}" data-v="no" onclick="selectStacking('no')">לא, לא כולל</div>
+              </div>
+              <div id="editStackErr" style="display:none;color:#B42318;font-size:12px;margin-top:6px;">נא לענות אם הקוד כולל כפל מבצעים</div>
+            </div>
           </div>
 
           <div class="disc-redeem-note" id="editDiscRedeemNote"></div>
@@ -5495,7 +5506,24 @@ function renderRedeemModeGrid() {
   ).join('');
   const codeWrap = document.getElementById('editOnlineCodeWrap');
   if (codeWrap) codeWrap.style.display = discRedeemMode.includes('online') ? 'block' : 'none';
+  renderStacking();
 }
+
+// §597 — שאלת כפל המבצעים מוצגת רק כשנבחר "באתר" ויש קוד
+function stackingNeeded() {
+  return discRedeemMode.includes('online') && !!document.getElementById('editDiscountCode')?.value.trim();
+}
+function renderStacking() {
+  const wrap = document.getElementById('editStackWrap');
+  if (wrap) wrap.style.display = stackingNeeded() ? 'block' : 'none';
+  document.querySelectorAll('#editStackGrid .disc-type-chip').forEach(c => c.classList.toggle('selected', c.dataset.v === discStacking));
+}
+window.selectStacking = function(v) {
+  discStacking = v;
+  renderStacking();
+  const err = document.getElementById('editStackErr');
+  if (err) err.style.display = 'none';
+};
 
 window.selectRedeemMode = function(key) {
   const i = discRedeemMode.indexOf(key);
@@ -5706,6 +5734,12 @@ window.saveDiscount = async function() {
   const discountCode = (discEditOn && discRedeemMode.includes('online'))
     ? document.getElementById('editDiscountCode').value.trim() : '';
   const fullText = discEditOn ? computeDiscBuilderText() : '';
+  // §597 — קוד קופון בלי תשובה על כפל מבצעים לא נשמר
+  if (discountCode && !discStacking) {
+    const err = document.getElementById('editStackErr');
+    if (err) { err.style.display = 'block'; err.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    return;
+  }
 
   // AI רץ רק כשתיאור ההטבה הראשית עצמו השתנה בפועל — לא בכל שמירה של הכרטיס (כמו הוספת/עריכת
   // הטבה נוספת או שינוי "איפה ניתן לממש", שלא נוגעים בטקסט הראשי בכלל ולא צריכים כותרת חדשה)
@@ -5730,6 +5764,7 @@ window.saveDiscount = async function() {
     discountText: shortText,
     discountTextFull: fullText,
     discountCode,
+    discountStacking: discountCode ? discStacking : '',   // §597
     discountRedeemMode: discEditOn ? discRedeemMode : '',
     discountTypes: discEditOn ? computeDiscountTypes(bizTypes, discRedeemMode) : [],
     discountBuilder: discEditOn ? discBuilderSnapshot() : null,

@@ -1127,6 +1127,15 @@
         <div class="form-group" id="onlineCodeWrap" style="display:none;">
           <label for="discountCode">קוד קופון <span class="opt">(האוהדים יזינו אותו באתר שלכם למימוש)</span></label>
           <input type="text" id="discountCode" placeholder="לדוג׳: MACCABI10" style="letter-spacing:2px; text-transform:uppercase;" oninput="onDiscBuilderInput()" />
+          <!-- §597 – כפל מבצעים: שאלת חובה ברגע שיש קוד קופון. רמי: "שיענה כן או לא אבל חייב לענות". -->
+          <div id="stackWrap" style="display:none;margin-top:12px;">
+            <label>הקוד כולל כפל מבצעים? <span class="req">*</span> <span class="opt">(אפשר לממש אותו גם על מוצר שכבר במבצע באתר)</span></label>
+            <div class="disc-type-chip-wrap" id="stackGrid">
+              <div class="disc-type-chip" data-v="yes" onclick="selectStacking('yes')">כן, כולל כפל מבצעים</div>
+              <div class="disc-type-chip" data-v="no" onclick="selectStacking('no')">לא, לא כולל</div>
+            </div>
+            <div class="field-error" id="err-stacking">נא לענות אם הקוד כולל כפל מבצעים</div>
+          </div>
         </div>
 
         <div class="disc-redeem-note" id="discRedeemNote"></div>
@@ -1247,6 +1256,8 @@
         <div class="form-group">
           <label>התמונה הראשית של העסק <span class="req-badge">חובה</span></label>
           <div class="cover-role-note">זו <b>התמונה המייצגת</b> – התמונה הגדולה שאוהד רואה על הכרטיס שלכם באינדקס ובראש עמוד העסק. תמונת אווירה של המקום, של המוצר או של השירות.</div>
+          <!-- §597 – פיננסים ומשפט: נותני שירות אישי (עו"ד, רו"ח, ביטוח, משכנתאות) – כולם בקטגוריה עם תמונה של עצמם. -->
+          <div class="cover-role-note" id="coverFinanceTip" style="display:none;margin-top:6px;">💡 <b>בקטגוריית פיננסים ומשפט</b> מומלץ להעלות <b>תמונה שלכם</b> (תמונת פורטרט מקצועית). כך נראים כל העסקים בקטגוריה – אוהדים בוחרים עורך דין, רואה חשבון או סוכן לפי האדם שמולם.</div>
           <div class="upload-zone" id="coverPhotoZone" onclick="document.getElementById('bizCoverPhotoFile').click()">
             <input type="file" id="bizCoverPhotoFile" accept="image/*" style="display:none" onchange="previewCoverPhoto(this)" />
             <div id="coverPhotoPreviewWrap">              <div class="upload-text">העלאת התמונה הראשית</div>
@@ -1581,6 +1592,7 @@
         <div class="form-group">
           <label for="bizFanPhoto">תמונה באיצטדיון <span class="req">*</span></label>
           <input type="file" id="bizFanPhoto" accept="image/*" style="padding:10px 12px;font-size:13px;" />
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">תמונה <b>שלכם</b> ביציעים, שרואים בה את הפנים – כדי שנוכל להצליב אותה עם הפרופיל בפייסבוק או באינסטגרם (השדה הבא, חובה למי שלא מנוי). סלפי מהיציע הכי מתאים.</div>
           <div class="field-error" id="err-bizFanPhoto">נא לצרף תמונה</div>
         </div>
         <div class="form-group">
@@ -2768,6 +2780,13 @@
         if (redeemErr) redeemErr.style.display = 'none';
         redeemGrid.classList.remove('error-highlight');
       }
+
+      // §597 — קוד קופון באתר → חובה לענות על כפל מבצעים
+      if (stackingNeeded() && !discountStacking) {
+        document.getElementById('err-stacking').style.display = 'block';
+        document.getElementById('stackGrid').classList.add('error-highlight');
+        ok = false;
+      }
     }
     return ok;
   }
@@ -2995,6 +3014,7 @@
       discountText:       '',
       discountTextFull:   fullDiscountText,
       discountCode:       discountCodeVal,
+      discountStacking:   discountCodeVal ? discountStacking : '',   // §597
       discountRedeemMode: hasDiscountVal ? discRedeemMode : '',
       discountTypes:      hasDiscountVal ? computeDiscountTypes([...selectedBizTypes], discRedeemMode) : [],
       discountBuilder:    hasDiscountVal ? discBuilderSnapshot() : null,
@@ -3778,6 +3798,8 @@
 
   function selectCat(key) {
     selectedCat  = (selectedCat === key ? null : key);
+    const finTip = document.getElementById('coverFinanceTip');   // §597
+    if (finTip) finTip.style.display = selectedCat === 'finance' ? 'block' : 'none';
     selectedTags = [];
     noTagFits = false;
     const secondToggle = document.getElementById('secondTagToggle');
@@ -3866,7 +3888,26 @@
     note.textContent = 'כך יוצג באפליקציה: ' + dTypes.map(t => DISCOUNT_TYPE_LABELS[t]).join(', ');
   }
 
+  // §597 — כפל מבצעים ('yes' | 'no' | ''). השאלה מוצגת רק כשנבחר "באתר" ויש קוד.
+  let discountStacking = '';
+  function stackingNeeded() {
+    return discRedeemMode.includes('online') && !!document.getElementById('discountCode')?.value.trim();
+  }
+  function renderStacking() {
+    const wrap = document.getElementById('stackWrap');
+    if (wrap) wrap.style.display = stackingNeeded() ? 'block' : 'none';
+    document.querySelectorAll('#stackGrid .disc-type-chip').forEach(c => c.classList.toggle('selected', c.dataset.v === discountStacking));
+  }
+  function selectStacking(v) {
+    discountStacking = v;
+    renderStacking();
+    const err = document.getElementById('err-stacking');
+    if (err) err.style.display = 'none';
+    document.getElementById('stackGrid')?.classList.remove('error-highlight');
+  }
+
   function onDiscBuilderInput() {
+    renderStacking();
     updateDiscRedeemNote();
     const text = computeDiscBuilderText();
     const err  = document.getElementById('err-discountText');
@@ -4336,7 +4377,7 @@
     if (hasDisc) {
       const dTypes = computeDiscountTypes([...selectedBizTypes], discRedeemMode);
       html += sr('איפה ניתן לממש', dTypes.map(t => DISCOUNT_TYPE_LABELS[t]).join(', '));
-      if (v('discountCode')) html += sr('קוד קופון', v('discountCode'));
+      if (v('discountCode')) html += sr('קוד קופון', v('discountCode') + (discountStacking ? (discountStacking === 'yes' ? ' · כולל כפל מבצעים' : ' · לא כולל כפל מבצעים') : ''));
       collectAdditionalBenefits().forEach((b, i) => {
         html += sr(`הטבה נוספת ${i + 2}`, b.text + (b.code ? ` · קוד: ${b.code}` : ''));
       });
@@ -4666,6 +4707,7 @@
       hasDiscount:        document.getElementById('hasDiscount').checked,
       discountBuilder:    discBuilderSnapshot(),
       discountCode:       v('discountCode'),
+      discountStacking,
       discountRedeemMode: discRedeemMode,
       additionalDiscounts: collectAdditionalBenefits(),
 
@@ -4811,6 +4853,7 @@
     if (!d.hasDiscount) toggleDiscount();
     fillDiscBuilderFields(d.discountBuilder);
     document.getElementById('discountCode').value = d.discountCode || '';
+    discountStacking = d.discountStacking || '';
     if (d.discountRedeemMode) { discRedeemMode = Array.isArray(d.discountRedeemMode) ? d.discountRedeemMode : [d.discountRedeemMode]; renderRedeemModeGrid(); }
     onDiscBuilderInput();
 
@@ -4865,7 +4908,7 @@
     addBenefit, addBranch, goBack, goNext, handleSubmit, retrySubmit,
     onDiscBuilderInput, onDiscBuilderInputN, removeBenefit, removeBranch,
     selectAlsoCat, selectBizType, selectCat, selectPrimaryTag, selectRedeemMode,
-    selectRedeemModeN, selectSecondTag, setSubscriber, setBizFanSport, setBizVerifiedSport,
+    selectRedeemModeN, selectSecondTag, selectStacking, setSubscriber, setBizFanSport, setBizVerifiedSport,
     // §284 — נקרא מ-onclick על כרטיסי מסלולי-האימות. בלי החשיפה המפורשת הזאת הבורר פשוט
     // לא מגיב, בלי שום שגיאה בקונסול (module scope).
     pickBizRoute,

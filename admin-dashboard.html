@@ -3352,6 +3352,7 @@ function fmtDiffVal(k, v) {
     return arr.length ? arr.map(t => REDEEM_MODE_LABELS_MOCK[t] || t).join(', ') : '–';
   }
   if (k === 'bizTypes') return (v || []).length ? v.map(t => BIZ_TYPE_LABELS_MOCK[t] || t).join(', ') : '–';
+  if (k === 'discountStacking') return v === 'yes' ? 'כולל כפל מבצעים' : v === 'no' ? 'לא כולל כפל מבצעים' : '–';   // §597
   if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoCategorySuggestion' || k === 'alsoUnderCategory') {
     return v ? ((CATEGORIES.find(c => c.key === v) || {}).label || v) : '–';
   }
@@ -8937,6 +8938,13 @@ function bizFullDetailHtml(id, opts) {
     <div class="edit-coupon-wrap" id="editCouponWrap-${suffix}-${b.id}" style="display:${checkedOnline?'block':'none'};margin-top:8px">
       <label style="font-size:12px;color:var(--text-sm,#9aa4b5);display:block;margin-bottom:4px">קוד קופון <span style="font-weight:400">(מה שבעל העסק הזין)</span></label>
       <input type="text" id="edit_coupon_${suffix}_${b.id}" value="${esc(code||'')}" style="text-transform:uppercase;letter-spacing:1px" placeholder="לדוג׳: MACCABI10">
+      ${suffix === '1' ? `<!-- §597 – כפל מבצעים (נשאל בהרשמה ובדשבורד העסק) -->
+      <label style="font-size:12px;color:var(--text-sm,#9aa4b5);display:block;margin:8px 0 4px">הקוד כולל כפל מבצעים?</label>
+      <select id="edit_stacking_${b.id}">
+        <option value=""${!b.discountStacking ? ' selected' : ''}>לא נענה</option>
+        <option value="yes"${b.discountStacking === 'yes' ? ' selected' : ''}>כן, כולל כפל מבצעים</option>
+        <option value="no"${b.discountStacking === 'no' ? ' selected' : ''}>לא כולל</option>
+      </select>` : ''}
     </div>`;
   const d2 = (b.additionalDiscounts && b.additionalDiscounts[0]) || { text:'', redeemMode:[], code:'' };
   const d3 = (b.additionalDiscounts && b.additionalDiscounts[1]) || { text:'', redeemMode:[], code:'' };
@@ -9143,7 +9151,7 @@ function bizFullDetailHtml(id, opts) {
   const step4DiscSummary = b.discountFullText || b.discountText || b.aiShortTitle || '';
   const step4Sub = [
     step4DiscSummary ? (step4DiscSummary.length > 60 ? step4DiscSummary.slice(0, 60) + '…' : step4DiscSummary) : (b.hasDiscount ? 'הטבה מסומנת פעילה, אין עדיין טקסט' : 'אין הטבה מוגדרת'),
-    [toRedeemArr(b.discountRedeemMode).map(t => REDEEM_MODE_LABELS_MOCK[t] || t).join(', '), b.discountCode ? `קוד ${b.discountCode}` : ''].filter(Boolean).join(' · '),
+    [toRedeemArr(b.discountRedeemMode).map(t => REDEEM_MODE_LABELS_MOCK[t] || t).join(', '), b.discountCode ? `קוד ${b.discountCode}${b.discountStacking === 'yes' ? ' (כולל כפל מבצעים)' : b.discountStacking === 'no' ? ' (בלי כפל מבצעים)' : ' (כפל מבצעים: לא נענה)'}` : ''].filter(Boolean).join(' · '),   // §597
     step4DiscountCount > 1 ? `הטבה אחת מתוך ${step4DiscountCount}` : ''
   ].filter(Boolean).join(' · ');
   // ── שלב 5 — מדיה (האחרון, §134 המשך). mediaRealViewHtml/mediaRealEditHtml נשארו בדיוק כמו שהיו
@@ -9228,6 +9236,9 @@ function bizFullDetailHtml(id, opts) {
       <div class="owner-verify-photo">${ownerVerifPhotoHtml}</div>
       <div class="owner-verify-info">
         <div class="owner-verify-grid">
+          <!-- §597 – "מנוי בפועל" גם כאן, כמו בכרטיס האוהד (§300). בלי התא הזה "לא מנוי" הופיע רק
+               באותיות קטנות בכותרת, ורמי לא ידע אם בעל העסק מנוי. -->
+          <div><div class="form-field-label">מנוי בפועל</div><div class="form-field-val${b.ownerIsSubscriber ? '' : ' empty'}">${b.ownerIsSubscriber ? 'כן' : 'לא'}</div></div>
           <div><div class="form-field-label">ענף</div><div class="form-field-val${!b.ownerFanSport ? ' empty' : ''}">${b.ownerFanSport ? esc(SPORT_LABELS[b.ownerFanSport] || b.ownerFanSport) : '–'}</div></div>
           ${b.ownerIsSubscriber ? verifiedSportCellHtml(b.ownerVerifiedSport, b.ownerFanSport) : ''}
           <div><div class="form-field-label">${sectionLabelFor(b.ownerVerifiedSport)}</div><div class="form-field-val${!b.ownerSubscriberSection?' empty':''}">${b.ownerSubscriberSection?esc(sectionWithTier(b.ownerSubscriberSection, b.ownerSubscriberTier)):'–'}</div></div>
@@ -10152,6 +10163,7 @@ window.saveBizSec4 = async function(id) {
     discountTextFull: hasDiscount ? discountFullText : '',
     discountRedeemMode: hasDiscount ? redeem1 : [],
     discountCode: hasDiscount ? couponFor('1') : '',
+    discountStacking: (hasDiscount && couponFor('1')) ? (document.getElementById('edit_stacking_'+id)?.value || '') : '',   // §597
     additionalDiscounts: hasDiscount ? additionalDiscounts : [],
   };
   await saveSectionUpdates(id, updates);
@@ -10950,7 +10962,7 @@ function fanFullDetailHtml(id, opts) {
                  מסלולים בכלל היו פתוחים ומה רף-הראיה. אחריו "היה מנוי בעבר", ורק ללא-מנוי
                  (למנוי הוא חסר-משמעות, ו-"–" בשדה קבוע נקרא כמו רשומה חסרה). -->
             <div><div class="form-field-label">מנוי בפועל</div><div class="form-field-val${f.isSubscriber ? '' : ' empty'}">${f.isSubscriber ? 'כן' : 'לא'}</div></div>
-            ${f.isSubscriber ? '' : `<div><div class="form-field-label">היה מנוי בעבר</div><div class="form-field-val${f.wasSubscriber === 'yes' ? '' : ' empty'}">${f.wasSubscriber === 'yes' ? 'כן' : 'לא'}</div></div>`}
+            ${f.isSubscriber ? '' : `<div><div class="form-field-label">היה מנוי בעבר</div><div class="form-field-val${f.wasSubscriber === 'yes' ? '' : ' empty'}">${f.wasSubscriber === 'yes' ? 'כן' : f.wasSubscriber === 'no' ? 'לא' : 'לא נשאל (טופס העסק)'}</div></div>`}
             <div><div class="form-field-label">ענף</div><div class="form-field-val${!f.fanSport ? ' empty' : ''}">${f.fanSport ? esc(SPORT_LABELS[f.fanSport] || f.fanSport) : '–'}</div></div>
             ${f.isSubscriber ? verifiedSportCellHtml(f.verifiedSport, f.fanSport) : ''}
             ${f.isSubscriber ? `<div><div class="form-field-label">${esc(sectionLabelFor(f.verifiedSport))}</div><div class="form-field-val${!f.subscriberSection ? ' empty' : ''}">${esc(sectionWithTier(f.subscriberSection, f.subscriberTier) || '–')}</div></div>` : ''}
@@ -13007,7 +13019,7 @@ const DIFF_FIELD_LABELS_MOCK = {
   categoryPrimary: 'קטגוריה ראשית', cat: 'קטגוריה ראשית', categorySecondary: 'קטגוריות משניות',
   tags: 'תגיות', tagSecondSuggestion: 'בקשת העסק לתגית שנייה', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'בקשת העסק למופיע גם תחת', alsoCategoryNote: 'הערת העסק לגבי קטגוריה נוספת',
   hours: 'שעות פעילות', website: 'אתר', instagram: 'אינסטגרם', facebook: 'פייסבוק',
-  discountText: 'כותרת ההטבה בכרטיס', discountTextFull: 'הטבה', discountCode: 'קוד קופון', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש', discountRedeemMode: 'מקום מימוש ההטבה', discountBuilder: 'הגדרות ההטבה',
+  discountText: 'כותרת ההטבה בכרטיס', discountTextFull: 'הטבה', discountCode: 'קוד קופון', discountStacking: 'כפל מבצעים', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש', discountRedeemMode: 'מקום מימוש ההטבה', discountBuilder: 'הגדרות ההטבה',
   hasDiscount: 'הטבה פעילה', additionalDiscounts: 'הטבות נוספות', coverPhoto: 'תמונה מייצגת', coverPhotoThumb: 'תמונה מייצגת (תמונה ממוזערת)', logo: 'לוגו', logoThumb: 'לוגו (תמונה ממוזערת)', photos: 'גלריית תמונות',
   coverPhotoPosition: 'מיקום התמונה על הכרטיס', coverPhotoZoom: 'גודל התמונה על הכרטיס', coverPhotoBg: 'צבע שוליים בכרטיס', logoFit: 'תג הלוגו בכרטיס',
   wantsBusinessOfWeek: 'עסק השבוע', wantsBenefitOfWeek: 'הטבת השבוע',
@@ -13029,7 +13041,7 @@ const DIFF_FIELD_LABELS_MOCK = {
 const DIFF_GROUPS = [
   { domId: 3, display: 1, name: 'העסק', fields: ['bizTypes', 'name', 'categoryPrimary', 'cat', 'categorySecondary', 'tags', 'tagSecondSuggestion', 'noTagFits', 'tagSuggestion', 'alsoUnderCategory', 'alsoCategorySuggestion', 'alsoCategoryNote'] },
   { domId: 2, display: 2, name: 'פרטים ויצירת קשר', fields: ['desc', 'branches', 'city', 'address', 'regions', 'phone', 'whatsapp', 'serviceEmail', 'hours', 'website', 'instagram', 'facebook'] },
-  { domId: 4, display: 3, name: 'ההטבות', fields: ['hasDiscount', 'discountText', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountType', 'discountTypes', 'discountBuilder', 'additionalDiscounts', 'wantsBusinessOfWeek', 'wantsBenefitOfWeek'] },
+  { domId: 4, display: 3, name: 'ההטבות', fields: ['hasDiscount', 'discountText', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountStacking', 'discountType', 'discountTypes', 'discountBuilder', 'additionalDiscounts', 'wantsBusinessOfWeek', 'wantsBenefitOfWeek'] },
   { domId: 5, display: 4, name: 'תמונות', fields: ['coverPhoto', 'coverPhotoThumb', 'logo', 'logoThumb', 'photos'] },
   { domId: 1, display: 5, name: 'אימות בעל העסק', fields: ['ownerFirst', 'ownerLast', 'ownerPhone', 'ownerEmail', 'ownerRelation', 'fanInstagram', 'note'] },
 ];
