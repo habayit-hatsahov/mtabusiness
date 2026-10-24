@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData24';
+  var KEY = 'wkDemoData25';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -102,7 +102,10 @@
         us: pageFromDir('a'),
         redeem: {
           // למשתמשים ולבעלי עסקים – המדריך מכוון גם את בעל העסק (רמי, 24.10)
-          theme: 'soft', badge: 'לאוהדים ולעסקים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע או נותן שירות, או באתר',
+          // (רמי, 24.10) השור עם הלפיד בצד שמאל. שולי התמונה בצד הטקסט כחולים (עשן), ולכן התיבה בחוץ
+          // כחולה (slideTheme) – הגיליון בפנים נשאר בהיר; התווית ירדה (התמונה בצד שמאל), הכיתוב קוצר
+          theme: 'soft', slideTheme: 'navy', badge: '', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע\nאו באתר',
+          photo: 'images/weekly/bull-flare.jpg', photoBg: '#1A3B80', photoFade: 70, photoTop: -14,
           heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: 'לאוהדים – וגם לבעלי העסקים, שיידעו מה לבדוק', steps: true,
           // כותרת שמסבירה מעל 3 הסעיפים (רמי, 24.10)
           introTitle: 'הכול מתחיל בכרטיס העסק ← "מימוש ההטבה"', intro: 'משם זה תלוי איפה קונים – בחנות, אצל בעל מקצוע או נותן שירות, או באתר:',
@@ -206,6 +209,13 @@
   function tok(s, t) { return String(s || '').split('{end}').join(t.end).split('{next}').join(t.next); }
   function leftHtml(t) { return t.left === 1 ? '<b>היום אחרון!</b>' : 'נשארו <b>' + t.left + '</b> ימים'; }
   var ORDER = ['ben', 'fan', 'us', 'redeem', 'forbiz', 'invite'];
+  // תמונה בצד שמאל: photoTop מזיז אותה למעלה/למטה, photoFade – כמה פיקסלים השוליים בצד הטקסט נמוגים לצבע התיבה
+  function photoStyle(p) {
+    var s = '';
+    if (p.photoTop != null) s += 'top:' + Number(p.photoTop) + 'px;';
+    if (p.photoFade) { var m = 'linear-gradient(to left,transparent 0,#000 ' + Number(p.photoFade) + 'px)'; s += '-webkit-mask-image:' + m + ';mask-image:' + m + ';'; }
+    return s ? ' style="' + s + '"' : '';
+  }
 
   function slideHtml(kind, d, ctx) {
     var t = ctx.t, o = act(ctx, "WK.open('" + kind + "')");
@@ -255,11 +265,12 @@
         '<span class="wk-go">' + GO + '</span></div>';
     }
     var p = d.pages[kind];
-    return '<div class="wk-slide wk-s-page wk-th-' + esc(p.theme || 'navy') + (p.bg || p.photo ? ' has-bg' : '') + (p.photo ? ' has-photo' : '') + (p.cover ? ' has-cover' : '') + '"' + o +
+    // slideTheme – צבע התיבה בחוץ כשהוא שונה מהגיליון בפנים (איך מממשים: כחול בחוץ, בהיר בפנים)
+    return '<div class="wk-slide wk-s-page wk-th-' + esc(p.slideTheme || p.theme || 'navy') + (p.bg || p.photo ? ' has-bg' : '') + (p.photo ? ' has-photo' : '') + (p.cover ? ' has-cover' : '') + '"' + o +
       (p.photo && p.photoBg ? ' style="background:' + esc(p.photoBg) + '"' : '') +
       (p.cover ? ' style="background-image:linear-gradient(180deg,rgba(10,42,102,.88) 0,rgba(10,42,102,.25) 42%,rgba(10,42,102,.3) 58%,rgba(10,42,102,.9) 100%),url(\'' + esc(p.cover) + '\')"' : '') + '>' +
       (p.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(p.bg) + '" alt=""></span>' : '') +
-      (p.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(p.photo) + '" alt=""></span>' : '') +
+      (p.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(p.photo) + '" alt=""' + photoStyle(p) + '></span>' : '') +
       // (רמי, 24.10) סדר אחד לכל הקרוסלה: כותרת – ימין למעלה, כיתוב – ימין למטה, תווית – שמאל למעלה, חץ – שמאל למטה
       (p.logo ? '<img class="logo wk-corner" src="images/yellowzone-mark-square.png" alt="">' : (p.badge ? '<span class="wk-badge wk-corner">' + esc(p.badge) + '</span>' : '')) +
       '<div class="t' + (p.badge || p.logo ? ' has-corner' : '') + '">' + esc(p.slideTitle) + (p.slideAccent ? '<span>' + esc(p.slideAccent) + '</span>' : '') + '</div>' +
