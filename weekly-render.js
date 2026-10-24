@@ -107,7 +107,7 @@
           theme: 'yellow', badge: 'בקרוב', badgeInline: true, slideTitle: 'פעמיים בחודש',
           // (רמי, 24.10) "הכיתוב למטה לא ברור" – שתי שורות קצרות, אחת לכל דבר
           slideLine: 'הטבה בלעדית חדשה\n+ מכירים אוהד עם עסק',
-          photo: 'images/weekly/bull-drum.jpg', photoBg: '#EFCD50', photoFade: 24, photoH: 285, photoTop: -22, photoLeft: 28,
+          photo: 'images/weekly/bull-drum.jpg', photoBg: '#EFCE4F', photoFade: 60, photoH: 285, photoTop: -22, photoLeft: 0,   // (רמי) "יש קו והצהוב משתנה": התמונה צמודה לשפת התיבה, והצד הימני נמוג לצבע שבקצה התמונה
           heroWho: 'מתחילים בהשקה', heroTitle: 'פעמיים בחודש', heroTag: 'הטבה בלעדית חדשה\nאוהד עם עסק שכדאי להכיר',   // (רמי) לא באותה שורה
           sections: [
             { h: 'הטבה בלעדית משתנה', p: '• ב-1 וב-16 בחודש עולה הטבה חדשה\n• הטבה אטרקטיבית ובלעדית – רק לחברי Yellow Zone\n• כל הטבה בתוקף חצי חודש – ואז מתחלפת' },
