@@ -105,7 +105,7 @@
           // (רמי, 24.10) השור עם הלפיד בצד שמאל. שולי התמונה בצד הטקסט כחולים (עשן), ולכן התיבה כחולה
           // (slideTheme – גם בראש הגיליון). התווית הוחזרה (רמי), הכיתוב בחוץ קוצר.
           theme: 'soft', slideTheme: 'navy', badge: 'לאוהדים ולעסקים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע\nאו באתר',
-          photo: 'images/weekly/bull-flare.jpg', photoBg: '#1A3B80', photoFade: 70, photoH: 408, photoTop: -104, photoLeft: -32,
+          photo: 'images/weekly/bull-flare.jpg', photoBg: '#1A3B80', photoFade: 70, photoH: 330, photoTop: -20, photoLeft: 0,
           heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: '3 צעדים – וההטבה אצלכם', steps: true,
           // (רמי, 24.10) "ממוקד, לפי נקודות, לפי התהליך – קצר, קולע ופשוט, בלי לוותר על פרטים":
           // שלושת המסלולים (חנות / בעל מקצוע / אתר) נכנסו לצעד 2 כנקודות, ומה בודקים – צעד 3
@@ -125,7 +125,7 @@
         forbiz: {
           // (רמי, 24.10) התמונה מדף הנחיתה – האוהדים בבר, האריח שפונה לבעלי עסקים
           // (רמי, 24.10) במקום תמונת הבר – השור בעל המקצוע, על רקע צהוב, כמו שאר השוורים
-          photo: 'images/weekly/bull-worker.jpg', photoBg: '#F2CC45', photoFade: 30, photoH: 405, photoTop: -27, photoLeft: -4,
+          photo: 'images/weekly/bull-worker2.jpg', photoBg: '#F2CC45', photoFade: 30, photoH: 350, photoTop: -10, photoLeft: 8,
           theme: 'yellow', badge: 'לבעלי עסקים', slideTitle: 'יש לכם עסק?', slideLine: 'לקוחות, חיבורים והזדמנויות – והרישום בחינם',
           heroWho: 'לבעלי עסקים', heroTitle: 'העסק שלכם ב-Yellow Zone', heroTag: 'אוהדים קונים מאוהדים',
           // הערך לעסק (רמי, 24.10): הזדמנויות עסקיות, חיבורים עם בעלי מקצוע, הלקוחות, רישום בחינם
