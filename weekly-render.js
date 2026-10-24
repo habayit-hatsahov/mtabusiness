@@ -138,7 +138,7 @@
           // (רמי, 24.10) "תביאו את החבר'ה" – ההזמנה במרכז, העקיבה ברשתות בפנים מתחת לכפתורי השיתוף;
           // השור עם הטלפון בצד שמאל, כמו ב"מי אנחנו" (רקע התמונה #FFD205)
           theme: 'yellow', badge: '', slideTitle: 'תביאו את החבר\'ה', slideLine: 'שתפו את האפליקציה\nעם אוהד שעוד לא כאן',
-          photo: 'images/weekly/bull-phone.jpg', photoBg: '#FFD205',
+          photo: 'images/weekly/bull-phone.jpg?v=2', photoBg: '#FFD205',
           heroWho: 'שתפו ועקבו', heroTitle: 'תביאו את החבר\'ה', heroTag: 'כל מי שמצטרף מחזק את כולנו',
           followTitle: 'עקבו אחרינו',   // כתובת ריקה = הכפתור לא מוצג
           follow: [{ label: 'אינסטגרם', url: 'https://www.instagram.com/Yellowzone.mta' }, { label: 'פייסבוק', url: 'https://www.facebook.com/profile.php?id=61593146773605' }],
