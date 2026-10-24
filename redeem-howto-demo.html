@@ -126,18 +126,20 @@ const ICON_Q = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stro
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // אותה לוגיקה כמו home.html (§603): הכותרת של הכרטיס = השורה מתחת להטבה
+// §603ב – המסלול לפי מה שהעסק בחר בטופס: physical = בחנות, sale = במעמד המכירה / השירות, online = באתר
 function routesOf(b, types) {
-  const store = (b.isPhysical || b.isPro) && (types.includes('physical') || types.includes('sale'));
+  const st = b.isPhysical || b.isPro;
   const r = [];
-  if (store) r.push(b.isPro && !b.isPhysical ? 'pro' : (b.isPhysical && b.isPro ? 'storePro' : 'store'));
+  if (st && types.includes('physical')) r.push('store');
+  if (st && types.includes('sale')) r.push('pro');
   if (types.includes('online')) r.push('online');
   return r;
 }
-const TITLE = { store: 'מימוש בחנות', storePro: 'מימוש בחנות', pro: 'מימוש מול נותן השירות', online: 'מימוש באתר' };
+const WHERE = { store: 'בחנות', pro: 'במעמד המכירה / השירות', online: 'באתר' };
+const TITLE = { store: 'מימוש בחנות', pro: 'מימוש במעמד המכירה / השירות', online: 'מימוש באתר' };
 function cardTitle(b, types) {
   const r = routesOf(b, types);
-  if (r.length === 2) return b.isPro && !b.isPhysical ? 'מימוש מול נותן השירות או באתר' : 'מימוש בחנות או באתר';
-  return TITLE[r[0]] || '';
+  return r.length ? 'מימוש ' + r.map(x => WHERE[x]).join(' או ') : '';
 }
 
 // ── הנוסח המאוחד (מוצע) – אותן עובדות במדריך שבקרוסלה ובמדריך של בעל העסק ──
@@ -148,24 +150,21 @@ const STEPS = {
   ],
   pro: [
     'לוחצים <b>"לקבלת ההטבה"</b> – נפתחת תעודת החבר, ומתחתיה פס כחול עם שם העסק ושעון חי.',
-    'בפגישה או בשיחת וידאו – מציגים את המסך.',
-    'בוואטסאפ – שולחים <b>צילום מסך</b> שרואים בו את התעודה ואת הפס הכחול.',
+    'בפגישה – מציגים את המסך עצמו.',
+    'בטלפון או בוואטסאפ – שולחים בוואטסאפ <b>צילום מסך מהשעה שדיברתם</b>, שרואים בו את התעודה ואת הפס הכחול.',
   ],
   online: [
     'לוחצים <b>"לקבלת ההטבה"</b> ומעתיקים את קוד הקופון.',
     'לוחצים <b>"לרכישה באתר"</b> ומדביקים את הקוד בהזמנה.',
   ],
 };
-STEPS.storePro = [
-  STEPS.store[0],
-  'בקופה – מציגים את המסך עצמו. מול נותן השירות – בפגישה או בווידאו מציגים את המסך, ובוואטסאפ שולחים צילום מסך שרואים בו את התעודה ואת הפס.',
-];
 function checksFor(route, biz) {
   if (route === 'online') return [['הקוד מוצג רק לחברים', 'לא לשתף אותו מחוץ לקהילה']];
   const live = route === 'store'
     ? ['השעון רץ', 'השניות מתחלפות – מסך חי']
-    : ['שעה עדכנית', 'בשעון החי, או בצילום מסך מאותו רגע'];
-  return [['שם העסק בפס הכחול', esc(biz)], live, ['שם ומספר חבר', 'בתעודת החבר'], ['תעודה מזהה', 'עם אותו שם כמו בתעודת החבר']];
+    : ['שעה עדכנית', 'בשעון החי, או בצילום המסך – מהשעה שדיברתם'];
+  // תעודה מזהה (רמי, 25.10): תמיד כתוב, אבל ההחלטה של העסק – לא בטוח שיבקשו
+  return [['שם העסק בפס הכחול', esc(biz)], live, ['שם ומספר חבר', 'בתעודת החבר'], ['תעודה מזהה', 'העסק רשאי לבקש – עם אותו שם כמו בתעודת החבר']];
 }
 
 let cur = 'store';
@@ -190,7 +189,7 @@ function render() {
       ${multi ? `<div class="redeem-benefit-tag">${i === 0 ? 'ההטבה הראשית' : 'הטבה נוספת'} · <b>${esc(u.text)}</b></div>` : ''}
       <div class="redeem-top"><div class="redeem-text">
         <div class="redeem-title">${cardTitle(b, u.types)}</div>
-        <div class="redeem-desc">${online ? 'קוד קופון לשימוש בקנייה אונליין' : (b.isPro && !b.isPhysical ? 'הציגו את תעודת החבר בפגישה או בשיחה עם נותן השירות' : 'הציגו את תעודת החבר בקופה, הצוות יאשר את ההטבה')}</div>
+        <div class="redeem-desc">${online ? 'קוד קופון לשימוש בקנייה אונליין' : (b.isPro && !b.isPhysical ? 'הציגו את תעודת החבר בפגישה או בשיחה עם נותן השירות' : b.isPro ? 'הציגו את תעודת החבר בקופה או מול נותן השירות, לאימות ההטבה' : 'הציגו את תעודת החבר בקופה, הצוות יאשר את ההטבה')}</div>
       </div><div class="redeem-icon-sq">${online ? ICON_TAG : ICON_LOCK}</div></div>
       <button class="redeem-toggle-btn" type="button">לקבלת ההטבה</button>
       <button class="howto-link" type="button" onclick="openHowto(${i})">${ICON_Q}<span>איך מממשים?</span></button>
@@ -205,11 +204,11 @@ function openHowto(i) {
   let h = `<div class="grab"></div><div class="mini-who">${esc(b.name)} · ${esc(u.text)}</div>
     <h2>איך מממשים</h2>`;
   routes.forEach(rt => {
-    h += `<div class="route"><div class="route-h">${TITLE[rt]}${rt === 'storePro' ? ' או מול נותן השירות' : ''}</div>
+    h += `<div class="route"><div class="route-h">${TITLE[rt]}</div>
       ${STEPS[rt].map((s, k) => `<div class="step"><span class="n">${k + 1}</span><div>${s}</div></div>`).join('')}
     </div>`;
   });
-  const main = routes.find(r => r !== 'online');
+  const main = routes.includes('pro') ? 'pro' : routes.includes('store') ? 'store' : null;
   h += `<div class="checks-h">${main ? 'מה בודקים' : 'שימו לב'}</div>` +
     checksFor(main || 'online', b.name).map(([t, s]) => `<div class="chk"><span class="v">✓</span><div><b>${t}</b> – <span class="s">${s}</span></div></div>`).join('');
   if (main) {

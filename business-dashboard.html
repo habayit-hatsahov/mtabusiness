@@ -4335,6 +4335,14 @@ function renderPreview(stateOverride, flashZone) {
     return [((bizTypes || []).includes('physical') ? 'physical' : 'sale')];
   };
   const pvIsProOnly = isPro && !isPhysical;
+  // §603ב — כמו redeemTitleFor ב-home.html: הכותרת והשורה מתחת להטבה = מה שהעסק בחר, באותן מילים
+  const pvTitleFor = types => {
+    const parts = [];
+    if ((isPhysical || isPro) && types.includes('physical')) parts.push('בחנות');
+    if ((isPhysical || isPro) && types.includes('sale')) parts.push('במעמד המכירה / השירות');
+    if (types.includes('online')) parts.push('באתר');
+    return parts.length ? 'מימוש ' + parts.join(' או ') : '';
+  };
   const pvHasBenefit = !!(w.hasDiscount && w.discountText);
   const pvExtras = (w.additionalDiscounts || []).filter(d => d && d.text);
   const pvUnits = !pvHasBenefit ? [] : [
@@ -4356,11 +4364,11 @@ function renderPreview(stateOverride, flashZone) {
     if (hasStore && hasOnline) {
       // §276 — הכותרת חייבת לומר *איפה* מממשים, כמו שני המסלולים האחרים. "מימוש ההטבה" גנרי
       // חזר על עצמו מול הכפתור ("למימוש ההטבה") ונקרא ככפילות.
-      title = pvIsProOnly ? 'מימוש מול נותן השירות או באתר' : 'מימוש בחנות או באתר';
+      title = pvTitleFor(u.types);
       desc = `אותה הטבה בשתי הדרכים – קוד קופון לקנייה באתר, ותעודת החבר ${pvIsProOnly ? 'מול נותן השירות' : 'בחנות'}`;
       icon = PV_ICONS.tag; cta = 'לקבלת ההטבה';
     } else if (hasStore) {
-      title = pvIsProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות';
+      title = pvTitleFor(u.types.filter(t => t !== 'online')) || (pvIsProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות');
       desc = (isPhysical && isPro) ? 'הציגו את תעודת החבר בקופה או מול נותן השירות, לאימות ההטבה'
         : pvIsProOnly ? 'הציגו את תעודת החבר בפגישה או בשיחה עם נותן השירות'
         : 'הציגו את תעודת החבר בקופה, הצוות יאשר את ההטבה';
@@ -4381,7 +4389,7 @@ function renderPreview(stateOverride, flashZone) {
         </div>`;
   });
 
-  const discRedeemText = computeDiscountTypes(types, w.discountRedeemMode).map(t =>DISCOUNT_TYPE_LABELS_PLAIN[t]).filter(Boolean).join(' · ');
+  const discRedeemText = pvTitleFor(computeDiscountTypes(types, w.discountRedeemMode));
 
   // כל ההטבות — ראשית בקופסה צהובה, נוספות בכרטיסים לבנים שקטים נפרדים (לא עוד באותה קופסה),
   // זהה ל-home.html (sheetBenefitItems/sheetBenefitSecondary)
@@ -4397,7 +4405,7 @@ function renderPreview(stateOverride, flashZone) {
         <div class="pv-sheet-benefit-secondary-list${fz('discount')}">
           ${extraBenefits.map(d =>{
             const eTypes = d.redeemTypes && d.redeemTypes.length ? d.redeemTypes : [];
-            let line = eTypes.map(t =>DISCOUNT_TYPE_LABELS_PLAIN[t]).filter(Boolean).join(' · ');
+            let line = pvTitleFor(eTypes);
             if (d.code && eTypes.includes('online')) line += ` · קוד: ${d.code}`;
             return `<div class="pv-sheet-benefit-secondary">
               <div class="pv-sheet-benefit-text">${esc(d.text)}</div>
