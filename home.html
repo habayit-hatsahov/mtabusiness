@@ -3540,6 +3540,10 @@ function openBiz(id) {
       })),
     ].map(u => ({ ...u, bizId: b.id, site: siteUrl }));
     window._hbRedeemUnits = redeemUnits;
+    // §604 — "איך מממשים?" בכל כרטיס-מימוש: גיליון קטן עם המסלול של אותה הטבה בלבד (sOpenHowto, בסקריפט
+    // הקלאסי ליד bizOverlay). בלי מדידה – הקפאת הנתונים (23.10).
+    window._hbHowtoBiz = { name: b.name || '', isPhysical: !!b.isPhysical, isPro: !!b.isPro };
+    const howtoLink = i => `<button class="howto-link" type="button" onclick="sOpenHowto(${i})"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg><span>איך מממשים?</span></button>`;
     const multiBenefit = redeemUnits.length > 1;
     // כפתורי "צרו קשר" מופיעים **פעם אחת בלבד**, בכרטיס-החנות הראשון. אצל נותן שירות עם שלוש
     // הטבות, שלושה זוגות כפתורי WhatsApp/טלפון זהים הם רעש, לא עזרה.
@@ -3581,6 +3585,7 @@ function openBiz(id) {
             <div id="sCouponReveal-${uid}"></div>
             ${memberBox(false)}
           </div>
+          ${howtoLink(i)}
         </div>`;
       } else if (hasStore) {
         areaHtml += `
@@ -3595,6 +3600,7 @@ function openBiz(id) {
           </div>
           <button class="redeem-toggle-btn" data-cta="לקבלת ההטבה" onclick="toggleMemberCard(this,'${uid}')">לקבלת ההטבה</button>
           ${memberBox(true)}
+          ${howtoLink(i)}
         </div>`;
       } else {
         // אונליין בלבד — בלי פס-התוקף (הקוביה הכחולה). הוא כלי-אימות מול אדם שמסתכל על המסך,
@@ -3611,6 +3617,7 @@ function openBiz(id) {
           </div>
           <button class="redeem-toggle-btn" data-cta="לקבלת קוד הקופון" onclick="sRevealCouponPanel(this,'${uid}',${i},false)">לקבלת קוד הקופון</button>
           <div id="sCouponReveal-${uid}" style="display:none;"></div>
+          ${howtoLink(i)}
         </div>`;
       }
     });
@@ -4060,6 +4067,127 @@ document.addEventListener('DOMContentLoaded', () => {
     dx < 0 ? lightboxNext() : lightboxPrev();
   });
 });
+</script>
+
+<!-- ══ §604 — "איך מממשים?" ליד כל הטבה (redeem-howto-demo.html) ══
+     גיליון קטן מעל גיליון העסק, עם המסלול של אותה הטבה בלבד – לפי מה שהעסק בחר (physical = בחנות,
+     sale = במעמד המכירה / השירות, online = באתר). אותו נוסח כמו במדריך של בעל העסק (biz-guides.js,
+     redemption-guide.html) ובקרוסלה. ⚠️ לא דרך closeModal/history: מעבר מודאל-למודאל סוגר את שניהם
+     (§545). שכבת DOM בלבד; "חזרה" שסוגרת את גיליון העסק סוגרת גם אותה (popstate). בלי מדידה. -->
+<style>
+  .howto-link { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 8px;
+    background: none; border: none; font-family: 'Rubik', sans-serif; font-size: 13px; font-weight: 700; color: var(--ink-2);
+    cursor: pointer; padding: 6px; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(10,42,102,.3); }
+  .howto-link svg { flex-shrink: 0; }
+  .howto-ov { position: fixed; inset: 0; background: rgba(10,20,40,.45); display: none; z-index: 350; }
+  .howto-ov.open { display: block; }
+  .howto-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 351; max-width: 600px; margin: 0 auto; background: #fff;
+    color: var(--ink); border-radius: 22px 22px 0 0; padding: 10px 18px calc(22px + env(safe-area-inset-bottom)); transform: translateY(105%);
+    transition: transform .25s ease; max-height: 88dvh; overflow-y: auto; visibility: hidden; }
+  .howto-sheet.open { transform: none; visibility: visible; }
+  .howto-grab { width: 40px; height: 4px; border-radius: 4px; background: #D9D6CA; margin: 0 auto 14px; }
+  .howto-who { font-size: 12px; font-weight: 800; color: var(--ink-3); }
+  .howto-sheet h2 { font-size: 21px; font-weight: 900; margin-top: 2px; }
+  .howto-route { margin-top: 14px; background: #FBF8EE; border-radius: 16px; padding: 13px 14px; }
+  .howto-route + .howto-route { margin-top: 10px; }
+  .howto-route-h { font-size: 15px; font-weight: 900; }
+  .howto-step { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; font-size: 14px; line-height: 1.5; }
+  .howto-n { width: 24px; height: 24px; border-radius: 50%; background: var(--yellow); color: #0A2A66; font-weight: 900; font-size: 13px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .howto-checks-h { font-size: 15px; font-weight: 900; margin-top: 16px; }
+  .howto-chk { display: flex; gap: 8px; margin-top: 8px; font-size: 14px; line-height: 1.45; }
+  .howto-chk .v { color: #1e6b34; font-weight: 900; }
+  .howto-chk .s { color: var(--ink-3); }
+  .howto-strip { margin-top: 12px; background: linear-gradient(140deg,#0A2A66 0%,#123A82 100%); border-radius: 12px; padding: 10px 12px 9px; color: #fff; }
+  .howto-strip .h { display: flex; justify-content: space-between; align-items: center; }
+  .howto-strip .r1 { display: flex; align-items: center; gap: 6px; }
+  .howto-strip .dot { width: 7px; height: 7px; border-radius: 50%; background: #22C55E; }
+  .howto-strip .cap { font-size: 10.5px; font-weight: 700; color: #FFD400; }
+  .howto-strip .mk { font-size: 9.5px; font-weight: 800; color: #FFD400; letter-spacing: .06em; }
+  .howto-strip .ft { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,.14); }
+  .howto-strip .bz { font-size: 15px; font-weight: 800; }
+  .howto-strip .clk { font-size: 10.5px; font-weight: 700; color: #C9D8F5; background: rgba(255,255,255,.1); border-radius: 6px; padding: 3px 7px; direction: ltr; white-space: nowrap; }
+  .howto-strip-cap { font-size: 12px; color: var(--ink-3); margin-top: 6px; text-align: center; }
+  .howto-note { margin-top: 14px; font-size: 13px; color: var(--ink-3); text-align: center; }
+  .howto-close { display: block; width: 100%; height: 46px; margin-top: 14px; background: #fff; border: 1px solid var(--field-line);
+    border-radius: 12px; font-family: 'Rubik', sans-serif; font-size: 15px; font-weight: 800; color: #475467; cursor: pointer; }
+</style>
+<div class="howto-ov" id="howtoOv" onclick="sCloseHowto()"></div>
+<div class="howto-sheet" id="howtoSheet" role="dialog" aria-modal="true" aria-label="איך מממשים"></div>
+<script>
+(function () {
+  var esc = function (x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var TITLE = { store: 'מימוש בחנות', pro: 'מימוש במעמד המכירה / השירות', online: 'מימוש באתר' };
+  var OPEN_STEP = 'לוחצים <b>"לקבלת ההטבה"</b> – נפתחת תעודת החבר, ומתחתיה פס כחול עם שם העסק ושעון חי.';
+  var timer = null;
+  function tick() {
+    var n = new Date();
+    var t = n.toLocaleDateString('he-IL') + ' · ' + n.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    var els = document.querySelectorAll('[data-howto-clock]');
+    for (var i = 0; i < els.length; i++) els[i].textContent = t;
+  }
+  // אותם תנאים כמו כרטיסי-המימוש ב-renderSheet: חנות/מעמד-המכירה רק לעסק פיזי או נותן שירות, אתר רק עם קוד
+  function routesOf(biz, u) {
+    var st = biz.isPhysical || biz.isPro, r = [];
+    if (st && u.types.indexOf('physical') >= 0) r.push('store');
+    if (st && u.types.indexOf('sale') >= 0) r.push('pro');
+    if (u.types.indexOf('online') >= 0 && u.code) r.push('online');
+    return r;
+  }
+  function stepsFor(rt, onlineOnly, hasSite) {
+    if (rt === 'store') return [OPEN_STEP, 'מציגים בקופה <b>את המסך עצמו</b> – לא צילום מסך.'];
+    if (rt === 'pro') return [OPEN_STEP, 'בפגישה – מציגים את המסך עצמו.',
+      'בטלפון או בוואטסאפ – שולחים בוואטסאפ <b>צילום מסך מהשעה שדיברתם</b>, שרואים בו את התעודה ואת הפס הכחול.'];
+    return [
+      'לוחצים <b>"' + (onlineOnly ? 'לקבלת קוד הקופון' : 'לקבלת ההטבה') + '"</b> ומעתיקים את קוד הקופון.',
+      hasSite ? 'לוחצים <b>"לרכישה באתר"</b> ומדביקים את הקוד בהזמנה.' : 'מדביקים את הקוד בהזמנה באתר של העסק.'
+    ];
+  }
+  window.sOpenHowto = function (i) {
+    var units = window._hbRedeemUnits || [], u = units[i], biz = window._hbHowtoBiz || {};
+    if (!u) return;
+    var routes = routesOf(biz, u);
+    if (!routes.length) return;
+    var onlineOnly = routes.length === 1 && routes[0] === 'online';
+    var h = '<div class="howto-grab"></div><div class="howto-who">' + esc(biz.name) + ' · ' + esc(u.text) + '</div><h2>איך מממשים</h2>';
+    routes.forEach(function (rt) {
+      h += '<div class="howto-route"><div class="howto-route-h">' + TITLE[rt] + '</div>' +
+        stepsFor(rt, onlineOnly, !!u.site).map(function (s, k) {
+          return '<div class="howto-step"><span class="howto-n">' + (k + 1) + '</span><div>' + s + '</div></div>';
+        }).join('') + '</div>';
+    });
+    var main = routes.indexOf('pro') >= 0 ? 'pro' : routes.indexOf('store') >= 0 ? 'store' : null;
+    var checks = !main ? [['הקוד מוצג רק לחברים', 'לא לשתף אותו מחוץ לקהילה']] : [
+      ['שם העסק בפס הכחול', esc(biz.name)],
+      main === 'store' ? ['השעון רץ', 'השניות מתחלפות – מסך חי'] : ['שעה עדכנית', 'בשעון החי, או בצילום המסך – מהשעה שדיברתם'],
+      ['שם ומספר חבר', 'בתעודת החבר'],
+      // תעודה מזהה (רמי, 25.10): תמיד כתוב, אבל ההחלטה של העסק – לא בטוח שיבקשו
+      ['תעודה מזהה', 'העסק רשאי לבקש – עם אותו שם כמו בתעודת החבר']
+    ];
+    h += '<div class="howto-checks-h">' + (main ? 'מה בודקים' : 'שימו לב') + '</div>' + checks.map(function (c) {
+      return '<div class="howto-chk"><span class="v">✓</span><div><b>' + c[0] + '</b> – <span class="s">' + c[1] + '</span></div></div>';
+    }).join('');
+    if (main) {
+      h += '<div class="howto-strip"><div class="h"><div class="r1"><span class="dot"></span><span class="cap">אימות בתוקף עבור ההטבה</span></div><span class="mk">YELLOW ZONE</span></div>' +
+        '<div class="ft"><span class="bz">' + esc(biz.name) + '</span><span class="clk" data-howto-clock></span></div></div>' +
+        '<div class="howto-strip-cap">ככה נראה הפס הכחול ב' + esc(biz.name) + '</div>';
+    }
+    h += '<div class="howto-note">משהו לא עבד? כתבו לנו ב"האזור שלי" ← "הודעות"</div>' +
+      '<button class="howto-close" type="button" onclick="sCloseHowto()">הבנתי</button>';
+    var sh = document.getElementById('howtoSheet');
+    sh.innerHTML = h; sh.scrollTop = 0;
+    tick(); if (!timer) timer = setInterval(tick, 1000);
+    document.getElementById('howtoOv').classList.add('open');
+    sh.classList.add('open');
+  };
+  window.sCloseHowto = function () {
+    var ov = document.getElementById('howtoOv'), sh = document.getElementById('howtoSheet');
+    if (ov) ov.classList.remove('open');
+    if (sh) sh.classList.remove('open');
+    if (timer) { clearInterval(timer); timer = null; }
+  };
+  window.addEventListener('popstate', window.sCloseHowto);
+})();
 </script>
 
 <!-- ══ BIZ MODAL ══ -->

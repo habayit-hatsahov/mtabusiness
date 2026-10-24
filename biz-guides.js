@@ -70,18 +70,20 @@
 
   // §473כא — במוצר מ-discountTypes: physical→store, sale→service, online→online
   var TYPE_TO_M = { physical: 'store', sale: 'service', online: 'online' };
+  // §604 (25.10) — הנוסח המאוחד: אותו נוסח כמו "איך מממשים?" בכרטיס העסק ובקרוסלה; שמות הדרכים כמו
+  // בטופס (בחנות / במעמד המכירה / השירות / באתר); בלי וידאו; תעודה מזהה – ההחלטה של העסק.
   var METHOD = {
-    store: { t: 'בחנות / בקופה', sub: 'בודקים 4 דברים', body:
+    store: { t: 'בחנות', sub: 'בודקים 4 דברים', body:
       '<div class="bg-step"><span class="bg-n">1</span><div><b>שם העסק</b> בפס הכחול – שלכם.</div></div>' +
-      '<div class="bg-step"><span class="bg-n">2</span><div><b>השעון רץ</b> – השניות מתחלפות. זה מסך חי, לא צילום.</div></div>' +
+      '<div class="bg-step"><span class="bg-n">2</span><div><b>השעון רץ</b> – השניות מתחלפות. זה מסך חי, לא צילום מסך.</div></div>' +
       '<div class="bg-step"><span class="bg-n">3</span><div><b>תעודת חבר</b> עם שם ומספר חבר.</div></div>' +
-      '<div class="bg-step"><span class="bg-n">4</span><div><b>תעודה מזהה</b> – השם בתעודת החבר תואם לתעודה המזהה של האוהד.</div></div>' +
+      '<div class="bg-step"><span class="bg-n">4</span><div><b>תעודה מזהה</b> – אפשר לבקש, ההחלטה שלכם. השם בתעודת החבר תואם לתעודה המזהה של האוהד.</div></div>' +
       '<div class="bg-ok">✓ הכל תקין? נותנים את ההטבה.</div>' },
-    service: { t: 'מול נותן שירות', sub: 'פגישה, שיחה, וידאו או וואטסאפ', body:
-      '<div class="bg-step"><span class="bg-n">•</span><div><b>פנים מול פנים, בווידאו או בוואטסאפ</b> – בודקים כמו בחנות, כולל תעודה מזהה.</div></div>' +
-      '<div class="bg-step"><span class="bg-n">•</span><div><b>בתמונה</b> (וואטסאפ) – רואים בה <b>גם את תעודת החבר וגם את הפס הכחול</b>: שם העסק שלכם, ותאריך ושעה עדכניים.</div></div>' +
-      '<div class="bg-step"><span class="bg-n">•</span><div><b>ובנוסף</b> – האוהד מוכיח שזה הוא, עם תעודה מזהה, בכל דרך שנוחה לכם.</div></div>' },
-    online: { t: 'באתר / אונליין', sub: 'קוד קופון', body:
+    service: { t: 'במעמד המכירה / השירות', sub: 'בפגישה, בטלפון או בוואטסאפ', body:
+      '<div class="bg-step"><span class="bg-n">•</span><div><b>בפגישה</b> – האוהד מראה את המסך עצמו, ובודקים כמו בחנות.</div></div>' +
+      '<div class="bg-step"><span class="bg-n">•</span><div><b>בטלפון או בוואטסאפ</b> – מבקשים שישלח בוואטסאפ <b>צילום מסך מהשעה שדיברתם</b>. רואים בו את תעודת החבר ואת הפס הכחול: שם העסק שלכם, ותאריך ושעה עדכניים.</div></div>' +
+      '<div class="bg-step"><span class="bg-n">•</span><div><b>תעודה מזהה</b> – אפשר לבקש, בכל דרך שנוחה לכם. ההחלטה שלכם.</div></div>' },
+    online: { t: 'באתר', sub: 'קוד קופון', body:
       '<div class="bg-step"><span class="bg-n">1</span><div>צרו במערכת האתר <b>קוד קופון ייחודי לחברי Yellow Zone</b> – לא קוד שמפורסם במקום אחר.</div></div>' +
       '<div class="bg-step"><span class="bg-n">2</span><div>הזינו אותו ב"עריכת פרטים" ← "ההטבה".</div></div>' +
       '<div class="bg-step"><span class="bg-n">3</span><div>האוהד מעתיק את הקוד מהכרטיס שלכם ומזין בהזמנה. הקוד מוצג רק לחברים.</div></div>' },
@@ -98,8 +100,8 @@
       '<div class="yz-strip"><div class="yz-strip-head"><div class="yz-strip-row1"><span class="yz-dot"></span><span class="yz-strip-cap">אימות בתוקף עבור ההטבה</span></div>' +
       '<span class="yz-strip-mark">YELLOW ZONE</span></div>' +
       '<div class="yz-strip-foot"><span class="yz-strip-biz">' + esc(bizName) + '</span><span class="yz-clock" data-bg-clock></span></div></div>' +
-      '<div class="bg-co"><div><b>שם העסק</b><span>שלכם</span></div><div><b>השעון</b><span>השניות רצות – מסך חי, לא צילום</span></div>' +
-      '<div><b>תעודת חבר</b><span>שם ומספר חבר</span></div><div><b>תעודה מזהה</b><span>אותו שם כמו בתעודת החבר</span></div></div>';
+      '<div class="bg-co"><div><b>שם העסק</b><span>שלכם</span></div><div><b>השעון</b><span>השניות רצות – מסך חי. בוואטסאפ: צילום מסך מהשעה שדיברתם</span></div>' +
+      '<div><b>תעודת חבר</b><span>שם ומספר חבר</span></div><div><b>תעודה מזהה</b><span>אפשר לבקש – אותו שם כמו בתעודת החבר</span></div></div>';
   }
 
   var clockTimer = null;
@@ -141,7 +143,7 @@
           '<div class="bg-cta-x">שלחו את העסק לחברים מהיציע ולקבוצות האוהדים. כל כניסה וכל לב מקדמים אתכם.</div>' +
           '<button type="button" class="bg-btn" data-bg-share="1">' + SHARE_SVG + ' שתפו את העסק שלכם</button></div>' +
       '</div></details>' +
-      '<details class="bg-card"><summary><span>🧾 איך מאשרים הטבה לאוהד<small>מה בודקים בקופה, בשירות ובאתר – וקובץ להדפסה</small></span></summary><div class="bg-body">' +
+      '<details class="bg-card"><summary><span>🧾 איך מאשרים הטבה לאוהד<small>מה בודקים בחנות, במעמד המכירה / השירות ובאתר – וקובץ להדפסה</small></span></summary><div class="bg-body">' +
         '<p class="bg-p">האוהד מציג את ההטבה <b>מתוך הכרטיס של העסק שלכם</b> באפליקציה: תעודת חבר, ומתחתיה פס כחול עם <b>שם העסק ושעון חי</b>.</p>' +
         methods +
         '<div class="bg-h">ככה זה נראה אצל האוהד</div>' + exampleHtml(name) +
