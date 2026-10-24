@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData18';
+  var KEY = 'wkDemoData20';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -26,7 +26,7 @@
   //    הערך לקהילה, לאוהד, לעסק, בחינם, מה יש בפנים). שורות שמתחילות ב-"• " מוצגות כרשימה.
   var US_DIRS = {
     // א – הכיוון שרמי בחר (24.10), מחובר עם ב: הציטוט, "למה זה חשוב", ההיכרות והבמה
-    a: { slideLine: 'אוהדים קונים מאוהדים – וכולם מרוויחים', heroTag: 'אוהד שקונה מאוהד – מקבל יותר', quote: 'ביציע אנחנו עומדים כתף אל כתף. כאן זה ממשיך גם ביום-יום.', sections: [
+    a: { slideLine: 'קונים כחול צהוב – אוהדים קונים מאוהדים', heroTag: 'אוהד שקונה מאוהד – מקבל יותר', quote: 'ביציע אנחנו עומדים כתף אל כתף. כאן זה ממשיך גם ביום-יום.', sections: [
       { h: 'איך זה התחיל', p: 'מחוויות אישיות: שוב ושוב עבדנו עם בעלי מקצוע שהם אוהדי מכבי – ותמיד קיבלנו קצת יותר. הנחה בלי שביקשנו, שירות מעל המצופה וחוויה טובה. Yellow Zone קמה כדי שכל אוהד ייהנה מזה.' },
       { h: 'למה זה חשוב', p: 'כל קנייה אצל אוהד מחזקת עוד משפחה מהיציע. ככה בונים קהילה – לא רק ב-90 דקות.' },
       { h: 'מה זה נותן לכם', p: '• הטבה אמיתית כמעט אצל כל עסק\n• בעל עסק שמבין אתכם מהמשפט הראשון\n• היכרות עם האנשים שמאחורי העסקים\n• כסף שנשאר בתוך המשפחה הצהובה' },
@@ -52,6 +52,9 @@
   function DEFAULTS() {
     return {
       ben: {
+        // (רמי, 24.10) בינתיים רק "בקרוב" – null = מציגים את ההטבה עצמה
+        soon: { tag: 'בקרוב', kicker: 'הטבה בלעדית משתנה', title: 'כל חצי חודש – הטבה חדשה',
+          line: 'הטבה בלעדית רק לחברי Yellow Zone, לזמן מוגבל. ההטבה הראשונה כבר בדרך.' },
         badge: 'הטבה בלעדית משתנה', tag2: 'מבצע השקה',
         slideTitle: 'קעקוע של מכבי במחיר מוזל',
         hint: '{n} מקעקעים מאזורים שונים',   // רמז בתיבה במקום השמות; {n} = מספר המקומות (רמי, 24.10) – דמו: להשוואה בין חלופות לתיבה
@@ -79,6 +82,8 @@
         ]
       },
       fan: {
+        soon: { tag: 'בקרוב', kicker: 'האוהד שמאחורי העסק', title: 'מהיציע – אל העסק',
+          line: 'נכיר לכם את האוהדים שמאחורי העסקים: הסיפור, היציע והעסק. הראשון עולה בקרוב.' },
         biz: 'פטריקס פארק רחובות', owner: 'דורון', fanTag: 'מנוי מכבי ת"א בכדורגל', showFan: true,
         cadence: '2 בחודש · הבא ב-{next}',
         explainTitle: '2 אוהדים עם עסק בכל חודש',
@@ -145,10 +150,12 @@
   }
   function pageFromDir(d) {
     var v = US_DIRS[d];
-    return { theme: 'navy', badge: '', logo: true, slideTitle: 'מי אנחנו? ', slideAccent: 'Yellow Zone', slideLine: v.slideLine,
+    // (רמי, 24.10) המגפון ירד – השור עם שלט Yellow Zone כרקע. רקע התמונה צהוב, ולכן התיבה צהובה
+    // באותו גוון (photoBg) והטקסט כחול; הלוגו ירד – הוא כבר על השלט שהשור מחזיק.
+    return { theme: 'yellow', badge: '', logo: false, slideTitle: 'מי אנחנו? ', slideAccent: 'Yellow Zone', slideLine: v.slideLine,
       heroWho: 'מי אנחנו', heroTitle: 'Yellow Zone', heroTag: v.heroTag, quote: v.quote || '',
       sections: v.sections.map(function (s) { return { h: s.h, p: s.p }; }),
-      bg: 'images/weekly/megaphone-bg.png',   // המגפון כרקע (רמי, 24.10)
+      photo: 'images/weekly/bull-yz.jpg', photoBg: '#EACA4F',
       cta: { label: 'לרישום העסק', act: 'bizSignup' } };
   }
 
@@ -194,6 +201,16 @@
 
   function slideHtml(kind, d, ctx) {
     var t = ctx.t, o = act(ctx, "WK.open('" + kind + "')");
+    // (רמי, 24.10) "לא נציג את ההטבה ואת האוהד שמאחורי העסק – כן נציג שזה בקרוב יקרה".
+    // התיבה לא נלחצת ואין לה גיליון; כל התוכן האמיתי נשאר שמור ויחזור כש-soon יכובה.
+    if ((kind === 'ben' || kind === 'fan') && d[kind].soon) {
+      var sn = d[kind].soon;
+      return '<div class="wk-slide wk-s-soon ' + kind + '">' +
+        (kind === 'ben' && d.ben.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(d.ben.bg) + '" alt=""></span>' : '') +
+        '<span class="wk-soon-tag"><i></i>' + esc(sn.tag || 'בקרוב') + '</span>' +
+        '<div><div class="wk-soon-k">' + esc(sn.kicker || '') + '</div><div class="t">' + esc(sn.title || '') + '</div>' +
+        (sn.line ? '<div class="s">' + esc(sn.line) + '</div>' : '') + '</div></div>';
+    }
     if (kind === 'ben') {
       // (רמי, 24.10) בלי שמות המקעקעים בחוץ – רק רמז ("אצל 5 מקעקעים מאזורים שונים"); השמות בגיליון.
       // מבנה: למעלה מימין תווית + כותרת + רמז, למעלה משמאל עיגול הימים; למטה מימין המחיר, משמאל החץ.
@@ -228,8 +245,10 @@
         '<span class="wk-go">' + GO + '</span></div>';
     }
     var p = d.pages[kind];
-    return '<div class="wk-slide wk-s-page wk-th-' + esc(p.theme || 'navy') + (p.bg ? ' has-bg' : '') + '"' + o + '>' +
+    return '<div class="wk-slide wk-s-page wk-th-' + esc(p.theme || 'navy') + (p.bg || p.photo ? ' has-bg' : '') + (p.photo ? ' has-photo' : '') + '"' + o +
+      (p.photo && p.photoBg ? ' style="background:' + esc(p.photoBg) + '"' : '') + '>' +
       (p.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(p.bg) + '" alt=""></span>' : '') +
+      (p.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(p.photo) + '" alt=""></span>' : '') +
       (p.logo ? '<img class="logo" src="images/yellowzone-mark-square.png" alt="">' : (p.badge ? '<span class="wk-badge">' + esc(p.badge) + '</span>' : '<span></span>')) +
       '<div><div class="t">' + esc(p.slideTitle) + (p.slideAccent ? '<span>' + esc(p.slideAccent) + '</span>' : '') + '</div>' +
       (p.slideLine ? '<div class="s">' + esc(p.slideLine) + '</div>' : '') + '</div>' +
@@ -442,6 +461,24 @@
     '.wk-s-page.has-bg::after{display:none}',
     '.wk-s-page .wk-bgmark{width:300px;height:300px;left:-30px;top:-50px;opacity:.11;transform:rotate(-14deg);filter:brightness(0) invert(1)}',
     '.wk-s-page > *{position:relative;z-index:1}',
+    // השור ב"מי אנחנו": משמאל, חתוך מלמטה (ראש + שלט + גוף), הטקסט מימין
+    '.wk-photo{position:absolute;left:0;top:-4px;height:330px;width:auto;pointer-events:none;user-select:none;-webkit-mask-image:linear-gradient(to left,transparent 0,#000 22px);mask-image:linear-gradient(to left,transparent 0,#000 22px)}',
+    '.wk-s-page.has-photo .t,.wk-s-page.has-photo .s{margin-inline-end:150px}',
+    '.wk-s-page.has-photo.wk-th-yellow .t span{color:#0A2A66}',
+    '.wk-s-page.has-photo .wk-go{z-index:2;top:14px;bottom:auto;box-shadow:0 2px 8px rgba(10,42,102,.3)}',
+    // מצב "בקרוב" (רמי, 24.10): ההטבה והאוהד שמאחורי העסק עוד לא עולים – רק מודיעים שזה מגיע
+    '.wk-s-soon{justify-content:space-between;cursor:default}',
+    '.wk-s-soon > *{position:relative;z-index:1}',
+    '.wk-s-soon .t{font-size:22px;font-weight:800;line-height:1.15}',
+    '.wk-s-soon .s{font-size:13px;margin-top:5px;line-height:1.45;opacity:.9;max-width:300px}',
+    '.wk-soon-tag{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:800}',
+    '.wk-soon-tag i{width:7px;height:7px;border-radius:50%;background:currentColor;animation:wkPulse 1.6s ease-in-out infinite}',
+    '@keyframes wkPulse{0%,100%{opacity:1}50%{opacity:.25}}',
+    '.wk-s-soon.ben{background:#FFD400;color:#0A2A66}.wk-s-soon.ben .wk-soon-tag{background:#0A2A66;color:#FFD400}',
+    '.wk-s-soon.ben .wk-bgmark{width:280px;height:280px;left:-20px;top:-40px;opacity:.16;transform:rotate(-12deg)}',
+    '.wk-s-soon.fan{background:#0A2A66;color:#fff}.wk-s-soon.fan .wk-soon-tag{background:#FFD400;color:#0A2A66}',
+    '.wk-s-soon.fan::after{content:"";position:absolute;left:-40px;top:-40px;width:170px;height:170px;border-radius:50%;background:rgba(255,212,0,.12)}',
+    '.wk-soon-k{font-size:12px;font-weight:700;opacity:.75;margin-bottom:3px}',
     '.wk-s-page .logo{width:46px;height:46px;border-radius:12px;background:#fff;padding:6px;box-sizing:border-box}',
     '.wk-s-page .t{font-size:22px;font-weight:800;line-height:1.15}',
     '.wk-s-page .t span{color:#FFD400}',
