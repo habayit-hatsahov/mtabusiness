@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData30';
+  var KEY = 'wkDemoData31';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -105,12 +105,14 @@
         // "פעמיים בחודש" ואז מה עושים, נפתחת להסבר קצר. מוצגת כל עוד ben.soon וגם fan.soon (ר' order).
         launch: {
           theme: 'yellow', badge: 'בקרוב', badgeInline: true, slideTitle: 'פעמיים בחודש',
-          slideLine: 'הטבה בלעדית חדשה\nואוהד עם עסק שכדאי להכיר',
+          // (רמי, 24.10) "הכיתוב למטה לא ברור" – שתי שורות קצרות, אחת לכל דבר
+          slideLine: 'הטבה בלעדית חדשה\n+ מכירים אוהד עם עסק',
           photo: 'images/weekly/bull-drum.jpg', photoBg: '#EFCD50', photoFade: 24, photoH: 285, photoTop: -22, photoLeft: 28,
-          heroWho: 'מתחילים בהשקה', heroTitle: 'פעמיים בחודש', heroTag: 'הטבה בלעדית ואוהד עם עסק – רק ב-Yellow Zone',
+          heroWho: 'מתחילים בהשקה', heroTitle: 'פעמיים בחודש', heroTag: 'הטבה בלעדית חדשה\nאוהד עם עסק שכדאי להכיר',   // (רמי) לא באותה שורה
           sections: [
-            { h: 'הטבה בלעדית משתנה', p: '• ב-1 וב-16 בחודש עולה הטבה חדשה\n• רק לחברי Yellow Zone\n• כל הטבה בתוקף חצי חודש – ואז מתחלפת' },
-            { h: 'האוהד שמאחורי העסק', p: '• פעמיים בחודש נכיר לכם אוהד עם עסק – אחד ב-1 ואחד ב-16\n• הסיפור שלו, היציע והעסק' },
+            { h: 'הטבה בלעדית משתנה', p: '• ב-1 וב-16 בחודש עולה הטבה חדשה\n• הטבה אטרקטיבית ובלעדית – רק לחברי Yellow Zone\n• כל הטבה בתוקף חצי חודש – ואז מתחלפת' },
+            // (רמי) "תאחד בנקודות" – באותו מבנה כמו ההטבה
+            { h: 'האוהד שמאחורי העסק', p: '• ב-1 וב-16 בחודש – אוהד חדש עם עסק\n• הסיפור שלו והיציע שלו\n• העסק שלו – ולמה כדאי להכיר' },
             { h: 'יש לכם עסק?', p: 'רוצים לתת הטבה בלעדית או להופיע כאוהד שמאחורי העסק? מסמנים עניין בטופס ההרשמה או ב"האזור שלי".' }
           ],
           cta: { label: '', act: '' }
@@ -589,7 +591,7 @@
     '.wk-hero > .wk-close{position:absolute}',
     '.wk-hero .who{font-size:12.5px;font-weight:700;color:#FFD400;margin-bottom:4px}',
     '.wk-hero .t{font-size:28px;font-weight:800;line-height:1.1}',
-    '.wk-hero .tag{font-size:15px;opacity:.9;margin-top:6px}',
+    '.wk-hero .tag{font-size:15px;opacity:.9;margin-top:6px;white-space:pre-line}',
     '.wk-hero.ben{background:#FFD400;color:#0A2A66;min-height:0;padding-top:70px}',
     '.wk-hero.ben::before,.wk-hero.page::before{display:none}',
     '.wk-hero.ben > .wk-badge{background:#0A2A66;color:#FFD400}',
