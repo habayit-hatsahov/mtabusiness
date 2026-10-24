@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData25';
+  var KEY = 'wkDemoData27';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -102,17 +102,17 @@
         us: pageFromDir('a'),
         redeem: {
           // למשתמשים ולבעלי עסקים – המדריך מכוון גם את בעל העסק (רמי, 24.10)
-          // (רמי, 24.10) השור עם הלפיד בצד שמאל. שולי התמונה בצד הטקסט כחולים (עשן), ולכן התיבה בחוץ
-          // כחולה (slideTheme) – הגיליון בפנים נשאר בהיר; התווית ירדה (התמונה בצד שמאל), הכיתוב קוצר
-          theme: 'soft', slideTheme: 'navy', badge: '', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע\nאו באתר',
+          // (רמי, 24.10) השור עם הלפיד בצד שמאל. שולי התמונה בצד הטקסט כחולים (עשן), ולכן התיבה כחולה
+          // (slideTheme – גם בראש הגיליון). התווית הוחזרה (רמי), הכיתוב בחוץ קוצר.
+          theme: 'soft', slideTheme: 'navy', badge: 'לאוהדים ולעסקים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע\nאו באתר',
           photo: 'images/weekly/bull-flare.jpg', photoBg: '#1A3B80', photoFade: 70, photoTop: -14,
-          heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: 'לאוהדים – וגם לבעלי העסקים, שיידעו מה לבדוק', steps: true,
-          // כותרת שמסבירה מעל 3 הסעיפים (רמי, 24.10)
-          introTitle: 'הכול מתחיל בכרטיס העסק ← "מימוש ההטבה"', intro: 'משם זה תלוי איפה קונים – בחנות, אצל בעל מקצוע או נותן שירות, או באתר:',
+          heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: '3 צעדים – וההטבה אצלכם', steps: true,
+          // (רמי, 24.10) "ממוקד, לפי נקודות, לפי התהליך – קצר, קולע ופשוט, בלי לוותר על פרטים":
+          // שלושת המסלולים (חנות / בעל מקצוע / אתר) נכנסו לצעד 2 כנקודות, ומה בודקים – צעד 3
           sections: [
-            { h: 'בחנות', p: 'נכנסים לכרטיס העסק ← "מימוש ההטבה", ומציגים בקופה את תעודת החבר: שם העסק בפס הכחול ושעון חי. לפעמים יבקשו גם תעודה מזהה (דוגמה בסוף).' },
-            { h: 'בעל מקצוע או נותן שירות', p: 'תמיד במעמד הרכישה – בפגישה, בטלפון או בוואטסאפ. מציגים לו את תעודת החבר, או שולחים לו צילום שלה – לפי מה שהוא מבקש: מצלמים מסך מתוך כרטיס העסק שלו (דוגמה בסוף).' },
-            { h: 'באתר / אונליין', p: 'בכרטיס העסק מעתיקים את קוד הקופון, ולוחצים על "לרכישה באתר" – זה מעביר ישר לאתר של העסק. בהזמנה מדביקים את הקוד. הקוד מוצג רק לחברים.' }
+            { h: 'נכנסים לכרטיס העסק', p: 'לוחצים "מימוש ההטבה" – שם מחכים תעודת החבר וקוד הקופון.' },
+            { h: 'מממשים לפי איפה שקונים', p: '• בחנות – מציגים בקופה את תעודת החבר\n• בעל מקצוע או נותן שירות – במעמד הרכישה (בפגישה, בטלפון או בוואטסאפ) מציגים את התעודה, או שולחים צילום מסך שלה\n• באתר – מעתיקים את קוד הקופון, לוחצים "לרכישה באתר" ומדביקים את הקוד בהזמנה' },
+            { h: 'מה בודקים', p: '• שם העסק מופיע בפס הכחול\n• השעה בתעודה עדכנית – שעון חי\n• לפעמים יבקשו גם תעודה מזהה, כדי לוודא שהשם תואם\n• קוד הקופון מוצג רק לחברים' }
           ],
           // הדוגמה בסוף, לא בין הסעיפים הממוספרים (רמי, סבב 11: "בטלפון לא נראה טוב שבין המספרים יש תמונה")
           exTitle: 'ככה נראית תעודת החבר', exBiz: 'לארט אופנועים - LS2',
@@ -124,8 +124,9 @@
         },
         forbiz: {
           // (רמי, 24.10) התמונה מדף הנחיתה – האוהדים בבר, האריח שפונה לבעלי עסקים
-          cover: 'images/landing/hero-fans-illustration.jpg',
-          theme: 'navy', badge: 'לבעלי עסקים', slideTitle: 'יש לכם עסק?', slideLine: 'לקוחות, חיבורים והזדמנויות – והרישום בחינם',
+          // (רמי, 24.10) במקום תמונת הבר – השור בעל המקצוע, על רקע צהוב, כמו שאר השוורים
+          photo: 'images/weekly/bull-worker.jpg', photoBg: '#F2CC45', photoFade: 30,
+          theme: 'yellow', badge: 'לבעלי עסקים', slideTitle: 'יש לכם עסק?', slideLine: 'לקוחות, חיבורים והזדמנויות – והרישום בחינם',
           heroWho: 'לבעלי עסקים', heroTitle: 'העסק שלכם ב-Yellow Zone', heroTag: 'אוהדים קונים מאוהדים',
           // הערך לעסק (רמי, 24.10): הזדמנויות עסקיות, חיבורים עם בעלי מקצוע, הלקוחות, רישום בחינם
           sections: [
@@ -141,7 +142,7 @@
           // "שתפו ועקבו" (רמי, 24.10) – שיתוף + מעקב ברשתות באותה תיבה, לא תיבה שביעית
           // (רמי, 24.10) "תביאו את החבר'ה" – ההזמנה במרכז, העקיבה ברשתות בפנים מתחת לכפתורי השיתוף;
           // השור עם הטלפון בצד שמאל, כמו ב"מי אנחנו" (רקע התמונה #FFD205)
-          theme: 'yellow', badge: '', slideTitle: 'תביאו את החבר\'ה', slideLine: 'שתפו את האפליקציה\nעם אוהד שעוד לא כאן',
+          theme: 'yellow', badge: 'קהילה', slideTitle: 'תביאו את החבר\'ה', slideLine: 'שתפו את האפליקציה\nעם אוהד שעוד לא כאן',
           photo: 'images/weekly/bull-phone.jpg?v=2', photoBg: '#FFD205',
           heroWho: 'שתפו ועקבו', heroTitle: 'תביאו את החבר\'ה', heroTag: 'כל מי שמצטרף מחזק את כולנו',
           followTitle: 'עקבו אחרינו',   // כתובת ריקה = הכפתור לא מוצג
@@ -266,7 +267,7 @@
     }
     var p = d.pages[kind];
     // slideTheme – צבע התיבה בחוץ כשהוא שונה מהגיליון בפנים (איך מממשים: כחול בחוץ, בהיר בפנים)
-    return '<div class="wk-slide wk-s-page wk-th-' + esc(p.slideTheme || p.theme || 'navy') + (p.bg || p.photo ? ' has-bg' : '') + (p.photo ? ' has-photo' : '') + (p.cover ? ' has-cover' : '') + '"' + o +
+    return '<div class="wk-slide wk-s-page wk-th-' + esc(p.slideTheme || p.theme || 'navy') + (p.bg || p.photo ? ' has-bg' : '') + (p.photo ? ' has-photo' : '') + (p.cover ? ' has-cover' : '') + (p.badge || p.logo ? ' has-badge' : '') + '"' + o +
       (p.photo && p.photoBg ? ' style="background:' + esc(p.photoBg) + '"' : '') +
       (p.cover ? ' style="background-image:linear-gradient(180deg,rgba(10,42,102,.88) 0,rgba(10,42,102,.25) 42%,rgba(10,42,102,.3) 58%,rgba(10,42,102,.9) 100%),url(\'' + esc(p.cover) + '\')"' : '') + '>' +
       (p.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(p.bg) + '" alt=""></span>' : '') +
@@ -371,14 +372,20 @@
     }
     var p = d.pages[kind];
     var secs = p.steps
-      ? '<ol class="wk-steps">' + p.sections.map(function (s, i) { return '<li><i>' + (i + 1) + '</i><div><b>' + esc(s.h) + '</b><span class="wk-sp">' + esc(s.p) + '</span>' + (s.img ? passHtml(s.img, s.imgCap) : '') + '</div></li>'; }).join('') + '</ol>'
+      // שורות "• " בצעד = נקודות (paraHtml), כמו בשאר הגיליונות
+      ? '<ol class="wk-steps">' + p.sections.map(function (s, i) { return '<li><i>' + (i + 1) + '</i><div><b>' + esc(s.h) + '</b><div class="wk-sp">' + paraHtml(s.p) + '</div>' + (s.img ? passHtml(s.img, s.imgCap) : '') + '</div></li>'; }).join('') + '</ol>'
       : p.sections.map(function (s) { return '<div class="wk-sec">' + (s.h ? '<h3>' + esc(s.h) + '</h3>' : '') + paraHtml(s.p) + (s.img ? passHtml(s.img, s.imgCap) : '') + '</div>'; }).join('');
     if (p.introTitle || p.intro) secs = '<div class="wk-rot"><b>' + esc(p.introTitle || '') + '</b>' + (p.intro ? '<p>' + esc(p.intro) + '</p>' : '') + '</div>' + secs;
     secs += p.exBiz ? '<div class="wk-sec wk-ex">' + (p.exTitle ? '<h3>' + esc(p.exTitle) + '</h3>' : '') + passHtml(p.exBiz, p.exCap) + '</div>' : '';
     secs += p.bizNote ? '<div class="wk-rot navy"><b>לבעלי עסקים</b><p>' + esc(p.bizNote) + '</p></div>' : '';
     secs += p.note ? '<div class="wk-small">' + esc(p.note) + '</div>' : '';
     var cta = function (c) { return c && c.label ? '<button type="button" class="wk-cta"' + act(ctx, "WK.act('" + esc(c.act) + "')") + '>' + esc(c.label) + '</button>' : ''; };
-    return '<div class="wk-hero page wk-th-' + esc(p.theme || 'navy') + '">' + closeBtn(kind, ctx) +
+    // (רמי, 24.10) ראש הגיליון בעיצוב של התיבה בחוץ: אותו צבע, אותו שור / אותה תמונה, אותה תווית
+    var hs = p.photo && p.photoBg ? ' style="background:' + esc(p.photoBg) + '"'
+      : p.cover ? ' style="background-image:linear-gradient(180deg,rgba(10,42,102,.55) 0,rgba(10,42,102,.2) 40%,rgba(10,42,102,.92) 100%),url(\'' + esc(p.cover) + '\')"' : '';
+    return '<div class="wk-hero page wk-th-' + esc(p.slideTheme || p.theme || 'navy') + (p.photo ? ' has-photo' : '') + (p.cover ? ' has-cover' : '') + '"' + hs + '>' + closeBtn(kind, ctx) +
+      (p.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(p.photo) + '" alt=""' + photoStyle(p) + '></span>' : '') +
+      (p.badge ? '<span class="wk-badge">' + esc(p.badge) + '</span>' : '') +
       (p.heroWho ? '<div class="who">' + esc(p.heroWho) + '</div>' : '') + '<div class="t">' + esc(p.heroTitle) + '</div>' +
       (p.heroTag ? '<div class="tag">' + esc(p.heroTag) + '</div>' : '') + '</div>' +
       '<div class="wk-in">' + (p.quote ? '<div class="wk-quote">' + esc(p.quote) + '</div>' : '') + secs +
@@ -494,7 +501,17 @@
     '.wk-s-page.has-cover::after{display:none}',
     '.wk-s-page.has-cover .t,.wk-s-page.has-cover .s{text-shadow:0 1px 6px rgba(0,0,0,.45)}',
     '.wk-s-page.has-photo.wk-th-yellow .t span{color:#0A2A66}',
-    '.wk-s-page.has-photo .wk-go{z-index:2;top:14px;bottom:auto;box-shadow:0 2px 8px rgba(10,42,102,.3)}',
+    '.wk-s-page.has-photo .wk-go{z-index:2;box-shadow:0 2px 8px rgba(10,42,102,.3)}',
+    // בלי תווית (מי אנחנו) – החץ עולה לפינה, כדי לא לכסות את השלט שהשור מחזיק
+    '.wk-s-page.has-photo:not(.has-badge) .wk-go{top:14px;bottom:auto}',
+    '.wk-s-page.has-photo .wk-badge.wk-corner{box-shadow:0 1px 6px rgba(10,42,102,.3)}',
+    // ראש הגיליון עם שור / תמונה – כמו בחוץ
+    '.wk-hero.page.has-photo{min-height:250px;justify-content:flex-start;padding-top:64px}',
+    '.wk-hero.page.has-photo > .who,.wk-hero.page.has-photo > .t,.wk-hero.page.has-photo > .tag{margin-inline-end:44%}',
+    '.wk-hero.page.has-photo .wk-photo{height:400px;top:-10px}',
+    '.wk-hero.page.has-photo > .wk-close{z-index:3}',
+    '.wk-hero.page.has-cover{min-height:250px;background-color:#0A2A66;background-position:center 30%;background-size:cover;background-repeat:no-repeat}',
+    '.wk-hero.page.has-cover .t,.wk-hero.page.has-cover .tag{text-shadow:0 1px 6px rgba(0,0,0,.45)}',
     // מצב "בקרוב" (רמי, 24.10): ההטבה והאוהד שמאחורי העסק עוד לא עולים – רק מודיעים שזה מגיע
     '.wk-s-soon{justify-content:space-between;cursor:default}',
     '.wk-s-soon > *{position:relative;z-index:1}',
