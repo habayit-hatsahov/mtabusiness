@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData28';
+  var KEY = 'wkDemoData29';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -126,14 +126,17 @@
           // (רמי, 24.10) התמונה מדף הנחיתה – האוהדים בבר, האריח שפונה לבעלי עסקים
           // (רמי, 24.10) במקום תמונת הבר – השור בעל המקצוע, על רקע צהוב, כמו שאר השוורים
           photo: 'images/weekly/bull-worker2.jpg', photoBg: '#F2CC45', photoFade: 30, photoH: 350, photoTop: -10, photoLeft: 8,
-          theme: 'yellow', badge: 'לבעלי עסקים', slideTitle: 'יש לכם עסק?', slideLine: 'לקוחות, חיבורים והזדמנויות – והרישום בחינם',
-          heroWho: 'לבעלי עסקים', heroTitle: 'העסק שלכם ב-Yellow Zone', heroTag: 'אוהדים קונים מאוהדים',
+          // (רמי, 24.10) התווית עלתה על הקסדה – כאן היא למטה משמאל, ליד החץ (badgeLow)
+          theme: 'yellow', badge: 'לבעלי עסקים', badgeLow: true, slideTitle: 'יש לכם עסק?', slideLine: 'לקוחות, חיבורים והזדמנויות – והרישום בחינם',
+          // (רמי) "לבעלי עסקים" הופיע פעמיים בראש הגיליון – נשארת רק התווית
+          heroWho: '', heroTitle: 'העסק שלכם ב-Yellow Zone', heroTag: 'אוהדים קונים מאוהדים',
           // הערך לעסק (רמי, 24.10): הזדמנויות עסקיות, חיבורים עם בעלי מקצוע, הלקוחות, רישום בחינם
           sections: [
             { h: 'מה מקבלים', p: '• לקוחות מהקהילה – אוהדים שכיף לעבוד איתם, ושחוזרים\n• חיבורים עם בעלי מקצוע אוהדים כמוך\n• הזדמנויות עסקיות ושיתופי פעולה בתוך הקהילה\n• כרטיס עסק באפליקציה עם תמונות, פרטים וההטבה שלכם' },
             // רמי, 24.10 – סטטיסטיקות ירדו (עוד אין); "המלצות" = טיפים לחשיפה
             { h: 'בניהול העסק שלכם', p: '• עריכה זמינה בכל רגע – תמונות, פרטים והטבה\n• טיפים לקבלת חשיפה גדולה וקידום העסק' },
-            { h: 'איך מצטרפים', p: 'ממלאים טופס קצר עם פרטי העסק וההטבה. הצוות עובר ומאשר, ואז העסק עולה לאוויר. הרישום בחינם.' },
+            // (רמי, 24.10) "הרשמה סגורה – אוהדים אמיתיים"
+            { h: 'איך מצטרפים', p: 'ההרשמה סגורה – רק לאוהדים אמיתיים. ממלאים טופס קצר עם פרטי העסק וההטבה. הצוות עובר ומאשר, ואז העסק עולה לאוויר. הרישום בחינם.' },
             { h: 'להופיע בראש דף הבית', p: 'פעמיים בחודש אנחנו מציגים בראש דף הבית הטבה בלעדית ועסק של אוהד עם הסיפור שלו. רוצים להשתתף? מסמנים עניין בטופס או ב"האזור שלי".' }
           ],
           cta: { label: 'לרישום העסק – בחינם', act: 'bizSignup' }
@@ -165,7 +168,7 @@
     // (רמי, 24.10) המגפון ירד – השור עם שלט Yellow Zone כרקע. רקע התמונה צהוב, ולכן התיבה צהובה
     // באותו גוון (photoBg) והטקסט כחול; הלוגו ירד – הוא כבר על השלט שהשור מחזיק.
     return { theme: 'yellow', badge: '', logo: false, slideTitle: 'מי אנחנו? ', slideAccent: 'Yellow Zone', slideLine: v.slideLine,
-      heroWho: 'מי אנחנו', heroTitle: 'Yellow Zone', heroTag: v.heroTag, quote: v.quote || '',
+      heroWho: 'מי אנחנו', heroTitle: 'Yellow Zone', heroTag: v.heroTag, tagBottom: true, quote: v.quote || '',
       sections: v.sections.map(function (s) { return { h: s.h, p: s.p }; }),
       photo: 'images/weekly/bull-yz.jpg', photoBg: '#EACA4F', photoH: 373, photoTop: -32, photoLeft: -15,
       cta: { label: 'לרישום העסק', act: 'bizSignup' } };
@@ -231,7 +234,6 @@
       // (רמי, 24.10) בלי סמל מכבי; כותרת ימין למעלה, כיתוב ימין למטה, "בקרוב" שמאל למעלה
       // (רמי, 24.10) הרקע: צעיף כחול-צהוב באלכסון בצד שמאל, במקום העיגול
       return '<div class="wk-slide wk-s-soon ' + kind + '">' +
-        '<span class="wk-bgwrap"><i class="wk-scarf"></i></span>' +
         '<span class="wk-soon-tag wk-corner"><i></i>' + esc(sn.tag || 'בקרוב') + '</span>' +
         '<div class="has-corner"><div class="wk-soon-k">' + esc(sn.kicker || '') + '</div><div class="t">' + esc(sn.title || '') + '</div></div>' +
         (sn.line ? '<div class="s">' + esc(sn.line) + '</div>' : '<span></span>') + '</div>';
@@ -277,7 +279,7 @@
       (p.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(p.bg) + '" alt=""></span>' : '') +
       (p.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(p.photo) + '" alt=""' + photoStyle(p) + '></span>' : '') +
       // (רמי, 24.10) סדר אחד לכל הקרוסלה: כותרת – ימין למעלה, כיתוב – ימין למטה, תווית – שמאל למעלה, חץ – שמאל למטה
-      (p.logo ? '<img class="logo wk-corner" src="images/yellowzone-mark-square.png" alt="">' : (p.badge ? '<span class="wk-badge wk-corner">' + esc(p.badge) + '</span>' : '')) +
+      (p.logo ? '<img class="logo wk-corner" src="images/yellowzone-mark-square.png" alt="">' : (p.badge ? '<span class="wk-badge wk-corner' + (p.badgeLow ? ' low' : '') + '">' + esc(p.badge) + '</span>' : '')) +
       '<div class="t' + (p.badge || p.logo ? ' has-corner' : '') + '">' + esc(p.slideTitle) + (p.slideAccent ? '<span>' + esc(p.slideAccent) + '</span>' : '') + '</div>' +
       (p.slideLine ? '<div class="s">' + esc(p.slideLine) + '</div>' : '<span></span>') +
       '<span class="wk-go">' + GO + '</span></div>';
@@ -391,8 +393,10 @@
       (p.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(p.photo) + '" alt=""' + photoStyle(p) + '></span>' : '') +
       (p.badge ? '<span class="wk-badge">' + esc(p.badge) + '</span>' : '') +
       (p.heroWho ? '<div class="who">' + esc(p.heroWho) + '</div>' : '') + '<div class="t">' + esc(p.heroTitle) + '</div>' +
-      (p.heroTag ? '<div class="tag">' + esc(p.heroTag) + '</div>' : '') + '</div>' +
+      (p.heroTag && !p.tagBottom ? '<div class="tag">' + esc(p.heroTag) + '</div>' : '') + '</div>' +
       '<div class="wk-in">' + (p.quote ? '<div class="wk-quote">' + esc(p.quote) + '</div>' : '') + secs +
+      // (רמי, 24.10) ב"מי אנחנו" המשפט "אוהד שקונה מאוהד – מקבל יותר" ירד מהכותרת לסוף הגיליון
+      (p.heroTag && p.tagBottom ? '<div class="wk-endtag">' + esc(p.heroTag) + '</div>' : '') +
       (cta(p.cta) || cta(p.cta2) ? '<div class="wk-ctas">' + cta(p.cta) + cta(p.cta2) + '</div>' : '') + followHtml(p, ctx) + '</div>';
   }
 
@@ -532,7 +536,9 @@
     '.wk-s-soon.fan{background:#0A2A66;color:#fff}.wk-s-soon.fan .wk-soon-tag{background:#FFD400;color:#0A2A66}',
     '.wk-scarf{position:absolute;left:34px;top:-40px;width:62px;height:300px;transform:rotate(18deg);border-radius:3px;' +
       'background:repeating-linear-gradient(180deg,#0A2A66 0 24px,#FFD400 24px 48px);box-shadow:0 0 0 3px #fff,0 4px 14px rgba(10,42,102,.25)}',
-    '.wk-s-soon .s{margin-inline-end:104px}',
+    // (רמי, 24.10) הצעיף ירד מתיבות "בקרוב" – רקע חלק
+    '.wk-corner.low{top:auto!important;bottom:20px;left:58px}',
+    '.wk-endtag{margin-top:18px;padding:14px 16px;border-radius:14px;background:#0A2A66;color:#FFD400;font:800 17px/1.4 Rubik,sans-serif;text-align:center}',
     '.wk-soon-k{font-size:12px;font-weight:700;opacity:.75;margin-bottom:3px}',
     '.wk-s-page .logo{width:46px;height:46px;border-radius:12px;background:#fff;padding:6px;box-sizing:border-box}',
     '.wk-s-page .t{font-size:22px;font-weight:800;line-height:1.15}',
@@ -566,6 +572,9 @@
     '.wk-hero.ben > .wk-badge{background:#0A2A66;color:#FFD400}',
     '.wk-hero.page{min-height:0;padding-top:70px}',
     '.wk-hero.page.wk-th-soft .who,.wk-hero.page.wk-th-yellow .who{color:#6B5200}',
+    // ראש גיליון על רקע צהוב (התמונה) – טקסט כחול, אחרת הלבן של .wk-hero לא נקרא
+    '.wk-hero.page.wk-th-yellow,.wk-hero.page.wk-th-soft{color:#0A2A66}',
+    '.wk-hero.page.wk-th-yellow > .wk-badge{background:#0A2A66;color:#FFD400}',
     '.wk-in{padding:18px 18px 120px;max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:18px;color:#3A4C7A}',
     '.wk-inline .wk-in{padding-bottom:24px}',
     '.wk-p{font-size:15.5px;line-height:1.65;margin:0;white-space:pre-line}',
