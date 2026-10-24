@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData22';
+  var KEY = 'wkDemoData23';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -135,8 +135,11 @@
         },
         invite: {
           // "שתפו ועקבו" (רמי, 24.10) – שיתוף + מעקב ברשתות באותה תיבה, לא תיבה שביעית
-          theme: 'yellow', badge: 'קהילה', slideTitle: 'שתפו ועקבו', slideLine: 'הזמינו חברים ועקבו אחרינו ברשתות',
-          heroWho: 'שתפו ועקבו', heroTitle: 'מביאים עוד אוהדים', heroTag: 'כל מי שמצטרף מחזק את כולנו',
+          // (רמי, 24.10) "תביאו את החבר'ה" – ההזמנה במרכז, העקיבה ברשתות בפנים מתחת לכפתורי השיתוף;
+          // השור עם הטלפון בצד שמאל, כמו ב"מי אנחנו" (רקע התמונה #FFD205)
+          theme: 'yellow', badge: '', slideTitle: 'תביאו את החבר\'ה', slideLine: 'שתפו את האפליקציה\nעם אוהד שעוד לא כאן',
+          photo: 'images/weekly/bull-phone.jpg', photoBg: '#FFD205',
+          heroWho: 'שתפו ועקבו', heroTitle: 'תביאו את החבר\'ה', heroTag: 'כל מי שמצטרף מחזק את כולנו',
           followTitle: 'עקבו אחרינו',   // כתובת ריקה = הכפתור לא מוצג
           follow: [{ label: 'אינסטגרם', url: 'https://www.instagram.com/Yellowzone.mta' }, { label: 'פייסבוק', url: 'https://www.facebook.com/profile.php?id=61593146773605' }],
           sections: [
@@ -210,7 +213,9 @@
     if ((kind === 'ben' || kind === 'fan') && d[kind].soon) {
       var sn = d[kind].soon;
       // (רמי, 24.10) בלי סמל מכבי; כותרת ימין למעלה, כיתוב ימין למטה, "בקרוב" שמאל למעלה
+      // (רמי, 24.10) הרקע: צעיף כחול-צהוב באלכסון בצד שמאל, במקום העיגול
       return '<div class="wk-slide wk-s-soon ' + kind + '">' +
+        '<span class="wk-bgwrap"><i class="wk-scarf"></i></span>' +
         '<span class="wk-soon-tag wk-corner"><i></i>' + esc(sn.tag || 'בקרוב') + '</span>' +
         '<div class="has-corner"><div class="wk-soon-k">' + esc(sn.kicker || '') + '</div><div class="t">' + esc(sn.title || '') + '</div></div>' +
         (sn.line ? '<div class="s">' + esc(sn.line) + '</div>' : '<span></span>') + '</div>';
@@ -492,7 +497,9 @@
     '.wk-s-page .t.has-corner{margin-inline-end:118px}',
     '.wk-s-soon .has-corner{margin-inline-end:86px}',
     '.wk-s-soon.fan{background:#0A2A66;color:#fff}.wk-s-soon.fan .wk-soon-tag{background:#FFD400;color:#0A2A66}',
-    '.wk-s-soon.fan::after{content:"";position:absolute;left:-40px;top:-40px;width:170px;height:170px;border-radius:50%;background:rgba(255,212,0,.12)}',
+    '.wk-scarf{position:absolute;left:34px;top:-40px;width:62px;height:300px;transform:rotate(18deg);border-radius:3px;' +
+      'background:repeating-linear-gradient(180deg,#0A2A66 0 24px,#FFD400 24px 48px);box-shadow:0 0 0 3px #fff,0 4px 14px rgba(10,42,102,.25)}',
+    '.wk-s-soon .s{margin-inline-end:104px}',
     '.wk-soon-k{font-size:12px;font-weight:700;opacity:.75;margin-bottom:3px}',
     '.wk-s-page .logo{width:46px;height:46px;border-radius:12px;background:#fff;padding:6px;box-sizing:border-box}',
     '.wk-s-page .t{font-size:22px;font-weight:800;line-height:1.15}',
