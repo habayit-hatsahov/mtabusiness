@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData31';
+  var KEY = 'wkDemoData32';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -107,7 +107,7 @@
           theme: 'yellow', badge: 'בקרוב', badgeInline: true, slideTitle: 'פעמיים בחודש',
           // (רמי, 24.10) "הכיתוב למטה לא ברור" – שתי שורות קצרות, אחת לכל דבר
           slideLine: 'הטבה בלעדית חדשה\n+ מכירים אוהד עם עסק',
-          photo: 'images/weekly/bull-drum.jpg', photoBg: '#EFCE4F', photoFade: 60, photoH: 285, photoTop: -22, photoLeft: 0,   // (רמי) "יש קו והצהוב משתנה": התמונה צמודה לשפת התיבה, והצד הימני נמוג לצבע שבקצה התמונה
+          photo: 'images/weekly/bull-drum2.jpg', photoBg: '#FFD205', photoFade: 60, photoH: 285, photoTop: -22, photoLeft: 0,   // (רמי) "יש קו והצהוב משתנה": התמונה צמודה לשפת התיבה, והצד הימני נמוג לצבע שבקצה התמונה
           heroWho: 'מתחילים בהשקה', heroTitle: 'פעמיים בחודש', heroTag: 'הטבה בלעדית חדשה\nאוהד עם עסק שכדאי להכיר',   // (רמי) לא באותה שורה
           sections: [
             { h: 'הטבה בלעדית משתנה', p: '• ב-1 וב-16 בחודש עולה הטבה חדשה\n• הטבה אטרקטיבית ובלעדית – רק לחברי Yellow Zone\n• כל הטבה בתוקף חצי חודש – ואז מתחלפת' },
@@ -122,15 +122,17 @@
           // למשתמשים ולבעלי עסקים – המדריך מכוון גם את בעל העסק (רמי, 24.10)
           // (רמי, 24.10) השור עם הלפיד בצד שמאל. שולי התמונה בצד הטקסט כחולים (עשן), ולכן התיבה כחולה
           // (slideTheme – גם בראש הגיליון). התווית הוחזרה (רמי), הכיתוב בחוץ קוצר.
-          theme: 'soft', slideTheme: 'navy', badge: 'לאוהדים ולעסקים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע\nאו באתר',
+          theme: 'soft', slideTheme: 'navy', badge: 'לאוהדים ולעסקים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, במעמד המכירה\nאו באתר',
           photo: 'images/weekly/bull-flare.jpg', photoBg: '#1A3B80', photoFade: 70, photoH: 330, photoTop: -20, photoLeft: 0,
           heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: '3 צעדים – וההטבה אצלכם', steps: true,
           // (רמי, 24.10) "ממוקד, לפי נקודות, לפי התהליך – קצר, קולע ופשוט, בלי לוותר על פרטים":
           // שלושת המסלולים (חנות / בעל מקצוע / אתר) נכנסו לצעד 2 כנקודות, ומה בודקים – צעד 3
+          // (רמי, 25.10 – נוסח מאושר) הכפתור "לקבלת ההטבה"; בחנות – המסך עצמו, לא צילום; במעמד המכירה /
+          // השירות – בפגישה המסך, בטלפון/וואטסאפ צילום מסך מהשעה שדיברתם (בלי וידאו); מה בודקים – 4 נקודות
           sections: [
-            { h: 'נכנסים לכרטיס העסק', p: 'לוחצים "מימוש ההטבה" – שם מחכים תעודת החבר וקוד הקופון.' },
-            { h: 'מממשים לפי איפה שקונים', p: '• בחנות – מציגים בקופה את תעודת החבר\n• בעל מקצוע או נותן שירות – במעמד הרכישה (בפגישה, בטלפון או בוואטסאפ) מציגים את התעודה, או שולחים צילום מסך שלה\n• באתר – מעתיקים את קוד הקופון, לוחצים "לרכישה באתר" ומדביקים את הקוד בהזמנה' },
-            { h: 'מה בודקים', p: '• שם העסק מופיע בפס הכחול\n• השעה בתעודה עדכנית – שעון חי\n• לפעמים יבקשו גם תעודה מזהה, כדי לוודא שהשם תואם\n• קוד הקופון מוצג רק לחברים' }
+            { h: 'נכנסים לכרטיס העסק', p: 'לוחצים "לקבלת ההטבה" – שם מחכים תעודת החבר וקוד הקופון.' },
+            { h: 'מממשים לפי איפה שקונים', p: '• בחנות – מציגים בקופה את המסך עצמו (לא צילום מסך)\n• במעמד המכירה / השירות – בפגישה מציגים את המסך; בטלפון או בוואטסאפ שולחים בוואטסאפ צילום מסך מהשעה שדיברתם (בלי וידאו)\n• באתר – מעתיקים את קוד הקופון, לוחצים "לרכישה באתר" ומדביקים את הקוד בהזמנה' },
+            { h: 'מה בודקים', p: '• שם העסק בפס הכחול\n• השעון רץ – השעה עדכנית\n• שם ומספר חבר\n• תעודה מזהה – העסק רשאי לבקש' }
           ],
           // הדוגמה בסוף, לא בין הסעיפים הממוספרים (רמי, סבב 11: "בטלפון לא נראה טוב שבין המספרים יש תמונה")
           exTitle: 'ככה נראית תעודת החבר', exBiz: 'לארט אופנועים - LS2',
@@ -143,7 +145,7 @@
         forbiz: {
           // (רמי, 24.10) התמונה מדף הנחיתה – האוהדים בבר, האריח שפונה לבעלי עסקים
           // (רמי, 24.10) במקום תמונת הבר – השור בעל המקצוע, על רקע צהוב, כמו שאר השוורים
-          photo: 'images/weekly/bull-worker2.jpg', photoBg: '#F2CC45', photoFade: 30, photoH: 350, photoTop: -10, photoLeft: 8,
+          photo: 'images/weekly/bull-worker3.jpg', photoBg: '#FFD205', photoFade: 30, photoH: 350, photoTop: -10, photoLeft: 8,
           // (רמי, 24.10) התווית בחוץ "לא יפה שם" – רק בגיליון (noSlideBadge)
           theme: 'yellow', badge: 'לבעלי עסקים', noSlideBadge: true, slideTitle: 'יש לכם עסק?', slideLine: 'לקוחות, חיבורים והזדמנויות – והרישום בחינם',
           // (רמי) "לבעלי עסקים" הופיע פעמיים בראש הגיליון – נשארת רק התווית
@@ -188,7 +190,7 @@
     return { theme: 'yellow', badge: '', logo: false, slideTitle: 'מי אנחנו? ', slideAccent: 'Yellow Zone', slideLine: v.slideLine,
       heroWho: 'מי אנחנו', heroTitle: 'Yellow Zone', heroTag: v.heroTag, tagBottom: true, quote: v.quote || '',
       sections: v.sections.map(function (s) { return { h: s.h, p: s.p }; }),
-      photo: 'images/weekly/bull-yz.jpg', photoBg: '#EACA4F', photoH: 373, photoTop: -32, photoLeft: -15,
+      photo: 'images/weekly/bull-yz2.jpg', photoBg: '#FFD205', photoH: 373, photoTop: -32, photoLeft: -15,
       cta: { label: 'לרישום העסק', act: 'bizSignup' } };
   }
 
