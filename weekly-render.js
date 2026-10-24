@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData21';
+  var KEY = 'wkDemoData22';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -26,7 +26,8 @@
   //    הערך לקהילה, לאוהד, לעסק, בחינם, מה יש בפנים). שורות שמתחילות ב-"• " מוצגות כרשימה.
   var US_DIRS = {
     // א – הכיוון שרמי בחר (24.10), מחובר עם ב: הציטוט, "למה זה חשוב", ההיכרות והבמה
-    a: { slideLine: 'קונים כחול צהוב – אוהדים קונים מאוהדים', heroTag: 'אוהד שקונה מאוהד – מקבל יותר', quote: 'ביציע אנחנו עומדים כתף אל כתף. כאן זה ממשיך גם ביום-יום.', sections: [
+    // (רמי, 24.10) "אוהדים קונים מאוהדים" ביחד בשורה האחרונה – ירידת שורה אחרי המקף
+    a: { slideLine: 'קונים כחול צהוב –\nאוהדים קונים מאוהדים', heroTag: 'אוהד שקונה מאוהד – מקבל יותר', quote: 'ביציע אנחנו עומדים כתף אל כתף. כאן זה ממשיך גם ביום-יום.', sections: [
       { h: 'איך זה התחיל', p: 'מחוויות אישיות: שוב ושוב עבדנו עם בעלי מקצוע שהם אוהדי מכבי – ותמיד קיבלנו קצת יותר. הנחה בלי שביקשנו, שירות מעל המצופה וחוויה טובה. Yellow Zone קמה כדי שכל אוהד ייהנה מזה.' },
       { h: 'למה זה חשוב', p: 'כל קנייה אצל אוהד מחזקת עוד משפחה מהיציע. ככה בונים קהילה – לא רק ב-90 דקות.' },
       { h: 'מה זה נותן לכם', p: '• הטבה אמיתית כמעט אצל כל עסק\n• בעל עסק שמבין אתכם מהמשפט הראשון\n• היכרות עם האנשים שמאחורי העסקים\n• כסף שנשאר בתוך המשפחה הצהובה' },
@@ -118,6 +119,8 @@
           cta: { label: '', act: '' }
         },
         forbiz: {
+          // (רמי, 24.10) התמונה מדף הנחיתה – האוהדים בבר, האריח שפונה לבעלי עסקים
+          cover: 'images/landing/hero-fans-illustration.jpg',
           theme: 'navy', badge: 'לבעלי עסקים', slideTitle: 'יש לכם עסק?', slideLine: 'לקוחות, חיבורים והזדמנויות – והרישום בחינם',
           heroWho: 'לבעלי עסקים', heroTitle: 'העסק שלכם ב-Yellow Zone', heroTag: 'אוהדים קונים מאוהדים',
           // הערך לעסק (רמי, 24.10): הזדמנויות עסקיות, חיבורים עם בעלי מקצוע, הלקוחות, רישום בחינם
@@ -246,8 +249,9 @@
         '<span class="wk-go">' + GO + '</span></div>';
     }
     var p = d.pages[kind];
-    return '<div class="wk-slide wk-s-page wk-th-' + esc(p.theme || 'navy') + (p.bg || p.photo ? ' has-bg' : '') + (p.photo ? ' has-photo' : '') + '"' + o +
-      (p.photo && p.photoBg ? ' style="background:' + esc(p.photoBg) + '"' : '') + '>' +
+    return '<div class="wk-slide wk-s-page wk-th-' + esc(p.theme || 'navy') + (p.bg || p.photo ? ' has-bg' : '') + (p.photo ? ' has-photo' : '') + (p.cover ? ' has-cover' : '') + '"' + o +
+      (p.photo && p.photoBg ? ' style="background:' + esc(p.photoBg) + '"' : '') +
+      (p.cover ? ' style="background-image:linear-gradient(180deg,rgba(10,42,102,.88) 0,rgba(10,42,102,.25) 42%,rgba(10,42,102,.3) 58%,rgba(10,42,102,.9) 100%),url(\'' + esc(p.cover) + '\')"' : '') + '>' +
       (p.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(p.bg) + '" alt=""></span>' : '') +
       (p.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(p.photo) + '" alt=""></span>' : '') +
       // (רמי, 24.10) סדר אחד לכל הקרוסלה: כותרת – ימין למעלה, כיתוב – ימין למטה, תווית – שמאל למעלה, חץ – שמאל למטה
@@ -465,7 +469,13 @@
     '.wk-s-page > *{position:relative;z-index:1}',
     // השור ב"מי אנחנו": משמאל, חתוך מלמטה (ראש + שלט + גוף), הטקסט מימין
     '.wk-photo{position:absolute;left:-4px;top:-6px;height:356px;width:auto;pointer-events:none;user-select:none;-webkit-mask-image:linear-gradient(to left,transparent 0,#000 22px);mask-image:linear-gradient(to left,transparent 0,#000 22px)}',
-    '.wk-s-page.has-photo .t,.wk-s-page.has-photo .s{margin-inline-end:150px}',
+    '.wk-s-page.has-photo .t,.wk-s-page.has-photo .s{margin-inline-end:142px}',
+    '.wk-s-page .s{white-space:pre-line}',
+    '.wk-s-page.has-photo .s{font-size:12.5px}',
+    // תמונת רקע מלאה (יש לכם עסק?) – הצללה כחולה למעלה ולמטה כדי שהכותרת והכיתוב ייקראו
+    '.wk-s-page.has-cover{background-color:#0A2A66;background-position:center 30%;background-size:cover;background-repeat:no-repeat}',
+    '.wk-s-page.has-cover::after{display:none}',
+    '.wk-s-page.has-cover .t,.wk-s-page.has-cover .s{text-shadow:0 1px 6px rgba(0,0,0,.45)}',
     '.wk-s-page.has-photo.wk-th-yellow .t span{color:#0A2A66}',
     '.wk-s-page.has-photo .wk-go{z-index:2;top:14px;bottom:auto;box-shadow:0 2px 8px rgba(10,42,102,.3)}',
     // מצב "בקרוב" (רמי, 24.10): ההטבה והאוהד שמאחורי העסק עוד לא עולים – רק מודיעים שזה מגיע
