@@ -3459,9 +3459,18 @@ function openBiz(id) {
   if (b.discount) {
     document.getElementById('sheetBenefitWrap').style.display = 'block';
 
-    const DISC_TYPE_LABELS = { online: 'מימוש באתר האינטרנט', physical: 'מימוש בחנות הפיזית', sale: 'מימוש במעמד המכירה / השירות' };
     const dTypes = b.discountTypes && b.discountTypes.length ? b.discountTypes : (b.discountType ? [b.discountType] : []);
-    const primaryTypeLine = dTypes.map(t => DISC_TYPE_LABELS[t]).filter(Boolean).join(' · ') || 'מימוש בחנות הפיזית';
+    const isProOnly = b.isPro && !b.isPhysical;
+    const storeTitle = isProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות';
+    // §603 — השורה מתחת להטבה = בדיוק הכותרת של כרטיס-המימוש שלה (רמי, 25.10: "מימוש במעמד המכירה"
+    // למעלה ו"מימוש בחנות" למטה – צריך אחידות). אותו תנאי hasStore כמו בכרטיסים למטה.
+    const redeemTitleFor = types => {
+      const st = (b.isPhysical || b.isPro) && (types.includes('physical') || types.includes('sale'));
+      const on = types.includes('online');
+      if (st && on) return isProOnly ? 'מימוש מול נותן השירות או באתר' : 'מימוש בחנות או באתר';
+      return st ? storeTitle : on ? 'מימוש באתר' : '';
+    };
+    const primaryTypeLine = redeemTitleFor(dTypes) || storeTitle;
 
     // הטבה ראשית בקופסה צהובה, הטבות נוספות בכרטיסים לבנים שקטים נפרדים (לא עוד באותה קופסה)
     const extraBenefits = (b.additionalDiscounts || []).filter(d => d && d.text);
@@ -3472,7 +3481,7 @@ function openBiz(id) {
       <div class="sheet-benefit-type">${primaryTypeLine}</div>`;
     document.getElementById('sheetBenefitSecondary').innerHTML = extraBenefits.map(d => {
       const eTypes = d.redeemTypes && d.redeemTypes.length ? d.redeemTypes : [];
-      const line = eTypes.map(t => DISC_TYPE_LABELS[t]).filter(Boolean).join(' · ');
+      const line = redeemTitleFor(eTypes);
       // §272 — הקוד עצמו **לא** מוצג כאן יותר כטקסט גולמי ("· קוד: XXX"). לכל הטבה נוספת יש
       // עכשיו כרטיס-מימוש משלה עם קוביית-קופון וכפתור-העתקה, בדיוק כמו להטבה הראשית; חשיפת
       // הקוד ברשימה עקפה את כל זרימת-הפתיחה והציגה אותו בלי כפתור-העתקה ובלי מדידה.
@@ -3489,8 +3498,6 @@ function openBiz(id) {
     // שכבר חושב למעלה (ר' primaryTypeLine) — אותו מקור-אמת בדיוק, לא כפילות.
     const area = document.getElementById('sheetCouponArea');
     const siteUrl = bizLinkUrl('website', b.website) || '';
-    const isProOnly = b.isPro && !b.isPhysical;
-    const storeTitle = isProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות';
     const storeDesc = (b.isPhysical && b.isPro) ? 'הציגו את תעודת החבר בקופה או מול נותן השירות, לאימות ההטבה'
       : isProOnly ? 'הציגו את תעודת החבר בפגישה או בשיחה עם נותן השירות'
       : 'הציגו את תעודת החבר בקופה, הצוות יאשר את ההטבה';
