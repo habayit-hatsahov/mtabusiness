@@ -1916,6 +1916,9 @@ let sectionAnchorsDoc = {};
 // דבר אחד והאוהד רואה אחר, בלי שאיש ידע.
 let sectionPolicyDoc = null;
 let sectionStateDoc = { log: [] };
+// §602 — האם התשובה מהשרת (או הכישלון שלה) כבר הגיעה. עד אז "חדש אצלנו" בלי מדיניות מציג
+// כרטיסי טעינה ולא "בקרוב...". ר' loadSectionPolicy ו-hb_section_policy_cache.
+let _hbPolicyArrived = false;
 
 // §590 — מי מקבל את תגית "חדש" על הכרטיס, כשהמנוע של "חדש אצלנו" פעיל. null = המנוע כבוי,
 // והתגית חוזרת לדגל הידני isNew/newUntil (ר' newBadgeFor). נקבע ב-sectionMembersFor('new').
@@ -1953,9 +1956,18 @@ function sectionMembersFor(key) {
   return new Set(use.ids);
 }
 
-window.loadSectionPolicy = function(policyRaw, stateRaw) {
+// §602 — 🐛 "חדש אצלנו" הציג "בקרוב..." בכל פתיחה עד שהמדיניות הגיעה מהשרת: הציור הראשון
+// (מ-hb_businesses_cache) רץ בלי מדיניות, נפל לדגל הידני isNew/newUntil – ואף עסק לא מסומן
+// בו. עכשיו המדיניות נשמרת בטלפון ונטענת לפני הציור הראשון (ר' DOMContentLoaded).
+// ⚠️ null מהשרת (כשל רשת – ה-getDoc למטה בולע שגיאות) לא דורס מדיניות שמורה.
+window.loadSectionPolicy = function(policyRaw, stateRaw, fromCache) {
+  if (!fromCache) _hbPolicyArrived = true;
+  if (!policyRaw && !fromCache && sectionPolicyDoc) policyRaw = sectionPolicyDoc;
+  if (!stateRaw && !fromCache && sectionPolicyDoc) stateRaw = sectionStateDoc;
   sectionPolicyDoc = policyRaw || null;
   sectionStateDoc = (stateRaw && Array.isArray(stateRaw.log)) ? { log: stateRaw.log } : { log: [] };
+  if (fromCache) return;
+  if (sectionPolicyDoc) { try { localStorage.setItem('hb_section_policy_cache', JSON.stringify({ pol: sectionPolicyDoc, st: sectionStateDoc })); } catch (e) {} }
   if (typeof businesses !== "undefined" && businesses.length) renderSections();
 };
 // סדר-התצוגה היומי שחושב לכל סקשן "שרירותי" (ר' renderSections) — filterCat קורא מכאן ("הכל")
@@ -1986,6 +1998,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Firebase SDK חוסם את כל גוף אותו בלוק עד שהוא נטען *ורץ* במלואו, אז קריאת ה-cache הזו — שלא
   // תלויה ב-Firebase בכלל — הייתה בפועל ממתינה לטעינת כל ה-SDK לפני שמראים ולו כרטיס אחד.
   // זו רשימה פומבית (לא אישית כמו ברכת השם) — אין תנאי-התאמה ל-hb_memberId, כל מבקר רואה את אותם עסקים מאושרים.
+  // §602 — המדיניות השמורה קודם, כדי שהציור מהמטמון כבר יחשב את "חדש אצלנו" נכון.
+  try {
+    const cachedPol = JSON.parse(localStorage.getItem('hb_section_policy_cache') || 'null');
+    if (cachedPol && cachedPol.pol && !_hbPolicyArrived) window.loadSectionPolicy(cachedPol.pol, cachedPol.st, true);
+  } catch (e) {}
   try {
     const cachedBiz = JSON.parse(localStorage.getItem('hb_businesses_cache') || 'null');
     if (Array.isArray(cachedBiz) && cachedBiz.length) window.loadFirebaseData(cachedBiz, true);
@@ -2606,7 +2623,9 @@ function renderSections() {
 
   const newBiz = _arranged.new;
   _dailySectionOrder.new = newBiz;
-  _writeSectionIfChanged('new', 'newBizScroll', newBiz, b => buildCard(b, true), _emptyRowHtml('בקרוב...'));
+  // §602 — בלי מדיניות שעוד לא הגיעה, רשימה ריקה כאן היא "עוד לא יודעים", לא "אין חדשים".
+  _writeSectionIfChanged('new', 'newBizScroll', newBiz, b => buildCard(b, true),
+    (!sectionPolicyDoc && !_hbPolicyArrived) ? skeletonCards(4) : _emptyRowHtml('בקרוב...'));
 
   // §418טו — 💛 הטבות שוות עובר מ**אוטומטי** ל**נבחר ידנית**: יש הטבות גנריות שלא
   // מגיע להן להיות שם. בקשת המשתמש.
