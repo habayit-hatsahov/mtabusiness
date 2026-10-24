@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData27';
+  var KEY = 'wkDemoData28';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -105,7 +105,7 @@
           // (רמי, 24.10) השור עם הלפיד בצד שמאל. שולי התמונה בצד הטקסט כחולים (עשן), ולכן התיבה כחולה
           // (slideTheme – גם בראש הגיליון). התווית הוחזרה (רמי), הכיתוב בחוץ קוצר.
           theme: 'soft', slideTheme: 'navy', badge: 'לאוהדים ולעסקים', slideTitle: 'איך מממשים הטבה?', slideLine: 'בחנות, אצל בעל מקצוע\nאו באתר',
-          photo: 'images/weekly/bull-flare.jpg', photoBg: '#1A3B80', photoFade: 70, photoTop: -14,
+          photo: 'images/weekly/bull-flare.jpg', photoBg: '#1A3B80', photoFade: 70, photoH: 408, photoTop: -104, photoLeft: -32,
           heroWho: 'מדריך קצר', heroTitle: 'איך מממשים הטבה', heroTag: '3 צעדים – וההטבה אצלכם', steps: true,
           // (רמי, 24.10) "ממוקד, לפי נקודות, לפי התהליך – קצר, קולע ופשוט, בלי לוותר על פרטים":
           // שלושת המסלולים (חנות / בעל מקצוע / אתר) נכנסו לצעד 2 כנקודות, ומה בודקים – צעד 3
@@ -125,7 +125,7 @@
         forbiz: {
           // (רמי, 24.10) התמונה מדף הנחיתה – האוהדים בבר, האריח שפונה לבעלי עסקים
           // (רמי, 24.10) במקום תמונת הבר – השור בעל המקצוע, על רקע צהוב, כמו שאר השוורים
-          photo: 'images/weekly/bull-worker.jpg', photoBg: '#F2CC45', photoFade: 30,
+          photo: 'images/weekly/bull-worker.jpg', photoBg: '#F2CC45', photoFade: 30, photoH: 405, photoTop: -27, photoLeft: -4,
           theme: 'yellow', badge: 'לבעלי עסקים', slideTitle: 'יש לכם עסק?', slideLine: 'לקוחות, חיבורים והזדמנויות – והרישום בחינם',
           heroWho: 'לבעלי עסקים', heroTitle: 'העסק שלכם ב-Yellow Zone', heroTag: 'אוהדים קונים מאוהדים',
           // הערך לעסק (רמי, 24.10): הזדמנויות עסקיות, חיבורים עם בעלי מקצוע, הלקוחות, רישום בחינם
@@ -143,7 +143,7 @@
           // (רמי, 24.10) "תביאו את החבר'ה" – ההזמנה במרכז, העקיבה ברשתות בפנים מתחת לכפתורי השיתוף;
           // השור עם הטלפון בצד שמאל, כמו ב"מי אנחנו" (רקע התמונה #FFD205)
           theme: 'yellow', badge: 'קהילה', slideTitle: 'תביאו את החבר\'ה', slideLine: 'שתפו את האפליקציה\nעם אוהד שעוד לא כאן',
-          photo: 'images/weekly/bull-phone.jpg?v=2', photoBg: '#FFD205',
+          photo: 'images/weekly/bull-phone.jpg?v=2', photoBg: '#FFD205', photoH: 290, photoTop: -25, photoLeft: 18,
           heroWho: 'שתפו ועקבו', heroTitle: 'תביאו את החבר\'ה', heroTag: 'כל מי שמצטרף מחזק את כולנו',
           followTitle: 'עקבו אחרינו',   // כתובת ריקה = הכפתור לא מוצג
           follow: [{ label: 'אינסטגרם', url: 'https://www.instagram.com/Yellowzone.mta' }, { label: 'פייסבוק', url: 'https://www.facebook.com/profile.php?id=61593146773605' }],
@@ -167,7 +167,7 @@
     return { theme: 'yellow', badge: '', logo: false, slideTitle: 'מי אנחנו? ', slideAccent: 'Yellow Zone', slideLine: v.slideLine,
       heroWho: 'מי אנחנו', heroTitle: 'Yellow Zone', heroTag: v.heroTag, quote: v.quote || '',
       sections: v.sections.map(function (s) { return { h: s.h, p: s.p }; }),
-      photo: 'images/weekly/bull-yz.jpg', photoBg: '#EACA4F',
+      photo: 'images/weekly/bull-yz.jpg', photoBg: '#EACA4F', photoH: 373, photoTop: -32, photoLeft: -15,
       cta: { label: 'לרישום העסק', act: 'bizSignup' } };
   }
 
@@ -213,7 +213,11 @@
   // תמונה בצד שמאל: photoTop מזיז אותה למעלה/למטה, photoFade – כמה פיקסלים השוליים בצד הטקסט נמוגים לצבע התיבה
   function photoStyle(p) {
     var s = '';
+    // (רמי, 24.10) "השור באותו גודל בכל הקרוסלה": כל תמונה מצולמת אחרת, ולכן לכל אחת גובה ומיקום
+    // משלה (photoH / photoTop / photoLeft) – כך שהראש יוצא באותו גודל ובאותו מקום בכל התיבות
+    if (p.photoH) s += 'height:' + Number(p.photoH) + 'px;';
     if (p.photoTop != null) s += 'top:' + Number(p.photoTop) + 'px;';
+    if (p.photoLeft != null) s += 'left:' + Number(p.photoLeft) + 'px;';
     if (p.photoFade) { var m = 'linear-gradient(to left,transparent 0,#000 ' + Number(p.photoFade) + 'px)'; s += '-webkit-mask-image:' + m + ';mask-image:' + m + ';'; }
     return s ? ' style="' + s + '"' : '';
   }
