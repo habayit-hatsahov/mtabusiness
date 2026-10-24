@@ -5,7 +5,7 @@
    בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData20';
+  var KEY = 'wkDemoData21';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -53,8 +53,9 @@
     return {
       ben: {
         // (רמי, 24.10) בינתיים רק "בקרוב" – null = מציגים את ההטבה עצמה
-        soon: { tag: 'בקרוב', kicker: 'הטבה בלעדית משתנה', title: 'כל חצי חודש – הטבה חדשה',
-          line: 'הטבה בלעדית רק לחברי Yellow Zone, לזמן מוגבל. ההטבה הראשונה כבר בדרך.' },
+        // הלוגיקה (רמי, 24.10): 2 הטבות בחודש – אחת עולה ב-1 ואחת ב-16, וכל אחת בתוקף חצי חודש
+        soon: { tag: 'בקרוב', kicker: 'הטבות בלעדיות לזמן מוגבל', title: '2 הטבות בלעדיות בכל חודש',
+          line: 'ב-1 וב-16 בחודש עולה הטבה חדשה, רק לחברי Yellow Zone – וכל אחת בתוקף חצי חודש בלבד.' },
         badge: 'הטבה בלעדית משתנה', tag2: 'מבצע השקה',
         slideTitle: 'קעקוע של מכבי במחיר מוזל',
         hint: '{n} מקעקעים מאזורים שונים',   // רמז בתיבה במקום השמות; {n} = מספר המקומות (רמי, 24.10) – דמו: להשוואה בין חלופות לתיבה
@@ -205,11 +206,11 @@
     // התיבה לא נלחצת ואין לה גיליון; כל התוכן האמיתי נשאר שמור ויחזור כש-soon יכובה.
     if ((kind === 'ben' || kind === 'fan') && d[kind].soon) {
       var sn = d[kind].soon;
+      // (רמי, 24.10) בלי סמל מכבי; כותרת ימין למעלה, כיתוב ימין למטה, "בקרוב" שמאל למעלה
       return '<div class="wk-slide wk-s-soon ' + kind + '">' +
-        (kind === 'ben' && d.ben.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(d.ben.bg) + '" alt=""></span>' : '') +
-        '<span class="wk-soon-tag"><i></i>' + esc(sn.tag || 'בקרוב') + '</span>' +
-        '<div><div class="wk-soon-k">' + esc(sn.kicker || '') + '</div><div class="t">' + esc(sn.title || '') + '</div>' +
-        (sn.line ? '<div class="s">' + esc(sn.line) + '</div>' : '') + '</div></div>';
+        '<span class="wk-soon-tag wk-corner"><i></i>' + esc(sn.tag || 'בקרוב') + '</span>' +
+        '<div class="has-corner"><div class="wk-soon-k">' + esc(sn.kicker || '') + '</div><div class="t">' + esc(sn.title || '') + '</div></div>' +
+        (sn.line ? '<div class="s">' + esc(sn.line) + '</div>' : '<span></span>') + '</div>';
     }
     if (kind === 'ben') {
       // (רמי, 24.10) בלי שמות המקעקעים בחוץ – רק רמז ("אצל 5 מקעקעים מאזורים שונים"); השמות בגיליון.
@@ -249,9 +250,10 @@
       (p.photo && p.photoBg ? ' style="background:' + esc(p.photoBg) + '"' : '') + '>' +
       (p.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(p.bg) + '" alt=""></span>' : '') +
       (p.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(p.photo) + '" alt=""></span>' : '') +
-      (p.logo ? '<img class="logo" src="images/yellowzone-mark-square.png" alt="">' : (p.badge ? '<span class="wk-badge">' + esc(p.badge) + '</span>' : '<span></span>')) +
-      '<div><div class="t">' + esc(p.slideTitle) + (p.slideAccent ? '<span>' + esc(p.slideAccent) + '</span>' : '') + '</div>' +
-      (p.slideLine ? '<div class="s">' + esc(p.slideLine) + '</div>' : '') + '</div>' +
+      // (רמי, 24.10) סדר אחד לכל הקרוסלה: כותרת – ימין למעלה, כיתוב – ימין למטה, תווית – שמאל למעלה, חץ – שמאל למטה
+      (p.logo ? '<img class="logo wk-corner" src="images/yellowzone-mark-square.png" alt="">' : (p.badge ? '<span class="wk-badge wk-corner">' + esc(p.badge) + '</span>' : '')) +
+      '<div class="t' + (p.badge || p.logo ? ' has-corner' : '') + '">' + esc(p.slideTitle) + (p.slideAccent ? '<span>' + esc(p.slideAccent) + '</span>' : '') + '</div>' +
+      (p.slideLine ? '<div class="s">' + esc(p.slideLine) + '</div>' : '<span></span>') +
       '<span class="wk-go">' + GO + '</span></div>';
   }
 
@@ -462,7 +464,7 @@
     '.wk-s-page .wk-bgmark{width:300px;height:300px;left:-30px;top:-50px;opacity:.11;transform:rotate(-14deg);filter:brightness(0) invert(1)}',
     '.wk-s-page > *{position:relative;z-index:1}',
     // השור ב"מי אנחנו": משמאל, חתוך מלמטה (ראש + שלט + גוף), הטקסט מימין
-    '.wk-photo{position:absolute;left:0;top:-4px;height:330px;width:auto;pointer-events:none;user-select:none;-webkit-mask-image:linear-gradient(to left,transparent 0,#000 22px);mask-image:linear-gradient(to left,transparent 0,#000 22px)}',
+    '.wk-photo{position:absolute;left:-4px;top:-6px;height:356px;width:auto;pointer-events:none;user-select:none;-webkit-mask-image:linear-gradient(to left,transparent 0,#000 22px);mask-image:linear-gradient(to left,transparent 0,#000 22px)}',
     '.wk-s-page.has-photo .t,.wk-s-page.has-photo .s{margin-inline-end:150px}',
     '.wk-s-page.has-photo.wk-th-yellow .t span{color:#0A2A66}',
     '.wk-s-page.has-photo .wk-go{z-index:2;top:14px;bottom:auto;box-shadow:0 2px 8px rgba(10,42,102,.3)}',
@@ -475,7 +477,10 @@
     '.wk-soon-tag i{width:7px;height:7px;border-radius:50%;background:currentColor;animation:wkPulse 1.6s ease-in-out infinite}',
     '@keyframes wkPulse{0%,100%{opacity:1}50%{opacity:.25}}',
     '.wk-s-soon.ben{background:#FFD400;color:#0A2A66}.wk-s-soon.ben .wk-soon-tag{background:#0A2A66;color:#FFD400}',
-    '.wk-s-soon.ben .wk-bgmark{width:280px;height:280px;left:-20px;top:-40px;opacity:.16;transform:rotate(-12deg)}',
+    // סדר אחד לכל הקרוסלה (רמי, 24.10): התווית בפינה השמאלית העליונה, והכותרת לידה לא נכנסת מתחתיה
+    '.wk-corner{position:absolute!important;left:14px;top:14px;z-index:2!important;margin:0}',
+    '.wk-s-page .t.has-corner{margin-inline-end:118px}',
+    '.wk-s-soon .has-corner{margin-inline-end:86px}',
     '.wk-s-soon.fan{background:#0A2A66;color:#fff}.wk-s-soon.fan .wk-soon-tag{background:#FFD400;color:#0A2A66}',
     '.wk-s-soon.fan::after{content:"";position:absolute;left:-40px;top:-40px;width:170px;height:170px;border-radius:50%;background:rgba(255,212,0,.12)}',
     '.wk-soon-k{font-size:12px;font-weight:700;opacity:.75;margin-bottom:3px}',
