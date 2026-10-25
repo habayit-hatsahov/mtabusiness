@@ -8,6 +8,7 @@ import { firestoreRunQuery, firestoreGetDoc, firestorePatch, firestoreBatchCreat
          firestoreCreateDocWithId } from './firestore.js';
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt, overIpQuota } from './ratelimit.js';
+import { wrapEnvKv } from './safekv.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail } from './brevo.js';
 import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
@@ -63,6 +64,7 @@ function clientIp(request, env) {
 
 export default {
   async fetch(request, env, ctx) {
+    wrapEnvKv(env); // ר' safekv.js – תקרת הכתיבות של KV לא מפילה בקשות
     if (request.method === 'OPTIONS') return handlePreflight(env, request);
 
     const url = new URL(request.url);
@@ -259,6 +261,7 @@ export default {
   // ולכן שינוי או הסרה של ה-cron החדש אינם יכולים לשתק את המיילים. הכיוון ההפוך
   // (ברירת מחדל = ניקוי) היה מריץ מחיקות כל דקה על ערך לא צפוי.
   async scheduled(event, env, ctx) {
+    wrapEnvKv(env);
     if (event && event.cron === PURGE_CRON) {
       ctx.waitUntil(runDeletionLogPurge(env));
       // §582 – כרטיסי-זיהוי של Apple שפגו (3 שעות) ולא נוצלו.
