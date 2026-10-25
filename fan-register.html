@@ -1567,6 +1567,27 @@
   // לאותו מזהה במקום לייצר רשומה שנייה.
   const memberRef = doc(collection(db, 'members'));
 
+  // ── §612 — מפתח המכשיר: "הבקשה שלך בבדיקה" וכניסה לבד אחרי האישור, בלי תלות במייל ────────
+  // מפתח אקראי נשמר בטלפון (localStorage `yz_reg`), וברשומה רק ה-SHA-256 שלו. welcome.html
+  // שואל את /reg-status בכל פתיחה ומכניס לבד ברגע שאושר (worker/src/regstatus.js).
+  // נוצר פעם אחת לטעינת דף, כמו memberRef, כדי שניסיון שליחה חוזר ישמור את אותו hash.
+  // 🔑 fail-open: בלי crypto.subtle (או בכל כשל) – אין מפתח, וההרשמה ממשיכה בדיוק כמו קודם.
+  const regTicketP = (async () => {
+    try {
+      const b = crypto.getRandomValues(new Uint8Array(32));
+      const ticket = btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ticket));
+      const hash = [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, '0')).join('');
+      return { ticket, hash };
+    } catch (e) { return null; }
+  })();
+  function saveRegTicket(reg, firstName) {
+    if (!reg) return;
+    try {
+      localStorage.setItem('yz_reg', JSON.stringify({ memberId: memberRef.id, ticket: reg.ticket, name: (firstName || '').slice(0, 40), t: Date.now() }));
+    } catch (e) {}
+  }
+
   // ── §462 — שליחה עם גיבוי דרך הוורקר ────────────────────────────────────────────────────────
   // ב-4.10 נתקעה שליחה בדפדפן מובייל: כל כתיבה ל-Firestore מהדף נעצרה **בלי שגיאה** — Firestore
   // לא נכשל, הוא ממתין לנצח — בזמן שהוורקר ענה באותה דקה. ההודעה דאז ("נשמרו במכשיר ויישלחו
@@ -2015,8 +2036,9 @@
       .join('');
   }
   (function loadSuccessMsg() {
-    const defTitle = "עוד מעט אתם בפנים";
-    const defBody = "הבקשה נקלטה. הצוות עושה אימות מהיר, ומיד אחריו *נשלח אליכם מייל עם אישור החברות.*\n\nמרגע האישור נכנסים כאן באפליקציה – עם Google, עם Apple או עם הקוד האישי – וכל העסקים, ההטבות ותעודת החבר הדיגיטלית שלכם נפתחים.";
+    // §612 — "לא צריך לחכות למייל": האפליקציה מכניסה לבד אחרי האישור (welcome.html + /reg-status).
+    const defTitle = "הבקשה התקבלה!";
+    const defBody = "הצוות עושה אימות קצר, *ונאשר אתכם בהקדם.*\n\n*לא צריך לחכות למייל.* פשוט פתחו את האפליקציה מאוחר יותר – ברגע שתאושרו, תיכנסו ישר פנימה.\n\nנשלח אליכם גם מייל אישור, למקרה שתרצו להיכנס ממכשיר אחר.";
     renderSuccessMsg(
       localStorage.getItem('_hb_tpl_success_fan_title') || defTitle,
       localStorage.getItem('_hb_tpl_success_fan_body') || defBody
@@ -2307,8 +2329,11 @@
       }
       // setDoc על מזהה שנוצר מראש, במקום addDoc — התמונה כבר בפנים ב-data, ואין יותר
       // כתיבה שנייה (updateDoc) שיכולה להיכשל בנפרד ולהשאיר רשומה בלי קישור לתמונה.
+      const reg = await regTicketP;   // §612
+      if (reg) data.regTicketHash = reg.hash;
       await submitMember(data);
       memberDocRef = memberRef;
+      saveRegTicket(reg, data.firstName);
     } catch (err) {
       console.error('Firebase error:', err);
       clearTimeout(slowTimer);

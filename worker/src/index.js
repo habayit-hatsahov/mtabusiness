@@ -9,6 +9,7 @@ import { firestoreRunQuery, firestoreGetDoc, firestorePatch, firestoreBatchCreat
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt, overIpQuota } from './ratelimit.js';
 import { wrapEnvKv } from './safekv.js';
+import { handleRegStatus } from './regstatus.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail } from './brevo.js';
 import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
@@ -104,6 +105,11 @@ export default {
       // §516 — לינק תצוגה לאורח (demo.html / demo-mode.js). ר' demo.js.
       if (request.method === 'POST' && url.pathname === '/demo-session') {
         return json(await handleDemoSession(await request.json(), clientIp(request, env), env), env, request);
+      }
+      // §612 — "הבקשה שלך בבדיקה": מצב הבקשה לפי המפתח שנשמר במכשיר, וכניסה לבד אחרי האישור.
+      if (request.method === 'POST' && url.pathname === '/reg-status') {
+        if (memQuota('regstatus', clientIp(request, env), 60, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
+        return json(await handleRegStatus(await request.json(), env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/mint-member-token') {
         return json(await handleMemberLogin(await request.json(), request, env), env, request);
@@ -945,6 +951,8 @@ const SUBMIT_MEMBER_STRING_FIELDS = {
   reviewFlag: 60, duplicateOfId: 40,
   // §485 — מקור ההרשמה (signup-source.js). בלעדיהם כל הרשמה שנפלה לגיבוי נדחית ב-bad_field.
   signupOs: 20, signupSurface: 20, signupMethod: 20,
+  // §612 — ה-hash של המפתח שבמכשיר (regstatus.js). בלעדיו הרשמה שנפלה לגיבוי נדחית ב-bad_field.
+  regTicketHash: 64,
 };
 const PROOF_URL_PREFIX = 'https://firebasestorage.googleapis.com/';
 
@@ -968,6 +976,7 @@ async function handleSubmitMember({ memberId, data } = {}, env) {
   if (!out.firstName || !out.lastName || (!out.phone && !out.email)) return { error: 'missing_fields' };
   if (out.photoProofUrl && !out.photoProofUrl.startsWith(PROOF_URL_PREFIX)) return { error: 'bad_field', field: 'photoProofUrl' };
   if (out.reviewFlag && out.reviewFlag !== 'possible_duplicate') return { error: 'bad_field', field: 'reviewFlag' };
+  if (out.regTicketHash && !/^[0-9a-f]{64}$/.test(out.regTicketHash)) return { error: 'bad_field', field: 'regTicketHash' };
 
   const now = new Date();
   out.status = 'pending';
