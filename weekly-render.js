@@ -380,7 +380,7 @@
     var f = (p.follow || []).filter(function (x) { return x && x.url; });
     if (!f.length) return '';
     return '<div class="wk-sec wk-follow">' + (p.followTitle ? '<h3>' + esc(p.followTitle) + '</h3>' : '') + '<div>' + f.map(function (x) {
-      return '<a class="wk-fbtn" href="' + esc(x.url) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : '') + '>' + esc(x.label) + '</a>';
+      return '<a class="wk-fbtn" href="' + esc(x.url) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : ' onclick="WK.track(\'invite\',\'follow-' + (/instagram/i.test(x.url) ? 'instagram' : /facebook/i.test(x.url) ? 'facebook' : 'other') + '\')"') + '>' + esc(x.label) + '</a>';
     }).join('') + '</div></div>';
   }
 
@@ -740,6 +740,45 @@
 
   // ── הרכבה בדף הבית ──────────────────────────────────────────────────────────────────
   var state = { d: null, open: null, root: null, pending: null };
+
+  // ── §610ז מדידה (רמי, 25.10: "לנתח חשיפות, קליקים ופעולות בקרוסלה, בפרט בהטבה ובהכר את העסק") ─────
+  // אירוע אחד, type 'carousel', דרך window.logEvent של home.html (שמודד רק מהדומיין החי):
+  //   blockId = התיבה (launch / ben / fan / us / redeem / forbiz / invite)
+  //   channel = הפעולה: view (התיבה נראתה ≥50% – פעם אחת לתיבה בסשן) · open (נפתח הגיליון) ·
+  //             bizClick (לחיצה על עסק מתוך הגיליון, bizId = העסק – אחריה גם ה-bizClick הרגיל) ·
+  //             readEnd (גלל עד סוף הגיליון – פעם אחת לתיבה בסשן) · shareFan / shareBiz / bizSignup ·
+  //             follow-instagram / follow-facebook
+  // מנהלים נכתבים כמו כולם (יש memberId) – מסננים בניתוח. בתצוגה המקדימה בעורך אין logEvent → שקט.
+  var ONCE = 'hb_wk_once';
+  function once(key) {
+    try {
+      var seen = JSON.parse(sessionStorage.getItem(ONCE) || '[]');
+      if (seen.indexOf(key) > -1) return false;
+      seen.push(key); sessionStorage.setItem(ONCE, JSON.stringify(seen));
+    } catch (e) {}
+    return true;
+  }
+  function track(kind, action, bizId) {
+    try { if (typeof window.logEvent === 'function') window.logEvent('carousel', { blockId: String(kind || '').slice(0, 50), channel: String(action || '').slice(0, 50), bizId: bizId || null }); } catch (e) {}
+  }
+  var viewObs = null;
+  function watchViews(tr) {
+    if (viewObs) { viewObs.disconnect(); viewObs = null; }
+    if (!('IntersectionObserver' in window)) return;
+    viewObs = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        var k = e.target.getAttribute('data-k');
+        if (e.isIntersecting && e.intersectionRatio >= 0.5 && k && once('view:' + k)) track(k, 'view');
+      });
+    }, { threshold: [0.5] });
+    [].forEach.call(tr.children, function (el) { viewObs.observe(el); });
+  }
+  function watchReadEnd(el, k) {
+    if (el._wkRead) return; el._wkRead = true;
+    el.addEventListener('scroll', function () {
+      if (state.open === k && el.scrollTop + el.clientHeight >= el.scrollHeight - 40 && once('readEnd:' + k)) track(k, 'readEnd');
+    }, { passive: true });
+  }
   function mount(root, data) {
     injectCss();
     state.root = root;
@@ -755,6 +794,8 @@
       el.innerHTML = sheetInner(k, d, ctx); document.body.appendChild(el);
     });
     var tr = document.getElementById('wkTrack'), dots = document.getElementById('wkDots').children;
+    order(d).forEach(function (k, i) { if (tr.children[i]) tr.children[i].setAttribute('data-k', k); });
+    watchViews(tr);
     tr.addEventListener('scroll', function () {
       var s = tr.children, best = 0, bd = 1e9, r = tr.getBoundingClientRect();
       for (var i = 0; i < s.length; i++) { var b = s[i].getBoundingClientRect(), dd = Math.abs(b.right - r.right); if (dd < bd) { bd = dd; best = i; } }
@@ -789,6 +830,7 @@
   function open(k) {
     var el = document.getElementById('wkSheet-' + k); if (!el) return;
     state.open = k; el.classList.add('open'); el.setAttribute('aria-hidden', 'false'); el.scrollTop = 0;
+    track(k, 'open'); watchReadEnd(el, k);
     document.documentElement.style.overflow = 'hidden';
   }
   function close(k) {
@@ -814,6 +856,7 @@
   // כרטיס העסק נפתח **מעל** הגיליון (לא סוגרים אותו), כך שסגירת הכרטיס מחזירה בדיוק לאותו מקום ברשימה
   function biz(id) {
     if (typeof window.openBiz !== 'function') return;
+    track(state.open || 'unknown', 'bizClick', id);
     ['bizOverlay', 'shareOverlay'].forEach(function (oid, i) { var o = document.getElementById(oid); if (o) o.style.zIndex = state.open ? String(10050 + i * 10) : ''; });
     window.openBiz(id);
   }
@@ -824,6 +867,7 @@
   }
   function doAct(a) {
     var inv = state.d && state.d.pages.invite;
+    track(state.open || 'unknown', a);
     if (a === 'bizSignup') location.href = 'business.html';
     else if (a === 'shareFan') share(inv.fanText);
     else if (a === 'shareBiz') share(inv.bizText);
@@ -834,6 +878,6 @@
     DEFAULTS: DEFAULTS, pageFromDir: pageFromDir, load: load, save: save, reset: reset, merge: merge, apply: apply,
     period: period, dm: dm, timing: timing, esc: esc, span: span, isLive: isLive, ctxFor: ctxFor, order: order,
     slideHtml: slideHtml, sheetInner: sheetInner, injectCss: injectCss,
-    mount: mount, step: step, tok: tok, setUsDir: setUsDir, usDir: function () { return state.d && state.d.usDir; }, open: open, close: close, biz: biz, act: doAct
+    mount: mount, step: step, tok: tok, track: track, setUsDir: setUsDir, usDir: function () { return state.d && state.d.usDir; }, open: open, close: close, biz: biz, act: doAct
   };
 })();
