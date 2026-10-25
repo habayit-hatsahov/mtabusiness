@@ -75,7 +75,8 @@
         prices: [{ size: 'עד 6 ס"מ', price: '400 ₪', was: '' }, { size: 'עד 12 ס"מ', price: '800 ₪', was: '' }],
         after: 'רוצים להוסיף דמות, סקיצה או כיתוב נוסף? 20% הנחה על התוספת.',
         whereTitle: 'איפה מממשים', bizNoun: 'מקעקעים',
-        howTo: 'בוחרים את הקרוב אליכם ולוחצים על הכרטיס שלו כדי לפנות אליו.',
+        // (רמי, 25.10) מעל הרשימה, כהנעה לפעולה – לפנות למקעקע שבוחרים
+        howTo: 'בחרו את המקעקע הקרוב אליכם, לחצו על הכרטיס שלו ופנו אליו ישירות לקביעת תור:',
         // (רמי, 24.10) בחוץ: "+ הנחה על תוספות" אחרי הגדלים, "לפרטים" ליד החץ, השור עם סמל מכבי על הזרוע.
         // התמונות – הדמיה זמנית (סמל מכבי הודבק על הזרוע של השור); השור המקעקע בפנים – ממתין לתמונה מרמי.
         sizeExtra: '+ הנחה על תוספות', more: 'לפרטים',
@@ -95,7 +96,8 @@
         biz: [
           { id: 'a1QIIkYOZBGdWKpLTkKe', name: "צ'ומפי", area: 'ירושלים', logo: IMG.chompy },
           { id: '20rLIqD5Pym3Tt3h3kXZ', name: 'Casual tattoo', area: 'רחובות', logo: IMG.casual },
-          { id: 'AmOjD8WcCP3Zw5SvdDHh', name: 'אולטראס טאטו', area: 'בורגתה', logo: '' },
+          // (רמי, 25.10) אזור השרון; הלוגו – התמונה השחורה "logo (3).png" מהגלריה שלו (ברשומה אין לוגו)
+          { id: 'AmOjD8WcCP3Zw5SvdDHh', name: 'אולטראס טאטו', area: 'אזור השרון', logo: 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/businesses%2FAmOjD8WcCP3Zw5SvdDHh%2Fgallery_1792489257260_0?alt=media&token=8993ef10-23f0-4d5f-9ede-ea31bc0387ab' },
           { id: 'VLGLZPgme3rNgsG72z57', name: 'Kind tattoo shop', area: 'תל אביב', logo: STORAGE + 'bizUploads%2F183513db-16b1-4bf5-830b-34364f4c10ba%2Flogo_ffcf5294-0ad1-418a-8aed-efd545607fe6?alt=media&token=e95678c8-e145-485f-b985-7315fcc6b6b4' },
           { id: 'NdnAHxqCeXY3qcWpAq7l', name: 'סטודיו מון צ׳יילד', area: 'תל אביב', logo: STORAGE + 'bizUploads%2F74f12f89-4b06-4adf-b076-93cbf338a66c%2Flogo_e8c14595-0307-4a9e-ab0b-f1cfb3af1403?alt=media&token=aff96099-eb2d-4274-8df9-12da83a127b3' }
         ]
@@ -399,8 +401,12 @@
           (inf.logo ? '<img class="wk-logo" src="' + esc(inf.logo) + '" alt="">' : '<div class="wk-logo wk-logo-l">' + esc(x.name.charAt(0)) + '</div>') +
           '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>';
       }).join('');
-      return '<div class="wk-hero ben' + (b.heroImg ? ' has-img' : '') + '">' + closeBtn(kind, ctx) + (b.heroImg ? '<img class="wk-hero-img" src="' + esc(b.heroImg) + '" alt="">' : '') +
-        '<span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span><div class="t">' + esc(b.title) + '</div></div>' +
+      // §610ד (רמי, 25.10) ראש הגיליון כמו בכל הגיליונות: צהוב, והשור מהתיבה בחוץ משמאל
+      return (b.photo ? '<div class="wk-hero page wk-th-yellow has-photo"' + (b.photoBg ? ' style="background:' + esc(b.photoBg) + '"' : '') + '>' + closeBtn(kind, ctx) +
+        '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(b.photo) + '" alt=""' + photoStyle(b) + '></span>' +
+        '<span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span><div class="t">' + esc(b.title) + '</div></div>' :
+      '<div class="wk-hero ben' + (b.heroImg ? ' has-img' : '') + '">' + closeBtn(kind, ctx) + (b.heroImg ? '<img class="wk-hero-img" src="' + esc(b.heroImg) + '" alt="">' : '') +
+        '<span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span><div class="t">' + esc(b.title) + '</div></div>') +
         '<div class="wk-in">' +
         (b.explain ? '<div class="wk-rot"><b>' + esc(b.explainTitle || '') + '</b><p>' + esc(tok(b.explain, t)) + '</p></div>' : '') +
         // (רמי, 24.10) המקעקעים גם למעלה – שורה קומפקטית של לוגואים, בלי לדחוק את ההסבר; הרשימה המלאה נשארת למטה
@@ -419,8 +425,8 @@
         (b.after ? '<p class="wk-p">' + esc(b.after) + '</p>' : '') +
         // איך זה עובד – סוגרים מול המקעקע (רמי, 24.10)
         (b.how ? '<div class="wk-rot navy"><b>' + esc(b.howTitle || '') + '</b>' + paraHtml(tok(b.how, t)) + '</div>' : '') +
-        '<div class="wk-sec"><h3>' + esc(b.whereTitle) + ' · ' + b.biz.length + ' ' + esc(b.bizNoun || 'עסקים') + '</h3><div class="wk-rows">' + rows + '</div>' +
-        (b.howTo ? '<div class="wk-small" style="margin-top:8px">' + esc(b.howTo) + '</div>' : '') + '</div>' +
+        '<div class="wk-sec"><h3>' + esc(b.whereTitle) + ' · ' + b.biz.length + ' ' + esc(b.bizNoun || 'עסקים') + '</h3>' +
+        (b.howTo ? '<p class="wk-cta-line">' + esc(b.howTo) + '</p>' : '') + '<div class="wk-rows">' + rows + '</div></div>' +
         '<div class="wk-small">כל חצי חודש – ב-1 וב-16 – הטבה בלעדית חדשה. הבאה מתחילה ב-' + t.next + '.</div>' +
         '</div>';
     }
@@ -685,6 +691,7 @@
     '.wk-s-ben.has-photo .wk-ben-top,.wk-s-ben.has-photo .wk-pline,.wk-s-ben.has-photo .wk-pfrom{margin-inline-end:116px;position:relative;z-index:1}',
     '.wk-s-ben.has-photo .t{font-size:20px}.wk-s-ben.has-photo .wk-hint{font-size:12px}',
     '.wk-s-ben.has-photo .wk-pline{font-size:17px}',
+    '.wk-cta-line{font-size:15px;font-weight:700;color:#0A2A66;line-height:1.5;margin:0 0 10px}',
     '.wk-pline{font-size:19px;font-weight:800;line-height:1.25;letter-spacing:-.01em;margin-inline-end:110px}',
     '.wk-opts{display:flex;gap:8px}',
     '.wk-opt{flex:1;background:#fff;border:1px solid #E3E8F2;border-radius:14px;padding:12px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:6px}',
