@@ -402,8 +402,9 @@
           '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>';
       }).join('');
       // §610ד (רמי, 25.10) ראש הגיליון כמו בכל הגיליונות: צהוב, והשור מהתיבה בחוץ משמאל
-      return (b.photo ? '<div class="wk-hero page wk-th-yellow has-photo"' + (b.photoBg ? ' style="background:' + esc(b.photoBg) + '"' : '') + '>' + closeBtn(kind, ctx) +
-        '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(b.photo) + '" alt=""' + photoStyle(b) + '></span>' +
+      // (רמי, 25.10) "שיגמר בשור, בלי רווח": גובה הראש = עד תחתית התמונה, והשור נחתך בשפה (בלי דהייה למטה)
+      return (b.photo ? '<div class="wk-hero page wk-th-yellow has-photo" style="min-height:' + (Number(b.photoH || 0) + Number(b.photoTop || 0)) + 'px' + (b.photoBg ? ';background:' + esc(b.photoBg) : '') + '">' + closeBtn(kind, ctx) +
+        '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(b.photo) + '" alt=""' + photoStyle(Object.assign({}, b, { photoFadeBottom: 0 })) + '></span>' +
         '<span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span><div class="t">' + esc(b.title) + '</div></div>' :
       '<div class="wk-hero ben' + (b.heroImg ? ' has-img' : '') + '">' + closeBtn(kind, ctx) + (b.heroImg ? '<img class="wk-hero-img" src="' + esc(b.heroImg) + '" alt="">' : '') +
         '<span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span><div class="t">' + esc(b.title) + '</div></div>') +
