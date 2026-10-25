@@ -12,7 +12,7 @@
 import {
   collection, doc, query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
-import { mountConversations, isUnread as convUnread } from './conversations.js';
+import { mountConversations, isUnread as convUnread } from './conversations.js?v=615';   // §615 — readOnly
 
 const TS_ESTIMATE = { serverTimestamps: 'estimate' };   // ר' conversations.js
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -74,7 +74,7 @@ function injectStyle() {
 //  isOwner/bizName/ownerBizId — בעל עסק: תוויות "העסק", סינון, ו"כתבו לנו" על העסק.
 //  onUnread(n) — מונה אחד (הודעות שלא נקראו + שיחות עם תשובה חדשה) ללשונית ולפעמון.
 //  openItem / openConv / compose — מהכתובת (?item= / ?conv= / ?new=1).
-export function mountMessages({ db, memberId, root, isOwner = false, bizName = '', ownerBizId = null, onUnread, savePushToken, source = 'app', bizId = null, openItem = '', openConv = '', compose = false }) {
+export function mountMessages({ db, memberId, root, isOwner = false, bizName = '', ownerBizId = null, onUnread, savePushToken, source = 'app', bizId = null, openItem = '', openConv = '', compose = false, readOnly = false }) {
   injectStyle();
   const state = { items: [], convs: [], inLoaded: false, cvLoaded: false, inErr: false, cvErr: false, f: 'all', expanded: {}, mode: 'feed', about: 'biz', pendingItem: openItem || '' };
   root.innerHTML = `
@@ -87,7 +87,7 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
   const show = (k, on) => { const el = $(k); if (on) el.removeAttribute('data-mm-hidden'); else el.setAttribute('data-mm-hidden', ''); };
 
   const conv = mountConversations({
-    db, memberId, root: $('convRoot'), source, bizId, savePushToken, embedded: true,
+    db, memberId, root: $('convRoot'), source, bizId, savePushToken, embedded: true, readOnly,
     onBack: () => setMode('feed'),
   });
 
@@ -143,10 +143,10 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
     else if (!list.length) body = `<div class="mm-empty">${state.f === 'cv' ? 'אין עדיין שיחות. יש שאלה? לחצו "כתבו לנו".' : 'אין כאן עדיין הודעות.'}</div>`;
     else { let last = ''; list.forEach((r) => { const g = dayGroup(r.at); if (g !== last) { body += `<div class="mm-day">${g}</div>`; last = g; } body += itemHtml(r); }); }
     const unreadIn = list.filter((r) => r.t === 'in' && r.unread).length;
-    $('feed').innerHTML = `<div class="mm-head"><h2>הודעות</h2><button type="button" class="mm-write" data-write="1">✍️ כתבו לנו</button></div>
+    $('feed').innerHTML = `<div class="mm-head"><h2>הודעות</h2>${readOnly ? '' : '<button type="button" class="mm-write" data-write="1">✍️ כתבו לנו</button>'}</div>
       <div class="mm-chips">${F.map(([k, l, f]) => { const u = all.filter(f).filter((r) => r.unread).length; return `<button type="button" class="mm-chip${state.f === k ? ' on' : ''}" data-f="${k}">${l}${u ? `<span class="n">${u}</span>` : ''}</button>`; }).join('')}</div>
       ${state.inErr && !state.cvErr ? '<div class="mm-empty" style="padding:8px">חלק מההודעות לא נטענו. נסו לרענן.</div>' : ''}
-      ${body}${unreadIn > 1 ? '<button type="button" class="mm-readall" data-readall="1">סימון הכל כנקרא</button>' : ''}`;
+      ${body}${!readOnly && unreadIn > 1 ? '<button type="button" class="mm-readall" data-readall="1">סימון הכל כנקרא</button>' : ''}`;
     if (onUnread) onUnread(all.filter((r) => r.unread).length);
     // ?item=<id> (מהפוש): פותח ומסמן כשהפריט הגיע
     if (state.pendingItem && state.items.some((x) => x.id === state.pendingItem)) {
@@ -167,12 +167,15 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
       .map(([k, l]) => `<button type="button" class="${state.about === k ? 'on' : ''}" data-about="${k}">${l}</button>`).join('');
   }
   function startCompose() {
+    if (readOnly) return;   // §615
     state.about = 'biz'; renderAbout();
     setMode('compose');
     conv.startNew(isOwner && ownerBizId ? { source: 'bizDashboard', bizId: ownerBizId } : null);
   }
 
+  // §615 — readOnly (תצוגת מנהל): לא נוגעים ב-readAt/clickedAt של החבר – זה גם היה משבש את הסטטיסטיקה של ההודעה.
   function markRead(ids) {
+    if (readOnly) return;
     const un = ids.map((id) => state.items.find((x) => x.id === id)).filter((it) => it && !it.readAt);
     if (!un.length) return;
     const b = writeBatch(db);
@@ -182,6 +185,7 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
   // §524 — לסטטיסטיקה של ההודעה במרכז הניהול: לחץ "לפרטים" / נפתח מהפוש. פעם אחת לכל פריט,
   // ויחד עם "נקרא" אם עוד לא. החוק מתיר רק את השדות האלה, ורק "עכשיו".
   function markTouch(id, field) {
+    if (readOnly) return;
     const it = state.items.find((x) => x.id === id);
     if (!it || it[field]) return;
     const upd = { [field]: serverTimestamp() };
@@ -230,7 +234,7 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
 
   setMode('feed');
   if (openConv) { setMode('conv'); conv.openConv(openConv); }
-  else if (compose) startCompose();
+  else if (compose && !readOnly) startCompose();
   return {
     compose: startCompose,
     openConv: (id) => { setMode('conv'); conv.openConv(id); },

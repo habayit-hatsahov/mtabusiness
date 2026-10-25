@@ -1383,13 +1383,14 @@ if (member.isBusinessOwner) {
 }
 
 // ── §505 — "העסק שלי": מאשרים את מה שהמטמון ניחש, ומחברים את הדשבורד ────────────────────
-// ⚠️ לא ב-bizToken (הגענו מהדשבורד עצמו) ולא בתצוגה מקדימה של מנהל.
+// ⚠️ לא ב-bizToken (הגענו מהדשבורד עצמו). §615 — כן בתצוגת מנהל (previewMemberId): רמי רוצה לראות
+// את האזור כמו שבעל העסק רואה אותו, כולל הדשבורד של העסק.
 // עסק שעוד לא אושר: הלשונית מוצגת עם הסבר, בלי דשבורד — כמו "כניסה לעריכה" שמוצגת רק לעסק מאושר.
 {
   const tab = document.getElementById('tabBiz');
   const msg = document.getElementById('bizPanelMsg');
   const frame = document.getElementById('bizFrame');
-  if (myBizTab && !bizToken && !previewMemberId) {
+  if (myBizTab && !bizToken) {
     tab.hidden = false;
     if ((myBizTab.token || myBizTab.demo) && myBizTab.status === 'approved') {
       // נטען רק בפתיחה הראשונה של הלשונית — הדשבורד כבד, ומי שלא נכנס אליו לא צריך לשלם עליו.
@@ -1416,6 +1417,21 @@ if (member.isBusinessOwner) {
   }
 }
 
+// ── §615 — תצוגת מנהל: פס עליון שמבהיר של מי האזור, ונפתחים על הלשונית שהחבר עצמו רואה ראשונה ──
+if (previewMemberId) {
+  const bar = document.createElement('div');
+  bar.className = 'card-section';
+  bar.style.cssText = 'background:#FFF6CC;border:1.5px solid #FFD400;font-size:13px;line-height:1.6;padding:10px 14px;margin-bottom:10px';
+  const who = (member.firstName + ' ' + member.lastName).trim() || 'החבר';
+  bar.innerHTML = '<b>👁️ תצוגת מנהל – האזור של <span></span></b><br>ההודעות לקריאה בלבד: לא נשלח כלום ולא מסומן "נקרא" בשמו.' +
+    (myBizTab ? ' ב"העסק שלי" זה הדשבורד של העסק – שינוי שעושים שם נשלח לאישור כמו בקשה של העסק.' : '');
+  bar.querySelector('span').textContent = who;
+  const tabs = document.querySelector('.yz-tabs');
+  tabs.parentNode.insertBefore(bar, tabs);
+  document.title = 'האזור של ' + who + ' – תצוגת מנהל';
+  window.yzProfileTab(myBizTab ? 'biz' : 'msgs');
+}
+
 // ── UPDATE TO FIRESTORE ───────────────────────────────────────────────────
 async function saveMemberField(updates) {
   await updateDoc(doc(db, 'members', memberId), updates);
@@ -1438,17 +1454,15 @@ async function saveMemberField(updates) {
   } catch (e) { console.error('google link init failed:', e); }
 
   // ── §501 — "הודעות": השיחות עם הצוות ───────────────────────────────────────────────────
-  // לא בתצוגה המקדימה של מנהל (previewMemberId): שם המזוהה הוא המנהל, ושליחה הייתה נדחית.
+  // §615 — בתצוגת מנהל (previewMemberId) הלשונית מוצגת לקריאה בלבד (readOnly): בלי שליחה ובלי "נקרא" בשם החבר.
   // ב-bizToken הזהות היא העסק — החוקים מכירים בה (isConvOwner), אבל פוש לא נרשם משם:
   // הטוקן נכתב על מסמך החבר, ועסק אינו יכול לכתוב אליו.
   // ⚠️ import דינמי עטוף: כשל בטעינת המודול מוריד את הלשונית בלבד, לא את הפרופיל (§322).
-  if (previewMemberId) {
-    document.querySelector('.yz-tabs').style.display = 'none';
-  } else {
+  {
     // §509 — מקור אחד לשלושת הסימונים (תפריט, ☰, פעמון): כאן הם מתעדכנים חי, כשמשהו נקרא.
     // §523 — "הודעות" אחת (my-messages.js): מונה אחד – הודעות שלא נקראו + שיחות עם תשובה חדשה.
     try {
-      const { mountMessages } = await import('./my-messages.js');
+      const { mountMessages } = await import('./my-messages.js?v=615');   // §615 — readOnly חדש; ?v= כדי שלא ירוץ עותק ישן מהמטמון
       const it = window.__yzConvIntent || {};
       const isOwner = !!(member.isBusinessOwner || bizToken);
       const msgs = mountMessages({
@@ -1457,12 +1471,13 @@ async function saveMemberField(updates) {
         ownerBizId: bizToken ? ((auth.currentUser && auth.currentUser.uid) || null) : (member.isBusinessOwner ? (member.linkedBusinessId || null) : null),
         source: bizToken ? 'bizDashboard' : 'app',
         bizId: bizToken ? (auth.currentUser && auth.currentUser.uid) || null : null,
+        readOnly: !!previewMemberId,
         onUnread: (n) => {
           const el = document.getElementById('msgsCount');
           el.hidden = !n; el.textContent = n;
-          if (window.YZAreaBadge) window.YZAreaBadge.set(n);
+          if (window.YZAreaBadge && !previewMemberId) window.YZAreaBadge.set(n);   // §615 — לא הסימון של המנהל
         },
-        savePushToken: bizToken ? null : async (res) => {
+        savePushToken: (bizToken || previewMemberId) ? null : async (res) => {
           await updateDoc(doc(db, 'members', memberId), {
             [`nativePushTokens.${res.installId}`]: { token: res.token, platform: res.platform, updatedAt: new Date().toISOString() },
           });

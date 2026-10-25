@@ -107,7 +107,9 @@ function injectStyle() {
 //  savePushToken(res) — אופציונלי: כתיבת טוקן הפוש (הדף מחזיק את הזהות; המודול לא כותב לחבר).
 //  §523 — embedded: בתוך "הודעות" המאוחד (my-messages.js). הרשימה שלנו לא מוצגת (השיחות מופיעות
 //  ברשימה המאוחדת), נשארים רק השרשור והכתיבה; "חזרה" וביטול קוראים ל-onBack.
-export function mountConversations({ db, memberId, root, onUnread, savePushToken, source = 'app', bizId = null, embedded = false, onBack = null }) {
+// §615 — readOnly: תצוגת מנהל (profile.html?previewMemberId=…). רואים את השיחות כמו החבר, אבל
+// לא מסמנים "נקרא" בשמו ולא שולחים – בלי כפתורי כתיבה ובלי memberReadAt.
+export function mountConversations({ db, memberId, root, onUnread, savePushToken, source = 'app', bizId = null, embedded = false, onBack = null, readOnly = false }) {
   injectStyle();
   const state = { convs: [], loaded: false, loadErr: false, openId: null, msgs: [], msgsErr: false, composing: false, pushOffer: false, newMeta: null };
   let unsubMsgs = null;
@@ -213,9 +215,9 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
           <div class="cv-bubble">${esc(m.text)}</div>
           <div class="cv-meta">${m.from === 'admin' ? 'צוות Yellow Zone' : 'את/ה'} · ${fmtDate(m.createdAt)} ${fmtTime(m.createdAt)}</div>
         </div>`).join('');
-    show('reply', c.status !== 'closed');
-    show('closedNote', c.status === 'closed');
-    show('push', state.pushOffer && c.status !== 'closed');
+    show('reply', !readOnly && c.status !== 'closed');
+    show('closedNote', !readOnly && c.status === 'closed');
+    show('push', !readOnly && state.pushOffer && c.status !== 'closed');
   }
   function render() {
     renderList(); renderView();
@@ -223,7 +225,7 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
   }
 
   function markRead(c) {
-    if (!c || !isUnread(c)) return;
+    if (readOnly || !c || !isUnread(c)) return;
     updateDoc(doc(db, 'conversations', c.id), { memberReadAt: serverTimestamp() })
       .catch((e) => console.warn('conv mark-read failed:', e && (e.code || e.message)));
   }
@@ -358,6 +360,7 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
     const row = e.target.closest('.cv-row');
     if (row) { openConv(row.getAttribute('data-id')); return; }
     const k = e.target.closest('[data-cv]') && e.target.closest('[data-cv]').getAttribute('data-cv');
+    if (readOnly && k !== 'back') return;
     if (k === 'newBtn' || k === 'closedNew') startNew();
     else if (k === 'newCancel') cancelNew();
     else if (k === 'newSend') sendNew();
@@ -366,6 +369,7 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
     else if (k === 'pushYes') acceptPush();
     else if (k === 'pushNo') { state.pushOffer = false; renderView(); }
   });
+  if (readOnly) show('newBtn', false);
   $('newText').addEventListener('input', () => {
     $('newCount').textContent = $('newText').value.length + '/' + MAX; show('newErr', false);
   });
