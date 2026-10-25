@@ -15,7 +15,7 @@
 // לא רלוונטי לבוררי-הרישום (business/business-dashboard/admin-businesses/admin-dashboard) — שם
 // הרקע תמיד בהיר-ניטרלי והאייקון תמיד navy, בלי תלות ב-circleBg.
 window.CATEGORIES = [
-  { key: 'food',    icon: '🌭', img: 'hotdog',      circleBg: 'navy',   label: 'אוכל ומסעדות',        tags: ['מסעדות וברים', 'בתי קפה ומאפיות', 'קצביות ודגים', 'קייטרינג ומשלוחים', 'מתוקים וקינוחים'] },
+  { key: 'food',    icon: '🌭', img: 'hotdog',      imgVer: 613, circleBg: 'navy',   label: 'אוכל ומסעדות',        tags: ['מסעדות וברים', 'בתי קפה ומאפיות', 'קצביות ודגים', 'קייטרינג ומשלוחים', 'מתוקים וקינוחים'] },
   { key: 'events',  icon: '🎉', img: 'drum',        circleBg: 'yellow', label: 'אירועים ומתנות',        tags: ['מוזיקה ודיג\'יי', 'אטרקציות ומתנפחים', 'אוכל ואלכוהול לאירועים', 'צילום ומדיה', 'הפקה, עיצוב וציוד לאירועים', 'מופעים ובידור'] },
   { key: 'vehicle', icon: '🚗', img: 'fanbus',      circleBg: 'navy',   label: 'רכב ולוגיסטיקה',       tags: ['מוסכים וחלקי חילוף', 'מצברים וחשמלאות', 'ציוד ואביזרי רכיבה', 'שליחויות ולוגיסטיקה', 'שירותי דרך וגרר', 'מכירת רכבים וסוכנויות'] },
   // home סונכרן ב-2026-08-20 לקטלוג החי ב-settings/tagTaxonomy (היה מיושן: "עיצוב ופיתוח גינות"/
@@ -50,5 +50,6 @@ window.CATEGORIES = [
 // שם-קובץ מלא לאייקון (עם סיומת-צבע) — variant: 'navy'|'yellow'|'white', ברירת-מחדל 'navy'
 // (הגוון בשימוש בכל בוררי-הרישום, על רקע בהיר-ניטרלי).
 window.catIconFile = function (cat, variant) {
-  return cat.img + '-' + (variant || 'navy') + '.png';
+  // §613 — imgVer: אייקון שהוחלף באותו שם-קובץ. ?v= מכריח הורדה מחדש (IMG_CACHE שומר לפי הכתובת המלאה).
+  return cat.img + '-' + (variant || 'navy') + '.png' + (cat.imgVer ? '?v=' + cat.imgVer : '');
 };
