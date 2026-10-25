@@ -81,7 +81,7 @@
       '<div class="bg-ok">✓ הכל תקין? נותנים את ההטבה.</div>' },
     service: { t: 'במעמד המכירה / השירות', sub: 'בפגישה, בטלפון או בוואטסאפ', body:
       '<div class="bg-step"><span class="bg-n">•</span><div><b>בפגישה</b> – האוהד מראה את המסך עצמו, ובודקים כמו בחנות.</div></div>' +
-      '<div class="bg-step"><span class="bg-n">•</span><div><b>בטלפון או בוואטסאפ</b> – מבקשים שישלח בוואטסאפ <b>צילום מסך מהשעה שדיברתם</b>. רואים בו את תעודת החבר ואת הפס הכחול: שם העסק שלכם, ותאריך ושעה עדכניים.</div></div>' +
+      '<div class="bg-step"><span class="bg-n">•</span><div><b>בטלפון או בוואטסאפ</b> – מבקשים שישלח בוואטסאפ <b>צילום מסך</b>, מתי שנוח לכם. רואים בו את תעודת החבר ואת הפס הכחול: שם העסק שלכם, תאריך ושעה.</div></div>' +
       '<div class="bg-step"><span class="bg-n">•</span><div><b>תעודה מזהה</b> – אפשר לבקש, בכל דרך שנוחה לכם. ההחלטה שלכם.</div></div>' },
     online: { t: 'באתר', sub: 'קוד קופון', body:
       '<div class="bg-step"><span class="bg-n">1</span><div>צרו במערכת האתר <b>קוד קופון ייחודי לחברי Yellow Zone</b> – לא קוד שמפורסם במקום אחר.</div></div>' +
@@ -100,7 +100,7 @@
       '<div class="yz-strip"><div class="yz-strip-head"><div class="yz-strip-row1"><span class="yz-dot"></span><span class="yz-strip-cap">אימות בתוקף עבור ההטבה</span></div>' +
       '<span class="yz-strip-mark">YELLOW ZONE</span></div>' +
       '<div class="yz-strip-foot"><span class="yz-strip-biz">' + esc(bizName) + '</span><span class="yz-clock" data-bg-clock></span></div></div>' +
-      '<div class="bg-co"><div><b>שם העסק</b><span>שלכם</span></div><div><b>השעון</b><span>השניות רצות – מסך חי. בוואטסאפ: צילום מסך מהשעה שדיברתם</span></div>' +
+      '<div class="bg-co"><div><b>שם העסק</b><span>שלכם</span></div><div><b>השעון</b><span>השניות רצות – מסך חי. בוואטסאפ: צילום מסך</span></div>' +
       '<div><b>תעודת חבר</b><span>שם ומספר חבר</span></div><div><b>תעודה מזהה</b><span>אפשר לבקש – אותו שם כמו בתעודת החבר</span></div></div>';
   }
 
