@@ -82,6 +82,10 @@
         slidePrice: 'קעקוע מכבי החל מ-400 ₪',   // §610 (רמי) משפט אחד במקום "400–800 ₪" + התנאים; ריק = הטווח
         bg: '',   // §610 (רמי, 25.10) "תוריד את הסמל של מכבי" – היה images/weekly/emblem-bg.png
         img: '', heroImg: '',   // (רמי, 24.10) השור הורד – בלי תמונה בתיבה ובגיליון
+        // §610ג (רמי, 25.10) השור עם הכובע (סמל מכבי) וקעקוע מכבי על הזרוע – בצד שמאל, כמו בשאר התיבות. רקע התמונה
+        // (#EAB900) הוזז כולו ל-#FFD205 (הצהוב האחד של הקרוסלה). הראש (קרניים–סנטר) ~78px ובאותו גובה כמו בשאר
+        // השוורים (נמדד זה לצד זה) – לכן התמונה (חצי גוף) לא מגיעה לתחתית, והחלק התחתון שלה נמוג לרקע.
+        photo: 'images/weekly/bull-ben2.jpg', photoBg: '#FFD205', photoH: 204, photoTop: -2, photoLeft: -32, photoFadeBottom: 34,
         howTitle: 'איך זה עובד',
         how: '• ההטבה לכל מי שקובע תור לקעקוע אצל אחד המקעקעים, עד {end}\n• את הכול – העיצוב, המועד והתשלום – סוגרים ישירות מול המקעקע\n• לוחצים על הכרטיס של המקעקע ופונים אליו',
         // §610 (רמי, 25.10) ההטבה הראשונה עולה בהשקה ורצה עד 15.11 (לא חצי חודש). מחוץ לתאריכים – "בקרוב".
@@ -277,6 +281,8 @@
     if (p.photoTop != null) s += 'top:' + Number(p.photoTop) + 'px;';
     if (p.photoLeft != null) s += 'left:' + Number(p.photoLeft) + 'px;';
     if (p.photoFade) { var m = 'linear-gradient(to left,transparent 0,#000 ' + Number(p.photoFade) + 'px)'; s += '-webkit-mask-image:' + m + ';mask-image:' + m + ';'; }
+    // §610ג – תמונת חצי-גוף: התחתית נמוגה לרקע במקום קו חתוך
+    else if (p.photoFadeBottom) { var mb = 'linear-gradient(to top,transparent 0,#000 ' + Number(p.photoFadeBottom) + 'px),linear-gradient(to left,transparent 0,#000 22px)'; s += '-webkit-mask-image:' + mb + ';mask-image:' + mb + ';-webkit-mask-composite:source-in;mask-composite:intersect;'; }
     return s ? ' style="' + s + '"' : '';
   }
 
@@ -308,13 +314,14 @@
         '<span>' + (range && !isNaN(lo.s) && !isNaN(hi.s) ? lo.s + ' עד ' + hi.s + ' ' + esc(String(hi.p.size).replace(/^[\d.\s]+/, '')) : esc(lo.p.size)) +
         (b.sizeExtra ? ' ' + esc(b.sizeExtra) : '') + '</span></div></div>';
       // (רמי, 24.10) השור עם סמל מכבי על הזרוע – משמאל למטה; החץ הופך ל"לפרטים"
-      return '<div class="wk-slide wk-s-ben' + (b.img ? ' has-img' : '') + '"' + o + '>' +
+      return '<div class="wk-slide wk-s-ben' + (b.img ? ' has-img' : '') + (b.photo ? ' has-photo' : '') + '"' + o + (b.photo && b.photoBg ? ' style="background:' + esc(b.photoBg) + '"' : '') + '>' +
         (b.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(b.bg) + '" alt=""></span>' : '') +
+        (b.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(b.photo) + '" alt=""' + photoStyle(b) + '></span>' : '') +
         (b.img ? '<img class="wk-ben-img" src="' + esc(b.img) + '" alt="">' : '') +
         '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.slideTitle) + '</div>' +
         (b.hint ? '<div class="wk-hint">' + esc(String(b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
         // עם השור – העיגול מכסה את הראש, אז הספירה עוברת לתווית קטנה בפינה עם עיגול זעיר
-        (b.img ? '<div class="wk-days" style="--p:' + (100 - t.pct).toFixed(1) + '"><i></i>' + (t.left === 1 ? 'יום אחרון!' : 'עוד ' + t.left + ' ימים') + '</div>' : ring) + price +
+        (b.img || b.photo ? '<div class="wk-days" style="--p:' + (100 - t.pct).toFixed(1) + '"><i></i>' + (t.left === 1 ? 'יום אחרון!' : 'עוד ' + t.left + ' ימים') + '</div>' : ring) + price +
         (b.more ? '<span class="wk-more">' + esc(b.more) + GO + '</span>' : '<span class="wk-go">' + GO + '</span>') + '</div>';
     }
     if (kind === 'fan') {
@@ -675,6 +682,9 @@
     '.wk-timer .bar{height:6px;background:#EFE7C4;border-radius:999px;overflow:hidden}',
     '.wk-timer .bar i{display:block;height:100%;background:#0A2A66}',
     '.wk-price{display:flex;gap:8px}',
+    '.wk-s-ben.has-photo .wk-ben-top,.wk-s-ben.has-photo .wk-pline,.wk-s-ben.has-photo .wk-pfrom{margin-inline-end:116px;position:relative;z-index:1}',
+    '.wk-s-ben.has-photo .t{font-size:20px}.wk-s-ben.has-photo .wk-hint{font-size:12px}',
+    '.wk-s-ben.has-photo .wk-pline{font-size:17px}',
     '.wk-pline{font-size:19px;font-weight:800;line-height:1.25;letter-spacing:-.01em;margin-inline-end:110px}',
     '.wk-opts{display:flex;gap:8px}',
     '.wk-opt{flex:1;background:#fff;border:1px solid #E3E8F2;border-radius:14px;padding:12px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:6px}',

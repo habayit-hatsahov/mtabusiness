@@ -451,7 +451,8 @@
 // §608 — v368 (home.html: "איך מממשים?" בכרטיס בלי מספור; כרטיס נותן שירות "בפגישה, או שלחו צילום מסך בוואטסאפ" – גם בתצוגה ב-business-dashboard.html).
 // §610 — v372 (הקרוסלה באוויר ב-home.html: weekly-render.js?v=610 + homeCarousel/current; admin-carousel.html חדש; הדמואים weekly-demo/weekly-admin-demo נמחקו).
 // §610ב — v374 (רמי: ההטבה ו"הכר את העסק" עולים כבר מ-25.10 – start בקוד וב-homeCarousel/current; weekly-render.js?v=610b).
-const CACHE_NAME = 'yz-shell-v374';
+// §610ג — v375 (תיבת ההטבה: השור עם כובע מכבי וקעקוע על הזרוע – images/weekly/bull-ben2.jpg; weekly-render.js?v=610c).
+const CACHE_NAME = 'yz-shell-v375';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד
