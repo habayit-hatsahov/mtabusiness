@@ -3125,6 +3125,12 @@ function showHome() {
 
 // ── BIZ SHEET ─────────────────────────────────────────────────────────────────
 let _openBizId = null;
+// §610ח — מדידת הפעולות בכרטיס העסק (רמי, 26.10: "לחיצות על בתי העסק – התקשרו, וואטסאפ, אינסטגרם").
+// עד היום נמדדו רק כפתורי "התקשר"/"WhatsApp" (bizContact). שורות הטלפון/וואטסאפ בפרטים הן אותה פנייה
+// בדיוק – ולכן גם הן bizContact (נספרות ל"פניות" של בעל העסק, §508). קישורים שאינם פנייה (אינסטגרם,
+// פייסבוק, אתר, מייל, ניווט) – אירוע נפרד bizLink, כדי לא לנפח את "פניות".
+function _hbContact(ch) { window.logEvent && window.logEvent('bizContact', { bizId: _openBizId, channel: ch }); }
+function _hbLink(ch) { window.logEvent && window.logEvent('bizLink', { bizId: _openBizId, channel: ch }); }
 // ר' loadFirebaseData — האם כבר ניסינו לפתוח עסק מקישור-שיתוף (?biz=<id>) בטעינה הזו
 let _sharedBizOpened = false;
 // {name} של העסק המקושר למשתמש-בעל-עסק המחובר, אם יש (נקבע ב-initBizNavItem) — לכפתור
@@ -3686,7 +3692,7 @@ function openBiz(id) {
       || siteRowUrl;
     infoRows.push(`<div class="sheet-info-row site-row">
       <span class="info-icon">${SHEET_ICONS.globe}</span>
-      <div class="info-body"><div class="info-label">האתר שלנו</div><a class="ltr-value" href="${siteRowUrl}" target="_blank" rel="noopener">${siteLabel}</a></div>
+      <div class="info-body"><div class="info-label">האתר שלנו</div><a class="ltr-value" href="${siteRowUrl}" target="_blank" rel="noopener" onclick="_hbLink('website')">${siteLabel}</a></div>
     </div>`);
   }
   // hoursHtml — מעדיף את השעות המובנות, נופל ל-hours הישן, ובשני המקרים מגן על כיוון
@@ -3707,13 +3713,13 @@ function openBiz(id) {
   if (b.serviceEmail) {
     infoRows.push(`<div class="sheet-info-row">
       <span class="info-icon">${SHEET_ICONS.mail}</span>
-      <div class="info-body"><div class="info-label">מייל שירות</div><a class="ltr-value" href="mailto:${b.serviceEmail}">${b.serviceEmail}</a></div>
+      <div class="info-body"><div class="info-label">מייל שירות</div><a class="ltr-value" href="mailto:${b.serviceEmail}" onclick="_hbLink('email')">${b.serviceEmail}</a></div>
     </div>`);
   }
   if (b.phone) {
     infoRows.push(`<div class="sheet-info-row">
       <span class="info-icon">${SHEET_ICONS.phone}</span>
-      <div class="info-body"><div class="info-label">טלפון</div>${b.isPro && b.ownerFirst ? `<span style="color:var(--accent);font-weight:700;">${b.ownerFirst}</span> - ` : ''}<a class="ltr-value" href="tel:${b.phone}">${b.phone}</a></div>
+      <div class="info-body"><div class="info-label">טלפון</div>${b.isPro && b.ownerFirst ? `<span style="color:var(--accent);font-weight:700;">${b.ownerFirst}</span> - ` : ''}<a class="ltr-value" href="tel:${b.phone}" onclick="_hbContact('phone')">${b.phone}</a></div>
     </div>`);
   }
   // WhatsApp — הקישור נבנה דרך bizWaLink, שמחזיר null למספר לא-תקין. אסור להציג שורה על
@@ -3723,7 +3729,7 @@ function openBiz(id) {
   if (waHref2) {
     infoRows.push(`<div class="sheet-info-row">
       <span class="info-icon">${SHEET_ICONS.whatsapp}</span>
-      <div class="info-body"><div class="info-label">WhatsApp</div><a class="ltr-value" href="${waHref2}" target="_blank">${b.whatsapp}</a></div>
+      <div class="info-body"><div class="info-label">WhatsApp</div><a class="ltr-value" href="${waHref2}" target="_blank" onclick="_hbContact('whatsapp')">${b.whatsapp}</a></div>
     </div>`);
   }
   // נוכחות דיגיטלית (אתר/אינסטגרם/פייסבוק) — כפתורים קטנים עם שם-הפלטפורמה בלבד, לא הכתובת/ה-handle
@@ -3736,7 +3742,7 @@ function openBiz(id) {
   const linkChip = (kind, raw, icon, label) => {
     const url = raw ? linkUrl(kind, raw) : null;
     if (!url) return;
-    linkItems.push(`<a class="sheet-link-chip" href="${url.replace(/"/g,'%22')}" target="_blank" rel="noopener">${icon}<span>${label}</span></a>`);
+    linkItems.push(`<a class="sheet-link-chip" href="${url.replace(/"/g,'%22')}" target="_blank" rel="noopener" onclick="_hbLink('${kind}')">${icon}<span>${label}</span></a>`);
   };
   if (!siteRowUrl) linkChip('website', b.website, SHEET_ICONS.globe, 'אתר');
   linkChip('instagram', b.instagram, SHEET_ICONS.instagram, 'אינסטגרם');
@@ -3763,8 +3769,8 @@ function openBiz(id) {
             <div class="sheet-branch-address">${full}</div>
             ${hoursHtml(b, 'dot') ? `<div class="sheet-branch-hours">${hoursHtml(b, 'dot')}</div>` : ''}
             <div class="sheet-branch-nav-row">
-              <a class="sheet-branch-nav-link" href="${wazeUrl}" target="_blank">${SHEET_ICONS.navigation}<span>Waze</span></a>
-              <a class="sheet-branch-nav-link" href="${mapsUrl}" target="_blank">${SHEET_ICONS.map}<span>מפות</span></a>
+              <a class="sheet-branch-nav-link" href="${wazeUrl}" target="_blank" onclick="_hbLink('waze')">${SHEET_ICONS.navigation}<span>Waze</span></a>
+              <a class="sheet-branch-nav-link" href="${mapsUrl}" target="_blank" onclick="_hbLink('maps')">${SHEET_ICONS.map}<span>מפות</span></a>
             </div>
           </div>`;
         }).join('')}
