@@ -1,11 +1,14 @@
-/* weekly-render.js – §539 דמו: הקרוסלה בדף הבית (הטבה בלעדית · האוהד שמאחורי העסק · מי אנחנו ·
-   איך מממשים · לבעלי עסקים · הזמינו חברים).
-   מקור אחד לעיצוב ולתוכן: דמו דף הבית (weekly-demo.html) מרנדר מכאן, ודמו הניהול
-   (weekly-admin-demo.html) מרנדר מכאן את התצוגה המקדימה – כדי שמה שעורכים שם ייראה בול כמו כאן.
-   בדמו התוכן נשמר במכשיר בלבד (localStorage, wkDemoData); בבנייה – אוסף ציבורי נפרד (דפוס bizPublic). */
+/* weekly-render.js – §539/§610: הקרוסלה בדף הבית (הטבה בלעדית · האוהד שמאחורי העסק · מי אנחנו ·
+   איך מממשים · לבעלי עסקים · תביאו את החבר'ה).
+   מקור אחד לעיצוב ולתוכן: home.html מרנדר מכאן, ו-admin-carousel.html מרנדר מכאן את התצוגה
+   המקדימה – כדי שמה שעורכים שם ייראה בול כמו בדף הבית.
+   §610 – באוויר: התוכן ב-homeCarousel/current (קריאה לכולם, כתיבה למנהל). DEFAULTS כאן = הנוסח המאושר,
+   והוא מה שמוצג עד שהמסמך מגיע (או אם הקריאה נכשלה) – הקרוסלה אף פעם לא ריקה. המסמך האחרון נשמר
+   בטלפון (CACHE) כדי שהפתיחה הבאה תצייר אותו מיד, בלי קפיצה מהנוסח הישן לחדש. */
 (function () {
   'use strict';
-  var KEY = 'wkDemoData34';
+  var KEY = 'wkDemoData34';          // דמו ישן – לא בשימוש בדף הבית
+  var CACHE = 'hb_wk_cache';
   var STORAGE = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
   var IMG = {
     patrix: STORAGE + 'businesses%2FPSp6yTsBMgJv2u6H6u7f%2FcoverPhoto_1788329641575?alt=media&token=c4e8f62c-8bfc-4130-9f8e-e3384478950c',
@@ -66,37 +69,56 @@
         explainTitle: 'הטבה בלעדית שמתחלפת כל חצי חודש',
         explain: 'ב-1 וב-16 בכל חודש – הטבה בלעדית חדשה, רק לחברי Yellow Zone ורק לזמן מוגבל.',
         title: 'קעקוע של מכבי',
-        intro: 'קעקוע של מכבי במחיר מיוחד לחברי Yellow Zone – לזמן מוגבל.',
-        prices: [{ size: '6 ס"מ', price: '400 ₪', was: '' }, { size: '12 ס"מ', price: '800 ₪', was: '' }],
-        after: 'רוצים להוסיף כיתוב, דמות או סקיצה? 20% הנחה על התוספת.',
+        // §610 (רמי, 25.10) ההטבה – סמל מכבי או כיתוב, עד 6 או עד 12 ס"מ; הכיתוב MACCABI כדוגמה
+        intro: 'סמל מכבי או כיתוב, עד 6 ס"מ או עד 12 ס"מ – במחיר מיוחד לחברי Yellow Zone, לזמן מוגבל.',
+        options: [{ label: 'סמל מכבי', img: 'images/weekly/emblem-bg.png' }, { label: 'או כיתוב, למשל', text: 'MACCABI' }],
+        prices: [{ size: 'עד 6 ס"מ', price: '400 ₪', was: '' }, { size: 'עד 12 ס"מ', price: '800 ₪', was: '' }],
+        after: 'רוצים להוסיף דמות, סקיצה או כיתוב נוסף? 20% הנחה על התוספת.',
         whereTitle: 'איפה מממשים', bizNoun: 'מקעקעים',
         howTo: 'בוחרים את הקרוב אליכם ולוחצים על הכרטיס שלו כדי לפנות אליו.',
         // (רמי, 24.10) בחוץ: "+ הנחה על תוספות" אחרי הגדלים, "לפרטים" ליד החץ, השור עם סמל מכבי על הזרוע.
         // התמונות – הדמיה זמנית (סמל מכבי הודבק על הזרוע של השור); השור המקעקע בפנים – ממתין לתמונה מרמי.
         sizeExtra: '+ הנחה על תוספות', more: 'לפרטים',
-        bg: 'images/weekly/emblem-bg.png',   // סמל מכבי כרקע בתיבה, כמו בתפריט הקטגוריות (רמי, 24.10)
+        slidePrice: 'קעקוע מכבי החל מ-400 ₪',   // §610 (רמי) משפט אחד במקום "400–800 ₪" + התנאים; ריק = הטווח
+        bg: '',   // §610 (רמי, 25.10) "תוריד את הסמל של מכבי" – היה images/weekly/emblem-bg.png
         img: '', heroImg: '',   // (רמי, 24.10) השור הורד – בלי תמונה בתיבה ובגיליון
         howTitle: 'איך זה עובד',
         how: '• ההטבה לכל מי שקובע תור לקעקוע אצל אחד המקעקעים, עד {end}\n• את הכול – העיצוב, המועד והתשלום – סוגרים ישירות מול המקעקע\n• לוחצים על הכרטיס של המקעקע ופונים אליו',
+        // §610 (רמי, 25.10) ההטבה הראשונה עולה בהשקה ורצה עד 15.11 (לא חצי חודש). מחוץ לתאריכים – "בקרוב".
+        start: '2026-10-26', end: '2026-11-15',
+        // §610 – מזהה, לוגו ואזור מהרשומות (bizPublic: logoThumb||logo, ערי הסניפים), לא מהקוד. העורך בניהול
+        // מרענן אותם בכל שמירה. (רמי, 25.10) נוסף סטודיו מון צ׳יילד – 5 מקעקעים, בלי מקום שמור.
         biz: [
-          { name: "צ'ומפי", area: 'ירושלים · רחובות' },
-          { name: 'Casual tattoo', area: 'רחובות' },
-          { name: 'אולטראס טאטו', area: '' },
-          { name: 'Kind tattoo shop', area: '' },
-          { name: '', area: '' }
+          { id: 'a1QIIkYOZBGdWKpLTkKe', name: "צ'ומפי", area: 'ירושלים', logo: IMG.chompy },
+          { id: '20rLIqD5Pym3Tt3h3kXZ', name: 'Casual tattoo', area: 'רחובות', logo: IMG.casual },
+          { id: 'AmOjD8WcCP3Zw5SvdDHh', name: 'אולטראס טאטו', area: 'בורגתה', logo: '' },
+          { id: 'VLGLZPgme3rNgsG72z57', name: 'Kind tattoo shop', area: 'תל אביב', logo: STORAGE + 'bizUploads%2F183513db-16b1-4bf5-830b-34364f4c10ba%2Flogo_ffcf5294-0ad1-418a-8aed-efd545607fe6?alt=media&token=e95678c8-e145-485f-b985-7315fcc6b6b4' },
+          { id: 'NdnAHxqCeXY3qcWpAq7l', name: 'סטודיו מון צ׳יילד', area: 'תל אביב', logo: STORAGE + 'bizUploads%2F74f12f89-4b06-4adf-b076-93cbf338a66c%2Flogo_e8c14595-0307-4a9e-ab0b-f1cfb3af1403?alt=media&token=aff96099-eb2d-4274-8df9-12da83a127b3' }
         ]
       },
       fan: {
         soon: { tag: 'בקרוב', kicker: 'האוהד שמאחורי העסק', title: 'מהיציע – אל העסק',
           line: 'הסיפור של האוהדים שמאחורי העסקים' },
-        biz: 'פטריקס פארק רחובות', owner: 'דורון', fanTag: 'מנוי מכבי ת"א בכדורגל', showFan: true,
+        start: '2026-10-26', end: '2026-11-15',   // §610 – עולה יחד עם ההטבה
+        biz: 'פטריקס פארק רחובות', bizId: 'PSp6yTsBMgJv2u6H6u7f', cover: IMG.patrix,
+        heroImg: 'images/weekly/fan-doron.jpg',   // (רמי, 25.10) התמונה שלו ביציע – בראש הגיליון
+        owner: 'דורון אלטל', fanTag: 'מנוי מכבי ת"א בכדורגל', showFan: true,
         cadence: '2 בחודש · הבא ב-{next}',
         explainTitle: '2 אוהדים עם עסק בכל חודש',
         title: 'מהיציע אל הבר',
         slideLine: 'מהיציע אל הבר – פאב-מסעדה עם ליין אחר בכל ערב',
-        text: 'דורון, מנוי של מכבי בכדורגל, מחזיק ברחובות פאב-מסעדה עם ליין אחר בכל ערב.',
-        chips: 'פאב · מסעדה, רחובות, א–ה מ-18:00 · ש מ-20:30',
-        hasStory: true, quote: '', stand: '', how: '', why: '',
+        text: 'דורון אלטל, מנוי של מכבי מגיל 4, פתח לפני 7 שנים ברחובות את פטריקס – בר-מסעדה כשר עם ליין אחר בכל ערב.',
+        chips: 'בר · מסעדה, רחובות, כשר, א–ה מ-18:00 · ש מ-20:30',
+        // §610 – הסיפור = ציטוט + סעיפים חופשיים (כמו בתוכן הקבוע), מהתשובות של דורון (25.10)
+        hasStory: true, quote: 'מכבי בשבילי זה דרך חיים – אהבה ללא גבולות.',
+        sections: [
+          { h: 'ביציע', p: 'מיום שנולדתי אבא שלי, זיכרונו לברכה, השריש בי את המכביזם – ומגיל 4 אני מנוי. מהיום שמכבי משחקים בבלומפילד אני ביציע כסף, שורה 1, עם החברים לשורה: יעקב ברדוגו, יוסי עטיה – האיש והאגדה, מאור מוגרבי, אוחיון המשוגע ועוד.' },
+          { h: 'הרגע שלא יישכח', p: 'חד-משמעית – הגול של ערן ב-3–2.' },
+          { h: 'איך נולד פטריקס', p: 'פתחתי את פטריקס ברחובות לפני 7 שנים. הלוגו של הרשת היה כוכב אדום – הפכתי עולמות ושיניתי אותו מול הרשת. בשום מצב לא נכנס לי אדום לעסק!' },
+          { h: 'מה מחכה לכם בפטריקס', p: '• משדרים כל משחק של מכבי, עם סאונד לכל הקהל\n• בכל גול של מכבי – צ׳ייסרים על חשבון הבית לכל מי שבמקום\n• 20 ברזים של בירה מהחבית ותפריט עשיר\n• כשר בהשגחת רבנות רחובות, סגור בשבת; בשר חלק וירקות גוש קטיף\n• כל ערב משהו אחר: זמרים ביוונית ובמזרחית, די-ג׳ייז וקריוקי' },
+          { h: 'למה לבוא', p: 'אוכל טרי, כשר וטעים – ולפני הכול יחס אישי, שירות מנצח ואווירה פגז.' }
+        ],
+        stand: '', how: '', why: '',
         cadenceNote: 'כל חודש אנחנו מכירים לכם 2 אוהדים שיש להם עסק – אחד ב-1 ואחד ב-16. הכירו את הסיפור, תנו להם לייק, והבא מגיע ב-{next}.'
       },
       usDir: 'a',
@@ -196,21 +218,31 @@
   }
 
   // ── שמירה (דמו: במכשיר בלבד) ──────────────────────────────────────────────────────────
-  function load() {
+  // §610 – מסמך (מהשרת או מהמטמון) מעל ברירות המחדל: שדה חסר במסמך לא מוחק את הנוסח המאושר
+  function merge(s) {
     var d = DEFAULTS();
-    try {
-      var s = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (s && typeof s === 'object') {
-        ['ben', 'fan'].forEach(function (k) { if (s[k]) d[k] = Object.assign(d[k], s[k]); });
-        if (s.pages) Object.keys(d.pages).forEach(function (k) { if (s.pages[k]) d.pages[k] = Object.assign(d.pages[k], s.pages[k]); });
-        if (s.future) d.future = s.future;
-        if (s.usDir) d.usDir = s.usDir;
-      }
-    } catch (e) {}
+    if (s && typeof s === 'object') {
+      ['ben', 'fan'].forEach(function (k) { if (s[k]) d[k] = Object.assign(d[k], s[k]); });
+      if (s.pages) Object.keys(d.pages).forEach(function (k) { if (s.pages[k]) d.pages[k] = Object.assign(d.pages[k], s.pages[k]); });
+      if (s.future) d.future = s.future;
+      if (s.usDir) d.usDir = s.usDir;
+    }
     return d;
   }
-  function save(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); return true; } catch (e) { return false; } }
-  function reset() { try { localStorage.removeItem(KEY); } catch (e) {} }
+  function readCache() { try { return JSON.parse(localStorage.getItem(CACHE) || 'null'); } catch (e) { return null; } }
+  function load() { return merge(readCache()); }
+  function save(d) { try { localStorage.setItem(CACHE, JSON.stringify(d)); return true; } catch (e) { return false; } }
+  function reset() { try { localStorage.removeItem(CACHE); } catch (e) {} }
+
+  // ── §610 תקופה אמיתית לכל פריט: start/end ('YYYY-MM-DD', כולל), מחצות לחצות בשעון המכשיר ──────────
+  function ymd(s) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); return m ? new Date(+m[1], m[2] - 1, +m[3]) : null; }
+  function span(it) {
+    var s = it && ymd(it.start), e = it && ymd(it.end);
+    return s && e ? { start: s, next: new Date(e.getFullYear(), e.getMonth(), e.getDate() + 1), last: e } : null;
+  }
+  // באוויר = יש תאריכים והיום בתוכם. אחרת התיבה מציגה את "בקרוב" (soon) – אין מצב ריק
+  function isLive(it, now) { var p = span(it); now = now || new Date(); return !!p && now >= p.start && now < p.next; }
+  function ctxFor(d, now) { now = now || new Date(); return { t: timing(now, isLive(d.ben, now) ? d.ben : d.fan) }; }
 
   // ── תקופה = חצי חודש: 1–15 / 16–סוף החודש ──────────────────────────────────────────────
   function period(dt) {
@@ -219,8 +251,8 @@
     return { start: start, next: next, last: new Date(next - 1) };
   }
   function dm(x) { return x.getDate() + '.' + (x.getMonth() + 1); }
-  function timing(now) {
-    var p = period(now), left = Math.ceil((p.next - now) / 86400000);
+  function timing(now, it) {
+    var p = span(it) || period(now), left = Math.ceil((p.next - now) / 86400000);
     return { p: p, left: left, pct: Math.min(100, Math.max(0, (now - p.start) / (p.next - p.start) * 100)), end: dm(p.last), next: dm(p.next) };
   }
 
@@ -230,12 +262,12 @@
   var GO = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg>';
   var X = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
   function act(ctx, js) { return ctx.preview ? '' : ' onclick="' + js + '"'; }
-  function bizInfo(b) { var k = KNOWN[b.name] || {}; return { id: k.id || '', logo: k.logo || '', area: b.area || k.area || '' }; }
+  function bizInfo(b) { var k = KNOWN[b.name] || {}; return { id: b.id || k.id || '', logo: b.logo || k.logo || '', area: b.area || k.area || '' }; }
   function tok(s, t) { return String(s || '').split('{end}').join(t.end).split('{next}').join(t.next); }
   function leftHtml(t) { return t.left === 1 ? '<b>היום אחרון!</b>' : 'נשארו <b>' + t.left + '</b> ימים'; }
   var ORDER = ['ben', 'fan', 'us', 'redeem', 'forbiz', 'invite'];
   // עד ההשקה (שתיהן במצב "בקרוב") – תיבת "פעמיים בחודש" אחת במקומן
-  function order(d) { return d && d.ben.soon && d.fan.soon && d.pages.launch ? ['launch'].concat(ORDER.slice(2)) : ORDER; }
+  function order(d) { return d && !isLive(d.ben) && !isLive(d.fan) && d.pages.launch ? ['launch'].concat(ORDER.slice(2)) : ORDER; }
   // תמונה בצד שמאל: photoTop מזיז אותה למעלה/למטה, photoFade – כמה פיקסלים השוליים בצד הטקסט נמוגים לצבע התיבה
   function photoStyle(p) {
     var s = '';
@@ -252,8 +284,8 @@
     var t = ctx.t, o = act(ctx, "WK.open('" + kind + "')");
     // (רמי, 24.10) "לא נציג את ההטבה ואת האוהד שמאחורי העסק – כן נציג שזה בקרוב יקרה".
     // התיבה לא נלחצת ואין לה גיליון; כל התוכן האמיתי נשאר שמור ויחזור כש-soon יכובה.
-    if ((kind === 'ben' || kind === 'fan') && d[kind].soon) {
-      var sn = d[kind].soon;
+    if ((kind === 'ben' || kind === 'fan') && !ctx.preview && !isLive(d[kind])) {
+      var sn = d[kind].soon || DEFAULTS()[kind].soon;
       // (רמי, 24.10) בלי סמל מכבי; כותרת ימין למעלה, כיתוב ימין למטה, "בקרוב" שמאל למעלה
       // (רמי, 24.10) הרקע: צעיף כחול-צהוב באלכסון בצד שמאל, במקום העיגול
       return '<div class="wk-slide wk-s-soon ' + kind + '">' +
@@ -272,7 +304,7 @@
       var lo = pr[0], hi = pr[pr.length - 1], range = pr.length > 1 && hi.n > lo.n;
       var ring = '<div class="wk-ring" style="--p:' + (100 - t.pct).toFixed(1) + '"><span class="cap">' + (t.left === 1 ? 'יום אחרון!' : 'מתחלפת בעוד') + '</span>' +
         '<span class="dial"><b>' + t.left + '</b><small>' + (t.left === 1 ? 'יום' : 'ימים') + '</small></span></div>';
-      var price = !lo ? '' : '<div class="wk-pfrom"><div><b>' + (range ? '<bdi dir="ltr">' + lo.n + '–' + hi.n + '</bdi>&nbsp;' + esc(String(hi.p.price).replace(/^[\d.,\s]+/, '')) : esc(lo.p.price)) + '</b>' +
+      var price = b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : !lo ? '' : '<div class="wk-pfrom"><div><b>' + (range ? '<bdi dir="ltr">' + lo.n + '–' + hi.n + '</bdi>&nbsp;' + esc(String(hi.p.price).replace(/^[\d.,\s]+/, '')) : esc(lo.p.price)) + '</b>' +
         '<span>' + (range && !isNaN(lo.s) && !isNaN(hi.s) ? lo.s + ' עד ' + hi.s + ' ' + esc(String(hi.p.size).replace(/^[\d.\s]+/, '')) : esc(lo.p.size)) +
         (b.sizeExtra ? ' ' + esc(b.sizeExtra) : '') + '</span></div></div>';
       // (רמי, 24.10) השור עם סמל מכבי על הזרוע – משמאל למטה; החץ הופך ל"לפרטים"
@@ -286,7 +318,7 @@
         (b.more ? '<span class="wk-more">' + esc(b.more) + GO + '</span>' : '<span class="wk-go">' + GO + '</span>') + '</div>';
     }
     if (kind === 'fan') {
-      var f = d.fan, cover = (KNOWN[f.biz] || {}).cover || '';
+      var f = d.fan, cover = f.cover || (KNOWN[f.biz] || {}).cover || '';
       return '<div class="wk-slide wk-s-fan"' + o + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' +
         '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span>' + (f.cadence ? '<span class="wk-cad">' + esc(tok(f.cadence, t)) + '</span>' : '') + '</div>' +
         (f.owner ? '<div class="who">' + esc(f.owner) + (f.showFan && f.fanTag ? ' · ' + esc(f.fanTag) : '') + '</div>' : '') +
@@ -373,6 +405,9 @@
         }).join('') + '</div></div>' +
         '<div class="wk-timer"><div class="row"><span>' + leftHtml(t) + '</span><span>עד ' + t.end + '</span></div><div class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></div></div>' +
         (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
+        // §610 – מה מקעקעים: סמל או כיתוב (דוגמה)
+        ((b.options || []).length ? '<div class="wk-opts">' + b.options.map(function (o) {
+          return '<div class="wk-opt">' + (o.img ? '<img src="' + esc(o.img) + '" alt="">' : '<span class="tx">' + esc(o.text || '') + '</span>') + '<small>' + esc(o.label || '') + '</small></div>'; }).join('') + '</div>' : '') +
         '<div class="wk-price">' + prices + '</div>' +
         (b.after ? '<p class="wk-p">' + esc(b.after) + '</p>' : '') +
         // איך זה עובד – סוגרים מול המקעקע (רמי, 24.10)
@@ -383,10 +418,11 @@
         '</div>';
     }
     if (kind === 'fan') {
-      var f = d.fan, cover = (KNOWN[f.biz] || {}).cover || '', story = f.hasStory;
+      // §610 – תמונת בעל העסק (heroImg) בראש הגיליון; בלעדיה – תמונת השער של העסק
+      var f = d.fan, cover = f.heroImg || f.cover || (KNOWN[f.biz] || {}).cover || '', story = f.hasStory;
       var chips = String(f.chips || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-      var bizId = (KNOWN[f.biz] || {}).id || '';
-      return '<div class="wk-hero"' + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' + closeBtn(kind, ctx) +
+      var bizId = f.bizId || (KNOWN[f.biz] || {}).id || '';
+      return '<div class="wk-hero' + (f.heroImg ? ' fan-photo' : '') + '"' + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' + closeBtn(kind, ctx) +
         '<span class="wk-badge">האוהד שמאחורי העסק</span><div class="who">עד ' + t.end + (f.cadence ? ' · ' + esc(tok(f.cadence, t)) : '') + '</div><div class="t">' + esc(f.biz || 'בחרו עסק') + '</div></div>' +
         '<div class="wk-in">' +
         (f.cadenceNote ? '<div class="wk-rot navy"><b>' + esc(f.explainTitle || '') + '</b><p>' + esc(tok(f.cadenceNote, t)) + '</p></div>' : '') +
@@ -394,7 +430,9 @@
           '<div class="wk-owner-role">בעל העסק' + (f.showFan && f.fanTag ? ' <span class="wk-fan">✓ ' + esc(f.fanTag) + '</span>' : '') + '</div></div></div>' : '') +
         '<div class="wk-lead">' + (f.title ? '<b>' + esc(f.title) + '</b>' : '') + fill(f.text, 'טקסט על האוהד ועל העסק') + '</div>' +
         (chips.length ? '<div class="wk-chips">' + chips.map(function (c) { return '<span>' + esc(c) + '</span>'; }).join('') + '</div>' : '') +
-        (story ? '<div class="wk-quote">"' + fill(f.quote, 'משפט אחד שלו – מה מכבי בשבילו') + '"</div>' +
+        (story && f.sections && f.sections.length ? (f.quote ? '<div class="wk-quote">"' + esc(f.quote) + '"</div>' : '') +
+          f.sections.filter(function (x) { return x.h || x.p; }).map(function (x) { return '<div class="wk-sec">' + (x.h ? '<h3>' + esc(x.h) + '</h3>' : '') + paraHtml(x.p) + '</div>'; }).join('') : '') +
+        (story && !(f.sections && f.sections.length) ? '<div class="wk-quote">"' + fill(f.quote, 'משפט אחד שלו – מה מכבי בשבילו') + '"</div>' +
           '<div class="wk-sec"><h3>ביציע</h3><p>' + fill(f.stand, 'ממתי במגרש, איפה יושב, עם מי, רגע שלא יישכח – ימולא אחרי השיחה') + '</p></div>' +
           '<div class="wk-sec"><h3>איך הגיע לעסק</h3><p>' + fill(f.how, 'איך נפתח העסק ומה הקשר ליציע – ימולא אחרי השיחה') + '</p></div>' +
           '<div class="wk-sec"><h3>למה Yellow Zone</h3><p>' + fill(f.why, 'במילים שלו: למה חשוב שאוהדים יקנו מאוהדים') + '</p></div>' : '') +
@@ -590,6 +628,8 @@
     '.wk-hero{position:relative;min-height:260px;background:#0A2A66 center/cover;color:#fff;display:flex;flex-direction:column;justify-content:flex-end;padding:18px;box-sizing:border-box}',
     '.wk-hero::before{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(6,22,56,.92),rgba(6,22,56,.2) 60%,rgba(6,22,56,.35))}',
     '.wk-hero > *{position:relative}',
+    // §610 – תמונת בעל העסק לאורך (ביציע): גבוה יותר, והפנים במרכז ולא נחתכות
+    '.wk-hero.fan-photo{min-height:min(440px,72vh);background-position:center 30%}',
     '.wk-hero > .wk-badge{position:absolute;top:18px;right:18px}',
     '.wk-hero > .wk-close{position:absolute}',
     '.wk-hero .who{font-size:12.5px;font-weight:700;color:#FFD400;margin-bottom:4px}',
@@ -635,6 +675,12 @@
     '.wk-timer .bar{height:6px;background:#EFE7C4;border-radius:999px;overflow:hidden}',
     '.wk-timer .bar i{display:block;height:100%;background:#0A2A66}',
     '.wk-price{display:flex;gap:8px}',
+    '.wk-pline{font-size:19px;font-weight:800;line-height:1.25;letter-spacing:-.01em;margin-inline-end:110px}',
+    '.wk-opts{display:flex;gap:8px}',
+    '.wk-opt{flex:1;background:#fff;border:1px solid #E3E8F2;border-radius:14px;padding:12px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:6px}',
+    '.wk-opt img{height:58px;width:auto}',
+    '.wk-opt .tx{height:58px;display:flex;align-items:center;font-size:24px;font-weight:900;letter-spacing:.14em;color:#0A2A66;font-style:italic}',
+    '.wk-opt small{font-size:12.5px;font-weight:800;color:#6B7A9B}',
     '.wk-pc{flex:1;background:#FFF7DB;border:1px solid #FFE9A3;border-radius:14px;padding:12px 8px;text-align:center;display:flex;flex-direction:column;align-items:center}',
     '.wk-pc .ring{height:58px;display:flex;align-items:center;justify-content:center}',
     '.wk-pc .ring i{display:block;border-radius:50%;border:2.5px dashed #0A2A66;background:#fff}',
@@ -673,10 +719,11 @@
   }
 
   // ── הרכבה בדף הבית ──────────────────────────────────────────────────────────────────
-  var state = { d: null, open: null };
-  function mount(root) {
+  var state = { d: null, open: null, root: null, pending: null };
+  function mount(root, data) {
     injectCss();
-    var d = state.d = load(), ctx = { t: timing(new Date()) };
+    state.root = root;
+    var d = state.d = data || load(), ctx = ctxFor(d);
     root.innerHTML = '<section class="wk" aria-label="הטבה בלעדית, האוהד שמאחורי העסק, Yellow Zone"><div class="wk-track" id="wkTrack">' +
       order(d).map(function (k) { return slideHtml(k, d, ctx); }).join('') + '</div><div class="wk-dots" id="wkDots">' +
       order(d).map(function (k, i) { return '<i' + (i ? '' : ' class="on"') + '></i>'; }).join('') + '</div>' +
@@ -715,7 +762,7 @@
     if (!state.d || !US_DIRS[dir]) return;
     var theme = state.d.pages.us.theme;
     state.d.pages.us = pageFromDir(dir); state.d.pages.us.theme = theme; state.d.usDir = dir; save(state.d);
-    var ctx = { t: timing(new Date()) }, sh = document.getElementById('wkSheet-us'), tr = document.getElementById('wkTrack');
+    var ctx = ctxFor(state.d), sh = document.getElementById('wkSheet-us'), tr = document.getElementById('wkTrack');
     if (sh) { var top = sh.scrollTop; sh.innerHTML = sheetInner('us', state.d, ctx); sh.scrollTop = top; }
     if (tr) { var i = order(state.d).indexOf('us'), tmp = document.createElement('div'); tmp.innerHTML = slideHtml('us', state.d, ctx); tr.replaceChild(tmp.firstChild, tr.children[i]); }
   }
@@ -729,6 +776,20 @@
     el.classList.remove('open'); el.setAttribute('aria-hidden', 'true'); state.open = null;
     document.documentElement.style.overflow = '';
     ['bizOverlay', 'shareOverlay'].forEach(function (oid) { var o = document.getElementById(oid); if (o) o.style.zIndex = ''; });
+    if (state.pending) { var p = state.pending; state.pending = null; apply(p); }
+  }
+  // §610 – המסמך מהשרת (homeCarousel/current). נשמר בטלפון לפתיחה הבאה; אם הוא זהה למה שכבר מוצג –
+  // לא מציירים מחדש. גיליון פתוח לא מוחלף מתחת לאצבע – מחכים לסגירה.
+  function apply(raw) {
+    if (!raw || typeof raw !== 'object') return;
+    var same = JSON.stringify(raw) === JSON.stringify(readCache());
+    save(raw);
+    if (!state.root) return;
+    if (state.open) { state.pending = raw; return; }
+    if (same && state.d) return;
+    var x = state.root.querySelector('#wkTrack'), sl = x ? x.scrollLeft : 0;
+    mount(state.root, merge(raw));
+    var tr = document.getElementById('wkTrack'); if (tr && sl) { tr.scrollLeft = sl; arrows(); }
   }
   // כרטיס העסק נפתח **מעל** הגיליון (לא סוגרים אותו), כך שסגירת הכרטיס מחזירה בדיוק לאותו מקום ברשימה
   function biz(id) {
@@ -750,8 +811,8 @@
 
   window.WK = {
     KEY: KEY, KNOWN: KNOWN, US_DIRS: US_DIRS, ORDER: ORDER,
-    DEFAULTS: DEFAULTS, pageFromDir: pageFromDir, load: load, save: save, reset: reset,
-    period: period, dm: dm, timing: timing, esc: esc,
+    DEFAULTS: DEFAULTS, pageFromDir: pageFromDir, load: load, save: save, reset: reset, merge: merge, apply: apply,
+    period: period, dm: dm, timing: timing, esc: esc, span: span, isLive: isLive, ctxFor: ctxFor, order: order,
     slideHtml: slideHtml, sheetInner: sheetInner, injectCss: injectCss,
     mount: mount, step: step, tok: tok, setUsDir: setUsDir, usDir: function () { return state.d && state.d.usDir; }, open: open, close: close, biz: biz, act: doAct
   };

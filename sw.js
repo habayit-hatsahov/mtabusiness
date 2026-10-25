@@ -449,7 +449,8 @@
 // §606 — v365 (home.html: "איך מממשים הטבה" מתפריט הצד כגיליון בדף, home.html?howto=1 מ-profile/terms; לאוהד בלי "מה בודקים" ובלי הפס; how-to-redeem.html בלי history.back).
 // §607 — v366 (המדריך מתפריט הצד ו-how-to-redeem.html בלי מספור, תיבת "יש לכם עסק?" קצרה; "צילום מסך" בלי "מהשעה שדיברתם" בכל המדריכים; biz-guides.js?v=607).
 // §608 — v368 (home.html: "איך מממשים?" בכרטיס בלי מספור; כרטיס נותן שירות "בפגישה, או שלחו צילום מסך בוואטסאפ" – גם בתצוגה ב-business-dashboard.html).
-const CACHE_NAME = 'yz-shell-v371';
+// §610 — v372 (הקרוסלה באוויר ב-home.html: weekly-render.js?v=610 + homeCarousel/current; admin-carousel.html חדש; הדמואים weekly-demo/weekly-admin-demo נמחקו).
+const CACHE_NAME = 'yz-shell-v372';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד
