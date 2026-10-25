@@ -10410,6 +10410,8 @@ window.bulkSetBizStatus = async function(status) {
       `\n\nלכתובות כאלה המייל יסומן "נשלח" אבל לא יגיע לאף אחד.\n\nאישור = לאשר את כולם בכל זאת · ביטול = לא לאשר כלום, אתקן קודם`
     )) return;
   }
+  // §614
+  if (status === 'approved' && !confirmMissingCardTitle(ids.map(id => bizById(id)).filter(b => b && b.status === 'pending' && bizMissingCardTitle(b)).map(b => b.name))) return;
   selectedBizIds.clear();
   try {
     if (status === 'approved') {
@@ -12554,6 +12556,14 @@ function aiTitleFitLabel(val) {
   const fits = measureTextWidth(t, CARD_TITLE_FONT) <= CARD_TITLE_MAX_WIDTH;
   return { over: !fits, text: fits ? '✓ נכנס בכרטיס' : '⚠️ חורג מרוחב הכרטיס – יקוצר אוטומטית בשמירה' };
 }
+// §614 – אין יותר AI שכותב את הכותרת: עסק עם הטבה נכנס לאישור בלי discountText, ובלי כותרת
+// ההטבה לא מוצגת לאוהדים בכלל (home.html מציג אותה רק כש-discountText קיים). לכן כל אישור
+// שמשאיר הטבה בלי כותרת שואל קודם – אזהרה, לא חסימה.
+function bizMissingCardTitle(s) { return !!(s && s.hasDiscount && !String(s.discountText || '').trim()); }
+function confirmMissingCardTitle(names) {
+  if (!names.length) return true;
+  return confirm(`⚠️ אין כותרת להטבה בכרטיס:\n\n${names.map(n => '• ' + n).join('\n')}\n\nבלי כותרת ההטבה לא תוצג לאוהדים – לא בכרטיס ולא בגיליון העסק. כותבים אותה בשדה "הכותרת שתופיע על הכרטיס באינדקס".\n\nאישור = לאשר בכל זאת · ביטול = לחזור ולכתוב כותרת`);
+}
 // opts.standalone — מציג גם כפתור "שמור כותרת" עצמאי (בתצוגה הרגילה, לא בתוך טופס עריכה) — כך
 // שאפשר לראות/לרענן/לבחור כותרת בלי לפתוח את כל עריכת שלב 4 (המשתמש: "בלי ללחוץ... כבר מבחוץ").
 // הכרטיס המאוחד מרנדר גם תצוגה וגם טופס-עריכה בו-זמנית (רק אחד גלוי, ר' bizFullDetailHtml) — כלומר
@@ -12579,20 +12589,17 @@ function aiTitleFieldHtml(b, opts) {
   return `
     <div class="ai-title-field">
       <div class="ai-title-head">
-        <span class="ai-title-tag">AI</span>
-        <div class="ai-title-head-label">הכותרת שתופיע על הכרטיס באינדקס</div>
+        <div class="ai-title-head-label">הכותרת שתופיע על הכרטיס באינדקס – כותבים ידנית</div>
         <div class="ai-title-fit ${fit.over?'over':''}" data-ai-title-len="${b.id}">${fit.text}</div>
       </div>
       ${pendingNote}
       <div class="ai-title-row">
-        <input type="text" value="${val || ''}" maxlength="55" data-ai-title-input="${b.id}" oninput="setBizAiTitle('${b.id}', this.value)">
-        <button type="button" class="act-btn tiny" onclick="regenerateAiTitles('${b.id}')" data-ai-title-regen="${b.id}">הצע 3 נוסחים</button>
+        <input type="text" value="${val || ''}" maxlength="55" placeholder="כתבו כותרת קצרה להטבה" data-ai-title-input="${b.id}" oninput="setBizAiTitle('${b.id}', this.value)">
         <div class="ai-title-preview">
           <div class="ai-title-preview-label">כך זה ייראה</div>
           <div class="ai-title-preview-text" data-ai-title-preview="${b.id}">${esc(val || '')}</div>
         </div>
       </div>
-      <div data-ai-title-options="${b.id}" class="ai-title-options"></div>
       ${standalone ? `<button type="button" class="act-btn approve tiny" style="margin-top:8px" onclick="saveBizAiTitleOnly('${b.id}')">💾 שמור כותרת</button>` : ''}
     </div>`;
 }
@@ -12611,38 +12618,7 @@ window.setBizAiTitle = function(id, v) {
   document.querySelectorAll(`[data-ai-title-input="${id}"]`).forEach(el => { if (el.value !== v) el.value = v; });
   document.querySelectorAll(`[data-ai-title-preview="${id}"]`).forEach(el => { el.textContent = v; });
 };
-// קורא ל-Worker (אותו endpoint שכבר משמש את בעל העסק ב-business-dashboard.html) ומבקש 3 ניסוחים
-// שונים בקריאה אחת (לא 3 קריאות נפרדות שעלולות לחזור עם אותה תשובה) — כדי שהמנהל יוכל לבחור,
-// לא רק לערוך ידנית. הטקסט המקורי לקיצור הוא תיאור ההטבה המלא — מהטופס אם פתוח, אחרת מהעסק עצמו
-// (כדי שהכפתור יעבוד גם מהתצוגה הרגילה, בלי לפתוח עריכה, ר' ההערה למעלה).
-window.regenerateAiTitles = async function(id) {
-  const b = findBiz(id);
-  const srcEl = document.getElementById('edit_discount_' + id);
-  const sourceText = (srcEl ? srcEl.value : b.discountFullText || '').trim();
-  if (!sourceText) { alert('אין טקסט הטבה לקיצור – מלאו קודם את תיאור ההטבה המלא.'); return; }
-  const btns = document.querySelectorAll(`[data-ai-title-regen="${id}"]`);
-  const optsEls = document.querySelectorAll(`[data-ai-title-options="${id}"]`);
-  btns.forEach(btn => { btn.disabled = true; btn.textContent = '⏳ חושב על ניסוחים...'; });
-  try {
-    const resp = await hbApiFetch('/shorten-benefit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: sourceText, count: 3 }),
-    });
-    const data = await resp.json();
-    if (!data.shortTitles || !data.shortTitles.length) throw new Error(data.error || 'no_titles');
-    const optionsHtml = data.shortTitles.map(t => `<button type="button" class="ai-title-option" onclick="pickAiTitleOption('${id}','${jsq(t)}')">${t}</button>`).join('');
-    optsEls.forEach(el => { el.innerHTML = optionsHtml; });
-  } catch (e) {
-    console.error(e);
-    alert('הצעת הכותרות נכשלה – נסו שוב בעוד רגע.');
-  } finally {
-    btns.forEach(btn => { btn.disabled = false; btn.textContent = '🔄 הצע 3 כותרות AI'; });
-  }
-};
-window.pickAiTitleOption = function(id, text) {
-  setBizAiTitle(id, text);
-};
+// §614 – הצעת הכותרות מ-AI (regenerateAiTitles, /shorten-benefit) בוטלה: רמי כותב את הכותרת ידנית.
 
 const SOON_TITLE = 'בקרוב – טרם נבנה בדמו';
 
@@ -12895,6 +12871,7 @@ window.approveBiz = async function(id) {
   // תזכורת רכה, לא חסימה — המנהל עדיין יכול לאשר גם בלי לסמן את כל השלבים כנסקרו
   if (reviewed < reviewTotal && !confirm(`רק ${reviewed}/${reviewTotal} שלבים סומנו כ"נסקר". לאשר בכל זאת?`)) return;
   if (!confirmSuspectEmail(b.ownerEmail, `"${b.name}"`)) return;
+  if (bizMissingCardTitle(b) && !confirmMissingCardTitle([b.name])) return;   // §614
   try {
     // אישור העסק מאשר גם את אימות בעל-העסק (בקשה מפורשת, 2026-08-16) — אין מצב שבו העסק מאושר
     // ועדיין "ממתין להחלטה" על מי שמאחוריו. ההחלטה עדיין קיימת כשדה נפרד וניתן לשנות/לבטל אותה
@@ -13150,6 +13127,7 @@ window.approveChanges = async function(id) {
     document.querySelectorAll(`.pending-edit-input[data-biz="${id}"]`).forEach(input => {
       changes[input.dataset.key] = input.value;
     });
+    if (bizMissingCardTitle({ ...b, ...changes }) && !confirmMissingCardTitle([b.name])) return;   // §614
     await updateDoc(doc(db, 'businesses', id), { ...changes, pendingChanges: null, pendingChangesAt: null });
     await syncOwnerFieldsToMember(b, changes);
     pendingEditIds.delete(id);
@@ -13216,6 +13194,7 @@ window.approveChangeField = async function(id, field, valueOverride) {
     if (c in newPending) { updates[c] = newPending[c]; delete newPending[c]; }
   });
   // prunedPending: אם נשארו רק שאריות טכניות (שלא מוצגות בכלל) — הבקשה נסגרת כאן ולא נתקעת
+  if (bizMissingCardTitle({ ...b, ...updates }) && !bizMissingCardTitle(b) && !confirmMissingCardTitle([b.name])) return;   // §614
   const kept = prunedPending(b, newPending);
   updates.pendingChanges = kept;
   if (!kept) updates.pendingChangesAt = null;

@@ -2010,14 +2010,13 @@ window.openBizSheet = async function(id) {
         <div id="editDiscountFields" style="display:${b.hasDiscount ? 'block' : 'none'}">
           <div style="font-size:11.5px;color:var(--text-sm);margin-bottom:12px;line-height:1.6;">💡 כמה רעיונות להטבה (לא בחירה, רק השראה): <strong>אחוז הנחה</strong> · <strong>מתנה/חינם</strong> · <strong>קנה וקבל</strong> · <strong>משלוח חינם</strong> · <strong>מחיר מיוחד</strong></div>
           <div class="form-row">
-            <label>תיאור ההטבה <span style="font-weight:400;color:var(--text-sm);">(התיאור המלא – מוצג בגיליון העסק, וגם המקור לכותרת הקצרה)</span></label>
+            <label>תיאור ההטבה <span style="font-weight:400;color:var(--text-sm);">(התיאור המלא – מוצג בגיליון העסק)</span></label>
             <textarea id="editDiscTextFull" rows="3" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול, לא כולל ימי שישי-שבת" maxlength="500" oninput="onDiscBuilderInput()">${esc(b.discountTextFull || b.discountText)}</textarea>
           </div>
           <div class="form-row">
             <label>כותרת בכרטיס <span style="font-weight:400;color:var(--text-sm);">(הטקסט הקצר שמוצג בפועל על כרטיס העסק באינדקס)</span></label>
             <div style="display:flex;gap:8px;align-items:flex-start;">
-              <input type="text" id="editDiscShortTitle" value="${esc(b.discountText)}" placeholder="טרם נוצרה – לחצו 'צור מתיאור' או הקלידו ידנית" maxlength="60" style="flex:1" />
-              <button type="button" class="btn btn-reject" style="flex:none;padding:8px 12px;white-space:nowrap" onclick="regenDiscShortTitle()" id="regenShortTitleBtn">✨ צור מתיאור</button>
+              <input type="text" id="editDiscShortTitle" value="${esc(b.discountText)}" placeholder="כתבו כותרת קצרה להטבה" maxlength="60" style="flex:1" />
             </div>
             <div style="font-size:10px;color:var(--text-sm);margin-top:4px;">מתאימים אוטומטית לרוחב הכרטיס בשמירה, גם אם הקלדתם ידנית</div>
           </div>
@@ -2616,6 +2615,14 @@ window.clearSelection = function() {
   render();
 };
 
+// §614 – בלי AI הכותרת הקצרה לכרטיס נכתבת ידנית, ובלי כותרת ההטבה לא מוצגת לאוהדים.
+// זהה ל-admin-dashboard.html – אזהרה לפני אישור, לא חסימה.
+function bizMissingCardTitle(s) { return !!(s && s.hasDiscount && !String(s.discountText || '').trim()); }
+function confirmMissingCardTitle(names) {
+  if (!names.length) return true;
+  return confirm(`⚠️ אין כותרת להטבה בכרטיס:\n\n${names.map(n => '• ' + n).join('\n')}\n\nבלי כותרת ההטבה לא תוצג לאוהדים – לא בכרטיס ולא בגיליון העסק. כותבים אותה בשדה "כותרת בכרטיס".\n\nאישור = לאשר בכל זאת · ביטול = לחזור ולכתוב כותרת`);
+}
+
 window.bulkApprove = async function() {
   const ids = [...selectedIds].filter(id => {
     const b = businesses.find(x => x.id === id);
@@ -2623,6 +2630,7 @@ window.bulkApprove = async function() {
   });
   if (!ids.length) { showToast('אין עסקים ממתינים בבחירה'); return; }
   if (!confirm(`לאשר ${ids.length} עסקים?`)) return;
+  if (!confirmMissingCardTitle(ids.map(id => businesses.find(x => x.id === id)).filter(bizMissingCardTitle).map(b => b.name))) return;   // §614
   await Promise.all(ids.map(async id => {
     const b = businesses.find(x => x.id === id);
     await approveBizWithMemberBatch(id, b);
@@ -2716,6 +2724,7 @@ window.closeModal = function() {
 
 document.getElementById('confirmBtn').addEventListener('click', async () => {
   const b = businesses.find(x => x.id === pendingId);
+  if (bizMissingCardTitle(b) && !confirmMissingCardTitle([b.name])) return;   // §614
   await approveBizWithMemberBatch(pendingId, b);
   document.getElementById('confirmBtn').textContent = '✓ אושר!';
   document.getElementById('confirmBtn').disabled = true;
@@ -2809,6 +2818,7 @@ window.approvePendingChanges = async function(id) {
       changes[input.dataset.key] = input.value;
     });
   }
+  if (bizMissingCardTitle({ ...b, ...changes }) && !confirmMissingCardTitle([b.name])) return;   // §614
   const updates = { ...changes, pendingChanges: null, pendingChangesAt: null };
   await updateDoc(doc(db, 'businesses', id), updates);
   // סנכרון פרטי-הבעלים לרשומת החבר — זהה ל-admin-dashboard.html syncOwnerFieldsToMember (ר' ההערה שם):
@@ -3155,7 +3165,7 @@ window.toggleSecondTagEdit = function() {
   }
 };
 
-// ── בנאי הטבה — טקסט חופשי, קיצור AI (Claude, דרך ה-Worker) יוצר כותרת קצרה לכרטיס בשמירה ──
+// ── בנאי הטבה — טקסט חופשי; הכותרת הקצרה לכרטיס נכתבת ידנית (§614, בלי AI) ──
 function renderRedeemModeGrid() {
   const grid = document.getElementById('editRedeemModeGrid');
   if (!grid) return;
@@ -3298,16 +3308,6 @@ function discBuilderSnapshot() {
   return { type: 'other', otherText: document.getElementById('editDiscTextFull')?.value.trim() || '' };
 }
 
-// קיצור מכני-פשוט (לא AI) — רק כרשת ביטחון אם קריאת ה-AI נכשלת/נתקעת. אותה לוגיקה בדיוק
-// כמו ב-business-dashboard.html/business.html — ר' PROJECT_CONTEXT.md.
-function naiveShorten(text) {
-  const t = (text || '').trim();
-  if (t.length <= 28) return t;
-  const cut = t.slice(0, 28);
-  const lastSpace = cut.lastIndexOf(' ');
-  return (lastSpace > 12 ? cut.slice(0, lastSpace) : cut).trim();
-}
-
 // ערובה מתמטית אמיתית (לא ניחוש לפי ספירת תווים) — מדידת פיקסלים אמיתית מול הרוחב האמיתי
 // של תיבת ההטבה בכרטיס (151px, נמדד בדפדפן). אותם קבועים בדיוק כמו בשאר הדפים.
 const CARD_TITLE_RAW_WIDTH = 151;
@@ -3333,23 +3333,6 @@ function ensureFitsCard(text) {
   return t.trim();
 }
 
-async function shortenBenefitAI(text) {
-  await document.fonts.load(CARD_TITLE_FONT).catch(() => {});
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-    const resp = await fetch(WORKER_URL + '/shorten-benefit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    const data = await resp.json();
-    if (data.shortTitle) return ensureFitsCard(data.shortTitle);
-  } catch (e) { /* נבלע בכוונה — נופל לקיצור המכני למטה */ }
-  return ensureFitsCard(naiveShorten(text));
-}
 
 async function saveSectionUpdates(id, updates) {
   await updateDoc(doc(db, 'businesses', id), updates);
@@ -3438,7 +3421,7 @@ window.saveSec3 = async function(id) {
 
 // "כותרת בכרטיס" נשמרת מהשדה הידני (editDiscShortTitle) ולא נדרסת אוטומטית ע"י AI בכל שמירה —
 // המנהל רואה ושולט בערך בפועל; ensureFitsCard() עדיין רץ תמיד (מיידי, לא AI) כערובת-רוחב אחרונה,
-// גם על טקסט שהמנהל הקליד ידנית. ליצירה/רענון מה-AI יש כפתור נפרד — ר' regenDiscShortTitle().
+// גם על טקסט שהמנהל הקליד ידנית. §614 – אין יותר יצירה מ-AI: הכותרת נכתבת ידנית בלבד.
 window.saveSec4 = async function(id) {
   const hasDiscount = document.getElementById('editDiscountToggle').classList.contains('on');
   const fullText     = hasDiscount ? computeDiscBuilderText() : '';
@@ -3458,17 +3441,6 @@ window.saveSec4 = async function(id) {
   });
 };
 
-window.regenDiscShortTitle = async function() {
-  const fullText = computeDiscBuilderText();
-  if (!fullText) { showToast('⚠️ מלאו קודם את תיאור ההטבה'); return; }
-  const btn = document.getElementById('regenShortTitleBtn');
-  const originalLabel = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ יוצר...'; }
-  const shortText = await shortenBenefitAI(fullText);
-  if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
-  const input = document.getElementById('editDiscShortTitle');
-  if (input) input.value = shortText;
-};
 
 window.saveSec5 = async function(id) {
   showToast('שומר מדיה...');

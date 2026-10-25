@@ -3676,7 +3676,7 @@ function renderDiscountCard(w) {
           <div class="form-group">
             <label class="form-label">תיאור ההטבה – ספרו לנו עליה בהרחבה <span style="font-weight:400;color:var(--text-muted);">(עד 300 תווים)</span></label>
             <textarea class="form-input" id="editDiscOtherText" rows="4" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול, לא כולל ימי שישי-שבת. בתוקף עד סוף העונה, לא ניתן לשלב עם מבצעים אחרים." maxlength="300" oninput="onDiscBuilderInput()">${esc(biz.discountTextFull || biz.discountText)}</textarea>
-            <div style="font-size:12px;color:var(--text-muted);margin-top:6px;margin-bottom:8px;">אפשר לפרט תנאים, תוקף וסייגים – מהתיאור הזה ניצור אוטומטית כותרת קצרה שתוצג על הכרטיס החיצוני שלכם, לאחר אישור מנהל.</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:6px;margin-bottom:8px;">אפשר לפרט תנאים, תוקף וסייגים – מהתיאור הזה הצוות שלנו ינסח כותרת קצרה שתוצג על הכרטיס החיצוני שלכם, לאחר אישור מנהל.</div>
             <div class="char-count" id="editDiscOtherCount">0 / 300</div>
           </div>
 
@@ -5710,70 +5710,6 @@ function collectAdditionalBenefits() {
   return arr;
 }
 
-// קיצור מכני-פשוט (לא AI) — רק כרשת ביטחון אם קריאת ה-AI נכשלת/נתקעת, כדי שהשמירה של בעל העסק
-// לעולם לא תיתקע/תיכשל בגללה. בעל העסק יודע שנוצרת כותרת קצרה מהתיאור שלו (הודעה ליד השדה + בזמן השמירה),
-// אבל לא רואה את התוצאה בפועל (ממתינה לאישור/עריכת מנהל) — ר' docs/PROJECT_CONTEXT.md.
-function naiveShorten(text) {
-  const t = (text || '').trim();
-  if (t.length <= 28) return t;
-  const cut = t.slice(0, 28);
-  const lastSpace = cut.lastIndexOf(' ');
-  return (lastSpace >12 ? cut.slice(0, lastSpace) : cut).trim();
-}
-
-// שורש-בעיה אמיתי שאומת במדידה (2026-07-20, מקרה "טורנדו") — מגבלת תווים גולמית (למשל 28) *לא* ערובה
-// לכניסה בשורה אחת בכרטיס: ברוחב הפונט האותיות בעברית שונות מאוד ברוחב שלהן
-// (מ/ם/ק/ע רחבות, י/ו צרות) — נמדד בפועל: כותרת בת 27 תווים יכולה להיכנס בול עם 0.2px מרווח (על סף
-// חיתוך אמיתי, תלוי בפיקסל/פונט של הדפדפן הספציפי), ואילו כותרת בת 25 תווים אחרת כבר חורגת ב-1.1px.
-// לכן זו הערובה האמיתית היחידה: מדידת פיקסלים אמיתית מול הרוחב האמיתי של הכרטיס, נמדד בדפדפן,
-// עם חיתוך הדרגתי (מילה-מילה, ואז תו-תו) עד שזה נכנס בפועל — לא ניחוש לפי ספירת תווים.
-// עודכן 2026-07-31 (עיצוב דו-גוני, ר' PROJECT_CONTEXT.md §69-70): הכרטיס עבר מ-Heebo ל-Rubik וגודל/רוחב
-// .biz-discount-text השתנו — נמדד מחדש בדפדפן חי (144px, לא 151px, Rubik 700 12px, לא Heebo 700 11px).
-const CARD_TITLE_RAW_WIDTH = 144; // px, נמדד בדפדפן על .biz-discount-text בכרטיס האמיתי ב-home.html
-// מרווח ביטחון — מדידת canvas לא זהה ב-100% לרינדור DOM אמיתי (אנטי-אליאסינג/עיגול תת-פיקסל שונה
-// בין דפדפנים). נמדד מקרה אמיתי (טורנדו) שבו כותרת עם 0.2px מרווח לפי canvas עדיין נחתכה בפועל בדפדפן החי —
-// בלי המרווח הזה המדידה לא ערובה אמיתית, רק קירוב.
-const CARD_TITLE_SAFETY_MARGIN = 10;
-const CARD_TITLE_MAX_WIDTH = CARD_TITLE_RAW_WIDTH - CARD_TITLE_SAFETY_MARGIN;
-const CARD_TITLE_FONT = '700 12px Rubik';
-let _measureCanvas = null;
-function measureTextWidth(text, font) {
-  if (!_measureCanvas) _measureCanvas = document.createElement('canvas');
-  const ctx = _measureCanvas.getContext('2d');
-  ctx.font = font;
-  return ctx.measureText(text).width;
-}
-function ensureFitsCard(text) {
-  let t = (text || '').trim();
-  if (measureTextWidth(t, CARD_TITLE_FONT) <= CARD_TITLE_MAX_WIDTH) return t;
-  // חיתוך מילה-מילה קודם (שומר על משפט קריא ככל האפשר)
-  while (t.includes(' ') && measureTextWidth(t, CARD_TITLE_FONT) >CARD_TITLE_MAX_WIDTH) {
-    t = t.slice(0, t.lastIndexOf(' ')).trim();
-  }
-  // אם עדיין לא נכנס (מילה בודדת ארוכה מדי) — חיתוך תו-תו כרשת ביטחון אחרונה
-  while (t.length >1 && measureTextWidth(t, CARD_TITLE_FONT) >CARD_TITLE_MAX_WIDTH) {
-    t = t.slice(0, -1);
-  }
-  return t.trim();
-}
-
-async function shortenBenefitAI(text) {
-  await document.fonts.load(CARD_TITLE_FONT).catch(() =>{});
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() =>controller.abort(), 8000);
-    const resp = await hbApiFetch('/shorten-benefit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    const data = await resp.json();
-    if (data.shortTitle) return ensureFitsCard(data.shortTitle);
-  } catch (e) { /* נבלע בכוונה — נופל לקיצור המכני למטה */ }
-  return ensureFitsCard(naiveShorten(text));
-}
 
 window.saveDiscount = async function() {
   const bizTypes = committedState().bizTypes || [];
@@ -5789,23 +5725,11 @@ window.saveDiscount = async function() {
     return;
   }
 
-  // AI רץ רק כשתיאור ההטבה הראשית עצמו השתנה בפועל — לא בכל שמירה של הכרטיס (כמו הוספת/עריכת
-  // הטבה נוספת או שינוי "איפה ניתן לממש", שלא נוגעים בטקסט הראשי בכלל ולא צריכים כותרת חדשה)
+  // §614 – בלי AI. כשתיאור ההטבה הראשית השתנה, הכותרת הקצרה לכרטיס מתאפסת ורמי כותב אותה ידנית
+  // במרכז הניהול לפני האישור. שמירה שלא נגעה בתיאור (הטבה נוספת, מקום מימוש) משאירה את הכותרת הקיימת.
   const cur = committedState();
   const prevFullText = cur.discountTextFull || cur.discountText || '';
-  const needsAI = !!(fullText && (fullText !== prevFullText || !cur.discountText));
-
-  // טקסט-טעינה אחיד — לא חושף לבעל-העסק שיש קיצור-AI ברקע (המשתמש: "תוריד את זה אין טעם בזה").
-  const btn = document.querySelector('#secEdit-discount .btn-save-sec');
-  const originalLabel = btn ? btn.textContent : '';
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = '⏳ שומר...';
-  }
-
-  const shortText = !discEditOn ? '' : (needsAI ? await shortenBenefitAI(fullText) : (cur.discountText || ''));
-
-  if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+  const shortText = (!discEditOn || fullText !== prevFullText) ? '' : (cur.discountText || '');
 
   stageChanges({
     hasDiscount: discEditOn,

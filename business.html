@@ -1115,7 +1115,7 @@
         <div class="form-group">
           <label for="discOtherText">תיאור ההטבה <span class="req">*</span></label>
           <textarea id="discOtherText" rows="3" placeholder="לדוגמה: 15% הנחה על טיפול תקופתי לכל בעלי מנוי מכבי, בהצגת כרטיס אוהד בקבלה." oninput="onDiscBuilderInput()"></textarea>
-          <div class="cat-hint" style="margin-top:8px;margin-bottom:8px;">מתוך התיאור ניצור אוטומטית כותרת קצרה שתופיע על כרטיס העסק – היא תוצג לכם לאישור.</div>
+          <div class="cat-hint" style="margin-top:8px;margin-bottom:8px;">מתוך התיאור הצוות שלנו ינסח כותרת קצרה שתופיע על כרטיס העסק.</div>
           <div class="field-error" id="err-discountText">נא למלא את פרטי ההטבה</div>
         </div>
 
@@ -3338,20 +3338,8 @@
         }).catch(e => console.error('weekly_interest save failed:', e.message));
       }
 
-      // כותרת ההטבה הקצרה לכרטיס. עד 13.10 נכתבה כאן ב-updateDoc – והחוקים דחו אותה מאז ומעולם
-      // (ענף (א) מתיר לעסק pending רק תמונות), כך שכל עסק הגיע לאישור בלי כותרת. עכשיו הוורקר
-      // שומר אותה (/biz-short-title, טוקן העסק כהוכחה). ממתינים לה לפני מסך ההצלחה (§292).
-      let shortTitlePromise = null;
-      if (fullDiscountText && bizTokenPromise) {
-        shortTitlePromise = Promise.all([shortenBenefitAI(fullDiscountText), bizTokenPromise])
-          .then(([title]) => hbApiFetch('/biz-short-title', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bizId: bizDocRef.id, accessToken, title }),
-          }))
-          .then(r => r.json())
-          .then(d => { if (!d || d.error) console.error('biz-short-title:', (d && d.error) || 'no_response'); })
-          .catch(e => console.error('biz-short-title failed:', e.message));
-      }
+      // §614 – כותרת ההטבה הקצרה לכרטיס (discountText) נשארת ריקה בהרשמה: רמי כותב אותה ידנית
+      // במרכז הניהול. קיצור ה-AI (/shorten-benefit + /biz-short-title) בוטל.
 
       // תמונות/לוגו/קאבר/הוכחת-אוהד מועלים דרך ה-Worker (/upload-biz-media), לא דרך ה-Client SDK —
       // ברגע שה-fetch הזה נשלח והתקבל בשרת, ההעלאה בפועל ל-Firebase Storage ממשיכה שם גם אם המשתמש
@@ -3480,10 +3468,6 @@
       if (bizTokenPromise) {
         await withTimeout(bizTokenPromise, 10000, 'BizTokenTimeout')
           .catch(e => console.error('biz token wait:', e.name));
-      }
-      if (shortTitlePromise) {
-        await withTimeout(shortTitlePromise, 12000, 'ShortTitleTimeout')
-          .catch(e => console.error('short title wait:', e.name));
       }
 
       // §295 — החלפת-המסך היחידה בזרימה המוצלחת: מהטופס ישירות למסך ההצלחה.
@@ -4279,57 +4263,6 @@
     document.getElementById('bizLocationRow').style.display = val !== '' ? 'block' : 'none';
   }
 
-  naiveShorten;
-
-  // קיצור מכני-פשוט (לא AI) — רק כרשת ביטחון אם קריאת ה-AI נכשלת/נתקעת
-  function naiveShorten(text) {
-    const t = (text || '').trim();
-    if (t.length <= 28) return t;
-    const cut = t.slice(0, 28);
-    const lastSpace = cut.lastIndexOf(' ');
-    return (lastSpace > 12 ? cut.slice(0, lastSpace) : cut).trim();
-  }
-
-  const CARD_TITLE_RAW_WIDTH = 151;
-  const CARD_TITLE_SAFETY_MARGIN = 10;
-  const CARD_TITLE_MAX_WIDTH = CARD_TITLE_RAW_WIDTH - CARD_TITLE_SAFETY_MARGIN;
-  const CARD_TITLE_FONT = '700 11px Heebo';
-  let _measureCanvas = null;
-  function measureTextWidth(text, font) {
-    if (!_measureCanvas) _measureCanvas = document.createElement('canvas');
-    const ctx = _measureCanvas.getContext('2d');
-    ctx.font = font;
-    return ctx.measureText(text).width;
-  }
-  function ensureFitsCard(text) {
-    let t = (text || '').trim();
-    if (measureTextWidth(t, CARD_TITLE_FONT) <= CARD_TITLE_MAX_WIDTH) return t;
-    while (t.includes(' ') && measureTextWidth(t, CARD_TITLE_FONT) > CARD_TITLE_MAX_WIDTH) {
-      t = t.slice(0, t.lastIndexOf(' ')).trim();
-    }
-    while (t.length > 1 && measureTextWidth(t, CARD_TITLE_FONT) > CARD_TITLE_MAX_WIDTH) {
-      t = t.slice(0, -1);
-    }
-    return t.trim();
-  }
-
-  async function shortenBenefitAI(text) {
-    await document.fonts.load(CARD_TITLE_FONT).catch(() => {});
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const resp = await hbApiFetch('/shorten-benefit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      const data = await resp.json();
-      if (data.shortTitle) return ensureFitsCard(data.shortTitle);
-    } catch (e) { /* נבלע בכוונה — נופל לקיצור המכני למטה */ }
-    return ensureFitsCard(naiveShorten(text));
-  }
 
   renderCatGrid();
   renderAlsoCatGrid();
