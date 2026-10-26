@@ -79,7 +79,8 @@
     } catch (e) { return false; }
   }
 
-  async function mountCheckbox(beforeEl) {
+  // §619 — opts.biz: בעל עסק מקבל כיתוב משלו שמסביר למה כדאי להשאיר מסומן (רמי, 26.10).
+  async function mountCheckbox(beforeEl, opts) {
     if (!beforeEl || document.getElementById('yzPushOpt')) return;
     if (!(await canOptIn())) return;
     const row = document.createElement('label');
@@ -95,7 +96,9 @@
         '<span class="yz-pushopt-box" style="position:absolute;inset:0;border:2px solid #0A2A66;border-radius:6px;display:flex;' +
           'align-items:center;justify-content:center;font-size:15px;font-weight:900;line-height:1;pointer-events:none"></span>' +
       '</span>' +
-      '<span>לקבל התראות כשהצוות עונה לי ועל עדכונים חשובים</span>';
+      (opts && opts.biz
+        ? '<span><b>לקבל התראות</b> – ככה תדעו מיד על עדכונים לעסק, תשובות מהצוות והזמנה לערב ההשקה. מומלץ להשאיר מסומן.</span>'
+        : '<span>לקבל התראות כשהצוות עונה לי ועל עדכונים חשובים</span>');
     beforeEl.parentNode.insertBefore(row, beforeEl);
     const cb = row.querySelector('#yzPushOpt'), box = row.querySelector('.yz-pushopt-box');
     const paint = () => { box.textContent = cb.checked ? '✓' : ''; box.style.background = cb.checked ? '#0A2A66' : 'transparent'; box.style.color = '#fff'; };
