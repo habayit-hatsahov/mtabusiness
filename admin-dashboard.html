@@ -10844,6 +10844,7 @@ function fanClassCounts() {
     unverified: MOCK_FANS.filter(f => !f.adminVerified).length,
     // §390 — הרשימה שהמנהל ביקש: מי שאושר ומעולם לא נכנס, כדי לפנות אליהם שוב.
     neverEntered: MOCK_FANS.filter(f => f.status === 'approved' && !f.lastSeenAt).length,
+    legacyRejected: legacyRejectedFans().length,   // §628ג
   };
 }
 function fanFilteredList() {
@@ -10859,6 +10860,7 @@ function fanFilteredList() {
       // §390 — ⚠️ ההגדרה זהה **מילה במילה** לזו של הפאנל (fanEntryStats/fanEntryBreakdown),
       // ובכוונה: פיל שסופר אחרת מהמספר שממנו המנהל הגיע הוא בדיוק הפער של §353.
       : fanClassPill === 'neverEntered' ? (f.status === 'approved' && !f.lastSeenAt)
+      : fanClassPill === 'legacyRejected' ? isLegacyRejected(f)   // §628ג
       : !f.adminVerified;
     // §394 — הדלי מוגדר **רק בתוך** "אושרו ולא נכנסו", ולכן הוא נושא את התנאי הזה בעצמו
     // ולא נשען על כך שהפיל הנכון מסומן. אחרת "נמסר ולא נפתח" היה חל גם על מי שכן נכנס,
@@ -11015,6 +11017,17 @@ function fanFullDetailHtml(id, opts) {
   // אותו עיקרון בדיוק כמו quickJudgmentHtml לעסק (§130) — "בדיקת מנהל" מוצג תמיד כ-item (לא רק pending).
   const fanQjRows = [];
   // §627ב — הערת הבדיקה ראשונה בשיפוט המהיר, כדי שתיראה לפני האישור
+  if (isLegacyRejected(f)) {
+    fanQjRows.push(`
+      <div class="qj-row" style="background:#FDE8E8">
+        <div class="qj-row-label"><div class="qj-row-step">להחלטה</div><div class="qj-row-name">נדחה בלי מייל</div></div>
+        <div class="qj-row-value"><span class="qj-value-text">נדחה ${fmtDateTime(f.rejectedAt)}, לפני "לאפשר תיקון אימות" – עוד לא קיבל מייל. לתת לו הזדמנות שנייה?</span></div>
+        <div class="qj-row-actions">
+          <button class="qj-btn primary" onclick="decideLegacyReject('${f.id}','retry')">🔁 שליחת אימות מחדש</button>
+          <button class="qj-btn reject" onclick="decideLegacyReject('${f.id}','final')">דחייה סופית + מייל</button>
+        </div>
+      </div>`);
+  }
   if (f.status === 'pending' && f.fixedAt) {
     const img = u => u ? `<img src="${esc(bizImageViewUrl(u, 400))}" class="zoomable" style="width:100%;max-height:180px;object-fit:contain;border-radius:8px;background:#000" onclick="openImageLightbox('${esc(u)}','proof-${esc(f.id)}.jpg')">` : '<div class="owner-verify-photo-empty">אין תמונה</div>';
     const prof = v => v ? (/^https?:/.test(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener" style="word-break:break-all">${esc(v)}</a>` : esc(v)) : '–';
@@ -11629,16 +11642,34 @@ function fanBucketPillsHtml() {
 // ══ §628 — מי שנדחה לפני "לאפשר תיקון?": רמי בוחר מי מקבל הזדמנות שנייה ═════════════════════
 // נדחו מ-26.10 בלי rejectKind (לפני הפיצ'ר). מסומנים → "האימות לא עבר" + מייל; כל השאר → מייל "לא אושרה".
 const LEGACY_REJECT_SINCE = new Date(2026, 9, 26);
-function legacyRejectedFans() {
-  return MOCK_FANS.filter(f => f.status === 'rejected' && !f.rejectKind && !f.rejectEmailStatus && f.rejectedAt && f.rejectedAt >= LEGACY_REJECT_SINCE);
+function isLegacyRejected(f) {
+  return f.status === 'rejected' && !f.rejectKind && !f.rejectEmailStatus && !!f.rejectedAt && f.rejectedAt >= LEGACY_REJECT_SINCE;
 }
+function legacyRejectedFans() { return MOCK_FANS.filter(isLegacyRejected); }
+// §628ג — רמי: "ברשימה שאני יוכל לראות את הכרטיס של האוהד ולבחון אותו שוב" – הבאנר פותח את
+// "כל האוהדים" מסונן לנדחים האלה; בכל כרטיס, בשיפוט המהיר, שני כפתורים להחלטה.
+window.openLegacyRejectList = function() {
+  fanClassPill = 'legacyRejected'; fanEmailBucket = 'all'; fanVisitBucket = 'all'; fanStatusFilter = 'all'; fanSearch = '';
+  selectTab(ALL_FANS_KEY);
+};
+window.decideLegacyReject = async function(id, kind) {
+  const f = MOCK_FANS.find(x => x.id === id);
+  if (!f || !isLegacyRejected(f)) return;
+  const next = legacyRejectedFans().filter(x => x.id !== id)
+    .sort((a, b) => (b.rejectedAt || 0) - (a.rejectedAt || 0))[0];
+  try {
+    await updateDoc(doc(db, 'members', id), { rejectKind: kind, retryAllowed: kind === 'retry', rejectEmailStatus: 'pending' });
+    await logActivity('members', id, { type: 'status', title: rejectKindLabel(kind), detail: `"${f.name}" ${rejectKindLabel(kind)} · מייל בדרך (החלטה על מי שנדחה לפני "לאפשר תיקון אימות")`, field: 'rejectKind', before: null, after: kind });
+    if (fanClassPill === 'legacyRejected') { if (next) selectFanDetail(next.id); else fanBackToList(); }
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
 function legacyRejectBannerHtml() {
   const n = legacyRejectedFans().length;
   if (!n) return '';
   return `<div class="fan-bucket-banner" style="background:#FDE8E8">
     <div class="fan-bucket-head"><span class="fan-bucket-title">${n.toLocaleString('he-IL')} אוהדים נדחו בלי מייל ובלי אפשרות תיקון</span><span style="flex:1"></span>
-      <button class="filter-clear" style="background:#0A2A66;color:#fff" onclick="openLegacyRejectPicker()">בחירה: מי מקבל הזדמנות שנייה</button></div>
-    <div class="fan-bucket-action">מסמנים רק את מי שמקבל הזדמנות שנייה לאמת את עצמו. כל השאר יקבלו מייל "הבקשה לא אושרה".</div>
+      <button class="filter-clear" style="background:#0A2A66;color:#fff" onclick="openLegacyRejectList()">לרשימה – לבחון כל אחד</button></div>
+    <div class="fan-bucket-action">פותחים כל כרטיס ובוחרים: "שליחת אימות מחדש" (הזדמנות שנייה + מייל) או "דחייה סופית" (מייל "הבקשה לא אושרה"). אחרי כל החלטה עוברים לבא.</div>
   </div>`;
 }
 window.openLegacyRejectPicker = function() {
@@ -11738,6 +11769,7 @@ function fanFilterBarHtml(opts) {
         ${pill('pending', 'ממתינים לאישור')}
         ${pill('unverified', 'טרם נבדקו')}
         ${pill('neverEntered', 'מעולם לא נכנסו')}
+        ${counts.legacyRejected ? pill('legacyRejected', '🔁 נדחו – להחלטה') : ''}
       </div>
       ${fanBucketPillsHtml()}
       ${fanBucketBannerHtml()}
@@ -12618,9 +12650,7 @@ function taskTableBodyHtml(list) {
 }
 
 function taskCenterHtml() {
-  // §628 — רמי: "תשים לי אותם בתור משימה בדשבורד ניהול" – מי שנדחה לפני "לאפשר תיקון אימות"
   return `
-    ${legacyRejectBannerHtml()}
     ${taskTilesHtml()}
     <div class="filter-toolbar">${taskFilterBarHtml()}</div>
     <div id="taskTableWrap">${safeTaskCenterTableHtml()}</div>
@@ -19099,7 +19129,9 @@ window.requeueFanEmail = async function(id) {
 };
 
 function homeTabHtml() {
+  // §628 — רמי: "זה אמור להיות בדשבורד הראשי" – בראש הדף, לפני הכול
   return `
+    ${legacyRejectBannerHtml()}
     ${homeStatsHtml()}
     ${joinsOverviewHtml({ scope: 'both' })}
     ${hoursMigrationPanelHtml()}
