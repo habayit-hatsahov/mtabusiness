@@ -5420,7 +5420,7 @@ function bizRowsHtml() {
       <div class="task-row ${b.status} ${active?'active':''} ${sel?'selected':''}" onclick="selectBizDetail('${b.id}')">
         <div class="task-row-top">
           <div class="task-row-check" onclick="event.stopPropagation();toggleBizSelect('${b.id}')">${sel ? '✓' : ''}</div>
-          <div class="task-row-name">${esc(b.name)}${b.status === 'approved' && b.accessToken ? ` <a href="business-dashboard.html?token=${b.accessToken}" target="_blank" onclick="event.stopPropagation()" class="tag-chip" style="text-decoration:none">🔗</a>` : ''}</div>
+          <div class="task-row-name">${esc(b.name)}${inquiryTagHtml(bizInquiries(b))}${b.status === 'approved' && b.accessToken ? ` <a href="business-dashboard.html?token=${b.accessToken}" target="_blank" onclick="event.stopPropagation()" class="tag-chip" style="text-decoration:none">🔗</a>` : ''}</div>
           <div class="task-row-progress">${bizReviewedCount(b)}/${BIZ_REVIEW_SECTIONS.length} נסקר</div>
         </div>
         <div class="task-row-badges">${badges.join('')}</div>
@@ -10979,10 +10979,55 @@ window.fanBackToList = function() {
   if (sp) sp.classList.remove('mobile-show-detail');
 };
 
+// ══ §631 — פניות של אוהד/בעל עסק, תמיד ליד השם ובשיפוט המהיר ══════════════════════════════════
+// רמי: "בנדחים יש כמה שפתחו פנייה… תמיד כל פנייה של אוהד או בעל עסק שיהיה רשום". שני מקורות:
+// helpRequests (מחלון הכניסה/ההרשמה, בלי חשבון – מותאם לפי memberId, טלפון 9 ספרות או מייל) ו-
+// conversations (מתוך האפליקציה – לפי memberId, ובעסק גם לפי bizId).
+function personInquiries({ memberIds = [], phones = [], emails = [], bizId = null }) {
+  const dig = v => String(v || '').replace(/[^0-9]/g, '').slice(-9);
+  const em = v => String(v || '').trim().toLowerCase();
+  const M = new Set(memberIds.filter(Boolean)), P = new Set(phones.map(dig).filter(p => p.length === 9)), E = new Set(emails.map(em).filter(Boolean));
+  // ⚠️ HELP_REQUESTS/CONVERSATIONS מוגדרים ב-let נמוך יותר במודול – ציור מוקדם נופל ב-TDZ, ולכן try
+  let HR = [], CV = [];
+  try { HR = HELP_REQUESTS || []; } catch (e) {}
+  try { CV = CONVERSATIONS || []; } catch (e) {}
+  const help = HR.filter(h => (h.memberId && M.has(h.memberId)) || P.has(dig(h.contact)) || E.has(em(h.contact)));
+  const conv = CV.filter(c => (c.memberId && M.has(c.memberId)) || (bizId && c.bizId === bizId));
+  const open = help.filter(h => h.status !== 'handled').length + conv.filter(c => c.status === 'open' && c.lastFrom === 'member').length;
+  return { help, conv, n: help.length + conv.length, open };
+}
+const fanInquiries = f => personInquiries({ memberIds: [f.id], phones: [f.phone], emails: [f.email, f.googleEmail] });
+const bizInquiries = b => personInquiries({ memberIds: [b.ownerMemberId], phones: [b.ownerPhone, b.phone], emails: [b.ownerEmail, b.email], bizId: b.id });
+function inquiryTagHtml(q) {
+  if (!q || !q.n) return '';
+  const st = q.open ? 'background:#FFF1E0;color:#C2570C' : 'background:#EEF0F5;color:#3A4C7A';
+  return ` <span class="warn-badge" style="vertical-align:middle;${st}" title="${q.open ? q.open + ' פתוחות · ' : ''}${q.n} פניות בסך הכול">💬 ${q.open ? 'פנייה פתוחה' : 'פנה'}${q.n > 1 ? ' ×' + q.n : ''}</span>`;
+}
+function inquiriesQjRowHtml(q, name) {
+  if (!q || !q.n) return '';
+  const items = [
+    ...q.help.map(h => ({ at: h.at, html: `<div style="padding:6px 0;border-top:1px solid var(--line, #E7E7E0)">
+        <b>${esc(HELP_SOURCE_LABELS[h.source] || h.source || 'פנייה')}</b>${h.errCode ? ' · ' + esc(LOGIN_FAIL_LABELS[h.errCode] || h.errCode) : ''} · ${h.at ? fmtDateTime(h.at) : ''} · ${h.status === 'handled' ? '✔️ טופלה' : '<b style="color:#C2570C">חדשה</b>'}
+        <div style="white-space:pre-line">${esc(String(h.message || '').slice(0, 400))}</div>
+        <div style="font-size:12px;color:var(--text-muted)">${esc(h.name || '')} · ${esc(h.contact || '')}</div>
+        ${h.status === 'handled' ? '' : `<button class="qj-btn" style="margin-top:4px" onclick="markHelpReqHandled('${h.id}','${escJsAttr(h.name || name || '')}')">✔️ טופל</button>`}</div>` })),
+    ...q.conv.map(c => { const at = c.lastAt && c.lastAt.toDate ? c.lastAt.toDate() : null; return { at, html: `<div style="padding:6px 0;border-top:1px solid var(--line, #E7E7E0)">
+        <b>💬 שיחה מהאפליקציה</b> · ${esc(c.subject || '')} · ${at ? fmtDateTime(at) : ''} · ${c.status === 'closed' ? 'סגורה' : c.lastFrom === 'member' ? '<b style="color:#C2570C">ממתינה לתשובה</b>' : 'ענינו'}
+        <div><button class="qj-btn" style="margin-top:4px" onclick="openConvAdmin('${c.id}')">פתיחת השיחה</button></div></div>` }; }),
+  ].sort((a, b) => (b.at || 0) - (a.at || 0));
+  return `
+      <div class="qj-row" style="background:${q.open ? '#FFF1E0' : '#F6F7FA'}">
+        <div class="qj-row-label"><div class="qj-row-step">פניות</div><div class="qj-row-name">💬 ${q.n} ${q.n === 1 ? 'פנייה' : 'פניות'}${q.open ? ' · ' + q.open + ' פתוחות' : ''}</div></div>
+        <div class="qj-row-value">${items.map(i => i.html).join('')}</div>
+      </div>`;
+}
+
 // §627ב — "לבדיקה" ליד השם (רמי: בשורת התגיות היא נבלעה). רק כל עוד ממתין.
 function checkNoteTagHtml(f) {
-  if (!f || f.status !== 'pending') return '';
-  let out = '';
+  if (!f) return '';
+  const inq = inquiryTagHtml(fanInquiries(f));   // §631 – בכל סטטוס
+  if (f.status !== 'pending') return inq;
+  let out = inq;
   // §628 — חזר אחרי "האימות לא עבר" / נדחה בעבר ונרשם שוב
   if (f.fixedAt) out += ` <span class="warn-badge" style="vertical-align:middle;background:#E8EEFF;color:#2747A8" title="תיקן את האימות – לבדיקה מעמיקה">🔁 אחרי תיקון אימות</span>`;
   if (fanPrevRejected(f)) out += ` <span class="warn-badge" style="vertical-align:middle;background:#FDE8E8;color:#B4351C" title="יש רשומה קודמת שנדחתה עם אותו טלפון או מייל">↩️ נדחה בעבר – נרשם שוב</span>`;
@@ -11028,6 +11073,7 @@ function fanFullDetailHtml(id, opts) {
         </div>
       </div>`);
   }
+  { const inqRow = inquiriesQjRowHtml(fanInquiries(f), f.name); if (inqRow) fanQjRows.push(inqRow); }   // §631
   if (f.status === 'pending' && f.fixedAt) {
     const img = u => u ? `<img src="${esc(bizImageViewUrl(u, 400))}" class="zoomable" style="width:100%;max-height:180px;object-fit:contain;border-radius:8px;background:#000" onclick="openImageLightbox('${esc(u)}','proof-${esc(f.id)}.jpg')">` : '<div class="owner-verify-photo-empty">אין תמונה</div>';
     const prof = v => v ? (/^https?:/.test(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener" style="word-break:break-all">${esc(v)}</a>` : esc(v)) : '–';
@@ -12634,7 +12680,7 @@ function taskRow2Html(x) {
   return `
     <div class="task-table-row ${selectedTaskKey===key?'active':''}" onclick="selectTask2('${x.kind}','${x.id}')">
       <div class="task-table-main">
-        <div class="task-table-name">${esc(e.name)}${x.kind === 'fan' ? checkNoteTagHtml(e) : ''}</div>
+        <div class="task-table-name">${esc(e.name)}${x.kind === 'fan' ? checkNoteTagHtml(e) : inquiryTagHtml(bizInquiries(e))}</div>
         <div class="task-table-meta">${esc(metaLine)}</div>
       </div>
       <div class="task-table-badges">${badges.join('')}</div>
@@ -14257,7 +14303,8 @@ function quickJudgmentHtml(b) {
     </div>`).join('');
   // אין כאן יותר שורת "שדות טכניים ממתינים" — מוצג רק מה שבעל-העסק הגיש בפועל. ר' ההערה
   // ההיסטורית ליד realPendingChangeKeys/prunedPending.
-  const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length;
+  const bizInqRow = inquiriesQjRowHtml(bizInquiries(b), b.name);   // §631
+  const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length + (bizInqRow ? 1 : 0);
   const hasBody = totalCount > 0;
   // §147 — לפני: count/toggle/hint רק כש-hasBody, כך שכרטיס-ריק היה נראה כמו שורת-טקסט בודדת ולא
   // כמו "פיצ'ר קיים" (המשתמש: "אין שיפוט מהיר"). עכשיו תמיד גלוי — כולל ה-hint שמסביר מה זה, בדיוק
@@ -14290,7 +14337,7 @@ function quickJudgmentHtml(b) {
         <div class="qj-hint">${hint}</div>
       </div>
       ${(showApproveApp || b.status === 'rejected') ? bizApprovalSectionsHtml(b) : ''}
-      ${(hasBody && isOpen) ? `<div class="qj-body">${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
+      ${(hasBody && isOpen) ? `<div class="qj-body">${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
     </div>`;
 }
 
