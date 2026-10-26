@@ -3567,6 +3567,8 @@ function hydrateFan(id, raw) {
     duplicateOfId: raw.duplicateOfId || null,
     adminVerified: !!raw.adminVerified, // עדיין לא נשמר בפועל — שדה חדש שהדמו הציע, לא קיים ב-Firestore
     adminNote: raw.adminNote || '',
+    // §627 — סיבה לבדיקה לפני אישור (נכתבת בבדיקת המנויים; גם ביומן האוהד). התווית רק כל עוד ממתין.
+    checkNote: raw.checkNote || '',
   };
 }
 
@@ -10833,6 +10835,7 @@ function fanRowsHtml() {
       .concat(cls.treatments.map(t => treatBadgeHtml(t, f)));
     if (f.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">כפילות אפשרית</span>`);
     else if (f.reviewFlag) badges.push(`<span class="warn-badge">שם לא תואם</span>`);
+    if (f.checkNote && f.status === 'pending') badges.push(`<span class="warn-badge" title="${esc(f.checkNote)}">⚠️ לבדיקה</span>`);
     if (f.isBusinessOwner) badges.push(`<span class="treat-badge">בעל עסק</span>`);
     badges.push(...followupBadgesHtml(f));   // §415 — ריק כשאין שידור ואין נדנוד
     const sel = selectedFanIds.has(f.id);
@@ -10963,6 +10966,7 @@ function fanFullDetailHtml(id, opts) {
     .concat(idCls.treatments.map(t => treatBadgeHtml(t, f, true)));
   if (f.reviewFlag === 'name_mismatch') idBadges.push(`<span class="warn-badge lg">שם לא תואם</span>`);
   if (f.reviewFlag === 'possible_duplicate') idBadges.push(`<span class="warn-badge lg">כפילות אפשרית</span>`);
+  if (f.checkNote && f.status === 'pending') idBadges.push(`<span class="warn-badge lg" style="white-space:normal">⚠️ לבדיקה: ${esc(f.checkNote)}</span>`);
   const idDates = [
     `נרשם ${fmtDate(f.registeredAt)}`,
     f.status === 'pending' ? `ממתין ${agoLabel(f.registeredAt)}` : '',
@@ -12346,6 +12350,7 @@ function taskRow2Html(x) {
   const badges = [`<span class="class-badge">${x.c.primary}</span>`].concat(x.c.treatments.map(t => treatBadgeHtml(t, e)));
   if (x.kind === 'fan' && e.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">דגל בדיקה – כפילות אפשרית</span>`);
   else if (x.kind === 'fan' && e.reviewFlag) badges.push(`<span class="warn-badge">דגל בדיקה – שם לא תואם</span>`);
+  if (x.kind === 'fan' && e.checkNote && e.status === 'pending') badges.push(`<span class="warn-badge" title="${esc(e.checkNote)}">⚠️ לבדיקה</span>`);
   // ── §366 — "בעל עסק" חסר דווקא במסך שבו מחליטים ──────────────────────────────────────
   // המשתמש: *"בכל האוהדים יש תגית בעל העסק, בדשבורד ראשי בממתינים אין להם תגית"*.
   // התג היה קיים ב-fanRowsHtml (רשימת כל האוהדים) אבל לא כאן — וזה בדיוק המסך שבו
