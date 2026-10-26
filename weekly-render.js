@@ -87,6 +87,10 @@
         // (#EAB900) הוזז כולו ל-#FFD205 (הצהוב האחד של הקרוסלה). הראש (קרניים–סנטר) ~78px ובאותו גובה כמו בשאר
         // השוורים (נמדד זה לצד זה) – לכן התמונה (חצי גוף) לא מגיעה לתחתית, והחלק התחתון שלה נמוג לרקע.
         photo: 'images/weekly/bull-ben2.jpg', photoBg: '#FFD205', photoH: 204, photoTop: -2, photoLeft: -32, photoFadeBottom: 34,
+        // §617 (רמי, 26.10) "שהשור יגיע עד למטה של הריבוע" – בתיבה בחוץ בלבד: גדל מעט (204→232) ומגיע עד התחתית
+        // (228 במחשב, 212 בטלפון), בלי דהייה. שדה נפרד כי photoH/photoTop/photoLeft שמורים גם ב-homeCarousel/current
+        // (העורך לא נוגע בהם) ומשמשים את ראש הגיליון, שנשאר כמו שהיה.
+        slidePhoto: { photoH: 232, photoTop: -4, photoLeft: -50, photoFadeBottom: 0 },
         howTitle: 'איך זה עובד',
         how: '• ההטבה לכל מי שקובע תור לקעקוע אצל אחד המקעקעים, עד {end}\n• את הכול – העיצוב, המועד והתשלום – סוגרים ישירות מול המקעקע\n• לוחצים על הכרטיס של המקעקע ופונים אליו',
         // §610 (רמי, 25.10) ההטבה הראשונה עולה בהשקה ורצה עד 15.11 (לא חצי חודש). מחוץ לתאריכים – "בקרוב".
@@ -318,7 +322,7 @@
       // (רמי, 24.10) השור עם סמל מכבי על הזרוע – משמאל למטה; החץ הופך ל"לפרטים"
       return '<div class="wk-slide wk-s-ben' + (b.img ? ' has-img' : '') + (b.photo ? ' has-photo' : '') + '"' + o + (b.photo && b.photoBg ? ' style="background:' + esc(b.photoBg) + '"' : '') + '>' +
         (b.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(b.bg) + '" alt=""></span>' : '') +
-        (b.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(b.photo) + '" alt=""' + photoStyle(b) + '></span>' : '') +
+        (b.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(b.photo) + '" alt=""' + photoStyle(Object.assign({}, b, b.slidePhoto || {})) + '></span>' : '') +
         (b.img ? '<img class="wk-ben-img" src="' + esc(b.img) + '" alt="">' : '') +
         '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.slideTitle) + '</div>' +
         (b.hint ? '<div class="wk-hint">' + esc(String(b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
@@ -430,7 +434,10 @@
         (b.how ? '<div class="wk-rot navy"><b>' + esc(b.howTitle || '') + '</b>' + paraHtml(tok(b.how, t)) + '</div>' : '') +
         '<div class="wk-sec"><h3>' + esc(b.whereTitle) + ' · ' + b.biz.length + ' ' + esc(b.bizNoun || 'עסקים') + '</h3>' +
         (b.howTo ? '<p class="wk-cta-line">' + esc(b.howTo) + '</p>' : '') + '<div class="wk-rows">' + rows + '</div></div>' +
-        '<div class="wk-small">כל חצי חודש – ב-1 וב-16 – הטבה בלעדית חדשה. הבאה מתחילה ב-' + t.next + '.</div>' +
+        // §617 (רמי, 26.10) במקום המשפט שחזר על ההסבר למעלה – מד: מתי ההטבה הזו נגמרת ומתי מתחילה החדשה
+        '<div class="wk-cyc"><div class="lb"><span><b>ההטבה הנוכחית</b>' + dm(t.p.start) + ' – ' + t.end + '</span><span><b>הטבה חדשה</b>מ-' + t.next + '</span></div>' +
+          '<div class="tr"><span class="cur"><i style="width:' + t.pct.toFixed(1) + '%"></i><em style="inset-inline-start:' + t.pct.toFixed(1) + '%"></em></span><span class="nx"></span></div>' +
+          '<div class="ft">' + (t.left === 1 ? 'יום אחרון להטבה הזו' : 'עוד ' + t.left + ' ימים להטבה הזו') + '</div></div>' +
         '</div>';
     }
     if (kind === 'fan') {
@@ -690,6 +697,17 @@
     '.wk-timer .row span:last-child{font-size:12px;color:#6B7A9B}',
     '.wk-timer .bar{height:6px;background:#EFE7C4;border-radius:999px;overflow:hidden}',
     '.wk-timer .bar i{display:block;height:100%;background:#0A2A66}',
+    // §617 – מד ההטבה הנוכחית מול החדשה (בתחתית גיליון ההטבה)
+    '.wk-cyc{background:#fff;border:1px solid #FFE9A3;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:7px;color:#0A2A66}',
+    '.wk-cyc .lb{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#6B7A9B}',
+    '.wk-cyc .lb b{display:block;font-size:13px;font-weight:800;color:#0A2A66}',
+    '.wk-cyc .lb span:last-child{text-align:left}',
+    '.wk-cyc .tr{display:flex;gap:4px;height:10px}',
+    '.wk-cyc .cur{position:relative;flex:3;background:#EFE7C4;border-radius:999px}',
+    '.wk-cyc .cur i{display:block;height:100%;background:#0A2A66;border-radius:999px}',
+    '.wk-cyc .cur em{position:absolute;top:50%;width:14px;height:14px;margin-inline-start:-7px;transform:translateY(-50%);border-radius:50%;background:#FFD400;border:2px solid #0A2A66;box-sizing:border-box}',
+    '.wk-cyc .nx{flex:1;border-radius:999px;background:repeating-linear-gradient(-45deg,#FFD400 0 5px,#FFE9A3 5px 10px)}',
+    '.wk-cyc .ft{font-size:12px;font-weight:700;color:#6B7A9B}',
     '.wk-price{display:flex;gap:8px}',
     '.wk-s-ben.has-photo .wk-ben-top,.wk-s-ben.has-photo .wk-pline,.wk-s-ben.has-photo .wk-pfrom{margin-inline-end:116px;position:relative;z-index:1}',
     '.wk-s-ben.has-photo .t{font-size:20px}.wk-s-ben.has-photo .wk-hint{font-size:12px}',
