@@ -9788,19 +9788,88 @@ function restoreOpenBizSteps() {
   });
 }
 
+// ── §621 — "מעדכן הטבה, זה קופץ וחוזר לטקסט המקורי" (דיווח רמי 26.10) ─────────────────────
+// restoreOpenBizSteps משאיר את השלב פתוח, אבל השדות בתוכו נבנים מחדש מהערך השמור – והבנייה
+// הזו רצה מכל onSnapshot על businesses/members, כלומר גם כשאוהד כלשהו סתם נכנס לאפליקציה.
+// ביום עמוס זה כל כמה שניות: הטקסט שהוקלד נמחק והסמן נזרק החוצה באמצע ההקלדה.
+// לכן לפני הבנייה נאספים רק שדות ששונו בפועל (value≠defaultValue) בשלבים הפתוחים, וגם הפוקוס,
+// ומוחזרים אחריה. שדה שלא נגעו בו מקבל כרגיל את הערך החי. רק שדות עם id (וצ'קבוקסים לפי
+// class+value) – שדות בלי id, כמו מיקומי הגלריה, נשארים בלי שינוי.
+function editStateKey(el) {
+  if (el.id) return '#' + el.id;
+  if (el.dataset && el.dataset.aiTitleInput) return 'ai:' + el.dataset.aiTitleInput;
+  if (el.type === 'checkbox' && el.className) return 'cb:' + el.className + '|' + el.value;
+  return null;
+}
+function findByEditStateKey(container, key) {
+  if (key.startsWith('#')) return document.getElementById(key.slice(1));
+  if (key.startsWith('ai:')) return container.querySelector(`[data-ai-title-input="${CSS.escape(key.slice(3))}"]`);
+  const [cls, val] = key.slice(3).split('|');
+  return [...container.querySelectorAll('input[type="checkbox"]')].find(el => el.className === cls && el.value === val) || null;
+}
+function captureEditState(container) {
+  const fields = [];
+  container.querySelectorAll('.step-form.open').forEach(form => {
+    form.querySelectorAll('textarea, input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input[type="number"], input:not([type]), input[type="checkbox"], select').forEach(el => {
+      const key = editStateKey(el);
+      if (!key) return;
+      if (el.type === 'checkbox') { if (el.checked !== el.defaultChecked) fields.push({ key, checked: el.checked }); }
+      else if (el.tagName === 'SELECT') { const def = [...el.options].find(o => o.defaultSelected); if (def ? el.value !== def.value : el.selectedIndex > 0) fields.push({ key, value: el.value }); }
+      else if (el.value !== el.defaultValue) fields.push({ key, value: el.value });
+    });
+    form.querySelectorAll('details').forEach((d, i) => fields.push({ key: 'details:' + form.id + ':' + i, open: d.open }));
+  });
+  const a = document.activeElement;
+  let focus = null;
+  if (a && a !== document.body && container.contains(a)) {
+    const key = editStateKey(a);
+    if (key) {
+      let sel = null;
+      try { sel = [a.selectionStart, a.selectionEnd]; } catch (e) {}
+      focus = { key, sel };
+    }
+  }
+  return { fields, focus };
+}
+function restoreEditState(container, st) {
+  st.fields.forEach(f => {
+    if (f.key.startsWith('details:')) {
+      const [, formId, i] = f.key.split(':');
+      const d = document.getElementById(formId)?.querySelectorAll('details')[Number(i)];
+      if (d) d.open = f.open;
+      return;
+    }
+    const el = findByEditStateKey(container, f.key);
+    if (!el) return;
+    if ('checked' in f) { el.checked = f.checked; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    else el.value = f.value;
+  });
+  if (st.focus) {
+    const el = findByEditStateKey(container, st.focus.key);
+    if (el) {
+      el.focus({ preventScroll: true });
+      if (st.focus.sel && st.focus.sel[0] != null) { try { el.setSelectionRange(st.focus.sel[0], st.focus.sel[1]); } catch (e) {} }
+    }
+  }
+}
+
 function refreshOpenDetailPanel() {
   const drawerBody = document.querySelector('.task-drawer-body');
   if (drawerBody && typeof selectedTaskKey !== 'undefined' && selectedTaskKey) {
+    const st = captureEditState(drawerBody);
     blurIfInside(drawerBody);
     drawerBody.innerHTML = taskDetailHtml2(selectedTaskKey);
     restoreOpenBizSteps();
+    restoreEditState(drawerBody, st);
     return true;
   }
   const bizCol = document.getElementById('bizDetailCol');
   if (bizCol && typeof selectedBizDetailId !== 'undefined' && selectedBizDetailId) {
+    const st = captureEditState(bizCol);
     blurIfInside(bizCol);
     bizCol.innerHTML = bizFullDetailHtml(selectedBizDetailId);
     restoreOpenBizSteps();
+    restoreEditState(bizCol, st);
     return true;
   }
   const fanCol = document.getElementById('fanDetailCol');
