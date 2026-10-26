@@ -6815,8 +6815,8 @@ function platRangeAgg(days) {
 // ⚠️ renderMain מחליף את כל #tabContent בכל onSnapshot. לכן: ה-HTML נבנה מ-globals בלבד
 // (appUsageHtml), והגרף והריחופים נקשרים מחדש אחרי כל ציור (bindAppUsage) — בלי DOM צדדי.
 const APP_USAGE_KEY = 'appUsage';
-const AU_LIMIT = 10000;
 const AU_SINCE_LABEL = '11.10.2026';
+const AU_SINCE_DATE = new Date(2026, 9, 11);
 let auData = null, auError = null, auLoading = false;
 // includeTest — §488ב: רמי חיפש את הפתיחה שלו ולא מצא, כי מנהלים ו-src=test מוסתרים. המתג מציג אותם.
 // §630 — range: 1/7/30/90 · 'all' (מתחילת הנתונים) · 'custom' (from/to = YYYY-MM-DD). נפתח תמיד על היום (selectTab).
@@ -6835,7 +6835,10 @@ const AU_KPIS = [...AU_METRICS, ['rejected', 'נדחו', 'חברים שנדחו 
 const AU_TREND = [['active', 'מכשירים פעילים באפליקציה'], ...AU_KPIS.map(m => [m[0], m[1]])];
 const AU_MILES = ['30s', '2m', '5m', '15m', '30m'];
 const AU_USE_LABELS = ['פחות מ-30 שנ׳', '30 שנ׳–2 דק׳', '2–5 דק׳', '5–15 דק׳', '15–30 דק׳', 'מעל 30 דק׳'];
-const AU_ACT_TYPES = ['formOpen', 'formStep', 'formSubmit', 'loginOk', 'loginFail'];
+// §630ב — בלי formStep: 22,775 מתוך 33,588 (fanRegister שולח אחד לכל שדה ולכל אחוז בהעלאה), ובאפליקציה
+// כל כניסה לטופס עוברת דרך formOpen של welcome (joinModal/notLinkedReg/loginModalReg) שכבר נספר "התחילו הרשמה".
+// נמדד 27.10: רק ב-30 מ-5,184 סשנים formStep היה הסימן היחיד – וחלקם pushDiag/regPending שבכלל אינם הרשמה.
+const AU_ACT_TYPES = ['formOpen', 'formSubmit', 'loginOk', 'loginFail'];
 // §542 — התוצאה של כל הורדה, לפי סדר עדיפות: הגבוה שהמכשיר הגיע אליו (בכל ההיסטוריה שלו, לא רק בתקופה)
 const AU_OUTCOMES = [
   ['signup', 'נרשמו (שלחו טופס)'],
@@ -6873,40 +6876,72 @@ window.auSet = function(k, v) {
   renderMain();
 };
 
-// §618 — עמודים של AU_LIMIT עד שנגמר (26.10: acts הגיע ל-13,608 והמסך הציג חלק אקראי).
-// בלי orderBy מפורש Firestore ממיין לפי מזהה המסמך, ולכן startAfter עובד בלי אינדקס חדש.
-// truncated רק אם גם AU_MAX_PAGES עמודים לא הספיקו.
-const AU_MAX_PAGES = 6;
+// §618 — עמודים עד שנגמר (26.10: acts הגיע ל-13,608 והמסך הציג חלק אקראי). truncated רק אם גם AU_MAX_PAGES לא הספיקו.
+// §630ב — רמי: "עולה ממש לאט ולפעמים לא עולה בכלל". נמדד 27.10: 52,425 אירועים בכל פתיחה (formStep לבד 22,775),
+// ~0.8MB לכל 1,000, והכול-או-כלום: עמוד אחד שעבר 20 שנ' הפיל את המסך. עכשיו: עמודים של 5,000, 45 שנ' לעמוד + ניסיון
+// שני לעמוד שנתקע, ו-visit/engaged/acts נטענים רק מתחילת התקופה הקודמת (auNeedSince) – האינדקס type+createdAt
+// (firestore.indexes.json) כבר קיים ומשמש את פאנל הפלטפורמה. /download ו-/landing.html קטנים (אין אינדקס path+createdAt) – נטענים מלאים פעם אחת.
+const AU_PAGE = 5000, AU_MAX_PAGES = 20, AU_PAGE_TIMEOUT = 45000;
+let auProgress = 0;
+const auShowProgress = () => { const el = document.getElementById('auProgress'); if (el) el.textContent = auProgress ? auFmt(auProgress) + ' אירועים עד עכשיו' : ''; };
 async function auGetAll(q) {
   const docs = [];
+  if (!q) return { docs, truncated: false };
   let last = null;
   for (let i = 0; i < AU_MAX_PAGES; i++) {
-    const snap = await statsWithTimeout(getDocs(last ? query(q, startAfter(last), limit(AU_LIMIT)) : query(q, limit(AU_LIMIT))));
+    const page = last ? query(q, startAfter(last), limit(AU_PAGE)) : query(q, limit(AU_PAGE));
+    let snap;
+    try { snap = await statsWithTimeout(getDocs(page), AU_PAGE_TIMEOUT); }
+    catch (e) { if (e.message !== 'hb_timeout') throw e; snap = await statsWithTimeout(getDocs(page), AU_PAGE_TIMEOUT); }
     docs.push(...snap.docs);
-    if (snap.size < AU_LIMIT) return { docs, truncated: false };
+    auProgress += snap.size; auShowProgress();
+    if (snap.size < AU_PAGE) return { docs, truncated: false };
     last = snap.docs[snap.docs.length - 1];
   }
   return { docs, truncated: true };
 }
 
+// מאיזה יום צריך את visit/engaged/acts: תחילת התקופה הקודמת (להשוואה). null = הכול ("הכול", או השוואת חודשים ב"חוזרים").
+function auNeedSince() {
+  if (auState.range === 'all' || auState.retMonth) return null;
+  const b = auBounds();
+  const d = new Date(b.prev ? b.prev[0] : b.days[0]); d.setHours(0, 0, 0, 0);
+  return d;
+}
+// auData.since = מאיזה יום נטען (null = הכול)
+const auCovers = (need) => !!auData && (auData.since === null || (need !== null && need >= auData.since));
+
 async function loadAppUsage() {
-  if (auData || auError || auLoading) return;
-  auLoading = true;
+  if (auError || auLoading) return;
+  const need = auNeedSince();
+  if (auCovers(need)) return;
+  auLoading = true; auProgress = 0;
   try {
-    const [u, l, lp, ac] = await Promise.all([
-      auGetAll(query(collection(db, 'events'), where('type', 'in', ['visit', 'engaged']))),
-      auGetAll(query(collection(db, 'events'), where('path', '==', '/download'))),
-      // §541 — דף הבית של האתר: pageView (blockId landing:<src>) ולחיצות על חנות (landingBlockClick, store:<os>:<src>)
-      auGetAll(query(collection(db, 'events'), where('path', '==', '/landing.html'))),
+    const first = !auData;
+    // טעינה ראשונה: [need, עכשיו]. הרחבה: רק [need, auData.since) – מה שעוד חסר, ומחברים.
+    const win = (types) => {
+      let q = query(collection(db, 'events'), where('type', 'in', types));
+      if (need) q = query(q, where('createdAt', '>=', need));
+      if (!first && auData.since) q = query(q, where('createdAt', '<', auData.since));
+      return (need || (!first && auData.since)) ? query(q, orderBy('createdAt', 'desc')) : q;
+    };
+    const [u, ac, l, lp] = await Promise.all([
+      auGetAll(win(['visit', 'engaged'])),
       // §542 — מה קרה אחרי ההורדה: חלון כניסה/הרשמה, שלבי טופס, שליחה, כניסה שהצליחה/נכשלה.
       // מקושר למכשיר דרך sessionId (fan-register הוא iframe בתוך welcome וחולק איתו את sessionStorage).
-      auGetAll(query(collection(db, 'events'), where('type', 'in', AU_ACT_TYPES))),
+      auGetAll(win(AU_ACT_TYPES)),
+      auGetAll(first ? query(collection(db, 'events'), where('path', '==', '/download')) : null),
+      // §541 — דף הבית של האתר: pageView (blockId landing:<src>) ולחיצות על חנות (landingBlockClick, store:<os>:<src>)
+      auGetAll(first ? query(collection(db, 'events'), where('path', '==', '/landing.html')) : null),
     ]);
     const map = (res) => { const out = []; res.docs.forEach(d => { const e = d.data(); const at = toJsDate(e.createdAt); if (at) out.push({ at, type: e.type, channel: e.channel || '', blockId: e.blockId || '', memberId: e.memberId || '', sessionId: e.sessionId || '' }); }); return out; };
-    auData = { usage: map(u), links: map(l), landing: map(lp), acts: map(ac), truncated: [u, l, lp, ac].some(x => x.truncated) };
+    const truncated = [u, l, lp, ac].some(x => x.truncated);
+    auData = first
+      ? { usage: map(u), links: map(l), landing: map(lp), acts: map(ac), truncated, since: need }
+      : { ...auData, usage: auData.usage.concat(map(u)), acts: auData.acts.concat(map(ac)), truncated: auData.truncated || truncated, since: need };
   } catch (err) {
     console.error('loadAppUsage failed:', err);
-    auError = statsErrLabel(err);
+    auError = err?.message === 'hb_timeout' ? `הבקשה לא חזרה תוך ${AU_PAGE_TIMEOUT / 1000} שניות, גם בניסיון השני` : statsErrLabel(err);
   }
   auLoading = false;
   renderMain();
@@ -7128,7 +7163,8 @@ const auMonthName = (k) => { const [y, m] = k.split('-'); return AU_MONTHS_HE[+m
 function auMonthBounds(k) { const [y, m] = k.split('-').map(Number); return [new Date(y, m - 1, 1), new Date(y, m, 1)]; }
 // החודשים שיש בהם נתונים — מהביקור הראשון שנמדד (§486, אוקטובר 2026) ועד החודש הנוכחי, מהחדש לישן
 function auMonthList(c) {
-  const first = c.visits.reduce((m, v) => (!m || v.at < m ? v.at : m), null) || new Date();
+  // §630ב — מתחילת המדידה ולא מהביקור הראשון שנטען: בטעינה חלקית (auNeedSince) הרשימה הייתה מתקצרת
+  const first = AU_SINCE_DATE;
   const out = []; const d = new Date(first.getFullYear(), first.getMonth(), 1); const nowK = auMonthKey(new Date());
   while (auMonthKey(d) <= nowK) { out.unshift(auMonthKey(d)); d.setMonth(d.getMonth() + 1); }
   return out;
@@ -7369,11 +7405,12 @@ function appUsageHtml() {
     <label class="au-note" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${auState.includeTest ? 'checked' : ''} onchange="auSet('includeTest')"> כולל מנהלים ובדיקות</label>
     <span class="au-note">${auPeriodLabel()}</span></div>`;
   if (auError) return `<div class="au-root">${head}<div class="au-card"><div class="au-empty">הטעינה נכשלה: ${esc(auError)} · <button class="au-as-table" onclick="retryAppUsage()">לנסות שוב</button></div></div></div>`;
-  if (!auData) return `<div class="au-root">${head}<div class="au-card"><div class="au-empty">טוען נתונים…</div></div></div>`;
+  // §630ב — גם כשהתקופה הורחבה ועוד לא נטען מה שחסר: מספרים חלקיים גרועים ממסך טעינה
+  if (!auCovers(auNeedSince())) return `<div class="au-root">${head}<div class="au-card"><div class="au-empty">טוען נתונים… <span id="auProgress">${auProgress && auLoading ? auFmt(auProgress) + ' אירועים עד עכשיו' : ''}</span>${auState.range === 'all' || auState.retMonth ? '<br><small>"הכול" והשוואת חודשים טוענים את כל ההיסטוריה – לוקח יותר זמן</small>' : ''}</div></div></div>`;
   const c = auCompute();
   const trendLegend = auOsList().map(os => `<span><span class="au-ln" style="background:${AU_COLOR[os]}"></span>${AU_OS_NAME[os]}</span>`).join('');
   return `<div class="au-root">${head}
-    ${auData.truncated ? `<div class="au-card" style="margin-bottom:12px;border-color:var(--au-bad)">⚠️ הגענו לתקרת ${auFmt(AU_LIMIT * AU_MAX_PAGES)} אירועים – חלק מהנתונים לא נטען, והמספרים חלקיים.</div>` : ''}
+    ${auData.truncated ? `<div class="au-card" style="margin-bottom:12px;border-color:var(--au-bad)">⚠️ הגענו לתקרת ${auFmt(AU_PAGE * AU_MAX_PAGES)} אירועים – חלק מהנתונים לא נטען, והמספרים חלקיים.</div>` : ''}
     <div class="au-kpis">${auKpisHtml(c)}</div>
     <div class="au-grid">
       <div class="au-card"><div class="au-card-h"><h3>מהקישור עד חבר מאושר</h3>${tbl('funnel')}</div><p class="au-sub">כמה עברו כל שלב, ואיפה נושרים. רחפו על פס לפרטים.</p>${auFunnelHtml(c)}</div>
