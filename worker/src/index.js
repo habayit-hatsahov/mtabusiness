@@ -9,8 +9,8 @@ import { firestoreRunQuery, firestoreGetDoc, firestorePatch, firestoreBatchCreat
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt, overIpQuota } from './ratelimit.js';
 import { wrapEnvKv } from './safekv.js';
-import { handleRegStatus } from './regstatus.js';
-import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail } from './brevo.js';
+import { handleRegStatus, handleRegRetry } from './regstatus.js';
+import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail, sendRejectEmail } from './brevo.js';
 import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
@@ -110,6 +110,11 @@ export default {
       if (request.method === 'POST' && url.pathname === '/reg-status') {
         if (memQuota('regstatus', clientIp(request, env), 60, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
         return json(await handleRegStatus(await request.json(), env), env, request);
+      }
+      // §628 – "האימות לא עבר": תיקון מהמכשיר שנרשם (תמונה + פרופיל), פעם אחת.
+      if (request.method === 'POST' && url.pathname === '/reg-retry') {
+        if (memQuota('regretry', clientIp(request, env), 10, 60 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
+        return json(await handleRegRetry(await request.json(), env), env, request);
       }
       if (request.method === 'POST' && url.pathname === '/mint-member-token') {
         return json(await handleMemberLogin(await request.json(), request, env), env, request);
@@ -2054,4 +2059,30 @@ async function runEmailSweeps(env) {
       if (att) await tplDeliver(env, accessToken, templates, { ...att, mail: 'failed', mailError: String(e) });
     }
   }
+
+  // ── §628 — מיילי דחייה ("האימות לא עבר" / "לא אושרה"). תקציב נפרד, אחרי מיילי האישור. ──
+  // 🔑 רק רשומה שבאמת נדחתה: rejectEmailStatus:'pending' על רשומה אחרת מסומן ולא נשלח
+  // (אותו עיקרון של §517 – דגל-מייל לבדו לא הופך את הסריקה לממסר).
+  try {
+    const pendingRejects = await firestoreRunQuery(env, accessToken, 'members', 'rejectEmailStatus', 'pending');
+    let sentRejects = 0;
+    for (const m of pendingRejects) {
+      if (sentRejects >= MAX_SWEEP_RECIPIENTS) break;
+      const kind = m.fields.retryAllowed === true ? 'retry' : 'final';
+      if (m.fields.status !== 'rejected' || !m.fields.email) {
+        await firestorePatch(env, accessToken, `members/${m.id}`, { rejectEmailStatus: 'skipped' });
+        continue;
+      }
+      sentRejects++;
+      const att = { id: kind === 'retry' ? 'rejectRetry' : 'rejectFinal', rowId: m.id, t: 'm', member: m, biz: null, email: m.fields.email, name: tplName(m.fields) };
+      try {
+        const sent = await sendRejectEmail(env, { toEmail: m.fields.email, toName: m.fields.firstName, kind, templates, msgTag: 'msg_tpl_' + att.id });
+        await firestorePatch(env, accessToken, `members/${m.id}`, { rejectEmailStatus: 'sent', rejectEmailSentAt: new Date(), rejectEmailKind: kind });
+        await tplDeliver(env, accessToken, templates, { ...att, mail: 'sent', mailId: sent && sent.messageId });
+      } catch (e) {
+        await firestorePatch(env, accessToken, `members/${m.id}`, { rejectEmailStatus: 'failed', rejectEmailError: String(e).slice(0, 500) });
+        await tplDeliver(env, accessToken, templates, { ...att, mail: 'failed', mailError: String(e) });
+      }
+    }
+  } catch (e) { console.error('reject sweep failed', String(e)); }
 }

@@ -915,14 +915,24 @@
             <div class="field-error" id="err-wasSubscriber">נא לענות על השאלה</div>
           </div>
           <div class="form-group">
-            <label for="fansPhoto">תמונה ביציעי מכבי ת"א <span class="req">*</span></label>
+            <!-- §628 — חצי מהלא-מנויים העלו צילום של המגרש בלי עצמם; ההנחיה הייתה באפור קטן מתחת לכפתור.
+                 רמי: "אל תרשום סלפי, תרשום תמונה שרואים אותך". -->
+            <label for="fansPhoto" style="font-size:15px;font-weight:800">תמונה ביציע שרואים בה אותך <span class="req">*</span></label>
+            <div style="font-size:13px;line-height:1.7;margin:2px 0 8px;color:var(--text)">
+              <div><b style="color:#1B8A4B">מתאים:</b> תמונה שרואים בה אותך ביציע, או אותך עם חולצה/צעיף של מכבי.</div>
+              <div><b style="color:var(--danger)">לא מתאים:</b> צילום של המגרש, הקהל או הכוריאוגרפיה בלי הפנים שלך – בקשה כזו לא תאושר.</div>
+            </div>
             <input type="file" id="fansPhoto" accept="image/*" />
-            <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">תמונה <b>שלך</b> ביציעים, שרואים בה את הפנים – כדי שנוכל להצליב אותה עם הפרופיל בפייסבוק או באינסטגרם (השדה הבא, חובה למי שלא מנוי). סלפי מהיציע הכי מתאים.</div>
             <div class="field-error" id="err-fansPhoto">נא לצרף תמונה</div>
+            <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:700;margin-top:10px;cursor:pointer">
+              <input type="checkbox" id="fansPhotoSelf" style="width:20px;height:20px;margin:1px 0 0;flex:0 0 20px;accent-color:var(--blue)"> אני מופיע/ה בתמונה, ורואים את הפנים שלי
+            </label>
+            <div class="field-error" id="err-fansPhotoSelf">צריך תמונה שרואים בה אותך – ולסמן את התיבה</div>
           </div>
           <div class="form-group">
-            <label for="facebookUrl">קישור לפרופיל שלך – פייסבוק או אינסטגרם <span class="req">*</span></label>
-            <input type="url" id="facebookUrl" placeholder="facebook.com/yourname או instagram.com/yourname" inputmode="url" />
+            <label for="facebookUrl">האינסטגרם שלך (או פייסבוק) <span class="req">*</span></label>
+            <div style="font-size:12.5px;color:var(--text-muted);margin:-2px 0 6px">כדי שנוכל לוודא שזה אתה. הכי פשוט – שם המשתמש באינסטגרם.</div>
+            <input type="url" id="facebookUrl" placeholder="שם המשתמש באינסטגרם, או קישור לפרופיל" inputmode="url" />
             <div class="field-error" id="err-facebookUrl">צריך כתובת פרופיל (facebook.com/… או instagram.com/…) או שם המשתמש שלך. שם מלא בעברית לא מאפשר לנו למצוא אותך.</div>
             <div class="field-note" id="note-facebookUrl"></div>
             <!-- §567 – שם-משתמש עירום ("sagiyur") לא אומר באיזו רשת הוא. במקום לנחש – שואלים.
@@ -2005,6 +2015,7 @@
     if (isSub === 'no') {
       ok = vf('wasSubscriber', document.getElementById('wasSubscriber').value !== '') && ok;
       ok = vf('fansPhoto',     document.getElementById('fansPhoto').files.length > 0) && ok;
+      ok = vf('fansPhotoSelf', document.getElementById('fansPhotoSelf').checked) && ok;   // §628
       // §342 — **כאן כן חוסמים בקפדנות, בכוונה.** החלטת המשתמש: *"במידה ובחר לא מנוי כן
       // חייב שיהיה קישור טוב שאני אהיה יכול לראות מי המשתמש"*. לא-מנוי אינו מביא שום ראיה
       // מצד מכבי — כל האימות שלו הוא התמונה מהיציע והפרופיל. פרופיל שאי-אפשר לפתוח מרוקן
@@ -2602,6 +2613,7 @@
   function profileFieldOk(raw) {
     const v = String(raw || '').trim();
     if (!v) return false;
+    if (isFbShareLink(v)) return false;   // §628
     if (!window.HB_LINKS) return true;               // fail-open
     const kind = socialFieldPlatform(v);
     if (kind) return window.HB_LINKS.normalize(kind, v).ok;   // קישור לרשת מוצהרת
@@ -2642,9 +2654,13 @@
   // ── הערות רכות — מיידעות, לא עוצרות ─────────────────────────────────────────────────────
   // מוצגות תוך כדי הקלדה. הן משתמשות ב-id נפרד (`note-`) ולא ב-`err-`, כי attachClearErrors
   // מסתיר כל `err-` בכל הקלדה — הערה שנמחקת בתו הבא לא הייתה נקראת אף פעם.
+  // §628 — facebook.com/share/… ("העתק קישור" באפליקציה של פייסבוק): 64 מתוך 76 קישורי
+  // הפייסבוק של לא-מנויים היו כאלה, והם לא נפתחים למנהל. חוסמים מיד, עם הסבר מה כן לשלוח.
+  function isFbShareLink(v) { return /facebook\.com\/share\//i.test(String(v || '')); }
   function socialNoteFor(id) {
     const v = _v(id);
     if (!v) return '';
+    if (isFbShareLink(v)) return 'הקישור הזה (קישור שיתוף של פייסבוק) לא נפתח אצלנו. כתבו את שם המשתמש שלכם באינסטגרם – או העתיקו את כתובת הפרופיל מהדפדפן.';
     // ── §362 — סדר הפוך, בשני השדות כאחד ────────────────────────────────────────────────
     // נבדק לפני כל השאר: זו הטעות היחידה כאן שאפשר לומר עליה בדיוק מה לתקן, ולכן היא לא
     // צריכה להסתתר מאחורי ההבחנה חובה/רשות. בשדה-הרשות זו אפילו הדרך היחידה שיש — הוא

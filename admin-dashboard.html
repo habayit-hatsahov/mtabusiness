@@ -3569,6 +3569,13 @@ function hydrateFan(id, raw) {
     adminNote: raw.adminNote || '',
     // §627 — סיבה לבדיקה לפני אישור (נכתבת בבדיקת המנויים; גם ביומן האוהד). התווית רק כל עוד ממתין.
     checkNote: raw.checkNote || '',
+    // §628 — דחייה עם/בלי הזדמנות שנייה, ותיקון שחזר מהאוהד
+    retryAllowed: raw.retryAllowed === true,
+    rejectKind: raw.rejectKind || '',
+    rejectEmailStatus: raw.rejectEmailStatus || '',
+    fixedAt: toJsDate(raw.fixedAt),
+    fixPrevPhotoUrl: raw.fixPrevPhotoUrl || '',
+    fixPrevProfile: raw.fixPrevProfile || '',
   };
 }
 
@@ -10884,8 +10891,31 @@ window.fanBackToList = function() {
 
 // §627ב — "לבדיקה" ליד השם (רמי: בשורת התגיות היא נבלעה). רק כל עוד ממתין.
 function checkNoteTagHtml(f) {
-  return f && f.checkNote && f.status === 'pending'
-    ? ` <span class="warn-badge" style="vertical-align:middle" title="${esc(f.checkNote)}">⚠️ לבדיקה</span>` : '';
+  if (!f || f.status !== 'pending') return '';
+  let out = '';
+  // §628 — חזר אחרי "האימות לא עבר" / נדחה בעבר ונרשם שוב
+  if (f.fixedAt) out += ` <span class="warn-badge" style="vertical-align:middle;background:#E8EEFF;color:#2747A8" title="תיקן את האימות – לבדיקה מעמיקה">🔁 אחרי תיקון</span>`;
+  if (fanPrevRejected(f)) out += ` <span class="warn-badge" style="vertical-align:middle;background:#FDE8E8;color:#B4351C" title="יש רשומה קודמת שנדחתה עם אותו טלפון או מייל">↩️ נדחה בעבר – נרשם שוב</span>`;
+  if (f.checkNote) out += ` <span class="warn-badge" style="vertical-align:middle" title="${esc(f.checkNote)}">⚠️ לבדיקה</span>`;
+  return out;
+}
+// §628 — רשומה אחרת שנדחתה עם אותו טלפון (9 ספרות אחרונות) או מייל
+// אינדקס לפי מערך MOCK_FANS הנוכחי (נבנה מחדש בכל snapshot) – בלי סריקה של כולם לכל שורה.
+let _prevRejIdx = { arr: null, len: -1, map: null };
+function fanPrevRejected(f) {
+  const dig = v => String(v || '').replace(/[^0-9]/g, '').slice(-9);
+  const em = v => String(v || '').trim().toLowerCase();
+  if (_prevRejIdx.arr !== MOCK_FANS || _prevRejIdx.len !== MOCK_FANS.length) {
+    const map = new Map();
+    MOCK_FANS.forEach(x => { if (x.status !== 'rejected') return;
+      const p = dig(x.phone), e = em(x.email);
+      if (p.length === 9) (map.get('p' + p) || map.set('p' + p, []).get('p' + p)).push(x);
+      if (e) (map.get('e' + e) || map.set('e' + e, []).get('e' + e)).push(x); });
+    _prevRejIdx = { arr: MOCK_FANS, len: MOCK_FANS.length, map };
+  }
+  const p = dig(f.phone), e = em(f.email);
+  const cand = [...(p.length === 9 ? _prevRejIdx.map.get('p' + p) || [] : []), ...(e ? _prevRejIdx.map.get('e' + e) || [] : [])];
+  return cand.find(x => x.id !== f.id && x.status === 'rejected') || null;
 }
 function fanFullDetailHtml(id, opts) {
   const f = MOCK_FANS.find(x => x.id === id);
@@ -10897,6 +10927,28 @@ function fanFullDetailHtml(id, opts) {
   // אותו עיקרון בדיוק כמו quickJudgmentHtml לעסק (§130) — "בדיקת מנהל" מוצג תמיד כ-item (לא רק pending).
   const fanQjRows = [];
   // §627ב — הערת הבדיקה ראשונה בשיפוט המהיר, כדי שתיראה לפני האישור
+  if (f.status === 'pending' && f.fixedAt) {
+    const img = u => u ? `<img src="${esc(bizImageViewUrl(u, 400))}" class="zoomable" style="width:100%;max-height:180px;object-fit:contain;border-radius:8px;background:#000" onclick="openImageLightbox('${esc(u)}','proof-${esc(f.id)}.jpg')">` : '<div class="owner-verify-photo-empty">אין תמונה</div>';
+    const prof = v => v ? (/^https?:/.test(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener" style="word-break:break-all">${esc(v)}</a>` : esc(v)) : '–';
+    fanQjRows.push(`
+      <div class="qj-row" style="background:#EEF2FF">
+        <div class="qj-row-label"><div class="qj-row-step">לבדיקה מעמיקה</div><div class="qj-row-name">🔁 אחרי תיקון</div></div>
+        <div class="qj-row-value"><span class="qj-value-text"><b>האימות לא עבר, והאוהד שלח תיקון</b> · ${fmtDateTime(f.fixedAt)}</span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+            <div><div style="font-size:12px;color:var(--text-muted)">לפני</div>${img(f.fixPrevPhotoUrl)}<div style="font-size:12px;margin-top:4px">${prof(f.fixPrevProfile)}</div></div>
+            <div><div style="font-size:12px;color:var(--text-muted)">אחרי התיקון</div>${img(f.photoProofUrl)}<div style="font-size:12px;margin-top:4px">${prof(f.instagramUrl || f.facebookUrl)}</div></div>
+          </div></div>
+      </div>`);
+  }
+  const prevRej = f.status === 'pending' ? fanPrevRejected(f) : null;
+  if (prevRej) {
+    fanQjRows.push(`
+      <div class="qj-row" style="background:#FDE8E8">
+        <div class="qj-row-label"><div class="qj-row-step">לבדיקה</div><div class="qj-row-name">↩️ נדחה בעבר</div></div>
+        <div class="qj-row-value"><span class="qj-value-text">יש רשומה קודמת שנדחתה עם אותו טלפון או מייל: <b>${esc(prevRej.name)}</b>${prevRej.rejectedAt ? ' · נדחה ' + fmtDateTime(prevRej.rejectedAt) : ''}${prevRej.rejectKind === 'retry' ? ' · היה לו אפשרות תיקון' : prevRej.rejectKind === 'final' ? ' · דחייה סופית' : ''}</span></div>
+        <div class="qj-row-actions"><button class="qj-btn" onclick="selectFanDetail('${prevRej.id}')">צפייה ברשומה הקודמת</button></div>
+      </div>`);
+  }
   if (f.checkNote && f.status === 'pending') {
     fanQjRows.push(`
       <div class="qj-row" style="background:var(--warn-bg)">
@@ -11402,25 +11454,33 @@ window.bulkSetFanStatus = async function(status) {
       `\n\nלכתובות כאלה קוד-הכניסה יסומן "נשלח" אבל לא יגיע לאף אחד.\n\nאישור = לאשר את כולם בכל זאת · ביטול = לא לאשר כלום, אתקן קודם`
     )) return;
   }
+  // §628 — דחייה גורפת: אותו חלון, פעם אחת לכל הנבחרים
+  let rejKind = null;
+  if (status === 'rejected') {
+    rejKind = await askRejectKind(`דחיית ${ids.length} אוהדים`, `לאפשר לכל ה-${ids.length} לתקן את האימות?`);
+    if (!rejKind) return;
+  }
   selectedFanIds.clear();
   try {
     if (status === 'approved') {
-      await Promise.all(ids.map(async id => {
+      // §628 — אחד-אחד: 25 טרנזקציות מקבילות על counters/members תקעו את הלשונית (26.10, רק 3 עברו)
+      for (const id of ids) {
         const f = MOCK_FANS.find(x => x.id === id);
-        if (!f || f.status !== 'pending') return;
+        if (!f || f.status !== 'pending') continue;
         const memberNumber = await allocateMemberNumber();
         const loginCode = await generateLoginCode();
         await saveLoginCode(id, loginCode);   // §248 — הקוד לאוסף הנפרד, לא על מסמך החבר
         await updateDoc(doc(db, 'members', id), {
           status: 'approved', approvedAt: serverTimestamp(), rejectedAt: null,
-          memberNumber, loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending'
+          memberNumber, loginCodeCreatedAt: serverTimestamp(), loginCodeEmailStatus: 'pending', loginCodeEmailQueuedAt: serverTimestamp(),
+          retryAllowed: false
         });
-      }));
+      }
     } else {
       await Promise.all(ids.map(id => {
         const f = MOCK_FANS.find(x => x.id === id);
         if (!f || f.status !== 'pending') return Promise.resolve();
-        return updateDoc(doc(db, 'members', id), { status: 'rejected', rejectedAt: serverTimestamp() });
+        return updateDoc(doc(db, 'members', id), rejectFields(rejKind));
       }));
     }
   } catch (e) { console.error(e); alert('שגיאה בפעולה גורפת: ' + e.message); }
@@ -11478,6 +11538,70 @@ function fanBucketPillsHtml() {
 // §394 — הבאנר שמסביר למה הרשימה מסוננת, ומה הפעולה **כאן**. בלעדיו המנהל מגיע מהפאנל
 // לרשימה קצרה בלי שום סימן למה היא קצרה — ומקבל בדיוק את החוויה של "המספרים לא מסתדרים".
 // המספר נספר מ-fanFilteredList עצמה ולא מהפאנל, ולכן הוא **תמיד** מה שבאמת על המסך.
+// ══ §628 — מי שנדחה לפני "לאפשר תיקון?": רמי בוחר מי מקבל הזדמנות שנייה ═════════════════════
+// נדחו מ-26.10 בלי rejectKind (לפני הפיצ'ר). מסומנים → "האימות לא עבר" + מייל; כל השאר → מייל "לא אושרה".
+const LEGACY_REJECT_SINCE = new Date(2026, 9, 26);
+function legacyRejectedFans() {
+  return MOCK_FANS.filter(f => f.status === 'rejected' && !f.rejectKind && !f.rejectEmailStatus && f.rejectedAt && f.rejectedAt >= LEGACY_REJECT_SINCE);
+}
+function legacyRejectBannerHtml() {
+  const n = legacyRejectedFans().length;
+  if (!n) return '';
+  return `<div class="fan-bucket-banner" style="background:#FDE8E8">
+    <div class="fan-bucket-head"><span class="fan-bucket-title">${n.toLocaleString('he-IL')} אוהדים נדחו בלי מייל ובלי אפשרות תיקון</span><span style="flex:1"></span>
+      <button class="filter-clear" style="background:#0A2A66;color:#fff" onclick="openLegacyRejectPicker()">בחירה: מי מקבל הזדמנות שנייה</button></div>
+    <div class="fan-bucket-action">מסמנים רק את מי שמקבל הזדמנות שנייה לאמת את עצמו. כל השאר יקבלו מייל "הבקשה לא אושרה".</div>
+  </div>`;
+}
+window.openLegacyRejectPicker = function() {
+  const list = legacyRejectedFans().sort((a, b) => (b.rejectedAt || 0) - (a.rejectedAt || 0));
+  if (!list.length) return;
+  const prof = f => f.instagramUrl ? 'instagram' : f.facebookUrl ? (/\/share\//.test(f.facebookUrl) ? 'facebook/share' : 'facebook') : (f.profileRaw ? 'פרופיל: ' + f.profileRaw : '');
+  const how = f => [f.isSubscriber ? 'מנוי' : 'לא-מנוי', fanVerifyMethodLabel(f), prof(f),
+    f.regTicketHash ? '' : 'נרשם בלי מפתח במכשיר – יקבל רק מייל'].filter(Boolean).join(' · ');
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,42,102,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = `<div dir="rtl" style="background:#fff;border-radius:16px;max-width:640px;width:100%;max-height:88vh;display:flex;flex-direction:column;color:#0A2A66;font-size:14px;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+    <div style="padding:16px 18px;border-bottom:1px solid #E7E7E0"><div style="font-size:17px;font-weight:800">מי מקבל הזדמנות שנייה?</div>
+      <div style="color:#3A4C7A;margin-top:4px">מסומנים → "האימות לא עבר" + מייל עם בקשה לתמונה וקישור. לא מסומנים → נשארים נדחים + מייל "הבקשה לא אושרה".</div>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-weight:700;cursor:pointer"><input type="checkbox" data-all> סימון הכל</label></div>
+    <div style="overflow:auto;flex:1">${list.map(f => `<label style="display:flex;gap:10px;align-items:flex-start;padding:9px 18px;border-top:1px solid #F0F0EA;cursor:pointer">
+        <input type="checkbox" data-id="${f.id}" style="margin-top:3px"><span><b>${esc(f.name)}</b> <a href="#" data-open="${f.id}" style="font-size:12px">פתיחת הכרטיס</a><br><span style="font-size:12.5px;color:#3A4C7A">${esc(how(f))}${f.rejectedAt ? ' · נדחה ' + fmtDateTime(f.rejectedAt) : ''}</span></span></label>`).join('')}</div>
+    <div style="padding:12px 18px;border-top:1px solid #E7E7E0;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button type="button" data-a="send" style="background:#0A2A66;color:#fff;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:800;cursor:pointer">שליחה</button>
+      <button type="button" data-a="cancel" style="background:#F3F4F7;color:#0A2A66;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer">ביטול</button>
+      <span data-cnt style="font-size:13px;color:#3A4C7A"></span></div></div>`;
+  const boxes = () => [...ov.querySelectorAll('input[data-id]')];
+  const cnt = () => ov.querySelector('[data-cnt]');
+  const upd = () => { const k = boxes().filter(b => b.checked).length; cnt().textContent = `הזדמנות שנייה: ${k} · "לא אושרה": ${list.length - k}`; };
+  ov.addEventListener('change', e => { if (e.target.matches('[data-all]')) boxes().forEach(b => { b.checked = e.target.checked; }); upd(); });
+  let busy = false;
+  ov.addEventListener('click', async e => {
+    if (busy) return;
+    const open = e.target.closest('[data-open]');
+    if (open) { e.preventDefault(); ov.remove(); selectFanDetail(open.dataset.open); return; }
+    const a = e.target.closest('[data-a]');
+    if (e.target === ov || (a && a.dataset.a === 'cancel')) { ov.remove(); return; }
+    if (!a || a.dataset.a !== 'send') return;
+    const retryIds = new Set(boxes().filter(b => b.checked).map(b => b.dataset.id));
+    if (!confirm(`יישלחו ${retryIds.size} מיילים "האימות לא עבר" ו-${list.length - retryIds.size} מיילים "הבקשה לא אושרה". להמשיך?`)) return;
+    busy = true; a.disabled = true; a.textContent = 'שולח…';
+    let done = 0, failed = 0;
+    for (const f of list) {
+      const kind = retryIds.has(f.id) ? 'retry' : 'final';
+      try {
+        await updateDoc(doc(db, 'members', f.id), { rejectKind: kind, retryAllowed: kind === 'retry', rejectEmailStatus: 'pending' });
+        await logActivity('members', f.id, { type: 'status', title: rejectKindLabel(kind), detail: `"${f.name}" ${rejectKindLabel(kind)} · מייל בדרך (בחירה מתוך מי שנדחה לפני "לאפשר תיקון")`, field: 'rejectKind', before: null, after: kind });
+        done++;
+      } catch (err) { console.error(err); failed++; }
+      cnt().textContent = `עודכנו ${done} מתוך ${list.length}${failed ? ' · נכשלו ' + failed : ''}`;
+    }
+    a.textContent = failed ? `הסתיים – ${failed} נכשלו` : '✓ הסתיים';
+    setTimeout(() => ov.remove(), 1500);
+  });
+  document.body.appendChild(ov); upd();
+};
+
 function fanBucketBannerHtml() {
   // §521 — סינון "כמה ימים נכנס" שהגיע ממרכז הנתונים – אותו באנר, כדי שיהיה ברור למה הרשימה קצרה
   if (fanVisitBucket !== 'all' && FAN_VISIT_BUCKETS[fanVisitBucket]) {
@@ -11529,6 +11653,7 @@ function fanFilterBarHtml(opts) {
       </div>
       ${fanBucketPillsHtml()}
       ${fanBucketBannerHtml()}
+      ${legacyRejectBannerHtml()}
       <div class="filter-toolbar-row">
         <select class="filter-select" onchange="setFanSort(this.value)">
           <option value="waitingTime" ${fanSort==='waitingTime'?'selected':''}>מיון: זמן המתנה</option>
@@ -12880,16 +13005,44 @@ function goToNextPendingFan(id) {
     else fanBackToList();
   }
 }
+// ══ §628 — דחייה: "לאפשר תיקון?" + מייל בכל דחייה ═══════════════════════════════════════════
+// כן → retryAllowed:true – באפליקציה "האימות לא עבר" עם טופס תמונה+פרופיל (worker/src/regstatus.js),
+// ומייל "האימות לא עבר". לא → דחייה סופית, מייל "לא אושרה". המיילים יוצאים מהסריקה בוורקר.
+// ⚠️ החלון יושב על body ולא בתוך #tabContent – renderMain לא מוחק אותו באמצע.
+function askRejectKind(title, sub) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,42,102,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML = `<div dir="rtl" style="background:#fff;border-radius:16px;max-width:460px;width:100%;padding:20px;color:#0A2A66;font-size:14px;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+      <div style="font-size:17px;font-weight:800">${esc(title)}</div>
+      <div style="margin:6px 0 14px;color:#3A4C7A">${esc(sub || 'לאפשר לתקן את האימות?')}</div>
+      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="radio" name="rjk" value="retry" checked style="margin-top:3px"><span><b>כן – "האימות לא עבר"</b><br><span style="color:#3A4C7A">באפליקציה תופיע אפשרות להעלות תמונה וקישור לפרופיל מחדש. מייל "האימות לא עבר".</span></span></label>
+      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px"><input type="radio" name="rjk" value="final" style="margin-top:3px"><span><b>לא – דחייה סופית</b><br><span style="color:#3A4C7A">באפליקציה "לא הצלחנו לאמת" + פנייה לצוות. מייל "הבקשה לא אושרה".</span></span></label>
+      <div style="display:flex;gap:8px;margin-top:16px"><button type="button" data-a="ok" style="background:#0A2A66;color:#fff;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:800;cursor:pointer">דחייה ושליחת מייל</button><button type="button" data-a="cancel" style="background:#F3F4F7;color:#0A2A66;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer">ביטול</button></div></div>`;
+    const done = v => { ov.remove(); resolve(v); };
+    ov.addEventListener('click', e => {
+      const a = e.target.closest('[data-a]');
+      if (e.target === ov || (a && a.dataset.a === 'cancel')) return done(null);
+      if (a && a.dataset.a === 'ok') done(ov.querySelector('input[name=rjk]:checked').value);
+    });
+    document.body.appendChild(ov);
+  });
+}
+const rejectFields = (kind) => ({ status: 'rejected', rejectedAt: serverTimestamp(), rejectKind: kind, retryAllowed: kind === 'retry', rejectEmailStatus: 'pending' });
+const rejectKindLabel = (kind) => kind === 'retry' ? 'נדחה – אפשרות תיקון (האימות לא עבר)' : 'נדחה – סופי';
+
 window.rejectFan = async function(id) {
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return;
+  const wasApproved = f.status === 'approved';
+  const kind = wasApproved ? null : await askRejectKind(`דחיית ${f.name}`);
+  if (!wasApproved && !kind) return;
   try {
-    const wasApproved = f.status === 'approved';
     if (wasApproved) await updateDoc(doc(db, 'members', id), { status: 'pending', approvedAt: null });
-    else await updateDoc(doc(db, 'members', id), { status: 'rejected', rejectedAt: serverTimestamp() });
+    else await updateDoc(doc(db, 'members', id), rejectFields(kind));
     await logActivity('members', id, {
-      type: 'status', title: wasApproved ? 'האוהד הוחזר לממתין' : 'האוהד נדחה',
-      detail: `"${f.name}" ${wasApproved ? 'הוחזר לסטטוס ממתין' : 'נדחה'}`,
+      type: 'status', title: wasApproved ? 'האוהד הוחזר לממתין' : rejectKindLabel(kind),
+      detail: `"${f.name}" ${wasApproved ? 'הוחזר לסטטוס ממתין' : rejectKindLabel(kind) + ' · מייל בדרך'}`,
       field: 'status', before: f.status, after: wasApproved ? 'pending' : 'rejected',
     });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
@@ -12955,9 +13108,10 @@ window.deleteFan = async function(id) {
 window.rejectApprovedFan = async function(id) {
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return;
-  if (!confirm(`לדחות את "${f.name}"? הוא לא יוכל יותר להתחבר.`)) return;
+  const kind = await askRejectKind(`דחיית ${f.name} (מאושר כרגע)`, 'הוא לא יוכל יותר להתחבר. לאפשר לו לתקן את האימות?');
+  if (!kind) return;
   try {
-    await updateDoc(doc(db, 'members', id), { status: 'rejected', rejectedAt: serverTimestamp(), approvedAt: null });
+    await updateDoc(doc(db, 'members', id), { ...rejectFields(kind), approvedAt: null });
     await logActivity('members', id, { type: 'status', title: 'האוהד נדחה (לאחר אישור)', detail: `"${f.name}" נדחה אחרי שהיה מאושר`, field: 'status', before: f.status, after: 'rejected' });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
@@ -15181,6 +15335,23 @@ const TPL_SETTINGS_DOC = () => doc(db, 'settings', 'messageTemplates');
 const TPL_SITE_TEXTS_DOC = () => doc(db, 'settings', 'siteTexts');
 
 const MESSAGE_TEMPLATE_ITEMS = [
+  // §628 — מיילי הדחייה. נשלחים מהסריקה בוורקר (rejectEmailStatus:'pending'); ברירות המחדל זהות ל-brevo.js
+  {
+    id: 'rejectRetry', group: 'auto', storage: 'firestore', icon: '🔁', title: 'האימות לא עבר (הזדמנות שנייה)',
+    sub: 'נשלח כשדוחים אוהד ובוחרים "כן – לאפשר תיקון"',
+    who: 'אוהד שדחית ובחרת לתת לו הזדמנות שנייה.', when: 'כדקה אחרי הדחייה.', replyTo: true,
+    vars: [['name', 'שם האוהד'], ['link', 'כפתור לפתיחת האפליקציה']],
+    fields: [{ key: 'rejectRetrySubject', label: 'נושא', type: 'input' }, { key: 'rejectRetryBody', label: 'גוף ההודעה', type: 'textarea' }],
+    defaults: { rejectRetrySubject: "האימות שלך ב-Yellow Zone לא עבר", rejectRetryBody: "היי {name},\n\nלא הצלחנו לאמת את הפרופיל שלך.\n\nכדי שנוכל לזהות ולאמת אותך, פתחו את האפליקציה והעלו תמונה ביציע שרואים בה אתכם, וגם קישור לפרופיל שלכם בפייסבוק או באינסטגרם.\n\n{link}\n\nאחרי השליחה הבקשה חוזרת לבדיקה – וכשנאשר, נכנסים לאפליקציה לבד.\n\nקונים כחול - צהוב\nרמי, Yellow Zone" },
+  },
+  {
+    id: 'rejectFinal', group: 'auto', storage: 'firestore', icon: '✋', title: 'הבקשה לא אושרה (דחייה סופית)',
+    sub: 'נשלח כשדוחים אוהד ובוחרים "לא – דחייה סופית"',
+    who: 'אוהד שדחית בלי אפשרות תיקון.', when: 'כדקה אחרי הדחייה.', replyTo: true,
+    vars: [['name', 'שם האוהד']],
+    fields: [{ key: 'rejectFinalSubject', label: 'נושא', type: 'input' }, { key: 'rejectFinalBody', label: 'גוף ההודעה', type: 'textarea' }],
+    defaults: { rejectFinalSubject: "הבקשה שלך ל-Yellow Zone לא אושרה", rejectFinalBody: "היי {name},\n\nבדקנו את הבקשה שלך ל-Yellow Zone ולא הצלחנו לאשר אותה.\n\nאם לדעתך זו טעות – פשוט השיבו למייל הזה ונבדוק יחד.\n\nרמי, Yellow Zone" },
+  },
   {
     id: 'login', group: 'auto', storage: 'firestore', icon: '🔑', title: 'קוד כניסה (אוהדים)',
     sub: 'נשלח פעם אחת – באישור הראשוני של אוהד חדש',
@@ -16508,6 +16679,15 @@ const M2_TPLS = [
     who: 'כל בעל עסק שיש לו קוד כניסה – גם מי שאושר עכשיו כאוהד וכבעל עסק, וגם אוהד ותיק שרשם עסק.', when: 'לבד, באישור העסק.',
     vars: [M2_TV.name, M2_TV.code, M2_TV.business, M2_TV.dash, M2_TV.login],
     allow: { app: true, push: true }, appHint: 'מי שרק עכשיו אושר – יראה אותה בכניסה הראשונה לאפליקציה.' },
+  // §628 — מיילי הדחייה
+  { id: 'rejectRetry', grp: 'auto', icon: '🔁', t: 'האימות לא עבר – הזדמנות שנייה', aud: 'fans', block: 'personal',
+    who: 'אוהד שדחית ובחרת "כן – לאפשר תיקון". באפליקציה הוא רואה טופס להעלאת תמונה וקישור לפרופיל.', when: 'לבד, כדקה אחרי הדחייה.',
+    vars: [M2_TV.name, ['link', '🔗 פתיחת האפליקציה', 'כפתור צהוב לפתיחת האפליקציה. בשורה נפרדת', () => 'https://yellowzone.co.il/download?src=reject']],
+    allow: { app: 'מי שנדחה לא מחובר – לא יראה את זה באפליקציה', push: 'מי שנדחה לא מחובר' } },
+  { id: 'rejectFinal', grp: 'auto', icon: '✋', t: 'הבקשה לא אושרה – דחייה סופית', aud: 'fans', block: 'personal',
+    who: 'אוהד שדחית בלי אפשרות תיקון.', when: 'לבד, כדקה אחרי הדחייה.',
+    vars: [M2_TV.name],
+    allow: { app: 'מי שנדחה לא מחובר – לא יראה את זה באפליקציה', push: 'מי שנדחה לא מחובר' } },
   { id: 'successFan', grp: 'site', icon: '✅', t: 'הבקשה התקבלה – אוהדים', aud: 'fans', site: { title: 'successFanTitle', body: 'successFanBody' },
     who: 'מי ששלח את טופס ההרשמה לאוהדים.', when: 'על המסך, מיד אחרי שליחת הטופס.' },
   { id: 'successBiz', grp: 'site', icon: '✅', t: 'הבקשה התקבלה – עסקים', aud: 'biz', site: { title: 'successBizTitle', body: 'successBizBody' },

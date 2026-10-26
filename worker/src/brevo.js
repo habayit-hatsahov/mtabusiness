@@ -259,3 +259,25 @@ export async function sendAdminAlertEmail(env, { to, subject, rows }) {
     tag: 'adminAlert',
   });
 }
+
+// ══ §628 — מייל דחייה: "האימות לא עבר" (הזדמנות שנייה) או "לא אושרה" (סופי) ═══════════════════
+// הנוסח מ-settings/messageTemplates (rejectRetry*/rejectFinal*, נערך במרכז הניהול); אלה ברירות המחדל.
+export const REJECT_TPL_DEFAULTS = {
+  rejectRetrySubject: 'האימות שלך ב-Yellow Zone לא עבר',
+  rejectRetryBody: 'היי {name},\n\nלא הצלחנו לאמת את הפרופיל שלך.\n\nכדי שנוכל לזהות ולאמת אותך, פתחו את האפליקציה והעלו תמונה ביציע שרואים בה אתכם, וגם קישור לפרופיל שלכם בפייסבוק או באינסטגרם.\n\n{link}\n\nאחרי השליחה הבקשה חוזרת לבדיקה – וכשנאשר, נכנסים לאפליקציה לבד.\n\nקונים כחול - צהוב\nרמי, Yellow Zone',
+  rejectFinalSubject: 'הבקשה שלך ל-Yellow Zone לא אושרה',
+  rejectFinalBody: 'היי {name},\n\nבדקנו את הבקשה שלך ל-Yellow Zone ולא הצלחנו לאשר אותה.\n\nאם לדעתך זו טעות – פשוט השיבו למייל הזה ונבדוק יחד.\n\nרמי, Yellow Zone',
+};
+export async function sendRejectEmail(env, { toEmail, toName, kind, templates = {}, msgTag = '' }) {
+  const k = kind === 'retry' ? 'rejectRetry' : 'rejectFinal';
+  const subjectT = templates[k + 'Subject'] || REJECT_TPL_DEFAULTS[k + 'Subject'];
+  const bodyT = templates[k + 'Body'] || REJECT_TPL_DEFAULTS[k + 'Body'];
+  const vars = { name: toName || '', link: 'https://yellowzone.co.il/download?src=reject' };
+  return sendBrevoEmail(env, {
+    to: [{ email: toEmail, name: toName || '' }],
+    replyTo: { email: REPLY_TO },
+    subject: applyVars(subjectT, vars),
+    htmlContent: renderMailHtml(bodyT, vars, { linkLabel: 'פתיחת האפליקציה' }),
+    tag: msgTag ? ['reject', msgTag] : 'reject',
+  });
+}
