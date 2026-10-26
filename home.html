@@ -1785,42 +1785,14 @@ document.getElementById('catPills').insertAdjacentHTML('beforeend', window.CATEG
      ב-admin-carousel.html). מצוירת מיד מהנוסח המאושר / מהמטמון, והמסמך homeCarousel/current מחליף אותה
      כשהוא מגיע – כשל ברשת משאיר את מה שכבר מוצג. בלי מדידה חדשה (הקפאת הנתונים, 23.10). ══ -->
 <div id="wkRoot"></div>
-<script src="weekly-render.js?v=624"></script>
+<script src="weekly-render.js?v=625"></script>
 <script>WK.mount(document.getElementById('wkRoot'));</script>
 <script type="module">
-import { db, auth } from './firebase-config.js';
-import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
-import { doc, getDoc, writeBatch, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
-
-// §624 – הלב ל"האוהד שמאחורי העסק". storyLikes/{key}.count לכולם, by/{uid} = הלב שלי.
-// הכתיבה: batch אחד של הלב האישי + increment(±1) – החוקים מאשרים רק את שניהם יחד.
-const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
-const authReady = new Promise(res => { const un = onAuthStateChanged(auth, u => { un(); res(u); }); setTimeout(() => res(auth.currentUser), 8000); });
-async function loadLikes() {
-  const k = WK.likeKey(); if (!k) return;
-  try {
-    const s = await withTimeout(getDoc(doc(db, 'storyLikes', k)), 10000);
-    WK.setLike(k, s.exists() ? (s.data().count || 0) : 0, null);
-    const u = await authReady;
-    if (u && !/^demo_/.test(u.uid)) {
-      const m = await withTimeout(getDoc(doc(db, 'storyLikes', k, 'by', u.uid)), 10000);
-      WK.setLike(k, null, m.exists());
-    }
-  } catch (e) { console.warn('storyLikes', e); }
-}
-WK.onLike(async (k, mine) => {
-  const u = auth.currentUser;
-  if (!u) throw { userMessage: 'צריך להתחבר כדי לפרגן' };
-  if (/^demo_/.test(u.uid)) throw { userMessage: 'בסיור אורח אי אפשר לפרגן – נרשמים ונותנים לב' };
-  const b = writeBatch(db);
-  if (mine) b.set(doc(db, 'storyLikes', k, 'by', u.uid), { at: serverTimestamp() });
-  else b.delete(doc(db, 'storyLikes', k, 'by', u.uid));
-  b.set(doc(db, 'storyLikes', k), { count: increment(mine ? 1 : -1) }, { merge: true });
-  try { await withTimeout(b.commit(), 10000); }
-  catch (e) { setTimeout(loadLikes, 1500); throw e; }   // פסק-זמן לא מבטל את הכתיבה – מיישרים מהשרת
-});
-
-getDoc(doc(db, 'homeCarousel', 'current')).then(s => { if (s.exists()) WK.apply(s.data()); }).catch(() => {}).then(loadLikes);
+import { db } from './firebase-config.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
+// §625 – הלב בגיליון "האוהד שמאחורי העסק" הוא הלב של העסק עצמו (likedBy) – ר' syncWkLike ליד toggleLike.
+// WK.apply יכול להחליף את העסק (מפתח חדש), ולכן מסנכרנים מחדש אחריו.
+getDoc(doc(db, 'homeCarousel', 'current')).then(s => { if (s.exists()) { WK.apply(s.data()); syncWkLike(); } }).catch(() => {});
 </script>
 
 <!-- ══ MAIN FEED ══ -->
@@ -2065,6 +2037,7 @@ window.loadFirebaseData = function(data, isPreview) {
   // §431 — כל snapshot דורס את המערך כולו, ולכן לחיצת-לב שטרם אושרה ע"י השרת חייבת להיות
   // מוחלת מחדש **כאן**. בלי השורה הזאת הלב היה מתמלא בלחיצה וקופץ אחורה שנייה אחר כך.
   _applyPendingLikes();
+  syncWkLike();
   renderSections();
   window._hbMarkReady && window._hbMarkReady('cards');
   refreshOpenFeed();
@@ -3242,7 +3215,21 @@ function _applyPendingLikes() {
 function _paintLike() {
   syncLiveCardFields();
   refreshSheetIfOpen();
+  syncWkLike();
 }
+
+// §625 — הלב בגיליון "האוהד שמאחורי העסק" (weekly-render.js) הוא **הלב של העסק** – אותו likedBy
+// ואותו מספר (effectiveLikes) כמו בכרטיס באינדקס (רמי: "תרשום שם את כמות הלב שיש לו עכשיו").
+// הלחיצה שם עוברת ב-toggleLike כמו כל לב אחר, ו-_paintLike מחזיר את המצב לגיליון.
+function syncWkLike() {
+  if (!window.WK) return;
+  const id = WK.likeKey();
+  const b = id && businesses.find(x => x.id === id);
+  if (!b) return;
+  const myId = currentMemberId();
+  WK.setLike(id, effectiveLikes(b), !!(myId && (b.likedBy || []).includes(myId)));
+}
+if (window.WK) WK.onLike(id => toggleLike(id));
 
 // הודעה קצרה בתחתית המסך. נוצרת בפעם הראשונה שצריך אותה — כישלון לייק הוא נדיר, ואין סיבה
 // שאלמנט קבוע ישב ב-HTML של כל טעינה.

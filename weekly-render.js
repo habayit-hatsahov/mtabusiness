@@ -273,14 +273,16 @@
   var X = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
 
   // ── §624 לב ל"האוהד שמאחורי העסק" (רמי, 26.10: "תניע את האנשים לפרגן"; דמו fan-like-demo.html אושר) ─────
-  // הלב בראש הגיליון + שורת הנעה מתחת לבעל העסק + תגית מונה על התיבה בחוץ – כולם אותו לב.
-  // המסד (storyLikes) ב-home.html: הוא קורא ל-WK.setLike ונרשם ב-WK.onLike. כאן רק התצוגה והמצב,
-  // ולכן ציור-מחדש (WK.apply) לא מאבד את המונה. בתצוגה המקדימה בעורך – רק מראה, בלי לחיצה.
+  // הלב בראש הגיליון + שורת הנעה מתחת לבעל העסק – שניהם אותו לב.
+  // §625 (רמי: "תרשום שם את כמות הלב שיש לו עכשיו") – זה **הלב של העסק עצמו** (likedBy, אותו לב
+  // ואותו מספר כמו בכרטיס באינדקס), לא מונה נפרד; like.key = מזהה העסק. home.html מבצע את הלחיצה
+  // (toggleLike) ומחזיר את המצב ב-WK.setLike. כאן רק התצוגה, ולכן ציור-מחדש (WK.apply) לא מאבד אותו.
+  // (רמי) בלי לב על התיבה בחוץ. בתצוגה המקדימה בעורך – רק מראה, בלי לחיצה.
   var HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 8 3.4 4.5 6.9 4.5c2.1 0 3.6 1.2 5.1 3 1.5-1.8 3-3 5.1-3 3.5 0 5.5 3.5 4.2 6.8-1.8 4.6-9.3 9.2-9.3 9.2z" stroke-linejoin="round"/></svg>';
-  var like = { key: '', count: null, mine: false, busy: false, handler: null };
+  var like = { key: '', count: null, mine: false, handler: null };
   function likeKey(d) {
     var f = d && d.fan, id = f && (f.bizId || (KNOWN[f.biz] || {}).id);
-    return f && id && f.start && isLive(f) ? 'fan_' + id + '_' + f.start : '';
+    return f && id && isLive(f) ? id : '';
   }
   function firstName(d) { return String((d.fan && d.fan.owner) || '').trim().split(/\s+/)[0] || 'לבעל העסק'; }
   function likeHeroInner() {
@@ -294,7 +296,6 @@
     return n ? '<b>' + (n === 1 ? 'אוהד אחד' : n + ' אוהדים') + '</b> כבר ' + (n === 1 ? 'פירגן' : 'פירגנו') + ' ל' + esc(first) + '. תנו גם אתם לב ונפרגן לעסק ביחד.'
       : '<b>היו הראשונים לפרגן ל' + esc(first) + '</b> – לב אחד אומר לו שהקהילה מאחוריו.';
   }
-  function likeChipInner() { return HEART + (like.count ? like.count : 'לפרגן'); }
   function likeBtn(cls, ctx, label) {
     return '<button type="button" class="' + cls + (like.mine ? ' liked' : '') + '" data-wk-like aria-pressed="' + like.mine + '" aria-label="' + esc(label) + '"' + act(ctx, 'WK.like(this)') + '>' + HEART + '</button>';
   }
@@ -305,7 +306,6 @@
     [].forEach.call(document.querySelectorAll('[data-wk-like]'), function (b) { b.classList.toggle('liked', like.mine); b.setAttribute('aria-pressed', String(like.mine)); });
     [].forEach.call(document.querySelectorAll('[data-wk-like-count]'), function (el) { el.innerHTML = likeHeroInner(); });
     [].forEach.call(document.querySelectorAll('[data-wk-like-nudge]'), function (el) { el.innerHTML = likeNudgeInner(first); });
-    [].forEach.call(document.querySelectorAll('[data-wk-like-chip]'), function (el) { el.innerHTML = likeChipInner(); });
   }
   function likeBurst(btn) {
     btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
@@ -318,22 +318,16 @@
       setTimeout(function (el) { el.remove(); }.bind(null, s), 950);
     }
   }
-  // לחיצה: התצוגה מתעדכנת מיד, והמסד אחריה. כשל – חוזרים למצב הקודם ואומרים את זה (לא בשקט).
+  // לחיצה: home.html (toggleLike) מעדכן מיד את הלב של העסק וקורא ל-setLike; כשל – הוא מחזיר ומודיע.
   function likeClick(btn) {
-    if (!like.key || like.busy) return;
+    if (!like.key) return;
     if (typeof like.handler !== 'function') { alert('הלב עוד נטען – נסו שוב בעוד רגע'); return; }
-    var prev = { count: like.count, mine: like.mine };
-    like.mine = !like.mine;
-    like.count = Math.max(0, (like.count || 0) + (like.mine ? 1 : -1));
-    like.busy = true; paintLike(); likeBurst(btn);
-    track('fan', like.mine ? 'like' : 'unlike');
-    Promise.resolve().then(function () { return like.handler(like.key, like.mine); }).then(function () { like.busy = false; }, function (e) {
-      like.busy = false; like.count = prev.count; like.mine = prev.mine; paintLike();
-      alert(e && e.userMessage ? e.userMessage : 'הלב לא נשמר – בדקו את החיבור ונסו שוב');
-    });
+    var was = like.mine;
+    like.handler(like.key);
+    if (like.mine !== was) { likeBurst(btn); track('fan', like.mine ? 'like' : 'unlike', like.key); }
   }
   function setLike(key, count, mine) {
-    if (key !== like.key || like.busy) return;
+    if (key !== like.key) return;
     if (count != null) like.count = Math.max(0, Number(count) || 0);
     if (mine != null) like.mine = !!mine;
     paintLike();
@@ -400,8 +394,7 @@
     if (kind === 'fan') {
       var f = d.fan, cover = f.cover || (KNOWN[f.biz] || {}).cover || '';
       return '<div class="wk-slide wk-s-fan"' + o + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' +
-        '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span>' + (f.cadence ? '<span class="wk-cad">' + esc(tok(f.cadence, t)) + '</span>' : '') +
-        (likeKey(d) || ctx.preview ? '<span class="wk-like-chip" data-wk-like-chip>' + likeChipInner() + '</span>' : '') + '</div>' +
+        '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span>' + (f.cadence ? '<span class="wk-cad">' + esc(tok(f.cadence, t)) + '</span>' : '') + '</div>' +
         (f.owner ? '<div class="who">' + esc(f.owner) + (f.showFan && f.fanTag ? ' · ' + esc(f.fanTag) : '') + '</div>' : '') +
         '<div class="t">' + esc(f.biz || 'בחרו עסק') + '</div>' +
         (f.slideLine ? '<div class="s">' + esc(f.slideLine) + '</div>' : '') +
@@ -760,9 +753,6 @@
     '.wk-heart-mini svg path{fill:none;stroke:#0A2A66;stroke-width:2.2}',
     '.wk-heart-mini.liked{background:#FFD400;border-color:#FFD400}',
     '.wk-heart-mini.liked svg path{fill:#0A2A66}',
-    '.wk-like-chip{margin-inline-start:auto;display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.95);color:#0A2A66;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800}',
-    '.wk-like-chip svg{width:14px;height:14px}',
-    '.wk-like-chip svg path{fill:#0A2A66}',
     '.wk-inline .wk-in{padding-bottom:24px}',
     '.wk-p{font-size:15.5px;line-height:1.65;margin:0;white-space:pre-line}',
     '.wk-owner{display:flex;align-items:center;gap:10px}',
@@ -898,7 +888,7 @@
     state.root = root;
     var d = state.d = data || load(), ctx = ctxFor(d);
     var k2 = likeKey(d);
-    if (k2 !== like.key) { like.key = k2; like.count = null; like.mine = false; like.busy = false; }
+    if (k2 !== like.key) { like.key = k2; like.count = null; like.mine = false; }
     root.innerHTML = '<section class="wk" aria-label="הטבה בלעדית, האוהד שמאחורי העסק, Yellow Zone"><div class="wk-track" id="wkTrack">' +
       order(d).map(function (k) { return slideHtml(k, d, ctx); }).join('') + '</div><div class="wk-dots" id="wkDots">' +
       order(d).map(function (k, i) { return '<i' + (i ? '' : ' class="on"') + '></i>'; }).join('') + '</div>' +
@@ -995,7 +985,7 @@
     period: period, dm: dm, timing: timing, esc: esc, span: span, isLive: isLive, ctxFor: ctxFor, order: order,
     slideHtml: slideHtml, sheetInner: sheetInner, injectCss: injectCss,
     mount: mount, step: step, tok: tok, track: track, setUsDir: setUsDir, usDir: function () { return state.d && state.d.usDir; }, open: open, close: close, biz: biz, act: doAct,
-    // §624 – הלב: likeKey() למסד, setLike() מהמסד, onLike(fn) – fn(key, mine) מחזירה Promise
+    // §625 – הלב: likeKey() = מזהה העסק, setLike(key, count, mine) מ-home.html, onLike(fn) – fn(bizId) מבצע את הלחיצה
     like: likeClick, likeKey: function () { return like.key; }, setLike: setLike, onLike: function (fn) { like.handler = fn; }
   };
 })();
