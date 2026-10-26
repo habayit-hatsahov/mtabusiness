@@ -2401,7 +2401,7 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
 .au-seg button.on { background: var(--au-ink); color: #fff; }
 .au-key { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
 .au-note { font-size: 13px; color: var(--au-ink3); }
-.au-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+.au-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 14px; }
 .au-kpi { background: #fff; border: 1px solid var(--au-line); border-radius: 16px; padding: 14px 16px 12px; cursor: pointer;
   text-align: right; font: inherit; color: inherit; }
 .au-kpi:hover { border-color: var(--au-ink3); }
@@ -2464,7 +2464,7 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
 .au-reg-when { font-size: 12.5px; color: var(--au-ink3); text-align: left; }
 .au-tags { display: flex; gap: 6px; flex-wrap: wrap; grid-column: 1 / -1; }
 .au-tag { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: var(--au-chip); color: var(--au-ink2); display: inline-flex; align-items: center; gap: 5px; }
-.au-tag.ok { color: var(--au-good); } .au-tag.wait { color: var(--au-bad); }
+.au-tag.ok { color: var(--au-good); } .au-tag.wait { color: var(--au-bad); } .au-tag.no { color: #b91c1c; }
 table.au-t { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.au-t th, table.au-t td { padding: 7px 8px; border-bottom: 1px solid var(--au-line); text-align: right; }
 table.au-t th { color: var(--au-ink2); font-weight: 700; font-size: 12.5px; }
@@ -4539,6 +4539,7 @@ function tabInfoHtml(tab) {
 }
 
 window.selectTab = function(key) {
+  if (key === APP_USAGE_KEY && activeTab !== key) auState.range = 1;   // §630 — "אפליקציה ושימוש" נפתח תמיד על היום
   activeTab = key;
   pickingSlot = null;
   choosingBiz = null;
@@ -6818,7 +6819,8 @@ const AU_LIMIT = 10000;
 const AU_SINCE_LABEL = '11.10.2026';
 let auData = null, auError = null, auLoading = false;
 // includeTest — §488ב: רמי חיפש את הפתיחה שלו ולא מצא, כי מנהלים ו-src=test מוסתרים. המתג מציג אותם.
-const auState = { range: 7, os: 'all', metric: 'active', tables: {}, includeTest: false, retMonth: '', view: 'usage' };
+// §630 — range: 1/7/30/90 · 'all' (מתחילת הנתונים) · 'custom' (from/to = YYYY-MM-DD). נפתח תמיד על היום (selectTab).
+const auState = { range: 1, from: '', to: '', os: 'all', metric: 'active', tables: {}, includeTest: false, retMonth: '', view: 'usage' };
 const AU_OS = ['ios', 'android', 'other'];
 const AU_OS_NAME = { ios: 'אייפון', android: 'אנדרואיד', other: 'מחשב / לא נמדד' };
 const AU_COLOR = { ios: 'var(--au-ios)', android: 'var(--au-android)', other: 'var(--au-other)' };
@@ -6828,7 +6830,9 @@ const AU_METRICS = [
   ['signup', 'הרשמות', 'טופס הרשמה שנשלח (אוהדים ובעלי עסקים)'],
   ['approved', 'אושרו', 'חברים שאושרו בתקופה'],
 ];
-const AU_TREND = [['active', 'מכשירים פעילים באפליקציה'], ...AU_METRICS.map(m => [m[0], m[1]])];
+// §630 — "נדחו" בכרטיסים ובגרף, לא במשפך (הוא לא שלב אחרי "אושרו"). לפי rejectedAt – מי שתיקן וחזר לבדיקה/אושר כבר לא נספר.
+const AU_KPIS = [...AU_METRICS, ['rejected', 'נדחו', 'חברים שנדחו בתקופה (מצב נוכחי – מי שתיקן ואושר לא נספר)']];
+const AU_TREND = [['active', 'מכשירים פעילים באפליקציה'], ...AU_KPIS.map(m => [m[0], m[1]])];
 const AU_MILES = ['30s', '2m', '5m', '15m', '30m'];
 const AU_USE_LABELS = ['פחות מ-30 שנ׳', '30 שנ׳–2 דק׳', '2–5 דק׳', '5–15 דק׳', '15–30 דק׳', 'מעל 30 דק׳'];
 const AU_ACT_TYPES = ['formOpen', 'formStep', 'formSubmit', 'loginOk', 'loginFail'];
@@ -6857,7 +6861,14 @@ const AU_SRC_NAME = { fb: 'פייסבוק', wa: 'וואטסאפ', ig: 'אינס�
 
 window.retryAppUsage = function() { auError = null; renderMain(); };
 window.auSet = function(k, v) {
-  if (k === 'range') auState.range = +v; else if (k === 'table') auState.tables[v] = !auState.tables[v];
+  if (k === 'range') {
+    auState.range = (v === 'all' || v === 'custom') ? v : +v;
+    if (v === 'custom' && !auState.from) { const t = new Date(); auState.to = auYmd(t); t.setDate(t.getDate() - 6); auState.from = auYmd(t); }
+  } else if (k === 'from' || k === 'to') {
+    if (!v) return;
+    auState[k] = v;
+    if (auState.from > auState.to) [auState.from, auState.to] = [auState.to, auState.from];
+  } else if (k === 'table') auState.tables[v] = !auState.tables[v];
   else if (k === 'includeTest') auState.includeTest = !auState.includeTest; else auState[k] = v;
   renderMain();
 };
@@ -6919,7 +6930,7 @@ function auCompute() {
   }
   // שורות-יום: { ios:{link,first,signup,approved,active:Set}, android:{...}, other:{...} }
   const byDay = {};
-  const day = (d) => (byDay[auDayKey(d)] ||= Object.fromEntries(AU_OS.map(o => [o, { link: 0, first: 0, signup: 0, approved: 0, active: new Set() }])));
+  const day = (d) => (byDay[auDayKey(d)] ||= Object.fromEntries(AU_OS.map(o => [o, { link: 0, first: 0, signup: 0, approved: 0, rejected: 0, active: new Set() }])));
   const src = {};   // {day: {src: {os:n}}}
   let linkDesktop = 0;
   for (const e of auData.links) {
@@ -6952,6 +6963,7 @@ function auCompute() {
     const os = auOsOf(f.signupOs);
     if (f.registeredAtKnown && f.registeredAt) day(f.registeredAt)[os].signup++;
     if (f.approvedAt) day(f.approvedAt)[os].approved++;
+    if (f.status === 'rejected' && f.rejectedAt) day(f.rejectedAt)[os].rejected++;
   }
   // §541 — דף הבית: כניסות ולחיצות על חנות לפי ?src=. בלי מנהלים ובלי src=test (אלא אם "כולל מנהלים ובדיקות").
   const landing = [];
@@ -7005,21 +7017,56 @@ function auDays(offset, n) {
   for (let i = n - 1; i >= 0; i--) { const d = new Date(end); d.setDate(d.getDate() - i); out.push(d); }
   return out;
 }
+// §630 — התקופה הנבחרת: days (צהריים, מהישן לחדש), from (00:00 ביום הראשון), to (00:00 אחרי היום האחרון),
+// prev = תקופה קודמת באותו אורך (null ב"הכול"). נזכר לפי המצב + הנתונים — auInRange נקרא אלפי פעמים בציור.
+const auYmd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const auNoon = (ymd) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(y, m - 1, d, 12); };
+const auSpan = (first, last) => { const out = []; const d = new Date(first); d.setHours(12, 0, 0, 0); const e = new Date(last); e.setHours(12, 0, 0, 0); while (d <= e) { out.push(new Date(d)); d.setDate(d.getDate() + 1); } return out; };
+// היום הראשון שיש בו נתון כלשהו — לטווח "הכול"
+function auFirstDay() {
+  let m = Date.now();
+  if (auData) ['usage', 'links', 'landing'].forEach(k => (auData[k] || []).forEach(e => { if (e.at < m) m = +e.at; }));
+  (MOCK_FANS || []).forEach(f => [f.registeredAtKnown && f.registeredAt, f.approvedAt, f.rejectedAt].forEach(d => { if (d && d < m) m = +d; }));
+  return new Date(m);
+}
+let auBoundsMemo = null;
+function auBounds() {
+  const key = [auState.range, auState.from, auState.to, auYmd(new Date()), auData, MOCK_FANS && MOCK_FANS.length];
+  if (auBoundsMemo && auBoundsMemo.key.every((v, i) => v === key[i])) return auBoundsMemo.val;
+  let days, prev = null;
+  if (auState.range === 'all') days = auSpan(auFirstDay(), new Date());
+  else if (auState.range === 'custom' && auState.from && auState.to) days = auSpan(auNoon(auState.from), auNoon(auState.to));
+  else { const n = +auState.range || 1; days = auDays(0, n); prev = auDays(1, n); }
+  if (auState.range === 'custom' && days.length) { const e = new Date(days[0]); e.setDate(e.getDate() - 1); const s = new Date(e); s.setDate(s.getDate() - days.length + 1); prev = auSpan(s, e); }
+  const from = new Date(days[0]); from.setHours(0, 0, 0, 0);
+  const to = new Date(days[days.length - 1]); to.setHours(0, 0, 0, 0); to.setDate(to.getDate() + 1);
+  const val = { days, prev, from, to };
+  auBoundsMemo = { key, val };
+  return val;
+}
+function auPeriodLabel() {
+  const { days } = auBounds();
+  if (auState.range === 1) return 'היום, ' + auShort(days[0]);
+  if (days.length === 1) return auShort(days[0]);
+  return auShort(days[0]) + '–' + auShort(days[days.length - 1]) + (auState.range === 'all' ? ' (הכול)' : '');
+}
 function auVal(c, d, os, k) { const r = c.byDay[auDayKey(d)]; if (!r) return 0; return k === 'active' ? r[os].active.size : r[os][k]; }
 function auSum(c, days, os, k) { return days.reduce((s, d) => s + auVal(c, d, os, k), 0); }
 function auTot(c, days, k) { return auOsList().reduce((s, os) => s + auSum(c, days, os, k), 0); }
 const auTipAttrs = (title, os, val, name) => `data-au-tt="${esc(title)}" data-au-tc="${os}" data-au-tv="${esc(val)}" data-au-tn="${esc(name)}" tabindex="0"`;
 
 function auKpisHtml(c) {
-  const cur = auDays(0, auState.range), prev = auDays(1, auState.range);
-  return AU_METRICS.map(([k, label, help]) => {
-    const now = auTot(c, cur, k), before = auTot(c, prev, k);
+  const { days: cur, prev } = auBounds();
+  return AU_KPIS.map(([k, label, help]) => {
+    const now = auTot(c, cur, k), before = prev ? auTot(c, prev, k) : 0;
     const ch = before ? Math.round(((now - before) / before) * 100) : null;
-    const delta = ch === null ? `<div class="au-delta flat">אין נתונים להשוואה</div>`
-      : `<div class="au-delta ${ch > 2 ? 'up' : ch < -2 ? 'down' : 'flat'}" title="לעומת התקופה הקודמת באותו אורך">${ch >= 0 ? '▲' : '▼'} ${Math.abs(ch)}% <span class="long">${auState.range === 1 ? 'מאתמול' : 'מהתקופה הקודמת'}</span></div>`;
+    // "נדחו" – עלייה היא לא חדשות טובות, לכן בלי צבע ירוק/כתום
+    const tone = k === 'rejected' ? 'flat' : ch > 2 ? 'up' : ch < -2 ? 'down' : 'flat';
+    const delta = !prev ? `<div class="au-delta flat">מתחילת המדידה</div>` : ch === null ? `<div class="au-delta flat">אין נתונים להשוואה</div>`
+      : `<div class="au-delta ${tone}" title="לעומת התקופה הקודמת באותו אורך">${ch >= 0 ? '▲' : '▼'} ${Math.abs(ch)}% <span class="long">${cur.length === 1 ? 'מיום קודם' : 'מהתקופה הקודמת'}</span></div>`;
     const split = auState.os === 'all' ? `<div class="au-split">${AU_OS.map(os => { const v = auSum(c, cur, os, k); return (os !== 'other' || v) ? `<span><span class="au-key" style="background:${AU_COLOR[os]}"></span>${AU_OS_NAME[os]} ${auFmt(v)}</span>` : ''; }).join('')}</div>` : '';
     let spark = '';
-    if (auState.range > 1) {
+    if (cur.length > 1) {
       const vals = cur.map(d => auOsList().reduce((s, os) => s + auVal(c, d, os, k), 0));
       const max = Math.max(1, ...vals);
       const path = vals.map((v, i) => `${i ? 'L' : 'M'}${(100 - (i / Math.max(1, vals.length - 1)) * 100).toFixed(1)},${(28 - (v / max) * 26).toFixed(1)}`).join(' ');
@@ -7035,7 +7082,7 @@ function auTable(head, rows) {
 }
 
 function auFunnelHtml(c) {
-  const cur = auDays(0, auState.range);
+  const cur = auBounds().days;
   const steps = AU_METRICS.map(([k, label, help]) => { const by = Object.fromEntries(auOsList().map(os => [os, auSum(c, cur, os, k)])); return { k, label, help, by, total: Object.values(by).reduce((a, b) => a + b, 0) }; });
   if (auState.tables.funnel) return auTable(['שלב', ...auOsList().map(o => AU_OS_NAME[o]), 'סה״כ', 'המשיכו'], steps.map((s, i) => [s.label, ...auOsList().map(o => auFmt(s.by[o])), auFmt(s.total), i ? auPct(s.total, steps[i - 1].total) + '%' : '–']));
   const max = Math.max(1, ...steps.map(s => s.total));
@@ -7057,7 +7104,7 @@ function auHbarsHtml(key, labels, by, asPct) {
   return labels.map((l, i) => `<div class="au-hb"><div class="au-hb-name">${esc(l)}</div><div class="au-hb-track">${oss.map(os => by[os][i] ? `<div class="au-seg-fill" style="width:${(by[os][i] / max) * 100}%;background:${AU_COLOR[os]}" ${auTipAttrs(l, os, auFmt(by[os][i]), AU_OS_NAME[os])}></div>` : '').join('')}</div><div class="au-hb-val">${asPct ? auPct(totals[i], all) + '%' : auFmt(totals[i])}</div></div>`).join('');
 }
 
-function auInRange(d) { const from = auDays(0, auState.range)[0]; from.setHours(0, 0, 0, 0); return d >= from; }
+function auInRange(d) { const b = auBounds(); return d >= b.from && d < b.to; }
 
 function auUseHtml(c) {
   const oss = auOsList();
@@ -7109,7 +7156,7 @@ function auReturnHtml(c) {
   const m = auState.retMonth;
   let from, to;
   if (m) [from, to] = auMonthBounds(m);
-  else { from = auDays(0, auState.range)[0]; from.setHours(0, 0, 0, 0); to = new Date(Date.now() + 864e5); }
+  else ({ from, to } = auBounds());
   const r = auRetStats(c, from, to);
   const pick = `<select class="au-note" style="font:inherit;font-size:13px;padding:5px 8px;border-radius:9px;border:1px solid var(--au-line);background:#fff;color:var(--au-ink);margin-bottom:10px" onchange="auSet('retMonth', this.value)" aria-label="בחירת חודש">
       <option value="" ${m ? '' : 'selected'}>לפי התקופה שלמעלה</option>${months.map(k => `<option value="${k}" ${m === k ? 'selected' : ''}>${auMonthName(k)}</option>`).join('')}</select>`;
@@ -7130,7 +7177,7 @@ function auReturnHtml(c) {
 }
 
 function auSrcHtml(c) {
-  const cur = auDays(0, auState.range).map(auDayKey);
+  const cur = auBounds().days.map(auDayKey);
   const agg = {};
   cur.forEach(k => Object.entries(c.src[k] || {}).forEach(([s, v]) => { const a = (agg[s] ||= { ios: 0, android: 0, other: 0 }); AU_OS.forEach(o => (a[o] += v[o])); }));
   const keys = Object.keys(agg).sort((a, b) => AU_OS.reduce((s, o) => s + agg[b][o] - agg[a][o], 0));
@@ -7190,7 +7237,7 @@ function auRegsHtml() {
   if (!list.length) return `<div class="au-empty">אין נרשמים בתקופה הזאת</div>`;
   return list.map(f => {
     const os = auOsOf(f.signupOs);
-    const st = f.status === 'approved' ? '<span class="au-tag ok">אושר</span>' : f.status === 'pending' ? '<span class="au-tag wait">ממתין לאישור</span>' : `<span class="au-tag">${esc(f.status || '')}</span>`;
+    const st = f.status === 'approved' ? '<span class="au-tag ok">אושר</span>' : f.status === 'pending' ? '<span class="au-tag wait">ממתין לאישור</span>' : f.status === 'rejected' ? '<span class="au-tag no">נדחה</span>' : `<span class="au-tag">${esc(f.status || '')}</span>`;
     return `<div class="au-reg" onclick="openFanFullCard('${esc(f.id)}')"><div class="au-reg-name">${f.memberNumber ? '#' + esc(String(f.memberNumber)) + ' · ' : ''}${esc(f.name)}${f.isBusinessOwner ? ' · בעל עסק' : ''}</div>
       <div class="au-reg-when">${f.registeredAt.toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
       <div class="au-tags"><span class="au-tag"><span class="au-key" style="background:${AU_COLOR[os]}"></span>${f.signupOs ? AU_OS_NAME[os] : 'מכשיר לא נמדד'}</span>${f.signupSurface ? `<span class="au-tag">${f.signupSurface === 'app' ? 'מהאפליקציה' : 'מהאתר'}</span>` : ''}${f.signupMethod ? `<span class="au-tag">${AU_METHOD[f.signupMethod] || esc(f.signupMethod)}</span>` : ''}${st}</div></div>`;
@@ -7316,9 +7363,11 @@ function appUsageHtml() {
   const seg = (k, opts) => `<div class="au-seg" role="group">${opts.map(([v, l, os]) => `<button type="button" class="${String(auState[k]) === String(v) ? 'on' : ''}" onclick="auSet('${k}','${v}')">${os ? `<span class="au-key" style="background:${AU_COLOR[os]}"></span>` : ''}${l}</button>`).join('')}</div>`;
   const tbl = (k) => `<button class="au-as-table" onclick="auSet('table','${k}')">${auState.tables[k] ? 'הצג כגרף' : 'הצג כטבלה'}</button>`;
   const head = `<div class="au-top"><h2>אפליקציה ושימוש</h2></div>${tabs}
-    <div class="au-filters">${seg('range', [[1, 'היום'], [7, '7 ימים'], [30, '30 ימים'], [90, '90 ימים']])}${seg('os', [['all', 'הכול'], ['ios', 'אייפון', 'ios'], ['android', 'אנדרואיד', 'android']])}
+    <div class="au-filters">${seg('range', [[1, 'היום'], [7, '7 ימים'], [30, '30 ימים'], [90, '90 ימים'], ['all', 'הכול'], ['custom', 'בחירת תאריכים']])}
+    ${auState.range === 'custom' ? (() => { const st = 'font:inherit;font-size:13px;padding:5px 8px;border-radius:9px;border:1px solid var(--au-line);background:#fff;color:var(--au-ink)'; const today = auYmd(new Date());
+      return `<span class="au-note" style="display:inline-flex;align-items:center;gap:6px">מ-<input type="date" style="${st}" value="${auState.from}" max="${today}" onchange="auSet('from', this.value)" aria-label="מתאריך"> עד <input type="date" style="${st}" value="${auState.to}" max="${today}" onchange="auSet('to', this.value)" aria-label="עד תאריך"></span>`; })() : ''}${seg('os', [['all', 'הכול'], ['ios', 'אייפון', 'ios'], ['android', 'אנדרואיד', 'android']])}
     <label class="au-note" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${auState.includeTest ? 'checked' : ''} onchange="auSet('includeTest')"> כולל מנהלים ובדיקות</label>
-    <span class="au-note">${(() => { const d = auDays(0, auState.range); return auState.range === 1 ? 'היום, ' + auShort(d[0]) : auShort(d[0]) + '–' + auShort(d[d.length - 1]); })()}</span></div>`;
+    <span class="au-note">${auPeriodLabel()}</span></div>`;
   if (auError) return `<div class="au-root">${head}<div class="au-card"><div class="au-empty">הטעינה נכשלה: ${esc(auError)} · <button class="au-as-table" onclick="retryAppUsage()">לנסות שוב</button></div></div></div>`;
   if (!auData) return `<div class="au-root">${head}<div class="au-card"><div class="au-empty">טוען נתונים…</div></div></div>`;
   const c = auCompute();
@@ -7375,7 +7424,9 @@ function bindAppUsage() {
   const box = document.getElementById('auTrend'); if (!box) return;
   const c = auCompute();
   const oss = auOsList();
-  const series = auState.range === 1 ? auDays(0, 14) : auDays(0, auState.range);
+  // יום בודד — 14 הימים שמסתיימים בו, כדי שיהיה קו
+  const cur = auBounds().days;
+  const series = cur.length > 1 ? cur : auSpan(new Date(+cur[0] - 13 * 864e5), cur[0]);
   const k = auState.metric;
   if (auState.tables.trend) {
     box.innerHTML = auTable(['תאריך', ...oss.map(o => AU_OS_NAME[o])], series.slice().reverse().map(d => [auShort(d), ...oss.map(o => auFmt(auVal(c, d, o, k)))]));
@@ -12530,7 +12581,9 @@ function taskTableBodyHtml(list) {
 }
 
 function taskCenterHtml() {
+  // §628 — רמי: "תשים לי אותם בתור משימה בדשבורד ניהול" – מי שנדחה לפני "לאפשר תיקון אימות"
   return `
+    ${legacyRejectBannerHtml()}
     ${taskTilesHtml()}
     <div class="filter-toolbar">${taskFilterBarHtml()}</div>
     <div id="taskTableWrap">${safeTaskCenterTableHtml()}</div>
