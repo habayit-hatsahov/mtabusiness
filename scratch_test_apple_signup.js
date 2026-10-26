@@ -410,7 +410,7 @@ function makePage(hosts, opts) {
 
   console.log('\n== §450 — תגית ה-script קיימת בדף שהודלק, וחסרה בשאר ==');
   {
-    const tag = /<script src="native-apple\.js"><\/script>/;
+    const tag = /<script src="native-apple\.js(\?v=\w+)?"><\/script>/;   // §618 – גם עם ?v=
     const fan = fs.readFileSync(path.join(__dirname, 'fan-register.html'), 'utf8');
     const biz = fs.readFileSync(path.join(__dirname, 'business.html'), 'utf8');
     check('fan-register.html טוען את native-apple.js', tag.test(fan));
@@ -426,8 +426,8 @@ function makePage(hosts, opts) {
     // ר' [[feedback_stale_action_item_may_be_harmful]] — אותו דפוס, רק שכאן הוא נתפס.
     check('business.html טוען את native-apple.js', tag.test(biz));
     [['fan-register.html', fan], ['business.html', biz]].forEach(([name, src]) => {
-      const iNative = src.indexOf('<script src="native-apple.js">');
-      const iSignup = src.indexOf('<script src="apple-signup.js">');
+      const iNative = src.indexOf('<script src="native-apple.js');
+      const iSignup = src.indexOf('<script src="apple-signup.js');
       check('🔑 ' + name + ' — native-apple לפני apple-signup',
             iNative > -1 && iSignup > -1 && iNative < iSignup, iNative + ' < ' + iSignup);
     });

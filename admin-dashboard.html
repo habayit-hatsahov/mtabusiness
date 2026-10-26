@@ -2552,7 +2552,7 @@ table.au-t td.n { font-variant-numeric: tabular-nums; font-weight: 700; }
 import { db, auth, getStorageLazy } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js';
 import {
-  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc, runTransaction, query, where, getDocs, writeBatch, setDoc, addDoc, orderBy, limit, getCountFromServer, arrayUnion, deleteField, increment
+  collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc, runTransaction, query, where, getDocs, writeBatch, setDoc, addDoc, orderBy, limit, getCountFromServer, arrayUnion, deleteField, increment, startAfter
 } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
 import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-storage.js';
 // מנוע העיצוב של גוף המייל — אותו קובץ בדיוק שהוורקר מייבא (worker/src/brevo.js), כדי שהתצוגה
@@ -6853,21 +6853,37 @@ window.auSet = function(k, v) {
   renderMain();
 };
 
+// §618 — עמודים של AU_LIMIT עד שנגמר (26.10: acts הגיע ל-13,608 והמסך הציג חלק אקראי).
+// בלי orderBy מפורש Firestore ממיין לפי מזהה המסמך, ולכן startAfter עובד בלי אינדקס חדש.
+// truncated רק אם גם AU_MAX_PAGES עמודים לא הספיקו.
+const AU_MAX_PAGES = 6;
+async function auGetAll(q) {
+  const docs = [];
+  let last = null;
+  for (let i = 0; i < AU_MAX_PAGES; i++) {
+    const snap = await statsWithTimeout(getDocs(last ? query(q, startAfter(last), limit(AU_LIMIT)) : query(q, limit(AU_LIMIT))));
+    docs.push(...snap.docs);
+    if (snap.size < AU_LIMIT) return { docs, truncated: false };
+    last = snap.docs[snap.docs.length - 1];
+  }
+  return { docs, truncated: true };
+}
+
 async function loadAppUsage() {
   if (auData || auError || auLoading) return;
   auLoading = true;
   try {
     const [u, l, lp, ac] = await Promise.all([
-      statsWithTimeout(getDocs(query(collection(db, 'events'), where('type', 'in', ['visit', 'engaged']), limit(AU_LIMIT)))),
-      statsWithTimeout(getDocs(query(collection(db, 'events'), where('path', '==', '/download'), limit(AU_LIMIT)))),
+      auGetAll(query(collection(db, 'events'), where('type', 'in', ['visit', 'engaged']))),
+      auGetAll(query(collection(db, 'events'), where('path', '==', '/download'))),
       // §541 — דף הבית של האתר: pageView (blockId landing:<src>) ולחיצות על חנות (landingBlockClick, store:<os>:<src>)
-      statsWithTimeout(getDocs(query(collection(db, 'events'), where('path', '==', '/landing.html'), limit(AU_LIMIT)))),
+      auGetAll(query(collection(db, 'events'), where('path', '==', '/landing.html'))),
       // §542 — מה קרה אחרי ההורדה: חלון כניסה/הרשמה, שלבי טופס, שליחה, כניסה שהצליחה/נכשלה.
       // מקושר למכשיר דרך sessionId (fan-register הוא iframe בתוך welcome וחולק איתו את sessionStorage).
-      statsWithTimeout(getDocs(query(collection(db, 'events'), where('type', 'in', AU_ACT_TYPES), limit(AU_LIMIT)))),
+      auGetAll(query(collection(db, 'events'), where('type', 'in', AU_ACT_TYPES))),
     ]);
-    const map = (snap) => { const out = []; snap.forEach(d => { const e = d.data(); const at = toJsDate(e.createdAt); if (at) out.push({ at, type: e.type, channel: e.channel || '', blockId: e.blockId || '', memberId: e.memberId || '', sessionId: e.sessionId || '' }); }); return out; };
-    auData = { usage: map(u), links: map(l), landing: map(lp), acts: map(ac), truncated: [u, l, lp, ac].some(x => x.size >= AU_LIMIT) };
+    const map = (res) => { const out = []; res.docs.forEach(d => { const e = d.data(); const at = toJsDate(e.createdAt); if (at) out.push({ at, type: e.type, channel: e.channel || '', blockId: e.blockId || '', memberId: e.memberId || '', sessionId: e.sessionId || '' }); }); return out; };
+    auData = { usage: map(u), links: map(l), landing: map(lp), acts: map(ac), truncated: [u, l, lp, ac].some(x => x.truncated) };
   } catch (err) {
     console.error('loadAppUsage failed:', err);
     auError = statsErrLabel(err);
@@ -7299,7 +7315,7 @@ function appUsageHtml() {
   const c = auCompute();
   const trendLegend = auOsList().map(os => `<span><span class="au-ln" style="background:${AU_COLOR[os]}"></span>${AU_OS_NAME[os]}</span>`).join('');
   return `<div class="au-root">${head}
-    ${auData.truncated ? `<div class="au-card" style="margin-bottom:12px;border-color:var(--au-bad)">⚠️ הגענו לתקרת ${auFmt(AU_LIMIT)} אירועים – חלק מהנתונים לא נטען, והמספרים חלקיים.</div>` : ''}
+    ${auData.truncated ? `<div class="au-card" style="margin-bottom:12px;border-color:var(--au-bad)">⚠️ הגענו לתקרת ${auFmt(AU_LIMIT * AU_MAX_PAGES)} אירועים – חלק מהנתונים לא נטען, והמספרים חלקיים.</div>` : ''}
     <div class="au-kpis">${auKpisHtml(c)}</div>
     <div class="au-grid">
       <div class="au-card"><div class="au-card-h"><h3>מהקישור עד חבר מאושר</h3>${tbl('funnel')}</div><p class="au-sub">כמה עברו כל שלב, ואיפה נושרים. רחפו על פס לפרטים.</p>${auFunnelHtml(c)}</div>

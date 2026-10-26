@@ -90,9 +90,16 @@
     } catch (e) { return false; }
   }
 
+  // 🔴 §618 — אנדרואיד 1.3 (23.10) כבר נושא את התוסף (באותה חבילה של גוגל), אבל שם הוא דורש
+  // `initialize({clientId, redirectUrl})` ונופל ב-"redirectUrl must be provided" – 4 כשלים
+  // 23–26.10. ההחלטה מ-22.9 ממילא: באנדרואיד גוגל, לא אפל. לכן אנדרואיד = 'blocked'.
+  function isAndroid(c) {
+    try { return typeof c.getPlatform === 'function' && c.getPlatform() === 'android'; } catch (e) { return false; }
+  }
+
   function mode() {
     var c = bridge();
-    if (c && hasPlugin(c)) return 'native';
+    if (c && hasPlugin(c)) return isAndroid(c) ? 'blocked' : 'native';
     return inApp() ? 'blocked' : 'web';
   }
 
