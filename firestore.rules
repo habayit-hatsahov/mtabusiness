@@ -1094,6 +1094,43 @@ service cloud.firestore {
       allow list, write: if isAdmin();
     }
 
+    // ── §624 — לב ל"האוהד שמאחורי העסק" (weekly-render.js + home.html). storyLikes/{storyId}
+    // (storyId = fan_<bizId>_<start>) מחזיק רק `count`, ו-by/{uid} הוא הלב של כל חבר. המונה זז
+    // רק יחד עם המסמך האישי באותו batch (existsAfter/getAfter) – לכן כל אחד נותן לב אחד, ואי אפשר
+    // לנפח או להוריד את המונה בלי לב אמיתי מאחוריו. אורח (isDemo) לא כותב.
+    match /storyLikes/{storyId} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create: if isSignedInMember() && !isDemo() && storyId.size() <= 120 &&
+        request.resource.data.keys().hasOnly(['count']) && request.resource.data.count == 1 &&
+        !exists(/databases/$(database)/documents/storyLikes/$(storyId)/by/$(request.auth.uid)) &&
+        existsAfter(/databases/$(database)/documents/storyLikes/$(storyId)/by/$(request.auth.uid));
+      allow update: if isSignedInMember() && !isDemo() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count']) && (
+          (request.resource.data.count == resource.data.count + 1 &&
+            !exists(/databases/$(database)/documents/storyLikes/$(storyId)/by/$(request.auth.uid)) &&
+            existsAfter(/databases/$(database)/documents/storyLikes/$(storyId)/by/$(request.auth.uid))) ||
+          (request.resource.data.count == resource.data.count - 1 &&
+            exists(/databases/$(database)/documents/storyLikes/$(storyId)/by/$(request.auth.uid)) &&
+            !existsAfter(/databases/$(database)/documents/storyLikes/$(storyId)/by/$(request.auth.uid))));
+      allow delete: if false;
+
+      match /by/{uid} {
+        allow get: if request.auth != null && request.auth.uid == uid;
+        allow list: if isAdmin();
+        allow create: if isSignedInMember() && !isDemo() && request.auth.uid == uid &&
+          request.resource.data.keys().hasOnly(['at']) && request.resource.data.at == request.time &&
+          getAfter(/databases/$(database)/documents/storyLikes/$(storyId)).data.count ==
+            (exists(/databases/$(database)/documents/storyLikes/$(storyId))
+              ? get(/databases/$(database)/documents/storyLikes/$(storyId)).data.count : 0) + 1;
+        allow delete: if request.auth != null && request.auth.uid == uid &&
+          exists(/databases/$(database)/documents/storyLikes/$(storyId)) &&
+          getAfter(/databases/$(database)/documents/storyLikes/$(storyId)).data.count ==
+            get(/databases/$(database)/documents/storyLikes/$(storyId)).data.count - 1;
+        allow update: if false;
+      }
+    }
+
     // ── §517ב — העתק ציבורי של העסקים + קודי קופון לחברים בלבד ────────────────────────────
     // נכתבים רק ע"י הוורקר (worker/src/bizpublic.js, service account – עוקף את החוקים), כל דקה.
     // bizPublic: רק עסקים מאושרים, רק שדות מרשימת-היתר – קריא לכולם. חבר מחובר מעדכן בו לב/כניסה

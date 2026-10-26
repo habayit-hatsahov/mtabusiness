@@ -271,6 +271,73 @@
   function fill(s, ph) { return s ? esc(s) : '<span class="wk-fill">' + esc(ph) + '</span>'; }
   var GO = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg>';
   var X = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+
+  // ── §624 לב ל"האוהד שמאחורי העסק" (רמי, 26.10: "תניע את האנשים לפרגן"; דמו fan-like-demo.html אושר) ─────
+  // הלב בראש הגיליון + שורת הנעה מתחת לבעל העסק + תגית מונה על התיבה בחוץ – כולם אותו לב.
+  // המסד (storyLikes) ב-home.html: הוא קורא ל-WK.setLike ונרשם ב-WK.onLike. כאן רק התצוגה והמצב,
+  // ולכן ציור-מחדש (WK.apply) לא מאבד את המונה. בתצוגה המקדימה בעורך – רק מראה, בלי לחיצה.
+  var HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 8 3.4 4.5 6.9 4.5c2.1 0 3.6 1.2 5.1 3 1.5-1.8 3-3 5.1-3 3.5 0 5.5 3.5 4.2 6.8-1.8 4.6-9.3 9.2-9.3 9.2z" stroke-linejoin="round"/></svg>';
+  var like = { key: '', count: null, mine: false, busy: false, handler: null };
+  function likeKey(d) {
+    var f = d && d.fan, id = f && (f.bizId || (KNOWN[f.biz] || {}).id);
+    return f && id && f.start && isLive(f) ? 'fan_' + id + '_' + f.start : '';
+  }
+  function firstName(d) { return String((d.fan && d.fan.owner) || '').trim().split(/\s+/)[0] || 'לבעל העסק'; }
+  function likeHeroInner() {
+    var n = like.count;
+    return n == null ? '' : n ? n + '<small>פירגנו</small>' : '<small>היו<br>ראשונים</small>';
+  }
+  function likeNudgeInner(first) {
+    var n = like.count || 0;
+    if (like.mine) return '<b>פירגנת ל' + esc(first) + ' 💛</b> ' + (n > 1 ? 'יחד איתך ' + n + ' אוהדים.' : 'היית הראשון!');
+    if (like.count == null) return 'תנו לב ל' + esc(first) + ' ונפרגן לעסק ביחד.';
+    return n ? '<b>' + (n === 1 ? 'אוהד אחד' : n + ' אוהדים') + '</b> כבר ' + (n === 1 ? 'פירגן' : 'פירגנו') + ' ל' + esc(first) + '. תנו גם אתם לב ונפרגן לעסק ביחד.'
+      : '<b>היו הראשונים לפרגן ל' + esc(first) + '</b> – לב אחד אומר לו שהקהילה מאחוריו.';
+  }
+  function likeChipInner() { return HEART + (like.count ? like.count : 'לפרגן'); }
+  function likeBtn(cls, ctx, label) {
+    return '<button type="button" class="' + cls + (like.mine ? ' liked' : '') + '" data-wk-like aria-pressed="' + like.mine + '" aria-label="' + esc(label) + '"' + act(ctx, 'WK.like(this)') + '>' + HEART + '</button>';
+  }
+  // מעדכן במקום כל העותקים (גיליון + תיבה) – בלי לצייר מחדש, כדי שהגלילה והאנימציה לא יקפצו
+  function paintLike() {
+    var d = state.d; if (!d) return;
+    var first = firstName(d);
+    [].forEach.call(document.querySelectorAll('[data-wk-like]'), function (b) { b.classList.toggle('liked', like.mine); b.setAttribute('aria-pressed', String(like.mine)); });
+    [].forEach.call(document.querySelectorAll('[data-wk-like-count]'), function (el) { el.innerHTML = likeHeroInner(); });
+    [].forEach.call(document.querySelectorAll('[data-wk-like-nudge]'), function (el) { el.innerHTML = likeNudgeInner(first); });
+    [].forEach.call(document.querySelectorAll('[data-wk-like-chip]'), function (el) { el.innerHTML = likeChipInner(); });
+  }
+  function likeBurst(btn) {
+    btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
+    if (!like.mine) return;
+    for (var i = 0; i < 7; i++) {
+      var s = document.createElement('span'), a = (Math.PI * 2 * i) / 7;
+      s.className = 'wk-burst'; s.textContent = '💛';
+      s.style.setProperty('--dx', Math.round(Math.cos(a) * 48) + 'px'); s.style.setProperty('--dy', Math.round(Math.sin(a) * 48) + 'px');
+      btn.appendChild(s);
+      setTimeout(function (el) { el.remove(); }.bind(null, s), 950);
+    }
+  }
+  // לחיצה: התצוגה מתעדכנת מיד, והמסד אחריה. כשל – חוזרים למצב הקודם ואומרים את זה (לא בשקט).
+  function likeClick(btn) {
+    if (!like.key || like.busy) return;
+    if (typeof like.handler !== 'function') { alert('הלב עוד נטען – נסו שוב בעוד רגע'); return; }
+    var prev = { count: like.count, mine: like.mine };
+    like.mine = !like.mine;
+    like.count = Math.max(0, (like.count || 0) + (like.mine ? 1 : -1));
+    like.busy = true; paintLike(); likeBurst(btn);
+    track('fan', like.mine ? 'like' : 'unlike');
+    Promise.resolve().then(function () { return like.handler(like.key, like.mine); }).then(function () { like.busy = false; }, function (e) {
+      like.busy = false; like.count = prev.count; like.mine = prev.mine; paintLike();
+      alert(e && e.userMessage ? e.userMessage : 'הלב לא נשמר – בדקו את החיבור ונסו שוב');
+    });
+  }
+  function setLike(key, count, mine) {
+    if (key !== like.key || like.busy) return;
+    if (count != null) like.count = Math.max(0, Number(count) || 0);
+    if (mine != null) like.mine = !!mine;
+    paintLike();
+  }
   function act(ctx, js) { return ctx.preview ? '' : ' onclick="' + js + '"'; }
   function bizInfo(b) { var k = KNOWN[b.name] || {}; return { id: b.id || k.id || '', logo: b.logo || k.logo || '', area: b.area || k.area || '' }; }
   function tok(s, t) { return String(s || '').split('{end}').join(t.end).split('{next}').join(t.next); }
@@ -333,7 +400,8 @@
     if (kind === 'fan') {
       var f = d.fan, cover = f.cover || (KNOWN[f.biz] || {}).cover || '';
       return '<div class="wk-slide wk-s-fan"' + o + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' +
-        '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span>' + (f.cadence ? '<span class="wk-cad">' + esc(tok(f.cadence, t)) + '</span>' : '') + '</div>' +
+        '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span>' + (f.cadence ? '<span class="wk-cad">' + esc(tok(f.cadence, t)) + '</span>' : '') +
+        (likeKey(d) || ctx.preview ? '<span class="wk-like-chip" data-wk-like-chip>' + likeChipInner() + '</span>' : '') + '</div>' +
         (f.owner ? '<div class="who">' + esc(f.owner) + (f.showFan && f.fanTag ? ' · ' + esc(f.fanTag) : '') + '</div>' : '') +
         '<div class="t">' + esc(f.biz || 'בחרו עסק') + '</div>' +
         (f.slideLine ? '<div class="s">' + esc(f.slideLine) + '</div>' : '') +
@@ -445,12 +513,15 @@
       var f = d.fan, cover = f.heroImg || f.cover || (KNOWN[f.biz] || {}).cover || '', story = f.hasStory;
       var chips = String(f.chips || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
       var bizId = f.bizId || (KNOWN[f.biz] || {}).id || '';
-      return '<div class="wk-hero' + (f.heroImg ? ' fan-photo' : '') + '"' + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' + closeBtn(kind, ctx) +
+      var hasLike = !!(likeKey(d) || ctx.preview), first = firstName(d);
+      return '<div class="wk-hero' + (f.heroImg ? ' fan-photo' : '') + (hasLike ? ' has-like' : '') + '"' + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' + closeBtn(kind, ctx) +
+        (hasLike ? '<div class="wk-hero-like">' + likeBtn('wk-heart', ctx, 'לפרגן ל' + first) + '<div class="wk-like-count" data-wk-like-count>' + likeHeroInner() + '</div></div>' : '') +
         '<span class="wk-badge">האוהד שמאחורי העסק</span><div class="who">עד ' + t.end + (f.cadence ? ' · ' + esc(tok(f.cadence, t)) : '') + '</div><div class="t">' + esc(f.biz || 'בחרו עסק') + '</div></div>' +
         '<div class="wk-in">' +
         (f.cadenceNote ? '<div class="wk-rot navy"><b>' + esc(f.explainTitle || '') + '</b><p>' + esc(tok(f.cadenceNote, t)) + '</p></div>' : '') +
         (f.owner ? '<div class="wk-owner"><div class="wk-avatar">' + esc(f.owner.charAt(0)) + '</div><div><div class="wk-owner-name">' + esc(f.owner) + '</div>' +
           '<div class="wk-owner-role">בעל העסק' + (f.showFan && f.fanTag ? ' <span class="wk-fan">✓ ' + esc(f.fanTag) + '</span>' : '') + '</div></div></div>' : '') +
+        (hasLike ? '<div class="wk-nudge">' + likeBtn('wk-heart-mini', ctx, 'לפרגן ל' + first) + '<div data-wk-like-nudge>' + likeNudgeInner(first) + '</div></div>' : '') +
         '<div class="wk-lead">' + (f.title ? '<b>' + esc(f.title) + '</b>' : '') + fill(f.text, 'טקסט על האוהד ועל העסק') + '</div>' +
         (chips.length ? '<div class="wk-chips">' + chips.map(function (c) { return '<span>' + esc(c) + '</span>'; }).join('') + '</div>' : '') +
         (story && f.sections && f.sections.length ? (f.quote ? '<div class="wk-quote">"' + esc(f.quote) + '"</div>' : '') +
@@ -667,6 +738,31 @@
     '.wk-hero.page.wk-th-yellow,.wk-hero.page.wk-th-soft{color:#0A2A66}',
     '.wk-hero.page.wk-th-yellow > .wk-badge{background:#0A2A66;color:#FFD400}',
     '.wk-in{padding:18px 18px 120px;max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:18px;color:#3A4C7A}',
+    // §624 – הלב: צהוב-כחול, בלי אדום (רמי). בראש הגיליון משמאל, ממול לשם העסק.
+    '.wk-hero-like{position:absolute!important;left:16px;bottom:18px;z-index:3;display:flex;flex-direction:column;align-items:center;gap:4px}',
+    '.wk-hero.has-like > .t,.wk-hero.has-like > .who{margin-inline-end:84px}',
+    '.wk-heart{position:relative;width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,255,255,.85);background:rgba(10,42,102,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:transform .15s ease,background .2s ease;-webkit-tap-highlight-color:transparent}',
+    '.wk-heart svg{width:32px;height:32px}',
+    '.wk-heart svg path{fill:none;stroke:#fff;stroke-width:2}',
+    '.wk-heart.liked{background:#FFD400;border-color:#FFD400}',
+    '.wk-heart.liked svg path{fill:#0A2A66;stroke:#0A2A66}',
+    '.wk-heart:active,.wk-heart-mini:active{transform:scale(.92)}',
+    '.wk-heart.pop svg,.wk-heart-mini.pop svg{animation:wkPop .45s ease}',
+    '@keyframes wkPop{0%{transform:scale(1)}35%{transform:scale(1.45)}70%{transform:scale(.9)}100%{transform:scale(1)}}',
+    '.wk-like-count{font-size:15px;font-weight:900;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.5);line-height:1;text-align:center;min-height:15px}',
+    '.wk-like-count small{display:block;font-size:10.5px;font-weight:700;color:#FFD400;margin-top:2px}',
+    '.wk-burst{position:absolute;left:50%;top:50%;pointer-events:none;font-size:18px;animation:wkFly .9s ease-out forwards}',
+    '@keyframes wkFly{from{opacity:1;transform:translate(-50%,-50%) scale(.6)}to{opacity:0;transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(1.2)}}',
+    '.wk-nudge{display:flex;align-items:center;gap:10px;background:#FFF8CC;border:1px solid #F3E27A;border-radius:14px;padding:10px 12px;font-size:13.5px;line-height:1.45;color:#0A2A66}',
+    '.wk-nudge b{font-weight:800}',
+    '.wk-heart-mini{position:relative;flex:none;width:40px;height:40px;border-radius:50%;border:2px solid #0A2A66;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent}',
+    '.wk-heart-mini svg{width:22px;height:22px}',
+    '.wk-heart-mini svg path{fill:none;stroke:#0A2A66;stroke-width:2.2}',
+    '.wk-heart-mini.liked{background:#FFD400;border-color:#FFD400}',
+    '.wk-heart-mini.liked svg path{fill:#0A2A66}',
+    '.wk-like-chip{margin-inline-start:auto;display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.95);color:#0A2A66;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800}',
+    '.wk-like-chip svg{width:14px;height:14px}',
+    '.wk-like-chip svg path{fill:#0A2A66}',
     '.wk-inline .wk-in{padding-bottom:24px}',
     '.wk-p{font-size:15.5px;line-height:1.65;margin:0;white-space:pre-line}',
     '.wk-owner{display:flex;align-items:center;gap:10px}',
@@ -801,6 +897,8 @@
     injectCss();
     state.root = root;
     var d = state.d = data || load(), ctx = ctxFor(d);
+    var k2 = likeKey(d);
+    if (k2 !== like.key) { like.key = k2; like.count = null; like.mine = false; like.busy = false; }
     root.innerHTML = '<section class="wk" aria-label="הטבה בלעדית, האוהד שמאחורי העסק, Yellow Zone"><div class="wk-track" id="wkTrack">' +
       order(d).map(function (k) { return slideHtml(k, d, ctx); }).join('') + '</div><div class="wk-dots" id="wkDots">' +
       order(d).map(function (k, i) { return '<i' + (i ? '' : ' class="on"') + '></i>'; }).join('') + '</div>' +
@@ -896,6 +994,8 @@
     DEFAULTS: DEFAULTS, pageFromDir: pageFromDir, load: load, save: save, reset: reset, merge: merge, apply: apply,
     period: period, dm: dm, timing: timing, esc: esc, span: span, isLive: isLive, ctxFor: ctxFor, order: order,
     slideHtml: slideHtml, sheetInner: sheetInner, injectCss: injectCss,
-    mount: mount, step: step, tok: tok, track: track, setUsDir: setUsDir, usDir: function () { return state.d && state.d.usDir; }, open: open, close: close, biz: biz, act: doAct
+    mount: mount, step: step, tok: tok, track: track, setUsDir: setUsDir, usDir: function () { return state.d && state.d.usDir; }, open: open, close: close, biz: biz, act: doAct,
+    // §624 – הלב: likeKey() למסד, setLike() מהמסד, onLike(fn) – fn(key, mine) מחזירה Promise
+    like: likeClick, likeKey: function () { return like.key; }, setLike: setLike, onLike: function (fn) { like.handler = fn; }
   };
 })();
