@@ -14,6 +14,7 @@
   // נשארים כאן גם בדפדפן כשיש ?login=1: הקישור במיילי האישור (MEMBER_LOGIN_URL) והכניסה של מנהלים.
   (function () {
     var inApp = !!window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || '');
+    if (inApp) document.documentElement.classList.add('yz-app');   // §629 – שורת ההרשמה בחלון ההתחברות
     var p = new URLSearchParams(location.search);
     var deleteFlow = false;
     try { deleteFlow = sessionStorage.getItem('yz_delete_flow') === '1'; } catch (e) {}
@@ -411,6 +412,14 @@ window.heroNlRegister = function () {
   window.heroNlReset();
   openJoinModal();
   if (live) { try { f.contentWindow.hbApplyRegPrefill(); } catch (e) {} }
+};
+// §629 — "עוד לא נרשמתם? להרשמה" בראש חלון ההתחברות. ביום ההשקה כ-95 איש לחצו "להתחברות"
+// לפני שנרשמו ונכשלו ב-Google/Apple/קוד. מדידה נפרדת: formOpen loginModalReg (ואחריו joinModal).
+// אותו מעבר בין המודאלים כמו heroNlRegister – בלי closeModal (ר' ההערה שם).
+window.heroLoginRegister = function () {
+  window.logEvent && window.logEvent('formOpen', { blockId: 'loginModalReg' });
+  document.getElementById('loginOverlay').classList.remove('open');
+  openJoinModal();
 };
 
 // ── §322 — פאנל "לא מצליחים להיכנס? כתבו לנו" ─────────────────────────────────────────────
@@ -1702,6 +1711,13 @@ button { font-family: inherit; }
 .login-modal-body { padding: 30px 26px 26px; display: flex; flex-direction: column; gap: 16px; }
 .login-modal-title { font-size: 20px; font-weight: 800; color: var(--ink); text-align: center; }
 .login-modal-sub { font-size: 13px; color: var(--ink-3); text-align: center; margin-top: 8px; line-height: 1.5; }
+/* §629 — שורת ההרשמה מתחת לכותרת: צהוב רך, שלא תתחרה בכפתורי הכניסה. ב-ap-mode מוסתרת עם #loginHead. */
+/* רק באפליקציה: בדפדפן הדף נפתח רק עם ?login=1 (מייל האישור), ואין הרשמה בדפדפן (§484). */
+.lm-reg-wrap { display: none; text-align: center; margin-top: 12px; }
+html.yz-app .lm-reg-wrap { display: block; }
+.lm-reg { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--ink-2);
+          background: var(--acc-soft); border: 1px solid var(--acc-line); border-radius: 999px; padding: 6px 14px; }
+.lm-reg a { color: var(--ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 
 /* ── §387/§399 — כניסה עם Google, מתחת לטלפון+קוד ───────────────────────────────────────
    מוסתר עד שהכפתור באמת צויר (ר' hbRenderGoogleLoginBtn): קו-מפריד עם שאלה, בלי כפתור
@@ -2232,6 +2248,7 @@ button { font-family: inherit; }
              באמת צויר** (hbRenderGoogleLoginBtn). אותו כלל בדיוק כמו הבלוק עצמו: אסור
              להזכיר אפשרות שאינה על המסך. -->
         <div class="login-modal-sub" id="loginModalSub">הטלפון והקוד בן 6 הספרות שקיבלתם באישור החברות</div>
+        <div class="lm-reg-wrap"><span class="lm-reg">עוד לא נרשמתם? <a href="#" onclick="event.preventDefault();heroLoginRegister();">להרשמה</a></span></div>
       </div>
 
       <!-- ══ §415ב — כניסה עם Google, **מעל** טלפון+קוד ══════════════════════════════════
