@@ -10835,7 +10835,6 @@ function fanRowsHtml() {
       .concat(cls.treatments.map(t => treatBadgeHtml(t, f)));
     if (f.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">כפילות אפשרית</span>`);
     else if (f.reviewFlag) badges.push(`<span class="warn-badge">שם לא תואם</span>`);
-    if (f.checkNote && f.status === 'pending') badges.push(`<span class="warn-badge" title="${esc(f.checkNote)}">⚠️ לבדיקה</span>`);
     if (f.isBusinessOwner) badges.push(`<span class="treat-badge">בעל עסק</span>`);
     badges.push(...followupBadgesHtml(f));   // §415 — ריק כשאין שידור ואין נדנוד
     const sel = selectedFanIds.has(f.id);
@@ -10849,7 +10848,7 @@ function fanRowsHtml() {
       <div class="task-row ${f.status} ${active?'active':''} ${sel?'selected':''}" onclick="selectFanDetail('${f.id}')">
         <div class="task-row-top">
           <div class="task-row-check" onclick="event.stopPropagation();toggleFanSelect('${f.id}')">${sel ? '✓' : ''}</div>
-          <div class="task-row-name">${esc(f.name)}</div>
+          <div class="task-row-name">${esc(f.name)}${checkNoteTagHtml(f)}</div>
         </div>
         <div class="task-row-badges">${badges.join('')}</div>
         <div class="task-row-meta${wa ? ' has-action' : ''}">${esc(metaBits)}${wa}</div>
@@ -10883,6 +10882,11 @@ window.fanBackToList = function() {
   if (sp) sp.classList.remove('mobile-show-detail');
 };
 
+// §627ב — "לבדיקה" ליד השם (רמי: בשורת התגיות היא נבלעה). רק כל עוד ממתין.
+function checkNoteTagHtml(f) {
+  return f && f.checkNote && f.status === 'pending'
+    ? ` <span class="warn-badge" style="vertical-align:middle" title="${esc(f.checkNote)}">⚠️ לבדיקה</span>` : '';
+}
 function fanFullDetailHtml(id, opts) {
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return `<div class="placeholder-note">אוהד לא נמצא</div>`;
@@ -10892,6 +10896,14 @@ function fanFullDetailHtml(id, opts) {
   // שיפוט-מהיר לאוהד — מאחד 3 פעולות שהיו מפוזרות בכרטיס (דגל-דדופ/בדיקת-מנהל/אשר-דחה),
   // אותו עיקרון בדיוק כמו quickJudgmentHtml לעסק (§130) — "בדיקת מנהל" מוצג תמיד כ-item (לא רק pending).
   const fanQjRows = [];
+  // §627ב — הערת הבדיקה ראשונה בשיפוט המהיר, כדי שתיראה לפני האישור
+  if (f.checkNote && f.status === 'pending') {
+    fanQjRows.push(`
+      <div class="qj-row" style="background:var(--warn-bg)">
+        <div class="qj-row-label"><div class="qj-row-step">הערה</div><div class="qj-row-name">⚠️ לבדיקה</div></div>
+        <div class="qj-row-value"><span class="qj-value-text"><b>${esc(f.checkNote)}</b></span></div>
+      </div>`);
+  }
   if (f.reviewFlag === 'name_mismatch') {
     fanQjRows.push(`
       <div class="qj-row">
@@ -12350,7 +12362,6 @@ function taskRow2Html(x) {
   const badges = [`<span class="class-badge">${x.c.primary}</span>`].concat(x.c.treatments.map(t => treatBadgeHtml(t, e)));
   if (x.kind === 'fan' && e.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">דגל בדיקה – כפילות אפשרית</span>`);
   else if (x.kind === 'fan' && e.reviewFlag) badges.push(`<span class="warn-badge">דגל בדיקה – שם לא תואם</span>`);
-  if (x.kind === 'fan' && e.checkNote && e.status === 'pending') badges.push(`<span class="warn-badge" title="${esc(e.checkNote)}">⚠️ לבדיקה</span>`);
   // ── §366 — "בעל עסק" חסר דווקא במסך שבו מחליטים ──────────────────────────────────────
   // המשתמש: *"בכל האוהדים יש תגית בעל העסק, בדשבורד ראשי בממתינים אין להם תגית"*.
   // התג היה קיים ב-fanRowsHtml (רשימת כל האוהדים) אבל לא כאן — וזה בדיוק המסך שבו
@@ -12378,7 +12389,7 @@ function taskRow2Html(x) {
   return `
     <div class="task-table-row ${selectedTaskKey===key?'active':''}" onclick="selectTask2('${x.kind}','${x.id}')">
       <div class="task-table-main">
-        <div class="task-table-name">${esc(e.name)}</div>
+        <div class="task-table-name">${esc(e.name)}${x.kind === 'fan' ? checkNoteTagHtml(e) : ''}</div>
         <div class="task-table-meta">${esc(metaLine)}</div>
       </div>
       <div class="task-table-badges">${badges.join('')}</div>
