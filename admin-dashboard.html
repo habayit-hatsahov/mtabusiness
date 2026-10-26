@@ -15742,7 +15742,7 @@ function m2FrameHtml() {
     <aside class="m2-side"><div class="m2-card"><div class="m2-step"><span class="m2-st">ככה זה ייראה</span></div><div class="m2-pvtabs" id="m2PvTabs"></div><div class="m2-pvwho" id="m2PvWho"></div><div id="m2Pv"></div></div></aside>
   </div>
   <div class="m2-modal-bg" id="m2Confirm"><div class="m2-modal"><h3>לשלוח?</h3><div id="m2ConfirmBody"></div>
-    <div class="m2-row"><button class="m2-btn" onclick="m2DoSend()">כן, לשלוח</button><button class="m2-btn ghost" onclick="document.getElementById('m2Confirm').classList.remove('open')">ביטול</button></div></div></div>`;
+    <div class="m2-row"><button class="m2-btn" onclick="m2DoSend()">כן, לשלוח</button><button class="m2-btn ghost" onclick="m2CancelSend()">ביטול</button></div></div></div>`;
 }
 let m2FocusSnap = null;
 function m2CaptureFocus() {
@@ -15755,6 +15755,9 @@ function m2Mount() {
   if (!m2.testTo) m2.testTo = CURRENT_ADMIN.email || '';
   m2SubscribeHist(); m2LoadSaved();
   m2RenderAud(); m2RenderChans(); m2RenderBoxes(); m2RenderSend(); m2RenderHist(); m2RenderPv();
+  // §620 — 🐛 חלון "לשלוח?" נסגר לבד: onSnapshot גלובלי (הרשמה חדשה משנה מונה) מצייר את המסגרת מחדש,
+  // והחלון חוזר בלי 'open'. נשמר כמצב ונפתח מחדש – עם המספרים העדכניים, שלפיהם m2DoSend שולח.
+  if (m2.confirmOpen) window.m2AskSend();
   if (m2FocusSnap) { const el = document.getElementById(m2FocusSnap.id); if (el) { el.focus(); try { el.setSelectionRange(m2FocusSnap.s, m2FocusSnap.e); } catch (e) {} } m2FocusSnap = null; }
 }
 const m2$ = (id) => document.getElementById(id);
@@ -16111,8 +16114,11 @@ window.m2AskSend = function () {
   const names = c.r.slice(0, 4).map(m2Label).join(', ') + (c.n > 4 ? ` ועוד ${c.n - 4}` : '');
   m2$('m2ConfirmBody').innerHTML = `<div style="font-size:14px;line-height:1.7">למי: <b>${esc(M2_AUDS.find((a) => a.k === m2.aud).t)}</b> – ${c.n}<br><span class="m2-hint">${esc(names)}</span></div><ul>${lines.map((l) => '<li>' + l + '</li>').join('')}</ul>`;
   m2$('m2Confirm').classList.add('open');
+  m2.confirmOpen = true;
 };
+window.m2CancelSend = function () { m2.confirmOpen = false; m2$('m2Confirm').classList.remove('open'); };
 window.m2DoSend = async function () {
+  m2.confirmOpen = false;
   m2$('m2Confirm').classList.remove('open');
   if (m2CanSend()) return;
   const d = JSON.parse(JSON.stringify(m2.doc)), c = m2Counts(), recips = c.r, block = m2Block();
