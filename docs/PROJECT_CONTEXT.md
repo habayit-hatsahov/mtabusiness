@@ -26787,3 +26787,4 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
   - 🔑 **למה שדה נפרד:** `photoH/photoTop/photoLeft/photoFadeBottom` שמורים גם במסמך `homeCarousel/current` (גובר על DEFAULTS ב-`merge`), והעורך `admin-carousel.html` לא נוגע בהם. שינוי בקוד בלבד לא היה משנה כלום באוויר. ראש הגיליון ממשיך להשתמש בשדות הישנים – נשאר כמו שהיה (202px).
 - **בפנים:** המשפט "כל חצי חודש – ב-1 וב-16…" (חזר על ההסבר למעלה) הוחלף ב-`.wk-cyc`: מימין "ההטבה הנוכחית · 25.10 – 15.11", משמאל "הטבה חדשה · מ-16.11"; פס כחול שמתמלא עם עיגול צהוב ב"היום", ומשמאלו קטע מפוספס צהוב להטבה הבאה; מתחת "עוד N ימים להטבה הזו". התאריכים מ-`timing()` (start/end של ההטבה).
 - `weekly-render.js?v=617` ב-home.html וב-admin-carousel.html. נבדק מקומית מול המסמך האמיתי (טלפון + מחשב).
+- ✅ **released** (26.10, `firebase deploy --only hosting`) – נבדק באתר החי: weekly-render.js עם slidePhoto ו-wk-cyc, sw v385, home.html עם ?v=617.
