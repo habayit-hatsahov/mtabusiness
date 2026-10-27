@@ -3907,8 +3907,34 @@ function kosherMissing(b) {
   return rel && typeof b.kosher !== 'boolean';
 }
 function cardGapLabels(b) {
-  return (kosherMissing(b) ? ['🍽️ כשרות'] : []).concat(missingFieldsFor(b));
+  const fu = bizFollowup(b);   // §644
+  return (fu ? ['❓ ' + (fu.label || 'לשאול את העסק')] : []).concat(kosherMissing(b) ? ['🍽️ כשרות'] : [], missingFieldsFor(b));
 }
+// ── §644 — "שאלה פתוחה מול העסק" ─────────────────────────────────────────────────────
+// רמי: "תשאיר לי משימה… מחר אני אטפל בזה מולו, תרשום לי מה לשאול בדיוק". מסמך settings אחד
+// (מנהל בלבד, הכלל הכללי) לפי מזהה עסק: { label, ask, then, at }. עסק מאושר → "כרטיס חסר באינדקס"
+// עם שבב ❓; כל עסק (גם ממתין) → שורה בראש השיפוט המהיר עם השאלה ו"✔️ טיפלתי". בלי שדה חדש בעסק.
+let bizFollowups = {};
+function bizFollowup(b) { const fu = b && bizFollowups[b.id]; return fu && fu.ask ? fu : null; }
+function bizFollowupRowHtml(b) {
+  const fu = bizFollowup(b);
+  if (!fu) return '';
+  return `
+    <div class="qj-row" style="background:#EEF3FF">
+      <div class="qj-row-label"><div class="qj-row-step">לשאול את העסק</div><div class="qj-row-name">❓ ${esc(fu.label || 'שאלה פתוחה')}</div></div>
+      <div class="qj-row-value"><span class="qj-value-text" style="white-space:pre-line">${esc(fu.ask)}</span>
+        ${fu.then ? `<div class="qj-value-hint" style="white-space:pre-line">${esc(fu.then)}</div>` : ''}</div>
+      <div class="qj-row-actions">
+        ${b.ownerPhone ? `<a class="qj-btn link" href="https://wa.me/${esc(String(b.ownerPhone).replace(/\D/g, '').replace(/^0/, '972'))}" target="_blank" rel="noopener">וואטסאפ לבעל העסק</a>` : ''}
+        <button class="qj-btn primary" onclick="closeBizFollowup('${b.id}')">✔️ טיפלתי</button>
+      </div>
+    </div>`;
+}
+window.closeBizFollowup = async function(id) {
+  if (!confirm('לסגור את השאלה? (אחרי שעדכנת את העסק לפי התשובה)')) return;
+  try { await setDoc(doc(db, 'settings', 'bizFollowups'), { [id]: deleteField() }, { merge: true }); }
+  catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
 
 // ── §252 — "סמן טופל" לכרטיס חסר ────────────────────────────────────────────────────────────
 // 3 מתוך 4 השדות ב-HEALTH_CHECKLIST אינם חובה על העסק בפועל (הטבה / שעות / תיאור): עסק שבחר
@@ -14711,6 +14737,7 @@ function quickJudgmentHtml(b) {
   // אין כאן יותר שורת "שדות טכניים ממתינים" — מוצג רק מה שבעל-העסק הגיש בפועל. ר' ההערה
   // ההיסטורית ליד realPendingChangeKeys/prunedPending.
   const bizInqRow = inquiriesQjRowHtml(bizInquiries(b), b.name);   // §631
+  const followRow = bizFollowupRowHtml(b);   // §644 — שאלה פתוחה מול העסק
   const decidedRow = qjDecidedRowHtml(b);   // §623 — "לכתוב לו על ההחלטות?" (נספר, אחרת אחרי ההחלטה האחרונה הגוף נעלם)
   // §648 — רמי: "בעל עסק עובר אימות רק בדף העסק". 37 בעלים של עסק ממתין כבר אושרו כאוהדים
   // (36 באישור הגורף של 26–27.10) – כאן נאמר את זה, כדי שהאימות שלו ייבדק עכשיו עם העסק.
@@ -14722,7 +14749,7 @@ function quickJudgmentHtml(b) {
       <div class="qj-row-label"><div class="qj-row-step">לבדיקה</div><div class="qj-row-name">⚠️ בעל העסק כבר מאושר כאוהד</div></div>
       <div class="qj-row-value"><span class="qj-value-text">${inBulk(ownerPreApproved.approvedAt) ? '<b>אושר באישור הגורף</b>' : '<b>אושר כאוהד</b>'}${ownerPreApproved.approvedAt ? ' · ' + fmtDateTime(ownerPreApproved.approvedAt) : ''}, לפני שהעסק אושר – האימות שלו לא נבדק. בודקים אותו כאן, באימות בעל העסק.</span></div>
     </div>` : '';
-  const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length + (bizInqRow ? 1 : 0) + (decidedRow ? 1 : 0) + (ownerPreRow ? 1 : 0);
+  const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length + (bizInqRow ? 1 : 0) + (decidedRow ? 1 : 0) + (ownerPreRow ? 1 : 0) + (followRow ? 1 : 0);
   const hasBody = totalCount > 0;
   // §147 — לפני: count/toggle/hint רק כש-hasBody, כך שכרטיס-ריק היה נראה כמו שורת-טקסט בודדת ולא
   // כמו "פיצ'ר קיים" (המשתמש: "אין שיפוט מהיר"). עכשיו תמיד גלוי — כולל ה-hint שמסביר מה זה, בדיוק
@@ -14756,7 +14783,7 @@ function quickJudgmentHtml(b) {
         <div class="qj-hint">${hint}</div>
       </div>
       ${(showApproveApp || b.status === 'rejected') ? bizApprovalSectionsHtml(b) : ''}
-      ${(hasBody && isOpen) ? `<div class="qj-body">${ownerPreRow}${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
+      ${(hasBody && isOpen) ? `<div class="qj-body">${followRow}${ownerPreRow}${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
     </div>`;
 }
 
@@ -15298,7 +15325,7 @@ function classifyAction(entity, kind) {
     primary = kind === 'fan' ? 'אוהד ממתין לאישור' : 'עסק ממתין לאישור';
   } else if (kind !== 'fan' && treatments.length > 0) {
     primary = 'בקשה מבעל העסק';
-  } else if (kind !== 'fan' && entity.status === 'approved' && ((typeof entity.healthScore === 'number' && entity.healthScore < 100 && !cardGapsAcceptedFor(entity)) || kosherMissing(entity))) {
+  } else if (kind !== 'fan' && entity.status === 'approved' && ((typeof entity.healthScore === 'number' && entity.healthScore < 100 && !cardGapsAcceptedFor(entity)) || kosherMissing(entity) || bizFollowup(entity))) {
     // §252 — cardGapsAcceptedFor: המנהל סימן "ראיתי, זה בסדר ככה". healthScore עצמו לא משתנה
     // (המד בכרטיס ממשיך להציג את האמת), רק ההגדרה "זו משימה פתוחה" מתבטלת.
     primary = 'כרטיס חסר באינדקס';
@@ -23326,6 +23353,10 @@ onSnapshot(doc(db, 'settings', 'handledLoginIssues'), snap => {
   if (issuesActive() || handledActive()) refreshTaskCenter();
 }, err => console.error('שגיאה בטעינת סימוני תקלות כניסה:', err));
 
+onSnapshot(doc(db, 'settings', 'bizFollowups'), snap => {   // §644
+  bizFollowups = snap.exists() ? (snap.data() || {}) : {};
+  renderMainPreserveScroll();
+}, err => console.error('שגיאה בטעינת השאלות הפתוחות לעסקים:', err));
 onSnapshot(doc(db, 'settings', 'handledRegIssues'), snap => {
   handledRegIssues = snap.exists() ? (snap.data() || {}) : {};
   // ⚠️ refreshTaskCenter ולא שם מומצא — נתפס בבדיקה: `renderTasks` לא קיים בקובץ בכלל,
