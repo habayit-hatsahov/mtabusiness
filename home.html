@@ -2030,7 +2030,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // isPreview=true — רינדור מיידי מ-cache מקומי (ר' ה-module script), רק מציג כרטיסים.
 // פעולות חד-פעמיות (פתיחת עסק מקישור-שיתוף) ממתינות לנתונים האמיתיים כדי לא לרוץ פעמיים.
+// §641 — "כשאני לוחץ לב על עסק בתוך קטגוריה הוא זז במסך, גם במסך הבית" (רמי 27.10, אחרי ההשקה).
+// כל פתיחת כרטיס של **כל** משתמש עושה clicks+1 ב-bizPublic, וכל לב משנה likedBy – וה-snapshot מגיע לכל
+// מכשיר פתוח ובנה מחדש את כל הסקשנים ואת הפיד הפתוח (שורות עם scroll-snap). מאז ההשקה זה כל כמה שניות.
+// עכשיו: snapshot שבו השתנו **רק המונים** (clicks/likedBy) מעדכן את הלבבות במקום, בלי לבנות מחדש.
+// הסדר ב"הכי פופולריים/אהובים" ממילא מוקפא לביקור (§585). שינוי אמיתי (עסק, הטבה, תמונה…) – רינדור מלא כרגיל.
+const _HB_COUNTER_FIELDS = ['clicks', 'likedBy'];
+let _hbStableSig = null;
+function _hbStableSignature(list) {
+  return JSON.stringify(list.map(b => { const o = { ...b }; _HB_COUNTER_FIELDS.forEach(k => delete o[k]); return o; }));
+}
+function _hbMyLikedSig(list) {
+  const myId = currentMemberId();
+  return myId ? list.filter(b => (b.likedBy || []).includes(myId)).map(b => b.id).join(',') : '';
+}
+let _hbMyLiked = null;
+// הקיצור רק אחרי רינדור חי מלא אחד: ה-snapshot החי הראשון (אחרי תצוגת ה-cache) חייב לעבור את כל
+// הפונקציה – _hbMarkReady, פתיחת עסק מקישור-שיתוף וכו' – גם כשהנתונים זהים ל-cache.
+let _hbLiveRendered = false;
+
 window.loadFirebaseData = function(data, isPreview) {
+  const prevStable = _hbStableSig, prevMyLiked = _hbMyLiked;
+  let stable = null;
+  try { stable = _hbStableSignature(data); } catch (e) { stable = null; }   // כשל = רינדור מלא, כמו קודם
   businesses = data;
   if (!isPreview) _hbLiveData = true; // §585 — מובילי פופולריים/אהובים מוקפאים רק מנתונים חיים, לא מה-cache
 
@@ -2038,6 +2060,17 @@ window.loadFirebaseData = function(data, isPreview) {
   // מוחלת מחדש **כאן**. בלי השורה הזאת הלב היה מתמלא בלחיצה וקופץ אחורה שנייה אחר כך.
   _applyPendingLikes();
   syncWkLike();
+  _hbStableSig = stable;
+  _hbMyLiked = _hbMyLikedSig(businesses);
+  // §641 — מונים בלבד: הלבבות מתעדכנים במקום. "העסקים שאהבתי" (myLoved) כן נבנה מחדש כשהלבבות *שלי*
+  // השתנו – שם הלב קובע מי ברשימה.
+  if (!isPreview && _hbLiveRendered && stable !== null && prevStable !== null && stable === prevStable) {
+    syncLiveCardFields();
+    if (_currentCatFeedKey === 'myLoved' && _hbMyLiked !== prevMyLiked && !_searchQuery) refreshOpenFeed();
+    refreshSheetIfOpen();
+    return;
+  }
+  if (!isPreview) _hbLiveRendered = true;
   renderSections();
   window._hbMarkReady && window._hbMarkReady('cards');
   refreshOpenFeed();
@@ -2592,12 +2625,18 @@ function renderSections() {
   // "פופולריים"/"הכי אהובים" מדורגים לפי נתון אמיתי (קליקים/לייקים) — לא מסוחררים, כדי לא לפגוע
   // במשמעות הדירוג. מותר להם לזוז בעצמם כשהנתון האמיתי משתנה (זו הכוונה) — אבל הם לא נכנסים
   // ל-usedLeaders, כדי לא "לדחוף" את הסקשנים המסוחררים לזוז יחד איתם.
-  const popular = [...businesses].sort((a,b) => b.clicks - a.clicks).slice(0,5);
-  _writeSectionIfChanged('popular', 'popularBizScroll', popular, b => buildCard(b));
-
   const loved = businesses.filter(b => (b.likedBy||[]).length > 0)
                            .sort((a,b) => (b.likedBy||[]).length - (a.likedBy||[]).length)
                            .slice(0,10);
+  // §641ב — רמי: "צומפי במקום ראשון גם בהכי אהובים וגם בהכי פופולריים, ואלה הסקשנים האורגניים היחידים…
+  // עסק לא יכול להיות במקביל במקום 1 או 2 בשניהם (כחוק, גם XRAY). עדיף להוציא מהפופולריים, כי בהכי
+  // אהובים רואים את כמות הלבבות". לכן: מי שבמקומות 1-2 של "הכי אהובים" יורד בפופולריים למקום 3 ואילך
+  // (בסדר הקליקים שלו). "הכי אהובים" נשאר דירוג נקי, וגם עמוד "הכל" של פופולריים (filterCat) – רשימה מלאה.
+  const lovedTop2 = new Set(loved.slice(0, 2).map(b => b.id));
+  const byClicks = [...businesses].sort((a,b) => b.clicks - a.clicks);
+  const popularHead = byClicks.filter(b => !lovedTop2.has(b.id)).slice(0, 2);
+  const popular = [...popularHead, ...byClicks.filter(b => !popularHead.includes(b))].slice(0,5);
+  _writeSectionIfChanged('popular', 'popularBizScroll', popular, b => buildCard(b));
   _writeSectionIfChanged('loved', 'lovedBizScroll', loved, b => buildCard(b), _emptyRowHtml('אף עסק עדיין לא קיבל לייק'));
 
   // §585 — 🐛 XRAY הוביל גם את "פופולריים" וגם את "קניה אונליין", גולדה גם את "נבחרים" וגם את
