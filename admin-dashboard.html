@@ -1265,6 +1265,9 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
    ב-Master-Detail, אז יש כבר איך לעבור לפריט אחר בלי כפתור ייעודי. גלויה רק במובייל, ר' מדיה-קוורי,
    כי שם רשימה+פרטים מתחלפות (רק אחת גלויה בכל רגע) וזו הדרך היחידה לחזור. */
 .task-back-btn { display: none; margin-bottom: 10px; }
+/* §637 — "הבא" גלוי תמיד (גם בדסקטופ), בצד השני של "חזרה" */
+.card-nav-row { display: flex; align-items: center; gap: 8px; }
+.card-nav-row .task-next-btn { margin: 0 auto 10px 0; }
 @media (max-width: 860px) {
   .task-split { flex-direction: column; align-items: stretch; }
   .task-list-col, .task-detail-col { max-width: 100%; flex: 1 1 auto; }
@@ -5139,6 +5142,7 @@ function bizClassCounts() {
   return {
     all: MOCK_BUSINESSES.length,
     pending: MOCK_BUSINESSES.filter(b => b.status === 'pending').length,
+    inReview: MOCK_BUSINESSES.filter(isInReview).length,   // §637ב
     requests: MOCK_BUSINESSES.filter(b => classifyAction(b, 'business').treatments.length > 0).length,
     approved: MOCK_BUSINESSES.filter(b => b.status === 'approved').length,
     rejected: MOCK_BUSINESSES.filter(b => b.status === 'rejected').length,
@@ -5198,6 +5202,7 @@ function bizFilteredList() {
       : b.status === bizStatusFilter;
     const matchClass = bizClassPill === 'all' ? true
       : bizClassPill === 'pending' ? b.status === 'pending'
+      : bizClassPill === 'inReview' ? isInReview(b)   // §637ב
       : bizClassPill === 'approved' ? b.status === 'approved'
       : bizClassPill === 'rejected' ? b.status === 'rejected'
       : bizClassPill === 'brokenLinks' ? brokenLinksFor(b).length > 0
@@ -5408,6 +5413,7 @@ function bizRowsHtml() {
     // §366 — הדגל צריך להיות גלוי **ברשימה**, לא רק בכרטיס: מי שסורק את הממתינים רואה
     // שתי שורות דומות ואין לו סימן שהן קשורות.
     if (bizDuplicateOf(b)) badges.push(`<span class="warn-badge">כפילות אפשרית</span>`);
+    if (isInReview(b)) badges.push(inReviewBadgeHtml(b));   // §637ב
     badges.push(...followupBadgesHtml(b));   // §415 — מצב מכתב-השידור + מונה הנדנוד
     const sel = selectedBizIds.has(b.id);
     const active = b.id === selectedBizDetailId;
@@ -9665,7 +9671,7 @@ function bizFullDetailHtml(id, opts) {
     ${ownerVerifStepHtml}
     ${stepsCardHtml}`;
   return `
-    <button class="act-btn task-back-btn" onclick="${o.backFn}()">→ חזרה</button>
+    <div class="card-nav-row"><button class="act-btn task-back-btn" onclick="${o.backFn}()">→ חזרה</button>${nextCardBtnHtml('biz', b.id)}</div>
     <div class="action-tabs">
       <button class="action-tab ${bizDetailViewTab==='main'?'active':''}" onclick="setBizDetailTab('main')">פרטי העסק</button>
       <button class="action-tab ${bizDetailViewTab==='decisions'?'active':''}" onclick="setBizDetailTab('decisions')">החלטות ויומן</button>
@@ -10704,6 +10710,7 @@ function bizFilterBarHtml(opts) {
       <div class="filter-toolbar-row biz-class-pills">
         ${pill('all', 'הכל')}
         ${pill('pending', 'ממתינים לאישור')}
+        ${counts.inReview ? pill('inReview', '⏳ בתהליך אישור') : ''}
         ${pill('requests', 'בקשות מבעלי עסקים')}
         ${pill('approved', 'מאושרים')}
         ${pill('rejected', 'נדחו')}
@@ -10892,6 +10899,7 @@ function fanClassCounts() {
   return {
     all: MOCK_FANS.length,
     pending: fanPendingList().length,
+    inReview: MOCK_FANS.filter(isInReview).length,   // §637ב
     unverified: MOCK_FANS.filter(f => !f.adminVerified).length,
     // §390 — הרשימה שהמנהל ביקש: מי שאושר ומעולם לא נכנס, כדי לפנות אליהם שוב.
     neverEntered: MOCK_FANS.filter(f => f.status === 'approved' && !f.lastSeenAt).length,
@@ -10910,6 +10918,7 @@ function fanFilteredList() {
     const matchF = fanStatusFilter === 'all' ? true : f.status === fanStatusFilter;
     const matchClass = fanClassPill === 'all' ? true
       : fanClassPill === 'pending' ? f.status === 'pending'
+      : fanClassPill === 'inReview' ? isInReview(f)   // §637ב
       // §390 — ⚠️ ההגדרה זהה **מילה במילה** לזו של הפאנל (fanEntryStats/fanEntryBreakdown),
       // ובכוונה: פיל שסופר אחרת מהמספר שממנו המנהל הגיע הוא בדיוק הפער של §353.
       : fanClassPill === 'neverEntered' ? (f.status === 'approved' && !f.lastSeenAt)
@@ -10986,6 +10995,7 @@ function fanRowsHtml() {
     if (f.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">כפילות אפשרית</span>`);
     else if (f.reviewFlag) badges.push(`<span class="warn-badge">שם לא תואם</span>`);
     if (f.isBusinessOwner) badges.push(`<span class="treat-badge">בעל עסק</span>`);
+    if (isInReview(f)) badges.push(inReviewBadgeHtml(f));   // §637ב
     badges.push(...followupBadgesHtml(f));   // §415 — ריק כשאין שידור ואין נדנוד
     const sel = selectedFanIds.has(f.id);
     const active = f.id === selectedFanDetailId;
@@ -11234,6 +11244,7 @@ function fanFullDetailHtml(id, opts) {
         <div class="qj-header-actions">
           <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קוד כניסה (Brevo)" onclick="approveFan('${f.id}')">✅ אשר את האוהד</button>
           <button class="qj-btn-reject-app" onclick="rejectFan('${f.id}')">✗ דחה</button>
+          ${inReviewBtnHtml('fan', f)}
           ${qjDeleteBtn('fan', f.id)}
         </div>` : f.status === 'approved' ? `
         <div class="qj-header-actions">
@@ -11511,7 +11522,7 @@ function fanFullDetailHtml(id, opts) {
     ${fanVerifyCardHtml}
     ${registrationCardHtml}`;
   return `
-    <button class="act-btn task-back-btn" onclick="${o.backFn}()">→ חזרה</button>
+    <div class="card-nav-row"><button class="act-btn task-back-btn" onclick="${o.backFn}()">→ חזרה</button>${nextCardBtnHtml('fan', f.id)}</div>
     <div class="action-tabs">
       <button class="action-tab ${fanDetailViewTab==='main'?'active':''}" onclick="setFanDetailTab('main')">פרטי האוהד</button>
       <button class="action-tab ${fanDetailViewTab==='decisions'?'active':''}" onclick="setFanDetailTab('decisions')">החלטות ויומן</button>
@@ -11898,6 +11909,7 @@ function fanFilterBarHtml(opts) {
       <div class="filter-toolbar-row biz-class-pills">
         ${pill('all', 'הכל')}
         ${pill('pending', 'ממתינים לאישור')}
+        ${counts.inReview ? pill('inReview', '⏳ בתהליך אישור') : ''}
         ${pill('unverified', 'טרם נבדקו')}
         ${pill('neverEntered', 'מעולם לא נכנסו')}
         ${counts.legacyRejected ? pill('legacyRejected', '🔁 נדחו – להחלטה') : ''}
@@ -12765,7 +12777,7 @@ function taskRow2Html(x) {
   return `
     <div class="task-table-row ${selectedTaskKey===key?'active':''}" onclick="selectTask2('${x.kind}','${x.id}')">
       <div class="task-table-main">
-        <div class="task-table-name">${esc(e.name)}${x.kind === 'fan' ? checkNoteTagHtml(e) : inquiryTagHtml(bizInquiries(e))}</div>
+        <div class="task-table-name">${esc(e.name)}${x.kind === 'fan' ? checkNoteTagHtml(e) : inquiryTagHtml(bizInquiries(e))}${isInReview(e) ? ' ' + inReviewBadgeHtml(e) : ''}</div>
         <div class="task-table-meta">${esc(metaLine)}</div>
       </div>
       <div class="task-table-badges">${badges.join('')}</div>
@@ -13232,6 +13244,80 @@ window.approveFan = async function(id) {
     await logActivity('members', id, { type: 'status', title: 'האוהד אושר', detail: `"${f.name}" אושר, הוקצה חבר מס' ${memberNumber}`, field: 'status', before: f.status, after: 'approved' });
   } catch (e) { console.error(e); alert('שגיאה באישור: ' + e.message); }
 };
+// ══ §637 — "הבא" + מעבר אוטומטי גם בדחייה (רמי 27.10) ══════════════════════════════════════
+// "בכרטיס יש חזרה – ליד תעשה כפתור 'הבא'… גם כאשר דוחים שיעבור אוטומטי לכרטיס הבא כמו שמאשרים".
+// הרשימה היא **זו שהמנהל רואה** (אותו סינון ומיון): במגירת המשימות – taskFilteredList (עסקים
+// ואוהדים יחד), ב"כל העסקים"/"כל האוהדים" – הרשימה של הטאב. "הבא" לא עוטף להתחלה; מעבר אחרי
+// החלטה (pendingOnly) הולך לממתין הבא, ואם היה האחרון – לראשון שנשאר (כמו §567).
+function cardNavContext(kind, id) {
+  if (selectedTaskKey === kind + ':' + id) return 'task';
+  if (kind === 'biz' && selectedBizDetailId === id && document.getElementById('bizDetailCol')) return 'biz';
+  if (kind === 'fan' && selectedFanDetailId === id && document.getElementById('fanDetailCol')) return 'fan';
+  return null;
+}
+function nextCardBtnHtml(kind, id) {
+  return `<button class="act-btn task-next-btn" onclick="goToNextCard('${kind}','${id}')">הבא ←</button>`;
+}
+window.goToNextCard = function(kind, id, opts) {
+  const pendingOnly = !!(opts && opts.pendingOnly);
+  const ctx = cardNavContext(kind, id);
+  if (!ctx) return false;
+  let keys;   // "kind:id"
+  if (ctx === 'task') {
+    keys = taskFilteredList().filter(x => !pendingOnly || x.entity.status === 'pending' || (x.kind === kind && x.id === id)).map(x => x.kind + ':' + x.id);
+  } else if (ctx === 'biz') {
+    keys = bizFilteredList().filter(x => !pendingOnly || x.status === 'pending' || x.id === id).map(x => 'biz:' + x.id);
+  } else {
+    keys = fanFilteredList().filter(x => !pendingOnly || x.status === 'pending' || x.id === id).map(x => 'fan:' + x.id);
+  }
+  const me = kind + ':' + id;
+  const i = keys.indexOf(me);
+  const after = i >= 0 ? keys.slice(i + 1) : [];
+  const next = after[0] || (pendingOnly ? keys.filter(k => k !== me)[0] : null) || null;
+  if (!next) {
+    if (!pendingOnly) { alert('זה הכרטיס האחרון ברשימה'); return false; }
+    if (ctx === 'task') { selectedTaskKey = null; renderMain(); }
+    else if (ctx === 'biz') bizBackToList(); else fanBackToList();
+    return true;
+  }
+  const nextId = next.slice(next.indexOf(':') + 1);
+  if (ctx === 'task') { selectedTaskKey = next; renderMain(); }
+  else if (ctx === 'biz') selectBizDetail(nextId);
+  else selectFanDetail(nextId);
+  return true;
+};
+
+// ══ §637ב — "בתהליך אישור" – סימון פנימי בלבד (רמי 27.10) ═════════════════════════════════
+// "תן לי אופציה לשים בתהליך אישור, אצל האוהד אל תשנה כלום – עדיין ממתין, שאוכל לנהל את זה מאחורי
+// הקלעים". status נשאר 'pending' (כל מה שהאוהד/בעל העסק רואה נגזר ממנו); השדה inReview נקרא רק
+// כאן, ונחשב רק כל עוד הרשומה ממתינה – אישור/דחייה מוציאים אותה מהמצב בלי לנקות את השדה.
+// לא דולף: bizPublic בונה רשימת-היתר (worker/src/bizpublic.js PUBLIC_FIELDS).
+// function ולא const: נקראת מהרשימות, שמצוירות לפעמים לפני שהמודול הגיע לשורה הזו (TDZ)
+function isInReview(x) { return !!x && x.status === 'pending' && x.inReview === true; }
+function inReviewBadgeHtml(x) {
+  return isInReview(x) ? `<span class="treat-badge" style="background:#FFF4CC;color:#7A5B00">⏳ בתהליך אישור</span>` : '';
+}
+function inReviewBtnHtml(kind, x) {
+  if (!x || x.status !== 'pending') return '';
+  return isInReview(x)
+    ? `<button class="qj-btn-reject-app" title="מסומן פנימית – הוא עדיין רואה 'ממתין'" onclick="toggleInReview('${kind}','${x.id}')">⏳ בתהליך אישור · הסר</button>`
+    : `<button class="qj-btn-reject-app" title="סימון פנימי בלבד – אצלו לא משתנה כלום, עדיין 'ממתין'" onclick="toggleInReview('${kind}','${x.id}')">⏳ סמן בתהליך אישור</button>`;
+}
+window.toggleInReview = async function(kind, id) {
+  const x = kind === 'fan' ? findFan(id) : findBiz(id);
+  if (!x) return;
+  const on = !isInReview(x);
+  try {
+    await updateDoc(doc(db, kind === 'fan' ? 'members' : 'businesses', id), { inReview: on, inReviewAt: on ? serverTimestamp() : null });
+    x.inReview = on;
+    renderMainPreserveScroll();
+    await logActivity(kind === 'fan' ? 'members' : 'businesses', id, {
+      type: 'status', title: on ? 'סומן "בתהליך אישור" (פנימי)' : 'הוסר "בתהליך אישור"',
+      detail: `"${x.name}" – סימון פנימי, הסטטוס נשאר ממתין`, field: 'inReview', before: !on, after: on,
+    });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+
 // §567 — האוהד הממתין הבא **באותה רשימה שהמנהל רואה** (אותו סינון ואותו מיון), אחרי זה
 // שאושר; אם הוא היה האחרון – הראשון שנשאר. אין ממתין נוסף → המגירה נסגרת.
 function goToNextPendingFan(id) {
@@ -13302,6 +13388,7 @@ window.rejectFan = async function(id) {
   try {
     if (wasApproved) await updateDoc(doc(db, 'members', id), { status: 'pending', approvedAt: null });
     else await updateDoc(doc(db, 'members', id), rejectFields(kind));
+    if (!wasApproved) goToNextCard('fan', id, { pendingOnly: true });   // §637 — כמו באישור (§567)
     await logActivity('members', id, {
       type: 'status', title: wasApproved ? 'האוהד הוחזר לממתין' : rejectKindLabel(kind),
       detail: `"${f.name}" ${wasApproved ? 'הוחזר לסטטוס ממתין' : rejectKindLabel(kind) + ' · מייל בדרך'}`,
@@ -13400,6 +13487,7 @@ window.approveBiz = async function(id) {
     // ועדיין "ממתין להחלטה" על מי שמאחוריו. ההחלטה עדיין קיימת כשדה נפרד וניתן לשנות/לבטל אותה
     // מהכרטיס; מה שהשתנה זה שברירת-המחדל של אישור-עסק היא שהאימות אושר יחד איתו.
     await approveBizWithMemberBatch(b);
+    goToNextCard('biz', id, { pendingOnly: true });   // §637 — לעסק הממתין הבא, כמו באוהדים
     logActivity('businesses', id, { type: 'status', title: 'העסק אושר', detail: `"${b.name}" אושר לאינדקס – אימות בעל העסק אושר יחד איתו`, field: 'status', before: b.status, after: 'approved' });
   } catch (e) { console.error(e); alert('שגיאה באישור: ' + e.message); }
 };
@@ -13410,6 +13498,7 @@ window.rejectBiz = async function(id) {
     const wasApproved = b.status === 'approved';
     if (wasApproved) await updateDoc(doc(db, 'businesses', id), { status: 'pending', approvedAt: null });
     else await updateDoc(doc(db, 'businesses', id), { status: 'rejected', rejectedAt: serverTimestamp() });
+    if (!wasApproved) goToNextCard('biz', id, { pendingOnly: true });   // §637
     logActivity('businesses', id, {
       type: 'status', title: wasApproved ? 'העסק הוחזר לממתין' : 'העסק נדחה',
       detail: `"${b.name}" ${wasApproved ? 'הוחזר לסטטוס ממתין' : 'נדחה'}`,
@@ -14418,6 +14507,7 @@ function quickJudgmentHtml(b) {
         <div class="qj-header-actions">
           <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קישור לדשבורד" onclick="approveBiz('${b.id}')">✅ אשר את העסק</button>
           <button class="qj-btn-reject-app" onclick="rejectBiz('${b.id}')">✗ דחה</button>
+          ${inReviewBtnHtml('biz', b)}
           ${qjDeleteBtn('biz', b.id)}
         </div>` : b.status === 'approved' ? `
         <div class="qj-header-actions">
