@@ -13797,12 +13797,13 @@ window.approveAlsoCatSuggestion = async function(id) {
     await updateDoc(doc(db, 'businesses', id), { alsoUnderCategory: cat, alsoCategorySuggestion: '' });
     b.alsoUnderCategory = cat;
     b.alsoCategorySuggestion = '';
+    const ni = qjItem(`קטגוריה נוספת – "${(CATEGORIES.find(c => c.key === cat) || {}).label || cat}"`, 'approved');   // §644 — השם, וההסבר נוסף בהודעה (ALSO_CAT_EXPLAIN)
     await logActivity('businesses', id, {
-      noteItem: qjItem('קטגוריה נוספת', 'approved'),   // §623ג
+      noteItem: ni,   // §623ג
       type: 'tagDecision', title: 'אושרה בקשת קטגוריה נוספת', detail: `"${b.name}" יופיע גם תחת "${cat}"`,
       field: 'alsoUnderCategory', before: null, after: cat,
     });
-    qjRemember(id, qjItem('קטגוריה נוספת', 'approved'));   // §623
+    qjRemember(id, ni);   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה באישור קטגוריה: ' + e.message); }
 };
@@ -14936,6 +14937,9 @@ const BN_ORIGIN = { approve: 'אישור הרשמה', changes: 'החלטה על 
 // היא שורדת רענון. QJ_DECIDED = המטמון של הדף (מתעדכן מיד בהחלטה, ומוחלף בטעינה).
 // decision: approved · rejected · mapped (תגית מופתה) · handled (הערה טופלה) · info (הסבר)
 const QJ_DECIDED = {};
+// §644 — רמי: "תוסיף את זה תמיד כאשר מאשרים קטגוריה שנייה". "מופיע גם תחת" לא מוצג בכרטיס (home.html
+// משתמש בו רק לסינון רשימת הקטגוריה), ולכן בעל העסק חושב שהאישור לא עבד.
+const ALSO_CAT_EXPLAIN = 'חשוב לדעת: בכרטיס העסק מופיעה רק הקטגוריה הראשית, והקטגוריה הנוספת לא תופיע עליו – אבל כל מי שנכנס לקטגוריה הזו רואה אתכם ברשימה. בדשבורד שלכם היא מופיעה תחת "מופיע גם תחת".';
 const QJ_LINE_PREFIX = { approved: '✅ אושר: ', rejected: '❌ לא אושר: ', mapped: '↪️ ', handled: '✔️ טיפלנו: ', info: 'ℹ️ ' };
 const QJ_CHIP_ICON = { approved: '✅ ', rejected: '❌ ', mapped: '↪️ ', handled: '✔️ ', info: 'ℹ️ ' };
 function qjItem(label, decision) {
@@ -15004,7 +15008,9 @@ function bnOpen(opts) {
   const ch = bnChannels(b, opts.mode === 'approve');
   const decided = QJ_DECIDED[b.id] || [];
   const preText = opts.mode === 'changes'
-    ? decided.map(d => (QJ_LINE_PREFIX[d.decision] || '') + d.label).join('\n') + (decided.some(d => d.decision === 'rejected' || d.decision === 'mapped') ? '\n\nלמה: ' : '\n\n')
+    ? decided.map(d => (QJ_LINE_PREFIX[d.decision] || '') + d.label).join('\n')
+      + (decided.some(d => d.decision === 'approved' && /^קטגוריה נוספת/.test(d.label)) ? '\n\n' + ALSO_CAT_EXPLAIN : '')
+      + (decided.some(d => d.decision === 'rejected' || d.decision === 'mapped') ? '\n\nלמה: ' : '\n\n')
     : '';
   const preTitle = { approve: 'העסק שלך אושר! 🎉', changes: 'עדכון על השינויים שביקשת', external: 'עדכון על הפנייה שלך', free: '' }[opts.mode];
   const head = {
