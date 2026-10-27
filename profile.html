@@ -463,6 +463,25 @@
     .yz-btn-danger  { background: var(--orange); color: #fff; }   /* §420ו — ר' ההערה למעלה */
     .yz-btn-danger[disabled] { opacity: .55; cursor: default; }
     .yz-modal-err { margin-top: 12px; font-size: 13px; font-weight: 700; color: var(--orange); display: none; }   /* §420ו — ר' ההערה למעלה */
+
+    /* ── §633 — קוד הכניסה באזור האישי + תזכורת בהתנתקות (דמו login-code-demo.html) ── */
+    #loginCodeRow[hidden] { display: none; }
+    .code-box { background: rgba(255,212,0,.10); border: 1px solid rgba(255,212,0,.55); border-radius: 12px; padding: 12px 14px; margin-top: 4px; }
+    .code-line { display: flex; align-items: center; gap: 8px; }
+    .code-value { font-size: 20px; font-weight: 800; letter-spacing: .22em; font-variant-numeric: tabular-nums; direction: ltr; min-width: 112px; text-align: right; color: var(--text); }
+    .code-value.masked { letter-spacing: .12em; color: rgba(var(--fg-rgb),.55); }
+    .code-btns { margin-inline-start: auto; display: flex; gap: 6px; }
+    .code-pill { font-family: 'Rubik', sans-serif; font-size: 12.5px; font-weight: 700; border-radius: 999px; padding: 6px 13px; cursor: pointer; border: 1px solid var(--border); background: #fff; color: var(--text); white-space: nowrap; }
+    .code-pill.primary { background: var(--yellow); border-color: var(--yellow); }
+    .code-hint { font-size: 12px; color: var(--text-sm); line-height: 1.55; margin-top: 8px; }
+    .yz-modal.sheet { align-items: flex-end; padding: 0; }
+    .yz-modal.sheet .yz-modal-box { max-width: 520px; border-radius: 20px 20px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+    .yz-modal.sheet .code-box { margin: 14px 0 4px; }
+    .so-via { display: flex; align-items: center; gap: 10px; background: var(--bg); border-radius: 12px; padding: 12px 14px; margin: 14px 0 4px; font-size: 14px; font-weight: 700; color: var(--text); }
+    .so-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .so-actions button { border-radius: 12px; padding: 13px; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; }
+    .so-out { background: var(--text); color: #fff; border: none; }
+    .so-stay { background: none; color: var(--text); border: 1px solid var(--border); }
     .setting-label { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 10px; }
     .setting-arrow { color: var(--text-muted); display: flex; align-items: center; }
 
@@ -669,6 +688,21 @@
       <button class="save-inline-btn" onclick="saveDetails()">שמירה</button>
       <button class="cancel-inline-btn" onclick="cancelEdit()">ביטול</button>
     </div>
+    <!-- §633 — קוד הכניסה (memberCodes/{id}, החוק כבר מתיר לחבר לקרוא את שלו). מוסתר כברירת מחדל;
+         נחשף רק כשהקריאה הצליחה, ורק לחבר עצמו (לא בתצוגת מנהל ולא דרך הדשבורד של העסק). -->
+    <div class="detail-row" id="loginCodeRow" hidden>
+      <span class="detail-label">קוד הכניסה שלך</span>
+      <div class="code-box">
+        <div class="code-line">
+          <span class="code-value masked" data-code>••••••</span>
+          <div class="code-btns">
+            <button type="button" class="code-pill" data-toggle onclick="yzCodeToggle(this)">הצג</button>
+            <button type="button" class="code-pill primary" onclick="yzCodeCopy()">העתקה</button>
+          </div>
+        </div>
+        <div class="code-hint">נכנסים איתו מכל מכשיר, יחד עם מספר הטלפון. כדאי לשמור אותו, ולא לשתף אותו עם אחרים.</div>
+      </div>
+    </div>
     <div class="detail-row">
       <span class="detail-label">סטטוס</span>
       <div>
@@ -729,7 +763,7 @@
       <div class="setting-label">תקנון ומדיניות לאוהדים</div>
       <span class="setting-arrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m14 6-6 6 6 6"/></svg></span>
     </a>
-    <div class="setting-row" style="cursor:pointer;" onclick="signOutUser()">
+    <div class="setting-row" style="cursor:pointer;" onclick="(window.yzAskSignOut || window.signOutUser)()">
       <div class="setting-label" style="color:#000;" id="signOutLabel">התנתקות</div>
     </div>
     <!-- §600ב — מנהל בדפדפן: "התנתקות" למעלה הופכת ל"חזרה למרכז הניהול" (בלי signOut), והתנתקות אמיתית כאן -->
@@ -794,6 +828,34 @@
     <div class="yz-modal-actions">
       <button type="button" class="yz-btn-cancel" onclick="closeDeleteAccount()">ביטול</button>
       <button type="button" class="yz-btn-danger" id="deleteAccountGo" onclick="confirmDeleteAccount()">כן, למחוק</button>
+    </div>
+  </div>
+</div>
+
+<!-- §633 — תזכורת לפני התנתקות: איך נכנסים שוב (קוד / Google / Apple) -->
+<div class="yz-modal sheet" id="signOutSheet" onclick="if(event.target===this)yzCloseSignOut()">
+  <div class="yz-modal-box" role="dialog" aria-modal="true" aria-labelledby="signOutTitle">
+    <div class="yz-modal-title" id="signOutTitle">להתנתק מהחשבון?</div>
+    <div id="soCode">
+      <div class="yz-modal-text">כדי להיכנס שוב תצטרכו את מספר הטלפון ואת קוד הכניסה. כדאי לשמור אותו לפני שמתנתקים:</div>
+      <div class="code-box">
+        <div class="code-line">
+          <span class="code-value masked" data-code>••••••</span>
+          <div class="code-btns">
+            <button type="button" class="code-pill" data-toggle onclick="yzCodeToggle(this)">הצג</button>
+            <button type="button" class="code-pill primary" onclick="yzCodeCopy()">העתקה</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="soVia" hidden>
+      <div class="yz-modal-text">תוכלו להיכנס שוב בלחיצה אחת:</div>
+      <div class="so-via" id="soViaText"></div>
+      <div class="yz-modal-text" id="soViaCode" style="font-size:12px;margin-top:8px">קוד הכניסה שלך נמצא גם ב"פרטים אישיים", למקרה שתצטרכו.</div>
+    </div>
+    <div class="so-actions">
+      <button type="button" class="so-out" onclick="yzCloseSignOut();window.signOutUser()">התנתקות</button>
+      <button type="button" class="so-stay" onclick="yzCloseSignOut()">ביטול</button>
     </div>
   </div>
 </div>
@@ -1100,6 +1162,53 @@ window.signOutUser = async function(force) {
   location.href = 'welcome.html';
 };
 
+// ── §633 — קוד הכניסה באזור האישי + תזכורת לפני התנתקות ─────────────────────────────────
+// רמי: מי שנכנס לבד אחרי האישור (§612) ולא ראה את מייל הקוד – אחרי התנתקות נשאר בלי דרך לחזור.
+// yzLogin נמלא למטה (אחרי טעינת החבר): { code, via } – via = 'google' / 'apple' / ''.
+// ⚠️ fail-open: כל עוד yzLogin ריק (טעינה, כשל, מנהל בדפדפן) "התנתקות" עובדת בדיוק כמו קודם.
+let yzLogin = null;
+function yzMaskAll(root) {
+  (root || document).querySelectorAll('.code-box').forEach(box => {
+    const v = box.querySelector('[data-code]'); const t = box.querySelector('[data-toggle]');
+    v.classList.add('masked'); v.textContent = '••••••'; t.textContent = 'הצג';
+  });
+}
+window.yzCodeToggle = function (btn) {
+  if (!yzLogin || !yzLogin.code) return;
+  const v = btn.closest('.code-box').querySelector('[data-code]');
+  const hide = !v.classList.contains('masked');
+  v.classList.toggle('masked', hide);
+  v.textContent = hide ? '••••••' : yzLogin.code;
+  btn.textContent = hide ? 'הצג' : 'הסתר';
+};
+window.yzCodeCopy = async function () {
+  if (!yzLogin || !yzLogin.code) return;
+  let ok = false;
+  try { await navigator.clipboard.writeText(yzLogin.code); ok = true; } catch (e) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = yzLogin.code; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove();
+    } catch (e2) {}
+  }
+  const t = document.getElementById('toast');
+  if (t) { t.textContent = ok ? 'הקוד הועתק' : 'לא הצלחנו להעתיק – לחצו "הצג"'; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+};
+window.yzAskSignOut = function () {
+  if (window._yzAdminWeb || !yzLogin || (!yzLogin.code && !yzLogin.via)) return window.signOutUser();
+  const viaName = yzLogin.via === 'google' ? 'Google' : yzLogin.via === 'apple' ? 'Apple' : '';
+  document.getElementById('soCode').hidden = !!viaName;
+  document.getElementById('soVia').hidden = !viaName;
+  document.getElementById('soViaText').textContent = viaName ? 'כניסה עם ' + viaName : '';
+  document.getElementById('soViaCode').hidden = !yzLogin.code;
+  yzMaskAll(document.getElementById('signOutSheet'));
+  document.getElementById('signOutSheet').classList.add('open');
+};
+window.yzCloseSignOut = function () {
+  const s = document.getElementById('signOutSheet');
+  s.classList.remove('open'); yzMaskAll(s);
+};
+
 // ── חשיפת פונקציות ה-UI לגלובל — מוקדם ככל האפשר (2026-08-27) ─────────────────
 // דווח בפועל: "נכנסתי לפרטים אישיים ואי אפשר ללחוץ בכלל על התפריט, זה תקוע".
 // השורש: כל ההשמות האלה ישבו בהמשך המודול, **אחרי** ה-auth guard וטעינת מסמך החבר.
@@ -1313,6 +1422,7 @@ if (memberId) {
     // §371 — נכתב **רק על ידי הוורקר** (§370). כאן רק נקרא, כדי לדעת אם להציג
     // כפתור-חיבור או את מצב "מחובר".
     googleEmail:     data.googleEmail || '',
+    appleLinked:     !!data.appleSub,   // §633 – לתזכורת בהתנתקות ("כניסה עם Apple")
     isBusinessOwner: data.isBusinessOwner === true,
     isAdmin:          data.isAdmin === true,
     linkedBusinessId: data.linkedBusinessId || null,
@@ -1452,6 +1562,22 @@ async function saveMemberField(updates) {
       });
     }
   } catch (e) { console.error('google link init failed:', e); }
+
+  // ── §633 — קוד הכניסה: רק החבר עצמו (לא bizToken, לא תצוגת מנהל). בלי await ברמת-המודול –
+  // כשל או רשת איטית משאירים את השורה מוסתרת ואת ההתנתקות כמו קודם, ולא עוצרים את שאר הדף (§322).
+  if (!bizToken && !previewMemberId && auth.currentUser && auth.currentUser.uid === memberId) {
+    const via = member.googleEmail ? 'google' : member.appleLinked ? 'apple' : '';
+    yzLogin = { code: '', via };
+    Promise.race([
+      getDoc(doc(db, 'memberCodes', memberId)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
+    ]).then(snap => {
+      const code = snap && snap.exists() ? String(snap.data().loginCode || '') : '';
+      if (!/^\d{4,8}$/.test(code)) return;
+      yzLogin = { code, via };
+      document.getElementById('loginCodeRow').hidden = false;
+    }).catch(e => console.warn('login code read failed:', e && e.message));
+  }
 
   // ── §501 — "הודעות": השיחות עם הצוות ───────────────────────────────────────────────────
   // §615 — בתצוגת מנהל (previewMemberId) הלשונית מוצגת לקריאה בלבד (readOnly): בלי שליחה ובלי "נקרא" בשם החבר.
