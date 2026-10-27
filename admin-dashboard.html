@@ -13444,8 +13444,9 @@ function askRejectKind(title, sub) {
       <div style="margin:6px 0 14px;color:#3A4C7A">${esc(sub || 'לאפשר תיקון אימות?')}</div>
       <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="radio" name="rjk" value="retry" checked style="margin-top:3px"><span><b>כן – לאפשר תיקון אימות</b><br><span style="color:#3A4C7A">באפליקציה תופיע אפשרות להעלות תמונה וקישור לפרופיל מחדש. מייל "האימות לא עבר".</span></span></label>
       <div data-note-wrap style="margin:8px 0 0 0;padding-right:24px"><div style="font-weight:700;font-size:13px">הודעה לאוהד – למה לא עבר (רשות)</div>
+        <div style="font-size:12px;color:#3A4C7A;margin-top:4px">אפשר לבחור כמה סיבות – לחיצה נוספת מורידה.</div>
         <div data-rt-chips="reject" style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">${rtChipsInner('reject')}</div>
-        <textarea data-note data-rt-note maxlength="400" rows="3" placeholder="למשל: בתמונה לא רואים את הפנים שלך – צריך תמונה שלך ביציע" style="width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #D5DAE6;border-radius:10px;padding:8px;font:inherit;font-size:13.5px;resize:vertical"></textarea>
+        <textarea data-note data-rt-note oninput="rtMarkReject()" maxlength="400" rows="3" placeholder="למשל: בתמונה לא רואים את הפנים שלך – צריך תמונה שלך ביציע" style="width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #D5DAE6;border-radius:10px;padding:8px;font:inherit;font-size:13.5px;resize:vertical"></textarea>
         <div style="font-size:12px;color:#3A4C7A">תופיע לו על המסך של האימות הנוסף, מעל הטופס.</div></div>
       <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px"><input type="radio" name="rjk" value="final" style="margin-top:3px"><span><b>לא – דחייה סופית</b><br><span style="color:#3A4C7A">באפליקציה "לא הצלחנו לאמת" + פנייה לצוות. מייל "הבקשה לא אושרה".</span></span></label>
       <div style="display:flex;gap:8px;margin-top:16px"><button type="button" data-a="ok" style="background:#0A2A66;color:#fff;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:800;cursor:pointer">דחייה ושליחת מייל</button><button type="button" data-a="cancel" style="background:#F3F4F7;color:#0A2A66;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer">ביטול</button></div></div>`;
@@ -14683,11 +14684,12 @@ function rtLoad() {
   return _rtLoading;
 }
 function rtChipsInner(kind) {
-  return rtList(kind).map((c, i) => `<button type="button" class="qj-btn" title="${esc(c.text)}" onclick="rtPick('${kind}',${i})">${esc(c.label)}</button>`).join('')
+  return rtList(kind).map((c, i) => `<button type="button" class="qj-btn" data-rt-i="${i}" title="${esc(c.text)}" onclick="rtPick('${kind}',${i})">${esc(c.label)}</button>`).join('')
     + `<button type="button" class="qj-btn" style="border-style:dashed" onclick="rtEdit('${kind}')">✏️ עריכת התשובות</button>`;
 }
 function rtRefresh() {
   document.querySelectorAll('[data-rt-chips]').forEach(el => { el.innerHTML = rtChipsInner(el.dataset.rtChips); });
+  rtMarkReject();
   const dl = document.getElementById('bnTitleList');
   if (dl) dl.innerHTML = rtTitleOptions();
 }
@@ -14708,11 +14710,32 @@ window.rtPick = function(kind, i) {
     bnSync(); ta.focus();
     return;
   }
+  // §646ב — רמי: "תן לבחור מעל 1". בדחייה הכפתור הוא בחירה: לחיצה מוסיפה שורה, לחיצה נוספת מורידה אותה,
+  // והכפתורים שבחרת צבועים (לפי מה שבתיבה בפועל – גם אחרי הקלדה ידנית).
   const ta = document.querySelector('[data-rt-note]');
   if (!ta) return;
-  ta.value = ((ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' : '') + c.text).slice(0, RT_MAX.reject.text);
+  const lines = ta.value.split('\n').map(x => x.trim()).filter(Boolean);
+  const at = lines.indexOf(c.text);
+  if (at >= 0) lines.splice(at, 1); else lines.push(c.text);
+  const next = lines.join('\n');
+  if (next.length > RT_MAX.reject.text) { alert('אין מקום לעוד סיבה – עד ' + RT_MAX.reject.text + ' תווים. אפשר להוריד סיבה אחרת או לקצר.'); return; }
+  ta.value = next;
+  rtMarkReject();
   ta.focus();
 };
+function rtMarkReject() {
+  const ta = document.querySelector('[data-rt-note]');
+  if (!ta) return;
+  const lines = ta.value.split('\n').map(x => x.trim());
+  const list = rtList('reject');
+  document.querySelectorAll('[data-rt-chips="reject"] [data-rt-i]').forEach(b => {
+    const c = list[+b.dataset.rtI], on = !!c && lines.includes(c.text);
+    b.style.background = on ? '#0A2A66' : ''; b.style.color = on ? '#fff' : ''; b.style.borderColor = on ? '#0A2A66' : '';
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.textContent = (on ? '✓ ' : '') + (c ? c.label : '');
+  });
+}
+window.rtMarkReject = rtMarkReject;
 // ── העורך: חלון מעל החלון הפתוח (z-index גבוה משניהם) ──
 let _rtEdit = null;   // { kind, items }
 window.rtEdit = function(kind) {
