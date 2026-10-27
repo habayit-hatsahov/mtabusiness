@@ -50,6 +50,22 @@ const TAG_TO_QUERY = {
   'סוכני ביטוח': 'insurance agent office',
   'ייעוץ משכנתאות ופיננסים': 'financial advisor mortgage',
   'רואי חשבון ומיסוי': 'accountant tax office',
+  'קייטרינג ושף פרטי': 'private chef catering',   // §644
+  'מתוקים, פיצוחים ופירות יבשים': 'nuts dried fruit sweets shop',   // §644
+  'מוסכים, פחחות וחלקי חילוף': 'car garage body shop auto parts',   // §644
+  'הובלות ומנופים': 'moving truck crane furniture lift',   // §644
+  'אלומיניום, חלונות ותריסים': 'aluminum windows shutters installation',   // §644
+  'חשמל, גז, מים, מיזוג ומנעולנים': 'home technician electrician plumber',   // §644
+  'אבטחה, תקשורת ומערכות חכמות': 'security cameras smart home system',   // §644
+  'חיות מחמד – חנויות ואילוף': 'pet shop dog training',   // §644
+  'מתנות ומארזים': 'gift boxes present wrapping',   // §644
+  'פרחים ובלונים': 'flower bouquet balloons',   // §644
+  'הדפסה אישית ומוצרי פרסום': 'custom printed mugs merchandise',   // §644
+  'אימון אישי, סטודיו כושר ושיקום': 'personal trainer fitness studio',   // §644
+  'פיתוח, אוטומציות ובינה מלאכותית': 'software development artificial intelligence',   // §644
+  'ייעוץ עסקי, פיננסי ומשכנתאות': 'business consultant financial advisor',   // §644
+  'רואי חשבון ויועצי מס': 'accountant tax office',   // §644
+  'נדל״ן – תיווך, יזמות ושמאות': 'real estate agent apartment building',   // §644
 };
 
 // תמונת ברירת מחדל לעסק שלא העלה תמונה משלו — מחפשת לפי התגית הספציפית של העסק (לא הקטגוריה
