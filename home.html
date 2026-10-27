@@ -2869,9 +2869,38 @@ function renderCatFeedContent(cat) {
     document.getElementById('catFeedGrid').innerHTML =
       '<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>אין עסקים בקטגוריה זו עדיין</p></div>';
   } else {
-    document.getElementById('catFeedGrid').innerHTML = filtered.map(b => buildCard(b, cat === 'new')).join('');
-    observeLazyImages(document.getElementById('catFeedGrid'));
+    _patchGrid(document.getElementById('catFeedGrid'), filtered, b => buildCard(b, cat === 'new'));   // §641ז
   }
+}
+
+// ══ §641ז — "זה ממש מרצד עכשיו וזז" (סרטון אייפון 28.10 00:05) ═══════════════════════════════════
+// בפריים שאחרי הלב הכרטיס שמעל ריק-לבן: הרשימה **נבנתה מחדש** (innerHTML), התמונות נטענו מחדש, הגובה
+// השתנה והתוכן זז; הנעילה של §641ו החזירה פריים אחר כך – הריצוד. מה שגורם לבנייה מחדש בטלפון לא אותר,
+// ולכן הבנייה עצמה כבר לא הורסת: אם אותם עסקים באותו סדר – הכרטיסים נשארים (התמונות טעונות), ומוחלף רק
+// כרטיס שהתוכן שלו השתנה (בלי הלב – הוא מתעדכן במקום ב-syncLiveCardFields). סדר/רשימה אחרים → בנייה מלאה.
+const _gridCardKey = new WeakMap();
+function _cardKeyOf(html) { return html.replace(/<div class="biz-card-like[\s\S]*?<\/div>/, ''); }
+function _patchGrid(grid, list, buildFn) {
+  const htmls = list.map(buildFn);
+  const cur = [...grid.children];
+  const sameOrder = cur.length === list.length && cur.every((el, i) => el.dataset && el.dataset.id === list[i].id);
+  if (!sameOrder) {
+    grid.innerHTML = htmls.join('');
+    [...grid.children].forEach((el, i) => _gridCardKey.set(el, _cardKeyOf(htmls[i])));
+    observeLazyImages(grid);
+    return;
+  }
+  let replaced = false;
+  cur.forEach((el, i) => {
+    const key = _cardKeyOf(htmls[i]);
+    if (_gridCardKey.get(el) === key) return;
+    const tmp = document.createElement('div'); tmp.innerHTML = htmls[i];
+    const fresh = tmp.firstElementChild;
+    if (!fresh) return;
+    el.replaceWith(fresh); _gridCardKey.set(fresh, key); replaced = true;
+  });
+  syncLiveCardFields();
+  if (replaced) observeLazyImages(grid);
 }
 
 // ── SEARCH ────────────────────────────────────────────────────────────────────
@@ -3016,10 +3045,8 @@ function runSearch(val) {
   mainFeedEl.style.display = 'none';
   document.getElementById('catFeed').style.display = 'block';
   document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${words.length ? 'תוצאות חיפוש' : 'תוצאות הסינון'}${sfOn ? ` · ${results.length}` : ''}</div>`;
-  document.getElementById('catFeedGrid').innerHTML = results.length
-    ? results.map(b => buildCard(b)).join('')
-    : `<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>לא נמצאו תוצאות${sfOn ? ' בסינון הזה' : ''}</p>${sfOn ? '<button type="button" class="sf-empty-clear" onclick="sfClear()">ניקוי הסינון</button>' : ''}</div>`;
-  observeLazyImages(document.getElementById('catFeedGrid'));
+  if (results.length) _patchGrid(document.getElementById('catFeedGrid'), results, b => buildCard(b));   // §641ז
+  else document.getElementById('catFeedGrid').innerHTML = `<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>לא נמצאו תוצאות${sfOn ? ' בסינון הזה' : ''}</p>${sfOn ? '<button type="button" class="sf-empty-clear" onclick="sfClear()">ניקוי הסינון</button>' : ''}</div>`;
 }
 
 // ── תפריט מלא (המבורגר) ──
