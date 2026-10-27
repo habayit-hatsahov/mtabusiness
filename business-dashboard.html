@@ -2302,7 +2302,7 @@ const FIELD_LABELS = {
 
 const TIPS = {
   name: ' שם קצר ובולט מושך יותר לחיצות – נסה עד 3-4 מילים',
-  desc: ' כתבו כאן כל מה שתרצו שהאוהדים ידעו עליכם – מה אתם עושים, למי, ומה מייחד אתכם. אפשר גם בנימה אישית: מי אתם, מאיזה שער, ולמה בחרתם להיות חלק. זה הטקסט שהאוהד קורא בעמוד שלכם.<br>🔍 <b>התיאור משפיע על החיפוש:</b> כל מילה שכתובה כאן נמצאת בחיפוש באפליקציה. כתבו את מה שאנשים מחפשים – מוצרים, שירותים, מותגים. לדוגמה: חנות ספורט שכותבת "כדורים, מתקני סל, כפפות לשוערים" – כל מי שיחפש "כפפות" ימצא אותה. מומלץ לקחת תיאור מהאתר שלכם',
+  desc: ' כתבו כאן כל מה שתרצו שהאוהדים ידעו עליכם – מה אתם עושים, למי, ומה מייחד אתכם. אפשר גם בנימה אישית: מי אתם, מאיזה שער, ולמה בחרתם להיות חלק. זה הטקסט שהאוהד קורא בעמוד שלכם. <b>יש לכם אתר? מומלץ להעתיק משם את התיאור</b> – וכדאי להרחיב ולתת כמה שיותר מידע.<br>🔍 <b>התיאור משפיע על החיפוש:</b> כל מילה שכתובה כאן נמצאת בחיפוש באפליקציה. כתבו את מה שאנשים מחפשים – מוצרים, שירותים, מותגים. לדוגמה: חנות ספורט שכותבת "כדורים, מתקני סל, כפפות לשוערים" – כל מי שיחפש "כפפות" ימצא אותה. מומלץ לקחת תיאור מהאתר שלכם',
   coverPhoto: ' זו התמונה הגדולה שתוצג בכרטיס ובעמוד העסק – הדבר הראשון שאוהדים רואים ומשפיע הכי הרבה על ההחלטה ללחוץ',
   logo: ' אם יש לך לוגו – הוא יוצג כתגית קטנה בפינת התמונה המייצגת. עסקים עם תמונה ו/או לוגו מקבלים הרבה יותר צפיות',
   photos: ' הוסף לפחות 3 תמונות איכותיות – מוצרים, חזית, צוות',
@@ -3691,7 +3691,9 @@ function renderDiscountCard(w) {
           </div>
           <div class="form-group" id="editOnlineCodeWrap" style="display:none;">
             <label class="form-label">קוד קופון <span style="font-weight:400;color:var(--text-muted);">(האוהדים יזינו אותו באתר שלכם למימוש)</span></label>
-            <input type="text" class="form-input" id="editDiscountCode" value="${esc(w.discountCode)}" placeholder="לדוג׳: MACCABI10" style="letter-spacing:1px;text-transform:uppercase;" oninput="onDiscBuilderInput()" />
+            <input type="text" class="form-input" id="editDiscountCode" value="${esc(w.discountCode)}" placeholder="לדוג׳: MACCABI10" style="letter-spacing:1px;text-transform:uppercase;" oninput="onDiscBuilderInput();var e=document.getElementById('editCodeErr');if(e)e.style.display='none'" />
+            <div id="editCouponRuleNote" style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.55;"></div>
+            <div id="editCodeErr" style="display:none;font-size:12.5px;font-weight:600;color:#B54708;margin-top:6px;">נא להזין קוד קופון – בלי קוד ובלי דרך מימוש נוספת, לאוהד אין איך לממש את ההטבה</div>
             <!-- §597 – כפל מבצעים: חובה כשיש קוד -->
             <div id="editStackWrap" style="display:none;margin-top:12px;">
               <label class="form-label">הקוד כולל כפל מבצעים? <span style="color:#B54708;">*</span> <span style="font-weight:400;color:var(--text-muted);">(אפשר לממש אותו גם על מוצר שכבר במבצע באתר)</span></label>
@@ -5546,14 +5548,27 @@ window.toggleDiscountField = function() {
 };
 
 // לא ניתן לבחור "ריק" — תמיד יש ברירת מחדל חכמה, בעל העסק רק דורס אותה
+// §638ב — רמי: "עסק רק אונליין – אין אופציה לבחור במעמד מכירה/השירות, זה רק דרך קוד קופון. אם יש עוד דרכים
+// לממש – זה בסדר שלא יהיה קוד". כמו business.html: לאונליין-בלבד רק "באתר", והקוד חובה בשמירה.
+function isOnlineOnlyBiz() {
+  let t = [];
+  try { t = committedState().bizTypes || []; } catch (e) {}
+  return t.length > 0 && t.every(x => x === 'online');
+}
 function renderRedeemModeGrid() {
   const grid = document.getElementById('editRedeemModeGrid');
   if (!grid) return;
+  const onlyOnline = isOnlineOnlyBiz();
   const opts = [
     { key: 'physical', icon: '🏪', label: 'בחנות הפיזית' },
     { key: 'sale',     icon: '🤝', label: 'במעמד המכירה / השירות' },
     { key: 'online',   icon: '🌐', label: 'באתר' },
-  ];
+  ].filter(o => !onlyOnline || o.key === 'online');
+  if (onlyOnline) discRedeemMode = ['online'];
+  const note = document.getElementById('editCouponRuleNote');
+  if (note) note.innerHTML = onlyOnline
+    ? 'עסק שמוכר <b>רק אונליין</b> – ההטבה ממומשת בקוד קופון בלבד, ולכן הקוד חובה.'
+    : 'יש לכם גם חנות או מימוש במעמד המכירה? אז קוד הקופון לא חובה – אפשר לסמן גם את הדרך הנוספת.';
   grid.innerHTML = opts.map(o =>
     `<div class="disc-type-chip${discRedeemMode.includes(o.key) ? ' selected' : ''}" onclick="selectRedeemMode('${o.key}')">${o.label}</div>`
   ).join('');
@@ -5723,6 +5738,12 @@ window.saveDiscount = async function() {
   const discountCode = (discEditOn && discRedeemMode.includes('online'))
     ? document.getElementById('editDiscountCode').value.trim() : '';
   const fullText = discEditOn ? computeDiscBuilderText() : '';
+  // §638ב — "באתר" לבד בלי קוד = לאוהד אין כרטיס מימוש (home.html: hasOnline דורש קוד)
+  if (discEditOn && discRedeemMode.length && discRedeemMode.every(m => m === 'online') && !discountCode) {
+    const err = document.getElementById('editCodeErr');
+    if (err) { err.style.display = 'block'; err.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    return;
+  }
   // §597 — קוד קופון בלי תשובה על כפל מבצעים לא נשמר
   if (discountCode && !discStacking) {
     const err = document.getElementById('editStackErr');
