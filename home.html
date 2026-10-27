@@ -3374,16 +3374,31 @@ window._likeDrainQueue = function() {
 // עשירית-שנייה כל המסך קפץ 104px למעלה (בלי גלילה סביב – קפיצה בודדת); בלחיצה החוזרת (לייק) – כלום.
 // בדסקטופ לא משתחזר, והקוד לא בונה מחדש בעדכון מונים (§641) – לכן הגנה שלא תלויה בשורש: לחיצת לב
 // "נועלת" את מיקום הגלילה ל-1.5 שנ'. קפיצה מעצמה (בלי שהאצבע זזה) מוחזרת; גלילה אמיתית מבטלת מיד.
-let _likeScrollLock = null;   // { y, until }
-function _likeLockScroll() {
-  _likeScrollLock = { y: window.scrollY, until: Date.now() + 1500 };
+// §641ו — "עדיין קופץ": באייפון כנראה scrollY לא משתנה – התוכן זז מתחתיו (אין scroll anchoring שמפצה
+// על שינוי גובה מעל), ולכן הנעילה לפי scrollY לא ראתה כלום. עכשיו העוגן הוא **הכרטיס שנלחץ**: אם הוא זז
+// על המסך יותר מ-20px בלי גלילה של האצבע – מזיזים את הדף בדיוק בהפרש, מה שלא יהיה השורש.
+let _likeScrollLock = null;   // { el, top, y, until }
+function _likeAnchorEl(id) {
+  const vh = window.innerHeight;
+  return [...document.querySelectorAll('.biz-card[data-id="' + id + '"]')].find(el => {
+    const r = el.getBoundingClientRect(); return r.height && r.bottom > 0 && r.top < vh;
+  }) || null;
+}
+function _likeLockScroll(id) {
+  const el = id ? _likeAnchorEl(id) : null;
+  _likeScrollLock = { el, top: el ? el.getBoundingClientRect().top : 0, y: window.scrollY, until: Date.now() + 1500 };
   const check = () => {
     const L = _likeScrollLock;
     if (!L || Date.now() > L.until) { _likeScrollLock = null; return; }
-    if (Math.abs(window.scrollY - L.y) > 20) window.scrollTo({ top: L.y, left: 0, behavior: 'instant' });
-    requestAnimationFrame(check);
+    if (L.el && L.el.isConnected) {
+      const dy = L.el.getBoundingClientRect().top - L.top;
+      if (Math.abs(dy) > 20) window.scrollTo({ top: window.scrollY + dy, left: 0, behavior: 'instant' });
+    } else if (Math.abs(window.scrollY - L.y) > 20) {
+      window.scrollTo({ top: L.y, left: 0, behavior: 'instant' });
+    }
+    setTimeout(check, 16);   // טיימר ולא rAF – זהה בטלפון, ובודק גם כשהחלון ברקע
   };
-  requestAnimationFrame(check);
+  setTimeout(check, 0);
 }
 // גלילה אמיתית מבטלת – אבל לא רעד-אצבע של לחיצה (touchmove קטן קורה גם בהקשה רגילה)
 let _likeTouchY = null;
@@ -3403,7 +3418,7 @@ function toggleLike(id) {
   const now = Date.now();
   if (now - (_likeLastTap.get(id) || 0) < LIKE_TAP_GUARD_MS) return;
   _likeLastTap.set(id, now);
-  _likeLockScroll();   // §641ה
+  _likeLockScroll(id);   // §641ה/ו
 
   const wanted = !(b.likedBy || []).includes(myId);
 

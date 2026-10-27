@@ -13366,11 +13366,11 @@ window.goToNextCard = function(kind, id, opts) {
   if (!ctx) return false;
   let keys;   // "kind:id"
   if (ctx === 'task') {
-    keys = taskFilteredList().filter(x => !pendingOnly || x.entity.status === 'pending' || (x.kind === kind && x.id === id)).map(x => x.kind + ':' + x.id);
+    keys = taskFilteredList().filter(x => !pendingOnly || (x.entity.status === 'pending' && !(x.kind === 'fan' && fanNeedsPersonalReview(x.entity))) || (x.kind === kind && x.id === id)).map(x => x.kind + ':' + x.id);   // §637ג
   } else if (ctx === 'biz') {
     keys = bizFilteredList().filter(x => !pendingOnly || x.status === 'pending' || x.id === id).map(x => 'biz:' + x.id);
   } else {
-    keys = fanFilteredList().filter(x => !pendingOnly || x.status === 'pending' || x.id === id).map(x => 'fan:' + x.id);
+    keys = fanFilteredList().filter(x => !pendingOnly || (x.status === 'pending' && !fanNeedsPersonalReview(x)) || x.id === id).map(x => 'fan:' + x.id);   // §637ג
   }
   const me = kind + ':' + id;
   const i = keys.indexOf(me);
@@ -13422,6 +13422,13 @@ window.toggleInReview = async function(kind, id) {
 
 // §567 — האוהד הממתין הבא **באותה רשימה שהמנהל רואה** (אותו סינון ואותו מיון), אחרי זה
 // שאושר; אם הוא היה האחרון – הראשון שנשאר. אין ממתין נוסף → המגירה נסגרת.
+// §637ג — רמי: "אושר שזה יעבור לאוהד הבא – מי שדורש בדיקה אל תכליל אותו, אל תעבור אליו, הוא דורש בדיקה
+// אישית שלי מקיפה"; "שידלג גם על כפילויות". המעבר **האוטומטי** (אחרי אישור/דחייה) מדלג על אוהד עם תג בדיקה:
+// ⚠️ לבדיקה (checkNote), 🔁 אחרי תיקון אימות (fixedAt), ↩️ נדחה בעבר (fanPrevRejected), ודגל בדיקה (reviewFlag –
+// כפילות אפשרית / שם לא תואם). כפתור "הבא" הידני – בלי שינוי, עובר על כולם.
+function fanNeedsPersonalReview(f) {
+  return !!(f && (f.checkNote || f.fixedAt || f.reviewFlag || fanPrevRejected(f)));
+}
 function goToNextPendingFan(id) {
   const pick = (ids) => {
     const i = ids.indexOf(id);
@@ -13432,13 +13439,13 @@ function goToNextPendingFan(id) {
   };
   if (selectedTaskKey === 'fan:' + id) {
     const ids = taskFilteredList()
-      .filter(x => x.kind === 'fan' && (x.entity.status === 'pending' || x.id === id))
+      .filter(x => x.kind === 'fan' && ((x.entity.status === 'pending' && !fanNeedsPersonalReview(x.entity)) || x.id === id))   // §637ג
       .map(x => x.id);
     const next = pick(ids);
     selectedTaskKey = next ? 'fan:' + next : null;
     renderMain();
   } else if (selectedFanDetailId === id) {
-    const ids = fanFilteredList().filter(x => x.status === 'pending' || x.id === id).map(x => x.id);
+    const ids = fanFilteredList().filter(x => (x.status === 'pending' && !fanNeedsPersonalReview(x)) || x.id === id).map(x => x.id);   // §637ג
     const next = pick(ids);
     if (next) selectFanDetail(next);
     else fanBackToList();
