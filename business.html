@@ -58,6 +58,44 @@
       color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px;
     }
     .help-entry-link:hover { color: var(--text); }
+    button.help-entry-link { background: none; border: none; cursor: pointer; }
+
+    /* §636 — טופס העזרה, כמו ב-fan-register.html (§303). עד היום כאן היה mailto בלבד, ולכן
+       פנייה של בעל עסק שנתקע לא נרשמה בשום מקום – לא בפניות ולא בשיפוט המהיר של העסק. */
+    .help-overlay {
+      position: fixed; inset: 0; z-index: 900; display: none;
+      align-items: flex-end; justify-content: center;
+      background: rgba(10,42,102,.45); backdrop-filter: blur(2px);
+    }
+    .help-overlay.show { display: flex; }
+    .help-sheet {
+      width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto;
+      background: var(--card-bg); border-radius: 20px 20px 0 0;
+      padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+      box-shadow: 0 -8px 40px rgba(10,42,102,.22);
+    }
+    @media (min-width: 701px) {
+      .help-overlay { align-items: center; }
+      .help-sheet { border-radius: var(--radius); }
+    }
+    .help-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+    .help-head h3 { flex: 1; font-size: 19px; font-weight: 800; color: var(--text); margin: 0; }
+    .help-x { background: none; border: none; font-size: 20px; line-height: 1; padding: 4px 6px; cursor: pointer; color: var(--text-muted); }
+    .help-sub { font-size: 13.5px; color: var(--text-muted); line-height: 1.55; margin-bottom: 14px; }
+    .help-field { margin-bottom: 12px; }
+    .help-field label { display: block; font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .help-field .hint { font-weight: 600; color: var(--text-muted); }
+    .help-field input, .help-field textarea { width: 100%; box-sizing: border-box; font-family: 'Rubik', sans-serif; font-size: 16px; }
+    .help-err { display: none; margin-top: 6px; font-size: 12.5px; font-weight: 600; color: #b45309; }
+    .help-err.show { display: block; }
+    .help-done { display: none; text-align: center; padding: 8px 0 4px; }
+    .help-done.show { display: block; }
+    .help-done-mark { width: 52px; height: 52px; margin: 0 auto 10px; border-radius: 50%; background: var(--yellow); color: var(--text); font-size: 26px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+    .help-done h3 { font-size: 19px; font-weight: 800; color: var(--text); margin-bottom: 8px; }
+    .help-done p { font-size: 13.5px; color: var(--text-muted); line-height: 1.55; }
+    .help-fallback { display: none; margin-top: 12px; padding: 11px 13px; border-radius: 12px; background: rgba(217,119,6,.1); border: 1px solid rgba(217,119,6,.35); color: #b45309; font-size: 13px; font-weight: 600; }
+    .help-fallback.show { display: block; }
+    .help-fallback .addr { display: block; margin-top: 6px; font-weight: 800; user-select: all; }
   </style>
   <script src="social-links.js"></script>
   <style>
@@ -773,7 +811,7 @@
 
   window.hbQueueUntilDefined([
     'toggleSecondTag', 'onGalleryFilesPicked', 'previewLogo', 'previewCoverPhoto', 'paintAgreeTermsBox',
-    'goToBizTerms'
+    'goToBizTerms', 'openHelp', 'closeHelp', 'sendHelp'
   ]);
 
   window.addEventListener('load', function () {
@@ -787,6 +825,44 @@
 </script>
 
 <a class="back-to-site" id="backToSiteLink" href="home.html" title="חזרה" aria-label="חזרה">‹</a>
+
+<!-- ── §636 — פאנל העזרה (כמו §303 ב-fan-register.html) – נשמר ב-helpRequests ─────────── -->
+<div class="help-overlay" id="helpOverlay" onclick="if(event.target===this)closeHelp()">
+  <div class="help-sheet" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div id="helpFormWrap">
+      <div class="help-head">
+        <h3 id="helpTitle">נשמח לעזור</h3>
+        <button type="button" class="help-x" onclick="closeHelp()" aria-label="סגירה">✕</button>
+      </div>
+      <div class="help-sub" id="helpSub">ספרו לנו מה קרה ונחזור אליכם. אין צורך למלא את הטופס מחדש – מה שמילאתם נשמר.</div>
+      <div class="help-field">
+        <label for="helpName">שם מלא</label>
+        <input type="text" id="helpName" placeholder="איך קוראים לך?" autocomplete="name" />
+      </div>
+      <div class="help-field">
+        <label for="helpContact">טלפון או מייל <span class="hint">– כדי שנוכל לחזור אליכם</span></label>
+        <input type="text" id="helpContact" placeholder="05x-xxxxxxx או name@mail.com" />
+        <div class="help-err" id="helpContactErr">צריך טלפון או מייל, אחרת לא נוכל לחזור אליכם</div>
+      </div>
+      <div class="help-field">
+        <label for="helpMessage">מה קרה?</label>
+        <textarea id="helpMessage" rows="4" placeholder="לא הצלחתי להעלות תמונה · לא הבנתי איזה סוג עסק לבחור · הכפתור לא הגיב…"></textarea>
+        <div class="help-err" id="helpMessageErr">כתבו לנו במשפט אחד מה קרה</div>
+      </div>
+      <button type="button" class="btn-submit" id="helpSendBtn" onclick="sendHelp()">שליחת הפנייה</button>
+      <div class="help-fallback" id="helpFallback">
+        לא הצלחנו לשלוח את הפנייה. אפשר לכתוב לנו ישירות:
+        <span class="addr">yellowzonemta@gmail.com</span>
+      </div>
+    </div>
+    <div class="help-done" id="helpDone">
+      <div class="help-done-mark">✓</div>
+      <h3>קיבלנו</h3>
+      <p>נחזור אליכם בהקדם. הפרטים שמילאתם בטופס נשמרו – אפשר להמשיך מאיפה שהפסקתם.</p>
+      <button type="button" class="btn-submit" style="margin-top:16px" onclick="closeHelp()">חזרה לטופס</button>
+    </div>
+  </div>
+</div>
 
 <!-- Netlify Forms detection (hidden) -->
 <form name="business-registration" netlify netlify-honeypot="bot-field" hidden>
@@ -1672,13 +1748,13 @@
          ולכן שורה שאינה step-panel הייתה נשארת תלויה מעל מסך ההצלחה. במסך הכשל היא
          מופיעה מחדש בתוך הכרטיס עצמו — שם היא הפעולה הבאה האמיתית.
 
-         ⚠️ **מייל ולא טופס-פנייה.** לאוהד יש מודאל שנשמר ב-helpRequests; כאן אין, וזה
-         נשאר כך במפורש (לא נתבקש). הכתובת היא זו שכבר משמשת כערוץ-הגיבוי במסך ההצלחה
-         (§285), כדי שלא ייווצר ערוץ שני שאיש לא עוקב אחריו. -->
+         ~~מייל ולא טופס-פנייה~~ — §636: רמי ביקש טופס כמו של האוהד. מכאן helpRequests
+         (source bizSignup/bizSubmitFail), והמייל נשאר רק כגיבוי כשהשליחה נכשלה. -->
+    <!-- §636 — רמי: טופס עזרה כמו של האוהדים, שיופיע בפניות ובכרטיס העסק. מחליף את ה-mailto. -->
     <div class="help-entry" id="helpEntry">
-      <a class="help-entry-link" href="mailto:yellowzonemta@gmail.com?subject=%D7%A2%D7%96%D7%A8%D7%94%20%D7%91%D7%94%D7%A8%D7%A9%D7%9E%D7%AA%20%D7%A2%D7%A1%D7%A7">
+      <button type="button" class="help-entry-link" onclick="openHelp('bizSignup')">
         צריכים עזרה בהרשמה? כתבו לנו
-      </a>
+      </button>
     </div>
 
     <!-- §295 — מסך-הביניים (submittingState) הוסר. ההמתנה יושבת עכשיו על הכפתור עצמו,
@@ -1695,7 +1771,7 @@
         <!-- §348 — מי שהשליחה נכשלה לו כבר ניסה; "נסו שוב" לבדו הוא מבוי סתום אם היא
              תיכשל שנית. אותה שורה בדיוק, בתוך הכרטיס, כי כאן היא הפעולה הבאה. -->
         <div class="help-entry">
-          <a class="help-entry-link" href="mailto:yellowzonemta@gmail.com?subject=%D7%A2%D7%96%D7%A8%D7%94%20%D7%91%D7%94%D7%A8%D7%A9%D7%9E%D7%AA%20%D7%A2%D7%A1%D7%A7">צריכים עזרה? כתבו לנו</a>
+          <button type="button" class="help-entry-link" onclick="openHelp('bizSubmitFail')">צריכים עזרה? כתבו לנו</button>
         </div>
         <a class="success-back-link" id="failBackLink" href="home.html">חזרה לדף הבית</a>
       </div>
@@ -1748,6 +1824,81 @@
     }
     return id;
   }
+
+  // ══ §636 — "צריכים עזרה? כתבו לנו" → helpRequests (כמו §303 ב-fan-register.html) ══════════
+  // מופיע במרכז הניהול ב"פניות", ובשיפוט המהיר של העסק – bizInquiries מתאים לפי טלפון/מייל
+  // של בעל העסק, ולכן הם ממולאים מראש מהטופס. שם העסק נכנס לתחילת ההודעה: אין לו שדה משלו
+  // ב-helpRequests (firestore.rules – hasOnly), ובלעדיו פנייה ממי שעוד לא שלח היא בלי הקשר.
+  const HELP_OPENERS = {
+    bizSignup:     'ספרו לנו מה קרה ונחזור אליכם. אין צורך למלא את הטופס מחדש – מה שמילאתם נשמר.',
+    bizSubmitFail: 'הבקשה לא נשלחה. ספרו לנו מה קרה ונטפל בזה מולכם – הפרטים שמילאתם נשמרו כאן.',
+  };
+  let helpSource = 'bizSignup';
+  const _hv = (id) => (document.getElementById(id)?.value || '').trim();
+
+  window.openHelp = function(source) {
+    helpSource = HELP_OPENERS[source] ? source : 'bizSignup';
+    document.getElementById('helpSub').textContent = HELP_OPENERS[helpSource];
+    const name = [_hv('ownerFirst'), _hv('ownerLast')].filter(Boolean).join(' ');
+    if (name && !_hv('helpName')) document.getElementById('helpName').value = name;
+    const contact = _hv('ownerPhone') || _hv('ownerEmail');
+    if (contact && !_hv('helpContact')) document.getElementById('helpContact').value = contact;
+    document.getElementById('helpFormWrap').style.display = '';
+    document.getElementById('helpDone').classList.remove('show');
+    document.getElementById('helpFallback').classList.remove('show');
+    document.getElementById('helpOverlay').classList.add('show');
+    document.body.style.overflow = 'hidden';
+  };
+  window.closeHelp = function() {
+    document.getElementById('helpOverlay').classList.remove('show');
+    document.body.style.overflow = '';
+  };
+  window.sendHelp = async function() {
+    const contactEl = document.getElementById('helpContact');
+    const msgEl = document.getElementById('helpMessage');
+    const contactErr = document.getElementById('helpContactErr');
+    const msgErr = document.getElementById('helpMessageErr');
+    contactErr.classList.remove('show'); msgErr.classList.remove('show');
+    let bad = false;
+    if (!contactEl.value.trim()) { contactErr.classList.add('show'); bad = true; }
+    if (!msgEl.value.trim())     { msgErr.classList.add('show'); bad = true; }
+    if (bad) return;
+
+    const btn = document.getElementById('helpSendBtn');
+    btn.disabled = true;
+    btn.textContent = 'שולח…';
+    document.getElementById('helpFallback').classList.remove('show');
+    let w = window.innerWidth;
+    try { if (window.top && window.top !== window) w = window.top.innerWidth; } catch (_) {}
+    const bizName = _hv('bizName');
+    // currentStep הוא let נמוך יותר במודול – typeof לא מגן מ-TDZ, ולכן try
+    let stepLabel = null;
+    try { stepLabel = 'שלב ' + currentStep; } catch (_) {}
+    try {
+      await withTimeout(addDoc(collection(db, 'helpRequests'), {
+        name: _hv('helpName').slice(0, 80) || null,
+        contact: contactEl.value.trim().slice(0, 120),
+        message: ((bizName ? 'עסק: ' + bizName + '\n' : '') + msgEl.value.trim()).slice(0, 1000),
+        source: helpSource,
+        device: w <= 700 ? 'mobile' : 'desktop',
+        lastField: stepLabel,
+        errCode: null,
+        path: location.pathname.slice(0, 200),
+        sessionId: _hbSessionId(),
+        memberId: null,
+        status: 'new',
+        createdAt: serverTimestamp(),
+      }), 20000, 'help-timeout');
+      document.getElementById('helpFormWrap').style.display = 'none';
+      document.getElementById('helpDone').classList.add('show');
+    } catch (e) {
+      console.error('helpRequest failed:', e.code || e.name, e.message);
+      document.getElementById('helpFallback').classList.add('show');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'שליחת הפנייה';
+    }
+  };
 
   // §438 — ר' ההערה המלאה ב-welcome.html: המקור היחיד לזיהוי הוא YZNativeGoogle.surface().
   function _hbSurface() {

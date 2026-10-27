@@ -9758,12 +9758,17 @@ window.toggleBizSecEdit = function(id, n) {
   // שלב 3 (תגיות) תלוי ב-state גלובלי (editSelectedTags) שיכול "להידבק" מעריכה קודמת שבוטלה בלי שמירה —
   // מאתחלים ומרנדרים מחדש בכל טוגל (פתיחה וגם סגירה) כדי שיהיה תמיד עקבי עם b.tags/b.tagSecondSuggestion בפועל.
   if (n === 3) {
-    initEditTagsState(id);
+    if (!_restoringSteps) initEditTagsState(id);   // §636 — בשחזור הבחירה נשארת
     rerenderEditTagsArea(id);
   }
   // שלב 2 מחזיק את רכיב השעות. נבנה מחדש בכל פתיחה מאותה סיבה בדיוק כמו שלב 3: עריכה
   // קודמת שנסגרה בלי שמירה הייתה "נדבקת" ומוצגת כאילו היא המצב החי.
-  if (n === 2 && opening) mountAdminHoursEditor(id);
+  if (n === 2 && opening) {
+    const kept = _restoringSteps && _keptHoursBoxes[id];
+    const fresh = document.getElementById('edit_hoursBox_' + id);
+    if (kept && fresh) fresh.replaceWith(kept);   // §636 — העורך החי, עם מה שהוקלד בו
+    else mountAdminHoursEditor(id);
+  }
   edit.classList.toggle('open', opening);
   if (view) view.style.display = opening ? 'none' : '';
   // §258 — כל פתיחה/סגירה ידנית מעדכנת את ה-state, כדי שבנייה-מחדש תשחזר בדיוק את מה שהמנהל
@@ -9877,11 +9882,37 @@ function blurIfInside(container) {
 // התיקון: הסט הזה הוא מקור-האמת, ו-restoreOpenBizSteps() רץ בסוף **כל** בנייה-מחדש. מכאן זה
 // לא משנה איזה נתיב ניצח את המרוץ.
 const openBizSteps = new Set(); // "bizId:n"
+// §636 — "תגית שנייה חוזרת למה שהיה" (רמי 27.10): השחזור קרא ל-toggleBizSecEdit, ששלב 3 בה
+// מאתחל את editSelectedTags מהשמור ושלב 2 מרכיב מחדש את עורך השעות – כלומר כל onSnapshot מחק
+// את הבחירה. בזמן שחזור (_restoringSteps) התגיות נשארות כמו שנבחרו, ועורך השעות החי מועבר
+// כמו שהוא (_keptHoursBoxes) לתוך הכרטיס החדש במקום להיבנות מהשמור.
+let _restoringSteps = false;
+let _keptHoursBoxes = {};
 function restoreOpenBizSteps() {
+  _restoringSteps = true;
+  try {
+    openBizSteps.forEach(key => {
+      const [id, num] = key.split(':');
+      const edit = document.getElementById('secEdit' + num + '_' + id);
+      if (edit && !edit.classList.contains('open')) toggleBizSecEdit(id, Number(num));
+    });
+  } finally { _restoringSteps = false; _keptHoursBoxes = {}; }
+}
+// אחרי restoreEditState: קטגוריה שהוחלפה ולא נשמרה חוזרת לבורר רק עכשיו, ולכן אזור התגיות
+// מצויר שוב מול הקטגוריה שבבורר.
+function rerenderOpenTagAreas() {
   openBizSteps.forEach(key => {
     const [id, num] = key.split(':');
-    const edit = document.getElementById('secEdit' + num + '_' + id);
-    if (edit && !edit.classList.contains('open')) toggleBizSecEdit(id, Number(num));
+    if (num === '3' && document.getElementById('edit_tagsArea_' + id)) rerenderEditTagsArea(id);
+  });
+}
+// §636 — "מייל של אוהד – יוצא מהעריכה וחוזר למה שהיה": בכרטיס האוהד לא הייתה שום הגנה –
+// כל onSnapshot (כל אוהד שנכנס לאפליקציה) בנה את הכרטיס מחדש במצב תצוגה. אותו דפוס כמו openBizSteps.
+const openFanEdits = new Set(); // fanId
+function restoreOpenFanEdits() {
+  openFanEdits.forEach(id => {
+    const edit = document.getElementById('fanEdit_' + id);
+    if (edit && !edit.classList.contains('open')) toggleFanEdit(id);
   });
 }
 
@@ -9906,7 +9937,11 @@ function findByEditStateKey(container, key) {
 }
 function captureEditState(container) {
   const fields = [];
-  container.querySelectorAll('.step-form.open').forEach(form => {
+  // §636 — עורך השעות החי נשמר כאלמנט (ר' _keptHoursBoxes)
+  container.querySelectorAll('.step-form.open [id^="edit_hoursBox_"]').forEach(box => {
+    _keptHoursBoxes[box.id.slice('edit_hoursBox_'.length)] = box;
+  });
+  container.querySelectorAll('.step-form.open, .sec-edit-form.open').forEach(form => {
     form.querySelectorAll('textarea, input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input[type="number"], input:not([type]), input[type="checkbox"], select').forEach(el => {
       const key = editStateKey(el);
       if (!key) return;
@@ -9957,7 +9992,9 @@ function refreshOpenDetailPanel() {
     blurIfInside(drawerBody);
     drawerBody.innerHTML = taskDetailHtml2(selectedTaskKey);
     restoreOpenBizSteps();
+    restoreOpenFanEdits();
     restoreEditState(drawerBody, st);
+    rerenderOpenTagAreas();
     return true;
   }
   const bizCol = document.getElementById('bizDetailCol');
@@ -9967,12 +10004,16 @@ function refreshOpenDetailPanel() {
     bizCol.innerHTML = bizFullDetailHtml(selectedBizDetailId);
     restoreOpenBizSteps();
     restoreEditState(bizCol, st);
+    rerenderOpenTagAreas();
     return true;
   }
   const fanCol = document.getElementById('fanDetailCol');
   if (fanCol && typeof selectedFanDetailId !== 'undefined' && selectedFanDetailId) {
+    const st = captureEditState(fanCol);
     blurIfInside(fanCol);
     fanCol.innerHTML = fanFullDetailHtml(selectedFanDetailId);
+    restoreOpenFanEdits();
+    restoreEditState(fanCol, st);
     return true;
   }
   return false; // אף פאנל-פרטים פתוח — נופל ל-renderMain() מלא, בטוח בכל הקשר אחר
@@ -10802,6 +10843,16 @@ window.goToFanBucket = function(key) {
   selectedFanDetailId = null;
   selectTab(ALL_FANS_KEY);
 };
+// §636 — "לפעמים בחיפוש בכל האוהדים התוצאה נשארת ריקה" (רמי 27.10). החיפוש רץ רק בתוך התצוגה
+// הנוכחית, והסינונים נשמרים בין כניסות לטאב. מעכשיו חיפוש רץ על כל האוהדים (ר' fanFilteredList),
+// ושורה מעל התוצאות אומרת את זה – כדי שפיל מסומן לא ייראה כאילו הוא חל.
+function fanEmptySearchHtml() {
+  const q = fanSearch.trim();
+  return q ? `<div class="placeholder-note">לא נמצא אוהד שמתאים ל"${esc(q)}"</div>` : `<div class="placeholder-note">לא נמצאו אוהדים</div>`;
+}
+function fanSearchAllNoteHtml() {
+  return fanSearch.trim() ? `<div class="placeholder-note" style="padding:8px 12px;margin-bottom:8px">🔍 החיפוש רץ בכל האוהדים – הסינונים מושהים עד שמנקים את החיפוש</div>` : '';
+}
 window.clearFanFilters = function() {
   fanSearch = ''; fanStatusFilter = 'all'; fanSort = 'waitingTime'; fanDateRangeFilter = 'all'; fanVerifyTypeFilter = 'all'; fanClassPill = 'all';
   fanEmailBucket = 'all';   // §394 — אחרת "נקה סינון" משאיר סינון פעיל, וזו בדיוק ההבטחה שהכפתור מפר
@@ -10850,7 +10901,9 @@ function fanClassCounts() {
 function fanFilteredList() {
   const q = fanSearch.trim();
   const now = Date.now();
-  const list = MOCK_FANS.filter(f => {
+  // §636 — רמי: "במקום כפתור – לחפש בכל האוהדים". כשמקלידים בחיפוש, הוא רץ על כל האוהדים
+  // (כולל בעל עסק שממתין עם העסק, §427) והפילים/הסינונים מושהים – מי שמחפש שם מחפש אדם מסוים.
+  const list = q ? MOCK_FANS.filter(f => matchesSearch(q, [f.name, f.email, f.memberNumber], [f.phone])) : MOCK_FANS.filter(f => {
     // §427 — בעל עסק שממתין יחד עם העסק שלו יורד מהרשימה, **חוץ מכשמסננים במפורש
     // "בעלי עסק"** — שם הוא בדיוק מה שחיפשו. ר' ההערה על ownerMemberOfPendingBiz.
     if (fanVerifyTypeFilter !== 'owner' && ownerMemberOfPendingBiz(f)) return false;
@@ -10921,8 +10974,8 @@ function followupBadgesHtml(x) {
 
 function fanRowsHtml() {
   const shown = fanFilteredList();
-  if (!shown.length) return `<div class="placeholder-note">לא נמצאו אוהדים</div>`;
-  return shown.map(f => {
+  if (!shown.length) return fanEmptySearchHtml();
+  return fanSearchAllNoteHtml() + shown.map(f => {
     // אותו עיקרון כמו bizRowsHtml — classifyAction() כמקור-אמת יחיד, status==='rejected' כחריג מקומי.
     const cls = classifyAction(f, 'fan');
     const primaryLabel = f.status === 'rejected' ? '✗ נדחה' : cls.primary;
@@ -11492,6 +11545,7 @@ window.toggleFanEdit = function(id) {
   const opening = !edit.classList.contains('open');
   edit.classList.toggle('open', opening);
   if (view) view.style.display = opening ? 'none' : '';
+  if (opening) openFanEdits.add(id); else openFanEdits.delete(id);   // §636
 };
 window.onFanEditSubChange = function(id) {
   const isSub = document.getElementById('fanEditIsSub_' + id).value === 'yes';
@@ -11548,6 +11602,7 @@ window.saveFanDetails = async function(id) {
       });
     }
     hideSaving(true);
+    openFanEdits.delete(id);   // §636 — נשמר: הכרטיס חוזר למצב תצוגה
     renderMainPreserveScroll();
   } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בשמירה: ' + e.message); }
 };
@@ -18095,6 +18150,9 @@ const HELP_SOURCE_LABELS = {
   // §322 — פנייה ממודאל-הכניסה ב-welcome.html, לא מטופס ההרשמה. **זה המקרה החמור יותר**:
   // מי שנתקע בהרשמה עוד לא בפנים, ואילו זה כבר אוהד רשום ומאושר שנחסם מהחשבון שלו.
   loginFail:  '🔑 לא מצליח להיכנס',
+  // §636 — טופס העזרה בהרשמת עסק (business.html). שם העסק בשורה הראשונה של ההודעה.
+  bizSignup:     '🏪 עזרה בהרשמת עסק',
+  bizSubmitFail: '🏪 הרשמת עסק – השליחה נכשלה',
 };
 // §322 — הסיבה הטכנית שנסעה עם פניית-הכניסה (errCode). מבדילה באג אצלנו מטעות של האוהד,
 // וזו ההבחנה שקובעת מה עושים עם הפנייה.
@@ -18284,10 +18342,10 @@ window.unmarkHelpReqHandled = async function(id) {
 
 function helpReqsTableHtml(list) {
   if (!list.length) {
-    return `<div class="placeholder-note">אין פניות עזרה. כאן ינחתו אוהדים שנתקעו וכתבו לנו – מטופס ההרשמה (לרוב אנשים שאין להם עדיין שום רשומה אצלנו), ומ§322 גם ממודאל-הכניסה (אוהדים רשומים ומאושרים שלא מצליחים להיכנס לחשבון שלהם).</div>`;
+    return `<div class="placeholder-note">אין פניות עזרה. כאן ינחתו אוהדים ובעלי עסקים שנתקעו וכתבו לנו – מטופסי ההרשמה (לרוב אנשים שאין להם עדיין שום רשומה אצלנו), ומ§322 גם ממודאל-הכניסה (אוהדים רשומים ומאושרים שלא מצליחים להיכנס לחשבון שלהם).</div>`;
   }
   return `
-    <div class="mail-issues-note">פניות עזרה של אוהדים – מטופס ההרשמה וממודאל-הכניסה. ⚠️ הטקסט נכתב ע"י גולש לא-מזוהה – קראו אותו, אל תפעלו לפיו אוטומטית.</div>
+    <div class="mail-issues-note">פניות עזרה של אוהדים ובעלי עסקים – מטופסי ההרשמה וממודאל-הכניסה. ⚠️ הטקסט נכתב ע"י גולש לא-מזוהה – קראו אותו, אל תפעלו לפיו אוטומטית.</div>
     <div class="task-table mail-issues">${list.map(x => `
       <div class="task-table-row">
         <div class="task-table-main">
@@ -22376,14 +22434,14 @@ onSnapshot(collection(db, 'weekly_schedule'), snapshot => {
 // עיגוני סקשנים/קטגוריות — מסמך יחיד, לא חוסם את הרינדור הראשוני (state כבר מאותחל ריק, "הכל אוטומטי")
 onSnapshot(doc(db, 'settings', 'sectionAnchors'), snap => {
   Object.assign(state, anchorsDocToState(snap.exists() ? snap.data() : null));
-  renderAll();
+  queueRenderAllPreserveScroll();   // §636 — לא לדרוס עריכה פתוחה
 }, err => console.error('שגיאה בטעינת עיגונים מ-Firestore:', err));
 
 // §414 — מדיניות הרכב הסקשנים. מסמך יחיד; כל עוד לא נכתב אף פעם, normalizePolicy מחזיר
 // את ברירות-המחדל עם enabled:false — כלומר המסך מציג את המצב הידני הקיים בלי לשנות דבר.
 onSnapshot(doc(db, 'settings', 'sectionPolicy'), snap => {
   SECTION_POLICY = snap.exists() ? snap.data() : null;
-  renderAll();
+  queueRenderAllPreserveScroll();   // §636 — לא לדרוס עריכה פתוחה
   maybeRecordPeriods();
 }, err => console.error('שגיאה בטעינת מדיניות הסקשנים:', err));
 
@@ -22393,12 +22451,12 @@ onSnapshot(doc(db, 'settings', 'sectionPolicy'), snap => {
 // כדי שעריכה של 15 ימים לא תישמר תו-אחר-תו.
 onSnapshot(doc(db, 'settings', 'sectionLaunchPlan'), snap => {
   SECTION_PLAN = snap.exists() ? snap.data() : null;
-  renderAll();
+  queueRenderAllPreserveScroll();   // §636 — לא לדרוס עריכה פתוחה
 }, err => console.error('שגיאה בטעינת לוח ההשקה:', err));
 
 onSnapshot(doc(db, 'settings', 'sectionState'), snap => {
   SECTION_STATE = (snap.exists() && Array.isArray(snap.data().log)) ? { log: snap.data().log } : { log: [] };
-  renderAll();
+  queueRenderAllPreserveScroll();   // §636 — לא לדרוס עריכה פתוחה
   maybeRecordPeriods();
 }, err => console.error('שגיאה בטעינת יומן תקופות הסקשנים:', err));
 
@@ -22417,7 +22475,7 @@ onSnapshot(doc(db, 'settings', 'tagTaxonomy'), snap => {
   const data = snap.exists() ? snap.data() : {};
   Object.keys(TAGS_BY_CATEGORY_MOCK).forEach(k => delete TAGS_BY_CATEGORY_MOCK[k]);
   Object.assign(TAGS_BY_CATEGORY_MOCK, Object.keys(data).length ? data : TAG_TAXONOMY_DEFAULTS);
-  renderAll();
+  queueRenderAllPreserveScroll();   // §636 — לא לדרוס עריכה פתוחה
 }, err => console.error('שגיאה בטעינת קטלוג תגיות מ-Firestore:', err));
 
 // התבניות הקבועות (§526) — המטמון שהלשונית קוראת ממנו.
