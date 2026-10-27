@@ -21,6 +21,7 @@ export const PUBLIC_FIELDS = [
   'approvedAt', 'isNew', 'newUntil', 'isFeatured', 'featuredUntil', 'sectionDeals', 'sectionTurn', 'sectionQueuePos',
   'exposurePriority', 'isSubscriber', 'ownerFirst',
   'clicks', 'likedBy', 'likesOverride', 'likesOverrideUntil',
+  'kosher',   // §643 – כשר/לא כשר (מנהל או הרשמה)
 ];
 
 // additionalDiscounts – בלי `code`; במקומו hasCode (home.html מחשב לפיו את אופני המימוש).

@@ -1025,6 +1025,15 @@
             <div class="tag-chip-wrap" id="tagsBar2"></div>
           </div>
         </div>
+        <!-- §643 — רמי: "שאלה על כשרות רק לקטגוריית אוכל, ובאירועים לא לכולם – לפי התגית". מוצגת (וחובה)
+             רק לאוכל, או לאירועים עם התגית "אוכל ואלכוהול לאירועים". -->
+        <div id="kosherWrap" style="display:none;margin-top:16px;">
+          <div class="section-subtitle">העסק כשר? <span class="req">*</span></div>
+          <div class="cat-hint" style="margin-top:0;">אוהדים יוכלו לחפש עסקים כשרים</div>
+          <div style="height:8px;"></div>
+          <div class="tag-chip-wrap" id="kosherBar"></div>
+          <div class="field-error" id="err-kosher">נא לסמן אם העסק כשר</div>
+        </div>
       </div>
 
       <div class="divider"></div>
@@ -2820,6 +2829,12 @@
     ok = vf('bizName', name.length >= 2) && ok;
     ok = vf('bizDesc', desc.length >= 20, 'נדרש תיאור של לפחות 20 תווים') && ok;
 
+    // §643 — כשרות: חובה רק כשהשאלה מוצגת
+    const kosherErr = document.getElementById('err-kosher');
+    const kosherMissing = kosherRelevant() && !kosherAnswer;
+    if (kosherErr) kosherErr.style.display = kosherMissing ? 'block' : 'none';
+    if (kosherMissing) ok = false;
+
     const catGrid = document.getElementById('categoryGrid');
     const catErr = document.getElementById('err-category');
     if (!selectedCat) {
@@ -3174,6 +3189,7 @@
       categoryPrimary:      selectedCat || '',
       tags:                 selectedTags[0] ? [selectedTags[0]] : [],
       tagSecondSuggestion:  selectedTags[1] || '',
+      kosher:               kosherRelevant() ? kosherAnswer === 'yes' : null,   // §643
       noTagFits,
       tagSuggestion:     document.getElementById('tagSuggestion').value.trim(),
       alsoCategorySuggestion: document.getElementById('alsoCatToggle').checked ? (selectedAlsoCat || '') : '',
@@ -3899,6 +3915,27 @@
     }).join('');
   }
 
+  // §643 — כשרות: רק לאוכל, או לאירועים עם התגית "אוכל ואלכוהול לאירועים" (ראשית או שנייה)
+  const KOSHER_EVENT_TAG = 'אוכל ואלכוהול לאירועים';
+  let kosherAnswer = null;   // 'yes' | 'no' | null
+  function kosherRelevant() {
+    return selectedCat === 'food' || (selectedCat === 'events' && selectedTags.includes(KOSHER_EVENT_TAG));
+  }
+  function syncKosher() {
+    const wrap = document.getElementById('kosherWrap');
+    if (!wrap) return;
+    const on = kosherRelevant();
+    wrap.style.display = on ? 'block' : 'none';
+    if (!on) { const e = document.getElementById('err-kosher'); if (e) e.style.display = 'none'; }
+    document.getElementById('kosherBar').innerHTML = [['yes', 'כשר'], ['no', 'לא כשר']].map(([v, l]) =>
+      `<div class="tag-chip${kosherAnswer === v ? ' selected' : ''}" onclick="pickKosher('${v}')">${l}</div>`).join('');
+  }
+  function pickKosher(v) {
+    kosherAnswer = kosherAnswer === v ? null : v;
+    const e = document.getElementById('err-kosher'); if (e && kosherAnswer) e.style.display = 'none';
+    syncKosher();
+  }
+
   function selectPrimaryTag(tag) {
     if (selectedTags[0] === tag) {
       selectedTags = [];
@@ -3911,12 +3948,14 @@
     }
     renderTagsBar();
     clearTagsError();
+    syncKosher();   // §643
   }
 
   function selectSecondTag(tag) {
     selectedTags[1] = (selectedTags[1] === tag ? undefined : tag);
     selectedTags = selectedTags.filter(Boolean);
     renderSecondTagBar();
+    syncKosher();   // §643
   }
 
   window.toggleSecondTag = function() {
@@ -3928,6 +3967,7 @@
       selectedTags = selectedTags.slice(0, 1);
       renderSecondTagBar();
     }
+    syncKosher();   // §643
   };
 
   function clearTagsError() {
@@ -3949,6 +3989,7 @@
     }
     renderTagsBar();
     clearTagsError();
+    syncKosher();   // §643
   }
 
   function selectCat(key) {
@@ -3965,6 +4006,7 @@
     renderCatGrid();
     renderTagsBar();
     renderAlsoCatGrid();
+    syncKosher();   // §643
     if (selectedCat) {
       const err = document.getElementById('err-category');
       if (err) err.style.display = 'none';
@@ -4829,6 +4871,7 @@
 
       categoryPrimary:   selectedCat || '',
       tags:              [...selectedTags],
+      kosherAnswer,   // §643
       noTagFits,
       tagSuggestion:     v('tagSuggestion'),
       alsoCategorySuggestion: document.getElementById('alsoCatToggle').checked ? (selectedAlsoCat || '') : '',
@@ -4971,6 +5014,8 @@
       renderTagsBar();
     }
     if (d.noTagFits) { noTagFits = true; renderTagsBar(); }
+    if (d.kosherAnswer === 'yes' || d.kosherAnswer === 'no') kosherAnswer = d.kosherAnswer;   // §643
+    syncKosher();
     document.getElementById('tagSuggestion').value = d.tagSuggestion || '';
     if (d.alsoCategorySuggestion && CATEGORIES.some(c => c.key === d.alsoCategorySuggestion)) {
       document.getElementById('alsoCatToggle').checked = true;
@@ -5036,7 +5081,7 @@
   Object.assign(window, {
     addBenefit, addBranch, goBack, goNext, handleSubmit, retrySubmit,
     onDiscBuilderInput, onDiscBuilderInputN, removeBenefit, removeBranch,
-    selectAlsoCat, selectBizType, selectCat, selectPrimaryTag, selectRedeemMode,
+    selectAlsoCat, selectBizType, selectCat, selectPrimaryTag, selectRedeemMode, pickKosher,   // §643
     selectRedeemModeN, selectSecondTag, selectStacking, setSubscriber, setBizFanSport, setBizVerifiedSport,
     // §284 — נקרא מ-onclick על כרטיסי מסלולי-האימות. בלי החשיפה המפורשת הזאת הבורר פשוט
     // לא מגיב, בלי שום שגיאה בקונסול (module scope).

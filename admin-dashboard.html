@@ -9227,6 +9227,7 @@ function bizFullDetailHtml(id, opts) {
           ${(idWaBtn || idMailBtn) ? `<div class="identity-actions-row">${idWaBtn}${idMailBtn}</div>` : ''}
           ${idDashBtn}
           ${idAreaBtn}
+          <button type="button" class="btn-id-dash" onclick="openBizNoteFree('${b.id}')">💬 הודעה לבעל העסק</button>
         </div>
       </div>
       <!-- §299 – הקוביות הקבועות ירדו. מה שנשאר ולמה:
@@ -9686,6 +9687,7 @@ function bizFullDetailHtml(id, opts) {
   // מידע-ניהולי שלא בעיצוב "פרטי העסק" עצמו, לא תוכן שנעלם.
   const mainTabHtml = `
     ${quickJudgmentHtml(b)}
+    ${kosherRowHtml(b)}
     ${identityCardHtml}
     ${anchorCardHtml}
     ${ownerVerifStepHtml}
@@ -11095,7 +11097,7 @@ function inquiriesQjRowHtml(q, name) {
         <div style="font-size:12px;color:var(--text-muted)">${esc(h.name || '')} · ${esc(h.contact || '')}</div>
         ${h.status === 'handled' ? '' : `<button class="qj-btn" style="margin-top:4px" onclick="markHelpReqHandled('${h.id}','${escJsAttr(h.name || name || '')}')">✔️ טופל</button>`}</div>` })),
     ...q.conv.map(c => { const at = c.lastAt && c.lastAt.toDate ? c.lastAt.toDate() : null; return { at, html: `<div style="padding:6px 0;border-top:1px solid var(--line, #E7E7E0)">
-        <b>💬 שיחה מהאפליקציה</b> · ${esc(c.subject || '')} · ${at ? fmtDateTime(at) : ''} · ${c.status === 'closed' ? 'סגורה' : c.lastFrom === 'member' ? '<b style="color:#C2570C">ממתינה לתשובה</b>' : 'ענינו'}
+        <b>💬 שיחה מהאפליקציה</b> · ${esc(c.subject || '')}${convRefTitle(c.subject) ? ' · <b style="color:#0A2A66">🔗 בנוגע להודעה ששלחת</b>' : ''} · ${at ? fmtDateTime(at) : ''} · ${c.status === 'closed' ? 'סגורה' : c.lastFrom === 'member' ? '<b style="color:#C2570C">ממתינה לתשובה</b>' : 'ענינו'}
         <div><button class="qj-btn" style="margin-top:4px" onclick="openConvAdmin('${c.id}')">פתיחת השיחה</button></div></div>` }; }),
   ].sort((a, b) => (b.at || 0) - (a.at || 0));
   return `
@@ -12468,7 +12470,7 @@ function unifiedIssueList() {
   convPendingList().forEach(x => out.push({
     kind: 'conv', at: x.at, urgent: true,
     who: x.who + (x.num ? ' · ' + x.num : '') + (x.biz ? ' · בעל עסק: ' + (x.biz.name || '') : ''),
-    title: 'ממתינה לתשובה', meta: x.subject || '',
+    title: convRefTitle(x.subject) ? 'ממתינה לתשובה · 🔗 על הודעה ששלחת' : 'ממתינה לתשובה', meta: x.subject || '',
     entity: x.fan ? { kind: 'fan', id: x.fan.id } : null,
     markJs: 'openConvAdmin(' + q1(escJsAttr(x.id)) + ')', actLabel: '💬 פתיחת השיחה',
   }));
@@ -12812,8 +12814,57 @@ function taskTableBodyHtml(list) {
   return `<div class="task-table">${list.map(taskRow2Html).join('')}</div>`;
 }
 
+// ══ §643 — כשרות: רמי מסמן בעצמו ═══════════════════════════════════════════════════════════
+// רמי: "אל תשלח ואל תעשה לעסקים – תוסיף לי משימה בדשבורד הראשי, אני יסמן, אני יודע אם הם כשרים".
+// רלוונטי רק לאוכל, ולאירועים עם התגית "אוכל ואלכוהול לאירועים" (כמו השאלה ב-business.html).
+// השדה kosher: true/false; לא קיים = טרם סומן. נכתב ישירות (עובדה, לא תוכן שעובר אישור).
+const KOSHER_EVENT_TAG = 'אוכל ואלכוהול לאירועים';
+function kosherRelevantBiz(b) {
+  return !!b && (b.catKey === 'food' || (b.catKey === 'events' && (b.tags || []).includes(KOSHER_EVENT_TAG)));
+}
+function kosherTaskHtml() {
+  const list = (MOCK_BUSINESSES || []).filter(b => b.status !== 'rejected' && kosherRelevantBiz(b) && typeof b.kosher !== 'boolean');
+  if (!list.length) return '';
+  return `
+    <div class="mail-issues-note" id="kosherTask" style="margin-bottom:14px">
+      <b>🍽️ כשרות לסימון – ${list.length} ${list.length === 1 ? 'עסק' : 'עסקים'}</b> · אוכל, ואירועים עם "אוכל ואלכוהול לאירועים". מה שמסמנים כאן מופיע לאוהדים בכרטיס העסק ובסינון "כשר".
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        ${list.map(b => `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="flex:1;min-width:140px;font-weight:700">${esc(b.name)}${b.status === 'pending' ? ' <span class="treat-badge">ממתין</span>' : ''}</span>
+          <button class="act-btn approve tiny" onclick="setBizKosher('${b.id}', true)">כשר</button>
+          <button class="act-btn tiny" onclick="setBizKosher('${b.id}', false)">לא כשר</button>
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
+// שורת כשרות בכרטיס העסק – לשינוי אחר כך (רק לעסק רלוונטי)
+function kosherRowHtml(b) {
+  if (!kosherRelevantBiz(b)) return '';
+  const cur = b.kosher === true ? 'כשר' : b.kosher === false ? 'לא כשר' : 'טרם סומן';
+  return `<div class="mail-issues-note" style="margin:0 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span style="flex:1"><b>🍽️ כשרות:</b> ${cur}</span>
+    <button class="act-btn ${b.kosher === true ? 'approve ' : ''}tiny" onclick="setBizKosher('${b.id}', true)">כשר</button>
+    <button class="act-btn ${b.kosher === false ? 'approve ' : ''}tiny" onclick="setBizKosher('${b.id}', false)">לא כשר</button>
+  </div>`;
+}
+window.setBizKosher = async function(id, val) {
+  const b = findBiz(id);
+  if (!b || b.kosher === val) return;
+  const before = typeof b.kosher === 'boolean' ? b.kosher : null;
+  try {
+    await updateDoc(doc(db, 'businesses', id), { kosher: val });
+    b.kosher = val;
+    // רענון נקודתי: כרטיס המשימה (אם מוצג) והכרטיס הפתוח – בלי לבנות את המסך מחדש
+    const el = document.getElementById('kosherTask');
+    if (el) { const html = kosherTaskHtml(); if (html) el.outerHTML = html; else el.remove(); }
+    refreshOpenDetailPanel();
+    await logActivity('businesses', id, { type: 'adminEdit', title: 'כשרות: ' + (val ? 'כשר' : 'לא כשר'), field: 'kosher', before, after: val });
+  } catch (e) { console.error(e); alert('שגיאה בשמירה: ' + e.message); }
+};
+
 function taskCenterHtml() {
   return `
+    ${kosherTaskHtml()}
     ${taskTilesHtml()}
     <div class="filter-toolbar">${taskFilterBarHtml()}</div>
     <div id="taskTableWrap">${safeTaskCenterTableHtml()}</div>
@@ -13502,15 +13553,23 @@ window.approveBiz = async function(id) {
   if (reviewed < reviewTotal && !confirm(`רק ${reviewed}/${reviewTotal} שלבים סומנו כ"נסקר". לאשר בכל זאת?`)) return;
   if (!confirmSuspectEmail(b.ownerEmail, `"${b.name}"`)) return;
   if (bizMissingCardTitle(b) && !confirmMissingCardTitle([b.name])) return;   // §614
+  // §623 — לפני האישור: חלון עם "רוצה לכתוב משהו לבעל העסק?" (ריק = אישור רגיל). האישור עצמו – doApproveBiz.
+  bnOpen({ bizId: id, mode: 'approve' });
+};
+async function doApproveBiz(id) {
+  const b = findBiz(id);
+  if (!b) return false;
   try {
     // אישור העסק מאשר גם את אימות בעל-העסק (בקשה מפורשת, 2026-08-16) — אין מצב שבו העסק מאושר
     // ועדיין "ממתין להחלטה" על מי שמאחוריו. ההחלטה עדיין קיימת כשדה נפרד וניתן לשנות/לבטל אותה
     // מהכרטיס; מה שהשתנה זה שברירת-המחדל של אישור-עסק היא שהאימות אושר יחד איתו.
+    const before = b.status;
     await approveBizWithMemberBatch(b);
     goToNextCard('biz', id, { pendingOnly: true });   // §637 — לעסק הממתין הבא, כמו באוהדים
-    logActivity('businesses', id, { type: 'status', title: 'העסק אושר', detail: `"${b.name}" אושר לאינדקס – אימות בעל העסק אושר יחד איתו`, field: 'status', before: b.status, after: 'approved' });
-  } catch (e) { console.error(e); alert('שגיאה באישור: ' + e.message); }
-};
+    logActivity('businesses', id, { type: 'status', title: 'העסק אושר', detail: `"${b.name}" אושר לאינדקס – אימות בעל העסק אושר יחד איתו`, field: 'status', before, after: 'approved' });
+    return true;
+  } catch (e) { console.error(e); alert('שגיאה באישור: ' + e.message); return false; }
+}
 window.rejectBiz = async function(id) {
   const b = findBiz(id);
   if (!b) return;
@@ -13581,6 +13640,7 @@ window.approveTagSecondSuggestion = async function(id) {
       type: 'tagDecision', title: 'אושרה בקשת תגית שנייה', detail: `"${tag}" נוספה כתגית ל"${b.name}"`,
       field: 'tags', before: null, after: tag,
     });
+    qjRemember(id, `תגית שנייה "${tag}"`, 'approved');   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה באישור תגית: ' + e.message); }
 };
@@ -13595,6 +13655,7 @@ window.rejectTagSecondSuggestion = async function(id) {
       type: 'tagDecision', title: 'נדחתה בקשת תגית שנייה', detail: `"${tag}" נדחתה עבור "${b.name}"`,
       field: 'tagSecondSuggestion', before: tag, after: null,
     });
+    qjRemember(id, `תגית שנייה "${tag}"`, 'rejected');   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה בדחיית תגית: ' + e.message); }
 };
@@ -13610,6 +13671,7 @@ window.approveAlsoCatSuggestion = async function(id) {
       type: 'tagDecision', title: 'אושרה בקשת קטגוריה נוספת', detail: `"${b.name}" יופיע גם תחת "${cat}"`,
       field: 'alsoUnderCategory', before: null, after: cat,
     });
+    qjRemember(id, 'קטגוריה נוספת', 'approved');   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה באישור קטגוריה: ' + e.message); }
 };
@@ -13639,6 +13701,7 @@ window.rejectAlsoCatSuggestion = async function(id) {
       type: 'tagDecision', title: 'נדחתה בקשת קטגוריה נוספת', detail: `"${cat}" נדחתה עבור "${b.name}"`,
       field: 'alsoCategorySuggestion', before: cat, after: null,
     });
+    qjRemember(id, 'קטגוריה נוספת', 'rejected');   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה בדחיית קטגוריה: ' + e.message); }
 };
@@ -13842,6 +13905,7 @@ window.approveChangeField = async function(id, field, valueOverride) {
       detail: `${DIFF_FIELD_LABELS_MOCK[field] || field}: "${fmtActivityVal(oldVal)}" → "${fmtActivityVal(newVal)}"`,
       field, before: oldVal, after: newVal,
     });
+    qjRemember(id, DIFF_FIELD_LABELS_MOCK[field] || field, 'approved');   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה באישור השינוי: ' + e.message); }
 };
@@ -13866,6 +13930,7 @@ window.rejectChangeField = async function(id, field) {
       detail: `הבקשה לשנות ${DIFF_FIELD_LABELS_MOCK[field] || field} ל"${rejectedVal}" נדחתה`,
       field, before: b[field], after: null,
     });
+    qjRemember(id, DIFF_FIELD_LABELS_MOCK[field] || field, 'rejected');   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה בדחיית השינוי: ' + e.message); }
 };
@@ -14509,7 +14574,8 @@ function quickJudgmentHtml(b) {
   // אין כאן יותר שורת "שדות טכניים ממתינים" — מוצג רק מה שבעל-העסק הגיש בפועל. ר' ההערה
   // ההיסטורית ליד realPendingChangeKeys/prunedPending.
   const bizInqRow = inquiriesQjRowHtml(bizInquiries(b), b.name);   // §631
-  const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length + (bizInqRow ? 1 : 0);
+  const decidedRow = qjDecidedRowHtml(b);   // §623 — "לכתוב לו על ההחלטות?" (נספר, אחרת אחרי ההחלטה האחרונה הגוף נעלם)
+  const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length + (bizInqRow ? 1 : 0) + (decidedRow ? 1 : 0);
   const hasBody = totalCount > 0;
   // §147 — לפני: count/toggle/hint רק כש-hasBody, כך שכרטיס-ריק היה נראה כמו שורת-טקסט בודדת ולא
   // כמו "פיצ'ר קיים" (המשתמש: "אין שיפוט מהיר"). עכשיו תמיד גלוי — כולל ה-hint שמסביר מה זה, בדיוק
@@ -14543,7 +14609,7 @@ function quickJudgmentHtml(b) {
         <div class="qj-hint">${hint}</div>
       </div>
       ${(showApproveApp || b.status === 'rejected') ? bizApprovalSectionsHtml(b) : ''}
-      ${(hasBody && isOpen) ? `<div class="qj-body">${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
+      ${(hasBody && isOpen) ? `<div class="qj-body">${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
     </div>`;
 }
 
@@ -14553,6 +14619,242 @@ function quickJudgmentHtml(b) {
 // הערכים — זו הנקודה: הטיפול כבר קרה מחוץ למערכת), ושומר רשומת-ארכיון על מסמך העסק עצמו
 // (requestsHandledLog) כדי שתופיע בקובייה "בקשות שטופלו". בקשה חדשה שתגיע אחרי זה תפתח שורה חדשה
 // כרגיל — הסימון לא "משתיק" את העסק, הוא סוגר רק את מה שהיה פתוח באותו רגע.
+// ══ §623 — "הודעה לבעל העסק" ברגעי ההחלטה (הדמו: biz-note-demo.html) ══════════════════════════
+// רמי: "כאשר אני מאשר עסק / שינוי או לא – רוצה לכתוב… שזה ישלח עדכון לבעל העסק". אותו חלון בארבעה
+// מקומות: אישור הרשמה · ההחלטות בשיפוט המהיר (הודעה אחת מסכמת, לא אחת לכל שדה) · "טופל מבחוץ" ·
+// כפתור "💬 הודעה לבעל העסק" בכרטיס. ריק = לא נשלח כלום.
+// השליחה = אותה שליחה של "שליחה עכשיו" (/send-message, block myBiz, נמען אחד) ואותו רישום (messages +
+// שורת נמען + יומן הכרטיס + חותמת המייל של §415) – כדי שתופיע ב"נשלח לאחרונה" ובסטטיסטיקה כמו כל הודעה.
+// ⚠️ החלון יושב על body ולא בתוך renderMain – רינדור של onSnapshot גלובלי סגר חלון באמצע (§619/§620).
+const BN_TITLE_MAX = 60;   // = כותרת הפוש; ו"בנוגע ל: " + הכותרת נכנס בנושא השיחה (80) – ר' convRefTitle
+const BN_CHIPS = [
+  ['📷 להחליף תמונה', 'ממליצים להחליף את התמונה המייצגת לתמונה של המקום או של מה שהכי מייצג אתכם – זה הדבר הראשון שאוהדים רואים בכרטיס.'],
+  ['🎁 הטבה אחרת', 'ממליצים על הטבה אחרת – כזו שאוהד מרגיש שהיא שווה הגעה.'],
+  ['✏️ תיקנו לכם', 'ביצענו כמה תיקונים קטנים בכרטיס כדי שייראה טוב יותר – אפשר לראות אותם בכרטיס שלכם.'],
+  ['🙏 תודה', 'תודה שהצטרפתם! אם יש שאלה – אנחנו כאן.'],
+];
+const BN_ORIGIN = { approve: 'אישור הרשמה', changes: 'החלטה על שינויים', external: 'טופל מבחוץ', free: 'הודעה יזומה' };
+// החלטות בשיפוט המהיר שעוד לא נכתב עליהן לבעל העסק (בזיכרון – נמחק כשנשלח או "סגירה בלי הודעה")
+const QJ_DECIDED = {};
+function qjRemember(id, label, decision) {
+  (QJ_DECIDED[id] = QJ_DECIDED[id] || []).push({ label: String(label || '').replace(/^[^\p{L}\p{N}"]+/u, ''), decision });
+}
+// מה יגיע אליו בפועל – אותו כלל של הוורקר (m2CanApp/m2Can). assumeApproved: לפני אישור ההרשמה
+// העסק והחבר עוד ממתינים, אבל ההודעה נשלחת אחרי האישור.
+function bnChannels(b, assumeApproved) {
+  const owner = m2Owner(b);
+  const app = !!owner && (assumeApproved ? owner.status !== 'rejected' : (b.status === 'approved' && owner.status === 'approved'));
+  return { app, push: app && m2HasTokens(owner), mail: !!b.ownerEmail };
+}
+function bnChanHtml(ch) {
+  const pill = (on, t) => `<span style="display:inline-block;border:1px solid var(--border-md,#ddd);border-radius:8px;padding:2px 8px;margin-inline-end:4px;background:#fff;${on ? '' : 'opacity:.5;text-decoration:line-through'}">${t}</span>`;
+  const warn = [];
+  if (!ch.app) warn.push('אין לו חשבון מאושר באפליקציה – יקבל רק במייל.');
+  else if (!ch.push) warn.push('הוא לא אישר התראות – לא יקפוץ לו כלום בטלפון. במייל ובאפליקציה נבקש ממנו להפעיל.');
+  if (!ch.mail) warn.push('אין כתובת מייל לבעל העסק.');
+  return `יגיע אליו: ${pill(ch.app, '📰 באפליקציה')}${pill(ch.push, '📲 פוש')}${pill(ch.mail, '✉️ מייל')}${warn.length ? `<div style="color:var(--red,#B42318);margin-top:4px">⚠️ ${warn.join(' ')}</div>` : ''}`;
+}
+
+let _bn = null;   // { bizId, mode, summary, sending }
+function bnEl() {
+  let el = document.getElementById('bizNoteModal');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'bizNoteModal';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(11,27,58,.45);z-index:9999;display:none;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+// opts: { bizId, mode: approve|changes|external|free, summary }
+function bnOpen(opts) {
+  const b = findBiz(opts.bizId);
+  if (!b) return;
+  _bn = { ...opts, sending: false };
+  const ch = bnChannels(b, opts.mode === 'approve');
+  const decided = QJ_DECIDED[b.id] || [];
+  const preText = opts.mode === 'changes'
+    ? decided.map(d => (d.decision === 'approved' ? '✅ אושר: ' : '❌ לא אושר: ') + d.label).join('\n') + (decided.some(d => d.decision !== 'approved') ? '\n\nלמה: ' : '\n\n')
+    : '';
+  const preTitle = { approve: 'העסק שלך אושר! 🎉', changes: 'עדכון על השינויים שביקשת', external: 'עדכון על הפנייה שלך', free: '' }[opts.mode];
+  const head = {
+    approve: [`✅ אישור "${b.name}"`, 'העסק יעלה לאינדקס, ובעל העסק יקבל את מייל הקוד והודעת "ברוכים הבאים" כרגיל. מה שתכתוב כאן יגיע אליו <b>בנוסף</b>, כהודעה נפרדת.'],
+    changes: [`✍️ הודעה לבעל "${b.name}" על השינויים`, 'מולא לבד לפי מה שהחלטת. תוסיף למה לא אישרת / מה כן כדאי. ההחלטות עצמן כבר נשמרו.'],
+    external: [`✔️ סימון "${b.name}" כטופל מבחוץ`, 'ייסגרו: ' + esc(opts.summary || '')],
+    free: [`💬 הודעה לבעל "${b.name}"`, 'לדוגמה – המלצה לשנות תמונה או הטבה. אפשר ללחוץ על נוסח מוכן ולערוך.'],
+  }[opts.mode];
+  const box = `
+    <div style="border:2px solid var(--yellow,#FFD400);background:#FFF7DB;border-radius:14px;padding:14px;margin-top:12px">
+      <div style="font-weight:800;font-size:15px">${opts.mode === 'approve' ? 'רוצה לכתוב משהו לבעל העסק?' : opts.mode === 'external' ? 'מה לכתוב לבעל העסק?' : 'ההודעה'}</div>
+      <div style="font-size:12.5px;color:var(--text-muted,#5B6B8C);margin:2px 0 8px">${opts.mode === 'approve' ? 'לא חובה. ריק = לא נשלח כלום חוץ מהרגיל.' : 'ריק = לא נשלח כלום.'} מתחת להודעה יופיע לו "כתבו לנו" – ואם יכתוב משם, תראה בשיחה על איזו הודעה מדובר.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${BN_CHIPS.map((c, i) => `<button type="button" class="qj-btn" onclick="bnChip(${i})">${c[0]}</button>`).join('')}</div>
+      <input id="bnTitle" maxlength="${BN_TITLE_MAX}" placeholder="כותרת (מה שיופיע בפוש ובנושא המייל)" value="${esc(preTitle)}" style="width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--border-md,#ddd);border-radius:10px;margin-bottom:8px">
+      <textarea id="bnText" maxlength="1500" placeholder="מה תרצה לכתוב לו?" oninput="bnSync()" style="width:100%;box-sizing:border-box;min-height:110px;font:inherit;font-size:14px;line-height:1.6;padding:10px;border:1px solid var(--border-md,#ddd);border-radius:10px;resize:vertical">${esc(preText)}</textarea>
+      <div style="font-size:12.5px;margin-top:8px;line-height:1.8">${bnChanHtml(ch)}</div>
+    </div>`;
+  const ext = opts.mode === 'external' ? `
+    <textarea id="bnInternal" placeholder="איך זה טופל? (נשמר אצלך בארכיון – לא נשלח)" style="width:100%;box-sizing:border-box;min-height:70px;font:inherit;font-size:14px;padding:10px;border:1px solid var(--border-md,#ddd);border-radius:10px;margin-top:8px"></textarea>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:700;font-size:14px;margin-top:10px;cursor:pointer"><input type="checkbox" id="bnSendToo" onchange="bnSync()" style="width:18px;height:18px"> לשלוח גם לבעל העסק</label>` : '';
+  const btns = {
+    approve: `<button class="qj-btn-approve-app" id="bnGo" onclick="bnGo()">✅ אישור</button>`,
+    changes: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">📤 שליחה לבעל העסק</button><button class="qj-btn" onclick="bnSkipChanges()">סגירה בלי הודעה</button>`,
+    external: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">סימון כטופל</button>`,
+    free: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">📤 שליחה</button>`,
+  }[opts.mode];
+  bnEl().innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:600px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
+    <div style="font-size:18px;font-weight:900">${head[0]}</div>
+    <div style="font-size:13.5px;color:var(--text-muted,#5B6B8C);margin-top:4px;line-height:1.6">${head[1]}</div>
+    ${ext}<div id="bnBoxWrap"${opts.mode === 'external' ? ' style="display:none"' : ''}>${box}</div>
+    <div id="bnErr" style="color:var(--red,#B42318);font-size:13px;margin-top:8px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${btns}<button class="qj-btn" onclick="bnClose()">ביטול</button></div>
+  </div>`;
+  bnEl().style.display = 'flex';
+  bnSync();
+  const ta = document.getElementById(opts.mode === 'external' ? 'bnInternal' : 'bnText');
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+window.bnClose = function() { if (_bn && _bn.sending) return; _bn = null; bnEl().style.display = 'none'; bnEl().innerHTML = ''; };
+window.bnChip = function(i) {
+  const ta = document.getElementById('bnText');
+  ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' : '') + BN_CHIPS[i][1];
+  bnSync(); ta.focus();
+};
+function bnRead() {
+  const t = (document.getElementById('bnTitle') || {}).value || '', x = (document.getElementById('bnText') || {}).value || '';
+  return { title: t.trim().slice(0, BN_TITLE_MAX), text: x.trim() };
+}
+window.bnSync = function() {
+  if (!_bn) return;
+  const go = document.getElementById('bnGo'); if (!go) return;
+  const n = bnRead();
+  if (_bn.mode === 'external') {
+    const on = document.getElementById('bnSendToo').checked;
+    document.getElementById('bnBoxWrap').style.display = on ? '' : 'none';
+    go.textContent = on && n.text ? 'סימון כטופל ושליחה לבעל העסק' : 'סימון כטופל';
+  } else if (_bn.mode === 'approve') go.textContent = n.text ? '✅ אישור ושליחת ההודעה' : '✅ אישור (בלי הודעה נוספת)';
+  if (_bn.mainDone && !_bn.sending) go.textContent = '↻ לנסות לשלוח שוב';
+  go.disabled = !!_bn.sending;
+  if (_bn.sending) go.textContent = '⏳ רגע…';
+};
+window.bnSkipChanges = function() { if (_bn) delete QJ_DECIDED[_bn.bizId]; bnClose(); renderMain(); };
+window.bnGo = async function() {
+  if (!_bn || _bn.sending) return;
+  const o = _bn, b = findBiz(o.bizId), n = bnRead(), err = document.getElementById('bnErr');
+  if (!b) return;
+  const wantSend = o.mode === 'external' ? (document.getElementById('bnSendToo').checked && !!n.text) : !!n.text;
+  if ((o.mode === 'changes' || o.mode === 'free') && !n.text) { err.textContent = 'אין תוכן – לא נשלח כלום.'; return; }
+  if (wantSend && !n.title) { err.textContent = 'חסרה כותרת (היא שורת הפוש ונושא המייל).'; document.getElementById('bnTitle').focus(); return; }
+  o.sending = true; bnSync(); err.textContent = '';
+  let done = true;
+  // mainDone — אחרי כשל בשליחה החלון נשאר פתוח עם הטקסט; ניסיון חוזר שולח רק את ההודעה (לא מאשר/מסמן שוב)
+  if (!o.mainDone && o.mode === 'approve') done = await doApproveBiz(o.bizId);
+  if (!o.mainDone && o.mode === 'external') done = await doMarkRequestsHandledExternally(o.bizId, (document.getElementById('bnInternal').value || '').trim(), o.summary);
+  if (!done) { o.sending = false; bnSync(); return; }
+  o.mainDone = true;
+  let res = '';
+  if (wantSend) {
+    const r = await bnSend(findBiz(o.bizId) || b, n.title, n.text, o.mode);
+    res = r.text;
+    if (!r.ok) {   // ⚠️ הטקסט לא נזרק – הודעה שנמחקה כי הרשת נפלה היא הודעה שלא תיכתב שוב
+      o.sending = false; bnSync();
+      err.style.whiteSpace = 'pre-line';
+      err.textContent = (o.mode === 'approve' ? 'העסק אושר. ' : o.mode === 'external' ? 'סומן כטופל. ' : '') + res + '\nהטקסט נשמר כאן – אפשר לנסות שוב.';
+      const go = document.getElementById('bnGo'); if (go) go.textContent = '↻ לנסות לשלוח שוב';
+      renderMain();
+      return;
+    }
+  }
+  if (o.mode === 'changes') delete QJ_DECIDED[o.bizId];
+  o.sending = false; bnClose();
+  renderMain();
+  const base = { approve: 'העסק אושר.', external: 'סומן כטופל – נשמר תחת "בקשות שטופלו".', changes: '', free: '' }[o.mode];
+  alert([base, res].filter(Boolean).join('\n\n') || 'נסגר.');
+};
+
+// השליחה עצמה – כמו m2DoSend לנמען אחד (ר' שם את ההערות של §561 על סדר האיפוס והרישום)
+async function bnSend(b, title, text, mode) {
+  const p = { ...b, _k: 'b' };
+  const ch = bnChannels(b, false);   // אחרי האישור – המצב האמיתי (הוורקר בודק שוב בעצמו)
+  const app = { title, text, link: '' };
+  const push = { title, body: text.replace(/\s+/g, ' ').slice(0, 160) };
+  const mail = {
+    subject: title, personal: false,
+    body: 'שלום {name},\n\n' + text
+      + (ch.push ? '' : '\n\n🔔 *טיפ:* הפעילו התראות באפליקציה – ותדעו מיד כשאנחנו כותבים לכם על העסק.')
+      + '\n\nיש שאלה על זה? באפליקציה, ב"האזור שלי" ← "הודעות", מתחת להודעה – "כתבו לנו".\n\nצוות Yellow Zone',
+  };
+  const msgRef = doc(collection(db, 'messages')), msgId = msgRef.id;
+  const chFlags = { app: true, push: true, mail: true, wa: false };
+  try {
+    await setDoc(msgRef, {
+      title, who: 'biz', kind: 'pick', aud: 'bizNote', audLabel: 'הודעה לבעל העסק · ' + BN_ORIGIN[mode], block: 'myBiz', total: 1,
+      ch: chFlags, mailScope: 'all', app, push, mail, wa: null, bizNote: { bizId: b.id, bizName: b.name || '', origin: mode },
+      status: 'sending', sentAt: serverTimestamp(), sentBy: CURRENT_ADMIN.uid, sentByName: CURRENT_ADMIN.name,
+    });
+  } catch (e) { console.error(e); return { ok: false, text: '⚠️ ההודעה לבעל העסק לא נשלחה (שמירת ההודעה נכשלה): ' + e.message }; }
+  try {
+    const pre = writeBatch(db);
+    pre.set(doc(db, 'messages', msgId, 'recipients', b.id), { id: b.id, t: 'b', name: m2Label(p), createdAt: serverTimestamp() }, { merge: true });
+    if (ch.mail) pre.update(doc(db, 'businesses', b.id), { broadcastEmailDelivery: deleteField(), broadcastEmailDeliveryAt: deleteField(),
+      broadcastEmailDeliveryReason: deleteField(), broadcastEmailOpenedAt: deleteField(), broadcastEmailClickedAt: deleteField() });
+    await pre.commit();
+  } catch (e) { console.error('bizNote pre-record failed', e); }
+  let r = null, errMsg = '';
+  try {
+    const idToken = await auth.currentUser.getIdToken();
+    const resp = await hbApiFetch('/send-message', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, messageId: msgId, block: 'myBiz', recipients: [{ t: 'b', id: b.id }], app, push, mail: { ...mail, scope: 'all' } }) });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    r = (data.results || []).find(x => x.id === b.id) || {};
+  } catch (e) { console.error('bizNote send failed', e); errMsg = String(e.message || e); }
+  const row = {
+    id: b.id, t: 'b', memberId: (r && r.memberId) || b.ownerMemberId || null, name: m2Label(p),
+    app: r ? r.app : 'failed', push: r ? r.push : 'failed', pushDevices: (r && r.pushDevices) || 0,
+    mail: r ? r.mail : 'failed', mailId: (r && r.mailId) || null, mailError: (r && r.mailError) || (r ? null : errMsg), wa: null,
+  };
+  const L = {
+    app: { written: '📰 נשמרה אצלו באפליקציה', none: '📰 לא באפליקציה (אין חשבון מאושר)', failed: '📰 אפליקציה – נכשל' },
+    push: { sent: '📲 פוש נשלח', noToken: '📲 בלי פוש (לא אישר התראות)', none: '📲 בלי פוש', failed: '📲 פוש נכשל' },
+    mail: { sent: '✉️ מייל נשלח', noEmail: '✉️ אין מייל', none: '✉️ מייל לא נשלח', skipped: '✉️ בלי מייל', failed: '✉️ מייל נכשל' },
+  };
+  const parts = ['app', 'push', 'mail'].map(k => row[k] ? (L[k][row[k]] || row[k]) : '').filter(Boolean);
+  const tally = { app: row.app === 'written' ? 1 : 0, push: row.push === 'sent' ? 1 : 0, mail: row.mail === 'sent' ? 1 : 0, mailFailed: row.mail === 'failed' ? 1 : 0, wa: 0, failed: (row.app === 'failed' || row.push === 'failed') ? 1 : 0 };
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'messages', msgId, 'recipients', b.id), row, { merge: true });
+    batch.set(doc(collection(db, 'businesses', b.id, 'activity')), {
+      type: 'message', title: `הודעה לבעל העסק (${BN_ORIGIN[mode]}): "${title}"`, detail: parts.join(' · '), field: 'channel', before: null, after: 'message',
+      messageId: msgId, actorUid: CURRENT_ADMIN.uid, actorName: CURRENT_ADMIN.name, source: 'admin', createdAt: serverTimestamp(),
+    });
+    if (row.mail === 'sent') batch.update(doc(db, 'businesses', b.id), { broadcastEmailSentAt: serverTimestamp(), broadcastEmailSubject: mail.subject });
+    await batch.commit();
+    await updateDoc(msgRef, { status: 'sent', tally, doneAt: serverTimestamp() });
+  } catch (e) {
+    console.error('bizNote record failed', e);
+    await updateDoc(msgRef, { status: 'sent', tally, recordError: String(e.message || e).slice(0, 200) }).catch(() => {});
+  }
+  return { ok: !!r, text: r ? '📤 ההודעה לבעל העסק:\n' + parts.join('\n') : '⚠️ ההודעה לבעל העסק לא נשלחה (' + errMsg + ').' };
+}
+window.openBizNoteFree = function(id) { bnOpen({ bizId: id, mode: 'free' }); };
+window.openBizNoteChanges = function(id) { bnOpen({ bizId: id, mode: 'changes' }); };
+// שורה בשיפוט המהיר אחרי החלטה – "לכתוב לו על ההחלטות?"
+function qjDecidedRowHtml(b) {
+  const d = QJ_DECIDED[b.id];
+  if (!d || !d.length) return '';
+  return `
+    <div class="qj-row" style="background:#FFF7DB">
+      <div class="qj-row-label"><div class="qj-row-step">הודעה לבעל העסק</div><div class="qj-row-name">✍️ לכתוב לו על ההחלטות?</div></div>
+      <div class="qj-row-value"><span class="qj-value-text">${d.map(x => (x.decision === 'approved' ? '✅ ' : '❌ ') + esc(x.label)).join(' · ')}</span>
+        <div class="qj-value-hint">הודעה אחת על כל מה שהחלטת – באפליקציה, בפוש ובמייל. אפשר גם לסגור בלי הודעה.</div></div>
+      <div class="qj-row-actions">
+        <button class="qj-btn primary" onclick="openBizNoteChanges('${b.id}')">✍️ כתיבה לבעל העסק</button>
+        <button class="qj-btn" onclick="qjSkipDecided('${b.id}')">בלי הודעה</button>
+      </div>
+    </div>`;
+}
+window.qjSkipDecided = function(id) { delete QJ_DECIDED[id]; renderMain(); };
+
 function handledExternallyRow(b) {
   return `
     <div class="qj-row qj-row-handled">
@@ -14570,8 +14872,13 @@ window.markRequestsHandledExternally = async function(id) {
     ...(bizHasUnhandledNote(b) ? ['הודעה מהעסק ("כתבו לנו")'] : []),
   ];
   if (!summaryParts.length) { alert('אין כרגע בקשות פתוחות לעסק הזה.'); return; }
-  const note = prompt(`סימון "${b.name}" כטופל מבחוץ.\n\nייסגרו: ${summaryParts.join(', ')}\n\nאיך זה טופל? (אופציונלי – נשמר בארכיון)`, '');
-  if (note === null) return;
+  // §623 — במקום prompt: חלון "הודעה לבעל העסק" עם התיבה הפנימית + "לשלוח גם לבעל העסק"
+  bnOpen({ bizId: id, mode: 'external', summary: summaryParts.join(', ') });
+};
+async function doMarkRequestsHandledExternally(id, note, summary) {
+  const b = findBiz(id);
+  if (!b) return false;
+  const summaryParts = [summary];
   const updates = {
     pendingChanges: null, pendingChangesAt: null,
     tagSecondSuggestion: '', tagSuggestion: '',
@@ -14591,9 +14898,9 @@ window.markRequestsHandledExternally = async function(id) {
       detail: summaryParts.join(', ') + ((note || '').trim() ? ` – ${note.trim()}` : ''),
       field: 'requestsHandledLog', before: null, after: null,
     });
-    alert('סומן. השורה ירדה ממסך הבקשות ונשמרה תחת "בקשות שטופלו".');
-  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
-};
+    return true;
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); return false; }
+}
 
 // ══════════════════════════════════════════════════════════════════
 // 🏷️ ניהול תגיות — חלק א׳ (רשימה לפי קטגוריה, ➕✏️🔀🗑️) + חלק ב׳ (תור בקשות ממתינות מרוכז:
@@ -14743,6 +15050,7 @@ window.rejectTagSuggestion = async function(id) {
       type: 'tagDecision', title: 'נדחתה הצעת תגית', detail: `"${tag}" נדחתה עבור "${b.name}"`,
       field: 'tagSuggestion', before: tag, after: null,
     });
+    qjRemember(id, `תגית חדשה "${tag}"`, 'rejected');   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה בדחיית תגית: ' + e.message); }
 };
@@ -18588,6 +18896,7 @@ function convTableHtml(list) {
           <div class="task-table-name">${esc(x.who)}${x.num ? ' · <span style="font-weight:600">' + esc(x.num) + '</span>' : ''}${x.biz ? ' · <span class="treat-badge">בעל עסק: ' + esc(x.biz.name || '') + '</span>' : ''}</div>
           <!-- ⚠️ esc — טקסט חופשי של משתמש. -->
           <div class="task-table-meta">${esc(x.subject || '')}</div>
+          ${convRefBadge(x.subject) ? `<div class="task-table-meta">${convRefBadge(x.subject)}</div>` : ''}
           <div class="task-table-meta" style="opacity:.75">${[x.phone, x.email].filter(Boolean).map(esc).join(' · ')}</div>
         </div>
         <div class="task-table-badges">${convStatusBadge(x)}</div>
@@ -18602,7 +18911,30 @@ function convTableHtml(list) {
 
 // ── חלון השיחה ──
 // ⚠️ onSnapshot על ההודעות נפתח רק כשהחלון פתוח, ונסגר איתו — מאזין לכל שיחה היה מאות קריאות.
-let _convView = null; // { id, unsub, msgs, sending, notice }
+let _convView = null; // { id, unsub, msgs, sending, notice, ref }
+// §623 — שיחה שנפתחה מ"כתבו לנו" שמתחת להודעה שלנו: הנושא הוא "בנוגע ל: <כותרת>" (conversations הוא
+// hasOnly – אין שדה לקישור, והחוקים לא משתנים). ההודעה המקורית נשלפת מהתיבה של החבר לפי הכותרת
+// (טווח-קידומת על שדה אחד – בלי אינדקס מורכב) ומוצגת בראש השרשור, כדי שכל ההיסטוריה תהיה במקום אחד.
+const CONV_REF_PREFIX = 'בנוגע ל: ';
+function convRefTitle(subject) {
+  const s = String(subject || '');
+  return s.startsWith(CONV_REF_PREFIX) ? s.slice(CONV_REF_PREFIX.length).replace(/…$/, '').trim() : '';
+}
+function convRefBadge(subject) {
+  const t = convRefTitle(subject);
+  return t ? `<span class="treat-badge" style="background:#E8EEFB;color:#0A2A66">🔗 נפתחה מתוך ההודעה ששלחת: "${esc(t)}"</span>` : '';
+}
+async function convLoadRef(c) {
+  const t = convRefTitle(c && c.subject);
+  if (!t || !c.memberId) return null;
+  try {
+    const snap = await getDocs(query(collection(db, 'members', c.memberId, 'inbox'), where('title', '>=', t), where('title', '<=', t + '\uf8ff'), limit(20)));
+    const created = _convMs(c.createdAt);
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => _convMs(x.sentAt) <= created + 60e3)
+      .sort((a, b) => _convMs(b.sentAt) - _convMs(a.sentAt));
+    return list[0] ? { title: list[0].title || '', text: list[0].text || '', sentAt: list[0].sentAt } : { missing: true, title: t };
+  } catch (e) { console.warn('conv ref load failed', e); return { missing: true, title: t, err: true }; }
+}
 function _convModalEl() {
   let el = document.getElementById('convAdminModal');
   if (el) return el;
@@ -18637,6 +18969,13 @@ function renderConvAdmin() {
       </div>
       <div id="convAdminThread" style="padding:14px 18px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:10px;background:var(--bg)">
         ${_convView.err ? '<div class="mail-issues-note">⚠️ טעינת ההודעות נכשלה: ' + esc(_convView.err) + '</div>' : ''}
+        ${_convView.ref ? (_convView.ref.missing
+          ? `<div class="mail-issues-note" style="margin:0">🔗 נפתחה מתוך ההודעה ששלחת: "${esc(_convView.ref.title)}" – ${_convView.ref.err ? 'טעינת ההודעה המקורית נכשלה' : 'ההודעה המקורית לא נמצאה בתיבה שלו'}.</div>`
+          : `<div style="display:flex;flex-direction:column;align-items:flex-end">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">🔗 נפתחה מתוך ההודעה ששלחת לו</div>
+            <div style="max-width:84%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.55;white-space:pre-line;word-break:break-word;background:var(--accent-bg);border:2px dashed var(--border-md)"><b>${esc(_convView.ref.title)}</b>\n${esc(_convView.ref.text)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">📤 אתה · ${fmt(_convView.ref.sentAt)}</div>
+          </div>`) : ''}
         ${(_convView.msgs || []).map(m => `
           <div style="display:flex;flex-direction:column;align-items:${m.from === 'admin' ? 'flex-end' : 'flex-start'}">
             <div style="max-width:84%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.55;white-space:pre-line;word-break:break-word;${m.from === 'admin' ? 'background:var(--accent-bg);border:1px solid var(--border)' : 'background:#FFF4B8'}">${esc(m.text)}</div>
@@ -18663,8 +19002,10 @@ function renderConvAdmin() {
 }
 window.openConvAdmin = function(id) {
   closeConvAdmin();
-  _convView = { id, msgs: [], unsub: null, sending: false, notice: '', err: '' };
+  _convView = { id, msgs: [], unsub: null, sending: false, notice: '', err: '', ref: null };
   _convModalEl().style.display = 'flex';
+  const c0 = CONVERSATIONS.find(x => x.id === id);   // §623
+  if (c0 && convRefTitle(c0.subject)) convLoadRef(c0).then(ref => { if (_convView && _convView.id === id) { _convView.ref = ref; renderConvAdmin(); } });
   _convView.unsub = onSnapshot(query(collection(db, 'conversations', id, 'messages'), orderBy('createdAt', 'asc')), snap => {
     if (!_convView || _convView.id !== id) return;
     _convView.msgs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
