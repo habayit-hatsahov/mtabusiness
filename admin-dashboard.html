@@ -10942,6 +10942,7 @@ function fanClassCounts() {
     // §390 — הרשימה שהמנהל ביקש: מי שאושר ומעולם לא נכנס, כדי לפנות אליהם שוב.
     neverEntered: MOCK_FANS.filter(f => f.status === 'approved' && !f.lastSeenAt).length,
     legacyRejected: legacyRejectedFans().length,   // §628ג
+    rejected: MOCK_FANS.filter(f => f.status === 'rejected').length,   // §647ג
   };
 }
 function fanFilteredList() {
@@ -10961,7 +10962,9 @@ function fanFilteredList() {
       // ובכוונה: פיל שסופר אחרת מהמספר שממנו המנהל הגיע הוא בדיוק הפער של §353.
       : fanClassPill === 'neverEntered' ? (f.status === 'approved' && !f.lastSeenAt)
       : fanClassPill === 'legacyRejected' ? isLegacyRejected(f)   // §628ג
-      : fanClassPill.startsWith('rr:') ? fanRejectReasons(f).includes(fanClassPill.slice(3))   // §647
+      : fanClassPill === 'rejected' ? f.status === 'rejected'   // §647ג
+      : fanClassPill === 'rr:__none' ? (f.status === 'rejected' && !fanRejectReasons(f).length)
+      : fanClassPill.startsWith('rr:') ? (f.status === 'rejected' && fanRejectReasons(f).includes(fanClassPill.slice(3)))   // §647
       : !f.adminVerified;
     // §394 — הדלי מוגדר **רק בתוך** "אושרו ולא נכנסו", ולכן הוא נושא את התנאי הזה בעצמו
     // ולא נשען על כך שהפיל הנכון מסומן. אחרת "נמסר ולא נפתח" היה חל גם על מי שכן נכנס,
@@ -11946,7 +11949,7 @@ function fanFilterBarHtml(opts) {
   const advancedActiveCount = (fanStatusFilter!=='all'?1:0) + (fanDateRangeFilter!=='all'?1:0);
   const hasActiveFilters = advancedActiveCount > 0 || fanSearch.trim() || fanSort !== 'waitingTime' || fanVerifyTypeFilter !== 'all' || fanClassPill !== 'all' || fanEmailBucket !== 'all' || fanVisitBucket !== 'all';
   const counts = fanClassCounts();
-  const pill = (key, label) => `<button class="biz-class-pill ${fanClassPill===key?'active':''}" onclick="setFanClassPill('${key}')">${label} · ${counts[key]}</button>`;
+  const pill = (key, label) => `<button class="biz-class-pill ${(fanClassPill===key || (key === 'rejected' && fanClassPill.startsWith('rr:')))?'active':''}" onclick="setFanClassPill('${key}')">${label} · ${counts[key]}</button>`;
   return `
     <div class="filter-toolbar">
       <div class="filter-toolbar-row">
@@ -11961,7 +11964,9 @@ function fanFilterBarHtml(opts) {
         ${pill('unverified', 'טרם נבדקו')}
         ${pill('neverEntered', 'מעולם לא נכנסו')}
         ${counts.legacyRejected ? pill('legacyRejected', '🔁 נדחו – להחלטה') : ''}
+        ${pill('rejected', '✗ נדחו')}
       </div>
+      ${fanRejectReasonPillsHtml()}
       ${fanBucketPillsHtml()}
       ${fanBucketBannerHtml()}
       ${legacyRejectBannerHtml()}
@@ -13546,6 +13551,23 @@ function rejectReasonStatsHtml() {
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${st.map(x => `<button class="qj-btn" style="${cur === x.label ? 'background:#0A2A66;color:#fff;border-color:#0A2A66' : ''}" title="${x.rejected} עדיין נדחים · ${x.approved} אושרו בסוף" onclick="setRejectReasonFilter('${escJsAttr(x.label)}')">${esc(x.label)} · <b>${x.n}</b>${x.approved ? ` <span style="opacity:.75">(${x.approved} אושרו)</span>` : ''}</button>`).join('')}</div>
     <div class="fan-bucket-action">כל אוהד נספר פעם אחת לכל סיבה, כולל מי שתיקן ואושר. לחיצה – הרשימה מסוננת לסיבה. דחיות מלפני 27.10 נספרות לפי ההודעה שהשארת.</div>
   </div>`;
+}
+// §647ג — רמי: "תן אופציה בסינון לראות נדחים ואז מאיזה סיבה". פיל "נדחו" ← מתחתיו שורת סיבות (רק
+// הנדחים כרגע), כל אחת עם מספר; "בלי סיבה" = נדחה בלי שנשמרה סיבה (דחייה סופית ישנה וכו').
+const REJECT_REASON_NONE = '__none';
+function fanRejectReasonPillsHtml() {
+  if (fanClassPill !== 'rejected' && !fanClassPill.startsWith('rr:')) return '';
+  const rej = MOCK_FANS.filter(f => f.status === 'rejected');
+  const m = new Map(); let none = 0;
+  rej.forEach(f => { const r = fanRejectReasons(f); if (!r.length) none++; r.forEach(x => m.set(x, (m.get(x) || 0) + 1)); });
+  const cur = fanClassPill.startsWith('rr:') ? fanClassPill.slice(3) : '';
+  const chip = (key, label, n) => `<button class="biz-class-pill ${(key ? cur === key : !cur) ? 'active' : ''}" style="font-size:12.5px" onclick="setFanClassPill('${key ? 'rr:' + escJsAttr(key) : 'rejected'}')">${esc(label)} · ${n}</button>`;
+  return `<div class="filter-toolbar-row biz-class-pills" style="padding-inline-start:12px;border-inline-start:3px solid var(--border-md,#ddd)">
+      <span style="font-size:12.5px;color:var(--text-muted);align-self:center">לפי סיבה:</span>
+      ${chip('', 'כל הנדחים', rej.length)}
+      ${[...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => chip(k, k, n)).join('')}
+      ${none ? chip(REJECT_REASON_NONE, 'בלי סיבה', none) : ''}
+    </div>`;
 }
 window.setRejectReasonFilter = function(label) {
   fanClassPill = label ? 'rr:' + label : 'all'; fanEmailBucket = 'all'; fanVisitBucket = 'all'; fanStatusFilter = 'all'; fanSearch = '';
