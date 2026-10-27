@@ -11073,6 +11073,15 @@ function fanFullDetailHtml(id, opts) {
         </div>
       </div>`);
   }
+  if (f.status === 'rejected' && !isLegacyRejected(f)) {   // §633 – תמיד אפשר עוד הזדמנות
+    const open = f.retryAllowed === true;
+    fanQjRows.push(`
+      <div class="qj-row" style="background:#EEF2FF">
+        <div class="qj-row-label"><div class="qj-row-step">נדחה</div><div class="qj-row-name">🔁 הזדמנות נוספת</div></div>
+        <div class="qj-row-value"><span class="qj-value-text">${open ? '<b>יש לו הזדמנות פתוחה</b> – עוד לא שלח תיקון.' : f.rejectKind === 'final' ? 'נדחה סופית.' : 'נדחה.'}${f.fixedAt ? ' כבר תיקן פעם (' + fmtDateTime(f.fixedAt) + ') ונדחה שוב.' : ''}</span></div>
+        <div class="qj-row-actions"><button class="qj-btn primary" onclick="giveRetryAgain('${f.id}')">${open ? '🔁 שליחת המייל שוב' : '🔁 לתת הזדמנות נוספת'}</button></div>
+      </div>`);
+  }
   { const inqRow = inquiriesQjRowHtml(fanInquiries(f), f.name); if (inqRow) fanQjRows.push(inqRow); }   // §631
   if (f.status === 'pending' && f.fixedAt) {
     const img = u => u ? `<img src="${esc(bizImageViewUrl(u, 400))}" class="zoomable" style="width:100%;max-height:180px;object-fit:contain;border-radius:8px;background:#000" onclick="openImageLightbox('${esc(u)}','proof-${esc(f.id)}.jpg')">` : '<div class="owner-verify-photo-empty">אין תמונה</div>';
@@ -13218,6 +13227,17 @@ function askRejectKind(title, sub) {
 }
 const rejectFields = (kind) => ({ status: 'rejected', rejectedAt: serverTimestamp(), rejectKind: kind, retryAllowed: kind === 'retry', rejectEmailStatus: 'pending' });
 const rejectKindLabel = (kind) => kind === 'retry' ? 'נדחה – אפשר תיקון אימות' : 'נדחה – סופי';
+// §633 — רמי: "אל תחסום אחרי 2 הזדמנויות, תן לי תמיד את האופציה לתת עוד הזדמנות". לכל נדחה
+// (גם סופי, גם מי שכבר תיקן ונדחה שוב) – פותח את טופס התיקון באפליקציה ושולח שוב "האימות לא עבר".
+window.giveRetryAgain = async function(id) {
+  const f = MOCK_FANS.find(x => x.id === id);
+  if (!f || f.status !== 'rejected') return;
+  if (!confirm(`לתת ל${f.name} הזדמנות נוספת לאמת את עצמו?\nבאפליקציה ייפתח שוב טופס התמונה והפרופיל, ויישלח מייל "האימות לא עבר".`)) return;
+  try {
+    await updateDoc(doc(db, 'members', id), { rejectKind: 'retry', retryAllowed: true, rejectEmailStatus: 'pending' });
+    await logActivity('members', id, { type: 'status', title: 'הזדמנות נוספת לאימות', detail: `"${f.name}" קיבל הזדמנות נוספת לתקן את האימות · מייל בדרך`, field: 'rejectKind', before: f.rejectKind || null, after: 'retry' });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
 
 window.rejectFan = async function(id) {
   const f = MOCK_FANS.find(x => x.id === id);
