@@ -1421,9 +1421,11 @@
   // ⚠️ אבני-דרך ולא שדה-שדה: 15 אירועים לכל נרשם היו מציפים את המדידה בלי להוסיף דיוק.
   // ארבעה שלבים מספיקים כדי לדעת **באיזה חלק של הטופס** נעצרים.
   const _stepsSeen = new Set();
+  let _restoringDraft = false;   // §639 — ר' שחזור הטיוטה
   function markStep(id) {
     if (_stepsSeen.has(id)) return;
     _stepsSeen.add(id);
+    if (_restoringDraft) return;
     logEvent('formStep', { blockId: 'fanRegister', channel: id });
   }
   // §346 — נקרא מהסקריפט הקלאסי שליד שדה התאריך (הוא רץ גם אם המודול תקוע, ר' §325).
@@ -2088,8 +2090,16 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     setSubmitStatus('');
+    // §639 — לחצו "שלח". בלי זה נטישה אחרי ניסיון-שליחה שנעצר בבדיקה נראתה כמו מי שלא הגיע לכפתור.
+    markStep('submitTry');
 
     if (!runValidation()) {
+      // §639 — באילו שדות נעצרו (עד 50 תווים, מגבלת channel בחוקים). פעם אחת לכל צירוף.
+      const bad = [...document.querySelectorAll('#mainCard .error[id]')]
+        .filter(el => /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)).map(el => el.id)
+        // שדות האימות קודם – הם השאלה, ובלי זה החיתוך ל-50 תווים היה מעלים אותם אחרי שדות הזהות
+        .sort((a, b) => ['firstName', 'lastName', 'phone', 'email'].includes(a) - ['firstName', 'lastName', 'phone', 'email'].includes(b));
+      if (bad.length) markStep(('invalid:' + bad.join(',')).slice(0, 50));
       const firstErr = document.querySelector('#mainCard .error, #mainCard .field-error[style*="block"], #mainCard .field-warn.show');
       if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
@@ -2442,7 +2452,7 @@
     // §304 — ⚠️ ללא-מנוי אין בורר-מסלול בכלל (המסלול שלו קבוע: תמונה מהיציע). בלי השורה
     // הזאת הוא היה נראה במשפך כמי ש"לא הגיע לשלב האימות", וזו מסקנה שגויה לחלוטין.
     markStep('subscriber');
-    if (val === 'no') markStep('route');
+    if (val === 'no') { markStep('route'); markStep('route:noSub'); }   // §639 – ר' pickRoute
   }
 
   // ── ענף (כדורגל/כדורסל/שניהם) — קובע את תווית/רשימת שדה המיקום, ואם "שניהם" נבחר
@@ -2540,6 +2550,9 @@
     if (ev && ev.target.closest && ev.target.closest('.route-body') && document.getElementById('verifyRoute').value === r) return;
     document.getElementById('verifyRoute').value = r;
     markStep('route');   // §304 — בחר מסלול-אימות
+    // §639 — **איזה** מסלול. 'route' לבדו לא הבדיל בין מי שנתקע על תמונה למי שנתקע על מספר מנוי
+    // (26–27.10: 417 בחרו מסלול ואף אחד מהם לא שלח). 'route' נשאר כמו שהוא כדי לא לשבור את המשפך.
+    markStep('route:' + r);
     Object.keys(ROUTES).forEach(k => {
       document.getElementById('route-' + k).classList.toggle('on', k === r);
       const err = document.getElementById(ROUTE_ERR[k].errId);
@@ -3008,6 +3021,7 @@
 
   function saveRegDraft() {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      t:                 Date.now(),   // §639 — welcome.html מציג "ההרשמה שלכם מחכה" רק לטיוטה טרייה
       firstName:         document.getElementById('firstName').value,
       lastName:          document.getElementById('lastName').value,
       birthDate:         document.getElementById('birthDate').value,
@@ -3078,9 +3092,36 @@
     document.getElementById('seatNumber').value        = d.seatNumber        || '';
     if (d.verifyRoute && ROUTES[d.verifyRoute]) pickRoute(d.verifyRoute);
   }
-  restoreRegDraft();
+  // §639 — השחזור קורא ל-setSubscriber/pickRoute, שמסמנים אבני-דרך. בלי ההשתקה כל חזרה לטופס
+  // הייתה נספרת במשפך כאילו האדם חצה את השלבים שוב.
+  _restoringDraft = true;
+  try { restoreRegDraft(); } finally { _restoringDraft = false; }
   // §545 — אחרי שחזור הטיוטה ולא לפניו: השחזור כותב שם ומייל ישירות לשדות, והיה דורס את המילוי.
   window.hbApplyRegPrefill();
+
+  // ── §639 — שמירה אוטומטית ────────────────────────────────────────────────────────────────
+  // עד היום הטיוטה נשמרה רק במעבר לתקנון ובמילוי גוגל/Apple, ומי שיצא באמצע התחיל מאפס
+  // (26–27.10: 840 פתחו ולא נרשמו, 417 מהם כבר בחרו מסלול-אימות). כל הקלדה/בחירה נשמרת,
+  // ו-welcome.html מזמין לחזור. ⚠️ קבצים לא נשמרים (אי אפשר) – תמונה מצרפים שוב.
+  // ⚠️ אחרי שליחה מוצלחת הטיוטה נמחקת (ר' removeItem למעלה) – והשמירה המושהית לא תחזיר אותה.
+  let _draftTimer = null;
+  const queueDraftSave = () => {
+    clearTimeout(_draftTimer);
+    _draftTimer = setTimeout(() => {
+      if (success.style.display === 'block') return;
+      try { saveRegDraft(); } catch (e) { console.error('draft autosave failed', e); }
+    }, 500);
+  };
+  ['input', 'change', 'click'].forEach(ev => form.addEventListener(ev, queueDraftSave));
+
+  // חזרה מ"להמשיך מאיפה שעצרתי": מי שכבר מילא פרטים וענה על המנוי – ישר לשלב האימות.
+  if (new URLSearchParams(location.search).get('resume') === '1') {
+    const d = (() => { try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) { return null; } })();
+    if (d && d.firstName && d.phone && d.isSubscriber) {
+      setTimeout(() => document.getElementById('subscriberToggleRow')
+        ?.closest('.form-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    }
+  }
 
   // §570 — תיבת "לקבל התראות" מעל כפתור השליחה (רק באפליקציה, רק כשעוד לא נשאל).
   // (§574–§576 — אבחון pushDiag הוסר אחרי האימות מקצה לקצה, 20.10.)

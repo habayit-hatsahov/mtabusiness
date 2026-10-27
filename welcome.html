@@ -118,6 +118,7 @@ function yzAnyModalOpen() {
 function yzCloseModalsDom() {
   YZ_MODALS.forEach(id => document.getElementById(id)?.classList.remove('open'));
   document.body.style.overflow = '';
+  window.yzRenderResumeCard && window.yzRenderResumeCard();   // §639 — מילאו עוד בטופס? הכרטיס מתעדכן
 }
 // נקראת אחרי שהמודאל כבר נפתח. שומרת על רשומה אחת בלבד, כדי ששתי פתיחות
 // רצופות (join ואז login) לא ידרשו שתי לחיצות "חזור".
@@ -131,6 +132,7 @@ function closeModal(id) {
   if (history.state && history.state.yzModal) { history.back(); return; }
   document.getElementById(id).classList.remove('open');
   document.body.style.overflow = '';
+  window.yzRenderResumeCard && window.yzRenderResumeCard();   // §639
 }
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
@@ -158,10 +160,14 @@ document.addEventListener('keydown', e => {
 //
 // תופעת-לוואי מבורכת: הלינק לתקנון כבר שומר על מצב-embed (ר' fan-register.html), ולכן
 // גם החזרה ממנו במובייל מפסיקה להציג "פס צהוב כפול".
-function openJoinModal() {
+function openJoinModal(opts) {
   window.logEvent && window.logEvent('formOpen', { blockId: 'joinModal' });
   const f = document.getElementById('joinFrame');
-  const wantedSrc = 'fan-register.html?embed=1';
+  // §639 — resume: "להמשיך מאיפה שעצרתי". טעינה מחדש תמיד, כדי שהטיוטה העדכנית תשוחזר והטופס
+  // יגלול לשלב האימות; fresh: "להתחיל מחדש" – הטיוטה כבר נמחקה, ולכן גם כאן טעינה נקייה.
+  const resume = !!(opts && opts.resume), fresh = !!(opts && opts.fresh);
+  const wantedSrc = 'fan-register.html?embed=1' + (resume ? '&resume=1' : '');
+  if (resume || fresh) f.removeAttribute('src');
   // ── §286 — פתיחה חוזרת אחרי הרשמה מוצלחת ─────────────────────────────────────────────────
   // התנאי `src !== wantedSrc` נועד לא לטעון מחדש טופס שכבר פתוח (כדי לא לאבד מה שהוקלד בו
   // אם המודאל נסגר בטעות) — אבל אחרי שליחה מוצלחת ה-iframe מציג את **מסך ההצלחה**, והכתובת
@@ -1376,6 +1382,17 @@ button { font-family: inherit; }
   display: flex; align-items: center; justify-content: center; gap: 8px;
 }
 .reg-login-btn:hover { filter: brightness(1.25); }
+/* §639 — "ההרשמה שלכם מחכה" (yzRenderResumeCard) */
+.fr-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+.fr-step { display: flex; align-items: center; gap: 10px; font-size: 14.5px; font-weight: 700; color: var(--ink); }
+.fr-dot { width: 22px; height: 22px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 900; border: 2px solid var(--ink); color: var(--ink); background: #fff; }
+.fr-step.done { color: var(--ink-3); font-weight: 600; }
+.fr-step.done .fr-dot { background: var(--ink); color: #fff; }
+.fr-step.next .fr-dot { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
+.fr-note { font-size: 13px; color: var(--ink-3); line-height: 1.5; }
+.fr-restart { align-self: center; background: none; border: none; color: var(--ink-3); font: inherit; font-size: 13.5px;
+  text-decoration: underline; cursor: pointer; padding: 2px 6px; }
 .reg-card-strip {
   padding: 13px 26px; background: var(--acc-soft);
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
@@ -2038,6 +2055,76 @@ html.yz-app .lm-reg-wrap { display: block; }
       </div>
     </div>
   </div>
+  <script>
+  // ── §639 — "ההרשמה שלכם מחכה" ───────────────────────────────────────────────────────────────
+  // 26–27.10: 840 מכשירים פתחו את האפליקציה ולא נרשמו; 708 פתחו את הטופס, 417 כבר בחרו מסלול-
+  // אימות – ואף אחד מהם לא שלח. אין לנו אליהם שום ערוץ (אין רשומה, אין פוש), ולכן הפנייה היא
+  // כאן, כשהם חוזרים. הטיוטה נשמרת אוטומטית ב-fan-register.html (אותו origin, גם מתוך ה-iframe).
+  // ⚠️ רק טיוטה עם חותמת-זמן (נוספה עם השמירה האוטומטית) ובת פחות מ-30 יום – טיוטות ישנות
+  // מהמעבר לתקנון לא מקפיצות כרטיס. ⚠️ שליחה מוצלחת מוחקת את הטיוטה, ולכן הכרטיס נעלם לבד.
+  // ההחלטות (רמי, 27.10): בלי כפתור וואטסאפ/עזרה, והאימות נשאר חובה – הכרטיס רק מחזיר לטופס.
+  (function () {
+    var KEY = '_hb_regDraft';
+    var body = document.querySelector('#guestRegBlock .reg-card-body');
+    if (!body) return;
+    var original = body.innerHTML;
+    var shownLogged = false;
+    function readDraft() {
+      try {
+        var d = JSON.parse(localStorage.getItem(KEY) || 'null');
+        if (!d || !d.t || Date.now() - d.t > 30 * 86400000) return null;
+        if (!(d.firstName || d.lastName || d.phone || d.email || d.isSubscriber)) return null;
+        return d;
+      } catch (e) { return null; }
+    }
+    function step(state, n, text) {
+      return '<div class="fr-step ' + state + '"><span class="fr-dot">' + (state === 'done' ? '✓' : n) + '</span>' + text + '</div>';
+    }
+    window.yzRenderResumeCard = function () {
+      var d = readDraft();
+      if (!d) { if (body.dataset.resume) { body.innerHTML = original; delete body.dataset.resume; } return; }
+      var idDone = !!(d.firstName && d.lastName && d.phone && d.email);
+      var subDone = !!d.isSubscriber;
+      var oneLeft = idDone && subDone;
+      body.dataset.resume = '1';
+      body.innerHTML =
+        '<div><div class="reg-card-title">ההרשמה שלכם מחכה</div>' +
+        '<div class="reg-card-sub">התחלתם להירשם ועצרתם באמצע. שמרנו את מה שמילאתם – ' +
+          (oneLeft ? 'נשאר רק שלב אחד.' : 'זה לוקח עוד כשתי דקות.') + '</div></div>' +
+        '<div class="fr-steps">' +
+          step(idDone ? 'done' : 'next', 1, 'פרטים אישיים') +
+          step(subDone ? 'done' : (idDone ? 'next' : ''), 2, 'מנוי / לא מנוי') +
+          step(oneLeft ? 'next' : '', 3, 'אימות שאתם אוהדי מכבי') +
+        '</div>' +
+        (oneLeft ? '<div class="fr-note">אפשר לאמת עם מספר מנוי, מקום ביציע או צילום מסך של המנוי.</div>' : '') +
+        '<button class="reg-cta-btn" type="button" onclick="yzResumeReg()">להמשיך מאיפה שעצרתי ' +
+          '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m10 6 6 6-6 6"/></svg></button>' +
+        '<button class="fr-restart" type="button" onclick="yzRestartReg()">להתחיל מחדש</button>' +
+        '<div class="reg-divider"><div class="line"></div><span>כבר רשומים?</span><div class="line"></div></div>' +
+        '<button class="reg-login-btn" type="button" onclick="openLoginModal()">להתחברות ' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></button>';
+      if (!shownLogged) {
+        shownLogged = true;
+        // ⚠️ הרינדור הראשון רץ לפני ש-window.logEvent מוגדר (הוא בסקריפט מאוחר יותר בדף) – ולכן ב-load
+        var ch = oneLeft ? 'shown:verify' : 'shown:early';
+        var send = function () { window.logEvent && window.logEvent('formStep', { blockId: 'resumeCard', channel: ch }); };
+        if (document.readyState === 'complete') send(); else window.addEventListener('load', send, { once: true });
+      }
+    };
+    window.yzResumeReg = function () {
+      window.logEvent && window.logEvent('formStep', { blockId: 'resumeCard', channel: 'continue' });
+      openJoinModal({ resume: true });
+    };
+    window.yzRestartReg = function () {
+      if (!confirm('למחוק את מה שמילאתם ולהתחיל מההתחלה?')) return;
+      window.logEvent && window.logEvent('formStep', { blockId: 'resumeCard', channel: 'restart' });
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      window.yzRenderResumeCard();
+      openJoinModal({ fresh: true });
+    };
+    window.yzRenderResumeCard();
+  })();
+  </script>
 
   <div class="reg-member-box" id="memberRegBlock">
     <div class="welcome" id="memberWelcomeText">ברוכים השבים!</div>
