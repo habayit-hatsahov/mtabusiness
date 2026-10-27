@@ -13444,7 +13444,8 @@ function askRejectKind(title, sub) {
       <div style="margin:6px 0 14px;color:#3A4C7A">${esc(sub || 'לאפשר תיקון אימות?')}</div>
       <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="radio" name="rjk" value="retry" checked style="margin-top:3px"><span><b>כן – לאפשר תיקון אימות</b><br><span style="color:#3A4C7A">באפליקציה תופיע אפשרות להעלות תמונה וקישור לפרופיל מחדש. מייל "האימות לא עבר".</span></span></label>
       <div data-note-wrap style="margin:8px 0 0 0;padding-right:24px"><div style="font-weight:700;font-size:13px">הודעה לאוהד – למה לא עבר (רשות)</div>
-        <textarea data-note maxlength="400" rows="3" placeholder="למשל: בתמונה לא רואים את הפנים שלך – צריך תמונה שלך ביציע" style="width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #D5DAE6;border-radius:10px;padding:8px;font:inherit;font-size:13.5px;resize:vertical"></textarea>
+        <div data-rt-chips="reject" style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">${rtChipsInner('reject')}</div>
+        <textarea data-note data-rt-note maxlength="400" rows="3" placeholder="למשל: בתמונה לא רואים את הפנים שלך – צריך תמונה שלך ביציע" style="width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #D5DAE6;border-radius:10px;padding:8px;font:inherit;font-size:13.5px;resize:vertical"></textarea>
         <div style="font-size:12px;color:#3A4C7A">תופיע לו על המסך של האימות הנוסף, מעל הטופס.</div></div>
       <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px"><input type="radio" name="rjk" value="final" style="margin-top:3px"><span><b>לא – דחייה סופית</b><br><span style="color:#3A4C7A">באפליקציה "לא הצלחנו לאמת" + פנייה לצוות. מייל "הבקשה לא אושרה".</span></span></label>
       <div style="display:flex;gap:8px;margin-top:16px"><button type="button" data-a="ok" style="background:#0A2A66;color:#fff;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:800;cursor:pointer">דחייה ושליחת מייל</button><button type="button" data-a="cancel" style="background:#F3F4F7;color:#0A2A66;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer">ביטול</button></div></div>`;
@@ -13456,6 +13457,7 @@ function askRejectKind(title, sub) {
       if (a && a.dataset.a === 'ok') done(ov.querySelector('input[name=rjk]:checked').value);
     });
     document.body.appendChild(ov);
+    rtLoad();   // §646
   });
 }
 const rejectFields = (kind) => ({ status: 'rejected', rejectedAt: serverTimestamp(), rejectKind: kind, retryAllowed: kind === 'retry', rejectEmailStatus: 'pending', retryNote: kind === 'retry' ? lastRejectNote : '' });
@@ -14640,12 +14642,140 @@ function quickJudgmentHtml(b) {
 // שורת נמען + יומן הכרטיס + חותמת המייל של §415) – כדי שתופיע ב"נשלח לאחרונה" ובסטטיסטיקה כמו כל הודעה.
 // ⚠️ החלון יושב על body ולא בתוך renderMain – רינדור של onSnapshot גלובלי סגר חלון באמצע (§619/§620).
 const BN_TITLE_MAX = 60;   // = כותרת הפוש; ו"בנוגע ל: " + הכותרת נכנס בנושא השיחה (80) – ר' convRefTitle
-const BN_CHIPS = [
-  ['📷 להחליף תמונה', 'ממליצים להחליף את התמונה המייצגת לתמונה של המקום או של מה שהכי מייצג אתכם – זה הדבר הראשון שאוהדים רואים בכרטיס.'],
-  ['🎁 הטבה אחרת', 'ממליצים על הטבה אחרת – כזו שאוהד מרגיש שהיא שווה הגעה.'],
-  ['✏️ תיקנו לכם', 'ביצענו כמה תיקונים קטנים בכרטיס כדי שייראה טוב יותר – אפשר לראות אותם בכרטיס שלכם.'],
-  ['🙏 תודה', 'תודה שהצטרפתם! אם יש שאלה – אנחנו כאן.'],
-];
+// ══ §646 — תשובות מוכנות שרמי עורך ומוסיף (רמי: "לערוך את התשובות האוטומטיות ולהוסיף תשובות… גם כאשר
+// אני דוחה… וגם לכותרת שתהיה כבר תשובה מובנת") ═══════════════════════════════════════════════════════
+// שתי רשימות, כי הקהל שונה: biz – "הודעה לבעל העסק" (לכל תשובה גם כותרת = שורת הפוש ונושא המייל);
+// reject – "הודעה לאוהד – למה לא עבר" בחלון הדחייה (§628/§635, טקסט בלבד, ≤400).
+// נשמר ב-settings/replyTemplates (מנהל בלבד – החוק הכללי של settings, בלי שינוי חוקים). עד שנשמר פעם
+// ראשונה – ברירות המחדל כאן. העריכה – "✏️ עריכת התשובות" ליד הכפתורים, בתוך החלון עצמו.
+const RT_DEFAULTS = {
+  biz: [
+    { label: '📷 להחליף תמונה', title: 'המלצה: להחליף את התמונה המייצגת', text: 'ממליצים להחליף את התמונה המייצגת לתמונה של המקום או של מה שהכי מייצג אתכם – זה הדבר הראשון שאוהדים רואים בכרטיס.' },
+    { label: '🎁 הטבה אחרת', title: 'המלצה על הטבה אחרת', text: 'ממליצים על הטבה אחרת – כזו שאוהד מרגיש שהיא שווה הגעה.' },
+    { label: '✏️ תיקנו לכם', title: 'עשינו כמה תיקונים בכרטיס שלכם', text: 'ביצענו כמה תיקונים קטנים בכרטיס כדי שייראה טוב יותר – אפשר לראות אותם בכרטיס שלכם.' },
+    { label: '🙏 תודה', title: 'תודה שהצטרפתם ל-Yellow Zone', text: 'תודה שהצטרפתם! אם יש שאלה – אנחנו כאן.' },
+  ],
+  reject: [
+    { label: '🙈 לא רואים אותך', text: 'בתמונה לא רואים אותך – צריך תמונה שלך ביציע או במגרש, שרואים בה את הפנים.' },
+    { label: '🔗 הקישור לא נפתח', text: 'הקישור לפרופיל לא נפתח (קישור "שיתוף" של פייסבוק לא עובד) – שלחו את שם המשתמש באינסטגרם או קישור ישיר לפרופיל.' },
+    { label: '🔒 פרופיל נעול', text: 'הפרופיל נעול ולא הצלחנו לראות שזה אתם – אפשר לפתוח אותו לזמן קצר, או לשלוח פרופיל אחר.' },
+    { label: '📷 תמונה לא ברורה', text: 'התמונה לא ברורה מספיק – נסו תמונה חדה יותר, באור טוב.' },
+  ],
+};
+const RT_MAX = { biz: { title: BN_TITLE_MAX, text: 1500 }, reject: { title: 0, text: 400 } };
+const RT = { biz: null, reject: null };   // null = עוד לא נטען → ברירות המחדל
+let _rtLoading = null;
+const rtList = (kind) => RT[kind] || RT_DEFAULTS[kind];
+function rtClean(kind, list) {
+  const m = RT_MAX[kind];
+  return (Array.isArray(list) ? list : []).map(x => ({
+    label: String((x && x.label) || '').trim().slice(0, 30),
+    title: m.title ? String((x && x.title) || '').trim().slice(0, m.title) : '',
+    text: String((x && x.text) || '').trim().slice(0, m.text),
+  })).filter(x => x.text).map(x => ({ ...x, label: x.label || x.text.slice(0, 18) + '…' })).slice(0, 30);
+}
+function rtLoad() {
+  if (!_rtLoading) _rtLoading = getDoc(doc(db, 'settings', 'replyTemplates')).then(s => {
+    const d = s.exists() ? s.data() : {};
+    ['biz', 'reject'].forEach(k => { if (Array.isArray(d[k])) RT[k] = rtClean(k, d[k]); });
+    rtRefresh();
+  }).catch(e => { console.warn('replyTemplates load failed', e); _rtLoading = null; });
+  return _rtLoading;
+}
+function rtChipsInner(kind) {
+  return rtList(kind).map((c, i) => `<button type="button" class="qj-btn" title="${esc(c.text)}" onclick="rtPick('${kind}',${i})">${esc(c.label)}</button>`).join('')
+    + `<button type="button" class="qj-btn" style="border-style:dashed" onclick="rtEdit('${kind}')">✏️ עריכת התשובות</button>`;
+}
+function rtRefresh() {
+  document.querySelectorAll('[data-rt-chips]').forEach(el => { el.innerHTML = rtChipsInner(el.dataset.rtChips); });
+  const dl = document.getElementById('bnTitleList');
+  if (dl) dl.innerHTML = rtTitleOptions();
+}
+// הכותרות המוכנות – בהשלמה של שדה הכותרת (datalist), גם בלי ללחוץ על תשובה
+function rtTitleOptions() {
+  const t = [...new Set([...rtList('biz').map(x => x.title), 'העסק שלך אושר! 🎉', 'עדכון על השינויים שביקשת', 'עדכון על הפנייה שלך'].filter(Boolean))];
+  return t.map(x => `<option value="${esc(x)}"></option>`).join('');
+}
+window.rtPick = function(kind, i) {
+  const c = rtList(kind)[i];
+  if (!c) return;
+  if (kind === 'biz') {
+    const ta = document.getElementById('bnText'), ti = document.getElementById('bnTitle');
+    if (!ta) return;
+    ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' : '') + c.text;
+    // הכותרת: רק אם ריקה או שמילאה אותה תשובה קודמת – לא דורסים כותרת שרמי הקליד או של החלון (אישור/שינויים)
+    if (ti && c.title && (!ti.value.trim() || ti.dataset.auto === '1')) { ti.value = c.title; ti.dataset.auto = '1'; }
+    bnSync(); ta.focus();
+    return;
+  }
+  const ta = document.querySelector('[data-rt-note]');
+  if (!ta) return;
+  ta.value = ((ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' : '') + c.text).slice(0, RT_MAX.reject.text);
+  ta.focus();
+};
+// ── העורך: חלון מעל החלון הפתוח (z-index גבוה משניהם) ──
+let _rtEdit = null;   // { kind, items }
+window.rtEdit = function(kind) {
+  _rtEdit = { kind, items: rtList(kind).map(x => ({ ...x })) };
+  rtEditRender();
+};
+function rtEditCollect() {
+  if (!_rtEdit) return;
+  document.querySelectorAll('#rtEditor [data-rt-row]').forEach(row => {
+    const it = _rtEdit.items[+row.dataset.rtRow]; if (!it) return;
+    it.label = row.querySelector('[data-f="label"]').value;
+    const t = row.querySelector('[data-f="title"]'); if (t) it.title = t.value;
+    it.text = row.querySelector('[data-f="text"]').value;
+  });
+}
+function rtEditRender(err) {
+  let el = document.getElementById('rtEditor');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'rtEditor';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(11,27,58,.55);z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(el);
+  }
+  const k = _rtEdit.kind, m = RT_MAX[k];
+  const inp = 'width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;padding:7px 9px;border:1px solid #D5DAE6;border-radius:8px';
+  el.innerHTML = `<div dir="rtl" style="background:#fff;color:#0A2A66;border-radius:16px;width:640px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
+    <div style="font-size:17px;font-weight:900">✏️ ${k === 'biz' ? 'התשובות המוכנות – הודעה לבעל העסק' : 'התשובות המוכנות – למה האימות לא עבר'}</div>
+    <div style="font-size:13px;color:#3A4C7A;margin:4px 0 12px;line-height:1.6">${k === 'biz' ? 'לכל תשובה: שם הכפתור, כותרת (שורת הפוש ונושא המייל – עד ' + m.title + ' תווים) והטקסט. לחיצה על הכפתור מוסיפה את הטקסט, ומכניסה את הכותרת אם השדה ריק.' : 'לכל תשובה: שם הכפתור והטקסט (עד ' + m.text + ' תווים) – מה שהאוהד יראה מעל טופס האימות הנוסף.'} משותף לכל מי שמנהל.</div>
+    ${_rtEdit.items.map((it, i) => `
+      <div data-rt-row="${i}" style="border:1px solid #E7E7E0;border-radius:12px;padding:10px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;gap:6px;align-items:center">
+          <input data-f="label" maxlength="30" placeholder="שם הכפתור" value="${esc(it.label)}" style="${inp};flex:1">
+          <button type="button" class="qj-btn" title="למעלה" onclick="rtEditMove(${i},-1)" ${i ? '' : 'disabled'}>↑</button>
+          <button type="button" class="qj-btn" title="למטה" onclick="rtEditMove(${i},1)" ${i < _rtEdit.items.length - 1 ? '' : 'disabled'}>↓</button>
+          <button type="button" class="qj-btn reject" onclick="rtEditDel(${i})">🗑️</button>
+        </div>
+        ${m.title ? `<input data-f="title" maxlength="${m.title}" placeholder="כותרת (רשות)" value="${esc(it.title)}" style="${inp}">` : ''}
+        <textarea data-f="text" maxlength="${m.text}" rows="2" placeholder="הטקסט" style="${inp};resize:vertical;line-height:1.55">${esc(it.text)}</textarea>
+      </div>`).join('')}
+    <button type="button" class="qj-btn" onclick="rtEditAdd()">+ תשובה חדשה</button>
+    <div style="color:#B42318;font-size:13px;margin-top:8px">${err ? esc(err) : ''}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button type="button" class="qj-btn primary" id="rtSaveBtn" onclick="rtEditSave()">שמירה</button>
+      <button type="button" class="qj-btn" onclick="rtEditClose()">ביטול</button>
+      <button type="button" class="qj-btn" style="margin-inline-start:auto" onclick="rtEditReset()">החזרת ברירת המחדל</button>
+    </div></div>`;
+}
+window.rtEditAdd = function() { rtEditCollect(); _rtEdit.items.push({ label: '', title: '', text: '' }); rtEditRender(); const rows = document.querySelectorAll('#rtEditor [data-f="label"]'); if (rows.length) rows[rows.length - 1].focus(); };
+window.rtEditDel = function(i) { rtEditCollect(); _rtEdit.items.splice(i, 1); rtEditRender(); };
+window.rtEditMove = function(i, d) { rtEditCollect(); const a = _rtEdit.items, j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; rtEditRender(); };
+window.rtEditReset = function() { if (!confirm('להחזיר את רשימת ברירת המחדל? (נשמר רק אחרי "שמירה")')) return; _rtEdit.items = RT_DEFAULTS[_rtEdit.kind].map(x => ({ ...x })); rtEditRender(); };
+window.rtEditClose = function() { _rtEdit = null; const el = document.getElementById('rtEditor'); if (el) el.remove(); };
+window.rtEditSave = async function() {
+  rtEditCollect();
+  const k = _rtEdit.kind, items = rtClean(k, _rtEdit.items);
+  const btn = document.getElementById('rtSaveBtn'); btn.disabled = true; btn.textContent = 'שומר…';
+  try {
+    await setDoc(doc(db, 'settings', 'replyTemplates'), { [k]: items, [k + 'UpdatedAt']: serverTimestamp(), [k + 'UpdatedBy']: CURRENT_ADMIN.name || '' }, { merge: true });
+    RT[k] = items;
+    rtEditClose();
+    rtRefresh();
+  } catch (e) { console.error('replyTemplates save failed', e); rtEditRender('השמירה נכשלה: ' + (e.message || e)); }
+};
 const BN_ORIGIN = { approve: 'אישור הרשמה', changes: 'החלטה על שינויים', external: 'טופל מבחוץ', free: 'הודעה יזומה' };
 // החלטות בשיפוט המהיר שעוד לא נכתב עליהן לבעל העסק (בזיכרון – נמחק כשנשלח או "סגירה בלי הודעה")
 const QJ_DECIDED = {};
@@ -14700,8 +14830,9 @@ function bnOpen(opts) {
     <div style="border:2px solid var(--yellow,#FFD400);background:#FFF7DB;border-radius:14px;padding:14px;margin-top:12px">
       <div style="font-weight:800;font-size:15px">${opts.mode === 'approve' ? 'רוצה לכתוב משהו לבעל העסק?' : opts.mode === 'external' ? 'מה לכתוב לבעל העסק?' : 'ההודעה'}</div>
       <div style="font-size:12.5px;color:var(--text-muted,#5B6B8C);margin:2px 0 8px">${opts.mode === 'approve' ? 'לא חובה. ריק = לא נשלח כלום חוץ מהרגיל.' : 'ריק = לא נשלח כלום.'} מתחת להודעה יופיע לו "כתבו לנו" – ואם יכתוב משם, תראה בשיחה על איזו הודעה מדובר.</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${BN_CHIPS.map((c, i) => `<button type="button" class="qj-btn" onclick="bnChip(${i})">${c[0]}</button>`).join('')}</div>
-      <input id="bnTitle" maxlength="${BN_TITLE_MAX}" placeholder="כותרת (מה שיופיע בפוש ובנושא המייל)" value="${esc(preTitle)}" style="width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--border-md,#ddd);border-radius:10px;margin-bottom:8px">
+      <div data-rt-chips="biz" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${rtChipsInner('biz')}</div>
+      <input id="bnTitle" list="bnTitleList" maxlength="${BN_TITLE_MAX}" placeholder="כותרת (מה שיופיע בפוש ובנושא המייל) – יש כותרות מוכנות ברשימה" value="${esc(preTitle)}" oninput="this.dataset.auto='0'" style="width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--border-md,#ddd);border-radius:10px;margin-bottom:8px">
+      <datalist id="bnTitleList">${rtTitleOptions()}</datalist>
       <textarea id="bnText" maxlength="1500" placeholder="מה תרצה לכתוב לו?" oninput="bnSync()" style="width:100%;box-sizing:border-box;min-height:110px;font:inherit;font-size:14px;line-height:1.6;padding:10px;border:1px solid var(--border-md,#ddd);border-radius:10px;resize:vertical">${esc(preText)}</textarea>
       <div style="font-size:12.5px;margin-top:8px;line-height:1.8">${bnChanHtml(ch)}</div>
     </div>`;
@@ -14723,15 +14854,11 @@ function bnOpen(opts) {
   </div>`;
   bnEl().style.display = 'flex';
   bnSync();
+  rtLoad();   // §646 — התשובות של רמי (מתעדכן בכפתורים כשנטען)
   const ta = document.getElementById(opts.mode === 'external' ? 'bnInternal' : 'bnText');
   if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
 }
 window.bnClose = function() { if (_bn && _bn.sending) return; _bn = null; bnEl().style.display = 'none'; bnEl().innerHTML = ''; };
-window.bnChip = function(i) {
-  const ta = document.getElementById('bnText');
-  ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' : '') + BN_CHIPS[i][1];
-  bnSync(); ta.focus();
-};
 function bnRead() {
   const t = (document.getElementById('bnTitle') || {}).value || '', x = (document.getElementById('bnText') || {}).value || '';
   return { title: t.trim().slice(0, BN_TITLE_MAX), text: x.trim() };
