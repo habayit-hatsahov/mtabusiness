@@ -6940,7 +6940,7 @@ async function loadAppUsage() {
       // §541 — דף הבית של האתר: pageView (blockId landing:<src>) ולחיצות על חנות (landingBlockClick, store:<os>:<src>)
       auGetAll(first ? query(collection(db, 'events'), where('path', '==', '/landing.html')) : null),
     ]);
-    const map = (res) => { const out = []; res.docs.forEach(d => { const e = d.data(); const at = toJsDate(e.createdAt); if (at) out.push({ at, type: e.type, channel: e.channel || '', blockId: e.blockId || '', memberId: e.memberId || '', sessionId: e.sessionId || '' }); }); return out; };
+    const map = (res) => { const out = []; res.docs.forEach(d => { const e = d.data(); const at = toJsDate(e.createdAt); if (at) out.push({ at, type: e.type, channel: e.channel || '', blockId: e.blockId || '', memberId: e.memberId || '', sessionId: e.sessionId || '', path: e.path || '' }); }); return out; };
     const truncated = [u, l, lp, ac].some(x => x.truncated);
     auData = first
       ? { usage: map(u), links: map(l), landing: map(lp), acts: map(ac), truncated, since: need }
@@ -6994,10 +6994,21 @@ function auCompute() {
       const r = day(e.at)[os];
       r.active.add(e.blockId);
       if (p[2] === 'first') r.first++;
-      visits.push({ at: e.at, dev: e.blockId, os, first: p[2] === 'first' });
+      visits.push({ at: e.at, dev: e.blockId, os, first: p[2] === 'first', inApp: !!e.memberId || e.path === '/home.html' });
     } else {
-      miles.push({ at: e.at, dev: e.blockId, os: devOs[e.blockId] || 'other', m: p[1] });
+      miles.push({ at: e.at, dev: e.blockId, os: devOs[e.blockId] || 'other', m: p[1], inApp: !!e.memberId || e.path === '/home.html' });
     }
+  }
+  // §640 — "כמה זמן נשארים" הפריד בין זמן בהרשמה/בכניסה לזמן בתוך האפליקציה: ביקור נחשב "בפנים" אם
+  // הוא או אחת מאבני-הדרך שלו נשלחו כשהיה חבר מחובר (memberId) או מדף הבית. הביקור מתחיל לפני הכניסה
+  // (welcome), ולכן ההכרעה נגזרת מאבני-הדרך. כל אבן שייכת לביקור האחרון של אותו מכשיר שהתחיל לפניה.
+  const vByDev = {};
+  visits.forEach(v => (vByDev[v.dev] ||= []).push(v));
+  Object.values(vByDev).forEach(a => a.sort((x, y) => x.at - y.at));
+  for (const m of miles) {
+    const a = vByDev[m.dev]; if (!a) continue;
+    let v = null; for (const x of a) { if (x.at <= m.at) v = x; else break; }
+    if (v) { m.visit = v; if (m.inApp) v.inApp = true; }
   }
   for (const f of MOCK_FANS) {
     if (f.isAdmin === true && !auState.includeTest) continue;
@@ -7147,18 +7158,27 @@ function auHbarsHtml(key, labels, by, asPct) {
 
 function auInRange(d) { const b = auBounds(); return d >= b.from && d < b.to; }
 
-function auUseHtml(c) {
+// §640 — רמי: "תתקן" – הזמן של מי שממלא טופס הרשמה אינו הזמן של חבר בתוך האפליקציה. שתי קבוצות נפרדות
+// (ר' inApp ב-auCompute); כל ביקור בדיוק באחת מהן, ולכן הסכום שווה למספר הביקורים הקודם.
+function auUseGroup(c, inApp, key, title) {
   const oss = auOsList();
   const vis = Object.fromEntries(AU_OS.map(o => [o, 0]));
   const reach = Object.fromEntries(AU_OS.map(o => [o, Object.fromEntries(AU_MILES.map(m => [m, 0]))]));
-  c.visits.forEach(v => { if (auInRange(v.at)) vis[v.os]++; });
-  c.miles.forEach(m => { if (auInRange(m.at) && reach[m.os][m.m] !== undefined) reach[m.os][m.m]++; });
+  c.visits.forEach(v => { if (!!v.inApp === inApp && auInRange(v.at)) vis[v.os]++; });
+  c.miles.forEach(m => { if (m.visit && !!m.visit.inApp === inApp && auInRange(m.visit.at) && reach[m.os][m.m] !== undefined) reach[m.os][m.m]++; });
   // כל ביקור שולח כל אבן פעם אחת → "הגיעו לפחות ל-X" מדויק, והדליים הם ההפרשים
   const by = Object.fromEntries(AU_OS.map(os => { const r = reach[os]; const n = [vis[os], r['30s'], r['2m'], r['5m'], r['15m'], r['30m']]; return [os, n.map((v, i) => Math.max(0, i < 5 ? v - n[i + 1] : v))]; }));
   const total = oss.reduce((s, o) => s + vis[o], 0);
   let median = '';
   if (total) { let acc = 0; for (let i = 0; i < 6; i++) { acc += oss.reduce((s, o) => s + by[o][i], 0); if (acc >= total / 2) { median = AU_USE_LABELS[i]; break; } } }
-  return `${total ? `<div class="au-hero"><b>${median}</b><span>ביקור חציוני · ${auFmt(total)} ביקורים</span></div>` : ''}${auHbarsHtml('use', AU_USE_LABELS, by, true)}`;
+  return `<p class="au-sub" style="margin-top:${inApp ? 0 : 16}px"><b>${title}</b></p>` +
+    (total ? `<div class="au-hero"><b>${median}</b><span>ביקור חציוני · ${auFmt(total)} ביקורים</span></div>${auHbarsHtml(key, AU_USE_LABELS, by, true)}`
+           : `<div class="au-empty">אין ביקורים בתקופה הזאת</div>`);
+}
+function auUseHtml(c) {
+  return auUseGroup(c, true, 'use', 'חברים בתוך האפליקציה') +
+    auUseGroup(c, false, 'use', 'הרשמה וכניסה (עוד לא בפנים)') +
+    `<p class="au-foot" style="margin-top:10px">"בתוך האפליקציה" = ביקור שבו החבר היה מחובר או בדף הבית. השאר: מסך הפתיחה, טופס ההרשמה, חלון הכניסה, ומי שמחכה לאישור.</p>`;
 }
 
 // §488ג — "חוזרים" גם לפי חודש, עם בחירה אחורה (רמי, 11.10). retMonth='' = לפי מסנן התקופה למעלה.
