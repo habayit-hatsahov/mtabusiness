@@ -3501,6 +3501,9 @@ function openBiz(id) {
 
     const dTypes = b.discountTypes && b.discountTypes.length ? b.discountTypes : (b.discountType ? [b.discountType] : []);
     const isProOnly = b.isPro && !b.isPhysical;
+    // §638 — עסק אונליין בלבד (לא חנות ולא נותן שירות). רמי: "אונליין לא חייב לתת קוד קופון" – בלי קוד
+    // הוא מממש "במעמד המכירה": האוהד שולח צילום מסך של התעודה בוואטסאפ.
+    const isOnlineOnly = !b.isPhysical && !b.isPro;
     const storeTitle = isProOnly ? 'מימוש מול נותן השירות' : 'מימוש בחנות';
     // §603ב — השורה מתחת להטבה וכותרת כרטיס-המימוש = **מה שהעסק בחר** (רמי, 25.10: בעל העסק סימן
     // "במעמד המכירה / השירות" – אז זה מה שכתוב בשני המקומות, לא "מימוש בחנות" לפי סוג העסק).
@@ -3509,7 +3512,7 @@ function openBiz(id) {
       const st = b.isPhysical || b.isPro;
       const parts = [];
       if (st && types.includes('physical')) parts.push('בחנות');
-      if (st && types.includes('sale')) parts.push('במעמד המכירה / השירות');
+      if (types.includes('sale')) parts.push('במעמד המכירה / השירות');   // §638 – כמו hasStore: לכל סוג עסק
       if (types.includes('online')) parts.push('באתר');
       return parts.length ? 'מימוש ' + parts.join(' או ') : '';
     };
@@ -3543,6 +3546,7 @@ function openBiz(id) {
     const siteUrl = bizLinkUrl('website', b.website) || '';
     const storeDesc = (b.isPhysical && b.isPro) ? 'הציגו את תעודת החבר בקופה או מול נותן השירות, לאימות ההטבה'
       : isProOnly ? 'הציגו את תעודת החבר בפגישה, או שלחו צילום מסך בוואטסאפ'   // §608 – "בשיחה" לא תאם את המדריך
+      : isOnlineOnly ? 'שלחו לעסק צילום מסך של תעודת החבר בוואטסאפ, לפני ההזמנה'   // §638
       : 'הציגו את תעודת החבר בקופה, הצוות יאשר את ההטבה';
 
     // ── §271 — כל ערוץ-מימוש בקוביה משלו ──────────────────────────────────────────────
@@ -3550,13 +3554,14 @@ function openBiz(id) {
     // עם זה"), ולכן היא ניסוחית לפי סוג העסק — בדיוק כמו storeDesc.
     const memberBoxLabel = (b.isPhysical && b.isPro) ? 'הציגו תעודה זו בחנות או מול נותן השירות'
       : isProOnly ? 'הציגו תעודה זו לנותן השירות'
+      : isOnlineOnly ? 'שלחו צילום מסך של תעודה זו לעסק'   // §638
       : 'הציגו תעודה זו בחנות';
     // נותן שירות — המימוש מתחיל בשיחה/הודעה ולא בקופה, ולכן דרכי-ההתקשרות יושבות *בתוך* מסגרת
     // המימוש כפעולה הבאה, במקביל ל"לרכישה באתר" של הקופון. שורות הטלפון/WhatsApp בהמשך הגיליון
     // נשארות — שם הן מידע על העסק, כאן הן הצעד הבא במימוש. bizWaLink מחזיר null למספר שבור
     // (§204) ולכן אסור לבנות את ה-href ידנית.
-    const redeemWaHref = b.isPro ? bizWaLink(b.whatsapp) : null;
-    const redeemContactHtml = (b.isPro && (redeemWaHref || b.phone)) ? `
+    const redeemWaHref = (b.isPro || isOnlineOnly) ? bizWaLink(b.whatsapp) : null;   // §638 – גם לאונליין בלבד
+    const redeemContactHtml = ((b.isPro || isOnlineOnly) && (redeemWaHref || b.phone)) ? `
             <div class="redeem-contact-label">צרו קשר</div>
             <div class="redeem-contact-row">
               ${redeemWaHref ? `<a class="redeem-contact-btn" href="${redeemWaHref}" target="_blank" rel="noopener" onclick="sLogRedeem('contactWhatsapp')">${SHEET_ICONS.whatsapp}<span>WhatsApp</span></a>` : ''}
@@ -3594,7 +3599,9 @@ function openBiz(id) {
       const uid = `${b.id}-${i}`;
       // אותה לוגיקה בדיוק של ההטבה הראשית — פיזי/נותן-שירות הם אותו סוג-כרטיס (תעודת חבר),
       // ואונליין דורש קוד בפועל. תלוי גם בסוג העסק, כדי לא להציע "הגיעו לחנות" לעסק אונליין בלבד.
-      const hasStore = (b.isPhysical || b.isPro) && (u.types.includes('physical') || u.types.includes('sale'));
+      // §638 — "במעמד המכירה" תקף לכל סוג עסק (גם אונליין בלבד, בלי קוד קופון – צילום מסך בוואטסאפ);
+      // "בחנות הפיזית" – רק לחנות/נותן שירות, כמו קודם. בלי זה לעסק אונליין בלי קוד לא הוצג שום כרטיס מימוש.
+      const hasStore = u.types.includes('sale') || ((b.isPhysical || b.isPro) && u.types.includes('physical'));
       const hasOnline = u.types.includes('online') && !!u.code;
       if (!hasStore && !hasOnline) return;
       // התווית מוצגת רק כשיש יותר מהטבה אחת — אחרת שני כרטיסים בשם "מימוש בחנות" נראים ככפילות
