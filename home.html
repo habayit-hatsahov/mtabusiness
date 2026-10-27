@@ -3458,6 +3458,7 @@ const SHEET_CARD_CROP_BIZ_IDS = new Set([
 function openBiz(id) {
   const b = businesses.find(x => x.id === id);
   if (!b) return;
+  window.sfDismissQuick && window.sfDismissQuick();   // §645ה – שורת הקיצורים נסגרת אחרי לחיצה על עסק
   _openBizId = id;
   // §431 — הגארד אינו קישוט. _recordView מוגדר באותו מודול כמו _likeFirestoreToggle, ולכן
   // לחיצה על כרטיס בחלון-הטעינה זרקה כאן TypeError — ו**כל openBiz מתחת לשורה הזאת לא רץ**,
@@ -4375,16 +4376,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   // §645ד — הקיצורים מוצגים רק כשנכנסים לחיפוש (פוקוס בתיבה), או כשיש טקסט / סינון פעיל
   var focusIn = false;
+  // §645ה — רמי: "איך סוגרים את הסינון אם זה מפריע בעין? שאחרי שלחצת על עסק זה יסגר לבד". השורה נסגרת,
+  // הסינון עצמו נשאר (התוצאות + "סינון N" על הכפתור). חוזרת בלחיצה על החיפוש או בשינוי סינון.
+  var dismissed = false;
+  window.sfDismissQuick = function () { dismissed = true; syncQuick(); };
   function quickVisible() {
     var inp = document.getElementById('searchInput');
-    return focusIn || !!(inp && inp.value.trim()) || window.sfActive();
+    if (focusIn) return true;
+    if (dismissed) return false;
+    return !!(inp && inp.value.trim()) || window.sfActive();
   }
   function syncQuick() { var qEl = document.getElementById('sfQuick'); if (qEl) qEl.classList.toggle('show', quickVisible()); }
   function wireFocus() {
     var inp = document.getElementById('searchInput'), qEl = document.getElementById('sfQuick');
     if (!inp || inp._sfWired) return;
     inp._sfWired = true;
-    inp.addEventListener('focus', function () { focusIn = true; syncQuick(); });
+    inp.addEventListener('focus', function () { focusIn = true; dismissed = false; syncQuick(); });
     inp.addEventListener('blur', function () { setTimeout(function () { focusIn = document.activeElement === inp; syncQuick(); }, 150); });
     inp.addEventListener('input', syncQuick);
     // לחיצה על קיצור לא "מוציאה" מהתיבה – אחרת השורה הייתה נעלמת באמצע הלחיצה
@@ -4402,6 +4409,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
   function apply() {
+    dismissed = false;   // §645ה – שינוי סינון מחזיר את השורה
     window.sfRender();
     // סינון פעיל (או חיפוש) → מסך התוצאות; בלי שניהם → דף הבית
     if (typeof runSearch === 'function') runSearch(typeof _searchQuery !== 'undefined' ? (_searchQuery || '') : '');
