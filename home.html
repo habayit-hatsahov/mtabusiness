@@ -2073,7 +2073,7 @@ window.loadFirebaseData = function(data, isPreview) {
   // השתנו – שם הלב קובע מי ברשימה.
   if (!isPreview && _hbLiveRendered && stable !== null && prevStable !== null && stable === prevStable) {
     syncLiveCardFields();
-    if (_currentCatFeedKey === 'myLoved' && _hbMyLiked !== prevMyLiked && !_searchQuery) refreshOpenFeed();
+    // §641ג – לב שנוסף מתוך "העסקים שאהבתי" (לעסק שהוסר קודם) – כבר ברשימה; אין מה לבנות מחדש
     refreshSheetIfOpen();
     return;
   }
@@ -2736,6 +2736,7 @@ let _homeScrollY = 0;
 // הקטגוריה/סקשן שפתוח כרגע ב"רואה הכל" (null כשחוזרים ל"הכל"/דף הבית) — משמש כדי לרענן
 // את הגריד הזה גם כשמגיעים נתונים חדשים (למשל לייק) בזמן שהוא פתוח, ר' renderCatFeedContent().
 let _currentCatFeedKey = null;
+let _myLovedKeep = null;   // §641ג – מי מוצג ב"העסקים שאהבתי" מאז הכניסה (לב שהוסר לא מעלים את הכרטיס)
 
 // טקסט החיפוש הפעיל ('' = אין חיפוש). **הכלל: יש טקסט בתיבה ⟺ מוצגות "תוצאות חיפוש".**
 // אין מצב-ביניים — ניווט לקטגוריה/לדף הבית מנקה את התיבה, וניקוי התיבה מחזיר לדף הבית.
@@ -2795,6 +2796,7 @@ function filterCat(cat, el) {
   window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 
   _currentCatFeedKey = cat;
+  _myLovedKeep = null;   // §641ג – כניסה מחדש ל"העסקים שאהבתי" מרעננת את הרשימה
   renderCatFeedContent(cat);
 }
 
@@ -2822,7 +2824,16 @@ function renderCatFeedContent(cat) {
   else if (cat === 'deals')   { filtered = _dailySectionOrder.deals || [];    title = 'הטבות שוות'; }
   else if (cat === 'popular') { filtered = [...businesses].sort((a,b)=>b.clicks-a.clicks); title = 'הכי פופולריים'; }
   else if (cat === 'loved')   { filtered = businesses.filter(b => (b.likedBy||[]).length > 0).sort((a,b)=>(b.likedBy||[]).length-(a.likedBy||[]).length); title = 'הכי אהובים'; }
-  else if (cat === 'myLoved') { const myId = currentMemberId(); filtered = myId ? businesses.filter(b => (b.likedBy||[]).includes(myId)) : []; title = 'העסקים שאהבתי'; }
+  else if (cat === 'myLoved') {
+    // §641ג — רמי: "בקטגוריה, כשאני מסיר לב זה זז". עסק שהלב הוסר ממנו נשאר במקומו (עם לב ריק) כל עוד
+    // נמצאים במסך הזה – אחרת הוא נעלם בעדכון הבא וכל מה שמתחתיו קופץ. הרשימה מתעדכנת בכניסה הבאה.
+    const myId = currentMemberId();
+    const liked = myId ? businesses.filter(b => (b.likedBy||[]).includes(myId)).map(b => b.id) : [];
+    if (!_myLovedKeep) _myLovedKeep = new Set(liked);
+    liked.forEach(id => _myLovedKeep.add(id));
+    filtered = businesses.filter(b => _myLovedKeep.has(b.id));
+    title = 'העסקים שאהבתי';
+  }
   else if (cat === 'online')  { filtered = _dailySectionOrder.online || [];   title = 'קניה אונליין'; }
   else if (cat === 'everyone'){ filtered = _dailySectionOrder.everyone || businesses; title = 'כל העסקים'; }
   else {
