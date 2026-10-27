@@ -14710,7 +14710,17 @@ function quickJudgmentHtml(b) {
   // ההיסטורית ליד realPendingChangeKeys/prunedPending.
   const bizInqRow = inquiriesQjRowHtml(bizInquiries(b), b.name);   // §631
   const decidedRow = qjDecidedRowHtml(b);   // §623 — "לכתוב לו על ההחלטות?" (נספר, אחרת אחרי ההחלטה האחרונה הגוף נעלם)
-  const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length + (bizInqRow ? 1 : 0) + (decidedRow ? 1 : 0);
+  // §648 — רמי: "בעל עסק עובר אימות רק בדף העסק". 37 בעלים של עסק ממתין כבר אושרו כאוהדים
+  // (36 באישור הגורף של 26–27.10) – כאן נאמר את זה, כדי שהאימות שלו ייבדק עכשיו עם העסק.
+  const ownerFan = b.status === 'pending' && b.ownerMemberId ? MOCK_FANS.find(f => f.id === b.ownerMemberId) : null;
+  const ownerPreApproved = ownerFan && ownerFan.status === 'approved' ? ownerFan : null;
+  const inBulk = d => d && d >= new Date('2026-10-26T00:00:00+03:00') && d < new Date('2026-10-28T00:00:00+03:00');
+  const ownerPreRow = ownerPreApproved ? `
+    <div class="qj-row" style="background:var(--warn-bg)">
+      <div class="qj-row-label"><div class="qj-row-step">לבדיקה</div><div class="qj-row-name">⚠️ בעל העסק כבר מאושר כאוהד</div></div>
+      <div class="qj-row-value"><span class="qj-value-text">${inBulk(ownerPreApproved.approvedAt) ? '<b>אושר באישור הגורף</b>' : '<b>אושר כאוהד</b>'}${ownerPreApproved.approvedAt ? ' · ' + fmtDateTime(ownerPreApproved.approvedAt) : ''}, לפני שהעסק אושר – האימות שלו לא נבדק. בודקים אותו כאן, באימות בעל העסק.</span></div>
+    </div>` : '';
+  const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length + (bizInqRow ? 1 : 0) + (decidedRow ? 1 : 0) + (ownerPreRow ? 1 : 0);
   const hasBody = totalCount > 0;
   // §147 — לפני: count/toggle/hint רק כש-hasBody, כך שכרטיס-ריק היה נראה כמו שורת-טקסט בודדת ולא
   // כמו "פיצ'ר קיים" (המשתמש: "אין שיפוט מהיר"). עכשיו תמיד גלוי — כולל ה-hint שמסביר מה זה, בדיוק
@@ -14744,7 +14754,7 @@ function quickJudgmentHtml(b) {
         <div class="qj-hint">${hint}</div>
       </div>
       ${(showApproveApp || b.status === 'rejected') ? bizApprovalSectionsHtml(b) : ''}
-      ${(hasBody && isOpen) ? `<div class="qj-body">${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
+      ${(hasBody && isOpen) ? `<div class="qj-body">${ownerPreRow}${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
     </div>`;
 }
 
