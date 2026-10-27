@@ -11073,6 +11073,13 @@ function fanFullDetailHtml(id, opts) {
         </div>
       </div>`);
   }
+  if (f.status === 'rejected' && f.retryAllowed === true && f.retryNote) {   // §635
+    fanQjRows.push(`
+      <div class="qj-row" style="background:#EEF2FF">
+        <div class="qj-row-label"><div class="qj-row-step">הזדמנות פתוחה</div><div class="qj-row-name">✉️ ההודעה שהשארת</div></div>
+        <div class="qj-row-value"><span class="qj-value-text"><b>${esc(f.retryNote)}</b></span></div>
+      </div>`);
+  }
   { const inqRow = inquiriesQjRowHtml(fanInquiries(f), f.name); if (inqRow) fanQjRows.push(inqRow); }   // §631
   if (f.status === 'pending' && f.fixedAt) {
     const img = u => u ? `<img src="${esc(bizImageViewUrl(u, 400))}" class="zoomable" style="width:100%;max-height:180px;object-fit:contain;border-radius:8px;background:#000" onclick="openImageLightbox('${esc(u)}','proof-${esc(f.id)}.jpg')">` : '<div class="owner-verify-photo-empty">אין תמונה</div>';
@@ -11080,7 +11087,7 @@ function fanFullDetailHtml(id, opts) {
     fanQjRows.push(`
       <div class="qj-row" style="background:#EEF2FF">
         <div class="qj-row-label"><div class="qj-row-step">לבדיקה מעמיקה</div><div class="qj-row-name">🔁 אחרי תיקון אימות</div></div>
-        <div class="qj-row-value"><span class="qj-value-text"><b>האימות לא עבר, והאוהד שלח תיקון</b> · ${fmtDateTime(f.fixedAt)}</span>
+        <div class="qj-row-value"><span class="qj-value-text"><b>האימות לא עבר, והאוהד שלח תיקון</b> · ${fmtDateTime(f.fixedAt)}</span>${f.retryNote ? `<div style="margin-top:4px;font-size:13px">ההודעה שהשארת לו: <b>${esc(f.retryNote)}</b></div>` : ''}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
             <div><div style="font-size:12px;color:var(--text-muted)">לפני</div>${img(f.fixPrevPhotoUrl)}<div style="font-size:12px;margin-top:4px">${prof(f.fixPrevProfile)}</div></div>
             <div><div style="font-size:12px;color:var(--text-muted)">אחרי התיקון</div>${img(f.photoProofUrl)}<div style="font-size:12px;margin-top:4px">${prof(f.instagramUrl || f.facebookUrl)}</div></div>
@@ -13198,7 +13205,12 @@ function goToNextPendingFan(id) {
 // כן → retryAllowed:true – באפליקציה "האימות לא עבר" עם טופס תמונה+פרופיל (worker/src/regstatus.js),
 // ומייל "האימות לא עבר". לא → דחייה סופית, מייל "לא אושרה". המיילים יוצאים מהסריקה בוורקר.
 // ⚠️ החלון יושב על body ולא בתוך #tabContent – renderMain לא מוחק אותו באמצע.
+// §635 — רמי: "תן לי לרשום לו למה דחיתי… להשאיר לו הודעה על המסך של האימות הנוסף". שדה רשות, מוצג
+// רק כשבוחרים "כן – לאפשר תיקון". נשמר ב-lastRejectNote ו-rejectFields כותב אותו ל-retryNote; הוורקר
+// מחזיר אותו ב-/reg-status והכרטיס ב-welcome.html מציג אותו מעל הטופס. כל דחייה דורסת (גם לריק).
+let lastRejectNote = '';
 function askRejectKind(title, sub) {
+  lastRejectNote = '';
   return new Promise(resolve => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,42,102,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
@@ -13206,9 +13218,13 @@ function askRejectKind(title, sub) {
       <div style="font-size:17px;font-weight:800">${esc(title)}</div>
       <div style="margin:6px 0 14px;color:#3A4C7A">${esc(sub || 'לאפשר תיקון אימות?')}</div>
       <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="radio" name="rjk" value="retry" checked style="margin-top:3px"><span><b>כן – לאפשר תיקון אימות</b><br><span style="color:#3A4C7A">באפליקציה תופיע אפשרות להעלות תמונה וקישור לפרופיל מחדש. מייל "האימות לא עבר".</span></span></label>
+      <div data-note-wrap style="margin:8px 0 0 0;padding-right:24px"><div style="font-weight:700;font-size:13px">הודעה לאוהד – למה לא עבר (רשות)</div>
+        <textarea data-note maxlength="400" rows="3" placeholder="למשל: בתמונה לא רואים את הפנים שלך – צריך תמונה שלך ביציע" style="width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #D5DAE6;border-radius:10px;padding:8px;font:inherit;font-size:13.5px;resize:vertical"></textarea>
+        <div style="font-size:12px;color:#3A4C7A">תופיע לו על המסך של האימות הנוסף, מעל הטופס.</div></div>
       <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px"><input type="radio" name="rjk" value="final" style="margin-top:3px"><span><b>לא – דחייה סופית</b><br><span style="color:#3A4C7A">באפליקציה "לא הצלחנו לאמת" + פנייה לצוות. מייל "הבקשה לא אושרה".</span></span></label>
       <div style="display:flex;gap:8px;margin-top:16px"><button type="button" data-a="ok" style="background:#0A2A66;color:#fff;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:800;cursor:pointer">דחייה ושליחת מייל</button><button type="button" data-a="cancel" style="background:#F3F4F7;color:#0A2A66;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer">ביטול</button></div></div>`;
-    const done = v => { ov.remove(); resolve(v); };
+    const done = v => { if (v === 'retry') lastRejectNote = String(ov.querySelector('[data-note]').value || '').trim().slice(0, 400); ov.remove(); resolve(v); };
+    ov.addEventListener('change', () => { ov.querySelector('[data-note-wrap]').style.display = ov.querySelector('input[name=rjk]:checked').value === 'retry' ? '' : 'none'; });
     ov.addEventListener('click', e => {
       const a = e.target.closest('[data-a]');
       if (e.target === ov || (a && a.dataset.a === 'cancel')) return done(null);
@@ -13217,7 +13233,7 @@ function askRejectKind(title, sub) {
     document.body.appendChild(ov);
   });
 }
-const rejectFields = (kind) => ({ status: 'rejected', rejectedAt: serverTimestamp(), rejectKind: kind, retryAllowed: kind === 'retry', rejectEmailStatus: 'pending' });
+const rejectFields = (kind) => ({ status: 'rejected', rejectedAt: serverTimestamp(), rejectKind: kind, retryAllowed: kind === 'retry', rejectEmailStatus: 'pending', retryNote: kind === 'retry' ? lastRejectNote : '' });
 const rejectKindLabel = (kind) => kind === 'retry' ? 'נדחה – אפשר תיקון אימות' : 'נדחה – סופי';
 window.rejectFan = async function(id) {
   const f = MOCK_FANS.find(x => x.id === id);

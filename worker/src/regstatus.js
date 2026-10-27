@@ -51,7 +51,8 @@ export async function handleRegStatus({ memberId, ticket, v } = {}, env) {
   }
   // §628 – דחייה עם הזדמנות שנייה: הכרטיס מציג טופס תיקון (handleRegRetry למטה)
   // ⚠️ רק לדף שמכיר את המצב (v>=2). דף ישן מהמטמון מקבל 'rejected' – לא מצב שהוא לא יודע לצייר.
-  if (f.status === 'rejected' && f.retryAllowed === true && Number(v) >= 2) return { status: 'retry', firstName };
+  // §635 – הודעה של רמי למה לא עבר (רשות), מוצגת מעל טופס התיקון
+  if (f.status === 'rejected' && f.retryAllowed === true && Number(v) >= 2) return { status: 'retry', firstName, note: typeof f.retryNote === 'string' ? f.retryNote.slice(0, 400) : '' };
   if (f.status === 'rejected') return { status: 'rejected', firstName };
   return { status: 'pending', firstName };
 }

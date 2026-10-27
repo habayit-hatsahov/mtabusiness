@@ -1430,6 +1430,9 @@ button { font-family: inherit; }
 .rp-retry .rr-input { width: 100%; height: 46px; padding: 0 14px; border-radius: 11px; border: 1.5px solid #E4E4DC; background: #F2F2EC; font: inherit; font-size: 15px; color: var(--ink); direction: ltr; text-align: left; }
 .rp-retry .rr-msg { font-size: 13px; line-height: 1.6; margin-top: 8px; color: #B4351C; display: none; }
 .rp-retry .rr-msg.on { display: block; }
+/* §635 — הודעה מהצוות למה האימות לא עבר */
+.rp-retry .rr-note { background: #FFF6D6; border: 1px solid #F2D675; border-radius: 12px; padding: 10px 12px; margin: 0 0 12px; font-size: 14px; line-height: 1.6; white-space: pre-line; }
+.rp-retry .rr-note b { display: block; font-size: 12.5px; margin-bottom: 2px; }
 .rp-retry .rr-hint { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; line-height: 1.5; }
 .reg-pending .rp-retry .rp-btn-send { display: flex; margin-top: 16px; }
 .reg-pending .rp-links { margin-top: 14px; font-size: 13px; color: var(--ink-3); text-align: center; }
@@ -2055,6 +2058,7 @@ html.yz-app .lm-reg-wrap { display: block; }
     </ul>
     <!-- §628 — "האימות לא עבר": רק למי שרמי אפשר לו תיקון (retryAllowed). שניהם חובה. -->
     <div class="rp-retry" id="rpRetry">
+      <div class="rr-note" id="rrNote" hidden><b>הודעה מהצוות</b><span id="rrNoteText"></span></div>
       <label class="rr-label" for="rrPhoto">תמונה ביציע שרואים בה אותך <span class="req">*</span></label>
       <input type="file" id="rrPhoto" accept="image/*">
       <div class="rr-hint">תמונה שלך ביציע, או שלך עם חולצה/צעיף של מכבי. צילום של המגרש או הקהל בלי הפנים שלך לא יאושר.</div>
@@ -2523,7 +2527,7 @@ window.yzRegGet = function () {
     return r && typeof r.memberId === 'string' && typeof r.ticket === 'string' ? r : null;
   } catch (e) { return null; }
 };
-window.yzRegShow = function (state, name) {
+window.yzRegShow = function (state, name, note) {
   const box = document.getElementById('pendingRegBlock');
   if (!box) return;
   const on = !!state;
@@ -2546,6 +2550,10 @@ window.yzRegShow = function (state, name) {
   document.getElementById('rpTitle').textContent = T[1] || '';
   document.getElementById('rpText').textContent = T[2] || '';
   document.getElementById('rpNotMe').textContent = name ? 'לא ' + name + '? ' : '';
+  // §635 – למה האימות לא עבר (רמי, רשות). textContent בלבד.
+  const nt = state === 'retry' && note ? String(note) : '';
+  document.getElementById('rrNoteText').textContent = nt;
+  document.getElementById('rrNote').hidden = !nt;
 };
 // "כניסה עם חשבון אחר" – לחלון הזה בלבד. המפתח נשאר: בפתיחה הבאה הכרטיס חוזר.
 window.yzRegSkip = function () {
@@ -2553,7 +2561,7 @@ window.yzRegSkip = function () {
   window.yzRegShow(null);
   window.logEvent && window.logEvent('formStep', { blockId: 'regPending', channel: 'skip' });
 };
-(function () { const r = window.yzRegGet(); if (r) window.yzRegShow(r.last || 'pending', r.name || ''); })();
+(function () { const r = window.yzRegGet(); if (r) window.yzRegShow(r.last || 'pending', r.name || '', r.note || ''); })();
 
 // ── §628 — "האימות לא עבר": שליחת תמונה + פרופיל מהמכשיר שנרשם ─────────────────────────────
 // התמונה עולה ל-/upload-member-proof (כמו בהרשמה, §565), ואז /reg-retry עם המפתח של §612.
@@ -3559,9 +3567,11 @@ async function yzRegCheck() {
     if (data.status === 'pending' || data.status === 'rejected' || data.status === 'retry') {
       // §628 – 'fixed' ("קיבלנו, תודה") נשאר כל עוד הבקשה ממתינה אחרי תיקון
       const last = data.status === 'pending' && reg.last === 'fixed' ? 'fixed' : data.status;
-      try { localStorage.setItem('yz_reg', JSON.stringify({ ...reg, name, last })); } catch (e) {}
+      const note = data.status === 'retry' && typeof data.note === 'string' ? data.note.slice(0, 400) : '';   // §635
+      try { localStorage.setItem('yz_reg', JSON.stringify({ ...reg, name, last, note })); } catch (e) {}
       // לא לדרוס טופס שהאוהד באמצע מילוי שלו (חזרה לאפליקציה מבחירת תמונה מפעילה visibilitychange)
-      if (!(last === 'retry' && document.getElementById('pendingRegBlock').dataset.state === 'retry')) window.yzRegShow(last, name);
+      if (!(last === 'retry' && document.getElementById('pendingRegBlock').dataset.state === 'retry')) window.yzRegShow(last, name, note);
+      else { document.getElementById('rrNoteText').textContent = note; document.getElementById('rrNote').hidden = !note; }
       return;
     }
     if (data.status === 'approved' && data.customToken) {
@@ -3590,7 +3600,7 @@ document.getElementById('rpEnterBtn').addEventListener('click', () => { yzRegChe
 window.addEventListener('storage', (e) => {
   if (e.key !== 'yz_reg') return;
   const r = window.yzRegGet();
-  window.yzRegShow(r ? (r.last || 'pending') : null, r ? r.name || '' : '');
+  window.yzRegShow(r ? (r.last || 'pending') : null, r ? r.name || '' : '', r ? r.note || '' : '');
 });
 // חזרה לאפליקציה מהרקע = "פותחים את האפליקציה" – בודקים שוב.
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') yzRegCheck(); });
