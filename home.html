@@ -1737,6 +1737,8 @@
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
   </div>
+  <!-- §645 — סינוני חיפוש: כפתור "סינון" + קיצורים (מצויר ע"י sfRender) -->
+  <div class="sf-quick" id="sfQuick"></div>
 </div>
 
 <!-- §569 — כרטיס התראות חד-פעמי (אפליקציה בלבד). ממולא ע"י maybeShowPushCard במודול. -->
@@ -1753,6 +1755,7 @@
      המיידי למטה שמשתמש ב-window.CATEGORIES, אבל אין שום סיבה שיעכב את מה שמעל (המסך הצהוב). -->
 <script src="categories.js?v=613"></script>
 <script src="hours.js"></script>
+<script src="il-cities.js?v=645"></script><!-- §645 — ישובים לפי אזור (סינון "אזור או עיר") -->
 <script src="social-links.js"></script>
 <script src="sections-policy.js?v=594b"></script>
 <div class="cats-section">
@@ -2756,7 +2759,7 @@ function scrollCardsRow(btn, dir) {
 // מרענן את מה שפתוח כרגע ב-catFeed כשמגיעים נתונים חדשים: חיפוש פעיל מורץ מחדש (התוצאות
 // נשארות מדורגות ומעודכנות), אחרת מרונדרים מחדש את הקטגוריה/סקשן הפתוח. אחד מהם לכל היותר.
 function refreshOpenFeed() {
-  if (_searchQuery) runSearch(_searchQuery);
+  if (_searchQuery || (window.sfActive && window.sfActive())) runSearch(_searchQuery || '');   // §645
   else if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey);
 }
 
@@ -2764,6 +2767,7 @@ function filterCat(cat, el) {
   // כל ניווט מפורש (קטגוריה / חזרה לדף הבית) יוצא ממצב-חיפוש ומנקה את התיבה — אחרת נשאר
   // טקסט בתיבה בזמן שמוצג משהו אחר לגמרי, והתו הבא שמוקלד מצטרף אליו.
   if (_searchQuery) { _searchQuery = ''; syncSearchInputs(''); }
+  if (window.sfActive && window.sfActive() && window.sfReset) window.sfReset();   // §645 – ניווט מפורש מנקה גם את הסינון
   document.querySelectorAll('.cat-item').forEach(c => c.classList.remove('active'));
   if (el) el.classList.add('active');
 
@@ -2924,14 +2928,22 @@ function clearSearch() {
   visible?.focus();
 }
 
+// §645 — אותה התאמת-טקסט כמו runSearch (לספירת "הצגת N עסקים" בגיליון הסינון)
+window.sfTextMatch = function (b, val) {
+  const words = normalizeSearchText(val).split(' ').filter(Boolean);
+  const hay = [b.name, catLabel(mapCatKey(b.cat)), ...(b.tags || []), b.city, b.desc, b.discount].map(normalizeSearchText).join(' ');
+  return words.every(w => hay.includes(w));
+};
+
 function runSearch(val) {
-  if (!val.trim()) {
+  const sfOn = !!(window.sfActive && window.sfActive());   // §645
+  if (!val.trim() && !sfOn) {
     _searchQuery = '';
     syncSearchInputs('');
     filterCat('all', document.querySelector('.cat-item'));
     return;
   }
-  _searchQuery = val;
+  _searchQuery = val.trim() ? val : '';
   // תוצאות-חיפוש הן תצוגה בפני עצמה, לא קטגוריה — איפוס המפתח מונע מ-refreshOpenFeed לדרוס
   // אותן בתוכן הקטגוריה שנפתחה קודם ברגע שמגיע snapshot מ-Firestore (ר' ההערה ליד _searchQuery).
   _currentCatFeedKey = null;
@@ -2962,7 +2974,9 @@ function runSearch(val) {
       return { b, score };
     })
     .filter(Boolean)
-    .sort((a, b) => b.score - a.score)
+    .filter(x => !sfOn || window.sfMatch(x.b))   // §645
+    // בלי טקסט (סינון בלבד) – לפי פופולריות; עם טקסט – לפי ההתאמה
+    .sort((a, b) => words.length ? b.score - a.score : (b.b.clicks || 0) - (a.b.clicks || 0))
     .map(x => x.b);
 
   // רק במעבר *לתוך* מצב-חיפוש: שומרים את מיקום-הגלילה בדף הבית (כדי שניקוי החיפוש יחזיר
@@ -2974,10 +2988,10 @@ function runSearch(val) {
   }
   mainFeedEl.style.display = 'none';
   document.getElementById('catFeed').style.display = 'block';
-  document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">תוצאות חיפוש</div>`;
+  document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${words.length ? 'תוצאות חיפוש' : 'תוצאות הסינון'}${sfOn ? ` · ${results.length}` : ''}</div>`;
   document.getElementById('catFeedGrid').innerHTML = results.length
     ? results.map(b => buildCard(b)).join('')
-    : '<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>לא נמצאו תוצאות</p></div>';
+    : `<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>לא נמצאו תוצאות${sfOn ? ' בסינון הזה' : ''}</p>${sfOn ? '<button type="button" class="sf-empty-clear" onclick="sfClear()">ניקוי הסינון</button>' : ''}</div>`;
   observeLazyImages(document.getElementById('catFeedGrid'));
 }
 
@@ -4211,6 +4225,185 @@ document.addEventListener('DOMContentLoaded', () => {
   .howto-close { display: block; width: 100%; height: 46px; margin-top: 14px; background: #fff; border: 1px solid var(--field-line);
     border-radius: 12px; font-family: 'Rubik', sans-serif; font-size: 15px; font-weight: 800; color: #475467; cursor: pointer; }
 </style>
+<!-- ══ §645 — סינוני חיפוש (הדמו: search-filters-demo.html) ══════════════════════════════════════
+     רמי: "חיפוש לפי כשר/לא כשר, ערים ומחוזות, פתוח בשבת"; עיר – כל הערים בהקלדה; קיצור שלישי "אזור או עיר".
+     סינון פעיל = מסך התוצאות (גם בלי טקסט בחיפוש). ניווט לקטגוריה/לדף הבית מנקה, כמו את החיפוש. -->
+<style>
+  .sf-quick { display: flex; gap: 7px; overflow-x: auto; padding: 10px 0 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .sf-quick::-webkit-scrollbar { display: none; }
+  .sf-q { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 999px; border: 1.5px solid rgba(10,42,102,.14);
+    background: #fff; color: #0A2A66; font-family: 'Rubik', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .sf-q.on { border-color: var(--yellow); background: rgba(255,212,0,.22); font-weight: 800; }
+  .sf-q.main { border-color: #0A2A66; font-weight: 800; }
+  .sf-q .n { background: var(--yellow); border-radius: 999px; min-width: 18px; height: 18px; line-height: 18px; text-align: center; font-size: 11px; }
+  .sf-pin { vertical-align: -2px; flex: none; }
+  .sf-ov { position: fixed; inset: 0; background: rgba(10,20,40,.45); display: none; z-index: 360; }
+  .sf-ov.open { display: block; }
+  .sf-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 361; max-width: 600px; margin: 0 auto; background: #fff; color: #0A2A66;
+    border-radius: 22px 22px 0 0; padding: 10px 16px 0; transform: translateY(105%); transition: transform .25s ease; max-height: 88dvh;
+    overflow-y: auto; visibility: hidden; }
+  .sf-sheet.open { transform: none; visibility: visible; }
+  .sf-sheet h2 { font-size: 19px; font-weight: 900; margin: 4px 0 2px; }
+  .sf-grp { margin-top: 14px; }
+  .sf-gl { font-weight: 800; font-size: 14px; margin-bottom: 7px; }
+  .sf-gh { font-size: 11.5px; color: var(--ink-3, #6B7A9B); margin: -3px 0 7px; }
+  .sf-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .sf-chip { padding: 8px 12px; border-radius: 999px; border: 1.5px solid #E3E7EF; font-size: 13px; font-weight: 600; cursor: pointer; background: #fff;
+    font-family: 'Rubik', sans-serif; color: #0A2A66; }
+  .sf-chip.on { border-color: var(--yellow); background: rgba(255,212,0,.22); }
+  .sf-city { position: relative; margin-top: 8px; }
+  .sf-city input { width: 100%; box-sizing: border-box; border: 1.5px solid #E3E7EF; border-radius: 12px; padding: 10px 12px; font-family: 'Rubik', sans-serif; font-size: 16px; }
+  .sf-sugg { position: absolute; top: 100%; inset-inline: 0; background: #fff; border: 1px solid #E3E7EF; border-radius: 10px; box-shadow: 0 6px 18px rgba(10,42,102,.12);
+    z-index: 3; max-height: 200px; overflow-y: auto; }
+  .sf-sugg button { display: block; width: 100%; text-align: right; padding: 10px 12px; font-family: 'Rubik', sans-serif; font-size: 14px; border: 0;
+    border-bottom: 1px solid #F4F5F8; background: #fff; color: #0A2A66; cursor: pointer; }
+  .sf-sugg small { color: #6B7A9B; }
+  .sf-picked { display: inline-flex; gap: 6px; align-items: center; margin-top: 8px; padding: 6px 10px; border-radius: 999px; background: rgba(255,212,0,.22);
+    border: 1.5px solid var(--yellow); font-size: 13px; font-weight: 700; }
+  .sf-picked button { background: none; border: 0; font-size: 14px; cursor: pointer; color: #0A2A66; padding: 0 2px; }
+  .sf-actions { position: sticky; bottom: 0; background: #fff; display: flex; gap: 8px; padding: 12px 0 calc(14px + env(safe-area-inset-bottom)); margin-top: 14px; }
+  .sf-btn { flex: 1; padding: 13px; border-radius: 12px; border: 0; font-family: 'Rubik', sans-serif; font-weight: 900; font-size: 15px; cursor: pointer; }
+  .sf-btn.y { background: var(--yellow); color: #0A2A66; flex: 2; }
+  .sf-btn.g { background: #F4F5F8; color: #0A2A66; }
+  .sf-empty-clear { display: inline-block; margin-top: 8px; background: none; border: 0; color: #0A2A66; font-weight: 800; text-decoration: underline; cursor: pointer; font-family: 'Rubik', sans-serif; }
+</style>
+<div class="sf-ov" id="sfOv" onclick="sfClose()"></div>
+<div class="sf-sheet" id="sfSheet" role="dialog" aria-modal="true" aria-label="סינון"></div>
+<script>
+(function () {
+  var PIN = '<svg class="sf-pin" width="14" height="14" viewBox="0 0 24 24"><path d="M12 22s7-6.6 7-12a7 7 0 0 0-14 0c0 5.4 7 12 7 12z" fill="#FFD400" stroke="#0A2A66" stroke-width="2"/><circle cx="12" cy="10" r="2.6" fill="#0A2A66"/></svg>';
+  var REGIONS = ['גוש דן', 'השרון', 'השפלה', 'ירושלים והסביבה', 'חיפה והצפון', 'הדרום'];
+  var S = { region: [], city: '', kosher: '', sat: '', now: false, coupon: false, comes: false };
+  var esc = function (x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var C = function () { return window.YZ_CITIES || null; };
+
+  window.sfActive = function () { return !!(S.region.length || S.city || S.kosher || S.sat || S.now || S.coupon || S.comes); };
+  function activeCount() { return S.region.length + (S.city ? 1 : 0) + (S.kosher ? 1 : 0) + (S.sat ? 1 : 0) + (S.now ? 1 : 0) + (S.coupon ? 1 : 0) + (S.comes ? 1 : 0); }
+
+  // ── מה כל עסק "מכסה" ──
+  function onlineOnly(b) { return b.online && !b.isPhysical && !b.isPro; }
+  function bizRegions(b) {
+    var out = {};
+    var Y = C();
+    (b.cities && b.cities.length ? b.cities : (b.city ? [b.city] : [])).forEach(function (c) { var r = Y && Y.regionOf(c); if (r) out[r] = 1; });
+    (b.regions || []).forEach(function (r) { out[r] = 1; });
+    return out;
+  }
+  function nationwide(b) { return onlineOnly(b) || (b.regions || []).indexOf('כל הארץ') !== -1; }
+  function matchPlace(b) {
+    if (!S.region.length && !S.city) return true;
+    if (nationwide(b)) return true;
+    var regs = bizRegions(b);
+    if (S.city) {
+      var Y = C();
+      var inCity = (b.cities || []).concat(b.city ? [b.city] : []).some(function (c) { return Y ? Y.canonCity(c) === S.city : c === S.city; });
+      if (inCity) return true;
+      // נותן שירות שמגיע לאזור של העיר
+      var r = Y && Y.regionOf(S.city);
+      return !!(r && b.isPro && (b.regions || []).indexOf(r) !== -1);
+    }
+    return S.region.some(function (r) { return regs[r]; });
+  }
+  function daysOf(b) { var H = window.HB_HOURS; if (!H) return null; try { var r = H.read(b); return r.kind === 'fixed' ? r.days : null; } catch (e) { return null; } }
+  function mins(t) { var m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+  function openNow(b) {
+    var days = daysOf(b); if (!days) return false;
+    var d = new Date(), wd = d.getDay(), now = d.getHours() * 60 + d.getMinutes();
+    var today = days[wd], yest = days[(wd + 6) % 7];
+    if (today && !today.closed) {
+      var o = mins(today.open), c = mins(today.close);
+      if (o != null && c != null) { if (c > o ? (now >= o && now < c) : now >= o) return true; }
+    }
+    // משמרת שחוצה חצות מאתמול
+    if (yest && !yest.closed) { var yo = mins(yest.open), yc = mins(yest.close); if (yo != null && yc != null && yc < yo && now < yc) return true; }
+    return false;
+  }
+  function satState(b) { var days = daysOf(b); if (!days || !days[6]) return ''; return days[6].closed ? 'closed' : 'open'; }
+  window.sfMatch = function (b) {
+    if (!matchPlace(b)) return false;
+    if (S.kosher === 'yes' && b.kosher !== true) return false;
+    if (S.kosher === 'no' && b.kosher !== false) return false;
+    if (S.sat && satState(b) !== S.sat) return false;
+    if (S.now && !openNow(b)) return false;
+    if (S.coupon && (b.discountTypes || []).indexOf('online') === -1) return false;
+    if (S.comes && !b.isPro) return false;
+    return true;
+  };
+
+  // ── ציור ──
+  function placeLabel() { return S.city || (S.region.length === 1 ? S.region[0] : S.region.length ? S.region.length + ' אזורים' : ''); }
+  function quickHtml() {
+    var n = activeCount();
+    var q = function (on, onclick, label) { return '<button type="button" class="sf-q' + (on ? ' on' : '') + '" onclick="' + onclick + '">' + label + '</button>'; };
+    return '<button type="button" class="sf-q main" onclick="sfOpen()">סינון' + (n ? ' <span class="n">' + n + '</span>' : '') + '</button>' +
+      q(S.now, "sfToggle('now')", '🟢 פתוח עכשיו') +
+      q(S.kosher === 'yes', "sfSet('kosher','yes')", 'כשר') +
+      q(!!(S.region.length || S.city), "sfOpen('place')", PIN + ' ' + (placeLabel() ? esc(placeLabel()) : 'אזור או עיר') + ' ▾') +
+      q(S.sat === 'open', "sfSet('sat','open')", 'פתוח בשבת') +
+      q(S.coupon, "sfToggle('coupon')", '🌐 קוד קופון');
+  }
+  function sheetHtml() {
+    var chip = function (on, onclick, label) { return '<button type="button" class="sf-chip' + (on ? ' on' : '') + '" onclick="' + onclick + '">' + label + '</button>'; };
+    var Y = C();
+    return '<div class="howto-grab"></div><h2>סינון</h2>' +
+      '<div class="sf-grp" id="sfPlace"><div class="sf-gl">אזור או עיר</div><div class="sf-chips">' +
+        REGIONS.map(function (r) { return chip(S.region.indexOf(r) !== -1, "sfRegion('" + r + "')", r); }).join('') + '</div>' +
+        '<div class="sf-gh" style="margin-top:10px">או כתבו שם של עיר:</div>' +
+        '<div class="sf-city"><input id="sfCityIn" placeholder="למשל: רחובות" autocomplete="off" oninput="sfSuggest()" /><div class="sf-sugg" id="sfSugg"></div></div>' +
+        (S.city ? '<span class="sf-picked">' + PIN + ' ' + esc(S.city) + (Y && Y.regionOf(S.city) ? ' <small>(' + esc(Y.regionOf(S.city)) + ')</small>' : '') + ' <button type="button" onclick="sfCity()" aria-label="הסרה">✕</button></span>' : '') +
+      '</div>' +
+      '<div class="sf-grp"><div class="sf-gl">כשרות</div><div class="sf-chips">' + chip(S.kosher === 'yes', "sfSet('kosher','yes')", 'כשר') + chip(S.kosher === 'no', "sfSet('kosher','no')", 'לא כשר') + '</div></div>' +
+      '<div class="sf-grp"><div class="sf-gl">שבת</div><div class="sf-gh">לפי שעות הפעילות שהעסק הזין</div><div class="sf-chips">' + chip(S.sat === 'open', "sfSet('sat','open')", 'פתוח בשבת') + chip(S.sat === 'closed', "sfSet('sat','closed')", 'סגור בשבת') + '</div></div>' +
+      '<div class="sf-grp"><div class="sf-gl">עוד</div><div class="sf-chips">' + chip(S.now, "sfToggle('now')", '🟢 פתוח עכשיו') + chip(S.coupon, "sfToggle('coupon')", '🌐 קוד קופון / קנייה באתר') + chip(S.comes, "sfToggle('comes')", 'מגיעים אליי') + '</div></div>' +
+      '<div class="sf-actions"><button type="button" class="sf-btn g" onclick="sfClear()">ניקוי</button><button type="button" class="sf-btn y" onclick="sfClose()">' + resultsLabel() + '</button></div>';
+  }
+  function resultsLabel() {
+    var list = (typeof businesses !== 'undefined' ? businesses : []).filter(window.sfMatch);
+    var q = (typeof _searchQuery !== 'undefined' && _searchQuery) ? _searchQuery : '';
+    if (q && typeof window.sfTextMatch === 'function') list = list.filter(function (b) { return window.sfTextMatch(b, q); });
+    return 'הצגת ' + list.length + ' עסקים';
+  }
+  window.sfRender = function () {
+    var qEl = document.getElementById('sfQuick'); if (qEl) qEl.innerHTML = quickHtml();
+    var sh = document.getElementById('sfSheet');
+    if (sh && sh.classList.contains('open')) {
+      var keepY = sh.scrollTop; sh.innerHTML = sheetHtml(); sh.scrollTop = keepY;
+    }
+  };
+  function apply() {
+    window.sfRender();
+    // סינון פעיל (או חיפוש) → מסך התוצאות; בלי שניהם → דף הבית
+    if (typeof runSearch === 'function') runSearch(typeof _searchQuery !== 'undefined' ? (_searchQuery || '') : '');
+  }
+  window.sfToggle = function (k) { S[k] = !S[k]; apply(); };
+  window.sfSet = function (k, v) { S[k] = S[k] === v ? '' : v; apply(); };
+  window.sfRegion = function (r) { var i = S.region.indexOf(r); if (i === -1) S.region.push(r); else S.region.splice(i, 1); S.city = ''; apply(); };
+  window.sfCity = function (c) { S.city = c || ''; if (S.city) S.region = []; apply(); };
+  window.sfSuggest = function () {
+    var v = (document.getElementById('sfCityIn').value || '').trim(), box = document.getElementById('sfSugg'), Y = C();
+    if (!v || !Y) { box.innerHTML = ''; return; }
+    var list = Object.keys(Y.CITY_REGION).filter(function (c) { return c.indexOf(v) !== -1; }).slice(0, 8);
+    box.innerHTML = list.length ? list.map(function (c) { return '<button type="button" data-city="' + esc(c) + '" onclick="sfCity(this.dataset.city)">' + esc(c) + ' <small>· ' + esc(Y.CITY_REGION[c]) + '</small></button>'; }).join('')
+      : '<button type="button" disabled><small>לא נמצאה עיר – אפשר לבחור את האזור למעלה</small></button>';
+  };
+  window.sfClear = function () { S.region = []; S.city = ''; S.kosher = ''; S.sat = ''; S.now = false; S.coupon = false; S.comes = false; apply(); };
+  // ניווט מפורש (קטגוריה/דף הבית) – מנקה בלי לרנדר תוצאות
+  window.sfReset = function () { S.region = []; S.city = ''; S.kosher = ''; S.sat = ''; S.now = false; S.coupon = false; S.comes = false; window.sfRender(); };
+  window.sfOpen = function (focus) {
+    var sh = document.getElementById('sfSheet');
+    sh.innerHTML = sheetHtml(); sh.scrollTop = 0;
+    document.getElementById('sfOv').classList.add('open'); sh.classList.add('open');
+    if (focus === 'place') setTimeout(function () { var el = document.getElementById('sfPlace'); if (el) el.scrollIntoView({ block: 'start' }); }, 30);
+  };
+  window.sfClose = function () {
+    document.getElementById('sfOv').classList.remove('open');
+    document.getElementById('sfSheet').classList.remove('open');
+  };
+  window.addEventListener('popstate', window.sfClose);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.sfRender); else window.sfRender();
+})();
+</script>
+
 <div class="howto-ov" id="howtoOv" onclick="sCloseHowto()"></div>
 <div class="howto-sheet" id="howtoSheet" role="dialog" aria-modal="true" aria-label="איך מממשים"></div>
 <script>
@@ -4627,6 +4820,7 @@ function _hbRenderBusinesses() {
       alsoUnderCategory: b.alsoUnderCategory || '',
       tags:         b.tags || [],
       city:         (b.branches && b.branches[0]?.city) || '',
+      cities:       (b.branches || []).map(x => x && x.city).filter(Boolean),   // §645
       discount:     b.discountText || '',
       discountFull: b.discountTextFull || '',
       discountTypes: types,
