@@ -3898,6 +3898,17 @@ function computeHealthScore(b) {
 function missingFieldsFor(b) {
   return HEALTH_CHECKLIST.filter(c => !c.test(b)).map(c => c.label);
 }
+// §643ב — רמי: "שים לי אותם כמשימה כמו שצריך, לא ככה – זה דופק את הנראות". כשרות שטרם סומנה היא
+// פרט חסר בכרטיס → "כרטיס חסר באינדקס", כמו שאר החוסרים. **לא** ב-HEALTH_CHECKLIST: שם היא הייתה
+// משנה את אחוז השלמות של כל העסקים (מכנה 4→5).
+function kosherMissing(b) {
+  if (!b) return false;
+  const rel = b.catKey === 'food' || (b.catKey === 'events' && (b.tags || []).includes('אוכל ואלכוהול לאירועים'));
+  return rel && typeof b.kosher !== 'boolean';
+}
+function cardGapLabels(b) {
+  return (kosherMissing(b) ? ['🍽️ כשרות'] : []).concat(missingFieldsFor(b));
+}
 
 // ── §252 — "סמן טופל" לכרטיס חסר ────────────────────────────────────────────────────────────
 // 3 מתוך 4 השדות ב-HEALTH_CHECKLIST אינם חובה על העסק בפועל (הטבה / שעות / תיאור): עסק שבחר
@@ -5408,7 +5419,7 @@ function bizRowsHtml() {
     const badges = [`<span class="class-badge${primaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(primaryLabel)}</span>`]
       .concat(cls.treatments.map(t => treatBadgeHtml(t, b)));
     if (cls.primary === 'כרטיס חסר באינדקס') {
-      missingFieldsFor(b).slice(0, 2).forEach(label => badges.push(`<span class="warn-badge">${esc(label)}</span>`));
+      cardGapLabels(b).slice(0, 2).forEach(label => badges.push(`<span class="warn-badge">${esc(label)}</span>`));   // §643ב
     }
     // §366 — הדגל צריך להיות גלוי **ברשימה**, לא רק בכרטיס: מי שסורק את הממתינים רואה
     // שתי שורות דומות ואין לו סימן שהן קשורות.
@@ -12695,7 +12706,7 @@ function taskTilesHtml() {
       ${tile(TASK_CLASS_TILES[0], countOf('עסק ממתין לאישור'), `<div class="class-tile-sub">${oldestPendingBiz ? `הוותיק ביותר ממתין ${agoLabel(taskWaitDate(oldestPendingBiz))}` : 'אין ממתינים כרגע'}</div>`)}
       ${tile(TASK_CLASS_TILES[1], countOf('אוהד ממתין לאישור'), `<div class="class-tile-sub">${flaggedFans ? `⚠️ ${flaggedFans} עם דגל בדיקה` : ''}</div>`)}
       ${tile(TASK_CLASS_TILES[2], requestsItems.length, `<div class="class-tile-chips"><span class="treat-badge">שינוי פרטים ${tCount('details')}</span><span class="treat-badge">תגית ${tCount('tag')}</span><span class="treat-badge">קטגוריה ${tCount('category')}</span><span class="treat-badge">כתבו לנו ${tCount('note')}</span></div>`)}
-      ${tile(TASK_CLASS_TILES[3], countOf('כרטיס חסר באינדקס'), `<div class="class-tile-chips"><span class="warn-badge">חסרים פרטים בכרטיס</span></div><div class="class-tile-sub">שדה שלא חובה על העסק? "✔️ טופל" בשורה מוריד אותו מכאן</div>`)}
+      ${tile(TASK_CLASS_TILES[3], countOf('כרטיס חסר באינדקס'), `<div class="class-tile-chips"><span class="warn-badge">חסרים פרטים בכרטיס</span>${(() => { const k = MOCK_BUSINESSES.filter(b => b.status === 'approved' && kosherMissing(b)).length; return k ? `<span class="warn-badge">🍽️ כשרות ${k}</span>` : ''; })()}</div><div class="class-tile-sub">שדה שלא חובה על העסק? "✔️ טופל" בשורה מוריד אותו מכאן</div>`)}
       ${(() => {
         // ── §356 — קובייה אחת במקום חמש ──────────────────────────────────────────────
         // **המספר הגדול הוא "כמה דברים אני חייב לבדוק", לא "כמה תקלות קרו".** ההבחנה
@@ -12780,7 +12791,7 @@ function taskRow2Html(x) {
   // רואה את זה בשורה מכריע בלי לדעת מה הוא מפעיל.
   if (x.kind === 'fan' && e.isBusinessOwner) badges.push(`<span class="treat-badge">בעל עסק</span>`);
   if (x.kind === 'biz' && x.c.primary === 'כרטיס חסר באינדקס') {
-    missingFieldsFor(e).slice(0, 2).forEach(label => badges.push(`<span class="warn-badge">${label}</span>`));
+    cardGapLabels(e).slice(0, 2).forEach(label => badges.push(`<span class="warn-badge">${label}</span>`));   // §643ב
   }
   const catLabel = x.kind === 'biz' ? ((CATEGORIES.find(c => c.key === e.catKey) || {}).label || '') : '';
   const metaLine = x.kind === 'biz'
@@ -12840,9 +12851,11 @@ function kosherTaskHtml() {
 // שורת כשרות בכרטיס העסק – לשינוי אחר כך (רק לעסק רלוונטי)
 function kosherRowHtml(b) {
   if (!kosherRelevantBiz(b)) return '';
+  // §643ב – שורה שקטה; צהובה רק כשטרם סומן
+  const missing = typeof b.kosher !== 'boolean';
   const cur = b.kosher === true ? 'כשר' : b.kosher === false ? 'לא כשר' : 'טרם סומן';
-  return `<div class="mail-issues-note" style="margin:0 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    <span style="flex:1"><b>🍽️ כשרות:</b> ${cur}</span>
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:8px 12px;border-radius:12px;${missing ? 'background:#FFF8DB;border:1px solid #F5D96B' : 'border:1px solid var(--line,#E3E7EF)'}">
+    <span style="flex:1;font-size:13px">🍽️ <b>כשרות:</b> ${cur}</span>
     <button class="act-btn ${b.kosher === true ? 'approve ' : ''}tiny" onclick="setBizKosher('${b.id}', true)">כשר</button>
     <button class="act-btn ${b.kosher === false ? 'approve ' : ''}tiny" onclick="setBizKosher('${b.id}', false)">לא כשר</button>
   </div>`;
@@ -12857,14 +12870,14 @@ window.setBizKosher = async function(id, val) {
     // רענון נקודתי: כרטיס המשימה (אם מוצג) והכרטיס הפתוח – בלי לבנות את המסך מחדש
     const el = document.getElementById('kosherTask');
     if (el) { const html = kosherTaskHtml(); if (html) el.outerHTML = html; else el.remove(); }
-    refreshOpenDetailPanel();
+    if (!refreshOpenDetailPanel()) renderMain();
+    try { refreshTaskCenter(); } catch (e) {}   // §643ב – השורה יורדת מ"כרטיס חסר באינדקס"
     await logActivity('businesses', id, { type: 'adminEdit', title: 'כשרות: ' + (val ? 'כשר' : 'לא כשר'), field: 'kosher', before, after: val });
   } catch (e) { console.error(e); alert('שגיאה בשמירה: ' + e.message); }
 };
 
 function taskCenterHtml() {
   return `
-    ${kosherTaskHtml()}
     ${taskTilesHtml()}
     <div class="filter-toolbar">${taskFilterBarHtml()}</div>
     <div id="taskTableWrap">${safeTaskCenterTableHtml()}</div>
@@ -14963,7 +14976,7 @@ function classifyAction(entity, kind) {
     primary = kind === 'fan' ? 'אוהד ממתין לאישור' : 'עסק ממתין לאישור';
   } else if (kind !== 'fan' && treatments.length > 0) {
     primary = 'בקשה מבעל העסק';
-  } else if (kind !== 'fan' && entity.status === 'approved' && typeof entity.healthScore === 'number' && entity.healthScore < 100 && !cardGapsAcceptedFor(entity)) {
+  } else if (kind !== 'fan' && entity.status === 'approved' && ((typeof entity.healthScore === 'number' && entity.healthScore < 100 && !cardGapsAcceptedFor(entity)) || kosherMissing(entity))) {
     // §252 — cardGapsAcceptedFor: המנהל סימן "ראיתי, זה בסדר ככה". healthScore עצמו לא משתנה
     // (המד בכרטיס ממשיך להציג את האמת), רק ההגדרה "זו משימה פתוחה" מתבטלת.
     primary = 'כרטיס חסר באינדקס';
