@@ -10175,6 +10175,9 @@ async function logActivity(collectionName, entityId, entry) {
       actorUid: CURRENT_ADMIN.uid,
       actorName: CURRENT_ADMIN.name,
       source: entry.source || 'admin',
+      // §623ג — השורה להודעה לבעל העסק נשמרת עם ההחלטה עצמה, ו"נסגרת" ע"י ההודעה / "בלי הודעה"
+      ...(entry.noteItem ? { noteItem: entry.noteItem } : {}),
+      ...(entry.noteClose ? { noteClose: true } : {}),
       createdAt: serverTimestamp(),
     });
   } catch (e) { console.error('logActivity failed:', e); }
@@ -13733,10 +13736,11 @@ window.approveTagSecondSuggestion = async function(id) {
     b.tagSecondSuggestion = '';
     b.healthScore = computeHealthScore(b);
     await logActivity('businesses', id, {
+      noteItem: qjItem(`תגית שנייה "${tag}"`, 'approved'),   // §623ג
       type: 'tagDecision', title: 'אושרה בקשת תגית שנייה', detail: `"${tag}" נוספה כתגית ל"${b.name}"`,
       field: 'tags', before: null, after: tag,
     });
-    qjRemember(id, `תגית שנייה "${tag}"`, 'approved');   // §623
+    qjRemember(id, qjItem(`תגית שנייה "${tag}"`, 'approved'));   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה באישור תגית: ' + e.message); }
 };
@@ -13748,10 +13752,11 @@ window.rejectTagSecondSuggestion = async function(id) {
     await updateDoc(doc(db, 'businesses', id), { tagSecondSuggestion: '' });
     b.tagSecondSuggestion = '';
     await logActivity('businesses', id, {
+      noteItem: qjItem(`תגית שנייה "${tag}"`, 'rejected'),   // §623ג
       type: 'tagDecision', title: 'נדחתה בקשת תגית שנייה', detail: `"${tag}" נדחתה עבור "${b.name}"`,
       field: 'tagSecondSuggestion', before: tag, after: null,
     });
-    qjRemember(id, `תגית שנייה "${tag}"`, 'rejected');   // §623
+    qjRemember(id, qjItem(`תגית שנייה "${tag}"`, 'rejected'));   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה בדחיית תגית: ' + e.message); }
 };
@@ -13764,10 +13769,11 @@ window.approveAlsoCatSuggestion = async function(id) {
     b.alsoUnderCategory = cat;
     b.alsoCategorySuggestion = '';
     await logActivity('businesses', id, {
+      noteItem: qjItem('קטגוריה נוספת', 'approved'),   // §623ג
       type: 'tagDecision', title: 'אושרה בקשת קטגוריה נוספת', detail: `"${b.name}" יופיע גם תחת "${cat}"`,
       field: 'alsoUnderCategory', before: null, after: cat,
     });
-    qjRemember(id, 'קטגוריה נוספת', 'approved');   // §623
+    qjRemember(id, qjItem('קטגוריה נוספת', 'approved'));   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה באישור קטגוריה: ' + e.message); }
 };
@@ -13779,10 +13785,12 @@ window.clearAlsoCategoryNote = async function(id) {
   try {
     await updateDoc(doc(db, 'businesses', id), { alsoCategoryNote: '' });
     b.alsoCategoryNote = '';
+    const ni = qjItem(`ההערה שלך על קטגוריה נוספת ("${String(note).slice(0, 60)}")`, 'handled');   // §623ג
     await logActivity('businesses', id, {
       type: 'changeDecision', title: 'הערת קטגוריה נוספת סומנה כטופלה', detail: `"${note}"`,
-      field: 'alsoCategoryNote', before: note, after: null,
+      field: 'alsoCategoryNote', before: note, after: null, noteItem: ni,
     });
+    qjRemember(id, ni);
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
@@ -13794,10 +13802,11 @@ window.rejectAlsoCatSuggestion = async function(id) {
     await updateDoc(doc(db, 'businesses', id), { alsoCategorySuggestion: '' });
     b.alsoCategorySuggestion = '';
     await logActivity('businesses', id, {
+      noteItem: qjItem('קטגוריה נוספת', 'rejected'),   // §623ג
       type: 'tagDecision', title: 'נדחתה בקשת קטגוריה נוספת', detail: `"${cat}" נדחתה עבור "${b.name}"`,
       field: 'alsoCategorySuggestion', before: cat, after: null,
     });
-    qjRemember(id, 'קטגוריה נוספת', 'rejected');   // §623
+    qjRemember(id, qjItem('קטגוריה נוספת', 'rejected'));   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה בדחיית קטגוריה: ' + e.message); }
 };
@@ -13997,11 +14006,12 @@ window.approveChangeField = async function(id, field, valueOverride) {
     Object.assign(b, hydrateBiz(id, b));
     b.healthScore = computeHealthScore(b);
     await logActivity('businesses', id, {
+      noteItem: qjItem(DIFF_FIELD_LABELS_MOCK[field] || field, 'approved'),   // §623ג
       type: 'changeDecision', title: `אושר שינוי: ${DIFF_FIELD_LABELS_MOCK[field] || field}`,
       detail: `${DIFF_FIELD_LABELS_MOCK[field] || field}: "${fmtActivityVal(oldVal)}" → "${fmtActivityVal(newVal)}"`,
       field, before: oldVal, after: newVal,
     });
-    qjRemember(id, DIFF_FIELD_LABELS_MOCK[field] || field, 'approved');   // §623
+    qjRemember(id, qjItem(DIFF_FIELD_LABELS_MOCK[field] || field, 'approved'));   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה באישור השינוי: ' + e.message); }
 };
@@ -14022,11 +14032,12 @@ window.rejectChangeField = async function(id, field) {
     Object.assign(b, updates);
     Object.assign(b, hydrateBiz(id, b));
     await logActivity('businesses', id, {
+      noteItem: qjItem(DIFF_FIELD_LABELS_MOCK[field] || field, 'rejected'),   // §623ג
       type: 'changeDecision', title: `נדחה שינוי: ${DIFF_FIELD_LABELS_MOCK[field] || field}`,
       detail: `הבקשה לשנות ${DIFF_FIELD_LABELS_MOCK[field] || field} ל"${rejectedVal}" נדחתה`,
       field, before: b[field], after: null,
     });
-    qjRemember(id, DIFF_FIELD_LABELS_MOCK[field] || field, 'rejected');   // §623
+    qjRemember(id, qjItem(DIFF_FIELD_LABELS_MOCK[field] || field, 'rejected'));   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה בדחיית השינוי: ' + e.message); }
 };
@@ -14880,10 +14891,44 @@ window.rtEditSave = async function() {
   } catch (e) { console.error('replyTemplates save failed', e); rtEditRender('השמירה נכשלה: ' + (e.message || e)); }
 };
 const BN_ORIGIN = { approve: 'אישור הרשמה', changes: 'החלטה על שינויים', external: 'טופל מבחוץ', free: 'הודעה יזומה' };
-// החלטות בשיפוט המהיר שעוד לא נכתב עליהן לבעל העסק (בזיכרון – נמחק כשנשלח או "סגירה בלי הודעה")
+// החלטות בשיפוט המהיר שעוד לא נכתב עליהן לבעל העסק.
+// §623ג — לא רק בזיכרון: כל החלטה נרשמת ביומן העסק עם noteItem, וההודעה (mode changes) או "בלי הודעה"
+// נרשמות עם noteClose. בפתיחת הכרטיס הרשימה נגזרת מהיומן – מהחדש אחורה עד noteClose הראשון – ולכן
+// היא שורדת רענון. QJ_DECIDED = המטמון של הדף (מתעדכן מיד בהחלטה, ומוחלף בטעינה).
+// decision: approved · rejected · mapped (תגית מופתה) · handled (הערה טופלה) · info (הסבר)
 const QJ_DECIDED = {};
-function qjRemember(id, label, decision) {
-  (QJ_DECIDED[id] = QJ_DECIDED[id] || []).push({ label: String(label || '').replace(/^[^\p{L}\p{N}"]+/u, ''), decision });
+const QJ_LINE_PREFIX = { approved: '✅ אושר: ', rejected: '❌ לא אושר: ', mapped: '↪️ ', handled: '✔️ טיפלנו: ', info: 'ℹ️ ' };
+const QJ_CHIP_ICON = { approved: '✅ ', rejected: '❌ ', mapped: '↪️ ', handled: '✔️ ', info: 'ℹ️ ' };
+function qjItem(label, decision) {
+  return { label: String(label || '').replace(/^[^\p{L}\p{N}"]+/u, '').slice(0, 200), decision };
+}
+function qjRemember(id, item) {
+  (QJ_DECIDED[id] = QJ_DECIDED[id] || []).push({ ...item, _ts: Date.now() });
+}
+const _qjDecLoad = {};   // bizId → זמן תחילת הטעינה (פעם אחת לדף)
+function qjLoadDecided(id) {
+  if (_qjDecLoad[id]) return;
+  const startedAt = _qjDecLoad[id] = Date.now();
+  getDocs(query(collection(db, 'businesses', id, 'activity'), orderBy('createdAt', 'desc'), limit(80))).then(snap => {
+    const items = [];
+    for (const d of snap.docs) {
+      const a = d.data();
+      if (a.noteClose) break;
+      if (a.noteItem && a.noteItem.label) items.unshift({ label: a.noteItem.label, decision: a.noteItem.decision });
+    }
+    // החלטה שנרשמה בזמן שהטעינה רצה עוד לא בתוצאה – נשמרת מהזיכרון
+    const fresh = (QJ_DECIDED[id] || []).filter(x => x._ts && x._ts >= startedAt);
+    const before = JSON.stringify(QJ_DECIDED[id] || []);
+    const all = items.concat(fresh);
+    if (all.length) QJ_DECIDED[id] = all; else delete QJ_DECIDED[id];
+    if (JSON.stringify(QJ_DECIDED[id] || []) !== before) renderMainPreserveScroll();
+  }).catch(e => { console.warn('qj decided load failed', e); delete _qjDecLoad[id]; });
+}
+// "בלי הודעה" – נרשם ביומן וסוגר את הרשימה (גם אחרי רענון)
+async function qjCloseDecided(id, why) {
+  const d = QJ_DECIDED[id] || [];
+  delete QJ_DECIDED[id];
+  await logActivity('businesses', id, { type: 'bizNoteSkip', title: why, detail: d.map(x => (QJ_CHIP_ICON[x.decision] || '') + x.label).join(' · '), noteClose: true });
 }
 // מה יגיע אליו בפועל – אותו כלל של הוורקר (m2CanApp/m2Can). assumeApproved: לפני אישור ההרשמה
 // העסק והחבר עוד ממתינים, אבל ההודעה נשלחת אחרי האישור.
@@ -14920,7 +14965,7 @@ function bnOpen(opts) {
   const ch = bnChannels(b, opts.mode === 'approve');
   const decided = QJ_DECIDED[b.id] || [];
   const preText = opts.mode === 'changes'
-    ? decided.map(d => (d.decision === 'approved' ? '✅ אושר: ' : '❌ לא אושר: ') + d.label).join('\n') + (decided.some(d => d.decision !== 'approved') ? '\n\nלמה: ' : '\n\n')
+    ? decided.map(d => (QJ_LINE_PREFIX[d.decision] || '') + d.label).join('\n') + (decided.some(d => d.decision === 'rejected' || d.decision === 'mapped') ? '\n\nלמה: ' : '\n\n')
     : '';
   const preTitle = { approve: 'העסק שלך אושר! 🎉', changes: 'עדכון על השינויים שביקשת', external: 'עדכון על הפנייה שלך', free: '' }[opts.mode];
   const head = {
@@ -14979,7 +15024,7 @@ window.bnSync = function() {
   go.disabled = !!_bn.sending;
   if (_bn.sending) go.textContent = '⏳ רגע…';
 };
-window.bnSkipChanges = function() { if (_bn) delete QJ_DECIDED[_bn.bizId]; bnClose(); renderMain(); };
+window.bnSkipChanges = async function() { const id = _bn && _bn.bizId; bnClose(); if (id) await qjCloseDecided(id, 'בלי הודעה לבעל העסק על ההחלטות'); renderMain(); };
 window.bnGo = async function() {
   if (!_bn || _bn.sending) return;
   const o = _bn, b = findBiz(o.bizId), n = bnRead(), err = document.getElementById('bnErr');
@@ -15069,6 +15114,7 @@ async function bnSend(b, title, text, mode) {
     batch.set(doc(collection(db, 'businesses', b.id, 'activity')), {
       type: 'message', title: `הודעה לבעל העסק (${BN_ORIGIN[mode]}): "${title}"`, detail: parts.join(' · '), field: 'channel', before: null, after: 'message',
       messageId: msgId, actorUid: CURRENT_ADMIN.uid, actorName: CURRENT_ADMIN.name, source: 'admin', createdAt: serverTimestamp(),
+      ...(mode === 'changes' && r ? { noteClose: true } : {}),   // §623ג — רק שליחה שהצליחה סוגרת
     });
     if (row.mail === 'sent') batch.update(doc(db, 'businesses', b.id), { broadcastEmailSentAt: serverTimestamp(), broadcastEmailSubject: mail.subject });
     await batch.commit();
@@ -15083,12 +15129,13 @@ window.openBizNoteFree = function(id) { bnOpen({ bizId: id, mode: 'free' }); };
 window.openBizNoteChanges = function(id) { bnOpen({ bizId: id, mode: 'changes' }); };
 // שורה בשיפוט המהיר אחרי החלטה – "לכתוב לו על ההחלטות?"
 function qjDecidedRowHtml(b) {
+  qjLoadDecided(b.id);   // §623ג
   const d = QJ_DECIDED[b.id];
   if (!d || !d.length) return '';
   return `
     <div class="qj-row" style="background:#FFF7DB">
       <div class="qj-row-label"><div class="qj-row-step">הודעה לבעל העסק</div><div class="qj-row-name">✍️ לכתוב לו על ההחלטות?</div></div>
-      <div class="qj-row-value"><span class="qj-value-text">${d.map(x => (x.decision === 'approved' ? '✅ ' : '❌ ') + esc(x.label)).join(' · ')}</span>
+      <div class="qj-row-value"><span class="qj-value-text">${d.map(x => (QJ_CHIP_ICON[x.decision] || '') + esc(x.label)).join(' · ')}</span>
         <div class="qj-value-hint">הודעה אחת על כל מה שהחלטת – באפליקציה, בפוש ובמייל. אפשר גם לסגור בלי הודעה.</div></div>
       <div class="qj-row-actions">
         <button class="qj-btn primary" onclick="openBizNoteChanges('${b.id}')">✍️ כתיבה לבעל העסק</button>
@@ -15096,7 +15143,7 @@ function qjDecidedRowHtml(b) {
       </div>
     </div>`;
 }
-window.qjSkipDecided = function(id) { delete QJ_DECIDED[id]; renderMain(); };
+window.qjSkipDecided = async function(id) { await qjCloseDecided(id, 'בלי הודעה לבעל העסק על ההחלטות'); renderMain(); };
 
 function handledExternallyRow(b) {
   return `
@@ -15275,11 +15322,15 @@ window.confirmApproveTagSuggestionNewCat = async function(id) {
     alert(`התגית "${tag}" נוספה לקטגוריית "${chosenLabel}" – לא שויכה ל"${b.name}" כי הקטגוריה שלו ("${ownLabel}") שונה.`);
   }
   tagQueueNewCatPicking = null;
+  // §623ג — בקטגוריה אחרת התגית לא שויכה אליו – וזה בדיוק מה שצריך להסביר לו
+  const ni = sameCategory ? qjItem(`תגית חדשה "${tag}"`, 'approved')
+    : qjItem(`התגית "${tag}" נוספה לרשימת התגיות, אבל לא לכרטיס שלך – היא שייכת לקטגוריה אחרת`, 'info');
   await logActivity('businesses', id, {
     type: 'tagDecision', title: 'אושרה הצעת תגית חדשה',
     detail: sameCategory ? `"${tag}" נוספה כתגית חדשה ל"${b.name}"` : `"${tag}" נוספה לקטלוג "${chosenCat}" בלי שיוך ל"${b.name}" (קטגוריה שונה)`,
-    field: 'tagSuggestion', before: tag, after: sameCategory ? tag : null,
+    field: 'tagSuggestion', before: tag, after: sameCategory ? tag : null, noteItem: ni,
   });
+  qjRemember(id, ni);
   renderMain();
 };
 window.rejectTagSuggestion = async function(id) {
@@ -15290,10 +15341,11 @@ window.rejectTagSuggestion = async function(id) {
     await updateDoc(doc(db, 'businesses', id), { tagSuggestion: '' });
     b.tagSuggestion = '';
     await logActivity('businesses', id, {
+      noteItem: qjItem(`תגית חדשה "${tag}"`, 'rejected'),   // §623ג
       type: 'tagDecision', title: 'נדחתה הצעת תגית', detail: `"${tag}" נדחתה עבור "${b.name}"`,
       field: 'tagSuggestion', before: tag, after: null,
     });
-    qjRemember(id, `תגית חדשה "${tag}"`, 'rejected');   // §623
+    qjRemember(id, qjItem(`תגית חדשה "${tag}"`, 'rejected'));   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה בדחיית תגית: ' + e.message); }
 };
@@ -15326,10 +15378,12 @@ window.confirmMapTagSuggestion = async function(id) {
     b.tagSuggestion = '';
     b.healthScore = computeHealthScore(b);
     tagQueueMapping = null;
+    const ni = qjItem(`ביקשת תגית "${suggested}" – שמנו אותך בתגית "${tag}"`, 'mapped');   // §623ג — כאן הכי חשוב להסביר למה
     await logActivity('businesses', id, {
       type: 'tagDecision', title: 'הצעת תגית מופתה לתגית קיימת', detail: `"${suggested}" מופתה ל"${tag}" עבור "${b.name}"`,
-      field: 'tags', before: suggested, after: tag,
+      field: 'tags', before: suggested, after: tag, noteItem: ni,
     });
+    qjRemember(id, ni);
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה במיפוי תגית: ' + e.message); }
 };
