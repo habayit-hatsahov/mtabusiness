@@ -18,6 +18,7 @@ const TAG_TO_QUERY = {
   'מוסכים וחלקי חילוף': 'car garage mechanic auto parts',
   'מצברים וחשמלאות': 'car battery electrician',
   'ציוד ואביזרי רכיבה': 'motorcycle riding gear',
+  'ציוד ואביזרים לרכב, לשטח ולרכיבה': 'off road 4x4 overland gear',   // §644
   'שליחויות ולוגיסטיקה': 'delivery logistics van',
   'שירותי דרך וגרר': 'tow truck roadside assistance',
   'מכירת רכבים וסוכנויות': 'car dealership showroom',
