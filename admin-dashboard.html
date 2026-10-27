@@ -3908,7 +3908,7 @@ function kosherMissing(b) {
 }
 function cardGapLabels(b) {
   const fu = bizFollowup(b);   // §644
-  return (fu ? ['❓ ' + (fu.label || 'לשאול את העסק')] : []).concat(kosherMissing(b) ? ['🍽️ כשרות'] : [], missingFieldsFor(b));
+  return (fu ? ['❓ ' + (fu.label || 'לשאול את העסק')] : []).concat(bizNoteDraft(b) ? ['✉️ הודעה מוכנה'] : [], kosherMissing(b) ? ['🍽️ כשרות'] : [], missingFieldsFor(b));
 }
 // ── §644 — "שאלה פתוחה מול העסק" ─────────────────────────────────────────────────────
 // רמי: "תשאיר לי משימה… מחר אני אטפל בזה מולו, תרשום לי מה לשאול בדיוק". מסמך settings אחד
@@ -3930,6 +3930,36 @@ function bizFollowupRowHtml(b) {
       </div>
     </div>`;
 }
+// ── §644 — "הודעה מוכנה שמחכה בתיבה" ───────────────────────────────────────────────
+// רמי: "אפשר שזה יחכה בתיבה פשוט? במקום להעתיק להדביק". settings/bizNoteDrafts (מנהל בלבד):
+// { [bizId]: { title, text, at } }. חלון "💬 הודעה לבעל העסק" (וחלון אישור ההרשמה בעסק ממתין) נפתח
+// כשהכותרת והטקסט כבר בפנים; אחרי שליחה מוצלחת הטיוטה נמחקת. עסק מאושר → "כרטיס חסר באינדקס" עם ✉️.
+let bizNoteDrafts = {};
+function bizNoteDraft(b) { const d = b && bizNoteDrafts[b.id]; return d && d.text ? d : null; }
+function bizNoteDraftRowHtml(b) {
+  const d = bizNoteDraft(b);
+  if (!d) return '';
+  const pending = b.status !== 'approved';
+  return `
+    <div class="qj-row" style="background:#FFF7DB">
+      <div class="qj-row-label"><div class="qj-row-step">הודעה לבעל העסק</div><div class="qj-row-name">✉️ הודעה מוכנה לשליחה</div></div>
+      <div class="qj-row-value"><span class="qj-value-text"><b>${esc(d.title || '')}</b></span>
+        <div class="qj-value-hint" style="white-space:pre-line">${esc(d.text)}</div>
+        ${pending ? '<div class="qj-value-hint"><b>העסק ממתין – ההודעה תחכה בחלון האישור.</b></div>' : ''}</div>
+      <div class="qj-row-actions">
+        ${pending ? '' : `<button class="qj-btn primary" onclick="openBizNoteFree('${b.id}')">📤 פתיחה ושליחה</button>`}
+        <button class="qj-btn" onclick="dropBizNoteDraft('${b.id}')">לא לשלוח</button>
+      </div>
+    </div>`;
+}
+async function clearBizNoteDraft(id) {
+  delete bizNoteDrafts[id];
+  await setDoc(doc(db, 'settings', 'bizNoteDrafts'), { [id]: deleteField() }, { merge: true });
+}
+window.dropBizNoteDraft = async function(id) {
+  if (!confirm('למחוק את ההודעה המוכנה בלי לשלוח?')) return;
+  try { await clearBizNoteDraft(id); renderMain(); } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
 window.closeBizFollowup = async function(id) {
   if (!confirm('לסגור את השאלה? (אחרי שעדכנת את העסק לפי התשובה)')) return;
   try { await setDoc(doc(db, 'settings', 'bizFollowups'), { [id]: deleteField() }, { merge: true }); }
@@ -14738,6 +14768,7 @@ function quickJudgmentHtml(b) {
   // ההיסטורית ליד realPendingChangeKeys/prunedPending.
   const bizInqRow = inquiriesQjRowHtml(bizInquiries(b), b.name);   // §631
   const followRow = bizFollowupRowHtml(b);   // §644 — שאלה פתוחה מול העסק
+  const draftRow = bizNoteDraftRowHtml(b);   // §644 — הודעה מוכנה שמחכה בתיבה
   const decidedRow = qjDecidedRowHtml(b);   // §623 — "לכתוב לו על ההחלטות?" (נספר, אחרת אחרי ההחלטה האחרונה הגוף נעלם)
   // §648 — רמי: "בעל עסק עובר אימות רק בדף העסק". 37 בעלים של עסק ממתין כבר אושרו כאוהדים
   // (36 באישור הגורף של 26–27.10) – כאן נאמר את זה, כדי שהאימות שלו ייבדק עכשיו עם העסק.
@@ -14749,7 +14780,7 @@ function quickJudgmentHtml(b) {
       <div class="qj-row-label"><div class="qj-row-step">לבדיקה</div><div class="qj-row-name">⚠️ בעל העסק כבר מאושר כאוהד</div></div>
       <div class="qj-row-value"><span class="qj-value-text">${inBulk(ownerPreApproved.approvedAt) ? '<b>אושר באישור הגורף</b>' : '<b>אושר כאוהד</b>'}${ownerPreApproved.approvedAt ? ' · ' + fmtDateTime(ownerPreApproved.approvedAt) : ''}, לפני שהעסק אושר – האימות שלו לא נבדק. בודקים אותו כאן, באימות בעל העסק.</span></div>
     </div>` : '';
-  const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length + (bizInqRow ? 1 : 0) + (decidedRow ? 1 : 0) + (ownerPreRow ? 1 : 0) + (followRow ? 1 : 0);
+  const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length + (bizInqRow ? 1 : 0) + (decidedRow ? 1 : 0) + (ownerPreRow ? 1 : 0) + (followRow ? 1 : 0) + (draftRow ? 1 : 0);
   const hasBody = totalCount > 0;
   // §147 — לפני: count/toggle/hint רק כש-hasBody, כך שכרטיס-ריק היה נראה כמו שורת-טקסט בודדת ולא
   // כמו "פיצ'ר קיים" (המשתמש: "אין שיפוט מהיר"). עכשיו תמיד גלוי — כולל ה-hint שמסביר מה זה, בדיוק
@@ -14783,7 +14814,7 @@ function quickJudgmentHtml(b) {
         <div class="qj-hint">${hint}</div>
       </div>
       ${(showApproveApp || b.status === 'rejected') ? bizApprovalSectionsHtml(b) : ''}
-      ${(hasBody && isOpen) ? `<div class="qj-body">${followRow}${ownerPreRow}${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
+      ${(hasBody && isOpen) ? `<div class="qj-body">${followRow}${draftRow}${ownerPreRow}${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
     </div>`;
 }
 
@@ -15031,15 +15062,16 @@ function bnEl() {
 function bnOpen(opts) {
   const b = findBiz(opts.bizId);
   if (!b) return;
-  _bn = { ...opts, sending: false };
+  const draft = (opts.mode === 'free' || opts.mode === 'approve') ? bizNoteDraft(b) : null;   // §644
+  _bn = { ...opts, sending: false, fromDraft: !!draft };
   const ch = bnChannels(b, opts.mode === 'approve');
   const decided = QJ_DECIDED[b.id] || [];
-  const preText = opts.mode === 'changes'
+  const preText = draft ? draft.text : opts.mode === 'changes'
     ? decided.map(d => (QJ_LINE_PREFIX[d.decision] || '') + d.label).join('\n')
       + (decided.some(d => d.decision === 'approved' && /^קטגוריה נוספת/.test(d.label)) ? '\n\n' + ALSO_CAT_EXPLAIN : '')
       + (decided.some(d => d.decision === 'rejected' || d.decision === 'mapped') ? '\n\nלמה: ' : '\n\n')
     : '';
-  const preTitle = { approve: 'העסק שלך אושר! 🎉', changes: 'עדכון על השינויים שביקשת', external: 'עדכון על הפנייה שלך', free: '' }[opts.mode];
+  const preTitle = draft && draft.title ? draft.title : { approve: 'העסק שלך אושר! 🎉', changes: 'עדכון על השינויים שביקשת', external: 'עדכון על הפנייה שלך', free: '' }[opts.mode];
   const head = {
     approve: [`✅ אישור "${b.name}"`, 'העסק יעלה לאינדקס, ובעל העסק יקבל את מייל הקוד והודעת "ברוכים הבאים" כרגיל. מה שתכתוב כאן יגיע אליו <b>בנוסף</b>, כהודעה נפרדת.'],
     changes: [`✍️ הודעה לבעל "${b.name}" על השינויים`, 'מולא לבד לפי מה שהחלטת. תוסיף למה לא אישרת / מה כן כדאי. ההחלטות עצמן כבר נשמרו.'],
@@ -15125,6 +15157,7 @@ window.bnGo = async function() {
     }
   }
   if (o.mode === 'changes') delete QJ_DECIDED[o.bizId];
+  if (wantSend && o.fromDraft) { try { await clearBizNoteDraft(o.bizId); } catch (e) { console.error('draft clear failed', e); } }   // §644
   o.sending = false; bnClose();
   renderMain();
   const base = { approve: 'העסק אושר.', external: 'סומן כטופל – נשמר תחת "בקשות שטופלו".', changes: '', free: '' }[o.mode];
@@ -15325,7 +15358,7 @@ function classifyAction(entity, kind) {
     primary = kind === 'fan' ? 'אוהד ממתין לאישור' : 'עסק ממתין לאישור';
   } else if (kind !== 'fan' && treatments.length > 0) {
     primary = 'בקשה מבעל העסק';
-  } else if (kind !== 'fan' && entity.status === 'approved' && ((typeof entity.healthScore === 'number' && entity.healthScore < 100 && !cardGapsAcceptedFor(entity)) || kosherMissing(entity) || bizFollowup(entity))) {
+  } else if (kind !== 'fan' && entity.status === 'approved' && ((typeof entity.healthScore === 'number' && entity.healthScore < 100 && !cardGapsAcceptedFor(entity)) || kosherMissing(entity) || bizFollowup(entity) || bizNoteDraft(entity))) {
     // §252 — cardGapsAcceptedFor: המנהל סימן "ראיתי, זה בסדר ככה". healthScore עצמו לא משתנה
     // (המד בכרטיס ממשיך להציג את האמת), רק ההגדרה "זו משימה פתוחה" מתבטלת.
     primary = 'כרטיס חסר באינדקס';
@@ -23353,6 +23386,10 @@ onSnapshot(doc(db, 'settings', 'handledLoginIssues'), snap => {
   if (issuesActive() || handledActive()) refreshTaskCenter();
 }, err => console.error('שגיאה בטעינת סימוני תקלות כניסה:', err));
 
+onSnapshot(doc(db, 'settings', 'bizNoteDrafts'), snap => {   // §644
+  bizNoteDrafts = snap.exists() ? (snap.data() || {}) : {};
+  renderMainPreserveScroll();
+}, err => console.error('שגיאה בטעינת ההודעות המוכנות:', err));
 onSnapshot(doc(db, 'settings', 'bizFollowups'), snap => {   // §644
   bizFollowups = snap.exists() ? (snap.data() || {}) : {};
   renderMainPreserveScroll();
