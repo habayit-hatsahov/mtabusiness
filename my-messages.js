@@ -12,7 +12,7 @@
 import {
   collection, doc, query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
-import { mountConversations, isUnread as convUnread } from './conversations.js?v=615';   // §615 — readOnly
+import { mountConversations, isUnread as convUnread } from './conversations.js?v=623';   // §615 — readOnly · §623 — refTitle
 
 const TS_ESTIMATE = { serverTimestamps: 'estimate' };   // ר' conversations.js
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -60,6 +60,9 @@ function injectStyle() {
   .mm-it.open .mm-tx{-webkit-line-clamp:unset;display:block}
   .mm-go{display:inline-block;margin-top:8px;font-size:12.5px;font-weight:800;border:1px solid var(--border-md);border-radius:10px;padding:6px 10px;background:#fff;color:var(--text)}
   .mm-st{display:inline-block;margin-top:6px;font-size:11.5px;font-weight:900;border-radius:20px;padding:2px 9px;background:var(--card-bg2);color:var(--text-sm)}
+  .mm-ask{display:inline-block;margin-top:8px;margin-inline-start:6px;font-size:12.5px;font-weight:800;border-radius:10px;padding:6px 10px;background:var(--yellow);color:var(--text)}
+  .mm-push{background:#E8EEFB;border:1px solid #cdd8f2;border-radius:12px;padding:12px;font-size:13.5px;line-height:1.6;margin-bottom:10px}
+  .mm-push button{margin-top:8px;border:none;border-radius:10px;padding:8px 14px;font:inherit;font-size:13.5px;font-weight:900;background:var(--yellow);color:var(--text);cursor:pointer}
   .mm-readall{display:block;margin:6px auto 0;border:none;background:none;font:inherit;font-size:12.5px;font-weight:700;color:var(--text-sm);cursor:pointer;text-decoration:underline}
   .mm-empty{text-align:center;color:var(--text-sm);font-size:13px;padding:28px 10px;line-height:1.6}
   .mm-about{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px;margin:4px 0 10px}
@@ -76,7 +79,7 @@ function injectStyle() {
 //  openItem / openConv / compose — מהכתובת (?item= / ?conv= / ?new=1).
 export function mountMessages({ db, memberId, root, isOwner = false, bizName = '', ownerBizId = null, onUnread, savePushToken, source = 'app', bizId = null, openItem = '', openConv = '', compose = false, readOnly = false }) {
   injectStyle();
-  const state = { items: [], convs: [], inLoaded: false, cvLoaded: false, inErr: false, cvErr: false, f: 'all', expanded: {}, mode: 'feed', about: 'biz', pendingItem: openItem || '' };
+  const state = { items: [], convs: [], inLoaded: false, cvLoaded: false, inErr: false, cvErr: false, f: 'all', expanded: {}, mode: 'feed', about: 'biz', pendingItem: openItem || '', pushAsk: false, pushMsg: '' };
   root.innerHTML = `
     <div data-mm="feed"></div>
     <div data-mm="convWrap" data-mm-hidden>
@@ -130,7 +133,34 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
     return `<button type="button" class="mm-it ${r.side}${r.unread ? ' unread' : ''}${open ? ' open' : ''}" data-in="${esc(r.id)}">
       <div class="mm-top">${r.unread ? '<span class="mm-new">חדש</span>' : ''}${label(r)}<span class="mm-time">${ago(r.at)}</span></div>
       <div class="mm-tt">${esc(r.title)}</div>${r.text ? `<div class="mm-tx">${esc(r.text)}</div>` : ''}
-      ${r.link && open ? `<span class="mm-go" data-go="${esc(r.link)}">לפרטים ›</span>` : ''}</button>`;
+      ${r.link && open ? `<span class="mm-go" data-go="${esc(r.link)}">לפרטים ›</span>` : ''}${canAsk(r) ? `<span class="mm-ask" data-ask="${esc(r.id)}">✉️ כתבו לנו</span>` : ''}</button>`;
+  }
+  // §623 — "כתבו לנו" מתחת להודעה לעסק: אין "השב" על הודעה – פותחים שיחה חדשה, והנושא שלה אומר
+  // לצוות על איזו הודעה מדובר (conversations.js, refTitle).
+  const canAsk = (r) => !readOnly && isOwner && r.t === 'in' && r.block === 'myBiz' && !!r.title;
+  // §623 — רמי: "תדחוף לאישור התראות". רק באפליקציה עם גשר פוש, רק כשעוד לא נשאל (denied לא נשאל שוב –
+  // הכפתור היה נראה מת), ורק לבעל עסק – הודעות על העסק הן הסיבה. אותו מנגנון של conversations.js.
+  function pushAskHtml() {
+    if (state.pushMsg) return `<div class="mm-push">${esc(state.pushMsg)}</div>`;
+    return state.pushAsk ? '<div class="mm-push"><b>🔔 רוצים לדעת מיד כשאנחנו כותבים לכם?</b><br>הפעילו התראות – ונעדכן אתכם על כל החלטה ושינוי בעסק, ועל תשובות מהצוות.<br><button type="button" data-pushask="1">כן, להפעיל התראות</button></div>' : '';
+  }
+  async function checkPushAsk() {
+    try {
+      const np = window.YZNativePush;
+      if (readOnly || !isOwner || !savePushToken || !np || !np.available()) return;
+      const st = await np.permissionState();
+      state.pushAsk = st === 'prompt' || st === 'prompt-with-rationale';
+      if (state.pushAsk && state.mode === 'feed') renderFeed();
+    } catch (e) { /* בלי גשר – פשוט בלי הכרטיס */ }
+  }
+  async function acceptPush() {
+    let msg;
+    try {
+      const res = await window.YZNativePush.register();
+      if (res.ok) { await savePushToken(res); msg = '✓ התראות הופעלו. נודיע לכם כשנכתוב לכם.'; }
+      else msg = 'בסדר, בלי התראות. ההודעות יחכו לכם כאן ובמייל.';
+    } catch (e) { console.error('push from messages failed:', e); msg = 'לא הצלחנו להפעיל התראות. ההודעות יחכו לכם כאן ובמייל.'; }
+    state.pushAsk = false; state.pushMsg = msg; renderFeed();
   }
   function renderFeed() {
     const all = rows();
@@ -144,6 +174,7 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
     else { let last = ''; list.forEach((r) => { const g = dayGroup(r.at); if (g !== last) { body += `<div class="mm-day">${g}</div>`; last = g; } body += itemHtml(r); }); }
     const unreadIn = list.filter((r) => r.t === 'in' && r.unread).length;
     $('feed').innerHTML = `<div class="mm-head"><h2>הודעות</h2>${readOnly ? '' : '<button type="button" class="mm-write" data-write="1">✍️ כתבו לנו</button>'}</div>
+      ${pushAskHtml()}
       <div class="mm-chips">${F.map(([k, l, f]) => { const u = all.filter(f).filter((r) => r.unread).length; return `<button type="button" class="mm-chip${state.f === k ? ' on' : ''}" data-f="${k}">${l}${u ? `<span class="n">${u}</span>` : ''}</button>`; }).join('')}</div>
       ${state.inErr && !state.cvErr ? '<div class="mm-empty" style="padding:8px">חלק מההודעות לא נטענו. נסו לרענן.</div>' : ''}
       ${body}${!readOnly && unreadIn > 1 ? '<button type="button" class="mm-readall" data-readall="1">סימון הכל כנקרא</button>' : ''}`;
@@ -196,7 +227,7 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
   }
 
   root.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-go],[data-in],[data-mmcv],[data-f],[data-write],[data-readall],[data-about]');
+    const t = e.target.closest('[data-go],[data-ask],[data-pushask],[data-in],[data-mmcv],[data-f],[data-write],[data-readall],[data-about]');
     // ⚠️ data-mmcv ולא data-cv: conversations.js (בתוך אותו root) משתמש ב-data-cv לכפתורים שלו –
     // שם משותף גרם ל"חזרה"/"שליחה" שלו להיתפס כאן כ"פתיחת שיחה" (נתפס בהרנס).
     if (!t || !root.contains(t) || t.closest('[data-mm="convRoot"]')) return;
@@ -205,6 +236,16 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
       const itEl = t.closest('[data-in]'); if (itEl) markTouch(itEl.dataset.in, 'clickedAt');   // §524
       const l = safeLink(t.dataset.go);
       if (l && location.pathname + location.search !== l) setTimeout(() => { location.href = l; }, 150);   // זמן לכתיבה לצאת
+      return;
+    }
+    if (t.dataset.pushask) { t.disabled = true; t.textContent = 'רגע…'; acceptPush(); return; }
+    if (t.dataset.ask) {   // §623
+      e.stopPropagation();
+      const it = state.items.find((x) => x.id === t.dataset.ask);
+      if (!it) return;
+      markRead([it.id]);
+      setMode('conv');
+      conv.startNew({ source: 'bizDashboard', bizId: ownerBizId || it.bizId || null, refTitle: it.title || '' });
       return;
     }
     if (t.dataset.f) { state.f = t.dataset.f; renderFeed(); return; }
@@ -233,6 +274,7 @@ export function mountMessages({ db, memberId, root, isOwner = false, bizName = '
     (e) => { console.error('conversations load failed:', e && (e.code || e.message)); state.cvErr = true; state.cvLoaded = true; renderFeed(); });
 
   setMode('feed');
+  checkPushAsk();   // §623
   if (openConv) { setMode('conv'); conv.openConv(openConv); }
   else if (compose && !readOnly) startCompose();
   return {

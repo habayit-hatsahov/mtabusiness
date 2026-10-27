@@ -25,6 +25,7 @@ const MAX = 2000;
 // הרגע **הדליק** את התג במקום לכבות אותו, עד שהשרת אישר. 'estimate' נותן את השעה המקומית בינתיים.
 const TS_ESTIMATE = { serverTimestamps: 'estimate' };
 const SUBJECT_MAX = 80;
+const REF_PREFIX = 'בנוגע ל: ';   // §623 — אותה קידומת בדיוק כמו CONV_REF_PREFIX במרכז הניהול
 const SEND_TIMEOUT_MS = 20000;
 const CONTACT_MAIL = 'yellowzonemta@gmail.com';
 
@@ -95,6 +96,7 @@ function injectStyle() {
   .cv-muted{font-size:12.5px;color:var(--text-sm);line-height:1.6}
   .cv-err{font-size:12.5px;color:#d93025;line-height:1.6}
   .cv-closed-note{margin-top:14px;background:var(--card-bg2);border-radius:12px;padding:12px;font-size:13.5px;line-height:1.7}
+  .cv-ref{font-size:13px;line-height:1.55;background:#E8EEFB;border-radius:12px;padding:10px 12px;color:var(--text)}
   .cv-push{margin-top:12px;background:#E8EEFB;border:1px solid #cdd8f2;border-radius:12px;padding:12px;font-size:13.5px;line-height:1.6;display:flex;flex-direction:column;gap:8px}
   [data-cv-hidden]{display:none!important}
   `;
@@ -122,6 +124,7 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
         <button type="button" class="cv-btn" data-cv="newBtn">+ שיחה חדשה</button>
       </div>
       <div class="cv-composer first" data-cv="new" data-cv-hidden>
+        <div class="cv-ref" data-cv="newRef" data-cv-hidden></div>
         <textarea class="cv-ta" data-cv="newText" maxlength="${MAX}" placeholder="כתבו לנו – שאלה, הצעה, משהו שלא עובד..."></textarea>
         <div class="cv-err" data-cv="newErr" data-cv-hidden></div>
         <div class="cv-actions">
@@ -254,10 +257,15 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
   function back() { closeView(); if (embedded && onBack) onBack(); }
 
   // §523 — meta: { source, bizId } לשיחה הזאת (בעל עסק בוחר "על העסק" / "משהו אחר" ב"הודעות" המאוחד)
+  // §623 — meta.refTitle: "כתבו לנו" מתחת להודעה שקיבל. הנושא נקבע "בנוגע ל: <כותרת>" (ולא מתחילת
+  // הטקסט) – כך מרכז הניהול יודע על איזו הודעה מדובר ומציג אותה בראש השיחה. בלי שדה חדש (hasOnly בחוקים).
   function startNew(meta) {
     closeView();
     state.newMeta = meta || null;
     state.composing = true;
+    const ref = meta && meta.refTitle ? String(meta.refTitle) : '';
+    $('newRef').innerHTML = ref ? 'בנוגע להודעה: <b>' + esc(ref) + '</b>' : '';
+    show('newRef', !!ref);
     // §524ב — 🐛 ב-embedded closeView() הסתיר את כל אזור הרשימה (composing עוד היה false), והכתיבה
     // נפתחה בתוך אזור מוסתר – "כתבו לנו" נראה תקוע. מציגים אותו מחדש אחרי שהדגל הודלק.
     show('list', true);
@@ -286,7 +294,7 @@ export function mountConversations({ db, memberId, root, onUnread, savePushToken
       const nm = state.newMeta || {};
       const src = nm.source || source, bid = nm.bizId !== undefined ? nm.bizId : bizId;
       b.set(ref, {
-        memberId, status: 'open', subject: subjectFrom(text), source: src,
+        memberId, status: 'open', subject: nm.refTitle ? subjectFrom(REF_PREFIX + nm.refTitle) : subjectFrom(text), source: src,
         ...(bid ? { bizId: bid } : {}),
         createdAt: serverTimestamp(), lastAt: serverTimestamp(), lastFrom: 'member', memberReadAt: serverTimestamp(),
       });
