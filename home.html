@@ -4897,7 +4897,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <script type="module">
 import { db, auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, getDoc, getDocFromServer, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp, setDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { collection, query, where, onSnapshot, getDocs, doc, getDoc, getDocFromServer, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp, setDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // חושף את auth ל-<script> הרגיל (לא module) שמעליו — currentMemberId() שם צריך auth.currentUser, אך import הוא scoped ל-module הזה בלבד
 window._auth = auth;
@@ -5010,11 +5010,33 @@ function _hbRenderBusinesses() {
   // ריקה גם בפתיחה הבאה. אין מצב שבו כדאי לשמור "אין עסקים" כתמונת-פתיחה למחר.
   if (data.length) { try { localStorage.setItem('hb_businesses_cache', JSON.stringify(data)); } catch (e) {} }
 }
-onSnapshot(query(collection(db, 'bizPublic'), where('status', '==', 'approved')), snap => {
-  _hbPubSnap = snap;
-  _hbRenderBusinesses();
-}, err => {
-  console.error('Firebase load error:', err);
+// §649 — 💸 טעינה חד-פעמית, לא onSnapshot. כל פתיחת כרטיס (clicks+1) וכל לב (likedBy) של **כל** משתמש
+// כותבים ל-bizPublic, ומאזין חי שלח כל כתיבה כזו לכל מכשיר פתוח = קריאה לכל לחיצה × כל מי שפתוח.
+// ביום ההשקה (26.10) זה היה 400–480 אלף קריאות בשעה. המונים ממילא לא זזו על המסך (§641 – רק הלב),
+// והלב של המשתמש עצמו מתעדכן מקומית (toggleLike). עסק חדש / עריכה מגיעים בחזרה לאפליקציה אחרי
+// 10+ דקות ברקע, או בפתיחה הבאה. כשל רשת = ניסיון חוזר (onSnapshot עשה את זה לבד).
+const _hbPubQuery = query(collection(db, 'bizPublic'), where('status', '==', 'approved'));
+let _hbPubLoading = false, _hbPubLoadedAt = 0, _hbPubRetry = 0, _hbHiddenAt = 0;
+function _hbLoadPub() {
+  if (_hbPubLoading) return;
+  _hbPubLoading = true;
+  getDocs(_hbPubQuery).then(snap => {
+    // בלי רשת getDocs עלול לחזור מהמטמון (גם ריק) – מציירים מה שיש, אבל זה לא נחשב טעינה
+    if (snap.metadata.fromCache) throw Object.assign(new Error('bizPublic from cache'), { snap });
+    _hbPubLoading = false; _hbPubRetry = 0; _hbPubLoadedAt = Date.now();
+    _hbPubSnap = snap;
+    _hbRenderBusinesses();
+  }).catch(err => {
+    _hbPubLoading = false;
+    if (err && err.snap) { _hbPubSnap = err.snap; _hbRenderBusinesses(); }
+    else console.error('Firebase load error:', err);
+    if (_hbPubRetry < 6) setTimeout(_hbLoadPub, 2000 * Math.pow(2, _hbPubRetry++));
+  });
+}
+_hbLoadPub();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { _hbHiddenAt = Date.now(); return; }
+  if (_hbHiddenAt && Date.now() - _hbHiddenAt > 10 * 60 * 1000 && Date.now() - _hbPubLoadedAt > 10 * 60 * 1000) { _hbPubRetry = 0; _hbLoadPub(); }
 });
 
 // עיגוני סקשנים/קטגוריות (settings/sectionAnchors, נערך ב-admin-dashboard.html) — קריאה

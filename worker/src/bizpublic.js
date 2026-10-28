@@ -8,7 +8,7 @@
 // ⚠️ **רשימת-היתר, לא רשימת-חסימה:** שדה חדש שיתווסף למסמך העסק **לא** ייחשף עד שיתווסף כאן במפורש.
 // ⚠️ הערכים מועתקים **בטיפוס המקורי של Firestore** (timestamp נשאר timestamp) – בלי המרה.
 // ⚠️ likedBy/clicks: home.html כותב אותם לשני המסמכים באותו batch (תגובה מיידית בלב); כאן הם מועתקים
-//    מהמסמך המלא – שניהם זהים, ופעולות מנהל (likesOverride, תיקון clicks) מגיעות לציבורי תוך דקה.
+//    מהמסמך המלא – שניהם זהים. likesOverride מגיע לציבורי תוך דקה; תיקון clicks – רק בשינוי הבא (§649).
 
 const BASE = (projectId) => `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 
@@ -79,6 +79,19 @@ async function listRaw(env, accessToken, coll) {
   return out;
 }
 
+// §649 — המסלול המהיר: רק המאושרים, באותו פורמט מסמך כמו listRaw ({name, fields})
+async function listApproved(env, accessToken) {
+  const r = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}:runQuery`, {
+    method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ structuredQuery: {
+      from: [{ collectionId: 'businesses' }],
+      where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'approved' } } },
+    } }),
+  });
+  if (!r.ok) throw new Error(`query approved businesses failed: ${r.status} ${await r.text()}`);
+  return (await r.json()).filter((x) => x.document).map((x) => x.document);
+}
+
 async function putDoc(env, accessToken, path, fields) {
   // PATCH בלי updateMask = החלפת המסמך כולו (שדה שהוסר מהמקור יוסר גם כאן)
   const r = await fetch(`${BASE(env.FIREBASE_PROJECT_ID)}/${path}`, {
@@ -99,25 +112,43 @@ async function delDoc(env, accessToken, path) {
 const MAX_WRITES = 16;
 const HASH_KEY = 'bizpub:v2:hashes';
 
-export async function syncBizPublic(env, accessToken, { force = false } = {}) {
+// §649 — 💸 **עלות קריאות:** הריצה המלאה קראה כל דקה את כל businesses+bizPublic+bizCodes (148+93+9 נמדד
+//    28.10) = כ-360 אלף קריאות ביום, גם בלילה בלי אף משתמש – רוב הבסיס החודשי של Firestore.
+//    לכן שני מסלולים:
+//    • **מהיר (כל דקה):** רק העסקים המאושרים (שאילתה אחת). מה שקיים בהעתק נלקח ממפת החתימות ב-KV
+//      במקום מרשימת bizPublic/bizCodes – `hashes[id]` = נכתב ל-bizPublic, `hashes['c:'+id]` = נכתב ל-bizCodes.
+//    • **מלא (כל 30 דק', `full`):** ההתנהגות הקודמת – משווה מול הרשימות עצמן ותופס העתק שנמחק ידנית,
+//      bizCodes יתום, ומפה ישנה בלי מפתחות c:. ⚠️ עד הריצה המלאה הבאה מסלול מהיר לא ימחק bizCodes
+//      שאינו מסומן במפה (קוד שהוסר יישאר גלוי לחברים עד 30 דק').
+export async function syncBizPublic(env, accessToken, { force = false, full = true } = {}) {
   const kv = env.RATE_LIMIT_KV;
+  const idOf = (d) => d.name.split('/').pop();
   const [biz, pub, codes, stored] = await Promise.all([
-    listRaw(env, accessToken, 'businesses'), listRaw(env, accessToken, 'bizPublic'), listRaw(env, accessToken, 'bizCodes'),
+    full ? listRaw(env, accessToken, 'businesses') : listApproved(env, accessToken),
+    full ? listRaw(env, accessToken, 'bizPublic') : null,
+    full ? listRaw(env, accessToken, 'bizCodes') : null,
     kv.get(HASH_KEY, 'json'),
   ]);
   const hashes = (stored && typeof stored === 'object') ? stored : {};
-  const idOf = (d) => d.name.split('/').pop();
   const approved = new Map();
   for (const d of biz) {
     const f = d.fields || {};
     if (f.status && f.status.stringValue === 'approved') approved.set(idOf(d), f);
   }
-  const pubIds = new Set(pub.map(idOf)), codeIds = new Set(codes.map(idOf));
+  const mapIds = Object.keys(hashes).filter((k) => !k.startsWith('c:'));
+  const pubIds = new Set(full ? pub.map(idOf) : mapIds);
+  const codeIds = new Set(full ? codes.map(idOf) : mapIds.filter((id) => hashes['c:' + id]));
+  let mapChanged = false;
   let writes = 0, wrote = 0, removed = 0, pending = 0;
   const budget = () => writes < MAX_WRITES;
   for (const [id, f] of approved) {
     const p = publicProjection(f), c = codesProjection(f);
-    const h = await sha(JSON.stringify(canon(p)) + '|' + JSON.stringify(canon(c)));
+    // §649 — המונים (clicks/likedBy) מחוץ לחתימה: home.html כותב אותם לשני המסמכים באותו batch, ולכן
+    //    שינוי בהם לא מצריך העתקה. לפני כן כל פתיחת כרטיס כתבה מחדש את ההעתק (ובערב ההשקה מילאה את
+    //    תקציב 16 הכתיבות לדקה ועיכבה שינויים אמיתיים). הם עדיין מועתקים כשהמסמך נכתב מסיבה אחרת.
+    //    ⚠️ תיקון ידני של clicks ע"י מנהל יגיע להעתק רק בשינוי הבא בעסק (likesOverride כן בחתימה).
+    const { clicks: _c, likedBy: _l, ...stable } = p;
+    const h = await sha(JSON.stringify(canon(stable)) + '|' + JSON.stringify(canon(c)));
     // ההעתק חסר (נמחק ידנית / ריצה ראשונה) – תמיד נכתב, גם כשהחתימה תואמת
     const missing = !pubIds.has(id) || (!!c !== codeIds.has(id));
     if (!force && !missing && hashes[id] === h) continue;
@@ -126,22 +157,34 @@ export async function syncBizPublic(env, accessToken, { force = false } = {}) {
     if (c) { await putDoc(env, accessToken, `bizCodes/${id}`, c); writes++; }
     else if (codeIds.has(id)) { await delDoc(env, accessToken, `bizCodes/${id}`); writes++; }
     hashes[id] = h;
+    if (c) hashes['c:' + id] = 1; else delete hashes['c:' + id];
     wrote++;
+  }
+  // ריצה מלאה מיישרת את סימוני c: למצב האמיתי (גם כשלא נכתב כלום) – מפה ישנה בלי c: מתמלאת כאן
+  if (full) {
+    for (const id of approved.keys()) {
+      if (!hashes[id]) continue;
+      const has = !!hashes['c:' + id];
+      if (codeIds.has(id) !== has) { if (has) delete hashes['c:' + id]; else hashes['c:' + id] = 1; mapChanged = true; }
+    }
   }
   for (const id of pubIds) {
     if (approved.has(id)) continue;
     if (!budget()) { pending++; continue; }
     await delDoc(env, accessToken, `bizPublic/${id}`); writes++;
     if (codeIds.has(id)) { await delDoc(env, accessToken, `bizCodes/${id}`); writes++; }
-    delete hashes[id];
+    delete hashes[id]; delete hashes['c:' + id];
     removed++;
   }
-  for (const id of codeIds) {
-    if (approved.has(id) || pubIds.has(id)) continue;
-    if (!budget()) { pending++; continue; }
-    await delDoc(env, accessToken, `bizCodes/${id}`); writes++; removed++;
+  if (full) {
+    for (const id of codeIds) {
+      if (approved.has(id) || pubIds.has(id)) continue;
+      if (!budget()) { pending++; continue; }
+      await delDoc(env, accessToken, `bizCodes/${id}`); writes++; removed++;
+      delete hashes['c:' + id];
+    }
   }
-  if (wrote || removed) await kv.put(HASH_KEY, JSON.stringify(hashes));
+  if (wrote || removed || mapChanged) await kv.put(HASH_KEY, JSON.stringify(hashes));
   return { approved: approved.size, wrote, removed, pending };
 }
 

@@ -286,7 +286,9 @@ export default {
     }
     ctx.waitUntil(runEmailSweeps(env));
     // §517ב — העתק ציבורי של העסקים (bizPublic) + קודים לחברים (bizCodes). כשל כאן לא נוגע במיילים.
-    ctx.waitUntil(getGoogleAccessToken(env).then((t) => syncBizPublic(env, t))
+    // §649 – כל דקה רק המאושרים; פעם בחצי שעה (ובהפעלה בלי זמן מתוזמן) השוואה מלאה מול ההעתקים
+    const full = !(event && event.scheduledTime) || new Date(event.scheduledTime).getUTCMinutes() % 30 === 0;
+    ctx.waitUntil(getGoogleAccessToken(env).then((t) => syncBizPublic(env, t, { full }))
       .then((r) => { if (r.wrote || r.removed) console.log('bizPublic sync', JSON.stringify(r)); })
       .catch((e) => console.error('bizPublic sync failed', String(e))));
   },
