@@ -334,6 +334,15 @@
   }
   function act(ctx, js) { return ctx.preview ? '' : ' onclick="' + js + '"'; }
   function bizInfo(b) { var k = KNOWN[b.name] || {}; return { id: b.id || k.id || '', logo: b.logo || k.logo || '', area: b.area || k.area || '' }; }
+  // §658 (רמי, 28.10) "לערבב ולשנות מיקומים": מי שראשון ברשימה מקבל הכי הרבה פתיחות (26–28.10: 166/131/130/76/71
+  // לפי הסדר). כל יום מתחיל עסק אחר – סיבוב מחזורי לפי התאריך המקומי, כך שכל אחד בכל מקום יום אחד מתוך n,
+  // ואותו אוהד רואה אותו סדר כל היום. "מקום שמור" (בלי שם) נשאר בסוף. בעורך (preview) – הסדר השמור.
+  function rotated(list, ctx) {
+    var named = list.filter(function (x) { return x.name; }), rest = list.filter(function (x) { return !x.name; });
+    if (ctx.preview || named.length < 2) return named.concat(rest);
+    var n = new Date(), s = Math.floor(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) / 864e5) % named.length;
+    return named.slice(s).concat(named.slice(0, s), rest);
+  }
   function tok(s, t) { return String(s || '').split('{end}').join(t.end).split('{next}').join(t.next); }
   function leftHtml(t) { return t.left === 1 ? '<b>היום אחרון!</b>' : 'נשארו <b>' + t.left + '</b> ימים'; }
   var ORDER = ['ben', 'fan', 'us', 'redeem', 'forbiz', 'invite'];
@@ -459,7 +468,8 @@
       var prices = b.prices.map(function (p) {
         return '<div class="wk-pc"><b>' + esc(p.size) + '</b>' + (p.was ? '<s>' + esc(p.was) + '</s>' : '') + '<span>' + esc(p.price) + '</span></div>';
       }).join('');
-      var rows = b.biz.map(function (x, i) {
+      var list = rotated(b.biz, ctx);
+      var rows = list.map(function (x, i) {
         var inf = bizInfo(x);
         if (!x.name) return '<div class="wk-row wk-row-tbd"><div class="wk-logo"></div><div class="wk-row-main"><div class="wk-row-name">מקום שמור ' + (i + 1) + '</div><div class="wk-row-sub">ייקבע בקרוב</div></div></div>';
         return '<div class="wk-row"' + (inf.id ? act(ctx, "WK.biz('" + inf.id + "')") : '') + '>' +
@@ -478,7 +488,7 @@
         '<div class="wk-in">' +
         (b.explain ? '<div class="wk-rot"><b>' + esc(b.explainTitle || '') + '</b><p>' + esc(tok(b.explain, t)) + '</p></div>' : '') +
         // (רמי, 24.10) המקעקעים גם למעלה – שורה קומפקטית של לוגואים, בלי לדחוק את ההסבר; הרשימה המלאה נשארת למטה
-        '<div class="wk-strip"><h3>' + b.biz.length + ' ' + esc(b.bizNoun || 'עסקים') + ' בהטבה</h3><div>' + b.biz.map(function (x) {
+        '<div class="wk-strip"><h3>' + b.biz.length + ' ' + esc(b.bizNoun || 'עסקים') + ' בהטבה</h3><div>' + list.map(function (x) {
           var inf = bizInfo(x);
           if (!x.name) return '<span class="wk-av tbd"><i>?</i><em>בקרוב</em></span>';
           return '<span class="wk-av"' + (inf.id ? act(ctx, "WK.biz('" + inf.id + "')") : '') + '>' +
