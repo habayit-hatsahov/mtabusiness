@@ -2660,7 +2660,8 @@ window.yzRegShow = function (state, name, note) {
   const hi = name ? 'היי ' + name + ', ' : '';
   const T = {
     pending:  ['ממתין לאימות', hi + 'הבקשה שלך אצלנו', 'נאשר אתכם בהקדם. אין צורך לעשות כלום – כשתאושרו, פשוט פותחים את האפליקציה ונכנסים.'],
-    approved: ['✓ אושרתם', 'ברוכים הבאים ל-Yellow Zone' + (name ? ', ' + name : '') + '!', 'החברות אושרה. נכנסים…'],
+    // §665 – בעל עסק שאושר: שם העסק מגיע מ-yzBizCheck (window._yzRegBizName)
+    approved: window._yzRegBizName ? ['✓ אושר', '"' + window._yzRegBizName + '" אושר! 🎉', 'מכניסים אותך לאפליקציה…'] : ['✓ אושרתם', 'ברוכים הבאים ל-Yellow Zone' + (name ? ', ' + name : '') + '!', 'החברות אושרה. נכנסים…'],
     rejected: ['לא אושר', hi + 'לא הצלחנו לאמת את הבקשה', 'זה קורה בדרך כלל כשחסר פרט שמאפשר לנו לוודא שאתם אוהדים. כתבו לנו ונבדוק יחד.'],
     // §628
     retry:    ['האימות לא עבר', hi + 'לא הצלחנו לאמת את הפרופיל שלך', 'כדי שנוכל לזהות ולאמת אותך, צריך את שניהם: תמונה ביציע שרואים בה אותך, וקישור לפרופיל שלך בפייסבוק או באינסטגרם – שרואים בו שזה אותו אדם.'],
@@ -2884,6 +2885,19 @@ window.yzRegSkip = function () {
         data = await res.json().catch(() => null);
       } catch (e) { console.warn('biz-reg-status failed:', e); }
       if (!data) return;
+      // §665 — אושר, ויש מפתח-מכשיר לרשומת הבעלים (נוצרה בהרשמת העסק) → מעבירים אותו ל-§612:
+      // yz_reg + yzRegCheck = אותה כניסה לבד של אוהד (/reg-status, custom token). בלי מפתח
+      // (נרשם לפני §665, או קושר לחבר קיים) – כמו קודם: הכרטיס נעלם ונכנסים כרגיל.
+      if (data.status === 'approved' && typeof r.memberId === 'string' && typeof r.ticket === 'string') {
+        try { localStorage.setItem('yz_reg', JSON.stringify({ memberId: r.memberId, ticket: r.ticket, name: data.ownerFirst || r.ownerFirst || '', t: Date.now() })); } catch (e) {}
+        forget();
+        window._yzRegBizName = String(data.name || r.name || '').slice(0, 80);
+        window.yzRegShow('approved', data.ownerFirst || r.ownerFirst || '');
+        window.yzBizShow(null);
+        window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: 'approved:enter' });
+        window.yzRegCheck && window.yzRegCheck();
+        return;
+      }
       if (data.error === 'invalid' || data.status === 'gone' || data.status === 'approved') {
         forget(); window.yzBizShow(null);
         window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: data.status || data.error });
@@ -3900,6 +3914,7 @@ async function yzRegCheck() {
     _yzRegBusy = false;
   }
 }
+window.yzRegCheck = yzRegCheck;   // §665 – בעל עסק שאושר (yzBizCheck) נכנס דרך אותו מסלול
 document.getElementById('rpEnterBtn').addEventListener('click', () => { yzRegCheck(); });
 // ההרשמה רצה בתוך iframe (joinFrame) – כשהיא כותבת את yz_reg, הדף הזה מקבל storage event.
 window.addEventListener('storage', (e) => {

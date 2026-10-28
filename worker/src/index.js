@@ -11,6 +11,7 @@ import { isRateLimited, recordAttempt, overIpQuota } from './ratelimit.js';
 import { wrapEnvKv } from './safekv.js';
 import { handleRegStatus, handleRegRetry } from './regstatus.js';
 import { handleBizRegStatus } from './bizregstatus.js';
+import { isStrongMatch, describeRegistration } from './regmethod.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail, sendRejectEmail } from './brevo.js';
 import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
@@ -936,13 +937,25 @@ async function handleCheckMemberExists({ phone, email, firstName, lastName, excl
   const others = exclude ? matches.filter((m) => m.id !== exclude) : matches;
   if (!others.length) return { exists: false, registered: false };
   const first = others[0];
-  return {
+  const out = {
     exists: true,
     nameMismatch: nameMismatch(first.fields),
     hasName: !!first.fields.firstName,
     hasBirthDate: !!first.fields.birthDate,
     registered: others.some(m => m.fields.status !== 'rejected'),
   };
+  // §665 — איך הוא רשום (קוד/Google/Apple, מייל מוסתר, שם העסק) – רק בהתאמה חזקה (regmethod.js)
+  const strong = others.find((m) => m.fields.status !== 'rejected' && isStrongMatch(m.fields, { phone, email, firstName, lastName }));
+  if (strong) {
+    let bizName = '';
+    const bizId = strong.fields.isBusinessOwner === true ? strong.fields.linkedBusinessId : '';
+    if (typeof bizId === 'string' && /^[A-Za-z0-9]{20}$/.test(bizId)) {
+      try { const b = await firestoreGetDoc(env, accessToken, `businesses/${bizId}`); bizName = (b && b.fields && b.fields.name) || ''; }
+      catch (e) { console.warn('check-member-exists: biz name', e.message); }
+    }
+    out.how = describeRegistration(strong.fields, bizName);
+  }
+  return out;
 }
 
 // ── §462 — נתיב-גיבוי לשליחת טופס האוהד ────────────────────────────────────────────────────

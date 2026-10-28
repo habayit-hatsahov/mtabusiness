@@ -2095,6 +2095,15 @@
     });
     return resp.json();
   }
+  // §665 — הקישור רץ ברקע (ownerLinkPromise) ומסך ההצלחה כותב את yz_biz_reg: מי שמסיים שני
+  // מוסיף את המפתח לרשומה שבמכשיר, בכל סדר.
+  let ownerRegTicket = null;
+  function saveOwnerRegTicket() {
+    try {
+      const r = JSON.parse(localStorage.getItem('yz_biz_reg') || 'null');
+      if (r && ownerRegTicket) localStorage.setItem('yz_biz_reg', JSON.stringify({ ...r, ...ownerRegTicket }));
+    } catch (e) {}
+  }
   async function linkOrCreateOwnerMember(data, bizId, accessToken) {
     // ⚠️ נקרא מה-DOM ולא מ-data בכוונה: data נכתב **כמו שהוא** למסמך העסק, שנקרא ציבורית
     // במלואו לכל עסק מאושר (§244). תאריך לידה הוא מידע אישי ולכן חי רק על רשומת החבר.
@@ -2103,7 +2112,19 @@
     if (found && found.memberId) return found.memberId;
     if (!found || found.error) throw new Error('link-biz-owner: ' + ((found && found.error) || 'no_response'));
     // אין חבר קיים – יוצרים רשומה חדשה (כמו קודם), והוורקר מקשר אותה לעסק
+    // §665 — מפתח מכשיר (§612) לרשומה החדשה: כשהעסק יאושר, welcome.html מכניס לבד דרך /reg-status.
+    // 🔑 לא טוקן העסק: הוא יושב בלינק הדשבורד שבעלי עסקים מעבירים לעובדים (§248). ולא לחבר קיים
+    //    (ענף הקישור למעלה) – אחרת מי שיודע טלפון של חבר היה רושם "עסק" ומקבל כניסה לחשבון שלו.
+    const ownerTicket = await (async () => {
+      try {
+        const b = crypto.getRandomValues(new Uint8Array(32));
+        const ticket = btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ticket));
+        return { ticket, hash: [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, '0')).join('') };
+      } catch (e) { return null; }
+    })();
     const memberRef = await addDoc(collection(db, 'members'), {
+      ...(ownerTicket ? { regTicketHash: ownerTicket.hash } : {}),
       firstName:         data.ownerFirst,
       lastName:          data.ownerLast,
       birthDate:         ownerBirthDate || null,
@@ -2140,6 +2161,7 @@
     });
     const linked = await linkBizOwnerCall({ bizId, accessToken, newMemberId: memberRef.id });
     if (!linked || linked.memberId !== memberRef.id) throw new Error('link-biz-owner(new): ' + ((linked && linked.error) || 'no_response'));
+    if (ownerTicket) { ownerRegTicket = { memberId: memberRef.id, ticket: ownerTicket.ticket }; saveOwnerRegTicket(); }
     return memberRef.id;
   }
 
@@ -3711,6 +3733,7 @@
         if (bizDocRef) localStorage.setItem('yz_biz_reg', JSON.stringify({
           bizId: bizDocRef.id, token: accessToken, name: String(data.name || '').slice(0, 80),
           ownerFirst: String(data.ownerFirst || '').slice(0, 40), at: Date.now(),
+          ...(ownerRegTicket || {}),   // §665
         }));
       } catch (e) {}
         // §570 — הכרטיס (§502) הוחלף בתיבת-סימון מעל כפתור השליחה; כאן רק מפעילים אם סומנה.

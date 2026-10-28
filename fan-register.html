@@ -530,6 +530,17 @@
       background: #1d4ed8; color: #fff;
     }
     .field-warn-actions button.ghost { background: transparent; color: #1e40af; }
+    /* §665 — "כבר נרשמת" שאומר איך: מחליף את כל הטופס */
+    #dupPanel { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 18px 16px; color: var(--text); }
+    #dupPanel[hidden] { display: none; }
+    #dupPanel .dp-t { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+    #dupPanel .dp-x { font-size: 14px; line-height: 1.65; color: #344054; }
+    #dupPanel .dp-chip { display: inline-flex; align-items: center; gap: 6px; background: #F2F4F7; border-radius: 999px; padding: 4px 12px; font-weight: 700; font-size: 13px; margin: 8px 0 4px; direction: ltr; }
+    #dupPanel .dp-btn { display: block; width: 100%; margin-top: 10px; padding: 13px; border-radius: 12px; border: 0; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; background: var(--yellow); color: var(--blue); }
+    #dupPanel .dp-btn.ghost { background: #fff; border: 1.5px solid var(--blue); }
+    #dupPanel .dp-btn:disabled { opacity: .6; cursor: default; }
+    #dupPanel .dp-msg { margin-top: 8px; font-size: 13px; font-weight: 700; text-align: center; }
+    #dupPanel .dp-link { display: block; margin: 14px auto 0; background: none; border: 0; font: inherit; font-size: 12.5px; color: var(--text-muted); text-decoration: underline; cursor: pointer; }
     @keyframes shakeX {
       0%, 100% { transform: translateX(0); }
       20% { transform: translateX(-4px); }
@@ -609,6 +620,9 @@
 <!-- FORM -->
 <div class="form-wrap">
   <div id="mainCard" style="display:flex; flex-direction:column; gap:12px;">
+
+    <!-- §665 — מי שכבר רשום: במקום הטופס, איך הוא נכנס (showDupPanel) -->
+    <div id="dupPanel" hidden></div>
 
     <form id="registrationForm" novalidate style="display:flex; flex-direction:column; gap:12px;">
 
@@ -1252,7 +1266,7 @@
       // §510 — registered: רשומה פעילה (לא נדחתה) עם אותו טלפון/מייל → ההרשמה נחסמת.
       // `=== true` ולא `!!`: ורקר ישן (בלי השדה) או תשובת-שגיאה → לא חוסמים (fail-open).
       // §517 — הוורקר כבר לא מחזיר memberId (מיפוי טלפון/מייל → מזהה-חבר לכל אחד). exists מספיק לדגל.
-      return { exists: data.exists === true, memberId: data.memberId || null, nameMismatch: !!data.nameMismatch, registered: data.registered === true, ok: true };
+      return { exists: data.exists === true, memberId: data.memberId || null, nameMismatch: !!data.nameMismatch, registered: data.registered === true, how: (data.how && typeof data.how === 'object') ? data.how : null, ok: true };
     } catch (e) {
       console.error('fan-register.html: לא ניתן היה לבדוק כפילות מול השרת.', e);
       // ok:false — הבדיקה לא באמת רצה. חשוב לחימום למטה: תוצאה כזאת לא נשמרת לשימוש חוזר,
@@ -2234,6 +2248,7 @@
     if (dedup.registered) {
       resetSubmitBtn();
       showAlreadyRegistered(true);
+      if (dedup.how) showDupPanel(dedup.how);   // §665
       logEvent('formError', { blockId: 'fanRegister', channel: 'already_registered', ...(dedup.memberId ? { memberId: dedup.memberId } : {}) });
       setSubmitStatus('ההרשמה לא נשלחה – נראה שכבר נרשמת עם הטלפון או המייל האלה (ר\' ההודעה ליד שדה האימייל).', 'err');
       document.getElementById('warn-registered').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2892,7 +2907,7 @@
     dedupPromise = findExistingMemberId(v.phone, v.email, v.firstName, v.lastName);
     // §510 — "כבר רשום" מוצג כבר כאן, ביציאה מפרטי הזיהוי — לא אחרי שמילא את כל הטופס
     // והעלה תמונה. תשובה שחזרה אחרי שהפרטים השתנו — נזרקת (המפתח כבר אחר).
-    dedupPromise.then(r => { if (dedupKey === key) showAlreadyRegistered(r.ok && r.registered); });
+    dedupPromise.then(r => { if (dedupKey === key) { showAlreadyRegistered(r.ok && r.registered); if (r.ok && r.registered && r.how) showDupPanel(r.how); } });
   }
 
   // ── §510 — "כנראה כבר רשום" ─────────────────────────────────────────────────────────────
@@ -2909,9 +2924,10 @@
   // מילאו שוב את טופס ההרשמה ולא נכנסו – מי שנרשם שוב כמעט תמיד לא זוכר את הקוד, ו"לכניסה"
   // לבד מחזיר אותו לאותו מסך שבו נתקע. אותו נתיב בדיוק כמו "שכחתי את הקוד" ב-welcome.html
   // (`/resend-login-code`: שולח רק למאושר עם קוד, ועונה ok גם כשלא נמצא – לא חושף מי רשום).
-  async function dupSendCode() {
-    const btn = document.getElementById('dupResendBtn');
-    const msg = document.getElementById('dupResendMsg');
+  async function dupSendCode(btnEl, msgEl) {
+    const btn = btnEl || document.getElementById('dupResendBtn');
+    const msg = msgEl || document.getElementById('dupResendMsg');
+    const label = btn.textContent;
     const phone = normalizePhone(document.getElementById('phone').value.trim());
     if (!phone) { msg.textContent = 'נא למלא מספר טלפון למעלה.'; return; }
     btn.disabled = true; btn.textContent = 'שולח…';
@@ -2930,7 +2946,75 @@
     msg.textContent = ok
       ? 'אם הטלפון הזה רשום ומאושר – קוד הכניסה נשלח עכשיו למייל שאיתו נרשמת. אחר כך לחצו "לכניסה".'
       : 'השליחה לא הצליחה – נסו שוב בעוד רגע.';
-    btn.disabled = false; btn.textContent = 'שלחו לי את קוד הכניסה למייל';
+    btn.disabled = false; btn.textContent = label;
+    return ok;
+  }
+
+  // ── §665 — "כבר נרשמת" שאומר איך ───────────────────────────────────────────────────────
+  // עץ אורן (28.10): "כבר נרשמת" בלי פרטים → ניחש Apple (נרשם עם קוד), 9 דקות עד שנכנס.
+  // הוורקר מחזיר `how` רק בהתאמה חזקה (regmethod.js): {status, first, method, mail, biz, since}.
+  // הפאנל מחליף את כל הטופס – אין מה למלא. "זה לא אני" מחזיר לטופס עם ההודעה הכללית.
+  let dupRegistered = false;
+  function showDupPanel(how) {
+    const panel = document.getElementById('dupPanel');
+    const form = document.getElementById('registrationForm');
+    if (!panel || !form || !how) return;
+    dupRegistered = true;
+    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+    const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+    const first = String(how.first || '');
+    const biz = String(how.biz || '');
+    const wasShown = !panel.hidden;
+    panel.innerHTML = '';
+    let title, text;
+    if (how.status === 'pending') {
+      title = 'הבקשה שלך כבר אצלנו' + (first ? ', ' + first : '');
+      text = biz
+        ? 'העסק "' + biz + '" כבר אצלנו ובבדיקה. אין צורך להירשם כאוהד – כשנאשר, פותחים את האפליקציה ונכנסים.'
+        : (how.since ? 'נרשמת ב-' + how.since + ' והבקשה עוד בבדיקה. ' : 'הבקשה שלך עוד בבדיקה. ') + 'אין צורך להירשם שוב ואין צורך לעשות כלום – כשנאשר, פותחים את האפליקציה ונכנסים.';
+    } else {
+      title = biz ? 'כבר נרשמת – כבעל העסק 🏪' : 'כבר נרשמת' + (first ? ', ' + first : '') + ' 👋';
+      text = (biz ? 'נרשמת עם העסק "' + biz + '", ולכן כבר יש לך חשבון כאוהד בקהילת Yellow Zone – אין צורך להירשם כאוהד. ' : 'אין צורך להירשם שוב. ')
+        + (how.method === 'apple' ? 'נכנסים עם Apple – עם אותו Apple ID שבטלפון.'
+          : how.method === 'google' ? 'נכנסים עם Google, בחשבון:'
+          : 'נכנסים עם קוד כניסה. הקוד נשלח למייל שלך כשאושרת:');
+    }
+    panel.appendChild(el('div', 'dp-t', title));
+    panel.appendChild(el('div', 'dp-x', text));
+    const msg = el('div', 'dp-msg');
+    const sendBtn = (label, cls) => {
+      const b = el('button', 'dp-btn' + (cls ? ' ' + cls : ''), label); b.type = 'button';
+      b.onclick = async () => {
+        const ok = await dupSendCode(b, msg);
+        if (ok) msg.textContent = '✅ שלחנו את קוד הכניסה' + (how.mail ? ' ל-' + how.mail : ' למייל שאיתו נרשמת') + '. כדאי לבדוק גם בספאם.';
+        logEvent('formStep', { blockId: 'dupPanel', channel: 'resend:' + (ok ? 'ok' : 'fail') });
+      };
+      return b;
+    };
+    const loginBtn = (label, cls) => {
+      const b = el('button', 'dp-btn' + (cls ? ' ' + cls : ''), label); b.type = 'button';
+      b.onclick = () => { logEvent('formStep', { blockId: 'dupPanel', channel: 'login:' + (how.method || '') }); goLoginFromDup(); };
+      return b;
+    };
+    if (how.status !== 'pending') {
+      if (how.mail && how.method !== 'apple') panel.appendChild(el('div', 'dp-chip', (how.method === 'google' ? 'Google · ' : '✉️ ') + how.mail));
+      if (how.method === 'google') { panel.appendChild(loginBtn('לכניסה עם Google')); panel.appendChild(sendBtn('אין גישה לחשבון? שלחו לי קוד כניסה', 'ghost')); }
+      else if (how.method === 'apple') { panel.appendChild(loginBtn('לכניסה עם Apple')); panel.appendChild(sendBtn('לא מצליח? שלחו לי קוד כניסה', 'ghost')); }
+      else { panel.appendChild(sendBtn('שלחו לי את הקוד שוב')); panel.appendChild(loginBtn('יש לי את הקוד – לכניסה', 'ghost')); }
+      panel.appendChild(msg);
+    }
+    const back = el('button', 'dp-link', 'זה לא אני – חזרה לטופס'); back.type = 'button';
+    back.onclick = () => {
+      panel.hidden = true; form.style.display = 'flex';
+      logEvent('formStep', { blockId: 'dupPanel', channel: 'notMe' });
+      const w = document.getElementById('warn-registered'); if (w) w.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    panel.appendChild(back);
+    if (wasShown) return;   // כבר מוצג (חימום ואז שליחה) – לא לגלול ולא לרשום פעמיים
+    panel.hidden = false;
+    form.style.display = 'none';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    logEvent('formStep', { blockId: 'dupPanel', channel: (biz ? 'biz:' : '') + (how.status === 'pending' ? 'pending' : how.method || 'code') });
   }
 
   // 'change' על input טקסט נורה ביציאה מהשדה — בדיוק הרגע שבו הערך סופי
@@ -3020,6 +3104,7 @@
   const DRAFT_KEY = '_hb_regDraft';
 
   function saveRegDraft() {
+    if (dupRegistered) return;   // §665 — כבר רשום: אין טיוטה, ו"ההרשמה שלכם מחכה" לא יחזור
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       t:                 Date.now(),   // §639 — welcome.html מציג "ההרשמה שלכם מחכה" רק לטיוטה טרייה
       firstName:         document.getElementById('firstName').value,
