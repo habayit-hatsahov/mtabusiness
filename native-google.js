@@ -39,6 +39,8 @@
   // ⏱️ לא המתנת-רשת אלא המתנה לאדם שבוחר חשבון — ולכן ארוך. אבל לא אינסופי: קריאה נייטיב
   // שלא חוזרת לעולם הייתה משאירה כפתור נעול בלי שום מוצא. ר' [[feedback_bound_every_network_await]].
   var SIGNIN_TIMEOUT_MS = 180000;
+  // §650 — ר' signIn: "ביטול" שחוזר מהר מזה לא יכול להיות אדם שסגר את הגיליון.
+  var FAST_CANCEL_MS = 1200;
 
   // ── הגשר ────────────────────────────────────────────────────────────────────────────────
   // 🔑 **גם מההורה.** טופס ההרשמה של דף הנחיתה רץ ב-iframe (`fan-register.html?embed=1`
@@ -128,6 +130,7 @@
     catch (e) { return { ok: false, reason: 'init_failed', detail: detailOf(e) }; }
 
     var timer = null;
+    var t0 = Date.now();
     try {
       var r = await Promise.race([
         c.nativePromise(PLUGIN, 'signIn', {}),
@@ -144,6 +147,11 @@
         code === 'NO_CREDENTIAL_AVAILABLE'      ? 'no_account' :
         code === 'PROVIDER_CONFIGURATION_ERROR' ? 'config'     :
         code === 'TIMEOUT'                      ? 'timeout'    : 'error';
+      // §650 — 🔴 **"ביטול" מהיר אינו ביטול של אדם.** דווח (Matan, OnePlus 15): לחיצה, ו"לא
+      // נפתח שום חלון". Credential Manager מחזיר GetCredentialCancellationException גם כשהגיליון
+      // **לא הוצג בכלל** (למשל "[16] Account reauth failed"), והתוסף ממפה את זה ל-SIGN_IN_CANCELED
+      // — שאצלנו היה שקט מוחלט. אדם לא מספיק לראות גיליון ולסגור אותו בפחות מ-1.2 שנ'.
+      if (reason === 'canceled' && Date.now() - t0 < FAST_CANCEL_MS) reason = 'instant';
       return { ok: false, reason: reason, detail: detailOf(e) };
     } finally {
       clearTimeout(timer);
@@ -165,6 +173,7 @@
   var MSGS = {
     no_account: 'לא נמצא חשבון Google בטלפון. אפשר להוסיף חשבון בהגדרות הטלפון, או להמשיך בלי Google.',
     config:     'Google לא זמין כרגע בטלפון הזה. אפשר להמשיך בלי Google.',
+    instant:    'חלון החשבונות של Google לא נפתח בטלפון הזה. נסו שוב, או המשיכו בלי Google.',
   };
   var MSG_GENERIC = 'הכניסה עם Google לא הושלמה. נסו שוב.';
 
@@ -192,7 +201,7 @@
     document.head.appendChild(s);
   }
 
-  // opts: { label, width, onCredential(res) }
+  // opts: { label, width, onCredential(res), onFail(tail, r)? }
   // ⚠️ מצייר **לתוך host** (מחליף את תוכנו) — ולכן `host.childElementCount` נשאר האות
   // ש"הכפתור צויר", בדיוק כמו אחרי renderButton של GIS. הקיפול של §415ב נשען על זה.
   function renderButton(host, opts) {
@@ -240,16 +249,23 @@
         // ⚠️ **גם `canceled` נרשם, ובכוונה:** ההבדל בין "האדם התחרט" לבין "נכשל בשקט אחרי
         // הבחירה" הוא כל האבחון כאן, ובלעדיו שניהם נראים כמו מסך שחזר לעצמו.
         // ⚠️ הרישום עטוף ב-try ואינו תלוי ב-logEvent: המודול נטען גם בדפים שאין בהם מדידה.
+        // §650 — הזנב נשלח **בכל** כשל, גם בביטול: הודעת-הביטול של Credential Manager היא
+        // מה שמבדיל "האדם סגר" מ"המערכת סגרה" ("[16] Account reauth failed" וכו').
+        var tail = (r.reason + (r.detail ? ':' + String(r.detail).replace(/[^\w.-]+/g, '_') : '')).slice(0, 36);
         try {
           if (typeof window.logEvent === 'function') {
             window.logEvent('loginFail', {
-              // §586 — הקוד האמיתי בזנב כשזו שגיאה לא-מסווגת, כדי שאפשר יהיה לאבחן אותה.
-              channel: ('google:native:' + r.reason + ((r.reason === 'error' || r.reason === 'init_failed') && r.detail
-                ? ':' + String(r.detail).replace(/[^\w.-]+/g, '_') : '')).slice(0, 50),
+              channel: ('google:native:' + tail).slice(0, 50),
               blockId: (window._hbEnvTag || 'app').slice(0, 50),
             });
           }
         } catch (e) {}
+        // §650 — 🔴 **בטופס ההרשמה אין window.logEvent** (המדידה שם מקומית), ולכן כל כשל נייטיב
+        // בהרשמה לא נרשם בכלל: 284 gsShown מול 34 gsUsed ביממה, ואפס שורות על מה קרה ליתר.
+        // הדף מעביר onFail ורושם בערוץ שלו – אותו דפוס כמו asNativeFail בטופס אפל.
+        if (typeof opts.onFail === 'function') {
+          try { opts.onFail(tail, r); } catch (e) { console.error('native-google: onFail נכשל', e); }
+        }
         if (r.reason === 'canceled') return;
         // ⚠️ תמיד לקונסול — כישלון שקט הוא מה שהסתיר את §357. `config` כאן כמעט תמיד
         // פירושו Android client חסר / SHA-1 שגוי ב-Cloud Console, לא באג בקוד.

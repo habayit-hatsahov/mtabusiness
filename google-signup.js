@@ -222,6 +222,8 @@
     if (gMode === 'native') {
       window.YZNativeGoogle.renderButton(btnHost, {
         label: 'הרשמה עם Google', width: w, onCredential: onCredential,
+        // §650 — בלי זה כשל נייטיב בהרשמה לא נרשם בשום מקום (ר' native-google.js).
+        onFail: function (tail) { track(('gsNativeFail:' + tail).slice(0, 50)); },
       });
       capFor();
       host.style.display = '';

@@ -6994,13 +6994,14 @@ const AU_OUTCOMES = [
 const AU_NO_ACCOUNT = ['started', 'failed', 'opened', 'idle'];   // "בלי הרשמה ובלי כניסה"
 // loginFail.channel = "web|idb-ok|sw-none|2.3s(google:notLinked)" — הסיבה בסוגריים
 const AU_FAIL_METHOD = { google: 'Google', apple: 'Apple', authError: 'קוד', code: 'קוד' };
-const AU_FAIL_REASON = { notLinked: 'החשבון לא שייך לחבר – צריך להירשם', canceled: 'סגרו את החלון', timeout: 'לא התקבלה תשובה', badCode: 'קוד שגוי', 'auth/network-request-failed': 'בעיית רשת' };
+const AU_FAIL_REASON = { notLinked: 'החשבון לא שייך לחבר – צריך להירשם', canceled: 'סגרו את החלון', instant: 'החלון לא נפתח (הטלפון סגר מיד)', timeout: 'לא התקבלה תשובה', badCode: 'קוד שגוי', 'auth/network-request-failed': 'בעיית רשת' };
 function auFailLabel(ch) {
   const m = /\(([^)]*)\)\s*$/.exec(ch || '');
   const inner = m ? m[1] : (ch || '');
   const parts = inner.split(':');
   if (parts.length === 1) return (parts[0] === 'badCode' ? 'קוד – ' : '') + (AU_FAIL_REASON[parts[0]] || parts[0] || 'לא ידוע');
-  const reason = parts[parts.length - 1];
+  // §650 – בנייטיב הזנב אחרי הסיבה הוא הודעת המערכת, ולכן הסיבה היא החלק השלישי.
+  const reason = parts[1] === 'native' && parts[2] ? parts[2] : parts[parts.length - 1];
   return (AU_FAIL_METHOD[parts[0]] || parts[0]) + ' – ' + (AU_FAIL_REASON[reason] || reason);
 }
 const AU_SRC_NAME = { fb: 'פייסבוק', wa: 'וואטסאפ', ig: 'אינסטגרם', mail: 'מיילים מאיתנו', approval: 'הודעות אישור בוואטסאפ', share: 'שיתוף מהאפליקציה', bizshare: 'שיתוף עסק (עסק שלא נמצא)', broadcast: 'מייל שידור לאוהדים', qr: 'קוד QR בדף הנחיתה', bizreg: 'סוף הרשמת עסק מהדפדפן', igstory: 'סטורי באינסטגרם', fbpost: 'פוסט בפייסבוק', fbgroup: 'קבוצת פייסבוק', print: 'QR מודפס','': 'ישיר / לא מסומן' };
@@ -19176,7 +19177,10 @@ function hbLoginFailLabel(ch) {
   const p = hbLoginFailParts(ch);
   // §566 — ביטול של חלון Apple באפליקציה ('apple:native:canceled') הוא החלטה של האדם, לא כשל.
   // וכך גם בגוגל הנייטיב (אנדרואיד, 'google:native:canceled') – נתפס בבדיקה החיה.
-  if ((p.apple || p.google) && p.base === 'native' && p.code === 'canceled') return `סגר את חלון ${p.apple ? 'Apple' : 'Google'} בלי להיכנס`;
+  // §650 — מעכשיו גם לביטול יש זנב (הודעת Credential Manager), ולכן התחילית ולא שוויון.
+  // 'instant' = "ביטול" תוך פחות מ-1.2 שנ' – הטלפון סגר, החלון לא הוצג. זה כשל, לא החלטה.
+  if ((p.apple || p.google) && p.base === 'native' && /^canceled(:|$)/.test(p.code)) return `סגר את חלון ${p.apple ? 'Apple' : 'Google'} בלי להיכנס`;
+  if (p.google && p.base === 'native' && /^instant(:|$)/.test(p.code)) return 'חלון Google לא נפתח (הטלפון סגר אותו מיד)' + (p.code.length > 8 ? ' · ' + p.code.slice(8) : '');
   const own = p.google ? GOOGLE_FAIL_LABELS : p.apple ? APPLE_FAIL_LABELS : {};
   const label = (p.link && GOOGLE_LINK_FAIL_LABELS[p.base])
              || own[p.base] || LOGIN_FAIL_LABELS[p.base]
@@ -19858,10 +19862,10 @@ function hbLoginCat(x) {
   // רשומה שעדיין לא אושרה (או נדחתה) – זה ההסבר לכשל, מה שלא יהיה הערוץ. התור הוא באישור.
   if (x.fan && x.fan.status && x.fan.status !== 'approved') return 'pending';
   const p = hbLoginFailParts(x.reason);
-  if (p.base === 'native' && p.code === 'canceled') return 'closed';
+  if (p.base === 'native' && /^canceled(:|$)/.test(p.code)) return 'closed';
   // §586ג — 'timeout' בחלון הנייטיב = 3 דקות (SIGNIN_TIMEOUT_MS) שבהן בורר-החשבונות נשאר פתוח
   // בלי בחירה. האדם עזב את החלון – זה "סגר", לא תקלה.
-  if (p.base === 'native' && p.code === 'timeout') return 'closed';
+  if (p.base === 'native' && /^timeout(:|$)/.test(p.code)) return 'closed';
   if (x.ours || p.base === 'native' || p.base === 'sdk' || p.base === 'invalid_google_token') return 'tech';
   if (p.base === 'pending' || p.base === 'rejected') return 'pending';
   if (p.base === 'privateEmail') return 'apple';
