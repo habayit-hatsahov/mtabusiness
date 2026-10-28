@@ -10,6 +10,7 @@ import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt, overIpQuota } from './ratelimit.js';
 import { wrapEnvKv } from './safekv.js';
 import { handleRegStatus, handleRegRetry } from './regstatus.js';
+import { handleBizRegStatus } from './bizregstatus.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail, sendRejectEmail } from './brevo.js';
 import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
@@ -110,6 +111,11 @@ export default {
       if (request.method === 'POST' && url.pathname === '/reg-status') {
         if (memQuota('regstatus', clientIp(request, env), 60, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
         return json(await handleRegStatus(await request.json(), env), env, request);
+      }
+      // §664 — בעל עסק ממתין: מצב העסק ומה חסר בו (תמונות), לפי טוקן העסק שנשמר במכשיר שנרשם.
+      if (request.method === 'POST' && url.pathname === '/biz-reg-status') {
+        if (memQuota('bizregstatus', clientIp(request, env), 60, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
+        return json(await handleBizRegStatus(await request.json(), env), env, request);
       }
       // §628 – "האימות לא עבר": תיקון מהמכשיר שנרשם (תמונה + פרופיל), פעם אחת.
       if (request.method === 'POST' && url.pathname === '/reg-retry') {

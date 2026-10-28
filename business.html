@@ -3273,6 +3273,10 @@
     const hasMediaToUpload = !!(fanPhotoFile || effectiveCoverFile || effectiveLogoFile || galleryFiles.length);
     let mediaUploadFailed = false;   // ר' סוף handleSubmit — נקבע מתשובת /upload-biz-media
     let mediaFailCode = '';          // §548 — הערוץ האחרון שנכשל, לדיווח למנהל
+    // §661 — "לנסות שוב להעלות" במסך ההצלחה: אילו בקשות נכשלו, ופונקציה ששולחת רק אותן שוב
+    // מהתמונות הדחוסות שכבר בזיכרון (נקבעת למטה, ליד sendMediaForm).
+    const failedMediaTags = new Set();
+    let retryFailedMedia = null;
 
     // ── §361ב — הדחיסה מתחילה **בלחיצה**, לא אחרי חמש נסיעות-רשת ──────────────────────────
     // המשתמש: *"יש אפשרות לנסות גם לצמצם את הזמן של הנשלח?"*. הדחיסה של עד 8 תמונות
@@ -3321,10 +3325,31 @@
       // הכתובת מופיעה גם כטקסט מלא, כי mailto: לא תמיד רשום כ-handler ואז הקישור מת.
       const subj = encodeURIComponent(`תמונות העסק – ${data.name || ''}`);
       const body = encodeURIComponent(`היי,\nרשמתי את "${data.name || ''}" ל-Yellow Zone והתמונות לא עלו בגלל תקלה.\nמצרף/ת אותן כאן.\n`);
-      warnEl.innerHTML = 'שימו לב: הפרטים נקלטו אצלנו, אבל התמונות לא עלו. ' +
+      // §661 — קודם כול "לנסות שוב": ברוב המקרים זו נפילה רגעית של הרשת, והתמונות עדיין בזיכרון.
+      // המייל נשאר כגיבוי למי שגם הניסיון הזה נכשל לו.
+      const again = retryFailedMedia
+        ? `<button type="button" id="mediaRetryBtn" style="display:block;width:100%;margin:10px 0 8px;padding:11px;border:0;border-radius:10px;background:#0A2A66;color:#fff;font:inherit;font-size:14px;font-weight:800;cursor:pointer">🔄 לנסות שוב להעלות את התמונות</button>`
+        : '';
+      warnEl.innerHTML = 'שימו לב: הפרטים נקלטו אצלנו, אבל התמונות לא עלו – כנראה החיבור נפל לרגע. ' + again +
+      (again ? 'לא הצליח? ' : '') +
       `<a href="mailto:yellowzonemta@gmail.com?subject=${subj}&body=${body}" style="font-weight:800;text-decoration:underline">שלחו לנו אותן במייל</a>` +
       ' (yellowzonemta@gmail.com) – או העלו אותן בעצמכם מהדשבורד האישי שייפתח לכם אחרי האישור.';
       warnEl.style.display = 'block';
+      const btn = document.getElementById('mediaRetryBtn');
+      if (btn) btn.onclick = async () => {
+        btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'מעלים את התמונות…';
+        let okAll = false;
+        try { okAll = await retryFailedMedia(); } catch (e) { console.error('media retry:', e); }
+        if (okAll) {
+          warnEl.style.background = 'rgba(22,163,74,.10)'; warnEl.style.borderColor = 'rgba(22,163,74,.35)';
+          warnEl.innerHTML = '✅ התמונות עלו. הכול אצלנו – תודה!';
+        } else {
+          mediaUploadFailed = true;
+          showMediaWarnIfNeeded();
+          const b2 = document.getElementById('mediaRetryBtn');
+          if (b2) b2.insertAdjacentHTML('beforebegin', '<div style="font-weight:700;margin-top:8px">עדיין לא עלו. כדאי לנסות שוב כשהחיבור יציב (למשל ב-Wi-Fi).</div>');
+        }
+      };
     }
 
     (async () => {
@@ -3552,11 +3577,12 @@
           // לשארית בלבד. ⚠️ ה-await נשאר **בתוך** withTimeout בכוונה: דחיסה שנתקעת חייבת
           // להיחסם בזמן בדיוק כמו קודם (§294), והעובדה שהיא התחילה מוקדם לא משנה זאת.
           const form = await formPromise;
-          form.append('accessToken', accessToken);
+          // §661 — set ולא append: ב"לנסות שוב" אותו FormData נשלח פעם שנייה, ו-append היה מכפיל את השדות
+          form.set('accessToken', accessToken);
           // §419 — נוסע כנפילה-לאחור בלבד: הוורקר משתמש בו רק אם הטוקן עדיין לא נמצא
           // ב-Firestore, ומאמת אותו מול השרת לפני שהוא נשען עליו (claimBizToken).
           // **אינו** מקור-סמכות — הזיהוי ממשיך להיות דרך הטוקן, בדיוק כמו קודם.
-          form.append('bizId', bizDocRef.id);
+          form.set('bizId', bizDocRef.id);
           // ── ⚠️ §294 — גבול-זמן. זה היה השורש של "מסך תקוע" ──────────────────────────────
           // דווח בפועל: ההרשמה נקלטה, אבל המסך נשאר על "שולח את הבקשה שלכם…" עם ספינר —
           // *"הבעל עסק היה חושב שהוא לא נרשם"*. ה-fetch הזה רץ בלי AbortController, ולכן
@@ -3611,7 +3637,8 @@
               || (Array.isArray(result.failed) && result.failed.length ? 'files:' + result.failed.length : 'failed');
             mediaFailCode = `bm:${tag}:${String(why).slice(0, 24)}`;
             logEvent('formError', { blockId: 'bizForm', bizId: bizDocRef.id, channel: mediaFailCode });
-          }
+            failedMediaTags.add(tag);   // §661
+          } else failedMediaTags.delete(tag);
           })(), 120000, 'MediaPhaseTimeout');
         } catch (e) {
           console.error(`upload-biz-media (${tag}) request failed:`, e.name, e.message);
@@ -3627,6 +3654,7 @@
           // (חוסם אישור של בעל-עסק) או תמונת גלריה (מטרד). ≤50 תווים, ר' firestore.rules.
           mediaFailCode = `bm:${tag}:${(e.name || 'err').slice(0, 18)}`;
           logEvent('formError', { blockId: 'bizForm', bizId: bizDocRef.id, channel: mediaFailCode });
+          failedMediaTags.add(tag);   // §661
         }
         };
 
@@ -3634,6 +3662,20 @@
           proofFormPromise ? sendMediaForm(proofFormPromise, 'proof') : null,
           mediaFormPromise ? sendMediaForm(mediaFormPromise, 'rest')  : null,
         ].filter(Boolean));
+
+        // ── §661 — "לנסות שוב להעלות" ──────────────────────────────────────────────────────
+        // Aviv Production (26.10): `bm:rest:TypeError` – הרשת נפלה באמצע, גם הניסיון החוזר של
+        // §381 (2.5 שניות) נפל, וכל התמונות וראיית-האימות אבדו. התמונות הדחוסות עדיין כאן
+        // בזיכרון – לחיצה שולחת שוב רק את מה שנכשל. בטוח לחזור: הוורקר דורס את הגלריה כקבוצה
+        // (photos = לפי מיקום) ולא מוסיף, כך שהעלאה כפולה לא מכפילה תמונות.
+        retryFailedMedia = async () => {
+          const tags = [...failedMediaTags];
+          if (!tags.length) return true;
+          mediaUploadFailed = false;
+          // כשל חוזר נרשם בתוך sendMediaForm כמו כל כשל (אותו ערוץ bm:<tag>:…)
+          await Promise.all(tags.map(t => sendMediaForm(t === 'proof' ? proofFormPromise : mediaFormPromise, t)));
+          return !failedMediaTags.size;
+        };
       }
       // §548 — התמונות/האימות לא עלו: המנהל מקבל מייל+פוש עם שם העסק. לא חוסם את מסך ההצלחה.
       if (mediaUploadFailed && bizDocRef) reportBizRegFailure('media', data, { code: mediaFailCode || 'media', bizId: bizDocRef.id });
@@ -3662,6 +3704,15 @@
       hideFormPanels();
       document.getElementById('failState').style.display = 'none';
       document.getElementById('successState').style.display = 'block';
+      // §664 — המכשיר שנרשם זוכר את העסק: בפתיחה הבאה של האפליקציה, עד האישור, welcome.html מציג
+      // "העסק שלך ממתין" במקום הכניסה – ואם התמונות לא עלו, מאפשר להעלות אותן משם (/biz-reg-status).
+      // הטוקן הוא אותו טוקן שכבר נשלח ל-/upload-biz-media; הוא נשמר רק במכשיר של מי שנרשם.
+      try {
+        if (bizDocRef) localStorage.setItem('yz_biz_reg', JSON.stringify({
+          bizId: bizDocRef.id, token: accessToken, name: String(data.name || '').slice(0, 80),
+          ownerFirst: String(data.ownerFirst || '').slice(0, 40), at: Date.now(),
+        }));
+      } catch (e) {}
         // §570 — הכרטיס (§502) הוחלף בתיבת-סימון מעל כפתור השליחה; כאן רק מפעילים אם סומנה.
         try { window.YZPushAsk && window.YZPushAsk.afterSubmit(document.getElementById('successState')); } catch (e) {}
     })();

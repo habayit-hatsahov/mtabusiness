@@ -1452,6 +1452,24 @@ button { font-family: inherit; }
 .rp-retry .rr-note b { display: block; font-size: 12.5px; margin-bottom: 2px; }
 .rp-retry .rr-hint { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; line-height: 1.5; }
 .reg-pending .rp-retry .rp-btn-send { display: flex; margin-top: 16px; }
+/* §664 — בעל עסק ממתין: "העסק שלך אצלנו", ואם חסרות תמונות חובה – העלאה מכאן */
+#bizPendingBlock[data-state="missing"] .rp-badge { background: #FFF1E0; border-color: #FFD2A8; color: #C2570C; }
+#bizPendingBlock[data-state="missing"] .rp-dot, #bizPendingBlock[data-state="sent"] .rp-dot { display: none; }
+#bizPendingBlock[data-state="sent"] .rp-badge { background: #E7F6EC; border-color: #BFE6CC; color: #1B8A4B; }
+#bizPendingBlock[data-state="rejected"] .rp-btn-help { display: flex; }
+#bizPendingBlock .bp-up { display: none; margin-top: 6px; }
+#bizPendingBlock[data-state="missing"] .bp-up { display: block; }
+#bizPendingBlock .bp-slot { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+#bizPendingBlock .bp-slot.req { border-color: #F2B8AB; background: #FFFBFA; }
+#bizPendingBlock .bp-slot.ok { border-color: #BFE6CC; background: #F4FBF6; }
+#bizPendingBlock .bp-n { font-size: 14px; font-weight: 800; color: var(--ink); }
+#bizPendingBlock .bp-tag { font-size: 11px; font-weight: 800; border-radius: 6px; padding: 1px 6px; margin-inline-start: 6px; background: #F3F4F7; color: var(--ink-3); }
+#bizPendingBlock .bp-slot.req .bp-tag { background: #FDECEC; color: #B4351C; }
+#bizPendingBlock .bp-h { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; line-height: 1.5; }
+#bizPendingBlock .bp-slot input[type=file] { width: 100%; margin-top: 8px; font: inherit; font-size: 13.5px; }
+#bizPendingBlock .bp-msg { font-size: 13px; line-height: 1.6; margin-top: 10px; color: #B4351C; display: none; }
+#bizPendingBlock .bp-msg.on { display: block; }
+#bizPendingBlock .bp-up .bp-send { display: flex; margin-top: 16px; }
 .reg-pending .rp-links { margin-top: 14px; font-size: 13px; color: var(--ink-3); text-align: center; }
 .reg-pending .rp-links button { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); text-decoration: underline; cursor: pointer; }
 
@@ -2160,6 +2178,21 @@ html.yz-app .lm-reg-wrap { display: block; }
     <button class="lp-btn lp-btn-yellow rp-btn rp-btn-help" type="button" onclick="openLoginModal(); window.openLoginHelp && window.openLoginHelp()">פנייה לצוות</button>
     <div class="rp-links"><span id="rpNotMe"></span><button type="button" onclick="window.yzRegSkip()">כניסה עם חשבון אחר</button></div>
   </div>
+
+  <!-- §664 — בעל עסק שנרשם מהמכשיר הזה ועוד לא אושר: במקום ההרשמה וההתחברות. המצב מגיע מ-/biz-reg-status
+       (worker/src/bizregstatus.js); חסרה תמונה ראשית או צילום אימות → העלאה מכאן ל-/upload-biz-media. -->
+  <div class="reg-member-box reg-pending" id="bizPendingBlock" data-state="pending">
+    <span class="rp-badge"><span class="rp-dot"></span><span id="bpBadge">ממתין לאישור</span></span>
+    <div class="rp-title" id="bpTitle">העסק שלך אצלנו</div>
+    <p class="rp-text" id="bpText"></p>
+    <div class="bp-up">
+      <div id="bpSlots"></div>
+      <div class="bp-msg" id="bpMsg"></div>
+      <button class="lp-btn lp-btn-yellow rp-btn bp-send" id="bpSend" type="button" onclick="window.yzBizUpload()">שליחת התמונות</button>
+    </div>
+    <button class="lp-btn lp-btn-yellow rp-btn rp-btn-help" type="button" onclick="openLoginModal(); window.openLoginHelp && window.openLoginHelp()">פנייה לצוות</button>
+    <div class="rp-links"><span id="bpNotMe"></span><button type="button" onclick="window.yzBizRegSkip()">כניסה עם חשבון אחר</button></div>
+  </div>
 </section>
 
 <!-- ══ שני ריבועי התמונה ══ -->
@@ -2740,6 +2773,191 @@ window.yzRegSkip = function () {
       busy = false; btn.disabled = false; btn.textContent = 'שליחה לבדיקה';
     }
   };
+})();
+
+// ══ §664 — בעל עסק ממתין: "העסק שלך אצלנו", והעלאת התמונות שלא עלו ═══════════════════════════
+// רמי: "שיחכה לו גם באפליקציה במקום ההתחבר והכניסה שהוא ממתין לאישור שהתמונות לא עלו וצריך לעלות
+// תמונות". business.html כותב `yz_biz_reg` = {bizId, token, name, ownerFirst} במכשיר שנרשם. בכל פתיחה,
+// עד האישור, שואלים את /biz-reg-status מה מצב העסק ומה חסר בו:
+//   pending + חסרה תמונה ראשית / צילום אימות → 'missing': העלאה מכאן ישירות ל-/upload-biz-media
+//   pending בלי חוסר חובה → 'pending' (או 'sent' אחרי העלאה מכאן) · rejected → 'rejected' + פנייה לצוות
+//   approved → הכרטיס נעלם והמפתח נמחק: נכנסים כרגיל (Google / קוד) · gone/invalid → נמחק.
+// 🔑 fail-open כמו §612: רשת שלא עונה משאירה את מה שכבר מוצג, ו"כניסה עם חשבון אחר" תמיד שם.
+// חובה (רמי אישר): תמונה ראשית; צילום אימות – רק במסלול אימות בתמונה. לוגו ועוד תמונות – רשות.
+(function () {
+  const SLOTS = {
+    cover:   { n: 'התמונה הראשית של העסק', h: 'הדבר הראשון שאוהד רואה בכרטיס שלכם.', req: true },
+    proof:   { n: 'צילום לאימות שאתם אוהדים', h: 'מה שבחרתם בהרשמה: צילום המנוי, מייל הרכישה או תמונה שלכם ביציע.', req: true },
+    logo:    { n: 'לוגו', h: 'אם יש.', req: false },
+    gallery: { n: 'עוד תמונות של העסק', h: 'עד 5 תמונות.', req: false, multi: true },
+  };
+  let missing = null, busy = false, checking = false;
+  const $ = (id) => document.getElementById(id);
+  const msg = (t) => { const m = $('bpMsg'); if (m) { m.textContent = t || ''; m.classList.toggle('on', !!t); } };
+  window.yzBizRegGet = function () {
+    try {
+      if (window._hbForceGuest || localStorage.getItem('hb_memberId') || sessionStorage.getItem('yz_biz_reg_skip')) return null;
+      const r = JSON.parse(localStorage.getItem('yz_biz_reg') || 'null');
+      return r && typeof r.bizId === 'string' && typeof r.token === 'string' ? r : null;
+    } catch (e) { return null; }
+  };
+  const forget = () => { try { localStorage.removeItem('yz_biz_reg'); } catch (e) {} };
+  const reqMissing = (m) => !!(m && (m.cover || m.proof));
+  window.yzBizShow = function (state, r) {
+    const box = $('bizPendingBlock');
+    if (!box) return;
+    const on = !!state;
+    box.style.display = on ? 'block' : 'none';
+    // מה שמסתירים – בדיוק כמו yzRegShow (§612). כרטיס האוהד, אם מוצג, מנהל אותם בעצמו.
+    const fanOn = $('pendingRegBlock') && $('pendingRegBlock').style.display === 'block';
+    if (!fanOn) {
+      $('guestRegBlock').style.display = on ? 'none' : 'block';
+      $('headerActions').style.display = on ? 'none' : 'flex';
+      $('previewFadeCtasGuest').style.display = on ? 'none' : 'flex';
+    }
+    if (!on) return;
+    box.dataset.state = state;
+    const first = (r && r.ownerFirst) || '', name = (r && r.name) || 'העסק';
+    const hi = first ? 'היי ' + first + ', ' : '';
+    const T = {
+      missing:  ['חסרות תמונות', hi + 'העסק שלך אצלנו', '"' + name + '" ממתין לאישור – אבל התמונות לא עלו בזמן ההרשמה (כנראה החיבור נפל לרגע). ' + (missing && missing.cover ? 'בלי תמונה ראשית לא נוכל לאשר את העסק.' : 'בלי צילום האימות לא נוכל לאשר את העסק.')],
+      pending:  ['ממתין לאישור', hi + 'העסק שלך אצלנו', '"' + name + '" בבדיקה. אין צורך לעשות כלום – כשנאשר, פשוט פותחים את האפליקציה ונכנסים.'],
+      sent:     ['ממתין לאישור', 'קיבלנו את התמונות – תודה!', 'הכול אצלנו, ו-"' + name + '" בבדיקה. כשנאשר – פשוט פותחים את האפליקציה ונכנסים.'],
+      rejected: ['לא אושר', hi + 'לא הצלחנו לאשר את העסק', 'כתבו לנו ונבדוק יחד.'],
+    }[state] || [];
+    $('bpBadge').textContent = T[0] || '';
+    $('bpTitle').textContent = T[1] || '';
+    $('bpText').textContent = T[2] || '';
+    $('bpNotMe').textContent = first ? 'לא ' + first + '? ' : '';
+    if (state === 'missing') renderSlots();
+  };
+  function renderSlots() {
+    const box = $('bpSlots');
+    if (!box || !missing) return;
+    // לא לצייר מחדש באמצע בחירה (חזרה מבורר התמונות מפעילה visibilitychange → בדיקה חוזרת)
+    const want = Object.keys(SLOTS).filter((k) => missing[k]).join(',');
+    if (box.dataset.keys === want) return;
+    box.dataset.keys = want;
+    box.innerHTML = '';
+    Object.keys(SLOTS).filter((k) => missing[k]).forEach((k) => {
+      const s = SLOTS[k];
+      const el = document.createElement('div');
+      el.className = 'bp-slot' + (s.req ? ' req' : '');
+      el.innerHTML = '<div class="bp-n"></div><div class="bp-h"></div><input type="file" accept="image/*">';
+      el.querySelector('.bp-n').textContent = s.n;
+      el.querySelector('.bp-n').insertAdjacentHTML('beforeend', '<span class="bp-tag">' + (s.req ? 'חובה' : 'רשות') + '</span>');
+      el.querySelector('.bp-h').textContent = s.h;
+      const inp = el.querySelector('input');
+      inp.id = 'bpF_' + k;
+      if (s.multi) inp.multiple = true;
+      inp.addEventListener('change', () => { el.classList.toggle('ok', !!inp.files.length); msg(''); });
+      box.appendChild(el);
+    });
+  }
+  // דחיסה ל-JPEG. תמונה שהדפדפן לא מצליח לפענח (HEIC באנדרואיד) – נשלחת כמו שהיא.
+  function shrink(file, max, q) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob((b) => resolve(b && b.size > 1000 ? new File([b], 'photo.jpg', { type: 'image/jpeg' }) : file), 'image/jpeg', q);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
+  window.yzBizCheck = async function () {
+    const r = window.yzBizRegGet();
+    // ⚠️ בלי `busy` כאן: yzBizUpload קורא לבדיקה בסוף ההעלאה, כשהוא עוד busy (נתפס בבדיקה)
+    if (!r || checking || typeof window.hbApiFetch !== 'function') return;
+    checking = true;
+    try {
+      let data = null;
+      try {
+        const res = await window.hbApiFetch('/biz-reg-status', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bizId: r.bizId, token: r.token }) });
+        data = await res.json().catch(() => null);
+      } catch (e) { console.warn('biz-reg-status failed:', e); }
+      if (!data) return;
+      if (data.error === 'invalid' || data.status === 'gone' || data.status === 'approved') {
+        forget(); window.yzBizShow(null);
+        window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: data.status || data.error });
+        return;
+      }
+      if (data.error) return;
+      const rr = { ...r, name: data.name || r.name, ownerFirst: data.ownerFirst || r.ownerFirst };
+      if (data.status === 'rejected') { try { localStorage.setItem('yz_biz_reg', JSON.stringify({ ...rr, last: 'rejected' })); } catch (e) {} window.yzBizShow('rejected', rr); return; }
+      missing = data.missing || {};
+      const state = reqMissing(missing) ? 'missing' : (r.last === 'sent' ? 'sent' : 'pending');
+      try { localStorage.setItem('yz_biz_reg', JSON.stringify({ ...rr, last: state })); } catch (e) {}
+      window.yzBizShow(state, rr);
+      if (state === 'missing') window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: 'missing' });
+    } finally { checking = false; }
+  };
+  window.yzBizUpload = async function () {
+    if (busy) return;
+    const r = window.yzBizRegGet();
+    if (!r || !missing || typeof window.hbApiFetch !== 'function') { msg('משהו השתבש. סגרו ופתחו את האפליקציה ונסו שוב.'); return; }
+    const files = (k) => { const i = $('bpF_' + k); return i ? [...i.files] : []; };
+    for (const k of Object.keys(SLOTS)) {
+      if (missing[k] && SLOTS[k].req && !files(k).length) { msg('נא לבחור: ' + SLOTS[k].n + '.'); return; }
+    }
+    msg('');
+    busy = true;
+    const btn = $('bpSend');
+    btn.disabled = true; btn.textContent = 'מעלים את התמונות…';
+    window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: 'upload' });
+    try {
+      const fd = new FormData();
+      fd.append('accessToken', r.token);
+      fd.append('bizId', r.bizId);
+      const cover = files('cover')[0];
+      if (missing.cover && cover) {
+        // ⚠️ תמונה ראשית + ממוזערת יחד (הוורקר דורש את שתיהן, §317)
+        const [main, thumb] = await Promise.all([shrink(cover, 1600, 0.82), shrink(cover, 640, 0.8)]);
+        fd.append('cover', main, 'cover.jpg'); fd.append('coverThumb', thumb, 'cover_thumb.jpg');
+      }
+      const proof = files('proof')[0];
+      if (missing.proof && proof) fd.append('fanPhoto', await shrink(proof, 1600, 0.82), 'proof.jpg');
+      const logo = files('logo')[0];
+      // לוגו: מקור (שומר שקיפות של PNG), רק קובץ כבד נדחס
+      if (missing.logo && logo) fd.append('logo', logo.size > 2e6 ? await shrink(logo, 1024, 0.9) : logo, logo.name || 'logo');
+      const gal = missing.gallery ? files('gallery').slice(0, 5) : [];
+      for (let i = 0; i < gal.length; i++) { fd.append('gallery', await shrink(gal[i], 1280, 0.82), 'g' + i + '.jpg'); fd.append('galleryIndex', String(i)); }
+      const res = await window.hbApiFetch('/upload-biz-media', { method: 'POST', body: fd,
+        signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(90000) : undefined });
+      const j = await res.json().catch(() => ({}));
+      if (!j.ok) throw new Error('upload:' + (j.error || (Array.isArray(j.failed) ? j.failed.join('+') : res.status)));
+      try { localStorage.setItem('yz_biz_reg', JSON.stringify({ ...r, last: 'sent' })); } catch (e) {}
+      $('bpSlots').dataset.keys = '';
+      window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: 'uploadOk' });
+      await window.yzBizCheck();
+    } catch (e) {
+      console.warn('biz media upload failed:', e);
+      msg('התמונות לא עלו. בדקו את החיבור (עדיף Wi-Fi) ונסו שוב.');
+      window.logEvent && window.logEvent('formError', { blockId: 'bizPending', channel: String(e && (e.name === 'Error' ? e.message : e.name) || 'err').slice(0, 50) });
+    } finally {
+      busy = false; btn.disabled = false; btn.textContent = 'שליחת התמונות';
+    }
+  };
+  window.yzBizRegSkip = function () {
+    try { sessionStorage.setItem('yz_biz_reg_skip', '1'); } catch (e) {}
+    window.yzBizShow(null);
+    window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: 'skip' });
+  };
+  // התצוגה הראשונית מהמכשיר (בלי לחכות לשרת), כדי שמסך הכניסה לא יבליח לפני הכרטיס
+  const r0 = window.yzBizRegGet();
+  if (r0 && !window.yzRegGet()) window.yzBizShow(r0.last === 'sent' || r0.last === 'rejected' ? r0.last : 'pending', r0);
+  // הרשמת העסק רצה בתוך iframe (joinFrame) – כשהיא כותבת את yz_biz_reg, הדף הזה מקבל storage event
+  window.addEventListener('storage', (e) => { if (e.key === 'yz_biz_reg') window.yzBizCheck(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') window.yzBizCheck(); });
+  // hbApiFetch מוגדר מעט אחרי הסקריפט הזה – הבדיקה הראשונה רצה כשהדף נטען
+  window.addEventListener('load', () => window.yzBizCheck());
 })();
 </script>
 

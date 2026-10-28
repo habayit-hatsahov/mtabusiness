@@ -1177,6 +1177,8 @@ window.closeApproveModal = function() {
 document.getElementById('confirmApproveBtn').addEventListener('click', async () => {
   const m = members.find(x => x.id === approvingId);
   if (!m) return;
+  // §661 — בעל עסק מאושר רק דרך העסק שלו (מרכז הניהול, כרטיס העסק). הדף הזה לא טוען עסקים.
+  if (m.isBusinessOwner) { alert('בעל עסק מאושר רק דרך כרטיס העסק שלו במרכז הניהול.'); return; }
   const memberNumber = m.memberNumber || await allocateMemberNumber();
   const loginCode = m.loginCode || await generateLoginCode();
   await saveLoginCode(approvingId, loginCode);   // §248
@@ -1412,7 +1414,8 @@ window.toggleSelect = function(id, cb) {
 window.bulkApprove = async function() {
   const ids = [...selectedIds];
   if (!ids.length) return;
-  const pending = ids.filter(id => members.find(m => m.id === id)?.status === 'pending');
+  // §661 — בעל עסק לא נכנס לאישור גורף: מאושר רק דרך כרטיס העסק שלו
+  const pending = ids.filter(id => { const m = members.find(x => x.id === id); return m?.status === 'pending' && !m.isBusinessOwner; });
   if (!pending.length) { showToast('אין ממתינים בבחירה'); return; }
   if (!confirm(`לאשר ${pending.length} חברים?`)) return;
   for (const id of pending) {

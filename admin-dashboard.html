@@ -16,7 +16,7 @@
 <script src="phone-check.js"></script>
 <script src="hours.js"></script>
 <script src="social-links.js"></script>
-<script src="sections-policy.js?v=594b"></script>
+<script src="sections-policy.js?v=662"></script>
 <style>
 :root {
   /* שלב 8, §18+נספח במפרט — פלטת המותג (כחול+צהוב), מחליפה את הניטרלי הקודם.
@@ -7826,6 +7826,10 @@ function fanCounts() {
     activeBiz,                                                 // עסקים מאושרים (ישויות, לא אנשים)
     ownerGap,                                                  // עסק מאושר בלי בעלים מאושר
     hiddenPendingOwners: fans.filter(ownerMemberOfPendingBiz).length,   // §427
+    // §661 — "אוהדים" בלי בעלי עסק; בעלי העסק נספרים בנפרד (החלטת רמי). `approved` נשאר הכולל
+    // (חברי מועדון – נמענים במרכז ההודעות ובנתוני הפלטפורמה).
+    approvedOwners: approvedList.filter(isBizOwnerFan).length,
+    approvedFans: approvedList.filter(f => !isBizOwnerFan(f)).length,
     newThisWeek: fans.filter(f => f.registeredAt && f.registeredAt.getTime() >= weekAgo).length,
     // ⚠️ המכנה הוא **כל** הרשומות ולא המאושרים — כך זה חושב מאז ומעולם, ושינוי כאן היה
     // מזיז מספר שהמשתמש לא ביקש לגעת בו. נשמר כפי שהוא, ומתועד כדי שלא ייקרא בטעות
@@ -7871,7 +7875,8 @@ window.setFanVisitBucket = function(v) { fanVisitBucket = v; renderMain(); };
 function fanEntryStats() {
   // §429 — אותה רשימה בדיוק שממנה `fanCounts()` גוזר את `approved`. הפילטר נשאר כאן כי
   // הפונקציה צריכה את **הרשומות** ולא רק את המספר, אבל ההגדרה זהה מילה במילה — וזו הנקודה.
-  const approved = (MOCK_FANS || []).filter(f => f.status === 'approved');
+  // §661 — בלי בעלי עסק: "אושרו ולא נכנסו" מוביל לרשימת האוהדים, ושם הם לא מופיעים.
+  const approved = fanCardList().filter(f => f.status === 'approved');
   const never = approved.filter(f => !f.lastSeenAt);
   const clean = approved.filter(f => f.approvedAt && f.approvedAt >= HB_SEEN_SINCE);
   const cleanNever = clean.filter(f => !f.lastSeenAt);
@@ -7920,7 +7925,7 @@ const FAN_EMAIL_BUCKETS = {
 };
 
 function fanEntryBreakdown() {
-  const never = (MOCK_FANS || []).filter(f => f.status === 'approved' && !f.lastSeenAt);
+  const never = fanCardList().filter(f => f.status === 'approved' && !f.lastSeenAt);   // §661
   const out = { never: never.length, opened: 0, deliveredNotOpened: 0, sentNoData: 0, notSent: 0 };
   for (const f of never) out[fanEmailBucketOf(f)]++;
   return out;
@@ -8150,7 +8155,7 @@ function platformStatsHtml() {
           '🔑 <b>בעל עסק הוא אוהד, לא ישות מקבילה.</b> אישור עסק כותב <code>status:\'approved\'</code> על רשומת החבר של הבעלים, ולכן הוא כבר בפנים – אין מה לחבר, וחיבור של "אוהדים + עסקים" הוא ספירה כפולה. ⚠️ <b>שני המספרים בפירוק סופרים אנשים</b>: מי שמחזיק שני עסקים מאושרים נספר כאן פעם אחת, ולכן הם לא יסתכמו למספר העסקים.' +
           (c.ownerGap ? ` <br>⚠️ <b>${c.ownerGap} עסקים מאושרים אינם נספרים כאן בכלל</b> – אין קישור לרשומת חבר, או שרשומת החבר אינה מאושרת. ר' "מוכנות לכניסה כחבר" למטה.` : ''))}
         ${platRow('אושרו ולא נכנסו מעולם', fe.never.toLocaleString('he-IL'),
-          `${pct}% מתוך ${fe.approved.toLocaleString('he-IL')} מאושרים`,
+          `${pct}% מתוך ${fe.approved.toLocaleString('he-IL')} אוהדים מאושרים (בלי בעלי עסק)`,
           '⚠️ <b>גבול עליון.</b> הנתון (lastSeenAt) נכתב רק מ-2.8.26, ולכן אוהד שנכנס לפני כן ולא חזר מאז נספר כאן בטעות. השורה מתחת מסננת את זה.')}
         ${platRow('מתוכם – אושרו מ-2.8.26 ואילך', fe.cleanNever.toLocaleString('he-IL'),
           `מתוך ${fe.clean.toLocaleString('he-IL')} שאושרו מאז`,
@@ -9876,6 +9881,7 @@ function bizFullDetailHtml(id, opts) {
     ${kosherRowHtml(b)}
     ${identityCardHtml}
     ${anchorCardHtml}
+    ${ownerMemberCardHtml(b)}
     ${ownerVerifStepHtml}
     ${stepsCardHtml}`;
   return `
@@ -11014,7 +11020,7 @@ window.bulkSetBizStatus = async function(status) {
       await Promise.all(ids.map(id => {
         const b = bizById(id);
         if (!b || b.status !== 'pending') return Promise.resolve();
-        return updateDoc(doc(db, 'businesses', id), { status: 'rejected', rejectedAt: serverTimestamp() });
+        return setBizStatusWithOwner(b, { status: 'rejected', rejectedAt: serverTimestamp() }, 'rejected');   // §661
       }));
     }
   } catch (e) { console.error(e); alert('שגיאה בפעולה גורפת: ' + e.message); }
@@ -11236,42 +11242,50 @@ window.clearFanFilters = function() {
 // של בעל העסק."* — וזה מדויק: `ownerVerifStepHtml` בכרטיס העסק מציג את כל מה שהיה
 // נבדק כאן, כלומר שום ביקורת לא אובדת.
 //
-// ⚠️ **התנאי דורש שהעסק המקושר קיים ו-`pending` בעצמו, ולא רק `isBusinessOwner`.**
-// עסק שנדחה/נמחק, או רשומה שנשארה ממתינה בזמן שהעסק כבר אושר (כשל של ה-batch), הם
-// חריגות אמיתיות שחייבות להישאר גלויות. הסתרה לפי הדגל לבדו הייתה מעלימה בשקט בדיוק
-// את המקרים שצריך לראות ([[feedback_guard_that_always_holds]]).
-// ⚠️ ומי שכן רוצה לראות אותם — הפילטר "בעלי עסק" מציג אותם תמיד (ר' fanFilteredList),
-// והמספר נאמר במפורש בכותרת הרשימה. הסתרה שקטה היא לא ניקוי.
+// ══ §661 — בעל עסק = כרטיס אחד (כרטיס העסק), בכל סטטוס ═══════════════════════════════════
+// רמי (28.10): *"מבחינתי שלא יהיה להם בכלל כרטיס אוהד… יהיה להם רק כרטיס העסק שמייצג גם אותו
+// כאוהד."* §427 הסתיר רק בעלים ממתין שהעסק שלו ממתין; עסק שנדחה (Aviv Musa) או שאושר החזיר
+// את הבעלים לרשימת האוהדים, ושם הוא אושר בנפרד מהעסק (§648 – 22 מתוך 24 בסקריפט שעקף את המסך).
+// עכשיו: כל מי שיש לו עסק קיים יורד מרשימות האוהדים, מהמשימות ומהספירות; חיפוש מחזיר שורה
+// שפותחת את כרטיס העסק; ההחלטה על העסק חלה עליו (bizOwnerCascade); approveFan מסרב (ownerApproveBlock).
+// ⚠️ חריגות (העסק מאושר והבעלים לא, וכו') לא נעלמות: הן מוצגות בכרטיס "בעל העסק כחבר מועדון"
+// עם כפתור יישור (ownerMismatchHtml) – [[feedback_guard_that_always_holds]].
+// בעל עסק שהעסק שלו נמחק – אין לו כרטיס עסק, ולכן הוא חוזר להיות אוהד רגיל (החלטת רמי).
+function ownerBizOf(f) {
+  if (!f) return null;
+  return (MOCK_BUSINESSES || []).find(x =>
+    x.ownerMemberId === f.id || (f.linkedBusinessId && x.id === f.linkedBusinessId)) || null;
+}
+const isBizOwnerFan = f => !!f && !!ownerBizOf(f);
+// נשאר בשם הישן – עדיין נקרא מ-fanCounts/quickJudgmentHtml
 function ownerMemberOfPendingBiz(f) {
-  if (!f || f.status !== 'pending' || !f.isBusinessOwner) return false;
-  const b = (MOCK_BUSINESSES || []).find(x =>
-    x.ownerMemberId === f.id || (f.linkedBusinessId && x.id === f.linkedBusinessId));
+  const b = f && f.status === 'pending' ? ownerBizOf(f) : null;
   return !!b && b.status === 'pending';
 }
-const fanPendingList = () => MOCK_FANS.filter(f => f.status === 'pending' && !ownerMemberOfPendingBiz(f));
-const fanHiddenOwnerCount = () => MOCK_FANS.filter(ownerMemberOfPendingBiz).length;
+const fanCardList = () => MOCK_FANS.filter(f => !isBizOwnerFan(f));
+const fanPendingList = () => fanCardList().filter(f => f.status === 'pending');
+const fanHiddenOwnerCount = () => MOCK_FANS.filter(isBizOwnerFan).length;
 
 function fanClassCounts() {
+  const fans = fanCardList();   // §661 — בלי בעלי עסק, כמו הרשימה עצמה
   return {
-    all: MOCK_FANS.length,
+    all: fans.length,
     pending: fanPendingList().length,
-    inReview: MOCK_FANS.filter(isInReview).length,   // §637ב
-    unverified: MOCK_FANS.filter(f => !f.adminVerified).length,
+    inReview: fans.filter(isInReview).length,   // §637ב
+    unverified: fans.filter(f => !f.adminVerified).length,
     // §390 — הרשימה שהמנהל ביקש: מי שאושר ומעולם לא נכנס, כדי לפנות אליהם שוב.
-    neverEntered: MOCK_FANS.filter(f => f.status === 'approved' && !f.lastSeenAt).length,
+    neverEntered: fans.filter(f => f.status === 'approved' && !f.lastSeenAt).length,
     legacyRejected: legacyRejectedFans().length,   // §628ג
-    rejected: MOCK_FANS.filter(f => f.status === 'rejected').length,   // §647ג
+    rejected: fans.filter(f => f.status === 'rejected').length,   // §647ג
   };
 }
 function fanFilteredList() {
   const q = fanSearch.trim();
   const now = Date.now();
   // §636 — רמי: "במקום כפתור – לחפש בכל האוהדים". כשמקלידים בחיפוש, הוא רץ על כל האוהדים
-  // (כולל בעל עסק שממתין עם העסק, §427) והפילים/הסינונים מושהים – מי שמחפש שם מחפש אדם מסוים.
-  const list = q ? MOCK_FANS.filter(f => matchesSearch(q, [f.name, f.email, f.memberNumber], [f.phone])) : MOCK_FANS.filter(f => {
-    // §427 — בעל עסק שממתין יחד עם העסק שלו יורד מהרשימה, **חוץ מכשמסננים במפורש
-    // "בעלי עסק"** — שם הוא בדיוק מה שחיפשו. ר' ההערה על ownerMemberOfPendingBiz.
-    if (fanVerifyTypeFilter !== 'owner' && ownerMemberOfPendingBiz(f)) return false;
+  // והפילים/הסינונים מושהים – מי שמחפש שם מחפש אדם מסוים. §661 — בעל עסק נשאר בתוצאות החיפוש
+  // (אחרת "לא נמצא" היה שקר), אבל כשורה שפותחת את כרטיס העסק (fanRowsHtml), לא ככרטיס אוהד.
+  const list = q ? MOCK_FANS.filter(f => matchesSearch(q, [f.name, f.email, f.memberNumber], [f.phone])) : fanCardList().filter(f => {
     const matchF = fanStatusFilter === 'all' ? true : f.status === fanStatusFilter;
     const matchClass = fanClassPill === 'all' ? true
       : fanClassPill === 'pending' ? f.status === 'pending'
@@ -11345,6 +11359,14 @@ function fanRowsHtml() {
   const shown = fanFilteredList();
   if (!shown.length) return fanEmptySearchHtml();
   return fanSearchAllNoteHtml() + shown.map(f => {
+    // §661 — בעל עסק מופיע רק בחיפוש, ורק כשורה שפותחת את כרטיס העסק. בלי תיבת-בחירה: אסור
+    // שייכנס לאישור/דחייה גורפים של אוהדים.
+    const ob = ownerBizOf(f);
+    if (ob) return `
+      <div class="task-row ${ob.status}" style="background:#FFF8DB" onclick="openBizFromFan('${esc(ob.id)}')">
+        <div class="task-row-top"><div class="task-row-name">${esc(f.name)} · 🏪 בעל עסק</div></div>
+        <div class="task-row-meta">${esc(ob.name || '')} · נפתח בכרטיס העסק ←</div>
+      </div>`;
     // אותו עיקרון כמו bizRowsHtml — classifyAction() כמקור-אמת יחיד, status==='rejected' כחריג מקומי.
     const cls = classifyAction(f, 'fan');
     const primaryLabel = f.status === 'rejected' ? '✗ נדחה' : cls.primary;
@@ -11386,6 +11408,7 @@ function fanRowWaBtnHtml(f) {
 }
 
 window.selectFanDetail = function(id) {
+  { const ob = ownerBizOf(findFan(id)); if (ob) return openBizFromFan(ob.id); }   // §661
   selectedFanDetailId = id;
   fanMobileShowDetail = true;
   const lr = document.getElementById('fanListRows');
@@ -11478,6 +11501,8 @@ function fanPrevRejected(f) {
 function fanFullDetailHtml(id, opts) {
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return `<div class="placeholder-note">אוהד לא נמצא</div>`;
+  // §661 — רשת ביטחון: כל נתיב שעוד מגיע לכאן עם בעל עסק (בחירה שנשארה, קישור ישן) מקבל הפניה, לא כרטיס אוהד
+  { const ob = ownerBizOf(f); if (ob) return `<div class="placeholder-note">${esc(f.name)} הוא בעל עסק – אין לו כרטיס אוהד. כל מה שקשור אליו (גם כחבר מועדון) נמצא בכרטיס העסק.<br><button class="act-btn approve" style="margin-top:10px" onclick="openBizFromFan('${esc(ob.id)}')">🏪 לכרטיס של ${esc(ob.name || 'העסק')}</button></div>`; }
   const o = Object.assign({ backFn: 'fanBackToList' }, opts || {});
   const linkedBiz = f.isBusinessOwner ? (findBiz(f.linkedBusinessId) || MOCK_BUSINESSES.find(b => b.ownerMemberId === f.id)) : null;
   // מחיקה עברה ל"החלטות ויומן" (fanDecisionPanelHtml, "מחיקת האוהד") — אותו עיקרון כמו bizDecisionPanelHtml.
@@ -11666,18 +11691,7 @@ function fanFullDetailHtml(id, opts) {
   // היעד בפועל, כדי שכתובת שגויה תיתפס בעין — "נשלח" לבדו לא אומר שהמייל הגיע לאן שצריך.
   // כפתור "שליחה חוזרת" זמין תמיד כשיש כתובת — לא רק כשהמערכת זיהתה תקלה. ר' ההערה המקבילה
   // ב-bizFullDetailHtml (§206).
-  const idEmailResendBtn = (f.status === 'approved' && f.loginCode && f.email)
-    ? `<button type="button" class="act-btn approve tiny" style="margin-top:8px" onclick="event.stopPropagation();requeueFanEmail('${f.id}')">שליחה חוזרת</button>`
-    : '';
-  const idEmailNote = (f.status === 'approved' && f.loginCode)
-    ? `<div class="identity-note ${(f.loginCodeEmailStatus === 'failed' || mailDeliveryFailed(f.loginCodeEmailDelivery)) ? 'warn' : 'neutral'}"><div class="identity-note-h">מייל קוד כניסה</div><div class="identity-note-v">${
-        f.loginCodeEmailStatus === 'sent'
-          ? `✅ נשלח${f.loginCodeEmailSentAt ? ' · ' + fmtDateTime(f.loginCodeEmailSentAt) : ''}<br>אל ${esc(f.email || '–')}${mailDeliveryLineHtml({ status: f.loginCodeEmailDelivery, at: f.loginCodeEmailDeliveryAt, reason: f.loginCodeEmailDeliveryReason, openedAt: f.loginCodeEmailOpenedAt, clickedAt: f.loginCodeEmailClickedAt, sentAt: f.loginCodeEmailSentAt })}`
-          : f.loginCodeEmailStatus === 'failed'
-            ? `❌ שליחה נכשלה<br>אל ${esc(f.email || '–')}${f.loginCodeEmailError ? `<br>${esc(String(f.loginCodeEmailError).slice(0, 200))}` : ''}`
-            : `⏳ ממתין לשליחה – יוצא אוטומטית תוך דקה מהאישור${f.email ? `<br>אל ${esc(f.email)}` : ''}`
-      }${idEmailResendBtn}</div></div>`
-    : '';
+  const idEmailNote = fanLoginEmailNoteHtml(f);   // §661 — משותף עם כרטיס "בעל העסק כחבר מועדון"
   const idBroadcastNote = broadcastNoteHtml(f);   // §415
   const identityCardHtml = `
     <div class="dcard identity-card">
@@ -12079,6 +12093,7 @@ window.bulkSetFanStatus = async function(status) {
       for (const id of ids) {
         const f = MOCK_FANS.find(x => x.id === id);
         if (!f || f.status !== 'pending') continue;
+        if (ownerApproveBlock(f)) continue;   // §661 — בעל עסק רק דרך העסק
         const memberNumber = await allocateMemberNumber();
         const loginCode = await generateLoginCode();
         await saveLoginCode(id, loginCode);   // §248 — הקוד לאוסף הנפרד, לא על מסמך החבר
@@ -12156,7 +12171,7 @@ const LEGACY_REJECT_SINCE = new Date(2026, 9, 26);
 function isLegacyRejected(f) {
   return f.status === 'rejected' && !f.rejectKind && !f.rejectEmailStatus && !!f.rejectedAt && f.rejectedAt >= LEGACY_REJECT_SINCE;
 }
-function legacyRejectedFans() { return MOCK_FANS.filter(isLegacyRejected); }
+function legacyRejectedFans() { return fanCardList().filter(isLegacyRejected); }   // §661
 // §628ג — רמי: "ברשימה שאני יוכל לראות את הכרטיס של האוהד ולבחון אותו שוב" – הבאנר פותח את
 // "כל האוהדים" מסונן לנדחים האלה; בכל כרטיס, בשיפוט המהיר, שני כפתורים להחלטה.
 window.openLegacyRejectList = function() {
@@ -12368,10 +12383,10 @@ function fanListHtml() {
       <div style="flex:1;min-width:230px">
         <div class="msg-crumb"><a onclick="selectTab('${HOME_KEY}')">← מרכז המשימות</a><span>/</span><span>כל האוהדים</span></div>
         <div class="msg-page-title">${pendingCount} אוהדים ממתינים לאישור</div>
-        ${hiddenOwners ? `<div class="msg-crumb" style="margin-top:4px">${hiddenOwners} ${hiddenOwners === 1 ? 'בעל עסק ממתין אינו מוצג כאן' : 'בעלי עסק ממתינים אינם מוצגים כאן'} – הם מאושרים אוטומטית עם העסק, והבדיקה נעשית מכרטיס העסק. <a onclick="setFanVerifyTypeFilter('owner')">להצגתם</a></div>` : ''}
+        ${hiddenOwners ? `<div class="msg-crumb" style="margin-top:4px">${hiddenOwners} בעלי עסק אינם ברשימה הזאת – כל אחד מהם בכרטיס העסק שלו (גם כחבר מועדון). חיפוש בשם מוביל לשם.</div>` : ''}
       </div>
       <div class="msg-kpis">
-        <div title="מאושרים בלבד, מתוך ${c.total} רשומות בסך הכול. המספר כולל את בעלי העסק – בעל עסק הוא אוהד בפלטפורמה, לא ישות נפרדת."><div class="msg-kpi-num">${c.approved}</div><div class="msg-kpi-label">אוהדים מאושרים · <span style="color:var(--text-sm);font-weight:600">${c.ownerOfActiveBiz} בעלי עסק פעיל</span></div></div>
+        <div title="§661 — אוהדים מאושרים בלי בעלי עסק (${c.approvedOwners} בעלי עסק מאושרים נספרים בנפרד). ${c.total} רשומות בסך הכול."><div class="msg-kpi-num">${c.approvedFans}</div><div class="msg-kpi-label">אוהדים מאושרים · <span style="color:var(--text-sm);font-weight:600">+ ${c.approvedOwners} בעלי עסק</span></div></div>
         <div class="msg-kpi-sep"></div>
         <div title="מתוך כלל הרשומות (${c.total}), לא מתוך המאושרים."><div class="msg-kpi-num">${c.subscriberPct}<span class="msg-kpi-unit">%</span></div><div class="msg-kpi-label">מנויים מאומתים</div></div>
         <div class="msg-kpi-sep"></div>
@@ -12552,9 +12567,9 @@ function homeStatsHtml() {
         <div class="msg-kpi-sep"></div>
         <div><div class="msg-kpi-num">${c.activeBiz}<span style="font-size:13px;font-weight:500;color:var(--text-sm)">/${MOCK_BUSINESSES.length}</span></div><div class="msg-kpi-label">עסקים פעילים מתוך רשומים</div></div>
         <div class="msg-kpi-sep"></div>
-        <div title="מאושרים מתוך כלל הרשומות (כולל ממתינים ונדחים). המספר כולל את בעלי העסק – בעל עסק הוא אוהד בפלטפורמה, לא ישות נפרדת."><div class="msg-kpi-num">${c.approved}<span style="font-size:13px;font-weight:500;color:var(--text-sm)">/${c.total}</span></div><div class="msg-kpi-label">אוהדים מאושרים מתוך רשומים · <span style="color:var(--accent);font-weight:700">+${c.newThisWeek} השבוע</span></div></div>
+        <div title="§661 — אוהדים מאושרים מתוך רשומות האוהדים (כולל ממתינים ונדחים), בלי בעלי עסק – הם נספרים בקובייה שלצד."><div class="msg-kpi-num">${c.approvedFans}<span style="font-size:13px;font-weight:500;color:var(--text-sm)">/${fanCardList().length}</span></div><div class="msg-kpi-label">אוהדים מאושרים מתוך רשומים · <span style="color:var(--accent);font-weight:700">+${c.newThisWeek} השבוע</span></div></div>
         <div class="msg-kpi-sep"></div>
-        <div title="כמה מתוך האוהדים המאושרים מחזיקים עסק מאושר. נספרים אנשים ולא עסקים – מי שמחזיק שני עסקים מאושרים נספר פעם אחת, ולכן המספר יכול להיות קטן ממספר העסקים הפעילים."><div class="msg-kpi-num">${c.ownerOfActiveBiz}</div><div class="msg-kpi-label">מתוכם בעלי עסק פעיל${c.plainFans ? ` · <span style="color:var(--text-sm);font-weight:600">${c.plainFans} אוהדים בלבד</span>` : ''}</div></div>
+        <div title="§661 — בעלי עסק מאושרים כחברי מועדון. כל אחד מהם מנוהל מכרטיס העסק שלו ואינו נספר באוהדים."><div class="msg-kpi-num">${c.approvedOwners}</div><div class="msg-kpi-label">בעלי עסק מאושרים${c.ownerOfActiveBiz !== c.approvedOwners ? ` · <span style="color:var(--text-sm);font-weight:600">${c.ownerOfActiveBiz} עם עסק פעיל</span>` : ''}</div></div>
       </div>
     </div>
     ${c.ownerGap ? `<div class="placeholder-note" style="margin:-4px 0 12px">⚠️ <b>${c.ownerGap} ${c.ownerGap === 1 ? 'עסק מאושר אינו נספר' : 'עסקים מאושרים אינם נספרים'} ב"אוהדים מאושרים"</b> – אין לו קישור לרשומת חבר, או שרשומת החבר של הבעלים עדיין אינה מאושרת. זה אדם שקיים בפלטפורמה ונופל בין הכיסאות. הפירוט המלא ב<a onclick="selectTab('${DATA_KEY}')">מרכז הנתונים</a>, בשורת "בעלי עסק – מוכנות לכניסה כחבר".</div>` : ''}`;
@@ -12670,7 +12685,7 @@ function unifiedTaskItems() {
   // על רשומה שסטטוסה pending — שקר על המסך. כאן יורדת רק **המשימה**, בזמן שהכרטיס
   // ממשיך לומר את האמת. ר' ההערה על ownerMemberOfPendingBiz.
   const fan = MOCK_FANS.map(f => ({ kind:'fan', id:f.id, entity:f, c: classifyAction(f, 'fan') }))
-    .filter(x => x.c.primary !== 'מאושר · אין פעולה' && !ownerMemberOfPendingBiz(x.entity));
+    .filter(x => x.c.primary !== 'מאושר · אין פעולה' && !isBizOwnerFan(x.entity));   // §661 — בכל סטטוס
   return [...biz, ...fan];
 }
 // §656 — רמי: "נתתי לו אופציה לשנות ואני מחכה לזה – חשוב לי לקבל התראה ושזה יסומן לי בבקשות מבעלי
@@ -13553,6 +13568,7 @@ const SOON_TITLE = 'בקרוב – טרם נבנה בדמו';
 
 // ניווט-החוצה ל"כל האוהדים" — משמש רק ממקומות מחוץ למרכז המשימות (כרגע לא בשימוש פעיל, נשמר לעתיד)
 window.openFanFullCard = function(id) {
+  { const ob = ownerBizOf(findFan(id)); if (ob) return openBizFromFan(ob.id); }   // §661 — כרטיס אחד: העסק
   fanStatusFilter = 'all'; fanSearch = ''; fanSort = 'newest';
   selectedFanDetailId = id;
   selectTab(ALL_FANS_KEY);
@@ -13631,6 +13647,121 @@ async function prepareLinkedMemberApproval(b) {
   } catch (e) { console.error('prepareLinkedMemberApproval failed', e); return null; }
 }
 
+// ══ §661 — דחייה/שחזור של עסק חלים גם על בעל העסק (האישור – approveBizWithMemberBatch) ══════
+// רמי: "צריך שזה יהיה אותו מאוחד" (Aviv Musa: העסק נדחה, הבעלים נשאר ממתין בלי שום מייל).
+// 🔑 הכלל: בעל העסק הולך אחרי העסק **כל עוד הוא לא אושר כחבר**. חבר מאושר לא נדחה כאן אוטומטית –
+// הוא אולי היה אוהד מאושר לפני העסק, או אושר באישור הגורף שרמי ביקש לא לבטל (§648). מצב כזה מוצג
+// בכרטיס "בעל העסק כחבר מועדון", וההחלטה עליו ידנית ([[feedback_never_auto_decide_membership]]).
+// דחייה = סופית, בלי "הזדמנות שנייה": טופס התיקון באפליקציה נשען על regTicketHash, שאין לבעלים
+// שנרשמו מטופס העסק. mail:false כשרמי כבר כותב לבעל העסק מהתיבה (bnGo) – לא שני מכתבים.
+function ownerFanOfBiz(b) {
+  return (MOCK_FANS || []).find(f => (b.ownerMemberId && f.id === b.ownerMemberId) || f.linkedBusinessId === b.id) || null;
+}
+function ownerCascadeUpdate(b, to, opts) {
+  const f = ownerFanOfBiz(b);
+  if (!f) return null;
+  if (to === 'rejected' && f.status === 'pending') {
+    const note = 'העסק "' + (b.name || '') + '" נדחה';
+    return { f, ref: doc(db, 'members', f.id), updates: {
+      status: 'rejected', rejectedAt: serverTimestamp(), rejectKind: 'final', retryAllowed: false, retryNote: '',
+      rejectEmailStatus: (opts && opts.mail === false) ? 'skipped' : 'pending',
+      rejectReasons: [], rejectNote: note,
+      rejectHistory: arrayUnion({ at: new Date().toISOString(), kind: 'final', reasons: [], note, by: CURRENT_ADMIN.name || '' }),
+    } };
+  }
+  if (to === 'pending' && f.status === 'rejected') {
+    return { f, ref: doc(db, 'members', f.id), updates: { status: 'pending', rejectedAt: null, retryAllowed: false } };
+  }
+  return null;
+}
+async function setBizStatusWithOwner(b, bizUpdates, to, opts) {
+  const own = ownerCascadeUpdate(b, to, opts);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'businesses', b.id), bizUpdates);
+  if (own) batch.update(own.ref, own.updates);
+  await batch.commit();
+  if (own) logActivity('members', own.f.id, { type: 'status', title: to === 'rejected' ? 'נדחה יחד עם העסק' : 'הוחזר לממתין יחד עם העסק',
+    detail: `"${own.f.name}" – ${b.name || ''}`, field: 'status', before: own.f.status, after: to });
+  return own;
+}
+
+// §661 — הוצא מ-fanFullDetailHtml: גם כרטיס האוהד וגם "בעל העסק כחבר מועדון" מציגים אותו.
+// כפתור "שליחה חוזרת" זמין תמיד כשיש כתובת — לא רק כשהמערכת זיהתה תקלה (§206).
+function fanLoginEmailNoteHtml(f) {
+  if (!(f.status === 'approved' && f.loginCode)) return '';
+  const resend = f.email
+    ? `<button type="button" class="act-btn approve tiny" style="margin-top:8px" onclick="event.stopPropagation();requeueFanEmail('${f.id}')">שליחה חוזרת</button>`
+    : '';
+  return `<div class="identity-note ${(f.loginCodeEmailStatus === 'failed' || mailDeliveryFailed(f.loginCodeEmailDelivery)) ? 'warn' : 'neutral'}"><div class="identity-note-h">מייל קוד כניסה</div><div class="identity-note-v">${
+      f.loginCodeEmailStatus === 'sent'
+        ? `✅ נשלח${f.loginCodeEmailSentAt ? ' · ' + fmtDateTime(f.loginCodeEmailSentAt) : ''}<br>אל ${esc(f.email || '–')}${mailDeliveryLineHtml({ status: f.loginCodeEmailDelivery, at: f.loginCodeEmailDeliveryAt, reason: f.loginCodeEmailDeliveryReason, openedAt: f.loginCodeEmailOpenedAt, clickedAt: f.loginCodeEmailClickedAt, sentAt: f.loginCodeEmailSentAt })}`
+        : f.loginCodeEmailStatus === 'failed'
+          ? `❌ שליחה נכשלה<br>אל ${esc(f.email || '–')}${f.loginCodeEmailError ? `<br>${esc(String(f.loginCodeEmailError).slice(0, 200))}` : ''}`
+          : `⏳ ממתין לשליחה – יוצא אוטומטית תוך דקה מהאישור${f.email ? `<br>אל ${esc(f.email)}` : ''}`
+    }${resend}</div></div>`;
+}
+
+// ══ §661 — "👤 בעל העסק כחבר מועדון" בכרטיס העסק ═══════════════════════════════════════════
+// כל מה שהיה בכרטיס האוהד שלו ואין בכרטיס העסק: סטטוס החבר, מספר חבר, קוד כניסה, ביקורים,
+// Google/Apple, מקור ההרשמה ומייל הקוד. האימות עצמו – בכרטיס "🎫 אימות בעל העסק" שמתחת.
+// 🔑 חריגה (העסק והחבר לא באותו מצב) מוצגת כאן עם כפתור יישור – לא נעלמת עם כרטיס האוהד.
+function ownerMismatch(b, f) {
+  if (b.status === 'approved' && f.status !== 'approved') return { warn: true, to: 'approved', text: 'העסק מאושר, אבל בעל העסק לא מאושר כחבר – הוא לא יכול להיכנס לאפליקציה.', btn: '✅ לאשר אותו כחבר (כמו באישור העסק)' };
+  if (b.status === 'rejected' && f.status === 'pending') return { warn: true, to: 'rejected', text: 'העסק נדחה, ובעל העסק עדיין ממתין כחבר.', btn: '✗ לדחות אותו יחד עם העסק' };
+  if (b.status === 'pending' && f.status === 'rejected') return { warn: true, to: 'pending', text: 'העסק ממתין, ובעל העסק נדחה כחבר.', btn: '↩️ להחזיר אותו לממתין' };
+  if (b.status !== 'approved' && f.status === 'approved') return { warn: false, text: `אושר כחבר לפני העסק${f.approvedAt ? ' · ' + fmtDateTime(f.approvedAt) : ''}. נשאר מאושר גם אם העסק יידחה – החלטה על החברות שלו רק ידנית.` };
+  return null;
+}
+function ownerMemberCardHtml(b) {
+  const f = ownerFanOfBiz(b);
+  if (!f) return `<div class="dcard identity-card"><div class="identity-top"><div style="flex:1"><div class="identity-name" style="font-size:16px">👤 בעל העסק כחבר מועדון</div><div class="identity-dates">אין רשומת חבר מקושרת לעסק – בעל העסק לא יוכל להיכנס לאפליקציה כחבר.</div></div></div></div>`;
+  const stBadge = f.status === 'approved' ? `<span class="class-badge lg neutral">חבר מאושר${f.memberNumber ? ' · #' + esc(String(f.memberNumber)) : ''}</span>`
+    : f.status === 'rejected' ? `<span class="class-badge lg">✗ נדחה${f.rejectedAt ? ' · ' + fmtDate(f.rejectedAt) : ''}</span>`
+    : `<span class="class-badge lg">ממתין יחד עם העסק</span>`;
+  const mm = ownerMismatch(b, f);
+  const mmHtml = mm ? `<div class="identity-note ${mm.warn ? 'warn' : 'neutral'}" style="grid-column:1/-1"><div class="identity-note-h">${mm.warn ? '⚠️ העסק והחבר לא באותו מצב' : 'לידיעה'}</div><div class="identity-note-v">${esc(mm.text)}${mm.to ? `<br><button type="button" class="act-btn approve tiny" style="margin-top:8px" onclick="alignOwnerToBiz('${b.id}')">${esc(mm.btn)}</button>` : ''}</div></div>` : '';
+  const dates = [
+    f.registeredAt ? `נרשם ${fmtDate(f.registeredAt)}` : '',
+    f.status === 'approved' ? fanVisitLine(f) : (f.status === 'pending' ? 'קוד כניסה ייווצר ויישלח באישור העסק' : ''),
+  ].filter(Boolean).join(' · ');
+  const rejNote = f.status === 'rejected' && f.rejectEmailStatus
+    ? `<div class="identity-note neutral"><div class="identity-note-h">מייל דחייה</div><div class="identity-note-v">${f.rejectEmailStatus === 'sent' ? '✅ נשלח' + (f.rejectEmailSentAt ? ' · ' + fmtDateTime(f.rejectEmailSentAt) : '') : f.rejectEmailStatus === 'pending' ? '⏳ יוצא תוך דקה' : f.rejectEmailStatus === 'skipped' ? 'לא נשלח – נכתבה הודעה מהתיבה' : '❌ ' + esc(f.rejectEmailStatus)}</div></div>`
+    : '';
+  return `
+    <div class="dcard identity-card">
+      <div class="identity-top">
+        <div style="flex:1;min-width:220px">
+          <div class="identity-badges">${stBadge}</div>
+          <div class="identity-name" style="font-size:16px">👤 בעל העסק כחבר מועדון · ${esc(f.name)}</div>
+          <div class="identity-contact">${f.phone ? `<span class="k">${esc(f.phone)}</span>` : ''}${f.phone && f.email ? ' · ' : ''}${f.email ? esc(f.email) : ''}${
+            (f.status === 'approved' && f.loginCode) ? ` · קוד כניסה <span class="k">${esc(f.loginCode)}</span>` : ''}</div>
+          <div class="identity-dates">${dates}</div>
+        </div>
+      </div>
+      <div class="identity-notes">${mmHtml}${emailWarnNote(f.email)}${googleLinkNoteHtml(f)}${appleLinkNoteHtml(f)}${signupSourceNoteHtml(f)}${fanLoginEmailNoteHtml(f)}${rejNote}</div>
+    </div>`;
+}
+window.alignOwnerToBiz = async function(bizId) {
+  const b = findBiz(bizId), f = b && ownerFanOfBiz(b), mm = f && ownerMismatch(b, f);
+  if (!mm || !mm.to) return;
+  if (!confirm(`${mm.btn.replace(/^\S+\s/, '')} – ${f.name}?`)) return;
+  try {
+    const batch = writeBatch(db);
+    if (mm.to === 'approved') {
+      const upd = await prepareLinkedMemberApproval(b);
+      if (!upd) throw new Error('לא נמצאה רשומת החבר');
+      batch.update(upd.ref, upd.updates);
+      if (upd.codeDoc) batch.set(upd.codeDoc.ref, upd.codeDoc.data);
+    } else {
+      const own = ownerCascadeUpdate(b, mm.to);
+      if (!own) return;
+      batch.update(own.ref, own.updates);
+    }
+    await batch.commit();
+    logActivity('members', f.id, { type: 'status', title: 'יושר לפי העסק', detail: `"${f.name}" – ${b.name || ''}`, field: 'status', before: f.status, after: mm.to });
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+
 // אישור עסק אחד + החבר שמאחוריו, בכתיבה אטומית אחת. כל הקריאות האיטיות
 // (getDoc/allocateMemberNumber/generateLoginCode) קורות *לפני* ה-batch, כדי שה-commit עצמו
 // יהיה רגע יחיד ולא חלון שסריקת-המיילים יכולה ליפול לתוכו.
@@ -13658,9 +13789,16 @@ async function approveBizWithMemberBatch(b) {
   await batch.commit();
 }
 
+// §661 — 🔴 חסימה בכתיבה, לא רק בתצוגה. §427 הסתיר את בעלי העסק מהרשימה ובכל זאת 22 אושרו
+// בסקריפט שעקף אותה (§648). בעל עסק מאושר רק דרך העסק שלו (approveBizWithMemberBatch).
+function ownerApproveBlock(f) {
+  const b = ownerBizOf(f);
+  return b && b.status !== 'approved' ? b : null;
+}
 window.approveFan = async function(id) {
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return;
+  { const ob = ownerApproveBlock(f); if (ob) { alert(`${f.name} הוא בעל העסק "${ob.name}". הוא מאושר רק יחד עם העסק – מכרטיס העסק.`); return; } }
   if (!confirmSuspectEmail(f.email, `"${f.name}"`)) return;
   try {
     const memberNumber = await allocateMemberNumber();
@@ -14040,7 +14178,7 @@ function fanRejectReasons(f) {
 // ספירה לפי סיבה – כל אוהד נספר פעם אחת לכל סיבה; כמה מהם אושרו בסוף
 function rejectReasonStats() {
   const m = new Map();
-  MOCK_FANS.forEach(f => fanRejectReasons(f).forEach(r => {
+  fanCardList().forEach(f => fanRejectReasons(f).forEach(r => {
     const x = m.get(r) || { label: r, n: 0, approved: 0, rejected: 0 };
     x.n++; if (f.status === 'approved') x.approved++; else if (f.status === 'rejected') x.rejected++;
     m.set(r, x);
@@ -14062,7 +14200,7 @@ function rejectReasonStatsHtml() {
 const REJECT_REASON_NONE = '__none';
 function fanRejectReasonPillsHtml() {
   if (fanClassPill !== 'rejected' && !fanClassPill.startsWith('rr:')) return '';
-  const rej = MOCK_FANS.filter(f => f.status === 'rejected');
+  const rej = fanCardList().filter(f => f.status === 'rejected');
   const m = new Map(); let none = 0;
   rej.forEach(f => { const r = fanRejectReasons(f); if (!r.length) none++; r.forEach(x => m.set(x, (m.get(x) || 0) + 1)); });
   const cur = fanClassPill.startsWith('rr:') ? fanClassPill.slice(3) : '';
@@ -14209,13 +14347,13 @@ window.rejectBiz = async function(id) {
   if (b.status !== 'approved' && (QJ_DECIDED[id] || []).length) { bnOpen({ bizId: id, mode: 'reject' }); return; }
   await doRejectBiz(id);
 };
-async function doRejectBiz(id) {
+async function doRejectBiz(id, opts) {
   const b = findBiz(id);
   if (!b) return false;
   try {
     const wasApproved = b.status === 'approved';
     if (wasApproved) await updateDoc(doc(db, 'businesses', id), { status: 'pending', approvedAt: null });
-    else await updateDoc(doc(db, 'businesses', id), { status: 'rejected', rejectedAt: serverTimestamp() });
+    else await setBizStatusWithOwner(b, { status: 'rejected', rejectedAt: serverTimestamp() }, 'rejected', opts);   // §661
     if (!wasApproved) goToNextCard('biz', id, { pendingOnly: true });   // §637
     logActivity('businesses', id, {
       type: 'status', title: wasApproved ? 'העסק הוחזר לממתין' : 'העסק נדחה',
@@ -14248,7 +14386,7 @@ window.rejectApprovedBiz = async function(id) {
   if (!b) return;
   if (!confirm(`לדחות את "${b.name}"? הוא יוסר מהאינדקס הציבורי.`)) return;
   try {
-    await updateDoc(doc(db, 'businesses', id), { status: 'rejected', rejectedAt: serverTimestamp(), approvedAt: null });
+    await setBizStatusWithOwner(b, { status: 'rejected', rejectedAt: serverTimestamp(), approvedAt: null }, 'rejected');   // §661 – חבר מאושר לא נוגעים
     await logActivity('businesses', id, { type: 'status', title: 'העסק נדחה (לאחר אישור)', detail: `"${b.name}" נדחה אחרי שהיה מאושר`, field: 'status', before: b.status, after: 'rejected' });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
@@ -14256,7 +14394,7 @@ window.restoreBizToPending = async function(id) {
   const b = findBiz(id);
   if (!b) return;
   try {
-    await updateDoc(doc(db, 'businesses', id), { status: 'pending', rejectedAt: null, approvedAt: null });
+    await setBizStatusWithOwner(b, { status: 'pending', rejectedAt: null, approvedAt: null }, 'pending');   // §661
     await logActivity('businesses', id, { type: 'status', title: 'העסק הוחזר לממתין (משחזור דחייה)', detail: `"${b.name}" הוחזר לממתין`, field: 'status', before: b.status, after: 'pending' });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
@@ -15794,7 +15932,7 @@ window.bnGo = async function() {
   let done = true;
   // mainDone — אחרי כשל בשליחה החלון נשאר פתוח עם הטקסט; ניסיון חוזר שולח רק את ההודעה (לא מאשר/מסמן שוב)
   if (!o.mainDone && o.mode === 'approve') done = await doApproveBiz(o.bizId);
-  if (!o.mainDone && o.mode === 'reject') done = await doRejectBiz(o.bizId);   // §659
+  if (!o.mainDone && o.mode === 'reject') done = await doRejectBiz(o.bizId, { mail: !wantSend });   // §659 · §661 – הודעה מכאן = בלי מייל הדחייה הכללי
   if (!done) { o.sending = false; bnSync(); return; }
   o.mainDone = true;
   let res = '';
@@ -22419,7 +22557,7 @@ function newWindowCardHtml() {
       <div class="sc-head"><div>
         <div class="sc-title">מי בחלון · ומתי הוא יוצא</div>
         <div class="sc-sub">${soon.length} עסקים אושרו בתוך ${cfg.days} הימים האחרונים.${built.trimmed.length
-          ? ' <b>' + built.trimmed.length + ' מהם אינם מוצגים</b> כי תקרת ההצגה היא ' + cfg.maxShown + ' – הם הוותיקים שבחלון.' : ''}</div>
+          ? ' <b>' + built.trimmed.length + ' מהם אינם מוצגים היום</b> כי תקרת ההצגה היא ' + cfg.maxShown + ' – הם מתחלפים כל יום (§662), ומי שאושר ב-48 השעות האחרונות קודם.' : ''}</div>
       </div></div>
       <div class="sc-body">
         <div class="sc-table-head"><span>#</span><span>עסק</span><span>אושר</span><span>יוצא בעוד</span><span></span></div>
