@@ -27151,7 +27151,7 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
   - **נבדק:** סנכרון – 14/14 תרחישים ב-Node, כולל "רק מונים השתנו = אין כתיבה" ו"שינוי אמיתי מעתיק גם את המונים". home.html – נטען מקומית (iframe עם srcdoc, בלי ההפניה ל-welcome): `loadFirebaseData` נקרא פעם אחת עם 93 עסקים מהשרת (`isPreview=false`) והמטמון נכתב. ריענון אחרי 10 דקות ברקע לא נבדק בפועל. sw v436. וורקר `0b9c8b05`.
   - ✅ **released (28.10):** `878d60f` נדחף; האתר החי מגיש sw v436 ו-`_hbLoadPub` (Server: GitHub.com, עם cache-buster). בוורקר `0b9c8b05` הכתיבה החד-פעמית של 93 ההעתקים הסתיימה ב-08:01 UTC. אחריה, גם בריצה המלאה של 08:00, אין כתיבות ואין שגיאות. ⏳ מחר: למדוד את הקריאות בלילה (צפי: בערך 4 אלף בשעה במקום 10 אלף).
 
-### §650 – Google באנדרואיד: "לוחץ ולא נפתח שום חלון" (28.10) – sw v437 – ⏳ לא נדחף
+### §650 – Google באנדרואיד: "לוחץ ולא נפתח שום חלון" (28.10) – sw v437 – ✅ חי
 - **הדיווח (Matan navon, OnePlus 15, דרך רמי):** לחיצה על "הרשמה עם Google" לא עושה כלום ולא פותחת את חלון החשבונות. אין לו רשומה ב-`members`.
 - **מה נמצא:** (1) **כשל נייטיב בטופס ההרשמה לא נרשם בשום מקום** – `native-google.js` רושם דרך `window.logEvent`, שקיים רק ב-welcome/home; ב-fan-register המדידה מקומית. ביממה האחרונה: 284 `gsShown` מול 34 `gsUsed`, ואין שום אירוע על השאר. (2) **"ביטול" היה שקט מוחלט** – Credential Manager מחזיר `GetCredentialCancellationException` גם כשהחלון לא הוצג בכלל (למשל `[16] Account reauth failed`), התוסף (`@capawesome/capacitor-google-sign-in` 0.1.4, `GetSignInWithGoogleOption`) ממפה את זה ל-`SIGN_IN_CANCELED`, ואצלנו ביטול = בלי הודעה. "מתחבר…" מהבהב לרגע וזהו – בדיוק "לא קורה כלום". ההודעה של המערכת לא נשמרה.
 - **התיקון (בלי בילד חדש – האפליקציה טוענת את האתר החי):**
@@ -27160,3 +27160,4 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
   - `admin-dashboard.html`: `hbLoginFailLabel`/`hbLoginCat`/`auFailLabel` מזהים `canceled:`/`timeout:` עם זנב, ותווית ל-`instant`.
   - `?v=650` ל-native-google.js (5 דפים) ול-google-signup.js (fan-register, business).
 - **נבדק:** הרנס Node שמריץ את `native-google.js` האמיתי עם גשר מדומה – ביטול מהיר → הודעה + `instant:_16_Account_reauth_failed.`; ביטול אחרי 2.5 שנ' → שקט + `canceled:activity_is_cancelled_by_th`; אין חשבון → הודעה; הצלחה → טוקן, בלי אירוע. ❓ **לא אומת על מכשיר** ולא ידוע עדיין מה הסיבה האמיתית אצל Matan – אחרי הפריסה, `gsNativeFail` / `loginFail` יראו את ההודעה של המערכת.
+- ✅ **released (28.10):** `b068924` נדחף; האתר החי מגיש sw v437, native-google.js עם `FAST_CANCEL_MS`, fan-register עם `google-signup.js?v=650` (נבדק עם cache-buster). רמי שלח ל-Matan מייל שינסה שוב. ⏳ לבדוק `gsNativeFail` / `loginFail google:native:*` אחרי שינסה.
