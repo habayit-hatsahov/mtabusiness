@@ -3409,6 +3409,7 @@ function hydrateBiz(id, raw) {
     broadcastEmailClickedAt: toJsDate(raw.broadcastEmailClickedAt),
     waNudgeCount: Number(raw.waNudgeCount) || 0,
     waNudgeAt: toJsDate(raw.waNudgeAt),
+    inReviewAt: toJsDate(raw.inReviewAt),   // §653 – מוצג בפס "למה ממתינים"
     pendingChangesAt: toJsDate(raw.pendingChangesAt),
     hasCoverPhoto: !!raw.coverPhoto,
     hasLogo: !!raw.logo,
@@ -5590,6 +5591,7 @@ function bizRowsHtml() {
 
 window.selectBizDetail = function(id) {
   selectedBizDetailId = id;
+  maybeAskWaitReason(id);   // §653
   bizMobileShowDetail = true;
   // #bizListCol עוטף גם את סרגל-הסינון (§147) — עדכון innerHTML שלו ישירות היה מוחק אותו; מעדכנים
   // רק את #bizListRows הפנימי (.task-list-rows), אותו תיקון גם ב-refreshBizList/select-fan/refreshFanList למטה.
@@ -5696,6 +5698,7 @@ function bizWaTpl(b) {
   return (typeof saved === 'string' && saved.trim()) ? saved : (pending ? DEFAULT_TPL_WA_PENDING : getTpl('wa', DEFAULT_TPL_WA));
 }
 window.sendBizWA = function(id, phone, ownerName, businessName, accessToken) {
+  if (isInReview(findBiz(id))) { openWaitWa(id); return; }   // §653 – עסק בתהליך אישור: הנוסח עם מה שחסר
   window.open(waLink(phone, applyBizTpl(bizWaTpl(findBiz(id)), ownerName, businessName, accessToken)), '_blank');
   logActivity('businesses', id, { type: 'email', title: 'נשלחה הודעת WhatsApp ידנית לבעל העסק', detail: `לטלפון ${phone}`, field: 'channel', before: null, after: 'whatsapp' });
   bumpWaNudge('businesses', id);   // §415
@@ -9849,6 +9852,7 @@ function bizFullDetailHtml(id, opts) {
   // (bizDecisionPanelHtml) — בדיוק אותו עיקרון כמו "הסרה מהאינדקס"/יומן-פעילות שכבר יושבים שם:
   // מידע-ניהולי שלא בעיצוב "פרטי העסק" עצמו, לא תוכן שנעלם.
   const mainTabHtml = `
+    ${bizWaitBannerHtml(b)}
     ${quickJudgmentHtml(b)}
     ${kosherRowHtml(b)}
     ${identityCardHtml}
@@ -12835,6 +12839,7 @@ function taskCenterCountLabel() {
 
 window.selectTask2 = function(kind, id) {
   selectedTaskKey = `${kind}:${id}`;
+  if (kind === 'biz') maybeAskWaitReason(id);   // §653
   renderMain();
 };
 
@@ -13551,27 +13556,204 @@ window.goToNextCard = function(kind, id, opts) {
 // function ולא const: נקראת מהרשימות, שמצוירות לפעמים לפני שהמודול הגיע לשורה הזו (TDZ)
 function isInReview(x) { return !!x && x.status === 'pending' && x.inReview === true; }
 function inReviewBadgeHtml(x) {
-  return isInReview(x) ? `<span class="treat-badge" style="background:#FFF4CC;color:#7A5B00">⏳ בתהליך אישור</span>` : '';
+  if (!isInReview(x)) return '';
+  if (MOCK_BUSINESSES.includes(x)) {   // §653 – בעסק: למה ממתינים, במקום רק "בתהליך אישור"
+    const labels = bizWaitLabels(x, true);
+    return labels.length
+      ? `<span class="treat-badge" style="background:#FFF4CC;color:#7A5B00" title="בתהליך אישור">⏳ ממתינים ל: ${esc(labels.join(', '))}</span>`
+      : `<span class="treat-badge" style="background:#FDECEC;color:#B42318">⏳ בתהליך אישור · לא נשמרה סיבה</span>`;
+  }
+  return `<span class="treat-badge" style="background:#FFF4CC;color:#7A5B00">⏳ בתהליך אישור</span>`;
 }
 function inReviewBtnHtml(kind, x) {
   if (!x || x.status !== 'pending') return '';
   return isInReview(x)
     ? `<button class="qj-btn-reject-app" title="מסומן פנימית – הוא עדיין רואה 'ממתין'" onclick="toggleInReview('${kind}','${x.id}')">⏳ בתהליך אישור · הסר</button>`
-    : `<button class="qj-btn-reject-app" title="סימון פנימי בלבד – אצלו לא משתנה כלום, עדיין 'ממתין'" onclick="toggleInReview('${kind}','${x.id}')">⏳ סמן בתהליך אישור</button>`;
+    : `<button class="qj-btn-reject-app" title="סימון פנימי בלבד – אצלו לא משתנה כלום, עדיין 'ממתין'" onclick="${kind === 'biz' ? `openWaitReasons('${x.id}')` : `toggleInReview('${kind}','${x.id}')`}">⏳ סמן בתהליך אישור</button>`;
 }
 window.toggleInReview = async function(kind, id) {
   const x = kind === 'fan' ? findFan(id) : findBiz(id);
   if (!x) return;
   const on = !isInReview(x);
+  if (on && kind === 'biz') { openWaitReasons(id); return; }   // §653 – עסק מסומן רק עם סיבה
   try {
-    await updateDoc(doc(db, kind === 'fan' ? 'members' : 'businesses', id), { inReview: on, inReviewAt: on ? serverTimestamp() : null });
+    await updateDoc(doc(db, kind === 'fan' ? 'members' : 'businesses', id), { inReview: on, inReviewAt: on ? serverTimestamp() : null,
+      ...(kind === 'biz' ? { inReviewReasons: [], inReviewOther: '' } : {}) });
     x.inReview = on;
+    if (kind === 'biz') { x.inReviewReasons = []; x.inReviewOther = ''; }
     renderMainPreserveScroll();
     await logActivity(kind === 'fan' ? 'members' : 'businesses', id, {
       type: 'status', title: on ? 'סומן "בתהליך אישור" (פנימי)' : 'הוסר "בתהליך אישור"',
       detail: `"${x.name}" – סימון פנימי, הסטטוס נשאר ממתין`, field: 'inReview', before: !on, after: on,
     });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+
+// ══ §653 — "למה ממתינים" לעסק בתהליך אישור (רמי 28.10) ════════════════════════════════════
+// "אני רוצה שיקפוץ לי הודעה למה אנחנו ממתינים, ככה נדע מה חסר לבעל העסק". עד עכשיו "בתהליך אישור"
+// היה דגל בלי סיבה, והוואטסאפ יצא בנוסח הכללי ("למשל את התמונה הראשית"). עכשיו הסימון שומר
+// inReviewReasons (מפתחות מ-WAIT_REASONS) + inReviewOther (טקסט חופשי של "אחר"), הסיבה מוצגת ליד
+// השם ובראש הכרטיס, והוואטסאפ נבנה ממנה (DEFAULT_TPL_WA_WAITING, {missing} = שורה לכל סיבה).
+// עסק שמסומן בלי סיבה (כל מי שסומן לפני §653) – החלון קופץ בפתיחה הראשונה שלו בדף.
+// auto = בדיקת שדות שמסמנת מראש כהצעה בלבד; אימות בעל העסק בלי auto – נבדק ידנית בכרטיס.
+// var ולא const – התגית נקראת מהרשימות, שמצוירות לפעמים לפני שהמודול הגיע לשורה הזו (TDZ, ר' isInReview)
+var WAIT_REASONS = [
+  { k: 'cover', label: 'תמונה ראשית', hint: 'תמונה של העסק או המוצרים, לא לוגו ולא צילום מסך', text: 'תמונה ראשית לכרטיס – תמונה של העסק או המוצרים (לא לוגו ולא צילום מסך)', auto: b => !b.hasCoverPhoto },
+  { k: 'logo', label: 'לוגו', hint: 'הלוגו של העסק', text: 'הלוגו של העסק', auto: b => !b.hasLogo },
+  { k: 'deal', label: 'פרטי ההטבה', hint: 'מה בדיוק מקבלים ואיך מממשים', text: 'פרטי ההטבה – מה בדיוק מקבלים אוהדי מכבי ואיך מממשים אותה', auto: b => !b.hasDiscount || !String(b.discountText || '').trim() },
+  { k: 'owner', label: 'אימות בעל העסק', hint: 'צילום מנוי / פרטי מושב', text: 'אימות שאתם אוהדים – צילום של כרטיס המנוי או פרטי המושב' },
+  { k: 'desc', label: 'תיאור העסק', hint: 'מה העסק עושה ולמי', text: 'תיאור קצר של העסק – מה אתם עושים ולמי', auto: b => String(b.desc || '').trim().length < 25 },
+  { k: 'other', label: 'אחר', hint: 'כותבים בחופשי – זה מה שיופיע בהודעה', text: '' },
+];
+function bizWaitKeys(b) {
+  const ks = Array.isArray(b && b.inReviewReasons) ? b.inReviewReasons : [];
+  if (!WAIT_REASONS) return [];
+  return WAIT_REASONS.map(r => r.k).filter(k => ks.includes(k) && (k !== 'other' || String(b.inReviewOther || '').trim()));
+}
+function bizWaitLabels(b, short) {
+  return bizWaitKeys(b).map(k => {
+    if (k !== 'other') return WAIT_REASONS.find(r => r.k === k).label;
+    const t = String(b.inReviewOther).trim();
+    return short && t.length > 40 ? t.slice(0, 40) + '…' : t;
+  });
+}
+function bizWaitTexts(b) { return bizWaitKeys(b).map(k => k === 'other' ? String(b.inReviewOther).trim() : WAIT_REASONS.find(r => r.k === k).text); }
+// הפס בראש הכרטיס – רק לעסק בתהליך אישור
+function bizWaitBannerHtml(b) {
+  if (!isInReview(b) || !MOCK_BUSINESSES.includes(b)) return '';
+  const labels = bizWaitLabels(b);
+  const sent = b.waNudgeCount ? `וואטסאפ נשלח ${b.waNudgeCount === 1 ? 'פעם אחת' : b.waNudgeCount + ' פעמים'}${b.waNudgeAt ? ' · אחרון ' + fmtDateTime(b.waNudgeAt) : ''}` : 'עוד לא נשלח וואטסאפ';
+  const meta = `<div style="color:var(--text-muted);font-size:11px;margin-top:6px">בתהליך אישור${b.inReviewAt ? ' מאז ' + fmtDateTime(b.inReviewAt) : ''} · ${sent}</div>`;
+  const box = (bg, bd) => `margin-bottom:14px;background:${bg};border:1px solid ${bd};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap`;
+  if (!labels.length) return `
+    <div style="${box('#FDECEC', '#F5C2C0')}">
+      <div style="flex:1;min-width:220px"><div style="font-weight:800;color:#B42318">⏳ בתהליך אישור – אבל לא נשמר למה ממתינים</div>${meta}</div>
+      <button class="qj-btn primary" onclick="openWaitReasons('${b.id}')">לבחור סיבה</button>
+    </div>`;
+  return `
+    <div style="${box('var(--warn-bg)', 'var(--warn-border)')}">
+      <div style="flex:1;min-width:220px"><div style="font-weight:800;color:#7A5B00">⏳ חסר מבעל העסק${b.ownerFirst ? ' (' + esc(b.ownerFirst) + ')' : ''}:</div>
+        <ul style="margin:6px 0 0;padding-inline-start:18px">${labels.map(l => `<li style="white-space:pre-line">${esc(l)}</li>`).join('')}</ul>${meta}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${b.ownerPhone ? `<button class="qj-btn primary" onclick="openWaitWa('${b.id}')">📲 תזכורת בוואטסאפ</button>` : ''}
+        <button class="qj-btn" onclick="openWaitReasons('${b.id}')">עריכת הסיבה</button>
+      </div>
+    </div>`;
+}
+function waitEl() {
+  let el = document.getElementById('waitModal');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'waitModal';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(11,27,58,.45);z-index:9999;display:none;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+window.closeWait = function() { waitEl().style.display = 'none'; waitEl().innerHTML = ''; };
+const _waitAsked = new Set();   // הקפיצה האוטומטית – פעם אחת לעסק בכל טעינת דף (ביטול = לא לנדנד שוב)
+function maybeAskWaitReason(id) {
+  const b = findBiz(id);
+  if (!b || !isInReview(b) || bizWaitKeys(b).length || _waitAsked.has(id)) return;
+  _waitAsked.add(id);
+  setTimeout(() => { const bn = document.getElementById('bizNoteModal'); if (!bn || bn.style.display !== 'flex') openWaitReasons(id); }, 0);
+}
+let _waitId = null;
+window.openWaitReasons = function(id) {
+  const b = findBiz(id);
+  if (!b) return;
+  _waitId = id;
+  _waitAsked.add(id);
+  const cur = bizWaitKeys(b);
+  const pre = cur.length ? cur : WAIT_REASONS.filter(r => r.auto && r.auto(b)).map(r => r.k);
+  const sub = isInReview(b) && !cur.length
+    ? `העסק סומן "בתהליך אישור" בלי סיבה. מה חסר ל${esc(b.ownerFirst || 'בעל העסק')} כדי שנאשר? (אפשר כמה)`
+    : `מה חסר ל${esc(b.ownerFirst || 'בעל העסק')} כדי שנאשר? (אפשר כמה)`;
+  const row = r => `
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border-md);border-radius:9px;margin-bottom:6px;cursor:pointer">
+      <input type="checkbox" value="${r.k}" ${pre.includes(r.k) ? 'checked' : ''} onchange="waitSync()" style="margin-top:2px">
+      <span><b>${r.label}</b>${!cur.length && r.auto && r.auto(b) ? ' <span style="color:var(--orange);font-size:11px;font-weight:700">· נראה שחסר</span>' : ''}
+        <span style="display:block;color:var(--text-muted);font-size:11px;margin-top:2px">${r.hint}</span></span>
+    </label>`;
+  waitEl().innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#101828);border-radius:16px;width:480px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
+    <div style="font-size:17px;font-weight:900">למה ממתינים ל"${esc(b.name)}"?</div>
+    <div style="font-size:13px;color:var(--text-muted);margin:4px 0 12px;line-height:1.6">${sub}</div>
+    <div id="waitList">${WAIT_REASONS.map(row).join('')}</div>
+    <textarea id="waitOther" rows="2" maxlength="300" placeholder='"אחר" – מה חסר? למשל: מספר טלפון לעסק שעונה' oninput="waitSync(true)" style="display:block;width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border-md);border-radius:9px;resize:vertical;margin-top:2px">${esc(b.inReviewOther || '')}</textarea>
+    <div style="color:var(--text-muted);font-size:11px;margin-top:8px">"נראה שחסר" = בדיקה של השדות בכרטיס. רק הצעה – אתה מחליט. העסק עדיין רואה "ממתין".</div>
+    <div id="waitErr" style="color:var(--red);font-size:13px;margin-top:8px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      ${b.ownerPhone ? `<button class="qj-btn primary" id="waitGoWa" onclick="saveWaitReasons(true)">שמירה ושליחה בוואטסאפ</button>` : ''}
+      <button class="qj-btn${b.ownerPhone ? '' : ' primary'}" id="waitGo" onclick="saveWaitReasons(false)">שמירה בלי לשלוח</button>
+      <button class="qj-btn" onclick="closeWait()">ביטול</button>
+    </div>
+  </div>`;
+  waitEl().style.display = 'flex';
+  waitSync();
+};
+function waitPicked() { return [...document.querySelectorAll('#waitList input:checked')].map(i => i.value); }
+window.waitSync = function(typing) {
+  const o = document.getElementById('waitOther');
+  const other = document.querySelector('#waitList input[value=other]');
+  if (typing) other.checked = !!o.value.trim();
+  const p = waitPicked();
+  const ok = p.length > 0 && !(p.includes('other') && !o.value.trim());
+  ['waitGoWa', 'waitGo'].forEach(i => { const el = document.getElementById(i); if (el) el.disabled = !ok; });
+  document.getElementById('waitErr').textContent = p.includes('other') && !o.value.trim() ? 'סימנת "אחר" – כתוב מה חסר.' : '';
+};
+window.saveWaitReasons = async function(send) {
+  const b = findBiz(_waitId);
+  if (!b) return;
+  const reasons = waitPicked(), other = reasons.includes('other') ? document.getElementById('waitOther').value.trim().slice(0, 300) : '';
+  const was = isInReview(b), before = bizWaitLabels(b).join(', ');
+  try {
+    await updateDoc(doc(db, 'businesses', b.id), { inReview: true, inReviewReasons: reasons, inReviewOther: other, ...(was ? {} : { inReviewAt: serverTimestamp() }) });
+    Object.assign(b, { inReview: true, inReviewReasons: reasons, inReviewOther: other }, was ? {} : { inReviewAt: new Date() });
+    closeWait();
+    renderMainPreserveScroll();
+    const after = bizWaitLabels(b).join(', ');
+    logActivity('businesses', b.id, {
+      type: 'status', title: was ? 'עודכן למה ממתינים (בתהליך אישור)' : 'סומן "בתהליך אישור" (פנימי)',
+      detail: `ממתינים ל: ${after}`, field: 'inReviewReasons', before: before || null, after,
+    });
+    if (send) openWaitWa(b.id);
+  } catch (e) { console.error(e); document.getElementById('waitErr').textContent = 'השמירה נכשלה: ' + e.message; }
+};
+// הוואטסאפ עם הסיבות – חלון עם הנוסח לעריכה לפני הפתיחה
+const DEFAULT_TPL_WA_WAITING = 'היי {name} 👋\nכאן רמי מ-Yellow Zone 💛\n\nכדי שנוכל לאשר את "{business}" חסר לנו:\n{missing}\n\n💻 זה הקישור האישי לעריכת העסק – שמרו אותו ואל תעבירו הלאה:\n{link}\n\nברגע שתעדכנו – נעבור על זה ונאשר.\n\nקונים כחול-צהוב\nרמי';
+function bizWaWaitingText(b) {
+  const saved = tplFirestoreData.bizWaWaiting;
+  const tpl = (typeof saved === 'string' && saved.trim()) ? saved : DEFAULT_TPL_WA_WAITING;
+  const missing = bizWaitTexts(b).map(t => '• ' + t).join('\n');
+  return applyBizTpl(tpl.replace(/\{missing\}/g, () => missing), b.ownerFirst, b.name, b.accessToken);
+}
+window.openWaitWa = function(id) {
+  const b = findBiz(id);
+  if (!b || !b.ownerPhone) return;
+  if (!bizWaitKeys(b).length) { openWaitReasons(id); return; }
+  _waitId = id;
+  waitEl().innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#101828);border-radius:16px;width:480px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
+    <div style="font-size:17px;font-weight:900">וואטסאפ ל${esc(b.ownerFirst || 'בעל העסק')} (${esc(b.name)})</div>
+    <div style="font-size:13px;color:var(--text-muted);margin:4px 0 10px">הנוסח נבנה מהסיבות השמורות. אפשר לערוך לפני הפתיחה (הנוסח הקבוע – במרכז ההודעות ← תבניות).</div>
+    ${b.accessToken ? '' : '<div style="color:var(--red);font-size:12px;margin-bottom:8px">⚠️ לעסק אין קישור לדשבורד – ההודעה תצא בלי קישור.</div>'}
+    <textarea id="waitWaText" rows="14" style="width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.55;padding:10px;border:1px solid var(--border-md);border-radius:10px;resize:vertical">${esc(bizWaWaitingText(b))}</textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <button class="qj-btn primary" onclick="sendWaitWa()">פתיחה בוואטסאפ</button>
+      <button class="qj-btn" onclick="closeWait()">ביטול</button>
+    </div>
+  </div>`;
+  waitEl().style.display = 'flex';
+};
+window.sendWaitWa = function() {
+  const b = findBiz(_waitId);
+  const txt = (document.getElementById('waitWaText') || {}).value || '';
+  if (!b || !txt.trim()) return;
+  window.open(waLink(b.ownerPhone, txt), '_blank');
+  closeWait();
+  logActivity('businesses', b.id, { type: 'email', title: 'נשלחה הודעת WhatsApp ידנית לבעל העסק', detail: `לטלפון ${b.ownerPhone} · ממתינים ל: ${bizWaitLabels(b).join(', ')}`, field: 'channel', before: null, after: 'whatsapp' });
+  bumpWaNudge('businesses', b.id);
+  b.waNudgeCount = (b.waNudgeCount || 0) + 1; b.waNudgeAt = new Date();
+  renderMainPreserveScroll();
 };
 
 // §567 — האוהד הממתין הבא **באותה רשימה שהמנהל רואה** (אותו סינון ואותו מיון), אחרי זה
@@ -14833,7 +15015,7 @@ function quickJudgmentHtml(b) {
     <div class="qj-note-row">
       <div class="qj-note-text"><strong>העסק כתב לנו${b.noteAt ? ' · ' + fmtDateTime(b.noteAt) : ''}: </strong>"${esc(b.note)}"</div>
       <div class="qj-row-actions">
-        <button class="qj-btn" onclick="toggleBizNoteHandled('${b.id}', true)">סימון כטופל</button>
+        <button class="qj-btn" onclick="openBizNoteReply('${b.id}')">סימון כטופל</button>
         ${b.ownerPhone ? `<button class="qj-btn link" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מענה בוואטסאפ</button>` : ''}
         ${b.ownerEmail ? `<button class="qj-btn link" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מענה במייל</button>` : ''}
       </div>
@@ -15082,7 +15264,7 @@ window.rtEditSave = async function() {
     rtRefresh();
   } catch (e) { console.error('replyTemplates save failed', e); rtEditRender('השמירה נכשלה: ' + (e.message || e)); }
 };
-const BN_ORIGIN = { approve: 'אישור הרשמה', changes: 'החלטה על שינויים', external: 'טופל מבחוץ', free: 'הודעה יזומה' };
+const BN_ORIGIN = { approve: 'אישור הרשמה', changes: 'החלטה על שינויים', external: 'טופל מבחוץ', free: 'הודעה יזומה', note: 'תשובה ל"כתבו לנו"' };
 // החלטות בשיפוט המהיר שעוד לא נכתב עליהן לבעל העסק.
 // §623ג — לא רק בזיכרון: כל החלטה נרשמת ביומן העסק עם noteItem, וההודעה (mode changes) או "בלי הודעה"
 // נרשמות עם noteClose. בפתיחת הכרטיס הרשימה נגזרת מהיומן – מהחדש אחורה עד noteClose הראשון – ולכן
@@ -15165,12 +15347,15 @@ function bnOpen(opts) {
       + (decided.some(d => d.decision === 'approved' && /^קטגוריה נוספת/.test(d.label)) ? '\n\n' + ALSO_CAT_EXPLAIN : '')
       + (decided.some(d => d.decision === 'rejected' || d.decision === 'mapped') ? '\n\nלמה: ' : '\n\n')
     : '';
-  const preTitle = draft && draft.title ? draft.title : { approve: 'העסק שלך אושר! 🎉', changes: 'עדכון על השינויים שביקשת', external: 'עדכון על הפנייה שלך', free: '' }[opts.mode];
+  const preTitle = draft && draft.title ? draft.title : { approve: 'העסק שלך אושר! 🎉', changes: 'עדכון על השינויים שביקשת', external: 'עדכון על הפנייה שלך', free: '', note: 'תשובה להודעה שלך' }[opts.mode];
   const head = {
     approve: [`✅ אישור "${b.name}"`, 'העסק יעלה לאינדקס, ובעל העסק יקבל את מייל הקוד והודעת "ברוכים הבאים" כרגיל. מה שתכתוב כאן יגיע אליו <b>בנוסף</b>, כהודעה נפרדת.'],
     changes: [`✍️ הודעה לבעל "${b.name}" על השינויים`, 'מולא לבד לפי מה שהחלטת. תוסיף למה לא אישרת / מה כן כדאי. ההחלטות עצמן כבר נשמרו.'],
     external: [`✔️ סימון "${b.name}" כטופל מבחוץ`, 'ייסגרו: ' + esc(opts.summary || '')],
     free: [`💬 הודעה לבעל "${b.name}"`, 'לדוגמה – המלצה לשנות תמונה או הטבה. אפשר ללחוץ על נוסח מוכן ולערוך.'],
+    // §653 — "סימון כטופל" על "כתבו לנו" סימן בשקט, בלי הזדמנות לענות (MR HAIRCUT). עכשיו קודם שואל
+    note: [`💬 "${b.name}" כתבו לנו${b.noteAt ? ' · ' + fmtDateTime(b.noteAt) : ''}`,
+      `<div style="background:var(--nav-bg,#F3F4F6);color:var(--text,#101828);border-radius:10px;padding:10px 12px;margin:6px 0;white-space:pre-line">"${esc(b.note || '')}"</div>רוצה לענות לו? ההודעה תסומן כטופלה אחרי השליחה.`],
   }[opts.mode];
   const box = `
     <div style="border:2px solid var(--yellow,#FFD400);background:#FFF7DB;border-radius:14px;padding:14px;margin-top:12px">
@@ -15190,6 +15375,7 @@ function bnOpen(opts) {
     changes: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">📤 שליחה לבעל העסק</button><button class="qj-btn" onclick="bnSkipChanges()">סגירה בלי הודעה</button>`,
     external: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">סימון כטופל</button>`,
     free: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">📤 שליחה</button>`,
+    note: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">📤 שליחה וסימון כטופל</button><button class="qj-btn" onclick="bnSkipNote()">סימון כטופל בלי תשובה</button>`,
   }[opts.mode];
   bnEl().innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:600px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
     <div style="font-size:18px;font-weight:900">${head[0]}</div>
@@ -15222,13 +15408,14 @@ window.bnSync = function() {
   go.disabled = !!_bn.sending;
   if (_bn.sending) go.textContent = '⏳ רגע…';
 };
+window.bnSkipNote = async function() { const id = _bn && _bn.bizId; bnClose(); if (id) await toggleBizNoteHandled(id, true); };   // §653
 window.bnSkipChanges = async function() { const id = _bn && _bn.bizId; bnClose(); if (id) await qjCloseDecided(id, 'בלי הודעה לבעל העסק על ההחלטות'); renderMain(); };
 window.bnGo = async function() {
   if (!_bn || _bn.sending) return;
   const o = _bn, b = findBiz(o.bizId), n = bnRead(), err = document.getElementById('bnErr');
   if (!b) return;
   const wantSend = o.mode === 'external' ? (document.getElementById('bnSendToo').checked && !!n.text) : !!n.text;
-  if ((o.mode === 'changes' || o.mode === 'free') && !n.text) { err.textContent = 'אין תוכן – לא נשלח כלום.'; return; }
+  if ((o.mode === 'changes' || o.mode === 'free' || o.mode === 'note') && !n.text) { err.textContent = 'אין תוכן – לא נשלח כלום.'; return; }
   if (wantSend && !n.title) { err.textContent = 'חסרה כותרת (היא שורת הפוש ונושא המייל).'; document.getElementById('bnTitle').focus(); return; }
   o.sending = true; bnSync(); err.textContent = '';
   let done = true;
@@ -15251,10 +15438,12 @@ window.bnGo = async function() {
     }
   }
   if (o.mode === 'changes') delete QJ_DECIDED[o.bizId];
+  // §653 — רק אחרי שליחה שהצליחה (כשל → return למעלה, ההודעה נשארת פתוחה ולא מסומנת)
+  if (o.mode === 'note') { try { await toggleBizNoteHandled(o.bizId, true); } catch (e) { console.error('note handled failed', e); res += '\n⚠️ הסימון "טופל" נכשל – אפשר לסמן שוב.'; } }
   if (wantSend && o.fromDraft) { try { await clearBizNoteDraft(o.bizId); } catch (e) { console.error('draft clear failed', e); } }   // §644
   o.sending = false; bnClose();
   renderMain();
-  const base = { approve: 'העסק אושר.', external: 'סומן כטופל – נשמר תחת "בקשות שטופלו".', changes: '', free: '' }[o.mode];
+  const base = { approve: 'העסק אושר.', external: 'סומן כטופל – נשמר תחת "בקשות שטופלו".', changes: '', free: '', note: 'ההודעה מהעסק סומנה כטופלה.' }[o.mode];
   alert([base, res].filter(Boolean).join('\n\n') || 'נסגר.');
 };
 
@@ -15326,6 +15515,7 @@ async function bnSend(b, title, text, mode) {
 }
 window.openBizNoteFree = function(id) { bnOpen({ bizId: id, mode: 'free' }); };
 window.openBizNoteChanges = function(id) { bnOpen({ bizId: id, mode: 'changes' }); };
+window.openBizNoteReply = function(id) { bnOpen({ bizId: id, mode: 'note' }); };   // §653
 // שורה בשיפוט המהיר אחרי החלטה – "לכתוב לו על ההחלטות?"
 function qjDecidedRowHtml(b) {
   qjLoadDecided(b.id);   // §623ג
@@ -17884,7 +18074,11 @@ const M2_TPLS = [
   // גם לעסק ממתין. נשמר ב-settings/messageTemplates (מנהל בלבד, לא siteTexts הציבורי) – store:'tpl'.
   { id: 'bizWaPending', grp: 'manual', icon: '⏳', t: 'וואטסאפ לבעל עסק – עסק ממתין', aud: 'biz', site: { body: 'bizWaPending' }, wa: true, store: 'tpl',
     def: { bizWaPending: DEFAULT_TPL_WA_PENDING },
-    who: 'בעל עסק שהעסק שלו עוד לא אושר – למשל כשמבקשים ממנו לתקן משהו בדשבורד לפני האישור.', when: 'בלחיצה על "וואטסאפ" בכרטיס של עסק ממתין.' },
+    who: 'בעל עסק שהעסק שלו עוד לא אושר – למשל כשמבקשים ממנו לתקן משהו בדשבורד לפני האישור.', when: 'בלחיצה על "וואטסאפ" בכרטיס של עסק ממתין (שלא סומן "בתהליך אישור").' },
+  // §653 — עסק "בתהליך אישור": {missing} = שורה לכל סיבה שסומנה בחלון "למה ממתינים"
+  { id: 'bizWaWaiting', grp: 'manual', icon: '📝', t: 'וואטסאפ לבעל עסק – בתהליך אישור (מה חסר)', aud: 'biz', site: { body: 'bizWaWaiting' }, wa: true, store: 'tpl',
+    def: { bizWaWaiting: DEFAULT_TPL_WA_WAITING },
+    who: 'בעל עסק שהעסק שלו סומן "בתהליך אישור". במקום {missing} נכנסת שורה לכל דבר שחסר (מה שסימנת בחלון "למה ממתינים").', when: 'בלחיצה על "וואטסאפ" או "תזכורת בוואטסאפ" בכרטיס של עסק בתהליך אישור – נפתח חלון לעריכה לפני השליחה.' },
   { id: 'bizWaApproved', grp: 'manual', icon: '🏪', t: 'וואטסאפ לבעל עסק – עסק מאושר', aud: 'biz', site: { body: 'bizWaApproved' }, wa: true, store: 'tpl',
     def: { bizWaApproved: DEFAULT_TPL_WA },
     who: 'בעל עסק שהעסק שלו מאושר.', when: 'בלחיצה על "וואטסאפ" בכרטיס של עסק מאושר.' },
@@ -18025,8 +18219,10 @@ function m2TplRenderSitePv(t) {
   const s = m2.doc.site;
   if (t.wa) {   // §652 — עם הדוגמה של עסק אמיתי מהקהל של התבנית
     m2$('m2PvTabs').innerHTML = '<button class="m2-pvtab on">💬 וואטסאפ</button>'; m2$('m2PvWho').innerHTML = '';
-    const b = MOCK_BUSINESSES.find((x) => t.id === 'bizWaPending' ? x.status === 'pending' : x.status === 'approved') || {};
-    const txt = applyBizTpl(String(s.body || ''), b.ownerFirst || 'ישראל', b.name || 'עסק לדוגמה', 'xxxx-xxxx');   // לא הטוקן האמיתי – תצוגה בלבד
+    const b = (t.id === 'bizWaWaiting' && MOCK_BUSINESSES.find((x) => isInReview(x) && bizWaitKeys(x).length))
+      || MOCK_BUSINESSES.find((x) => t.id === 'bizWaApproved' ? x.status === 'approved' : x.status === 'pending') || {};
+    const missing = (b.id && bizWaitKeys(b).length ? bizWaitTexts(b) : [WAIT_REASONS[1].text]).map((x) => '• ' + x).join('\n');   // §653
+    const txt = applyBizTpl(String(s.body || '').replace(/\{missing\}/g, () => missing),b.ownerFirst || 'ישראל', b.name || 'עסק לדוגמה', 'xxxx-xxxx');   // לא הטוקן האמיתי – תצוגה בלבד
     m2$('m2Pv').innerHTML = `<div class="m2-cap">ככה זה נפתח בוואטסאפ${b.name ? ' – לדוגמה: ' + esc(b.name) : ''}.</div>
       <div class="m2-wascr"><div class="m2-watop">צ'אט</div><div class="m2-wab">${m2WaHtml(txt)}</div></div>`;
     return;
