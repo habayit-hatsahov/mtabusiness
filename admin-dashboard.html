@@ -5589,7 +5589,7 @@ function bizRowsHtml() {
       <div class="task-row ${b.status} ${active?'active':''} ${sel?'selected':''}" onclick="selectBizDetail('${b.id}')">
         <div class="task-row-top">
           <div class="task-row-check" onclick="event.stopPropagation();toggleBizSelect('${b.id}')">${sel ? '✓' : ''}</div>
-          <div class="task-row-name">${esc(b.name)}${bizNameTagsHtml(b)}${b.status === 'approved' && b.accessToken ? ` <a href="business-dashboard.html?token=${b.accessToken}" target="_blank" onclick="event.stopPropagation()" class="tag-chip" style="text-decoration:none">🔗</a>` : ''}</div>
+          <div class="task-row-name">${esc(b.name)}${bizNameTagsHtml(b)}${b.status === 'approved' && b.accessToken ? ` <a href="${bizDashUrl(b.accessToken)}" target="_blank" onclick="event.stopPropagation()" class="tag-chip" style="text-decoration:none">🔗</a>` : ''}</div>
           <div class="task-row-progress">${bizReviewedCount(b)}/${BIZ_REVIEW_SECTIONS.length} נסקר</div>
         </div>
         <div class="task-row-badges">${badges.join('')}</div>
@@ -5637,8 +5637,12 @@ const DEFAULT_FAN_WA = 'היי {name} 👋\nברוך הבא ל-Yellow Zone! 💛
 const DEFAULT_FAN_MAIL = 'שלום {name},\n\nשמחים לבשר שהצטרפותך ל-Yellow Zone אושרה!\n\nלפתיחת האפליקציה: https://yellowzone.co.il/download?src=approval\nבמסך הכניסה לוחצים על Google או על Apple – לפי החשבון שאיתו נרשמת. אפשר גם להיכנס עם מספר הטלפון וקוד הכניסה האישי: {code}\n\nתעודת החבר הדיגיטלית מחכה לך באפליקציה.\n\nבאהבה,\nצוות Yellow Zone';
 const DEFAULT_FAN_MAIL_SUBJECT = 'ברוך הבא ל-Yellow Zone';
 
+// function ולא const: נקראת גם מרשימות שמצוירות לפני שהמודול הגיע לשורה הזו (TDZ)
+function bizDashUrl(accessToken) { return 'https://yellowzone.co.il/business-dashboard.html?token=' + accessToken; }
 function applyBizTpl(tpl, ownerName, businessName, accessToken) {
-  const link = accessToken ? `${location.origin}${location.pathname.replace(/[^/]*$/, '')}business-dashboard.html?token=${accessToken}` : '';
+  // §657 – הלינק לבעל העסק תמיד מהאתר החי: נבנה קודם מ-location.origin, ומרכז ניהול שנפתח ב-localhost
+  // שלח לבעל העסק "http://localhost:5502/..." שלא נפתח אצלו (מוסך לזר גרסי, 28.10).
+  const link = accessToken ? bizDashUrl(accessToken) : '';
   return tpl.replace(/\{name\}/g, ownerName || '').replace(/\{business\}/g, businessName || '').replace(/\{(dashboard_)?link\}/g, link);   // §550 — {link} כמו ב"שליחה עכשיו"
 }
 function applyFanTplLocal(tpl, name, code) {
@@ -9309,7 +9313,7 @@ function bizFullDetailHtml(id, opts) {
   // העסק לא יכול היה להיכנס לדשבורד — כלומר גם **לא** להעלות בעצמו את התמונות שאבדו.
   // 🔑 בלי הכפתור הזה, "שלח לו לינק לדשבורד" הוא עצה שאי אפשר לבצע.
   const idDashBtn = b.accessToken
-    ? `<a href="business-dashboard.html?token=${b.accessToken}" target="_blank" class="btn-id-dash">פתיחת דשבורד העסק</a>`
+    ? `<a href="${bizDashUrl(b.accessToken)}" target="_blank" class="btn-id-dash">פתיחת דשבורד העסק</a>`
     : `<button class="btn-id-dash" onclick="issueBizToken('${b.id}','${escJsAttr(b.name)}')">🔑 הנפקת טוקן – אין לעסק דשבורד</button>`;
   // §615 — "האזור שלי" של בעל העסק כמו שהוא רואה אותו (profile.html?previewMemberId=…, קריאה בלבד בהודעות).
   // רמי: "היום יש לי רק לדשבורד עריכה ואני רוצה שיהיה לאזור עצמו".

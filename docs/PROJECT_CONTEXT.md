@@ -27206,3 +27206,8 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - **עכשיו (`admin-dashboard.html`):** `isOwnerRequestTask(x)` – primary 'בקשה מבעל העסק', **או** עסק ממתין עם `details` (בקשת שינוי אמיתית). משמש במונה ובשבבים של הקובייה (`taskTilesHtml`) ובסינון הרשימה (`taskFilteredList`). העסק נשאר גם ב"עסקים ממתינים לאישור". רק `details` – הערת "כתבו לנו" מההרשמה אינה בקשת שינוי. `classifyAction` לא שונה (תג הסיווג בשורה ממשיך לומר "עסק ממתין לאישור").
 - **נבדק (localhost מחובר):** הקובייה 0 → 2 (Happiness, מוסך לזר גרסי), "שינוי פרטים 2", ולחיצה עליה מציגה את שניהם.
 - אין התראה מחוץ למרכז הניהול (פוש/מייל למנהל) על בקשת שינוי – ההתראה היא הקובייה.
+
+### §657 – הלינק לדשבורד העסק תמיד עם yellowzone.co.il (28.10) – sw v443
+- **מה היה:** הלינק האישי של בעל העסק נבנה מ-`location.origin` (ההודעות: `applyBizTpl` ב-`admin-dashboard.html`, `admin-businesses.html`) או כנתיב יחסי (כפתור "פתיחת דשבורד העסק", ה-🔗 ברשימה, `admin-members.html`). מרכז ניהול שנפתח ב-localhost יצר `http://localhost:5502/business-dashboard.html?token=…` – רמי שלח אותו למוסך לזר גרסי, והלינק לא נפתח אצלו.
+- **עכשיו:** `bizDashUrl(token)` (function, לא const – TDZ) מחזיר תמיד `https://yellowzone.co.il/business-dashboard.html?token=…`. משמש ב-`applyBizTpl` (כל הוואטסאפים והמיילים לבעל עסק: מאושר, ממתין, "למה ממתינים", "בקשת הקישור"), בכפתור ובאייקון ה-🔗; `admin-businesses.html` ו-`admin-members.html` – אותה כתובת קבועה.
+- **נבדק (localhost):** הכפתור והוואטסאפ של לזר יוצאים עם yellowzone.co.il. ⚠️ לחיצת הבדיקה על "וואטסאפ" (window.open חסום, לא נשלח כלום) **כתבה ביומן "נשלחה הודעת WhatsApp ידנית" (17:21 UTC) והעלתה את waNudgeCount מ-2 ל-3** – תוקן באישור רמי: הרשומה נמחקה, waNudgeCount חזר ל-2 ו-waNudgeAt ל-15:21 UTC (עם תנאי updateTime).
