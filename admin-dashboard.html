@@ -3939,6 +3939,22 @@ function bizNoteDraft(b) { const d = b && bizNoteDrafts[b.id]; return d && d.tex
 function bizNoteDraftTagHtml(b) {
   return bizNoteDraft(b) ? ' <span class="warn-badge" style="vertical-align:middle;background:#FFF7DB;color:#7A5B00" title="יש הודעה מוכנה שמחכה לשליחה">✉️ הודעה מחכה</span>' : '';
 }
+// §652 — רמי: "שהשינוי פרטים יהיה ליד שם העסק ככה נדע ישר, בכללי שהכל יהיה ליד שם העסק".
+// כל מה שבעל העסק ביקש או כתב – ליד השם, בכל סטטוס (גם עסק ממתין שקיבל לינק לדשבורד ושינה משהו).
+// עד עכשיו "שינוי פרטים" ישב רק בעמודת התגיות, ובשורת הממתינים נבלע ליד "עסק ממתין לאישור".
+// ⚠️ מה שמופיע כאן לא חוזר בעמודת התגיות (bizRowsHtml/taskRow2Html מסננים את treatments).
+function bizChangeTagHtml(b) {
+  if (!b || !b.pendingChangeDiff) return '';
+  const secs = [...new Set(Object.keys(b.pendingChangeDiff).map(k => DIFF_SECTION_NAMES[DIFF_FIELD_TO_DISPLAY[k]]).filter(Boolean))];
+  const at = b.changeSubmittedAt;
+  return ` <span class="warn-badge" style="vertical-align:middle;background:#E8EEFF;color:#2747A8" title="${at ? 'נשלח ' + fmtDateTime(at) : 'בקשת שינוי מבעל העסק'}">✏️ ביקש שינוי${secs.length ? ' · ' + esc(secs.join(', ')) : ''}${at ? ' · ' + fmtDayMonth(at) : ''}</span>`;
+}
+const NAME_TREATMENTS = ['details', 'tag', 'category', 'note'];
+function bizNameTagsHtml(b) {
+  const c = classifyAction(b, 'business');
+  const other = c.treatments.filter(t => t !== 'details').map(t => ' ' + treatBadgeHtml(t, b).replace('class="treat-badge"', 'class="treat-badge" style="vertical-align:middle"'));
+  return inquiryTagHtml(bizInquiries(b)) + bizChangeTagHtml(b) + other.join('') + bizNoteDraftTagHtml(b);
+}
 function bizNoteDraftRowHtml(b) {
   const d = bizNoteDraft(b);
   if (!d) return '';
@@ -5541,7 +5557,7 @@ function bizRowsHtml() {
     const cls = classifyAction(b, 'business');
     const primaryLabel = b.status === 'rejected' ? '✗ נדחה' : cls.primary;
     const badges = [`<span class="class-badge${primaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(primaryLabel)}</span>`]
-      .concat(cls.treatments.map(t => treatBadgeHtml(t, b)));
+      .concat(cls.treatments.filter(t => !NAME_TREATMENTS.includes(t)).map(t => treatBadgeHtml(t, b)));   // §652 – הבקשות ליד השם
     if (cls.primary === 'כרטיס חסר באינדקס') {
       cardGapLabels(b).slice(0, 2).forEach(label => badges.push(`<span class="warn-badge">${esc(label)}</span>`));   // §643ב
     } else if (b.status === 'pending' && kosherMissing(b)) {
@@ -5563,7 +5579,7 @@ function bizRowsHtml() {
       <div class="task-row ${b.status} ${active?'active':''} ${sel?'selected':''}" onclick="selectBizDetail('${b.id}')">
         <div class="task-row-top">
           <div class="task-row-check" onclick="event.stopPropagation();toggleBizSelect('${b.id}')">${sel ? '✓' : ''}</div>
-          <div class="task-row-name">${esc(b.name)}${inquiryTagHtml(bizInquiries(b))}${bizNoteDraftTagHtml(b)}${b.status === 'approved' && b.accessToken ? ` <a href="business-dashboard.html?token=${b.accessToken}" target="_blank" onclick="event.stopPropagation()" class="tag-chip" style="text-decoration:none">🔗</a>` : ''}</div>
+          <div class="task-row-name">${esc(b.name)}${bizNameTagsHtml(b)}${b.status === 'approved' && b.accessToken ? ` <a href="business-dashboard.html?token=${b.accessToken}" target="_blank" onclick="event.stopPropagation()" class="tag-chip" style="text-decoration:none">🔗</a>` : ''}</div>
           <div class="task-row-progress">${bizReviewedCount(b)}/${BIZ_REVIEW_SECTIONS.length} נסקר</div>
         </div>
         <div class="task-row-badges">${badges.join('')}</div>
@@ -5670,8 +5686,17 @@ window.issueBizToken = async function (id, name) {
   }
 };
 
+// §652 — רמי שולח לעסק ממתין לינק לדשבורד כדי לתקן משהו לפני האישור; הנוסח הקבוע אמר לו "העסק שלכם אושר".
+// עכשיו שני נוסחים לפי סטטוס העסק, שניהם נערכים במרכז ההודעות ← תבניות ← "וואטסאפ ממרכז הניהול"
+// (settings/messageTemplates: bizWaPending / bizWaApproved). getTpl('wa') – הנוסח הישן מהדפדפן, אם נשמר פעם.
+const DEFAULT_TPL_WA_PENDING = 'היי {name} 👋\nכאן רמי מ-Yellow Zone 💛\n\nלפני שנאשר את "{business}" – נשמח שתעדכנו כמה דברים בכרטיס (למשל את התמונה הראשית).\n\n💻 זה הקישור האישי לעריכת העסק – שמרו אותו ואל תעבירו הלאה:\n{link}\n\nאחרי שתשמרו ותשלחו – נעבור על זה ונאשר.\n\nקונים כחול-צהוב\nרמי';
+function bizWaTpl(b) {
+  const pending = !!b && b.status !== 'approved';
+  const saved = tplFirestoreData[pending ? 'bizWaPending' : 'bizWaApproved'];
+  return (typeof saved === 'string' && saved.trim()) ? saved : (pending ? DEFAULT_TPL_WA_PENDING : getTpl('wa', DEFAULT_TPL_WA));
+}
 window.sendBizWA = function(id, phone, ownerName, businessName, accessToken) {
-  window.open(waLink(phone, applyBizTpl(getTpl('wa', DEFAULT_TPL_WA), ownerName, businessName, accessToken)), '_blank');
+  window.open(waLink(phone, applyBizTpl(bizWaTpl(findBiz(id)), ownerName, businessName, accessToken)), '_blank');
   logActivity('businesses', id, { type: 'email', title: 'נשלחה הודעת WhatsApp ידנית לבעל העסק', detail: `לטלפון ${phone}`, field: 'channel', before: null, after: 'whatsapp' });
   bumpWaNudge('businesses', id);   // §415
 };
@@ -12925,7 +12950,7 @@ function taskFilterBarHtml() {
 function taskRow2Html(x) {
   const e = x.entity;
   const key = `${x.kind}:${x.id}`;
-  const badges = [`<span class="class-badge">${x.c.primary}</span>`].concat(x.c.treatments.map(t => treatBadgeHtml(t, e)));
+  const badges = [`<span class="class-badge">${x.c.primary}</span>`].concat(x.c.treatments.filter(t => x.kind === 'fan' || !NAME_TREATMENTS.includes(t)).map(t => treatBadgeHtml(t, e)));   // §652 – בעסק הבקשות ליד השם
   if (x.kind === 'fan' && e.reviewFlag === 'possible_duplicate') badges.push(`<span class="warn-badge">דגל בדיקה – כפילות אפשרית</span>`);
   else if (x.kind === 'fan' && e.reviewFlag) badges.push(`<span class="warn-badge">דגל בדיקה – שם לא תואם</span>`);
   // ── §366 — "בעל עסק" חסר דווקא במסך שבו מחליטים ──────────────────────────────────────
@@ -12957,7 +12982,7 @@ function taskRow2Html(x) {
   return `
     <div class="task-table-row ${selectedTaskKey===key?'active':''}" onclick="selectTask2('${x.kind}','${x.id}')">
       <div class="task-table-main">
-        <div class="task-table-name">${esc(e.name)}${x.kind === 'fan' ? checkNoteTagHtml(e) : inquiryTagHtml(bizInquiries(e)) + bizNoteDraftTagHtml(e)}${isInReview(e) ? ' ' + inReviewBadgeHtml(e) : ''}</div>
+        <div class="task-table-name">${esc(e.name)}${x.kind === 'fan' ? checkNoteTagHtml(e) : bizNameTagsHtml(e)}${isInReview(e) ? ' ' + inReviewBadgeHtml(e) : ''}</div>
         <div class="task-table-meta">${esc(metaLine)}</div>
       </div>
       <div class="task-table-badges">${badges.join('')}</div>
@@ -17855,9 +17880,17 @@ const M2_TPLS = [
     who: 'אוהד שמשתף עסק של מישהו אחר (לבעל העסק יש "שיתוף העסק שלי"). נשלח עם הקישור לעסק.', when: 'בכרטיס של עסק ← כפתור השיתוף בראש הכרטיס.' },
   { id: 'shareMyBiz', grp: 'share', icon: '🙋', t: 'שיתוף העסק שלי', aud: 'biz', site: { body: 'shareMyBizText' }, share: 'mybiz',   // §551
     who: 'בעל עסק שמשתף את העסק שלו. נשלח עם הקישור לעסק.', when: 'בתפריט ☰ ← "שתפו את העסק שלכם עם חברים", ובדשבורד העסק ← "שתפו את העסק עם חברים".' },
+  // §652 — כפתורי הוואטסאפ לבעל עסק במרכז הניהול (sendBizWA). עד עכשיו נוסח קבוע בקוד ("העסק שלכם אושר")
+  // גם לעסק ממתין. נשמר ב-settings/messageTemplates (מנהל בלבד, לא siteTexts הציבורי) – store:'tpl'.
+  { id: 'bizWaPending', grp: 'manual', icon: '⏳', t: 'וואטסאפ לבעל עסק – עסק ממתין', aud: 'biz', site: { body: 'bizWaPending' }, wa: true, store: 'tpl',
+    def: { bizWaPending: DEFAULT_TPL_WA_PENDING },
+    who: 'בעל עסק שהעסק שלו עוד לא אושר – למשל כשמבקשים ממנו לתקן משהו בדשבורד לפני האישור.', when: 'בלחיצה על "וואטסאפ" בכרטיס של עסק ממתין.' },
+  { id: 'bizWaApproved', grp: 'manual', icon: '🏪', t: 'וואטסאפ לבעל עסק – עסק מאושר', aud: 'biz', site: { body: 'bizWaApproved' }, wa: true, store: 'tpl',
+    def: { bizWaApproved: DEFAULT_TPL_WA },
+    who: 'בעל עסק שהעסק שלו מאושר.', when: 'בלחיצה על "וואטסאפ" בכרטיס של עסק מאושר.' },
 ];
 M2_TPLS.forEach((t) => { if (!t.site) t.mailHint = 'מהשמירה והלאה כל אישור יוצא בנוסח החדש. {login}, {code}, {link} ו-{social} מקבלים עיצוב רק בשורה נפרדת (שורה ריקה משני הצדדים).'; });
-const M2_TPL_GROUPS = [['auto', 'נשלחות לבד'], ['site', 'טקסטים על המסך'], ['share', 'הודעות שיתוף']];
+const M2_TPL_GROUPS = [['auto', 'נשלחות לבד'], ['manual', 'וואטסאפ ממרכז הניהול'], ['site', 'טקסטים על המסך'], ['share', 'הודעות שיתוף']];
 const M2_SHARE_URL = { app: 'https://yellowzone.co.il/download?src=share', biz: 'https://yellowzone.co.il/open?biz=שחר-גייזר', mybiz: 'https://yellowzone.co.il/open?biz=שחר-גייזר' };
 Object.assign(m2, { view: 'send', tpl: 'login', tdocs: {}, torig: {}, sendDoc: null, loginMode: 'google' });
 function m2T() { return m2.view === 'tpl' ? (M2_TPLS.find((t) => t.id === m2.tpl) || null) : null; }
@@ -17866,7 +17899,9 @@ function m2T() { return m2.view === 'tpl' ? (M2_TPLS.find((t) => t.id === m2.tpl
 function m2TplDocFrom(t, fromDefaults) {
   const item = findMessageTemplate(t.id) || { defaults: {} };
   if (t.site) {
-    const v = (k) => !k ? '' : fromDefaults ? (item.defaults[k] ?? '') : (tplSiteTextsData[k] ?? item.defaults[k] ?? '');
+    const src = t.store === 'tpl' ? tplFirestoreData : tplSiteTextsData;   // §652
+    const dflt = (k) => item.defaults[k] ?? (t.def && t.def[k]) ?? '';
+    const v = (k) => !k ? '' : fromDefaults ? dflt(k) : (src[k] ?? dflt(k));
     return { site: { title: v(t.site.title), body: v(t.site.body) } };
   }
   const T = fromDefaults ? {} : tplFirestoreData;
@@ -17916,6 +17951,7 @@ function m2LeaveTpl() { if (m2.view === 'tpl') { m2.view = 'send'; m2.doc = m2.s
 function m2TplRenderList() {
   const el = m2$('m2TplList'); if (!el) return;
   const chs = (t) => {
+    if (t.wa) return '💬';   // §652
     if (t.site) return '🖥️';
     const d = m2.tdocs[t.id] || m2TplDocFrom(t);
     return (d.ch.app ? '🔔' : '') + (d.ch.push ? '📲' : '') + '✉️';
@@ -17939,6 +17975,12 @@ function m2TplRenderEdit() {
     <div class="m2-hint">${t.site ? 'מתעדכן באתר מיד אחרי השמירה.' : 'מהשמירה והלאה כל אישור יוצא בנוסח החדש – בכל הערוצים שמסומנים.'}</div></div>`;
   if (t.site) {
     const s = m2.doc.site;
+    if (t.wa) {   // §652
+      el.innerHTML = facts + `<div class="m2-card"><div class="m2-step"><span class="m2-st">💬 מה נשלח בוואטסאפ</span></div>
+        <label class="m2-f" for="m2sB">הטקסט ${m2Clip('m2sB')}</label><textarea class="m2-t" id="m2sB" style="min-height:220px" oninput="m2TplSite('body',this.value)">${esc(s.body)}</textarea>
+        <div class="m2-hint"><code>{name}</code> שם בעל העסק · <code>{business}</code> שם העסק · <code>{link}</code> הקישור האישי לדשבורד העסק. וואטסאפ לא מעצב: *מודגש* יוצא מודגש. החלון נפתח עם הטקסט – אתה עדיין לוחץ "שלח" בעצמך.</div></div>${save.replace('מתעדכן באתר מיד אחרי השמירה.', 'מהשמירה והלאה כל לחיצה על "וואטסאפ" תפתח את הנוסח הזה.')}`;
+      return;
+    }
     if (t.share) {
       el.innerHTML = facts + `<div class="m2-card"><div class="m2-step"><span class="m2-st">📤 מה נשלח</span></div>
         <label class="m2-f" for="m2sB">הטקסט ${m2Clip('m2sB')}</label><textarea class="m2-t" id="m2sB" style="min-height:150px" oninput="m2TplSite('body',this.value)">${esc(s.body)}</textarea>
@@ -17981,6 +18023,14 @@ window.m2TplSite = function (k, v) {
 // תצוגה של טקסט על המסך: "הבקשה התקבלה" כמו בטופס; תקנון – כותרות ## כמו ב-terms.html
 function m2TplRenderSitePv(t) {
   const s = m2.doc.site;
+  if (t.wa) {   // §652 — עם הדוגמה של עסק אמיתי מהקהל של התבנית
+    m2$('m2PvTabs').innerHTML = '<button class="m2-pvtab on">💬 וואטסאפ</button>'; m2$('m2PvWho').innerHTML = '';
+    const b = MOCK_BUSINESSES.find((x) => t.id === 'bizWaPending' ? x.status === 'pending' : x.status === 'approved') || {};
+    const txt = applyBizTpl(String(s.body || ''), b.ownerFirst || 'ישראל', b.name || 'עסק לדוגמה', 'xxxx-xxxx');   // לא הטוקן האמיתי – תצוגה בלבד
+    m2$('m2Pv').innerHTML = `<div class="m2-cap">ככה זה נפתח בוואטסאפ${b.name ? ' – לדוגמה: ' + esc(b.name) : ''}.</div>
+      <div class="m2-wascr"><div class="m2-watop">צ'אט</div><div class="m2-wab">${m2WaHtml(txt)}</div></div>`;
+    return;
+  }
   if (t.share) {   // §550 — כמו שזה מגיע בוואטסאפ: הטקסט, ובשורה האחרונה הקישור
     m2$('m2PvTabs').innerHTML = '<button class="m2-pvtab on">💬 וואטסאפ</button>'; m2$('m2PvWho').innerHTML = '';
     const txt = t.share !== 'app' ? String(s.body || '').split('{business}').join('שחר גייזר') : String(s.body || '');
@@ -18000,7 +18050,7 @@ window.m2SetLoginMode = function (m) { m2.loginMode = m === 'code' ? 'code' : 'g
 
 function m2TplCheck() {
   const t = m2T(), d = m2.doc;
-  if (t.site) return !d.site.body.trim() ? 'הטקסט ריק' : (!t.long && !t.share && !d.site.title.trim()) ? 'חסרה כותרת' : '';
+  if (t.site) return !d.site.body.trim() ? 'הטקסט ריק' : (!t.long && !t.share && !t.wa && !d.site.title.trim()) ? 'חסרה כותרת' : '';
   if (!d.mail.subject.trim() || !m2Strip(d.mail.body)) return 'חסר נושא או גוף במייל';
   if (d.ch.app && (!d.app.title.trim() || !d.app.text.trim())) return 'חסרה כותרת או תוכן בהודעה בתוך האפליקציה';
   if (d.ch.push && (!d.push.title.trim() || !d.push.body.trim())) return 'חסרה כותרת או שורה בפוש';
@@ -18016,8 +18066,8 @@ window.m2TplSave = async function () {
     if (t.site) {
       const vals = { [t.site.body]: d.site.body };
       if (t.site.title) vals[t.site.title] = d.site.title;
-      await setDoc(TPL_SITE_TEXTS_DOC(), vals, { merge: true });
-      Object.assign(tplSiteTextsData, vals);
+      if (t.store === 'tpl') { await setDoc(TPL_SETTINGS_DOC(), vals, { merge: true }); Object.assign(tplFirestoreData, vals); }   // §652
+      else { await setDoc(TPL_SITE_TEXTS_DOC(), vals, { merge: true }); Object.assign(tplSiteTextsData, vals); }
     } else {
       const vals = { [t.id + 'Subject']: d.mail.subject, [t.id + 'Body']: d.mail.body };
       if (t.allow.app === true) vals[t.id + 'App'] = { on: !!d.ch.app, title: d.app.title, text: d.app.text, link: d.app.link.trim() };
@@ -18027,7 +18077,7 @@ window.m2TplSave = async function () {
     }
     m2.torig[t.id] = m2TplKey(d);
     m2TplRenderList(); const w = m2$('m2TplWhy'); if (w) w.textContent = '';
-    m2Toast('💾 נשמר – ' + (t.site ? 'מתעדכן באתר עכשיו' : 'מהאישור הבא יוצא בנוסח הזה'));
+    m2Toast('💾 נשמר – ' + (t.wa ? 'הלחיצה הבאה על "וואטסאפ" תפתח את הנוסח הזה' : t.site ? 'מתעדכן באתר עכשיו' : 'מהאישור הבא יוצא בנוסח הזה'));
   } catch (e) { console.error(e); alert('השמירה נכשלה: ' + (e.code || e.message)); }
 };
 window.m2TplReset = function () {
