@@ -481,7 +481,8 @@
 // §650 — v437 (native-google.js: "ביטול" תוך <1.2 שנ' = החלון לא נפתח → הודעה + זנב-שגיאה; google-signup.js: gsNativeFail בטופס ההרשמה; admin-dashboard: תוויות).
 // §661/§664 — v448 (admin-dashboard: בעל עסק = כרטיס אחד; business.html: "לנסות שוב להעלות" + yz_biz_reg; welcome.html: "העסק שלך אצלנו" + העלאת התמונות שחסרו).
 // §665 — v449 (welcome: בעל עסק שאושר נכנס לבד – מפתח-מכשיר ל-/reg-status; business.html: regTicketHash לרשומת בעלים חדשה; fan-register: 'כבר נרשמת' שאומר איך, במקום הטופס).
-const CACHE_NAME = 'yz-shell-v449';
+// §666 — v450 (welcome: בעל עסק ממתין שמתחבר עם Google/Apple → 'העסק שלך אצלנו' (yzBizFromLogin); הבקשות מ'למה ממתינים' במסך).
+const CACHE_NAME = 'yz-shell-v450';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד

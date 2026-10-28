@@ -1470,6 +1470,11 @@ button { font-family: inherit; }
 #bizPendingBlock .bp-msg { font-size: 13px; line-height: 1.6; margin-top: 10px; color: #B4351C; display: none; }
 #bizPendingBlock .bp-msg.on { display: block; }
 #bizPendingBlock .bp-up .bp-send { display: flex; margin-top: 16px; }
+/* §666 — מה שרמי סימן ב"למה ממתינים" ושלא מעלים מכאן (הטבה, תיאור, אחר) */
+#bizPendingBlock .bp-todo { border: 1.5px solid #F2B8AB; background: #FFFBFA; border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+#bizPendingBlock .bp-todo[hidden] { display: none; }
+#bizPendingBlock .bp-todo ul { margin: 0; padding-inline-start: 18px; font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+#bizPendingBlock .bp-todo a { display: block; margin-top: 10px; text-align: center; font-weight: 800; font-size: 14px; color: var(--navy, #0A2A66); border: 1.5px solid currentColor; border-radius: 10px; padding: 9px; text-decoration: none; }
 .reg-pending .rp-links { margin-top: 14px; font-size: 13px; color: var(--ink-3); text-align: center; }
 .reg-pending .rp-links button { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); text-decoration: underline; cursor: pointer; }
 
@@ -2186,6 +2191,7 @@ html.yz-app .lm-reg-wrap { display: block; }
     <div class="rp-title" id="bpTitle">העסק שלך אצלנו</div>
     <p class="rp-text" id="bpText"></p>
     <div class="bp-up">
+      <div class="bp-todo" id="bpTodo" hidden><ul id="bpTodoList"></ul><a id="bpDash" href="#">לעדכון בדשבורד העסק</a></div>
       <div id="bpSlots"></div>
       <div class="bp-msg" id="bpMsg"></div>
       <button class="lp-btn lp-btn-yellow rp-btn bp-send" id="bpSend" type="button" onclick="window.yzBizUpload()">שליחת התמונות</button>
@@ -2793,6 +2799,17 @@ window.yzRegSkip = function () {
     gallery: { n: 'עוד תמונות של העסק', h: 'עד 5 תמונות.', req: false, multi: true },
   };
   let missing = null, busy = false, checking = false;
+  // §666 — "למה ממתינים" של רמי (/biz-reg-status → reasons/other). תמונה שהוא ביקש ושכבר עלתה
+  // מכאן (r.sent) לא מוצגת שוב – הסיבה עצמה נשארת עד שרמי מסיר אותה, אחרי שבדק.
+  let reasons = [], otherText = '';
+  const R = (k) => reasons.includes(k);
+  const ASKED = { cover: 'cover', logo: 'logo', proof: 'owner' };
+  const sentKeys = () => { const r = window.yzBizRegGet(); return r && Array.isArray(r.sent) ? r.sent : []; };
+  const needSlot = (k) => !!missing && (!!missing[k] || (!!ASKED[k] && R(ASKED[k]) && !sentKeys().includes(k)));
+  const slotReq = (k) => SLOTS[k].req || (k === 'logo' && R('logo'));
+  const TODO = { deal: 'פרטי ההטבה – מה בדיוק מקבלים אוהדי מכבי ואיך מממשים', desc: 'תיאור קצר של העסק – מה אתם עושים ולמי' };
+  const todoItems = () => [...['deal', 'desc'].filter(R).map((k) => TODO[k]), ...(R('other') && otherText ? [otherText] : [])];
+  const needsAction = () => Object.keys(SLOTS).some((k) => needSlot(k) && slotReq(k)) || todoItems().length > 0;
   const $ = (id) => document.getElementById(id);
   const msg = (t) => { const m = $('bpMsg'); if (m) { m.textContent = t || ''; m.classList.toggle('on', !!t); } };
   window.yzBizRegGet = function () {
@@ -2803,7 +2820,6 @@ window.yzRegSkip = function () {
     } catch (e) { return null; }
   };
   const forget = () => { try { localStorage.removeItem('yz_biz_reg'); } catch (e) {} };
-  const reqMissing = (m) => !!(m && (m.cover || m.proof));
   window.yzBizShow = function (state, r) {
     const box = $('bizPendingBlock');
     if (!box) return;
@@ -2821,7 +2837,9 @@ window.yzRegSkip = function () {
     const first = (r && r.ownerFirst) || '', name = (r && r.name) || 'העסק';
     const hi = first ? 'היי ' + first + ', ' : '';
     const T = {
-      missing:  ['חסרות תמונות', hi + 'העסק שלך אצלנו', '"' + name + '" ממתין לאישור – אבל התמונות לא עלו בזמן ההרשמה (כנראה החיבור נפל לרגע). ' + (missing && missing.cover ? 'בלי תמונה ראשית לא נוכל לאשר את העסק.' : 'בלי צילום האימות לא נוכל לאשר את העסק.')],
+      missing:  reasons.length
+        ? ['חסרים פרטים', hi + 'כמעט שם', '"' + name + '" ממתין לאישור. כדי שנוכל לאשר את העסק, חסרים לנו:']
+        : ['חסרות תמונות', hi + 'העסק שלך אצלנו', '"' + name + '" ממתין לאישור – אבל התמונות לא עלו בזמן ההרשמה (כנראה החיבור נפל לרגע). ' + (missing && missing.cover ? 'בלי תמונה ראשית לא נוכל לאשר את העסק.' : 'בלי צילום האימות לא נוכל לאשר את העסק.')],
       pending:  ['ממתין לאישור', hi + 'העסק שלך אצלנו', '"' + name + '" בבדיקה. אין צורך לעשות כלום – כשנאשר, פשוט פותחים את האפליקציה ונכנסים.'],
       sent:     ['ממתין לאישור', 'קיבלנו את התמונות – תודה!', 'הכול אצלנו, ו-"' + name + '" בבדיקה. כשנאשר – פשוט פותחים את האפליקציה ונכנסים.'],
       rejected: ['לא אושר', hi + 'לא הצלחנו לאשר את העסק', 'כתבו לנו ונבדוק יחד.'],
@@ -2836,17 +2854,25 @@ window.yzRegSkip = function () {
     const box = $('bpSlots');
     if (!box || !missing) return;
     // לא לצייר מחדש באמצע בחירה (חזרה מבורר התמונות מפעילה visibilitychange → בדיקה חוזרת)
-    const want = Object.keys(SLOTS).filter((k) => missing[k]).join(',');
+    // §666 — הבקשות שלא מעלים מכאן: רשימה + הדשבורד של העסק (שם עורכים גם עסק ממתין)
+    const todo = todoItems(), tl = $('bpTodoList');
+    $('bpTodo').hidden = !todo.length;
+    if (tl) { tl.innerHTML = ''; todo.forEach((t) => { const li = document.createElement('li'); li.textContent = t; tl.appendChild(li); }); }
+    const rr = window.yzBizRegGet();
+    if (rr) $('bpDash').href = 'business-dashboard.html?token=' + encodeURIComponent(rr.token);
+    const keys = Object.keys(SLOTS).filter(needSlot);
+    $('bpSend').style.display = keys.length ? '' : 'none';
+    const want = keys.map((k) => k + (slotReq(k) ? '!' : '')).join(',');
     if (box.dataset.keys === want) return;
     box.dataset.keys = want;
     box.innerHTML = '';
-    Object.keys(SLOTS).filter((k) => missing[k]).forEach((k) => {
+    keys.forEach((k) => {
       const s = SLOTS[k];
       const el = document.createElement('div');
-      el.className = 'bp-slot' + (s.req ? ' req' : '');
+      el.className = 'bp-slot' + (slotReq(k) ? ' req' : '');
       el.innerHTML = '<div class="bp-n"></div><div class="bp-h"></div><input type="file" accept="image/*">';
       el.querySelector('.bp-n').textContent = s.n;
-      el.querySelector('.bp-n').insertAdjacentHTML('beforeend', '<span class="bp-tag">' + (s.req ? 'חובה' : 'רשות') + '</span>');
+      el.querySelector('.bp-n').insertAdjacentHTML('beforeend', '<span class="bp-tag">' + (slotReq(k) ? 'חובה' : 'רשות') + '</span>');
       el.querySelector('.bp-h').textContent = s.h;
       const inp = el.querySelector('input');
       inp.id = 'bpF_' + k;
@@ -2907,7 +2933,9 @@ window.yzRegSkip = function () {
       const rr = { ...r, name: data.name || r.name, ownerFirst: data.ownerFirst || r.ownerFirst };
       if (data.status === 'rejected') { try { localStorage.setItem('yz_biz_reg', JSON.stringify({ ...rr, last: 'rejected' })); } catch (e) {} window.yzBizShow('rejected', rr); return; }
       missing = data.missing || {};
-      const state = reqMissing(missing) ? 'missing' : (r.last === 'sent' ? 'sent' : 'pending');
+      reasons = Array.isArray(data.reasons) ? data.reasons : [];   // §666
+      otherText = typeof data.other === 'string' ? data.other : '';
+      const state = needsAction() ? 'missing' : (r.last === 'sent' ? 'sent' : 'pending');
       try { localStorage.setItem('yz_biz_reg', JSON.stringify({ ...rr, last: state })); } catch (e) {}
       window.yzBizShow(state, rr);
       if (state === 'missing') window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: 'missing' });
@@ -2919,8 +2947,9 @@ window.yzRegSkip = function () {
     if (!r || !missing || typeof window.hbApiFetch !== 'function') { msg('משהו השתבש. סגרו ופתחו את האפליקציה ונסו שוב.'); return; }
     const files = (k) => { const i = $('bpF_' + k); return i ? [...i.files] : []; };
     for (const k of Object.keys(SLOTS)) {
-      if (missing[k] && SLOTS[k].req && !files(k).length) { msg('נא לבחור: ' + SLOTS[k].n + '.'); return; }
+      if (needSlot(k) && slotReq(k) && !files(k).length) { msg('נא לבחור: ' + SLOTS[k].n + '.'); return; }
     }
+    const sentNow = Object.keys(SLOTS).filter((k) => needSlot(k) && files(k).length);   // §666
     msg('');
     busy = true;
     const btn = $('bpSend');
@@ -2931,23 +2960,23 @@ window.yzRegSkip = function () {
       fd.append('accessToken', r.token);
       fd.append('bizId', r.bizId);
       const cover = files('cover')[0];
-      if (missing.cover && cover) {
+      if (needSlot('cover') && cover) {
         // ⚠️ תמונה ראשית + ממוזערת יחד (הוורקר דורש את שתיהן, §317)
         const [main, thumb] = await Promise.all([shrink(cover, 1600, 0.82), shrink(cover, 640, 0.8)]);
         fd.append('cover', main, 'cover.jpg'); fd.append('coverThumb', thumb, 'cover_thumb.jpg');
       }
       const proof = files('proof')[0];
-      if (missing.proof && proof) fd.append('fanPhoto', await shrink(proof, 1600, 0.82), 'proof.jpg');
+      if (needSlot('proof') && proof) fd.append('fanPhoto', await shrink(proof, 1600, 0.82), 'proof.jpg');
       const logo = files('logo')[0];
       // לוגו: מקור (שומר שקיפות של PNG), רק קובץ כבד נדחס
-      if (missing.logo && logo) fd.append('logo', logo.size > 2e6 ? await shrink(logo, 1024, 0.9) : logo, logo.name || 'logo');
-      const gal = missing.gallery ? files('gallery').slice(0, 5) : [];
+      if (needSlot('logo') && logo) fd.append('logo', logo.size > 2e6 ? await shrink(logo, 1024, 0.9) : logo, logo.name || 'logo');
+      const gal = needSlot('gallery') ? files('gallery').slice(0, 5) : [];
       for (let i = 0; i < gal.length; i++) { fd.append('gallery', await shrink(gal[i], 1280, 0.82), 'g' + i + '.jpg'); fd.append('galleryIndex', String(i)); }
       const res = await window.hbApiFetch('/upload-biz-media', { method: 'POST', body: fd,
         signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(90000) : undefined });
       const j = await res.json().catch(() => ({}));
       if (!j.ok) throw new Error('upload:' + (j.error || (Array.isArray(j.failed) ? j.failed.join('+') : res.status)));
-      try { localStorage.setItem('yz_biz_reg', JSON.stringify({ ...r, last: 'sent' })); } catch (e) {}
+      try { localStorage.setItem('yz_biz_reg', JSON.stringify({ ...r, last: 'sent', sent: [...new Set([...sentKeys(), ...sentNow])] })); } catch (e) {}
       $('bpSlots').dataset.keys = '';
       window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: 'uploadOk' });
       await window.yzBizCheck();
@@ -2958,6 +2987,23 @@ window.yzRegSkip = function () {
     } finally {
       busy = false; btn.disabled = false; btn.textContent = 'שליחת התמונות';
     }
+  };
+  // §666 — בעל עסק ממתין שהתחבר עם Google/Apple ממכשיר אחר: הוורקר מצרף ל-'pending' את
+  // biz = {bizId, token, name, ownerFirst, memberId?, ticket?}. שומרים אותו כאילו נרשם מכאן –
+  // ומכאן הכול כמו §664/§665: המסך, מה חסר, העלאה, וכניסה לבד באישור.
+  window.yzBizFromLogin = function (biz, via) {
+    if (!biz || typeof biz.bizId !== 'string' || typeof biz.token !== 'string') return false;
+    try {
+      localStorage.setItem('yz_biz_reg', JSON.stringify({ bizId: biz.bizId, token: biz.token, name: biz.name || '', ownerFirst: biz.ownerFirst || '',
+        ...(typeof biz.memberId === 'string' && typeof biz.ticket === 'string' ? { memberId: biz.memberId, ticket: biz.ticket } : {}), at: Date.now(), from: via || 'login' }));
+      sessionStorage.removeItem('yz_biz_reg_skip');
+    } catch (e) { return false; }
+    if (!window.yzBizRegGet()) return false;
+    try { if (document.getElementById('loginOverlay').classList.contains('open')) closeModal('loginOverlay'); } catch (e) {}
+    window.yzBizShow('pending', window.yzBizRegGet());
+    window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: 'fromLogin:' + (via || '') });
+    window.yzBizCheck();
+    return true;
   };
   window.yzBizRegSkip = function () {
     try { sessionStorage.setItem('yz_biz_reg_skip', '1'); } catch (e) {}
@@ -4230,6 +4276,7 @@ async function heroGoogleLogin(res) {
         data.email || '');
       return;
     }
+    if (data.error === 'pending' && data.biz && window.yzBizFromLogin && window.yzBizFromLogin(data.biz, 'google')) return;   // §666
     fail(data.error || 'unknown', HERO_G_MSGS[data.error] || 'לא הצלחנו להתחבר. נסו שוב, או היכנסו עם הטלפון והקוד.');
   } catch (e) {
     // §353 — תשובה שמאחרת מעבר לסף הרך עדיין מכניסה, בלי לגעת במסך שכבר עודכן.
@@ -4481,6 +4528,7 @@ async function heroAppleLogin(idToken) {
       return;
     }
 
+    if (data.error === 'pending' && data.biz && window.yzBizFromLogin && window.yzBizFromLogin(data.biz, 'apple')) return;   // §666
     fail(data.error || 'unknown', HERO_A_MSGS[data.error] || 'לא הצלחנו להתחבר. נסו שוב, או היכנסו עם הטלפון והקוד.');
   } catch (e) {
     // §353 — תשובה שמאחרת מעבר לסף הרך עדיין מכניסה.

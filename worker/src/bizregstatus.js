@@ -13,6 +13,7 @@ import { firestoreGetDoc, bizIdFromToken, claimBizToken } from './firestore.js';
 const BIZ_ID_RE = /^[A-Za-z0-9]{20}$/;
 // אותם מסלולים כמו PHOTO_ROUTES במרכז הניהול: רק בהם ראיית-האימות היא תמונה
 const PHOTO_ROUTES = new Set(['passScreenshot', 'purchaseEmail', 'standsPhoto']);
+const REASON_KEYS = ['cover', 'logo', 'deal', 'owner', 'desc', 'other'];   // §666 – הסדר של WAIT_REASONS
 
 // firestoreGetDoc מחזיר ערכים רגילים (fieldsToObject), לא את מבנה ה-REST
 const str = (f, k) => (typeof f[k] === 'string' ? f[k] : '');
@@ -49,5 +50,11 @@ export async function handleBizRegStatus({ bizId, token } = {}, env) {
     logo: !str(f, 'logo'),                 // רשות
     gallery: !photos.length,               // רשות
   };
+  // §666 — מה שרמי סימן ב"למה ממתינים" (§653): אותם מפתחות כמו WAIT_REASONS במרכז הניהול.
+  // המסך מציג אותם לבעל העסק – תמונות להעלאה, והשאר עם קישור לדשבורד העסק.
+  const keys = Array.isArray(f.inReviewReasons) ? f.inReviewReasons : [];
+  out.reasons = REASON_KEYS.filter((k) => keys.includes(k));
+  const other = str(f, 'inReviewOther').trim().slice(0, 300);
+  if (out.reasons.includes('other')) { if (other) out.other = other; else out.reasons = out.reasons.filter((k) => k !== 'other'); }
   return out;
 }

@@ -12,6 +12,7 @@ import { wrapEnvKv } from './safekv.js';
 import { handleRegStatus, handleRegRetry } from './regstatus.js';
 import { handleBizRegStatus } from './bizregstatus.js';
 import { isStrongMatch, describeRegistration } from './regmethod.js';
+import { pendingOwnerExtras } from './ownerpending.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail, sendRejectEmail } from './brevo.js';
 import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
@@ -373,11 +374,11 @@ async function handleGoogleLogin({ idToken }, request, env) {
     const linkable = await linkableByVerifiedEmail(env, accessToken, g, 'googleSub');
     // §586 — ר' unapprovedByVerifiedEmail: נרשם עם המייל הזה ועדיין לא אושר.
     const un = linkable ? null : await unapprovedByVerifiedEmail(env, accessToken, g);
-    if (un) return { error: un };
+    if (un) return await pendingReply(env, accessToken, un);
     return { error: 'google_not_linked', email: g.email, linkable };
   }
   if (member.fields.status !== 'approved') {
-    return { error: member.fields.status === 'pending' ? 'pending' : 'rejected' };
+    return await pendingReply(env, accessToken, { reason: member.fields.status === 'pending' ? 'pending' : 'rejected', row: member });
   }
 
   const customToken = await mintFirebaseCustomToken(env, {
@@ -416,11 +417,25 @@ const MEMBER_EMAIL_SCAN_LIMIT = 3000;
 // התשובה הנכונה היא אותה 'pending' ש-/google-login מחזיר למי שכבר מקושר.
 // ⚠️ חושף "יש הרשמה ממתינה" רק למי שהוכיח עכשיו שליטה בתיבה (מייל מאומת אצל הספק) –
 // אותה ראיה שעליה נשען כל המסלול. רשומה מאושרת עם אותו מייל = לא כאן (זה מסלול הקישור).
+// §666 — מחזיר גם את הרשומה הממתינה (row), בשביל pendingReply.
 async function unapprovedByVerifiedEmail(env, accessToken, g) {
   if (!g.emailVerified || !g.email) return null;
   const rows = await firestoreRunQuery(env, accessToken, 'members', 'email', String(g.email).toLowerCase(), 3);
   if (!rows.length || rows.some((m) => m.fields.status === 'approved')) return null;
-  return rows.some((m) => m.fields.status === 'pending') ? 'pending' : 'rejected';
+  const row = rows.find((m) => m.fields.status === 'pending');
+  return { reason: row ? 'pending' : 'rejected', row: row || null };
+}
+
+// §666 — תשובת 'pending'/'rejected' של Google/Apple. לבעל עסק ממתין (אחרי הוכחת זהות אצל הספק)
+// מצורף `biz` = מה שמסך "העסק שלך אצלנו" צריך (ownerpending.js). כשל בצירוף לא מפיל את התשובה.
+async function pendingReply(env, accessToken, { reason, row }) {
+  const out = { error: reason };
+  if (reason !== 'pending' || !row) return out;
+  try {
+    const biz = await pendingOwnerExtras(env, accessToken, row);
+    if (biz) out.biz = biz;
+  } catch (e) { console.warn('pendingOwnerExtras:', e.message); }
+  return out;
 }
 
 async function linkableByVerifiedEmail(env, accessToken, g, subField) {
@@ -615,13 +630,13 @@ async function handleAppleLogin({ idToken }, request, env) {
   if (!member) {
     const linkable = await linkableByVerifiedEmail(env, accessToken, a, 'appleSub');
     const un = linkable ? null : await unapprovedByVerifiedEmail(env, accessToken, a);   // §586
-    if (un) return { error: un };
+    if (un) return await pendingReply(env, accessToken, un);
     return { error: 'apple_not_linked', email: a.email,
              isPrivateRelay: a.isPrivateRelay, linkable,
              ticket: await mintAppleTicket(env, accessToken, a) };   // §582 – להרשמה שתבוא אחרי
   }
   if (member.fields.status !== 'approved') {
-    return { error: member.fields.status === 'pending' ? 'pending' : 'rejected' };
+    return await pendingReply(env, accessToken, { reason: member.fields.status === 'pending' ? 'pending' : 'rejected', row: member });
   }
 
   const customToken = await mintFirebaseCustomToken(env, {
