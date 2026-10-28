@@ -784,6 +784,15 @@ body {
 .qj-structured { flex-direction: column; align-items: flex-start; gap: 6px; }
 .qj-structured-old, .qj-structured-new { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .qj-value-hint { font-size: 10.5px; font-weight: 600; color: var(--text-sm); flex: none; }
+/* §655 — שינוי טקסט: "היה" ו"מבוקש" במלואם, עם ירידות-השורה, והמילים שהשתנו מסומנות */
+.qj-text-diff { align-items: stretch; width: 100%; }
+.qj-diff-block { display: flex; flex-direction: column; gap: 3px; }
+.qj-diff-text { font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--border); }
+.qj-diff-old { background: var(--nav-bg); color: var(--text-sm); }
+.qj-diff-new { background: var(--card-bg); font-weight: 600; }
+.qj-diff-text del { background: #fde2e2; color: #991b1b; text-decoration: line-through; border-radius: 3px; padding: 0 2px; }
+.qj-diff-text ins { background: #dcfce7; color: #166534; text-decoration: none; border-radius: 3px; padding: 0 2px; }
+.qj-textarea { width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid var(--border-md); border-radius: 7px; background: var(--card-bg); color: var(--text); font: inherit; font-size: 12.5px; line-height: 1.6; resize: vertical; }
 /* השוואת התמונה המייצגת באישור שינוי (§240) — "היה" ו"מבוקש" זו לצד זו, בגודל שאפשר לשפוט בו.
    align-items:flex-start כדי ששתי התמונות יתחילו באותו קו גם כשהמידות מתחתן באורך שונה. */
 .qj-cover-cell { display: inline-block; vertical-align: top; }
@@ -14865,6 +14874,39 @@ function qjStructuredPreviewHtml(field, val) {
   // מערך-טקסטים פשוט (תגיות/אזורים) או אובייקט לא-צפוי — סיכום קריא, לא JSON גולמי
   return `<span class="qj-value-text">${esc(arr.map(x => typeof x === 'object' ? Object.values(x).filter(Boolean).join(' ') : x).join(', '))}</span>`;
 }
+// §655 — השוואת מילים בין "היה" ל"מבוקש" (LCS על מילים, הרווחים וירידות-השורה נשמרים כמו שהם).
+// מחזיר [היה, מבוקש] כ-HTML: מה שנמחק מסומן בישן, מה שנוסף מסומן בחדש. טקסט ענק (מעל 1,500 מילים
+// בצד) מוצג בלי סימון – הטבלה ריבועית, ובטקסט כזה ממילא קוראים את שני הצדדים במלואם.
+function qjTextDiffHtml(oldStr, newStr) {
+  const a = String(oldStr ?? '').split(/(\s+)/).filter(Boolean);
+  const c = String(newStr ?? '').split(/(\s+)/).filter(Boolean);
+  const plain = s => esc(s);
+  if (a.length > 1500 || c.length > 1500) return [plain(a.join('')), plain(c.join(''))];
+  const L = Array.from({ length: a.length + 1 }, () => new Uint16Array(c.length + 1));
+  for (let i = a.length - 1; i >= 0; i--) for (let j = c.length - 1; j >= 0; j--)
+    L[i][j] = a[i] === c[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  let i = 0, j = 0, o = '', n = '';
+  const mark = (tag, s) => /^\s+$/.test(s) ? esc(s) : `<${tag}>${esc(s)}</${tag}>`;
+  while (i < a.length && j < c.length) {
+    if (a[i] === c[j]) { o += esc(a[i]); n += esc(c[j]); i++; j++; }
+    else if (L[i + 1][j] >= L[i][j + 1]) o += mark('del', a[i++]);
+    else n += mark('ins', c[j++]);
+  }
+  while (i < a.length) o += mark('del', a[i++]);
+  while (j < c.length) n += mark('ins', c[j++]);
+  return [o || '–', n || '–'];
+}
+window.qjOpenEdit = function(editId) {
+  const ta = document.getElementById(editId), view = document.getElementById(editId + '_view');
+  if (!ta) return;
+  ta.style.display = ''; if (view) view.style.display = 'none';
+  ta.focus();
+};
+// אישור שורת-טקסט: עריכה פתוחה → הטקסט מהתיבה (כולל ירידות-שורה); אחרת → הערך המקורי מ-pendingChanges
+window.qjApproveText = function(id, field) {
+  const ta = document.getElementById(`qjEdit_${id}_${field}`);
+  return approveChangeField(id, field, ta && ta.style.display !== 'none' ? ta.value : undefined);
+};
 function quickJudgmentHtml(b) {
   const items = bizPendingChangeItems(b);
   const hasNote = bizHasUnhandledNote(b);
@@ -14947,16 +14989,26 @@ function quickJudgmentHtml(b) {
           </div>
         </div>`;
       }
-      const inputId = `qjInput_${b.id}_${it.field}`;
+      // §655 — "היה" ו"מבוקש" במלואם, זה מתחת לזה, והמילים שהשתנו מסומנות. עד עכשיו: הישן בשורה
+      // אחת עם קו חוצה (nowrap – תיאור ארוך פשוט נחתך) והחדש בתוך <input> של שורה אחת, כך שלא היה
+      // אפשר לראות מה השתנה. ⚠️ וגרוע מזה – האישור קרא את ה-<input>: ירידות-שורה נמחקו (מאיר אלמשלי,
+      // 28.10: "פרגולות עץהנדימן"), ושדה עם תצוגה מתורגמת (קטגוריה, כפל מבצעים, כן/לא) נכתב כמחרוזת
+      // התצוגה במקום הערך. עכשיו "אישור" כותב בדיוק את מה שבעל העסק שלח; עריכה – רק אחרי "✏️ עריכה
+      // לפני אישור", ב-<textarea> ששומרת ירידות-שורה, ורק לשדה שהערך שלו טקסט פשוט.
+      const editId = `qjEdit_${b.id}_${it.field}`;
+      const canEdit = typeof pendingVal === 'string' && it.new === pendingVal;
+      const [oldHtml, newHtml] = qjTextDiffHtml(it.old, it.new);
       return `
         <div class="qj-row">
           <div class="qj-row-label"><div class="qj-row-step">שלב ${it.display} · ${DIFF_SECTION_NAMES[it.display] || ''}</div><div class="qj-row-name">${it.label}</div></div>
-          <div class="qj-row-value">
-            <span class="qj-old">${it.old}</span><span class="qj-arrow">→</span>
-            <input type="text" id="${inputId}" class="qj-input" value="${esc(String(it.new))}">
+          <div class="qj-row-value qj-structured qj-text-diff">
+            <div class="qj-diff-block"><span class="qj-value-hint">היה:</span><div class="qj-diff-text qj-diff-old">${oldHtml}</div></div>
+            <div class="qj-diff-block"><span class="qj-value-hint">מבוקש:</span><div class="qj-diff-text qj-diff-new" id="${editId}_view">${newHtml}</div>
+              ${canEdit ? `<textarea id="${editId}" class="qj-textarea" rows="${Math.min(10, Math.max(2, pendingVal.split('\n').length + Math.ceil(pendingVal.length / 70)))}" style="display:none">${esc(pendingVal)}</textarea>` : ''}</div>
           </div>
           <div class="qj-row-actions">
-            <button class="qj-btn primary" onclick="approveChangeField('${b.id}','${it.field}', document.getElementById('${inputId}').value)">אישור</button>
+            <button class="qj-btn primary" onclick="qjApproveText('${b.id}','${it.field}')">אישור</button>
+            ${canEdit ? `<button class="qj-btn" onclick="qjOpenEdit('${editId}')">✏️ עריכה לפני אישור</button>` : ''}
             <button class="qj-btn reject" onclick="rejectChangeField('${b.id}','${it.field}')">דחייה</button>
             <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',${it.section})">לשלב ${it.display} ←</button>
           </div>
