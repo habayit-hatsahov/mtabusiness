@@ -823,8 +823,6 @@ body {
 /* מחיקה לצמיתות — מובחן ויזואלית מ"דחייה" בכוונה (מסגרת אדומה), כדי שלא ילחצו עליו כאילו הוא עוד דחייה */
 .qj-btn-delete { height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--red, #b91c1c); background: transparent; color: var(--red, #b91c1c); font-size: 12px; font-weight: 700; cursor: pointer; }
 .qj-btn-delete:hover { background: var(--red, #b91c1c); color: #fff; }
-/* "טופל מבחוץ" — שורה אחרונה תמידית בשיפוט המהיר, ר' handledExternallyRow */
-.qj-row.qj-row-handled { background: var(--nav-bg); }
 .qj-img-diff { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
 
 /* ── יומן פעילות (שלב 2ג, §1 במפרט) — ציר-זמן, כחול מלא = מנהל אישר/דחה, כחול-בהיר = נגזר-אוטומטית,
@@ -1662,8 +1660,18 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
   .sc-biz-row > :nth-child(n+4), .sc-table-head > :nth-child(n+4) { display: none; }
 }
 @media print { .no-print, .sidebar, .task-list-col, .msg-content-head, .steps-tabs, .decision-panel, .identity-card, .anchor-card, .approve-card, .qj-card { display: none !important; } }
-.step-block { border-top: 1px solid var(--border-md); }
-.step-block.open { background: var(--nav-bg); }
+/* §660 — רמי: "יש רק קו שבקושי רואים". כל שלב כרטיס משלו; פתוח = מסגרת כחולה + צל; סגור עם שינויים שלא נשמרו = מסגרת כתומה מקווקוות */
+.step-block { border: 1px solid var(--border-md); border-radius: 14px; margin: 10px 14px; background: var(--card-bg); overflow: hidden; }
+.step-block.open { border: 2px solid var(--accent); box-shadow: 0 6px 20px rgba(10,42,102,.14); margin: 16px 10px; }
+.step-block.open > .step-row { background: var(--nav-bg); border-bottom: 1px solid var(--border-md); }
+.step-block.collapsed { border: 2px dashed #F5A524; }
+.step-block.collapsed .step-form { display: none; }
+.step-head-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.step-state { font: inherit; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 99px; border: 0; background: var(--nav-bg); color: var(--text-sm); white-space: nowrap; }
+.step-state.ok { background: #ECFDF3; color: #067647; cursor: pointer; }
+.step-state.warn { background: #FFF4E5; color: #B54708; }
+.btn-step-save.sm { height: 32px; padding: 0 13px; font-size: 12.5px; }
+.step-block .step-form-actions { border-top: 1px solid var(--border-md); padding-top: 14px; }
 .step-row { padding: 15px 24px; display: flex; align-items: center; gap: 13px; }
 .step-num { width: 26px; height: 26px; flex: none; border-radius: 99px; background: var(--nav-bg); color: var(--text-sm); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
 .step-num.active { background: var(--accent); color: #fff; }
@@ -3728,7 +3736,7 @@ window.setCoverZoom = function(id, v) {
 window.saveCoverPos = async function(id) {
   const pos = getCoverPos(id);
   const zoom = getCoverZoom(id);
-  await saveSectionUpdates(id, {
+  return await saveSectionUpdates(id, {
     coverPhotoPosition: pos.x.toFixed(0) + '% ' + pos.y.toFixed(0) + '%',
     // null מנקה את השדה ומחזיר את הכרטיס להתנהגות "מילוי" — לא משאיר ערך ישן תקוע
     coverPhotoZoom: zoom ? Number(zoom.toFixed(2)) : null,
@@ -9176,6 +9184,7 @@ function bizFormSummaryHtml(b) {
 }
 
 function bizFullDetailHtml(id, opts) {
+  queueMicrotask(syncStepStates);   // §660 — אחרי שה-HTML נכתב (ובבנייה חיה – אחרי restoreOpenBizSteps)
   const b = findBiz(id);
   if (!b) return `<div class="placeholder-note">עסק לא נמצא</div>`;
   const o = Object.assign({ backFn: 'bizBackToList' }, opts || {});
@@ -9599,17 +9608,16 @@ function bizFullDetailHtml(id, opts) {
       </div>
     </div>`;
   const reviewBlocksHtml = `
-      <div class="step-block${step3Active ? ' open' : ''}" id="stepBlock3_${b.id}">
+      <div class="step-block" id="stepBlock3_${b.id}">
         <div class="step-row">
           <div class="step-num${step3Active ? ' active' : ''}">1</div>
           <div class="step-body" onclick="toggleBizSecEdit('${b.id}',3)" style="cursor:pointer">
             <div class="step-name-row"><div class="step-name">העסק · קטגוריה ותגיות</div>${step3Badge}</div>
             <div class="step-sub">${esc(step3Sub)}</div>
           </div>
-          <label class="step-reviewed"><input type="checkbox" ${step3Reviewed ? 'checked' : ''} onchange="toggleSecReviewed('${b.id}',3,this.checked)"> נסקר</label>
-          <button class="btn-step-edit" id="stepEditBtn3_${b.id}" onclick="toggleBizSecEdit('${b.id}',3)">${step3Active ? 'סגירה' : 'עריכה'}</button>
+          ${stepHeadHtml(b, 3)}
         </div>
-        <div class="step-form${step3Active ? ' open' : ''}" id="secEdit3_${b.id}">
+        <div class="step-form" id="secEdit3_${b.id}">
           <div class="step-form-grid">
             <div class="step-field full"><div class="step-field-h">קטגוריה ראשית</div>${catIconGridHtml(b.id, b.catKey)}</div>
             <div class="step-field full">
@@ -9627,23 +9635,22 @@ function bizFullDetailHtml(id, opts) {
             ${alsoCatSuggestionMeta ? `<div class="tag-suggestion-alert" style="margin-top:8px">💡 בעל העסק הציע: ${alsoCatSuggestionMeta.icon} ${alsoCatSuggestionMeta.label}</div>` : ''}
           </details>
           <div class="step-form-actions">
-            <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',3)">ביטול</button>
-            <button class="btn-step-save" onclick="saveBizSec3('${b.id}')">שמירת השלב</button>
+            <button class="btn-step-save" onclick="saveStepReviewed('${b.id}',3)">💾 שמירה ונסקר</button>
+            <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',3)">סגירה</button>
           </div>
         </div>
       </div>
 
-      <div class="step-block${step2Changes.length ? ' open' : ''}" id="stepBlock2_${b.id}">
+      <div class="step-block" id="stepBlock2_${b.id}">
         <div class="step-row">
           <div class="step-num${step2Changes.length ? ' active' : ''}">2</div>
           <div class="step-body" onclick="toggleBizSecEdit('${b.id}',2)" style="cursor:pointer">
             <div class="step-name-row"><div class="step-name">פרטים ויצירת קשר</div>${step2Changes.length ? `<span class="treat-badge">${step2Changes.length} שינויים מבוקשים</span>` : ''}</div>
             <div class="step-sub">${esc(step2Sub)}</div>
           </div>
-          <label class="step-reviewed"><input type="checkbox" ${step2Reviewed ? 'checked' : ''} onchange="toggleSecReviewed('${b.id}',2,this.checked)"> נסקר</label>
-          <button class="btn-step-edit" id="stepEditBtn2_${b.id}" onclick="toggleBizSecEdit('${b.id}',2)">${step2Changes.length ? 'סגירה' : 'עריכה'}</button>
+          ${stepHeadHtml(b, 2)}
         </div>
-        <div class="step-form${step2Changes.length ? ' open' : ''}" id="secEdit2_${b.id}">
+        <div class="step-form" id="secEdit2_${b.id}">
           <div class="step-form-grid">
             <div class="step-field full"><div class="step-field-h">שם העסק</div><input type="text" id="edit_name_${b.id}" value="${esc(b.name)}"></div>
             <div class="step-field full">
@@ -9690,21 +9697,20 @@ function bizFullDetailHtml(id, opts) {
             <div class="step-field"><div class="step-field-h">פייסבוק</div><input type="text" id="edit_facebook_${b.id}" value="${b.facebook||''}"></div>
           </div>
           <div class="step-form-actions">
-            <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',2)">ביטול</button>
-            <button class="btn-step-save" onclick="saveBizSec2('${b.id}')">שמירת השלב</button>
+            <button class="btn-step-save" onclick="saveStepReviewed('${b.id}',2)">💾 שמירה ונסקר</button>
+            <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',2)">סגירה</button>
           </div>
         </div>
       </div>
 
-      <div class="step-block${step4Changes.length ? ' open' : ''}" id="stepBlock4_${b.id}">
+      <div class="step-block" id="stepBlock4_${b.id}">
         <div class="step-row">
           <div class="step-num${step4Changes.length ? ' active' : ''}">3</div>
           <div class="step-body" onclick="toggleBizSecEdit('${b.id}',4)" style="cursor:pointer">
             <div class="step-name-row"><div class="step-name">הטבות</div>${step4Changes.length ? `<span class="treat-badge">${step4Changes.length} שינויים מבוקשים</span>` : ''}${b.wantsBusinessOfWeek ? `<span class="treat-badge">🏆 ביקשו עסק השבוע</span>` : ''}${b.wantsBenefitOfWeek ? `<span class="treat-badge">🎁 ביקשו הטבת השבוע</span>` : ''}</div>
             <div class="step-sub">${esc(step4Sub)}</div>
           </div>
-          <label class="step-reviewed"><input type="checkbox" ${step4Reviewed ? 'checked' : ''} onchange="toggleSecReviewed('${b.id}',4,this.checked)"> נסקר</label>
-          <button class="btn-step-edit" id="stepEditBtn4_${b.id}" onclick="toggleBizSecEdit('${b.id}',4)">${step4Changes.length ? 'סגירה' : 'עריכה'}</button>
+          ${stepHeadHtml(b, 4)}
         </div>
         ${stackNoteHtml(b)}
         ${(b.wantsBusinessOfWeek || b.wantsBenefitOfWeek) ? `<div style="padding:0 24px 14px;font-size:12.5px;color:var(--text-sm);line-height:1.6;">${b.wantsBusinessOfWeek ? 'הביעו עניין ב<strong>עסק השבוע</strong> (סקירה + באנר בדף הבית). ' : ''}${b.wantsBenefitOfWeek ? 'הביעו עניין ב<strong>הטבת השבוע</strong> (הטבה חד-פעמית). ' : ''}שיבוץ בפועל מתבצע ממסך "עסק השבוע" בסרגל הצד.</div>` : ''}
@@ -9715,7 +9721,7 @@ function bizFullDetailHtml(id, opts) {
              בלי קשר ל-hasDiscount, ולכן הראה את הטקסט כשה-dashboard החדש הראה תיבה ריקה. עכשיו
              מוצג אם *או* hasDiscount *או* שיש בפועל טקסט קיים – לא מסתמכים על הדגל לבד. -->
         ${(b.hasDiscount || b.discountText || b.discountFullText || b.aiShortTitle) ? `<div style="padding:0 24px 18px">${aiTitleFieldHtml(b, { standalone: true })}</div>` : ''}
-        <div class="step-form${step4Changes.length ? ' open' : ''}" id="secEdit4_${b.id}">
+        <div class="step-form" id="secEdit4_${b.id}">
           <div class="step-form-grid">
             ${stepFieldHtml('discountText', 'הטבה 1 – ראשית (מוצגת בכרטיס באינדקס)',
               // עסק עם hasDiscount=true אבל בלי discountTextFull שמור (לא עבר את תהליך-הקיצור-ב-AI,
@@ -9746,8 +9752,8 @@ function bizFullDetailHtml(id, opts) {
             ${couponWrap('3', d3.code, toRedeemArr(d3.redeemMode).includes('online'))}
           </details>
           <div class="step-form-actions">
-            <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',4)">ביטול</button>
-            <button class="btn-step-save" onclick="saveBizSec4('${b.id}')">שמירת השלב</button>
+            <button class="btn-step-save" onclick="saveStepReviewed('${b.id}',4)">💾 שמירה ונסקר</button>
+            <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',4)">סגירה</button>
           </div>
         </div>
       </div>
@@ -9759,14 +9765,14 @@ function bizFullDetailHtml(id, opts) {
             <div class="step-name-row"><div class="step-name">תמונות</div>${step5Badge}</div>
             <div class="step-sub">${esc(step5Sub)}</div>
           </div>
-          <label class="step-reviewed"><input type="checkbox" ${step5Reviewed ? 'checked' : ''} onchange="toggleSecReviewed('${b.id}',5,this.checked)"> נסקר</label>
-          <button class="btn-step-edit" id="stepEditBtn5_${b.id}" onclick="toggleBizSecEdit('${b.id}',5)">עריכה</button>
+          ${stepHeadHtml(b, 5)}
         </div>
         <div style="padding:0 24px 18px">${mediaRealViewHtml(b)}</div>
         <div class="step-form" id="secEdit5_${b.id}">
           ${mediaRealEditHtml(b)}
           <div class="step-form-actions">
-            <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',5)">סגור עריכה</button>
+            <button class="btn-step-save" onclick="saveStepReviewed('${b.id}',5)">💾 שמירה ונסקר</button>
+            <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',5)">סגירה</button>
           </div>
         </div>
       </div>
@@ -9954,6 +9960,17 @@ window.toggleBizSecEdit = function(id, n) {
   const edit = document.getElementById('secEdit'+n+'_'+id);
   const stepBlock = document.getElementById('stepBlock'+n+'_'+id); // קיים רק לשלבים שכבר הומרו לסגנון step-block (§131) — null-safe לשאר
   if (!edit) return;
+  // §660 — שלב "חונה" (נסגר עם שינויים שלא נשמרו): הטופס נשאר בדף עם מה שהוקלד, רק מוסתר
+  const key = id + ':' + n, top0 = stepBlock && !_restoringSteps ? stepBlock.getBoundingClientRect().top : null;
+  if (stepBlock && !_restoringSteps && parkedBizSteps.has(key)) {
+    parkedBizSteps.delete(key); stepBlock.classList.remove('collapsed'); stepBlock.classList.add('open'); refreshStepHead(id, n);
+    return;
+  }
+  if (stepBlock && !_restoringSteps && edit.classList.contains('open') && (stepDirty.has(key) || (n === 5 && coverPending(id)))) {
+    parkedBizSteps.add(key); stepBlock.classList.add('collapsed'); stepBlock.classList.remove('open'); refreshStepHead(id, n);
+    stepKeepAnchor(stepBlock, top0);
+    return;
+  }
   const opening = !edit.classList.contains('open');
   if (stepBlock) {
     stepBlock.classList.toggle('open', opening);
@@ -9982,6 +9999,120 @@ window.toggleBizSecEdit = function(id, n) {
   // §258 — כל פתיחה/סגירה ידנית מעדכנת את ה-state, כדי שבנייה-מחדש תשחזר בדיוק את מה שהמנהל
   // השאיר פתוח. restoreOpenBizSteps קוראת לפונקציה הזו בעצמה, ולכן ה-add כאן אידמפוטנטי.
   if (opening) openBizSteps.add(id + ':' + n); else openBizSteps.delete(id + ':' + n);
+  if (stepBlock && !opening) stepKeepAnchor(stepBlock, top0);   // §660 — "סגירה" למטה לא מעיפה את המסך
+};
+// ── §660 — שלבים: תמיד סגורים, "שמירה ונסקר" אחד, מצב גלוי מבחוץ ──────────────────────────
+// רמי: "לפעמים שאני לוחץ סגירה או נסקר זה קופץ… שמירה ונסקר ככפתור אחד, סגירה בכפתור אחר… כל השלבים
+// סגורים תמיד, לחיצה פותחת, שמירה ונסקר סוגר… מבחוץ תראה אם נשמר או לא, ואם צריך – לשמור מבחוץ".
+// stepDirty = שלב שהוקלד/נבחר בו משהו מאז שנפתח. parkedBizSteps = נסגר עם שינויים: נשאר ב-openBizSteps
+// (הטופס חי, captureEditState שומר את הערכים בבנייה מחדש) אבל מוסתר (.collapsed).
+const stepDirty = new Set(), parkedBizSteps = new Set();
+function stepHeadHtml(b, n) {
+  const key = b.id + ':' + n, parked = parkedBizSteps.has(key), open = openBizSteps.has(key) && !parked;
+  const dirty = stepDirty.has(key) || (n === 5 && open && coverPending(b.id));
+  const rev = !!(b.reviewedSections && b.reviewedSections[n]);
+  const chip = parked ? '<span class="step-state warn">⚠️ לא נשמר</span>'
+    : open && dirty ? '<span class="step-state warn">✏️ לא נשמר עדיין</span>'
+    : rev ? `<button class="step-state ok" title="לחיצה מבטלת את הסימון" onclick="event.stopPropagation();unmarkStepReviewed('${b.id}',${n})">✓ נסקר</button>`
+    : '<span class="step-state">לא נסקר</span>';
+  const saveOut = parked ? `<button class="btn-step-save sm" onclick="event.stopPropagation();saveStepReviewed('${b.id}',${n})">💾 שמירה ונסקר</button><button class="btn-step-edit" onclick="event.stopPropagation();discardStep('${b.id}',${n})">↺ ביטול השינויים</button>` : '';
+  return `<div class="step-head-actions" id="stepHead${n}_${b.id}">${chip}${qjStepNoteBtn(b, n)}${saveOut}<button class="${open ? 'btn-step-close' : 'btn-step-edit'}" id="stepEditBtn${n}_${b.id}" onclick="toggleBizSecEdit('${b.id}',${n})">${open ? 'סגירה' : 'עריכה'}</button></div>`;
+}
+function refreshStepHead(id, n) {
+  const el = document.getElementById('stepHead' + n + '_' + id), b = findBiz(id);
+  if (el && b) el.outerHTML = stepHeadHtml(b, n);
+}
+// הכותרת של השלב נשארת באותו מקום במסך (או עולה ל-70px אם הייתה מעל המסך) – בלי קפיצה
+function stepKeepAnchor(blk, top0) {
+  if (!blk || top0 == null || !blk.isConnected) return;
+  const d = blk.getBoundingClientRect().top - Math.max(top0, 70);
+  if (Math.abs(d) < 2) return;
+  let sp = blk.parentElement;
+  while (sp && sp !== document.body && sp !== document.documentElement && !(sp.scrollHeight > sp.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(sp).overflowY))) sp = sp.parentElement;
+  (sp && sp !== document.body && sp !== document.documentElement ? sp : window).scrollBy(0, d);
+}
+function markStepDirty(e) {
+  const t = e.target;
+  if (!t || !t.closest) return;
+  const f = t.closest('.step-form');
+  if (!f || t.closest('.step-form-actions') || (e.type === 'click' && (!t.closest('[onclick]') || t.closest('summary')))) return;
+  const m = /^secEdit([234])_(.+)$/.exec(f.id);
+  if (!m || !f.classList.contains('open')) return;
+  const key = m[2] + ':' + m[1];
+  if (stepDirty.has(key)) return;
+  stepDirty.add(key);
+  refreshStepHead(m[2], Number(m[1]));
+}
+['input', 'change', 'click'].forEach(ev => document.addEventListener(ev, markStepDirty, true));
+// שלב התמונות: הכותרת מתעדכנת אחרי גרירה/כפתור במיקום התמונה (נבדק מול הערך השמור – coverPending)
+['pointerup', 'input', 'click'].forEach(ev => document.addEventListener(ev, e => {
+  const f = e.target && e.target.closest && e.target.closest('.step-form');
+  const m = f && /^secEdit5_(.+)$/.exec(f.id);
+  if (m) setTimeout(() => refreshStepHead(m[1], 5), 0);
+}));
+// מיקום/גודל/רקע של התמונה המייצגת שהשתנו ועוד לא נשמרו
+function coverPending(id) {
+  const b = findBiz(id);
+  if (!b || !b.coverPhoto) return false;
+  if (!bizCoverPosEdits[id] && bizCoverZoomEdits[id] === undefined && bizCoverBgEdits[id] === undefined) return false;
+  const p0 = parseCoverPos(b.coverPhotoPosition), p = getCoverPos(id);
+  const zr = parseFloat(b.coverPhotoZoom), z0 = zr > 0 ? Number(zr.toFixed(2)) : null, z = getCoverZoom(id), z1 = z ? Number(z.toFixed(2)) : null;
+  return Math.round(p.x) !== Math.round(p0.x) || Math.round(p.y) !== Math.round(p0.y) || z1 !== z0 || (!!z1 && (getCoverBg(id) || '') !== (b.coverPhotoBg || ''));
+}
+let _stepReview = null;   // saveSectionUpdates מוסיף את "נסקר" לאותה כתיבה (בנייה מחדש אחת – בלי קפיצה כפולה)
+window.saveStepReviewed = async function(id, n) {
+  const b = findBiz(id);
+  if (!b) return;
+  const key = id + ':' + n, blk0 = document.getElementById('stepBlock' + n + '_' + id);
+  const top0 = blk0 ? blk0.getBoundingClientRect().top : null;
+  const wasOpen = openBizSteps.has(key), wasParked = parkedBizSteps.has(key);
+  openBizSteps.delete(key); parkedBizSteps.delete(key);   // הבנייה מחדש אחרי השמירה תצייר אותו סגור
+  let ok = false;
+  try {
+    // §660ב — רמי: "לפעמים אני משנה סדר, מוסיף תמונות". העלאה/סדר/מחיקה נשמרים מיד; מיקום/גודל/רקע של
+    // התמונה המייצגת מחכים ל"שמירת מיקום" – כאן הם נשמרים יחד עם "נסקר"
+    if (n === 5 && coverPending(id)) { _stepReview = { id, n }; ok = await saveCoverPos(id); }
+    else if (n === 5) ok = await saveSectionUpdates(id, { reviewedSections: { ...(b.reviewedSections || {}), 5: true } });
+    else { _stepReview = { id, n }; ok = await window['saveBizSec' + n](id); }
+  } finally { _stepReview = null; }
+  if (!ok) {   // נעצר (אישור שבוטל / שגיאה) – השלב נשאר כמו שהיה
+    if (wasOpen) openBizSteps.add(key);
+    if (wasParked) parkedBizSteps.add(key);
+    return;
+  }
+  stepDirty.delete(key);
+  const edit = document.getElementById('secEdit' + n + '_' + id);
+  if (edit && edit.classList.contains('open')) { openBizSteps.add(key); toggleBizSecEdit(id, n); }   // בלי בנייה מחדש – סוגרים ידנית
+  stepKeepAnchor(document.getElementById('stepBlock' + n + '_' + id), top0);
+};
+window.unmarkStepReviewed = async function(id, n) {
+  const b = findBiz(id), blk0 = document.getElementById('stepBlock' + n + '_' + id);
+  if (!b) return;
+  const top0 = blk0 ? blk0.getBoundingClientRect().top : null;
+  await saveSectionUpdates(id, { reviewedSections: { ...(b.reviewedSections || {}), [n]: false } });
+  stepKeepAnchor(document.getElementById('stepBlock' + n + '_' + id), top0);
+};
+// בנייה מלאה (renderMain – בחירת עסק, ניווט) לא משחזרת שלבים פתוחים; שלב שהטופס שלו כבר לא פתוח מאבד את
+// המצב שלו ("לא נשמר" / פתוח), אחרת הכותרת הייתה מבטיחה ערכים שכבר לא בדף
+function syncStepStates() {
+  [...openBizSteps].forEach(key => {
+    const [id, num] = key.split(":"), edit = document.getElementById("secEdit" + num + "_" + id);
+    if (edit && !edit.classList.contains("open")) {
+      openBizSteps.delete(key); parkedBizSteps.delete(key); stepDirty.delete(key);
+      refreshStepHead(id, Number(num));
+    }
+  });
+  [...parkedBizSteps, ...stepDirty].forEach(key => { if (!openBizSteps.has(key)) { parkedBizSteps.delete(key); stepDirty.delete(key); } });
+}
+window.discardStep = function(id, n) {
+  if (!confirm('לבטל את השינויים שלא נשמרו בשלב הזה?')) return;
+  const key = id + ':' + n;
+  parkedBizSteps.delete(key); stepDirty.delete(key); openBizSteps.delete(key);
+  const edit = document.getElementById('secEdit' + n + '_' + id);
+  if (edit) edit.classList.remove('open');   // אחרת captureEditState היה מחזיר את מה שהוקלד
+  if (n === 4) delete bizAiTitleEdits[id];
+  if (n === 5) { delete bizCoverPosEdits[id]; delete bizCoverZoomEdits[id]; delete bizCoverBgEdits[id]; }
+  renderMainPreserveScroll();
 };
 
 // ── גרירת קבצים לאזור ההעלאה (2026-08-19) ───────────────────────────────────────────────────
@@ -10104,6 +10235,12 @@ function restoreOpenBizSteps() {
       const edit = document.getElementById('secEdit' + num + '_' + id);
       if (edit && !edit.classList.contains('open')) toggleBizSecEdit(id, Number(num));
     });
+    parkedBizSteps.forEach(key => {   // §660
+      const [id, num] = key.split(':');
+      const blk = document.getElementById('stepBlock' + num + '_' + id);
+      if (blk) { blk.classList.add('collapsed'); blk.classList.remove('open'); }
+    });
+    openBizSteps.forEach(key => { const [id, num] = key.split(':'); if (document.getElementById('stepHead' + num + '_' + id)) refreshStepHead(id, Number(num)); });
   } finally { _restoringSteps = false; _keptHoursBoxes = {}; }
 }
 // אחרי restoreEditState: קטגוריה שהוחלפה ולא נשמרה חוזרת לבורר רק עכשיו, ולכן אזור התגיות
@@ -10237,6 +10374,12 @@ function renderMainPreserveScroll() {
 // opts הוא אופציונלי לגמרי — 15 הקריאות האחרות בקובץ לא מעבירות אותו ומתנהגות בדיוק כמו קודם.
 async function saveSectionUpdates(id, updates, opts) {
   const b = findBiz(id);
+  if (b && _stepReview && _stepReview.id === id) {   // §660 — "שמירה ונסקר"
+    const n = _stepReview.n;
+    const after = { ...b, ...updates, discountFullText: updates.discountTextFull ?? b.discountFullText };
+    const mark = !(n === 4 && stackNeedsMention(after) && !confirm('הקוד של העסק כולל כפל מבצעים, ונוסח ההטבה לא מזכיר את זה.\nלסמן "נסקר" בכל זאת? (ביטול = לשמור בלי "נסקר")'));
+    if (mark) updates = { ...updates, reviewedSections: { ...(b.reviewedSections || {}), [n]: true } };
+  }
   const beforeVals = {};
   if (b) Object.keys(updates).forEach(k => { beforeVals[k] = b[k]; });
   // ── כל שדה שהמנהל כותב כאן ידנית מבטל בקשה ממתינה על אותו שדה בדיוק (2026-08-16).
@@ -10270,7 +10413,13 @@ async function saveSectionUpdates(id, updates, opts) {
     const fields = Object.keys(updates).filter(k => !SAVE_LOG_SKIP_FIELDS.has(k));
     if (fields.length) {
       const summary = fields.map(k => DIFF_FIELD_LABELS_MOCK[k] || k).join(', ');
+      const noteItems = qjEditItems(beforeVals, updates);   // §659ג
+      if (noteItems.length) {
+        const list = (QJ_DECIDED[id] || []).filter(x => !(x.decision === 'edited' && noteItems.some(n => n.field === x.field)));
+        QJ_DECIDED[id] = list.concat(noteItems.map(n => ({ ...n, _ts: Date.now() })));
+      }
       logActivity('businesses', id, {
+        noteItems,
         type: 'adminEdit', title: `נערך: ${summary}`,
         detail: fields.map(k => `${DIFF_FIELD_LABELS_MOCK[k] || k}: "${fmtActivityVal(beforeVals[k])}" → "${fmtActivityVal(updates[k])}"`).join(' · '),
         field: fields[0], before: beforeVals[fields[0]] ?? null, after: updates[fields[0]] ?? null,
@@ -10279,7 +10428,8 @@ async function saveSectionUpdates(id, updates, opts) {
     hideSaving(true);
     renderMainPreserveScroll();
     if (opts && opts.reopenStep) reopenBizSecEdit(id, opts.reopenStep);
-  } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בשמירה: ' + e.message); }
+    return true;
+  } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בשמירה: ' + e.message); return false; }
 }
 
 // עריכה מהירה של שם העסק ישירות מכרטיס-הזהות (ראש הכרטיס) — לפני זה שינוי-שם היה קיים רק קבור
@@ -10344,6 +10494,7 @@ async function logActivity(collectionName, entityId, entry) {
       source: entry.source || 'admin',
       // §623ג — השורה להודעה לבעל העסק נשמרת עם ההחלטה עצמה, ו"נסגרת" ע"י ההודעה / "בלי הודעה"
       ...(entry.noteItem ? { noteItem: entry.noteItem } : {}),
+      ...(entry.noteItems && entry.noteItems.length ? { noteItems: entry.noteItems } : {}),   // §659ג — עריכה ידנית: שדה לכל פריט
       ...(entry.noteClose ? { noteClose: true } : {}),
       createdAt: serverTimestamp(),
     });
@@ -10569,7 +10720,7 @@ window.saveBizSec2 = async function(id) {
   if (!confirmSuspectLink('website', updates.website, 'האתר')) return;
   if (!confirmSuspectLink('instagram', updates.instagram, 'האינסטגרם')) return;
   if (!confirmSuspectLink('facebook', updates.facebook, 'הפייסבוק')) return;
-  await saveSectionUpdates(id, updates);
+  return await saveSectionUpdates(id, updates);
 };
 
 window.saveBizSec3 = async function(id) {
@@ -10584,7 +10735,7 @@ window.saveBizSec3 = async function(id) {
     // המנהל טיפל בהצעה ישירות (בחר אותה או בחר אחרת) — ההצעות כבר לא רלוונטיות, כמו saveSec3 ב-admin-businesses.html
     tagSecondSuggestion: '', tagSuggestion: '',
   };
-  await saveSectionUpdates(id, updates);
+  return await saveSectionUpdates(id, updates);
 };
 
 // חושף/מסתיר את שדה קוד-הקופון כש"באתר" מסומן/מבוטל — checkbox native, לא צ'יפ custom, אז אין
@@ -10630,7 +10781,7 @@ window.saveBizSec4 = async function(id) {
     discountStacking: (hasDiscount && couponFor('1')) ? (document.getElementById('edit_stacking_'+id)?.value || '') : '',   // §597
     additionalDiscounts: hasDiscount ? additionalDiscounts : [],
   };
-  await saveSectionUpdates(id, updates);
+  return await saveSectionUpdates(id, updates);
 };
 
 
@@ -14054,6 +14205,13 @@ async function doApproveBiz(id) {
 window.rejectBiz = async function(id) {
   const b = findBiz(id);
   if (!b) return;
+  // §659 — עסק ממתין שיש החלטות/הערות על הבקשות שלו: הדחייה עוברת בתיבה, כמו האישור
+  if (b.status !== 'approved' && (QJ_DECIDED[id] || []).length) { bnOpen({ bizId: id, mode: 'reject' }); return; }
+  await doRejectBiz(id);
+};
+async function doRejectBiz(id) {
+  const b = findBiz(id);
+  if (!b) return false;
   try {
     const wasApproved = b.status === 'approved';
     if (wasApproved) await updateDoc(doc(db, 'businesses', id), { status: 'pending', approvedAt: null });
@@ -14064,8 +14222,9 @@ window.rejectBiz = async function(id) {
       detail: `"${b.name}" ${wasApproved ? 'הוחזר לסטטוס ממתין' : 'נדחה'}`,
       field: 'status', before: b.status, after: wasApproved ? 'pending' : 'rejected',
     });
-  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
-};
+    return true;
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); return false; }
+}
 window.deleteBiz = async function(id) {
   const b = findBiz(id);
   if (!b) return;
@@ -14382,6 +14541,8 @@ window.approveChangeField = async function(id, field, valueOverride) {
   updates.pendingChanges = kept;
   if (!kept) updates.pendingChangesAt = null;
   updates.changeDecisions = withChangeDecision(b, field, 'approved');
+  // §659 — עריכה לפני אישור: בעל העסק יראה שזה אושר עם תיקון שלנו
+  const qjLbl = (DIFF_FIELD_LABELS_MOCK[field] || field) + (valueOverride !== undefined && String(valueOverride) !== String(b.pendingChanges[field]) ? ' (עם תיקון קטן שלנו)' : '');
   try {
     await updateDoc(doc(db, 'businesses', id), updates);
     await syncOwnerFieldsToMember(b, updates);
@@ -14389,12 +14550,12 @@ window.approveChangeField = async function(id, field, valueOverride) {
     Object.assign(b, hydrateBiz(id, b));
     b.healthScore = computeHealthScore(b);
     await logActivity('businesses', id, {
-      noteItem: qjItem(DIFF_FIELD_LABELS_MOCK[field] || field, 'approved'),   // §623ג
+      noteItem: qjItem(qjLbl, 'approved'),   // §623ג
       type: 'changeDecision', title: `אושר שינוי: ${DIFF_FIELD_LABELS_MOCK[field] || field}`,
       detail: `${DIFF_FIELD_LABELS_MOCK[field] || field}: "${fmtActivityVal(oldVal)}" → "${fmtActivityVal(newVal)}"`,
       field, before: oldVal, after: newVal,
     });
-    qjRemember(id, qjItem(DIFF_FIELD_LABELS_MOCK[field] || field, 'approved'));   // §623
+    qjRemember(id, qjItem(qjLbl, 'approved'));   // §623
     renderMain();
   } catch (e) { console.error(e); alert('שגיאה באישור השינוי: ' + e.message); }
 };
@@ -15155,7 +15316,7 @@ function quickJudgmentHtml(b) {
         <div class="qj-hint">${hint}</div>
       </div>
       ${(showApproveApp || b.status === 'rejected') ? bizApprovalSectionsHtml(b) : ''}
-      ${(hasBody && isOpen) ? `<div class="qj-body">${proposalRow}${followRow}${draftRow}${ownerPreRow}${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}${handledExternallyRow(b)}</div>` : ''}
+      ${(hasBody && isOpen) ? `<div class="qj-body">${proposalRow}${followRow}${draftRow}${ownerPreRow}${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}</div>` : ''}
     </div>`;
 }
 
@@ -15329,7 +15490,7 @@ window.rtEditSave = async function() {
     rtRefresh();
   } catch (e) { console.error('replyTemplates save failed', e); rtEditRender('השמירה נכשלה: ' + (e.message || e)); }
 };
-const BN_ORIGIN = { approve: 'אישור הרשמה', changes: 'החלטה על שינויים', external: 'טופל מבחוץ', free: 'הודעה יזומה', note: 'תשובה ל"כתבו לנו"' };
+const BN_ORIGIN = { approve: 'אישור הרשמה', reject: 'דחיית הרשמה', changes: 'החלטה על שינויים', external: 'טופל מבחוץ', free: 'הודעה יזומה', note: 'תשובה ל"כתבו לנו"' };
 // החלטות בשיפוט המהיר שעוד לא נכתב עליהן לבעל העסק.
 // §623ג — לא רק בזיכרון: כל החלטה נרשמת ביומן העסק עם noteItem, וההודעה (mode changes) או "בלי הודעה"
 // נרשמות עם noteClose. בפתיחת הכרטיס הרשימה נגזרת מהיומן – מהחדש אחורה עד noteClose הראשון – ולכן
@@ -15339,24 +15500,173 @@ const QJ_DECIDED = {};
 // §644 — רמי: "תוסיף את זה תמיד כאשר מאשרים קטגוריה שנייה". "מופיע גם תחת" לא מוצג בכרטיס (home.html
 // משתמש בו רק לסינון רשימת הקטגוריה), ולכן בעל העסק חושב שהאישור לא עבד.
 const ALSO_CAT_EXPLAIN = 'חשוב לדעת: בכרטיס העסק מופיעה רק הקטגוריה הראשית, והקטגוריה הנוספת לא תופיע עליו – אבל כל מי שנכנס לקטגוריה הזו רואה אתכם ברשימה. בדשבורד שלכם היא מופיעה תחת "מופיע גם תחת".';
-const QJ_LINE_PREFIX = { approved: '✅ אושר: ', rejected: '❌ לא אושר: ', mapped: '↪️ ', handled: '✔️ טיפלנו: ', info: 'ℹ️ ' };
-const QJ_CHIP_ICON = { approved: '✅ ', rejected: '❌ ', mapped: '↪️ ', handled: '✔️ ', info: 'ℹ️ ' };
+const QJ_LINE_PREFIX = { approved: '✅ אושר: ', rejected: '❌ לא אושר: ', mapped: '↪️ ', handled: '✔️ טיפלנו: ', info: 'ℹ️ ', remark: '📝 ', edited: '✏️ עדכנו: ' };
+const QJ_CHIP_ICON = { approved: '✅ ', rejected: '❌ ', mapped: '↪️ ', handled: '✔️ ', info: 'ℹ️ ', remark: '📝 ', edited: '✏️ ' };
+// §659ב — remark = הערה חופשית של רמי על שלב בכרטיס (לא החלטה על בקשה); הכותרת בהודעה = שם השלב
+const QJ_STEP_NAMES = { 2: 'פרטים ויצירת קשר', 3: 'העסק · קטגוריה ותגיות', 4: 'הטבות', 5: 'תמונות' };
 function qjItem(label, decision) {
   return { label: String(label || '').replace(/^[^\p{L}\p{N}"]+/u, '').slice(0, 200), decision };
 }
 function qjRemember(id, item) {
   (QJ_DECIDED[id] = QJ_DECIDED[id] || []).push({ ...item, _ts: Date.now() });
+  // §659 — רמי (מוסך לזר גרסי): "אחרי כל אישור, דחייה או עריכה שיקפוץ לי חלון להוסיף הערה… ויאסוף את
+  // כל התגובות שלי". אחרי ה-renderMain של ההחלטה (ושל דיאלוג התגית, אם היה)
+  setTimeout(() => qjNoteOpen(id), 120);
 }
+// §659 — ההודעה המצטברת: שורת החלטה + ההערה שלו מתחתיה
+function qjDecidedText(decided) {
+  const line = d => (QJ_LINE_PREFIX[d.decision] || '') + d.label + (d.note ? '\n' + d.note : '');
+  const main = decided.filter(d => d.decision !== 'edited' && d.decision !== 'remark'), ed = decided.filter(d => d.decision === 'edited'), rm = decided.filter(d => d.decision === 'remark');
+  return [main.map(line).join('\n\n'), ed.length ? '✏️ עדכנו בשבילך:\n' + ed.map(d => '• ' + d.label).join('\n') : '', rm.map(line).join('\n\n')].filter(Boolean).join('\n\n')
+    + (decided.some(d => d.decision === 'approved' && /^קטגוריה נוספת/.test(d.label)) ? '\n\n' + ALSO_CAT_EXPLAIN : '');
+}
+// §659ג — רמי: "לפעמים אני משנה סתם ככה… שזה ירכז לי להודעה אם שיניתי מהשלבים". עריכה ידנית בשלב
+// (saveSectionUpdates) נכנסת לרשימה בשקט – רק מה שבאמת השתנה, רק שדות שבעל העסק רואה, ערך קצר בטקסט.
+// אותו שדה פעמיים = רק האחרונה. ⚠️ saveSectionUpdates שולח את כל שדות השלב (גם מה שלא נגעו בו) – לכן ההשוואה.
+const QJ_EDIT_FIELDS = ['name', 'categoryPrimary', 'tags', 'alsoUnderCategory', 'desc', 'branches', 'city', 'address', 'regions', 'phone', 'whatsapp', 'serviceEmail', 'hours',
+  'website', 'instagram', 'facebook', 'hasDiscount', 'discountText', 'discountTextFull', 'discountRedeemMode', 'discountTypes', 'discountCode', 'discountStacking', 'additionalDiscounts',
+  'wantsBusinessOfWeek', 'wantsBenefitOfWeek', 'coverPhoto', 'logo', 'photos', 'coverPhotoPosition', 'coverPhotoZoom', 'coverPhotoBg', 'logoFit'];
+const QJ_EDIT_LOOK = ['coverPhotoPosition', 'coverPhotoZoom', 'coverPhotoBg', 'logoFit'];   // שורה אחת: "איך התמונה מופיעה בכרטיס"
+const QJ_EDIT_VALUE = new Set(['name', 'categoryPrimary', 'tags', 'alsoUnderCategory', 'city', 'address', 'regions', 'phone', 'whatsapp', 'serviceEmail', 'website', 'instagram', 'facebook',
+  'hasDiscount', 'discountText', 'discountTextFull', 'discountCode', 'wantsBusinessOfWeek', 'wantsBenefitOfWeek', 'desc']);   // השאר (תמונות, שעות, קודים פנימיים) – "עודכן"
+function qjEmpty(v) { return v == null || v === '' || (Array.isArray(v) && !v.length); }
+function qjEq(a, b) {
+  if (qjEmpty(a) && qjEmpty(b)) return true;
+  if (qjEmpty(a) || qjEmpty(b)) return false;
+  if (Array.isArray(a) || Array.isArray(b)) return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => qjEq(x, b[i]));
+  if (typeof a === 'object' && typeof b === 'object') { const ks = new Set([...Object.keys(a), ...Object.keys(b)]); return [...ks].every(k => qjEq(a[k], b[k])); }
+  return a === b || String(a) === String(b);
+}
+function qjEditItems(before, updates) {
+  const out = [];
+  let look = false;
+  QJ_EDIT_FIELDS.forEach(f => {
+    if (!(f in updates) || qjEq(before[f], updates[f])) return;
+    if (QJ_EDIT_LOOK.includes(f)) { look = true; return; }
+    const L = DIFF_FIELD_LABELS_MOCK[f] || f, v = updates[f];
+    let label = L + ' – עודכן';
+    if (QJ_EDIT_VALUE.has(f)) {
+      if (qjEmpty(v) || v === false && f === 'hasDiscount') label = f === 'hasDiscount' ? 'ההטבה כובתה' : L + ' – הוסר';
+      else if (typeof v === 'boolean') label = L + ': ' + (v ? 'כן' : 'לא');
+      else {
+        const t = f === 'categoryPrimary' ? ((CATEGORIES.find(c => c.key === v) || {}).label || v)
+          : f === 'alsoUnderCategory' && Array.isArray(v) ? v.map(k => (CATEGORIES.find(c => c.key === k) || {}).label || k).join(', ')
+          : Array.isArray(v) ? (v.every(x => typeof x === 'string') ? v.join(', ') : '') : typeof v === 'string' ? v.trim() : '';
+        if (t && t.length <= 80 && !/\n/.test(t)) label = `${L}: "${t}"`;
+      }
+    }
+    out.push({ label, decision: 'edited', field: f });
+  });
+  if (look) out.push({ label: 'איך התמונה מופיעה בכרטיס – עודכן', decision: 'edited', field: 'coverLook' });
+  return out;
+}
+// ההערה נשמרת ביומן (activity = הוספה בלבד) כרשומה נפרדת עם comment:true; qjLoadDecided מצמיד אותה
+// להחלטה האחרונה עם אותו label+decision. הערה ריקה = מחיקת ההערה.
+async function qjSetNote(id, idx, note) {
+  const d = (QJ_DECIDED[id] || [])[idx];
+  if (!d) return;
+  note = String(note || '').trim().slice(0, 600);
+  if ((d.note || '') === note) return;
+  d.note = note;
+  await logActivity('businesses', id, { type: 'bizNoteComment', title: note ? 'הערה לבעל העסק על ההחלטה' : 'הוסרה הערה לבעל העסק', detail: (QJ_CHIP_ICON[d.decision] || '') + d.label + (note ? ': ' + note : ''),
+    noteItem: { label: d.label, decision: d.decision, note, comment: true } });
+}
+// החלון שקופץ אחרי כל החלטה: כל מה שנאסף עד עכשיו + תיבה להחלטה האחרונה
+// remark = שם שלב (§659ב – "📝 הערה" ליד כל שלב בכרטיס): הערה חופשית – מה שינית, מה עשית, מה לא ברור
+// ושכדאי לו להחליף. אחרת – החלון שקופץ אחרי החלטה, על ההחלטה האחרונה.
+function qjNoteOpen(id, remark) {
+  const b = findBiz(id), dec = QJ_DECIDED[id] || [];
+  if (!b || (!remark && !dec.length)) return;
+  if (_bn && _bn.sending) return;
+  const el = bnEl();
+  if (!remark && el.style.display === 'flex' && _bn && _bn.mode !== 'collect') return;   // חלון אחר פתוח – לא דורסים
+  const idx = remark ? dec.findIndex(d => d.decision === 'remark' && d.label === remark) : dec.length - 1;
+  const cur = idx >= 0 ? dec[idx] : { label: remark, decision: 'remark', note: '' };
+  const left = bizPendingChangeItems(b).length, approved = b.status === 'approved';
+  _bn = { bizId: id, mode: 'collect', idx, remark: remark || null };
+  const prev = dec.filter((d, k) => k !== idx).map(d => `<div style="padding:6px 0;border-bottom:1px solid var(--border,#EEE)"><b>${QJ_CHIP_ICON[d.decision] || ''}${esc(d.label)}</b>${d.note ? `<div style="white-space:pre-line;color:var(--text-muted,#5B6B8C);margin-top:2px">${esc(d.note)}</div>` : ''}</div>`).join('');
+  const foot = remark ? (approved ? 'נאסף להודעה אחת – תשלח אותה מהשורה "✍️ לכתוב לו" בשיפוט המהיר (או בסוף הבקשות).' : 'העסק עוד ממתין – ההערה תחכה לך בתיבה של "אישור העסק" (או הדחייה) ותישלח יחד איתו.')
+    : left ? `נשארו עוד <b>${left}</b> בקשות. ההערות ממשיכות להיאסף – בסוף תקבל הודעה אחת עם הכול.`
+    : approved ? 'זו הייתה הבקשה האחרונה. בלחיצה תראה את ההודעה המלאה לבעל העסק ותשלח אותה – גם בלי הערות, רק עם ההחלטות.'
+    : 'העסק עוד ממתין. כל ההחלטות וההערות יחכו לך בתיבה של "אישור העסק" (או הדחייה) ויישלחו יחד איתו.';
+  const goLbl = remark ? 'שמירה' : left ? 'שמירה והמשך' : approved ? 'המשך לסיכום ושליחה' : 'שמירה';
+  const noLbl = remark ? 'ביטול' : left || !approved ? 'בלי הערה' : 'המשך בלי הערה';
+  el.innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:560px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
+    <div style="font-size:18px;font-weight:900">📝 הערה לבעל "${esc(b.name)}"</div>
+    <div style="font-size:13.5px;color:var(--text-muted,#5B6B8C);margin-top:4px;line-height:1.6">${remark ? `על השלב "${esc(remark)}": מה שינית, מה עשית, או מה לא ברור ושכדאי לו להחליף.` : 'ההחלטה נשמרה.'} מה שתכתוב כאן נאסף להודעה אחת לבעל העסק – לא נשלח עכשיו.</div>
+    ${prev ? `<div style="font-size:13px;margin-top:10px"><div style="font-weight:800;margin-bottom:2px">נאסף עד עכשיו:</div>${prev}</div>` : ''}
+    <div style="border:2px solid var(--yellow,#FFD400);background:#FFF7DB;border-radius:14px;padding:12px;margin-top:12px">
+      <div style="font-weight:800;font-size:15px">${QJ_LINE_PREFIX[cur.decision] || ''}${esc(cur.label)}</div>
+      <textarea id="qjNoteText" maxlength="600" placeholder="${remark ? 'למשל: תיקנו את שעות הפעילות · התמונה הראשית חתוכה – כדאי להעלות אחרת' : 'למה / מה כדאי לו לעשות (לא חובה)'}" style="width:100%;box-sizing:border-box;min-height:80px;font:inherit;font-size:14px;line-height:1.6;padding:10px;border:1px solid var(--border-md,#ddd);border-radius:10px;resize:vertical;margin-top:8px;background:#fff;color:#0A2A66">${esc(cur.note || '')}</textarea>
+      ${remark && idx >= 0 ? '<div style="font-size:12px;color:var(--text-muted,#5B6B8C);margin-top:4px">מחיקת הטקסט ושמירה = ההערה יורדת מההודעה.</div>' : ''}
+    </div>
+    <div style="font-size:13px;margin-top:10px;line-height:1.6">${foot}</div>
+    <div id="bnErr" style="color:var(--red,#B42318);font-size:13px;margin-top:6px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <button class="qj-btn primary" id="qjNoteGo" onclick="qjNoteDone(true)">${goLbl}</button>
+      <button class="qj-btn" onclick="qjNoteDone(false)">${noLbl}</button>
+    </div>
+  </div>`;
+  el.style.display = 'flex';
+  const ta = document.getElementById('qjNoteText'); if (ta) ta.focus();
+}
+window.qjStepNoteOpen = function(id, step) { qjNoteOpen(id, QJ_STEP_NAMES[step] || 'הכרטיס'); };
+// כפתור ליד "עריכה" בכל שלב; ✓ כשיש כבר הערה שמחכה
+function qjStepNoteBtn(b, step) {
+  const has = (QJ_DECIDED[b.id] || []).some(d => d.decision === 'remark' && d.label === QJ_STEP_NAMES[step] && d.note);
+  return `<button class="btn-step-edit" style="margin-inline-end:6px${has ? ';background:#FFF7DB;border-color:var(--yellow,#FFD400)' : ''}" onclick="event.stopPropagation();qjStepNoteOpen('${b.id}',${step})" title="הערה לבעל העסק על השלב הזה – נאספת להודעה אחת">📝 הערה${has ? ' ✓' : ''}</button>`;
+}
+window.qjNoteDone = async function(save) {
+  if (!_bn || _bn.mode !== 'collect' || _bn.saving) return;
+  const o = _bn, ta = document.getElementById('qjNoteText');
+  if (save && ta) {
+    o.saving = true; const go = document.getElementById('qjNoteGo'); if (go) { go.disabled = true; go.textContent = '⏳ רגע…'; }
+    if (o.remark && o.idx < 0) {   // הערה חדשה על שלב – נכנסת לרשימה כמו החלטה (בלי החלון האוטומטי)
+      const note = String(ta.value || '').trim().slice(0, 600);
+      if (note) {
+        const it = { ...qjItem(o.remark, 'remark'), note };
+        await logActivity('businesses', o.bizId, { type: 'bizNoteComment', title: 'הערה לבעל העסק', detail: '📝 ' + it.label + ': ' + note, noteItem: it });
+        (QJ_DECIDED[o.bizId] = QJ_DECIDED[o.bizId] || []).push({ ...it, _ts: Date.now() });
+      }
+    } else {
+      await qjSetNote(o.bizId, o.idx, ta.value);
+      const d = (QJ_DECIDED[o.bizId] || [])[o.idx];
+      if (d && d.decision === 'remark' && !d.note) QJ_DECIDED[o.bizId].splice(o.idx, 1);   // הערת שלב שנמחקה – יורדת
+      if (QJ_DECIDED[o.bizId] && !QJ_DECIDED[o.bizId].length) delete QJ_DECIDED[o.bizId];
+    }
+  }
+  _bn = null; bnEl().style.display = 'none'; bnEl().innerHTML = '';
+  renderMainPreserveScroll();
+  if (o.remark) return;
+  const b = findBiz(o.bizId);
+  if (b && b.status === 'approved' && !bizPendingChangeItems(b).length && (QJ_DECIDED[o.bizId] || []).length) bnOpen({ bizId: o.bizId, mode: 'changes' });
+};
 const _qjDecLoad = {};   // bizId → זמן תחילת הטעינה (פעם אחת לדף)
 function qjLoadDecided(id) {
   if (_qjDecLoad[id]) return;
   const startedAt = _qjDecLoad[id] = Date.now();
   getDocs(query(collection(db, 'businesses', id, 'activity'), orderBy('createdAt', 'desc'), limit(80))).then(snap => {
-    const items = [];
+    const items = [], notes = {}, seenEdit = new Set();   // §659 — הערה (comment) חדשה מההחלטה שלה; הכי חדשה קובעת
     for (const d of snap.docs) {
       const a = d.data();
       if (a.noteClose) break;
-      if (a.noteItem && a.noteItem.label) items.unshift({ label: a.noteItem.label, decision: a.noteItem.decision });
+      if (Array.isArray(a.noteItems)) {   // §659ג — עריכה ידנית; הסדר בתוך הרשומה נשמר
+        for (const ni of a.noteItems.slice().reverse()) {
+          if (!ni || !ni.label || seenEdit.has(ni.field)) continue;
+          seenEdit.add(ni.field);
+          items.unshift({ label: ni.label, decision: 'edited', field: ni.field });
+        }
+      }
+      const ni = a.noteItem;
+      if (!ni || !ni.label) continue;
+      const k = ni.decision + '|' + ni.label;
+      if (ni.comment) { if (!(k in notes)) notes[k] = ni.note || ''; continue; }
+      const it = { label: ni.label, decision: ni.decision };
+      const note = k in notes ? notes[k] : (ni.note || '');   // §659ב — הערת שלב נרשמת עם הטקסט שלה
+      delete notes[k];
+      if (note) it.note = note;
+      if (ni.decision === 'remark' && !note) continue;   // הערת שלב שנמחקה
+      items.unshift(it);
     }
     // החלטה שנרשמה בזמן שהטעינה רצה עוד לא בתוצאה – נשמרת מהזיכרון
     const fresh = (QJ_DECIDED[id] || []).filter(x => x._ts && x._ts >= startedAt);
@@ -15399,24 +15709,28 @@ function bnEl() {
   }
   return el;
 }
-// opts: { bizId, mode: approve|changes|external|free, summary }
+// opts: { bizId, mode: approve|reject|changes|free|note } (external – "טופל מבחוץ" – הוסר ב-§660ב; נשאר רק כתווית בהודעות ישנות)
 function bnOpen(opts) {
   const b = findBiz(opts.bizId);
   if (!b) return;
-  const draft = (opts.mode === 'free' || opts.mode === 'approve') ? bizNoteDraft(b) : null;   // §644
-  _bn = { ...opts, sending: false, fromDraft: !!draft };
-  const ch = bnChannels(b, opts.mode === 'approve');
   const decided = QJ_DECIDED[b.id] || [];
-  const preText = draft ? draft.text : opts.mode === 'changes'
-    ? decided.map(d => (QJ_LINE_PREFIX[d.decision] || '') + d.label).join('\n')
-      + (decided.some(d => d.decision === 'approved' && /^קטגוריה נוספת/.test(d.label)) ? '\n\n' + ALSO_CAT_EXPLAIN : '')
-      + (decided.some(d => d.decision === 'rejected' || d.decision === 'mapped') ? '\n\nלמה: ' : '\n\n')
-    : '';
-  const preTitle = draft && draft.title ? draft.title : { approve: 'העסק שלך אושר! 🎉', changes: 'עדכון על השינויים שביקשת', external: 'עדכון על הפנייה שלך', free: '', note: 'תשובה להודעה שלך' }[opts.mode];
+  // §659 — "פתחתי והחלון היה ריק": "💬 הודעה לבעל העסק" כשיש החלטות שלא נכתב עליהן = הסיכום שלהן
+  if (opts.mode === 'free' && decided.length && !bizNoteDraft(b)) opts = { ...opts, mode: 'changes' };
+  const draft = (opts.mode === 'free' || opts.mode === 'approve') ? bizNoteDraft(b) : null;   // §644
+  // §659 — עסק ממתין: ההחלטות וההערות על הבקשות שלו נכנסות לתיבה של אישור/דחיית העסק, ונסגרות איתו
+  const withDec = (opts.mode === 'approve' || opts.mode === 'reject') && decided.length > 0;
+  _bn = { ...opts, sending: false, fromDraft: !!draft, closesDecided: withDec };
+  const ch = bnChannels(b, opts.mode === 'approve');
+  const decText = qjDecidedText(decided);
+  const preText = opts.mode === 'changes' ? decText + '\n\n'
+    : withDec ? (draft ? draft.text + '\n\n' : '') + (opts.mode === 'approve' ? 'לגבי הכרטיס שלך:\n\n' : '') + decText
+    : draft ? draft.text : '';
+  const preTitle = draft && draft.title ? draft.title : { approve: 'העסק שלך אושר! 🎉', reject: 'עדכון על ההרשמה של העסק', changes: 'עדכון על השינויים שביקשת', free: '', note: 'תשובה להודעה שלך' }[opts.mode];
   const head = {
-    approve: [`✅ אישור "${b.name}"`, 'העסק יעלה לאינדקס, ובעל העסק יקבל את מייל הקוד והודעת "ברוכים הבאים" כרגיל. מה שתכתוב כאן יגיע אליו <b>בנוסף</b>, כהודעה נפרדת.'],
+    approve: [`✅ אישור "${b.name}"`, 'העסק יעלה לאינדקס, ובעל העסק יקבל את מייל הקוד והודעת "ברוכים הבאים" כרגיל. מה שתכתוב כאן יגיע אליו <b>בנוסף</b>, כהודעה נפרדת.'
+      + (withDec ? '<br><b>בתיבה כבר כל ההחלטות וההערות שלך (על הבקשות ועל השלבים)</b> – אפשר לערוך.' : '')],
+    reject: [`❌ דחיית "${b.name}"`, 'העסק יסומן כנדחה. <b>בתיבה כל ההחלטות וההערות שלך (על הבקשות ועל השלבים)</b> – אפשר לערוך, או למחוק ולדחות בלי הודעה.'],
     changes: [`✍️ הודעה לבעל "${b.name}" על השינויים`, 'מולא לבד לפי מה שהחלטת. תוסיף למה לא אישרת / מה כן כדאי. ההחלטות עצמן כבר נשמרו.'],
-    external: [`✔️ סימון "${b.name}" כטופל מבחוץ`, 'ייסגרו: ' + esc(opts.summary || '')],
     free: [`💬 הודעה לבעל "${b.name}"`, 'לדוגמה – המלצה לשנות תמונה או הטבה. אפשר ללחוץ על נוסח מוכן ולערוך.'],
     // §653 — "סימון כטופל" על "כתבו לנו" סימן בשקט, בלי הזדמנות לענות (MR HAIRCUT). עכשיו קודם שואל
     note: [`💬 "${b.name}" כתבו לנו${b.noteAt ? ' · ' + fmtDateTime(b.noteAt) : ''}`,
@@ -15424,35 +15738,32 @@ function bnOpen(opts) {
   }[opts.mode];
   const box = `
     <div style="border:2px solid var(--yellow,#FFD400);background:#FFF7DB;border-radius:14px;padding:14px;margin-top:12px">
-      <div style="font-weight:800;font-size:15px">${opts.mode === 'approve' ? 'רוצה לכתוב משהו לבעל העסק?' : opts.mode === 'external' ? 'מה לכתוב לבעל העסק?' : 'ההודעה'}</div>
+      <div style="font-weight:800;font-size:15px">${opts.mode === 'approve' ? 'רוצה לכתוב משהו לבעל העסק?' : 'ההודעה'}</div>
       <div style="font-size:12.5px;color:var(--text-muted,#5B6B8C);margin:2px 0 8px">${opts.mode === 'approve' ? 'לא חובה. ריק = לא נשלח כלום חוץ מהרגיל.' : 'ריק = לא נשלח כלום.'} מתחת להודעה יופיע לו "כתבו לנו" – ואם יכתוב משם, תראה בשיחה על איזו הודעה מדובר.</div>
       <div data-rt-chips="biz" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${rtChipsInner('biz')}</div>
       <input id="bnTitle" list="bnTitleList" maxlength="${BN_TITLE_MAX}" placeholder="כותרת (מה שיופיע בפוש ובנושא המייל) – יש כותרות מוכנות ברשימה" value="${esc(preTitle)}" oninput="this.dataset.auto='0'" style="width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--border-md,#ddd);border-radius:10px;margin-bottom:8px">
       <datalist id="bnTitleList">${rtTitleOptions()}</datalist>
-      <textarea id="bnText" maxlength="1500" placeholder="מה תרצה לכתוב לו?" oninput="bnSync()" style="width:100%;box-sizing:border-box;min-height:110px;font:inherit;font-size:14px;line-height:1.6;padding:10px;border:1px solid var(--border-md,#ddd);border-radius:10px;resize:vertical">${esc(preText)}</textarea>
+      <textarea id="bnText" maxlength="1500" placeholder="מה תרצה לכתוב לו?" oninput="bnSync()" style="width:100%;box-sizing:border-box;min-height:${opts.mode === 'changes' || withDec ? 220 : 110}px;font:inherit;font-size:14px;line-height:1.6;padding:10px;border:1px solid var(--border-md,#ddd);border-radius:10px;resize:vertical">${esc(preText)}</textarea>
       <div style="font-size:12.5px;margin-top:8px;line-height:1.8">${bnChanHtml(ch)}</div>
     </div>`;
-  const ext = opts.mode === 'external' ? `
-    <textarea id="bnInternal" placeholder="איך זה טופל? (נשמר אצלך בארכיון – לא נשלח)" style="width:100%;box-sizing:border-box;min-height:70px;font:inherit;font-size:14px;padding:10px;border:1px solid var(--border-md,#ddd);border-radius:10px;margin-top:8px"></textarea>
-    <label style="display:flex;gap:8px;align-items:center;font-weight:700;font-size:14px;margin-top:10px;cursor:pointer"><input type="checkbox" id="bnSendToo" onchange="bnSync()" style="width:18px;height:18px"> לשלוח גם לבעל העסק</label>` : '';
   const btns = {
     approve: `<button class="qj-btn-approve-app" id="bnGo" onclick="bnGo()">✅ אישור</button>`,
+    reject: `<button class="qj-btn reject" id="bnGo" onclick="bnGo()">❌ דחייה</button>`,
     changes: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">📤 שליחה לבעל העסק</button><button class="qj-btn" onclick="bnSkipChanges()">סגירה בלי הודעה</button>`,
-    external: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">סימון כטופל</button>`,
     free: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">📤 שליחה</button>`,
     note: `<button class="qj-btn primary" id="bnGo" onclick="bnGo()">📤 שליחה וסימון כטופל</button><button class="qj-btn" onclick="bnSkipNote()">סימון כטופל בלי תשובה</button>`,
   }[opts.mode];
   bnEl().innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:600px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
     <div style="font-size:18px;font-weight:900">${head[0]}</div>
     <div style="font-size:13.5px;color:var(--text-muted,#5B6B8C);margin-top:4px;line-height:1.6">${head[1]}</div>
-    ${ext}<div id="bnBoxWrap"${opts.mode === 'external' ? ' style="display:none"' : ''}>${box}</div>
+    <div id="bnBoxWrap">${box}</div>
     <div id="bnErr" style="color:var(--red,#B42318);font-size:13px;margin-top:8px"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${btns}<button class="qj-btn" onclick="bnClose()">ביטול</button></div>
   </div>`;
   bnEl().style.display = 'flex';
   bnSync();
   rtLoad();   // §646 — התשובות של רמי (מתעדכן בכפתורים כשנטען)
-  const ta = document.getElementById(opts.mode === 'external' ? 'bnInternal' : 'bnText');
+  const ta = document.getElementById('bnText');
   if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
 }
 window.bnClose = function() { if (_bn && _bn.sending) return; _bn = null; bnEl().style.display = 'none'; bnEl().innerHTML = ''; };
@@ -15464,11 +15775,8 @@ window.bnSync = function() {
   if (!_bn) return;
   const go = document.getElementById('bnGo'); if (!go) return;
   const n = bnRead();
-  if (_bn.mode === 'external') {
-    const on = document.getElementById('bnSendToo').checked;
-    document.getElementById('bnBoxWrap').style.display = on ? '' : 'none';
-    go.textContent = on && n.text ? 'סימון כטופל ושליחה לבעל העסק' : 'סימון כטופל';
-  } else if (_bn.mode === 'approve') go.textContent = n.text ? '✅ אישור ושליחת ההודעה' : '✅ אישור (בלי הודעה נוספת)';
+  if (_bn.mode === 'approve') go.textContent = n.text ? '✅ אישור ושליחת ההודעה' : '✅ אישור (בלי הודעה נוספת)';
+  else if (_bn.mode === 'reject') go.textContent = n.text ? '❌ דחיית העסק ושליחת ההודעה' : '❌ דחיית העסק (בלי הודעה)';
   if (_bn.mainDone && !_bn.sending) go.textContent = '↻ לנסות לשלוח שוב';
   go.disabled = !!_bn.sending;
   if (_bn.sending) go.textContent = '⏳ רגע…';
@@ -15479,41 +15787,43 @@ window.bnGo = async function() {
   if (!_bn || _bn.sending) return;
   const o = _bn, b = findBiz(o.bizId), n = bnRead(), err = document.getElementById('bnErr');
   if (!b) return;
-  const wantSend = o.mode === 'external' ? (document.getElementById('bnSendToo').checked && !!n.text) : !!n.text;
+  const wantSend = !!n.text;
   if ((o.mode === 'changes' || o.mode === 'free' || o.mode === 'note') && !n.text) { err.textContent = 'אין תוכן – לא נשלח כלום.'; return; }
   if (wantSend && !n.title) { err.textContent = 'חסרה כותרת (היא שורת הפוש ונושא המייל).'; document.getElementById('bnTitle').focus(); return; }
   o.sending = true; bnSync(); err.textContent = '';
   let done = true;
   // mainDone — אחרי כשל בשליחה החלון נשאר פתוח עם הטקסט; ניסיון חוזר שולח רק את ההודעה (לא מאשר/מסמן שוב)
   if (!o.mainDone && o.mode === 'approve') done = await doApproveBiz(o.bizId);
-  if (!o.mainDone && o.mode === 'external') done = await doMarkRequestsHandledExternally(o.bizId, (document.getElementById('bnInternal').value || '').trim(), o.summary);
+  if (!o.mainDone && o.mode === 'reject') done = await doRejectBiz(o.bizId);   // §659
   if (!done) { o.sending = false; bnSync(); return; }
   o.mainDone = true;
   let res = '';
   if (wantSend) {
-    const r = await bnSend(findBiz(o.bizId) || b, n.title, n.text, o.mode);
+    const r = await bnSend(findBiz(o.bizId) || b, n.title, n.text, o.mode, o.closesDecided);
     res = r.text;
     if (!r.ok) {   // ⚠️ הטקסט לא נזרק – הודעה שנמחקה כי הרשת נפלה היא הודעה שלא תיכתב שוב
       o.sending = false; bnSync();
       err.style.whiteSpace = 'pre-line';
-      err.textContent = (o.mode === 'approve' ? 'העסק אושר. ' : o.mode === 'external' ? 'סומן כטופל. ' : '') + res + '\nהטקסט נשמר כאן – אפשר לנסות שוב.';
+      err.textContent = (o.mode === 'approve' ? 'העסק אושר. ' : o.mode === 'reject' ? 'העסק נדחה. ' : '') + res + '\nהטקסט נשמר כאן – אפשר לנסות שוב.';
       const go = document.getElementById('bnGo'); if (go) go.textContent = '↻ לנסות לשלוח שוב';
       renderMain();
       return;
     }
   }
   if (o.mode === 'changes') delete QJ_DECIDED[o.bizId];
+  // §659 — אישור/דחייה עם ההחלטות בתיבה: נשלח → noteClose כבר ברשומת ההודעה; נמחק ונשלח ריק → "בלי הודעה"
+  if (o.closesDecided) { if (wantSend) delete QJ_DECIDED[o.bizId]; else await qjCloseDecided(o.bizId, 'בלי הודעה לבעל העסק על ההחלטות (' + BN_ORIGIN[o.mode] + ')'); }
   // §653 — רק אחרי שליחה שהצליחה (כשל → return למעלה, ההודעה נשארת פתוחה ולא מסומנת)
   if (o.mode === 'note') { try { await toggleBizNoteHandled(o.bizId, true); } catch (e) { console.error('note handled failed', e); res += '\n⚠️ הסימון "טופל" נכשל – אפשר לסמן שוב.'; } }
   if (wantSend && o.fromDraft) { try { await clearBizNoteDraft(o.bizId); } catch (e) { console.error('draft clear failed', e); } }   // §644
   o.sending = false; bnClose();
   renderMain();
-  const base = { approve: 'העסק אושר.', external: 'סומן כטופל – נשמר תחת "בקשות שטופלו".', changes: '', free: '', note: 'ההודעה מהעסק סומנה כטופלה.' }[o.mode];
+  const base = { approve: 'העסק אושר.', reject: 'העסק נדחה.', changes: '', free: '', note: 'ההודעה מהעסק סומנה כטופלה.' }[o.mode];
   alert([base, res].filter(Boolean).join('\n\n') || 'נסגר.');
 };
 
 // השליחה עצמה – כמו m2DoSend לנמען אחד (ר' שם את ההערות של §561 על סדר האיפוס והרישום)
-async function bnSend(b, title, text, mode) {
+async function bnSend(b, title, text, mode, closesDecided) {
   const p = { ...b, _k: 'b' };
   const ch = bnChannels(b, false);   // אחרי האישור – המצב האמיתי (הוורקר בודק שוב בעצמו)
   const app = { title, text, link: '' };
@@ -15521,8 +15831,8 @@ async function bnSend(b, title, text, mode) {
   const mail = {
     subject: title, personal: false,
     body: 'שלום {name},\n\n' + text
-      + (ch.push ? '' : '\n\n🔔 *טיפ:* הפעילו התראות באפליקציה – ותדעו מיד כשאנחנו כותבים לכם על העסק.')
-      + '\n\nיש שאלה על זה? באפליקציה, ב"האזור שלי" ← "הודעות", מתחת להודעה – "כתבו לנו".\n\nצוות Yellow Zone',
+      + (ch.push || mode === 'reject' ? '' : '\n\n🔔 *טיפ:* הפעילו התראות באפליקציה – ותדעו מיד כשאנחנו כותבים לכם על העסק.')
+      + (mode === 'reject' ? '' : '\n\nיש שאלה על זה? באפליקציה, ב"האזור שלי" ← "הודעות", מתחת להודעה – "כתבו לנו".') + '\n\nצוות Yellow Zone',
   };
   const msgRef = doc(collection(db, 'messages')), msgId = msgRef.id;
   const chFlags = { app: true, push: true, mail: true, wa: false };
@@ -15567,7 +15877,7 @@ async function bnSend(b, title, text, mode) {
     batch.set(doc(collection(db, 'businesses', b.id, 'activity')), {
       type: 'message', title: `הודעה לבעל העסק (${BN_ORIGIN[mode]}): "${title}"`, detail: parts.join(' · '), field: 'channel', before: null, after: 'message',
       messageId: msgId, actorUid: CURRENT_ADMIN.uid, actorName: CURRENT_ADMIN.name, source: 'admin', createdAt: serverTimestamp(),
-      ...(mode === 'changes' && r ? { noteClose: true } : {}),   // §623ג — רק שליחה שהצליחה סוגרת
+      ...((mode === 'changes' || closesDecided) && r ? { noteClose: true } : {}),   // §623ג — רק שליחה שהצליחה סוגרת; §659 – גם אישור/דחייה עם ההחלטות
     });
     if (row.mail === 'sent') batch.update(doc(db, 'businesses', b.id), { broadcastEmailSentAt: serverTimestamp(), broadcastEmailSubject: mail.subject });
     await batch.commit();
@@ -15586,65 +15896,21 @@ function qjDecidedRowHtml(b) {
   qjLoadDecided(b.id);   // §623ג
   const d = QJ_DECIDED[b.id];
   if (!d || !d.length) return '';
+  const pend = b.status !== 'approved';   // §659
   return `
     <div class="qj-row" style="background:#FFF7DB">
-      <div class="qj-row-label"><div class="qj-row-step">הודעה לבעל העסק</div><div class="qj-row-name">✍️ לכתוב לו על ההחלטות?</div></div>
-      <div class="qj-row-value"><span class="qj-value-text">${d.map(x => (QJ_CHIP_ICON[x.decision] || '') + esc(x.label)).join(' · ')}</span>
-        <div class="qj-value-hint">הודעה אחת על כל מה שהחלטת – באפליקציה, בפוש ובמייל. אפשר גם לסגור בלי הודעה.</div></div>
+      <div class="qj-row-label"><div class="qj-row-step">הודעה לבעל העסק</div><div class="qj-row-name">${pend ? '📝 מה שנאסף לבעל העסק' : '✍️ לכתוב לו מה עשינו?'}</div></div>
+      <div class="qj-row-value"><span class="qj-value-text">${d.map(x => (QJ_CHIP_ICON[x.decision] || '') + esc(x.label) + (x.note ? ' – <i>' + esc(x.note.length > 60 ? x.note.slice(0, 60) + '…' : x.note) + '</i>' : '')).join(' · ')}</span>
+        <div class="qj-value-hint">${pend ? 'העסק ממתין – כל זה יחכה לך בתיבה של &quot;אישור העסק&quot; (או הדחייה) ויישלח יחד איתו.' : 'הודעה אחת על כל מה שהחלטת, שינית וכתבת – באפליקציה, בפוש ובמייל. אפשר גם לסגור בלי הודעה.'}</div></div>
       <div class="qj-row-actions">
-        <button class="qj-btn primary" onclick="openBizNoteChanges('${b.id}')">✍️ כתיבה לבעל העסק</button>
+        ${pend ? '' : `<button class="qj-btn primary" onclick="openBizNoteChanges('${b.id}')">✍️ כתיבה לבעל העסק</button>`}
         <button class="qj-btn" onclick="qjSkipDecided('${b.id}')">בלי הודעה</button>
       </div>
     </div>`;
 }
-window.qjSkipDecided = async function(id) { await qjCloseDecided(id, 'בלי הודעה לבעל העסק על ההחלטות'); renderMain(); };
-
-function handledExternallyRow(b) {
-  return `
-    <div class="qj-row qj-row-handled">
-      <div class="qj-row-label"><div class="qj-row-step">סגירה ידנית</div><div class="qj-row-name">✔️ טופל מבחוץ</div></div>
-      <div class="qj-row-value"><span class="qj-value-text">סוגר את כל הבקשות הפתוחות של העסק הזה בלי להחיל אותן – לשימוש כשסגרתם את זה בשיחה/וואטסאפ. נשמר ב"בקשות שטופלו".</span></div>
-      <div class="qj-row-actions"><button class="qj-btn" onclick="markRequestsHandledExternally('${b.id}')">סימון כטופל מבחוץ</button></div>
-    </div>`;
-}
-window.markRequestsHandledExternally = async function(id) {
-  const b = findBiz(id);
-  if (!b) return;
-  const items = bizPendingChangeItems(b);
-  const summaryParts = [
-    ...items.map(it => it.label),
-    ...(bizHasUnhandledNote(b) ? ['הודעה מהעסק ("כתבו לנו")'] : []),
-  ];
-  if (!summaryParts.length) { alert('אין כרגע בקשות פתוחות לעסק הזה.'); return; }
-  // §623 — במקום prompt: חלון "הודעה לבעל העסק" עם התיבה הפנימית + "לשלוח גם לבעל העסק"
-  bnOpen({ bizId: id, mode: 'external', summary: summaryParts.join(', ') });
-};
-async function doMarkRequestsHandledExternally(id, note, summary) {
-  const b = findBiz(id);
-  if (!b) return false;
-  const summaryParts = [summary];
-  const updates = {
-    pendingChanges: null, pendingChangesAt: null,
-    tagSecondSuggestion: '', tagSuggestion: '',
-    alsoCategorySuggestion: '', alsoCategoryNote: '',
-    // arrayUnion לא מקבל serverTimestamp() בתוך אובייקט — לכן ISO string, בכוונה
-    requestsHandledLog: arrayUnion({
-      at: new Date().toISOString(), by: auth.currentUser ? auth.currentUser.uid : '',
-      summary: summaryParts.join(', '), note: (note || '').trim(),
-    }),
-  };
-  // מסמנים "הודעה טופלה" רק אם באמת יש הודעה פתוחה — אחרת נכתב דגל מיותר על עסק בלי הודעה בכלל
-  if (bizHasUnhandledNote(b)) { updates.noteHandled = true; updates.noteHandledAt = serverTimestamp(); }
-  try {
-    await updateDoc(doc(db, 'businesses', id), updates);
-    await logActivity('businesses', id, {
-      type: 'changeDecision', title: 'הבקשות סומנו כ"טופל מבחוץ"',
-      detail: summaryParts.join(', ') + ((note || '').trim() ? ` – ${note.trim()}` : ''),
-      field: 'requestsHandledLog', before: null, after: null,
-    });
-    return true;
-  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); return false; }
-}
+window.qjSkipDecided = async function(id) {
+  if ((QJ_DECIDED[id] || []).some(x => x.note) && !confirm('לסגור בלי לשלוח? ההערות שכתבת לא יישלחו.')) return;   // §659
+  await qjCloseDecided(id, 'בלי הודעה לבעל העסק על ההחלטות'); renderMain(); };
 
 // ══════════════════════════════════════════════════════════════════
 // 🏷️ ניהול תגיות — חלק א׳ (רשימה לפי קטגוריה, ➕✏️🔀🗑️) + חלק ב׳ (תור בקשות ממתינות מרוכז:
@@ -18627,7 +18893,7 @@ function handledActive() { return taskClassFilter === 'handled'; }
 
 // ── ארכיון "בקשות שטופלו" (2026-08-16) ───────────────────────────────────────────────────────
 // שני מקורות, שניהם שדות על מסמך העסק/החבר עצמו (בלי אוסף חדש, בלי שינוי firestore.rules):
-//   requestsHandledLog[] — סגירה ידנית של בקשות ("טופל מבחוץ", ר' markRequestsHandledExternally)
+//   requestsHandledLog[] — סגירה ידנית של בקשות ("טופל מבחוץ" – הוסר ב-§660ב; הארכיון הישן נשאר)
 //   mailIssueHandled     — תקלת מייל שסומנה "טיפלתי" (ר' markMailIssueHandled)
 function handledItemsList() {
   const out = [];
@@ -21379,6 +21645,7 @@ function renderMain() {
   const focusState = captureSearchFocus();
   renderMainInner();
   restoreSearchFocus(focusState);
+  syncStepStates();   // §660
 }
 function renderMainInner() {
   const wrap = document.getElementById('tabContent');
