@@ -12518,6 +12518,14 @@ function unifiedTaskItems() {
     .filter(x => x.c.primary !== 'מאושר · אין פעולה' && !ownerMemberOfPendingBiz(x.entity));
   return [...biz, ...fan];
 }
+// §656 — רמי: "נתתי לו אופציה לשנות ואני מחכה לזה – חשוב לי לקבל התראה ושזה יסומן לי בבקשות מבעלי
+// עסקים, אז מה אם הוא ממתין". עד עכשיו הקובייה ספרה רק primary 'בקשה מבעל העסק', ועסק ממתין מקבל תמיד
+// 'עסק ממתין לאישור' – בקשת השינוי שלו נראתה רק ליד השם. עכשיו עסק ממתין עם בקשת שינוי (details)
+// נספר גם כאן, ונשאר גם ב"עסקים ממתינים לאישור". רק details: הערת "כתבו לנו" מההרשמה אינה בקשת שינוי.
+function isOwnerRequestTask(x) {
+  return x.c.primary === 'בקשה מבעל העסק'
+    || (x.kind === 'biz' && x.c.primary === 'עסק ממתין לאישור' && x.c.treatments.includes('details'));
+}
 function taskWaitDate(x) {
   return x.kind === 'biz' ? (x.entity.changeSubmittedAt || x.entity.registeredAt) : x.entity.registeredAt;
 }
@@ -12530,7 +12538,8 @@ function taskWaitLabel(x) {
 function taskFilteredList() {
   let items = unifiedTaskItems();
   const tile = TASK_CLASS_TILES.find(t => t.key === taskClassFilter);
-  if (tile && tile.primary) items = items.filter(x => x.c.primary === tile.primary);
+  if (tile && tile.key === 'requests') items = items.filter(isOwnerRequestTask);   // §656
+  else if (tile && tile.primary) items = items.filter(x => x.c.primary === tile.primary);
   if (taskEntityFilter !== 'all') items = items.filter(x => x.kind === taskEntityFilter);
   if (taskCategoryFilter !== 'all') items = items.filter(x => x.kind === 'biz' && x.entity.catKey === taskCategoryFilter);
   if (taskPeriodFilter !== 'all') {
@@ -12860,7 +12869,7 @@ window.closeTaskDrawer = function() {
 function taskTilesHtml() {
   const all = unifiedTaskItems();
   const countOf = primary => all.filter(x => x.c.primary === primary).length;
-  const requestsItems = all.filter(x => x.c.primary === 'בקשה מבעל העסק');
+  const requestsItems = all.filter(isOwnerRequestTask);   // §656 – כולל עסק ממתין שביקש שינוי
   const tCount = t => requestsItems.filter(x => x.c.treatments.includes(t)).length;
   const pendingBizItems = all.filter(x => x.c.primary === 'עסק ממתין לאישור');
   const oldestPendingBiz = pendingBizItems.slice().sort((a,b)=>taskWaitDate(a)-taskWaitDate(b))[0];
