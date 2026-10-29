@@ -3953,6 +3953,9 @@ function bizFollowupRowHtml(b) {
 // { [bizId]: { title, text, at } }. חלון "💬 הודעה לבעל העסק" (וחלון אישור ההרשמה בעסק ממתין) נפתח
 // כשהכותרת והטקסט כבר בפנים; אחרי שליחה מוצלחת הטיוטה נמחקת. עסק מאושר → "כרטיס חסר באינדקס" עם ✉️.
 let bizNoteDrafts = {};
+// §671 — הסל: ✅/❌ על בקשות שינוי שעוד לא נכתבו לעסק. {bizId: {field: {d, v?, label, req, at}}}
+let bizStaged = {};
+function bizStagedOf(id) { return bizStaged[id] || {}; }
 function bizNoteDraft(b) { const d = b && bizNoteDrafts[b.id]; return d && d.text ? d : null; }
 function bizNoteDraftTagHtml(b) {
   return bizNoteDraft(b) ? ' <span class="warn-badge" style="vertical-align:middle;background:#FFF7DB;color:#7A5B00" title="יש הודעה מוכנה שמחכה לשליחה">✉️ הודעה מחכה</span>' : '';
@@ -13794,6 +13797,7 @@ async function approveBizWithMemberBatch(b) {
     status: 'approved', approvedAt: serverTimestamp(),
     ownerEmailStatus: 'pending', ownerEmailQueuedAt: serverTimestamp(),
     ownerVerificationStatus: 'confirmed',
+    inReview: false, inReviewReasons: [], inReviewOther: '', fixHidden: false,   // §671 – מאושר = כבר לא "צריך לתקן", מכל מסלול אישור
   });
   if (memberUpd) batch.update(memberUpd.ref, memberUpd.updates);
   if (memberUpd && memberUpd.codeDoc) batch.set(memberUpd.codeDoc.ref, memberUpd.codeDoc.data);   // §248
@@ -13878,13 +13882,13 @@ window.goToNextCard = function(kind, id, opts) {
 // function ולא const: נקראת מהרשימות, שמצוירות לפעמים לפני שהמודול הגיע לשורה הזו (TDZ)
 function isInReview(x) { return !!x && x.status === 'pending' && x.inReview === true; }
 function inReviewBadgeHtml(x) {
-  if (!isInReview(x)) return '';
-  if (MOCK_BUSINESSES.includes(x)) {   // §653 – בעסק: למה ממתינים, במקום רק "בתהליך אישור"
+  if (MOCK_BUSINESSES.includes(x) && bizInFix(x)) {   // §653 · §671 – עסק: מה חסר, "✏️ צריך לתקן" – גם כשהוא מאושר
     const labels = bizWaitLabels(x, true);
     return labels.length
-      ? `<span class="treat-badge" style="background:#FFF4CC;color:#7A5B00" title="בתהליך אישור">⏳ ממתינים ל: ${esc(labels.join(', '))}</span>`
-      : `<span class="treat-badge" style="background:#FDECEC;color:#B42318">⏳ בתהליך אישור · לא נשמרה סיבה</span>`;
+      ? `<span class="treat-badge" style="background:#F1ECFC;color:#6941C6" title="צריך לתקן">✏️ צריך לתקן: ${esc(labels.join(', '))}${x.status === 'approved' ? ' · באתר' : x.fixHidden ? ' · הוסתר' : ''}</span>`
+      : `<span class="treat-badge" style="background:#FDECEC;color:#B42318">✏️ צריך לתקן · לא נשמר מה חסר</span>`;
   }
+  if (!isInReview(x)) return '';
   return `<span class="treat-badge" style="background:#FFF4CC;color:#7A5B00">⏳ בתהליך אישור</span>`;
 }
 function inReviewBtnHtml(kind, x) {
@@ -13942,23 +13946,23 @@ function bizWaitLabels(b, short) {
 function bizWaitTexts(b) { return bizWaitKeys(b).map(k => k === 'other' ? String(b.inReviewOther).trim() : WAIT_REASONS.find(r => r.k === k).text); }
 // הפס בראש הכרטיס – רק לעסק בתהליך אישור
 function bizWaitBannerHtml(b) {
-  if (!isInReview(b) || !MOCK_BUSINESSES.includes(b)) return '';
+  if (!bizInFix(b) || !MOCK_BUSINESSES.includes(b)) return '';   // §671 – גם עסק מאושר שצריך לתקן
   const labels = bizWaitLabels(b);
   const sent = b.waNudgeCount ? `וואטסאפ נשלח ${b.waNudgeCount === 1 ? 'פעם אחת' : b.waNudgeCount + ' פעמים'}${b.waNudgeAt ? ' · אחרון ' + fmtDateTime(b.waNudgeAt) : ''}` : 'עוד לא נשלח וואטסאפ';
-  const meta = `<div style="color:var(--text-muted);font-size:11px;margin-top:6px">בתהליך אישור${b.inReviewAt ? ' מאז ' + fmtDateTime(b.inReviewAt) : ''} · ${sent}</div>`;
+  const meta = `<div style="color:var(--text-muted);font-size:11px;margin-top:6px">${b.status === 'approved' ? 'צריך לתקן · נשאר באתר' : b.fixHidden ? 'צריך לתקן · הוסתר מהאתר עד התיקון' : 'צריך לתקן'}${b.inReviewAt ? ' מאז ' + fmtDateTime(b.inReviewAt) : ''} · ${sent}</div>`;
   const box = (bg, bd) => `margin-bottom:14px;background:${bg};border:1px solid ${bd};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap`;
   if (!labels.length) return `
     <div style="${box('#FDECEC', '#F5C2C0')}">
-      <div style="flex:1;min-width:220px"><div style="font-weight:800;color:#B42318">⏳ בתהליך אישור – אבל לא נשמר למה ממתינים</div>${meta}</div>
-      <button class="qj-btn primary" onclick="openWaitReasons('${b.id}')">לבחור סיבה</button>
+      <div style="flex:1;min-width:220px"><div style="font-weight:800;color:#B42318">✏️ צריך לתקן – אבל לא נשמר מה חסר</div>${meta}</div>
+      <button class="qj-btn primary" onclick="bsOpen('${b.id}','fix')">לסמן מה חסר</button>
     </div>`;
   return `
     <div style="${box('var(--warn-bg)', 'var(--warn-border)')}">
-      <div style="flex:1;min-width:220px"><div style="font-weight:800;color:#7A5B00">⏳ חסר מבעל העסק${b.ownerFirst ? ' (' + esc(b.ownerFirst) + ')' : ''}:</div>
+      <div style="flex:1;min-width:220px"><div style="font-weight:800;color:#6941C6">✏️ צריך לתקן – חסר מבעל העסק${b.ownerFirst ? ' (' + esc(b.ownerFirst) + ')' : ''}:</div>
         <ul style="margin:6px 0 0;padding-inline-start:18px">${labels.map(l => `<li style="white-space:pre-line">${esc(l)}</li>`).join('')}</ul>${meta}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${b.ownerPhone ? `<button class="qj-btn primary" onclick="openWaitWa('${b.id}')">📲 תזכורת בוואטסאפ</button>` : ''}
-        <button class="qj-btn" onclick="openWaitReasons('${b.id}')">עריכת הסיבה</button>
+        <button class="qj-btn" onclick="bsOpen('${b.id}','fix')">עריכת מה חסר</button>
       </div>
     </div>`;
 }
@@ -14326,16 +14330,8 @@ window.restoreFanToPending = async function(id) {
 };
 
 window.approveBiz = async function(id) {
-  const b = findBiz(id);
-  if (!b) return;
-  const reviewed = bizReviewedCount(b);
-  const reviewTotal = BIZ_REVIEW_SECTIONS.length;
-  // תזכורת רכה, לא חסימה — המנהל עדיין יכול לאשר גם בלי לסמן את כל השלבים כנסקרו
-  if (reviewed < reviewTotal && !confirm(`רק ${reviewed}/${reviewTotal} שלבים סומנו כ"נסקר". לאשר בכל זאת?`)) return;
-  if (!confirmSuspectEmail(b.ownerEmail, `"${b.name}"`)) return;
-  if (bizMissingCardTitle(b) && !confirmMissingCardTitle([b.name])) return;   // §614
-  // §623 — לפני האישור: חלון עם "רוצה לכתוב משהו לבעל העסק?" (ריק = אישור רגיל). האישור עצמו – doApproveBiz.
-  bnOpen({ bizId: id, mode: 'approve' });
+  // §671 — האישור עובר ב"סיכום ושליחה" (הבדיקות – השלבים שנסקרו, מייל חשוד, כותרת הכרטיס – רצות שם בלחיצה)
+  window.bsOpen(id, 'approve');
 };
 async function doApproveBiz(id) {
   const b = findBiz(id);
@@ -14354,9 +14350,8 @@ async function doApproveBiz(id) {
 window.rejectBiz = async function(id) {
   const b = findBiz(id);
   if (!b) return;
-  // §659 — עסק ממתין שיש החלטות/הערות על הבקשות שלו: הדחייה עוברת בתיבה, כמו האישור
-  if (b.status !== 'approved' && (QJ_DECIDED[id] || []).length) { bnOpen({ bizId: id, mode: 'reject' }); return; }
-  await doRejectBiz(id);
+  if (b.status === 'approved') { await doRejectBiz(id); return; }   // "ביטול אישור – לממתין" – לא דחייה
+  window.bsOpen(id, 'reject');   // §671 – במקום "הזדמנות נוספת?" (§670): "צריך לתקן" הוא אפשרות באותו חלון
 };
 async function doRejectBiz(id, opts) {
   const b = findBiz(id);
@@ -14392,15 +14387,7 @@ window.deleteBiz = async function(id) {
 // האישור (rejectBiz כבר יודע להחזיר מאושר→ממתין, אבל שום כפתור לא קרא לו כשהעסק כבר מאושר —
 // statusActions/showApproveApp הציגו כפתורי-החלטה רק כש-status==='pending'). דחייה-ישירה
 // ממאושר, ושחזור-מדחייה, פשוט לא היו קיימים בכלל כפעולות.
-window.rejectApprovedBiz = async function(id) {
-  const b = findBiz(id);
-  if (!b) return;
-  if (!confirm(`לדחות את "${b.name}"? הוא יוסר מהאינדקס הציבורי.`)) return;
-  try {
-    await setBizStatusWithOwner(b, { status: 'rejected', rejectedAt: serverTimestamp(), approvedAt: null }, 'rejected');   // §661 – חבר מאושר לא נוגעים
-    await logActivity('businesses', id, { type: 'status', title: 'העסק נדחה (לאחר אישור)', detail: `"${b.name}" נדחה אחרי שהיה מאושר`, field: 'status', before: b.status, after: 'rejected' });
-  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
-};
+window.rejectApprovedBiz = function(id) { window.bsOpen(id, 'reject'); };   // §671
 window.restoreBizToPending = async function(id) {
   const b = findBiz(id);
   if (!b) return;
@@ -14666,74 +14653,100 @@ function withChangeDecision(b, field, decision, extra) {
   }];
 }
 
-// ── שיפוט-מהיר פר-שדה (שלב 2ב, §7 במפרט) — מחליפות את approveChanges/rejectChanges הגורפות בממשק
-// (אלה נשארות למעלה כ-fallback פנימי, לא מקושרות יותר לשום כפתור). כל שדה נמחק בנפרד מ-pendingChanges
-// (לא כל המפה במכה אחת) — valueOverride כי המנהל יכול לתקן את הערך לפני האישור (השדה הוא קלט, לא טקסט).
+// ══ §671 — "הסל": החלטה על בקשת שינוי נאספת, ונכתבת לעסק רק ב"סיכום ושליחה" ═══════════════════
+// רמי (29.10): "כיום כל אישור אני מאשר בנפרד וזה נשמר, תהפוך את זה לכל שינוי שמבקש אני מאשר ורק בסוף זה
+// נשמר ומסכם בהודעה ושולח למשתמש". ✅/❌ על שדה מ-pendingChanges נשמרים ב-settings/bizStaged (מנהל בלבד,
+// שורד רענון ומחשב אחר) ונרשמים ביומן עם noteItem – כך הם בסל של QJ_DECIDED וההערה אחרי ההחלטה ממשיכה
+// לעבוד. העסק עצמו לא משתנה עד commitBizStaged (bsGo / "בלי הודעה"). הבקשה נשארת ב-pendingChanges, ואם בעל
+// העסק שלח בינתיים ערך אחר לאותו שדה – הסימון נמחק (bizStagedEntry), כי הוא היה על ערך אחר.
+// ⚠️ תגיות וקטגוריה נוספת (approveTagSecondSuggestion וכו') עדיין נכתבות מיד – לא pendingChanges.
 window.approveChangeField = async function(id, field, valueOverride) {
   const b = findBiz(id);
   if (!b || !b.pendingChanges || !(field in b.pendingChanges)) return;
-  const oldVal = b[field];
-  // שדות-מבנה (מערך/אובייקט — תמונות/סרטונים/סניפים/הטבות-נוספות...) לא מגיעים עם valueOverride
-  // בכלל (אין קלט-טקסט חופשי בשבילם, ר' qjStructuredPreviewHtml) — הערך המקורי מ-pendingChanges
-  // הוא האמת, לא לבנות אותו מחדש מטקסט שהמנהל לא נגע בו.
-  const newVal = valueOverride !== undefined ? valueOverride : b.pendingChanges[field];
-  const newPending = { ...b.pendingChanges };
-  delete newPending[field];
-  const updates = { [field]: newVal };
-  // שדות-לוויין (thumb/כותרת-AI/snapshot) מאושרים יחד עם השדה הראשי — ר' PENDING_COMPANION_FIELDS
-  (PENDING_COMPANION_FIELDS[field] || []).forEach(c => {
-    if (c in newPending) { updates[c] = newPending[c]; delete newPending[c]; }
-  });
-  // prunedPending: אם נשארו רק שאריות טכניות (שלא מוצגות בכלל) — הבקשה נסגרת כאן ולא נתקעת
-  if (bizMissingCardTitle({ ...b, ...updates }) && !bizMissingCardTitle(b) && !confirmMissingCardTitle([b.name])) return;   // §614
-  const kept = prunedPending(b, newPending);
-  updates.pendingChanges = kept;
-  if (!kept) updates.pendingChangesAt = null;
-  updates.changeDecisions = withChangeDecision(b, field, 'approved');
+  const edited = valueOverride !== undefined && String(valueOverride) !== String(b.pendingChanges[field]);
   // §659 — עריכה לפני אישור: בעל העסק יראה שזה אושר עם תיקון שלנו
-  const qjLbl = (DIFF_FIELD_LABELS_MOCK[field] || field) + (valueOverride !== undefined && String(valueOverride) !== String(b.pendingChanges[field]) ? ' (עם תיקון קטן שלנו)' : '');
-  try {
-    await updateDoc(doc(db, 'businesses', id), updates);
-    await syncOwnerFieldsToMember(b, updates);
-    Object.assign(b, updates);
-    Object.assign(b, hydrateBiz(id, b));
-    b.healthScore = computeHealthScore(b);
-    await logActivity('businesses', id, {
-      noteItem: qjItem(qjLbl, 'approved'),   // §623ג
-      type: 'changeDecision', title: `אושר שינוי: ${DIFF_FIELD_LABELS_MOCK[field] || field}`,
-      detail: `${DIFF_FIELD_LABELS_MOCK[field] || field}: "${fmtActivityVal(oldVal)}" → "${fmtActivityVal(newVal)}"`,
-      field, before: oldVal, after: newVal,
-    });
-    qjRemember(id, qjItem(qjLbl, 'approved'));   // §623
-    renderMain();
-  } catch (e) { console.error(e); alert('שגיאה באישור השינוי: ' + e.message); }
+  const label = (DIFF_FIELD_LABELS_MOCK[field] || field) + (edited ? ' (עם תיקון קטן שלנו)' : '');
+  await stageChangeField(b, field, { d: 'approved', ...(edited ? { v: valueOverride } : {}), label });
 };
 window.rejectChangeField = async function(id, field) {
   const b = findBiz(id);
   if (!b || !b.pendingChanges || !(field in b.pendingChanges)) return;
-  const rejectedVal = b.pendingChanges[field];
-  const newPending = { ...b.pendingChanges };
-  delete newPending[field];
-  // דחיית השדה הראשי מפילה גם את שדות-הלוויין שלו — אחרת נשארת גרסה-ממוזערת/כותרת של שינוי שנדחה
-  (PENDING_COMPANION_FIELDS[field] || []).forEach(c => delete newPending[c]);
-  const kept = prunedPending(b, newPending);   // ר' ההערה ב-approveChangeField
-  const updates = { pendingChanges: kept };
-  if (!kept) updates.pendingChangesAt = null;
-  updates.changeDecisions = withChangeDecision(b, field, 'rejected');
-  try {
-    await updateDoc(doc(db, 'businesses', id), updates);
-    Object.assign(b, updates);
-    Object.assign(b, hydrateBiz(id, b));
-    await logActivity('businesses', id, {
-      noteItem: qjItem(DIFF_FIELD_LABELS_MOCK[field] || field, 'rejected'),   // §623ג
-      type: 'changeDecision', title: `נדחה שינוי: ${DIFF_FIELD_LABELS_MOCK[field] || field}`,
-      detail: `הבקשה לשנות ${DIFF_FIELD_LABELS_MOCK[field] || field} ל"${rejectedVal}" נדחתה`,
-      field, before: b[field], after: null,
-    });
-    qjRemember(id, qjItem(DIFF_FIELD_LABELS_MOCK[field] || field, 'rejected'));   // §623
-    renderMain();
-  } catch (e) { console.error(e); alert('שגיאה בדחיית השינוי: ' + e.message); }
+  await stageChangeField(b, field, { d: 'rejected', label: DIFF_FIELD_LABELS_MOCK[field] || field });
 };
+async function stageChangeField(b, field, entry) {
+  const e = { ...entry, req: b.pendingChanges[field], at: new Date().toISOString() };
+  try {
+    await setDoc(doc(db, 'settings', 'bizStaged'), { [b.id]: { [field]: e } }, { merge: true });
+    (bizStaged[b.id] = bizStaged[b.id] || {})[field] = e;
+    await logActivity('businesses', b.id, {
+      noteItem: qjItem(e.label, e.d),   // §623ג – בסל
+      type: 'changeDecision', title: `${e.d === 'approved' ? 'סומן לאישור' : 'סומן ללא'}: ${e.label} (יישמר בשליחה)`,
+      detail: `${DIFF_FIELD_LABELS_MOCK[field] || field}: "${fmtActivityVal(e.d === 'approved' && 'v' in e ? e.v : e.req)}"`, field, before: null, after: e.d,
+    });
+    qjRemember(b.id, qjItem(e.label, e.d));
+    renderMain();
+  } catch (err) { console.error(err); alert('שגיאה בסימון: ' + err.message); }
+}
+window.unstageChangeField = async function(id, field) {
+  const b = findBiz(id), e = bizStagedOf(id)[field];
+  if (!b || !e) return;
+  try {
+    await setDoc(doc(db, 'settings', 'bizStaged'), { [id]: { [field]: deleteField() } }, { merge: true });
+    delete bizStaged[id][field];
+    // 'unstaged' מבטל ב-qjLoadDecided את הסימון הקודם עם אותה תווית
+    await logActivity('businesses', id, { noteItem: qjItem(e.label, 'unstaged'), type: 'changeDecision', title: 'בוטל סימון: ' + e.label, detail: '', field, before: e.d, after: null });
+    const list = QJ_DECIDED[id] || [], k = list.map(x => x.label + '|' + x.decision).lastIndexOf(qjItem(e.label, e.d).label + '|' + e.d);
+    if (k >= 0) list.splice(k, 1);
+    if (!list.length) delete QJ_DECIDED[id];
+    renderMain();
+  } catch (err) { console.error(err); alert('שגיאה: ' + err.message); }
+};
+// הסימון תקף רק כל עוד הבקשה עדיין אותה בקשה
+function bizStagedEntry(b, field) {
+  const e = bizStagedOf(b.id)[field];
+  return e && b.pendingChanges && field in b.pendingChanges && qjEq(e.req, b.pendingChanges[field]) ? e : null;
+}
+// הכתיבה עצמה – מה שעשו approveChangeField/rejectChangeField לכל שדה, עכשיו לכולם בכתיבה אחת.
+// מחזיר false אם רמי ביטל (כותרת כרטיס חסרה, §614); זורק על כשל כתיבה.
+async function commitBizStaged(b) {
+  const st = bizStagedOf(b.id), fields = Object.keys(st);
+  if (!fields.length) return true;
+  const live = fields.filter(f => bizStagedEntry(b, f));
+  const pending = { ...(b.pendingChanges || {}) }, updates = {}, logs = [];
+  let cur = b;
+  for (const f of live) {
+    const e = st[f], L = DIFF_FIELD_LABELS_MOCK[f] || f;
+    if (e.d === 'approved') {
+      const newVal = 'v' in e ? e.v : pending[f];
+      updates[f] = newVal;
+      delete pending[f];
+      // שדות-לוויין (thumb/כותרת-AI/snapshot) מאושרים יחד עם השדה הראשי — ר' PENDING_COMPANION_FIELDS
+      (PENDING_COMPANION_FIELDS[f] || []).forEach(c => { if (c in pending) { updates[c] = pending[c]; delete pending[c]; } });
+      logs.push({ type: 'changeDecision', title: `אושר שינוי: ${L}`, detail: `${L}: "${fmtActivityVal(b[f])}" → "${fmtActivityVal(newVal)}"`, field: f, before: b[f], after: newVal });
+    } else {
+      delete pending[f];
+      (PENDING_COMPANION_FIELDS[f] || []).forEach(c => delete pending[c]);
+      logs.push({ type: 'changeDecision', title: `נדחה שינוי: ${L}`, detail: `הבקשה לשנות ${L} ל"${fmtActivityVal(e.req)}" נדחתה`, field: f, before: b[f], after: null });
+    }
+    cur = { ...cur, changeDecisions: withChangeDecision(cur, f, e.d) };
+  }
+  if (live.length) {
+    if (bizMissingCardTitle({ ...b, ...updates }) && !bizMissingCardTitle(b) && !confirmMissingCardTitle([b.name])) return false;   // §614
+    const kept = prunedPending(b, pending);   // ר' ההערה ב-prunedPending
+    updates.pendingChanges = kept;
+    if (!kept) updates.pendingChangesAt = null;
+    updates.changeDecisions = cur.changeDecisions;
+    await updateDoc(doc(db, 'businesses', b.id), updates);
+    await syncOwnerFieldsToMember(b, updates);
+    Object.assign(b, updates);
+    Object.assign(b, hydrateBiz(b.id, b));
+    b.healthScore = computeHealthScore(b);
+  }
+  await setDoc(doc(db, 'settings', 'bizStaged'), { [b.id]: deleteField() }, { merge: true });
+  delete bizStaged[b.id];
+  for (const l of logs) await logActivity('businesses', b.id, l);
+  return true;
+}
 
 // קפיצה מתקציר-השינויים בראש הכרטיס לעריכת השלב הרלוונטי + גלילה אליו. פותח את השלב רק אם הוא סגור —
 // לא כמו toggleBizSecEdit הרגיל (טוגל) — כדי שלא "יסגור" בטעות שלב שכבר פתוח אם לוחצים שוב בטעות.
@@ -15239,6 +15252,17 @@ function quickJudgmentHtml(b) {
   // ממתינות. hasBody (למטה) כבר מטפל נכון במצב-ריק (מסתיר toggle/count/body, משאיר רק כותרת).
   const isOpen = !qjCollapsedIds.has(b.id);
   const rowHtml = (it) => {
+    const st = bizStagedEntry(b, it.field);   // §671 — סומן בסל, עוד לא נכתב
+    if (st) return `
+        <div class="qj-row" style="background:${st.d === 'approved' ? '#ECFDF3' : '#FEF3F2'}">
+          <div class="qj-row-label"><div class="qj-row-step">שלב ${it.display} · ${DIFF_SECTION_NAMES[it.display] || ''}</div><div class="qj-row-name">${it.label}</div></div>
+          <div class="qj-row-value"><span class="qj-value-text"><b>${st.d === 'approved' ? '✅ סומן לאישור' : '❌ סומן ללא'}</b>${'v' in st ? ' – עם תיקון שלנו' : ''}</span>
+            <div class="qj-value-hint">יישמר בעסק רק ב"סיכום ושליחה" למעלה</div></div>
+          <div class="qj-row-actions">
+            <button class="qj-btn" onclick="unstageChangeField('${b.id}','${it.field}')">ביטול סימון</button>
+            <button class="qj-btn link" onclick="jumpToBizSection('${b.id}',${it.section})">לשלב ${it.display} ←</button>
+          </div>
+        </div>`;
     if (b.pendingChangeDiff && it.field in b.pendingChangeDiff) {
       // שדה-מבנה (מערך/אובייקט — תמונות/סרטונים/הטבות-נוספות/סניפים/תגיות וכו') לא יכול לעבור
       // דרך תיבת-טקסט-חופשי לעריכה: ה-value של <input type="text"> הוא תמיד string, אז אישור
@@ -15448,13 +15472,14 @@ function quickJudgmentHtml(b) {
         ${showApproveApp ? `
         <div class="qj-header-actions">
           <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קישור לדשבורד" onclick="approveBiz('${b.id}')">✅ אשר את העסק</button>
+          <button class="qj-btn-reject-app" onclick="bsOpen('${b.id}','fix')">✏️ ${bizInFix(b) ? 'מה חסר לו' : 'צריך לתקן'}</button>
           <button class="qj-btn-reject-app" onclick="rejectBiz('${b.id}')">✗ דחה</button>
-          ${inReviewBtnHtml('biz', b)}
           ${qjDeleteBtn('biz', b.id)}
         </div>` : b.status === 'approved' ? `
         <div class="qj-header-actions">
-          <button class="qj-btn-reject-app" onclick="rejectBiz('${b.id}')">↩️ ביטול אישור – לממתין</button>
+          <button class="qj-btn-reject-app" onclick="bsOpen('${b.id}','fix')">✏️ ${bizInFix(b) ? 'מה חסר לו' : 'צריך לתקן'}</button>
           <button class="qj-btn-reject-app" onclick="rejectApprovedBiz('${b.id}')">✗ דחייה</button>
+          <button class="qj-btn-reject-app" onclick="rejectBiz('${b.id}')">↩️ ביטול אישור – לממתין</button>
           ${qjDeleteBtn('biz', b.id)}
         </div>` : b.status === 'rejected' ? `
         <div class="qj-header-actions">
@@ -15464,6 +15489,7 @@ function quickJudgmentHtml(b) {
         </div>` : ''}
         <div class="qj-hint">${hint}</div>
       </div>
+      ${bsBarHtml(b)}
       ${(showApproveApp || b.status === 'rejected') ? bizApprovalSectionsHtml(b) : ''}
       ${(hasBody && isOpen) ? `<div class="qj-body">${proposalRow}${followRow}${draftRow}${ownerPreRow}${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}</div>` : ''}
     </div>`;
@@ -15639,7 +15665,7 @@ window.rtEditSave = async function() {
     rtRefresh();
   } catch (e) { console.error('replyTemplates save failed', e); rtEditRender('השמירה נכשלה: ' + (e.message || e)); }
 };
-const BN_ORIGIN = { approve: 'אישור הרשמה', reject: 'דחיית הרשמה', changes: 'החלטה על שינויים', external: 'טופל מבחוץ', free: 'הודעה יזומה', note: 'תשובה ל"כתבו לנו"' };
+const BN_ORIGIN = { approve: 'אישור הרשמה', reject: 'דחיית הרשמה', changes: 'החלטה על שינויים', external: 'טופל מבחוץ', free: 'הודעה יזומה', note: 'תשובה ל"כתבו לנו"', fix: 'צריך לתקן' };
 // החלטות בשיפוט המהיר שעוד לא נכתב עליהן לבעל העסק.
 // §623ג — לא רק בזיכרון: כל החלטה נרשמת ביומן העסק עם noteItem, וההודעה (mode changes) או "בלי הודעה"
 // נרשמות עם noteClose. בפתיחת הכרטיס הרשימה נגזרת מהיומן – מהחדש אחורה עד noteClose הראשון – ולכן
@@ -15731,13 +15757,13 @@ function qjNoteOpen(id, remark) {
   if (!remark && el.style.display === 'flex' && _bn && _bn.mode !== 'collect') return;   // חלון אחר פתוח – לא דורסים
   const idx = remark ? dec.findIndex(d => d.decision === 'remark' && d.label === remark) : dec.length - 1;
   const cur = idx >= 0 ? dec[idx] : { label: remark, decision: 'remark', note: '' };
-  const left = bizPendingChangeItems(b).length, approved = b.status === 'approved';
+  const left = bizPendingChangeItems(b).filter(it => !bizStagedEntry(b, it.field)).length, approved = b.status === 'approved';   // §671 – מה שסומן כבר לא 'נשאר'
   _bn = { bizId: id, mode: 'collect', idx, remark: remark || null };
   const prev = dec.filter((d, k) => k !== idx).map(d => `<div style="padding:6px 0;border-bottom:1px solid var(--border,#EEE)"><b>${QJ_CHIP_ICON[d.decision] || ''}${esc(d.label)}</b>${d.note ? `<div style="white-space:pre-line;color:var(--text-muted,#5B6B8C);margin-top:2px">${esc(d.note)}</div>` : ''}</div>`).join('');
-  const foot = remark ? (approved ? 'נאסף להודעה אחת – תשלח אותה מהשורה "✍️ לכתוב לו" בשיפוט המהיר (או בסוף הבקשות).' : 'העסק עוד ממתין – ההערה תחכה לך בתיבה של "אישור העסק" (או הדחייה) ותישלח יחד איתו.')
+  const foot = remark ? 'נאסף לסל – יישלח בהודעה אחת מ"סיכום ושליחה" בראש השיפוט המהיר (גם כשמבקשים ממנו לתקן).'
     : left ? `נשארו עוד <b>${left}</b> בקשות. ההערות ממשיכות להיאסף – בסוף תקבל הודעה אחת עם הכול.`
     : approved ? 'זו הייתה הבקשה האחרונה. בלחיצה תראה את ההודעה המלאה לבעל העסק ותשלח אותה – גם בלי הערות, רק עם ההחלטות.'
-    : 'העסק עוד ממתין. כל ההחלטות וההערות יחכו לך בתיבה של "אישור העסק" (או הדחייה) ויישלחו יחד איתו.';
+    : 'העסק עוד ממתין. הכול נאסף לסל, ויישלח ב"סיכום ושליחה" – יחד עם האישור, "צריך לתקן" או הדחייה.';
   const goLbl = remark ? 'שמירה' : left ? 'שמירה והמשך' : approved ? 'המשך לסיכום ושליחה' : 'שמירה';
   const noLbl = remark ? 'ביטול' : left || !approved ? 'בלי הערה' : 'המשך בלי הערה';
   el.innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:560px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
@@ -15788,7 +15814,7 @@ window.qjNoteDone = async function(save) {
   renderMainPreserveScroll();
   if (o.remark) return;
   const b = findBiz(o.bizId);
-  if (b && b.status === 'approved' && !bizPendingChangeItems(b).length && (QJ_DECIDED[o.bizId] || []).length) bnOpen({ bizId: o.bizId, mode: 'changes' });
+  if (b && b.status === 'approved' && !bizPendingChangeItems(b).filter(it => !bizStagedEntry(b, it.field)).length && (QJ_DECIDED[o.bizId] || []).length) window.bsOpen(o.bizId, 'save');   // §671
 };
 const _qjDecLoad = {};   // bizId → זמן תחילת הטעינה (פעם אחת לדף)
 function qjLoadDecided(id) {
@@ -15796,9 +15822,12 @@ function qjLoadDecided(id) {
   const startedAt = _qjDecLoad[id] = Date.now();
   getDocs(query(collection(db, 'businesses', id, 'activity'), orderBy('createdAt', 'desc'), limit(80))).then(snap => {
     const items = [], notes = {}, seenEdit = new Set();   // §659 — הערה (comment) חדשה מההחלטה שלה; הכי חדשה קובעת
+    const unstaged = {};   // §671 — "בוטל סימון" מבטל את הסימון הקודם עם אותה תווית
     for (const d of snap.docs) {
       const a = d.data();
       if (a.noteClose) break;
+      if (a.noteItem && a.noteItem.decision === 'unstaged') { unstaged[a.noteItem.label] = (unstaged[a.noteItem.label] || 0) + 1; continue; }
+      if (a.noteItem && !a.noteItem.comment && unstaged[a.noteItem.label] && (a.noteItem.decision === 'approved' || a.noteItem.decision === 'rejected')) { unstaged[a.noteItem.label]--; continue; }
       if (Array.isArray(a.noteItems)) {   // §659ג — עריכה ידנית; הסדר בתוך הרשומה נשמר
         for (const ni of a.noteItems.slice().reverse()) {
           if (!ni || !ni.label || seenEdit.has(ni.field)) continue;
@@ -16040,9 +16069,229 @@ async function bnSend(b, title, text, mode, closesDecided) {
 window.openBizNoteFree = function(id) { bnOpen({ bizId: id, mode: 'free' }); };
 window.openBizNoteChanges = function(id) { bnOpen({ bizId: id, mode: 'changes' }); };
 window.openBizNoteReply = function(id) { bnOpen({ bizId: id, mode: 'note' }); };   // §653
+
+// ══ §671 — "סיכום ושליחה": חלון אחד לכל החלטה על עסק ═══════════════════════════════════════════
+// רמי (29.10): "יש לי ליד כל שלב לרשום וגם כל פעולה שאני עושה נשמרת ובסוף יש לי אופציה לעדכן את בעל העסק
+// על כל הפעולה בצורה מסוכמת… ובסוף למעלה תהיה אופציה לשלוח". במקום ארבעה מסלולים (אישור בתיבה, דחייה בתיבה,
+// "הזדמנות נוספת?", "לכתוב לו על ההחלטות") – חלון אחד: מה עושים עם העסק + ההודעה מהסל + שליחה. בלחיצה:
+// הסל נכתב לעסק (commitBizStaged), הסטטוס משתנה, ההודעה יוצאת (bnSend: אפליקציה+פוש+מייל), והסבב ביומן.
+// "צריך לתקן" = inReview + inReviewReasons/inReviewOther (§653) – כך מסך "העסק שלך אצלנו" (§664/§666) כבר
+// מציג לבעל עסק ממתין מה חסר. עסק מאושר: נשאר באתר (status נשאר approved) או יורד (pending + fixHidden).
+// וואטסאפ – אין חיבור: אחרי השליחה כפתור שפותח את הוואטסאפ של רמי עם הנוסח (קישור אמיתי – window.open
+// אחרי await נחסם בדפדפן).
+function bizInFix(b) { return !!b && b.inReview === true && (b.status === 'pending' || b.status === 'approved'); }
+const BS_OUT = {
+  approve: ['✅ אישור העסק', 'עולה לאתר. בעל העסק מקבל את מייל האישור הרגיל, וההודעה מכאן – בנוסף.'],
+  save: ['💾 רק לשמור ולעדכן אותו', 'העסק נשאר מאושר. נשמר מה שסימנת, ויוצאת אליו ההודעה.'],
+  fix: ['✏️ צריך לתקן', 'נשאר ממתין. מה שתסמן למטה קופץ לו באפליקציה, ומשם הוא מתקן.'],
+  fixStay: ['✏️ צריך לתקן – נשאר באתר', 'העסק ממשיך להופיע באתר בזמן שהוא מתקן.'],
+  fixHide: ['✏️ צריך לתקן – יורד מהאתר עד התיקון', 'העסק מוסתר מהאתר, וחוזר רק כשתאשר את התיקון.'],
+  reject: ['⛔ דחייה סופית', 'בלי הזדמנות לתקן. בלי הודעה – לא נשלח לו כלום.'],
+};
+const BS_TITLE = { approve: 'העסק שלך אושר! 🎉', save: 'עדכון על השינויים שביקשת', fix: 'נשאר עוד צעד קטן', fixStay: 'נשאר עוד צעד קטן', fixHide: 'נשאר עוד צעד קטן', reject: 'עדכון על ההרשמה של העסק' };
+function bsOutcomes(b) { return b.status === 'approved' ? ['save', 'fixStay', 'fixHide', 'reject'] : ['approve', 'fix', 'reject']; }
+const bsIsFix = o => o === 'fix' || o === 'fixStay' || o === 'fixHide';
+// ההודעה מהסל. ההערות על השלבים (📝) הן "מה חסר" כשמבקשים תיקון, ולכן שם הן עוברות לרשימה ולא לסוף.
+function bsBuildText(b, outcome, reasons, other) {
+  const dec = QJ_DECIDED[b.id] || [];
+  const decText = qjDecidedText(bsIsFix(outcome) ? dec.filter(d => d.decision !== 'remark') : dec);
+  if (bsIsFix(outcome)) {
+    const miss = WAIT_REASONS.filter(r => r.k !== 'other' && reasons.includes(r.k)).map(r => '• ' + r.text).concat(other ? ['• ' + other] : []);
+    return `כדי שהכרטיס של "${b.name}" יהיה מושלם, חסר לנו:\n${miss.join('\n')}`
+      + (outcome === 'fixHide' || (outcome === 'fix' && b.fixHidden) ? '\n\nעד התיקון העסק מוסתר מהאתר.' : '')
+      + (decText ? '\n\nובבקשות שלך:\n' + decText : '')
+      + '\n\nפותחים את Yellow Zone ומתקנים משם – או בדשבורד העסק.';
+  }
+  if (outcome === 'approve') return decText ? 'לגבי הכרטיס שלך:\n\n' + decText : '';
+  return decText;
+}
+// "אחר" של "למה ממתינים" = ההערות על השלבים (עד 300 תווים – הגבול של /biz-reg-status)
+function bsRemarksText(b) {
+  return (QJ_DECIDED[b.id] || []).filter(d => d.decision === 'remark' && d.note).map(d => d.note).join(' · ').slice(0, 300);
+}
+window.bsOpen = function(id, outcome) {
+  const b = findBiz(id);
+  if (!b) return;
+  if (_bn && _bn.sending) return;
+  qjLoadDecided(id);
+  const outs = bsOutcomes(b);
+  if (outcome === 'fix' && b.status === 'approved') outcome = bizInFix(b) ? 'fixStay' : null;   // עסק מאושר – רמי בוחר: נשאר / יורד
+  if (!outs.includes(outcome)) outcome = outcome === undefined && b.status === 'approved' ? 'save' : null;
+  const cur = bizWaitKeys(b).filter(k => k !== 'other');
+  _bn = { bizId: id, mode: 'summary', outcome, sending: false, dirty: false,
+    reasons: cur.length ? cur : WAIT_REASONS.filter(r => r.k !== 'other' && r.auto && r.auto(b)).map(r => r.k),
+    other: String(b.inReviewOther || '').trim() || bsRemarksText(b),
+    wa: !!b.ownerPhone };
+  bsRender();
+};
+function bsRender() {
+  const o = _bn, b = o && findBiz(o.bizId);
+  if (!b) return;
+  const fix = bsIsFix(o.outcome);
+  const title = o.dirty ? o.title : (o.outcome ? BS_TITLE[o.outcome] : '');
+  const text = o.dirty ? o.text : (o.outcome ? bsBuildText(b, o.outcome, o.reasons, o.other) : '');
+  const dec = QJ_DECIDED[b.id] || [], staged = Object.keys(bizStagedOf(b.id)).filter(f => bizStagedEntry(b, f)).length;
+  const optHtml = k => `<label style="display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1.5px solid ${o.outcome === k ? '#7F56D9' : 'var(--border-md,#ddd)'};background:${o.outcome === k ? '#F4F0FD' : '#fff'};border-radius:11px;margin-bottom:6px;cursor:pointer">
+      <input type="radio" name="bsOut" value="${k}" ${o.outcome === k ? 'checked' : ''} onchange="bsSet('outcome',this.value)" style="margin-top:3px">
+      <span><b>${BS_OUT[k][0]}</b><span style="display:block;color:var(--text-muted,#5B6B8C);font-size:12px">${BS_OUT[k][1]}</span></span></label>`;
+  const fixHtml = fix ? `
+    <div style="border:1.5px solid #D9CCF7;background:#FBFAFF;border-radius:12px;padding:10px 12px;margin-top:4px">
+      <div style="font-weight:800;font-size:14px">מה חסר לו? <span style="font-weight:400;color:var(--text-muted,#5B6B8C);font-size:12px">– זה מה שקופץ לו באפליקציה</span></div>
+      ${WAIT_REASONS.filter(r => r.k !== 'other').map(r => `<label style="display:inline-flex;gap:6px;align-items:center;margin:6px 10px 0 0;font-size:13px;cursor:pointer"><input type="checkbox" value="${r.k}" ${o.reasons.includes(r.k) ? 'checked' : ''} onchange="bsReason(this)">${r.label}</label>`).join('')}
+      <textarea id="bsOther" maxlength="300" rows="2" placeholder="עוד משהו שחסר – במילים שלך (ההערות שכתבת על השלבים כבר כאן)" oninput="bsSet('other',this.value)" style="display:block;width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border-md,#ddd);border-radius:9px;resize:vertical;margin-top:8px">${esc(o.other)}</textarea>
+    </div>` : '';
+  const ch = bnChannels(b, o.outcome === 'approve');
+  const goLbl = !o.outcome ? 'בחר מה עושים עם העסק' : o.outcome === 'save' && !text.trim() ? '💾 שמירה (בלי הודעה)' : text.trim() ? '📤 שמירה ושליחה' : '💾 שמירה בלי הודעה';
+  bnEl().innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:640px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
+    <div style="font-size:18px;font-weight:900">🧺 סיכום ושליחה · ${esc(b.name)}</div>
+    <div style="font-size:13px;color:var(--text-muted,#5B6B8C);margin:4px 0 12px">${dec.length || staged ? `בסל: ${dec.length} החלטות והערות${staged ? ` (${staged} שינויים עוד לא נשמרו בעסק)` : ''}. ` : ''}שום דבר לא נשמר ולא נשלח עד הכפתור למטה.</div>
+    <div style="font-weight:800;font-size:14px;margin-bottom:6px">מה עושים עם העסק?</div>
+    ${bsOutcomes(b).map(optHtml).join('')}
+    ${fixHtml}
+    <div style="border:2px solid var(--yellow,#FFD400);background:#FFF7DB;border-radius:14px;padding:12px;margin-top:12px">
+      <div style="font-weight:800;font-size:15px">ההודעה לבעל העסק</div>
+      <div style="font-size:12.5px;color:var(--text-muted,#5B6B8C);margin:2px 0 8px">נבנתה מהסל – אפשר לערוך. ריק = לא נשלח כלום.</div>
+      <input id="bnTitle" maxlength="${BN_TITLE_MAX}" placeholder="כותרת (בפוש ובנושא המייל)" value="${esc(title)}" oninput="bsSet('title',this.value)" style="width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--border-md,#ddd);border-radius:10px;margin-bottom:8px">
+      <textarea id="bnText" maxlength="1500" oninput="bsSet('text',this.value)" style="width:100%;box-sizing:border-box;min-height:170px;font:inherit;font-size:14px;line-height:1.6;padding:10px;border:1px solid var(--border-md,#ddd);border-radius:10px;resize:vertical">${esc(text)}</textarea>
+      <div style="font-size:12.5px;margin-top:8px;line-height:1.8">${bnChanHtml(ch)}</div>
+      ${b.ownerPhone ? `<label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-top:6px;cursor:pointer"><input type="checkbox" id="bsWa" ${o.wa ? 'checked' : ''} onchange="_bn.wa=this.checked"> 💬 גם בוואטסאפ – אחרי השליחה ייפתח אצלך עם הנוסח</label>` : ''}
+    </div>
+    <div id="bnErr" style="color:var(--red,#B42318);font-size:13px;margin-top:8px;white-space:pre-line"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <button class="qj-btn primary" id="bnGo" onclick="bsGo()" ${o.outcome ? '' : 'disabled'}>${goLbl}</button>
+      <button class="qj-btn" onclick="bnClose()">ביטול</button>
+    </div>
+  </div>`;
+  bnEl().style.display = 'flex';
+}
+// שינוי בחלון: התוצאה/הסיבות בונים מחדש את ההודעה – כל עוד רמי לא ערך אותה בעצמו
+window.bsSet = function(k, v) {
+  const o = _bn;
+  if (!o || o.mode !== 'summary') return;
+  if (k === 'title' || k === 'text') {
+    o.dirty = true;
+    o.title = (document.getElementById('bnTitle') || {}).value || '';
+    o.text = (document.getElementById('bnText') || {}).value || '';
+    if (k === 'text') { const go = document.getElementById('bnGo'); if (go && o.outcome) go.textContent = o.text.trim() ? '📤 שמירה ושליחה' : '💾 שמירה בלי הודעה'; }
+    return;
+  }
+  o[k] = v;
+  if (k === 'outcome') bsRender();
+  else if (!o.dirty) { const ta = document.getElementById('bnText'); if (ta) ta.value = bsBuildText(findBiz(o.bizId), o.outcome, o.reasons, o.other); }
+};
+window.bsReason = function(el) {
+  const o = _bn;
+  if (!o) return;
+  o.reasons = el.checked ? [...new Set(o.reasons.concat(el.value))] : o.reasons.filter(k => k !== el.value);
+  window.bsSet('reasons', o.reasons);
+};
+window.bsGo = async function() {
+  const o = _bn;
+  if (!o || o.mode !== 'summary' || o.sending || !o.outcome) return;
+  const b = findBiz(o.bizId), err = document.getElementById('bnErr');
+  if (!b) return;
+  const out = o.outcome, fix = bsIsFix(out);
+  const title = ((document.getElementById('bnTitle') || {}).value || '').trim().slice(0, BN_TITLE_MAX);
+  const text = ((document.getElementById('bnText') || {}).value || '').trim();
+  const other = String(o.other || '').trim().slice(0, 300);
+  if (fix && !o.reasons.length && !other) { err.textContent = 'סמן מה חסר לו – זה מה שיופיע לו באפליקציה.'; return; }
+  if (text && !title) { err.textContent = 'חסרה כותרת (היא שורת הפוש ונושא המייל).'; document.getElementById('bnTitle').focus(); return; }
+  if (out === 'approve' && !o.mainDone) {
+    const reviewed = bizReviewedCount(b), reviewTotal = BIZ_REVIEW_SECTIONS.length;
+    // תזכורת רכה, לא חסימה — כמו ב-approveBiz עד עכשיו
+    if (reviewed < reviewTotal && !confirm(`רק ${reviewed}/${reviewTotal} שלבים סומנו כ"נסקר". לאשר בכל זאת?`)) return;
+    if (!confirmSuspectEmail(b.ownerEmail, `"${b.name}"`)) return;
+    if (bizMissingCardTitle(b) && !confirmMissingCardTitle([b.name])) return;   // §614
+  }
+  o.sending = true; err.textContent = '';
+  const go = document.getElementById('bnGo'); if (go) { go.disabled = true; go.textContent = '⏳ רגע…'; }
+  const fail = (m) => { o.sending = false; err.textContent = m; if (go) { go.disabled = false; go.textContent = '↻ לנסות שוב'; } };
+  const before = b.status;
+  try {
+    if (!o.committed) {
+      if (!(await commitBizStaged(b))) return fail('לא נשמר – אפשר לתקן ולנסות שוב.');
+      o.committed = true;
+    }
+    if (!o.mainDone) {
+      const clearFix = { inReview: false, inReviewReasons: [], inReviewOther: '', fixHidden: false };
+      if (out === 'approve') {
+        await approveBizWithMemberBatch(b);   // מנקה גם את "צריך לתקן"
+        Object.assign(b, { status: 'approved' }, clearFix);
+        logActivity('businesses', b.id, { type: 'status', title: 'העסק אושר', detail: `"${b.name}" אושר לאינדקס – אימות בעל העסק אושר יחד איתו`, field: 'status', before, after: 'approved' });
+      } else if (fix) {
+        const hide = out === 'fixHide' || (out === 'fix' && !!b.fixHidden);
+        const reasons = o.reasons.concat(other ? ['other'] : []);
+        const upd = { inReview: true, inReviewReasons: reasons, inReviewOther: other, fixHidden: hide, ...(bizInFix(b) ? {} : { inReviewAt: serverTimestamp() }) };
+        if (b.status === 'approved' && hide) Object.assign(upd, { status: 'pending', approvedAt: null });
+        await updateDoc(doc(db, 'businesses', b.id), upd);
+        Object.assign(b, upd, 'inReviewAt' in upd ? { inReviewAt: new Date() } : {});
+        logActivity('businesses', b.id, { type: 'fixRound', title: BS_OUT[out][0], detail: 'ביקשנו: ' + bizWaitLabels(b).join(' · '),
+          field: 'status', before, after: b.status, fixRound: { reasons, other, hidden: hide, title, text: text.slice(0, 1500) } });
+      } else if (out === 'reject') {
+        await setBizStatusWithOwner(b, { status: 'rejected', rejectedAt: serverTimestamp(), approvedAt: null, ...clearFix }, 'rejected', { mail: !text });   // §661
+        Object.assign(b, { status: 'rejected' }, clearFix);
+        logActivity('businesses', b.id, { type: 'status', title: before === 'approved' ? 'העסק נדחה (לאחר אישור)' : 'העסק נדחה', detail: `"${b.name}" נדחה`, field: 'status', before, after: 'rejected' });
+      }
+      o.mainDone = true;
+    }
+    let res = '';
+    if (text) {
+      const r = await bnSend(findBiz(b.id) || b, title, text, out === 'reject' ? 'reject' : out === 'approve' ? 'approve' : fix ? 'fix' : 'changes', true);
+      res = r.text;
+      if (!r.ok) { renderMain(); return fail((out === 'save' ? 'נשמר. ' : 'ההחלטה נשמרה. ') + res + '\nהטקסט נשמר כאן – אפשר לנסות שוב.'); }
+      delete QJ_DECIDED[b.id];
+    } else if ((QJ_DECIDED[b.id] || []).length) {
+      await qjCloseDecided(b.id, 'בלי הודעה לבעל העסק (' + BS_OUT[out][0] + ')');
+    }
+    o.sending = false;
+    renderMain();
+    bsDone(b, out, res, o.wa && b.ownerPhone && text ? text : '');
+  } catch (e) {
+    console.error(e);
+    renderMain();
+    fail('שגיאה: ' + (e.message || e) + (o.committed ? '\n(השינויים שסימנת כבר נשמרו בעסק)' : ''));
+  }
+};
+// המסך שאחרי: מה קרה + הוואטסאפ (קישור – לחיצה אמיתית של רמי, לא window.open אחרי await)
+function bsDone(b, out, res, waText) {
+  const wa = waText ? waLink(b.ownerPhone, applyBizTpl('היי {name} 👋\nכאן רמי מ-Yellow Zone 💛\n\n', b.ownerFirst, b.name, '') + waText
+    + (b.accessToken ? '\n\n💻 הקישור האישי לעריכת העסק – שמרו אותו ואל תעבירו הלאה:\n' + bizDashUrl(b.accessToken) : '') + '\n\nקונים כחול-צהוב\nרמי') : '';
+  _bn = { bizId: b.id, mode: 'summaryDone' };
+  bnEl().innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:520px;max-width:100%;padding:18px;box-sizing:border-box">
+    <div style="font-size:18px;font-weight:900">✅ ${esc(BS_OUT[out][0])} · ${esc(b.name)}</div>
+    <div style="font-size:13.5px;margin-top:8px;white-space:pre-line;line-height:1.7">${esc(res || 'לא נשלחה הודעה.')}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      ${wa ? `<a class="qj-btn primary" href="${esc(wa)}" target="_blank" rel="noopener" onclick="bsWaSent('${b.id}')">💬 פתיחת וואטסאפ עם ההודעה</a>` : ''}
+      <button class="qj-btn${wa ? '' : ' primary'}" onclick="bnClose()">סגירה</button>
+    </div>
+  </div>`;
+  bnEl().style.display = 'flex';
+}
+window.bsWaSent = function(id) {
+  const b = findBiz(id);
+  if (!b) return;
+  logActivity('businesses', id, { type: 'email', title: 'נשלחה הודעת WhatsApp ידנית לבעל העסק', detail: `לטלפון ${b.ownerPhone} · מסיכום ושליחה`, field: 'channel', before: null, after: 'whatsapp' });
+  bumpWaNudge('businesses', id);
+  b.waNudgeCount = (b.waNudgeCount || 0) + 1; b.waNudgeAt = new Date();
+  setTimeout(() => { bnClose(); renderMainPreserveScroll(); }, 300);
+};
+// הפס למעלה בכרטיס: מה מחכה בסל + "סיכום ושליחה"
+function bsBarHtml(b) {
+  qjLoadDecided(b.id);   // §623ג
+  const dec = QJ_DECIDED[b.id] || [];
+  if (!dec.length) return '';
+  const n = k => dec.filter(d => d.decision === k).length;
+  const parts = [[n('approved'), 'אושרו'], [n('rejected'), 'לא אושרו'], [n('edited'), 'עדכנו'], [dec.filter(d => d.note).length, 'הערות']].filter(p => p[0]).map(p => `${p[0]} ${p[1]}`);
+  const staged = Object.keys(bizStagedOf(b.id)).filter(f => bizStagedEntry(b, f)).length;
+  return `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;background:#FFF7DB;border:1.5px solid var(--yellow,#FFD400);border-radius:12px;padding:8px 12px;margin:8px 0 4px">
+      <div style="font-size:13px">🧺 <b>מחכה לשליחה:</b> ${parts.join(' · ') || dec.length + ' פריטים'}${staged ? ` · <span style="color:var(--text-muted,#5B6B8C)">${staged} שינויים עוד לא נשמרו בעסק</span>` : ''}</div>
+      <button class="qj-btn primary" onclick="bsOpen('${b.id}')">סיכום ושליחה ←</button>
+    </div>`;
+}
 // שורה בשיפוט המהיר אחרי החלטה – "לכתוב לו על ההחלטות?"
 function qjDecidedRowHtml(b) {
   qjLoadDecided(b.id);   // §623ג
+  return '';   // §671 — הסל מוצג בפס "סיכום ושליחה" בראש השיפוט המהיר (bsBarHtml)
   const d = QJ_DECIDED[b.id];
   if (!d || !d.length) return '';
   const pend = b.status !== 'approved';   // §659
@@ -24189,6 +24438,10 @@ onSnapshot(doc(db, 'settings', 'tagProposals'), snap => {   // §644
   tagProposals = snap.exists() ? (snap.data() || {}) : {};
   renderMainPreserveScroll();
 }, err => console.error('שגיאה בטעינת ההצעות המוכנות:', err));
+onSnapshot(doc(db, 'settings', 'bizStaged'), snap => {   // §671
+  bizStaged = snap.exists() ? (snap.data() || {}) : {};
+  renderMainPreserveScroll();
+}, err => console.error('שגיאה בטעינת הסל:', err));
 onSnapshot(doc(db, 'settings', 'bizNoteDrafts'), snap => {   // §644
   bizNoteDrafts = snap.exists() ? (snap.data() || {}) : {};
   renderMainPreserveScroll();
