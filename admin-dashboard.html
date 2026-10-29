@@ -11538,12 +11538,15 @@ function fanFullDetailHtml(id, opts) {
           ${h.note ? `<div style="white-space:pre-line;font-size:13px;margin-top:3px">${esc(h.note)}</div>` : ''}</div>`).join('')}</div>
       </div>`); }
   { const inqRow = inquiriesQjRowHtml(fanInquiries(f), f.name); if (inqRow) fanQjRows.push(inqRow); }   // §631
-  if (f.status === 'pending' && f.fixedAt) {
+  // §669ב — רמי: "שהמידע יהיה על שניהם תמיד שלא יעלם, גם הדחיות שאוהד עבר, כפילות, בדיקה שנדרשת".
+  // תיקון-אימות, "נדחה בעבר" והערת הבדיקה נשארים גם אחרי אישור/דחייה – רק התווית עוברת ל"היסטוריה".
+  const qjStep = now => f.status === 'pending' ? now : 'היסטוריה';
+  if (f.fixedAt) {
     const img = u => u ? `<img src="${esc(bizImageViewUrl(u, 400))}" class="zoomable" style="width:100%;max-height:180px;object-fit:contain;border-radius:8px;background:#000" onclick="openImageLightbox('${esc(u)}','proof-${esc(f.id)}.jpg')">` : '<div class="owner-verify-photo-empty">אין תמונה</div>';
     const prof = v => v ? (/^https?:/.test(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener" style="word-break:break-all">${esc(v)}</a>` : esc(v)) : '–';
     fanQjRows.push(`
       <div class="qj-row" style="background:#EEF2FF">
-        <div class="qj-row-label"><div class="qj-row-step">לבדיקה מעמיקה</div><div class="qj-row-name">🔁 אחרי תיקון אימות</div></div>
+        <div class="qj-row-label"><div class="qj-row-step">${qjStep('לבדיקה מעמיקה')}</div><div class="qj-row-name">🔁 אחרי תיקון אימות</div></div>
         <div class="qj-row-value"><span class="qj-value-text"><b>האימות לא עבר, והאוהד שלח תיקון</b> · ${fmtDateTime(f.fixedAt)}</span>${f.retryNote ? `<div style="margin-top:4px;font-size:13px">ההודעה שהשארת לו: <b>${esc(f.retryNote)}</b></div>` : ''}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
             <div><div style="font-size:12px;color:var(--text-muted)">לפני</div>${img(f.fixPrevPhotoUrl)}<div style="font-size:12px;margin-top:4px">${prof(f.fixPrevProfile)}</div></div>
@@ -11551,36 +11554,38 @@ function fanFullDetailHtml(id, opts) {
           </div></div>
       </div>`);
   }
-  const prevRej = f.status === 'pending' ? fanPrevRejected(f) : null;
+  const prevRej = fanPrevRejected(f);
   if (prevRej) {
     fanQjRows.push(`
       <div class="qj-row" style="background:#FDE8E8">
-        <div class="qj-row-label"><div class="qj-row-step">לבדיקה</div><div class="qj-row-name">↩️ נדחה בעבר</div></div>
+        <div class="qj-row-label"><div class="qj-row-step">${qjStep('לבדיקה')}</div><div class="qj-row-name">↩️ נדחה בעבר</div></div>
         <div class="qj-row-value"><span class="qj-value-text">יש רשומה קודמת שנדחתה עם אותו טלפון או מייל: <b>${esc(prevRej.name)}</b>${prevRej.rejectedAt ? ' · נדחה ' + fmtDateTime(prevRej.rejectedAt) : ''}${prevRej.rejectKind === 'retry' ? ' · היה לו אפשרות תיקון' : prevRej.rejectKind === 'final' ? ' · דחייה סופית' : ''}</span></div>
         <div class="qj-row-actions"><button class="qj-btn" onclick="selectFanDetail('${prevRej.id}')">צפייה ברשומה הקודמת</button></div>
       </div>`);
   }
-  if (f.checkNote && f.status === 'pending') {
+  if (f.checkNote) {
     fanQjRows.push(`
       <div class="qj-row" style="background:var(--warn-bg)">
-        <div class="qj-row-label"><div class="qj-row-step">הערה</div><div class="qj-row-name">⚠️ לבדיקה</div></div>
+        <div class="qj-row-label"><div class="qj-row-step">${qjStep('הערה')}</div><div class="qj-row-name">⚠️ ${f.status === 'pending' ? 'לבדיקה' : 'היה לבדיקה'}</div></div>
         <div class="qj-row-value"><span class="qj-value-text"><b>${esc(f.checkNote)}</b></span></div>
       </div>`);
   }
   // §632 — רמי: "הוא רשם אותו מושב כמו אוהד אחר, תשים את החבר המאושר פה שאוכל להשוות".
-  // כל אוהד אחר (לא נדחה) עם אותו מושב מלא או אותו מספר מנוי – זה-לצד-זה, עם מעבר לכרטיס שלו.
+  // כל אוהד אחר עם אותו מושב מלא או אותו מספר מנוי – זה-לצד-זה, עם מעבר לכרטיס שלו.
+  // §669 — גם מי שנדחה: רמי (29.10) – עידו נדחה בגלל המושב של איתי, והשורה נעלמה ואיתה המידע מי היה הכפיל.
   {
     const sk = fanSeatKey(f), sn = String(f.subscriberNumber || '').trim();
-    const mates = MOCK_FANS.filter(x => x.id !== f.id && x.status !== 'rejected' &&
+    const mates = MOCK_FANS.filter(x => x.id !== f.id &&
       ((sk && fanSeatKey(x) === sk) || (sn && !isJunkSubNumber(sn) && String(x.subscriberNumber || '').trim() === sn)));
     if (mates.length) {
-      const stLbl = s => s === 'approved' ? '<b style="color:#1B8A4B">מאושר</b>' : s === 'pending' ? 'ממתין' : esc(s || '');
+      const stLbl = s => s === 'approved' ? '<b style="color:#1B8A4B">מאושר</b>' : s === 'pending' ? 'ממתין' : s === 'rejected' ? '<b style="color:#B42318">נדחה</b>' : esc(s || '');
       const cell = (x, me) => `<div style="padding:8px 10px;border-radius:8px;background:${me ? '#FFF' : '#F6F7FA'};border:1px solid var(--line, #E7E7E0)">
           <div style="font-size:12px;color:var(--text-muted)">${me ? 'האוהד הזה' : 'אוהד אחר'}</div>
           <div><b>${esc(x.name)}</b>${x.memberNumber ? ' · #' + esc(String(x.memberNumber)) : ''} · ${stLbl(x.status)}</div>
           <div style="font-size:12.5px">${esc(x.phone || '–')} · ${esc(x.email || '–')}</div>
           <div style="font-size:12.5px">נרשם ${x.registeredAt ? fmtDate(x.registeredAt) : '–'} · ${esc(fanVerifyMethodLabel(x))}</div>
           <div style="font-size:12.5px">${esc(fanVerifyValue(x) || '–')}</div>
+          ${!me && x.status === 'rejected' ? `<div style="font-size:12.5px;margin-top:3px">נדחה ${x.rejectedAt ? fmtDateTime(x.rejectedAt) : ''}${x.retryNote ? ` · "${esc(x.retryNote)}"` : ''}</div>` : ''}
           ${me ? '' : `<button class="qj-btn" style="margin-top:6px" onclick="selectFanDetail('${x.id}')">לכרטיס שלו</button>`}</div>`;
       fanQjRows.push(`
       <div class="qj-row" style="background:var(--warn-bg)">
@@ -12025,13 +12030,19 @@ window.resolveFanReviewFlagSamePerson = async function(id) {
   const f = findFan(id);
   if (!f || !f.reviewFlag) return;
   const prevFlag = f.reviewFlag;
+  // §669ב — הדגל נמחק מהרשומה, אז מי היה הכפיל נשמר ביומן (אותו חיפוש כמו בשורת "כפילות אפשרית")
+  const _dig = v => String(v || '').replace(/[^0-9]/g, '').slice(-9);
+  const other = findFan(f.duplicateOfId) || MOCK_FANS.find(x => x.id !== f.id && (
+    (f.email && x.email && String(x.email).toLowerCase() === String(f.email).toLowerCase()) ||
+    (_dig(f.phone).length === 9 && _dig(x.phone) === _dig(f.phone))));
+  const otherTxt = other ? ` · הרשומה השנייה: ${other.name} · ${other.phone || '–'} · ${other.email || '–'}${other.memberNumber ? ' · #' + other.memberNumber : ''}` : '';
   try {
     await updateDoc(doc(db, 'members', id), { reviewFlag: null, reviewFlagAt: null, duplicateOfId: null });
     f.reviewFlag = null;
     f.duplicateOfId = null;
     await logActivity('members', id, {
       type: 'status', title: 'דגל-בדיקה טופל – אותו אדם',
-      detail: `"${f.name}" סומן ע"י מנהל כאותו אדם (לא כפילות) – הדגל הוסר, האישור עצמו עדיין דורש לחיצה נפרדת`,
+      detail: `"${f.name}" סומן ע"י מנהל כאותו אדם (לא כפילות) – הדגל הוסר, האישור עצמו עדיין דורש לחיצה נפרדת${otherTxt}`,
       field: 'reviewFlag', before: prevFlag, after: null,
     });
     renderMain();
