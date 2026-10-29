@@ -60,6 +60,9 @@ const ticket = r.ticket;
 db[`members/${MID}`].status = 'approved';
 const s = await handleRegStatus({ memberId: MID, ticket }, env);
 check('approved + customToken', s.status === 'approved' && typeof s.customToken === 'string', s);
+check('§668 – method: code (בלי Google/Apple מחוברים)', s.method === 'code', s);
+db[`members/${MID}`].googleSub = 'g1';
+check('§668 – method: google כשמחובר', (await handleRegStatus({ memberId: MID, ticket }, env)).method === 'google');
 const bad = await handleRegStatus({ memberId: MID, ticket: 'x'.repeat(43) }, env);
 check('מפתח אחר נדחה', bad.error === 'invalid', bad);
 

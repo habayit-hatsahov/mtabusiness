@@ -196,6 +196,29 @@ function openJoinModal(opts) {
   document.body.style.overflow = 'hidden';
   yzPushModalState();
 }
+// ── §668 — "בפעם הקודמת נכנסתם מהמכשיר הזה עם…" ─────────────────────────────────────────
+// רמי: "שהטלפון יזכור איך נכנסו בפעם הקודמת ויסמן את זה בחלון הכניסה". עץ אורן ניחש Apple
+// כשנרשם עם קוד. heroFinishLogin שומר yz_last_login = {via: code|google|apple}; ההתנתקות לא
+// מוחקת אותו (בכוונה – זה בדיוק הרגע שצריך אותו), מחיקת חשבון כן. רק הדרך, בלי מייל/טלפון.
+function yzShowLastLogin() {
+  const box = document.getElementById('yzLastLogin');
+  if (!box) return;
+  ['gsLoginBtnHost', 'asLoginBtnHost', 'heroCodePath'].forEach((id) => { const e = document.getElementById(id); if (e) e.classList.remove('yz-last-hl'); });
+  let via = '';
+  try { const r = JSON.parse(localStorage.getItem('yz_last_login') || 'null'); via = r && r.via; } catch (e) {}
+  const N = { code: 'טלפון וקוד כניסה', google: 'Google', apple: 'Apple' };
+  if (!N[via]) { box.hidden = true; return; }
+  box.textContent = '';
+  box.append('בפעם הקודמת נכנסתם מהמכשיר הזה עם ');
+  const b = document.createElement('b'); b.textContent = N[via]; box.append(b);
+  if (via === 'code') box.append(' – הקוד נמצא במייל (חפשו: yellowzone)');
+  box.hidden = false;
+  const hl = document.getElementById(via === 'google' ? 'gsLoginBtnHost' : via === 'apple' ? 'asLoginBtnHost' : 'heroCodePath');
+  if (hl) hl.classList.add('yz-last-hl');
+  // קוד – פותחים את השדות מיד, כמו אחרי כשל (§415ב)
+  if (via === 'code') setTimeout(() => { window.heroShowCodePath && window.heroShowCodePath(); }, 0);
+  window.logEvent && window.logEvent('formStep', { blockId: 'lastLogin', channel: via });
+}
 function openLoginModal() {
   window.logEvent && window.logEvent('formOpen', { blockId: 'loginModal' });
   window.heroNlReset && window.heroNlReset();   // §545
@@ -205,6 +228,7 @@ function openLoginModal() {
   // הכניסה עד רענון מלא של הדף. קרה בפועל לאוהד ב-28.8: הוא פתח את המודאל שלוש פעמים נוספות,
   // בכל פעם קיבל את אותו כפתור מת, ואיבד שעה וחצי.
   window.heroResetLoginBtn();
+  yzShowLastLogin();   // §668
   document.getElementById('loginOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
   yzPushModalState();
@@ -1520,6 +1544,10 @@ button { font-family: inherit; }
 .google-first .code-path-toggle:active { transform: scale(.985); }
 /* נפתח בלחיצה — ואז הכפתור עצמו מיותר ויורד, כדי שלא יישאר "כפתור שכבר לחצתי עליו". */
 .google-first.code-open .code-path { display: flex; }
+/* §668 — "בפעם הקודמת נכנסתם מכאן עם…" */
+.yz-last-login { margin: 0 0 10px; padding: 9px 12px; border-radius: 12px; background: #FFF8DB; border: 1.5px solid #F5D76E; color: #0A2A66; font-size: 13.5px; font-weight: 700; text-align: center; line-height: 1.5; }
+.yz-last-login[hidden] { display: none; }
+.yz-last-hl { outline: 3px solid #FFD400; outline-offset: 3px; border-radius: 10px; }
 .code-path-note { display: none; font-size: 12.5px; color: var(--ink-3); text-align: center; line-height: 1.5; }
 .google-first .code-path-note { display: block; }
 .google-first.code-open .code-path-toggle, .google-first.code-open .code-path-or { display: none; }
@@ -2426,6 +2454,8 @@ html.yz-app .lm-reg-wrap { display: block; }
            ⚠️ הבלוק עדיין מוסתר עד שהכפתור צויר בפועל (ר' hbRenderGoogleLoginBtn) — קו
            מפריד עם כותרת, בלי כפתור מתחתיו, גרוע מלא-להציע-גוגל-בכלל. **וזה גם התנאי
            שקובע אם מסלול הקוד מתקפל** — ר' ההערה על .code-path מתחת. -->
+      <!-- §668 — הטלפון זוכר איך נכנסו ממנו בפעם הקודמת (yz_last_login, נשמר ב-heroFinishLogin) -->
+      <div class="yz-last-login" id="yzLastLogin" hidden></div>
       <div class="ap-or" id="apOr" hidden>או – כניסה עם Google, ונחבר את Apple</div>
       <div class="gs-login-host" id="gsLoginHost">
         <!-- §415 — 🔑 **השאלה הוחלפה בתנאי, כי היא הפכה לא-נכונה.** "כבר חיברתם?" נכתב
@@ -3817,6 +3847,12 @@ function heroFinishLogin(uid, phoneDigits) {
   }
   if (phoneDigits) localStorage.setItem('hb_phone', phoneDigits);
   localStorage.setItem('hb_memberId', uid);
+  // §668 — איך נכנסו מכאן. כניסה לבד (regTicket) – הדרך שהשרת מחזיר (/reg-status → method)
+  try {
+    const via = { code: 'code', google: 'google', googleLink: 'google', apple: 'apple', appleLink: 'apple' }[_hbLoginVia]
+      || (_hbLoginVia === 'regTicket' ? window._yzRegMethod : '');
+    if (via) localStorage.setItem('yz_last_login', JSON.stringify({ via, t: Date.now() }));
+  } catch (_) {}
   // §359 — האיפוס חייב לשבת כאן, בנקודת-הסיום היחידה: כניסה שהגיעה מרשת-ההצלה המאוחרת
   // עוברת רק דרך הפונקציה הזאת, ובלי זה מי שנכנס בזכותה נושא מונה-חסימה דולף לכניסה הבאה.
   try { localStorage.removeItem(window.HB_NETFAIL_KEY); } catch (_) {}
@@ -3945,6 +3981,7 @@ async function yzRegCheck() {
       window.yzRegShow('approved', name);
       const shownAt = Date.now();
       _hbLoginVia = 'regTicket';
+      window._yzRegMethod = ['code', 'google', 'apple'].includes(data.method) ? data.method : '';   // §668
       const a = heroRunAuth(data.customToken, async (uid) => {
         try { localStorage.removeItem('yz_reg'); } catch (e) {}
         const wait = YZ_REG_MIN_SHOW_MS - (Date.now() - shownAt);

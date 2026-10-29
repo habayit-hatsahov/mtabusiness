@@ -13,6 +13,7 @@
 // ותקרת הכתיבות החינמית של KV היא 1,000 ביום (§611).
 import { getGoogleAccessToken, mintFirebaseCustomToken } from './jwt.js';
 import { firestoreGetDoc, firestorePatch } from './firestore.js';
+import { loginMethodOf } from './regmethod.js';
 
 const MEMBER_ID_RE = /^[A-Za-z0-9]{20}$/;
 const TICKET_RE = /^[A-Za-z0-9_-]{40,64}$/;
@@ -47,7 +48,8 @@ export async function handleRegStatus({ memberId, ticket, v } = {}, env) {
       uid: memberId,
       claims: { role: 'member', isBusinessOwner: f.isBusinessOwner === true },
     });
-    return { status: 'approved', customToken, firstName };
+    // §668 — method: איך הוא נכנס בפעם הבאה (welcome זוכר ומסמן בחלון הכניסה)
+    return { status: 'approved', customToken, firstName, method: loginMethodOf(f) };
   }
   // §628 – דחייה עם הזדמנות שנייה: הכרטיס מציג טופס תיקון (handleRegRetry למטה)
   // ⚠️ רק לדף שמכיר את המצב (v>=2). דף ישן מהמטמון מקבל 'rejected' – לא מצב שהוא לא יודע לצייר.
