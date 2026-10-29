@@ -1761,7 +1761,7 @@
 <script src="hours.js"></script>
 <script src="il-cities.js?v=645"></script><!-- §645 — ישובים לפי אזור (סינון "אזור או עיר") -->
 <script src="social-links.js"></script>
-<script src="sections-policy.js?v=594b"></script>
+<script src="sections-policy.js?v=662"></script>
 <div class="cats-section">
   <div class="cats-scroll" id="catPills">
     <div class="cat-item active" onclick="filterCat('all',this)">
@@ -1949,11 +1949,13 @@ let _hbPolicyArrived = false;
 // §590 — מי מקבל את תגית "חדש" על הכרטיס, כשהמנוע של "חדש אצלנו" פעיל. null = המנוע כבוי,
 // והתגית חוזרת לדגל הידני isNew/newUntil (ר' newBadgeFor). נקבע ב-sectionMembersFor('new').
 let _newBadgeIds = null;
+// §662 — כל מי שבחלון של "חדש אצלנו" (לא רק מי שעל המדף היום) – ל-boostNew. null = המנוע כבוי.
+let _newWindowIds = null;
 
 // מחזיר Set של מזהי-עסקים לסקשן, או null = "אין מדיניות פעילה — התנהג בדיוק כמו קודם".
 function sectionMembersFor(key) {
   const S = window.HB_SECTIONS;
-  if (key === 'new') _newBadgeIds = null;
+  if (key === 'new') { _newBadgeIds = null; _newWindowIds = null; }
   // fail-open אם sections-policy.js לא נטען — כמו הגארד על hours.js/social-links.js.
   if (!S || !sectionPolicyDoc) return null;
   const pol = S.normalizePolicy(sectionPolicyDoc);
@@ -1969,6 +1971,7 @@ function sectionMembersFor(key) {
     // §590 — התגית רק למי שבתוך החלון. מי שנוסף מהרצפה (משלים מדף שהתרוקן) אינו חדש.
     const floor = new Set((built.floorAdded || []).map(b => b.id));
     _newBadgeIds = new Set(built.list.filter(b => !floor.has(b.id)).map(b => b.id));
+    _newWindowIds = new Set(built.windowIds || []);   // §662
     return new Set(built.list.map(b => b.id));
   }
   const entries = S.historyFor(sectionStateDoc, key);   // ממוין: התקופה החדשה ראשונה
@@ -2620,7 +2623,11 @@ function renderSections() {
     const start = _visitOffset('sec:' + sectionKey) % subset.length;
     let best = null, bestScore = Infinity;
     for (let attempt = 0; attempt < subset.length; attempt++) {
-      const candidate = applyAnchors(_rotate(subset, (start + attempt) % subset.length), sectionKey);
+      // §663 — ב"נבחרים": קבועים ותורנות לסירוגין, בערבוב חדש לכל ביקור (ר' interleaveFeatured)
+      const rotated = sectionKey === 'featured' ? interleaveFeatured(subset, attempt)
+        : _rotate(subset, (start + attempt) % subset.length);
+      // §662 — ב"כל העסקים" עסק חדש בכל משבצת שלישית (לא נוגע במקומות 1-2)
+      const candidate = applyAnchors(sectionKey === 'everyone' ? boostNew(rotated, sectionKey) : rotated, sectionKey);
       const score = (usedLeaders.has(candidate[0].id) ? 2 : 0) + (candidate[1] && usedLeaders.has(candidate[1].id) ? 1 : 0);
       if (score < bestScore) { best = candidate; bestScore = score; }
       if (score === 0) break;
@@ -2748,6 +2755,9 @@ let _homeScrollY = 0;
 // הקטגוריה/סקשן שפתוח כרגע ב"רואה הכל" (null כשחוזרים ל"הכל"/דף הבית) — משמש כדי לרענן
 // את הגריד הזה גם כשמגיעים נתונים חדשים (למשל לייק) בזמן שהוא פתוח, ר' renderCatFeedContent().
 let _currentCatFeedKey = null;
+// §662 — רמי: "אם אני בקטגוריה תסנן רק את הקטגוריה". הקטגוריה/סקשן שממנו הופעל הסינון (null = כל העסקים).
+// נשמר כל עוד הסינון פעיל; ניקוי הסינון מחזיר אליה (לא לדף הבית). חיפוש בטקסט נשאר על כל העסקים, כמו היום.
+let _sfScopeCat = null;
 let _myLovedKeep = null;   // §641ג – מי מוצג ב"העסקים שאהבתי" מאז הכניסה (לב שהוסר לא מעלים את הכרטיס)
 
 // טקסט החיפוש הפעיל ('' = אין חיפוש). **הכלל: יש טקסט בתיבה ⟺ מוצגות "תוצאות חיפוש".**
@@ -2785,6 +2795,7 @@ function filterCat(cat, el) {
   // טקסט בתיבה בזמן שמוצג משהו אחר לגמרי, והתו הבא שמוקלד מצטרף אליו.
   if (_searchQuery) { _searchQuery = ''; syncSearchInputs(''); }
   if (window.sfActive && window.sfActive() && window.sfReset) window.sfReset();   // §645 – ניווט מפורש מנקה גם את הסינון
+  _sfScopeCat = null;   // §662
   document.querySelectorAll('.cat-item').forEach(c => c.classList.remove('active'));
   if (el) el.classList.add('active');
 
@@ -2824,13 +2835,74 @@ function arrangeCategory(list, cat) {
   return _rotate(base, _visitOffset('cat:' + cat) % base.length);
 }
 
+// ── §663 — "נבחרים": קבועים ותורנות לסירוגין ──────────────────────────────────────────────────
+// רמי: "מרגיש לי שאנחנו נותנים מקום לאותם העסקים… שהקבועים יהיו קבועים אבל משתנים בסדר, ותן לפחות עוד
+// 4 עסקים [מהתורנות] ושיהיו לא אחרונים בתור". מי נכנס – sections-policy (⭐ = קבועים, השאר = תורנות).
+// כאן רק הסדר: כל קבוצה מעורבבת מחדש בכל ביקור (לא סיבוב – סיבוב שומר על אותו סדר יחסי), ומשולבות
+// קבוע-תורנות-קבוע-…, כך שעסק בתורנות לעולם לא בסוף השורה. `attempt` = ערבוב חלופי למניעת-הובלה-כפולה.
+function interleaveFeatured(list, attempt) {
+  const fixed = list.filter(isFeatured), turn = list.filter(b => !isFeatured(b));
+  const v = _visitState(), salt = v.seed + ':' + v.n + ':' + (attempt || 0);
+  const byId = (a, b) => a.id.localeCompare(b.id);
+  const f = seededShuffle([...fixed].sort(byId), 'featF:' + salt);
+  const t = seededShuffle([...turn].sort(byId), 'featT:' + salt);
+  const out = [];
+  for (let i = 0; i < Math.max(f.length, t.length); i++) {
+    if (i < f.length) out.push(f[i]);
+    if (i < t.length) out.push(t[i]);
+  }
+  return out;
+}
+
+// ── §662 — עסק חדש בכל משבצת שלישית בראש הרשימה ──────────────────────────────────────────────
+// רמי: "אני רוצה שכולם יקבלו חשיפה" (50 עסקים ביומיים, עוד 35 בדרך). הסבב ב"כל העסקים" ובקטגוריות הוגן,
+// אבל ברשימה של 114 רואים בפועל רק את הראשונים – ולחדשים אין עוד קליקים/לבבות שיעלו אותם בשום מקום
+// אחר (נמדד 28.10: 20 קליקים בממוצע מול 47). לכן במשבצות 3, 6, 9, 12, 15 (אינדקס 2,5,8,11,14) – עסק
+// מהחלון של "חדש אצלנו" (15 יום), בסבב לכל ביקור. מקומות 1-2 לא נגעים (מניעת-הובלה-כפולה), ועיגונים
+// ידניים עדיין גוברים (applyAnchors רץ אחרי). מנוע "חדש אצלנו" כבוי → אין שינוי.
+function boostNew(list, key) {
+  const BOOST_SLOTS = [2, 5, 8, 11, 14];
+  if (!_newWindowIds || !_newWindowIds.size || list.length < 3) return list;
+  const fresh = list.filter(b => _newWindowIds.has(b.id));
+  if (!fresh.length || fresh.length === list.length) return list;
+  const pick = _rotate(fresh, _visitOffset('boost:' + key) % fresh.length).slice(0, BOOST_SLOTS.length);
+  const picked = new Set(pick.map(b => b.id));
+  const others = list.filter(b => !picked.has(b.id));
+  const out = [];
+  let pi = 0, oi = 0;
+  for (let i = 0; i < list.length; i++) {
+    if (pi < pick.length && i === BOOST_SLOTS[pi]) out.push(pick[pi++]);
+    else if (oi < others.length) out.push(others[oi++]);
+    else out.push(pick[pi++]);
+  }
+  return out;
+}
+
 // בונה מחדש את תוכן הגריד של "רואה הכל" לקטגוריה/סקשן הנתונים, בלי לגעת בגלילה/display —
 // נקרא גם מ-filterCat (פתיחה ראשונית) וגם מ-loadFirebaseData (רענון בזמן שהתצוגה כבר פתוחה,
 // כדי שלייק/הסרת-לייק ישתקפו מיד גם כשלא נמצאים בדף הבית הראשי — ר' PROJECT_CONTEXT.md).
 function renderCatFeedContent(cat) {
+  const { list: filtered, title } = catFeedList(cat);
+  document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${title}</div>`;
+
+  // כל תצוגות ה-catFeed (גם "רואה הכל" מסקשן וגם קטגוריה אמיתית) מציגות את אותו גריד רחב —
+  // cards-grid עם auto-fill: כמה עמודות שנכנסות ברוחב, שורה מתחת לשורה, גלילה למטה.
+  document.getElementById('catFeedGrid').classList.remove('cards-grid-list');
+
+  if (!filtered.length) {
+    document.getElementById('catFeedGrid').innerHTML =
+      '<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>אין עסקים בקטגוריה זו עדיין</p></div>';
+  } else {
+    _patchGrid(document.getElementById('catFeedGrid'), filtered, b => buildCard(b, cat === 'new'));   // §641ז
+  }
+}
+
+// §662 — הרשימה והכותרת של קטגוריה/סקשן, בסדר שבו הם מוצגים. משותף ל-renderCatFeedContent ולסינון
+// מתוך קטגוריה (runSearch), כדי שהסינון יעבוד על אותה רשימה בדיוק ובאותו סדר.
+function catFeedList(cat) {
   // featured/new/deals/online/everyone נקראים מ-_dailySectionOrder (שחושב ב-renderSections) —
   // לא מחושבים כאן מחדש, כדי שהתצוגה המורחבת ("הכל") תתאים בדיוק לשורת הגלילה, כולל הימנעות-מהובלה-כפולה.
-  let filtered = [], title = '';
+  let filtered = [], title = '', plain = '';
   if      (cat === 'featured') { filtered = _dailySectionOrder.featured || []; title = 'עסקים נבחרים'; }
   else if (cat === 'new')     { filtered = _dailySectionOrder.new || [];      title = 'חדש אצלנו'; }
   else if (cat === 'deals')   { filtered = _dailySectionOrder.deals || [];    title = 'הטבות שוות'; }
@@ -2850,27 +2922,16 @@ function renderCatFeedContent(cat) {
   else if (cat === 'everyone'){ filtered = _dailySectionOrder.everyone || businesses; title = 'כל העסקים'; }
   else {
     filtered = businesses.filter(b => mapCatKey(b.cat) === cat || (b.alsoUnderCategory && mapCatKey(b.alsoUnderCategory) === cat));
-    filtered = applyAnchors(arrangeCategory(filtered, cat), 'cat_' + cat);
+    filtered = applyAnchors(boostNew(arrangeCategory(filtered, cat), 'cat_' + cat), 'cat_' + cat);   // §662
     // אייקון תואם לעיגול-הקטגוריה למעלה (PNG החדש), לא האימוג'י הטקסטואלי הישן של catIcon().
     const catObj = CATEGORIES.find(c => c.key === cat);
     const catIconImg = catObj
       ? `<img src="images/categories/${window.catIconFile(catObj, 'navy')}" alt="" style="width:22px;height:22px;vertical-align:-5px;margin-inline-end:6px">`
       : '';
     title = catIconImg + catLabel(cat);
+    plain = catLabel(cat);
   }
-
-  document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${title}</div>`;
-
-  // כל תצוגות ה-catFeed (גם "רואה הכל" מסקשן וגם קטגוריה אמיתית) מציגות את אותו גריד רחב —
-  // cards-grid עם auto-fill: כמה עמודות שנכנסות ברוחב, שורה מתחת לשורה, גלילה למטה.
-  document.getElementById('catFeedGrid').classList.remove('cards-grid-list');
-
-  if (!filtered.length) {
-    document.getElementById('catFeedGrid').innerHTML =
-      '<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>אין עסקים בקטגוריה זו עדיין</p></div>';
-  } else {
-    _patchGrid(document.getElementById('catFeedGrid'), filtered, b => buildCard(b, cat === 'new'));   // §641ז
-  }
+  return { list: filtered, title, plain: plain || title };
 }
 
 // ══ §641ז — "זה ממש מרצד עכשיו וזז" (סרטון אייפון 28.10 00:05) ═══════════════════════════════════
@@ -2991,11 +3052,25 @@ window.sfTextMatch = function (b, val) {
   return words.every(w => hay.includes(w));
 };
 
+// §662 — ר' _sfScopeCat. לגיליון הסינון: הקטגוריה שהסינון יחול עליה עכשיו (null = כל העסקים).
+window.sfScope = function () {
+  const k = _sfScopeCat || _currentCatFeedKey;
+  return k ? catFeedList(k) : null;
+};
+
 function runSearch(val) {
   const sfOn = !!(window.sfActive && window.sfActive());   // §645
+  if (sfOn && !_sfScopeCat && _currentCatFeedKey) _sfScopeCat = _currentCatFeedKey;   // §662
   if (!val.trim() && !sfOn) {
     _searchQuery = '';
     syncSearchInputs('');
+    if (_sfScopeCat) {   // §662 – הסינון נוקה: חזרה לקטגוריה שממנה סיננו
+      const k = _sfScopeCat;
+      _sfScopeCat = null;
+      _currentCatFeedKey = k;
+      renderCatFeedContent(k);
+      return;
+    }
     filterCat('all', document.querySelector('.cat-item'));
     return;
   }
@@ -3005,8 +3080,10 @@ function runSearch(val) {
   _currentCatFeedKey = null;
   const qNorm = normalizeSearchText(val);
   const words = qNorm.split(' ').filter(Boolean);
+  // §662 — סינון בלי טקסט מתוך קטגוריה: רק העסקים שלה, בסדר שבו היא מוצגת
+  const scope = !words.length && _sfScopeCat ? catFeedList(_sfScopeCat) : null;
 
-  const results = businesses
+  const results = (scope ? scope.list : businesses)
     .map(b => {
       const nameN = normalizeSearchText(b.name);
       const catN  = normalizeSearchText(catLabel(mapCatKey(b.cat)));
@@ -3031,8 +3108,8 @@ function runSearch(val) {
     })
     .filter(Boolean)
     .filter(x => !sfOn || window.sfMatch(x.b))   // §645
-    // בלי טקסט (סינון בלבד) – לפי פופולריות; עם טקסט – לפי ההתאמה
-    .sort((a, b) => words.length ? b.score - a.score : (b.b.clicks || 0) - (a.b.clicks || 0))
+    // בלי טקסט (סינון בלבד) – לפי פופולריות; עם טקסט – לפי ההתאמה; בתוך קטגוריה (§662) – הסדר שלה
+    .sort((a, b) => scope ? 0 : words.length ? b.score - a.score : (b.b.clicks || 0) - (a.b.clicks || 0))
     .map(x => x.b);
 
   // רק במעבר *לתוך* מצב-חיפוש: שומרים את מיקום-הגלילה בדף הבית (כדי שניקוי החיפוש יחזיר
@@ -3044,7 +3121,7 @@ function runSearch(val) {
   }
   mainFeedEl.style.display = 'none';
   document.getElementById('catFeed').style.display = 'block';
-  document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${words.length ? 'תוצאות חיפוש' : 'תוצאות הסינון'}${sfOn ? ` · ${results.length}` : ''}</div>`;
+  document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${words.length ? 'תוצאות חיפוש' : scope ? scope.title + ' · סינון' : 'תוצאות הסינון'}${sfOn ? ` · ${results.length}` : ''}</div>`;
   if (results.length) _patchGrid(document.getElementById('catFeedGrid'), results, b => buildCard(b));   // §641ז
   else document.getElementById('catFeedGrid').innerHTML = `<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>לא נמצאו תוצאות${sfOn ? ' בסינון הזה' : ''}</p>${sfOn ? '<button type="button" class="sf-empty-clear" onclick="sfClear()">ניקוי הסינון</button>' : ''}</div>`;
 }
@@ -4446,7 +4523,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function sheetHtml() {
     var chip = function (on, onclick, label) { return '<button type="button" class="sf-chip' + (on ? ' on' : '') + '" onclick="' + onclick + '">' + label + '</button>'; };
     var Y = C();
+    var sc = noText() && window.sfScope ? window.sfScope() : null;   // §662
     return '<div class="howto-grab"></div><h2>סינון</h2>' +
+      (sc ? '<div class="sf-gh" style="margin:2px 0 0">בתוך: ' + esc(sc.plain) + '</div>' : '') +
       '<div class="sf-grp" id="sfPlace"><div class="sf-gl">אזור או עיר</div><div class="sf-chips">' +
         REGIONS.map(function (r) { return chip(S.region.indexOf(r) !== -1, "sfRegion('" + r + "')", r); }).join('') + '</div>' +
         '<div class="sf-gh" style="margin-top:10px">או כתבו שם של עיר:</div>' +
@@ -4458,8 +4537,10 @@ document.addEventListener('DOMContentLoaded', () => {
       '<div class="sf-grp"><div class="sf-gl">עוד</div><div class="sf-chips">' + chip(S.now, "sfToggle('now')", '🟡 פתוח עכשיו') + chip(S.coupon, "sfToggle('coupon')", '🌐 קוד קופון / קנייה באתר') + chip(S.comes, "sfToggle('comes')", 'מגיעים אליי') + '</div></div>' +
       '<div class="sf-actions"><button type="button" class="sf-btn g" onclick="sfClear()">ניקוי</button><button type="button" class="sf-btn y" onclick="sfClose()">' + resultsLabel() + '</button></div>';
   }
+  function noText() { return !(typeof _searchQuery !== 'undefined' && _searchQuery); }
   function resultsLabel() {
-    var list = (typeof businesses !== 'undefined' ? businesses : []).filter(window.sfMatch);
+    var sc = noText() && window.sfScope ? window.sfScope() : null;   // §662 – בתוך קטגוריה סופרים רק אותה
+    var list = (sc ? sc.list : (typeof businesses !== 'undefined' ? businesses : [])).filter(window.sfMatch);
     var q = (typeof _searchQuery !== 'undefined' && _searchQuery) ? _searchQuery : '';
     if (q && typeof window.sfTextMatch === 'function') list = list.filter(function (b) { return window.sfTextMatch(b, q); });
     return 'הצגת ' + list.length + ' עסקים';

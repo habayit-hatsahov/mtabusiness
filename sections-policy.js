@@ -44,6 +44,7 @@
   'use strict';
 
   var DAY_MS = 86400000;
+  var FRESH_MS = 2 * DAY_MS;   // §662 — "טרי" ב"חדש אצלנו": אושר ב-48 השעות האחרונות
 
   // §589 — 🐛 **approvedAt מגיע בשלוש צורות, ו-new Date() מבין רק שתיים.** מרכז הניהול
   // ממיר ל-Date (toJsDate), אבל home.html מעביר את ה-Timestamp של Firestore כמו שהוא,
@@ -505,26 +506,36 @@
     var held = limitCats(inWindow, cfg.catCaps, now);
     var eligible = inWindow.filter(function (b) { return !held[b.id]; });
 
-    var genuinelyNew = [], cohort = [];
+    // §662 — רמי (28.10, 50 עסקים ביומיים ועוד 35 בדרך): "אני רוצה שכולם יקבלו חשיפה". עד עכשיו
+    // החדשים האמיתיים לא הסתובבו – המדף הציג תמיד את ה-N האחרונים, ומי שאושר יומיים קודם נדחק
+    // ממנו ביום אחד. עכשיו: מי שאושר ב-48 השעות האחרונות ("טרי") מקבל עדיפות – עד חצי מהמדף,
+    // או יותר כשאין מי שימלא – וכל השאר בחלון (כולל מנת-ההשקה וטריים שלא נכנסו) **מתחלפים כל יום**.
+    // אותו סבב יומי דטרמיניסטי כמו קודם (בסיס יציב, מסובב לפי מספר-היום) – זהה בכל המכשירים ובמרכז הניהול.
+    var day = localDayIndex(now);
+    var fresh = [], rest = [];
     eligible.forEach(function (b) {
-      (isLaunchCohort(b, pol) ? cohort : genuinelyNew).push(b);
+      var t = toMs(b.approvedAt);
+      (!isLaunchCohort(b, pol) && t != null && now - t < FRESH_MS ? fresh : rest).push(b);
     });
+    var cohort = eligible.filter(function (b) { return isLaunchCohort(b, pol); });
 
-    var list = genuinelyNew.slice(0, cap);
+    var freshTake = Math.min(fresh.length, Math.max(cap - rest.length, Math.ceil(cap / 2)));
+    var freshShown = fresh.length <= freshTake ? fresh.slice()
+      : rotate(stableShuffle(fresh, 'yz-new-fresh'), (day * freshTake) % fresh.length).slice(0, freshTake);
+    var shownF = {};
+    freshShown.forEach(function (b) { shownF[b.id] = 1; });
+    var pool = rest.concat(fresh.filter(function (b) { return !shownF[b.id]; }));
+    var slotsLeft = cap - freshShown.length;
     var rotated = [];
-    var slotsLeft = cap - list.length;
-    if (slotsLeft > 0 && cohort.length) {
-      if (cohort.length <= slotsLeft) {
-        rotated = cohort.slice();
-      } else {
-        // סבב יומי דטרמיניסטי — אותו מנגנון בדיוק שנבדק ב-§413 ובשכבת הסבב של "נבחרים":
-        // בסיס יציב (זרע קבוע), מסובב לפי מספר-היום. כך כל עסק במנה מופיע בדיוק
-        // ceil(cohort/slotsLeft) ימים מתוך כל מחזור, ואין אחד שנשכח.
-        var base = stableShuffle(cohort, 'yz-new-launch');
-        rotated = rotate(base, (localDayIndex(now) * slotsLeft) % base.length).slice(0, slotsLeft);
-      }
-      list = list.concat(rotated);
+    if (slotsLeft > 0 && pool.length) {
+      rotated = pool.length <= slotsLeft ? pool.slice()
+        : rotate(stableShuffle(pool, 'yz-new-pool'), (day * slotsLeft) % pool.length).slice(0, slotsLeft);
     }
+    // סדר התצוגה: הטריים קודם, ובכל קבוצה – החדש ביותר ראשון (סדר inWindow)
+    var pos = {};
+    inWindow.forEach(function (b, i) { pos[b.id] = i; });
+    var byWindow = function (a, b) { return pos[a.id] - pos[b.id]; };
+    var list = freshShown.sort(byWindow).concat(rotated.sort(byWindow));
 
     // 🔒 הרצפה — משלימים מהחדשים ביותר שמחוץ לחלון, לפי אותו סדר בדיוק.
     var floorAdded = [];
@@ -559,10 +570,12 @@
       floorAdded: floorAdded,
       inWindow: inWindow.length,
       cohortInWindow: cohort.length,
-      rotatingCohort: cohort.length > (cap - genuinelyNew.length),
-      // כל כמה ימים מסתיים סבב שלם על מנת-ההשקה — המספר שהמנהל שואל עליו
-      cohortCycleDays: (cap - genuinelyNew.length) > 0 && cohort.length
-        ? Math.ceil(cohort.length / (cap - genuinelyNew.length)) : 0,
+      // §662 — "סבב" = יש בחלון יותר ממה שנכנס למדף (לא רק במנת-ההשקה)
+      rotatingCohort: pool.length > slotsLeft || fresh.length > freshTake,
+      // כל כמה ימים כל מי שבחלון עולה למדף לפחות פעם — המספר שהמנהל שואל עליו
+      cohortCycleDays: slotsLeft > 0 && pool.length ? Math.ceil(pool.length / slotsLeft) : 0,
+      // §662 — מי שבחלון (ל"עסק חדש בכל משבצת שלישית" ב-home.html)
+      windowIds: inWindow.map(function (b) { return b.id; }),
       launchCohort: businesses.filter(function (b) { return isLaunchCohort(b, pol); }).length
     };
   }
