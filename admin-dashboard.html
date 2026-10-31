@@ -14436,13 +14436,19 @@ function bizWaitKeys(b) {
 }
 // §675ד – רמי: "התיקון זה משהו אחד וזה כאילו חילק את זה ל-2 נקודות". סיבה אחת + הערה = אותו תיקון:
 // "פרטי ההטבה – צריך לחזור עם הטבה". כמה סיבות + הערה – כל אחת בנפרד (אי אפשר לדעת לאיזו ההערה שייכת).
-function bizWaitOne(keys, other) { const r = keys.filter(k => k !== 'other'); return r.length === 1 && String(other || '').trim() ? r[0] : null; }
+function bizWaitOne(keys, other) {
+  const t = String(other || '').trim(), r = keys.filter(k => k !== 'other');
+  // §692ב – לא כשיש כמה הערות (" · "), ולא כשההערה כבר "{סיבה} – …" (אחרת "לוגו – לוגו – …")
+  if (r.length !== 1 || !t || t.includes(' · ') || WAIT_REASONS.some(x => x.k !== 'other' && t.startsWith(x.label + ' – '))) return null;
+  return r[0];
+}
 function bizWaitLines(keys, other, long, short) {
   const t = String(other || '').trim(), one = bizWaitOne(keys, t), cut = x => short && x.length > 40 ? x.slice(0, 40) + '…' : x;
-  return keys.filter(k => k !== 'other' || (t && !one)).map(k => {
-    if (k === 'other') return cut(t);
+  const parts = t.split(' · ').map(x => x.trim()).filter(Boolean);   // §692 – כל הערה בשורה משלה
+  return keys.filter(k => k !== 'other' || (t && !one)).flatMap(k => {
+    if (k === 'other') return parts.map(cut);
     const r = WAIT_REASONS.find(x => x.k === k);
-    return k === one ? r.label + ' – ' + cut(t) : long ? r.text : r.label;
+    return [k === one ? r.label + ' – ' + cut(t) : long ? r.text : r.label];
   });
 }
 // §689 – מה שכתוב לבעל העסק עכשיו (inReviewReasons + inReviewOther), פריט לכל שורה כפי שהוא רואה אותה,
@@ -14459,6 +14465,46 @@ function bizSentFor(b, k, words) {
   if (!bizInFix(b)) return [];
   return bizSentItems(b).filter(x => x.key === k || x.rk === k || (x.key === 'other' && !x.rk && words.test(x.text)));
 }
+// §692 – רמי: "אפשר גם לערוך או להוסיף במידה וראיתי שצריך?" – ישר למה שהוא רואה, בלי הודעה (כמו ✕)
+async function bizSentWrite(b, reasons, other, title, detail) {
+  try {
+    await updateDoc(doc(db, 'businesses', b.id), { inReviewReasons: reasons, inReviewOther: other });
+    Object.assign(b, { inReviewReasons: reasons, inReviewOther: other });
+    await logActivity('businesses', b.id, { type: 'fixRound', title, detail, field: 'inReviewReasons', before: null, after: null });
+    renderMainPreserveScroll();
+  } catch (e) { alert('לא הצלחתי לשמור: ' + (e.message || e)); }
+}
+function bizSentParts(b) {   // מצב נוכחי כ"סיבות + הערות נפרדות"; שורה משולבת (סיבה+הערה) הופכת להערה בנוסח שלה
+  let reasons = (b.inReviewReasons || []).slice(), other = String(b.inReviewOther || '').trim();
+  const one = bizWaitOne(bizWaitKeys(b), other);
+  if (one) { reasons = reasons.filter(k => k !== one); other = WAIT_REASONS.find(r => r.k === one).label + ' – ' + other; }
+  return { reasons, parts: other.split(' · ').map(x => x.trim()).filter(Boolean) };
+}
+window.bizSentEdit = async function(id, key, idx) {
+  const b = findBiz(id);
+  if (!b) return;
+  const it = bizSentItems(b).find(x => x.key === key && (key !== 'other' || x.idx === idx));
+  if (!it) return;
+  const t = (prompt('הנקודה כפי שתופיע אצלו (משתנה מיד, בלי הודעה):', it.text) || '').trim().slice(0, 300);
+  if (!t || t === it.text) return;
+  const one = bizWaitOne(bizWaitKeys(b), b.inReviewOther);
+  const st = bizSentParts(b);
+  if (key === 'other') st.parts[idx] = t;
+  else if (key === one) st.parts[0] = t;
+  else { st.reasons = st.reasons.filter(k => k !== key); st.parts.push(t); }
+  const other = st.parts.join(' · ').slice(0, 300);
+  await bizSentWrite(b, [...new Set(st.reasons.filter(k => k !== 'other').concat(other ? ['other'] : []))], other, 'נערכה נקודה ב"מה חסר" (בלי הודעה)', it.text + ' → ' + t);
+};
+window.bizSentAdd = async function(id) {
+  const b = findBiz(id);
+  if (!b) return;
+  const t = (prompt('נקודה חדשה ברשימה שלו (נוספת מיד, בלי הודעה):') || '').trim().slice(0, 300);
+  if (!t) return;
+  const st = bizSentParts(b);
+  st.parts.push(t);
+  const other = st.parts.join(' · ').slice(0, 300);
+  await bizSentWrite(b, [...new Set(st.reasons.filter(k => k !== 'other').concat(['other']))], other, 'נוספה נקודה ל"מה חסר" (בלי הודעה)', t);
+};
 window.bizSentRemove = async function(id, key, idx) {
   const b = findBiz(id);
   if (!b) return;
@@ -14549,7 +14595,8 @@ function bizWaitBannerHtml(b) {
   const sentBox = inFix ? `<div class="sum-sent">
       <div class="sum-sent-h">📱 כך זה נראה אצלו עכשיו – ${pending && !b.fixHidden ? 'במסך הכניסה לאפליקציה ובדשבורד' : 'בראש דף הבית באפליקציה ובדשבורד'}</div>
       <div class="ph-card">${screenHead}
-        ${sentItems.length ? `<ol class="sum-sent-ol">${sentItems.map(x => `<li><span>${esc(x.text)}</span><button type="button" class="sum-x" title="להוריד את הנקודה – תיעלם אצלו מיד, בלי הודעה" onclick="bizSentRemove('${b.id}','${x.key}',${x.idx === undefined ? -1 : x.idx})">✕</button></li>`).join('')}</ol>` : '<div class="mtile-empty" style="color:#B42318">לא נשמר מה חסר – "לסמן מה חסר" למעלה</div>'}
+        ${sentItems.length ? `<ol class="sum-sent-ol">${sentItems.map(x => `<li><span>${esc(x.text)}</span><button type="button" class="sum-x" title="לערוך את הנקודה – משתנה אצלו מיד, בלי הודעה" onclick="bizSentEdit('${b.id}','${x.key}',${x.idx === undefined ? -1 : x.idx})">✏️</button><button type="button" class="sum-x" title="להוריד את הנקודה – תיעלם אצלו מיד, בלי הודעה" onclick="bizSentRemove('${b.id}','${x.key}',${x.idx === undefined ? -1 : x.idx})">✕</button></li>`).join('')}</ol>` : '<div class="mtile-empty" style="color:#B42318">לא נשמר מה חסר – "לסמן מה חסר" למעלה</div>'}
+        <button type="button" class="qj-btn" style="margin-top:4px" onclick="bizSentAdd('${b.id}')">+ להוסיף נקודה</button>
         <div class="ph-foot">${pending && !b.fixHidden ? 'מעלה תמונות מהמסך, ואת השאר מתקן בדשבורד' : 'כפתור "לתיקון ←" ובדשבורד "✅ תיקנתי – שליחה לבדיקה"'}</div>
       </div>
       ${fixed ? `<div class="sum-sent-fixed">🔁 ${esc(b.ownerFirst || 'בעל העסק')} סימן שתיקן ${fmtDateTime(fixed)} – מחכה לבדיקה שלך</div>` : ''}
@@ -16821,7 +16868,11 @@ function bsMergeRemarks(b, reasons) {
 // §679 – אותו מצב פתיחה ל"סיכום ושליחה" ולתצוגה "מה ייכתב בהודעה" בכל חלון
 function bsInitState(b) {
   const cur = bizWaitKeys(b).filter(k => k !== 'other');
-  return bsMergeRemarks(b, cur.length ? cur : WAIT_REASONS.filter(r => r.k !== 'other' && r.auto && r.auto(b)).map(r => r.k));
+  const st = bsMergeRemarks(b, cur.length ? cur : WAIT_REASONS.filter(r => r.k !== 'other' && r.auto && r.auto(b)).map(r => r.k));
+  // §692ב – סיבה שכבר כתובה כהערה ("לוגו – הסרנו את הלוגו…") לא נכנסת שוב כשורה נפרדת
+  const parts = String(st.other || '').split(' · ').map(x => x.trim());
+  st.reasons = st.reasons.filter(k => { const r = WAIT_REASONS.find(x => x.k === k); return !r || !parts.some(t => t.startsWith(r.label + ' – ')); });
+  return st;
 }
 function bsDefaultOutcome(b) {
   const outs = bsOutcomes(b);
@@ -16866,8 +16917,10 @@ function bsRender() {
       <span><b>${BS_OUT[k][0]}</b><span style="display:block;color:var(--text-muted,#5B6B8C);font-size:12px">${BS_OUT[k][1]}</span></span></label>`;
   const fixHtml = fix ? `
     <div style="border:1.5px solid #D9CCF7;background:#FBFAFF;border-radius:12px;padding:10px 12px;margin-top:4px">
-      <div style="font-weight:800;font-size:14px">מה יופיע אצלו <span style="font-weight:400;color:var(--text-muted,#5B6B8C);font-size:12px">– נבנה לבד ממה שחסר בכרטיס ומההערות שכתבת על השלבים. נכנס להודעה, ונשאר אצלו כרשימה בדף הבית ובדשבורד עד שיתקן</span></div>
-      ${bsMissItems(o).map(([k, t]) => `<div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:13px"><span style="flex:1;white-space:pre-line">• ${esc(t)}</span><button type="button" title="להוריד מהרשימה" onclick="bsDrop('${k}')" style="border:none;background:none;color:var(--text-muted,#5B6B8C);cursor:pointer;font-size:14px;line-height:1;padding:0 4px">✕</button></div>`).join('') || '<div style="margin-top:6px;font-size:13px;color:#B42318">אין כלום ברשימה. כתוב הערה על השלב בכרטיס – והיא תיכנס לכאן.</div>'}
+      <div style="font-weight:800;font-size:14px">📱 ייכנס למסך שלו – רשימת "מה חסר לנו" <span style="font-weight:400;color:var(--text-muted,#5B6B8C);font-size:12px">– ${b.status === 'pending' && o.outcome !== 'fixHide' ? 'במסך הכניסה לאפליקציה' : 'בראש דף הבית באפליקציה'} ובדשבורד, ונשארת שם עד שיתקן. נבנתה מהסל – אפשר לערוך, להוסיף ולהוריד</span></div>
+      <ol style="margin:6px 0 0;padding-inline-start:22px">${bsMissItems(o).map(([k, t]) => `<li style="margin-top:5px;font-size:13.5px"><span style="display:flex;gap:6px;align-items:flex-start"><span style="flex:1;white-space:pre-line">${esc(t)}</span><button type="button" title="לערוך את הנקודה" onclick="bsEditItem('${k}')" style="border:none;background:none;cursor:pointer;font-size:13px;padding:0 3px">✏️</button><button type="button" title="להוריד מהרשימה" onclick="bsDrop('${k}')" style="border:none;background:none;color:var(--text-muted,#5B6B8C);cursor:pointer;font-size:14px;line-height:1;padding:0 4px">✕</button></span></li>`).join('')}</ol>
+      ${bsMissItems(o).length ? '' : '<div style="margin-top:6px;font-size:13px;color:#B42318">אין כלום ברשימה – "+ להוסיף נקודה", או הערה על שלב בכרטיס.</div>'}
+      <button type="button" class="qj-btn" style="margin-top:8px" onclick="bsAddItem()">+ להוסיף נקודה</button>
     </div>` : '';
   const ch = bnChannels(b, o.outcome === 'approve');
   // §686 – רמי: "עסק ממתין גם יקבל את זה במסך ההתחברות כאשר ייכנס לאפליקציה" – "העסק שלך אצלנו" (welcome, §664/§666) מציג את "מה חסר"
@@ -16880,7 +16933,7 @@ function bsRender() {
     ${bsOutcomes(b).map(optHtml).join('')}
     ${fixHtml}
     <div style="border:2px solid var(--yellow,#FFD400);background:#FFF7DB;border-radius:14px;padding:12px;margin-top:12px">
-      <div style="font-weight:800;font-size:15px">ההודעה לבעל העסק</div>
+      <div style="font-weight:800;font-size:15px">📨 ההודעה לבעל העסק <span style="font-weight:400;font-size:12px;color:var(--text-muted,#5B6B8C)">– נשלחת פעם אחת (מייל / פוש / באפליקציה). הרשימה שלמעלה נכנסת אליה לבד</span></div>
       <div style="font-size:12.5px;color:var(--text-muted,#5B6B8C);margin:2px 0 8px">נבנתה מהסל – אפשר לערוך. ריק = לא נשלח כלום.</div>
       <input id="bnTitle" maxlength="${BN_TITLE_MAX}" placeholder="כותרת (בפוש ובנושא המייל)" value="${esc(title)}" oninput="bsSet('title',this.value)" style="width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--border-md,#ddd);border-radius:10px;margin-bottom:8px">
       <textarea id="bnText" maxlength="1500" oninput="bsSet('text',this.value)" style="width:100%;box-sizing:border-box;min-height:170px;font:inherit;font-size:14px;line-height:1.6;padding:10px;border:1px solid var(--border-md,#ddd);border-radius:10px;resize:vertical">${esc(text)}</textarea>
@@ -16914,14 +16967,47 @@ window.bsSet = function(k, v) {
 };
 // §675ג – רמי: "למה שזה לא יגזור ממה שלחצתי?" – אין תיבות לסימון: הרשימה נבנית לבד, ו-✕ מוריד שורה
 function bsMissItems(o) {
-  const keys = WAIT_REASONS.map(r => r.k).filter(k => k === 'other' ? String(o.other || '').trim() : o.reasons.includes(k));
-  const one = bizWaitOne(keys, o.other);
-  return bizWaitLines(keys, o.other, true).map((t, i) => [one && keys.filter(k => k !== 'other' || !one)[i] === one ? 'both:' + one : keys.filter(k => k !== 'other' || !one)[i], t]);
+  const other = String(o.other || '').trim();
+  const keys = WAIT_REASONS.map(r => r.k).filter(k => k === 'other' ? other : o.reasons.includes(k));
+  const one = bizWaitOne(keys, other), out = [];
+  keys.filter(k => k !== 'other').forEach(k => { const r = WAIT_REASONS.find(x => x.k === k); out.push(k === one ? ['both:' + k, r.label + ' – ' + other] : [k, r.text]); });
+  if (other && !one) other.split(' · ').map(x => x.trim()).filter(Boolean).forEach((t, i) => out.push(['other:' + i, t]));
+  return out;
 }
+// §692 – רמי: "תן לי אופציה בסיכום ושליחה לראות את זה ולערוך, להוסיף, לשנות לפני שליחה". עריכה של שורה עם סיבה
+// קבועה הופכת אותה לשורה חופשית (בנוסח שלך); הוספה – עוד שורה. נשמר רק בשליחה (או ב"שמירה בלי לשלוח").
+const bsParts = o => String(o.other || '').split(' · ').map(x => x.trim()).filter(Boolean);
+window.bsEditItem = function(k) {
+  const o = _bn;
+  if (!o || o.mode !== 'summary') return;
+  const it = bsMissItems(o).find(x => x[0] === k);
+  if (!it) return;
+  const t = (prompt('הנקודה כפי שתופיע אצלו:', it[1]) || '').trim().slice(0, 300);
+  if (!t || t === it[1]) return;
+  const parts = bsParts(o);
+  if (k.startsWith('other:')) parts[+k.slice(6)] = t;
+  else if (k.startsWith('both:')) { o.reasons = o.reasons.filter(x => x !== k.slice(5)); parts.length = 0; parts.push(t); }
+  else { o.reasons = o.reasons.filter(x => x !== k); parts.push(t); }
+  o.other = parts.join(' · ').slice(0, 300);
+  bsRender();
+};
+window.bsAddItem = function() {
+  const o = _bn;
+  if (!o || o.mode !== 'summary') return;
+  const t = (prompt('נקודה חדשה – כפי שתופיע אצלו ברשימת "מה חסר לנו":') || '').trim().slice(0, 300);
+  if (!t) return;
+  const parts = bsParts(o);
+  const one = bizWaitOne(WAIT_REASONS.map(r => r.k).filter(k => k === 'other' ? o.other : o.reasons.includes(k)), o.other);
+  if (one) { o.reasons = o.reasons.filter(x => x !== one); parts.length = 0; parts.push(WAIT_REASONS.find(r => r.k === one).label + ' – ' + String(o.other).trim()); }   // שורה משולבת → נשמרת כמו שהיא
+  parts.push(t);
+  o.other = parts.join(' · ').slice(0, 300);
+  bsRender();
+};
 window.bsDrop = function(k) {
   const o = _bn;
   if (!o || o.mode !== 'summary') return;
   if (k === 'other') o.other = '';
+  else if (k.startsWith('other:')) { const parts = bsParts(o); parts.splice(+k.slice(6), 1); o.other = parts.join(' · '); }   // §692
   else if (k.startsWith('both:')) { o.other = ''; o.reasons = o.reasons.filter(x => x !== k.slice(5)); }   // שורה אחת = הסיבה וההערה יחד
   else o.reasons = o.reasons.filter(x => x !== k);
   bsRender();
@@ -16965,7 +17051,7 @@ window.bsGo = async function() {
   const text = ((document.getElementById('bnText') || {}).value || '').trim();
   const other = String(o.other || '').trim().slice(0, 300);
   const decSnap = (QJ_DECIDED[b.id] || []).map(d => ({ label: String(d.label || '').slice(0, 200), decision: d.decision, ...(d.note ? { note: String(d.note).slice(0, 600) } : {}) }));   // §685
-  if (fix && !o.reasons.length && !other) { err.textContent = 'אין כלום ברשימה "מה יופיע אצלו" – כתוב הערה על השלב בכרטיס, והיא תיכנס לשם.'; return; }
+  if (fix && !o.reasons.length && !other) { err.textContent = 'אין כלום ברשימת "מה חסר לנו" – "+ להוסיף נקודה" או הערה על שלב בכרטיס.'; return; }
   if (text && !title) { err.textContent = 'חסרה כותרת (היא שורת הפוש ונושא המייל).'; document.getElementById('bnTitle').focus(); return; }
   if (out === 'approve' && !o.mainDone) {
     const reviewed = bizReviewedCount(b), reviewTotal = BIZ_REVIEW_SECTIONS.length;
