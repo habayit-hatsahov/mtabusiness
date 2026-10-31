@@ -527,6 +527,8 @@ body {
 .deal-title { font-weight: 800; font-size: 15px; background: #0A2A66; color: #FFD400; border-radius: 8px; padding: 6px 10px; display: inline-block; }
 .deal-txt { font-size: 13.5px; line-height: 1.55; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
 .deal-meta { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+.st-line { font-size: 13px; margin: 3px 0; }
+.deal-notitle { font-size: 13px; font-weight: 700; color: #B42318; background: #FEF3F2; border: 1px solid #FECDCA; border-radius: 9px; padding: 6px 8px; margin-bottom: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .deal-chip { font-size: 11.5px; background: #F4F6FB; border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
 .deal-chip.warn { background: #FEF3F2; border-color: #FECDCA; color: #B42318; }
 .mtile.fixreq { border-color: #D9CCF7; background: #FBFAFF; }
@@ -9782,6 +9784,7 @@ function bizFullDetailHtml(id, opts) {
           </div>
           ${stepHeadHtml(b, 3)}
         </div>
+        <div class="deal-tiles-wrap" style="padding:0 24px 18px">${stepTilesHtml(b, 3)}</div>   <!-- §688 -->
         <div class="step-form" id="secEdit3_${b.id}">
           <div class="step-form-grid">
             <div class="step-field full"><div class="step-field-h">קטגוריה ראשית</div>${catIconGridHtml(b.id, b.catKey)}</div>
@@ -9816,6 +9819,7 @@ function bizFullDetailHtml(id, opts) {
           </div>
           ${stepHeadHtml(b, 2)}
         </div>
+        <div class="deal-tiles-wrap" style="padding:0 24px 18px">${stepTilesHtml(b, 2)}</div>   <!-- §688 -->
         <div class="step-form" id="secEdit2_${b.id}">
           <div class="step-form-grid">
             <div class="step-field full"><div class="step-field-h">שם העסק</div><input type="text" id="edit_name_${b.id}" value="${esc(b.name)}"></div>
@@ -13526,17 +13530,75 @@ function dealTilesHtml(b) {
   };
   const txt = t => t ? `<div class="deal-txt">${esc(t)}</div>` : '<div class="mtile-empty">⚠️ ריק</div>';
   if (!hasDeal) return `<div class="mtile-grid">${tile(dealTileFix(b, DEAL_FIELDS_1, true), 'הטבה', '<div class="mtile-empty">⚠️ אין הטבה לעסק</div>', 'edit_discount_' + b.id)}</div>`;
-  const t1 = dealTileFix(b, DEAL_FIELDS_1, true), tTitle = { basket: null, sent: null, pend: [], any: false };
+  const t1 = dealTileFix(b, DEAL_FIELDS_1, true);
   const d2 = (b.additionalDiscounts || [])[0], d3 = (b.additionalDiscounts || [])[1];
   const tExtra = dealTileFix(b, ['additionalDiscounts'], false);
-  const title = b.aiShortTitle || b.discountText || '';
+  // §687ב – הכותרת היא חלק מהטבה 1, ואת הכותרת רק אנחנו קובעים (אין עליה 🚩). חובה – בלעדיה אי אפשר לאשר.
+  const title = String(b.discountText || '').trim();
+  const titleHtml = title
+    ? `<div class="mtile-sub">הכותרת בכרטיס:</div><div class="deal-title" style="margin-bottom:8px">${esc(title)}</div>`
+    : `<div class="deal-notitle">⛔ חסרה כותרת בכרטיס – חובה לפני אישור <button type="button" class="act-btn approve tiny" onclick="event.stopPropagation();dealTileEdit('${b.id}','aiTitle_${b.id}')">✏️ להגדיר כותרת</button></div>`;
   return `<div class="mtile-grid">
-    ${tile(tTitle, 'הכותרת בכרטיס', title ? `<div class="deal-title">${esc(title)}</div><div class="mtile-sub" style="margin-top:4px">כך זה מופיע על הכרטיס באינדקס</div>` : '<div class="mtile-empty">⚠️ אין כותרת – הכרטיס יציג את תחילת ההטבה</div>', 'aiTitle_' + b.id)}
-    ${tile(t1, 'הטבה 1 – ראשית', txt(b.discountFullText || b.discountText) + redeem(b.discountRedeemMode, b.discountCode, b.discountStacking || ''), 'edit_discount_' + b.id)}
+    ${tile(t1, 'הטבה 1 – ראשית', titleHtml + txt(b.discountFullText || b.discountText) + redeem(b.discountRedeemMode, b.discountCode, b.discountStacking || ''), 'edit_discount_' + b.id)}
     ${d2 && d2.text ? tile(tExtra, 'הטבה 2', txt(d2.text) + redeem(d2.redeemMode, d2.code), 'edit_disc2_text_' + b.id) : ''}
     ${d3 && d3.text ? tile(tExtra, 'הטבה 3', txt(d3.text) + redeem(d3.redeemMode, d3.code), 'edit_disc3_text_' + b.id) : ''}
   </div>`;
 }
+// ══ §688 — אריחים בשלבים 1–2 (רמי: "תמשיך לאריחים בשלבים 1 ו-2") ════════════════════════════════
+// אריח לכל קבוצת שדות, עם מה שיש עכשיו. בקשת תיקון על השלב (🚩 – חובה לכתוב מה) מופיעה בפס מעל האריחים,
+// כי היא על השלב ולא על שדה אחד; בקשת עדכון מבעל העסק – באריח של השדה, "עכשיו" מול "מה ששלח", עם ✅/❌.
+const BIZ_TYPE_LABELS = { physical: '🏪 חנות פיזית', online: '🌐 אונליין', pro: '🔧 בעל מקצוע / נותן שירות' };
+function stepTilesHtml(b, n) {
+  const fk = STEP_FIX_KEY[n];
+  const reqHas = (QJ_DECIDED[b.id] || []).some(d => d.decision === 'fix' && d.key === fk);
+  const basket = (QJ_DECIDED[b.id] || []).filter(d => d.decision === 'fix' && d.key === fk);
+  const inFix = bizInFix(b), keys = inFix ? bizWaitKeys(b) : [];
+  const sent = inFix && n === 2 && keys.includes('desc') ? bizWaitLines(keys, b.inReviewOther, false).filter(t => /תיאור/.test(t)) : [];
+  const reqBar = (basket.length || sent.length) ? `<div class="mtile fixreq" style="margin-bottom:10px"><div class="mtile-h"><span class="mtile-badge">${basket.length ? '🚩' : '✏️'} נדרש תיקון</span>בקשת תיקון על השלב</div>
+      ${basket.map(d => `<div class="mtile-note">🚩 <b>ביקשנו לתקן – בסל, עוד לא נשלח:</b> ${esc(d.note || '')}</div>`).join('')}
+      ${sent.length ? `<div class="mtile-note">✏️ <b>ביקשנו לתקן${b.inReviewAt ? ' · ' + fmtDate(toJsDate(b.inReviewAt)) : ''}:</b> ${esc(sent.join(' · '))}${bizFixedAt(b) ? `<br>🔁 סימן שתיקן ${fmtDateTime(bizFixedAt(b))}` : ''}</div>` : ''}</div>` : '';
+  const acts = anchor => `<div class="mtile-acts"><button type="button" class="act-btn tiny" onclick="event.stopPropagation();qjStepFixOpen('${b.id}',${n})">${reqHas ? '🚩 לערוך / לבטל את הבקשה' : '🚩 לבקש לתקן'}</button><button type="button" class="act-btn tiny" onclick="event.stopPropagation();stepTileEdit('${b.id}',${n},'${anchor}')">✏️ לשנות בעצמי</button></div>`;
+  const tile = (title, body, fields, anchor) => {
+    const pend = bizPendingChangeItems(b).filter(it => fields.includes(it.field) && !bizStagedEntry(b, it.field));
+    return `<div class="mtile${pend.length ? ' fixreq' : ''}"><div class="mtile-h">${pend.length ? '<span class="mtile-badge ok">🔁 בעל העסק ביקש לעדכן</span>' : ''}${title}</div>${body}${dealTileStateHtml(b, { basket: null, sent: null, pend })}${acts(anchor)}</div>`;
+  };
+  const chip = (t, warn) => `<span class="deal-chip${warn ? ' warn' : ''}">${t}</span>`;
+  const line = (k, v) => `<div class="st-line"><span class="mtile-sub">${k}</span> ${v}</div>`;
+  const miss = '<span class="mtile-sub">–</span>';
+  if (n === 3) {
+    const cat = CATEGORIES.find(c => c.key === b.catKey);
+    const also = b.alsoUnderCategory ? CATEGORIES.find(c => c.key === b.alsoUnderCategory) : null;
+    const tags = (b.tags || []).filter(Boolean);
+    const types = (b.bizTypes || []).map(t => BIZ_TYPE_LABELS[t] || t);
+    return reqBar + `<div class="mtile-grid">
+      ${tile('סוג העסק', `<div class="deal-meta" style="margin-top:0">${types.length ? types.map(t => chip(esc(t))).join('') : chip('⚠️ לא נבחר', true)}</div>`, ['bizTypes'], 'edit_type_physical_' + b.id)}
+      ${tile('קטגוריה ותגיות', line('קטגוריה:', cat ? `<b>${cat.icon} ${esc(cat.label)}</b>` : chip('⚠️ אין קטגוריה', true))
+        + line('תגיות:', tags.length ? tags.map(t => chip('🏷️ ' + esc(t))).join(' ') + (tags.length === 1 ? ' ' + chip('תגית שנייה פנויה') : '') : chip('⚠️ אין תגית', true))
+        + (also ? line('גם תחת:', chip(esc(also.icon + ' ' + also.label))) : '')
+        + (b.tagSuggestion ? line('ביקש תגית חדשה:', chip('💡 ' + esc(b.tagSuggestion))) : ''),
+        ['categoryPrimary', 'cat', 'categorySecondary', 'tags', 'tagSecondSuggestion', 'noTagFits', 'tagSuggestion', 'alsoUnderCategory', 'alsoCategorySuggestion'], 'secEdit3_' + b.id)}
+    </div>`;
+  }
+  // n === 2 – פרטים ויצירת קשר
+  const branches = (b.branches || []).filter(x => x && (x.city || x.address));
+  const links = [['🌐 אתר', b.website], ['📸 אינסטגרם', b.instagram], ['👍 פייסבוק', b.facebook]].filter(x => x[1]);
+  const broken = brokenLinksFor(b);
+  return reqBar + `<div class="mtile-grid">
+    ${tile('שם ותיאור', `<div style="font-weight:800;font-size:15px">${esc(b.name || '')}</div>${b.desc ? `<div class="deal-txt" style="margin-top:4px">${esc(b.desc)}</div>` : '<div class="mtile-empty">⚠️ אין תיאור</div>'}`, ['name', 'desc'], 'edit_name_' + b.id)}
+    ${tile('יצירת קשר', line('טלפון:', b.phone ? `<b dir="ltr">${esc(b.phone)}</b>` : miss) + line('וואטסאפ:', b.whatsapp ? `<b dir="ltr">${esc(b.whatsapp)}</b>` : miss) + line('מייל:', b.serviceEmail ? esc(b.serviceEmail) : miss), ['phone', 'whatsapp', 'serviceEmail'], 'edit_phone_' + b.id)}
+    ${tile('איפה', (branches.length ? branches.map((x, i) => line(branches.length > 1 ? 'סניף ' + (i + 1) + ':' : 'כתובת:', esc([x.city, x.address].filter(Boolean).join(' – ')))).join('') : '')
+      + ((b.regions || []).length ? line('אזורים:', (b.regions || []).map(r => chip(esc(r))).join(' ')) : '')
+      + (!branches.length && !(b.regions || []).length ? '<div class="mtile-empty">⚠️ אין כתובת ואין אזורי פעילות</div>' : ''), ['branches', 'city', 'address', 'regions'], 'editBranchesList_' + b.id)}
+    ${tile('שעות פעילות', b.hoursText || b.hoursMode ? `<div style="font-size:13px">${adminHoursHtml(b)}</div>` : '<div class="mtile-empty">אין שעות</div>', ['hours'], 'edit_hoursBox_' + b.id)}
+    ${tile('אתר ורשתות', (links.length ? links.map(([k, v]) => line(k + ':', `<span dir="ltr" style="word-break:break-all">${esc(v)}</span>`)).join('') : '<div class="mtile-empty">אין קישורים</div>')
+      + (broken.length ? `<div class="deal-meta">${chip('🔗 ' + broken.length + ' קישורים שלא נפתחים', true)}</div>` : ''), ['website', 'instagram', 'facebook'], 'edit_website_' + b.id)}
+  </div>`;
+}
+window.stepTileEdit = function(id, n, anchor) {
+  const ed = document.getElementById('secEdit' + n + '_' + id);
+  if (ed && !ed.classList.contains('open')) toggleBizSecEdit(id, n);
+  setTimeout(() => { const t = document.getElementById(anchor); if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (/^edit_/.test(anchor)) { try { t.focus({ preventScroll: true }); } catch (e) {} } } }, 80);
+};
 window.dealTileEdit = function(id, anchor) {
   const ed = document.getElementById('secEdit4_' + id);
   if (ed && !ed.classList.contains('open')) toggleBizSecEdit(id, 4);
@@ -13911,9 +13973,12 @@ function aiTitleFitLabel(val) {
 // ההטבה לא מוצגת לאוהדים בכלל (home.html מציג אותה רק כש-discountText קיים). לכן כל אישור
 // שמשאיר הטבה בלי כותרת שואל קודם – אזהרה, לא חסימה.
 function bizMissingCardTitle(s) { return !!(s && s.hasDiscount && !String(s.discountText || '').trim()); }
+// §687ב – רמי: "זה רק אני מגדיר וזה משהו חובה להגדיר – אין להעלות הנחה בלי כותרת". מאזהרה (§614) לחסימה:
+// אישור עסק, אישור גורף, ושמירה שמשאירה הטבה בלי כותרת – נעצרים, עם הסבר איפה מגדירים.
 function confirmMissingCardTitle(names) {
   if (!names.length) return true;
-  return confirm(`⚠️ אין כותרת להטבה בכרטיס:\n\n${names.map(n => '• ' + n).join('\n')}\n\nבלי כותרת ההטבה לא תוצג לאוהדים – לא בכרטיס ולא בגיליון העסק. כותבים אותה בשדה "הכותרת שתופיע על הכרטיס באינדקס".\n\nאישור = לאשר בכל זאת · ביטול = לחזור ולכתוב כותרת`);
+  alert(`⛔ אין כותרת להטבה בכרטיס:\n\n${names.map(n => '• ' + n).join('\n')}\n\nבלי כותרת ההטבה לא מוצגת לאוהדים, ולכן אי אפשר לאשר או לשמור כך.\nמגדירים אותה בשלב "הטבות" → ✏️ לשנות בעצמי → "הכותרת שתופיע על הכרטיס".`);
+  return false;
 }
 // opts.standalone — מציג גם כפתור "שמור כותרת" עצמאי (בתצוגה הרגילה, לא בתוך טופס עריכה) — כך
 // שאפשר לראות/לרענן/לבחור כותרת בלי לפתוח את כל עריכת שלב 4 (המשתמש: "בלי ללחוץ... כבר מבחוץ").
@@ -16828,7 +16893,7 @@ window.bsGo = async function() {
     // תזכורת רכה, לא חסימה — כמו ב-approveBiz עד עכשיו
     if (reviewed < reviewTotal && !confirm(`רק ${reviewed}/${reviewTotal} שלבים סומנו כ"נסקר". לאשר בכל זאת?`)) return;
     if (!confirmSuspectEmail(b.ownerEmail, `"${b.name}"`)) return;
-    if (bizMissingCardTitle(b) && !confirmMissingCardTitle([b.name])) return;   // §614
+    if (bizMissingCardTitle(b)) { err.textContent = '⛔ אין כותרת להטבה בכרטיס – חובה להגדיר לפני אישור: שלב "הטבות" → ✏️ לשנות בעצמי.'; return; }   // §614 · §687ב – חסימה
   }
   o.sending = true; err.textContent = '';
   const go = document.getElementById('bnGo'); if (go) { go.disabled = true; go.textContent = '⏳ רגע…'; }
