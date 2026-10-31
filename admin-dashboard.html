@@ -498,6 +498,21 @@ body {
 .sum-step:last-child { border-bottom: none; }
 .sum-step-h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; }
 .sum-step-n { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; background: #F4F6FB; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+.sum-prog { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.sum-chip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; text-align: start; font: inherit; font-size: 13px; background: #FEF3F2; border: 1px solid #FECDCA; border-radius: 10px; padding: 6px 8px; cursor: pointer; color: var(--text); }
+.sum-chip b { margin-inline-start: auto; font-size: 11.5px; color: #B42318; }
+.sum-chip.ok { background: #ECFDF3; border-color: #ABEFC6; }
+.sum-chip.ok b { color: #067647; }
+.sum-sub { font-size: 12px; color: var(--text-muted); font-weight: 400; flex-basis: 100%; }
+.sum-it { display: flex; gap: 8px; align-items: baseline; margin: 5px 0 0; padding: 6px 10px; border-radius: 9px; border-inline-start: 4px solid; font-size: 14px; }
+.sum-it.sent { background: #F4F0FD; border-color: #7F56D9; }
+.sum-it.owner { background: #ECFDF3; border-color: #12B76A; }
+.sum-it.basket { background: #FFF7DB; border-color: #F5B800; }
+.sum-tag { flex: none; font-size: 11.5px; font-weight: 800; border-radius: 999px; padding: 1px 8px; background: #fff; }
+.sum-it.sent .sum-tag { color: #6941C6; }
+.sum-it.owner .sum-tag { color: #067647; }
+.sum-it.basket .sum-tag { color: #7A5B00; }
+.sum-txt { flex: 1; font-weight: 600; }
 .sum-rev { font-size: 12px; border-radius: 999px; padding: 1px 8px; background: #FDECEC; color: #B42318; }
 .sum-rev.ok { background: #ECFDF3; color: #067647; }
 .qj-status-chip { font-size: 13px; background: #F4F6FB; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; margin-inline-start: 6px; }
@@ -14293,36 +14308,33 @@ function bizWaitBannerHtml(b) {
   const revd = BIZ_REVIEW_SECTIONS.filter(n => b.reviewedSections && b.reviewedSections[n]).length;
   if (!inFix && !asked.length && !dec.length && !(pending && revd < BIZ_REVIEW_SECTIONS.length)) return '';
   const by = {};   // שלב → [שורות]
-  const add = (n, t) => (by[n] = by[n] || []).push(t);
+  const add = (n, kind, tag, text) => (by[n] = by[n] || []).push({ kind, tag, text });
   if (inFix) {
     const keys = bizWaitKeys(b);
     keys.filter(k => k !== 'other').forEach(k => {
       const one = bizWaitOne(keys, b.inReviewOther) === k;
-      add(BS_REASON_STEP[k] || 0, '<b>נשלח לו לתקן:</b> ' + esc(WAIT_REASONS.find(r => r.k === k).label + (one ? ' – ' + String(b.inReviewOther).trim() : '')));
+      add(BS_REASON_STEP[k] || 0, 'sent', 'נשלח לו לתקן', WAIT_REASONS.find(r => r.k === k).label + (one ? ' – ' + String(b.inReviewOther).trim() : ''));
     });
     if (keys.includes('other') && !bizWaitOne(keys, b.inReviewOther)) String(b.inReviewOther || '').split(' · ').filter(Boolean)
-      .forEach(t => add(Object.keys(TILE_WORDS).some(k => TILE_WORDS[k].test(t)) ? 5 : 0, '<b>נשלח לו לתקן:</b> ' + esc(t)));
+      .forEach(t => add(Object.keys(TILE_WORDS).some(k => TILE_WORDS[k].test(t)) ? 5 : 0, 'sent', 'נשלח לו לתקן', t));
   }
-  asked.forEach(it => add(it.section, '<b>שלח שינוי – מחכה לבדיקה שלך:</b> ' + esc(it.label)));
+  asked.forEach(it => add(it.section, 'owner', 'בעל העסק שלח – לבדוק', it.label));
   dec.forEach(d => {
     const n = d.decision === 'fix' ? (BS_FIXKEY_STEP[d.key] || 0) : bizStepOfLabel(d.label);
     const what = d.decision === 'remark' ? (d.note || '') : d.label + (d.note ? ' – ' + d.note : '');
-    add(n, `<b>בסל – ${BS_DEC_WORD[d.decision] || 'עוד'}:</b> ${esc(what)}`);
+    add(n, 'basket', 'בסל · ' + (BS_DEC_WORD[d.decision] || 'עוד'), what);
   });
-  const li = t => `<li style="font-size:14.5px;margin:2px 0;white-space:pre-line">${t}</li>`;
-  const stepRow = (n, num, name) => {
-    const rev = !!(b.reviewedSections && b.reviewedSections[n]);
-    const items = by[n] || [];
-    if (!pending && !items.length) return '';
-    return `<div class="sum-step">
-      <div class="sum-step-h"><span class="sum-step-n">${num}</span><b>${name}</b>
-        ${pending || rev ? `<span class="sum-rev ${rev ? 'ok' : ''}">${rev ? '✓ נסקר' : 'לא נסקר'}</span>` : ''}
-        <button type="button" class="qj-btn link" onclick="jumpToBizSection('${b.id}',${n})">לשלב ←</button></div>
-      ${items.length ? `<ul style="margin:2px 0 0;padding-inline-start:22px">${items.map(li).join('')}</ul>` : ''}</div>`;
-  };
-  const steps = [[3, 1], [2, 2], [4, 3], [5, 4]].map(([n, num]) => stepRow(n, num, QJ_STEP_NAMES[n])).join('');
-  const ownerRow = (by[1] || []).length ? `<div class="sum-step"><div class="sum-step-h"><span class="sum-step-n">🎫</span><b>אימות בעל העסק</b><button type="button" class="qj-btn link" onclick="jumpToBizSection('${b.id}',1)">ללשונית ←</button></div><ul style="margin:2px 0 0;padding-inline-start:22px">${by[1].map(li).join('')}</ul></div>` : '';
-  const general = (by[0] || []).length ? `<div class="sum-step"><div class="sum-step-h"><span class="sum-step-n">•</span><b>כללי</b></div><ul style="margin:2px 0 0;padding-inline-start:22px">${by[0].map(li).join('')}</ul></div>` : '';
+  // §683ב – רמי: "בנראות של זה שיהיה יותר ברור, וגם הכללי להסביר מה זה". פריט = תג צבעוני לפי סוג + הטקסט.
+  const item = it => { const t = String(it.text || '').replace(/\s*\n\s*/g, ' '); return `<div class="sum-it ${it.kind}"><span class="sum-tag">${esc(it.tag)}</span><span class="sum-txt" title="${esc(t)}">${esc(t.length > 160 ? t.slice(0, 160) + '…' : t)}</span></div>`; };
+  const STEPS = [[3, 1], [2, 2], [4, 3], [5, 4]];
+  // שורת התקדמות – 4 השלבים בשורה אחת (עסק ממתין)
+  const progress = pending ? `<div class="sum-prog">${STEPS.map(([n, num]) => { const rev = !!(b.reviewedSections && b.reviewedSections[n]); return `<button type="button" class="sum-chip ${rev ? 'ok' : ''}" onclick="jumpToBizSection('${b.id}',${n})"><span class="sum-step-n">${num}</span>${QJ_STEP_NAMES[n]}<b>${rev ? '✓ נסקר' : 'לא נסקר'}</b></button>`; }).join('')}</div>` : '';
+  const group = (num, name, items, link, sub) => items.length ? `<div class="sum-step">
+      <div class="sum-step-h"><span class="sum-step-n">${num}</span><b>${name}</b>${sub ? `<span class="sum-sub">${sub}</span>` : ''}${link || ''}</div>
+      ${items.map(item).join('')}</div>` : '';
+  const steps = STEPS.map(([n, num]) => group(num, QJ_STEP_NAMES[n], by[n] || [], `<button type="button" class="qj-btn link" onclick="jumpToBizSection('${b.id}',${n})">לשלב ←</button>`)).join('');
+  const ownerRow = group('🎫', 'אימות בעל העסק', by[1] || [], `<button type="button" class="qj-btn link" onclick="jumpToBizSection('${b.id}',1)">ללשונית ←</button>`);
+  const general = group('✉️', 'עוד בהודעה – לא שייך לשלב מסוים', by[0] || [], '', 'הודעות ועדכונים כלליים שייכנסו להודעה לבעל העסק – למשל תגית או קטגוריה שאושרו, או הודעה מוכנה');
   const sentWa = inFix ? (b.waNudgeCount ? ` · וואטסאפ נשלח ${b.waNudgeCount === 1 ? 'פעם אחת' : b.waNudgeCount + ' פעמים'}${b.waNudgeAt ? ', אחרון ' + fmtDateTime(b.waNudgeAt) : ''}` : ' · עוד לא נשלח וואטסאפ') : '';
   const head = [
     pending ? `נסקרו <b>${revd} מתוך ${BIZ_REVIEW_SECTIONS.length}</b> שלבים` : '',
@@ -14338,8 +14350,8 @@ function bizWaitBannerHtml(b) {
   ].filter(Boolean).join('');
   return `
     <div class="sum-box">
-      <div class="sum-top"><div style="flex:1;min-width:220px;font-size:13.5px">📋 ${head}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${btns}</div></div>
-      ${steps}${ownerRow}${general}
+      <div class="sum-top"><div style="flex:1;min-width:220px"><div style="font-weight:900;font-size:15px">📋 מצב הכרטיס</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">${head}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap">${btns}</div></div>
+      ${progress}${steps}${ownerRow}${general}
     </div>`;
 }
 function waitEl() {
