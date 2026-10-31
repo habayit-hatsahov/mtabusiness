@@ -508,6 +508,9 @@ body {
 .sum-it.sent { background: #F4F0FD; border-color: #7F56D9; }
 .sum-it.owner { background: #ECFDF3; border-color: #12B76A; }
 .sum-it.basket { background: #FFF7DB; border-color: #F5B800; }
+.msg-sec-h { font-weight: 800; font-size: 13.5px; margin: 14px 0 6px; color: #0A2A66; }
+.msg-row { display: flex; gap: 10px; align-items: center; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-top: 6px; font-size: 13.5px; }
+.msg-row.wait { border-color: #F5D96B; background: #FFF7DB; }
 .sum-round { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-top: 6px; background: var(--card-bg); }
 .sum-round summary { cursor: pointer; font-size: 13.5px; }
 .sum-round ul { margin: 2px 0 6px; padding-inline-start: 20px; font-size: 13px; }
@@ -5761,6 +5764,40 @@ const DEFAULT_FAN_MAIL_SUBJECT = 'ברוך הבא ל-Yellow Zone';
 // (2) "📌 תמיד לראות" – הערות שלך על העסק/בעליו. 🔒 נשמרות ביומן העסק (activity – קריאה למנהל בלבד,
 //     בלי עדכון ומחיקה), **לא** על מסמך העסק: את המסמך המלא בעל העסק עצמו יכול לקרוא (isBizOwner).
 //     הסרה = רשומת 'unpin' שמצביעה על ההערה, כך שגם מה שהוסר נשאר בהיסטוריה.
+// ══ §697 — "💬 הודעות ופניות": כל מה שעבר בינינו לבין בעל העסק, במקום אחד ═══════════════════════
+// רמי: "אני לא רואה בכרטיס העסק את הלשוניות למעלה – הודעות". (1) השיחות שלו במרכז ההודעות (CONVERSATIONS),
+// פתוחות קודם; (2) ההודעות ששלחנו לו (יומן העסק, type 'message' – מכל מקום: סיכום ושליחה, הודעה יזומה, אישור…);
+// (3) "כתבו לנו" מההרשמה. מכאן גם "💬 הודעה לבעל העסק".
+function bizOpenConvs(b) { return b && b.ownerMemberId ? CONVERSATIONS.filter(c => c.memberId === b.ownerMemberId && c.status !== 'closed' && c.lastFrom === 'member') : []; }
+const _bizMsgLog = {};
+function bizMsgLogLoad(id) {
+  if (_bizMsgLog[id]) return;
+  _bizMsgLog[id] = { loading: true };
+  getDocs(query(collection(db, 'businesses', id, 'activity'), where('type', '==', 'message'))).then(snap => {
+    _bizMsgLog[id] = { list: snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).sort((a, c) => (toJsDate(c.createdAt) || 0) - (toJsDate(a.createdAt) || 0)) };
+    if (selectedBizDetailId === id && bizDetailViewTab === 'msgs') renderMainPreserveScroll();
+  }).catch(e => { console.error('msg log load failed', e); _bizMsgLog[id] = { list: [], err: true }; });
+}
+function bizMsgsTabHtml(b) {
+  bizMsgLogLoad(b.id);
+  const convs = b.ownerMemberId ? CONVERSATIONS.filter(c => c.memberId === b.ownerMemberId)
+    .sort((x, y) => ((y.status !== 'closed' && y.lastFrom === 'member') - (x.status !== 'closed' && x.lastFrom === 'member')) || (_convMs(y.lastAt) - _convMs(x.lastAt))) : [];
+  const st = _bizMsgLog[b.id] || {};
+  const sent = st.list || [];
+  const convRow = c => { const waiting = c.status !== 'closed' && c.lastFrom === 'member';
+    return `<div class="msg-row${waiting ? ' wait' : ''}"><div style="flex:1;min-width:0"><b>${esc(c.subject || 'שיחה')}</b><div class="mtile-sub">${fmtDateTime(new Date(_convMs(c.lastAt)))} · ${c.status === 'closed' ? 'סגורה' : waiting ? '⏳ מחכה לתשובה שלך' : 'ענית – מחכה לו'}</div></div><button type="button" class="qj-btn${waiting ? ' primary' : ''}" onclick="openConvAdmin('${c.id}')">${waiting ? 'לפתוח ולענות' : 'לפתוח'}</button></div>`; };
+  const sentRow = m => `<div class="msg-row"><div style="flex:1;min-width:0"><b>${esc(String(m.title || '').replace(/^הודעה לבעל העסק /, ''))}</b><div class="mtile-sub">${m.createdAt ? fmtDateTime(toJsDate(m.createdAt)) : ''}${m.actorName ? ' · ' + esc(m.actorName) : ''}${m.detail ? ' · ' + esc(m.detail) : ''}</div></div></div>`;
+  return `<div class="dcard" style="padding:16px 18px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><div style="font-weight:900;font-size:16px;flex:1">💬 הודעות ופניות · ${esc(b.ownerFirst || 'בעל העסק')}</div><button type="button" class="qj-btn primary" onclick="openBizNoteFree('${b.id}')">💬 הודעה לבעל העסק</button></div>
+    <div class="msg-sec-h">פניות שלו במרכז ההודעות</div>
+    ${!b.ownerMemberId ? '<div class="mtile-empty">העסק לא מחובר לחשבון אוהד – אין לו תיבת הודעות</div>' : convs.length ? convs.map(convRow).join('') : '<div class="mtile-empty">לא פנה אלינו</div>'}
+    <div class="msg-sec-h">הודעות ששלחנו לו</div>
+    ${st.loading ? '<div class="placeholder-note">טוען…</div>' : sent.length ? sent.map(sentRow).join('') : '<div class="mtile-empty">עוד לא שלחנו לו הודעה מכאן</div>'}
+    <div class="mtile-sub" style="margin-top:4px">הנוסח המלא של כל סבב "סיכום ושליחה" – ב"החלטות ויומן" → "🧺 סבבי סיכום ושליחה".</div>
+    <div class="msg-sec-h">"כתבו לנו" בהרשמה</div>
+    ${b.note ? `<div class="msg-row"><div style="flex:1;white-space:pre-line">${esc(b.note)}<div class="mtile-sub">${b.noteAt ? fmtDateTime(b.noteAt) : ''}${b.noteHandled ? ' · טופל' : ' · ⏳ לא טופל'}</div></div></div>` : '<div class="mtile-empty">לא כתב הערה בהרשמה</div>'}
+  </div>`;
+}
 function bizOpenConvBoxHtml(b) {
   const convs = b.ownerMemberId ? CONVERSATIONS.filter(c => c.memberId === b.ownerMemberId && c.status !== 'closed' && c.lastFrom === 'member') : [];
   if (!convs.length) return '';
@@ -10078,11 +10115,13 @@ function bizFullDetailHtml(id, opts) {
     <div class="action-tabs">
       <button class="action-tab ${bizDetailViewTab==='main'?'active':''}" onclick="setBizDetailTab('main')">פרטי העסק</button>
       <button class="action-tab ${bizDetailViewTab==='owner'?'active':''}" onclick="setBizDetailTab('owner')" title="${ownerTabDot ? esc(ownerTabDot) : ''}">🎫 בעל העסק${ownerTabDot ? ' •' : ''}</button>
+      <button class="action-tab ${bizDetailViewTab==='msgs'?'active':''}" onclick="setBizDetailTab('msgs')">💬 הודעות ופניות${bizOpenConvs(b).length ? ' •' : ''}</button>
       <button class="action-tab ${bizDetailViewTab==='decisions'?'active':''}" onclick="setBizDetailTab('decisions')">החלטות ויומן</button>
       ${b.status === 'approved' ? `<button class="action-tab ${bizDetailViewTab==='sections'?'active':''}" onclick="setBizDetailTab('sections')">📊 נתונים והגדרות${secOpenQuestions(b).length ? ' •' : ''}</button>` : ''}
     </div>
     ${bizDetailViewTab === 'decisions' ? bizDecisionPanelHtml(b)
       : bizDetailViewTab === 'owner' ? ownerTabHtml
+      : bizDetailViewTab === 'msgs' ? bizMsgsTabHtml(b)
       : bizDetailViewTab === 'sections' ? (bizQuestionsHtml(b) + bizDataHtml(b))
       : mainTabHtml}`;
 }
