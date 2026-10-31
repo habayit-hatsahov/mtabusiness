@@ -5657,6 +5657,58 @@ const DEFAULT_FAN_MAIL = 'שלום {name},\n\nשמחים לבשר שהצטרפו
 const DEFAULT_FAN_MAIL_SUBJECT = 'ברוך הבא ל-Yellow Zone';
 
 // function ולא const: נקראת גם מרשימות שמצוירות לפני שהמודול הגיע לשורה הזו (TDZ)
+// ══ §677 — שלב 3 בשילוב כרטיס העסק: מה שדורש טיפול נשאר בראש הכרטיס ══════════════════════════════
+// רמי (§673): "הערות של כפילות או שיחה פתוחה – שיישארו בעמוד הראשי עד שמטופלות. ויש הערות שתמיד שיישארו".
+// כפילות / קישורים שבורים / מייל שגוי כבר יושבים כאן (identity-notes). נוספו:
+// (1) פנייה פתוחה מבעל העסק במרכז ההודעות – עד שעונים או סוגרים אותה שם.
+// (2) "📌 תמיד לראות" – הערות שלך על העסק/בעליו. 🔒 נשמרות ביומן העסק (activity – קריאה למנהל בלבד,
+//     בלי עדכון ומחיקה), **לא** על מסמך העסק: את המסמך המלא בעל העסק עצמו יכול לקרוא (isBizOwner).
+//     הסרה = רשומת 'unpin' שמצביעה על ההערה, כך שגם מה שהוסר נשאר בהיסטוריה.
+function bizOpenConvBoxHtml(b) {
+  const convs = b.ownerMemberId ? CONVERSATIONS.filter(c => c.memberId === b.ownerMemberId && c.status !== 'closed' && c.lastFrom === 'member') : [];
+  if (!convs.length) return '';
+  return `<div class="identity-note warn"><div class="identity-note-h">💬 פנייה פתוחה מ${esc(b.ownerFirst || 'בעל העסק')}</div><div class="identity-note-v">${
+    convs.map(c => `${esc(c.subject || 'הודעה')} · ${fmtDateTime(new Date(_convMs(c.lastAt)))} <button type="button" class="act-btn tiny" style="margin-inline-start:6px" onclick="event.stopPropagation();openConvAdmin('${c.id}')">לפתוח ולענות</button>`).join('<br>')
+  }<br><span style="opacity:.75">נשאר כאן עד שתענה או תסגור את השיחה.</span></div></div>`;
+}
+const _bizPins = {};   // bizId → { list: [{ id, text, at, by }] } | { loading: true }
+function bizPinsLoad(id) {
+  if (_bizPins[id]) return;
+  _bizPins[id] = { loading: true };
+  getDocs(query(collection(db, 'businesses', id, 'activity'), where('type', 'in', ['pin', 'unpin']))).then(snap => {
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+    const off = new Set(all.filter(a => a.type === 'unpin').map(a => a.before));
+    _bizPins[id] = { list: all.filter(a => a.type === 'pin' && !off.has(a.id)).map(a => ({ id: a.id, text: a.detail, at: toJsDate(a.createdAt), by: a.actorName }))
+      .sort((x, y) => (x.at || 0) - (y.at || 0)) };
+    if (selectedBizDetailId === id) renderMain();
+  }).catch(e => { console.error('pins load failed', e); _bizPins[id] = { list: [], err: true }; if (selectedBizDetailId === id) renderMain(); });
+}
+function bizPinsBoxHtml(b) {
+  bizPinsLoad(b.id);
+  const st = _bizPins[b.id] || {};
+  const list = st.list || [];
+  return `<div class="identity-note" style="background:#FFF7DB;border-color:#F5D96B"><div class="identity-note-h">📌 תמיד לראות <span style="font-weight:400;opacity:.75">– הערות שלך, לא נשלחות לבעל העסק ולא נעלמות</span></div><div class="identity-note-v">${
+    st.loading ? 'טוען…' : st.err ? '<span style="color:#B42318">לא הצלחתי לטעון את ההערות הקבועות</span>' : ''
+  }${list.map(x => `<div style="display:flex;gap:6px;align-items:flex-start;margin-top:3px"><span style="flex:1;white-space:pre-line">📌 ${esc(x.text)} <span style="opacity:.6;font-size:11.5px">${x.at ? fmtDate(x.at) : ''}</span></span><button type="button" class="act-btn tiny" onclick="event.stopPropagation();bizPinRemove('${b.id}','${x.id}')">הסרה</button></div>`).join('')
+  }<button type="button" class="act-btn tiny" style="margin-top:6px" onclick="event.stopPropagation();bizPinAdd('${b.id}')">+ הערה קבועה</button></div></div>`;
+}
+async function bizPinWrite(id, entry) {
+  await addDoc(collection(db, 'businesses', id, 'activity'), { ...entry, field: 'pin', after: null, actorUid: CURRENT_ADMIN.uid, actorName: CURRENT_ADMIN.name, source: 'admin', createdAt: serverTimestamp() });
+  delete _bizPins[id];
+  if (selectedBizDetailId === id) renderMain();
+}
+window.bizPinAdd = async function(id) {
+  const text = (prompt('הערה קבועה על העסק (רק אתה רואה אותה, היא לא נשלחת לבעל העסק):') || '').trim().slice(0, 300);
+  if (!text) return;
+  try { await bizPinWrite(id, { type: 'pin', title: '📌 הערה קבועה', detail: text, before: null }); }
+  catch (e) { alert('השמירה נכשלה: ' + (e.message || e)); }
+};
+window.bizPinRemove = async function(id, pinId) {
+  const pin = ((_bizPins[id] || {}).list || []).find(x => x.id === pinId);
+  if (!pin || !confirm('להסיר את ההערה הקבועה?\n\n' + pin.text)) return;
+  try { await bizPinWrite(id, { type: 'unpin', title: '📌 הערה קבועה הוסרה', detail: pin.text, before: pinId }); }
+  catch (e) { alert('ההסרה נכשלה: ' + (e.message || e)); }
+};
 function bizDashUrl(accessToken) { return 'https://yellowzone.co.il/business-dashboard.html?token=' + accessToken; }
 window.copyBizDash = async function(btn, token) {   // §676
   const url = bizDashUrl(token);
@@ -9459,7 +9511,7 @@ function bizFullDetailHtml(id, opts) {
              "רק כשיש בעיה": השאלה שהיא עונה עליה היא **"האם החיבור קרה"**, ותשובה
              שלילית שאינה מוצגת אינה נבדלת מרנדור שלא רץ. היא נשלפת מרשומת **החבר**
              של הבעלים (ownerMemberId) – הזהות אינה יושבת על מסמך העסק. -->
-      <div class="identity-notes">${bizOwnerLinkBoxHtml(b)}${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${googleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${appleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${signupSourceNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${idEmailNote}${idBroadcastNote}${idNoteBox}</div>
+      <div class="identity-notes">${bizPinsBoxHtml(b)}${bizOpenConvBoxHtml(b)}${bizOwnerLinkBoxHtml(b)}${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${googleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${appleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${signupSourceNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${idEmailNote}${idBroadcastNote}${idNoteBox}</div>
     </div>`;
 
   const anchorCardHtml = b.status === 'approved' ? `
