@@ -492,6 +492,14 @@ body {
 .mtile-gal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 .mtile-gal-i { aspect-ratio: 1; border-radius: 7px; overflow: hidden; }
 .mtile-empty { font-size: 12.5px; color: var(--text-muted); padding: 14px 0; }
+.sum-box { margin-bottom: 14px; background: var(--card-bg); border: 1.5px solid var(--warn-border); border-radius: 12px; padding: 8px 12px 10px; }
+.sum-top { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.sum-step { padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.sum-step:last-child { border-bottom: none; }
+.sum-step-h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+.sum-step-n { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; background: #F4F6FB; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+.sum-rev { font-size: 12px; border-radius: 999px; padding: 1px 8px; background: #FDECEC; color: #B42318; }
+.sum-rev.ok { background: #ECFDF3; color: #067647; }
 .qj-status-chip { font-size: 13px; background: #F4F6FB; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; margin-inline-start: 6px; }
 .mtile.fixreq { border-color: #D9CCF7; background: #FBFAFF; }
 .mtile-badge { display: inline-block; background: #E9E1FB; color: #6941C6; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 8px; margin-inline-end: 6px; }
@@ -10148,7 +10156,7 @@ function stepHeadHtml(b, n) {
   const chip = parked ? '<span class="step-state warn">⚠️ לא נשמר</span>'
     : open && dirty ? '<span class="step-state warn">✏️ לא נשמר עדיין</span>'
     : rev ? `<button class="step-state ok" title="לחיצה מבטלת את הסימון" onclick="event.stopPropagation();unmarkStepReviewed('${b.id}',${n})">✓ נסקר</button>`
-    : '<span class="step-state">לא נסקר</span>';
+    : `<button class="step-state" title="לחיצה מסמנת שהשלב נסקר – בלי לפתוח עריכה" onclick="event.stopPropagation();markStepReviewed('${b.id}',${n})">✓ לסמן נסקר</button>`;   // §683
   const saveOut = parked ? `<button class="btn-step-save sm" onclick="event.stopPropagation();saveStepReviewed('${b.id}',${n})">💾 שמירה ונסקר</button><button class="btn-step-edit" onclick="event.stopPropagation();discardStep('${b.id}',${n})">↺ ביטול השינויים</button>` : '';
   return `<div class="step-head-actions" id="stepHead${n}_${b.id}">${chip}${qjStepNoteBtn(b, n)}${saveOut}<button class="${open ? 'btn-step-close' : 'btn-step-edit'}" id="stepEditBtn${n}_${b.id}" onclick="toggleBizSecEdit('${b.id}',${n})">${open ? 'סגירה' : 'עריכה'}</button></div>`;
 }
@@ -10217,6 +10225,15 @@ window.saveStepReviewed = async function(id, n) {
   stepDirty.delete(key);
   const edit = document.getElementById('secEdit' + n + '_' + id);
   if (edit && edit.classList.contains('open')) { openBizSteps.add(key); toggleBizSecEdit(id, n); }   // בלי בנייה מחדש – סוגרים ידנית
+  stepKeepAnchor(document.getElementById('stepBlock' + n + '_' + id), top0);
+};
+// §683 – רמי: "את כפתור הנסקר תעשה לחיצה… פשוט" – מסמן נסקר בלחיצה אחת (כמו "שמירה ונסקר" בלי טופס)
+window.markStepReviewed = async function(id, n) {
+  const b = findBiz(id), blk0 = document.getElementById('stepBlock' + n + '_' + id);
+  if (!b) return;
+  if (n === 4 && stackNeedsMention(b) && !confirm('הקוד של העסק כולל כפל מבצעים, ונוסח ההטבה לא מזכיר את זה.\nלסמן "נסקר" בכל זאת?')) return;
+  const top0 = blk0 ? blk0.getBoundingClientRect().top : null;
+  await saveSectionUpdates(id, { reviewedSections: { ...(b.reviewedSections || {}), [n]: true } });
   stepKeepAnchor(document.getElementById('stepBlock' + n + '_' + id), top0);
 };
 window.unmarkStepReviewed = async function(id, n) {
@@ -14253,43 +14270,76 @@ function bizWaitTexts(b) { return bizWaitLines(bizWaitKeys(b), b.inReviewOther, 
 //   🔁 מה בעל העסק שלח (סימן "תיקנתי" / בקשות שינוי שעוד לא סימנת) – ירוק
 //   ✏️ מה ביקשת ממנו (נשלח ב"צריך לתקן") – סגול, כמו קודם
 //   🚩 מה בסל ועוד לא נשלח (בקשות תיקון + הערות על שלבים) – צהוב
+// §683 – רמי: "במקום דגל/עפרון שיהיה רשום לי על כל אחד… אינדיקציה במידה והעסק ממתין ועוד לא סקרנו את השלבים
+// או חלקם… ואת ההערות על כל שלב – תחבר את זה יחד כמקשה אחת עם ההערות והתיקונים". פס אחד, שורה לכל שלב
+// (באותו סדר ומספור כמו בכרטיס): נסקר / לא נסקר, ומתחת – כל מה שקשור לשלב, במילים:
+// "נשלח לו לתקן" (inReviewReasons) · "שלח שינוי – מחכה לבדיקה" (pendingChanges) · "בסל – …" (QJ_DECIDED).
+// מה שלא שייך לשלב (תגיות שאושרו, הודעה מוכנה, "אחר" כללי) – תחת "כללי".
+const BS_DEC_WORD = { fix: 'בקשת תיקון', remark: 'הערה', edited: 'עדכנו', approved: 'אושר', rejected: 'לא אושר', mapped: 'מופה', handled: 'טיפלנו', info: 'הודעה' };
+const BS_REASON_STEP = { cover: 5, logo: 5, deal: 4, desc: 2, owner: 1 };
+const BS_FIXKEY_STEP = { cover: 5, logo: 5, gallery: 5 };
+function bizStepOfLabel(label) {
+  const name = Object.keys(QJ_STEP_NAMES).find(n => QJ_STEP_NAMES[n] === label);
+  if (name) return +name;
+  const f = Object.keys(DIFF_FIELD_LABELS_MOCK).find(k => DIFF_FIELD_LABELS_MOCK[k] === label || String(label).startsWith(DIFF_FIELD_LABELS_MOCK[k] + ':'));
+  return f ? (DIFF_FIELD_TO_SECTION[f] || 0) : 0;
+}
 function bizWaitBannerHtml(b) {
   if (!b || !MOCK_BUSINESSES.includes(b)) return '';
-  const inFix = bizInFix(b), labels = inFix ? bizWaitLabels(b) : [];
-  const fixed = bizFixedAt(b);
+  const inFix = bizInFix(b), fixed = bizFixedAt(b);
   const asked = bizPendingChangeItems(b).filter(it => !bizStagedEntry(b, it.field));
   const dec = QJ_DECIDED[b.id] || [];
-  const basket = dec.filter(d => d.decision === 'fix' || (d.decision === 'remark' && d.note));
-  // §682 – גם ההחלטות שבסל (✅ אושר / ❌ לא אושר / ✏️ עדכנו / ✔️ טיפלנו…) – במקום פס "מחכה לשליחה" נפרד
-  const others = dec.filter(d => !basket.includes(d));
-  if (!inFix && !asked.length && !dec.length) return '';
-  const who = esc(b.ownerFirst || 'בעל העסק');
-  const li = t => `<li style="white-space:pre-line;font-size:15px;font-weight:700;margin:3px 0">${t}</li>`;
-  const blk = (bg, bd, color, head, items, foot) => `<div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:8px 12px;margin-top:8px">
-      <div style="font-weight:800;color:${color};font-size:14px">${head}</div>${items.length ? `<ul style="margin:4px 0 0;padding-inline-start:20px">${items.map(li).join('')}</ul>` : ''}${foot || ''}</div>`;
-  const parts = [];
-  if (fixed || asked.length) parts.push(blk('#ECFDF3', '#ABEFC6', '#067647',
-    `🔁 ${who} ${fixed ? 'שלח תיקון ' + fmtDateTime(fixed) : 'ביקש שינויים'}${asked.length ? ' – מחכה לבדיקה שלך:' : ' – מחכה לבדיקה שלך'}`,
-    asked.map(it => esc(it.label)), asked.length ? '<div style="color:var(--text-muted);font-size:12px;margin-top:4px">✅/❌ על כל שינוי – בשיפוט המהיר מתחת, או באריח של השדה.</div>' : ''));
+  const pending = b.status === 'pending';
+  const revd = BIZ_REVIEW_SECTIONS.filter(n => b.reviewedSections && b.reviewedSections[n]).length;
+  if (!inFix && !asked.length && !dec.length && !(pending && revd < BIZ_REVIEW_SECTIONS.length)) return '';
+  const by = {};   // שלב → [שורות]
+  const add = (n, t) => (by[n] = by[n] || []).push(t);
   if (inFix) {
-    const sentWa = b.waNudgeCount ? `וואטסאפ נשלח ${b.waNudgeCount === 1 ? 'פעם אחת' : b.waNudgeCount + ' פעמים'}${b.waNudgeAt ? ' · אחרון ' + fmtDateTime(b.waNudgeAt) : ''}` : 'עוד לא נשלח וואטסאפ';
-    parts.push(labels.length
-      ? blk('#F4F0FD', '#D9CCF7', '#6941C6', `✏️ ביקשת ממנו לתקן${b.inReviewAt ? ' · ' + fmtDateTime(b.inReviewAt) : ''}:`, labels.map(esc),
-          `<div style="color:var(--text-muted);font-size:11.5px;margin-top:6px">${bizFixLabel(b)} · ${sentWa}</div>`)
-      : blk('#FDECEC', '#F5C2C0', '#B42318', '✏️ צריך לתקן – אבל לא נשמר מה חסר', [], `<div style="color:var(--text-muted);font-size:11.5px;margin-top:6px">${bizFixLabel(b)} · ${sentWa}</div>`));
+    const keys = bizWaitKeys(b);
+    keys.filter(k => k !== 'other').forEach(k => {
+      const one = bizWaitOne(keys, b.inReviewOther) === k;
+      add(BS_REASON_STEP[k] || 0, '<b>נשלח לו לתקן:</b> ' + esc(WAIT_REASONS.find(r => r.k === k).label + (one ? ' – ' + String(b.inReviewOther).trim() : '')));
+    });
+    if (keys.includes('other') && !bizWaitOne(keys, b.inReviewOther)) String(b.inReviewOther || '').split(' · ').filter(Boolean)
+      .forEach(t => add(Object.keys(TILE_WORDS).some(k => TILE_WORDS[k].test(t)) ? 5 : 0, '<b>נשלח לו לתקן:</b> ' + esc(t)));
   }
-  if (dec.length) parts.push(blk('#FFF7DB', '#F5D96B', '#7A5B00', '🧺 בסל – עוד לא נשלח לו:',
-    basket.map(d => esc((d.decision === 'fix' ? '🚩 ' + d.label : '📝 ' + d.label) + (d.note ? (d.decision === 'fix' ? ' – ' : ': ') + d.note : '')))
-      .concat(others.map(d => esc((QJ_CHIP_ICON[d.decision] || '') + d.label + (d.note ? ' – ' + d.note : ''))))));
+  asked.forEach(it => add(it.section, '<b>שלח שינוי – מחכה לבדיקה שלך:</b> ' + esc(it.label)));
+  dec.forEach(d => {
+    const n = d.decision === 'fix' ? (BS_FIXKEY_STEP[d.key] || 0) : bizStepOfLabel(d.label);
+    const what = d.decision === 'remark' ? (d.note || '') : d.label + (d.note ? ' – ' + d.note : '');
+    add(n, `<b>בסל – ${BS_DEC_WORD[d.decision] || 'עוד'}:</b> ${esc(what)}`);
+  });
+  const li = t => `<li style="font-size:14.5px;margin:2px 0;white-space:pre-line">${t}</li>`;
+  const stepRow = (n, num, name) => {
+    const rev = !!(b.reviewedSections && b.reviewedSections[n]);
+    const items = by[n] || [];
+    if (!pending && !items.length) return '';
+    return `<div class="sum-step">
+      <div class="sum-step-h"><span class="sum-step-n">${num}</span><b>${name}</b>
+        ${pending || rev ? `<span class="sum-rev ${rev ? 'ok' : ''}">${rev ? '✓ נסקר' : 'לא נסקר'}</span>` : ''}
+        <button type="button" class="qj-btn link" onclick="jumpToBizSection('${b.id}',${n})">לשלב ←</button></div>
+      ${items.length ? `<ul style="margin:2px 0 0;padding-inline-start:22px">${items.map(li).join('')}</ul>` : ''}</div>`;
+  };
+  const steps = [[3, 1], [2, 2], [4, 3], [5, 4]].map(([n, num]) => stepRow(n, num, QJ_STEP_NAMES[n])).join('');
+  const ownerRow = (by[1] || []).length ? `<div class="sum-step"><div class="sum-step-h"><span class="sum-step-n">🎫</span><b>אימות בעל העסק</b><button type="button" class="qj-btn link" onclick="jumpToBizSection('${b.id}',1)">ללשונית ←</button></div><ul style="margin:2px 0 0;padding-inline-start:22px">${by[1].map(li).join('')}</ul></div>` : '';
+  const general = (by[0] || []).length ? `<div class="sum-step"><div class="sum-step-h"><span class="sum-step-n">•</span><b>כללי</b></div><ul style="margin:2px 0 0;padding-inline-start:22px">${by[0].map(li).join('')}</ul></div>` : '';
+  const sentWa = inFix ? (b.waNudgeCount ? ` · וואטסאפ נשלח ${b.waNudgeCount === 1 ? 'פעם אחת' : b.waNudgeCount + ' פעמים'}${b.waNudgeAt ? ', אחרון ' + fmtDateTime(b.waNudgeAt) : ''}` : ' · עוד לא נשלח וואטסאפ') : '';
+  const head = [
+    pending ? `נסקרו <b>${revd} מתוך ${BIZ_REVIEW_SECTIONS.length}</b> שלבים` : '',
+    inFix ? `<b>${bizFixLabel(b)}</b>${b.inReviewAt ? ' מאז ' + fmtDateTime(b.inReviewAt) : ''}${sentWa}` : '',
+    inFix && !bizWaitKeys(b).length ? '<b style="color:#B42318">לא נשמר מה חסר</b>' : '',
+    fixed ? `<b style="color:#067647">${esc(b.ownerFirst || 'בעל העסק')} סימן שתיקן ${fmtDateTime(fixed)} – מחכה לבדיקה שלך</b>` : '',
+    dec.length ? `<b>בסל ${dec.length} – עוד לא נשלח לו</b>` : '',
+  ].filter(Boolean).join(' · ');
   const btns = [
     inFix && b.ownerPhone ? `<button class="qj-btn primary" onclick="openWaitWa('${b.id}')">📲 תזכורת בוואטסאפ</button>` : '',
     (fixed || dec.length || asked.length) ? `<button class="qj-btn primary" onclick="bsOpen('${b.id}')">🧺 סיכום ושליחה</button>` : '',
-    inFix ? `<button class="qj-btn" onclick="bsOpen('${b.id}','fix')">${labels.length ? 'עריכת מה חסר' : 'לסמן מה חסר'}</button>` : '',
+    inFix ? `<button class="qj-btn" onclick="bsOpen('${b.id}','fix')">${bizWaitKeys(b).length ? 'עריכת מה חסר' : 'לסמן מה חסר'}</button>` : '',
   ].filter(Boolean).join('');
   return `
-    <div style="margin-bottom:14px;background:var(--card-bg);border:1.5px solid var(--warn-border);border-radius:12px;padding:6px 12px 10px">
-      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-top:4px">${btns}</div>
-      ${parts.join('')}
+    <div class="sum-box">
+      <div class="sum-top"><div style="flex:1;min-width:220px;font-size:13.5px">📋 ${head}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${btns}</div></div>
+      ${steps}${ownerRow}${general}
     </div>`;
 }
 function waitEl() {
