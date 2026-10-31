@@ -16141,7 +16141,7 @@ window.bsOpen = function(id, outcome) {
   const cur = bizWaitKeys(b).filter(k => k !== 'other');
   _bn = { bizId: id, mode: 'summary', outcome, sending: false, dirty: false,
     reasons: cur.length ? cur : WAIT_REASONS.filter(r => r.k !== 'other' && r.auto && r.auto(b)).map(r => r.k),
-    other: String(b.inReviewOther || '').trim() || bsRemarksText(b),
+    other: (() => { const prev = String(b.inReviewOther || '').trim(), rem = bsRemarksText(b); return prev && rem && !prev.includes(rem) ? (prev + ' · ' + rem).slice(0, 300) : prev || rem; })(),   // §675ג
     wa: !!b.ownerPhone };
   bsRender();
 };
@@ -16157,9 +16157,8 @@ function bsRender() {
       <span><b>${BS_OUT[k][0]}</b><span style="display:block;color:var(--text-muted,#5B6B8C);font-size:12px">${BS_OUT[k][1]}</span></span></label>`;
   const fixHtml = fix ? `
     <div style="border:1.5px solid #D9CCF7;background:#FBFAFF;border-radius:12px;padding:10px 12px;margin-top:4px">
-      <div style="font-weight:800;font-size:14px">מה חסר לו? <span style="font-weight:400;color:var(--text-muted,#5B6B8C);font-size:12px">– נכנס להודעה, ונשאר אצלו כרשימה בדף הבית ובדשבורד עד שיתקן</span></div>
-      ${WAIT_REASONS.filter(r => r.k !== 'other').map(r => `<label style="display:inline-flex;gap:6px;align-items:center;margin:6px 10px 0 0;font-size:13px;cursor:pointer"><input type="checkbox" value="${r.k}" ${o.reasons.includes(r.k) ? 'checked' : ''} onchange="bsReason(this)">${r.label}</label>`).join('')}
-      <textarea id="bsOther" maxlength="300" rows="2" placeholder="עוד משהו שחסר – במילים שלך (ההערות שכתבת על השלבים כבר כאן)" oninput="bsSet('other',this.value)" style="display:block;width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border-md,#ddd);border-radius:9px;resize:vertical;margin-top:8px">${esc(o.other)}</textarea>
+      <div style="font-weight:800;font-size:14px">מה יופיע אצלו <span style="font-weight:400;color:var(--text-muted,#5B6B8C);font-size:12px">– נבנה לבד ממה שחסר בכרטיס ומההערות שכתבת על השלבים. נכנס להודעה, ונשאר אצלו כרשימה בדף הבית ובדשבורד עד שיתקן</span></div>
+      ${bsMissItems(o).map(([k, t]) => `<div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:13px"><span style="flex:1;white-space:pre-line">• ${esc(t)}</span><button type="button" title="להוריד מהרשימה" onclick="bsDrop('${k}')" style="border:none;background:none;color:var(--text-muted,#5B6B8C);cursor:pointer;font-size:14px;line-height:1;padding:0 4px">✕</button></div>`).join('') || '<div style="margin-top:6px;font-size:13px;color:#B42318">אין כלום ברשימה. כתוב הערה על השלב בכרטיס – והיא תיכנס לכאן.</div>'}
     </div>` : '';
   const ch = bnChannels(b, o.outcome === 'approve');
   const goLbl = !o.outcome ? 'בחר מה עושים עם העסק' : o.outcome === 'save' && !text.trim() ? '💾 שמירה (בלי הודעה)' : text.trim() ? '📤 שמירה ושליחה' : '💾 שמירה בלי הודעה';
@@ -16200,6 +16199,17 @@ window.bsSet = function(k, v) {
   if (k === 'outcome') bsRender();
   else if (!o.dirty) { const ta = document.getElementById('bnText'); if (ta) ta.value = bsBuildText(findBiz(o.bizId), o.outcome, o.reasons, o.other); }
 };
+// §675ג – רמי: "למה שזה לא יגזור ממה שלחצתי?" – אין תיבות לסימון: הרשימה נבנית לבד, ו-✕ מוריד שורה
+function bsMissItems(o) {
+  return WAIT_REASONS.filter(r => r.k !== 'other' && o.reasons.includes(r.k)).map(r => [r.k, r.text])
+    .concat(String(o.other || '').trim() ? [['other', o.other.trim()]] : []);
+}
+window.bsDrop = function(k) {
+  const o = _bn;
+  if (!o || o.mode !== 'summary') return;
+  if (k === 'other') o.other = ''; else o.reasons = o.reasons.filter(x => x !== k);
+  bsRender();
+};
 window.bsReason = function(el) {
   const o = _bn;
   if (!o) return;
@@ -16215,7 +16225,7 @@ window.bsGo = async function() {
   const title = ((document.getElementById('bnTitle') || {}).value || '').trim().slice(0, BN_TITLE_MAX);
   const text = ((document.getElementById('bnText') || {}).value || '').trim();
   const other = String(o.other || '').trim().slice(0, 300);
-  if (fix && !o.reasons.length && !other) { err.textContent = 'סמן מה חסר לו – זה מה שיופיע לו באפליקציה.'; return; }
+  if (fix && !o.reasons.length && !other) { err.textContent = 'אין כלום ברשימה "מה יופיע אצלו" – כתוב הערה על השלב בכרטיס, והיא תיכנס לשם.'; return; }
   if (text && !title) { err.textContent = 'חסרה כותרת (היא שורת הפוש ונושא המייל).'; document.getElementById('bnTitle').focus(); return; }
   if (out === 'approve' && !o.mainDone) {
     const reviewed = bizReviewedCount(b), reviewTotal = BIZ_REVIEW_SECTIONS.length;
