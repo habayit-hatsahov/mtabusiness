@@ -19,6 +19,8 @@ const reset = () => {
     'members/owner1': { status: 'approved', firstName: 'שי', nativePushTokens: { i1: { token: 'tokO' } } },
     'businesses/biz1': { status: 'approved', name: 'פלאפל הזהב', ownerMemberId: 'owner1', ownerEmail: 'owner@x.co', ownerFirst: 'שי' },
     'businesses/bizNoOwner': { status: 'approved', name: 'מוסך', ownerEmail: 'garage@x.co', ownerFirst: 'דן' },
+    'businesses/bizPend': { status: 'pending', name: 'ממתין בע"מ', ownerMemberId: 'owner1', ownerEmail: 'owner@x.co', ownerFirst: 'שי' },   // §698
+    'businesses/bizRej': { status: 'rejected', name: 'נדחה', ownerMemberId: 'owner1', ownerEmail: 'owner@x.co', ownerFirst: 'שי' },
     'memberCodes/fanA': { loginCode: '111111' }, 'memberCodes/fanB': { loginCode: '222222' },
     'bizTokens/biz1': { accessToken: 'tok-biz1' }, 'bizTokens/bizNoOwner': { accessToken: 'tok-garage' },
   };
@@ -124,6 +126,17 @@ check('memberId של הבעלים חוזר', by(r, 'biz1').memberId === 'owner1'
 check('פוש לבעלים', by(r, 'biz1').push === 'sent' && fcm.some((m) => m.token === 'tokO'));
 check('עסק בלי בעלים – לא באפליקציה, כן במייל', by(r, 'bizNoOwner').app === 'none' && by(r, 'bizNoOwner').mail === 'sent', by(r, 'bizNoOwner'));
 check('מייל לכתובת שעל העסק, עם שם העסק וקישור אישי', mails.some((m) => m.to[0].email === 'owner@x.co' && m.subject === 'פלאפל הזהב' && m.htmlContent.includes('tok-biz1')), mails.map((m) => [m.to[0].email, m.subject]));
+
+console.log('§698 – עסק ממתין');
+reset();
+r = await call({ ...base, block: 'myBiz', recipients: [{ t: 'b', id: 'bizPend' }], app: { title: 'נשאר עוד צעד', text: 'חסרה תמונה' }, push: { title: 'נשאר', body: 'חסרה' }, mail: { subject: 'נ', body: 'ג' }, personalBiz: true });
+check('הודעה אישית לעסק ממתין (בעלים מאושר) – נכנסת לתיבה', by(r, 'bizPend').app === 'written' && !!db['members/owner1/inbox/msg_test01'], by(r, 'bizPend'));
+reset();
+r = await call({ ...base, block: 'myBiz', recipients: [{ t: 'b', id: 'bizPend' }], app: { title: 'שידור', text: 'לכולם' }, mail: { subject: 'נ', body: 'ג' } });
+check('שידור (בלי personalBiz) לעסק ממתין – לא באפליקציה, כמו קודם', by(r, 'bizPend').app === 'none', by(r, 'bizPend'));
+reset();
+r = await call({ ...base, block: 'myBiz', recipients: [{ t: 'b', id: 'bizRej' }], app: { title: 'x', text: 'y' }, mail: { subject: 'נ', body: 'ג' }, personalBiz: true });
+check('עסק שנדחה – לא באפליקציה גם עם personalBiz', by(r, 'bizRej').app === 'none', by(r, 'bizRej'));
 
 console.log('כשל מייל');
 reset();

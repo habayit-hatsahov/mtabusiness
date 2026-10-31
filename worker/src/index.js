@@ -1712,7 +1712,7 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
 // mail.scope: 'all' | 'missing' — 'missing' = רק מי שלא קיבל באפליקציה (§504ז).
 const MSG_CHUNK = 8;
 const MSG_BLOCKS = ['members', 'personal', 'allBiz', 'myBiz'];
-async function handleSendMessage({ idToken, messageId, block, recipients, app, push, mail }, env) {
+async function handleSendMessage({ idToken, messageId, block, recipients, app, push, mail, personalBiz }, env) {
   if (!/^[A-Za-z0-9_-]{6,40}$/.test(String(messageId || ''))) return { error: 'bad_message_id' };
   if (!MSG_BLOCKS.includes(block)) return { error: 'bad_block' };
   if (!Array.isArray(recipients) || !recipients.length) return { error: 'no_recipients' };
@@ -1747,7 +1747,10 @@ async function handleSendMessage({ idToken, messageId, block, recipients, app, p
     const mf = (member && member.fields) || {}, bf = (biz && biz.fields) || {};
     const gone = r.t === 'm' ? !member : !biz;
     // באפליקציה: רק לרשומת חבר מאושרת (כמו "עדכון לאזור"); עסק – גם העסק מאושר.
-    const appOk = !gone && !!member && mf.status === 'approved' && (r.t === 'm' || bf.status === 'approved');
+    // §698 – רמי: "שעסק ממתין יקבל את ההודעה גם בתיבה באפליקציה". הודעה אישית מכרטיס העסק (personalBiz – רק
+    // מ-bnSend במרכז הניהול; הנתיב למנהל בלבד) מגיעה גם לעסק ממתין, כשהבעלים כבר מאושר כחבר ויכול להיכנס.
+    // שידורים לקבוצות – כמו קודם, רק לעסקים מאושרים. עסק שנדחה – לא.
+    const appOk = !gone && !!member && mf.status === 'approved' && (r.t === 'm' || bf.status === 'approved' || (personalBiz === true && bf.status === 'pending'));
     return {
       id: r.id, t: r.t, memberId: member ? member.id : null, gone,
       name: r.t === 'm' ? `${mf.firstName || ''} ${mf.lastName || ''}`.trim() : String(bf.name || ''),

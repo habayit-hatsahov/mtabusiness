@@ -4683,8 +4683,7 @@ function renderSidebar() {
       <div class="sidebar-standalone ${SECTIONS.some(t=>t.key===activeTab)?'active':''}" onclick="goToTabGroup('section')" title="סקשנים"><span class="ic">${ICO_SECTIONS}</span></div>
       <div class="sidebar-standalone ${CAT_TABS.some(t=>t.key===activeTab)?'active':''}" onclick="goToTabGroup('category')" title="קטגוריות"><span class="ic">${ICO_CATS}</span></div>
       <div class="sidebar-divider"></div>
-      <div class="sidebar-standalone featured ${activeTab===DATA_KEY?'active':''}" onclick="selectTab('${DATA_KEY}')" title="מרכז נתונים"><span class="ic">${ICO_DATA}</span></div>
-      <div class="sidebar-standalone featured ${activeTab===APP_USAGE_KEY?'active':''}" onclick="selectTab('${APP_USAGE_KEY}')" title="אפליקציה ושימוש"><span class="ic">${ICO_APP}</span></div>
+      <div class="sidebar-standalone featured ${activeTab===DATA_KEY||activeTab===APP_USAGE_KEY?'active':''}" onclick="selectTab('${DATA_KEY}')" title="מרכז הנתונים"><span class="ic">${ICO_DATA}</span></div>
       <div class="sidebar-standalone ${activeTab===TRASH_KEY?'active':''}" onclick="selectTab('${TRASH_KEY}')" title="מחיקות ושחזור"><span class="ic">${ICO_TRASH}</span></div>
       <div class="sidebar-standalone ${activeTab===DEMO_LINKS_KEY?'active':''}" onclick="selectTab('${DEMO_LINKS_KEY}')" title="לינקים לתצוגה"><span class="ic">${ICO_LINK}</span></div>
       <div class="sidebar-divider"></div>
@@ -4735,11 +4734,8 @@ function renderSidebar() {
       <span class="ic">${ICO_CATS}</span><span>קטגוריות</span>
     </div>
     <div class="sidebar-divider"></div>
-    <div class="sidebar-standalone featured ${activeTab===DATA_KEY?'active':''}" onclick="selectTab('${DATA_KEY}')">
-      <span class="ic">${ICO_DATA}</span><span>מרכז נתונים</span>
-    </div>
-    <div class="sidebar-standalone featured ${activeTab===APP_USAGE_KEY?'active':''}" onclick="selectTab('${APP_USAGE_KEY}')">
-      <span class="ic">${ICO_APP}</span><span>אפליקציה ושימוש</span>
+    <div class="sidebar-standalone featured ${activeTab===DATA_KEY||activeTab===APP_USAGE_KEY?'active':''}" onclick="selectTab('${DATA_KEY}')">
+      <span class="ic">${ICO_DATA}</span><span>מרכז הנתונים</span>
     </div>
     <div class="sidebar-standalone ${activeTab===TRASH_KEY?'active':''}" onclick="selectTab('${TRASH_KEY}')">
       <span class="ic">${ICO_TRASH}</span><span>מחיקות ושחזור</span>
@@ -16658,7 +16654,8 @@ async function qjCloseDecided(id, why) {
 // העסק והחבר עוד ממתינים, אבל ההודעה נשלחת אחרי האישור.
 function bnChannels(b, assumeApproved) {
   const owner = m2Owner(b);
-  const app = !!owner && (assumeApproved ? owner.status !== 'rejected' : (b.status === 'approved' && owner.status === 'approved'));
+  // §698 – גם עסק ממתין: מספיק שהבעלים מאושר כחבר (הוורקר בודק שוב – personalBiz)
+  const app = !!owner && (assumeApproved ? owner.status !== 'rejected' : ((b.status === 'approved' || b.status === 'pending') && owner.status === 'approved'));
   return { app, push: app && m2HasTokens(owner), mail: !!b.ownerEmail };
 }
 function bnChanHtml(ch) {
@@ -16827,7 +16824,7 @@ async function bnSend(b, title, text, mode, closesDecided) {
   try {
     const idToken = await auth.currentUser.getIdToken();
     const resp = await hbApiFetch('/send-message', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, messageId: msgId, block: 'myBiz', recipients: [{ t: 'b', id: b.id }], app, push, mail: { ...mail, scope: 'all' } }) });
+      body: JSON.stringify({ idToken, messageId: msgId, block: 'myBiz', recipients: [{ t: 'b', id: b.id }], app, push, mail: { ...mail, scope: 'all' }, personalBiz: true }) });   // §698
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
     r = (data.results || []).find(x => x.id === b.id) || {};
@@ -22978,6 +22975,32 @@ function deletionLogHtml() {
     <div style="margin-top:10px"><button class="act-btn tiny" onclick="retryDeletionLog()">🔄 רענון</button></div>`;
 }
 
+// ── §698 — מרכז הנתונים: לשוניות (רמי, 1.11: "הכל במרכז אחד עם לשוניות") ───────────────────────
+let dcHub = 'usage';
+window.dcHubSet = (k) => { dcHub = k; renderMain(); };
+function dcHubTabsHtml() {
+  const t = (k, l) => `<button class="${dcHub === k ? 'on' : ''}" onclick="dcHubSet('${k}')">${l}</button>`;
+  return `<style>.dc-hub{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 14px}.dc-hub h1{font-size:20px;margin:0 12px 0 0}.dc-hub button{font:inherit;font-size:14px;font-weight:600;border:1px solid var(--line,#E7E7E0);background:#fff;border-radius:999px;padding:7px 16px;cursor:pointer;color:#0A2A66}.dc-hub button.on{background:#0A2A66;color:#fff;border-color:#0A2A66}.dc-back{margin:0 0 10px}.dc-back a{cursor:pointer;color:#3E63B8;font-weight:600}</style>
+    <div class="dc-hub"><h1>מרכז הנתונים</h1>${t('usage', 'אפליקציה ושימוש')}${t('trackers', 'מעקבים')}${t('engage', 'מעורבות')}</div>`;
+}
+// הקובץ נטען פעם אחת; הנתונים נטענים פעם אחת (רענון – מתוך המסך)
+let dcUsageImport = null;
+function dcUsageEnsure() {
+  if (window.YZU) { window.YZU.load(); return; }
+  if (dcUsageImport) return;
+  dcUsageImport = import('./admin-usage.js?v=698').then((m) => {
+    m.init({
+      db, fs: { collection, getDocs, query, where, orderBy, limit },
+      fans: () => MOCK_FANS, biz: () => MOCK_BUSINESSES, pushInfo: memberPushInfo, esc,
+      rerender: () => { if (activeTab === DATA_KEY && dcHub === 'usage') renderMain(); },
+      openOld: () => selectTab(APP_USAGE_KEY),
+    });
+    window.YZU = m;
+    m.load();
+    renderMain();
+  }).catch((e) => { console.error(e); dcUsageImport = null; const w = document.getElementById('tabContent'); if (w && activeTab === DATA_KEY) w.innerHTML = dcHubTabsHtml() + `<div class="placeholder-note">טעינת המסך נכשלה: ${esc(e.message)}</div>`; });
+}
+
 function renderMain() {
   const focusState = captureSearchFocus();
   renderMainInner();
@@ -23024,8 +23047,18 @@ function renderMainInner() {
     wrap.innerHTML = landingContentTabHtml();
     return;
   }
+  // §698 — מרכז הנתונים: לשוניות. "אפליקציה ושימוש" חי ב-admin-usage.js (נטען בכניסה הראשונה),
+  // "מעקבים" – בבנייה, "מעורבות" – בינתיים המסך הקודם של מרכז הנתונים, עד שייבנה מחדש.
+  if (activeTab === DATA_KEY && dcHub !== 'engage') {
+    const body = dcHub === 'usage'
+      ? (window.YZU ? window.YZU.html() : '<div class="placeholder-note">טוען…</div>')
+      : '<div class="placeholder-note">🚧 המעקבים בבנייה – השלב הבא אחרי "אפליקציה ושימוש".</div>';
+    wrap.innerHTML = dcHubTabsHtml() + body;
+    if (dcHub === 'usage') dcUsageEnsure();
+    return;
+  }
   if (activeTab === DATA_KEY) {
-    wrap.innerHTML = dataCenterHtml();
+    wrap.innerHTML = dcHubTabsHtml() + dataCenterHtml();
     // §275 — טעינה עצלה של נתוני-המימוש: רק כשנכנסים למסך הזה, ופעם אחת בלבד. loadRedeemStats
     // קוראת ל-renderMain בסיום, ולכן היא מצוירת שוב עם הנתונים; היא יוצאת מיד אם כבר נטען,
     // כך שאין לולאת-רינדור.
@@ -23039,7 +23072,8 @@ function renderMainInner() {
   }
   // §488 — אותו דפוס: HTML מ-globals, טעינה עצלה פעם אחת. bindAppUsage אחרי כל ציור (הגרף צריך רוחב אמיתי).
   if (activeTab === APP_USAGE_KEY) {
-    wrap.innerHTML = appUsageHtml();
+    // §698 — המסך הקודם נפתח רק מתוך מרכז הנתונים ("עוד במסך"), עם דרך חזרה
+    wrap.innerHTML = `<div class="dc-back"><a onclick="selectTab('${DATA_KEY}')">← חזרה למרכז הנתונים</a></div>` + appUsageHtml();
     loadQrCodes();   // §557 — שמות קודי ה-QR בטבלאות המקור
     if (auState.view === 'stores') { loadStoreDl(); return; }   // §556
     bindAppUsage();
