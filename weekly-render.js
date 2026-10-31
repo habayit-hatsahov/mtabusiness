@@ -872,8 +872,24 @@
     } catch (e) {}
     return true;
   }
+  // §695 – תור עד ש-logEvent קיים. home.html מגדיר את window.logEvent רק בסוף ה-module (אחרי הייבוא
+  // מ-Firebase), והקרוסלה נבנית מוקדם יותר (WK.mount בגוף הדף). ה-view של התיבה הראשונה – שעל המסך
+  // כבר בטעינה – נורה לפני כן: once() סימן "נספר" והאירוע הלך לאיבוד. 49 view מול 599 open (26.10–31.10),
+  // כשבשאר התיבות (שנראות רק אחרי החלקה) ה-view גבוה פי 5–10 מה-open. בלי logEvent בכלל (התצוגה
+  // המקדימה בעורך) – התור נזרק אחרי 30 שניות.
+  var trackQ = [], trackT = null;
   function track(kind, action, bizId) {
-    try { if (typeof window.logEvent === 'function') window.logEvent('carousel', { blockId: String(kind || '').slice(0, 50), channel: String(action || '').slice(0, 50), bizId: bizId || null }); } catch (e) {}
+    var ev = { blockId: String(kind || '').slice(0, 50), channel: String(action || '').slice(0, 50), bizId: bizId || null };
+    if (typeof window.logEvent === 'function') { try { window.logEvent('carousel', ev); } catch (e) {} return; }
+    trackQ.push(ev);
+    if (trackT) return;
+    var tries = 0;
+    trackT = setInterval(function () {
+      var ready = typeof window.logEvent === 'function';
+      if (!ready && ++tries < 60) return;
+      clearInterval(trackT); trackT = null;
+      trackQ.splice(0).forEach(function (q) { if (ready) try { window.logEvent('carousel', q); } catch (e) {} });
+    }, 500);
   }
   var viewObs = null;
   function watchViews(tr) {

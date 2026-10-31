@@ -1803,7 +1803,7 @@ document.getElementById('catPills').insertAdjacentHTML('beforeend', window.CATEG
      ב-admin-carousel.html). מצוירת מיד מהנוסח המאושר / מהמטמון, והמסמך homeCarousel/current מחליף אותה
      כשהוא מגיע – כשל ברשת משאיר את מה שכבר מוצג. בלי מדידה חדשה (הקפאת הנתונים, 23.10). ══ -->
 <div id="wkRoot"></div>
-<script src="weekly-render.js?v=658"></script>
+<script src="weekly-render.js?v=695"></script>
 <script>WK.mount(document.getElementById('wkRoot'));</script>
 <script type="module">
 import { db } from './firebase-config.js';
@@ -3240,6 +3240,7 @@ function shareBiz(event) {
     // (בדיוק מה שרצינו למנוע עם slugify). דפדפנים/וואטסאפ מציגים ומטפלים ב-Unicode גולמי ב-URL
     // כרגיל בלי בעיה; slugify כבר הסיר את התווים היחידים שבאמת עלולים לשבור את ה-query string.
     url: 'https://yellowzone.co.il/open?biz=' + slugify(b.name),
+    bizId: b.id,   // §695 – למדידה בלבד (_logShare)
   };
   document.getElementById('shareSheetTitle').textContent = '📤 שיתוף העסק';
   document.getElementById('shareSheetSub').textContent = `שתפו את "${b.name}" עם חברים`;
@@ -3255,6 +3256,7 @@ function shareMyBiz() {
     title: _myBizShare.name,
     text: (window.yzShareText && window.yzShareText('mybiz', _myBizShare.name)) || `העסק שלי "${_myBizShare.name}" נמצא ב-Yellow Zone – האפליקציה של העסקים של אוהדי מכבי 💛\nיש שם הטבה בלעדית לחברים.\nאשמח שתיכנסו ותעשו לי לייק – ככה העסק עולה למעלה ומקבל יותר חשיפה:`,   // §551
     url: 'https://yellowzone.co.il/open?biz=' + slugify(_myBizShare.name),
+    bizId: _myBizShare.id || null,   // §695
   };
   document.getElementById('shareSheetTitle').textContent = '📤 שיתוף העסק שלכם';
   document.getElementById('shareSheetSub').textContent = `שתפו את "${_myBizShare.name}" עם חברים`;
@@ -3269,10 +3271,21 @@ function openShareSheet() {
   if (nativeOption) nativeOption.style.display = navigator.share ? 'flex' : 'none';
   document.getElementById('shareOverlay').classList.add('open');
 }
+// §695 — מדידת שיתוף: type 'share', blockId = ההקשר (biz-sheet = אוהד משתף עסק מהגיליון ·
+// biz-menu = בעל עסק משתף את העסק שלו · app = "הזמינו חברים"), channel = whatsapp / native / copy,
+// bizId = העסק (null ב-app). native נספר רק כשהשיתוף הושלם (ביטול לא נספר); whatsapp/copy – בלחיצה.
+// ⚠️ ה-context נקבע ב-dataset **אחרי** openShareSheet, ולכן נקרא כאן ברגע הפעולה ולא בפתיחה.
+function _logShare(channel) {
+  if (!_shareData || typeof window.logEvent !== 'function') return;
+  const ctx = document.getElementById('shareOverlay').dataset.context || 'app';
+  try { window.logEvent('share', { blockId: ctx, channel, bizId: ctx === 'app' ? null : (_shareData.bizId || null) }); } catch (e) {}
+}
 async function nativeShareApp(event) {
   event.stopPropagation();
   if (!navigator.share || !_shareData) return;
-  try { await navigator.share(_shareData); } catch (e) { /* המשתמש ביטל או שאין תמיכה — לא באג, לא צריך לטפל */ }
+  // bizId פנימי בלבד – לא נשלח ל-navigator.share
+  const { bizId, ...data } = _shareData;
+  try { await navigator.share(data); _logShare('native'); } catch (e) { /* המשתמש ביטל או שאין תמיכה — לא באג, לא צריך לטפל */ }
 }
 function closeShareSheet() {
   const overlay = document.getElementById('shareOverlay');
@@ -3286,6 +3299,7 @@ function copyShareLink(event) {
   event.stopPropagation();
   const url = document.getElementById('shareLinkText').textContent;
   navigator.clipboard?.writeText(url).catch(() => {});
+  _logShare('copy');
   const btn = event.currentTarget.closest('.contact-option').querySelector('.contact-copy-btn');
   if (btn) {
     const original = btn.textContent;
@@ -4966,7 +4980,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <button class="contact-copy-btn" onclick="copyShareLink(event)" title="העתק קישור">📋</button>
       </div>
-      <a class="contact-option" id="shareWhatsappLink" href="#" target="_blank">
+      <a class="contact-option" id="shareWhatsappLink" href="#" target="_blank" onclick="_logShare('whatsapp')">
         <span class="contact-option-icon">💬</span>
         <div class="contact-option-body">
           <div class="contact-option-title">WhatsApp</div>
@@ -5893,7 +5907,7 @@ async function initBizNavItem() {
         // הזה (2026-08-12) "העסק שלי" הוצג לכל בעל-token גם כשהעסק pending — בעל עסק שממתין
         // לאישור לא אמור לראות "העסק שלי" בתפריט בכלל.
         if (approved) {
-          window._myBizShare = { name: bizData.name || '' }; // ר' ההערה ליד ההצהרה — לא bare
+          window._myBizShare = { id: linkedBusinessId, name: bizData.name || '' }; // ר' ההערה ליד ההצהרה — לא bare
           const shareItem = document.getElementById('menuShareBizItem');
           if (shareItem) shareItem.style.display = 'flex';
         }
