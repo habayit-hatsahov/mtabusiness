@@ -508,6 +508,8 @@ body {
 .sum-it.sent { background: #F4F0FD; border-color: #7F56D9; }
 .sum-it.owner { background: #ECFDF3; border-color: #12B76A; }
 .sum-it.basket { background: #FFF7DB; border-color: #F5B800; }
+.sum-legend { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.sum-legend .sum-it { margin: 0; padding: 2px 8px; font-size: 11.5px; font-weight: 700; }
 .sum-tag { flex: none; font-size: 11.5px; font-weight: 800; border-radius: 999px; padding: 1px 8px; background: #fff; }
 .sum-it.sent .sum-tag { color: #6941C6; }
 .sum-it.owner .sum-tag { color: #067647; }
@@ -14291,7 +14293,9 @@ function bizWaitTexts(b) { return bizWaitLines(bizWaitKeys(b), b.inReviewOther, 
 // (באותו סדר ומספור כמו בכרטיס): נסקר / לא נסקר, ומתחת – כל מה שקשור לשלב, במילים:
 // "נשלח לו לתקן" (inReviewReasons) · "שלח שינוי – מחכה לבדיקה" (pendingChanges) · "בסל – …" (QJ_DECIDED).
 // מה שלא שייך לשלב (תגיות שאושרו, הודעה מוכנה, "אחר" כללי) – תחת "כללי".
-const BS_DEC_WORD = { fix: 'בקשת תיקון', remark: 'הערה', edited: 'עדכנו', approved: 'אושר', rejected: 'לא אושר', mapped: 'מופה', handled: 'טיפלנו', info: 'הודעה' };
+// §684ב – רמי: "עדכנו – תרשום אנחנו עדכנו… בקשת תיקון מצידנו או בקשת עדכון מבעל העסק – שיהיה ברור… שלא יהיה סתם כפילות בתגים".
+// הצבע אומר את המצב (סגול = נשלח, צהוב = בסל ועוד לא נשלח, ירוק = ממנו), והתג אומר מי ומה.
+const BS_DEC_WORD = { fix: 'ביקשנו לתקן · עוד לא נשלח', remark: 'הערה שלנו', edited: 'אנחנו עדכנו', approved: 'אישרנו לו', rejected: 'לא אישרנו לו', mapped: 'שייכנו בשבילו', handled: 'טיפלנו', info: 'הודעה מוכנה' };
 const BS_REASON_STEP = { cover: 5, logo: 5, deal: 4, desc: 2, owner: 1 };
 const BS_FIXKEY_STEP = { cover: 5, logo: 5, gallery: 5, deal: 4, step2: 2, step3: 3 };
 function bizStepOfLabel(label) {
@@ -14314,19 +14318,19 @@ function bizWaitBannerHtml(b) {
     const keys = bizWaitKeys(b);
     keys.filter(k => k !== 'other').forEach(k => {
       const one = bizWaitOne(keys, b.inReviewOther) === k;
-      add(BS_REASON_STEP[k] || 0, 'sent', 'נשלח לו לתקן', WAIT_REASONS.find(r => r.k === k).label + (one ? ' – ' + String(b.inReviewOther).trim() : ''));
+      add(BS_REASON_STEP[k] || 0, 'sent', 'ביקשנו לתקן · נשלח', WAIT_REASONS.find(r => r.k === k).label + (one ? ' – ' + String(b.inReviewOther).trim() : ''));
     });
     if (keys.includes('other') && !bizWaitOne(keys, b.inReviewOther)) String(b.inReviewOther || '').split(' · ').filter(Boolean)
-      .forEach(t => add(Object.keys(TILE_WORDS).some(k => TILE_WORDS[k].test(t)) ? 5 : 0, 'sent', 'נשלח לו לתקן', t));
+      .forEach(t => add(Object.keys(TILE_WORDS).some(k => TILE_WORDS[k].test(t)) ? 5 : 0, 'sent', 'ביקשנו לתקן · נשלח', t));
   }
-  asked.forEach(it => add(it.section, 'owner', 'בעל העסק שלח – לבדוק', it.label));
+  asked.forEach(it => add(it.section, 'owner', 'בעל העסק ביקש לעדכן', it.label));
   dec.forEach(d => {
     const n = d.decision === 'fix' ? (BS_FIXKEY_STEP[d.key] || 0) : bizStepOfLabel(d.label);
     const what = d.decision === 'remark' ? (d.note || '') : d.label + (d.note ? ' – ' + d.note : '');
-    add(n, 'basket', 'בסל · ' + (BS_DEC_WORD[d.decision] || 'עוד'), what);
+    add(n, 'basket', BS_DEC_WORD[d.decision] || 'עוד', what);
   });
   // §683ב – רמי: "בנראות של זה שיהיה יותר ברור, וגם הכללי להסביר מה זה". פריט = תג צבעוני לפי סוג + הטקסט.
-  const TAG_HELP = { 'נשלח לו לתקן': 'כבר נשלח אליו ב"צריך לתקן" – מופיע אצלו ברשימת "מה חסר לנו" עד שיתקן', 'בעל העסק שלח – לבדוק': 'בעל העסק שינה את זה בדשבורד – מחכה ל-✅/❌ שלך', 'בסל · בקשת תיקון': 'ביקשת שיתקן – בשליחה ייכנס לרשימת "מה חסר לנו" אצלו, והסטטוס יהיה "צריך לתקן"', 'בסל · הערה': 'טיפ או הסבר שלך – ייכתב בהודעה, בלי לדרוש תיקון', 'בסל · עדכנו': 'שינית בעצמך בכרטיס – ייכתב לו בהודעה "עדכנו בשבילך"', 'בסל · הודעה': 'טקסט מוכן שיצורף להודעה', 'בסל · אושר': 'אישרת בקשה שלו – ייכתב לו שאושר', 'בסל · לא אושר': 'לא אישרת בקשה שלו – ייכתב לו עם ההסבר' };
+  const TAG_HELP = { 'ביקשנו לתקן · נשלח': 'בקשה שלנו שכבר נשלחה אליו ב"צריך לתקן" – מופיעה אצלו ברשימת "מה חסר לנו" עד שיתקן', 'ביקשנו לתקן · עוד לא נשלח': 'בקשה שלנו שיושבת בסל – בשליחה תיכנס לרשימת "מה חסר לנו" אצלו, והסטטוס יהיה "צריך לתקן"', 'בעל העסק ביקש לעדכן': 'בעל העסק שינה את זה בדשבורד – מחכה ל-✅/❌ שלנו', 'הערה שלנו': 'טיפ או הסבר – ייכתב בהודעה, בלי לדרוש תיקון', 'אנחנו עדכנו': 'שינינו בעצמנו בכרטיס – ייכתב לו בהודעה "עדכנו בשבילך"', 'הודעה מוכנה': 'טקסט מוכן שיצורף להודעה', 'אישרנו לו': 'אישרנו בקשה שלו – ייכתב לו שאושר', 'לא אישרנו לו': 'לא אישרנו בקשה שלו – ייכתב לו עם ההסבר' };
   const item = it => { const t = String(it.text || '').replace(/\s*\n\s*/g, ' '); return `<div class="sum-it ${it.kind}"><span class="sum-tag" title="${esc(TAG_HELP[it.tag] || '')}">${esc(it.tag)}</span><span class="sum-txt" title="${esc(t)}">${esc(t.length > 160 ? t.slice(0, 160) + '…' : t)}</span></div>`; };
   const STEPS = [[3, 1], [2, 2], [4, 3], [5, 4]];
   // שורת התקדמות – 4 השלבים בשורה אחת (עסק ממתין)
@@ -14354,7 +14358,7 @@ function bizWaitBannerHtml(b) {
   return `
     <div class="sum-box">
       <div class="sum-top"><div style="flex:1;min-width:220px"><div style="font-weight:900;font-size:15px">📋 מצב הכרטיס</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">${head}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap">${btns}</div></div>
-      ${progress}${steps}${ownerRow}${general}
+      ${progress}${Object.keys(by).length ? '<div class="sum-legend"><span class="sum-it sent">סגול – ביקשנו ממנו, כבר נשלח</span><span class="sum-it basket">צהוב – שלנו, בסל, עוד לא נשלח</span><span class="sum-it owner">ירוק – בעל העסק ביקש, מחכה לנו</span></div>' : ''}${steps}${ownerRow}${general}
     </div>`;
 }
 function waitEl() {
