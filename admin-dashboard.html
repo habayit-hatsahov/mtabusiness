@@ -13945,14 +13945,19 @@ function bizWaitKeys(b) {
   if (!WAIT_REASONS) return [];
   return WAIT_REASONS.map(r => r.k).filter(k => ks.includes(k) && (k !== 'other' || String(b.inReviewOther || '').trim()));
 }
-function bizWaitLabels(b, short) {
-  return bizWaitKeys(b).map(k => {
-    if (k !== 'other') return WAIT_REASONS.find(r => r.k === k).label;
-    const t = String(b.inReviewOther).trim();
-    return short && t.length > 40 ? t.slice(0, 40) + '…' : t;
+// §675ד – רמי: "התיקון זה משהו אחד וזה כאילו חילק את זה ל-2 נקודות". סיבה אחת + הערה = אותו תיקון:
+// "פרטי ההטבה – צריך לחזור עם הטבה". כמה סיבות + הערה – כל אחת בנפרד (אי אפשר לדעת לאיזו ההערה שייכת).
+function bizWaitOne(keys, other) { const r = keys.filter(k => k !== 'other'); return r.length === 1 && String(other || '').trim() ? r[0] : null; }
+function bizWaitLines(keys, other, long, short) {
+  const t = String(other || '').trim(), one = bizWaitOne(keys, t), cut = x => short && x.length > 40 ? x.slice(0, 40) + '…' : x;
+  return keys.filter(k => k !== 'other' || (t && !one)).map(k => {
+    if (k === 'other') return cut(t);
+    const r = WAIT_REASONS.find(x => x.k === k);
+    return k === one ? r.label + ' – ' + cut(t) : long ? r.text : r.label;
   });
 }
-function bizWaitTexts(b) { return bizWaitKeys(b).map(k => k === 'other' ? String(b.inReviewOther).trim() : WAIT_REASONS.find(r => r.k === k).text); }
+function bizWaitLabels(b, short) { return bizWaitLines(bizWaitKeys(b), b.inReviewOther, false, short); }
+function bizWaitTexts(b) { return bizWaitLines(bizWaitKeys(b), b.inReviewOther, true); }
 // הפס בראש הכרטיס – רק לעסק בתהליך אישור
 function bizWaitBannerHtml(b) {
   if (!bizInFix(b) || !MOCK_BUSINESSES.includes(b)) return '';   // §671 – גם עסק מאושר שצריך לתקן
@@ -16116,7 +16121,7 @@ function bsBuildText(b, outcome, reasons, other) {
   const dec = QJ_DECIDED[b.id] || [];
   const decText = qjDecidedText(bsIsFix(outcome) ? dec.filter(d => d.decision !== 'remark') : dec);
   if (bsIsFix(outcome)) {
-    const miss = WAIT_REASONS.filter(r => r.k !== 'other' && reasons.includes(r.k)).map(r => '• ' + r.text).concat(other ? ['• ' + other] : []);
+    const miss = bizWaitLines(WAIT_REASONS.map(r => r.k).filter(k => k === 'other' ? String(other || '').trim() : reasons.includes(k)), other, true).map(t => '• ' + t);   // §675ד
     return `כדי שהכרטיס של "${b.name}" יהיה מושלם, חסר לנו:\n${miss.join('\n')}`
       + (outcome === 'fixHide' || (outcome === 'fix' && b.fixHidden) ? '\n\nעד התיקון העסק מוסתר מהאתר.' : '')
       + (decText ? '\n\nובבקשות שלך:\n' + decText : '')
@@ -16124,6 +16129,23 @@ function bsBuildText(b, outcome, reasons, other) {
   }
   if (outcome === 'approve') return decText ? 'לגבי הכרטיס שלך:\n\n' + decText : '';
   return decText;
+}
+// §675ד – רמי: "התיקון זה משהו אחד וזה כאילו חילק את זה ל-2 נקודות". הערה על שלב בולעת את הסיבה
+// האוטומטית של אותו שלב: "פרטי ההטבה" + "צריך לחזור עם הטבה" → "פרטי ההטבה – צריך לחזור עם הטבה".
+// אותה הערה שכבר נשמרה בסבב קודם לא נכפלת.
+const BS_STEP_REASONS = { 'הטבות': ['deal'], 'פרטים ויצירת קשר': ['desc'], 'תמונות': ['cover', 'logo'] };
+function bsMergeRemarks(b, reasons) {
+  const rems = (QJ_DECIDED[b.id] || []).filter(d => d.decision === 'remark' && d.note);
+  let rs = reasons.slice();
+  const lines = rems.map(d => {
+    const ks = (BS_STEP_REASONS[d.label] || []).filter(k => rs.includes(k));
+    rs = rs.filter(k => !ks.includes(k));
+    return (ks.length ? ks.map(k => WAIT_REASONS.find(r => r.k === k).label).join(', ') + ' – ' : '') + d.note.replace(/\s*\n\s*/g, ' ');
+  });
+  const notes = rems.map(d => d.note.replace(/\s*\n\s*/g, ' ').trim());
+  if (!rems.length) return { reasons: rs, other: String(b.inReviewOther || '').trim() };
+  const prev = String(b.inReviewOther || '').split(' · ').map(t => t.trim()).filter(t => t && !notes.includes(t) && !lines.includes(t));
+  return { reasons: rs, other: [...new Set(prev.concat(lines))].join(' · ').slice(0, 300) };
 }
 // "אחר" של "למה ממתינים" = ההערות על השלבים (עד 300 תווים – הגבול של /biz-reg-status)
 function bsRemarksText(b) {
@@ -16139,9 +16161,9 @@ window.bsOpen = function(id, outcome) {
   else if (outcome === 'fix' && bizShownStatus(b) === 'approved') outcome = 'fixHide';   // §675 – מוסתר: "עריכת מה חסר" = נשאר מוסתר
   if (!outs.includes(outcome)) outcome = outcome === undefined && b.status === 'approved' ? 'save' : null;
   const cur = bizWaitKeys(b).filter(k => k !== 'other');
+  const merged = bsMergeRemarks(b, cur.length ? cur : WAIT_REASONS.filter(r => r.k !== 'other' && r.auto && r.auto(b)).map(r => r.k));   // §675ד
   _bn = { bizId: id, mode: 'summary', outcome, sending: false, dirty: false,
-    reasons: cur.length ? cur : WAIT_REASONS.filter(r => r.k !== 'other' && r.auto && r.auto(b)).map(r => r.k),
-    other: (() => { const prev = String(b.inReviewOther || '').trim(), rem = bsRemarksText(b); return prev && rem && !prev.includes(rem) ? (prev + ' · ' + rem).slice(0, 300) : prev || rem; })(),   // §675ג
+    reasons: merged.reasons, other: merged.other,
     wa: !!b.ownerPhone };
   bsRender();
 };
@@ -16201,13 +16223,16 @@ window.bsSet = function(k, v) {
 };
 // §675ג – רמי: "למה שזה לא יגזור ממה שלחצתי?" – אין תיבות לסימון: הרשימה נבנית לבד, ו-✕ מוריד שורה
 function bsMissItems(o) {
-  return WAIT_REASONS.filter(r => r.k !== 'other' && o.reasons.includes(r.k)).map(r => [r.k, r.text])
-    .concat(String(o.other || '').trim() ? [['other', o.other.trim()]] : []);
+  const keys = WAIT_REASONS.map(r => r.k).filter(k => k === 'other' ? String(o.other || '').trim() : o.reasons.includes(k));
+  const one = bizWaitOne(keys, o.other);
+  return bizWaitLines(keys, o.other, true).map((t, i) => [one && keys.filter(k => k !== 'other' || !one)[i] === one ? 'both:' + one : keys.filter(k => k !== 'other' || !one)[i], t]);
 }
 window.bsDrop = function(k) {
   const o = _bn;
   if (!o || o.mode !== 'summary') return;
-  if (k === 'other') o.other = ''; else o.reasons = o.reasons.filter(x => x !== k);
+  if (k === 'other') o.other = '';
+  else if (k.startsWith('both:')) { o.other = ''; o.reasons = o.reasons.filter(x => x !== k.slice(5)); }   // שורה אחת = הסיבה וההערה יחד
+  else o.reasons = o.reasons.filter(x => x !== k);
   bsRender();
 };
 window.bsReason = function(el) {
