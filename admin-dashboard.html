@@ -5255,7 +5255,7 @@ window.setBizHealthFilter = function(v) { bizHealthFilter = v; renderMain(); };
 window.setBizDateRangeFilter = function(v) { bizDateRangeFilter = v; renderMain(); };
 window.setBizSort = function(v) { bizSort = v; renderMain(); };
 window.setBizClassPill = function(v) { bizClassPill = v; if (v === 'rejected') bizOnlyFix = false; renderMain(); };
-window.toggleBizOnlyFix = function() { bizOnlyFix = !bizOnlyFix; renderMain(); };
+window.toggleBizOnlyFix = function() { bizOnlyFix = !bizOnlyFix; if (bizOnlyFix && !['all', 'pending', 'approved'].includes(bizClassPill)) bizClassPill = 'all'; renderMain(); };
 window.toggleBizAdvanced = function() { bizAdvancedOpen = !bizAdvancedOpen; renderMain(); };
 window.clearBizFilters = function() {
   bizSearch = ''; bizStatusFilter = 'all'; bizCategoryFilter = 'all'; bizTypeFilter = 'all'; bizReviewFilter = 'all'; bizHealthFilter = 'all'; bizDateRangeFilter = 'all'; bizSort = 'waitingLongest'; bizClassPill = 'all'; bizOnlyFix = false;
@@ -5314,11 +5314,12 @@ function hoursIssues(b) {
 
 function bizClassCounts() {
   return {
-    all: MOCK_BUSINESSES.length,
-    pending: MOCK_BUSINESSES.filter(b => bizShownStatus(b) === 'pending').length,
-    fix: MOCK_BUSINESSES.filter(b => bizInFix(b) && bizClassMatch(b, bizClassPill)).length,   // §675 – בתוך הלשונית הנוכחית
-    requests: MOCK_BUSINESSES.filter(b => classifyAction(b, 'business').treatments.length > 0).length,
-    approved: MOCK_BUSINESSES.filter(b => bizShownStatus(b) === 'approved').length,
+    // §675ב – כש"רק צריך לתקן" דלוק, כל לשונית סופרת רק את מי שצריך לתקן
+    all: MOCK_BUSINESSES.filter(b => !bizOnlyFix || bizInFix(b)).length,
+    pending: MOCK_BUSINESSES.filter(b => bizShownStatus(b) === 'pending' && (!bizOnlyFix || bizInFix(b))).length,
+    fix: MOCK_BUSINESSES.filter(bizInFix).length,   // §675
+    requests: MOCK_BUSINESSES.filter(b => classifyAction(b, 'business').treatments.length > 0 && (!bizOnlyFix || bizInFix(b))).length,
+    approved: MOCK_BUSINESSES.filter(b => bizShownStatus(b) === 'approved' && (!bizOnlyFix || bizInFix(b))).length,
     rejected: MOCK_BUSINESSES.filter(b => b.status === 'rejected').length,
     // §232 — עסקים עם אתר/פייסבוק/אינסטגרם שאינו כתובת אמיתית. הפיל מוצג רק כשיש כאלה,
     // ונעלם מעצמו כשכולם תוקנו. **חייב להיות כאן ולא בשורת "עוד סינונים"** — היא לא
@@ -11082,11 +11083,11 @@ function bizFilterBarHtml(opts) {
       <div class="filter-toolbar-row biz-class-pills">
         ${pill('all', 'הכל')}
         ${pill('pending', 'ממתינים לאישור')}
-        ${pill('requests', 'בקשות מבעלי עסקים')}
+        ${bizOnlyFix ? '' : pill('requests', 'בקשות מבעלי עסקים')}
         ${pill('approved', 'מאושרים')}
-        ${pill('rejected', 'נדחו')}
-        ${counts.brokenLinks ? pill('brokenLinks', '🔗 קישורים שבורים') : ''}
-        ${counts.hoursOther ? pill('hoursOther', '🕐 שעות לבדיקה') : ''}
+        ${bizOnlyFix ? '' : pill('rejected', 'נדחו')}
+        ${!bizOnlyFix && counts.brokenLinks ? pill('brokenLinks', '🔗 קישורים שבורים') : ''}
+        ${!bizOnlyFix && counts.hoursOther ? pill('hoursOther', '🕐 שעות לבדיקה') : ''}
         ${bizClassPill !== 'rejected' && (counts.fix || bizOnlyFix) ? `<button class="biz-class-pill ${bizOnlyFix ? 'active' : ''}" style="border-color:#C9B8F5${bizOnlyFix ? '' : ';color:#6941C6'}" onclick="toggleBizOnlyFix()">✏️ רק צריך לתקן · ${counts.fix}</button>` : ''}
       </div>
       ${o.selectAll ? bizSelectAllRowHtml() : ''}
@@ -15484,12 +15485,12 @@ function quickJudgmentHtml(b) {
         ${showApproveApp ? `
         <div class="qj-header-actions">
           <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קישור לדשבורד" onclick="approveBiz('${b.id}')">✅ אשר את העסק</button>
-          <button class="qj-btn-reject-app" onclick="bsOpen('${b.id}','fix')">✏️ ${bizInFix(b) ? 'מה חסר לו' : 'צריך לתקן'}</button>
+          <button class="qj-btn-reject-app" onclick="bsOpen('${b.id}','fix')">✏️ צריך לתקן</button>
           <button class="qj-btn-reject-app" onclick="rejectBiz('${b.id}')">✗ דחה</button>
           ${qjDeleteBtn('biz', b.id)}
         </div>` : b.status === 'approved' ? `
         <div class="qj-header-actions">
-          <button class="qj-btn-reject-app" onclick="bsOpen('${b.id}','fix')">✏️ ${bizInFix(b) ? 'מה חסר לו' : 'צריך לתקן'}</button>
+          <button class="qj-btn-reject-app" onclick="bsOpen('${b.id}','fix')">✏️ צריך לתקן</button>
           <button class="qj-btn-reject-app" onclick="rejectApprovedBiz('${b.id}')">✗ דחייה</button>
           <button class="qj-btn-reject-app" onclick="rejectBiz('${b.id}')">↩️ ביטול אישור – לממתין</button>
           ${qjDeleteBtn('biz', b.id)}
@@ -16156,7 +16157,7 @@ function bsRender() {
       <span><b>${BS_OUT[k][0]}</b><span style="display:block;color:var(--text-muted,#5B6B8C);font-size:12px">${BS_OUT[k][1]}</span></span></label>`;
   const fixHtml = fix ? `
     <div style="border:1.5px solid #D9CCF7;background:#FBFAFF;border-radius:12px;padding:10px 12px;margin-top:4px">
-      <div style="font-weight:800;font-size:14px">מה חסר לו? <span style="font-weight:400;color:var(--text-muted,#5B6B8C);font-size:12px">– זה מה שקופץ לו באפליקציה</span></div>
+      <div style="font-weight:800;font-size:14px">מה חסר לו? <span style="font-weight:400;color:var(--text-muted,#5B6B8C);font-size:12px">– נכנס להודעה, ונשאר אצלו כרשימה בדף הבית ובדשבורד עד שיתקן</span></div>
       ${WAIT_REASONS.filter(r => r.k !== 'other').map(r => `<label style="display:inline-flex;gap:6px;align-items:center;margin:6px 10px 0 0;font-size:13px;cursor:pointer"><input type="checkbox" value="${r.k}" ${o.reasons.includes(r.k) ? 'checked' : ''} onchange="bsReason(this)">${r.label}</label>`).join('')}
       <textarea id="bsOther" maxlength="300" rows="2" placeholder="עוד משהו שחסר – במילים שלך (ההערות שכתבת על השלבים כבר כאן)" oninput="bsSet('other',this.value)" style="display:block;width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border-md,#ddd);border-radius:9px;resize:vertical;margin-top:8px">${esc(o.other)}</textarea>
     </div>` : '';
