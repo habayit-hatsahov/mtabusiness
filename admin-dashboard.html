@@ -492,6 +492,12 @@ body {
 .mtile-gal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 .mtile-gal-i { aspect-ratio: 1; border-radius: 7px; overflow: hidden; }
 .mtile-empty { font-size: 12.5px; color: var(--text-muted); padding: 14px 0; }
+.mtile.fixreq { border-color: #D9CCF7; background: #FBFAFF; }
+.mtile-badge { display: inline-block; background: #E9E1FB; color: #6941C6; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 8px; margin-inline-end: 6px; }
+.mtile-badge.ok { background: #ECFDF3; color: #067647; }
+.mtile-note { font-size: 12.5px; line-height: 1.5; background: #fff; border: 1px solid #E4DAFB; border-radius: 9px; padding: 6px 8px; margin-top: 8px; }
+.mtile-note.ok { border-color: #ABEFC6; }
+.mtile-cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
 .mtile-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 10px; }
 .cover-cmp-bg { position: fixed; inset: 0; background: rgba(10, 20, 45, .55); z-index: 9999; display: none; align-items: center; justify-content: center; padding: 16px; }
 .cover-cmp-box { background: var(--card-bg, #fff); color: var(--text, #0A2A66); border-radius: 16px; width: 760px; max-width: 100%; max-height: 92vh; overflow: auto; padding: 18px; box-sizing: border-box; }
@@ -13392,7 +13398,7 @@ function taskDetailHtml2(key) {
 function mediaRealViewHtml(b) {
   // §678 – רמי (§673): "לא צריך שהכל יהיה שורות… קח השראה מדף העסק". אריח לכל שדה, ובו מה שעושים איתו.
   // כל תמונה עדיין נפתחת בלייטבוקס בלחיצה (mediaThumbHtml, §185).
-  const acts = (k) => `<div class="mtile-acts"><button type="button" class="act-btn tiny" onclick="event.stopPropagation();bizTileAskFix('${b.id}','${k}')">🚩 לבקש לתקן</button><button type="button" class="act-btn tiny" onclick="event.stopPropagation();bizTileEdit('${b.id}','${k}')">✏️ לשנות בעצמי</button></div>`;
+  const acts = (k) => `${bizTileFixHtml(b, k)}<div class="mtile-acts"><button type="button" class="act-btn tiny" onclick="event.stopPropagation();bizTileAskFix('${b.id}','${k}')">${bizTileFix(b, k).basket ? '🚩 לערוך / לבטל את הבקשה' : '🚩 לבקש לתקן'}</button><button type="button" class="act-btn tiny" onclick="event.stopPropagation();bizTileEdit('${b.id}','${k}')">✏️ לשנות בעצמי</button></div>`;
   const empty = (t) => `<div class="mtile-empty">${t}</div>`;
   const zoom = Number(b.coverPhotoZoom) || 0;
   const coverImg = b.coverPhoto
@@ -13403,14 +13409,48 @@ function mediaRealViewHtml(b) {
     : empty('אין תמונות בגלריה');
   return `
     <div class="mtile-grid">
-      <div class="mtile"><div class="mtile-h">לוגו${b.logo ? ` <span class="mtile-sub">${b.logoFit === 'contain' ? 'הלוגו כולו' : 'ממלא את התג'}</span>` : ''}</div>
+      <div class="mtile${bizTileFix(b, 'logo').any ? ' fixreq' : ''}"><div class="mtile-h">${bizTileFixBadge(b, 'logo')}לוגו${b.logo ? ` <span class="mtile-sub">${b.logoFit === 'contain' ? 'הלוגו כולו' : 'ממלא את התג'}</span>` : ''}</div>
         ${b.logo ? `<div class="mtile-logo">${mediaThumbHtml(b.logo, 'logo.png', 'width:100%;height:100%', 'לוגו', 'contain')}</div>` : empty('אין לוגו')}${acts('logo')}</div>
-      <div class="mtile"><div class="mtile-h">תמונה מייצגת${b.coverPhoto ? ` <span class="mtile-sub">${zoom ? 'כל התמונה' : 'מילוי הכרטיס'}</span>` : ''}</div>
+      <div class="mtile${bizTileFix(b, 'cover').any ? ' fixreq' : ''}"><div class="mtile-h">${bizTileFixBadge(b, 'cover')}תמונה מייצגת${b.coverPhoto ? ` <span class="mtile-sub">${zoom ? 'כל התמונה' : 'מילוי הכרטיס'}</span>` : ''}</div>
         ${coverImg}
         ${b.coverPhotoPrev ? `<button type="button" class="act-btn tiny" style="margin-top:6px" onclick="event.stopPropagation();coverCmpPrev('${b.id}')">↩️ יש תמונה קודמת – להשוות ולחזור</button>` : ''}${acts('cover')}</div>
-      <div class="mtile"><div class="mtile-h">גלריה · ${(b.photos || []).length}</div>${gallery}${acts('gallery')}</div>
+      <div class="mtile${bizTileFix(b, 'gallery').any ? ' fixreq' : ''}"><div class="mtile-h">${bizTileFixBadge(b, 'gallery')}גלריה · ${(b.photos || []).length}</div>${gallery}${acts('gallery')}</div>
     </div>
     ${mediaUploadFailureHtml(b)}`;
+}
+// §680 – רמי: "במידה ולחצתי על לבקש תיקון שישתנה השדה לנדרש תיקון… כאשר יש תיקון צריך לראות בדיוק לפי
+// ההערות והתיקונים שנתתי ונוח לי להשוות". שלושה מצבים, מכל מקור שקיים היום:
+//   basket – 🚩 בסל (עוד לא נשלח) · sent – נשלח ב"צריך לתקן" (inReviewReasons / שורת "אחר" על השדה)
+//   pend   – בעל העסק שלח שינוי לשדה (pendingChanges) → "היה" מול "מה ששלח", עם ✅/❌ של השיפוט המהיר
+const TILE_FIELD = { cover: 'coverPhoto', logo: 'logo', gallery: 'photos' };
+const TILE_WORDS = { cover: /תמונה ראשית|תמונה מייצגת|תמונה/, logo: /לוגו/, gallery: /גלרי/ };
+function bizTileFix(b, k) {
+  const basket = (QJ_DECIDED[b.id] || []).find(d => d.decision === 'fix' && d.key === k) || null;
+  const inFix = bizInFix(b), keys = inFix ? bizWaitKeys(b) : [];
+  const otherHits = inFix && keys.includes('other') ? String(b.inReviewOther || '').split(' · ').filter(t => TILE_WORDS[k].test(t)) : [];
+  const sent = inFix && (keys.includes(k) || otherHits.length) ? { lines: bizWaitLines(keys, b.inReviewOther, false).filter(t => TILE_WORDS[k].test(t)), at: toJsDate(b.inReviewAt), fixedAt: bizFixedAt(b) } : null;
+  const f = TILE_FIELD[k];
+  const pend = b.pendingChanges && f in b.pendingChanges && !bizStagedEntry(b, f) && bizPendingChangeItems(b).some(it => it.field === f) ? { val: b.pendingChanges[f] } : null;
+  return { basket, sent, pend, any: !!(basket || sent || pend) };
+}
+function bizTileFixBadge(b, k) {
+  const t = bizTileFix(b, k);
+  return t.pend ? '<span class="mtile-badge ok">🔁 שלח תיקון</span>' : t.basket ? '<span class="mtile-badge">🚩 נדרש תיקון</span>' : t.sent ? '<span class="mtile-badge">✏️ נדרש תיקון</span>' : '';
+}
+function bizTileFixHtml(b, k) {
+  const t = bizTileFix(b, k);
+  if (!t.any) return '';
+  const parts = [];
+  if (t.basket) parts.push(`<div class="mtile-note">🚩 <b>ביקשת – בסל, עוד לא נשלח</b>${t.basket.note ? ': ' + esc(t.basket.note) : ''}</div>`);
+  if (t.sent) parts.push(`<div class="mtile-note">✏️ <b>ביקשת ממנו${t.sent.at ? ' ' + fmtDate(t.sent.at) : ''}:</b> ${esc(t.sent.lines.join(' · ') || 'לתקן')}${t.sent.fixedAt ? `<br>🔁 סימן שתיקן ${fmtDateTime(t.sent.fixedAt)}` : ''}</div>`);
+  if (t.pend) {
+    const cell = (url, lbl) => `<div class="mtile-cmp-c"><div class="mtile-sub">${lbl}</div>${url ? `<div class="${k === 'logo' ? 'mtile-logo' : 'mtile-cover'}">${mediaThumbHtml(url, k + '.jpg', 'width:100%;height:100%', b.name, k === 'logo' ? 'contain' : 'cover')}</div>` : '<div class="mtile-empty">אין</div>'}</div>`;
+    const cmp = k === 'gallery'
+      ? `<div class="mtile-sub">היה ${(b.photos || []).length} תמונות · שלח ${(Array.isArray(t.pend.val) ? t.pend.val : []).length}</div>`
+      : `<div class="mtile-cmp">${cell(b[TILE_FIELD[k]], 'עכשיו')}${cell(t.pend.val, 'מה ששלח')}</div>`;
+    parts.push(`<div class="mtile-note ok">🔁 <b>בעל העסק שלח:</b>${cmp}<div class="mtile-acts" style="padding-top:6px"><button type="button" class="act-btn approve tiny" onclick="event.stopPropagation();approveChangeField('${b.id}','${TILE_FIELD[k]}')">✅ לאשר</button><button type="button" class="act-btn reject tiny" onclick="event.stopPropagation();rejectChangeField('${b.id}','${TILE_FIELD[k]}')">❌ לא לאשר</button></div></div>`);
+  }
+  return parts.join('');
 }
 // 🚩 לוגו / תמונה מייצגת → "סיכום ושליחה" על "צריך לתקן" עם השורה הזו ברשימה. גלריה (אין לה סיבה
 // קבועה) → הערה על שלב התמונות, שנכנסת לאותה רשימה (bsMergeRemarks).
@@ -16025,6 +16065,7 @@ function qjNoteOpen(id, remark, fix) {
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
       <button class="qj-btn primary" id="qjNoteGo" onclick="qjNoteDone(true)">${goLbl}</button>
       <button class="qj-btn" onclick="qjNoteDone(false)">${noLbl}</button>
+      ${idx >= 0 && (cur.decision === 'fix' || cur.decision === 'remark') ? `<button class="qj-btn reject" style="margin-inline-start:auto" onclick="qjNoteRemove()">🗑️ ${cur.decision === 'fix' ? 'לבטל את בקשת התיקון' : 'למחוק את ההערה'}</button>` : ''}
     </div>
   </div>`;
   el.style.display = 'flex';
@@ -16036,6 +16077,20 @@ function qjStepNoteBtn(b, step) {
   const has = (QJ_DECIDED[b.id] || []).some(d => d.decision === 'remark' && d.label === QJ_STEP_NAMES[step] && d.note);
   return `<button class="btn-step-edit" style="margin-inline-end:6px${has ? ';background:#FFF7DB;border-color:var(--yellow,#FFD400)' : ''}" onclick="event.stopPropagation();qjStepNoteOpen('${b.id}',${step})" title="הערה לבעל העסק על השלב הזה – נאספת להודעה אחת">📝 הערה${has ? ' ✓' : ''}</button>`;
 }
+// §680 – רמי: "תנו לי אופציה מבפנים לבטל את התיקון או הערה". יוצא מהסל ומההודעה; ביומן נשאר שבוטל.
+window.qjNoteRemove = async function() {
+  const o = _bn;
+  if (!o || o.mode !== 'collect' || o.saving || o.idx < 0) return;
+  const d = (QJ_DECIDED[o.bizId] || [])[o.idx];
+  if (!d || !confirm(d.decision === 'fix' ? 'לבטל את בקשת התיקון "' + d.label + '"?' : 'למחוק את ההערה?')) return;
+  o.saving = true;
+  if (d.decision === 'fix') await logActivity('businesses', o.bizId, { type: 'bizNoteComment', title: 'בקשת תיקון בוטלה', detail: '🚩 ' + d.label, noteItem: { label: d.label, decision: 'unstaged' } });
+  else await qjSetNote(o.bizId, o.idx, '');
+  QJ_DECIDED[o.bizId].splice(o.idx, 1);
+  if (!QJ_DECIDED[o.bizId].length) delete QJ_DECIDED[o.bizId];
+  _bn = null; bnEl().style.display = 'none'; bnEl().innerHTML = '';
+  renderMainPreserveScroll();
+};
 window.qjNoteDone = async function(save) {
   if (!_bn || _bn.mode !== 'collect' || _bn.saving) return;
   const o = _bn, ta = document.getElementById('qjNoteText');
@@ -16076,7 +16131,7 @@ function qjLoadDecided(id) {
       const a = d.data();
       if (a.noteClose) break;
       if (a.noteItem && a.noteItem.decision === 'unstaged') { unstaged[a.noteItem.label] = (unstaged[a.noteItem.label] || 0) + 1; continue; }
-      if (a.noteItem && !a.noteItem.comment && unstaged[a.noteItem.label] && (a.noteItem.decision === 'approved' || a.noteItem.decision === 'rejected')) { unstaged[a.noteItem.label]--; continue; }
+      if (a.noteItem && !a.noteItem.comment && unstaged[a.noteItem.label] && (a.noteItem.decision === 'approved' || a.noteItem.decision === 'rejected' || a.noteItem.decision === 'fix')) { unstaged[a.noteItem.label]--; continue; }
       if (Array.isArray(a.noteItems)) {   // §659ג — עריכה ידנית; הסדר בתוך הרשומה נשמר
         for (const ni of a.noteItems.slice().reverse()) {
           if (!ni || !ni.label || seenEdit.has(ni.field)) continue;
