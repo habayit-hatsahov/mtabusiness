@@ -492,6 +492,7 @@ body {
 .mtile-gal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 .mtile-gal-i { aspect-ratio: 1; border-radius: 7px; overflow: hidden; }
 .mtile-empty { font-size: 12.5px; color: var(--text-muted); padding: 14px 0; }
+.qj-status-chip { font-size: 13px; background: #F4F6FB; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; margin-inline-start: 6px; }
 .mtile.fixreq { border-color: #D9CCF7; background: #FBFAFF; }
 .mtile-badge { display: inline-block; background: #E9E1FB; color: #6941C6; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 8px; margin-inline-end: 6px; }
 .mtile-badge.ok { background: #ECFDF3; color: #067647; }
@@ -4019,11 +4020,22 @@ function bizNoteDraftRowHtml(b) {
         <span class="qj-value-text"><b>${esc(d.title || '')}</b></span>
         <div class="qj-value-hint" style="white-space:pre-line">${esc(d.text)}</div></div>
       <div class="qj-row-actions">
-        ${pending ? '' : `<button class="qj-btn primary" onclick="openBizNoteFree('${b.id}')">📤 פתיחה ושליחה</button>`}
+        <button class="qj-btn primary" onclick="draftToBasket('${b.id}')">🧺 להכניס לסיכום ושליחה</button>
         <button class="qj-btn" onclick="dropBizNoteDraft('${b.id}')">לא לשלוח</button>
       </div>
     </div>`;
 }
+// §682 – רמי: "תן לי… להכניס את השינויים שצריך לשלוח לו בהודעה לבעל העסק לסיכום ושליחה". הטיוטה נכנסת לסל
+// כפריט ℹ️ (כותרת + הטקסט), נכתבת בהודעה של "סיכום ושליחה", והטיוטה עצמה נמחקת – כדי שלא תצא פעמיים.
+window.draftToBasket = async function(id) {
+  const b = findBiz(id), d = bizNoteDraft(b);
+  if (!d) return;
+  const it = { ...qjItem(d.title || 'עדכון', 'info'), note: String(d.text || '').slice(0, 600) };
+  await logActivity('businesses', id, { type: 'bizNoteComment', title: 'הודעה מוכנה נכנסה לסל', detail: 'ℹ️ ' + it.label, noteItem: it });
+  (QJ_DECIDED[id] = QJ_DECIDED[id] || []).push({ ...it, _ts: Date.now() });
+  try { await clearBizNoteDraft(id); } catch (e) { console.error(e); }
+  renderMainPreserveScroll();
+};
 async function clearBizNoteDraft(id) {
   delete bizNoteDrafts[id];
   await setDoc(doc(db, 'settings', 'bizNoteDrafts'), { [id]: deleteField() }, { merge: true });
@@ -5704,10 +5716,10 @@ const _bizPins = {};   // bizId → { list: [{ id, text, at, by }] } | { loading
 function bizPinsLoad(id) {
   if (_bizPins[id]) return;
   _bizPins[id] = { loading: true };
-  getDocs(query(collection(db, 'businesses', id, 'activity'), where('type', 'in', ['pin', 'unpin']))).then(snap => {
+  getDocs(query(collection(db, 'businesses', id, 'activity'), where('type', 'in', ['pin', 'unpin', 'ownerPreOk']))).then(snap => {
     const all = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
     const off = new Set(all.filter(a => a.type === 'unpin').map(a => a.before));
-    _bizPins[id] = { list: all.filter(a => a.type === 'pin' && !off.has(a.id)).map(a => ({ id: a.id, text: a.detail, at: toJsDate(a.createdAt), by: a.actorName }))
+    _bizPins[id] = { ownerPreOk: all.some(a => a.type === 'ownerPreOk'), list: all.filter(a => a.type === 'pin' && !off.has(a.id)).map(a => ({ id: a.id, text: a.detail, at: toJsDate(a.createdAt), by: a.actorName }))
       .sort((x, y) => (x.at || 0) - (y.at || 0)) };
     if (selectedBizDetailId === id) renderMain();
   }).catch(e => { console.error('pins load failed', e); _bizPins[id] = { list: [], err: true }; if (selectedBizDetailId === id) renderMain(); });
@@ -5726,6 +5738,10 @@ async function bizPinWrite(id, entry) {
   delete _bizPins[id];
   if (selectedBizDetailId === id) renderMain();
 }
+window.ownerPreDone = async function(id) {   // §682
+  try { await bizPinWrite(id, { type: 'ownerPreOk', title: '✔️ טופל: בעל העסק כבר מאושר כאוהד', detail: 'נבדק בכרטיס העסק', before: null }); }
+  catch (e) { alert('השמירה נכשלה: ' + (e.message || e)); }
+};
 window.bizPinAdd = async function(id) {
   const text = (prompt('הערה קבועה על העסק (רק אתה רואה אותה, היא לא נשלחת לבעל העסק):') || '').trim().slice(0, 300);
   if (!text) return;
@@ -9540,7 +9556,7 @@ function bizFullDetailHtml(id, opts) {
              "רק כשיש בעיה": השאלה שהיא עונה עליה היא **"האם החיבור קרה"**, ותשובה
              שלילית שאינה מוצגת אינה נבדלת מרנדור שלא רץ. היא נשלפת מרשומת **החבר**
              של הבעלים (ownerMemberId) – הזהות אינה יושבת על מסמך העסק. -->
-      <div class="identity-notes">${bizPinsBoxHtml(b)}${bizOpenConvBoxHtml(b)}${bizOwnerLinkBoxHtml(b)}${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${idEmailNote}${idBroadcastNote}${idNoteBox}</div>
+      <div class="identity-notes">${bizPinsBoxHtml(b)}${bizOpenConvBoxHtml(b)}${bizOwnerLinkBoxHtml(b)}${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${idNoteBox}</div>
     </div>`;
 
   const anchorCardHtml = b.status === 'approved' ? `
@@ -9990,7 +10006,9 @@ function bizFullDetailHtml(id, opts) {
     ${anchorCardHtml}
     ${stepsCardHtml}`;
   // §677ב – רמי: "תחבר בין בעל העסק כחבר מועדון ואימות בעל העסק שיהיה אותה הקוביה… בעוד לשונית שצריך לעבור עליה"
-  const ownerTabHtml = `<div class="owner-tab-box">${ownerMemberCardHtml(b)}${ownerVerifStepHtml}</div>`;
+  // §682 – רמי: "יש עדיין את כל הריבועים של המייל" – המיילים לבעל העסק כאן, עם שאר החיבורים
+  const ownerMailsHtml = (idEmailNote || idBroadcastNote) ? `<div class="dcard identity-card"><div class="identity-name" style="font-size:15px">✉️ מיילים לבעל העסק</div><div class="identity-notes">${idEmailNote}${idBroadcastNote}</div></div>` : '';
+  const ownerTabHtml = `<div class="owner-tab-box">${ownerMemberCardHtml(b)}${ownerMailsHtml}${ownerVerifStepHtml}</div>`;
   const ownerTabDot = bizOwnerTabNeedsLook(b);
   return `
     <div class="card-nav-row"><button class="act-btn task-back-btn" onclick="${o.backFn}()">→ חזרה</button>${nextCardBtnHtml('biz', b.id)}</div>
@@ -13992,6 +14010,13 @@ function ownerMismatch(b, f) {
   return null;
 }
 // §677ב – למה לעבור על לשונית "בעל העסק" (הנקודה •)
+// §682 – רמי: "כל הכפתורים של אשר / צריך לתקן / דחה ומחיקה נמצאים בראש וזה מבלבל, שים את הסטטוס לידו ראשון".
+// אותה תווית כמו בכותרת (3 הצורות), ואם יש 🚩 בסל שעוד לא נשלח – נאמר שזה עוד לא הסטטוס.
+function qjStatusChipHtml(b) {
+  const st = b.status === 'rejected' ? '⛔ נדחה' : bizFixLabel(b) || (bizShownStatus(b) === 'approved' ? '✅ מאושר' : '⏳ ממתין');
+  const inBasket = !bizInFix(b) && (QJ_DECIDED[b.id] || []).some(d => d.decision === 'fix');
+  return `<span class="qj-status-chip">סטטוס: <b>${st}</b>${inBasket ? ' <span style="font-weight:400">· 🚩 צריך לתקן – בסל, ייכנס בשליחה</span>' : ''}</span>`;
+}
 function bizOwnerTabNeedsLook(b) {
   const f = ownerFanOfBiz(b), mm = f && ownerMismatch(b, f);
   if (!f) return 'העסק לא מחובר לחשבון אוהד';
@@ -14233,8 +14258,11 @@ function bizWaitBannerHtml(b) {
   const inFix = bizInFix(b), labels = inFix ? bizWaitLabels(b) : [];
   const fixed = bizFixedAt(b);
   const asked = bizPendingChangeItems(b).filter(it => !bizStagedEntry(b, it.field));
-  const basket = (QJ_DECIDED[b.id] || []).filter(d => d.decision === 'fix' || (d.decision === 'remark' && d.note));
-  if (!inFix && !asked.length && !basket.length) return '';
+  const dec = QJ_DECIDED[b.id] || [];
+  const basket = dec.filter(d => d.decision === 'fix' || (d.decision === 'remark' && d.note));
+  // §682 – גם ההחלטות שבסל (✅ אושר / ❌ לא אושר / ✏️ עדכנו / ✔️ טיפלנו…) – במקום פס "מחכה לשליחה" נפרד
+  const others = dec.filter(d => !basket.includes(d));
+  if (!inFix && !asked.length && !dec.length) return '';
   const who = esc(b.ownerFirst || 'בעל העסק');
   const li = t => `<li style="white-space:pre-line;font-size:15px;font-weight:700;margin:3px 0">${t}</li>`;
   const blk = (bg, bd, color, head, items, foot) => `<div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:8px 12px;margin-top:8px">
@@ -14250,11 +14278,12 @@ function bizWaitBannerHtml(b) {
           `<div style="color:var(--text-muted);font-size:11.5px;margin-top:6px">${bizFixLabel(b)} · ${sentWa}</div>`)
       : blk('#FDECEC', '#F5C2C0', '#B42318', '✏️ צריך לתקן – אבל לא נשמר מה חסר', [], `<div style="color:var(--text-muted);font-size:11.5px;margin-top:6px">${bizFixLabel(b)} · ${sentWa}</div>`));
   }
-  if (basket.length) parts.push(blk('#FFF7DB', '#F5D96B', '#7A5B00', '🚩 בסל – עוד לא נשלח לו:',
-    basket.map(d => esc(d.decision === 'fix' ? d.label + (d.note ? ' – ' + d.note : '') : d.label + ': ' + d.note))));
+  if (dec.length) parts.push(blk('#FFF7DB', '#F5D96B', '#7A5B00', '🧺 בסל – עוד לא נשלח לו:',
+    basket.map(d => esc((d.decision === 'fix' ? '🚩 ' + d.label : '📝 ' + d.label) + (d.note ? (d.decision === 'fix' ? ' – ' : ': ') + d.note : '')))
+      .concat(others.map(d => esc((QJ_CHIP_ICON[d.decision] || '') + d.label + (d.note ? ' – ' + d.note : ''))))));
   const btns = [
     inFix && b.ownerPhone ? `<button class="qj-btn primary" onclick="openWaitWa('${b.id}')">📲 תזכורת בוואטסאפ</button>` : '',
-    (fixed || basket.length || asked.length) ? `<button class="qj-btn primary" onclick="bsOpen('${b.id}')">🧺 סיכום ושליחה</button>` : '',
+    (fixed || dec.length || asked.length) ? `<button class="qj-btn primary" onclick="bsOpen('${b.id}')">🧺 סיכום ושליחה</button>` : '',
     inFix ? `<button class="qj-btn" onclick="bsOpen('${b.id}','fix')">${labels.length ? 'עריכת מה חסר' : 'לסמן מה חסר'}</button>` : '',
   ].filter(Boolean).join('');
   return `
@@ -15746,12 +15775,13 @@ function quickJudgmentHtml(b) {
   // §648 — רמי: "בעל עסק עובר אימות רק בדף העסק". 37 בעלים של עסק ממתין כבר אושרו כאוהדים
   // (36 באישור הגורף של 26–27.10) – כאן נאמר את זה, כדי שהאימות שלו ייבדק עכשיו עם העסק.
   const ownerFan = b.status === 'pending' && b.ownerMemberId ? MOCK_FANS.find(f => f.id === b.ownerMemberId) : null;
-  const ownerPreApproved = ownerFan && ownerFan.status === 'approved' ? ownerFan : null;
+  const ownerPreApproved = ownerFan && ownerFan.status === 'approved' && !(_bizPins[b.id] || {}).ownerPreOk ? ownerFan : null;   // §682 – "✔️ טופל"
   const inBulk = d => d && d >= new Date('2026-10-26T00:00:00+03:00') && d < new Date('2026-10-28T00:00:00+03:00');
   const ownerPreRow = ownerPreApproved ? `
     <div class="qj-row" style="background:var(--warn-bg)">
       <div class="qj-row-label"><div class="qj-row-step">לבדיקה</div><div class="qj-row-name">⚠️ בעל העסק כבר מאושר כאוהד</div></div>
       <div class="qj-row-value"><span class="qj-value-text">${inBulk(ownerPreApproved.approvedAt) ? '<b>אושר באישור הגורף</b>' : '<b>אושר כאוהד</b>'}${ownerPreApproved.approvedAt ? ' · ' + fmtDateTime(ownerPreApproved.approvedAt) : ''}, לפני שהעסק אושר – האימות שלו לא נבדק. בודקים אותו כאן, באימות בעל העסק.</span></div>
+      <div class="qj-row-actions"><button class="qj-btn" onclick="jumpToBizSection('${b.id}',1)">לאימות ←</button><button class="qj-btn primary" onclick="ownerPreDone('${b.id}')">✔️ טופל</button></div>
     </div>` : '';
   const totalCount = items.length + (hasNote ? 1 : 0) + qjBrokenLinks.length + (bizInqRow ? 1 : 0) + (decidedRow ? 1 : 0) + (ownerPreRow ? 1 : 0) + (followRow ? 1 : 0) + (draftRow ? 1 : 0) + (proposalRow ? 1 : 0);
   const hasBody = totalCount > 0;
@@ -15767,6 +15797,7 @@ function quickJudgmentHtml(b) {
         ${hasBody ? `<button class="qj-toggle" onclick="toggleQuickJudgment('${b.id}')">${isOpen ? '−' : '+'}</button>` : ''}
         <div class="qj-title"${hasBody ? ` onclick="toggleQuickJudgment('${b.id}')"` : ''}>שיפוט מהיר</div>
         <span class="qj-count${hasBody?'':' empty'}">${totalCount}</span>
+        ${qjStatusChipHtml(b)}
         ${showApproveApp ? `
         <div class="qj-header-actions">
           <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קישור לדשבורד" onclick="approveBiz('${b.id}')">✅ אשר את העסק</button>
@@ -15787,7 +15818,7 @@ function quickJudgmentHtml(b) {
         </div>` : ''}
         <div class="qj-hint">${hint}</div>
       </div>
-      ${bsBarHtml(b)}
+      ${''/* §682 – הסל מוצג בפס בראש הכרטיס (bizWaitBannerHtml); bsBarHtml נשאר לשימוש חוזר */}
       ${(showApproveApp || b.status === 'rejected') ? bizApprovalSectionsHtml(b) : ''}
       ${(hasBody && isOpen) ? `<div class="qj-body">${proposalRow}${followRow}${draftRow}${ownerPreRow}${decidedRow}${bizInqRow}${brokenLinkRows}${items.map(rowHtml).join('')}${noteRow}</div>` : ''}
     </div>`;
