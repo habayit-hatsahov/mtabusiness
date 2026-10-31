@@ -482,6 +482,25 @@ body {
 /* §147 — הותאם ל-handoff ("1 כרטיס עסק.dc.html" שלב 5): קופסה אפורה-שטוחה רגילה במקום מסגרת-אקסנט
    מודגשת לכל מצב — הדגשה (רקע-ענבר+מסגרת-מקווקוות) נשארת רק למצב "חסר" (תמונה מייצגת שלא הועלתה). */
 .media-slot-row { display: flex; gap: 10px; flex-wrap: wrap; }
+/* §678 – אריחי התמונות */
+.mtile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.mtile { border: 1px solid var(--border); border-radius: 12px; padding: 10px; background: var(--card-bg); display: flex; flex-direction: column; }
+.mtile-h { font-weight: 800; font-size: 13.5px; margin-bottom: 8px; }
+.mtile-sub { font-weight: 400; font-size: 11.5px; color: var(--text-muted); }
+.mtile-logo { width: 72px; height: 72px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #fff; }
+.mtile-cover { width: 100%; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; background: var(--card-bg2); }
+.mtile-gal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.mtile-gal-i { aspect-ratio: 1; border-radius: 7px; overflow: hidden; }
+.mtile-empty { font-size: 12.5px; color: var(--text-muted); padding: 14px 0; }
+.mtile-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 10px; }
+.cover-cmp-bg { position: fixed; inset: 0; background: rgba(10, 20, 45, .55); z-index: 9999; display: none; align-items: center; justify-content: center; padding: 16px; }
+.cover-cmp-box { background: var(--card-bg, #fff); color: var(--text, #0A2A66); border-radius: 16px; width: 760px; max-width: 100%; max-height: 92vh; overflow: auto; padding: 18px; box-sizing: border-box; }
+.cover-cmp-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cover-cmp-lbl { font-weight: 800; font-size: 13px; margin-bottom: 6px; }
+.cover-cmp-frame { aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden; background: var(--card-bg2, #F4F6FB); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.cover-cmp-frame img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
+.cover-cmp-acts { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+@media (max-width: 560px) { .cover-cmp-row { grid-template-columns: 1fr; } }
 .media-slot {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   height: 72px; border-radius: 10px; background: var(--nav-bg); overflow: hidden; transition: all .12s;
@@ -13370,20 +13389,46 @@ function taskDetailHtml2(key) {
 // (uploadFile/uploadImageWithThumb, זהה ל-admin-businesses.html). כל פעולה כותבת מיידית (בלי טופס
 // אחד גדול "שמור הכל") — פשוט יותר ובטוח יותר מלנסות לשחזר טופס-ענק דינמי לגלריה/סרטונים.
 function mediaRealViewHtml(b) {
-  // בלי slice — הרשמה מגבילה ל-5 תמונות גלריה, ורצוי לראות את כולן כאן ולא רק 3 ראשונות (המשתמש
-  // דיווח שנראה "רק 3", הריבוע-flex-wrap כבר תומך בכמה שורות בלי לשבור פריסה).
-  // כל תמונה פותחת לייטבוקס בלחיצה (לא טאב חדש) + כפתור-הורדה צמוד — ר' mediaThumbHtml למעלה, §185.
-  const galleryThumbs = (b.photos || []).map(p =>
-    `<div class="media-slot thumb filled">${mediaThumbHtml(p.url, p.name, 'width:100%;height:100%', b.name)}</div>`).join('');
+  // §678 – רמי (§673): "לא צריך שהכל יהיה שורות… קח השראה מדף העסק". אריח לכל שדה, ובו מה שעושים איתו.
+  // כל תמונה עדיין נפתחת בלייטבוקס בלחיצה (mediaThumbHtml, §185).
+  const acts = (k) => `<div class="mtile-acts"><button type="button" class="act-btn tiny" onclick="event.stopPropagation();bizTileAskFix('${b.id}','${k}')">🚩 לבקש לתקן</button><button type="button" class="act-btn tiny" onclick="event.stopPropagation();bizTileEdit('${b.id}','${k}')">✏️ לשנות בעצמי</button></div>`;
+  const empty = (t) => `<div class="mtile-empty">${t}</div>`;
+  const zoom = Number(b.coverPhotoZoom) || 0;
+  const coverImg = b.coverPhoto
+    ? `<div class="mtile-cover">${mediaThumbHtml(b.coverPhotoThumb || b.coverPhoto, 'cover.jpg', 'width:100%;height:100%', b.name)}</div>`
+    : empty('⚠️ אין תמונה מייצגת');
+  const gallery = (b.photos || []).length
+    ? `<div class="mtile-gal">${(b.photos || []).map(ph => `<div class="mtile-gal-i">${mediaThumbHtml(ph.url, ph.name, 'width:100%;height:100%', b.name)}</div>`).join('')}</div>`
+    : empty('אין תמונות בגלריה');
   return `
-    <div class="media-slot-row">
-      <div class="media-slot logo ${b.logo?'filled':''}">${b.logo ? mediaThumbHtml(b.logo, 'logo.png', 'width:100%;height:100%', 'לוגו', 'contain') : `<span class="media-slot-ic">–</span><span class="media-slot-label">לוגו</span>`}</div>
-      <div class="media-slot cover ${b.coverPhoto?'filled':'missing'}">${b.coverPhoto ? mediaThumbHtml(b.coverPhotoThumb || b.coverPhoto, 'cover.jpg', 'width:100%;height:100%', b.name) : `<span class="media-slot-ic">–</span><span class="media-slot-label">חסרה תמונה</span>`}</div>
-      ${galleryThumbs}
+    <div class="mtile-grid">
+      <div class="mtile"><div class="mtile-h">לוגו${b.logo ? ` <span class="mtile-sub">${b.logoFit === 'contain' ? 'הלוגו כולו' : 'ממלא את התג'}</span>` : ''}</div>
+        ${b.logo ? `<div class="mtile-logo">${mediaThumbHtml(b.logo, 'logo.png', 'width:100%;height:100%', 'לוגו', 'contain')}</div>` : empty('אין לוגו')}${acts('logo')}</div>
+      <div class="mtile"><div class="mtile-h">תמונה מייצגת${b.coverPhoto ? ` <span class="mtile-sub">${zoom ? 'כל התמונה' : 'מילוי הכרטיס'}</span>` : ''}</div>
+        ${coverImg}
+        ${b.coverPhotoPrev ? `<button type="button" class="act-btn tiny" style="margin-top:6px" onclick="event.stopPropagation();coverCmpPrev('${b.id}')">↩️ יש תמונה קודמת – להשוות ולחזור</button>` : ''}${acts('cover')}</div>
+      <div class="mtile"><div class="mtile-h">גלריה · ${(b.photos || []).length}</div>${gallery}${acts('gallery')}</div>
     </div>
-    <div class="approve-longtext" style="margin-top:6px">${(b.photos||[]).length} תמונות בגלריה</div>
     ${mediaUploadFailureHtml(b)}`;
 }
+// 🚩 לוגו / תמונה מייצגת → "סיכום ושליחה" על "צריך לתקן" עם השורה הזו ברשימה. גלריה (אין לה סיבה
+// קבועה) → הערה על שלב התמונות, שנכנסת לאותה רשימה (bsMergeRemarks).
+window.bizTileAskFix = function(id, k) {
+  if (k === 'gallery') { qjStepNoteOpen(id, 5); return; }
+  const b = findBiz(id);
+  if (!b) return;
+  bsOpen(id, 'fix');
+  if (!_bn || _bn.bizId !== id) return;
+  if (!bsIsFix(_bn.outcome)) { const outs = bsOutcomes(b); _bn.outcome = ['fixStay', 'fixHide', 'fix'].find(o => outs.includes(o)) || null; }
+  if (!_bn.reasons.includes(k)) _bn.reasons = _bn.reasons.concat(k);
+  bsRender();
+};
+// ✏️ פותח את טופס התמונות וגולל לחלק של השדה
+window.bizTileEdit = function(id, k) {
+  const ed = document.getElementById('secEdit5_' + id);
+  if (ed && !ed.classList.contains('open')) toggleBizSecEdit(id, 5);
+  setTimeout(() => { const t = document.getElementById('medEd_' + k + '_' + id); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 80);
+};
 
 // ── §376 — כשל-העלאה שנרשם ומעולם לא נקרא ────────────────────────────────────────────────
 // `worker/src/bizmedia.js` כותב `mediaUploadFailed` (מערך שמות-שדות) ו-`mediaUploadFailedAt`
@@ -13425,7 +13470,7 @@ function mediaRealEditHtml(b) {
     </div>`).join('');
   return `
     <div class="media-manager" id="media_${b.id}">
-      <div class="approve-field-label">לוגו</div>
+      <div class="approve-field-label" id="medEd_logo_${b.id}">לוגו</div>
       <div class="media-slot-row" style="align-items:center">
         ${b.logo ? mediaThumbHtml(b.logo, 'logo.png', 'width:56px;height:56px;border-radius:6px;overflow:hidden', 'לוגו', 'contain') : ''}
         <label class="media-drop" ondragover="mediaDragOver(event,this)" ondragleave="mediaDragLeave(this)" ondrop="mediaDrop(event,this,'${b.id}','logo')">
@@ -13447,7 +13492,7 @@ function mediaRealEditHtml(b) {
         </button>
       </div>
       <div class="media-slot-note">כל אפשרות מציגה את התג <b>בגודל האמיתי שלו בכרטיס</b> – בוחרים לפי מה שנראה טוב. "ממלא את התג" מתאים ללוגו ריבועי ואטום; "הלוגו כולו" ללוגו רחב או עם רקע שקוף, שאחרת נחתך בצדדים.</div>` : ''}
-      <div class="approve-field-label" style="margin-top:14px">תמונה מייצגת</div>
+      <div class="approve-field-label" style="margin-top:14px" id="medEd_cover_${b.id}">תמונה מייצגת</div>
       <div class="media-slot-row">
         ${b.coverPhoto ? mediaThumbHtml(b.coverPhotoThumb || b.coverPhoto, 'cover.jpg', 'width:56px;height:56px;border-radius:6px;overflow:hidden', b.name) : ''}
         <label class="media-drop" ondragover="mediaDragOver(event,this)" ondragleave="mediaDragLeave(this)" ondrop="mediaDrop(event,this,'${b.id}','cover')">
@@ -13455,6 +13500,7 @@ function mediaRealEditHtml(b) {
           <span class="media-drop-plus">＋</span><span>${b.coverPhoto ? 'החלפת התמונה' : 'הוספת תמונה מייצגת'}</span>
         </label>
         ${b.coverPhoto ? `<button class="act-btn reject tiny" onclick="removeBizCover('${b.id}')">🗑️ הסר</button>` : ''}
+        ${b.coverPhotoPrev ? `<button class="act-btn tiny" onclick="coverCmpPrev('${b.id}')">↩️ לחזור לתמונה הקודמת</button>` : ''}
       </div>
       ${b.coverPhoto ? (() => {
         const curZoom = getCoverZoom(b.id);
@@ -13489,7 +13535,7 @@ function mediaRealEditHtml(b) {
         <button type="button" class="act-btn tiny" onclick="resetCoverPos('${b.id}')">↺ איפוס למרכז</button>
         <button type="button" class="act-btn approve tiny" onclick="saveCoverPos('${b.id}')">💾 שמירת מיקום וגודל</button>
       </div>`; })() : ''}
-      <div class="approve-field-label" style="margin-top:14px">גלריית תמונות</div>
+      <div class="approve-field-label" style="margin-top:14px" id="medEd_gallery_${b.id}">גלריית תמונות</div>
       ${photosHtml}
       <div class="media-slot-row" style="margin-top:6px">
         <label class="media-drop" ondragover="mediaDragOver(event,this)" ondragleave="mediaDragLeave(this)" ondrop="mediaDrop(event,this,'${b.id}','gallery')">
@@ -13517,16 +13563,70 @@ window.uploadBizLogo = async function(id, files) {
   } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בהעלאת הלוגו: ' + e.message); }
 };
 window.removeBizLogo = async function(id) { await saveSectionUpdates(id, { logo: '', logoThumb: '' }, { reopenStep: 5 }); };
+// §678 – רמי: "במידה ושמתי תמונה שיהיה לי אופציה לחזור לתמונה הקודמת, אולי רק לראות לצד התמונה הקיימת
+// איך התמונה החדשה ואז להחליט". בחירה/גרירה של תמונה לעסק שכבר יש לו תמונה → חלון השוואה (במסגרת 4:3 של
+// הכרטיס), ורק "להחליף" מעלה ושומר. התמונה שהוחלפה (או הוסרה) נשמרת ב-coverPhotoPrev/coverPhotoPrevThumb –
+// הקובץ עצמו לא נמחק מ-Storage – ו"↩️ לחזור לתמונה הקודמת" מחליף ביניהן (עם אותה השוואה).
+// השדות לא ב-PUBLIC_FIELDS של bizPublic, ולכן לא יוצאים לאתר.
+const coverPrevPatch = (b) => b && b.coverPhoto ? { coverPhotoPrev: b.coverPhoto, coverPhotoPrevThumb: b.coverPhotoThumb || '' } : {};
 window.uploadBizCover = async function(id, files) {
   const file = files && files[0];
   if (!file) return;
+  const b = findBiz(id);
+  if (b && b.coverPhoto) { coverCmpOpen(id, { src: URL.createObjectURL(file), file }); return; }
+  await bizCoverUpload(id, file);
+};
+async function bizCoverUpload(id, file) {
   showSaving('מעלה תמונה מייצגת...');
   try {
     const { url, thumbUrl } = await uploadImageWithThumb(file, `businesses/${id}/coverPhoto_${Date.now()}`, COVER_MAX_DIM);
-    await saveSectionUpdates(id, { coverPhoto: url, coverPhotoThumb: thumbUrl }, { reopenStep: 5 });
+    await saveSectionUpdates(id, { coverPhoto: url, coverPhotoThumb: thumbUrl, ...coverPrevPatch(findBiz(id)) }, { reopenStep: 5 });
   } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בהעלאת התמונה: ' + e.message); }
+}
+window.removeBizCover = async function(id) { await saveSectionUpdates(id, { coverPhoto: '', coverPhotoThumb: '', ...coverPrevPatch(findBiz(id)) }, { reopenStep: 5 }); };
+window.coverCmpPrev = function(id) {
+  const b = findBiz(id);
+  if (b && b.coverPhotoPrev) coverCmpOpen(id, { src: bizImageViewUrl(b.coverPhotoPrev), prev: true });
 };
-window.removeBizCover = async function(id) { await saveSectionUpdates(id, { coverPhoto: '', coverPhotoThumb: '' }, { reopenStep: 5 }); };
+let _coverCmp = null;
+function coverCmpEl() {
+  let el = document.getElementById('coverCmpModal');
+  if (!el) { el = document.createElement('div'); el.id = 'coverCmpModal'; el.className = 'cover-cmp-bg'; el.onclick = (ev) => { if (ev.target === el) coverCmpClose(); }; document.body.appendChild(el); }
+  return el;
+}
+function coverCmpOpen(id, o) {
+  const b = findBiz(id);
+  if (!b) return;
+  _coverCmp = { id, ...o };
+  const frame = (src, label) => `<div class="cover-cmp-col"><div class="cover-cmp-lbl">${label}</div><div class="cover-cmp-frame">${src ? `<img src="${esc(src)}" alt="" onerror="markBizImageFailed(this)">` : '<span>אין תמונה</span>'}</div></div>`;
+  const el = coverCmpEl();
+  el.innerHTML = `<div class="cover-cmp-box">
+    <div style="font-size:17px;font-weight:900">${o.prev ? '↩️ לחזור לתמונה הקודמת?' : '🖼️ להחליף את התמונה המייצגת?'} · ${esc(b.name)}</div>
+    <div style="font-size:12.5px;color:var(--text-muted);margin:4px 0 12px">שתיהן במסגרת של הכרטיס באינדקס (4:3, ממורכזות). מיקום וגודל מכוונים אחרי ההחלפה, בעריכה.</div>
+    <div class="cover-cmp-row">${frame(b.coverPhoto ? bizImageViewUrl(b.coverPhoto) : '', 'עכשיו באתר')}${frame(o.src, o.prev ? 'הקודמת' : 'החדשה')}</div>
+    <div class="cover-cmp-acts"><button type="button" class="act-btn approve" onclick="coverCmpGo()">${o.prev ? '↩️ לחזור לקודמת' : '✅ להחליף לחדשה'}</button><button type="button" class="act-btn" onclick="coverCmpClose()">להשאיר את הקיימת</button></div>
+  </div>`;
+  el.style.display = 'flex';
+}
+window.coverCmpClose = function() {
+  const el = document.getElementById('coverCmpModal');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+  if (_coverCmp && _coverCmp.file && _coverCmp.src) URL.revokeObjectURL(_coverCmp.src);
+  _coverCmp = null;
+  document.querySelectorAll('input[type=file]').forEach(i => { if (/uploadBizCover/.test(i.getAttribute('onchange') || '')) i.value = ''; });
+};
+window.coverCmpGo = async function() {
+  const o = _coverCmp;
+  if (!o) return;
+  const b = findBiz(o.id);
+  const file = o.file;
+  coverCmpClose();
+  if (!b) return;
+  if (file) { await bizCoverUpload(o.id, file); return; }
+  if (o.prev && b.coverPhotoPrev) {
+    await saveSectionUpdates(o.id, { coverPhoto: b.coverPhotoPrev, coverPhotoThumb: b.coverPhotoPrevThumb || '', coverPhotoPrev: b.coverPhoto || '', coverPhotoPrevThumb: b.coverPhotoThumb || '' }, { reopenStep: 5 });
+  }
+};
 // ── העלאה מרובה לגלריה (2026-08-19) ─────────────────────────────────────────────────────────
 // היה: קובץ אחד בכל לחיצה, ואחריו הטופס נסגר — כלומר 5 תמונות = 5 סבבים של פתח/בחר/העלה/פתח.
 // עכשיו: בוחרים הכל בבת אחת, מעלים בסדרה עם התקדמות גלויה, ושמירה **אחת** בסוף.
