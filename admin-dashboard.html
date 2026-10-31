@@ -1337,6 +1337,9 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
 .btn-id-wa:hover { background: var(--accent-dark); }
 .btn-id-mail { flex: 1; height: 36px; border: 1px solid var(--accent); border-radius: 9px; background: var(--card-bg); color: var(--accent); font-size: 13px; font-weight: 600; padding: 0 12px; }
 .btn-id-mail:hover { background: var(--accent-bg); }
+.owner-tab-box { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--card-bg); margin-bottom: 14px; }
+.owner-tab-box > .dcard { border: none; border-radius: 0; margin: 0; box-shadow: none; }
+.owner-tab-box > .dcard + .dcard { border-top: 1px dashed var(--border); }
 .id-dash-link { border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; max-width: 260px; }
 .id-dash-h { font-size: 11.5px; color: var(--text-muted); margin-bottom: 4px; }
 .btn-id-dash { height: 36px; border: 1px solid var(--border); border-radius: 9px; background: var(--card-bg); color: var(--text-sm); font-size: 13px; font-weight: 600; padding: 0 14px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
@@ -9511,7 +9514,7 @@ function bizFullDetailHtml(id, opts) {
              "רק כשיש בעיה": השאלה שהיא עונה עליה היא **"האם החיבור קרה"**, ותשובה
              שלילית שאינה מוצגת אינה נבדלת מרנדור שלא רץ. היא נשלפת מרשומת **החבר**
              של הבעלים (ownerMemberId) – הזהות אינה יושבת על מסמך העסק. -->
-      <div class="identity-notes">${bizPinsBoxHtml(b)}${bizOpenConvBoxHtml(b)}${bizOwnerLinkBoxHtml(b)}${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${googleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${appleLinkNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${signupSourceNoteHtml(b.ownerMemberId ? findFan(b.ownerMemberId) : null)}${idEmailNote}${idBroadcastNote}${idNoteBox}</div>
+      <div class="identity-notes">${bizPinsBoxHtml(b)}${bizOpenConvBoxHtml(b)}${bizOwnerLinkBoxHtml(b)}${emailWarnNote(b.ownerEmail)}${idDupBox}${idBrokenLinksBox}${idEmailNote}${idBroadcastNote}${idNoteBox}</div>
     </div>`;
 
   const anchorCardHtml = b.status === 'approved' ? `
@@ -9958,17 +9961,20 @@ function bizFullDetailHtml(id, opts) {
     ${kosherRowHtml(b)}
     ${identityCardHtml}
     ${anchorCardHtml}
-    ${ownerMemberCardHtml(b)}
-    ${ownerVerifStepHtml}
     ${stepsCardHtml}`;
+  // §677ב – רמי: "תחבר בין בעל העסק כחבר מועדון ואימות בעל העסק שיהיה אותה הקוביה… בעוד לשונית שצריך לעבור עליה"
+  const ownerTabHtml = `<div class="owner-tab-box">${ownerMemberCardHtml(b)}${ownerVerifStepHtml}</div>`;
+  const ownerTabDot = bizOwnerTabNeedsLook(b);
   return `
     <div class="card-nav-row"><button class="act-btn task-back-btn" onclick="${o.backFn}()">→ חזרה</button>${nextCardBtnHtml('biz', b.id)}</div>
     <div class="action-tabs">
       <button class="action-tab ${bizDetailViewTab==='main'?'active':''}" onclick="setBizDetailTab('main')">פרטי העסק</button>
+      <button class="action-tab ${bizDetailViewTab==='owner'?'active':''}" onclick="setBizDetailTab('owner')" title="${ownerTabDot ? esc(ownerTabDot) : ''}">🎫 בעל העסק${ownerTabDot ? ' •' : ''}</button>
       <button class="action-tab ${bizDetailViewTab==='decisions'?'active':''}" onclick="setBizDetailTab('decisions')">החלטות ויומן</button>
       ${b.status === 'approved' ? `<button class="action-tab ${bizDetailViewTab==='sections'?'active':''}" onclick="setBizDetailTab('sections')">📊 נתונים והגדרות${secOpenQuestions(b).length ? ' •' : ''}</button>` : ''}
     </div>
     ${bizDetailViewTab === 'decisions' ? bizDecisionPanelHtml(b)
+      : bizDetailViewTab === 'owner' ? ownerTabHtml
       : bizDetailViewTab === 'sections' ? (bizQuestionsHtml(b) + bizDataHtml(b))
       : mainTabHtml}`;
 }
@@ -13802,6 +13808,14 @@ function ownerMismatch(b, f) {
   if (b.status !== 'approved' && f.status === 'approved') return { warn: false, text: `אושר כחבר לפני העסק${f.approvedAt ? ' · ' + fmtDateTime(f.approvedAt) : ''}. נשאר מאושר גם אם העסק יידחה – החלטה על החברות שלו רק ידנית.` };
   return null;
 }
+// §677ב – למה לעבור על לשונית "בעל העסק" (הנקודה •)
+function bizOwnerTabNeedsLook(b) {
+  const f = ownerFanOfBiz(b), mm = f && ownerMismatch(b, f);
+  if (!f) return 'העסק לא מחובר לחשבון אוהד';
+  if (mm && mm.warn) return 'העסק והחבר לא באותו מצב';
+  if (b.status === 'pending') return 'לבדוק את האימות של בעל העסק לפני האישור';
+  return '';
+}
 function ownerMemberCardHtml(b) {
   const f = ownerFanOfBiz(b);
   if (!f) return `<div class="dcard identity-card"><div class="identity-top"><div style="flex:1"><div class="identity-name" style="font-size:16px">👤 בעל העסק כחבר מועדון</div><div class="identity-dates">אין רשומת חבר מקושרת לעסק – בעל העסק לא יוכל להיכנס לאפליקציה כחבר.</div></div></div></div>`;
@@ -14839,6 +14853,7 @@ async function commitBizStaged(b) {
 // מוסיף גם הבהוב-צבע חד-פעמי (jump-flash) על השלב עצמו כתגובה ויזואלית מיידית ללחיצה — בנוסף לצביעה
 // הקבועה של כותרת השלב + השדה הספציפי (secTitle/field-changed, ר' bizFullDetailHtml) שנשארת כל עוד השינוי ממתין.
 window.jumpToBizSection = function(id, n) {
+  if (n === 1 && bizDetailViewTab !== 'owner') { bizDetailViewTab = 'owner'; renderMain(); setTimeout(() => window.jumpToBizSection(id, n), 60); return; }   // §677ב
   const edit = document.getElementById('secEdit' + n + '_' + id);
   if (edit && !edit.classList.contains('open')) toggleBizSecEdit(id, n);
   const target = document.getElementById('secEdit' + n + '_' + id) || document.getElementById('secView' + n + '_' + id);
