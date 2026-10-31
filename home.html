@@ -526,6 +526,15 @@
     /* §569 — כרטיס התראות חד-פעמי. אותו עיצוב כמו בסוף ההרשמה (push-ask.js). */
     #pushCard, #appleLinkCard { margin: 12px 16px 0; background: #E8EEFB; border: 1px solid #cdd8f2; border-radius: 16px;
       padding: 14px; color: #0A2A66; line-height: 1.55; transition: opacity .25s, transform .25s; }
+    /* §672 */
+    #bizFixCard { margin: 12px 16px 0; background: #F4F0FD; border: 1.5px solid #D9CCF7; border-radius: 16px; padding: 14px 16px; color: #0A2A66; }
+    #bizFixCard .pc-badge { display: inline-block; background: #E9E1FB; color: #6941C6; font-weight: 800; font-size: 12px; border-radius: 999px; padding: 2px 10px; }
+    #bizFixCard .pc-h { font-weight: 800; font-size: 15.5px; margin-top: 6px; }
+    #bizFixCard .pc-b { margin-top: 4px; font-size: 14px; color: #33466f; }
+    #bizFixCard .pc-list { margin: 4px 0 0; padding-inline-start: 20px; font-size: 14px; color: #33466f; line-height: 1.7; white-space: pre-line; }
+    #bizFixCard .pc-note { margin-top: 6px; font-size: 13px; color: #B42318; }
+    #bizFixCard .pc-actions { margin-top: 11px; }
+    #bizFixCard .pc-yes { border: none; border-radius: 12px; padding: 11px 18px; font: inherit; font-size: 14px; font-weight: 800; background: #FFD400; color: #0A2A66; cursor: pointer; }
     #pushCard.leaving, #appleLinkCard.leaving { opacity: 0; transform: translateY(-6px); }
     #pushCard .pc-h, #appleLinkCard .pc-h { font-weight: 800; font-size: 15.5px; }
     #pushCard .pc-b, #appleLinkCard .pc-b { margin-top: 4px; font-size: 14px; color: #33466f; }
@@ -1747,6 +1756,8 @@
 
 <!-- §569 — כרטיס התראות חד-פעמי (אפליקציה בלבד). ממולא ע"י maybeShowPushCard במודול. -->
 <!-- §581 — חיבור Apple אחרי כניסה בקוד/Google, כש-Apple לא זוהה באותו סשן. -->
+<!-- §672 — "צריך לתקן" לבעל עסק מחובר. ממולא ע"י renderBizFixCard במודול. -->
+<div id="bizFixCard" hidden></div>
 <div id="appleLinkCard" hidden></div>
 <div id="pushCard" hidden></div>
 
@@ -5781,6 +5792,40 @@ window.enablePushNotifications = async function() {
 
 // ── בעל עסק — הצגת כפתור "העסק שלי" בסרגל הצד ──
 // דיווח על אדמין שגם בעל עסק לא ראה "דשבורד ניהול" בהמבורגר (2026-07-21) — לוג אבחון זמני, ר' PROJECT_CONTEXT.md.
+// ══ §672 — "צריך לתקן" בראש דף הבית לבעל עסק מחובר ════════════════════════════════════════════
+// רמי (29.10): "צריך לתקן… קופץ לו באפליקציה". בעל עסק שכבר מאושר כחבר (נריה, N.r.g gas) נכנס ישר
+// לדף הבית – מסך "העסק שלך אצלנו" (§664/§666) שבמסך הכניסה לא מגיע אליו. כאן: מה חסר (מה שרמי סימן
+// ב"סיכום ושליחה", §671) + "לתיקון" ← "העסק שלי" ב"האזור שלי", שם הדשבורד עם "✅ תיקנתי". אחרי
+// שליחה (fixSubmittedAt) – "קיבלנו, נבדוק". נבנה ב-textContent – בלי HTML מהשדות.
+const BIZ_FIX_LABELS = { cover: 'תמונה ראשית', logo: 'לוגו', deal: 'פרטי ההטבה', owner: 'אימות שאתם אוהדים', desc: 'תיאור העסק' };
+function renderBizFixCard(b) {
+  const card = document.getElementById('bizFixCard');
+  if (!card) return;
+  const on = !!b && b.inReview === true && (b.status === 'pending' || b.status === 'approved');
+  card.hidden = !on;
+  card.textContent = '';
+  if (!on) return;
+  const sent = !!b.fixSubmittedAt;
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  card.appendChild(el('div', 'pc-badge', sent ? '🔁 נשלח לבדיקה' : '✏️ צריך לתקן'));
+  card.appendChild(el('div', 'pc-h', sent ? `קיבלנו את התיקון של "${b.name || 'העסק'}" – נבדוק ונעדכן` : `נשאר עוד צעד קטן ב"${b.name || 'העסק שלך'}"`));
+  if (!sent) {
+    const keys = (Array.isArray(b.inReviewReasons) ? b.inReviewReasons : []).filter(k => BIZ_FIX_LABELS[k]);
+    const other = String(b.inReviewOther || '').trim();
+    const items = keys.map(k => BIZ_FIX_LABELS[k]).concat(other ? [other] : []);
+    card.appendChild(el('div', 'pc-b', 'כדי שהכרטיס יהיה מושלם חסר לנו:'));
+    const ul = el('ul', 'pc-list');
+    items.forEach(t => ul.appendChild(el('li', '', t)));
+    card.appendChild(ul);
+    if (b.status === 'pending' && b.fixHidden === true) card.appendChild(el('div', 'pc-note', 'העסק מוסתר מהאתר עד התיקון.'));
+    const row = el('div', 'pc-actions');
+    const go = el('button', 'pc-yes', 'לתיקון ←');
+    go.type = 'button';
+    go.onclick = () => { location.href = 'profile.html?tab=biz'; };
+    row.appendChild(go);
+    card.appendChild(row);
+  }
+}
 async function initBizNavItem() {
   const memberId = auth.currentUser?.uid;
   let isBizOwner = false, linkedBusinessId = '', isAdminMember = false;
@@ -5839,6 +5884,7 @@ async function initBizNavItem() {
         const tokSnap = await getDoc(doc(db, 'bizTokens', linkedBusinessId)).catch(() => null);
         token = (tokSnap && tokSnap.exists() ? tokSnap.data().accessToken : '') || '';
         approved = bizData.status === 'approved';
+        renderBizFixCard(bizData);   // §672
         // "העסק שלי" בתפריט (וגם שיתוף) מוצגים רק לעסק מאושר — עסק pending/rejected עדיין לא
         // עבר את שער האישור הראשוני, זהה בדיוק לגייטינג הקיים ב-profile.html (§36). לפני התיקון
         // הזה (2026-08-12) "העסק שלי" הוצג לכל בעל-token גם כשהעסק pending — בעל עסק שממתין

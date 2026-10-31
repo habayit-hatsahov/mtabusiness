@@ -13797,7 +13797,7 @@ async function approveBizWithMemberBatch(b) {
     status: 'approved', approvedAt: serverTimestamp(),
     ownerEmailStatus: 'pending', ownerEmailQueuedAt: serverTimestamp(),
     ownerVerificationStatus: 'confirmed',
-    inReview: false, inReviewReasons: [], inReviewOther: '', fixHidden: false,   // §671 – מאושר = כבר לא "צריך לתקן", מכל מסלול אישור
+    inReview: false, inReviewReasons: [], inReviewOther: '', fixHidden: false, fixSubmittedAt: null,   // §671 – מאושר = כבר לא "צריך לתקן", מכל מסלול אישור
   });
   if (memberUpd) batch.update(memberUpd.ref, memberUpd.updates);
   if (memberUpd && memberUpd.codeDoc) batch.set(memberUpd.codeDoc.ref, memberUpd.codeDoc.data);   // §248
@@ -13885,7 +13885,8 @@ function inReviewBadgeHtml(x) {
   if (MOCK_BUSINESSES.includes(x) && bizInFix(x)) {   // §653 · §671 – עסק: מה חסר, "✏️ צריך לתקן" – גם כשהוא מאושר
     const labels = bizWaitLabels(x, true);
     return labels.length
-      ? `<span class="treat-badge" style="background:#F1ECFC;color:#6941C6" title="צריך לתקן">✏️ צריך לתקן: ${esc(labels.join(', '))}${x.status === 'approved' ? ' · באתר' : x.fixHidden ? ' · הוסתר' : ''}</span>`
+      ? bizFixedAt(x) ? `<span class="treat-badge" style="background:#ECFDF3;color:#067647" title="בעל העסק שלח תיקון">🔁 תוקן – לבדיקה</span>`
+      : `<span class="treat-badge" style="background:#F1ECFC;color:#6941C6" title="צריך לתקן">✏️ צריך לתקן: ${esc(labels.join(', '))}${x.status === 'approved' ? ' · באתר' : x.fixHidden ? ' · הוסתר' : ''}</span>`
       : `<span class="treat-badge" style="background:#FDECEC;color:#B42318">✏️ צריך לתקן · לא נשמר מה חסר</span>`;
   }
   if (!isInReview(x)) return '';
@@ -13956,12 +13957,16 @@ function bizWaitBannerHtml(b) {
       <div style="flex:1;min-width:220px"><div style="font-weight:800;color:#B42318">✏️ צריך לתקן – אבל לא נשמר מה חסר</div>${meta}</div>
       <button class="qj-btn primary" onclick="bsOpen('${b.id}','fix')">לסמן מה חסר</button>
     </div>`;
+  // §672 — בעל העסק שלח תיקון: בראש הפס, ירוק, עם "לבדיקה" שפותח את סיכום ושליחה
+  const fixed = bizFixedAt(b);
+  const fixedHtml = fixed ? `<div style="background:#ECFDF3;border:1px solid #ABEFC6;color:#067647;border-radius:9px;padding:6px 10px;margin-bottom:8px;font-weight:800;font-size:13px">🔁 תוקן · ${esc(b.ownerFirst || 'בעל העסק')} שלח תיקון ${fmtDateTime(fixed)} – מחכה לבדיקה שלך</div>` : '';
   return `
     <div style="${box('var(--warn-bg)', 'var(--warn-border)')}">
-      <div style="flex:1;min-width:220px"><div style="font-weight:800;color:#6941C6">✏️ צריך לתקן – חסר מבעל העסק${b.ownerFirst ? ' (' + esc(b.ownerFirst) + ')' : ''}:</div>
+      <div style="flex:1;min-width:220px">${fixedHtml}<div style="font-weight:800;color:#6941C6">✏️ צריך לתקן – חסר מבעל העסק${b.ownerFirst ? ' (' + esc(b.ownerFirst) + ')' : ''}:</div>
         <ul style="margin:6px 0 0;padding-inline-start:18px">${labels.map(l => `<li style="white-space:pre-line">${esc(l)}</li>`).join('')}</ul>${meta}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${b.ownerPhone ? `<button class="qj-btn primary" onclick="openWaitWa('${b.id}')">📲 תזכורת בוואטסאפ</button>` : ''}
+        ${fixed ? `<button class="qj-btn primary" onclick="bsOpen('${b.id}')">לבדיקה ← סיכום ושליחה</button>` : ''}
         <button class="qj-btn" onclick="bsOpen('${b.id}','fix')">עריכת מה חסר</button>
       </div>
     </div>`;
@@ -16080,6 +16085,8 @@ window.openBizNoteReply = function(id) { bnOpen({ bizId: id, mode: 'note' }); };
 // וואטסאפ – אין חיבור: אחרי השליחה כפתור שפותח את הוואטסאפ של רמי עם הנוסח (קישור אמיתי – window.open
 // אחרי await נחסם בדפדפן).
 function bizInFix(b) { return !!b && b.inReview === true && (b.status === 'pending' || b.status === 'approved'); }
+// §672 — בעל העסק שלח תיקון (הוורקר: /biz-fix-done, העלאה ממסך "העסק שלך אצלנו"). סבב חדש מאפס.
+function bizFixedAt(b) { return bizInFix(b) ? toJsDate(b.fixSubmittedAt) : null; }
 const BS_OUT = {
   approve: ['✅ אישור העסק', 'עולה לאתר. בעל העסק מקבל את מייל האישור הרגיל, וההודעה מכאן – בנוסף.'],
   save: ['💾 רק לשמור ולעדכן אותו', 'העסק נשאר מאושר. נשמר מה שסימנת, ויוצאת אליו ההודעה.'],
@@ -16213,7 +16220,7 @@ window.bsGo = async function() {
       o.committed = true;
     }
     if (!o.mainDone) {
-      const clearFix = { inReview: false, inReviewReasons: [], inReviewOther: '', fixHidden: false };
+      const clearFix = { inReview: false, inReviewReasons: [], inReviewOther: '', fixHidden: false, fixSubmittedAt: null };
       if (out === 'approve') {
         await approveBizWithMemberBatch(b);   // מנקה גם את "צריך לתקן"
         Object.assign(b, { status: 'approved' }, clearFix);
@@ -16221,7 +16228,7 @@ window.bsGo = async function() {
       } else if (fix) {
         const hide = out === 'fixHide' || (out === 'fix' && !!b.fixHidden);
         const reasons = o.reasons.concat(other ? ['other'] : []);
-        const upd = { inReview: true, inReviewReasons: reasons, inReviewOther: other, fixHidden: hide, ...(bizInFix(b) ? {} : { inReviewAt: serverTimestamp() }) };
+        const upd = { inReview: true, inReviewReasons: reasons, inReviewOther: other, fixHidden: hide, fixSubmittedAt: null, ...(bizInFix(b) ? {} : { inReviewAt: serverTimestamp() }) };
         if (b.status === 'approved' && hide) Object.assign(upd, { status: 'pending', approvedAt: null });
         await updateDoc(doc(db, 'businesses', b.id), upd);
         Object.assign(b, upd, 'inReviewAt' in upd ? { inReviewAt: new Date() } : {});

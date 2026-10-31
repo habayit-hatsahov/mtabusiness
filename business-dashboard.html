@@ -1642,6 +1642,7 @@
     </script>
 
     <!-- §507 — המדריכים: שתי קופסאות סגורות (biz-guides.js). גם במחשב וגם באפליקציה. -->
+    <div id="bizFix" hidden style="padding:0 16px;max-width:1100px;margin:0 auto"></div><!-- §672 -->
     <div id="bizStats" style="padding:0 16px;max-width:1100px;margin:0 auto"></div><!-- §508 -->
     <div id="bizGuides" style="padding:0 16px;max-width:1100px;margin:0 auto"></div>
 
@@ -2815,6 +2816,7 @@ function showDashboard() {
   // בדיקה תקופתית כדי שפריטים שהושלמו ייעלמו מהרשימה גם בלי אינטראקציה נוספת
   setInterval(() =>{ if (biz) renderCompleteness(getPreviewState()); }, 15000);
   mountDashArea();
+  renderFixBanner();   // §672
   // §507 — המדריכים. השיתוף עובד רק לעסק מאושר (כמו כפתור השיתוף שבראש הדשבורד).
   try {
     window.YZBizGuides && window.YZBizGuides.render(document.getElementById('bizGuides'), {
@@ -2957,6 +2959,58 @@ function renderBizView(flashZone) {
   refreshPreviews(null, flashZone);
 }
 
+// ══ §672 — "צריך לתקן": מה רמי ביקש, ו"✅ תיקנתי – שליחה לבדיקה" ═══════════════════════════════
+// רמי (29.10): "צריך לתקן ← הוא שולח תיקון ← חוזר לממתין עם 🔁 תוקן". מרכז הניהול כותב inReview +
+// inReviewReasons/inReviewOther (§653/§671); כאן בעל העסק רואה מה חסר ומתקן בדשבורד עצמו. כל שמירה כאן
+// היא בקשה (pendingChanges) שמגיעה לרמי לסל; הכפתור כותב fixSubmittedAt דרך הוורקר (/biz-fix-done) –
+// ולרמי יוצאת התראה. הטקסטים = WAIT_REASONS במרכז הניהול.
+const FIX_TEXTS = {
+  cover: ['תמונה ראשית לכרטיס', 'תמונה של העסק או המוצרים – לא לוגו ולא צילום מסך', 'תמונות'],
+  logo: ['הלוגו של העסק', '', 'תמונות'],
+  deal: ['פרטי ההטבה', 'מה בדיוק מקבלים אוהדי מכבי ואיך מממשים אותה', 'הטבות'],
+  owner: ['אימות שאתם אוהדים', 'צילום של כרטיס המנוי או פרטי המושב – אפשר לשלוח לנו ב"הודעות"', ''],
+  desc: ['תיאור העסק', 'מה אתם עושים ולמי', 'פרטי העסק'],
+};
+function fixDate(v) { return v ? (v.toDate ? v.toDate() : new Date(v)) : null; }
+function renderFixBanner() {
+  const el = document.getElementById('bizFix');
+  if (!el || !biz) return;
+  const on = biz.inReview === true && (biz.status === 'pending' || biz.status === 'approved');
+  el.hidden = !on;
+  if (!on) { el.innerHTML = ''; return; }
+  const sent = fixDate(biz.fixSubmittedAt);
+  const keys = (Array.isArray(biz.inReviewReasons) ? biz.inReviewReasons : []).filter(k => FIX_TEXTS[k]);
+  const other = String(biz.inReviewOther || '').trim();
+  const items = keys.map(k => `<li style="margin:6px 0"><b>${FIX_TEXTS[k][0]}</b>${FIX_TEXTS[k][1] ? ' – ' + FIX_TEXTS[k][1] : ''}${FIX_TEXTS[k][2] ? ` <span style="color:#6B7A9B;font-size:12.5px">(בשלב "${FIX_TEXTS[k][2]}")</span>` : ''}</li>`)
+    .concat(other ? [`<li style="margin:6px 0;white-space:pre-line">${esc(other)}</li>`] : []).join('');
+  const hidden = biz.status === 'pending' && biz.fixHidden === true;
+  el.innerHTML = `<div style="background:#F4F0FD;border:1.5px solid #D9CCF7;border-radius:16px;padding:14px 16px;margin:12px 0">
+    <div style="display:inline-block;background:#E9E1FB;color:#6941C6;font-weight:800;font-size:12px;border-radius:999px;padding:2px 10px">${sent ? '🔁 נשלח לבדיקה' : '✏️ צריך לתקן'}</div>
+    <div style="font-weight:800;font-size:16.5px;color:#0A2A66;margin-top:6px">${sent ? 'קיבלנו את התיקון – נבדוק ונעדכן אותך' : 'נשאר עוד צעד קטן – כדי שהכרטיס יהיה מושלם חסר לנו:'}</div>
+    ${sent ? '' : `<ul style="margin:6px 0 0;padding-inline-start:20px;font-size:14px;color:#33466f">${items}</ul>`}
+    ${hidden ? '<div style="margin-top:8px;font-size:13px;color:#B42318">העסק מוסתר מהאתר עד התיקון.</div>' : ''}
+    ${sent ? '' : `<div style="margin-top:8px;font-size:13px;color:#6B7A9B">מתקנים כאן בדשבורד – כל שמירה מגיעה אלינו. כשסיימתם:</div>
+    <button type="button" id="fixDoneBtn" onclick="fixDone()" style="margin-top:10px;border:none;border-radius:12px;padding:11px 18px;font:inherit;font-weight:800;font-size:14.5px;background:#FFD400;color:#0A2A66;cursor:pointer">✅ תיקנתי – שליחה לבדיקה</button>
+    <div id="fixDoneMsg" style="margin-top:8px;font-size:13.5px"></div>`}
+  </div>`;
+}
+window.fixDone = async function() {
+  const btn = document.getElementById('fixDoneBtn'), msg = document.getElementById('fixDoneMsg');
+  const t = token || sessionStorage.getItem('hb_lastBizToken') || '';
+  if (!t) { msg.textContent = 'כתבו לנו ב"הודעות" שתיקנתם – ונבדוק.'; return; }
+  btn.disabled = true; btn.textContent = '⏳ שולחים…'; msg.textContent = '';
+  try {
+    const resp = await hbApiFetch('/biz-fix-done', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bizId, token: t }) });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'failed');
+    biz.fixSubmittedAt = new Date();
+    renderFixBanner();
+  } catch (e) {
+    console.error('fixDone failed', e);
+    btn.disabled = false; btn.textContent = '✅ תיקנתי – שליחה לבדיקה';
+    msg.style.color = '#B42318'; msg.textContent = 'לא נשלח – בדקו את החיבור ונסו שוב.';
+  }
+};
 function esc(v) {
   return (v == null ? '' : String(v)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }

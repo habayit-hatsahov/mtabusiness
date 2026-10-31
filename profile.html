@@ -949,6 +949,7 @@
       if (owner && plain) document.getElementById('tabBiz').hidden = false;
       if (p.get('tab') === 'msgs' || p.get('tab') === 'updates' || p.get('conv') || p.get('new') === '1' || p.get('item')) window.yzProfileTab('msgs');
       else if (p.get('tab') === 'details') window.yzProfileTab('details');
+      else if (p.get('tab') === 'biz' && owner) window.yzProfileTab('biz');   // §672 – מכרטיס "צריך לתקן" בדף הבית
       else if (owner && plain) window.yzProfileTab('biz');
       // §509/§523 — "האזור שלי": אוהד נפתח על "הודעות". בתצוגה מקדימה/bizToken — הפרטים, כמו קודם.
       else if (plain) window.yzProfileTab('msgs');
@@ -1469,25 +1470,29 @@ if (member.isBusinessOwner) {
       const bizName = biz.name || 'העסק שלי';
       myBizName = biz.name || '';   // §503 — לכותרת "על העסק שלך" בעדכונים
       const bizStatus = biz.status || 'pending';
-      const statusText = bizStatus === 'approved' ? '✅ מאושר' : bizStatus === 'rejected' ? '❌ נדחה' : '⏳ ממתין לאישור';
+      // §672 — "צריך לתקן" (גם עסק ממתין שהוסתר): הדשבורד פתוח כדי שיתקן משם
+      const bizFix = biz.inReview === true && (bizStatus === 'pending' || bizStatus === 'approved');
+      const statusText = bizFix ? '✏️ צריך לתקן' : bizStatus === 'approved' ? '✅ מאושר' : bizStatus === 'rejected' ? '❌ נדחה' : '⏳ ממתין לאישור';
       const statusColor = bizStatus === 'approved' ? 'var(--accent)' : 'var(--orange)';
       document.getElementById('bizProfileSection').style.display = 'block';
       document.getElementById('bizProfileName').textContent = bizName;
       document.getElementById('bizProfileStatus').textContent = statusText;
       document.getElementById('bizProfileStatus').style.color = statusColor;
       // כניסה לדשבורד מוצגת רק לעסק מאושר — עסק pending/rejected עדיין לא עבר את שער האישור הראשוני
-      if (token && bizStatus === 'approved') {
+      if (token && (bizStatus === 'approved' || bizFix)) {
         document.getElementById('bizDashBtn').href = `business-dashboard.html?token=${token}`;
         document.getElementById('bizDashBtn').style.display = 'flex';
+      }
+      if (token && bizStatus === 'approved') {
         // §596 – "העסק שלי" הוסר מהתפריט: הלשונית כאן; הדגל נשאר ל"צור קשר".
         window._yzBizOwner = true;
         // רק לעסק מאושר — קישור-שיתוף לעסק לא-מאושר לא יעבוד בכל מקרה (ר' shareMyBiz).
         window._myBizShare = { name: bizName };
         document.getElementById('menuShareBizItem').style.display = 'flex';
-      } else {
+      } else if (!bizFix) {
         document.getElementById('bizPendingMsg').style.display = 'block';
       }
-      myBizTab = { token, status: bizStatus };
+      myBizTab = { token, status: bizStatus, fix: bizFix };
     }
   }
 }
@@ -1502,7 +1507,7 @@ if (member.isBusinessOwner) {
   const frame = document.getElementById('bizFrame');
   if (myBizTab && !bizToken) {
     tab.hidden = false;
-    if ((myBizTab.token || myBizTab.demo) && myBizTab.status === 'approved') {
+    if ((myBizTab.token || myBizTab.demo) && (myBizTab.status === 'approved' || myBizTab.fix)) {   // §672
       // נטען רק בפתיחה הראשונה של הלשונית — הדשבורד כבד, ומי שלא נכנס אליו לא צריך לשלם עליו.
       let loaded = false;
       window.yzLoadBizFrame = () => {

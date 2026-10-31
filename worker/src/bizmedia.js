@@ -1,6 +1,7 @@
 import { getGoogleAccessToken } from './jwt.js';
 import { firestorePatch, bizIdFromToken, claimBizToken } from './firestore.js';
 import { uploadToFirebaseStorage } from './storage.js';
+import { markFixFromUpload } from './bizfix.js';   // §672
 
 // מקבל FormData עם accessToken + קבצים (fanPhoto/logo גולמיים, cover/coverThumb/gallery/galleryThumb
 // כבר דחוסים בצד-לקוח — אותה דחיסה בדיוק כמו קודם, ר' compressToFile ב-business.html) ומעלה ל-Firebase
@@ -180,6 +181,11 @@ export async function handleUploadBizMedia(request, env) {
 
   if (Object.keys(updates).length) {
     await firestorePatch(env, googleToken, `businesses/${bizId}`, updates);
+  }
+  // §672 — העלאה לעסק ב"צריך לתקן" (מסך "העסק שלך אצלנו") היא תיקון: 🔁 תוקן + התראה לרמי. לא מפיל את ההעלאה.
+  if (Object.keys(updates).length || fanPhoto && fanPhoto.size) {
+    await markFixFromUpload(env, googleToken, bizId, Object.keys(updates).concat(fanPhoto && fanPhoto.size ? ['צילום אימות'] : []))
+      .catch((e) => console.error('markFixFromUpload failed:', e.message));
   }
 
   // כשל-העלאה נרשם גם על מסמך העסק עצמו — עד היום זה היה console.error בלוג של ה-Worker

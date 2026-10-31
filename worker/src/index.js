@@ -11,6 +11,7 @@ import { isRateLimited, recordAttempt, overIpQuota } from './ratelimit.js';
 import { wrapEnvKv } from './safekv.js';
 import { handleRegStatus, handleRegRetry } from './regstatus.js';
 import { handleBizRegStatus } from './bizregstatus.js';
+import { handleBizFixDone, runBizRequestAlerts } from './bizfix.js';   // §672
 import { isStrongMatch, describeRegistration } from './regmethod.js';
 import { pendingOwnerExtras } from './ownerpending.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail, sendRejectEmail } from './brevo.js';
@@ -118,6 +119,11 @@ export default {
       if (request.method === 'POST' && url.pathname === '/biz-reg-status') {
         if (memQuota('bizregstatus', clientIp(request, env), 60, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
         return json(await handleBizRegStatus(await request.json(), env), env, request);
+      }
+      // §672 – "✅ תיקנתי – שליחה לבדיקה" בדשבורד העסק (עסק ב"צריך לתקן") → 🔁 תוקן + התראה לרמי
+      if (request.method === 'POST' && url.pathname === '/biz-fix-done') {
+        if (memQuota('bizfixdone', clientIp(request, env), 10, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
+        return json(await handleBizFixDone(await request.json(), env), env, request);
       }
       // §628 – "האימות לא עבר": תיקון מהמכשיר שנרשם (תמונה + פרופיל), פעם אחת.
       if (request.method === 'POST' && url.pathname === '/reg-retry') {
@@ -293,6 +299,12 @@ export default {
       return;
     }
     ctx.waitUntil(runEmailSweeps(env));
+    // §672 – בקשות שינוי חדשות מבעלי עסקים → התראה לרמי. כל 5 דקות; כשל כאן לא נוגע בשאר.
+    if (!(event && event.scheduledTime) || new Date(event.scheduledTime).getUTCMinutes() % 5 === 0) {
+      ctx.waitUntil(getGoogleAccessToken(env).then((t) => runBizRequestAlerts(env, t))
+        .then((r) => { if (r.sent) console.log('bizRequestAlerts', JSON.stringify(r)); })
+        .catch((e) => console.error('bizRequestAlerts failed', String(e))));
+    }
     // §517ב — העתק ציבורי של העסקים (bizPublic) + קודים לחברים (bizCodes). כשל כאן לא נוגע במיילים.
     // §649 – כל דקה רק המאושרים; פעם בחצי שעה (ובהפעלה בלי זמן מתוזמן) השוואה מלאה מול ההעתקים
     const full = !(event && event.scheduledTime) || new Date(event.scheduledTime).getUTCMinutes() % 30 === 0;
