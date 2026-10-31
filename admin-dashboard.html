@@ -4551,7 +4551,7 @@ function sidebarTaskCounts() {
     // §568 — רמי (20.10): *"יש 4 עסקים ממתינים, ורשום בצד שרק 1"*. המונה ספר רק `requests`
     // (בקשה מבעל העסק), ועסק שממתין לאישור נספר בו רק אם במקרה השאיר גם הערה. עכשיו: כל עסק
     // שממתין לאישור **או** שיש לו בקשה פתוחה – כל עסק פעם אחת, כמו מונה האוהדים שסופר ממתינים.
-    biz: MOCK_BUSINESSES.filter(b => b.status === 'pending' || classifyAction(b, 'business').treatments.length > 0).length,
+    biz: MOCK_BUSINESSES.filter(b => (b.status === 'pending' && !bizWaitingOwner(b)) || classifyAction(b, 'business').treatments.length > 0).length,   // §675ה
     fans: fanClassCounts().pending,
     tags: tagQueueSortedFiltered().length,
     hearts: heartsClassCounts().expiringWeek,
@@ -12700,8 +12700,10 @@ function issueKindCounts() {
 
 // כל עסק/אוהד עם primary פעיל (לא "מאושר · אין פעולה") — מבוסס classifyAction בלבד, לא בדיקה נפרדת
 function unifiedTaskItems() {
+  // §675ה – רמי: "עסק ממתין שעוד לא תיקן – שלא ייספר במשימות עד שתיקן". התור אצלו, לא אצלך: יורד מהמשימות
+  // (כמו §427 – כאן ולא ב-classifyAction, כדי שהתווית בכרטיס תמשיך לומר את האמת) עד ש"🔁 תוקן" או בקשת שינוי.
   const biz = MOCK_BUSINESSES.map(b => ({ kind:'biz', id:b.id, entity:b, c: classifyAction(b, 'business') }))
-    .filter(x => x.c.primary !== 'מאושר · אין פעולה');
+    .filter(x => x.c.primary !== 'מאושר · אין פעולה' && !(bizWaitingOwner(x.entity) && !x.c.treatments.length));
   // §427 — 🔑 **הסינון כאן ולא ב-classifyAction, בכוונה.** classifyAction מזין גם את
   // תג-הסיווג בשורת האוהד ובכרטיס-הזהות שלו; שינוי שם היה כותב "מאושר · אין פעולה"
   // על רשומה שסטטוסה pending — שקר על המסך. כאן יורדת רק **המשימה**, בזמן שהכרטיס
@@ -16104,6 +16106,8 @@ function bizInFix(b) { return !!b && b.inReview === true && (b.status === 'pendi
 function bizFixLabel(b) { return !bizInFix(b) ? '' : b.status === 'approved' ? '✅ מאושר – צריך לתקן' : b.fixHidden ? '🙈 מוסתר מהאתר – צריך לתקן' : '⏳ ממתין – צריך לתקן'; }
 function bizShownStatus(b) { return b && b.status === 'pending' && bizInFix(b) && b.fixHidden ? 'approved' : b && b.status; }
 // §672 — בעל העסק שלח תיקון (הוורקר: /biz-fix-done, העלאה ממסך "העסק שלך אצלנו"). סבב חדש מאפס.
+// §675ה – ביקשת ממנו לתקן והוא עוד לא סימן "תיקנתי": התור אצלו
+function bizWaitingOwner(b) { return bizInFix(b) && !bizFixedAt(b); }
 function bizFixedAt(b) { return bizInFix(b) ? toJsDate(b.fixSubmittedAt) : null; }
 const BS_OUT = {
   approve: ['✅ אישור העסק', 'עולה לאתר. בעל העסק מקבל את מייל האישור הרגיל, וההודעה מכאן – בנוסף.'],
