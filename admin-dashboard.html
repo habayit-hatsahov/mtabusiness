@@ -4008,6 +4008,7 @@ function bizFollowupRowHtml(b) {
 // { [bizId]: { title, text, at } }. חלון "💬 הודעה לבעל העסק" (וחלון אישור ההרשמה בעסק ממתין) נפתח
 // כשהכותרת והטקסט כבר בפנים; אחרי שליחה מוצלחת הטיוטה נמחקת. עסק מאושר → "כרטיס חסר באינדקס" עם ✉️.
 let bizNoteDrafts = {};
+let bsDrafts = {};   // §684
 // §671 — הסל: ✅/❌ על בקשות שינוי שעוד לא נכתבו לעסק. {bizId: {field: {d, v?, label, req, at}}}
 let bizStaged = {};
 function bizStagedOf(id) { return bizStaged[id] || {}; }
@@ -10173,7 +10174,7 @@ function stepHeadHtml(b, n) {
     : rev ? `<button class="step-state ok" title="לחיצה מבטלת את הסימון" onclick="event.stopPropagation();unmarkStepReviewed('${b.id}',${n})">✓ נסקר</button>`
     : `<button class="step-state" title="לחיצה מסמנת שהשלב נסקר – בלי לפתוח עריכה" onclick="event.stopPropagation();markStepReviewed('${b.id}',${n})">✓ לסמן נסקר</button>`;   // §683
   const saveOut = parked ? `<button class="btn-step-save sm" onclick="event.stopPropagation();saveStepReviewed('${b.id}',${n})">💾 שמירה ונסקר</button><button class="btn-step-edit" onclick="event.stopPropagation();discardStep('${b.id}',${n})">↺ ביטול השינויים</button>` : '';
-  return `<div class="step-head-actions" id="stepHead${n}_${b.id}">${chip}${qjStepNoteBtn(b, n)}${saveOut}<button class="${open ? 'btn-step-close' : 'btn-step-edit'}" id="stepEditBtn${n}_${b.id}" onclick="toggleBizSecEdit('${b.id}',${n})">${open ? 'סגירה' : 'עריכה'}</button></div>`;
+  return `<div class="step-head-actions" id="stepHead${n}_${b.id}">${chip}${qjStepFixBtn(b, n)}${qjStepNoteBtn(b, n)}${saveOut}<button class="${open ? 'btn-step-close' : 'btn-step-edit'}" id="stepEditBtn${n}_${b.id}" onclick="toggleBizSecEdit('${b.id}',${n})">${open ? 'סגירה' : 'עריכה'}</button></div>`;
 }
 function refreshStepHead(id, n) {
   const el = document.getElementById('stepHead' + n + '_' + id), b = findBiz(id);
@@ -14292,7 +14293,7 @@ function bizWaitTexts(b) { return bizWaitLines(bizWaitKeys(b), b.inReviewOther, 
 // מה שלא שייך לשלב (תגיות שאושרו, הודעה מוכנה, "אחר" כללי) – תחת "כללי".
 const BS_DEC_WORD = { fix: 'בקשת תיקון', remark: 'הערה', edited: 'עדכנו', approved: 'אושר', rejected: 'לא אושר', mapped: 'מופה', handled: 'טיפלנו', info: 'הודעה' };
 const BS_REASON_STEP = { cover: 5, logo: 5, deal: 4, desc: 2, owner: 1 };
-const BS_FIXKEY_STEP = { cover: 5, logo: 5, gallery: 5 };
+const BS_FIXKEY_STEP = { cover: 5, logo: 5, gallery: 5, deal: 4, step2: 2, step3: 3 };
 function bizStepOfLabel(label) {
   const name = Object.keys(QJ_STEP_NAMES).find(n => QJ_STEP_NAMES[n] === label);
   if (name) return +name;
@@ -14306,7 +14307,7 @@ function bizWaitBannerHtml(b) {
   const dec = QJ_DECIDED[b.id] || [];
   const pending = b.status === 'pending';
   const revd = BIZ_REVIEW_SECTIONS.filter(n => b.reviewedSections && b.reviewedSections[n]).length;
-  if (!inFix && !asked.length && !dec.length && !(pending && revd < BIZ_REVIEW_SECTIONS.length)) return '';
+  if (!inFix && !asked.length && !dec.length && !bsDrafts[b.id] && !(pending && revd < BIZ_REVIEW_SECTIONS.length)) return '';
   const by = {};   // שלב → [שורות]
   const add = (n, kind, tag, text) => (by[n] = by[n] || []).push({ kind, tag, text });
   if (inFix) {
@@ -14325,7 +14326,8 @@ function bizWaitBannerHtml(b) {
     add(n, 'basket', 'בסל · ' + (BS_DEC_WORD[d.decision] || 'עוד'), what);
   });
   // §683ב – רמי: "בנראות של זה שיהיה יותר ברור, וגם הכללי להסביר מה זה". פריט = תג צבעוני לפי סוג + הטקסט.
-  const item = it => { const t = String(it.text || '').replace(/\s*\n\s*/g, ' '); return `<div class="sum-it ${it.kind}"><span class="sum-tag">${esc(it.tag)}</span><span class="sum-txt" title="${esc(t)}">${esc(t.length > 160 ? t.slice(0, 160) + '…' : t)}</span></div>`; };
+  const TAG_HELP = { 'נשלח לו לתקן': 'כבר נשלח אליו ב"צריך לתקן" – מופיע אצלו ברשימת "מה חסר לנו" עד שיתקן', 'בעל העסק שלח – לבדוק': 'בעל העסק שינה את זה בדשבורד – מחכה ל-✅/❌ שלך', 'בסל · בקשת תיקון': 'ביקשת שיתקן – בשליחה ייכנס לרשימת "מה חסר לנו" אצלו, והסטטוס יהיה "צריך לתקן"', 'בסל · הערה': 'טיפ או הסבר שלך – ייכתב בהודעה, בלי לדרוש תיקון', 'בסל · עדכנו': 'שינית בעצמך בכרטיס – ייכתב לו בהודעה "עדכנו בשבילך"', 'בסל · הודעה': 'טקסט מוכן שיצורף להודעה', 'בסל · אושר': 'אישרת בקשה שלו – ייכתב לו שאושר', 'בסל · לא אושר': 'לא אישרת בקשה שלו – ייכתב לו עם ההסבר' };
+  const item = it => { const t = String(it.text || '').replace(/\s*\n\s*/g, ' '); return `<div class="sum-it ${it.kind}"><span class="sum-tag" title="${esc(TAG_HELP[it.tag] || '')}">${esc(it.tag)}</span><span class="sum-txt" title="${esc(t)}">${esc(t.length > 160 ? t.slice(0, 160) + '…' : t)}</span></div>`; };
   const STEPS = [[3, 1], [2, 2], [4, 3], [5, 4]];
   // שורת התקדמות – 4 השלבים בשורה אחת (עסק ממתין)
   const progress = pending ? `<div class="sum-prog">${STEPS.map(([n, num]) => { const rev = !!(b.reviewedSections && b.reviewedSections[n]); return `<button type="button" class="sum-chip ${rev ? 'ok' : ''}" onclick="jumpToBizSection('${b.id}',${n})"><span class="sum-step-n">${num}</span>${QJ_STEP_NAMES[n]}<b>${rev ? '✓ נסקר' : 'לא נסקר'}</b></button>`; }).join('')}</div>` : '';
@@ -14342,10 +14344,11 @@ function bizWaitBannerHtml(b) {
     inFix && !bizWaitKeys(b).length ? '<b style="color:#B42318">לא נשמר מה חסר</b>' : '',
     fixed ? `<b style="color:#067647">${esc(b.ownerFirst || 'בעל העסק')} סימן שתיקן ${fmtDateTime(fixed)} – מחכה לבדיקה שלך</b>` : '',
     dec.length ? `<b>בסל ${dec.length} – עוד לא נשלח לו</b>` : '',
+    bsDrafts[b.id] ? '<b>💾 יש טיוטה שמורה של ההודעה</b>' : '',
   ].filter(Boolean).join(' · ');
   const btns = [
     inFix && b.ownerPhone ? `<button class="qj-btn primary" onclick="openWaitWa('${b.id}')">📲 תזכורת בוואטסאפ</button>` : '',
-    (fixed || dec.length || asked.length) ? `<button class="qj-btn primary" onclick="bsOpen('${b.id}')">🧺 סיכום ושליחה</button>` : '',
+    (fixed || dec.length || asked.length || bsDrafts[b.id]) ? `<button class="qj-btn primary" onclick="bsOpen('${b.id}')">🧺 סיכום ושליחה</button>` : '',
     inFix ? `<button class="qj-btn" onclick="bsOpen('${b.id}','fix')">${bizWaitKeys(b).length ? 'עריכת מה חסר' : 'לסמן מה חסר'}</button>` : '',
   ].filter(Boolean).join('');
   return `
@@ -16160,7 +16163,7 @@ function qjNoteOpen(id, remark, fix) {
   const noLbl = remark || fix ? 'ביטול' : 'בלי הערה';
   el.innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:560px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
     <div style="font-size:18px;font-weight:900">${fix ? '🚩 לבקש לתקן: ' + esc(fix.label) : '📝 הערה לבעל "' + esc(b.name) + '"'}</div>
-    <div style="font-size:13.5px;color:var(--text-muted,#5B6B8C);margin-top:4px;line-height:1.6">${fix ? 'נכנס לרשימת "מה חסר לנו" אצלו. אפשר לכתוב מה בדיוק – לא חובה.' : remark ? `על השלב "${esc(remark)}": מה שינית, מה עשית, או מה לא ברור ושכדאי לו להחליף.` : 'ההחלטה נשמרה.'} נאסף להודעה אחת לבעל העסק – לא נשלח עכשיו.</div>
+    <div style="font-size:13.5px;color:var(--text-muted,#5B6B8C);margin-top:4px;line-height:1.6">${fix ? 'נכנס לרשימת "מה חסר לנו" אצלו. ' + (/^step/.test(fix.key) ? '<b>כתוב מה בדיוק לתקן</b> – זה מה שיופיע אצלו.' : 'אפשר לכתוב מה בדיוק – לא חובה.') : remark ? `על השלב "${esc(remark)}": מה שינית, מה עשית, או מה לא ברור ושכדאי לו להחליף.` : 'ההחלטה נשמרה.'} נאסף להודעה אחת לבעל העסק – לא נשלח עכשיו.</div>
     <div style="font-size:13px;margin-top:10px"><div style="font-weight:800;margin-bottom:4px">📨 ההודעה לבעל העסק עד עכשיו:</div>${prev}</div>
     <div style="border:2px solid var(--yellow,#FFD400);background:#FFF7DB;border-radius:14px;padding:12px;margin-top:12px">
       <div style="font-weight:800;font-size:15px">${QJ_LINE_PREFIX[cur.decision] || ''}${esc(cur.label)}</div>
@@ -16180,6 +16183,15 @@ function qjNoteOpen(id, remark, fix) {
 }
 window.qjStepNoteOpen = function(id, step) { qjNoteOpen(id, QJ_STEP_NAMES[step] || 'הכרטיס'); };
 // כפתור ליד "עריכה" בכל שלב; ✓ כשיש כבר הערה שמחכה
+// §684 – רמי: "למה אין צריך תיקון גם בשלבים 1-3? הערה שלי לפעמים היא הערה לשיפור ולפעמים הערה שדורשת תיקון".
+// שלב ההטבות → סיבת "פרטי ההטבה" (deal); שאר השלבים → בקשה בשם השלב, ומה בדיוק – בהערה.
+const STEP_FIX_KEY = { 2: 'step2', 3: 'step3', 4: 'deal', 5: 'gallery' };
+function qjStepFixBtn(b, step) {
+  if (step === 5) return '';   // בתמונות – 🚩 בכל אריח
+  const k = STEP_FIX_KEY[step], has = (QJ_DECIDED[b.id] || []).some(d => d.decision === 'fix' && d.key === k);
+  return `<button class="btn-step-edit" style="margin-inline-end:6px${has ? ';background:#F4F0FD;border-color:#7F56D9' : ''}" onclick="event.stopPropagation();qjStepFixOpen('${b.id}',${step})" title="בקשה שחייב לתקן – נכנסת לרשימת 'מה חסר לנו' אצלו">🚩 ${has ? 'נדרש תיקון' : 'לתקן'}</button>`;
+}
+window.qjStepFixOpen = function(id, step) { const k = STEP_FIX_KEY[step]; qjNoteOpen(id, null, { key: k, label: k === 'deal' ? 'פרטי ההטבה' : QJ_STEP_NAMES[step] }); };
 function qjStepNoteBtn(b, step) {
   const has = (QJ_DECIDED[b.id] || []).some(d => d.decision === 'remark' && d.label === QJ_STEP_NAMES[step] && d.note);
   return `<button class="btn-step-edit" style="margin-inline-end:6px${has ? ';background:#FFF7DB;border-color:var(--yellow,#FFD400)' : ''}" onclick="event.stopPropagation();qjStepNoteOpen('${b.id}',${step})" title="הערה לבעל העסק על השלב הזה – נאספת להודעה אחת">📝 הערה${has ? ' ✓' : ''}</button>`;
@@ -16206,6 +16218,7 @@ window.qjNoteDone = async function(save) {
     if (o.fix && o.idx < 0) {   // §679 – 🚩 חדש: נכנס לסל גם בלי טקסט
       const it = { ...qjItem(o.fix.label, 'fix'), key: o.fix.key };
       const note = String(ta.value || '').trim().slice(0, 600);
+      if (!note && /^step/.test(o.fix.key)) { o.saving = false; const er = document.getElementById('bnErr'); if (er) er.textContent = 'כתוב מה בדיוק לתקן בשלב הזה – זה מה שיופיע אצלו.'; const go = document.getElementById('qjNoteGo'); if (go) { go.disabled = false; go.textContent = '🧺 לסל'; } return; }
       if (note) it.note = note;
       await logActivity('businesses', o.bizId, { type: 'bizNoteComment', title: 'בקשת תיקון לסל', detail: '🚩 ' + it.label + (note ? ': ' + note : ''), noteItem: it });
       (QJ_DECIDED[o.bizId] = QJ_DECIDED[o.bizId] || []).push({ ...it, _ts: Date.now() });
@@ -16572,7 +16585,7 @@ window.bsOpen = function(id, outcome) {
   if (!b) return;
   if (_bn && _bn.sending) return;
   qjLoadDecided(id);
-  const outs = bsOutcomes(b);
+  const outs = bsOutcomes(b), outcome0 = outcome;   // §684
   if (outcome === undefined && (QJ_DECIDED[id] || []).some(d => d.decision === 'fix')) outcome = bsDefaultOutcome(b);   // §679
   if (outcome === 'fix' && b.status === 'approved') outcome = bizInFix(b) ? 'fixStay' : null;   // עסק מאושר – רמי בוחר: נשאר / יורד
   else if (outcome === 'fix' && bizShownStatus(b) === 'approved') outcome = 'fixHide';   // §675 – מוסתר: "עריכת מה חסר" = נשאר מוסתר
@@ -16581,6 +16594,7 @@ window.bsOpen = function(id, outcome) {
   const merged = bsInitState(b);   // §675ד · §679
   _bn = { bizId: id, mode: 'summary', outcome, sending: false, dirty: false,
     reasons: merged.reasons, other: merged.other,
+    ...((d0 => d0 && outcome0 === undefined ? { outcome: outs.includes(d0.outcome) ? d0.outcome : null, reasons: Array.isArray(d0.reasons) ? d0.reasons : merged.reasons, other: d0.other || '', title: d0.title || '', text: d0.text || '', dirty: !!(d0.title || d0.text), draftAt: d0.at || null } : {})(bsDrafts[id])),   // §684 – טיוטה שמורה
     wa: !!b.ownerPhone };
   bsRender();
 };
@@ -16618,7 +16632,9 @@ function bsRender() {
     <div id="bnErr" style="color:var(--red,#B42318);font-size:13px;margin-top:8px;white-space:pre-line"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
       <button class="qj-btn primary" id="bnGo" onclick="bsGo()" ${o.outcome ? '' : 'disabled'}>${goLbl}</button>
+      <button class="qj-btn" onclick="bsSaveDraft()">💾 שמירה בלי לשלוח</button>
       <button class="qj-btn" onclick="bnClose()">ביטול</button>
+      ${o.draftAt ? `<span style="font-size:12px;color:var(--text-muted);align-self:center">טיוטה שמורה מ-${fmtDateTime(toJsDate(o.draftAt))} · <a href="#" onclick="event.preventDefault();bsDropDraft()">להתחיל מחדש</a></span>` : ''}
     </div>
   </div>`;
   bnEl().style.display = 'flex';
@@ -16657,6 +16673,28 @@ window.bsReason = function(el) {
   if (!o) return;
   o.reasons = el.checked ? [...new Set(o.reasons.concat(el.value))] : o.reasons.filter(k => k !== el.value);
   window.bsSet('reasons', o.reasons);
+};
+// §684 – רמי: "בסיכום ושליחה – תן לי אופציה לשמור ולא לשלוח במידה ואני מוסיף מלל". נשמר הכול (מה עושים,
+// מה יופיע אצלו, הכותרת והטקסט כפי שערכת), ונפתח ככה בפעם הבאה. שליחה מוחקת את הטיוטה.
+window.bsSaveDraft = async function() {
+  const o = _bn;
+  if (!o || o.mode !== 'summary') return;
+  const d = { title: ((document.getElementById('bnTitle') || {}).value || '').slice(0, BN_TITLE_MAX), text: ((document.getElementById('bnText') || {}).value || '').slice(0, 1500),
+    outcome: o.outcome || null, reasons: o.reasons || [], other: String(o.other || '').slice(0, 300), at: new Date().toISOString() };
+  try { await setDoc(doc(db, 'settings', 'bsDrafts'), { [o.bizId]: d }, { merge: true }); bsDrafts[o.bizId] = d; bnClose(); renderMainPreserveScroll(); }
+  catch (e) { const err = document.getElementById('bnErr'); if (err) err.textContent = 'השמירה נכשלה: ' + (e.message || e); }
+};
+async function bsClearDraft(id) {
+  if (!bsDrafts[id]) return;
+  delete bsDrafts[id];
+  try { await setDoc(doc(db, 'settings', 'bsDrafts'), { [id]: deleteField() }, { merge: true }); } catch (e) { console.warn('bsClearDraft', e); }
+}
+window.bsDropDraft = async function() {
+  const o = _bn;
+  if (!o || !confirm('למחוק את הטיוטה ולבנות את ההודעה מחדש מהסל?')) return;
+  const id = o.bizId;
+  await bsClearDraft(id);
+  bnClose(); window.bsOpen(id);
 };
 window.bsGo = async function() {
   const o = _bn;
@@ -16727,6 +16765,7 @@ window.bsGo = async function() {
 };
 // המסך שאחרי: מה קרה + הוואטסאפ (קישור – לחיצה אמיתית של רמי, לא window.open אחרי await)
 function bsDone(b, out, res, waText) {
+  bsClearDraft(b.id);   // §684 – נשלח: הטיוטה כבר לא רלוונטית
   const wa = waText ? waLink(b.ownerPhone, applyBizTpl('היי {name} 👋\nכאן רמי מ-Yellow Zone 💛\n\n', b.ownerFirst, b.name, '') + waText
     + (b.accessToken ? '\n\n💻 הקישור האישי לעריכת העסק – שמרו אותו ואל תעבירו הלאה:\n' + bizDashUrl(b.accessToken) : '') + '\n\nקונים כחול-צהוב\nרמי') : '';
   _bn = { bizId: b.id, mode: 'summaryDone' };
@@ -24915,6 +24954,8 @@ onSnapshot(doc(db, 'settings', 'bizStaged'), snap => {   // §671
   bizStaged = snap.exists() ? (snap.data() || {}) : {};
   renderMainPreserveScroll();
 }, err => console.error('שגיאה בטעינת הסל:', err));
+// §684 – טיוטות "סיכום ושליחה" שנשמרו בלי לשלוח
+onSnapshot(doc(db, 'settings', 'bsDrafts'), snap => { bsDrafts = snap.exists() ? (snap.data() || {}) : {}; }, err => console.warn('bsDrafts', err));
 onSnapshot(doc(db, 'settings', 'bizNoteDrafts'), snap => {   // §644
   bizNoteDrafts = snap.exists() ? (snap.data() || {}) : {};
   renderMainPreserveScroll();
