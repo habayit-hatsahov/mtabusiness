@@ -514,6 +514,13 @@ body {
 .sum-round-h { font-weight: 800; font-size: 12.5px; margin-top: 8px; }
 .sum-round-msg { white-space: pre-line; font-size: 13px; background: var(--card-bg2, #F4F6FB); border-radius: 8px; padding: 8px 10px; margin-top: 4px; }
 .sum-sent { background: #F4F0FD; border: 1.5px solid #D9CCF7; border-radius: 10px; padding: 8px 12px; margin-top: 8px; }
+.ph-card { background: #fff; border: 1px solid #D9CCF7; border-radius: 14px; padding: 10px 14px; margin-top: 8px; max-width: 520px; box-shadow: 0 2px 8px rgba(105,65,198,.08); }
+.ph-badge { display: inline-block; background: #E9E1FB; color: #6941C6; font-weight: 800; font-size: 11.5px; border-radius: 999px; padding: 2px 10px; }
+.ph-title { font-weight: 800; font-size: 16px; color: #0A2A66; margin-top: 6px; }
+.ph-text { font-size: 13.5px; color: #33466f; margin-top: 2px; }
+.ph-foot { font-size: 12px; color: var(--text-muted); margin-top: 6px; border-top: 1px dashed var(--border); padding-top: 6px; }
+.sum-msg { margin-top: 8px; font-size: 13px; }
+.sum-msg summary { cursor: pointer; font-weight: 700; color: #0A2A66; }
 .sum-sent-h { font-weight: 800; font-size: 13.5px; color: #6941C6; }
 .sum-sent-ol { margin: 6px 0 0; padding-inline-start: 22px; }
 .sum-sent-ol li { font-size: 15px; font-weight: 700; margin: 4px 0; }
@@ -11854,7 +11861,6 @@ function fanFullDetailHtml(id, opts) {
           ${qjDeleteBtn('fan', f.id)}
         </div>` : f.status === 'rejected' ? `
         <div class="qj-header-actions">
-          <button class="qj-btn-approve-app" onclick="restoreFanToPending('${f.id}')">↩️ שחזור לממתין</button>
           ${fanInFix(f) ? `<button class="qj-btn-reject-app" onclick="rejectFan('${f.id}','final')">⛔ דחייה סופית</button>` : `<button class="qj-btn-reject-app" onclick="rejectFan('${f.id}','retry')">✏️ צריך לתקן</button>`}
           <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קוד כניסה (Brevo)" onclick="approveFan('${f.id}')">✅ אשר בכל זאת</button>
           ${qjDeleteBtn('fan', f.id)}
@@ -14530,11 +14536,26 @@ function bizWaitBannerHtml(b) {
   const steps = STEPS.map(([n, num]) => group(num, QJ_STEP_NAMES[n], by[n] || [], `<button type="button" class="qj-btn link" onclick="jumpToBizSection('${b.id}',${n})">לשלב ←</button>`)).join('');
   const ownerRow = group('🎫', 'אימות בעל העסק', by[1] || [], `<button type="button" class="qj-btn link" onclick="jumpToBizSection('${b.id}',1)">ללשונית ←</button>`);
   // §689 – רמי: "אני רוצה להבין מה ביקשתי מהעסק, מה כתבתי לו על התיקון ספציפית, ותסמן בהתחלה מה כתוב אצלם במסך התחברות"
+  // §691 – רמי: "איך אני מבין מזה מה שלחנו ומה כתוב לו במסך הכניסה, איזה נקודות לתקן?" – שני חלקים:
+  // (1) "📱 כך זה נראה אצלו" – בדיוק המסך שלו (ממתין: מסך הכניסה "העסק שלך אצלנו"; מאושר: הכרטיס בדף הבית),
+  //     עם אותה פתיחה ואותן נקודות, ממוספרות, ✕ ליד כל אחת · (2) "📨 מה שלחנו לו" – ההודעה האחרונה מ"סבבי סיכום ושליחה"
+  bizSummariesLoad(b.id);
+  const lastSum = ((_bizSummaries[b.id] || {}).list || []).find(x => x.summary && x.summary.sent) || null;
   const sentItems = inFix ? bizSentItems(b) : [];
+  const first = esc(b.ownerFirst || '');
+  const screenHead = pending && !b.fixHidden
+    ? `<div class="ph-badge">חסרים פרטים</div><div class="ph-title">${first ? 'היי ' + first + ', ' : ''}כמעט שם</div><div class="ph-text">"${esc(b.name)}" ממתין לאישור. כדי שנוכל לאשר את העסק, חסרים לנו:</div>`
+    : `<div class="ph-badge">✏️ צריך לתקן</div><div class="ph-title">נשאר עוד צעד קטן ב"${esc(b.name)}"</div><div class="ph-text">כדי שהכרטיס יהיה מושלם חסר לנו:</div>`;
   const sentBox = inFix ? `<div class="sum-sent">
-      <div class="sum-sent-h">📱 מה כתוב לו עכשיו – באפליקציה${pending && !b.fixHidden ? ' ובמסך הכניסה' : ''} ובדשבורד, תחת "כדי שהכרטיס יהיה מושלם, חסר לנו:"<span class="mtile-sub" style="margin-inline-start:6px">${b.inReviewAt ? 'נשלח ' + fmtDateTime(toJsDate(b.inReviewAt)) : ''}</span></div>
-      ${sentItems.length ? `<ol class="sum-sent-ol">${sentItems.map(x => `<li><span>${esc(x.text)}</span><button type="button" class="sum-x" title="להוריד את השורה מהרשימה שלו" onclick="bizSentRemove('${b.id}','${x.key}',${x.idx === undefined ? -1 : x.idx})">✕</button></li>`).join('')}</ol>` : '<div class="mtile-empty" style="color:#B42318">לא נשמר מה חסר – "לסמן מה חסר" למעלה</div>'}
-      ${fixed ? `<div class="sum-sent-fixed">🔁 ${esc(b.ownerFirst || 'בעל העסק')} סימן שתיקן ${fmtDateTime(fixed)} – מחכה לבדיקה שלך</div>` : ''}</div>` : '';
+      <div class="sum-sent-h">📱 כך זה נראה אצלו עכשיו – ${pending && !b.fixHidden ? 'במסך הכניסה לאפליקציה ובדשבורד' : 'בראש דף הבית באפליקציה ובדשבורד'}</div>
+      <div class="ph-card">${screenHead}
+        ${sentItems.length ? `<ol class="sum-sent-ol">${sentItems.map(x => `<li><span>${esc(x.text)}</span><button type="button" class="sum-x" title="להוריד את הנקודה – תיעלם אצלו מיד, בלי הודעה" onclick="bizSentRemove('${b.id}','${x.key}',${x.idx === undefined ? -1 : x.idx})">✕</button></li>`).join('')}</ol>` : '<div class="mtile-empty" style="color:#B42318">לא נשמר מה חסר – "לסמן מה חסר" למעלה</div>'}
+        <div class="ph-foot">${pending && !b.fixHidden ? 'מעלה תמונות מהמסך, ואת השאר מתקן בדשבורד' : 'כפתור "לתיקון ←" ובדשבורד "✅ תיקנתי – שליחה לבדיקה"'}</div>
+      </div>
+      ${fixed ? `<div class="sum-sent-fixed">🔁 ${esc(b.ownerFirst || 'בעל העסק')} סימן שתיקן ${fmtDateTime(fixed)} – מחכה לבדיקה שלך</div>` : ''}
+      ${lastSum ? `<details class="sum-msg"><summary>📨 מה שלחנו לו · ${fmtDateTime(toJsDate(lastSum.createdAt))} · "${esc(lastSum.summary.msgTitle || '')}"</summary><div class="sum-round-msg">${esc(lastSum.summary.msgText || '')}</div></details>`
+        : `<div class="mtile-sub" style="margin-top:6px">📨 ההודעה עצמה – ${b.inReviewAt ? 'נשלחה ' + fmtDateTime(toJsDate(b.inReviewAt)) + ', ' : ''}לפני שהתחלנו לשמור סבבים (31.10) – ביומן</div>`}
+    </div>` : '';
   const general = group('✉️', 'עוד בהודעה – לא שייך לשלב מסוים', by[0] || [], '', 'הודעות ועדכונים כלליים שייכנסו להודעה לבעל העסק – למשל תגית או קטגוריה שאושרו, או הודעה מוכנה');
   const sentWa = inFix ? (b.waNudgeCount ? ` · וואטסאפ נשלח ${b.waNudgeCount === 1 ? 'פעם אחת' : b.waNudgeCount + ' פעמים'}${b.waNudgeAt ? ', אחרון ' + fmtDateTime(b.waNudgeAt) : ''}` : ' · עוד לא נשלח וואטסאפ') : '';
   const head = [
@@ -15573,7 +15594,7 @@ function bizSummariesLoad(id) {
   _bizSummaries[id] = { loading: true };
   getDocs(query(collection(db, 'businesses', id, 'activity'), where('type', '==', 'summary'))).then(snap => {
     _bizSummaries[id] = { list: snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).sort((a, c) => (toJsDate(c.createdAt) || 0) - (toJsDate(a.createdAt) || 0)) };
-    if (selectedBizDetailId === id && bizDetailViewTab === 'decisions') renderMain();
+    if (selectedBizDetailId === id) renderMainPreserveScroll();
   }).catch(e => { console.error('summaries load failed', e); _bizSummaries[id] = { list: [], err: true }; });
 }
 function bizSummariesHtml(b) {
