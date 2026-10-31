@@ -14554,7 +14554,7 @@ function bizWaitBannerHtml(b) {
   const revd = BIZ_REVIEW_SECTIONS.filter(n => b.reviewedSections && b.reviewedSections[n]).length;
   if (!inFix && !asked.length && !dec.length && !bsDrafts[b.id] && !(pending && revd < BIZ_REVIEW_SECTIONS.length)) return '';
   const by = {};   // שלב → [שורות]
-  const add = (n, kind, tag, text) => (by[n] = by[n] || []).push({ kind, tag, text });
+  const add = (n, kind, tag, text, di) => (by[n] = by[n] || []).push({ kind, tag, text, di });
   if (false) {   // §689 – מה שנשלח מוצג פעם אחת, ממוספר, בראש הפס (sentBox)
     const keys = bizWaitKeys(b);
     keys.filter(k => k !== 'other').forEach(k => {
@@ -14568,11 +14568,11 @@ function bizWaitBannerHtml(b) {
   dec.forEach(d => {
     const n = d.decision === 'fix' ? (BS_FIXKEY_STEP[d.key] || 0) : bizStepOfLabel(d.label);
     const what = d.decision === 'remark' ? (d.note || '') : d.label + (d.note ? ' – ' + d.note : '');
-    add(n, 'basket', BS_DEC_WORD[d.decision] || 'עוד', what);
+    add(n, 'basket', BS_DEC_WORD[d.decision] || 'עוד', what, ['fix', 'remark', 'edited', 'info'].includes(d.decision) ? dec.indexOf(d) : undefined);   // §694 – ✕
   });
   // §683ב – רמי: "בנראות של זה שיהיה יותר ברור, וגם הכללי להסביר מה זה". פריט = תג צבעוני לפי סוג + הטקסט.
   const TAG_HELP = { 'ביקשנו לתקן · נשלח': 'בקשה שלנו שכבר נשלחה אליו ב"צריך לתקן" – מופיעה אצלו ברשימת "מה חסר לנו" עד שיתקן', 'ביקשנו לתקן · עוד לא נשלח': 'בקשה שלנו שיושבת בסל – בשליחה תיכנס לרשימת "מה חסר לנו" אצלו, והסטטוס יהיה "צריך לתקן"', 'בעל העסק ביקש לעדכן': 'בעל העסק שינה את זה בדשבורד – מחכה ל-✅/❌ שלנו', 'הערה שלנו': 'טיפ או הסבר – ייכתב בהודעה, בלי לדרוש תיקון', 'אנחנו עדכנו': 'שינינו בעצמנו בכרטיס – ייכתב לו בהודעה "עדכנו בשבילך"', 'הודעה מוכנה': 'טקסט מוכן שיצורף להודעה', 'אישרנו לו': 'אישרנו בקשה שלו – ייכתב לו שאושר', 'לא אישרנו לו': 'לא אישרנו בקשה שלו – ייכתב לו עם ההסבר' };
-  const item = it => { const t = String(it.text || '').replace(/\s*\n\s*/g, ' '); return `<div class="sum-it ${it.kind}"><span class="sum-tag" title="${esc(TAG_HELP[it.tag] || '')}">${esc(it.tag)}</span><span class="sum-txt" title="${esc(t)}">${esc(t.length > 160 ? t.slice(0, 160) + '…' : t)}</span></div>`; };
+  const item = it => { const t = String(it.text || '').replace(/\s*\n\s*/g, ' '); return `<div class="sum-it ${it.kind}"><span class="sum-tag" title="${esc(TAG_HELP[it.tag] || '')}">${esc(it.tag)}</span><span class="sum-txt" title="${esc(t)}">${esc(t.length > 160 ? t.slice(0, 160) + '…' : t)}</span>${it.di !== undefined ? `<button type="button" class="sum-x" title="להוציא מהסל – לא ייכנס להודעה" onclick="qjBasketRemove('${b.id}',${it.di})">✕</button>` : ''}</div>`; };
   const STEPS = [[3, 1], [2, 2], [4, 3], [5, 4]];
   // שורת התקדמות – 4 השלבים בשורה אחת (עסק ממתין)
   const progress = pending ? `<div class="sum-prog">${STEPS.map(([n, num]) => { const rev = !!(b.reviewedSections && b.reviewedSections[n]); return `<button type="button" class="sum-chip ${rev ? 'ok' : ''}" onclick="jumpToBizSection('${b.id}',${n})"><span class="sum-step-n">${num}</span>${QJ_STEP_NAMES[n]}<b>${rev ? '✓ נסקר' : 'לא נסקר'}</b></button>`; }).join('')}</div>` : '';
@@ -16498,6 +16498,17 @@ function qjStepNoteBtn(b, step) {
   return `<button class="btn-step-edit" style="margin-inline-end:6px${has ? ';background:#FFF7DB;border-color:var(--yellow,#FFD400)' : ''}" onclick="event.stopPropagation();qjStepNoteOpen('${b.id}',${step})" title="הערה לבעל העסק על השלב הזה – נאספת להודעה אחת">📝 הערה${has ? ' ✓' : ''}</button>`;
 }
 // §680 – רמי: "תנו לי אופציה מבפנים לבטל את התיקון או הערה". יוצא מהסל ומההודעה; ביומן נשאר שבוטל.
+// §694 – רמי: "עשיתי תיקון של שעות הפעילות, שמרתי בלי לשלוח לו, וזה עדיין מופיע למעלה… אין אופציה שזה ייעלם".
+// הפריט נשאר בסל עד שליחה – ✕ מוציא אותו בלי לשלוח (השינוי עצמו בכרטיס נשאר). ✅/❌ על בקשות – רק בשיפוט המהיר.
+window.qjBasketRemove = async function(id, idx) {
+  const d = (QJ_DECIDED[id] || [])[idx];
+  if (!d || !confirm('להוציא מהסל?\n\n"' + d.label + (d.note ? ' – ' + d.note : '') + '"\n\nזה לא ייכנס להודעה לבעל העסק.' + (d.decision === 'edited' ? ' השינוי עצמו בכרטיס נשאר.' : ''))) return;
+  if (d.decision === 'remark') await qjSetNote(id, idx, '');
+  else await logActivity('businesses', id, { type: 'bizNoteComment', title: 'הוצא מהסל (בלי לשלוח)', detail: (QJ_CHIP_ICON[d.decision] || '') + d.label, noteItem: { label: d.label, decision: 'unstaged' } });
+  QJ_DECIDED[id].splice(idx, 1);
+  if (!QJ_DECIDED[id].length) delete QJ_DECIDED[id];
+  renderMainPreserveScroll();
+};
 window.qjNoteRemove = async function() {
   const o = _bn;
   if (!o || o.mode !== 'collect' || o.saving || o.idx < 0) return;
@@ -16552,10 +16563,11 @@ function qjLoadDecided(id) {
       const a = d.data();
       if (a.noteClose) break;
       if (a.noteItem && a.noteItem.decision === 'unstaged') { unstaged[a.noteItem.label] = (unstaged[a.noteItem.label] || 0) + 1; continue; }
-      if (a.noteItem && !a.noteItem.comment && unstaged[a.noteItem.label] && (a.noteItem.decision === 'approved' || a.noteItem.decision === 'rejected' || a.noteItem.decision === 'fix')) { unstaged[a.noteItem.label]--; continue; }
+      if (a.noteItem && !a.noteItem.comment && unstaged[a.noteItem.label] && ['approved', 'rejected', 'fix', 'info'].includes(a.noteItem.decision)) { unstaged[a.noteItem.label]--; continue; }
       if (Array.isArray(a.noteItems)) {   // §659ג — עריכה ידנית; הסדר בתוך הרשומה נשמר
         for (const ni of a.noteItems.slice().reverse()) {
           if (!ni || !ni.label || seenEdit.has(ni.field)) continue;
+          if (unstaged[ni.label]) { unstaged[ni.label]--; seenEdit.add(ni.field); continue; }   // §694 – "אנחנו עדכנו" שהוצא מהסל
           seenEdit.add(ni.field);
           items.unshift({ label: ni.label, decision: 'edited', field: ni.field });
         }
@@ -16944,7 +16956,7 @@ function bsRender() {
       <button class="qj-btn primary" id="bnGo" onclick="bsGo()" ${o.outcome ? '' : 'disabled'}>${goLbl}</button>
       <button class="qj-btn" onclick="bsSaveDraft()">💾 שמירה בלי לשלוח</button>
       <button class="qj-btn" onclick="bnClose()">ביטול</button>
-      ${o.draftAt ? `<span style="font-size:12px;color:var(--text-muted);align-self:center">טיוטה שמורה מ-${fmtDateTime(toJsDate(o.draftAt))} · <a href="#" onclick="event.preventDefault();bsDropDraft()">להתחיל מחדש</a></span>` : ''}
+      ${o.draftAt ? `<span style="font-size:12px;color:var(--text-muted);align-self:center">טיוטה שמורה מ-${fmtDateTime(new Date(o.draftAt))} · <a href="#" onclick="event.preventDefault();bsDropDraft()">להתחיל מחדש</a></span>` : ''}
     </div>
   </div>`;
   bnEl().style.display = 'flex';
