@@ -11,7 +11,7 @@ import { isRateLimited, recordAttempt, overIpQuota } from './ratelimit.js';
 import { wrapEnvKv } from './safekv.js';
 import { handleRegStatus, handleRegRetry } from './regstatus.js';
 import { handleBizRegStatus } from './bizregstatus.js';
-import { handleBizFixDone, runBizRequestAlerts } from './bizfix.js';   // §672
+import { handleBizFixDone, handleBizFixDecline, runBizRequestAlerts } from './bizfix.js';   // §672 · §696
 import { isStrongMatch, describeRegistration } from './regmethod.js';
 import { pendingOwnerExtras } from './ownerpending.js';
 import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail, sendRejectEmail } from './brevo.js';
@@ -124,6 +124,11 @@ export default {
       if (request.method === 'POST' && url.pathname === '/biz-fix-done') {
         if (memQuota('bizfixdone', clientIp(request, env), 10, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
         return json(await handleBizFixDone(await request.json(), env), env, request);
+      }
+      // §696 – "לא מעוניין לתקן" – עסק מאושר שנשאר באתר
+      if (request.method === 'POST' && url.pathname === '/biz-fix-decline') {
+        if (memQuota('bizfixdecline', clientIp(request, env), 10, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
+        return json(await handleBizFixDecline(await request.json(), env), env, request);
       }
       // §628 – "האימות לא עבר": תיקון מהמכשיר שנרשם (תמונה + פרופיל), פעם אחת.
       if (request.method === 'POST' && url.pathname === '/reg-retry') {

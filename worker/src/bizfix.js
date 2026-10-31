@@ -72,6 +72,39 @@ export async function handleBizFixDone({ bizId, token } = {}, env) {
   return { ok: true };
 }
 
+// §696 – רמי: "במידה והוא מאושר ושלחתי לו צריך לתקן והוא בחר שלא – תודיע לי, ושיהיה לו האופציה לא לתקן ושההודעה
+// תיעלם לו ממסך הבית". רק עסק מאושר שנשאר באתר (status approved): ממתין/מוסתר חייב לתקן כדי לעלות. הזיהוי – טוקן העסק
+// בלבד (כמו /biz-fix-done). "צריך לתקן" יורד (inReview:false), fixDeclinedAt נרשם, רשומה ביומן והתראה לרמי.
+export async function handleBizFixDecline({ bizId, token } = {}, env) {
+  if (typeof bizId !== 'string' || !BIZ_ID_RE.test(bizId)) return { error: 'invalid' };
+  if (typeof token !== 'string' || token.length < 16 || token.length > 200) return { error: 'invalid' };
+  const accessToken = await getGoogleAccessToken(env);
+  if ((await bizIdFromToken(env, accessToken, token)) !== bizId) return { error: 'invalid' };
+  const b = await firestoreGetDoc(env, accessToken, `businesses/${bizId}`);
+  if (!b) return { error: 'gone' };
+  const f = b.fields || {};
+  if (!inFix(f)) return { ok: true, notInFix: true };
+  if (str(f, 'status') !== 'approved') return { error: 'notApproved' };
+  const asked = (Array.isArray(f.inReviewReasons) ? f.inReviewReasons : []).filter((k) => k !== 'other').join(', ');
+  const other = str(f, 'inReviewOther');
+  const now = new Date();
+  await firestorePatch(env, accessToken, `businesses/${bizId}`, { inReview: false, inReviewReasons: [], inReviewOther: '', fixSubmittedAt: null, fixDeclinedAt: now });
+  const what = [asked, other].filter(Boolean).join(' · ').slice(0, 300);
+  try {
+    await firestoreCreateDoc(env, accessToken, `businesses/${bizId}/activity`, {
+      type: 'fixDeclined', title: '🙅 בעל העסק בחר לא לתקן', detail: what ? 'ביקשנו: ' + what : '', field: 'inReview', before: 'true', after: 'false',
+      source: 'owner', actorName: str(f, 'ownerFirst'), createdAt: now,
+    });
+  } catch (e) { console.error('fixDeclined activity failed', e); }
+  const name = str(f, 'name') || 'עסק';
+  await alertAdmins(env, accessToken, {
+    title: `🙅 ${name} בחר לא לתקן`,
+    line: `${str(f, 'ownerFirst') || 'בעל העסק'} בחר לא לתקן – העסק נשאר באתר כמו שהוא.`,
+    rows: [['מה קרה', 'בעל העסק בחר "לא מעוניין לתקן"'], ['מה ביקשנו', what], ['שם העסק', name], ['בעל העסק', str(f, 'ownerFirst')], ['מזהה עסק', bizId]],
+  });
+  return { ok: true };
+}
+
 // מ-/upload-biz-media: העלאה לעסק ב"צריך לתקן" היא תיקון
 export async function markFixFromUpload(env, accessToken, bizId, uploadedFields) {
   const b = await firestoreGetDoc(env, accessToken, `businesses/${bizId}`);

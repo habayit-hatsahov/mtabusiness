@@ -106,5 +106,30 @@ reset({ inReview: false, pendingChanges: { phone: '052' }, pendingChangesAt: new
 s = await runBizRequestAlerts(env, 'fake');
 check('בקשה ישנה (לפני שעתיים) – לא מתפרצת בפריסה', s.sent === 0 && !mails.length, s);
 
+// §696 – "לא מעוניין לתקן" (/biz-fix-decline)
+console.log('\n/biz-fix-decline (§696)');
+const callD = async (body) => {
+  const r = await worker.fetch(new Request('https://w/biz-fix-decline', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://yellowzone.co.il', 'CF-Connecting-IP': '7.7.7.7' }, body: JSON.stringify(body) }), env, { waitUntil() {} });
+  return r.json().catch(() => null);
+};
+reset({ inReviewOther: 'הלוגו מטושטש' });
+let d = await callD({ bizId: BIZ, token: TOKEN });
+check('מאושר ב"צריך לתקן" → ok', d && d.ok === true && !d.notInFix, d);
+check('inReview ירד + הרשימה התרוקנה + fixDeclinedAt', db['businesses/' + BIZ].inReview === false && db['businesses/' + BIZ].inReviewReasons.length === 0 && db['businesses/' + BIZ].inReviewOther === '' && db['businesses/' + BIZ].fixDeclinedAt instanceof Date, db['businesses/' + BIZ]);
+check('ביומן: "🙅 בעל העסק בחר לא לתקן" עם מה שביקשנו', writes.some((w) => w[0] === 'create' && w[2].type === 'fixDeclined' && /cover · הלוגו מטושטש/.test(w[2].detail)), writes);
+check('מייל התראה לרמי', mails.length === 1 && /בחר לא לתקן/.test(mails[0].subject), mails.map((m) => m.subject));
+reset({ status: 'pending', fixHidden: true });
+d = await callD({ bizId: BIZ, token: TOKEN });
+check('מוסתר (pending) → notApproved, בלי כתיבה', d && d.error === 'notApproved' && !writes.length && !mails.length, d);
+reset({ status: 'pending' });
+d = await callD({ bizId: BIZ, token: TOKEN });
+check('ממתין → notApproved', d && d.error === 'notApproved' && !writes.length, d);
+reset({ inReview: false });
+d = await callD({ bizId: BIZ, token: TOKEN });
+check('לא ב"צריך לתקן" → notInFix, בלי כתיבה', d && d.notInFix === true && !writes.length, d);
+reset();
+d = await callD({ bizId: BIZ, token: T2 });
+check('טוקן של עסק אחר → invalid', d && d.error === 'invalid' && !writes.length, d);
+
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);

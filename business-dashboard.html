@@ -2993,10 +2993,30 @@ function renderFixBanner() {
     ${hidden ? '<div style="margin-top:8px;font-size:13px;color:#B42318">העסק מוסתר מהאתר עד התיקון.</div>'
       : `<div style="margin-top:8px;font-size:13px;color:#33466f">${biz.status === 'approved' ? 'העסק שלך באתר – אפשר לתקן בזמן שהוא מוצג.' : 'העסק עוד לא באתר – נעלה אותו אחרי שנבדוק את התיקון.'}</div>`}   <!-- §675 -->
     ${sent ? '' : `<div style="margin-top:8px;font-size:13px;color:#6B7A9B">מתקנים כאן בדשבורד – כל שמירה מגיעה אלינו. כשסיימתם:</div>
+    ${biz.status === 'approved' ? `<button type="button" id="fixDeclineBtn" onclick="fixDecline()" style="margin-top:10px;margin-inline-end:8px;border:1px solid #C9D2E6;border-radius:12px;padding:10px 16px;font:inherit;font-weight:700;font-size:14px;background:#fff;color:#33466f;cursor:pointer">לא מעוניין לתקן</button>` : ''}   <!-- §696 -->
     <button type="button" id="fixDoneBtn" onclick="fixDone()" style="margin-top:10px;border:none;border-radius:12px;padding:11px 18px;font:inherit;font-weight:800;font-size:14.5px;background:#FFD400;color:#0A2A66;cursor:pointer">✅ תיקנתי – שליחה לבדיקה</button>
     <div id="fixDoneMsg" style="margin-top:8px;font-size:13.5px"></div>`}
   </div>`;
 }
+// §696 – עסק מאושר שנשאר באתר: "לא מעוניין לתקן" – הפס נעלם, ורמי מקבל התראה
+window.fixDecline = async function() {
+  const btn = document.getElementById('fixDeclineBtn'), msg = document.getElementById('fixDoneMsg');
+  const t = token || sessionStorage.getItem('hb_lastBizToken') || '';
+  if (!t) { if (msg) msg.textContent = 'כתבו לנו ב"הודעות" שלא תתקנו – ונעדכן.'; return; }
+  if (!confirm('לא לתקן? העסק נשאר באתר כמו שהוא, וההודעה תיעלם. נעדכן את הצוות.')) return;
+  btn.disabled = true; btn.textContent = '⏳ רגע…';
+  try {
+    const resp = await hbApiFetch('/biz-fix-decline', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bizId, token: t }) });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'failed');
+    biz.inReview = false;
+    renderFixBanner();
+  } catch (e) {
+    console.error('fixDecline failed', e);
+    btn.disabled = false; btn.textContent = 'לא מעוניין לתקן';
+    if (msg) msg.textContent = 'לא הצלחנו לשמור – נסו שוב, או כתבו לנו ב"הודעות".';
+  }
+};
 window.fixDone = async function() {
   const btn = document.getElementById('fixDoneBtn'), msg = document.getElementById('fixDoneMsg');
   const t = token || sessionStorage.getItem('hb_lastBizToken') || '';

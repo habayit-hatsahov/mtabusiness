@@ -534,6 +534,7 @@
     #bizFixCard .pc-list { margin: 4px 0 0; padding-inline-start: 20px; font-size: 14px; color: #33466f; line-height: 1.7; white-space: pre-line; }
     #bizFixCard .pc-note { margin-top: 6px; font-size: 13px; color: #B42318; }
     #bizFixCard .pc-actions { margin-top: 11px; }
+    #bizFixCard .pc-no { border: 1px solid #C9D2E6; border-radius: 12px; padding: 10px 14px; font: inherit; font-size: 13.5px; font-weight: 700; background: #fff; color: #33466f; cursor: pointer; margin-inline-start: 8px; }
     #bizFixCard .pc-yes { border: none; border-radius: 12px; padding: 11px 18px; font: inherit; font-size: 14px; font-weight: 800; background: #FFD400; color: #0A2A66; cursor: pointer; }
     #pushCard.leaving, #appleLinkCard.leaving { opacity: 0; transform: translateY(-6px); }
     #pushCard .pc-h, #appleLinkCard .pc-h { font-weight: 800; font-size: 15.5px; }
@@ -5812,7 +5813,7 @@ window.enablePushNotifications = async function() {
 // ב"סיכום ושליחה", §671) + "לתיקון" ← "העסק שלי" ב"האזור שלי", שם הדשבורד עם "✅ תיקנתי". אחרי
 // שליחה (fixSubmittedAt) – "קיבלנו, נבדוק". נבנה ב-textContent – בלי HTML מהשדות.
 const BIZ_FIX_LABELS = { cover: 'תמונה ראשית', logo: 'לוגו', deal: 'פרטי ההטבה', owner: 'אימות שאתם אוהדים', desc: 'תיאור העסק' };
-function renderBizFixCard(b) {
+function renderBizFixCard(b, bizId, tok) {
   const card = document.getElementById('bizFixCard');
   if (!card) return;
   const on = !!b && b.inReview === true && (b.status === 'pending' || b.status === 'approved');
@@ -5840,6 +5841,22 @@ function renderBizFixCard(b) {
     go.type = 'button';
     go.onclick = () => { location.href = 'profile.html?tab=biz'; };
     row.appendChild(go);
+    // §696 – עסק מאושר שנשאר באתר יכול לוותר: הכרטיס נעלם, ורמי מקבל התראה
+    if (b.status === 'approved' && bizId && tok) {
+      const no = el('button', 'pc-no', 'לא מעוניין לתקן');
+      no.type = 'button';
+      no.onclick = async () => {
+        if (!confirm('לא לתקן? העסק נשאר באתר כמו שהוא, וההודעה תיעלם מכאן. נעדכן את הצוות.')) return;
+        no.disabled = true; no.textContent = '⏳ רגע…';
+        try {
+          const r = await hbApiFetch('/biz-fix-decline', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bizId, token: tok }) });
+          const d = await r.json();
+          if (!d.ok) throw new Error(d.error || 'failed');
+          renderBizFixCard({ ...b, inReview: false });
+        } catch (e) { console.error('fix decline failed', e); no.disabled = false; no.textContent = 'לא מעוניין לתקן'; alert('לא הצלחנו לשמור – נסו שוב, או כתבו לנו ב"הודעות".'); }
+      };
+      row.appendChild(no);
+    }
     card.appendChild(row);
   }
 }
@@ -5901,7 +5918,7 @@ async function initBizNavItem() {
         const tokSnap = await getDoc(doc(db, 'bizTokens', linkedBusinessId)).catch(() => null);
         token = (tokSnap && tokSnap.exists() ? tokSnap.data().accessToken : '') || '';
         approved = bizData.status === 'approved';
-        renderBizFixCard(bizData);   // §672
+        renderBizFixCard(bizData, linkedBusinessId, token);   // §672 · §696
         // "העסק שלי" בתפריט (וגם שיתוף) מוצגים רק לעסק מאושר — עסק pending/rejected עדיין לא
         // עבר את שער האישור הראשוני, זהה בדיוק לגייטינג הקיים ב-profile.html (§36). לפני התיקון
         // הזה (2026-08-12) "העסק שלי" הוצג לכל בעל-token גם כשהעסק pending — בעל עסק שממתין

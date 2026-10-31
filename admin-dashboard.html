@@ -14505,6 +14505,21 @@ window.bizSentAdd = async function(id) {
   const other = st.parts.join(' · ').slice(0, 300);
   await bizSentWrite(b, [...new Set(st.reasons.filter(k => k !== 'other').concat(['other']))], other, 'נוספה נקודה ל"מה חסר" (בלי הודעה)', t);
 };
+// §696 – רמי: "אני לא מצליח להסיר את ההודעה שיש לבעל העסק, אני לא רוצה שהוא יתקן כלום". מבטל את "צריך לתקן"
+// כולו: מאושר – נשאר מאושר; מוסתר (pending+fixHidden) – חוזר לאתר כמאושר; ממתין – נשאר ממתין, בלי רשימה. בלי הודעה.
+window.bizFixCancel = async function(id, quiet) {
+  const b = findBiz(id);
+  if (!b || !bizInFix(b)) return;
+  const hidden = b.status === 'pending' && b.fixHidden === true;
+  if (!quiet && !confirm('לבטל את בקשת התיקון?\n\n' + (b.status === 'approved' ? 'העסק נשאר מאושר ובאתר' : hidden ? 'העסק חוזר לאתר כמאושר' : 'העסק נשאר ממתין') + ', והרשימה "מה חסר" תיעלם אצלו מיד – בלי הודעה.')) return;
+  const upd = { inReview: false, inReviewReasons: [], inReviewOther: '', fixSubmittedAt: null, fixHidden: false, ...(hidden ? { status: 'approved', approvedAt: serverTimestamp() } : {}) };
+  try {
+    await updateDoc(doc(db, 'businesses', id), upd);
+    Object.assign(b, upd, hidden ? { approvedAt: new Date() } : {});
+    await logActivity('businesses', id, { type: 'fixRound', title: '↩️ בקשת התיקון בוטלה (בלי הודעה)', detail: hidden ? 'חזר לאתר כמאושר' : '', field: 'inReview', before: 'true', after: 'false' });
+    renderMainPreserveScroll();
+  } catch (e) { alert('לא הצלחתי לשמור: ' + (e.message || e)); }
+};
 window.bizSentRemove = async function(id, key, idx) {
   const b = findBiz(id);
   if (!b) return;
@@ -14515,6 +14530,7 @@ window.bizSentRemove = async function(id, key, idx) {
   if (key === 'other') { const parts = other.split(' · ').map(t => t.trim()).filter(Boolean); parts.splice(idx, 1); other = parts.join(' · '); }
   else { reasons = reasons.filter(k => k !== key); if (key === one) other = ''; }
   if (!other) reasons = reasons.filter(k => k !== 'other');
+  if (!reasons.length) { if (confirm('זו הנקודה האחרונה – לבטל את בקשת התיקון כולה? (בלי הודעה)')) return window.bizFixCancel(id, true); return; }   // §696
   try {
     await updateDoc(doc(db, 'businesses', id), { inReviewReasons: reasons, inReviewOther: other });
     Object.assign(b, { inReviewReasons: reasons, inReviewOther: other });
@@ -14597,6 +14613,7 @@ function bizWaitBannerHtml(b) {
       <div class="ph-card">${screenHead}
         ${sentItems.length ? `<ol class="sum-sent-ol">${sentItems.map(x => `<li><span>${esc(x.text)}</span><button type="button" class="sum-x" title="לערוך את הנקודה – משתנה אצלו מיד, בלי הודעה" onclick="bizSentEdit('${b.id}','${x.key}',${x.idx === undefined ? -1 : x.idx})">✏️</button><button type="button" class="sum-x" title="להוריד את הנקודה – תיעלם אצלו מיד, בלי הודעה" onclick="bizSentRemove('${b.id}','${x.key}',${x.idx === undefined ? -1 : x.idx})">✕</button></li>`).join('')}</ol>` : '<div class="mtile-empty" style="color:#B42318">לא נשמר מה חסר – "לסמן מה חסר" למעלה</div>'}
         <button type="button" class="qj-btn" style="margin-top:4px" onclick="bizSentAdd('${b.id}')">+ להוסיף נקודה</button>
+        <button type="button" class="qj-btn" style="margin-top:4px" onclick="bizFixCancel('${b.id}')">↩️ לבטל את בקשת התיקון</button>
         <div class="ph-foot">${pending && !b.fixHidden ? 'מעלה תמונות מהמסך, ואת השאר מתקן בדשבורד' : 'כפתור "לתיקון ←" ובדשבורד "✅ תיקנתי – שליחה לבדיקה"'}</div>
       </div>
       ${fixed ? `<div class="sum-sent-fixed">🔁 ${esc(b.ownerFirst || 'בעל העסק')} סימן שתיקן ${fmtDateTime(fixed)} – מחכה לבדיקה שלך</div>` : ''}
@@ -14611,7 +14628,7 @@ function bizWaitBannerHtml(b) {
     inFix && !bizWaitKeys(b).length ? '<b style="color:#B42318">לא נשמר מה חסר</b>' : '',
 
     dec.length ? `<b>בסל ${dec.length} – עוד לא נשלח לו</b>` : '',
-    bsDrafts[b.id] ? '<b>💾 יש טיוטה שמורה של ההודעה</b>' : '',
+    bsDrafts[b.id] ? `<b>💾 יש טיוטה שמורה של ההודעה</b> <button type="button" class="sum-x" title="למחוק את הטיוטה" onclick="bsDraftDelete('${b.id}')">✕</button>` : '',
   ].filter(Boolean).join(' · ');
   const btns = [
     inFix && b.ownerPhone ? `<button class="qj-btn primary" onclick="openWaitWa('${b.id}')">📲 תזכורת בוואטסאפ</button>` : '',
@@ -17039,6 +17056,10 @@ window.bsSaveDraft = async function() {
     outcome: o.outcome || null, reasons: o.reasons || [], other: String(o.other || '').slice(0, 300), at: new Date().toISOString() };
   try { await setDoc(doc(db, 'settings', 'bsDrafts'), { [o.bizId]: d }, { merge: true }); bsDrafts[o.bizId] = d; bnClose(); renderMainPreserveScroll(); }
   catch (e) { const err = document.getElementById('bnErr'); if (err) err.textContent = 'השמירה נכשלה: ' + (e.message || e); }
+};
+window.bsDraftDelete = async function(id) {   // §696
+  if (!confirm('למחוק את הטיוטה השמורה של ההודעה?')) return;
+  await bsClearDraft(id); renderMainPreserveScroll();
 };
 async function bsClearDraft(id) {
   if (!bsDrafts[id]) return;
