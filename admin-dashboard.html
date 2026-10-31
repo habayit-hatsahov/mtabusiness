@@ -14223,30 +14223,44 @@ function bizWaitLines(keys, other, long, short) {
 }
 function bizWaitLabels(b, short) { return bizWaitLines(bizWaitKeys(b), b.inReviewOther, false, short); }
 function bizWaitTexts(b) { return bizWaitLines(bizWaitKeys(b), b.inReviewOther, true); }
-// הפס בראש הכרטיס – רק לעסק בתהליך אישור
+// הפס בראש הכרטיס – §681: רמי: "כל מה שנדרש לתקן וכל מה שנשלח תיקון שיופיע לי למעלה סיכום… כמו בסטאר מרקט,
+// מסוכם כל מה שנשלח אליו וכתוב בגדול כל הסעיפים". שלושה חלקים, כל אחד רק כשיש בו משהו:
+//   🔁 מה בעל העסק שלח (סימן "תיקנתי" / בקשות שינוי שעוד לא סימנת) – ירוק
+//   ✏️ מה ביקשת ממנו (נשלח ב"צריך לתקן") – סגול, כמו קודם
+//   🚩 מה בסל ועוד לא נשלח (בקשות תיקון + הערות על שלבים) – צהוב
 function bizWaitBannerHtml(b) {
-  if (!bizInFix(b) || !MOCK_BUSINESSES.includes(b)) return '';   // §671 – גם עסק מאושר שצריך לתקן
-  const labels = bizWaitLabels(b);
-  const sent = b.waNudgeCount ? `וואטסאפ נשלח ${b.waNudgeCount === 1 ? 'פעם אחת' : b.waNudgeCount + ' פעמים'}${b.waNudgeAt ? ' · אחרון ' + fmtDateTime(b.waNudgeAt) : ''}` : 'עוד לא נשלח וואטסאפ';
-  const meta = `<div style="color:var(--text-muted);font-size:11px;margin-top:6px">${bizFixLabel(b)}${b.inReviewAt ? ' מאז ' + fmtDateTime(b.inReviewAt) : ''} · ${sent}</div>`;
-  const box = (bg, bd) => `margin-bottom:14px;background:${bg};border:1px solid ${bd};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap`;
-  if (!labels.length) return `
-    <div style="${box('#FDECEC', '#F5C2C0')}">
-      <div style="flex:1;min-width:220px"><div style="font-weight:800;color:#B42318">✏️ צריך לתקן – אבל לא נשמר מה חסר</div>${meta}</div>
-      <button class="qj-btn primary" onclick="bsOpen('${b.id}','fix')">לסמן מה חסר</button>
-    </div>`;
-  // §672 — בעל העסק שלח תיקון: בראש הפס, ירוק, עם "לבדיקה" שפותח את סיכום ושליחה
+  if (!b || !MOCK_BUSINESSES.includes(b)) return '';
+  const inFix = bizInFix(b), labels = inFix ? bizWaitLabels(b) : [];
   const fixed = bizFixedAt(b);
-  const fixedHtml = fixed ? `<div style="background:#ECFDF3;border:1px solid #ABEFC6;color:#067647;border-radius:9px;padding:6px 10px;margin-bottom:8px;font-weight:800;font-size:13px">🔁 תוקן · ${esc(b.ownerFirst || 'בעל העסק')} שלח תיקון ${fmtDateTime(fixed)} – מחכה לבדיקה שלך</div>` : '';
+  const asked = bizPendingChangeItems(b).filter(it => !bizStagedEntry(b, it.field));
+  const basket = (QJ_DECIDED[b.id] || []).filter(d => d.decision === 'fix' || (d.decision === 'remark' && d.note));
+  if (!inFix && !asked.length && !basket.length) return '';
+  const who = esc(b.ownerFirst || 'בעל העסק');
+  const li = t => `<li style="white-space:pre-line;font-size:15px;font-weight:700;margin:3px 0">${t}</li>`;
+  const blk = (bg, bd, color, head, items, foot) => `<div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:8px 12px;margin-top:8px">
+      <div style="font-weight:800;color:${color};font-size:14px">${head}</div>${items.length ? `<ul style="margin:4px 0 0;padding-inline-start:20px">${items.map(li).join('')}</ul>` : ''}${foot || ''}</div>`;
+  const parts = [];
+  if (fixed || asked.length) parts.push(blk('#ECFDF3', '#ABEFC6', '#067647',
+    `🔁 ${who} ${fixed ? 'שלח תיקון ' + fmtDateTime(fixed) : 'ביקש שינויים'}${asked.length ? ' – מחכה לבדיקה שלך:' : ' – מחכה לבדיקה שלך'}`,
+    asked.map(it => esc(it.label)), asked.length ? '<div style="color:var(--text-muted);font-size:12px;margin-top:4px">✅/❌ על כל שינוי – בשיפוט המהיר מתחת, או באריח של השדה.</div>' : ''));
+  if (inFix) {
+    const sentWa = b.waNudgeCount ? `וואטסאפ נשלח ${b.waNudgeCount === 1 ? 'פעם אחת' : b.waNudgeCount + ' פעמים'}${b.waNudgeAt ? ' · אחרון ' + fmtDateTime(b.waNudgeAt) : ''}` : 'עוד לא נשלח וואטסאפ';
+    parts.push(labels.length
+      ? blk('#F4F0FD', '#D9CCF7', '#6941C6', `✏️ ביקשת ממנו לתקן${b.inReviewAt ? ' · ' + fmtDateTime(b.inReviewAt) : ''}:`, labels.map(esc),
+          `<div style="color:var(--text-muted);font-size:11.5px;margin-top:6px">${bizFixLabel(b)} · ${sentWa}</div>`)
+      : blk('#FDECEC', '#F5C2C0', '#B42318', '✏️ צריך לתקן – אבל לא נשמר מה חסר', [], `<div style="color:var(--text-muted);font-size:11.5px;margin-top:6px">${bizFixLabel(b)} · ${sentWa}</div>`));
+  }
+  if (basket.length) parts.push(blk('#FFF7DB', '#F5D96B', '#7A5B00', '🚩 בסל – עוד לא נשלח לו:',
+    basket.map(d => esc(d.decision === 'fix' ? d.label + (d.note ? ' – ' + d.note : '') : d.label + ': ' + d.note))));
+  const btns = [
+    inFix && b.ownerPhone ? `<button class="qj-btn primary" onclick="openWaitWa('${b.id}')">📲 תזכורת בוואטסאפ</button>` : '',
+    (fixed || basket.length || asked.length) ? `<button class="qj-btn primary" onclick="bsOpen('${b.id}')">🧺 סיכום ושליחה</button>` : '',
+    inFix ? `<button class="qj-btn" onclick="bsOpen('${b.id}','fix')">${labels.length ? 'עריכת מה חסר' : 'לסמן מה חסר'}</button>` : '',
+  ].filter(Boolean).join('');
   return `
-    <div style="${box('var(--warn-bg)', 'var(--warn-border)')}">
-      <div style="flex:1;min-width:220px">${fixedHtml}<div style="font-weight:800;color:#6941C6">✏️ צריך לתקן – חסר מבעל העסק${b.ownerFirst ? ' (' + esc(b.ownerFirst) + ')' : ''}:</div>
-        <ul style="margin:6px 0 0;padding-inline-start:18px">${labels.map(l => `<li style="white-space:pre-line">${esc(l)}</li>`).join('')}</ul>${meta}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${b.ownerPhone ? `<button class="qj-btn primary" onclick="openWaitWa('${b.id}')">📲 תזכורת בוואטסאפ</button>` : ''}
-        ${fixed ? `<button class="qj-btn primary" onclick="bsOpen('${b.id}')">לבדיקה ← סיכום ושליחה</button>` : ''}
-        <button class="qj-btn" onclick="bsOpen('${b.id}','fix')">עריכת מה חסר</button>
-      </div>
+    <div style="margin-bottom:14px;background:var(--card-bg);border:1.5px solid var(--warn-border);border-radius:12px;padding:6px 12px 10px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-top:4px">${btns}</div>
+      ${parts.join('')}
     </div>`;
 }
 function waitEl() {
