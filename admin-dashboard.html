@@ -523,6 +523,12 @@ body {
 .sum-rev { font-size: 12px; border-radius: 999px; padding: 1px 8px; background: #FDECEC; color: #B42318; }
 .sum-rev.ok { background: #ECFDF3; color: #067647; }
 .qj-status-chip { font-size: 13px; background: #F4F6FB; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; margin-inline-start: 6px; }
+.step-block.open .deal-tiles-wrap { display: none; }
+.deal-title { font-weight: 800; font-size: 15px; background: #0A2A66; color: #FFD400; border-radius: 8px; padding: 6px 10px; display: inline-block; }
+.deal-txt { font-size: 13.5px; line-height: 1.55; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.deal-meta { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+.deal-chip { font-size: 11.5px; background: #F4F6FB; border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
+.deal-chip.warn { background: #FEF3F2; border-color: #FECDCA; color: #B42318; }
 .mtile.fixreq { border-color: #D9CCF7; background: #FBFAFF; }
 .mtile-badge { display: inline-block; background: #E9E1FB; color: #6941C6; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 8px; margin-inline-end: 6px; }
 .mtile-badge.ok { background: #ECFDF3; color: #067647; }
@@ -9875,6 +9881,7 @@ function bizFullDetailHtml(id, opts) {
         </div>
         ${stackNoteHtml(b)}
         ${(b.wantsBusinessOfWeek || b.wantsBenefitOfWeek) ? `<div style="padding:0 24px 14px;font-size:12.5px;color:var(--text-sm);line-height:1.6;">${b.wantsBusinessOfWeek ? 'הביעו עניין ב<strong>עסק השבוע</strong> (סקירה + באנר בדף הבית). ' : ''}${b.wantsBenefitOfWeek ? 'הביעו עניין ב<strong>הטבת השבוע</strong> (הטבה חד-פעמית). ' : ''}שיבוץ בפועל מתבצע ממסך "עסק השבוע" בסרגל הצד.</div>` : ''}
+        <div class="deal-tiles-wrap" style="padding:0 24px 18px">${dealTilesHtml(b)}</div>   <!-- §687 -->
         <!-- בעבר מוצג רק אם כבר יש discountFullText/בקשה-ממתינה, ואז הוחלף ל-hasDiscount בלבד. אבל
              נמצא בפועל (עיצוב שיער קובי / חבילות תקשורת לבית, 2026-08-08): עסק יכול להיות עם
              hasDiscount:false ב-Firestore אבל discountText אמיתי עדיין שמור על המסמך (למשל טוגל
@@ -13485,6 +13492,60 @@ function mediaRealViewHtml(b) {
     </div>
     ${mediaUploadFailureHtml(b)}`;
 }
+// ══ §687 — אריחי ההטבות (רמי: "תמשיך לשלב 4 – אריחים במקום שורות… מתחיל בהטבות") ═══════════════════
+// כמו אריחי התמונות (§678/§680): מה יש עכשיו, ובכל אריח "🚩 לבקש לתקן" (סיבת "פרטי ההטבה" – אותה בקשה כמו
+// בכותרת השלב) ו"✏️ לשנות בעצמי" (פותח את הטופס וגולל לשדה). מצב: 🚩 בסל / ✏️ נשלח / בעל העסק ביקש לעדכן.
+const DEAL_FIELDS_1 = ['discountText', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountStacking', 'hasDiscount'];
+function dealTileFix(b, fields, withRequest) {
+  const basket = withRequest ? (QJ_DECIDED[b.id] || []).find(d => d.decision === 'fix' && d.key === 'deal') || null : null;
+  const inFix = bizInFix(b), keys = inFix ? bizWaitKeys(b) : [];
+  const sent = withRequest && inFix && keys.includes('deal') ? { lines: bizWaitLines(keys, b.inReviewOther, false).filter(t => /הטבה|קופון|קוד/.test(t)), at: toJsDate(b.inReviewAt), fixedAt: bizFixedAt(b) } : null;
+  const pend = bizPendingChangeItems(b).filter(it => fields.includes(it.field) && !bizStagedEntry(b, it.field));
+  return { basket, sent, pend, any: !!(basket || sent || pend.length) };
+}
+function dealTileStateHtml(b, t) {
+  const parts = [];
+  if (t.basket) parts.push(`<div class="mtile-note">🚩 <b>ביקשנו לתקן – בסל, עוד לא נשלח</b>${t.basket.note ? ': ' + esc(t.basket.note) : ''}</div>`);
+  if (t.sent) parts.push(`<div class="mtile-note">✏️ <b>ביקשנו לתקן${t.sent.at ? ' · ' + fmtDate(t.sent.at) : ''}:</b> ${esc(t.sent.lines.join(' · ') || 'פרטי ההטבה')}${t.sent.fixedAt ? `<br>🔁 סימן שתיקן ${fmtDateTime(t.sent.fixedAt)}` : ''}</div>`);
+  t.pend.forEach(it => {
+    const v = x => { const a = toRedeemArr(x); return Array.isArray(x) || it.field === 'discountRedeemMode' ? (a.map(m => REDEEM_MODE_LABELS_MOCK[m] || m).join(' · ') || '–') : (x == null || x === '' ? '–' : typeof x === 'object' ? JSON.stringify(x).slice(0, 160) : String(x)); };
+    parts.push(`<div class="mtile-note ok">🔁 <b>בעל העסק ביקש לעדכן – ${esc(it.label)}:</b><div class="mtile-cmp"><div><div class="mtile-sub">עכשיו</div>${esc(v(it.old !== undefined ? it.old : b[it.field]))}</div><div><div class="mtile-sub">מה ששלח</div>${esc(v((b.pendingChanges || {})[it.field]))}</div></div>
+      <div class="mtile-acts" style="padding-top:6px"><button type="button" class="act-btn approve tiny" onclick="event.stopPropagation();approveChangeField('${b.id}','${it.field}')">✅ לאשר</button><button type="button" class="act-btn reject tiny" onclick="event.stopPropagation();rejectChangeField('${b.id}','${it.field}')">❌ לא לאשר</button></div></div>`);
+  });
+  return parts.join('');
+}
+function dealTilesHtml(b) {
+  const hasDeal = !!(b.hasDiscount || b.discountText || b.discountFullText || b.aiShortTitle);
+  const reqHas = (QJ_DECIDED[b.id] || []).some(d => d.decision === 'fix' && d.key === 'deal');
+  const acts = (anchor) => `<div class="mtile-acts"><button type="button" class="act-btn tiny" onclick="event.stopPropagation();qjStepFixOpen('${b.id}',4)">${reqHas ? '🚩 לערוך / לבטל את הבקשה' : '🚩 לבקש לתקן'}</button><button type="button" class="act-btn tiny" onclick="event.stopPropagation();dealTileEdit('${b.id}','${anchor}')">✏️ לשנות בעצמי</button></div>`;
+  const badge = t => t.pend.length ? '<span class="mtile-badge ok">🔁 בעל העסק ביקש לעדכן</span>' : t.basket ? '<span class="mtile-badge">🚩 נדרש תיקון</span>' : t.sent ? '<span class="mtile-badge">✏️ נדרש תיקון</span>' : '';
+  const tile = (t, title, body, anchor) => `<div class="mtile${t.any ? ' fixreq' : ''}"><div class="mtile-h">${badge(t)}${title}</div>${body}${dealTileStateHtml(b, t)}${acts(anchor)}</div>`;
+  const redeem = (m, code, stacking) => {
+    const a = toRedeemArr(m);
+    return `<div class="deal-meta">${a.length ? a.map(x => `<span class="deal-chip">${esc(REDEEM_MODE_LABELS_MOCK[x] || x)}</span>`).join('') : '<span class="deal-chip warn">⚠️ לא נבחר מקום מימוש</span>'}${a.includes('online') ? (code ? `<span class="deal-chip">קוד: <b dir="ltr">${esc(code)}</b></span>` : '<span class="deal-chip warn">⚠️ אין קוד קופון</span>') : ''}${stacking === undefined || !a.includes('online') ? '' : `<span class="deal-chip">${stacking === 'yes' ? 'כולל כפל מבצעים' : stacking === 'no' ? 'בלי כפל מבצעים' : 'כפל מבצעים – לא נענה'}</span>`}</div>`;
+  };
+  const txt = t => t ? `<div class="deal-txt">${esc(t)}</div>` : '<div class="mtile-empty">⚠️ ריק</div>';
+  if (!hasDeal) return `<div class="mtile-grid">${tile(dealTileFix(b, DEAL_FIELDS_1, true), 'הטבה', '<div class="mtile-empty">⚠️ אין הטבה לעסק</div>', 'edit_discount_' + b.id)}</div>`;
+  const t1 = dealTileFix(b, DEAL_FIELDS_1, true), tTitle = { basket: null, sent: null, pend: [], any: false };
+  const d2 = (b.additionalDiscounts || [])[0], d3 = (b.additionalDiscounts || [])[1];
+  const tExtra = dealTileFix(b, ['additionalDiscounts'], false);
+  const title = b.aiShortTitle || b.discountText || '';
+  return `<div class="mtile-grid">
+    ${tile(tTitle, 'הכותרת בכרטיס', title ? `<div class="deal-title">${esc(title)}</div><div class="mtile-sub" style="margin-top:4px">כך זה מופיע על הכרטיס באינדקס</div>` : '<div class="mtile-empty">⚠️ אין כותרת – הכרטיס יציג את תחילת ההטבה</div>', 'aiTitle_' + b.id)}
+    ${tile(t1, 'הטבה 1 – ראשית', txt(b.discountFullText || b.discountText) + redeem(b.discountRedeemMode, b.discountCode, b.discountStacking || ''), 'edit_discount_' + b.id)}
+    ${d2 && d2.text ? tile(tExtra, 'הטבה 2', txt(d2.text) + redeem(d2.redeemMode, d2.code), 'edit_disc2_text_' + b.id) : ''}
+    ${d3 && d3.text ? tile(tExtra, 'הטבה 3', txt(d3.text) + redeem(d3.redeemMode, d3.code), 'edit_disc3_text_' + b.id) : ''}
+  </div>`;
+}
+window.dealTileEdit = function(id, anchor) {
+  const ed = document.getElementById('secEdit4_' + id);
+  if (ed && !ed.classList.contains('open')) toggleBizSecEdit(id, 4);
+  setTimeout(() => {
+    let t = document.getElementById(anchor);
+    if (!t && /^aiTitle_/.test(anchor)) t = ed && ed.querySelector('input[type=text]');
+    if (t) { const det = t.closest('details'); if (det) det.open = true; t.scrollIntoView({ behavior: 'smooth', block: 'center' }); try { t.focus({ preventScroll: true }); } catch (e) {} }
+  }, 80);
+};
 // §680 – רמי: "במידה ולחצתי על לבקש תיקון שישתנה השדה לנדרש תיקון… כאשר יש תיקון צריך לראות בדיוק לפי
 // ההערות והתיקונים שנתתי ונוח לי להשוות". שלושה מצבים, מכל מקור שקיים היום:
 //   basket – 🚩 בסל (עוד לא נשלח) · sent – נשלח ב"צריך לתקן" (inReviewReasons / שורת "אחר" על השדה)
