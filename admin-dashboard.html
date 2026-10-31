@@ -9795,6 +9795,7 @@ function bizFullDetailHtml(id, opts) {
           </details>
           <div class="step-form-actions">
             <button class="btn-step-save" onclick="saveStepReviewed('${b.id}',3)">💾 שמירה ונסקר</button>
+            <button class="btn-step-cancel" onclick="saveStep('${b.id}',3)">💾 שמירה בלי נסקר</button>
             <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',3)">סגירה</button>
           </div>
         </div>
@@ -9857,6 +9858,7 @@ function bizFullDetailHtml(id, opts) {
           </div>
           <div class="step-form-actions">
             <button class="btn-step-save" onclick="saveStepReviewed('${b.id}',2)">💾 שמירה ונסקר</button>
+            <button class="btn-step-cancel" onclick="saveStep('${b.id}',2)">💾 שמירה בלי נסקר</button>
             <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',2)">סגירה</button>
           </div>
         </div>
@@ -9879,8 +9881,8 @@ function bizFullDetailHtml(id, opts) {
              שכבה בעבר בלי שהטקסט נמחק) – admin-businesses.html הישן מציג לפי discountText בלבד,
              בלי קשר ל-hasDiscount, ולכן הראה את הטקסט כשה-dashboard החדש הראה תיבה ריקה. עכשיו
              מוצג אם *או* hasDiscount *או* שיש בפועל טקסט קיים – לא מסתמכים על הדגל לבד. -->
-        ${(b.hasDiscount || b.discountText || b.discountFullText || b.aiShortTitle) ? `<div style="padding:0 24px 18px">${aiTitleFieldHtml(b, { standalone: true })}</div>` : ''}
         <div class="step-form" id="secEdit4_${b.id}">
+          ${(b.hasDiscount || b.discountText || b.discountFullText || b.aiShortTitle) ? `<div style="margin-bottom:14px" data-no-dirty>${aiTitleFieldHtml(b, { standalone: true })}</div>` : ''}   <!-- §686 – הייתה גלויה גם כשהשלב סגור, ונראתה כמו טופס פתוח -->
           <div class="step-form-grid">
             ${stepFieldHtml('discountText', 'הטבה 1 – ראשית (מוצגת בכרטיס באינדקס)',
               // עסק עם hasDiscount=true אבל בלי discountTextFull שמור (לא עבר את תהליך-הקיצור-ב-AI,
@@ -9912,6 +9914,7 @@ function bizFullDetailHtml(id, opts) {
           </details>
           <div class="step-form-actions">
             <button class="btn-step-save" onclick="saveStepReviewed('${b.id}',4)">💾 שמירה ונסקר</button>
+            <button class="btn-step-cancel" onclick="saveStep('${b.id}',4)">💾 שמירה בלי נסקר</button>
             <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',4)">סגירה</button>
           </div>
         </div>
@@ -9931,6 +9934,7 @@ function bizFullDetailHtml(id, opts) {
           ${mediaRealEditHtml(b)}
           <div class="step-form-actions">
             <button class="btn-step-save" onclick="saveStepReviewed('${b.id}',5)">💾 שמירה ונסקר</button>
+            <button class="btn-step-cancel" onclick="saveStep('${b.id}',5)">💾 שמירה בלי נסקר</button>
             <button class="btn-step-cancel" onclick="toggleBizSecEdit('${b.id}',5)">סגירה</button>
           </div>
         </div>
@@ -10164,6 +10168,7 @@ window.toggleBizSecEdit = function(id, n) {
   // §258 — כל פתיחה/סגירה ידנית מעדכנת את ה-state, כדי שבנייה-מחדש תשחזר בדיוק את מה שהמנהל
   // השאיר פתוח. restoreOpenBizSteps קוראת לפונקציה הזו בעצמה, ולכן ה-add כאן אידמפוטנטי.
   if (opening) openBizSteps.add(id + ':' + n); else openBizSteps.delete(id + ':' + n);
+  if (stepBlock && !_restoringSteps) refreshStepHead(id, n);   // §686 – "✏️ פתוח לעריכה" / חזרה למצב הסקירה
   if (stepBlock && !opening) stepKeepAnchor(stepBlock, top0);   // §660 — "סגירה" למטה לא מעיפה את המסך
 };
 // ── §660 — שלבים: תמיד סגורים, "שמירה ונסקר" אחד, מצב גלוי מבחוץ ──────────────────────────
@@ -10176,12 +10181,14 @@ function stepHeadHtml(b, n) {
   const key = b.id + ':' + n, parked = parkedBizSteps.has(key), open = openBizSteps.has(key) && !parked;
   const dirty = stepDirty.has(key) || (n === 5 && open && coverPending(b.id));
   const rev = !!(b.reviewedSections && b.reviewedSections[n]);
-  const chip = parked ? '<span class="step-state warn">⚠️ לא נשמר</span>'
-    : open && dirty ? '<span class="step-state warn">✏️ לא נשמר עדיין</span>'
+  // §686 – רמי: "תראה את זה שזה פתוח וסגור, לא ברור". סגור עם שינויים = "נסגר בלי לשמור"; פתוח = "פתוח לעריכה"
+  const chip = parked ? '<span class="step-state warn">⚠️ נסגר בלי לשמור</span>'
+    : open && dirty ? '<span class="step-state warn">✏️ פתוח לעריכה – לא נשמר עדיין</span>'
+    : open ? '<span class="step-state">✏️ פתוח לעריכה</span>'
     : rev ? `<button class="step-state ok" title="לחיצה מבטלת את הסימון" onclick="event.stopPropagation();unmarkStepReviewed('${b.id}',${n})">✓ נסקר</button>`
     : `<button class="step-state" title="לחיצה מסמנת שהשלב נסקר – בלי לפתוח עריכה" onclick="event.stopPropagation();markStepReviewed('${b.id}',${n})">✓ לסמן נסקר</button>`;   // §683
-  const saveOut = parked ? `<button class="btn-step-save sm" onclick="event.stopPropagation();saveStepReviewed('${b.id}',${n})">💾 שמירה ונסקר</button><button class="btn-step-edit" onclick="event.stopPropagation();discardStep('${b.id}',${n})">↺ ביטול השינויים</button>` : '';
-  return `<div class="step-head-actions" id="stepHead${n}_${b.id}">${chip}${qjStepFixBtn(b, n)}${qjStepNoteBtn(b, n)}${saveOut}<button class="${open ? 'btn-step-close' : 'btn-step-edit'}" id="stepEditBtn${n}_${b.id}" onclick="toggleBizSecEdit('${b.id}',${n})">${open ? 'סגירה' : 'עריכה'}</button></div>`;
+  const saveOut = parked ? `<button class="btn-step-save sm" onclick="event.stopPropagation();saveStep('${b.id}',${n})">💾 לשמור את השינויים</button><button class="btn-step-edit" onclick="event.stopPropagation();discardStep('${b.id}',${n})">↺ לבטל אותם</button>` : '';
+  return `<div class="step-head-actions" id="stepHead${n}_${b.id}">${chip}${qjStepFixBtn(b, n)}${qjStepNoteBtn(b, n)}${saveOut}<button class="${open ? 'btn-step-close' : 'btn-step-edit'}" id="stepEditBtn${n}_${b.id}" onclick="toggleBizSecEdit('${b.id}',${n})">${open ? 'סגירה' : parked ? 'לפתוח שוב' : 'עריכה'}</button></div>`;
 }
 function refreshStepHead(id, n) {
   const el = document.getElementById('stepHead' + n + '_' + id), b = findBiz(id);
@@ -10200,7 +10207,7 @@ function markStepDirty(e) {
   const t = e.target;
   if (!t || !t.closest) return;
   const f = t.closest('.step-form');
-  if (!f || t.closest('.step-form-actions') || (e.type === 'click' && (!t.closest('[onclick]') || t.closest('summary')))) return;
+  if (!f || t.closest('.step-form-actions') || t.closest('[data-no-dirty]') || (e.type === 'click' && (!t.closest('[onclick]') || t.closest('summary')))) return;
   const m = /^secEdit([234])_(.+)$/.exec(f.id);
   if (!m || !f.classList.contains('open')) return;
   const key = m[2] + ':' + m[1];
@@ -10225,7 +10232,9 @@ function coverPending(id) {
   return Math.round(p.x) !== Math.round(p0.x) || Math.round(p.y) !== Math.round(p0.y) || z1 !== z0 || (!!z1 && (getCoverBg(id) || '') !== (b.coverPhotoBg || ''));
 }
 let _stepReview = null;   // saveSectionUpdates מוסיף את "נסקר" לאותה כתיבה (בנייה מחדש אחת – בלי קפיצה כפולה)
-window.saveStepReviewed = async function(id, n) {
+// §686 – רמי: "אין לי אופציה רק לשמור בלי ללחוץ נסקר" → noMark
+window.saveStep = function(id, n) { return window.saveStepReviewed(id, n, true); };
+window.saveStepReviewed = async function(id, n, noMark) {
   const b = findBiz(id);
   if (!b) return;
   const key = id + ':' + n, blk0 = document.getElementById('stepBlock' + n + '_' + id);
@@ -10236,9 +10245,9 @@ window.saveStepReviewed = async function(id, n) {
   try {
     // §660ב — רמי: "לפעמים אני משנה סדר, מוסיף תמונות". העלאה/סדר/מחיקה נשמרים מיד; מיקום/גודל/רקע של
     // התמונה המייצגת מחכים ל"שמירת מיקום" – כאן הם נשמרים יחד עם "נסקר"
-    if (n === 5 && coverPending(id)) { _stepReview = { id, n }; ok = await saveCoverPos(id); }
-    else if (n === 5) ok = await saveSectionUpdates(id, { reviewedSections: { ...(b.reviewedSections || {}), 5: true } });
-    else { _stepReview = { id, n }; ok = await window['saveBizSec' + n](id); }
+    if (n === 5 && coverPending(id)) { _stepReview = noMark ? null : { id, n }; ok = await saveCoverPos(id); }
+    else if (n === 5) ok = noMark ? true : await saveSectionUpdates(id, { reviewedSections: { ...(b.reviewedSections || {}), 5: true } });
+    else { _stepReview = noMark ? null : { id, n }; ok = await window['saveBizSec' + n](id); }
   } finally { _stepReview = null; }
   if (!ok) {   // נעצר (אישור שבוטל / שגיאה) – השלב נשאר כמו שהיה
     if (wasOpen) openBizSteps.add(key);
@@ -16336,10 +16345,11 @@ function bnChannels(b, assumeApproved) {
 function bnChanHtml(ch) {
   const pill = (on, t) => `<span style="display:inline-block;border:1px solid var(--border-md,#ddd);border-radius:8px;padding:2px 8px;margin-inline-end:4px;background:#fff;${on ? '' : 'opacity:.5;text-decoration:line-through'}">${t}</span>`;
   const warn = [];
-  if (!ch.app) warn.push('אין לו חשבון מאושר באפליקציה – יקבל רק במייל.');
+  if (!ch.app && ch.login) warn.push('אין לו עדיין חשבון מאושר באפליקציה – ההודעה תגיע במייל, ורשימת "מה חסר" תופיע לו במסך הכניסה לאפליקציה ("העסק שלך אצלנו") – כשנכנס עם Google / Apple או מהטלפון שממנו נרשם.');
+  else if (!ch.app) warn.push('אין לו חשבון מאושר באפליקציה – יקבל רק במייל.');
   else if (!ch.push) warn.push('הוא לא אישר התראות – לא יקפוץ לו כלום בטלפון. במייל ובאפליקציה נבקש ממנו להפעיל.');
   if (!ch.mail) warn.push('אין כתובת מייל לבעל העסק.');
-  return `יגיע אליו: ${pill(ch.app, '📰 באפליקציה')}${pill(ch.push, '📲 פוש')}${pill(ch.mail, '✉️ מייל')}${warn.length ? `<div style="color:var(--red,#B42318);margin-top:4px">⚠️ ${warn.join(' ')}</div>` : ''}`;
+  return `יגיע אליו: ${ch.login ? pill(true, '🔐 מסך הכניסה – מה חסר') : ''}${pill(ch.app, '📰 באפליקציה')}${pill(ch.push, '📲 פוש')}${pill(ch.mail, '✉️ מייל')}${warn.length ? `<div style="color:var(--red,#B42318);margin-top:4px">⚠️ ${warn.join(' ')}</div>` : ''}`;
 }
 
 let _bn = null;   // { bizId, mode, summary, sending }
@@ -16635,7 +16645,7 @@ window.bsOpen = function(id, outcome) {
   const merged = bsInitState(b);   // §675ד · §679
   _bn = { bizId: id, mode: 'summary', outcome, sending: false, dirty: false,
     reasons: merged.reasons, other: merged.other,
-    ...((d0 => d0 && outcome0 === undefined ? { outcome: outs.includes(d0.outcome) ? d0.outcome : null, reasons: Array.isArray(d0.reasons) ? d0.reasons : merged.reasons, other: d0.other || '', title: d0.title || '', text: d0.text || '', dirty: !!(d0.title || d0.text), draftAt: d0.at || null } : {})(bsDrafts[id])),   // §684 – טיוטה שמורה
+    ...((d0 => d0 && outcome0 === undefined ? { ...(outs.includes(d0.outcome) ? { outcome: d0.outcome } : {}), ...(Array.isArray(d0.reasons) && d0.reasons.length ? { reasons: d0.reasons } : {}), ...(d0.other ? { other: d0.other } : {}), ...(d0.title || d0.text ? { title: d0.title || '', text: d0.text || '', dirty: true } : {}), draftAt: d0.at || null } : {})(bsDrafts[id])),   // §684 – טיוטה שמורה
     wa: !!b.ownerPhone };
   bsRender();
 };
@@ -16655,6 +16665,8 @@ function bsRender() {
       ${bsMissItems(o).map(([k, t]) => `<div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:13px"><span style="flex:1;white-space:pre-line">• ${esc(t)}</span><button type="button" title="להוריד מהרשימה" onclick="bsDrop('${k}')" style="border:none;background:none;color:var(--text-muted,#5B6B8C);cursor:pointer;font-size:14px;line-height:1;padding:0 4px">✕</button></div>`).join('') || '<div style="margin-top:6px;font-size:13px;color:#B42318">אין כלום ברשימה. כתוב הערה על השלב בכרטיס – והיא תיכנס לכאן.</div>'}
     </div>` : '';
   const ch = bnChannels(b, o.outcome === 'approve');
+  // §686 – רמי: "עסק ממתין גם יקבל את זה במסך ההתחברות כאשר ייכנס לאפליקציה" – "העסק שלך אצלנו" (welcome, §664/§666) מציג את "מה חסר"
+  if (bsIsFix(o.outcome) && b.status === 'pending' && !b.fixHidden) ch.login = true;
   const goLbl = !o.outcome ? 'בחר מה עושים עם העסק' : o.outcome === 'save' && !text.trim() ? '💾 שמירה (בלי הודעה)' : text.trim() ? '📤 שמירה ושליחה' : '💾 שמירה בלי הודעה';
   bnEl().innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:640px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
     <div style="font-size:18px;font-weight:900">🧺 סיכום ושליחה · ${esc(b.name)}</div>
@@ -16720,7 +16732,8 @@ window.bsReason = function(el) {
 window.bsSaveDraft = async function() {
   const o = _bn;
   if (!o || o.mode !== 'summary') return;
-  const d = { title: ((document.getElementById('bnTitle') || {}).value || '').slice(0, BN_TITLE_MAX), text: ((document.getElementById('bnText') || {}).value || '').slice(0, 1500),
+  // §686 – רק טקסט שערכת נשמר כטקסט; טקסט שנבנה מהסל ייבנה שוב (אחרת הטיוטה מקפיאה הודעה ישנה)
+  const d = { title: o.dirty ? ((document.getElementById('bnTitle') || {}).value || '').slice(0, BN_TITLE_MAX) : '', text: o.dirty ? ((document.getElementById('bnText') || {}).value || '').slice(0, 1500) : '',
     outcome: o.outcome || null, reasons: o.reasons || [], other: String(o.other || '').slice(0, 300), at: new Date().toISOString() };
   try { await setDoc(doc(db, 'settings', 'bsDrafts'), { [o.bizId]: d }, { merge: true }); bsDrafts[o.bizId] = d; bnClose(); renderMainPreserveScroll(); }
   catch (e) { const err = document.getElementById('bnErr'); if (err) err.textContent = 'השמירה נכשלה: ' + (e.message || e); }
