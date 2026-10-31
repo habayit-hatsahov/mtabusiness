@@ -5245,6 +5245,7 @@ let bizAdvancedOpen = false;     // "עוד סינונים" (קטגוריה/סו
 // פילי-סיווג ראשיים תואמי-handoff (הכל/ממתינים-לאישור/בקשות-מבעלי-עסקים) — מחליפים את בורר-הסטטוס
 // הישן כברירת-המחדל הראשית; בורר-הסטטוס הישן (bizStatusFilter) נשאר קיים רק בתוך "עוד סינונים".
 let bizClassPill = 'all';        // 'all' | 'pending' | 'requests'
+let bizOnlyFix = false;          // §675 – "✏️ רק צריך לתקן", מעל כל לשונית
 let selectedBizIds = new Set();
 
 window.setBizCategoryFilter = function(v) { bizCategoryFilter = v; renderMain(); };
@@ -5253,10 +5254,11 @@ window.setBizReviewFilter = function(v) { bizReviewFilter = v; renderMain(); };
 window.setBizHealthFilter = function(v) { bizHealthFilter = v; renderMain(); };
 window.setBizDateRangeFilter = function(v) { bizDateRangeFilter = v; renderMain(); };
 window.setBizSort = function(v) { bizSort = v; renderMain(); };
-window.setBizClassPill = function(v) { bizClassPill = v; renderMain(); };
+window.setBizClassPill = function(v) { bizClassPill = v; if (v === 'rejected') bizOnlyFix = false; renderMain(); };
+window.toggleBizOnlyFix = function() { bizOnlyFix = !bizOnlyFix; renderMain(); };
 window.toggleBizAdvanced = function() { bizAdvancedOpen = !bizAdvancedOpen; renderMain(); };
 window.clearBizFilters = function() {
-  bizSearch = ''; bizStatusFilter = 'all'; bizCategoryFilter = 'all'; bizTypeFilter = 'all'; bizReviewFilter = 'all'; bizHealthFilter = 'all'; bizDateRangeFilter = 'all'; bizSort = 'waitingLongest'; bizClassPill = 'all';
+  bizSearch = ''; bizStatusFilter = 'all'; bizCategoryFilter = 'all'; bizTypeFilter = 'all'; bizReviewFilter = 'all'; bizHealthFilter = 'all'; bizDateRangeFilter = 'all'; bizSort = 'waitingLongest'; bizClassPill = 'all'; bizOnlyFix = false;
   renderMain();
 };
 
@@ -5313,10 +5315,10 @@ function hoursIssues(b) {
 function bizClassCounts() {
   return {
     all: MOCK_BUSINESSES.length,
-    pending: MOCK_BUSINESSES.filter(b => b.status === 'pending').length,
-    inReview: MOCK_BUSINESSES.filter(isInReview).length,   // §637ב
+    pending: MOCK_BUSINESSES.filter(b => bizShownStatus(b) === 'pending').length,
+    fix: MOCK_BUSINESSES.filter(b => bizInFix(b) && bizClassMatch(b, bizClassPill)).length,   // §675 – בתוך הלשונית הנוכחית
     requests: MOCK_BUSINESSES.filter(b => classifyAction(b, 'business').treatments.length > 0).length,
-    approved: MOCK_BUSINESSES.filter(b => b.status === 'approved').length,
+    approved: MOCK_BUSINESSES.filter(b => bizShownStatus(b) === 'approved').length,
     rejected: MOCK_BUSINESSES.filter(b => b.status === 'rejected').length,
     // §232 — עסקים עם אתר/פייסבוק/אינסטגרם שאינו כתובת אמיתית. הפיל מוצג רק כשיש כאלה,
     // ונעלם מעצמו כשכולם תוקנו. **חייב להיות כאן ולא בשורת "עוד סינונים"** — היא לא
@@ -5366,20 +5368,23 @@ function matchesSearch(q, fields, phoneFields) {
   return (phoneFields || []).some(p => p && normDigits(p).includes(dq));
 }
 
+// §675 – הלשונית לבדה (בלי "רק צריך לתקן"), כדי שהמונה של הפילטר יספור בתוך הלשונית הנוכחית
+function bizClassMatch(b, pill) {
+  return pill === 'all' ? true
+    : pill === 'pending' ? bizShownStatus(b) === 'pending'
+    : pill === 'approved' ? bizShownStatus(b) === 'approved'
+    : pill === 'rejected' ? b.status === 'rejected'
+    : pill === 'brokenLinks' ? brokenLinksFor(b).length > 0
+    : pill === 'hoursOther' ? hoursIssues(b).length > 0
+    : classifyAction(b, 'business').treatments.length > 0;
+}
 function bizFilteredList() {
   const q = bizSearch.trim();
   const list = MOCK_BUSINESSES.filter(b => {
     const matchF = bizStatusFilter === 'all' ? true
       : bizStatusFilter === 'changes' ? !!b.hasPendingChange
-      : b.status === bizStatusFilter;
-    const matchClass = bizClassPill === 'all' ? true
-      : bizClassPill === 'pending' ? b.status === 'pending'
-      : bizClassPill === 'inReview' ? isInReview(b)   // §637ב
-      : bizClassPill === 'approved' ? b.status === 'approved'
-      : bizClassPill === 'rejected' ? b.status === 'rejected'
-      : bizClassPill === 'brokenLinks' ? brokenLinksFor(b).length > 0
-      : bizClassPill === 'hoursOther' ? hoursIssues(b).length > 0
-      : classifyAction(b, 'business').treatments.length > 0;
+      : bizShownStatus(b) === bizStatusFilter;   // §675
+    const matchClass = bizClassMatch(b, bizClassPill) && (!bizOnlyFix || bizInFix(b));
     const matchCat = bizCategoryFilter === 'all' || b.catKey === bizCategoryFilter;
     const matchType = bizTypeFilter === 'all' || (b.bizTypes || []).includes(bizTypeFilter);
     const matchReview = bizReviewFilter === 'all' ? true
@@ -5576,7 +5581,7 @@ function bizRowsHtml() {
     // לא מטפל בו במפורש (מחזיר "מאושר · אין פעולה" שגוי) — עוקפים מקומית, לא מתקנים classifyAction עצמה
     // כי היא משותפת גם למרכז המשימות/מרכז לבבות וכו', מחוץ להיקף השינוי הזה.
     const cls = classifyAction(b, 'business');
-    const primaryLabel = b.status === 'rejected' ? '✗ נדחה' : cls.primary;
+    const primaryLabel = b.status === 'rejected' ? '✗ נדחה' : bizFixLabel(b) || cls.primary;   // §675
     const badges = [`<span class="class-badge${primaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(primaryLabel)}</span>`]
       .concat(cls.treatments.filter(t => !NAME_TREATMENTS.includes(t)).map(t => treatBadgeHtml(t, b)));   // §652 – הבקשות ליד השם
     if (cls.primary === 'כרטיס חסר באינדקס') {
@@ -5587,14 +5592,14 @@ function bizRowsHtml() {
     // §366 — הדגל צריך להיות גלוי **ברשימה**, לא רק בכרטיס: מי שסורק את הממתינים רואה
     // שתי שורות דומות ואין לו סימן שהן קשורות.
     if (bizDuplicateOf(b)) badges.push(`<span class="warn-badge">כפילות אפשרית</span>`);
-    if (isInReview(b)) badges.push(inReviewBadgeHtml(b));   // §637ב
+    if (bizInFix(b)) badges.push(inReviewBadgeHtml(b));   // §637ב · §675 – גם עסק מאושר שצריך לתקן
     badges.push(...followupBadgesHtml(b));   // §415 — מצב מכתב-השידור + מונה הנדנוד
     const sel = selectedBizIds.has(b.id);
     const active = b.id === selectedBizDetailId;
     const metaBits = [
       bizMetaStr(b),
       b.ownerIsSubscriber ? 'מנוי' : 'לא מנוי',
-      b.status === 'approved' ? `באינדקס מ-${fmtDate(b.approvedAt || b.registeredAt)}` : (b.status === 'pending' ? `ממתין ${agoLabel(b.registeredAt)}` : '')
+      b.status === 'approved' ? `באינדקס מ-${fmtDate(b.approvedAt || b.registeredAt)}` : bizShownStatus(b) === 'approved' ? 'מוסתר מהאתר עד התיקון' : (b.status === 'pending' ? `ממתין ${agoLabel(b.registeredAt)}` : '')
     ].filter(Boolean).join(' · ');
     return `
       <div class="task-row ${b.status} ${active?'active':''} ${sel?'selected':''}" onclick="selectBizDetail('${b.id}')">
@@ -9300,7 +9305,7 @@ function bizFullDetailHtml(id, opts) {
   // בדיוק אותו classifyAction()+class-badge/treat-badge כמו בשורת הרשימה (ר' bizRowsHtml), עם וריאנט .lg.
   // status-actions (אשר/דחה/מחק) לא הועברו לכאן — במוקאפ הן חלק מכרטיס-שיפוט-מהיר, השלב הבא בתור.
   const idCls = classifyAction(b, 'business');
-  const idPrimaryLabel = b.status === 'rejected' ? '✗ נדחה' : idCls.primary;
+  const idPrimaryLabel = b.status === 'rejected' ? '✗ נדחה' : bizFixLabel(b) || idCls.primary;   // §675
   const idBrokenLinks = brokenLinksFor(b);
   const idBadges = [`<span class="class-badge lg${idPrimaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(idPrimaryLabel)}</span>`]
     .concat(idCls.treatments.map(t => treatBadgeHtml(t, b, true)));
@@ -9308,7 +9313,9 @@ function bizFullDetailHtml(id, opts) {
   const idDates = [
     b.status === 'approved' ? `באינדקס מ-${fmtDate(b.approvedAt || b.registeredAt)}`
       : b.status === 'rejected' ? `נדחה ${fmtDate(b.rejectedAt || b.registeredAt)}`
+      : bizShownStatus(b) === 'approved' ? `מוסתר מהאתר עד התיקון`
       : `נרשם ${fmtDate(b.registeredAt)} · ממתין ${agoLabel(b.registeredAt)}`,
+    bizInFix(b) ? `ביקשת לתקן${toJsDate(b.inReviewAt) ? ' ' + fmtDate(toJsDate(b.inReviewAt)) : ''}${bizFixedAt(b) ? ' · תיקן ' + fmtDateTime(bizFixedAt(b)) : ' · עוד לא סימן "תיקנתי"'}` : '',   // §675
     b.pendingChangeDiff ? `הבקשות נשלחו ${agoLabel(b.changeSubmittedAt || b.registeredAt)}` : ''
   ].filter(Boolean).join(' · ');
   const idCity = (b.branches && b.branches[0] && b.branches[0].city) || '';
@@ -11053,7 +11060,7 @@ function bizFilterBarHtml(opts) {
   // searchId — ר' §254 (id שנכפל ב-DOM כשהפונקציה רצה פעמיים בו-זמנית).
   const o = Object.assign({ advanced: true, selectAll: true, searchId: '' }, opts || {});
   const advancedActiveCount = (bizStatusFilter!=='all'?1:0) + (bizCategoryFilter!=='all'?1:0) + (bizTypeFilter!=='all'?1:0) + (bizReviewFilter!=='all'?1:0) + (bizHealthFilter!=='all'?1:0) + (bizDateRangeFilter!=='all'?1:0);
-  const hasActiveFilters = (o.advanced && advancedActiveCount > 0) || bizSearch.trim() || bizSort !== 'waitingLongest' || bizClassPill !== 'all';
+  const hasActiveFilters = (o.advanced && advancedActiveCount > 0) || bizSearch.trim() || bizSort !== 'waitingLongest' || bizClassPill !== 'all' || bizOnlyFix;
   const counts = bizClassCounts();
   const pill = (key, label) => `<button class="biz-class-pill ${bizClassPill===key?'active':''}" onclick="setBizClassPill('${key}')">${label} · ${counts[key]}</button>`;
   return `
@@ -11075,12 +11082,12 @@ function bizFilterBarHtml(opts) {
       <div class="filter-toolbar-row biz-class-pills">
         ${pill('all', 'הכל')}
         ${pill('pending', 'ממתינים לאישור')}
-        ${counts.inReview ? pill('inReview', '⏳ בתהליך אישור') : ''}
         ${pill('requests', 'בקשות מבעלי עסקים')}
         ${pill('approved', 'מאושרים')}
         ${pill('rejected', 'נדחו')}
         ${counts.brokenLinks ? pill('brokenLinks', '🔗 קישורים שבורים') : ''}
         ${counts.hoursOther ? pill('hoursOther', '🕐 שעות לבדיקה') : ''}
+        ${bizClassPill !== 'rejected' && (counts.fix || bizOnlyFix) ? `<button class="biz-class-pill ${bizOnlyFix ? 'active' : ''}" style="border-color:#C9B8F5${bizOnlyFix ? '' : ';color:#6941C6'}" onclick="toggleBizOnlyFix()">✏️ רק צריך לתקן · ${counts.fix}</button>` : ''}
       </div>
       ${o.selectAll ? bizSelectAllRowHtml() : ''}
       ${o.advanced && bizAdvancedOpen ? `
@@ -13886,7 +13893,7 @@ function inReviewBadgeHtml(x) {
     const labels = bizWaitLabels(x, true);
     return labels.length
       ? bizFixedAt(x) ? `<span class="treat-badge" style="background:#ECFDF3;color:#067647" title="בעל העסק שלח תיקון">🔁 תוקן – לבדיקה</span>`
-      : `<span class="treat-badge" style="background:#F1ECFC;color:#6941C6" title="צריך לתקן">✏️ צריך לתקן: ${esc(labels.join(', '))}${x.status === 'approved' ? ' · באתר' : x.fixHidden ? ' · הוסתר' : ''}</span>`
+      : `<span class="treat-badge" style="background:#F1ECFC;color:#6941C6" title="${esc(bizFixLabel(x))}">✏️ חסר: ${esc(labels.join(', '))}</span>`
       : `<span class="treat-badge" style="background:#FDECEC;color:#B42318">✏️ צריך לתקן · לא נשמר מה חסר</span>`;
   }
   if (!isInReview(x)) return '';
@@ -13950,7 +13957,7 @@ function bizWaitBannerHtml(b) {
   if (!bizInFix(b) || !MOCK_BUSINESSES.includes(b)) return '';   // §671 – גם עסק מאושר שצריך לתקן
   const labels = bizWaitLabels(b);
   const sent = b.waNudgeCount ? `וואטסאפ נשלח ${b.waNudgeCount === 1 ? 'פעם אחת' : b.waNudgeCount + ' פעמים'}${b.waNudgeAt ? ' · אחרון ' + fmtDateTime(b.waNudgeAt) : ''}` : 'עוד לא נשלח וואטסאפ';
-  const meta = `<div style="color:var(--text-muted);font-size:11px;margin-top:6px">${b.status === 'approved' ? 'צריך לתקן · נשאר באתר' : b.fixHidden ? 'צריך לתקן · הוסתר מהאתר עד התיקון' : 'צריך לתקן'}${b.inReviewAt ? ' מאז ' + fmtDateTime(b.inReviewAt) : ''} · ${sent}</div>`;
+  const meta = `<div style="color:var(--text-muted);font-size:11px;margin-top:6px">${bizFixLabel(b)}${b.inReviewAt ? ' מאז ' + fmtDateTime(b.inReviewAt) : ''} · ${sent}</div>`;
   const box = (bg, bd) => `margin-bottom:14px;background:${bg};border:1px solid ${bd};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap`;
   if (!labels.length) return `
     <div style="${box('#FDECEC', '#F5C2C0')}">
@@ -16085,18 +16092,23 @@ window.openBizNoteReply = function(id) { bnOpen({ bizId: id, mode: 'note' }); };
 // וואטסאפ – אין חיבור: אחרי השליחה כפתור שפותח את הוואטסאפ של רמי עם הנוסח (קישור אמיתי – window.open
 // אחרי await נחסם בדפדפן).
 function bizInFix(b) { return !!b && b.inReview === true && (b.status === 'pending' || b.status === 'approved'); }
+// §675 – "צריך לתקן" לא סטטוס רביעי (רמי, 31.10): נכתב על הסטטוס, בשלוש צורות בלבד – אותן מילים בכותרת,
+// ברשימה, ב"סיכום ושליחה" ובהיסטוריה. עסק מאושר שירד נשמר כ-pending + fixHidden (bsGo) – מוצג
+// "מוסתר מהאתר" ונספר תחת "מאושרים" (bizShownStatus). הנתונים עצמם לא השתנו.
+function bizFixLabel(b) { return !bizInFix(b) ? '' : b.status === 'approved' ? '✅ מאושר – צריך לתקן' : b.fixHidden ? '🙈 מוסתר מהאתר – צריך לתקן' : '⏳ ממתין – צריך לתקן'; }
+function bizShownStatus(b) { return b && b.status === 'pending' && bizInFix(b) && b.fixHidden ? 'approved' : b && b.status; }
 // §672 — בעל העסק שלח תיקון (הוורקר: /biz-fix-done, העלאה ממסך "העסק שלך אצלנו"). סבב חדש מאפס.
 function bizFixedAt(b) { return bizInFix(b) ? toJsDate(b.fixSubmittedAt) : null; }
 const BS_OUT = {
   approve: ['✅ אישור העסק', 'עולה לאתר. בעל העסק מקבל את מייל האישור הרגיל, וההודעה מכאן – בנוסף.'],
   save: ['💾 רק לשמור ולעדכן אותו', 'העסק נשאר מאושר. נשמר מה שסימנת, ויוצאת אליו ההודעה.'],
-  fix: ['✏️ צריך לתקן', 'נשאר ממתין. מה שתסמן למטה קופץ לו באפליקציה, ומשם הוא מתקן.'],
-  fixStay: ['✏️ צריך לתקן – נשאר באתר', 'העסק ממשיך להופיע באתר בזמן שהוא מתקן.'],
-  fixHide: ['✏️ צריך לתקן – יורד מהאתר עד התיקון', 'העסק מוסתר מהאתר, וחוזר רק כשתאשר את התיקון.'],
+  fix: ['⏳ ממתין – צריך לתקן', 'עוד לא באתר. מה שתסמן למטה קופץ לו באפליקציה, ומשם הוא מתקן.'],
+  fixStay: ['✅ מאושר – צריך לתקן', 'העסק ממשיך להופיע באתר בזמן שהוא מתקן.'],
+  fixHide: ['🙈 מוסתר מהאתר – צריך לתקן', 'העסק מוסתר מהאתר, וחוזר רק כשתאשר את התיקון.'],
   reject: ['⛔ דחייה סופית', 'בלי הזדמנות לתקן. בלי הודעה – לא נשלח לו כלום.'],
 };
 const BS_TITLE = { approve: 'העסק שלך אושר! 🎉', save: 'עדכון על השינויים שביקשת', fix: 'נשאר עוד צעד קטן', fixStay: 'נשאר עוד צעד קטן', fixHide: 'נשאר עוד צעד קטן', reject: 'עדכון על ההרשמה של העסק' };
-function bsOutcomes(b) { return b.status === 'approved' ? ['save', 'fixStay', 'fixHide', 'reject'] : ['approve', 'fix', 'reject']; }
+function bsOutcomes(b) { return b.status === 'approved' ? ['save', 'fixStay', 'fixHide', 'reject'] : bizShownStatus(b) === 'approved' ? ['approve', 'fixHide', 'reject'] : ['approve', 'fix', 'reject']; }   // §675 – מוסתר נשאר מוסתר, לא "ממתין"
 const bsIsFix = o => o === 'fix' || o === 'fixStay' || o === 'fixHide';
 // ההודעה מהסל. ההערות על השלבים (📝) הן "מה חסר" כשמבקשים תיקון, ולכן שם הן עוברות לרשימה ולא לסוף.
 function bsBuildText(b, outcome, reasons, other) {
@@ -16123,6 +16135,7 @@ window.bsOpen = function(id, outcome) {
   qjLoadDecided(id);
   const outs = bsOutcomes(b);
   if (outcome === 'fix' && b.status === 'approved') outcome = bizInFix(b) ? 'fixStay' : null;   // עסק מאושר – רמי בוחר: נשאר / יורד
+  else if (outcome === 'fix' && bizShownStatus(b) === 'approved') outcome = 'fixHide';   // §675 – מוסתר: "עריכת מה חסר" = נשאר מוסתר
   if (!outs.includes(outcome)) outcome = outcome === undefined && b.status === 'approved' ? 'save' : null;
   const cur = bizWaitKeys(b).filter(k => k !== 'other');
   _bn = { bizId: id, mode: 'summary', outcome, sending: false, dirty: false,
