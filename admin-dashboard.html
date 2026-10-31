@@ -1337,6 +1337,9 @@ textarea.m2-t.mail { min-height:200px; border-top-left-radius:0; border-top-righ
 .btn-id-wa:hover { background: var(--accent-dark); }
 .btn-id-mail { flex: 1; height: 36px; border: 1px solid var(--accent); border-radius: 9px; background: var(--card-bg); color: var(--accent); font-size: 13px; font-weight: 600; padding: 0 12px; }
 .btn-id-mail:hover { background: var(--accent-bg); }
+.id-dash-link { border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; max-width: 260px; }
+.id-dash-h { font-size: 11.5px; color: var(--text-muted); }
+.id-dash-link code { display: block; font-size: 11px; background: var(--bg, #F4F6FB); border-radius: 7px; padding: 4px 6px; margin: 3px 0 5px; word-break: break-all; }
 .btn-id-dash { height: 36px; border: 1px solid var(--border); border-radius: 9px; background: var(--card-bg); color: var(--text-sm); font-size: 13px; font-weight: 600; padding: 0 14px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
 .btn-id-dash:hover { background: var(--nav-bg); }
 .identity-notes { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-md); display: flex; gap: 10px; flex-wrap: wrap; }
@@ -5656,6 +5659,12 @@ const DEFAULT_FAN_MAIL_SUBJECT = 'ברוך הבא ל-Yellow Zone';
 
 // function ולא const: נקראת גם מרשימות שמצוירות לפני שהמודול הגיע לשורה הזו (TDZ)
 function bizDashUrl(accessToken) { return 'https://yellowzone.co.il/business-dashboard.html?token=' + accessToken; }
+window.copyBizDash = async function(btn, token) {   // §676
+  const url = bizDashUrl(token);
+  try { await navigator.clipboard.writeText(url); btn.textContent = '✓ הועתק – אפשר להדביק לו'; }
+  catch (e) { prompt('להעתקה:', url); }
+  setTimeout(() => { btn.textContent = '📋 העתקה'; }, 2500);
+};
 function applyBizTpl(tpl, ownerName, businessName, accessToken) {
   // §657 – הלינק לבעל העסק תמיד מהאתר החי: נבנה קודם מ-location.origin, ומרכז ניהול שנפתח ב-localhost
   // שלח לבעל העסק "http://localhost:5502/..." שלא נפתח אצלו (מוסך לזר גרסי, 28.10).
@@ -9337,12 +9346,17 @@ function bizFullDetailHtml(id, opts) {
   // זה מה שקרה ל-AI Out Of The Box: `setDoc(bizTokens)` ב-business.html נכשל/לא רץ, ובעל
   // העסק לא יכול היה להיכנס לדשבורד — כלומר גם **לא** להעלות בעצמו את התמונות שאבדו.
   // 🔑 בלי הכפתור הזה, "שלח לו לינק לדשבורד" הוא עצה שאי אפשר לבצע.
+  // §676 – רמי: "למעלה תוריד את פתיחת דשבורד העסק, שים לינק ואופציה לפתיחה, שנוכל לשלוח לבעל העסק בקלות"
   const idDashBtn = b.accessToken
-    ? `<a href="${bizDashUrl(b.accessToken)}" target="_blank" class="btn-id-dash">פתיחת דשבורד העסק</a>`
+    ? `<div class="id-dash-link"><div class="id-dash-h">🔗 הקישור לדשבורד העסק</div><code dir="ltr">${esc(bizDashUrl(b.accessToken))}</code><div class="identity-actions-row"><button type="button" class="btn-id-dash" onclick="copyBizDash(this,'${b.accessToken}')">📋 העתקה</button><a href="${bizDashUrl(b.accessToken)}" target="_blank" class="btn-id-dash">פתיחה ↗</a></div></div>`
     : `<button class="btn-id-dash" onclick="issueBizToken('${b.id}','${escJsAttr(b.name)}')">🔑 הנפקת טוקן – אין לעסק דשבורד</button>`;
   // §615 — "האזור שלי" של בעל העסק כמו שהוא רואה אותו (profile.html?previewMemberId=…, קריאה בלבד בהודעות).
   // רמי: "היום יש לי רק לדשבורד עריכה ואני רוצה שיהיה לאזור עצמו".
   const idAreaOwner = bizOwnerMember(b);
+  // §676 – מנוי ושער בכותרת (רמי, סבב 2 של §673), ואיפה ההודעות יגיעו אליו
+  const idOwnerSubLine = b.ownerIsSubscriber ? `🎫 מנוי · ${esc(sectionLabelFor(b.ownerVerifiedSport))} ${esc(sectionWithTier(b.ownerSubscriberSection, b.ownerSubscriberTier) || '–')}` : '🎫 לא מנוי';
+  const idCh = bnChannels(b);
+  const idChanLine = 'הודעות יגיעו אליו: ' + [[idCh.app, '📰 באפליקציה'], [idCh.push, '📲 פוש'], [idCh.mail, '✉️ מייל'], [!!b.ownerPhone, '💬 וואטסאפ (ידני)']].map(([on, t]) => `<span style="${on ? '' : 'opacity:.45;text-decoration:line-through'}">${t}</span>`).join(' · ');
   const idAreaBtn = idAreaOwner ? `<a href="profile.html?previewMemberId=${encodeURIComponent(idAreaOwner.id)}" target="_blank" class="btn-id-dash">👤 האזור של בעל העסק</a>` : '';
   // ── §299 — "מנוי מאומת" ו"תקנון" ירדו מכרטיס-הזהות ──────────────────────────────────────
   // המשתמש: *"מנוי מאומת תוריד, משם כל הפרטים יש באימות. תקנון וזמן האישור תוסיף באימות."*
@@ -9425,6 +9439,8 @@ function bizFullDetailHtml(id, opts) {
             <button type="button" class="act-btn approve tiny" onclick="saveBizOwnerContact('${b.id}')">שמירה</button>
             <button type="button" class="act-btn tiny" onclick="toggleBizOwnerContactEdit('${b.id}')">ביטול</button>
           </div>
+          <div class="identity-contact">${idOwnerSubLine}</div>
+          <div class="identity-contact">${idChanLine}</div>
           <div class="identity-tags">${idTagsHtml}</div>
         </div>
         <div class="identity-actions">
