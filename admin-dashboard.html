@@ -499,6 +499,7 @@ body {
 .cover-cmp-lbl { font-weight: 800; font-size: 13px; margin-bottom: 6px; }
 .cover-cmp-frame { aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden; background: var(--card-bg2, #F4F6FB); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
 .cover-cmp-frame img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
+.cover-cmp-col .cover-pos-box { width: 100%; max-width: none; }
 .cover-cmp-acts { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 @media (max-width: 560px) { .cover-cmp-row { grid-template-columns: 1fr; } }
 .media-slot {
@@ -13413,16 +13414,9 @@ function mediaRealViewHtml(b) {
 }
 // 🚩 לוגו / תמונה מייצגת → "סיכום ושליחה" על "צריך לתקן" עם השורה הזו ברשימה. גלריה (אין לה סיבה
 // קבועה) → הערה על שלב התמונות, שנכנסת לאותה רשימה (bsMergeRemarks).
-window.bizTileAskFix = function(id, k) {
-  if (k === 'gallery') { qjStepNoteOpen(id, 5); return; }
-  const b = findBiz(id);
-  if (!b) return;
-  bsOpen(id, 'fix');
-  if (!_bn || _bn.bizId !== id) return;
-  if (!bsIsFix(_bn.outcome)) { const outs = bsOutcomes(b); _bn.outcome = ['fixStay', 'fixHide', 'fix'].find(o => outs.includes(o)) || null; }
-  if (!_bn.reasons.includes(k)) _bn.reasons = _bn.reasons.concat(k);
-  bsRender();
-};
+// §679 – רמי: "לבקש לתקן – שזה פשוט יאסוף לסל ולמעלה יהיה את האופציה לשליחה. שלא כל צריך לתקן יהיה שליחה"
+const BS_FIX_LABELS = { cover: 'תמונה ראשית', logo: 'לוגו', gallery: 'גלריית התמונות' };
+window.bizTileAskFix = function(id, k) { qjNoteOpen(id, null, { key: k, label: BS_FIX_LABELS[k] || k }); };
 // ✏️ פותח את טופס התמונות וגולל לחלק של השדה
 window.bizTileEdit = function(id, k) {
   const ed = document.getElementById('secEdit5_' + id);
@@ -13568,7 +13562,7 @@ window.removeBizLogo = async function(id) { await saveSectionUpdates(id, { logo:
 // הכרטיס), ורק "להחליף" מעלה ושומר. התמונה שהוחלפה (או הוסרה) נשמרת ב-coverPhotoPrev/coverPhotoPrevThumb –
 // הקובץ עצמו לא נמחק מ-Storage – ו"↩️ לחזור לתמונה הקודמת" מחליף ביניהן (עם אותה השוואה).
 // השדות לא ב-PUBLIC_FIELDS של bizPublic, ולכן לא יוצאים לאתר.
-const coverPrevPatch = (b) => b && b.coverPhoto ? { coverPhotoPrev: b.coverPhoto, coverPhotoPrevThumb: b.coverPhotoThumb || '' } : {};
+const coverPrevPatch = (b) => b && b.coverPhoto ? { coverPhotoPrev: b.coverPhoto, coverPhotoPrevThumb: b.coverPhotoThumb || '', coverPhotoPrevPosition: b.coverPhotoPosition || '', coverPhotoPrevZoom: b.coverPhotoZoom || null, coverPhotoPrevBg: b.coverPhotoBg || '' } : {};
 window.uploadBizCover = async function(id, files) {
   const file = files && files[0];
   if (!file) return;
@@ -13576,11 +13570,12 @@ window.uploadBizCover = async function(id, files) {
   if (b && b.coverPhoto) { coverCmpOpen(id, { src: URL.createObjectURL(file), file }); return; }
   await bizCoverUpload(id, file);
 };
-async function bizCoverUpload(id, file) {
+async function bizCoverUpload(id, file, look) {
   showSaving('מעלה תמונה מייצגת...');
   try {
     const { url, thumbUrl } = await uploadImageWithThumb(file, `businesses/${id}/coverPhoto_${Date.now()}`, COVER_MAX_DIM);
-    await saveSectionUpdates(id, { coverPhoto: url, coverPhotoThumb: thumbUrl, ...coverPrevPatch(findBiz(id)) }, { reopenStep: 5 });
+    coverEdForget(id);
+    await saveSectionUpdates(id, { coverPhoto: url, coverPhotoThumb: thumbUrl, ...(look || {}), ...coverPrevPatch(findBiz(id)) }, { reopenStep: 5 });
   } catch (e) { console.error(e); hideSaving(false); alert('שגיאה בהעלאת התמונה: ' + e.message); }
 }
 window.removeBizCover = async function(id) { await saveSectionUpdates(id, { coverPhoto: '', coverPhotoThumb: '', ...coverPrevPatch(findBiz(id)) }, { reopenStep: 5 }); };
@@ -13588,6 +13583,46 @@ window.coverCmpPrev = function(id) {
   const b = findBiz(id);
   if (b && b.coverPhotoPrev) coverCmpOpen(id, { src: bizImageViewUrl(b.coverPhotoPrev), prev: true });
 };
+// §679ב – רמי: "אני רוצה שיהיה לי את אותו המנגנון לסדר אותה… ואז להחליט אם היא יותר טובה ממה שיש לי".
+// eid = '<bizId>~new' / '<bizId>~cur': מצב נפרד ב-bizCoverPosEdits/ZoomEdits/BgEdits (findBiz לא מוצא אותו,
+// ולכן מתחיל ממרכז / "מילוי הכרטיס"), וכל הפונקציות הקיימות (startCoverDrag, setCoverFitMode, setCoverZoom,
+// setCoverBg, resetCoverPos, applyCoverPos) עובדות עליו בלי שינוי. ro = תצוגה בלבד (התמונה שבאתר עכשיו).
+function coverEditorHtml(eid, src, b, ro) {
+  const z = getCoverZoom(eid), bg = getCoverBg(eid), pos = getCoverPos(eid);
+  const posStr = esc(pos.x.toFixed(0) + '% ' + pos.y.toFixed(0) + '%');
+  const box = `<div class="cover-pos-box" id="coverPosBox_${eid}" ${ro ? 'style="cursor:default"' : `onpointerdown="startCoverDrag(event,'${eid}')"`}>
+        <img id="coverPosBg_${eid}" class="cover-bg" src="${esc(src)}" draggable="false" alt="" aria-hidden="true" onerror="markBizImageFailed(this)"${(z && !bg) ? '' : ' style="display:none"'}>
+        <span id="coverPosFill_${eid}" class="cover-fill" style="${(z && bg) ? `background:${esc(bg)}` : 'display:none'}"></span>
+        <img id="coverPosImg_${eid}" class="${z ? 'fitted' : ''}" src="${esc(src)}" draggable="false" onerror="markBizImageFailed(this)" style="${z ? `--cover-zoom:${z};--cover-origin:${posStr}` : `object-position:${posStr}`}">
+        ${b.logo ? `<div class="biz-card-logo-badge${b.logoFit === 'contain' ? ' fit' : ''}"><img src="${esc(bizImageViewUrl(b.logo))}" alt="לוגו" onerror="markBizImageFailed(this)"></div>` : ''}
+      </div>`;
+  if (ro) return box + `<div class="media-slot-note" style="margin-top:6px">${coverZoomLabel(z)}${z && bg ? ' · שוליים בצבע אחיד' : z ? ' · שוליים בטשטוש' : ''}</div>`;
+  return box + `
+      <div class="media-slot-row" style="margin-top:8px">
+        <button type="button" class="act-btn tiny${z ? '' : ' approve'}" data-cover-fit="${eid}" data-cover-mode="fill" onclick="setCoverFitMode('${eid}','fill')">מילוי הכרטיס</button>
+        <button type="button" class="act-btn tiny${z ? ' approve' : ''}" data-cover-fit="${eid}" data-cover-mode="fit" onclick="setCoverFitMode('${eid}','fit')">כל התמונה</button>
+        <button type="button" class="act-btn tiny" onclick="resetCoverPos('${eid}')">↺ למרכז</button>
+      </div>
+      <div class="cover-zoom-row">
+        <input type="range" id="coverZoomRange_${eid}" min="${COVER_ZOOM_MIN}" max="${COVER_ZOOM_MAX}" step="0.05" value="${z || COVER_ZOOM_MIN}" ${z ? '' : 'disabled'} oninput="setCoverZoom('${eid}', this.value)">
+        <span class="cover-zoom-val" id="coverZoomVal_${eid}">${coverZoomLabel(z)}</span>
+      </div>
+      <div class="cover-zoom-row" id="coverFillRow_${eid}"${z ? '' : ' style="display:none"'}>
+        <span class="cover-zoom-val" style="min-width:auto">מילוי השוליים:</span>
+        <button type="button" class="act-btn tiny" onclick="setCoverBg('${eid}','')">טשטוש</button>
+        <input type="color" id="coverBgColor_${eid}" value="${esc(bg || '#0A2A66')}" style="width:38px;height:28px;padding:0;border:1px solid var(--border);border-radius:6px;cursor:pointer" oninput="setCoverBg('${eid}', this.value)">
+        <button type="button" class="act-btn tiny" onclick="setCoverBg('${eid}', document.getElementById('coverBgColor_${eid}').value)">צבע אחיד</button>
+      </div>`;
+}
+function coverEdState(eid, posStr, zoom, bg) {
+  bizCoverPosEdits[eid] = parseCoverPos(posStr);
+  const z = parseFloat(zoom); bizCoverZoomEdits[eid] = z > 0 ? z : null;
+  bizCoverBgEdits[eid] = bg || '';
+}
+function coverEdValues(eid) {
+  const pos = getCoverPos(eid), zoom = getCoverZoom(eid);
+  return { coverPhotoPosition: pos.x.toFixed(0) + '% ' + pos.y.toFixed(0) + '%', coverPhotoZoom: zoom ? Number(zoom.toFixed(2)) : null, coverPhotoBg: zoom ? (getCoverBg(eid) || '') : '' };
+}
 let _coverCmp = null;
 function coverCmpEl() {
   let el = document.getElementById('coverCmpModal');
@@ -13598,16 +13633,22 @@ function coverCmpOpen(id, o) {
   const b = findBiz(id);
   if (!b) return;
   _coverCmp = { id, ...o };
-  const frame = (src, label) => `<div class="cover-cmp-col"><div class="cover-cmp-lbl">${label}</div><div class="cover-cmp-frame">${src ? `<img src="${esc(src)}" alt="" onerror="markBizImageFailed(this)">` : '<span>אין תמונה</span>'}</div></div>`;
+  const cur = id + '~cur', nw = id + '~new';
+  coverEdState(cur, b.coverPhotoPosition, b.coverPhotoZoom, b.coverPhotoBg);
+  if (o.prev) coverEdState(nw, b.coverPhotoPrevPosition, b.coverPhotoPrevZoom, b.coverPhotoPrevBg); else coverEdState(nw, '', null, '');
+  const col = (label, inner) => `<div class="cover-cmp-col"><div class="cover-cmp-lbl">${label}</div>${inner}</div>`;
   const el = coverCmpEl();
   el.innerHTML = `<div class="cover-cmp-box">
     <div style="font-size:17px;font-weight:900">${o.prev ? '↩️ לחזור לתמונה הקודמת?' : '🖼️ להחליף את התמונה המייצגת?'} · ${esc(b.name)}</div>
-    <div style="font-size:12.5px;color:var(--text-muted);margin:4px 0 12px">שתיהן במסגרת של הכרטיס באינדקס (4:3, ממורכזות). מיקום וגודל מכוונים אחרי ההחלפה, בעריכה.</div>
-    <div class="cover-cmp-row">${frame(b.coverPhoto ? bizImageViewUrl(b.coverPhoto) : '', 'עכשיו באתר')}${frame(o.src, o.prev ? 'הקודמת' : 'החדשה')}</div>
+    <div style="font-size:12.5px;color:var(--text-muted);margin:4px 0 12px">שתיהן בדיוק כמו בכרטיס באינדקס (4:3, עם תג הלוגו). את ${o.prev ? 'הקודמת' : 'החדשה'} אפשר לסדר כאן – לגרור, "מילוי הכרטיס" / "כל התמונה", קירוב ושוליים – ואז להחליט. מה שסידרת נשמר איתה.</div>
+    <div class="cover-cmp-row">${col('עכשיו באתר', b.coverPhoto ? coverEditorHtml(cur, bizImageViewUrl(b.coverPhoto), b, true) : '<div class="cover-cmp-frame"><span>אין תמונה</span></div>')}${col(o.prev ? 'הקודמת' : 'החדשה', coverEditorHtml(nw, o.src, b, false))}</div>
     <div class="cover-cmp-acts"><button type="button" class="act-btn approve" onclick="coverCmpGo()">${o.prev ? '↩️ לחזור לקודמת' : '✅ להחליף לחדשה'}</button><button type="button" class="act-btn" onclick="coverCmpClose()">להשאיר את הקיימת</button></div>
   </div>`;
   el.style.display = 'flex';
+  applyCoverPos(cur); applyCoverPos(nw);
 }
+// אחרי שמירה – הטופס יקרא שוב את מה שנשמר, לא ערכים ישנים מהזיכרון
+function coverEdForget(id) { [id, id + '~cur', id + '~new'].forEach(k => { delete bizCoverPosEdits[k]; delete bizCoverZoomEdits[k]; delete bizCoverBgEdits[k]; }); }
 window.coverCmpClose = function() {
   const el = document.getElementById('coverCmpModal');
   if (el) { el.style.display = 'none'; el.innerHTML = ''; }
@@ -13619,12 +13660,13 @@ window.coverCmpGo = async function() {
   const o = _coverCmp;
   if (!o) return;
   const b = findBiz(o.id);
-  const file = o.file;
+  const file = o.file, look = coverEdValues(o.id + '~new');
   coverCmpClose();
   if (!b) return;
-  if (file) { await bizCoverUpload(o.id, file); return; }
+  if (file) { await bizCoverUpload(o.id, file, look); return; }
   if (o.prev && b.coverPhotoPrev) {
-    await saveSectionUpdates(o.id, { coverPhoto: b.coverPhotoPrev, coverPhotoThumb: b.coverPhotoPrevThumb || '', coverPhotoPrev: b.coverPhoto || '', coverPhotoPrevThumb: b.coverPhotoThumb || '' }, { reopenStep: 5 });
+    coverEdForget(o.id);
+    await saveSectionUpdates(o.id, { coverPhoto: b.coverPhotoPrev, coverPhotoThumb: b.coverPhotoPrevThumb || '', ...look, ...coverPrevPatch(b) }, { reopenStep: 5 });
   }
 };
 // ── העלאה מרובה לגלריה (2026-08-19) ─────────────────────────────────────────────────────────
@@ -15877,8 +15919,8 @@ const QJ_DECIDED = {};
 // §644 — רמי: "תוסיף את זה תמיד כאשר מאשרים קטגוריה שנייה". "מופיע גם תחת" לא מוצג בכרטיס (home.html
 // משתמש בו רק לסינון רשימת הקטגוריה), ולכן בעל העסק חושב שהאישור לא עבד.
 const ALSO_CAT_EXPLAIN = 'חשוב לדעת: בכרטיס העסק מופיעה רק הקטגוריה הראשית, והקטגוריה הנוספת לא תופיע עליו – אבל כל מי שנכנס לקטגוריה הזו רואה אתכם ברשימה. בדשבורד שלכם היא מופיעה תחת "מופיע גם תחת".';
-const QJ_LINE_PREFIX = { approved: '✅ אושר: ', rejected: '❌ לא אושר: ', mapped: '↪️ ', handled: '✔️ טיפלנו: ', info: 'ℹ️ ', remark: '📝 ', edited: '✏️ עדכנו: ' };
-const QJ_CHIP_ICON = { approved: '✅ ', rejected: '❌ ', mapped: '↪️ ', handled: '✔️ ', info: 'ℹ️ ', remark: '📝 ', edited: '✏️ ' };
+const QJ_LINE_PREFIX = { fix: '🚩 לתקן: ', approved: '✅ אושר: ', rejected: '❌ לא אושר: ', mapped: '↪️ ', handled: '✔️ טיפלנו: ', info: 'ℹ️ ', remark: '📝 ', edited: '✏️ עדכנו: ' };
+const QJ_CHIP_ICON = { fix: '🚩 ', approved: '✅ ', rejected: '❌ ', mapped: '↪️ ', handled: '✔️ ', info: 'ℹ️ ', remark: '📝 ', edited: '✏️ ' };
 // §659ב — remark = הערה חופשית של רמי על שלב בכרטיס (לא החלטה על בקשה); הכותרת בהודעה = שם השלב
 const QJ_STEP_NAMES = { 2: 'פרטים ויצירת קשר', 3: 'העסק · קטגוריה ותגיות', 4: 'הטבות', 5: 'תמונות' };
 function qjItem(label, decision) {
@@ -15892,6 +15934,7 @@ function qjRemember(id, item) {
 }
 // §659 — ההודעה המצטברת: שורת החלטה + ההערה שלו מתחתיה
 function qjDecidedText(decided) {
+  decided = decided.filter(d => d.decision !== 'fix');   // §679 – בקשות התיקון נכתבות ברשימת "חסר לנו"
   const line = d => (QJ_LINE_PREFIX[d.decision] || '') + d.label + (d.note ? '\n' + d.note : '');
   const main = decided.filter(d => d.decision !== 'edited' && d.decision !== 'remark'), ed = decided.filter(d => d.decision === 'edited'), rm = decided.filter(d => d.decision === 'remark');
   return [main.map(line).join('\n\n'), ed.length ? '✏️ עדכנו בשבילך:\n' + ed.map(d => '• ' + d.label).join('\n') : '', rm.map(line).join('\n\n')].filter(Boolean).join('\n\n')
@@ -15951,27 +15994,27 @@ async function qjSetNote(id, idx, note) {
 // החלון שקופץ אחרי כל החלטה: כל מה שנאסף עד עכשיו + תיבה להחלטה האחרונה
 // remark = שם שלב (§659ב – "📝 הערה" ליד כל שלב בכרטיס): הערה חופשית – מה שינית, מה עשית, מה לא ברור
 // ושכדאי לו להחליף. אחרת – החלון שקופץ אחרי החלטה, על ההחלטה האחרונה.
-function qjNoteOpen(id, remark) {
+function qjNoteOpen(id, remark, fix) {
   const b = findBiz(id), dec = QJ_DECIDED[id] || [];
-  if (!b || (!remark && !dec.length)) return;
+  if (!b || (!remark && !fix && !dec.length)) return;
   if (_bn && _bn.sending) return;
   const el = bnEl();
-  if (!remark && el.style.display === 'flex' && _bn && _bn.mode !== 'collect') return;   // חלון אחר פתוח – לא דורסים
-  const idx = remark ? dec.findIndex(d => d.decision === 'remark' && d.label === remark) : dec.length - 1;
-  const cur = idx >= 0 ? dec[idx] : { label: remark, decision: 'remark', note: '' };
+  if (!remark && !fix && el.style.display === 'flex' && _bn && _bn.mode !== 'collect') return;   // חלון אחר פתוח – לא דורסים
+  const idx = fix ? dec.findIndex(d => d.decision === 'fix' && d.key === fix.key) : remark ? dec.findIndex(d => d.decision === 'remark' && d.label === remark) : dec.length - 1;
+  const cur = idx >= 0 ? dec[idx] : fix ? { label: fix.label, decision: 'fix', key: fix.key, note: '' } : { label: remark, decision: 'remark', note: '' };
   const left = bizPendingChangeItems(b).filter(it => !bizStagedEntry(b, it.field)).length, approved = b.status === 'approved';   // §671 – מה שסומן כבר לא 'נשאר'
-  _bn = { bizId: id, mode: 'collect', idx, remark: remark || null };
-  const prev = dec.filter((d, k) => k !== idx).map(d => `<div style="padding:6px 0;border-bottom:1px solid var(--border,#EEE)"><b>${QJ_CHIP_ICON[d.decision] || ''}${esc(d.label)}</b>${d.note ? `<div style="white-space:pre-line;color:var(--text-muted,#5B6B8C);margin-top:2px">${esc(d.note)}</div>` : ''}</div>`).join('');
-  const foot = remark ? 'נאסף לסל – יישלח בהודעה אחת מ"סיכום ושליחה" בראש השיפוט המהיר (גם כשמבקשים ממנו לתקן).'
-    : left ? `נשארו עוד <b>${left}</b> בקשות. ההערות ממשיכות להיאסף – בסוף תקבל הודעה אחת עם הכול.`
-    : approved ? 'זו הייתה הבקשה האחרונה. בלחיצה תראה את ההודעה המלאה לבעל העסק ותשלח אותה – גם בלי הערות, רק עם ההחלטות.'
-    : 'העסק עוד ממתין. הכול נאסף לסל, ויישלח ב"סיכום ושליחה" – יחד עם האישור, "צריך לתקן" או הדחייה.';
-  const goLbl = remark ? 'שמירה' : left ? 'שמירה והמשך' : approved ? 'המשך לסיכום ושליחה' : 'שמירה';
-  const noLbl = remark ? 'ביטול' : left || !approved ? 'בלי הערה' : 'המשך בלי הערה';
+  _bn = { bizId: id, mode: 'collect', idx, remark: remark || null, fix: fix || null };
+  // §679 – רמי: "תעשה סדר שהכל יהיה אחיד, שנראה תמיד מה כתוב בהודעה, ושיהיה אופציה להוסיף תמיד ולשמור
+  // בלי אופציה לשלוח – השליחה היא בסוף". במקום "נאסף עד עכשיו" (רשימת תוויות) – ההודעה עצמה כפי שתצא.
+  const preview = bsPreviewText(b);
+  const prev = `<div style="white-space:pre-line;font-size:13px;line-height:1.6;background:var(--card-bg2,#F4F6FB);border-radius:10px;padding:8px 10px;max-height:220px;overflow:auto">${preview ? esc(preview) : '<span style="color:var(--text-muted,#5B6B8C)">עדיין אין כלום בהודעה.</span>'}</div>`;
+  const foot = (left && !remark && !fix ? `נשארו עוד <b>${left}</b> בקשות. ` : '') + 'נשמר לסל. <b>שום דבר לא נשלח עכשיו</b> – השליחה רק מ"🧺 סיכום ושליחה" בראש הכרטיס, כשתחליט.';
+  const goLbl = fix ? '🧺 לסל' : 'שמירה לסל';
+  const noLbl = remark || fix ? 'ביטול' : 'בלי הערה';
   el.innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:560px;max-width:100%;max-height:92vh;overflow:auto;padding:18px;box-sizing:border-box">
-    <div style="font-size:18px;font-weight:900">📝 הערה לבעל "${esc(b.name)}"</div>
-    <div style="font-size:13.5px;color:var(--text-muted,#5B6B8C);margin-top:4px;line-height:1.6">${remark ? `על השלב "${esc(remark)}": מה שינית, מה עשית, או מה לא ברור ושכדאי לו להחליף.` : 'ההחלטה נשמרה.'} מה שתכתוב כאן נאסף להודעה אחת לבעל העסק – לא נשלח עכשיו.</div>
-    ${prev ? `<div style="font-size:13px;margin-top:10px"><div style="font-weight:800;margin-bottom:2px">נאסף עד עכשיו:</div>${prev}</div>` : ''}
+    <div style="font-size:18px;font-weight:900">${fix ? '🚩 לבקש לתקן: ' + esc(fix.label) : '📝 הערה לבעל "' + esc(b.name) + '"'}</div>
+    <div style="font-size:13.5px;color:var(--text-muted,#5B6B8C);margin-top:4px;line-height:1.6">${fix ? 'נכנס לרשימת "מה חסר לנו" אצלו. אפשר לכתוב מה בדיוק – לא חובה.' : remark ? `על השלב "${esc(remark)}": מה שינית, מה עשית, או מה לא ברור ושכדאי לו להחליף.` : 'ההחלטה נשמרה.'} נאסף להודעה אחת לבעל העסק – לא נשלח עכשיו.</div>
+    <div style="font-size:13px;margin-top:10px"><div style="font-weight:800;margin-bottom:4px">📨 ההודעה לבעל העסק עד עכשיו:</div>${prev}</div>
     <div style="border:2px solid var(--yellow,#FFD400);background:#FFF7DB;border-radius:14px;padding:12px;margin-top:12px">
       <div style="font-weight:800;font-size:15px">${QJ_LINE_PREFIX[cur.decision] || ''}${esc(cur.label)}</div>
       <textarea id="qjNoteText" maxlength="600" placeholder="${remark ? 'למשל: תיקנו את שעות הפעילות · התמונה הראשית חתוכה – כדאי להעלות אחרת' : 'למה / מה כדאי לו לעשות (לא חובה)'}" style="width:100%;box-sizing:border-box;min-height:80px;font:inherit;font-size:14px;line-height:1.6;padding:10px;border:1px solid var(--border-md,#ddd);border-radius:10px;resize:vertical;margin-top:8px;background:#fff;color:#0A2A66">${esc(cur.note || '')}</textarea>
@@ -15998,7 +16041,13 @@ window.qjNoteDone = async function(save) {
   const o = _bn, ta = document.getElementById('qjNoteText');
   if (save && ta) {
     o.saving = true; const go = document.getElementById('qjNoteGo'); if (go) { go.disabled = true; go.textContent = '⏳ רגע…'; }
-    if (o.remark && o.idx < 0) {   // הערה חדשה על שלב – נכנסת לרשימה כמו החלטה (בלי החלון האוטומטי)
+    if (o.fix && o.idx < 0) {   // §679 – 🚩 חדש: נכנס לסל גם בלי טקסט
+      const it = { ...qjItem(o.fix.label, 'fix'), key: o.fix.key };
+      const note = String(ta.value || '').trim().slice(0, 600);
+      if (note) it.note = note;
+      await logActivity('businesses', o.bizId, { type: 'bizNoteComment', title: 'בקשת תיקון לסל', detail: '🚩 ' + it.label + (note ? ': ' + note : ''), noteItem: it });
+      (QJ_DECIDED[o.bizId] = QJ_DECIDED[o.bizId] || []).push({ ...it, _ts: Date.now() });
+    } else if (o.remark && o.idx < 0) {   // הערה חדשה על שלב – נכנסת לרשימה כמו החלטה (בלי החלון האוטומטי)
       const note = String(ta.value || '').trim().slice(0, 600);
       if (note) {
         const it = { ...qjItem(o.remark, 'remark'), note };
@@ -16014,9 +16063,7 @@ window.qjNoteDone = async function(save) {
   }
   _bn = null; bnEl().style.display = 'none'; bnEl().innerHTML = '';
   renderMainPreserveScroll();
-  if (o.remark) return;
-  const b = findBiz(o.bizId);
-  if (b && b.status === 'approved' && !bizPendingChangeItems(b).filter(it => !bizStagedEntry(b, it.field)).length && (QJ_DECIDED[o.bizId] || []).length) window.bsOpen(o.bizId, 'save');   // §671
+  // §679 – לא פותחים יותר את "סיכום ושליחה" לבד אחרי הבקשה האחרונה: השליחה רק כשרמי לוחץ עליה
 };
 const _qjDecLoad = {};   // bizId → זמן תחילת הטעינה (פעם אחת לדף)
 function qjLoadDecided(id) {
@@ -16042,6 +16089,7 @@ function qjLoadDecided(id) {
       const k = ni.decision + '|' + ni.label;
       if (ni.comment) { if (!(k in notes)) notes[k] = ni.note || ''; continue; }
       const it = { label: ni.label, decision: ni.decision };
+      if (ni.key) it.key = ni.key;   // §679 – 🚩 לבקש לתקן: איזו סיבה
       const note = k in notes ? notes[k] : (ni.note || '');   // §659ב — הערת שלב נרשמת עם הטקסט שלה
       delete notes[k];
       if (note) it.note = note;
@@ -16305,7 +16353,7 @@ const bsIsFix = o => o === 'fix' || o === 'fixStay' || o === 'fixHide';
 // ההודעה מהסל. ההערות על השלבים (📝) הן "מה חסר" כשמבקשים תיקון, ולכן שם הן עוברות לרשימה ולא לסוף.
 function bsBuildText(b, outcome, reasons, other) {
   const dec = QJ_DECIDED[b.id] || [];
-  const decText = qjDecidedText(bsIsFix(outcome) ? dec.filter(d => d.decision !== 'remark') : dec);
+  const decText = qjDecidedText(bsIsFix(outcome) ? dec.filter(d => d.decision !== 'remark' && d.decision !== 'fix') : dec);
   if (bsIsFix(outcome)) {
     const miss = bizWaitLines(WAIT_REASONS.map(r => r.k).filter(k => k === 'other' ? String(other || '').trim() : reasons.includes(k)), other, true).map(t => '• ' + t);   // §675ד
     return `כדי שהכרטיס של "${b.name}" יהיה מושלם, חסר לנו:\n${miss.join('\n')}`
@@ -16321,17 +16369,37 @@ function bsBuildText(b, outcome, reasons, other) {
 // אותה הערה שכבר נשמרה בסבב קודם לא נכפלת.
 const BS_STEP_REASONS = { 'הטבות': ['deal'], 'פרטים ויצירת קשר': ['desc'], 'תמונות': ['cover', 'logo'] };
 function bsMergeRemarks(b, reasons) {
-  const rems = (QJ_DECIDED[b.id] || []).filter(d => d.decision === 'remark' && d.note);
-  let rs = reasons.slice();
-  const lines = rems.map(d => {
-    const ks = (BS_STEP_REASONS[d.label] || []).filter(k => rs.includes(k));
+  const dec = QJ_DECIDED[b.id] || [];
+  const isReason = k => !!k && WAIT_REASONS.some(r => r.k === k && k !== 'other');
+  // §679 – 🚩 על שדה עם סיבה קבועה (תמונה ראשית / לוגו…) מכניס את הסיבה; עם הערה – שורה אחת "סיבה – הערה"
+  let rs = [...new Set(reasons.concat(dec.filter(d => d.decision === 'fix' && isReason(d.key)).map(d => d.key)))];
+  const items = dec.filter(d => (d.decision === 'remark' && d.note) || (d.decision === 'fix' && (d.note || !isReason(d.key))));
+  const clean = t => String(t || '').replace(/\s*\n\s*/g, ' ').trim();
+  const lines = items.map(d => {
+    const ks = d.decision === 'fix' ? (isReason(d.key) && rs.includes(d.key) ? [d.key] : []) : (BS_STEP_REASONS[d.label] || []).filter(k => rs.includes(k));
     rs = rs.filter(k => !ks.includes(k));
-    return (ks.length ? ks.map(k => WAIT_REASONS.find(r => r.k === k).label).join(', ') + ' – ' : '') + d.note.replace(/\s*\n\s*/g, ' ');
-  });
-  const notes = rems.map(d => d.note.replace(/\s*\n\s*/g, ' ').trim());
-  if (!rems.length) return { reasons: rs, other: String(b.inReviewOther || '').trim() };
+    const head = ks.length ? ks.map(k => WAIT_REASONS.find(r => r.k === k).label).join(', ') : d.decision === 'fix' ? d.label : '';
+    const note = clean(d.note);
+    return head && note ? head + ' – ' + note : head || note;
+  }).filter(Boolean);
+  const notes = items.map(d => clean(d.note)).filter(Boolean);
+  if (!lines.length) return { reasons: rs, other: String(b.inReviewOther || '').trim() };
   const prev = String(b.inReviewOther || '').split(' · ').map(t => t.trim()).filter(t => t && !notes.includes(t) && !lines.includes(t));
   return { reasons: rs, other: [...new Set(prev.concat(lines))].join(' · ').slice(0, 300) };
+}
+// §679 – אותו מצב פתיחה ל"סיכום ושליחה" ולתצוגה "מה ייכתב בהודעה" בכל חלון
+function bsInitState(b) {
+  const cur = bizWaitKeys(b).filter(k => k !== 'other');
+  return bsMergeRemarks(b, cur.length ? cur : WAIT_REASONS.filter(r => r.k !== 'other' && r.auto && r.auto(b)).map(r => r.k));
+}
+function bsDefaultOutcome(b) {
+  const outs = bsOutcomes(b);
+  if ((QJ_DECIDED[b.id] || []).some(d => d.decision === 'fix') || bizInFix(b)) return ['fixStay', 'fixHide', 'fix'].find(o => outs.includes(o)) || null;
+  return b.status === 'approved' ? 'save' : null;
+}
+function bsPreviewText(b) {
+  const out = bsDefaultOutcome(b), st = bsInitState(b);
+  return out ? bsBuildText(b, out, st.reasons, st.other) : qjDecidedText(QJ_DECIDED[b.id] || []);
 }
 // "אחר" של "למה ממתינים" = ההערות על השלבים (עד 300 תווים – הגבול של /biz-reg-status)
 function bsRemarksText(b) {
@@ -16343,11 +16411,12 @@ window.bsOpen = function(id, outcome) {
   if (_bn && _bn.sending) return;
   qjLoadDecided(id);
   const outs = bsOutcomes(b);
+  if (outcome === undefined && (QJ_DECIDED[id] || []).some(d => d.decision === 'fix')) outcome = bsDefaultOutcome(b);   // §679
   if (outcome === 'fix' && b.status === 'approved') outcome = bizInFix(b) ? 'fixStay' : null;   // עסק מאושר – רמי בוחר: נשאר / יורד
   else if (outcome === 'fix' && bizShownStatus(b) === 'approved') outcome = 'fixHide';   // §675 – מוסתר: "עריכת מה חסר" = נשאר מוסתר
   if (!outs.includes(outcome)) outcome = outcome === undefined && b.status === 'approved' ? 'save' : null;
   const cur = bizWaitKeys(b).filter(k => k !== 'other');
-  const merged = bsMergeRemarks(b, cur.length ? cur : WAIT_REASONS.filter(r => r.k !== 'other' && r.auto && r.auto(b)).map(r => r.k));   // §675ד
+  const merged = bsInitState(b);   // §675ד · §679
   _bn = { bizId: id, mode: 'summary', outcome, sending: false, dirty: false,
     reasons: merged.reasons, other: merged.other,
     wa: !!b.ownerPhone };
@@ -16523,7 +16592,7 @@ function bsBarHtml(b) {
   const dec = QJ_DECIDED[b.id] || [];
   if (!dec.length) return '';
   const n = k => dec.filter(d => d.decision === k).length;
-  const parts = [[n('approved'), 'אושרו'], [n('rejected'), 'לא אושרו'], [n('edited'), 'עדכנו'], [dec.filter(d => d.note).length, 'הערות']].filter(p => p[0]).map(p => `${p[0]} ${p[1]}`);
+  const parts = [[n('fix'), 'לתקן'], [n('approved'), 'אושרו'], [n('rejected'), 'לא אושרו'], [n('edited'), 'עדכנו'], [dec.filter(d => d.note).length, 'הערות']].filter(p => p[0]).map(p => `${p[0]} ${p[1]}`);
   const staged = Object.keys(bizStagedOf(b.id)).filter(f => bizStagedEntry(b, f)).length;
   return `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;background:#FFF7DB;border:1.5px solid var(--yellow,#FFD400);border-radius:12px;padding:8px 12px;margin:8px 0 4px">
       <div style="font-size:13px">🧺 <b>מחכה לשליחה:</b> ${parts.join(' · ') || dec.length + ' פריטים'}${staged ? ` · <span style="color:var(--text-muted,#5B6B8C)">${staged} שינויים עוד לא נשמרו בעסק</span>` : ''}</div>
