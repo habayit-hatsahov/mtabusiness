@@ -11474,7 +11474,8 @@ function fanClassCounts() {
     // §390 — הרשימה שהמנהל ביקש: מי שאושר ומעולם לא נכנס, כדי לפנות אליהם שוב.
     neverEntered: fans.filter(f => f.status === 'approved' && !f.lastSeenAt).length,
     legacyRejected: legacyRejectedFans().length,   // §628ג
-    rejected: fans.filter(f => f.status === 'rejected').length,   // §647ג
+    rejected: fans.filter(f => f.status === 'rejected' && !fanInFix(f)).length,   // §647ג · §690 – רק סופי
+    fix: fans.filter(fanInFix).length,   // §690
   };
 }
 function fanFilteredList() {
@@ -11492,7 +11493,8 @@ function fanFilteredList() {
       // ובכוונה: פיל שסופר אחרת מהמספר שממנו המנהל הגיע הוא בדיוק הפער של §353.
       : fanClassPill === 'neverEntered' ? (f.status === 'approved' && !f.lastSeenAt)
       : fanClassPill === 'legacyRejected' ? isLegacyRejected(f)   // §628ג
-      : fanClassPill === 'rejected' ? f.status === 'rejected'   // §647ג
+      : fanClassPill === 'fix' ? fanInFix(f)   // §690
+      : fanClassPill === 'rejected' ? (f.status === 'rejected' && !fanInFix(f))   // §647ג · §690 – רק סופי
       : fanClassPill === 'rr:__none' ? (f.status === 'rejected' && !fanRejectReasons(f).length)
       : fanClassPill.startsWith('rr:') ? (f.status === 'rejected' && fanRejectReasons(f).includes(fanClassPill.slice(3)))   // §647
       : !f.adminVerified;
@@ -11567,7 +11569,7 @@ function fanRowsHtml() {
       </div>`;
     // אותו עיקרון כמו bizRowsHtml — classifyAction() כמקור-אמת יחיד, status==='rejected' כחריג מקומי.
     const cls = classifyAction(f, 'fan');
-    const primaryLabel = f.status === 'rejected' ? '✗ נדחה' : cls.primary;
+    const primaryLabel = f.status === 'rejected' ? fanStatusLabel(f) : cls.primary;   // §690
     // תואם-handoff (2026-08-04): "טרם נבדק" הוא פיל-סינון בלבד (fanClassPill='unverified'), לא באדג׳
     // על כל שורה — הוסר מכאן כי זה הפך את הרשימה לצפופה/ארוכה-מדי (כמעט כל שורה קיבלה באדג׳ נוסף).
     const badges = [`<span class="class-badge${primaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(primaryLabel)}</span>`]
@@ -11837,10 +11839,12 @@ function fanFullDetailHtml(id, opts) {
         <button class="qj-toggle" onclick="toggleQuickJudgment('${f.id}')">${fanQjOpen ? '▾' : '▸'}</button>
         <div class="qj-title" onclick="toggleQuickJudgment('${f.id}')">שיפוט מהיר</div>
         <span class="qj-count">${fanQjRows.length}</span>
+        <span class="qj-status-chip">סטטוס: <b>${fanStatusLabel(f)}</b></span>
         ${f.status === 'pending' ? `
         <div class="qj-header-actions">
           <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קוד כניסה (Brevo)" onclick="approveFan('${f.id}')">✅ אשר את האוהד</button>
-          <button class="qj-btn-reject-app" onclick="rejectFan('${f.id}')">✗ דחה</button>
+          <button class="qj-btn-reject-app" onclick="rejectFan('${f.id}','retry')">✏️ צריך לתקן</button>
+          <button class="qj-btn-reject-app" onclick="rejectFan('${f.id}','final')">⛔ דחייה סופית</button>
           ${inReviewBtnHtml('fan', f)}
           ${qjDeleteBtn('fan', f.id)}
         </div>` : f.status === 'approved' ? `
@@ -11851,7 +11855,7 @@ function fanFullDetailHtml(id, opts) {
         </div>` : f.status === 'rejected' ? `
         <div class="qj-header-actions">
           <button class="qj-btn-approve-app" onclick="restoreFanToPending('${f.id}')">↩️ שחזור לממתין</button>
-          <button class="qj-btn-reject-app" title="אותו חלון: עוד הזדמנות לאימות או דחייה סופית" onclick="rejectFan('${f.id}')">✗ דחה</button>
+          ${fanInFix(f) ? `<button class="qj-btn-reject-app" onclick="rejectFan('${f.id}','final')">⛔ דחייה סופית</button>` : `<button class="qj-btn-reject-app" onclick="rejectFan('${f.id}','retry')">✏️ צריך לתקן</button>`}
           <button class="qj-btn-approve-app" title="שולח אוטומטית מייל אישור עם קוד כניסה (Brevo)" onclick="approveFan('${f.id}')">✅ אשר בכל זאת</button>
           ${qjDeleteBtn('fan', f.id)}
         </div>` : `
@@ -11863,7 +11867,7 @@ function fanFullDetailHtml(id, opts) {
   // ── כרטיס-זהות — אותו עיקרון כמו bizFullDetailHtml (§127): classifyAction()+class-badge/treat-badge
   // משותפים עם fanRowsHtml, כדי ששורת-הרשימה וכרטיס-הפרטים תמיד יסכימו על הסיווג.
   const idCls = classifyAction(f, 'fan');
-  const idPrimaryLabel = f.status === 'rejected' ? '✗ נדחה' : idCls.primary;
+  const idPrimaryLabel = f.status === 'rejected' ? fanStatusLabel(f) : idCls.primary;   // §690
   const idBadges = [`<span class="class-badge lg${idPrimaryLabel === 'מאושר · אין פעולה' ? ' neutral' : ''}">${esc(idPrimaryLabel)}</span>`]
     .concat(idCls.treatments.map(t => treatBadgeHtml(t, f, true)));
   if (f.reviewFlag === 'name_mismatch') idBadges.push(`<span class="warn-badge lg">שם לא תואם</span>`);
@@ -12506,7 +12510,8 @@ function fanFilterBarHtml(opts) {
         ${pill('unverified', 'טרם נבדקו')}
         ${pill('neverEntered', 'מעולם לא נכנסו')}
         ${counts.legacyRejected ? pill('legacyRejected', '🔁 נדחו – להחלטה') : ''}
-        ${pill('rejected', '✗ נדחו')}
+        ${pill('fix', '✏️ צריך לתקן')}
+        ${pill('rejected', '⛔ נדחו סופית')}
       </div>
       ${fanRejectReasonPillsHtml()}
       ${fanBucketPillsHtml()}
@@ -14709,22 +14714,22 @@ let lastRejectNote = '';
 // §647 — רמי: "את הסיבות האלה תשמור לי כסיבה לדחייה" – גם בדחייה סופית (שם לא מוצג לאוהד), והיסטוריה שנשארת
 // גם אחרי תיקון ואישור. lastRejectText = כל הטקסט, lastRejectReasons = שמות הכפתורים שנבחרו (לספירה).
 let lastRejectText = '', lastRejectReasons = [];
-function askRejectKind(title, sub) {
+function askRejectKind(title, sub, pre) {
   lastRejectNote = ''; lastRejectText = ''; lastRejectReasons = [];
   return new Promise(resolve => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,42,102,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
     ov.innerHTML = `<div dir="rtl" style="background:#fff;border-radius:16px;max-width:460px;width:100%;padding:20px;color:#0A2A66;font-size:14px;box-shadow:0 20px 50px rgba(0,0,0,.25)">
       <div style="font-size:17px;font-weight:800">${esc(title)}</div>
-      <div style="margin:6px 0 14px;color:#3A4C7A">${esc(sub || 'לאפשר תיקון אימות?')}</div>
-      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="radio" name="rjk" value="retry" checked style="margin-top:3px"><span><b>כן – לאפשר תיקון אימות</b><br><span style="color:#3A4C7A">באפליקציה תופיע אפשרות להעלות תמונה וקישור לפרופיל מחדש. מייל "האימות לא עבר".</span></span></label>
-      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px"><input type="radio" name="rjk" value="final" style="margin-top:3px"><span><b>לא – דחייה סופית</b><br><span style="color:#3A4C7A">באפליקציה "לא הצלחנו לאמת" + פנייה לצוות. מייל "הבקשה לא אושרה".</span></span></label>
-      <div data-note-wrap style="margin:14px 0 0 0;padding-top:12px;border-top:1px solid #E7E7E0"><div data-note-h style="font-weight:700;font-size:13px">סיבת הדחייה – גם הודעה לאוהד (רשות)</div>
+      <div style="margin:6px 0 14px;color:#3A4C7A">${esc(sub || 'מה עושים?')}</div>
+      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="radio" name="rjk" value="retry" ${pre === 'final' ? '' : 'checked'} style="margin-top:3px"><span><b>✏️ צריך לתקן</b><br><span style="color:#3A4C7A">באפליקציה יראה מה לתקן, ויוכל להעלות תמונה וקישור לפרופיל מחדש. מייל "האימות לא עבר". אפשר לבקש שוב כמה פעמים שצריך.</span></span></label>
+      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px"><input type="radio" name="rjk" value="final" ${pre === 'final' ? 'checked' : ''} style="margin-top:3px"><span><b>⛔ דחייה סופית</b><br><span style="color:#3A4C7A">באפליקציה "לא הצלחנו לאמת" + פנייה לצוות. מייל "הבקשה לא אושרה".</span></span></label>
+      <div data-note-wrap style="margin:14px 0 0 0;padding-top:12px;border-top:1px solid #E7E7E0"><div data-note-h style="font-weight:700;font-size:13px">${pre === 'final' ? 'סיבת הדחייה – נשמרת אצלך בלבד (רשות)' : 'מה לתקן – גם הודעה לאוהד (רשות)'}</div>
         <div style="font-size:12px;color:#3A4C7A;margin-top:4px">אפשר לבחור כמה סיבות – לחיצה נוספת מורידה. נשמר אצלך בכרטיס ובספירה לפי סיבה.</div>
         <div data-rt-chips="reject" style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">${rtChipsInner('reject')}</div>
         <textarea data-note data-rt-note oninput="rtMarkReject()" maxlength="400" rows="3" placeholder="למשל: בתמונה לא רואים את הפנים שלך – צריך תמונה שלך ביציע" style="width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #D5DAE6;border-radius:10px;padding:8px;font:inherit;font-size:13.5px;resize:vertical"></textarea>
         <div data-note-hint style="font-size:12px;color:#3A4C7A">תופיע לו על המסך של האימות הנוסף, מעל הטופס.</div></div>
-      <div style="display:flex;gap:8px;margin-top:16px"><button type="button" data-a="ok" style="background:#0A2A66;color:#fff;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:800;cursor:pointer">דחייה ושליחת מייל</button><button type="button" data-a="cancel" style="background:#F3F4F7;color:#0A2A66;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer">ביטול</button></div></div>`;
+      <div style="display:flex;gap:8px;margin-top:16px"><button type="button" data-a="ok" style="background:#0A2A66;color:#fff;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:800;cursor:pointer">שמירה ושליחת מייל</button><button type="button" data-a="cancel" style="background:#F3F4F7;color:#0A2A66;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer">ביטול</button></div></div>`;
     const done = v => {
       if (v) {
         lastRejectText = String(ov.querySelector('[data-note]').value || '').trim().slice(0, 400);
@@ -14735,7 +14740,7 @@ function askRejectKind(title, sub) {
     };
     ov.addEventListener('change', () => {
       const retry = ov.querySelector('input[name=rjk]:checked').value === 'retry';
-      ov.querySelector('[data-note-h]').textContent = retry ? 'סיבת הדחייה – גם הודעה לאוהד (רשות)' : 'סיבת הדחייה – נשמרת אצלך בלבד (רשות)';
+      ov.querySelector('[data-note-h]').textContent = retry ? 'מה לתקן – גם הודעה לאוהד (רשות)' : 'סיבת הדחייה – נשמרת אצלך בלבד (רשות)';
       ov.querySelector('[data-note-hint]').textContent = retry ? 'תופיע לו על המסך של האימות הנוסף, מעל הטופס.' : 'בדחייה סופית האוהד לא רואה את זה – רק אתה, בכרטיס שלו ובספירה.';
     });
     ov.addEventListener('click', e => {
@@ -14799,7 +14804,7 @@ function rejectReasonStatsHtml() {
 // הנדחים כרגע), כל אחת עם מספר; "בלי סיבה" = נדחה בלי שנשמרה סיבה (דחייה סופית ישנה וכו').
 const REJECT_REASON_NONE = '__none';
 function fanRejectReasonPillsHtml() {
-  if (fanClassPill !== 'rejected' && !fanClassPill.startsWith('rr:')) return '';
+  if (fanClassPill !== 'rejected' && fanClassPill !== 'fix' && !fanClassPill.startsWith('rr:')) return '';   // §690 – גם תחת "צריך לתקן"
   const rej = fanCardList().filter(f => f.status === 'rejected');
   const m = new Map(); let none = 0;
   rej.forEach(f => { const r = fanRejectReasons(f); if (!r.length) none++; r.forEach(x => m.set(x, (m.get(x) || 0) + 1)); });
@@ -14816,15 +14821,18 @@ window.setRejectReasonFilter = function(label) {
   fanClassPill = label ? 'rr:' + label : 'all'; fanEmailBucket = 'all'; fanVisitBucket = 'all'; fanStatusFilter = 'all'; fanSearch = '';
   selectTab(ALL_FANS_KEY);   // כמו openLegacyRejectList
 };
-const rejectKindLabel = (kind) => kind === 'retry' ? 'נדחה – אפשר תיקון אימות' : 'נדחה – סופי';
-window.rejectFan = async function(id) {
+// §690 – רמי (29.10, מודל הסטטוסים): לאוהד אותן מילים כמו לעסק. "צריך לתקן" = נדחה + retryAllowed (§628) – רק התצוגה השתנתה.
+function fanInFix(f) { return !!f && f.status === 'rejected' && f.retryAllowed === true; }
+function fanStatusLabel(f) { return f.status === 'rejected' ? (fanInFix(f) ? '✏️ צריך לתקן' : '⛔ נדחה') : f.status === 'approved' ? '✅ מאושר' : '⏳ ממתין'; }
+const rejectKindLabel = (kind) => kind === 'retry' ? '✏️ צריך לתקן' : '⛔ נדחה – סופי';
+window.rejectFan = async function(id, pre) {
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return;
   const wasApproved = f.status === 'approved';
   // §634 — רמי: "אל תחסום אחרי 2 הזדמנויות… הדחה הופך להיות אפשרות נוספת ואז קופץ חלון". גם מי שכבר
   // נדחה (סופית, או תיקן ונדחה שוב) – "דחה" פותח את אותו חלון: עוד הזדמנות או דחייה סופית. אין מגבלת סבבים.
-  const kind = wasApproved ? null : await askRejectKind(`דחיית ${f.name}`, f.status === 'rejected'
-    ? `כבר נדחה${f.rejectKind === 'final' ? ' סופית' : ''}${f.fixedAt ? ' (תיקן פעם ונדחה שוב)' : ''}. לתת לו עוד הזדמנות לאמת את עצמו?` : undefined);
+  const kind = wasApproved ? null : await askRejectKind(`${pre === 'final' ? '⛔ דחייה סופית' : '✏️ צריך לתקן'} · ${f.name}`, f.status === 'rejected'
+    ? `כרגע: ${fanStatusLabel(f)}${f.fixedAt ? ' (כבר תיקן פעם)' : ''}. מה עושים?` : undefined, pre);
   if (!wasApproved && !kind) return;
   try {
     if (wasApproved) await updateDoc(doc(db, 'members', id), { status: 'pending', approvedAt: null });
