@@ -394,6 +394,30 @@ html.lp-checking body { visibility: hidden; }
 
   // pageView — כדי שמרכז הנתונים ימשיך לספור את דף הנחיתה (isLanding כולל 'landing', §492)
   lpEvent('pageView', lpSrc ? 'landing:' + lpSrc : '');
+
+  // §707 — עומק גלילה, כמו ב-welcome (§326): type 'scrollDepth', blockId = הנקודה לפי סדר הדף:
+  // how (שלושה צעדים) · preview (ככה נראה האינדקס) · biz (יש לכם עסק?) · final (מוכנים להצטרף?).
+  // נצפית הכותרת של כל חלק (חלק שלם גבוה ממסך ולא היה מגיע לאחוז קבוע). פעם לנקודה בביקור, אורחים בלבד
+  // (חבר שחזר – state.st 'member' – לא נמדד).
+  if ('IntersectionObserver' in window) {
+    const SD = 'hb_lp_depth';
+    const io = new IntersectionObserver((es) => es.forEach((e) => {
+      if (!e.isIntersecting) return;
+      const k = e.target.getAttribute('data-sd');
+      io.unobserve(e.target);
+      if (state.st !== 'guest') return;
+      let seen = [];
+      try { seen = JSON.parse(sessionStorage.getItem(SD) || '[]'); } catch (x) {}
+      if (seen.indexOf(k) !== -1) return;
+      seen.push(k);
+      try { sessionStorage.setItem(SD, JSON.stringify(seen)); } catch (x) {}
+      lpEvent('scrollDepth', k);
+    }), { threshold: 0.6 });
+    [['how', '.how'], ['preview', '.preview'], ['biz', '.biz'], ['final', '.final']].forEach(([k, sel]) => {
+      const h = document.querySelector('section' + sel + ' h2');
+      if (h) { h.setAttribute('data-sd', k); io.observe(h); }
+    });
+  }
 })();
 </script>
 

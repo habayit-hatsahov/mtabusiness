@@ -1706,7 +1706,7 @@
     </div>
     <div class="nav-search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-      <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInputDesktop" oninput="handleSearch(this.value)" onkeydown="if(event.key==='Escape'){clearSearch();closeNavSearch();}" onblur="navSearchBlur()"/>
+      <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInputDesktop" oninput="handleSearch(this.value)" onkeydown="if(event.key==='Escape'){clearSearch();closeNavSearch();}" onblur="navSearchBlur();_hbSearchSettle()"/>
       <button type="button" class="search-clear" id="searchClearDesktop" onclick="clearSearch()" aria-label="ניקוי החיפוש" title="ניקוי החיפוש">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
@@ -1744,7 +1744,7 @@
   <div class="sf-row" id="sfRow">
   <div class="search-bar">
     <span class="search-icon">🔍</span>
-    <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInput" oninput="handleSearch(this.value)" onkeydown="if(event.key==='Escape')clearSearch()"/>
+    <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInput" oninput="handleSearch(this.value)" onkeydown="if(event.key==='Escape')clearSearch()" onblur="_hbSearchSettle()"/>
     <button type="button" class="search-clear" id="searchClearHero" onclick="clearSearch()" aria-label="ניקוי החיפוש" title="ניקוי החיפוש">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
@@ -2825,6 +2825,9 @@ function filterCat(cat, el) {
   }
 
   if (main.style.display !== 'none') _homeScrollY = window.scrollY;
+  // §707 — type 'section': blockId = הקטגוריה / הסקשן, channel = 'cat' (סרגל הקטגוריות – מגיע עם el)
+  // או 'section' ("הכל" של סקשן בדף הבית – el = null). חזרה ל-'all' לא נמדדת (יצאה למעלה).
+  try { window.logEvent && window.logEvent('section', { blockId: String(cat).slice(0, 50), channel: el ? 'cat' : 'section' }); } catch (e) {}
 
   main.style.display = 'none';
   catV.style.display = 'block';
@@ -2989,11 +2992,29 @@ function normalizeSearchText(s) {
     .trim();
 }
 
+// ── §707 — מדידת חיפוש: type 'search', channel = הטקסט המנורמל (עד 50 – תקרת החוקים), blockId = מספר
+// התוצאות. רק חיפוש "שהתייצב" – 1.5 שנ' בלי הקלדה, או יציאה מהתיבה – ולא כל אות. מ-2 תווים, ולא
+// אותו טקסט פעמיים באותו ביקור (sessionStorage – לשונית). _searchCount נקבע ב-runSearch.
+let _searchCount = 0, _searchLogT = null;
+function _hbSearchSettle() {
+  clearTimeout(_searchLogT); _searchLogT = null;
+  const q = normalizeSearchText(_searchQuery).slice(0, 50).trim();
+  if (q.length < 2 || typeof window.logEvent !== 'function') return;
+  let seen = [];
+  try { seen = JSON.parse(sessionStorage.getItem('hb_search_seen') || '[]'); } catch (e) {}
+  if (seen.includes(q)) return;
+  seen.push(q);
+  try { sessionStorage.setItem('hb_search_seen', JSON.stringify(seen.slice(-100))); } catch (e) {}
+  try { window.logEvent('search', { channel: q, blockId: String(_searchCount) }); } catch (e) {}
+}
+
 let _searchDebounce = null;
 function handleSearch(val) {
   // התיבה השנייה וכפתור ה-✕ מתעדכנים מיד, בלי debounce — הם משקפים את מה שכתוב, לא תוצאות.
   syncSearchInputs(val);
   clearTimeout(_searchDebounce);
+  clearTimeout(_searchLogT);
+  if (val.trim()) _searchLogT = setTimeout(_hbSearchSettle, 1500);   // §707
   // מחיקת התו האחרון מחזירה לדף הבית מיידית; רק חיפוש בפועל ממתין ל-debounce.
   if (!val.trim()) { runSearch(''); return; }
   _searchDebounce = setTimeout(() => runSearch(val), 120);
@@ -3123,6 +3144,7 @@ function runSearch(val) {
     // בלי טקסט (סינון בלבד) – לפי פופולריות; עם טקסט – לפי ההתאמה; בתוך קטגוריה (§662) – הסדר שלה
     .sort((a, b) => scope ? 0 : words.length ? b.score - a.score : (b.b.clicks || 0) - (a.b.clicks || 0))
     .map(x => x.b);
+  _searchCount = results.length;   // §707 – למדידת החיפוש
 
   // רק במעבר *לתוך* מצב-חיפוש: שומרים את מיקום-הגלילה בדף הבית (כדי שניקוי החיפוש יחזיר
   // בדיוק לשם, כמו יציאה מקטגוריה) וקופצים לראש התוצאות. ברענון חי של חיפוש פעיל אין קפיצה.
@@ -4610,6 +4632,30 @@ document.addEventListener('DOMContentLoaded', () => {
     window.sfRender();
     // סינון פעיל (או חיפוש) → מסך התוצאות; בלי שניהם → דף הבית
     if (typeof runSearch === 'function') runSearch(typeof _searchQuery !== 'undefined' ? (_searchQuery || '') : '');
+    clearTimeout(logT); logT = setTimeout(logFilter, 1500);   // §707
+  }
+  // §707 — מדידת סינון: type 'search', blockId 'filter', channel = הסינונים הפעילים מופרדים ב-'|'
+  // (now · coupon · comes · kosher:yes/no · sat:open/closed · city:<עיר> · region:<אזור>), עד 50 תווים.
+  // כמו בחיפוש – רק המצב שהתייצב (1.5 שנ' אחרי השינוי האחרון; כמה לחיצות מהירות = אירוע אחד),
+  // לא סינון ריק (ניקוי), ולא אותו צירוף פעמיים ברצף.
+  var logT = null, lastLogged = '';
+  function filterKeys() {
+    var k = [];
+    if (S.now) k.push('now');
+    if (S.coupon) k.push('coupon');
+    if (S.comes) k.push('comes');
+    if (S.kosher) k.push('kosher:' + S.kosher);
+    if (S.sat) k.push('sat:' + S.sat);
+    if (S.city) k.push('city:' + S.city);
+    S.region.forEach(function (r) { k.push('region:' + r); });
+    return k.join('|').slice(0, 50);
+  }
+  function logFilter() {
+    var ch = filterKeys();
+    if (!ch) { lastLogged = ''; return; }
+    if (ch === lastLogged || typeof window.logEvent !== 'function') return;
+    lastLogged = ch;
+    try { window.logEvent('search', { blockId: 'filter', channel: ch }); } catch (e) {}
   }
   window.sfToggle = function (k) { S[k] = !S[k]; apply(); };
   window.sfSet = function (k, v) { S[k] = S[k] === v ? '' : v; apply(); };
@@ -6056,6 +6102,10 @@ const PUSH_CARD_KEY = 'yz_pushcard_dismissed';
     '<button type="button" class="pc-later">לא עכשיו</button></div>' +
     '<div class="pc-msg" style="display:none"></div>';
   box.hidden = false;
+  // §707 — type 'pushCard', channel: shown (פעם לביקור) · accept ("כן") · decline ("לא עכשיו") ·
+  // granted / denied (תשובת מערכת ההפעלה) · error (כשל טכני – הכרטיס יופיע שוב בטעינה הבאה).
+  const pcLog = (ch) => { try { window.logEvent && window.logEvent('pushCard', { channel: ch }); } catch (e) {} };
+  try { if (!sessionStorage.getItem('hb_pushcard_shown')) { sessionStorage.setItem('hb_pushcard_shown', '1'); pcLog('shown'); } } catch (e) { pcLog('shown'); }
   const remove = () => { box.classList.add('leaving'); setTimeout(() => { box.hidden = true; box.innerHTML = ''; }, 260); };
   const forget = () => { try { localStorage.setItem(PUSH_CARD_KEY, '1'); } catch (e) {} };
   const say = (text, ok) => {
@@ -6063,17 +6113,19 @@ const PUSH_CARD_KEY = 'yz_pushcard_dismissed';
     const m = box.querySelector('.pc-msg');
     m.textContent = text; m.className = 'pc-msg' + (ok ? ' ok' : ''); m.style.display = 'block';
   };
-  box.querySelector('.pc-later').addEventListener('click', () => { forget(); remove(); });
+  box.querySelector('.pc-later').addEventListener('click', () => { pcLog('decline'); forget(); remove(); });
   box.querySelector('.pc-yes').addEventListener('click', async (ev) => {
     const btn = ev.currentTarget;
     btn.disabled = true; btn.textContent = 'רגע…';
+    pcLog('accept');
     let r;
     try { r = await window.enableNativePush(); }
     catch (e) { console.error('push card failed:', e); r = { ok: false, reason: 'error' }; }
-    if (r.ok) { forget(); say('✓ התראות הופעלו.', true); setTimeout(remove, 1500); }
+    if (r.ok) { pcLog('granted'); forget(); say('✓ התראות הופעלו.', true); setTimeout(remove, 1500); }
     else if (r.reason === 'denied' || r.reason === 'declined') {
-      forget(); say('בסדר, בלי התראות. אפשר להפעיל אותן בכל זמן מהתפריט.', false); setTimeout(remove, 2500);
+      pcLog('denied'); forget(); say('בסדר, בלי התראות. אפשר להפעיל אותן בכל זמן מהתפריט.', false); setTimeout(remove, 2500);
     } else {
+      pcLog('error');
       // כשל טכני (לא סירוב) – לא שורפים את הכרטיס: יופיע שוב בטעינה הבאה.
       say('לא הצלחנו להפעיל התראות עכשיו. ננסה שוב בפעם הבאה, או מהתפריט.', false); setTimeout(remove, 3000);
     }
