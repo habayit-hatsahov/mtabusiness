@@ -9392,6 +9392,9 @@ function bizFormSummaryHtml(b) {
     ? `<div class="form-field full" data-empty="false"><div class="form-field-label">סניפים · ${b.branches.length}</div><div class="form-field-val">${b.branches.map(br=>esc([br.city,br.address].filter(Boolean).join(' · '))).join('<br>')}</div></div>` : '';
   const regionsHtml = (b.regions && b.regions.length)
     ? `<div class="form-field full" data-empty="false"><div class="form-field-label">אזורי פעילות</div><div class="form-field-val">${esc(b.regions.join(', '))}</div></div>` : '';
+  // §710 – התשובה ל"איפה אתם נותנים את השירות?" (חדש בטופס)
+  const svcHtml = (b.serviceModes && b.serviceModes.length)
+    ? `<div class="form-field full" data-empty="false"><div class="form-field-label">איפה נותן את השירות</div><div class="form-field-val">${esc(b.serviceModes.map(k => SERVICE_MODE_LABELS[k] || k).join(' + '))}</div></div>` : '';
   return `
     <div class="form-summary">
       <div class="form-summary-toolbar no-print">
@@ -9419,7 +9422,7 @@ function bizFormSummaryHtml(b) {
           ${field('אתר', websiteVal, !websiteVal)}
           ${field('תיאור', b.descriptionText, !b.descriptionText, true)}
           ${branchesHtml}
-          ${regionsHtml}
+          ${regionsHtml}${svcHtml}
           ${fieldHtml('שעות פעילות', adminHoursHtml(b) + hoursIssuesHtml(b) + hoursMigrationStatusHtml(b), true)}
           ${field('אינסטגרם', b.instagram, !b.instagram)}
           ${field('פייסבוק', b.facebook, !b.facebook)}
@@ -13717,6 +13720,10 @@ function stepTilesHtml(b, n) {
     ${tile('יצירת קשר', line('טלפון:', b.phone ? `<b dir="ltr">${esc(b.phone)}</b>` : miss) + line('וואטסאפ:', b.whatsapp ? `<b dir="ltr">${esc(b.whatsapp)}</b>` : miss) + line('מייל:', b.serviceEmail ? esc(b.serviceEmail) : miss), ['phone', 'whatsapp', 'serviceEmail'], 'edit_phone_' + b.id)}
     ${tile('איפה', (branches.length ? branches.map((x, i) => line(branches.length > 1 ? 'סניף ' + (i + 1) + ':' : 'כתובת:', esc([x.city, x.address].filter(Boolean).join(' – ')))).join('') : '')
       + ((b.regions || []).length ? line('אזורים:', (b.regions || []).map(r => chip(esc(r))).join(' ')) : '')
+      // §710 – מה נותן השירות ענה (בהרשמה / בדשבורד) או מה שאתה קבעת במסך המעבר
+      + ((b.bizTypes || []).includes('pro') ? line('איך מקבלים:', (b.serviceModes || []).length
+          ? (b.serviceModes || []).map(k => chip(esc(SERVICE_MODE_LABELS[k] || k))).join(' ') + ` <span style="font-size:11.5px;color:var(--text-muted)">${b.serviceSetBy === 'owner' ? 'בעל העסק ענה' : 'נקבע במסך המעבר'}</span>`
+          : chip('⚠️ עוד לא נקבע – במסך "איך מקבלים את השירות"', true)) : '')
       + (!branches.length && !(b.regions || []).length ? '<div class="mtile-empty">' + chip('⚠️ לא מילא כתובת ואזורי פעילות', true) + '</div>' : ''), ['branches', 'city', 'address', 'regions'], 'editBranchesList_' + b.id)}
     ${tile('שעות פעילות', b.hoursText || b.hoursMode ? `<div style="font-size:13px">${adminHoursHtml(b)}</div>` : chip('לא מילא שעות', true), ['hours'], 'edit_hoursBox_' + b.id)}
     ${tile('אתר ורשתות', (links.length ? links.map(([k, v]) => line(k + ':', `<span dir="ltr" style="word-break:break-all">${esc(v)}</span>`)).join('') : chip('לא מילא אתר / רשתות', true))
