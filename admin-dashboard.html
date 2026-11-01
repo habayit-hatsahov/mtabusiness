@@ -22981,9 +22981,9 @@ function deletionLogHtml() {
 let dcHub = 'usage';
 window.dcHubSet = (k) => { dcHub = k; renderMain(); };
 function dcHubTabsHtml() {
-  const t = (k, l) => `<button class="${dcHub === k ? 'on' : ''}" onclick="dcHubSet('${k}')">${l}</button>`;
+  const t = (k, l, also) => `<button class="${dcHub === k || also ? 'on' : ''}" onclick="dcHubSet('${k}')">${l}</button>`;
   return `<style>.dc-hub{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 14px}.dc-hub h1{font-size:20px;margin:0 12px 0 0}.dc-hub button{font:inherit;font-size:14px;font-weight:600;border:1px solid var(--line,#E7E7E0);background:#fff;border-radius:999px;padding:7px 16px;cursor:pointer;color:#0A2A66}.dc-hub button.on{background:#0A2A66;color:#fff;border-color:#0A2A66}.dc-back{margin:0 0 10px}.dc-back a{cursor:pointer;color:#3E63B8;font-weight:600}</style>
-    <div class="dc-hub"><h1>מרכז הנתונים</h1>${t('usage', 'אפליקציה ושימוש')}${t('trackers', 'מעקבים')}${t('engage', 'מעורבות')}</div>`;
+    <div class="dc-hub"><h1>מרכז הנתונים</h1>${t('usage', 'אפליקציה ושימוש')}${t('trackers', 'מעקבים')}${t('engage', 'מעורבות', dcHub === 'engageOld')}</div>`;
 }
 // §701 — שני קטעים מפאנל הפלטפורמה הישן שעברו ללשונית "מעקבים" (אותו חישוב, עם הרשימה שמאחורי כל שורה)
 function legacyNotEnteredMailHtml() {
@@ -23004,15 +23004,15 @@ function legacyOwnerReadinessHtml() {
     ${platRow('לא יכולים להיכנס כחבר', r.notReady.length.toLocaleString('he-IL'), r.notReady.length ? Object.entries(r.byReason).map(([k, n]) => `${BIZ_READY_REASONS[k]}: ${n}`).join(' · ') : 'אין', r.notReady.length ? 'לכל אחד מהם צריך להנפיק קוד, לאשר את רשומת החבר, או לתקן את הקישור לעסק.' : '✅ כל בעלי העסק המאושרים יכולים להיכנס כחבר.')}</div>${list}`;
 }
 // הקובץ נטען פעם אחת; הנתונים נטענים פעם אחת (רענון – מתוך המסך)
-let dcUsageImport = null, dcTrackersImport = null;
+let dcUsageImport = null, dcTrackersImport = null, dcEngageImport = null;
 function dcUsageEnsure() {
   if (window.YZU) { window.YZU.load(); return; }
   if (dcUsageImport) return;
   dcUsageImport = import('./admin-usage.js?v=700').then((m) => {
     m.init({
-      db, fs: { collection, getDocs, query, where, orderBy, limit },
+      db, fs: { collection, getDocs, query, where, orderBy, limit, doc, getDoc },
       fans: () => MOCK_FANS, biz: () => MOCK_BUSINESSES, pushInfo: memberPushInfo, esc,
-      rerender: () => { if (activeTab === DATA_KEY && (dcHub === 'usage' || dcHub === 'trackers')) renderMain(); },
+      rerender: () => { if (activeTab === DATA_KEY && dcHub !== 'engageOld') renderMain(); },
       openOld: () => selectTab(APP_USAGE_KEY),
       legacy: { notEnteredMail: legacyNotEnteredMailHtml, ownerReadiness: legacyOwnerReadinessHtml },   // §701
       // §700 – "לשלוח לקבוצה" במעקבים: מרכז ההודעות עם הנבחרים מסומנים מראש (כמו openBroadcastFor)
@@ -23072,17 +23072,25 @@ function renderMainInner() {
   }
   // §699 — מרכז הנתונים: לשוניות. "אפליקציה ושימוש" חי ב-admin-usage.js (נטען בכניסה הראשונה),
   // "מעקבים" – בבנייה, "מעורבות" – בינתיים המסך הקודם של מרכז הנתונים, עד שייבנה מחדש.
-  if (activeTab === DATA_KEY && dcHub !== 'engage') {
+  // §702 — "מעורבות" חדש (admin-engage.js). המסך הקודם (engageOld) נשאר נגיש מכפתור – בשביל "הקליקים שלנו במונה".
+  if (activeTab === DATA_KEY && dcHub !== 'engageOld') {
+    const ready = window.YZU && window.YZU.isLoaded();
     const body = dcHub === 'usage'
       ? (window.YZU ? window.YZU.html() : '<div class="placeholder-note">טוען…</div>')
-      : (window.YZT && window.YZU && window.YZU.isLoaded() ? window.YZT.html() : '<div class="placeholder-note">טוען…</div>');
+      : dcHub === 'trackers'
+        ? (window.YZT && ready ? window.YZT.html() : '<div class="placeholder-note">טוען…</div>')
+        : (window.YZE ? window.YZE.html() + `<div class="dc-back" style="margin-top:12px"><a onclick="dcHubSet('engageOld')">המסך הקודם של "מעורבות" (כולל "הקליקים שלנו במונה") ↗</a></div>` : '<div class="placeholder-note">טוען…</div>');
     wrap.innerHTML = dcHubTabsHtml() + body;
-    dcUsageEnsure();   // גם המעקבים נשענים על הנתונים של "אפליקציה ושימוש"
+    dcUsageEnsure();   // המעקבים והמעורבות נשענים על הנתונים של "אפליקציה ושימוש" (היום, החברים)
     if (dcHub === 'trackers' && !window.YZT && !dcTrackersImport) dcTrackersImport = import('./admin-trackers.js?v=701').then((m) => { window.YZT = m; renderMain(); }).catch((e) => { console.error(e); dcTrackersImport = null; });
+    if (dcHub === 'engage') {
+      if (!window.YZE && !dcEngageImport) dcEngageImport = import('./admin-engage.js?v=702b').then((m) => { window.YZE = m; renderMain(); }).catch((e) => { console.error(e); dcEngageImport = null; });
+      else if (window.YZE && ready) window.YZE.load();
+    }
     return;
   }
   if (activeTab === DATA_KEY) {
-    wrap.innerHTML = dcHubTabsHtml() + dataCenterHtml();
+    wrap.innerHTML = dcHubTabsHtml() + `<div class="dc-back"><a onclick="dcHubSet('engage')">← חזרה ל"מעורבות"</a></div>` + dataCenterHtml();
     // §275 — טעינה עצלה של נתוני-המימוש: רק כשנכנסים למסך הזה, ופעם אחת בלבד. loadRedeemStats
     // קוראת ל-renderMain בסיום, ולכן היא מצוירת שוב עם הנתונים; היא יוצאת מיד אם כבר נטען,
     // כך שאין לולאת-רינדור.

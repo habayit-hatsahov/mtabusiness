@@ -6,6 +6,9 @@ import { aggregatePlatformDay, ilDayKey, ilDayRange, PLATFORM_AGG_VERSION } from
 import { firestoreRunQuery, firestoreGetDoc, firestorePatch } from './firestore.js';
 // §699 – "אפליקציה ושימוש": אותם אירועים, סיכום נוסף (usageDaily/{יום}) – בלי קריאות נוספות
 import { aggregateUsageDay, USAGE_AGG_VERSION } from '../../usage-agg.js';
+// §702 – "מעורבות": אותם אירועים + חשיפות מ-statsDaily (engageDaily/{יום})
+import { aggregateEngageDay, ENGAGE_AGG_VERSION } from '../../engage-agg.js';
+import { impressionsOfDay } from './engagedaily.js';
 
 const BASE = (projectId) => `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 const FILL_BACK_DAYS = 3;     // כמה ימים אחורה להשלים בריצה רגילה
@@ -44,7 +47,7 @@ async function eventsOfDay(env, token, key) {
       const at = val(f.createdAt);
       out.push({ type: val(f.type), path: val(f.path), blockId: val(f.blockId), memberId: val(f.memberId),
                  sessionId: val(f.sessionId), device: val(f.device), referrer: val(f.referrer),
-                 channel: val(f.channel), at: at ? new Date(at) : null });
+                 channel: val(f.channel), bizId: val(f.bizId), at: at ? new Date(at) : null });   // bizId – §702
     }
     if (docs.length < PAGE) return out;
     cursor = val(docs[docs.length - 1].createdAt);
@@ -59,6 +62,11 @@ export async function computePlatformDay(env, token, key, adminIds) {
   // §699 – כשל כאן לא מפיל את platformDaily, שכבר נכתב
   try { await firestorePatch(env, token, `usageDaily/${key}`, { ...aggregateUsageDay(evs, adminIds), day: key, computedAt: new Date() }); }
   catch (e) { console.error('usageDaily ' + key + ' failed', String(e)); }
+  // §702 – כשל כאן לא מפיל את שני הסיכומים שכבר נכתבו
+  try {
+    const imp = await impressionsOfDay(env, token, key).catch((e) => { console.error('impressions ' + key, String(e)); return { imp: {}, impTotal: 0, impFailed: true }; });
+    await firestorePatch(env, token, `engageDaily/${key}`, { ...aggregateEngageDay(evs, adminIds), ...imp, day: key, computedAt: new Date() });
+  } catch (e) { console.error('engageDaily ' + key + ' failed', String(e)); }
   return evs.length;
 }
 
@@ -73,7 +81,9 @@ export async function runPlatformDaily(env, token, now = new Date()) {
     if (i > 1) {
       const d = await firestoreGetDoc(env, token, `platformDaily/${key}`).catch(() => null);
       const u = await firestoreGetDoc(env, token, `usageDaily/${key}`).catch(() => null);   // §699
-      if (d && Number(d.fields && d.fields.v) === PLATFORM_AGG_VERSION && u && Number(u.fields && u.fields.v) === USAGE_AGG_VERSION) { done[key] = 'kept'; continue; }
+      const g = await firestoreGetDoc(env, token, `engageDaily/${key}`).catch(() => null);   // §702
+      if (d && Number(d.fields && d.fields.v) === PLATFORM_AGG_VERSION && u && Number(u.fields && u.fields.v) === USAGE_AGG_VERSION
+          && g && Number(g.fields && g.fields.v) === ENGAGE_AGG_VERSION) { done[key] = 'kept'; continue; }
     }
     done[key] = await computePlatformDay(env, token, key, admins);
   }
