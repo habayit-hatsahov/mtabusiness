@@ -208,10 +208,21 @@ export function html() {
       <div class="yzt-three">${k('start', 'בהתחלה', t.start.length, t.startSub || `צילום ${U.short(S.snap)}`)}${k('since', t.sinceLbl || 'התחברו מאז', t.since.length, t.sinceSub)}${k('left', 'נשארו', t.left.length, t.leftSub)}</div>
       ${t.extra ? `<div class="yzt-extra">${t.extra}</div>` : ''}
       ${flowHtml(t)}
+      ${legacyHtml()}
       <div class="yzu-cols"><div>${charts}</div><div>${plan}</div></div>${list}</div></div>`;
 }
 
 window.yztSet = (k, v) => { if (k === 'knows') S.knows = !S.knows; else S[k] = v; U.C.rerender(); };
+// §701 — שני קטעים שעברו מהמסך הקודם של מרכז הנתונים (החישוב נשאר ב-admin-dashboard: ctx.legacy).
+// הם על **כל** המאושרים ובעלי העסק, לא רק על קבוצת הצילום – ולכן בתיבה נפרדת, עם הכותרת שלהם.
+function legacyHtml() {
+  const L = U.C.legacy;
+  if (!L) return '';
+  const box = (title, sub, body) => body ? `<div class="yzu-box"><h3>${title}</h3><p class="yzu-note" style="margin:0 0 8px">${sub}</p>${body}</div>` : '';
+  if (S.cur === 1) return box('מה קרה למייל – לכל מי שאושר ולא נכנס', 'כל המאושרים שלא נכנסו אף פעם (לא רק קבוצת הצילום), לפי מה ש-Brevo דיווח על מייל הקוד. לחיצה על שורה פותחת את הרשימה.', L.notEnteredMail());
+  if (S.cur === 3) return box('בעלי עסק – מוכנות לכניסה כחבר', 'כל בעלי העסקים המאושרים: האם יש להם רשומת חבר מאושרת עם קוד או Google – כלומר האם יוכלו להיכנס בכלל.', L.ownerReadiness());
+  return '';
+}
 window.yztSend = (i) => { const t = tracker(S.cur), p = t.plan[i]; if (!p || !p.ids.length) return; if (p.biz) U.C.openSend('biz', p.biz); else U.C.openSend('fans', p.ids.map(m => m.id)); };
 
 function css() {
