@@ -19105,10 +19105,13 @@ function m2RenderAud() {
       <div class="m2-psum"><span>${all.length} מתאימים לסינון</span><button class="m2-link" onclick="m2PickAll()">סימון כל ה-${shown.length}${q ? ' שבחיפוש' : ''}</button>${sel.length ? '<button class="m2-link" onclick="m2PickNone()">ניקוי הבחירה</button>' : ''}</div>
       <div class="m2-plist">${shown.slice(0, 100).map(row).join('') || '<div class="m2-hint">אין אף אחד שמתאים</div>'}${shown.length > 100 ? `<div class="m2-hint">ועוד ${shown.length - 100} – חיפוש או סינון מצמצמים.</div>` : ''}</div>
       <div class="m2-psum"><b>${sel.length ? 'נבחרו ' + sel.length : 'עוד לא נבחר אף אחד'}</b></div>
+      ${m2.trk ? `<div class="m2-hint" style="background:#FFF7DB;border:1px solid #FFE9A3;border-radius:8px;padding:6px 9px;margin:6px 0">📌 מגיע מהמעקבים: <b>${esc(m2.trk.label || '')}</b>. כשתשלח – יירשם במעקב מי קיבל את השלב, והם לא יופיעו שוב ב"ממתינים". <button class="m2-link" onclick="m2ClearTrk()">✕ לא קשור למעקב</button></div>` : ''}
       ${sel.length ? `<div class="m2-selchips">${sel.slice(0, 14).map((p) => `<span class="m2-selchip">${esc(m2Label(p))}<button onclick="m2Pick('${escJsAttr(p.id)}',false)">✕</button></span>`).join('')}${sel.length > 14 ? `<span class="m2-hint">ועוד ${sel.length - 14}</span>` : ''}</div>` : ''}
     </div>`;
 }
-window.m2SetAud = function (k) { m2.aud = k; m2.fOpen = null; m2.f = { status: new Set(['approved']) }; m2.picked = new Set(); m2.q = ''; m2.who = 0; m2RenderAud(); m2Refresh(); };
+// §703 – מי שפתח ממעקב והחליט לשלוח משהו אחר: השליחה לא תירשם במעקב
+window.m2ClearTrk = function () { m2.trk = null; m2RenderAud(); };
+window.m2SetAud = function (k) { m2.aud = k; m2.trk = null; m2.fOpen = null; m2.f = { status: new Set(['approved']) }; m2.picked = new Set(); m2.q = ''; m2.who = 0; m2RenderAud(); m2Refresh(); };
 window.m2FOpen = function (k) { m2.fOpen = m2.fOpen === k ? null : k; m2RenderAud(); };
 window.m2FToggle = function (k, v, on) {
   const def = m2Filters().find((d) => d.k === k); let s = m2.f[k] || new Set();
@@ -19421,8 +19424,11 @@ window.m2DoSend = async function () {
       ch: d.ch, mailScope: m2MailOnlyMissing(d) ? 'missing' : 'all',
       app: d.ch.app ? d.app : null, push: d.ch.push ? d.push : null, mail: d.ch.mail ? d.mail : null, wa: d.ch.wa ? d.wa : null,
       status: 'sending', sentAt: serverTimestamp(), sentBy: CURRENT_ADMIN.uid, sentByName: CURRENT_ADMIN.name,
+      // §703 – שליחה שהגיעה מ"לשלוח לקבוצה" במעקבים: איזה מעקב ושלב. מי שקיבל = שורות הנמענים של ההודעה
+      tracker: m2.trk || null,
     });
   } catch (e) { console.error(e); alert('השליחה לא התחילה (שמירת ההודעה נכשלה): ' + e.message); return; }
+  m2.trk = null;   // §703 – התיוג חל רק על השליחה הזאת
   m2.sending = { done: 0, total: recips.length }; m2.result = ''; m2RenderSend();
   const results = [];
   const serverCh = d.ch.app || d.ch.mail;
@@ -23016,7 +23022,9 @@ function dcUsageEnsure() {
       openOld: () => selectTab(APP_USAGE_KEY),
       legacy: { notEnteredMail: legacyNotEnteredMailHtml, ownerReadiness: legacyOwnerReadinessHtml },   // §701
       // §700 – "לשלוח לקבוצה" במעקבים: מרכז ההודעות עם הנבחרים מסומנים מראש (כמו openBroadcastFor)
-      openSend: (type, ids) => { msgMainTab = 'send'; m2.aud = type === 'fans' ? 'fanPick' : 'bizPick'; m2.f = {}; m2.fOpen = null; m2.q = ''; m2.who = 0; m2.picked = new Set(ids); selectTab(BROADCAST_KEY); },
+      // §703 – trk = { id, stage, label }: נשמר על ההודעה כשהיא נשלחת, כדי שהמעקב ידע מי כבר קיבל את השלב
+      openSend: (type, ids, trk) => { msgMainTab = 'send'; m2.aud = type === 'fans' ? 'fanPick' : 'bizPick'; m2.f = {}; m2.fOpen = null; m2.q = ''; m2.who = 0; m2.picked = new Set(ids); m2.trk = trk || null; selectTab(BROADCAST_KEY); },
+      waNudge: (id) => bumpWaNudge('members', id),   // §703 – וואטסאפ ממעקב 3 נרשם במונה הקיים (§415)
     });
     window.YZU = m;
     m.load();
@@ -23082,7 +23090,7 @@ function renderMainInner() {
         : (window.YZE ? window.YZE.html() + `<div class="dc-back" style="margin-top:12px"><a onclick="dcHubSet('engageOld')">המסך הקודם של "מעורבות" (כולל "הקליקים שלנו במונה") ↗</a></div>` : '<div class="placeholder-note">טוען…</div>');
     wrap.innerHTML = dcHubTabsHtml() + body;
     dcUsageEnsure();   // המעקבים והמעורבות נשענים על הנתונים של "אפליקציה ושימוש" (היום, החברים)
-    if (dcHub === 'trackers' && !window.YZT && !dcTrackersImport) dcTrackersImport = import('./admin-trackers.js?v=701').then((m) => { window.YZT = m; renderMain(); }).catch((e) => { console.error(e); dcTrackersImport = null; });
+    if (dcHub === 'trackers' && !window.YZT && !dcTrackersImport) dcTrackersImport = import('./admin-trackers.js?v=703').then((m) => { window.YZT = m; renderMain(); }).catch((e) => { console.error(e); dcTrackersImport = null; });
     if (dcHub === 'engage') {
       if (!window.YZE && !dcEngageImport) dcEngageImport = import('./admin-engage.js?v=702b').then((m) => { window.YZE = m; renderMain(); }).catch((e) => { console.error(e); dcEngageImport = null; });
       else if (window.YZE && ready) window.YZE.load();

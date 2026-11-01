@@ -55,9 +55,9 @@ function tracker(id) {
         { t: 'באיזו דרך נרשמו (מי שנשאר)', rows: Object.entries(by(left, methodOf)).sort((a, b) => b[1] - a[1]) },
         { t: 'אפשר להגיע אליהם ב-', rows: [['מייל', left.filter(m => m.email).length], ['↳ מייל מוסתר של Apple (כמעט לא נפתח)', left.filter(m => /privaterelay/i.test(m.email || '')).length], ['פוש', left.filter(pushOn).length]] }],
       plan: [
-        { w: 'יום 2', what: 'מייל "אושרת – פותחים את Yellow Zone ונכנסים לבד"; למי שהחליף טלפון – הדרך והקוד', ids: left.filter(m => fan(m) && age(m) >= 2) },
-        { w: 'יום 7', what: 'תזכורת במייל', ids: left.filter(m => fan(m) && age(m) >= 7) },
-        { w: 'יום 14', what: 'מייל אחרון עם הטבות השבוע, ואז "רדום"', ids: left.filter(m => fan(m) && age(m) >= 14) }],
+        { k: 'd2', w: 'יום 2', what: 'מייל "אושרת – פותחים את Yellow Zone ונכנסים לבד"; למי שהחליף טלפון – הדרך והקוד', ids: left.filter(m => fan(m) && age(m) >= 2) },
+        { k: 'd7', w: 'יום 7', what: 'תזכורת במייל', ids: left.filter(m => fan(m) && age(m) >= 7) },
+        { k: 'd14', w: 'יום 14', what: 'מייל אחרון עם הטבות השבוע, ואז "רדום"', ids: left.filter(m => fan(m) && age(m) >= 14) }],
       flow: 'f1', methods: by(left, methodOf) };
   }
   if (id === 2) {
@@ -89,7 +89,7 @@ function tracker(id) {
       leftSub: `${left.filter(m => x.isVet(m)).length} ותיקים · ${left.filter(m => !x.isVet(m)).length} חדשים · ${left.filter(m => !m.lastSeenAt).length} לא נכנסו אף פעם`,
       charts: [{ t: 'באיזו דרך נכנסים (מי שנשאר)', rows: Object.entries(by(left, methodOf)).sort((a, b) => b[1] - a[1]) }],
       list: left, flow: 'f3', methods: by(left, methodOf),
-      plan: [{ w: 'עכשיו', what: 'וואטסאפ אישי לכל אחד – הכפתור בכל שורה ברשימה', ids: left, wa: true }] };
+      plan: [{ k: 'wa', w: 'עכשיו', what: 'וואטסאפ אישי לכל אחד – הכפתור בכל שורה ברשימה', ids: left, wa: true }] };
   }
   if (id === 4) {
     const vets = x.fans.filter(m => m.status === 'approved' && x.isVet(m));
@@ -102,7 +102,7 @@ function tracker(id) {
       leftSub: `פוש ${left.filter(pushOn).length} · מייל ${left.filter(m => m.email).length} · ${left.filter(m => !m.lastSeenAt).length} לא נכנסו אף פעם`,
       extra: `${U.f(left.filter(owner).length)} מהנשארים הם בעלי עסק – הם בטיפול במעקב 3 או 6, ולא יקבלו פעמיים.`,
       charts: [{ t: 'באיזו דרך נכנסים (מי שנשאר)', rows: Object.entries(by(left, methodOf)).sort((a, b) => b[1] - a[1]) }, { t: 'מי נשאר', rows: [['אוהדים', left.filter(m => !owner(m)).length], ['בעלי עסק', left.filter(owner).length]] }],
-      plan: [{ w: 'עכשיו', what: 'מייל אישי עם הדרך והקוד של כל אחד', ids: left.filter(m => !owner(m)) }],
+      plan: [{ k: 'now', w: 'עכשיו', what: 'מייל אישי עם הדרך והקוד של כל אחד', ids: left.filter(m => !owner(m)) }],
       flow: 'f4', methods: by(left, methodOf) };
   }
   // 6 – עסק ממתין
@@ -116,7 +116,7 @@ function tracker(id) {
     sinceSub: 'אושרו', leftSub: `עכשיו ממתינים בסך הכול ${U.f(nowPend.length)} (כולל חדשים)`,
     charts: [{ t: `מי בעל העסק (עכשיו, ${U.f(nowPend.length)})`, rows: [['גם הוא ממתין', pendOwner.length], ['מאושר כאוהד', apOwner.length, 'hot'], ['בלי רשומת חבר', nowPend.filter(b => !ow(b)).length]] }],
     // נשלח לעסק (bizPick) ולא לחבר: מרכז ההודעות לא מציג בעלי עסק ברשימת האוהדים (§660)
-    plan: [{ w: 'עכשיו', what: `${apOwner.length} המאושרים כאוהדים: "העסק שלך עוד ממתין – חסר X"`, ids: apOwner.map(ow).filter(Boolean), biz: apOwner.map(b => b.id) }],
+    plan: [{ k: 'now', w: 'עכשיו', what: `${apOwner.length} המאושרים כאוהדים: "העסק שלך עוד ממתין – חסר X"`, ids: apOwner.map(ow).filter(Boolean), biz: apOwner.map(b => b.id) }],
     flow: 'f6', n6: { pend: pendOwner.length, ap: apOwner.length, apIn: apOwner.filter(b => onOrAfter(h.appDays[b.ownerMemberId], U.LAUNCH)).length } };
 }
 
@@ -179,8 +179,42 @@ function waText(m, b) {
 const waHref = (phone, text) => { const p = String(phone || '').replace(/\D/g, '').replace(/^0/, '972'); return p ? `https://wa.me/${p}?text=${encodeURIComponent(text)}` : ''; };
 
 // ── תצוגה ────────────────────────────────────────────────────────────────────────────────────
+// ── §703 — מי כבר קיבל כל שלב ───────────────────────────────────────────────────────────────
+// "לשלוח לקבוצה" מתייג את ההודעה במרכז ההודעות (messages.tracker = { id, stage, label }). מי שקיבל =
+// שורות הנמענים של ההודעות המתויגות. וואטסאפ במעקב 3 – waNudgeAt על רשומת החבר (המונה של §415).
+const GOT = { map: null, loading: false, err: '' };
+async function loadGot() {
+  if (GOT.loading) return;
+  GOT.loading = true; GOT.err = '';
+  const { db, fs } = U.C, map = {};
+  try {
+    const ms = await fs.getDocs(fs.query(fs.collection(db, 'messages'), fs.where('tracker.id', 'in', [1, 3, 4, 6])));
+    await Promise.all(ms.docs.map(async m => {
+      const md = m.data(), tr = md.tracker || {}, key = tr.id + '|' + tr.stage, at = md.sentAt && md.sentAt.toDate ? md.sentAt.toDate() : null;
+      const rs = await fs.getDocs(fs.collection(db, 'messages', m.id, 'recipients'));
+      const g = map[key] || (map[key] = new Map());
+      rs.docs.forEach(r => { const prev = g.get(r.id); if (!prev || (at && at > prev)) g.set(r.id, at); });
+    }));
+    GOT.map = map;
+  } catch (e) { console.error(e); GOT.err = e.message || String(e); GOT.map = {}; }
+  finally { GOT.loading = false; U.C.rerender(); }
+}
+const gotOf = (id, stage) => (GOT.map && GOT.map[id + '|' + stage]) || new Map();
+// לכל שלב: מי כבר קיבל, ומי עוד ממתין
+function stageSplit(trId, p) {
+  if (p.k === 'wa') {
+    const sent = p.ids.filter(m => m.waNudgeAt && U.dk(m.waNudgeAt) >= S.snap);
+    return { due: p.ids.filter(m => !sent.includes(m)), got: sent.length, last: sent.reduce((a, m) => (!a || m.waNudgeAt > a ? m.waNudgeAt : a), null) };
+  }
+  const g = gotOf(trId, p.k);
+  if (p.biz) { const due = p.biz.filter(id => !g.has(id)); return { due: p.ids.filter((m, i) => !g.has(p.biz[i])), dueBiz: due, got: p.biz.length - due.length, last: [...g.values()].reduce((a, d) => (!a || (d && d > a) ? d : a), null) }; }
+  const due = p.ids.filter(m => !g.has(m.id));
+  return { due, got: p.ids.length - due.length, last: [...g.values()].reduce((a, d) => (!a || (d && d > a) ? d : a), null) };
+}
+
 export function html() {
   if (!U.D) return '<div class="placeholder-note">טוען…</div>';
+  if (!GOT.map && !GOT.loading && !GOT.err) loadGot();
   const t = tracker(S.cur), f = U.f, today = U.D.today;
   const tiles = TRK.map(([id, nm, unit]) => {
     const r = tracker(id), st = r.start.length, done = st - r.left.length;
@@ -189,17 +223,20 @@ export function html() {
   }).join('');
   const k = (cls, l, n, sub) => `<div class="yzt-k ${cls}"><small>${l}</small><b>${f(n)}</b><div class="sub">${sub || '&nbsp;'}</div></div>`;
   const charts = (t.charts || []).map(c => { const mx = Math.max(1, ...c.rows.map(r => r[1])); return `<div class="yzu-box"><h3>${c.t}</h3>${c.rows.map(([l, n, cls]) => U.hb(l, n, mx, cls || '')).join('')}</div>`; }).join('');
-  const plan = t.noChannel ? `<div class="yzt-nochan">${t.noChannel}</div>` : `<div class="yzu-box"><h3>לוח פנייה</h3><p class="yzu-note" style="margin:0 0 8px">כל שלב יוצא בפוש למי שהפעיל התראות, ובמייל לכולם – במרכז ההודעות. "ממתינים עכשיו" = מי שנשאר בקבוצה והגיע לשלב.</p>
-    <table><tr><th>מתי</th><th>מה</th><th class="n">ממתינים עכשיו</th><th></th></tr>
-    ${t.plan.map((p, i) => `<tr><td><span class="yzt-when">${p.w}</span></td><td>${p.what}</td><td class="n"><b>${f(p.ids.length)}</b><div class="yzu-note" style="margin:0">פוש ${f(p.ids.filter(m => { const q = U.C.pushInfo(m); return q && q.app; }).length)} · מייל ${f(p.ids.filter(m => m.email).length)}</div></td>
-      <td>${p.wa ? '<span class="yzu-note">ברשימה למטה</span>' : p.ids.length ? `<button class="yzu-btn on" onclick="yztSend(${i})">לשלוח לקבוצה</button>` : '<span class="yzu-note">אין עדיין</span>'}</td></tr>`).join('')}</table>
-    <p class="yzu-note">"לשלוח לקבוצה" פותח את מרכז ההודעות עם האנשים כבר מסומנים – כותבים את הנוסח ושולחים משם. ⏳ עוד לא נשמר מי כבר קיבל כל שלב – לבדוק בהיסטוריה של מרכז ההודעות.</p></div>`;
+  const plan = t.noChannel ? `<div class="yzt-nochan">${t.noChannel}</div>` : `<div class="yzu-box"><h3>לוח פנייה</h3><p class="yzu-note" style="margin:0 0 8px">כל שלב יוצא בפוש למי שהפעיל התראות, ובמייל לכולם – במרכז ההודעות. "ממתינים עכשיו" = מי שנשאר בקבוצה, הגיע לשלב, <b>ועוד לא קיבל אותו</b>.</p>
+    <table><tr><th>מתי</th><th>מה</th><th class="n">ממתינים עכשיו</th><th class="n">כבר קיבלו</th><th></th></tr>
+    ${t.plan.map((p, i) => { const s = stageSplit(S.cur, p);
+      return `<tr><td><span class="yzt-when">${p.w}</span></td><td>${p.what}</td><td class="n"><b>${f(s.due.length)}</b><div class="yzu-note" style="margin:0">פוש ${f(s.due.filter(m => { const q = U.C.pushInfo(m); return q && q.app; }).length)} · מייל ${f(s.due.filter(m => m.email).length)}</div></td>
+      <td class="n">${GOT.map || p.wa ? (s.got ? `<b class="yzt-got">✓ ${f(s.got)}</b><div class="yzu-note" style="margin:0">${s.last ? 'אחרון ' + s.last.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' }) : ''}</div>` : '–') : '…'}</td>
+      <td>${p.wa ? '<span class="yzu-note">ברשימה למטה</span>' : s.due.length ? `<button class="yzu-btn on" onclick="yztSend(${i})">לשלוח ל-${f(s.due.length)}</button>` : '<span class="yzu-note">אין למי</span>'}</td></tr>`; }).join('')}</table>
+    <p class="yzu-note">"לשלוח" פותח את מרכז ההודעות עם מי שעוד לא קיבל כבר מסומן. כשהשליחה יוצאת משם – היא נרשמת כאן, ואותם אנשים לא יופיעו שוב באותו שלב.${GOT.err ? ` ⚠️ טעינת "מי קיבל" נכשלה: ${U.esc(GOT.err)}` : ''}</p></div>`;
   const list = t.list ? `<div class="yzu-box"><h3>הרשימה – ${f(t.list.length)} שנשארו</h3><div class="yzu-tw"><table>
-    <tr><th>עסק</th><th>בעלים</th><th>טלפון</th><th>נכנס עם</th><th>כניסה אחרונה</th><th>וואטסאפ</th></tr>
+    <tr><th>עסק</th><th>בעלים</th><th>טלפון</th><th>נכנס עם</th><th>כניסה אחרונה</th><th>וואטסאפ</th><th>נשלח</th></tr>
     ${t.list.map(m => { const b = t.owners.get(m.id), ph = m.phone || b.ownerPhone || ''; const href = waHref(ph, waText(m, b));
       return `<tr><td>${U.esc(b.name)}</td><td>${U.esc(m.name || '')}</td><td>${U.esc(ph)}</td><td>${methodOf(m)}</td><td>${m.lastSeenAt ? U.esc(m.lastSeenAt.toLocaleDateString('he-IL')) : 'אף פעם'}</td>
-      <td>${href ? `<a class="yzt-wa" href="${href}" target="_blank" rel="noopener">וואטסאפ</a>` : '–'}</td></tr>`; }).join('')}</table></div>
-    <p class="yzu-note">ההודעה כוללת את הדרך שלו – ולמי שנכנס עם קוד, גם את הקוד. נפתחת בוואטסאפ שלך, עם הנוסח מוכן; שולחים משם.</p></div>` : '';
+      <td>${href ? `<a class="yzt-wa" href="${href}" target="_blank" rel="noopener" onclick="yztWa('${m.id}')">וואטסאפ</a>` : '–'}</td>
+      <td>${WA[m.id] || m.waNudgeAt ? `<span class="yzt-got">✓ ${(WA[m.id] || m.waNudgeAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}</span>${m.waNudgeCount > 1 ? ` <span class="yzu-note">(${m.waNudgeCount} פעמים)</span>` : ''}` : '–'}</td></tr>`; }).join('')}</table></div>
+    <p class="yzu-note">ההודעה כוללת את הדרך שלו – ולמי שנכנס עם קוד, גם את הקוד. נפתחת בוואטסאפ שלך, עם הנוסח מוכן; שולחים משם. הלחיצה נרשמת ("נשלח"), ומי שכבר קיבל מיום הצילום יוצא מ"ממתינים".</p></div>` : '';
   return `<div class="yzu">${U.css()}${css()}
     <div class="yzt-src"><b>מקור מספרים אחד:</b> מעקבי חברים – מרשומת החבר וימי הכניסה שלו (מי שהגיע לדף הבית). "הורידו ולא נרשמו" – לפי טלפון. <b>צילום</b> = מי שהיה בקבוצה בתחילת יום הצילום; "מאז" = מתוכם, מי שיצא מהקבוצה.
       <span style="white-space:nowrap">יום הצילום: <input type="date" value="${S.snap}" min="${U.addDays(U.LAUNCH, 1)}" max="${today}" onchange="yztSet('snap',this.value)"></span></div>
@@ -223,7 +260,16 @@ function legacyHtml() {
   if (S.cur === 3) return box('בעלי עסק – מוכנות לכניסה כחבר', 'כל בעלי העסקים המאושרים: האם יש להם רשומת חבר מאושרת עם קוד או Google – כלומר האם יוכלו להיכנס בכלל.', L.ownerReadiness());
   return '';
 }
-window.yztSend = (i) => { const t = tracker(S.cur), p = t.plan[i]; if (!p || !p.ids.length) return; if (p.biz) U.C.openSend('biz', p.biz); else U.C.openSend('fans', p.ids.map(m => m.id)); };
+window.yztSend = (i) => {
+  const t = tracker(S.cur), p = t.plan[i]; if (!p) return;
+  const s = stageSplit(S.cur, p), trk = { id: S.cur, stage: p.k, label: `מעקב ${S.cur} · ${TRK.find(r => r[0] === S.cur)[1]} · ${p.w}` };
+  if (p.biz) { if (s.dueBiz.length) U.C.openSend('biz', s.dueBiz, trk); }
+  else if (s.due.length) U.C.openSend('fans', s.due.map(m => m.id), trk);
+  GOT.map = null;   // אחרי שליחה – לטעון מחדש בכניסה הבאה למעקבים
+};
+// וואטסאפ ממעקב 3: נרשם במונה הקיים (§415). WA – הסימון המקומי עד שהרשומה תתעדכן מהשרת
+const WA = {};
+window.yztWa = (id) => { WA[id] = new Date(); if (U.C.waNudge) U.C.waNudge(id); setTimeout(() => U.C.rerender(), 50); };
 
 function css() {
   return `<style>
@@ -242,6 +288,6 @@ function css() {
   .yzt-xt{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}@media(max-width:860px){.yzt-xt{grid-template-columns:1fr}}.yzt-xt>div{border-radius:10px;padding:9px 11px;font-size:13px;line-height:1.6}.yzt-xt .have{background:var(--yzu-ok-soft)}.yzt-xt .todo{background:var(--yzu-acc-soft)}.yzt-xt ul{margin:0;padding-inline-start:18px}
   .yzt-when{font-weight:700;background:var(--yzu-acc-soft);border:1px solid var(--yzu-acc-line);border-radius:8px;padding:2px 7px;font-size:12.5px;white-space:nowrap}
   .yzt-nochan{background:#FEF3F2;border:1px solid #F5C7C2;color:var(--yzu-bad);border-radius:10px;padding:9px 11px;font-size:13px;line-height:1.6}
-  .yzt-wa{font-size:12px;font-weight:700;background:#1FA855;color:#fff;border-radius:8px;padding:5px 9px;text-decoration:none;white-space:nowrap}
+  .yzt-got{color:var(--yzu-ok);font-weight:700}.yzt-wa{font-size:12px;font-weight:700;background:#1FA855;color:#fff;border-radius:8px;padding:5px 9px;text-decoration:none;white-space:nowrap}
   </style>`;
 }
