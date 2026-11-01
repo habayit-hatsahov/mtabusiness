@@ -10712,6 +10712,7 @@ async function saveSectionUpdates(id, updates, opts) {
       if (noteItems.length) {
         const list = (QJ_DECIDED[id] || []).filter(x => !(x.decision === 'edited' && noteItems.some(n => n.field === x.field)));
         QJ_DECIDED[id] = list.concat(noteItems.map(n => ({ ...n, _ts: Date.now() })));
+        if (!(opts && opts.noAsk)) setTimeout(() => qjEditAsk(id, noteItems), 150);   // §705ה
       }
       logActivity('businesses', id, {
         noteItems,
@@ -14006,7 +14007,7 @@ window.coverCmpGo = async function() {
     coverEdForget(o.id);
     // §705 – החלפה ואז חזרה באותו סבב = לא קרה כלום: "אנחנו עדכנו" על התמונה יוצא מהסל (לא נכנס להודעה)
     const had = (QJ_DECIDED[o.id] || []).filter(x => x.decision === 'edited' && (x.field === 'coverPhoto' || x.field === 'coverLook')).map(x => x.field);
-    const ok = await saveSectionUpdates(o.id, { coverPhoto: b.coverPhotoPrev, coverPhotoThumb: b.coverPhotoPrevThumb || '', ...look, ...coverPrevPatch(b) }, { reopenStep: 5 });
+    const ok = await saveSectionUpdates(o.id, { coverPhoto: b.coverPhotoPrev, coverPhotoThumb: b.coverPhotoPrevThumb || '', ...look, ...coverPrevPatch(b) }, { reopenStep: 5, noAsk: had.length > 0 });
     if (ok && had.length) {
       const drop = (QJ_DECIDED[o.id] || []).filter(x => x.decision === 'edited' && (had.includes(x.field) || x.field === 'coverLook'));
       await new Promise(r => setTimeout(r, 300));   // אחרי רשומת היומן של השמירה (logActivity שם לא ממתין)
@@ -16686,6 +16687,54 @@ function qjEq(a, b) {
   if (typeof a === 'object' && typeof b === 'object') { const ks = new Set([...Object.keys(a), ...Object.keys(b)]); return [...ks].every(k => qjEq(a[k], b[k])); }
   return a === b || String(a) === String(b);
 }
+// §705ה – רמי (קנטו, 1.11): "אחרי כל דבר כזה שזה יפתח את החלון וישאל אם להוסיף לסל ולעדכן אותו או בלי – רק לשמור".
+// השינוי כבר נשמר בכרטיס; השאלה רק אם הוא נכנס להודעה ("אנחנו עדכנו"). "רק לשמור" = יוצא מהסל (רשומת unstaged
+// ביומן, כמו ✕ – כך שגם אחרי רענון הוא לא חוזר). כמה שמירות ברצף – חלון אחד שמצטבר.
+let _qjAsk = null;
+function qjAskEl() {
+  let el = document.getElementById('qjEditAskModal');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'qjEditAskModal';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(11,27,58,.45);z-index:10000;display:none;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function qjEditAsk(id, items) {
+  const b = findBiz(id);
+  if (!b || !items || !items.length) return;
+  if (_qjAsk && _qjAsk.id === id) items = _qjAsk.items.filter(x => !items.some(n => n.field === x.field)).concat(items);
+  else if (_qjAsk) qjEditAskDone(true);   // עסק אחר – הקודם נשאר בסל (ברירת המחדל עד היום)
+  const live = items.filter(n => (QJ_DECIDED[id] || []).some(x => x.decision === 'edited' && x.field === n.field));
+  if (!live.length) return;
+  _qjAsk = { id, items: live };
+  const el = qjAskEl();
+  el.innerHTML = `<div style="background:var(--card-bg,#fff);color:var(--text,#0A2A66);border-radius:16px;width:460px;max-width:100%;padding:18px;box-sizing:border-box">
+    <div style="font-size:17px;font-weight:900">✔️ נשמר בכרטיס · ${esc(b.name)}</div>
+    <ul style="margin:8px 0 0;padding-inline-start:20px;font-size:14px;line-height:1.7">${live.map(n => `<li>${esc(n.label)}</li>`).join('')}</ul>
+    <div style="font-size:13.5px;margin-top:10px">לעדכן את בעל העסק על זה?</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <button class="qj-btn primary" onclick="qjEditAskDone(true)">🧺 להוסיף לסל – אעדכן אותו</button>
+      <button class="qj-btn" onclick="qjEditAskDone(false)">💾 רק לשמור – בלי לעדכן</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted,#5B6B8C);margin-top:8px">${b.status === 'approved' ? 'מהסל זה יוצא אליו ב"🧺 סיכום ושליחה".' : 'מהסל זה ייכנס להודעה כשתאשר את העסק.'}</div>
+  </div>`;
+  el.style.display = 'flex';
+}
+window.qjEditAskDone = async function(keep) {
+  const o = _qjAsk;
+  _qjAsk = null;
+  qjAskEl().style.display = 'none'; qjAskEl().innerHTML = '';
+  if (!o || keep) return;
+  const drop = (QJ_DECIDED[o.id] || []).filter(x => x.decision === 'edited' && o.items.some(n => n.field === x.field));
+  if (!drop.length) return;
+  QJ_DECIDED[o.id] = (QJ_DECIDED[o.id] || []).filter(x => !drop.includes(x));
+  if (!QJ_DECIDED[o.id].length) delete QJ_DECIDED[o.id];
+  renderMainPreserveScroll();
+  try { for (const d of drop) await logActivity('businesses', o.id, { type: 'bizNoteComment', title: 'רק נשמר – לא נכנס להודעה', detail: '✏️ ' + d.label, noteItem: { label: d.label, decision: 'unstaged' } }); }
+  catch (e) { console.warn('qjEditAskDone', e); }
+};
 function qjEditItems(before, updates) {
   const out = [];
   let look = false;
