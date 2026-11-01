@@ -11,7 +11,7 @@
      שהאדמין עצמו משתמש בו לעיצוב. נטען סינכרוני (לא preload+swap כמו ב-home.html) כדי שהמדידה
      הראשונה לא תרוץ לפני שהפונט זמין (סיכון-race עם טעינה אסינכרונית). -->
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@700&display=swap" rel="stylesheet">
-<script src="categories.js?v=6441"></script>
+<script src="categories.js?v=7071"></script>
 <script src="email-domain-check.js"></script>
 <script src="phone-check.js"></script>
 <script src="hours.js"></script>
@@ -4435,6 +4435,8 @@ const DATA_KEY = 'dataCenter';
 // §393 — יומן מחיקות ושחזור. פריט משלו בסיידבר ולא סקשן בתוך מסך אחר: ברגע שצריך אותו,
 // צריך אותו מהר, ומסך שמחפשים אותו בפאניקה חייב להיות במקום קבוע ומוכר.
 const TRASH_KEY = 'deletionLog';
+// §710 — "איך מקבלים את השירות": מעבר אחד-אחד על נותני השירות (admin-service-review.js, נטען בכניסה הראשונה)
+const SERVICE_KEY = 'serviceReview';
 // §516 — לינקים לתצוגה לאורח (demo.html?t=…): יצירה, מעקב כניסות ומכשירים, כיבוי.
 const DEMO_LINKS_KEY = 'demoLinks';
 // §536 — מסך פתיחה: תמונות מתחלפות באפליקציה (settings/splashScreen).
@@ -4702,6 +4704,11 @@ function sidebarTaskCounts() {
   };
 }
 function sidebarBadge(n) { return n ? `<span class="sidebar-nav-badge">${n}</span>` : ''; }
+// §710 — כמה נותני שירות עוד לא עודכנו (אותו תנאי כמו admin-service-review.js: list + isDone)
+function serviceReviewLeft() {
+  return MOCK_BUSINESSES.filter(b => (b.bizTypes || []).includes('pro') && (b.status === 'approved' || b.status === 'pending')
+    && !(Array.isArray(b.serviceModes) && b.serviceModes.length && b.serviceSetBy)).length;
+}
 
 function renderSidebar() {
   const el = document.getElementById('sidebar');
@@ -4712,6 +4719,7 @@ function renderSidebar() {
       ${collapseBtn}
       <div class="sidebar-standalone ${activeTab===HOME_KEY?'active':''}" onclick="selectTab('${HOME_KEY}')" title="דשבורד ראשי"><span class="ic">${ICO_HOME}</span></div>
       <div class="sidebar-standalone ${activeTab===ALL_BIZ_KEY?'active':''}" onclick="selectTab('${ALL_BIZ_KEY}')" title="כל העסקים"><span class="ic">${ICO_BIZ}</span></div>
+      <div class="sidebar-standalone ${activeTab===SERVICE_KEY?'active':''}" onclick="selectTab('${SERVICE_KEY}')" title="איך מקבלים את השירות"><span class="ic">${ICO_BIZ}</span></div>
       <div class="sidebar-standalone ${activeTab===ALL_FANS_KEY?'active':''}" onclick="selectTab('${ALL_FANS_KEY}')" title="כל האוהדים"><span class="ic">${ICO_FANS}</span></div>
       <div class="sidebar-standalone ${activeTab===TAGS_MGMT_KEY?'active':''}" onclick="selectTab('${TAGS_MGMT_KEY}')" title="ניהול תגיות"><span class="ic">${ICO_TAGS}</span></div>
       <div class="sidebar-standalone ${activeTab===HEARTS_KEY?'active':''}" onclick="selectTab('${HEARTS_KEY}')" title="מרכז לבבות"><span class="ic">${ICO_HEARTS}</span></div>
@@ -4739,6 +4747,9 @@ function renderSidebar() {
     </div>
     <div class="sidebar-standalone ${activeTab===ALL_BIZ_KEY?'active':''}" onclick="selectTab('${ALL_BIZ_KEY}')">
       <span class="ic">${ICO_BIZ}</span><span>כל העסקים</span><span style="flex:1"></span>${sidebarBadge(tc.biz)}
+    </div>
+    <div class="sidebar-standalone ${activeTab===SERVICE_KEY?'active':''}" onclick="selectTab('${SERVICE_KEY}')">
+      <span class="ic">${ICO_BIZ}</span><span>איך מקבלים את השירות</span><span style="flex:1"></span>${sidebarBadge(serviceReviewLeft())}
     </div>
     <div class="sidebar-standalone ${activeTab===ALL_FANS_KEY?'active':''}" onclick="selectTab('${ALL_FANS_KEY}')">
       <span class="ic">${ICO_FANS}</span><span>כל האוהדים</span><span style="flex:1"></span>${sidebarBadge(tc.fans)}
@@ -10468,7 +10479,8 @@ window.toggleSecReviewed = async function(id, n, checked) {
 const SAVE_LOG_SKIP_FIELDS = new Set(['noteAt', 'noteHandledAt', 'noteOwnerAckAt', 'pendingChangesAt', 'reviewedSections',
   'hoursMode', 'hoursDays', 'hoursOther', 'hoursMigrationDone', 'hoursMigrationBy',
   // §705 – גיבוי התמונה הקודמת (§678) – שדות פנימיים, לא "מה נערך"
-  'coverPhotoPrev', 'coverPhotoPrevThumb', 'coverPhotoPrevPosition', 'coverPhotoPrevZoom', 'coverPhotoPrevBg']);
+  'coverPhotoPrev', 'coverPhotoPrevThumb', 'coverPhotoPrevPosition', 'coverPhotoPrevZoom', 'coverPhotoPrevBg',
+  'serviceSetBy', 'serviceSetAt']);   // §710 – מי ומתי, לא "מה נערך"
 function fmtActivityVal(v) {
   if (v == null || v === '') return '–';
   // §705 – גלריה / סניפים נרשמו "[object Object], [object Object]"
@@ -10709,7 +10721,7 @@ async function saveSectionUpdates(id, updates, opts) {
     if (fields.length) {
       const summary = fields.map(k => DIFF_FIELD_LABELS_MOCK[k] || k).join(', ');
       const noteItems = qjEditItems(beforeVals, updates);   // §659ג
-      if (noteItems.length) {
+      if (noteItems.length && !(opts && opts.noBasket)) {   // §710 – noBasket: עדכון שבעל העסק מקבל עליו הודעה נפרדת
         const list = (QJ_DECIDED[id] || []).filter(x => !(x.decision === 'edited' && noteItems.some(n => n.field === x.field)));
         QJ_DECIDED[id] = list.concat(noteItems.map(n => ({ ...n, _ts: Date.now() })));
         if (!(opts && opts.noAsk)) setTimeout(() => qjEditAsk(id, noteItems), 150);   // §705ה
@@ -15376,6 +15388,7 @@ const DIFF_FIELD_LABELS_MOCK = {
   ownerRelation: 'קרבה לבעל המנוי', fanInstagram: 'אינסטגרם אימות', note: 'הערה מהעסק',
   bizTypes: 'סוג עסק', name: 'שם העסק', desc: 'תיאור', branches: 'סניפים',
   regions: 'אזורי פעילות',
+  serviceModes: 'איך מקבלים את השירות',   // §710
   phone: 'טלפון עסק', whatsapp: 'WhatsApp', serviceEmail: 'מייל שירות', city: 'עיר', address: 'כתובת',
   categoryPrimary: 'קטגוריה ראשית', cat: 'קטגוריה ראשית', categorySecondary: 'קטגוריות משניות',
   tags: 'תגיות', tagSecondSuggestion: 'בקשת העסק לתגית שנייה', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'בקשת העסק למופיע גם תחת', alsoCategoryNote: 'הערת העסק לגבי קטגוריה נוספת',
@@ -23292,6 +23305,7 @@ function legacyOwnerReadinessHtml() {
 }
 // הקובץ נטען פעם אחת; הנתונים נטענים פעם אחת (רענון – מתוך המסך)
 let dcUsageImport = null, dcTrackersImport = null, dcEngageImport = null;
+let serviceReviewImport = null;   // §710
 function dcUsageEnsure() {
   if (window.YZU) { window.YZU.load(); return; }
   if (dcUsageImport) return;
@@ -23357,6 +23371,28 @@ function renderMainInner() {
   }
   if (activeTab === LANDING_KEY) {
     wrap.innerHTML = landingContentTabHtml();
+    return;
+  }
+  if (activeTab === SERVICE_KEY) {   // §710
+    if (window.YZS) {
+      // שדות הכתובת – onSnapshot גלובלי מצייר מחדש גם באמצע הקלדה; מחזירים פוקוס וסמן
+      const a = document.activeElement, f = a && a.id && a.id.startsWith('svrIn_') ? { id: a.id, s: a.selectionStart, e: a.selectionEnd } : null;
+      wrap.innerHTML = window.YZS.html();
+      const el = f && document.getElementById(f.id);
+      if (el) { el.focus(); try { el.setSelectionRange(f.s, f.e); } catch (e) {} }
+      return;
+    }
+    wrap.innerHTML = '<div class="placeholder-note">טוען…</div>';
+    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7101').then((m) => {
+      m.init({
+        biz: () => MOCK_BUSINESSES, esc,
+        // noAsk – בלי חלון "לסל" (§705ה); noBasket – לא נכנס לסיכום לבעל העסק: יש לו כרטיס צהוב והודעה משלנו
+        save: (id, upd) => saveSectionUpdates(id, upd, { noAsk: true, noBasket: true }),
+        rerender: () => { if (activeTab === SERVICE_KEY) renderMain(); renderSidebar(); },
+      });
+      window.YZS = m;
+      renderMain();
+    }).catch((e) => { console.error(e); serviceReviewImport = null; wrap.innerHTML = '<div class="placeholder-note">טעינת המסך נכשלה – רענן ונסה שוב</div>'; });
     return;
   }
   // §699 — מרכז הנתונים: לשוניות. "אפליקציה ושימוש" חי ב-admin-usage.js (נטען בכניסה הראשונה),
