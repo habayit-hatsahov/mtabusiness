@@ -6,8 +6,8 @@
 //   • היום               – אירועי היום (7 סוגים) + statsDaily של היום לכל עסק, חי.
 //   • מסירת הודעות       – messages/*/recipients, נטען רק כשפותחים את האריח (לפי התקופה).
 // העיצוב, בחירת התקופה ו"!" – מ-admin-usage.js (shared), כמו בשתי הלשוניות האחרות.
-import { aggregateEngageDay, ENGAGE_TYPES } from './engage-agg.js?v=702';
-import { shared as U } from './admin-usage.js?v=704';
+import { aggregateEngageDay, ENGAGE_TYPES } from './engage-agg.js?v=705';
+import { shared as U } from './admin-usage.js?v=705';
 
 const LAUNCH = '2026-10-26', SHARE_FROM = '2026-11-01', BENVIEW_FROM = '2026-11-01';
 let E = null, loading = false, err = '';
@@ -27,7 +27,7 @@ const SRC = {
   biz: 'אותן לחיצות, מקובצות לפי עסק, יחד עם החשיפות שלו. "% פתיחה" = פתיחות ÷ חשיפות באותה תקופה.',
   msg: 'לכל הודעה נשמר מה יצא לכל נמען: באפליקציה, בפוש ובמייל. שירות המיילים (Brevo) מחזיר לנו אם המייל נמסר, חזר, נפתח או נלחץ.',
   trend: 'אותם מקורות – לפי יום.',
-  todo: 'דברים שלא נמדדים היום.',
+  find: 'מה אוהדים מקלידים בחיפוש (ואם נמצא משהו), אילו סינונים מפעילים, ואילו קטגוריות וסקשנים פותחים בדף הבית. חיפוש נספר פעם אחת כשמפסיקים להקליד.',
 };
 
 // ── טעינה ──────────────────────────────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ function range() {
 const lbl = ([a, b]) => a === b ? (a === U.D.today ? 'היום' : a === U.addDays(U.D.today, -1) ? 'אתמול' : U.short(a)) : `${U.short(a)}–${U.short(b)}`;
 function sum(a, b) {
   const keys = U.dayList(a, b).filter(k => k >= LAUNCH);
-  const T = { n: {}, imp: 0, openers: new Set(), redeemers: new Set(), linkCh: {}, shareCh: {}, car: {}, carBiz: {}, biz: {}, impBiz: {}, perDay: [], missing: [] };
+  const T = { n: {}, imp: 0, openers: new Set(), redeemers: new Set(), linkCh: {}, shareCh: {}, car: {}, carBiz: {}, biz: {}, impBiz: {}, qs: {}, qz: {}, filt: {}, sec: {}, findDays: 0, perDay: [], missing: [] };
   const add = (o, src) => { for (const [k, v] of Object.entries(src || {})) o[k] = (o[k] || 0) + v; };
   for (const k of keys) {
     const d = E.days[k];
@@ -80,6 +80,7 @@ function sum(a, b) {
     add(T.n, d.n); T.imp += d.impTotal || 0;
     (d.openers || []).forEach(x => T.openers.add(x)); (d.redeemers || []).forEach(x => T.redeemers.add(x));
     add(T.linkCh, d.linkCh); add(T.shareCh, d.shareCh); add(T.carBiz, d.carBiz); add(T.impBiz, d.imp);
+    if (d.qs) { T.findDays++; add(T.qs, d.qs); add(T.qz, d.qz); add(T.filt, d.filt); add(T.sec, d.sec); }   // §708
     for (const [kind, acts] of Object.entries(d.car || {})) add(T.car[kind] || (T.car[kind] = {}), acts);
     for (const [id, r] of Object.entries(d.biz || {})) add(T.biz[id] || (T.biz[id] = {}), r);
     T.perDay.push({ k, ...d.n, imp: d.impTotal || 0, car: Object.values(d.car || {}).reduce((s, x) => s + (x.open || 0), 0) });
@@ -89,8 +90,8 @@ function sum(a, b) {
 
 // ── תצוגה ──────────────────────────────────────────────────────────────────────────────────
 const TILES = [['trend', 'לאורך זמן', 'לפי יום'], ['biz', 'עסקים', 'טבלה'], ['card', 'מה עושים בכרטיס העסק', 'פעולות'], ['redeem', 'הטבות ומימוש', 'פעולות'],
-  ['car', 'קרוסלות', '6 תיבות'], ['share', 'שיתופים', 'מ-1.11'], ['msg', 'מסירת הודעות', 'מייל · פוש · אפליקציה'], ['todo', 'מה עוד למדוד', 'חסר']];
-const SRCK = { trend: 'trend', biz: 'biz', card: 'contact', redeem: 'redeem', car: 'car', share: 'share', msg: 'msg', todo: 'todo' };
+  ['car', 'קרוסלות', '6 תיבות'], ['share', 'שיתופים', 'מ-1.11'], ['msg', 'מסירת הודעות', 'מייל · פוש · אפליקציה'], ['find', 'חיפוש וקטגוריות', 'מה מחפשים']];
+const SRCK = { trend: 'trend', biz: 'biz', card: 'contact', redeem: 'redeem', car: 'car', share: 'share', msg: 'msg', find: 'find' };
 const bizName = id => { const b = (U.C.biz() || []).find(x => x.id === id); return b ? b.name : '(עסק שנמחק)'; };
 const catName = id => { const b = (U.C.biz() || []).find(x => x.id === id); const c = b && (window.CATEGORIES || []).find(x => x.key === b.catKey); return c ? c.label : ''; };
 
@@ -130,7 +131,7 @@ function big(id, T, R) {
   if (id === 'car') return s(f(Object.values(T.carBiz).reduce((a, b) => a + b, 0)), 'לחיצות על עסק', 'מתוך הקרוסלה');
   if (id === 'share') return R[1] >= SHARE_FROM ? s(f(n.share || 0), 'שיתופים', 'עסק · עסק שלי · הזמנת חברים') : s('–', '', 'נמדד מ-1.11');
   if (id === 'msg') return s('↗', 'מייל · פוש', 'נמסר / נפתח / נלחץ');
-  return s('4', 'פריטים', 'חיפוש, סקשנים, כרטיס פוש, גלילה');
+  return T.findDays ? s(f(n.search || 0), 'חיפושים', `${f(n.searchZero || 0)} בלי תוצאה`) : s('–', '', 'נמדד מ-§707');
 }
 
 const cbar = (vals, labels, mx) => `<div class="yzu-cbar" style="gap:${vals.length > 21 ? 2 : 8}px">${vals.map((v, i) => `<div class="c" title="${labels[i]}: ${v}">${vals.length > 21 ? '' : `<em>${f(v)}</em>`}<i class="r" style="height:${v / Math.max(1, mx) * 100}%;border-radius:4px 4px 0 0"></i></div>`).join('')}</div>
@@ -217,12 +218,19 @@ const DET = {
         ${row(`ממרכז ההודעות – ${f(d.sends)} שליחות (${f(d.pick)} אישיות · ${f(d.mass)} תפוצה)`, d.manual)}</table></div>
       <p class="yzu-note">"נפתח" במייל נמדד בתמונה קטנה במייל – כתובות מוסתרות של Apple (${f(d.relay)} בתקופה) לא מדווחות פתיחה בכלל, וחלק משירותי הדואר חוסמים אותה.</p>`;
   },
-  todo: () => `<h2>מה עוד למדוד</h2><p class="yzu-def">חשיפות, שיתוף עסק וצפייה בקרוסלה – כבר נמדדים (§695). נשארו:</p>
-    <div class="yzu-box yzu-tw"><table><tr><th>מה</th><th>למה</th></tr>
-      <tr><td><b>חיפוש וסינון</b> – מה חיפשו, ואם נמצא משהו</td><td>חיפוש בלי תוצאה = עסק שחסר לנו</td></tr>
-      <tr><td><b>אילו סקשנים / קטגוריות פותחים</b> בדף הבית</td><td>לדעת מה מעניין, ולהחליט סדר</td></tr>
-      <tr><td><b>כרטיס "רוצים שנעדכן אתכם?"</b> – הוצג / אישרו / סירבו</td><td>מי שנכנס בלי פוש – לא יודעים למה</td></tr>
-      <tr><td><b>גלילה בדף הנחיתה</b> (landing.html)</td><td>היום נמדדת רק במסך הפתיחה באפליקציה</td></tr></table></div>`,
+  find: (T, R) => {
+    if (!T.findDays) return `<h2>חיפוש וקטגוריות</h2><div class="yzu-how">המדידה נוספה ב-§707 – בתקופה שנבחרה עוד אין נתונים. מה יופיע כאן: מה מחפשים, <b>חיפושים בלי תוצאה</b> (= עסק שחסר לנו), סינונים, ואילו קטגוריות וסקשנים פותחים.</div>`;
+    const top = (o, k = 12) => Object.entries(o).sort((x, y) => y[1] - x[1]).slice(0, k);
+    const n = T.n, cats = window.CATEGORIES || [], catNm = key => (cats.find(c => c.key === key) || {}).label || key;
+    const SEC = { featured: 'נבחרים', new: 'חדש אצלנו', deals: 'מבצעים', loved: 'הכי אהובים', popular: 'הכי פופולריים', online: 'אונליין', everyone: 'לכולם', myLoved: 'העסקים שאהבתי' };
+    const FIL = { now: 'פתוח עכשיו', coupon: 'יש קוד קופון', comes: 'מגיעים אליי', 'kosher:yes': 'כשר', 'kosher:no': 'לא כשר', 'sat:open': 'פתוח בשבת', 'sat:closed': 'סגור בשבת' };
+    const filNm = k => FIL[k] || (k.startsWith('city:') ? 'עיר: ' + k.slice(5) : k.startsWith('region:') ? 'אזור: ' + k.slice(7) : k);
+    const secs = top(T.sec, 15).map(([k, v]) => { const [kind, id] = k.split('|'); return [(kind === 'cat' ? 'קטגוריה: ' : 'סקשן: ') + (SEC[id] || catNm(id)), v]; });
+    const box = (t, rows, cls, empty) => `<div class="yzu-box"><h3>${t}</h3>${rows.length ? rows.map(([l, v]) => U.hb(U.esc(l), v, rows[0][1], cls)).join('') : `<p class="yzu-note">${empty || 'אין בתקופה'}</p>`}</div>`;
+    return `<h2>חיפוש וקטגוריות – ${lbl(R)}</h2><p class="yzu-def">${f(n.search || 0)} חיפושים, <b>${f(n.searchZero || 0)} בלי אף תוצאה</b> (${pc(n.searchZero || 0, n.search || 0)}). ${f(n.filter || 0)} פעמים הופעל סינון. ${f(n.section || 0)} פתיחות של קטגוריה או סקשן.${T.findDays < T.perDay.length ? ' ⚠️ נמדד רק בחלק מהתקופה (מ-§707).' : ''}</p>
+      <div class="yzu-cols">${box('חיפושים בלי תוצאה – עסקים שחסרים לנו', top(T.qz), 'hot', 'אף חיפוש לא נשאר בלי תוצאה')}${box('מה מחפשים הכי הרבה', top(T.qs), '')}</div>
+      <div class="yzu-cols">${box('קטגוריות וסקשנים שפותחים', secs, 'ok')}${box('סינונים שמפעילים', top(T.filt).map(([k, v]) => [filNm(k), v]), 'acc')}</div>`;
+  },
 };
 
 // ── מסירת הודעות – נטען רק לאריח, לפי התקופה ──────────────────────────────────────────────────

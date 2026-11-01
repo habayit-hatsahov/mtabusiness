@@ -8,7 +8,7 @@
 //   • אירועי היום        – נטענים חי (8 סוגים, היום בלבד) ומסוכמים באותה פונקציה בדיוק.
 //   • רשומות חברים ועסקים – מה שמרכז הניהול כבר מחזיק בזיכרון (בלי קריאות נוספות).
 // הדמו המאושר: app-usage-demo.html (§640ח–§640י).
-import { aggregateUsageDay, USAGE_TYPES, FAN_STEPS, BIZ_STEPS } from './usage-agg.js?v=696';
+import { aggregateUsageDay, USAGE_TYPES, FAN_STEPS, BIZ_STEPS } from './usage-agg.js?v=705';
 import { ilDayKey, ilDayRange } from './platform-agg.js?v=587b';
 
 const LAUNCH = '2026-10-26';
@@ -331,10 +331,19 @@ function pushStats() {
     meth: g(ent.filter(m => !x.isVet(m)), m => m.signupMethod === 'apple' ? 'Apple' : m.signupMethod === 'google' ? 'Google' : 'קוד'),
     grp: g(ent, m => x.isVet(m) ? 'ותיקים' : 'נרשמו מההשקה') };
 }
+// §708 – הכרטיס "רוצים שנעדכן אתכם?": הוצג → לחצו כן / לא → מה מערכת ההפעלה ענתה. ביקורים, לפי התקופה למעלה.
+function pushCardHtml() {
+  const R = range(), pcS = {}; let days = 0;
+  dayList(R[0], R[1]).forEach(k => { const d = (D.days[k] || {}).pushCard; if (!d) return; days++; Object.entries(d).forEach(([s, n]) => pcS[s] = (pcS[s] || 0) + n); });
+  if (!days) return '<div class="yzu-how">הכרטיס "רוצים שנעדכן אתכם?" – המדידה נוספה ב-§707; בתקופה שנבחרה עוד אין נתונים. כאן יופיע כמה ראו אותו, כמה אישרו וכמה סירבו – כדי לדעת למה יש מי שנכנס בלי פוש.</div>';
+  const sh = pcS.shown || 0, rows = [['הכרטיס הוצג', sh, ''], ['לחצו "כן"', pcS.accept || 0, 'ok'], ['לחצו "לא" / סגרו', pcS.decline || 0, 'hot'], ['הטלפון אישר התראות', pcS.granted || 0, 'ok'], ['הטלפון חסם (סירבו בחלון של המערכת)', pcS.denied || 0, 'hot'], ['כשל טכני (הכרטיס יחזור)', pcS.error || 0, '']];
+  return `<div class="yzu-box"><h3>הכרטיס "רוצים שנעדכן אתכם?" – ${rangeLabel(R)}</h3>${rows.map(([l2, v, c]) => hb(l2, v, Math.max(1, sh), c)).join('')}
+    <p class="yzu-note">ביקורים. מתוך מי שראה את הכרטיס: ${pc(pcS.accept || 0, sh)} אישרו, ${pc(pcS.decline || 0, sh)} סירבו.</p></div>`;
+}
 function useSum(p) { const u = { in: [0, 0, 0, 0, 0, 0], out: [0, 0, 0, 0, 0, 0] }; dayList(p.a, p.b).forEach(k => { const d = (D.days[k] || {}).use; if (!d) return; for (let i = 0; i < 6; i++) { u.in[i] += (d.in || [])[i] || 0; u.out[i] += (d.out || [])[i] || 0; } }); return u; }
 function landSum(p) {
-  const l = { views: 0, sessions: 0, mobile: 0, desktop: 0, clicks: 0, clickSessions: 0, ios: 0, android: 0, src: {}, perDay: [] };
-  dayList(p.a, p.b).forEach(k => { const d = (D.days[k] || {}).land || {}; ['views', 'sessions', 'mobile', 'desktop', 'clicks', 'clickSessions', 'ios', 'android'].forEach(f2 => l[f2] += d[f2] || 0); Object.entries(d.src || {}).forEach(([s, n]) => l.src[s] = (l.src[s] || 0) + n); l.perDay.push([k, d.sessions || 0, d.clickSessions || 0]); });
+  const l = { views: 0, sessions: 0, mobile: 0, desktop: 0, clicks: 0, clickSessions: 0, ios: 0, android: 0, src: {}, depth: {}, depthDays: 0, perDay: [] };
+  dayList(p.a, p.b).forEach(k => { const d = (D.days[k] || {}).land || {}; ['views', 'sessions', 'mobile', 'desktop', 'clicks', 'clickSessions', 'ios', 'android'].forEach(f2 => l[f2] += d[f2] || 0); Object.entries(d.src || {}).forEach(([s, n]) => l.src[s] = (l.src[s] || 0) + n); if (d.depth) { l.depthDays++; Object.entries(d.depth).forEach(([s, n]) => l.depth[s] = (l.depth[s] || 0) + n); } l.perDay.push([k, d.sessions || 0, d.clickSessions || 0]); });
   return l;
 }
 function trendRows(p) {
@@ -424,7 +433,8 @@ const DET = {
     <div class="yzu-kpis" style="grid-template-columns:repeat(3,1fr)"><div class="kp hl"><small>מחוברים להתראות</small><b>${f(r.on)}</b><div class="dt">${pc(r.on, r.ent)} מ-${f(r.ent)} שנכנסו</div></div>
       <div class="kp"><small>נכנסו בלי פוש</small><b>${f(r.ent - r.on)}</b><div class="dt">לא ידוע אם סירבו או לא ראו את הכרטיס</div></div></div>
     <div class="yzu-cols"><div class="yzu-box"><h3>לפי מכשיר</h3><table>${head}${tb(r.os)}</table><div style="height:10px"></div><table>${head}${tb(r.grp)}</table></div>
-      <div class="yzu-box"><h3>נרשמו מההשקה – לפי דרך ההרשמה</h3><table>${head}${tb(r.meth)}</table></div></div>`;
+      <div class="yzu-box"><h3>נרשמו מההשקה – לפי דרך ההרשמה</h3><table>${head}${tb(r.meth)}</table></div></div>
+    ${pushCardHtml()}`;
   },
   use: p => {
     const u = useSum(p), L = ['פחות מ-30 שנ׳', '30 שנ׳–2 דק׳', '2–5 דק׳', '5–15 דק׳', '15–30 דק׳', 'מעל 30 דק׳'];
@@ -460,7 +470,10 @@ const DET = {
       ${cbar(l.perDay.map(([k, v, c]) => ({ t: `${short(k)}: ${v} ביקורים, ${c} לחצו`, a: v - c, b: c, ha: (v - c) / mx * 100, hb: c / mx * 100 })), many)}
       <div class="yzu-cdays" style="gap:${many ? 2 : 8}px">${l.perDay.map(([k], i) => `<span>${!many || i % 5 === 0 ? short(k) : ''}</span>`).join('')}</div>
       <div class="yzu-legend"><span style="--c:var(--yzu-acc)">ביקרו ולא לחצו</span><span style="--c:var(--yzu-blue)">לחצו על חנות</span></div></div>
-    <div class="yzu-how"><b>מה חסר:</b> בדף הנחיתה לא נמדד עד לאן גוללים. "עד לאן מגיעים" שהיה במרכז הנתונים מודד את מסך הפתיחה באפליקציה.</div>`;
+    ${(() => { const ORD = ['how', 'preview', 'biz', 'final'], NM = { how: 'איך זה עובד', preview: 'תצוגת העסקים', biz: 'העסקים', final: 'סוף הדף' };
+      const dp = Object.entries(l.depth).sort((x, y) => (ORD.indexOf(x[0]) + 1 || 99) - (ORD.indexOf(y[0]) + 1 || 99)).map(([k, v]) => [NM[k] || k, v]);   // §708 – גלילה בדף הנחיתה
+      return dp.length ? `<div class="yzu-box"><h3>עד לאן גוללים בדף הנחיתה</h3>${dp.map(([k, v]) => hb(esc(k), v, Math.max(1, l.sessions, ...dp.map(x => x[1])), 'acc')).join('')}<p class="yzu-note">מתוך ${f(l.sessions)} ביקורים. כל נקודה נספרת פעם אחת לביקור, כשהיא מופיעה על המסך.${l.depthDays < l.perDay.length ? ' ⚠️ נמדד רק בחלק מהתקופה (מ-§707).' : ''}</p></div>`
+        : '<div class="yzu-how">עד לאן גוללים בדף הנחיתה – המדידה נוספה ב-§707; בתקופה שנבחרה עוד אין נתונים.</div>'; })()}`;
   },
   more: () => `<h2>עוד במסך – הכרטיסים הקודמים</h2>
     <p class="yzu-def">הכרטיסים שלא עברו עדיין לתצוגה החדשה, באותו מקור כמו קודם: מאיפה הגיעו לקישור, מאיפה הגיעו לדף הבית, כניסות שנכשלו, ההורדות בתקופה, נרשמים בתקופה, והורדות לפי מקור מהחנויות.</p>

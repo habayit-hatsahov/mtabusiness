@@ -11,7 +11,8 @@
 // ⚠️ שינוי בהגדרה חל רק על ימים שיחושבו מעכשיו – להעלות את USAGE_AGG_VERSION ולהריץ את
 // scratch_usage_daily_backfill.mjs.
 export const USAGE_AGG_VERSION = 1;
-export const USAGE_TYPES = ['visit', 'engaged', 'formOpen', 'formStep', 'formSubmit', 'loginOk', 'pageView', 'landingBlockClick'];
+// §708 – scrollDepth (גלילה בדף הנחיתה) ו-pushCard (כרטיס "רוצים שנעדכן אתכם?") נוספו
+export const USAGE_TYPES = ['visit', 'engaged', 'formOpen', 'formStep', 'formSubmit', 'loginOk', 'pageView', 'landingBlockClick', 'scrollDepth', 'pushCard'];
 
 // הסדר בטופס – "הכי רחוק" לכל מכשיר. אוהד: מסך הפתיחה של הטופס → … → לחצו שליחה.
 export const FAN_STEPS = ['open', 'identity', 'birth', 'subscriber', 'route', 'proof', 'submitTry'];
@@ -35,7 +36,7 @@ export function aggregateUsageDay(evsIn, adminIds) {
   const devMem = {}, submits = {}, far = {};
   const sess = {};   // sessionId → { app, inApp, max } – לזמן בביקור
   const land = { views: 0, sessions: 0, mobile: 0, desktop: 0, src: {}, clicks: 0, clickSessions: 0, ios: 0, android: 0 };
-  const lSess = new Set(), lClick = new Set();
+  const lSess = new Set(), lClick = new Set(), lDepth = {}, pcS = {};
   // אוהד גובר על עסק: מכשיר שפתח את שני הטפסים נמדד בטופס האוהד
   const bump = (dev, kind, step) => {
     const cur = far[dev];
@@ -86,6 +87,10 @@ export function aggregateUsageDay(evsIn, adminIds) {
       if (e.device === 'mobile') land.mobile++; else if (e.device === 'desktop') land.desktop++;
       const k = (src || 'direct').replace(/[\/`.]/g, '_'); land.src[k] = (land.src[k] || 0) + 1;
       if (e.sessionId) lSess.add(e.sessionId);
+    } else if (e.type === 'scrollDepth' && e.path === '/landing.html') {
+      (lDepth[String(e.blockId || '_').slice(0, 40)] || (lDepth[String(e.blockId || '_').slice(0, 40)] = new Set())).add(e.sessionId || Math.random());
+    } else if (e.type === 'pushCard') {
+      const k = ch.split(':')[0] || '_'; (pcS[k] || (pcS[k] = new Set())).add(e.sessionId || e.memberId || Math.random());
     } else if (e.type === 'landingBlockClick' && e.path === '/landing.html') {
       const b = String(e.blockId || '');
       if (!b.startsWith('store:') || b.endsWith(':test')) continue;
@@ -94,11 +99,13 @@ export function aggregateUsageDay(evsIn, adminIds) {
     }
   }
   land.sessions = lSess.size; land.clickSessions = lClick.size;
+  land.depth = Object.fromEntries(Object.entries(lDepth).map(([k, s]) => [k, s.size]));
+  const pushCard = Object.fromEntries(Object.entries(pcS).map(([k, s]) => [k, s.size]));   // §708 – ביקורים לכל שלב בכרטיס
   const use = { in: [0, 0, 0, 0, 0, 0], out: [0, 0, 0, 0, 0, 0] };
   for (const s of Object.values(sess)) if (s.app) use[s.inApp ? 'in' : 'out'][s.max + 1]++;
   return {
     v: USAGE_AGG_VERSION,
     appFirst: [...appFirst], firstOs, appActive: [...appActive], memActive: [...memActive], memHome: [...memHome], homeDevs: [...homeDevs],
-    devMem, submits, submitDevs: [...submitDevs], loginDevs: [...loginDevs], far, use, land,
+    devMem, submits, submitDevs: [...submitDevs], loginDevs: [...loginDevs], far, use, land, pushCard,
   };
 }

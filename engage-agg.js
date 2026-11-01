@@ -4,7 +4,8 @@
 // חשיפות (businesses/{id}/statsDaily, §418ה) לא באוסף events – הוורקר מוסיף אותן בנפרד (imp).
 // הגדרות האירועים: §610ז (carousel), §610ח (bizContact / bizLink), §275 (benefitRedeem), §695 (share).
 export const ENGAGE_AGG_VERSION = 1;
-export const ENGAGE_TYPES = ['carousel', 'bizClick', 'heart', 'bizContact', 'bizLink', 'benefitRedeem', 'share'];
+// §708 – search (חיפוש / סינון) ו-section (קטגוריה / סקשן) נוספו; ימים קודמים פשוט בלי השדות האלה
+export const ENGAGE_TYPES = ['carousel', 'bizClick', 'heart', 'bizContact', 'bizLink', 'benefitRedeem', 'share', 'search', 'section'];
 
 const inc = (o, k, n = 1) => { o[k] = (o[k] || 0) + n; };
 const safeKey = s => String(s || '').replace(/[\/`.]/g, '_').slice(0, 60) || '_';
@@ -17,6 +18,7 @@ export function aggregateEngageDay(evsIn, adminIds) {
   for (const e of evsIn || []) if (e.memberId && admins.has(e.memberId) && e.sessionId) adminSess.add(e.sessionId);
   const n = { open: 0, heart: 0, wa: 0, phone: 0, link: 0, rOpen: 0, rCopy: 0, rSite: 0, rWa: 0, rPhone: 0, share: 0 };
   const openers = new Set(), redeemers = new Set(), linkCh = {}, shareCh = {}, carS = {}, carBiz = {}, biz = {};
+  const qs = {}, qz = {}, filt = {}, sec = {};   // §708 – חיפושים (וכמה בלי תוצאה), סינונים, קטגוריות/סקשנים
   const B = id => biz[id] || (biz[id] = { o: 0, h: 0, wa: 0, ph: 0, l: 0, r: 0, c: 0, car: 0, sh: 0 });
   for (const e of evs) {
     if ((e.memberId && admins.has(e.memberId)) || (e.sessionId && adminSess.has(e.sessionId))) continue;
@@ -34,6 +36,11 @@ export function aggregateEngageDay(evsIn, adminIds) {
       else if (ch === 'contactPhone') { n.rPhone++; if (bz) B(bz).ph++; }
     }
     else if (e.type === 'share') { n.share++; inc(shareCh, safeKey(e.blockId) + '|' + safeKey(ch)); if (bz) B(bz).sh++; }
+    else if (e.type === 'search') {
+      if (e.blockId === 'filter') { inc(n, 'filter'); ch.split('|').filter(Boolean).forEach(k => inc(filt, safeKey(k))); }
+      else { inc(n, 'search'); const q = safeKey(ch); inc(qs, q); if (String(e.blockId) === '0') { inc(n, 'searchZero'); inc(qz, q); } }
+    }
+    else if (e.type === 'section') { inc(n, 'section'); inc(sec, safeKey(ch) + '|' + safeKey(e.blockId)); }
     else if (e.type === 'carousel') {
       const k = safeKey(e.blockId), a = safeKey(ch);
       // לפי סשן: כל פעולה בתיבה נספרת פעם אחת לביקור (view נספר כך ממילא)
@@ -44,5 +51,5 @@ export function aggregateEngageDay(evsIn, adminIds) {
   }
   const car = {};
   for (const [key, s] of Object.entries(carS)) { const [k, a] = key.split('|'); (car[k] || (car[k] = {}))[a] = s.size; }
-  return { v: ENGAGE_AGG_VERSION, n, openers: [...openers], redeemers: [...redeemers], linkCh, shareCh, car, carBiz, biz };
+  return { v: ENGAGE_AGG_VERSION, n, openers: [...openers], redeemers: [...redeemers], linkCh, shareCh, car, carBiz, biz, qs, qz, filt, sec };
 }
