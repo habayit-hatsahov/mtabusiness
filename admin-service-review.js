@@ -61,7 +61,7 @@ const SUG = {
   "8A9BRilHUSoaqRlZkxQf":["toClient","s","\"מגיעים לכל חלקי הארץ\" – סימן גם חנות (נס ציונה)"],
   "8b5iTxq7messECFdZ5U5":["atMine,remote","u","\"ליווי אישי\" – יש עיר (חולון), לא כתוב איך"],
   "AScHbFfRlB8Al3wyAtzS":["atMine","u","\"תכשיטי יהלומים בעיצוב אישי\" – אין כתובת בכלל"],
-  "ATqj3It1irQJkDOtaF0r":["atMine","u","\"שיקום וטיפול פציעות\" – קליניקה או בבית? בחר אזורים"],
+  "ATqj3It1irQJkDOtaF0r":["toClient","u","\"שיקום וטיפול פציעות\" + בחר אזורים (גוש דן, השפלה) ולא מילא כתובת – כנראה מגיע ללקוח"],
   "BRbkOdjX9FgiKZdXrsSf":["toClient","l","מתווך – מראה נכסים, \"מתמחה בראשל״צ\""],
   "BSam4To3xfqtFqBm1cno":["toClient","s","\"הפקות אירועים מוזיקה לחתונות\""],
   "BoTjIZw1enBJLjxCv7Zv":["toClient","l","\"תכנון, עיצוב והפקה\" – יש גם משרד בתל אביב"],
@@ -158,10 +158,14 @@ export function lineOf(modes, regions) {
 
 function cardHtml(b) {
   const sg = sug(b), done = isDone(b) && !S.editing[b.id];
+  // כתובת – תמיד מוצגת, גם כשאין. ⚠️ טופס ההרשמה מעולם לא שאל נותן שירות כתובת (רק אזורים),
+  // אז "לא מילא" לא מוכיח שאין לו קליניקה – רק רמז, יחד עם האזורים שבחר.
+  const addr = (b.branches || []).map((x) => x && [x.city, x.address].filter(Boolean).join(' ')).filter(Boolean);
   const nowLine = `<b>היום:</b> ${(b.bizTypes || []).map((t) => TYPE_HE[t] || t).join(' + ')}` +
     ((b.regions || []).length ? ` · אזורים: ${esc(b.regions.join(', '))}` : ' · <span class="svr-warn">בלי אזורים</span>') +
-    (cities(b).length ? ` · עיר: ${esc(cities(b).join(', '))}` : '') +
-    (b.status === 'pending' ? ' · <span class="svr-warn">ממתין לאישור</span>' : '');
+    (b.status === 'pending' ? ' · <span class="svr-warn">ממתין לאישור</span>' : '') +
+    `<br><b>כתובת:</b> ${addr.length ? '📍 ' + esc(addr.join(' | ')) : '<span class="svr-noaddr">לא מילא כתובת</span>'}` +
+    ` · <a class="svr-card" href="admin-dashboard.html?biz=${encodeURIComponent(b.id)}" target="_blank" rel="noopener">כרטיס העסק ↗</a>`;
   const head = `
     <div class="svr-hd">
       ${b.coverPhotoThumb || b.coverPhoto ? `<img src="${esc(b.coverPhotoThumb || b.coverPhoto)}" alt="" loading="lazy">` : '<span class="svr-noimg"></span>'}
@@ -274,6 +278,8 @@ const STYLE = `<style>
 .svr-tg { font-size: 12.5px; color: var(--text-muted); margin-top: 1px; }
 .svr-now { font-size: 12.5px; color: var(--text-sm); margin-top: 3px; }
 .svr-warn { color: var(--orange); font-weight: 700; }
+.svr-noaddr { color: var(--text-muted); font-style: italic; }
+.svr-card { color: var(--accent); font-weight: 700; text-decoration: underline; white-space: nowrap; }
 .svr-conf { font-size: 11.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
 .svr-conf.n, .svr-conf.u { background: #FDE7DA; color: var(--orange); }
 .svr-conf.l { background: #FFF4C2; color: #7A5B00; }

@@ -23383,7 +23383,7 @@ function renderMainInner() {
       return;
     }
     wrap.innerHTML = '<div class="placeholder-note">טוען…</div>';
-    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7101').then((m) => {
+    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7102').then((m) => {
       m.init({
         biz: () => MOCK_BUSINESSES, esc,
         // noAsk – בלי חלון "לסל" (§705ה); noBasket – לא נכנס לסיכום לבעל העסק: יש לו כרטיס צהוב והודעה משלנו
@@ -25602,6 +25602,15 @@ onAuthStateChanged(auth, user => {
 });
 
 let _bizLoaded = false, _fanLoaded = false;
+// §710 — ?biz=ID פותח ישר את כרטיס העסק (כפתור "כרטיס העסק ↗" במסך "איך מקבלים את השירות" – בלשונית חדשה)
+// נקרא משני ה-onSnapshot (עסקים / חברים) – מי שמסיים אחרון פותח, פעם אחת בלבד
+let _deepBizDone = false;
+function maybeDeepBiz() {
+  if (_deepBizDone || !(_bizLoaded && _fanLoaded)) return;
+  _deepBizDone = true;
+  const id = new URLSearchParams(location.search).get('biz');
+  if (id && findBiz(id)) openBizFromFan(id);
+}
 function maybeInitialRender() { if (_bizLoaded && _fanLoaded) renderAll(); }
 
 // §244 — נטען לפני/במקביל לעסקים. אם הוא מגיע אחרי, ה-map מעודכן והעסקים מוזרמים מחדש
@@ -25630,6 +25639,7 @@ onSnapshot(collection(db, 'bizProofs'), snapshot => {
 onSnapshot(collection(db, 'businesses'), snapshot => {
   MOCK_BUSINESSES = snapshot.docs.map(d => hydrateBiz(d.id, d.data()));
   _bizLoaded = true;
+  maybeDeepBiz();   // §710
   // renderAllPreserveScroll (לא renderAll) — ה-listener הזה גם רץ בגלל הכתיבה-העצמית-של-המנהל, לא
   // רק שינויים-מבחוץ. ר' ההערה ב-renderAllPreserveScroll למעלה, זה שורש-הבאג האמיתי לקפיצת-הגלילה.
   if (_fanLoaded) queueRenderAllPreserveScroll(); else maybeInitialRender();
@@ -25648,6 +25658,7 @@ onSnapshot(collection(db, 'memberCodes'), snapshot => {
 onSnapshot(collection(db, 'members'), snapshot => {
   MOCK_FANS = snapshot.docs.map(d => hydrateFan(d.id, d.data()));
   _fanLoaded = true;
+  maybeDeepBiz();   // §710
   if (_bizLoaded) queueRenderAllPreserveScroll(); else maybeInitialRender();
 }, err => console.error('שגיאה בטעינת אוהדים מ-Firestore:', err));
 
