@@ -367,6 +367,7 @@ body {
   font-family: 'Heebo', sans-serif; font-size: 12.5px; font-weight: 800; color: var(--text-sm); cursor: pointer; transition: all .15s;
 }
 .action-tab.active { background: rgba(var(--accent-rgb),.15); border-color: var(--accent); color: var(--accent); }
+.action-tab .tab-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #D92D20; margin-inline-start: 6px; vertical-align: middle; box-shadow: 0 0 0 2px rgba(217,45,32,.18); }   /* §705ג */
 .action-tab .cnt {
   display: inline-flex; align-items: center; justify-content: center; background: var(--orange); color: #fff;
   font-size: 10px; font-weight: 800; min-width: 17px; height: 17px; border-radius: 9px; padding: 0 4px; margin-left: 5px;
@@ -10151,7 +10152,7 @@ function bizFullDetailHtml(id, opts) {
     <div class="card-nav-row"><button class="act-btn task-back-btn" onclick="${o.backFn}()">→ חזרה</button>${nextCardBtnHtml('biz', b.id)}</div>
     <div class="action-tabs">
       <button class="action-tab ${bizDetailViewTab==='main'?'active':''}" onclick="setBizDetailTab('main')">פרטי העסק</button>
-      <button class="action-tab ${bizDetailViewTab==='owner'?'active':''}" onclick="setBizDetailTab('owner')" title="${ownerTabDot ? esc(ownerTabDot) : ''}">🎫 בעל העסק${ownerTabDot ? ' •' : ''}</button>
+      <button class="action-tab ${bizDetailViewTab==='owner'?'active':''}" onclick="setBizDetailTab('owner')" title="${ownerTabDot ? esc(ownerTabDot) : ''}">🎫 בעל העסק${ownerTabDot ? '<span class="tab-dot"></span>' : ''}</button>
       <button class="action-tab ${bizDetailViewTab==='msgs'?'active':''}" onclick="setBizDetailTab('msgs')">💬 הודעות ופניות${bizOpenConvs(b).length ? ' •' : ''}</button>
       <button class="action-tab ${bizDetailViewTab==='decisions'?'active':''}" onclick="setBizDetailTab('decisions')">החלטות ויומן</button>
       ${b.status === 'approved' ? `<button class="action-tab ${bizDetailViewTab==='sections'?'active':''}" onclick="setBizDetailTab('sections')">📊 נתונים והגדרות${secOpenQuestions(b).length ? ' •' : ''}</button>` : ''}
@@ -14313,7 +14314,10 @@ function bizOwnerTabNeedsLook(b) {
   const f = ownerFanOfBiz(b), mm = f && ownerMismatch(b, f);
   if (!f) return 'העסק לא מחובר לחשבון אוהד';
   if (mm && mm.warn) return 'העסק והחבר לא באותו מצב';
-  if (b.status === 'pending') return 'לבדוק את האימות של בעל העסק לפני האישור';
+  // §705ג – רמי: "אני לא רואה שבמידה ולא אישרתי את האימות זה מתריע לי, ואין נקודה על הלשונית לפני שמאמת". עד עכשיו
+  // הנקודה הופיעה בכל עסק ממתין, גם אחרי ✓ אשר את האימות – ולכן לא אמרה כלום. עכשיו רק כשהאימות עוד פתוח / נדחה.
+  if (b.status === 'pending' && bizOwnerVerifOpen(b)) return 'אימות בעל העסק עוד לא אושר – לבדוק לפני אישור העסק';
+  if (b.status === 'pending' && bizOwnerVerifStatus(b) === 'rejected') return 'אימות בעל העסק נדחה';
   return '';
 }
 function ownerMemberCardHtml(b) {
@@ -14687,7 +14691,13 @@ function bizOpenRows(b) {
   });
   pend.filter(it => !used.has(it)).forEach(it => rows.push({ k: 'f_' + it.field, label: it.label, step: it.section, items: [it], asks: [] }));
   sent.filter(x => !used.has(x)).forEach((x, i) => rows.push({ k: 'a_' + i, label: '✏️ ביקשנו', step: 0, items: [], asks: [x] }));
-  const rank = r => r.items.length && r.asks.length ? 0 : !r.items.length ? 1 : 2;
+  // §705ג – עסק ממתין: מה שחייב להיבדק לפני האישור – אימות בעל העסק, וכשרות לעסק אוכל (אחרת מיד אחרי האישור הוא
+  // קופץ ל"כרטיס חסר באינדקס" – ננו קוקטייל בר, 1.11). ראשונים ברשימה.
+  if (b.status === 'pending' && !b.fixHidden) {
+    if (bizOwnerVerifOpen(b)) rows.push({ k: 'chkVerif', label: '🎫 אימות בעל העסק', step: 1, items: [], asks: [], check: 'verif' });
+    if (kosherMissing(b)) rows.push({ k: 'chkKosher', label: '🍽️ כשרות', step: 0, items: [], asks: [], check: 'kosher' });
+  }
+  const rank = r => r.check ? -1 : r.items.length && r.asks.length ? 0 : !r.items.length ? 1 : 2;
   return rows.map((r, i) => ({ ...r, i })).sort((a, c) => rank(a) - rank(c) || a.i - c.i);
 }
 function opValHtml(b, f, v, isNew) {
@@ -14704,6 +14714,14 @@ function opValHtml(b, f, v, isNew) {
   return t === '–' || t === '' ? '<span class="op-empty">ריק</span>' : esc(f === 'additionalDiscounts' && Array.isArray(v) ? v.map(x => x && x.text).filter(Boolean).join('\n') || t : t);
 }
 function opRowHtml(b, r) {
+  if (r.check) {
+    const body = r.check === 'verif'
+      ? `<div class="op-hint" style="font-size:13px;color:var(--text)">עוד לא אישרת שהוא אוהד (מנוי / מושב / צילום) – בלשונית "🎫 בעל העסק". אישור העסק מאשר גם את האימות.</div>
+        <div class="op-acts"><button type="button" class="act-btn" onclick="setBizDetailTab('owner')">🎫 לבדוק את האימות ←</button>${bizOwnerVerifStatus(b) === 'info_requested' ? '<span class="op-hint" style="margin:0">ממתין למידע נוסף ממנו</span>' : ''}</div>`
+      : `<div class="op-hint" style="font-size:13px;color:var(--text)">עסק אוכל – בלי סימון הוא קופץ ל"כרטיס חסר באינדקס" מיד אחרי האישור.</div>
+        <div class="op-acts"><button type="button" class="act-btn" onclick="setBizKosher('${b.id}', true)">כשר</button><button type="button" class="act-btn" onclick="setBizKosher('${b.id}', false)">לא כשר</button></div>`;
+    return `<div class="op-row ours" style="border-color:#FDA29B;border-style:solid;background:#FFFBFA"><div class="op-top"><span class="op-field">${esc(r.label)}</span><span class="op-who" style="background:#FEE4E2;color:#B42318">⚠️ לבדוק לפני אישור</span></div>${body}</div>`;
+  }
   const P = b.pendingChanges || {};
   const writable = r.items.filter(it => it.field in P);
   const type = r.items.length && r.asks.length ? 'linked' : r.items.length ? 'his' : 'ours';
@@ -14750,7 +14768,7 @@ function bizWaitBannerHtml(b) {
   const dec = QJ_DECIDED[b.id] || [];
   const pending = b.status === 'pending';
   const revd = BIZ_REVIEW_SECTIONS.filter(n => b.reviewedSections && b.reviewedSections[n]).length;
-  if (!inFix && !asked.length && !dec.length && !bsDrafts[b.id] && !(pending && revd < BIZ_REVIEW_SECTIONS.length)) return '';
+  if (!inFix && !asked.length && !dec.length && !bsDrafts[b.id] && !(pending && !b.fixHidden)) return '';   // §705ג – עסק ממתין: תמיד (גם "✓ אין שום דבר פתוח – לאשר")
   const by = {};   // שלב → [שורות]
   const add = (n, kind, tag, text, di) => (by[n] = by[n] || []).push({ kind, tag, text, di });
   if (false) {   // §689 – מה שנשלח מוצג פעם אחת, ממוספר, בראש הפס (sentBox)
@@ -14790,8 +14808,8 @@ function bizWaitBannerHtml(b) {
     : `<div class="ph-badge">✏️ צריך לתקן</div><div class="ph-title">נשאר עוד צעד קטן ב"${esc(b.name)}"</div><div class="ph-text">כדי שהכרטיס יהיה מושלם חסר לנו:</div>`;
   // §705 – "📋 מה פתוח בעסק הזה" במקום "📱 כך זה נראה אצלו" ו"בעל העסק ביקש לעדכן": שורה לכל שדה, עם השלב
   const rows = bizOpenRows(b);
-  const cnt = t => rows.filter(r => t === 'linked' ? r.items.length && r.asks.length : t === 'his' ? r.items.length && !r.asks.length : !r.items.length).length;
-  const legend = [['linked', '🔁', 'ביקשנו והוא שלח'], ['his', '🆕', 'הוא ביקש לשנות'], ['ours', '⏳', 'ביקשנו ומחכים לו']].map(([t, ic, w]) => cnt(t) ? `<span><b>${ic} ${cnt(t)}</b> ${w}</span>` : '').join('');
+  const cnt = t => rows.filter(r => t === 'check' ? r.check : t === 'linked' ? r.items.length && r.asks.length : t === 'his' ? r.items.length && !r.asks.length : !r.check && !r.items.length).length;
+  const legend = [['check', '⚠️', 'לבדוק לפני אישור'], ['linked', '🔁', 'ביקשנו והוא שלח'], ['his', '🆕', 'הוא ביקש לשנות'], ['ours', '⏳', 'ביקשנו ומחכים לו']].map(([t, ic, w]) => cnt(t) ? `<span><b>${ic} ${cnt(t)}</b> ${w}</span>` : '').join('');
   const oldRound = b.inReviewAt && toJsDate(b.inReviewAt) < new Date('2026-10-31T00:00:00+02:00');
   const sentMsg = !inFix ? '' : lastSum ? `<details class="sum-msg"><summary>📨 מה שלחנו לו · ${fmtDateTime(toJsDate(lastSum.createdAt))} · "${esc(lastSum.summary.msgTitle || '')}"</summary><div class="sum-round-msg">${esc(lastSum.summary.msgText || '')}</div></details>`
     : oldRound ? `<div class="mtile-sub" style="margin-top:6px">📨 ההודעה עצמה – נשלחה ${fmtDateTime(toJsDate(b.inReviewAt))}, לפני שהתחלנו לשמור סבבים (31.10) – ביומן</div>` : '';
@@ -17334,6 +17352,8 @@ window.bsGo = async function() {
     // תזכורת רכה, לא חסימה — כמו ב-approveBiz עד עכשיו
     if (reviewed < reviewTotal && !confirm(`רק ${reviewed}/${reviewTotal} שלבים סומנו כ"נסקר". לאשר בכל זאת?`)) return;
     if (!confirmSuspectEmail(b.ownerEmail, `"${b.name}"`)) return;
+    if (kosherMissing(b)) { err.textContent = '⛔ לא סומנה כשרות – "כשר / לא כשר" ב"מה פתוח" או בשורת הכשרות, ואז לאשר.'; return; }   // §705ג
+    if (bizOwnerVerifOpen(b) && !confirm('עוד לא אישרת את אימות בעל העסק (מנוי / מושב / צילום).\nאישור העסק יאשר גם את האימות. להמשיך?')) return;   // §705ג
     if (bizMissingCardTitle(b)) { err.textContent = '⛔ אין כותרת להטבה בכרטיס – חובה להגדיר לפני אישור: שלב "הטבות" → ✏️ לשנות בעצמי.'; return; }   // §614 · §687ב – חסימה
   }
   o.sending = true; err.textContent = '';
