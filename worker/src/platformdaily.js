@@ -4,6 +4,8 @@
 // החישוב עצמו ב-platform-agg.js, **אותו קובץ** שמרכז הניהול מריץ על היום הנוכחי.
 import { aggregatePlatformDay, ilDayKey, ilDayRange, PLATFORM_AGG_VERSION } from '../../platform-agg.js';
 import { firestoreRunQuery, firestoreGetDoc, firestorePatch } from './firestore.js';
+// §699 – "אפליקציה ושימוש": אותם אירועים, סיכום נוסף (usageDaily/{יום}) – בלי קריאות נוספות
+import { aggregateUsageDay, USAGE_AGG_VERSION } from '../../usage-agg.js';
 
 const BASE = (projectId) => `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 const FILL_BACK_DAYS = 3;     // כמה ימים אחורה להשלים בריצה רגילה
@@ -54,6 +56,9 @@ export async function computePlatformDay(env, token, key, adminIds) {
   const evs = await eventsOfDay(env, token, key);
   const agg = aggregatePlatformDay(evs, adminIds);
   await firestorePatch(env, token, `platformDaily/${key}`, { ...agg, day: key, computedAt: new Date() });
+  // §699 – כשל כאן לא מפיל את platformDaily, שכבר נכתב
+  try { await firestorePatch(env, token, `usageDaily/${key}`, { ...aggregateUsageDay(evs, adminIds), day: key, computedAt: new Date() }); }
+  catch (e) { console.error('usageDaily ' + key + ' failed', String(e)); }
   return evs.length;
 }
 
@@ -67,7 +72,8 @@ export async function runPlatformDaily(env, token, now = new Date()) {
     // כלומר ביום שבו נשלחו). ימים קודמים – רק אם חסרים או חושבו בגרסה ישנה.
     if (i > 1) {
       const d = await firestoreGetDoc(env, token, `platformDaily/${key}`).catch(() => null);
-      if (d && Number(d.fields && d.fields.v) === PLATFORM_AGG_VERSION) { done[key] = 'kept'; continue; }
+      const u = await firestoreGetDoc(env, token, `usageDaily/${key}`).catch(() => null);   // §699
+      if (d && Number(d.fields && d.fields.v) === PLATFORM_AGG_VERSION && u && Number(u.fields && u.fields.v) === USAGE_AGG_VERSION) { done[key] = 'kept'; continue; }
     }
     done[key] = await computePlatformDay(env, token, key, admins);
   }
