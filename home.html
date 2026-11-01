@@ -468,6 +468,17 @@
       color: var(--ink); cursor: pointer; flex-shrink: 0; -webkit-tap-highlight-color: transparent;
     }
     .nav-search-toggle:active { transform: scale(.93); }
+    /* §710ח — הפס הצהוב "מה מחפשים היום?" יורד; החיפוש והסינון בגיליון מהזכוכית (מובייל) / מ"סינון" בהדר (דסקטופ).
+       ה-DOM של ה-hero נשאר (קוד ישן מצייר לתוכו) – רק מוסתר. */
+    .hero { display: none !important; }
+    .nav-search-toggle { position: relative; }
+    .nav-sf-badge { position: absolute; top: -4px; left: -4px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+      background: var(--acc); color: var(--ink); font-size: 10.5px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+    .nav-filter { display: none; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: var(--r-field); border: 1px solid var(--field-line);
+      background: var(--field); color: var(--ink); font-family: 'Rubik', sans-serif; font-size: 13.5px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+    .nav-sf-n:not(:empty) { background: var(--acc); border-radius: 9px; padding: 0 6px; font-size: 11px; font-weight: 900; }
+    @media (min-width: 640px) { .nav-filter { display: inline-flex; } }
+    @media (max-width: 639px) { .nav-search-toggle { display: flex; } }
     @media (max-width: 639px) {
       .top-nav.past-hero .nav-search-toggle { display: flex; }
       .top-nav.searching .nav-search-toggle { display: none; }
@@ -1728,9 +1739,16 @@
       <div class="menu-toggle" id="menuToggle" onclick="openMenu()">
         <span class="hbg-line"></span><span class="hbg-line"></span><span class="hbg-line"></span>
       </div>
-      <!-- §415 — מוצג רק במובייל ורק אחרי שתיבת ה-hero יצאה מהמסך (ר' CSS + observeHeroSearch) -->
-      <button type="button" class="nav-search-toggle" id="navSearchToggle" onclick="openNavSearch()" aria-label="חיפוש" title="חיפוש">
+      <!-- §710ח — רמי: "החיפוש והסינון מלכלכים את דף הבית – ליד הבורגר". במובייל הזכוכית תמיד גלויה ופותחת את
+           גיליון החיפוש והסינון (sfOpen('search')); המספר עליה = כמה סינונים פעילים. (§415: הייתה רק אחרי ה-hero.) -->
+      <button type="button" class="nav-search-toggle" id="navSearchToggle" onclick="sfOpen('search')" aria-label="חיפוש וסינון" title="חיפוש וסינון">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+        <span class="nav-sf-badge" id="navSfBadge" style="display:none"></span>
+      </button>
+      <!-- בדסקטופ תיבת החיפוש כבר בהדר; כאן רק הסינון -->
+      <button type="button" class="nav-filter" id="navFilterBtn" onclick="sfOpen()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        סינון<span class="nav-sf-n" id="navFilterN"></span>
       </button>
     </div>
     <div class="nav-search">
@@ -3134,11 +3152,11 @@ function handleSearch(val) {
 // שתי תיבות החיפוש (ההדר ממסך 640px, ה-hero מתחתיו) — רק אחת גלויה בכל רגע, אבל שתיהן
 // קיימות ב-DOM תמיד. משאירים אותן זהות כדי שסיבוב-מכשיר/שינוי-רוחב לא יחשוף תיבה עם טקסט אחר.
 function syncSearchInputs(val) {
-  ['searchInput', 'searchInputDesktop'].forEach(id => {
+  ['searchInput', 'searchInputDesktop', 'sfSearchIn'].forEach(id => {   // §710ח – גם התיבה שבגיליון
     const el = document.getElementById(id);
     if (el && el.value !== val) el.value = val;
   });
-  ['searchClearHero', 'searchClearDesktop'].forEach(id => {
+  ['searchClearHero', 'searchClearDesktop', 'sfSearchClear'].forEach(id => {
     document.getElementById(id)?.classList.toggle('show', !!val);
   });
 }
@@ -4611,6 +4629,14 @@ document.addEventListener('DOMContentLoaded', () => {
   .sf-picked { display: inline-flex; gap: 6px; align-items: center; margin-top: 8px; padding: 6px 10px; border-radius: 999px; background: rgba(255,212,0,.22);
     border: 1.5px solid var(--yellow); font-size: 13px; font-weight: 700; }
   .sf-picked button { background: none; border: 0; font-size: 14px; cursor: pointer; color: #0A2A66; padding: 0 2px; }
+  /* §710ח — ראש הגיליון: ידית + חיפוש, נשאר למעלה בגלילת הסינונים */
+  .sf-top { position: sticky; top: -10px; z-index: 2; background: #fff; margin: -10px -16px 0; padding: 10px 16px 6px; }
+  .sf-drag { padding: 2px 0 6px; cursor: grab; touch-action: none; }
+  .sf-drag .howto-grab { margin-bottom: 4px; }
+  .sf-search { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 12px; border: 2px solid #0A2A66; border-radius: 13px; color: #0A2A66; }
+  .sf-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-family: 'Rubik', sans-serif; font-size: 16px; color: #0A2A66; }
+  .sf-search input::-webkit-search-cancel-button { display: none; }
+  .sf-search .search-clear { position: static; transform: none; }
   .sf-actions { position: sticky; bottom: 0; background: #fff; display: flex; gap: 8px; padding: 12px 0 calc(14px + env(safe-area-inset-bottom)); margin-top: 14px; }
   .sf-btn { flex: 1; padding: 13px; border-radius: 12px; border: 0; font-family: 'Rubik', sans-serif; font-weight: 900; font-size: 15px; cursor: pointer; }
   .sf-btn.y { background: var(--yellow); color: #0A2A66; flex: 2; }
@@ -4697,7 +4723,15 @@ document.addEventListener('DOMContentLoaded', () => {
     var chip = function (on, onclick, label) { return '<button type="button" class="sf-chip' + (on ? ' on' : '') + '" onclick="' + onclick + '">' + label + '</button>'; };
     var Y = C();
     var sc = noText() && window.sfScope ? window.sfScope() : null;   // §662
-    return '<div class="howto-grab"></div><h2>סינון</h2>' +
+    // §710ח – ראש הגיליון (נשאר למעלה בגלילה): ידית משיכה + תיבת החיפוש, ואז "סינון"
+    var q = typeof _searchQuery !== 'undefined' ? (_searchQuery || '') : '';
+    return '<div class="sf-top"><div class="sf-drag" id="sfDrag"><div class="howto-grab"></div></div>' +
+      '<div class="sf-search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
+        '<input type="search" id="sfSearchIn" placeholder="חפש עסק, קטגוריה, שירות..." autocomplete="off" enterkeyhint="search" value="' + esc(q) + '"' +
+        ' oninput="handleSearch(this.value);sfLabelSoon()" onkeydown="if(event.key===\'Enter\'){this.blur();sfClose();}" onblur="_hbSearchSettle()">' +
+        '<button type="button" class="search-clear' + (q ? ' show' : '') + '" id="sfSearchClear" onclick="sfSearchClear()" aria-label="ניקוי החיפוש">' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div></div>' +
+      '<h2>סינון</h2>' +
       (sc ? '<div class="sf-gh" style="margin:2px 0 0">בתוך: ' + esc(sc.plain) + '</div>' : '') +
       '<div class="sf-grp" id="sfPlace"><div class="sf-gl">אזור או עיר</div><div class="sf-chips">' +
         REGIONS.map(function (r) { return chip(S.region.indexOf(r) !== -1, "sfRegion('" + r + "')", r); }).join('') + '</div>' +
@@ -4747,11 +4781,48 @@ document.addEventListener('DOMContentLoaded', () => {
     syncQuick();
     var ob = document.getElementById('sfOpenBtn'), cnt = activeCount();
     if (ob) ob.innerHTML = 'סינון' + (cnt ? ' <span class="n">' + cnt + '</span>' : '');
+    // §710ח – המספר על הזכוכית (מובייל) ועל "סינון" בהדר (דסקטופ)
+    var nb = document.getElementById('navSfBadge'); if (nb) { nb.textContent = cnt || ''; nb.style.display = cnt ? '' : 'none'; }
+    var nf = document.getElementById('navFilterN'); if (nf) nf.textContent = cnt ? String(cnt) : '';
     var sh = document.getElementById('sfSheet');
     if (sh && sh.classList.contains('open')) {
+      // ציור מחדש – בלי לאבד הקלדה שבאמצע בתיבת החיפוש
+      var a = document.activeElement, keepQ = a && a.id === 'sfSearchIn' ? [a.selectionStart, a.selectionEnd] : null;
       var keepY = sh.scrollTop; sh.innerHTML = sheetHtml(); sh.scrollTop = keepY;
+      if (keepQ) { var si = document.getElementById('sfSearchIn'); if (si) { si.focus(); try { si.setSelectionRange(keepQ[0], keepQ[1]); } catch (e) {} } }
     }
   };
+  // §710ח – "הצגת N עסקים" מתעדכן תוך כדי הקלדה (החיפוש עצמו רץ אחרי 120ms – handleSearch)
+  var labelT = null;
+  window.sfLabelSoon = function () {
+    clearTimeout(labelT);
+    labelT = setTimeout(function () { var y = document.querySelector('#sfSheet .sf-btn.y'); if (y) y.textContent = resultsLabel(); }, 200);
+  };
+  window.sfSearchClear = function () {
+    if (typeof clearSearch === 'function') clearSearch();
+    var si = document.getElementById('sfSearchIn'); if (si) { si.value = ''; si.focus(); }
+    window.sfLabelSoon();
+  };
+  // §710ח – משיכה של הידית למטה סוגרת (נגיעה ברקע הכהה סוגרת כבר – sfOv)
+  (function dragToClose() {
+    var sh = document.getElementById('sfSheet'), y0 = null, dy = 0;
+    if (!sh) return;
+    sh.addEventListener('pointerdown', function (e) {
+      if (!e.target.closest('#sfDrag')) return;
+      y0 = e.clientY; dy = 0; sh.style.transition = 'none';
+      try { e.target.setPointerCapture(e.pointerId); } catch (x) {}
+    });
+    sh.addEventListener('pointermove', function (e) {
+      if (y0 == null) return;
+      dy = Math.max(0, e.clientY - y0); sh.style.transform = 'translateY(' + dy + 'px)';
+    });
+    var end = function () {
+      if (y0 == null) return;
+      y0 = null; sh.style.transition = ''; sh.style.transform = '';
+      if (dy > 90) window.sfClose();
+    };
+    sh.addEventListener('pointerup', end); sh.addEventListener('pointercancel', end);
+  })();
   function apply() {
     dismissed = false;   // §645ה – שינוי סינון מחזיר את השורה
     window.sfRender();
@@ -4801,6 +4872,8 @@ document.addEventListener('DOMContentLoaded', () => {
     sh.innerHTML = sheetHtml(); sh.scrollTop = 0;
     document.getElementById('sfOv').classList.add('open'); sh.classList.add('open');
     if (focus === 'place') setTimeout(function () { var el = document.getElementById('sfPlace'); if (el) el.scrollIntoView({ block: 'start' }); }, 30);
+    // §710ח – מהזכוכית: ישר להקלדה (הסמן בסוף מה שכבר נכתב)
+    if (focus === 'search') setTimeout(function () { var si = document.getElementById('sfSearchIn'); if (si) { si.focus(); var n = si.value.length; try { si.setSelectionRange(n, n); } catch (e) {} } }, 280);
   };
   window.sfClose = function () {
     document.getElementById('sfOv').classList.remove('open');
