@@ -4715,6 +4715,12 @@ function sidebarTaskCounts() {
 }
 function sidebarBadge(n) { return n ? `<span class="sidebar-nav-badge">${n}</span>` : ''; }
 // §710 — כמה נותני שירות עוד לא עודכנו (אותו תנאי כמו admin-service-review.js: list + isDone)
+// §710 – מיקום "איך מקבלים את השירות" בכרטיס בדף הבית ('' = אוטומטי). תצוגה בלבד – בלי סל ובלי חלון.
+window.setServicePlace = function (id, v) {
+  const b = findBiz(id);
+  if (!b || (b.servicePlace || '') === v) return;
+  saveSectionUpdates(id, { servicePlace: v }, { noAsk: true, noBasket: true });
+};
 function serviceReviewLeft() {
   return MOCK_BUSINESSES.filter(b => (b.bizTypes || []).includes('pro') && (b.status === 'approved' || b.status === 'pending')
     && !(Array.isArray(b.serviceModes) && b.serviceModes.length && b.serviceSetBy)).length;
@@ -13724,6 +13730,10 @@ function stepTilesHtml(b, n) {
       + ((b.bizTypes || []).includes('pro') ? line('איך מקבלים:', (b.serviceModes || []).length
           ? (b.serviceModes || []).map(k => chip(esc(SERVICE_MODE_LABELS[k] || k))).join(' ') + ` <span style="font-size:11.5px;color:var(--text-muted)">${b.serviceSetBy === 'owner' ? 'בעל העסק ענה' : 'נקבע במסך המעבר'}</span>`
           : chip('⚠️ עוד לא נקבע – במסך "איך מקבלים את השירות"', true)) : '')
+      // §710 – איפה השורה יושבת בכרטיס בחוץ (תצוגה בלבד): אוטומטי / ליד התגית / ליד ההטבה
+      + (((b.bizTypes || []).some(t => t === 'physical' || t === 'online') || (b.serviceModes || []).length) ? line('בכרטיס בחוץ:',
+          [['', 'אוטומטי'], ['tags', 'ליד התגית'], ['deal', 'ליד ההטבה']].map(([v, t]) =>
+            `<button type="button" class="qj-btn${(b.servicePlace || '') === v ? ' svc-place-on' : ''}" style="padding:2px 9px;font-size:12px${(b.servicePlace || '') === v ? ';background:var(--accent);color:#fff' : ''}" onclick="event.stopPropagation();setServicePlace('${b.id}','${v}')">${t}</button>`).join(' ')) : '')
       + (!branches.length && !(b.regions || []).length ? '<div class="mtile-empty">' + chip('⚠️ לא מילא כתובת ואזורי פעילות', true) + '</div>' : ''), ['branches', 'city', 'address', 'regions'], 'editBranchesList_' + b.id)}
     ${tile('שעות פעילות', b.hoursText || b.hoursMode ? `<div style="font-size:13px">${adminHoursHtml(b)}</div>` : chip('לא מילא שעות', true), ['hours'], 'edit_hoursBox_' + b.id)}
     ${tile('אתר ורשתות', (links.length ? links.map(([k, v]) => line(k + ':', `<span dir="ltr" style="word-break:break-all">${esc(v)}</span>`)).join('') : chip('לא מילא אתר / רשתות', true))
@@ -15406,6 +15416,7 @@ const DIFF_FIELD_LABELS_MOCK = {
   bizTypes: 'סוג עסק', name: 'שם העסק', desc: 'תיאור', branches: 'סניפים',
   regions: 'אזורי פעילות',
   serviceModes: 'איך מקבלים את השירות',   // §710
+  servicePlace: 'מיקום "איך מקבלים" בכרטיס',
   phone: 'טלפון עסק', whatsapp: 'WhatsApp', serviceEmail: 'מייל שירות', city: 'עיר', address: 'כתובת',
   categoryPrimary: 'קטגוריה ראשית', cat: 'קטגוריה ראשית', categorySecondary: 'קטגוריות משניות',
   tags: 'תגיות', tagSecondSuggestion: 'בקשת העסק לתגית שנייה', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'בקשת העסק למופיע גם תחת', alsoCategoryNote: 'הערת העסק לגבי קטגוריה נוספת',
