@@ -148,8 +148,12 @@ function range() {
   if (S.per === '7') return [addDays(t, -6), t];
   if (S.per === '30') return [addDays(t, -29), t];
   if (S.per === 'launch') return [LAUNCH, t];
+  if (S.per === 'all') return [firstDay(), t];   // §704 – מאז ומתמיד: מההרשמה הראשונה שנשמרה
   return [S.from || LAUNCH, S.to || t];
 }
+// §704 – "הכול": היום של ההרשמה הראשונה (רשומות החברים); הורדות ופעילות נמדדות רק מ-11.10
+let FIRST = '';
+function firstDay() { if (!FIRST) { FIRST = MEASURE_FROM; (C.fans() || []).forEach(m => { if (m.registeredAtKnown) { const k = dk(m.registeredAt); if (k < FIRST) FIRST = k; } }); } return FIRST; }
 const rangeLabel = ([a, b]) => a === b ? (a === D.today ? 'היום' : a === addDays(D.today, -1) ? 'אתמול' : short(a)) : `${short(a)}–${short(b)}`;
 
 // מה קרה בטווח [a,b]
@@ -176,7 +180,7 @@ function period(a, b) {
   const act = new Set(); keys.forEach(k => ((D.days[k] || {}).appActive || []).forEach(d => act.add(d)));
   const methodOf = m => m.signupMethod === 'apple' ? 2 : m.signupMethod === 'google' ? 1 : 0;
   const meth = [0, 0, 0], os = [0, 0]; reg.forEach(m => { meth[methodOf(m)]++; if (m.signupOs === 'ios') os[0]++; else if (m.signupOs === 'android') os[1]++; });
-  const missing = keys.filter(k => !D.days[k]);
+  const missing = keys.filter(k => k >= MEASURE_FROM && !D.days[k]);   // לפני 11.10 אין מדידה – זה לא "חסר"
   return { a, b, dl: dl.length, dReg: cls.sub || 0, dLog: cls.login || 0, dNone: cls.none || 0, reg: reg.length, rgSt, rAp: rAp.length, rEnt: rEnt.length,
     rPend: rgSt.pending || 0, rRej: rgSt.rejected || 0, dlw, ap, rej, first, ret, active, act: act.size, meth, os, missing, regList: reg };
 }
@@ -194,7 +198,7 @@ export function html() {
   if (loadErr) return `<div class="yzu">${css()}<div class="yzu-box">הטעינה נכשלה: ${esc(loadErr)} · <button class="yzu-btn" onclick="yzuReload()">לנסות שוב</button></div></div>`;
   if (!D) return `<div class="yzu">${css()}<div class="yzu-box">טוען נתונים…</div></div>`;
   const R = range(), p = period(R[0], R[1]);
-  const head = `<div class="yzu-top"><div class="yzu-pbar"><b>תקופה:</b>${[['today', 'היום'], ['yest', 'אתמול'], ['7', '7 ימים'], ['30', '30 ימים'], ['launch', 'מאז ההשקה'], ['custom', 'בחירת תאריכים']].map(([k, l]) => `<button class="${S.per === k ? 'on' : ''}" onclick="yzuSet('per','${k}')">${l}</button>`).join('')}
+  const head = `<div class="yzu-top"><div class="yzu-pbar"><b>תקופה:</b>${[['today', 'היום'], ['yest', 'אתמול'], ['7', '7 ימים'], ['30', '30 ימים'], ['launch', 'מאז ההשקה'], ['all', 'הכול'], ['custom', 'בחירת תאריכים']].map(([k, l]) => `<button class="${S.per === k ? 'on' : ''}" onclick="yzuSet('per','${k}')" ${k === 'all' ? 'title="מאז ומתמיד – מההרשמה הראשונה. הורדות, כניסות וחזרות נמדדים מ-11.10"' : ''}>${l}</button>`).join('')}
       ${S.per === 'custom' ? `<span>מ-<input type="date" value="${S.from}" min="${MEASURE_FROM}" max="${D.today}" onchange="yzuSet('from',this.value)"> עד <input type="date" value="${S.to}" min="${MEASURE_FROM}" max="${D.today}" onchange="yzuSet('to',this.value)"></span>` : ''}</div>
     <div class="yzu-tools"><button class="yzu-btn ${S.table ? 'on' : ''}" onclick="yzuSet('table')">${S.table ? '◧ חזרה לתצוגה הרגילה' : '▦ תצוגת טבלה'}</button><button class="yzu-btn" onclick="yzuReload()" title="טוען מחדש את אירועי היום">↻ רענון</button>
       <span class="yzu-note">נטען ${D.loadedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}${p.missing.length ? ` · ⚠️ חסר סיכום ל-${p.missing.map(short).join(', ')}` : ''}${D.capped.length ? ' · ⚠️ היום עבר 10,000 אירועים מאותו סוג – המספרים של היום חלקיים' : ''}</span></div></div>`;

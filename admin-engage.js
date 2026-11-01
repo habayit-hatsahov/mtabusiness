@@ -7,7 +7,7 @@
 //   • מסירת הודעות       – messages/*/recipients, נטען רק כשפותחים את האריח (לפי התקופה).
 // העיצוב, בחירת התקופה ו"!" – מ-admin-usage.js (shared), כמו בשתי הלשוניות האחרות.
 import { aggregateEngageDay, ENGAGE_TYPES } from './engage-agg.js?v=702';
-import { shared as U } from './admin-usage.js?v=700';
+import { shared as U } from './admin-usage.js?v=704';
 
 const LAUNCH = '2026-10-26', SHARE_FROM = '2026-11-01', BENVIEW_FROM = '2026-11-01';
 let E = null, loading = false, err = '';
@@ -66,7 +66,7 @@ function range() {
   if (S.per === 'yest') { const y = U.addDays(t, -1); return [y, y]; }
   if (S.per === '7') return [U.addDays(t, -6), t];
   if (S.per === '30') return [U.addDays(t, -29), t];
-  if (S.per === 'launch') return [LAUNCH, t];
+  if (S.per === 'launch' || S.per === 'all') return [LAUNCH, t];   // §704 – "הכול" = מתחילת המדידה של המעורבות (26.10)
   return [S.from < LAUNCH ? LAUNCH : S.from, S.to || t];
 }
 const lbl = ([a, b]) => a === b ? (a === U.D.today ? 'היום' : a === U.addDays(U.D.today, -1) ? 'אתמול' : U.short(a)) : `${U.short(a)}–${U.short(b)}`;
@@ -98,7 +98,7 @@ export function html() {
   if (err) return `<div class="yzu">${U.css()}<div class="yzu-box">הטעינה נכשלה: ${U.esc(err)} · <button class="yzu-btn" onclick="yzeReload()">לנסות שוב</button></div></div>`;
   if (!E) return '<div class="placeholder-note">טוען את נתוני המעורבות…</div>';
   const R = range(), T = sum(R[0], R[1]), today = U.D.today;
-  const head = `<div class="yzu-top"><div class="yzu-pbar"><b>תקופה:</b>${[['today', 'היום'], ['yest', 'אתמול'], ['7', '7 ימים'], ['30', '30 ימים'], ['launch', 'מאז ההשקה'], ['custom', 'בחירת תאריכים']].map(([k, l]) => `<button class="${S.per === k ? 'on' : ''}" onclick="yzeSet('per','${k}')">${l}</button>`).join('')}
+  const head = `<div class="yzu-top"><div class="yzu-pbar"><b>תקופה:</b>${[['today', 'היום'], ['yest', 'אתמול'], ['7', '7 ימים'], ['30', '30 ימים'], ['launch', 'מאז ההשקה'], ['all', 'הכול'], ['custom', 'בחירת תאריכים']].map(([k, l]) => `<button class="${S.per === k ? 'on' : ''}" onclick="yzeSet('per','${k}')" ${k === 'all' ? 'title="מאז ומתמיד – נתוני המעורבות נמדדים מ-26.10"' : ''}>${l}</button>`).join('')}
       ${S.per === 'custom' ? `<span>מ-<input type="date" value="${S.from}" min="${LAUNCH}" max="${today}" onchange="yzeSet('from',this.value)"> עד <input type="date" value="${S.to}" min="${LAUNCH}" max="${today}" onchange="yzeSet('to',this.value)"></span>` : ''}</div>
     <div class="yzu-tools"><button class="yzu-btn ${S.table ? 'on' : ''}" onclick="yzeSet('table')">${S.table ? '◧ חזרה לתצוגה הרגילה' : '▦ תצוגת טבלה'}</button><button class="yzu-btn" onclick="yzeReload()">↻ רענון</button>
       <span class="yzu-note">נטען ${E.loadedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })} · נמדד מ-26.10${T.missing.length ? ` · ⚠️ חסר סיכום ל-${T.missing.map(U.short).join(', ')}` : ''}</span></div></div>`;

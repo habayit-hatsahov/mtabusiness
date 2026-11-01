@@ -13,7 +13,9 @@ import { impressionsOfDay } from './engagedaily.js';
 const BASE = (projectId) => `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 const FILL_BACK_DAYS = 3;     // כמה ימים אחורה להשלים בריצה רגילה
 const PAGE = 1000;
-const MAX_PAGES = 30;         // 30,000 אירועים ליום – פי 8 מהיום העמוס ביותר שנמדד (20.10: 5,116)
+// §704 – היה 30 (30,000): ביום ההשקה (26.10) היו ~47,000 אירועים, הריצה נכשלה והיום נשאר בלי סיכום.
+// 150 = פי 3 מהיום העמוס ביותר שנמדד; 150 בקשות-משנה – רחוק מתקרת 1,000 של Workers Paid.
+const MAX_PAGES = 150;
 
 const val = (v) => v == null ? null
   : 'stringValue' in v ? v.stringValue
