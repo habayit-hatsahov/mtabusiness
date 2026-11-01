@@ -217,6 +217,28 @@ export async function sendDashboardLinkEmail(env, { toEmail, toName, businessNam
   });
 }
 
+// §709 — בעל עסק ממתין שניסה להיכנס עם קוד: הקישור לדשבורד (שם רואים מה חסר ומתקנים).
+// נשלח רק לכתובת שברשומה – ר' pendingOwnerMailLink ב-ownerpending.js. ⚠️ אותו תג 'dashLink' בכוונה:
+// brevo-webhook.js מדלג עליו, אחרת אירועי המייל הזה דורסים את שדות מייל-הקוד (§415).
+export async function sendPendingBizLinkEmail(env, { toEmail, toName, businessName, link }) {
+  const body = [
+    'היי {name},',
+    'ביקשת להיכנס לאפליקציה. העסק "{business}" עדיין ממתין לאישור.',
+    'בדף העסק אפשר לראות אם חסר משהו ולתקן:',
+    '{link}',
+    'כשנאשר, יישלח אליך מייל עם קוד כניסה לאפליקציה.',
+    'הקישור אישי – לא להעביר הלאה. לא ביקשת? אפשר להתעלם מהמייל.',
+  ].join('\n\n');
+  const vars = { name: toName || '', business: businessName || 'העסק שלך', link };
+  await sendBrevoEmail(env, {
+    to: [{ email: toEmail, name: toName || '' }],
+    replyTo: { email: REPLY_TO },
+    subject: 'הקישור לדף העסק שלך – ' + (businessName || 'Yellow Zone'),
+    htmlContent: renderMailHtml(body, vars, { linkLabel: 'לדף העסק', lineHeight: '1.7' }),
+    tag: 'dashLink',
+  });
+}
+
 // מייל מאוחד — כשבעל עסק מאושר גם כאוהד וגם כבעל עסק באותה פעולה
 export async function sendCombinedWelcomeEmail(env, { toEmail, toName, code, businessName, dashboardLink, tpl, login = null, msgTag = '' }) {
   const vars = { name: toName || '', code, business: businessName, link: dashboardLink, ...loginVars(login) };

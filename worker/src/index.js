@@ -13,8 +13,8 @@ import { handleRegStatus, handleRegRetry } from './regstatus.js';
 import { handleBizRegStatus } from './bizregstatus.js';
 import { handleBizFixDone, handleBizFixDecline, runBizRequestAlerts } from './bizfix.js';   // §672 · §696
 import { isStrongMatch, describeRegistration } from './regmethod.js';
-import { pendingOwnerExtras } from './ownerpending.js';
-import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail, sendRejectEmail } from './brevo.js';
+import { pendingOwnerExtras, pendingOwnerMailLink } from './ownerpending.js';
+import { sendLoginCodeEmail, sendBusinessApprovedEmail, sendCombinedWelcomeEmail, sendBroadcastEmail, sendConversationReplyEmail, sendDashboardLinkEmail, sendPendingBizLinkEmail, sendRejectEmail } from './brevo.js';
 import { loginModeFor } from '../../mail-format.js';
 import { shortenBenefitText } from './anthropic.js';
 import { suggestFallbackImages } from './pexels.js';
@@ -358,7 +358,13 @@ async function handleMemberLogin({ phone, code }, request, env) {
     if (phoneDoc) break;
   }
   if (phoneDoc) {
-    return { error: phoneDoc.fields.status === 'pending' ? 'pending' : 'rejected' };
+    if (phoneDoc.fields.status !== 'pending') return { error: 'rejected' };
+    // §709 — בעל עסק ממתין: הקישור לדשבורד יוצא למייל שברשומה (ownerpending.js). כשל לא מפיל את התשובה.
+    try {
+      const mail = await pendingOwnerMailLink(env, accessToken, phoneDoc, sendPendingBizLinkEmail);
+      if (mail) return { error: 'pending', bizMail: mail };
+    } catch (e) { console.warn('pendingOwnerMailLink:', e.message); }
+    return { error: 'pending' };
   }
 
   return { error: 'invalid_credentials' };

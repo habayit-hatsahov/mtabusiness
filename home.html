@@ -535,6 +535,9 @@
     #bizFixCard .pc-note { margin-top: 6px; font-size: 13px; color: #B42318; }
     #bizFixCard .pc-actions { margin-top: 11px; }
     #bizFixCard .pc-no { border: 1px solid #C9D2E6; border-radius: 12px; padding: 10px 14px; font: inherit; font-size: 13.5px; font-weight: 700; background: #fff; color: #33466f; cursor: pointer; margin-inline-start: 8px; }
+    /* §709 – עסק ממתין בלי בקשת תיקון */
+    #bizFixCard.wait { background: #FFFBEA; border-color: #F5D77E; }
+    #bizFixCard.wait .pc-badge { background: #FFF1B8; color: #7A5B00; }
     #bizFixCard .pc-yes { border: none; border-radius: 12px; padding: 11px 18px; font: inherit; font-size: 14px; font-weight: 800; background: #FFD400; color: #0A2A66; cursor: pointer; }
     #pushCard.leaving, #appleLinkCard.leaving { opacity: 0; transform: translateY(-6px); }
     #pushCard .pc-h, #appleLinkCard .pc-h { font-weight: 800; font-size: 15.5px; }
@@ -5863,8 +5866,19 @@ function renderBizFixCard(b, bizId, tok) {
   const card = document.getElementById('bizFixCard');
   if (!card) return;
   const on = !!b && b.inReview === true && (b.status === 'pending' || b.status === 'approved');
-  card.hidden = !on;
+  // §709 – עסק ממתין בלי בקשת תיקון: עד עכשיו בעליו (כבר אוהד מאושר) לא ראה כאן כלום, ולא ידע
+  // אם העסק בכלל הגיע. בלי כפתור – מה שאפשר לעשות זה לחכות. בקשת תיקון מחליפה אותו ב"צריך לתקן".
+  const wait = !!b && !on && b.status === 'pending';
+  card.hidden = !on && !wait;
   card.textContent = '';
+  card.classList.toggle('wait', wait);
+  if (wait) {
+    const el = (tag, cls, text) => { const e = document.createElement(tag); e.className = cls; e.textContent = text; return e; };
+    card.appendChild(el('div', 'pc-badge', '⏳ ממתין לאישור'));
+    card.appendChild(el('div', 'pc-h', `"${b.name || 'העסק שלך'}" אצלנו – בבדיקה`));
+    card.appendChild(el('div', 'pc-b', 'אין צורך לעשות כלום. כשנאשר, העסק יעלה לאפליקציה ונעדכן אותך. אם יחסר משהו – נכתוב לך כאן.'));
+    return;
+  }
   if (!on) return;
   const sent = !!b.fixSubmittedAt;
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };

@@ -39,3 +39,38 @@ export async function pendingOwnerExtras(env, accessToken, row) {
   }
   return out;
 }
+
+// ══ §709 — אותו בעל עסק ממתין, במסלול הקוד (טלפון בלבד) ═══════════════════════════════════════
+// I.B.I (1.11): נרשם לפני §664, בלי Google – וכל מה שהאפליקציה אמרה לו היה "הבקשה עדיין ממתינה".
+// הטלפון אינו הוכחת זהות, ולכן לא מחזירים כאן טוקן או מפתח: שולחים את הקישור לדשבורד **למייל
+// שברשומה** (שם רואים מה חסר ומתקנים), ומחזירים רק את הכתובת המוסתרת. מי שמקיש טלפון של אחר
+// לא מקבל כלום מלבד "יש כאן עסק ממתין" + yo•••@gmail.com. בלי שם העסק.
+// תקרה: 3 מיילים בשעה לעסק; מעבר לזה – אותה תשובה עם already, בלי מייל נוסף.
+export function maskEmail(email) {
+  const [u, d] = String(email || '').split('@');
+  if (!u || !d) return '';
+  return (u.length > 2 ? u.slice(0, 2) : u.slice(0, 1)) + '•••@' + d;
+}
+
+export async function pendingOwnerMailLink(env, accessToken, row, send) {
+  const f = (row && row.fields) || {};
+  if (f.status !== 'pending' || f.isBusinessOwner !== true) return null;
+  const bizId = f.linkedBusinessId;
+  if (typeof bizId !== 'string' || !BIZ_ID_RE.test(bizId)) return null;
+  const b = await firestoreGetDoc(env, accessToken, `businesses/${bizId}`);
+  if (!b || b.fields.status !== 'pending' || b.fields.ownerMemberId !== row.id) return null;
+  const toEmail = String(f.email || b.fields.ownerEmail || '').trim();
+  if (!toEmail.includes('@')) return null;
+  const token = await bizTokenFor(env, accessToken, bizId);
+  if (!token) return null;
+  const out = { sentTo: maskEmail(toEmail) };
+  const rlKey = 'pendlink:' + bizId;
+  const n = parseInt((await env.RATE_LIMIT_KV.get(rlKey)) || '0', 10);
+  if (n >= 3) return { ...out, already: true };
+  await env.RATE_LIMIT_KV.put(rlKey, String(n + 1), { expirationTtl: 3600 });
+  await send(env, {
+    toEmail, toName: String(f.firstName || b.fields.ownerFirst || '').trim(), businessName: String(b.fields.name || ''),
+    link: `https://yellowzone.co.il/business-dashboard.html?token=${encodeURIComponent(token)}`,
+  });
+  return out;
+}

@@ -1480,7 +1480,7 @@ button { font-family: inherit; }
 #bizPendingBlock[data-state="missing"] .rp-badge { background: #FFF1E0; border-color: #FFD2A8; color: #C2570C; }
 #bizPendingBlock[data-state="missing"] .rp-dot, #bizPendingBlock[data-state="sent"] .rp-dot { display: none; }
 #bizPendingBlock[data-state="sent"] .rp-badge { background: #E7F6EC; border-color: #BFE6CC; color: #1B8A4B; }
-#bizPendingBlock[data-state="rejected"] .rp-btn-help { display: flex; }
+#bizPendingBlock[data-state="rejected"] .rp-btn-help, #bizPendingBlock[data-state="mailed"] .rp-btn-help { display: flex; }   /* §709 */
 #bizPendingBlock .bp-up { display: none; margin-top: 6px; }
 #bizPendingBlock[data-state="missing"] .bp-up { display: block; }
 #bizPendingBlock .bp-slot { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
@@ -2877,11 +2877,18 @@ window.yzRegSkip = function () {
       pending:  ['ממתין לאישור', hi + 'העסק שלך אצלנו', '"' + name + '" בבדיקה. אין צורך לעשות כלום – כשנאשר, פשוט פותחים את האפליקציה ונכנסים.'],
       sent:     ['ממתין לאישור', 'קיבלנו את התמונות – תודה!', 'הכול אצלנו, ו-"' + name + '" בבדיקה. כשנאשר – פשוט פותחים את האפליקציה ונכנסים.'],
       rejected: ['לא אושר', hi + 'לא הצלחנו לאשר את העסק', 'כתבו לנו ונבדוק יחד.'],
+      mailed:   ['ממתין לאישור', 'העסק שלך אצלנו', ''],   // §709 – הטקסט נבנה למטה (כתובת LTR בתוך עברית)
     }[state] || [];
     $('bpBadge').textContent = T[0] || '';
     $('bpTitle').textContent = T[1] || '';
     $('bpText').textContent = T[2] || '';
     $('bpNotMe').textContent = first ? 'לא ' + first + '? ' : '';
+    if (state === 'mailed') {
+      const t = $('bpText'), bd = document.createElement('bdi');
+      bd.textContent = (r && r.sentTo) || '';
+      t.append((r && r.already ? 'כבר שלחנו בשעה האחרונה קישור לדף העסק למייל ' : 'שלחנו קישור לדף העסק למייל '), bd,
+        '. בדף העסק רואים אם חסר משהו, ואפשר לתקן משם. כשנאשר – יישלח אליך מייל עם קוד כניסה, ונכנסים איתו כאן. המייל לא הגיע? בדקו בקידום מכירות ובספאם.');
+    }
     if (state === 'missing') renderSlots();
   };
   function renderSlots() {
@@ -3037,6 +3044,17 @@ window.yzRegSkip = function () {
     window.yzBizShow('pending', window.yzBizRegGet());
     window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: 'fromLogin:' + (via || '') });
     window.yzBizCheck();
+    return true;
+  };
+  // §709 — כניסה עם קוד של בעל עסק ממתין (הטלפון אינו הוכחת זהות): הוורקר שלח את הקישור לדשבורד
+  // למייל שברשומה, ומחזיר רק {sentTo, already?}. בלי טוקן ובלי מפתח, ולכן גם בלי yz_biz_reg –
+  // הכרטיס מוצג עד רענון, ו"כניסה עם חשבון אחר" מחזירה למסך הרגיל.
+  window.yzBizMailed = function (mail) {
+    if (!mail || typeof mail.sentTo !== 'string' || !mail.sentTo) return false;
+    try { if (document.getElementById('loginOverlay').classList.contains('open')) closeModal('loginOverlay'); } catch (e) {}
+    window.yzBizShow('mailed', { sentTo: mail.sentTo, already: mail.already === true });
+    try { $('bizPendingBlock').scrollIntoView({ block: 'center' }); } catch (e) {}
+    window.logEvent && window.logEvent('formStep', { blockId: 'bizPending', channel: mail.already ? 'mailed:already' : 'mailed' });
     return true;
   };
   window.yzBizRegSkip = function () {
@@ -4762,6 +4780,8 @@ window.heroLogin = async function() {
     window.hbBumpNetFail(failReason);
     if (!isCurrentAttempt()) return;
     window.heroResetLoginBtn();
+    // §709 — בעל עסק ממתין: הקישור לדף העסק נשלח למייל שברשומה – מסך "העסק שלך אצלנו" במקום השגיאה
+    if (data.error === 'pending' && data.bizMail && window.yzBizMailed && window.yzBizMailed(data.bizMail)) return;
     window.heroShowLoginHelp && window.heroShowLoginHelp(failReason);
     if (data.error === 'pending') heroShowErr('הבקשה שלכם עדיין ממתינה לאישור – ברגע שתאושר, באפליקציה שבה נרשמתם תיכנסו לבד, ובנוסף יישלח אליכם מייל עם קוד כניסה.');
     else if (data.error === 'rejected') heroShowErr('הבקשה שלכם נדחתה. לפרטים צרו קשר עם הצוות.');
@@ -4874,6 +4894,7 @@ window.heroLogin = async function() {
         // הערוץ המלא ולא הבסיס: errCode על פניית-העזרה חייב להגיד בדיוק מה נרשם במדידה,
         // אחרת המנהל רואה 'badCode' רגיל ומפספס שהתשובה בכלל **איחרה**. הניסוח בפאנל
         // נופל חזרה לבסיס בתוך heroShowLoginHelp.
+        if (lateReason === 'pending' && d.bizMail && window.yzBizMailed && window.yzBizMailed(d.bizMail)) return;   // §709
         window.heroShowLoginHelp && window.heroShowLoginHelp(lateChannel);
         heroShowErr(lateReason === 'pending' ? 'הבקשה שלכם עדיין ממתינה לאישור – ברגע שתאושר, באפליקציה שבה נרשמתם תיכנסו לבד, ובנוסף יישלח אליכם מייל עם קוד כניסה.'
                   : lateReason === 'rejected' ? 'הבקשה שלכם נדחתה. לפרטים צרו קשר עם הצוות.'
