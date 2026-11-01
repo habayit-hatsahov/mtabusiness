@@ -152,6 +152,13 @@ function problems(b, d) {
   if (d.modes.includes('atMine') && !cities(b).length && !(d.city.trim() && d.address.trim())) p.push('"הלקוח מגיע אליי" – חסרים עיר וכתובת');
   return p;
 }
+// שלב 2 – מה בעל העסק עשה עם הכרטיס הצהוב (business-dashboard.html)
+function ownerState(b) {
+  if (b.serviceSetBy !== 'admin') return '';
+  if (b.pendingChanges && 'serviceModes' in b.pendingChanges) return '<span class="svr-own wait">⏳ בעל העסק ביקש לשנות – ב"מה פתוח בעסק הזה"</span>';
+  if (b.serviceOwnerAckAt) return '<span class="svr-own ok">✓ בעל העסק אישר</span>';
+  return '<span class="svr-own">בעל העסק עוד לא ענה</span>';
+}
 export function lineOf(modes, regions) {
   return (modes || []).map((m) => LABEL[m] + (m === 'toClient' && regions && regions.length ? ' · ' + regions.join(', ') : '')).join(' + ');
 }
@@ -175,7 +182,7 @@ function cardHtml(b) {
         <div class="svr-now">${nowLine}</div>
       </div>
       ${done
-        ? `<div class="svr-done-t">✓ ${esc(lineOf(b.serviceModes, b.regions))}<small>${b.serviceSetBy === 'owner' ? 'בעל העסק עדכן' : 'אישרת'}${b.serviceSetAt ? ' · ' + esc(new Date(b.serviceSetAt).toLocaleDateString('he-IL')) : ''}</small></div>
+        ? `<div class="svr-done-t">✓ ${esc(lineOf(b.serviceModes, b.regions))}<small>${b.serviceSetBy === 'owner' ? 'בעל העסק עדכן' : 'אישרת'}${b.serviceSetAt ? ' · ' + esc(new Date(b.serviceSetAt).toLocaleDateString('he-IL')) : ''}</small>${ownerState(b)}</div>
            <button class="svr-redo" onclick="svrEdit('${b.id}')">לשנות</button>`
         : `<span class="svr-conf ${sg.conf}">${CONF[sg.conf]}</span>`}
     </div>`;
@@ -211,10 +218,12 @@ export function html() {
   const left = (c) => all.filter((b) => !isDone(b) && sug(b).conf === c).length;
   const f = S.filter;
   const shown = all
-    .filter((b) => f === 'all' ? true : f === 'done' ? isDone(b) : f === 'todo' ? !isDone(b) : (!isDone(b) && sug(b).conf === f))
+    .filter((b) => f === 'all' ? true : f === 'done' ? isDone(b) : f === 'todo' ? !isDone(b) : (!isDone(b) && (sug(b).conf === f || (f === 'u' && sug(b).conf === 'n'))))
     .sort((a, b) => (ORDER[sug(a).conf] - ORDER[sug(b).conf]) || String(a.name).localeCompare(String(b.name), 'he'));
   const pct = all.length ? Math.round(done.length / all.length * 100) : 0;
-  const btn = (k, t) => `<button class="${f === k ? 'on' : ''}" onclick="svrFilter('${k}')">${t}</button>`;
+  // מספר על כל תגית (רמי: "ואם אני מאשר – תוריד"); 0 = בלי מספר
+  const cnt = { todo: all.length - done.length, u: left('u') + left('n'), l: left('l'), s: left('s'), done: done.length, all: all.length };
+  const btn = (k, t) => `<button class="${f === k ? 'on' : ''}" onclick="svrFilter('${k}')">${t}${cnt[k] ? ` <span class="svr-n">${cnt[k]}</span>` : ''}</button>`;
   return `${STYLE}<div class="svr">
     <h2>איך מקבלים את השירות – מעבר על נותני השירות</h2>
     <p class="svr-sub">כל עסק שסימן "בעל מקצוע". לכל אחד: התיאור שכתב, ההצעה שלי (עם הציטוט שעליו נשענתי), ואותה שאלה כמו בטופס – מסומנת מראש. משנים אם צריך ולוחצים "אישור" – נשמר בעסק מיד ונרשם ביומן שלו. הלא ברורים ראשונים.<br>
@@ -269,6 +278,7 @@ const STYLE = `<style>
 .svr-flt { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .svr-flt button { border: 1.5px solid var(--border); background: #fff; color: var(--accent); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .svr-flt button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.svr-n { display: inline-block; min-width: 20px; padding: 0 6px; margin-right: 3px; border-radius: 999px; background: var(--accent-cta); color: var(--accent); font-size: 11.5px; font-weight: 800; }
 .svr-biz { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 13px; margin-top: 10px; }
 .svr-biz.done { background: #FBFCFD; }
 .svr-hd { display: flex; gap: 12px; align-items: flex-start; }
@@ -279,6 +289,9 @@ const STYLE = `<style>
 .svr-now { font-size: 12.5px; color: var(--text-sm); margin-top: 3px; }
 .svr-warn { color: var(--orange); font-weight: 700; }
 .svr-noaddr { color: var(--text-muted); font-style: italic; }
+.svr-own { display: block; margin-top: 3px; font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
+.svr-own.ok { color: var(--green); }
+.svr-own.wait { color: var(--orange); }
 .svr-card { color: var(--accent); font-weight: 700; text-decoration: underline; white-space: nowrap; }
 .svr-conf { font-size: 11.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
 .svr-conf.n, .svr-conf.u { background: #FDE7DA; color: var(--orange); }

@@ -1007,6 +1007,11 @@
       background: var(--bg); transition: all .15s; user-select: none;
     }
     .region-pill.selected { background: rgba(255,222,0,.15); border-color: var(--yellow); color: var(--accent); }
+    /* §710 — "איפה אתם נותנים את השירות?": שורה לכל תשובה, עם מה שיופיע ללקוחות */
+    .svc-pill { display: flex !important; flex-wrap: wrap; align-items: center; gap: 2px 8px; width: 100%; margin-top: 6px; text-align: right; padding: 9px 12px !important; border-radius: 12px !important; }
+    .svc-pill .svc-s { font-size: 11.5px; color: var(--text-sm); }
+    .svc-pill .svc-shows { margin-right: auto; font-size: 11px; color: var(--text-sm); background: var(--card-bg); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+    .svc-hint { margin-top: 6px; font-size: 12px; color: var(--text-sm); }
 
     /* ── CATEGORY CIRCLES (בחירה יחידה) ── */
     .cat-circle-grid { display: grid; grid-template-columns: repeat(3, 1fr);   /* §644 – 9 קטגוריות = 3×3 */ gap: 8px; margin-bottom: 4px; }
@@ -1655,6 +1660,8 @@
                הבקשות: זו פעולה חד-פעמית שמבקשים מבעל-העסק לעשות עכשיו, לא סטטוס שמדווחים לו.
                נעלמת לגמרי אחרי שטופל + שבוע. ר' renderHoursMigrationBanner. -->
           <div id="hoursMigrationBanner" style="display:none"></div>
+          <!-- §710 — "איך מקבלים את השירות": הכרטיס הצהוב, רק כשהמנהל קבע ובעל העסק עוד לא ענה. ר' renderServiceModesBanner -->
+          <div id="serviceModesBanner" style="display:none"></div>
 
           <!-- ⚠️ שני באנרים נפרדים בכוונה (2026-08-21) — "טרם נשלח" קודם, כי זה מה שדורש
                פעולה. ר' ההערה ב-CSS (.unsent-banner) ובתוך renderBizView. -->
@@ -2292,7 +2299,7 @@ const STATUS_HE = { pending:'ממתין לאישור', approved:'מאושר', re
 const FIELD_LABELS = {
   ownerFirst:'שם פרטי', ownerLast:'שם משפחה', ownerPhone:'טלפון בעל העסק', ownerEmail:'אימייל בעל העסק',
   bizTypes:'סוג עסק', name:'שם העסק', desc:'תיאור', branches:'סניפים', city:'עיר', address:'כתובת',
-  regions:'אזורי פעילות',
+  regions:'אזורי פעילות', serviceModes:'איך מקבלים את השירות',
   phone:'טלפון עסק', whatsapp:'WhatsApp', serviceEmail:'מייל שירות',
   categoryPrimary:'קטגוריה ראשית', cat:'קטגוריה ראשית', tags:'תגיות', tagSecondSuggestion:'הצעת תגית שנייה', noTagFits:'אין תגית מתאימה', tagSuggestion:'הצעת תגית', alsoCategorySuggestion:'הצעה למופיע גם תחת', alsoCategoryNote:'הערה לגבי קטגוריה נוספת', hours:'שעות פעילות',
   hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTextFull:'תיאור ההטבה', discountCode:'קוד קופון', discountStacking:'כפל מבצעים', discountTypes:'איפה ניתן לממש', discountRedeemMode:'מקום מימוש', additionalDiscounts:'הטבות נוספות',
@@ -2323,6 +2330,7 @@ function fmtFieldVal(k, v) {
   if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoCategorySuggestion') return v ? (CAT_LABELS_PLAIN[mapCatKey(v)] || v) : '–';
   if (k === 'tags') return (v || []).join(', ') || '–';
   if (k === 'regions') return (v || []).join(', ') || '–';
+  if (k === 'serviceModes') return (v || []).map(t => SVC_LABEL[t] || t).join(' + ') || '–';   // §710
   if (k === 'branches') return (v || []).map(b =>[b.city, b.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | ') || '–';
   if (k === 'photos') return v && v.length ? `${v.length} תמונות` : '–';
   if (k === 'logo') return v ? ' יש לוגו' : 'אין לוגו';
@@ -2911,6 +2919,7 @@ function renderBizView(flashZone) {
   document.getElementById('unsentBanner').style.display = unsentRows ? 'block' : 'none';
   document.getElementById('unsentBannerRows').innerHTML = unsentRows;
   renderHoursMigrationBanner(biz);
+  renderServiceModesBanner(biz);   // §710
   renderDecisionsBanner(biz);
   renderContactNoteBanner(biz);
   renderTermsAckPrompt(biz);
@@ -3270,6 +3279,78 @@ window.saveHoursMigration = async function () {
   renderBizView();
 };
 
+// ══ §710 — "איך מקבלים את השירות" ═══════════════════════════════════════════════════════════
+// המילון (service-terms-demo.html): בעל העסק עונה בגוף ראשון, וליד כל תשובה – מה יופיע ללקוחות.
+// הכרטיס הצהוב מופיע רק כשהמנהל קבע (serviceSetBy == 'admin', ממסך המעבר במרכז הניהול) ובעל העסק
+// עוד לא ענה. "✓ נכון" = חותמת בלבד (serviceOwnerAckAt, חוקי (ב4ב)); "✏️ לעדכן" = עריכה רגילה
+// של "פרטים ויצירת קשר" → pendingChanges → אישור מנהל (ואז serviceSetBy = 'owner' והכרטיס לא חוזר).
+const SVC_LABEL = { toClient: '🚗 עד אליך', atMine: '📍 מגיעים אליו', remote: '💻 מרחוק' };
+const SVC_ANSWER = [['toClient', 'אני מגיע ללקוח', 'לבית, למשרד, לאירוע'], ['atMine', 'הלקוח מגיע אליי', 'סטודיו, קליניקה, משרד'], ['remote', 'מרחוק', 'טלפון, זום, משלוח']];
+function svcLines(b) {
+  const city = ((b.branches || [])[0] || {}).city || b.city || '';
+  return (b.serviceModes || []).map(k => SVC_LABEL[k] +
+    (k === 'toClient' && (b.regions || []).length ? ' · ' + b.regions.join(', ') : k === 'atMine' && city ? ' · ' + city : ''));
+}
+function renderServiceModesBanner(b) {
+  const el = document.getElementById('serviceModesBanner');
+  if (!el) return;
+  const hide = () => { el.style.display = 'none'; el.innerHTML = ''; };
+  if (b.serviceSetBy !== 'admin' || !(b.serviceModes || []).length || b.serviceOwnerAckAt) return hide();
+  const lines = svcLines(b).map(l => '<div style="font-weight:700;font-size:14px">' + esc(l) + '</div>').join('');
+  el.style.display = 'block';
+  if (b.pendingChanges && 'serviceModes' in b.pendingChanges) {
+    el.innerHTML = '<div class="hrs-mig done"><div class="hrs-mig-t"><span>⏳</span><span>שלחתם עדכון ל"איך מקבלים את השירות"</span></div>' +
+      '<div class="hrs-mig-b">הוא ממתין לאישור שלנו. עד אז נשאר מה שרשום עכשיו:</div><div class="hrs-mig-inner" style="padding:11px 14px">' + lines + '</div></div>';
+    return;
+  }
+  el.innerHTML =
+    '<div class="hrs-mig">' +
+      '<div class="hrs-mig-t"><span>🚗</span><span>עדכנו איך מוצג השירות שלכם</span></div>' +
+      '<div class="hrs-mig-b">הוספנו לכרטיס העסק שורה שאומרת ללקוחות איך מקבלים את השירות – אם אתם מגיעים אליהם, אם מגיעים אליכם, או שזה מרחוק. לפי מה שכתבתם, כך זה יופיע:</div>' +
+      '<div class="hrs-mig-inner" style="padding:11px 14px">' + lines + '</div>' +
+      '<div class="hrs-mig-actions">' +
+        '<button type="button" class="hrs-mig-btn" id="svcAckBtn" onclick="svcAck()">✓ נכון</button>' +
+        '<button type="button" class="hrs-mig-later" onclick="svcEdit()">✏️ לא מדויק – לעדכן</button>' +
+      '</div>' +
+    '</div>';
+}
+window.svcAck = async function () {
+  const btn = document.getElementById('svcAckBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'שומר…'; }
+  try {
+    await withBizAuth(() => updateDoc(doc(bizDb, 'businesses', bizId), { serviceOwnerAckAt: serverTimestamp() }));
+    biz.serviceOwnerAckAt = new Date();
+    showToast('✓ תודה! אישרתם');
+  } catch (e) {
+    console.error(e);
+    reportBizWriteError('serviceOwnerAck', e, '');
+    showToast(bizWriteErrorMsg(e));
+  }
+  renderBizView();
+};
+// פותח את "פרטים ויצירת קשר" לעריכה, על השאלה
+window.svcEdit = function () {
+  const form = document.getElementById('secEdit-bizdetails');
+  if (form && !form.classList.contains('open')) toggleSecEdit('bizdetails');
+  setTimeout(() => document.getElementById('editSvcWrap')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+};
+window.toggleSvc = function (el) {
+  el.classList.toggle('selected');
+  svcSync();
+  refreshPreviews(null, 'meta');
+};
+function svcSelected() { return SVC_ANSWER.map(a => a[0]).filter(k => document.querySelector('#editSvcWrap .svc-pill.selected[data-svc="' + k + '"]')); }
+// מה מוצג בעריכה: השאלה – לנותן שירות; האזורים – כשסימן "אני מגיע ללקוח" (או עוד לא ענה – כמו קודם)
+function svcSync() {
+  const grid = document.getElementById('editBizTypeGrid');
+  const types = grid ? [...grid.querySelectorAll('.region-pill.selected')].map(p => p.dataset.type) : (biz.bizTypes || []);
+  const pro = types.includes('pro'), modes = svcSelected();
+  const show = (id, on) => { const e = document.getElementById(id); if (e) e.style.display = on ? 'block' : 'none'; };
+  show('editSvcWrap', pro);
+  show('editRegionWrap', pro && (modes.includes('toClient') || !modes.length));
+  show('svcAtMineHint', pro && modes.includes('atMine'));
+}
+
 function renderTermsAckPrompt(b) {
   const el = document.getElementById('termsAckPrompt');
   if (!el) return;
@@ -3442,6 +3523,7 @@ function renderBizDetailsCard(w) {
   const isPro = types.includes('pro');
   const firstBranch = (w.branches || [])[0] || {};
   const regions = w.regions || [];
+  const svcModesW = w.serviceModes || [];   // §710
   const regionPillsHtml = REGION_LIST.map(r =>
     `<div class="region-pill${regions.includes(r) ? ' selected' : ''}" onclick="toggleChipPill(this)">${r}</div>`
   ).join('');
@@ -3474,7 +3556,9 @@ function renderBizDetailsCard(w) {
         ${liveIsPhysical ? ((liveBranchesView.length > 1)
           ? rowHtml('סניפים', liveBranchesView.map(br => [br.city, br.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | '))
           : rowHtml('עיר', liveFirstBranchView.city || biz.city) + rowHtml('כתובת', liveFirstBranchView.address || biz.address)) : ''}
-        ${liveIsPro ? rowHtml('אזורי פעילות', liveRegionsView.join(', ')) : ''}
+        ${liveIsPro ? ((biz.serviceModes || []).length
+          ? rowHtml('איך מקבלים את השירות', svcLines(biz).map(esc).join('<br>'), true)   // §710 – במקום "אזורי פעילות"
+          : rowHtml('אזורי פעילות', liveRegionsView.join(', ')) + rowHtml('איך מקבלים את השירות', '<span style="color:var(--text-sm)">עוד לא עניתם – לחצו "ערוך"</span>', true)) : ''}
         ${rowHtml('טלפון עסק', biz.phone)}
         ${rowHtml('WhatsApp', biz.whatsapp)}
         ${rowHtml('מייל שירות', biz.serviceEmail)}
@@ -3495,8 +3579,16 @@ function renderBizDetailsCard(w) {
           <div id="editBranchesList">${branchRowsHtml(w.branches && w.branches.length ? w.branches : [{ city: w.city || '', address: w.address || '' }])}</div>
           <button type="button" class="btn-add-branch-like" onclick="addBranchRow()" style="margin-top:8px;width:100%;padding:10px;border-radius:11px;border:1.5px dashed var(--yellow);background:transparent;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">+ הוסף סניף</button>
         </div>
-        <div class="form-group" id="editRegionWrap" style="display:${isPro ? 'block' : 'none'}">
-          <label class="form-label">אזורי פעילות</label>
+        <div class="form-group" id="editSvcWrap" style="display:${isPro ? 'block' : 'none'}">
+          <label class="form-label">איפה אתם נותנים את השירות? <span style="font-weight:500;color:var(--text-sm)">(אפשר כמה)</span></label>
+          ${SVC_ANSWER.map(([k, h, s]) => `
+          <div class="region-pill svc-pill${svcModesW.includes(k) ? ' selected' : ''}" data-svc="${k}" onclick="toggleSvc(this)">
+            <b>${h}</b><span class="svc-s">${s}</span><span class="svc-shows">ללקוחות יופיע: <b>${SVC_LABEL[k]}</b></span>
+          </div>`).join('')}
+          <div id="svcAtMineHint" class="svc-hint" style="display:${isPro && svcModesW.includes('atMine') ? 'block' : 'none'}">📍 הכתובת שהלקוחות מגיעים אליה – בשדה "סניפים" כאן למעלה.</div>
+        </div>
+        <div class="form-group" id="editRegionWrap" style="display:${isPro && (svcModesW.includes('toClient') || !svcModesW.length) ? 'block' : 'none'}">
+          <label class="form-label">${svcModesW.length ? 'לאיזה אזורים אתם מגיעים?' : 'אזורי פעילות'}</label>
           <div class="region-pill-wrap" id="editRegionGrid">${regionPillsHtml}</div>
         </div>
         <div class="form-group">
@@ -5317,7 +5409,7 @@ window.toggleChipPill = function(el) {
 window.toggleBizType = function(el) {
   el.classList.toggle('selected');
   const selected = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p =>p.dataset.type);
-  document.getElementById('editRegionWrap').style.display = selected.includes('pro') ? 'block' : 'none';
+  svcSync();   // §710 – השאלה + האזורים לפי "נותן שירות" ו"אני מגיע ללקוח"
   refreshPreviews(null, 'meta');
 };
 
@@ -5428,8 +5520,18 @@ window.saveBizDetails = function() {
   const bizTypes = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p =>p.dataset.type);
   const isProNow = bizTypes.includes('pro');
   const isPhysicalNow = bizTypes.includes('physical');
-  const branches = isPhysicalNow ? collectBranchRows() : [];
+  // §710 – "איפה אתם נותנים את השירות?". מי שכבר ענה (או שהמנהל קבע) חייב להשאיר תשובה; מי שעוד
+  // לא ענה ולא סימן כלום – לא נחסם בשמירת שדות אחרים.
+  const svcModes = isProNow ? svcSelected() : [];
+  if (isProNow && !svcModes.length && (biz.serviceModes || []).length) { showToast('סמנו איפה אתם נותנים את השירות'); return; }
+  const regionsNow = [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p =>p.textContent.trim());
+  if (svcModes.includes('toClient') && !regionsNow.length) { showToast('סמנו לאיזה אזורים אתם מגיעים'); return; }
+  // ⚠️ §710 – הסניפים נשמרים גם ל"הלקוח מגיע אליי", לא רק לחנות: קודם לכן כל שמירה של נותן שירות
+  //    שאינו חנות שלחה branches: [] – ומחקה כתובת שנקבעה במסך המעבר במרכז הניהול.
+  const branches = (isPhysicalNow || svcModes.includes('atMine')) ? collectBranchRows() : [];
+  if (svcModes.includes('atMine') && !branches.some(x => x.city && x.address)) { showToast('"הלקוח מגיע אליי" – כתבו עיר וכתובת בשדה "סניפים"'); return; }
   stageChanges({
+    ...(svcModes.length ? { serviceModes: svcModes } : {}),
     desc: document.getElementById('editDesc').value.trim(),
     branches,
     city: branches[0]?.city || '',
@@ -5437,7 +5539,7 @@ window.saveBizDetails = function() {
     phone: document.getElementById('editPhone').value.trim(),
     whatsapp: document.getElementById('editWhatsapp').value.trim(),
     serviceEmail: document.getElementById('editServiceEmail').value.trim(),
-    regions: isProNow ? [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p =>p.textContent.trim()) : [],
+    regions: isProNow && (svcModes.includes('toClient') || !svcModes.length) ? regionsNow : [],   // §710 – אזורים רק ל"אני מגיע ללקוח"
     // hoursMode/hoursDays/hoursOther + hours המסונכרן — כולם ביחד מ-toPayload (ר' hours.js).
     // הנפילה-לאחור היא לשדה הטקסט שmountHoursEditor בונה כשhours.js לא נטען.
     ...(hoursEditor ? hoursEditor.getValue() : { hours: document.getElementById('editHours')?.value.trim() || '' }),

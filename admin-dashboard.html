@@ -3502,6 +3502,7 @@ function fmtDiffVal(k, v) {
     return arr.length ? arr.map(t => REDEEM_MODE_LABELS_MOCK[t] || t).join(', ') : '–';
   }
   if (k === 'bizTypes') return (v || []).length ? v.map(t => BIZ_TYPE_LABELS_MOCK[t] || t).join(', ') : '–';
+  if (k === 'serviceModes') return (v || []).length ? v.map(t => SERVICE_MODE_LABELS[t] || t).join(' + ') : '–';   // §710
   if (k === 'discountStacking') return v === 'yes' ? 'כולל כפל מבצעים' : v === 'no' ? 'לא כולל כפל מבצעים' : '–';   // §597
   if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoCategorySuggestion' || k === 'alsoUnderCategory') {
     return v ? ((CATEGORIES.find(c => c.key === v) || {}).label || v) : '–';
@@ -4437,6 +4438,8 @@ const DATA_KEY = 'dataCenter';
 const TRASH_KEY = 'deletionLog';
 // §710 — "איך מקבלים את השירות": מעבר אחד-אחד על נותני השירות (admin-service-review.js, נטען בכניסה הראשונה)
 const SERVICE_KEY = 'serviceReview';
+// אותן תוויות כמו LABEL ב-admin-service-review.js ובמילון (service-terms-demo.html) – מה שהלקוח רואה
+const SERVICE_MODE_LABELS = { toClient: '🚗 עד אליך', atMine: '📍 מגיעים אליו', remote: '💻 מרחוק' };
 // §516 — לינקים לתצוגה לאורח (demo.html?t=…): יצירה, מעקב כניסות ומכשירים, כיבוי.
 const DEMO_LINKS_KEY = 'demoLinks';
 // §536 — מסך פתיחה: תמונות מתחלפות באפליקציה (settings/splashScreen).
@@ -15571,7 +15574,7 @@ window.rejectChangeField = async function(id, field) {
 // extra – שדות שאנחנו קובעים יחד עם האישור (כותרת ההטבה, §687ב); closeAsks – פריטי bizSentItems שנסגרים.
 // groupLabel – שורה של כמה שדות ("ההטבה") נכנסת לסל כפריט אחד
 async function applyChangeFields(b, fields, decision, overrides, extra, closeAsks, groupLabel) {
-  const av = (f, v) => f === 'discountRedeemMode' || f === 'discountTypes' || f === 'discountStacking' ? fmtDiffVal(f, v) : fmtActivityVal(v);
+  const av = (f, v) => f === 'discountRedeemMode' || f === 'discountTypes' || f === 'discountStacking' || f === 'serviceModes' ? fmtDiffVal(f, v) : fmtActivityVal(v);
   const pending = { ...(b.pendingChanges || {}) }, updates = { ...(extra || {}) }, logs = [], noteItems = [];
   fields = fields.filter(f => f in pending);
   if (!fields.length) return false;
@@ -15592,6 +15595,8 @@ async function applyChangeFields(b, fields, decision, overrides, extra, closeAsk
     delete pending[f];
   }
   if (groupLabel && noteItems.length > 1) noteItems.splice(0, noteItems.length, qjItem(groupLabel, decision));
+  // §710 – אישור של שינוי "איך מקבלים את השירות" שבעל העסק שלח: מעכשיו זה שלו (הכרטיס הצהוב לא יחזור)
+  if (decision === 'approved' && fields.includes('serviceModes')) { updates.serviceSetBy = 'owner'; updates.serviceSetAt = new Date().toISOString(); }
   if (decision === 'approved' && bizMissingCardTitle({ ...b, ...updates }) && !bizMissingCardTitle(b)) {   // §614 · §687ב – חסימה
     alert('⛔ אין כותרת להטבה בכרטיס – כתוב אותה בשורה ואז ✅.');
     return false;
@@ -23383,7 +23388,7 @@ function renderMainInner() {
       return;
     }
     wrap.innerHTML = '<div class="placeholder-note">טוען…</div>';
-    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7102').then((m) => {
+    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7104').then((m) => {
       m.init({
         biz: () => MOCK_BUSINESSES, esc,
         // noAsk – בלי חלון "לסל" (§705ה); noBasket – לא נכנס לסיכום לבעל העסק: יש לו כרטיס צהוב והודעה משלנו
