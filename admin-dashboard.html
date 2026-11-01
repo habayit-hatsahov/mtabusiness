@@ -22984,16 +22984,18 @@ function dcHubTabsHtml() {
     <div class="dc-hub"><h1>מרכז הנתונים</h1>${t('usage', 'אפליקציה ושימוש')}${t('trackers', 'מעקבים')}${t('engage', 'מעורבות')}</div>`;
 }
 // הקובץ נטען פעם אחת; הנתונים נטענים פעם אחת (רענון – מתוך המסך)
-let dcUsageImport = null;
+let dcUsageImport = null, dcTrackersImport = null;
 function dcUsageEnsure() {
   if (window.YZU) { window.YZU.load(); return; }
   if (dcUsageImport) return;
-  dcUsageImport = import('./admin-usage.js?v=699').then((m) => {
+  dcUsageImport = import('./admin-usage.js?v=700').then((m) => {
     m.init({
       db, fs: { collection, getDocs, query, where, orderBy, limit },
       fans: () => MOCK_FANS, biz: () => MOCK_BUSINESSES, pushInfo: memberPushInfo, esc,
-      rerender: () => { if (activeTab === DATA_KEY && dcHub === 'usage') renderMain(); },
+      rerender: () => { if (activeTab === DATA_KEY && (dcHub === 'usage' || dcHub === 'trackers')) renderMain(); },
       openOld: () => selectTab(APP_USAGE_KEY),
+      // §700 – "לשלוח לקבוצה" במעקבים: מרכז ההודעות עם הנבחרים מסומנים מראש (כמו openBroadcastFor)
+      openSend: (type, ids) => { msgMainTab = 'send'; m2.aud = type === 'fans' ? 'fanPick' : 'bizPick'; m2.f = {}; m2.fOpen = null; m2.q = ''; m2.who = 0; m2.picked = new Set(ids); selectTab(BROADCAST_KEY); },
     });
     window.YZU = m;
     m.load();
@@ -23052,9 +23054,10 @@ function renderMainInner() {
   if (activeTab === DATA_KEY && dcHub !== 'engage') {
     const body = dcHub === 'usage'
       ? (window.YZU ? window.YZU.html() : '<div class="placeholder-note">טוען…</div>')
-      : '<div class="placeholder-note">🚧 המעקבים בבנייה – השלב הבא אחרי "אפליקציה ושימוש".</div>';
+      : (window.YZT && window.YZU && window.YZU.isLoaded() ? window.YZT.html() : '<div class="placeholder-note">טוען…</div>');
     wrap.innerHTML = dcHubTabsHtml() + body;
-    if (dcHub === 'usage') dcUsageEnsure();
+    dcUsageEnsure();   // גם המעקבים נשענים על הנתונים של "אפליקציה ושימוש"
+    if (dcHub === 'trackers' && !window.YZT && !dcTrackersImport) dcTrackersImport = import('./admin-trackers.js?v=700').then((m) => { window.YZT = m; renderMain(); }).catch((e) => { console.error(e); dcTrackersImport = null; });
     return;
   }
   if (activeTab === DATA_KEY) {

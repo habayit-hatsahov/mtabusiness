@@ -538,3 +538,9 @@ function css() {
   .yzu-big tr.sec td{background:var(--yzu-ink);color:#fff;font-weight:700}
   </style>`;
 }
+
+// ── שיתוף עם לשונית "מעקבים" (admin-trackers.js) – אותם נתונים טעונים, בלי קריאות נוספות ──────────
+export const shared = {
+  get C() { return C; }, get D() { return D; }, base: () => base(),
+  dk, addDays, dayList, dayDiff, short, f, pc, W, inf, hb, esc, css, LAUNCH, MEASURE_FROM,
+};
