@@ -1718,6 +1718,17 @@ async function handleSendBroadcastEmail({ idToken, subject, body, audienceType, 
 // mail.scope: 'all' | 'missing' — 'missing' = רק מי שלא קיבל באפליקציה (§504ז).
 const MSG_CHUNK = 8;
 const MSG_BLOCKS = ['members', 'personal', 'allBiz', 'myBiz'];
+// §710 — {service} במייל לעסק: מה מופיע ללקוחות ב"איך מקבלים את השירות" – אותן תוויות כמו
+// SERVICE_MODE_LABELS (admin-dashboard.html) ו-SVC_LABEL (business-dashboard.html). שורה לכל דרך.
+const SVC_LABEL = { toClient: '🚗 עד אליך', atMine: '📍 מגיעים אליו', remote: '💻 מרחוק' };
+function serviceLine(bf) {
+  const city = ((Array.isArray(bf.branches) ? bf.branches : [])[0] || {}).city || '';
+  const regions = Array.isArray(bf.regions) ? bf.regions : [];
+  return (Array.isArray(bf.serviceModes) ? bf.serviceModes : []).filter((k) => SVC_LABEL[k])
+    .map((k) => SVC_LABEL[k] + (k === 'toClient' && regions.length ? ' · ' + regions.join(', ') : k === 'atMine' && city ? ' · ' + city : ''))
+    .join('\n');
+}
+
 async function handleSendMessage({ idToken, messageId, block, recipients, app, push, mail, personalBiz }, env) {
   if (!/^[A-Za-z0-9_-]{6,40}$/.test(String(messageId || ''))) return { error: 'bad_message_id' };
   if (!MSG_BLOCKS.includes(block)) return { error: 'bad_block' };
@@ -1810,7 +1821,8 @@ async function handleSendMessage({ idToken, messageId, block, recipients, app, p
       try {
         const vars = o.t === 'm'
           ? { name: o.mf.firstName || '', code: await loginCodeFor(env, accessToken, o.id), link: `${SITE_BASE}download?src=broadcast` }
-          : { name: o.bf.ownerFirst || '', business: o.bf.name || '', link: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, o.id)}` };
+          : { name: o.bf.ownerFirst || '', business: o.bf.name || '', link: `${SITE_BASE}business-dashboard.html?token=${await bizTokenFor(env, accessToken, o.id)}`,
+              service: serviceLine(o.bf) };   // §710
         const r = await sendBroadcastEmail(env, { toEmail: o.email, toName: vars.name, subject: M.subject, body: M.body, vars, msgTag: 'msg_' + messageId, personal: M.personal });
         o.mail = 'sent';
         if (r && r.messageId) o.mailId = String(r.messageId);

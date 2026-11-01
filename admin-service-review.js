@@ -152,12 +152,16 @@ function problems(b, d) {
   if (d.modes.includes('atMine') && !cities(b).length && !(d.city.trim() && d.address.trim())) p.push('"הלקוח מגיע אליי" – חסרים עיר וכתובת');
   return p;
 }
-// שלב 2 – מה בעל העסק עשה עם הכרטיס הצהוב (business-dashboard.html)
+// שלב 3 – הודעה למי שאישרת ועוד לא קיבל עליה מייל (או שקיבל, ואחר כך שינית)
+const msgDue = (b) => isDone(b) && b.serviceSetBy === 'admin' && (!b.serviceMsgAt || (b.serviceSetAt && b.serviceMsgAt < b.serviceSetAt));
+// שלב 2 – מה בעל העסק עשה עם הכרטיס הצהוב (business-dashboard.html) + שלב 3 – ההודעה
 function ownerState(b) {
   if (b.serviceSetBy !== 'admin') return '';
-  if (b.pendingChanges && 'serviceModes' in b.pendingChanges) return '<span class="svr-own wait">⏳ בעל העסק ביקש לשנות – ב"מה פתוח בעסק הזה"</span>';
-  if (b.serviceOwnerAckAt) return '<span class="svr-own ok">✓ בעל העסק אישר</span>';
-  return '<span class="svr-own">בעל העסק עוד לא ענה</span>';
+  const msg = msgDue(b) ? '<span class="svr-own">📨 הודעה עוד לא נשלחה</span>'
+    : `<span class="svr-own ok">📨 הודעה נשלחה ${esc(new Date(b.serviceMsgAt).toLocaleDateString('he-IL'))}</span>`;
+  if (b.pendingChanges && 'serviceModes' in b.pendingChanges) return '<span class="svr-own wait">⏳ בעל העסק ביקש לשנות – ב"מה פתוח בעסק הזה"</span>' + msg;
+  if (b.serviceOwnerAckAt) return '<span class="svr-own ok">✓ בעל העסק אישר</span>' + msg;
+  return '<span class="svr-own">בעל העסק עוד לא ענה</span>' + msg;
 }
 export function lineOf(modes, regions) {
   return (modes || []).map((m) => LABEL[m] + (m === 'toClient' && regions && regions.length ? ' · ' + regions.join(', ') : '')).join(' + ');
@@ -232,10 +236,23 @@ export function html() {
       <div class="svr-prog"><i style="width:${pct}%"></i></div>
       <div class="svr-prog-t">אושרו ${done.length} מתוך ${all.length} · נשארו: ${left('n') ? left('n') + ' בלי הצעה, ' : ''}${left('u')} לא ברור, ${left('l')} סביר, ${left('s')} בטוח</div>
       <div class="svr-flt">${btn('todo', 'ממתינים')}${btn('u', 'לא ברור')}${btn('l', 'סביר')}${btn('s', 'בטוח')}${btn('done', 'אושרו')}${btn('all', 'הכול')}</div>
+      ${msgBar(all)}
     </div>
     ${shown.map(cardHtml).join('') || '<div class="svr-empty">אין כאן כלום 🎉</div>'}
   </div>`;
 }
+
+// פס ההודעה: כמה אושרו ועוד לא קיבלו מייל → מרכז ההודעות עם הרשימה והנוסח (השליחה עצמה – שם)
+function msgBar(all) {
+  const due = all.filter(msgDue);
+  return `<div class="svr-msg">${due.length
+    ? `📨 <b>${due.length}</b> אושרו ועוד לא קיבלו הודעה<button onclick="svrMsg()">הודעה לבעלי העסקים ←</button>`
+    : (all.some(isDone) ? '📨 כל מי שאישרת כבר קיבל הודעה' : '📨 אחרי שתאשר עסקים – אפשר לשלוח להם הודעה')}</div>`;
+}
+window.svrMsg = () => {
+  const ids = list().filter(msgDue).map((b) => b.id);
+  if (ids.length) C.openMsg(ids);
+};
 
 // ── פעולות (onclick בתוך ה-HTML – חשופות ל-window, ר' feedback_module_scope_onclick) ──
 const rerender = () => C.rerender();
@@ -289,6 +306,8 @@ const STYLE = `<style>
 .svr-now { font-size: 12.5px; color: var(--text-sm); margin-top: 3px; }
 .svr-warn { color: var(--orange); font-weight: 700; }
 .svr-noaddr { color: var(--text-muted); font-style: italic; }
+.svr-msg { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; background: #fff; border: 1.5px solid var(--border); border-radius: 12px; padding: 8px 12px; font-size: 13.5px; color: var(--accent); }
+.svr-msg button { margin-right: auto; height: 34px; border: 0; border-radius: 10px; background: var(--accent-cta); color: var(--accent); font: inherit; font-weight: 800; padding: 0 14px; cursor: pointer; }
 .svr-own { display: block; margin-top: 3px; font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
 .svr-own.ok { color: var(--green); }
 .svr-own.wait { color: var(--orange); }

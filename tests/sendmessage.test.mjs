@@ -25,7 +25,7 @@ const reset = () => {
     'bizTokens/biz1': { accessToken: 'tok-biz1' }, 'bizTokens/bizNoOwner': { accessToken: 'tok-garage' },
   };
 };
-const toV = (v) => v === null || v === undefined ? { nullValue: null } : typeof v === 'string' ? { stringValue: v } : typeof v === 'boolean' ? { booleanValue: v }
+const toV = (v) => v === null || v === undefined ? { nullValue: null } : Array.isArray(v) ? { arrayValue: { values: v.map(toV) } } : typeof v === 'string' ? { stringValue: v } : typeof v === 'boolean' ? { booleanValue: v }
   : typeof v === 'number' ? { integerValue: String(v) } : { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([a, b]) => [a, toV(b)])) } };
 const fromV = (v) => 'stringValue' in v ? v.stringValue : 'booleanValue' in v ? v.booleanValue : 'nullValue' in v ? null : 'timestampValue' in v ? v.timestampValue
   : 'integerValue' in v ? Number(v.integerValue) : 'mapValue' in v ? Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([a, b]) => [a, fromV(b)])) : v;
@@ -144,6 +144,17 @@ db['members/fanB'].email = 'fail@x.co';
 r = await call({ ...base, block: 'personal', recipients: [{ t: 'm', id: 'fanB' }], mail: { subject: 'ס', body: 'ג' } });
 check('מייל שנכשל – failed עם סיבה, בלי לזרוק', by(r, 'fanB').mail === 'failed' && /brevo_send_failed/.test(by(r, 'fanB').mailError), by(r, 'fanB'));
 check('בלי אפליקציה – app null', by(r, 'fanB').app === null);
+
+console.log('§710 – {service}');
+reset();
+Object.assign(db['businesses/biz1'], { serviceModes: ['toClient', 'remote'], regions: ['השרון', 'גוש דן'] });
+Object.assign(db['businesses/bizNoOwner'], { serviceModes: ['atMine'], branches: [{ city: 'חולון', address: 'הרצל 1' }] });
+mails.length = 0;
+r = await call({ ...base, block: 'myBiz', recipients: [{ t: 'b', id: 'biz1' }, { t: 'b', id: 'bizNoOwner' }, { t: 'b', id: 'bizPend' }], mail: { subject: '{business}', body: 'אצלכם מופיע:\n{service}' } });
+const mOf = (sub) => (mails.find((m) => m.subject === sub) || {}).htmlContent || '';
+check('עד אליך + אזורים, ומרחוק', mOf('פלאפל הזהב').includes('🚗 עד אליך · השרון, גוש דן') && mOf('פלאפל הזהב').includes('💻 מרחוק'), mOf('פלאפל הזהב').slice(0, 300));
+check('מגיעים אליו + העיר מהסניף', mOf('מוסך').includes('📍 מגיעים אליו · חולון'), mOf('מוסך').slice(0, 300));
+check('עסק בלי תשובה – בלי {service} גולמי במייל', mOf('ממתין בע"מ') !== '' && !mOf('ממתין בע"מ').includes('{service}'), mails.map((m) => m.subject));
 
 console.log(`\n${fail ? '✗' : '✅'} ${pass}/${pass + fail}`);
 process.exit(fail ? 1 : 0);

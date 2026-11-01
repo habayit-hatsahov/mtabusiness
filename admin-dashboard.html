@@ -4440,6 +4440,13 @@ const TRASH_KEY = 'deletionLog';
 const SERVICE_KEY = 'serviceReview';
 // אותן תוויות כמו LABEL ב-admin-service-review.js ובמילון (service-terms-demo.html) – מה שהלקוח רואה
 const SERVICE_MODE_LABELS = { toClient: '🚗 עד אליך', atMine: '📍 מגיעים אליו', remote: '💻 מרחוק' };
+// §710 שלב 3 – ההודעה לבעלי העסקים שאושרו (הנוסח אושר ע"י רמי ב-1.11; "יופיע" ולא "מופיע עכשיו" – עוד לא מוצג באתר).
+// נשלחת ממרכז ההודעות, מייל בלבד ({service} מוחלף בוורקר). trk מסמן את השליחה; כל מי שהמייל יצא אליו מקבל serviceMsgAt.
+const SERVICE_MSG_TRK = { id: 'svc710', stage: 1, label: 'איך מקבלים את השירות' };
+const SERVICE_MSG = {
+  subject: 'עדכנו בכרטיס של {business}: איך מקבלים את השירות',
+  body: 'היי {name} 👋\nכאן רמי מ-Yellow Zone 💛\n\nהוספנו לכל כרטיס עסק שורה שאומרת ללקוחות איך מקבלים את השירות – אם אתם מגיעים אליהם, אם מגיעים אליכם, או שזה מרחוק.\n\nלפי מה שכתבתם, אצל "{business}" יופיע:\n{service}\n\nמדויק? אין צורך לעשות כלום.\nרוצים לשנות? באזור שלכם מחכה כרטיס צהוב – לוחצים "לא מדויק – לעדכן", ואנחנו מאשרים.\n\n{link}',
+};
 // §516 — לינקים לתצוגה לאורח (demo.html?t=…): יצירה, מעקב כניסות ומכשירים, כיבוי.
 const DEMO_LINKS_KEY = 'demoLinks';
 // §536 — מסך פתיחה: תמונות מתחלפות באפליקציה (settings/splashScreen).
@@ -19307,8 +19314,15 @@ const M2_V = {
     // §550 — בוואטסאפ (שנבנה כאן, לא בוורקר) עד עכשיו יצא "token=…" מילולי. עם הטוקן של העסק – הקישור האמיתי.
     (p) => 'https://yellowzone.co.il/business-dashboard.html?token=' + ((p && p.accessToken) || '…')],
   app: ['link', '🔗 קישור לאפליקציה', 'קישור להורדת האפליקציה. בשורה נפרדת במייל – כפתור צהוב', () => 'https://yellowzone.co.il/download?src=broadcast'],
+  // §710 – אותה שורה כמו serviceLine בוורקר (worker/src/index.js); ריקה לעסק שעוד לא נקבע לו
+  service: ['service', '🚗 איך מקבלים את השירות', 'מה מופיע ללקוחות – למשל "🚗 עד אליך · השרון" (שורה לכל דרך; רק לנותני שירות שנקבע להם)', (p) => serviceLineOf(p)],
 };
-const m2Vars = () => { const t = m2T(); return t ? t.vars : m2Kind() === 'fans' ? [M2_V.name, M2_V.code, M2_V.app] : [M2_V.name, M2_V.business, M2_V.dash]; };
+function serviceLineOf(p) {
+  const city = ((p && p.branches) || [])[0]?.city || '';
+  return ((p && p.serviceModes) || []).filter((k) => SERVICE_MODE_LABELS[k])
+    .map((k) => SERVICE_MODE_LABELS[k] + (k === 'toClient' && (p.regions || []).length ? ' · ' + p.regions.join(', ') : k === 'atMine' && city ? ' · ' + city : '')).join('\n');
+}
+const m2Vars = () => { const t = m2T(); return t ? t.vars : m2Kind() === 'fans' ? [M2_V.name, M2_V.code, M2_V.app] : [M2_V.name, M2_V.business, M2_V.dash, M2_V.service]; };
 const m2Fill = (s, p, vars) => vars.reduce((a, [k, , , fn]) => a.split('{' + k + '}').join(p ? fn(p) : ''), s || '');
 const m2Strip = (s) => String(s || '').replace(/^\s*\{font:[^}]*\}\s*/, '').trim();
 
@@ -19708,6 +19722,7 @@ window.m2DoSend = async function () {
   m2$('m2Confirm').classList.remove('open');
   if (m2CanSend()) return;
   const d = JSON.parse(JSON.stringify(m2.doc)), c = m2Counts(), recips = c.r, block = m2Block();
+  const svcMsg = !!(m2.trk && m2.trk.id === SERVICE_MSG_TRK.id);   // §710 – נשלח ממסך "איך מקבלים את השירות"
   const msgRef = doc(collection(db, 'messages')), msgId = msgRef.id;
   const title = d.app.title || d.push.title || d.mail.subject || d.wa.text.slice(0, 60);
   const audLabel = M2_AUDS.find((a) => a.k === m2.aud).t;
@@ -19788,7 +19803,8 @@ window.m2DoSend = async function () {
       }); ops++;
       if (r.mail === 'sent') {
         // §561 — בלי האיפוס כאן: הוא עבר לפני השליחה (למעלה), אחרת הוא מוחק את מה ש-Brevo כבר דיווח
-        batch.update(doc(db, coll, r.id), { broadcastEmailSentAt: serverTimestamp(), broadcastEmailSubject: d.mail.subject }); ops++;
+        batch.update(doc(db, coll, r.id), { broadcastEmailSentAt: serverTimestamp(), broadcastEmailSubject: d.mail.subject,
+          ...(svcMsg && r.t === 'b' ? { serviceMsgAt: new Date().toISOString() } : {}) }); ops++;   // §710 – מי כבר קיבל
       }
       if (ops >= 400) await flush();
     }
@@ -23388,12 +23404,18 @@ function renderMainInner() {
       return;
     }
     wrap.innerHTML = '<div class="placeholder-note">טוען…</div>';
-    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7104').then((m) => {
+    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7105').then((m) => {
       m.init({
         biz: () => MOCK_BUSINESSES, esc,
         // noAsk – בלי חלון "לסל" (§705ה); noBasket – לא נכנס לסיכום לבעל העסק: יש לו כרטיס צהוב והודעה משלנו
         save: (id, upd) => saveSectionUpdates(id, upd, { noAsk: true, noBasket: true }),
-        rerender: () => { if (activeTab === SERVICE_KEY) renderMain(); renderSidebar(); },
+        // שלב 3 – מרכז ההודעות עם הנמענים, ערוץ מייל והנוסח מוכנים (כמו "לשלוח ל-N" במעקבים, §703). השליחה – שם, בכפתור.
+        openMsg: (ids) => {
+          msgMainTab = 'send'; m2.aud = 'bizPick'; m2.f = {}; m2.fOpen = null; m2.q = ''; m2.who = 0; m2.picked = new Set(ids);
+          m2.trk = { ...SERVICE_MSG_TRK };
+          m2.doc = { ...m2Blank(), ch: { app: false, push: false, mail: true, wa: false }, mail: { subject: SERVICE_MSG.subject, body: SERVICE_MSG.body, personal: false } };
+          selectTab(BROADCAST_KEY);
+        },        rerender: () => { if (activeTab === SERVICE_KEY) renderMain(); renderSidebar(); },
       });
       window.YZS = m;
       renderMain();
