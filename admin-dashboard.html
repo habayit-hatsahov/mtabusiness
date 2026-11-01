@@ -18905,7 +18905,7 @@ const m2Blank = () => ({ mailScope: 'all', ch: { app: false, push: false, mail: 
 const m2 = {
   aud: 'bizAll', f: { status: new Set(['approved']) }, fOpen: null, picked: new Set(), q: '',
   doc: m2Blank(), pv: 'app', who: 0, testTo: '', sending: null, result: '',
-  hf: { who: 'all', kind: 'all', ch: 'all' }, openStats: null, rows: {}, saved: [], savedLoaded: false, draft: null,
+  hf: { who: 'all', kind: 'all', ch: 'all' }, openStats: null, rows: {}, rowsAt: {}, rowsBusy: {}, saved: [], savedLoaded: false, draft: null,
   hist: [], histSub: false, histErr: '',
 };
 
@@ -19505,7 +19505,9 @@ window.m2DoSend = async function () {
     console.error('m2 record failed', e);
     await updateDoc(msgRef, { status: 'sent', tally, recordError: String(e.message || e).slice(0, 200) }).catch(() => {});
   }
-  m2.rows[msgId] = results;
+  // §706 — תוצאות השליחה (בלי קריאות/לחיצות) – לכפתורי הוואטסאפ בלבד. rowsAt=0 = ישן: פתיחת
+  // "סטטיסטיקה מלאה" טוענת מחדש. קודם הן נשארו במטמון כל הסשן, והסטטיסטיקה הראתה 0 פתחו.
+  m2.rows[msgId] = results; m2.rowsAt[msgId] = 0;
   m2.sending = null; m2.openStats = d.ch.wa ? msgId : null;
   m2.result = `<div class="m2-res"><b>✓ נשלח.</b> ${d.ch.app ? `🔔 נשמר אצל <b>${tally.app}</b> · ` : ''}${d.ch.push ? `📲 פוש ל-<b>${tally.push}</b> · ` : ''}${d.ch.mail ? `✉️ מייל ל-<b>${tally.mail}</b>${tally.mailFailed ? ` (<b style="color:var(--red)">${tally.mailFailed} נכשלו</b>)` : ''} · ` : ''}${d.ch.wa ? `💬 ${tally.wa} כפתורים מחכים למטה` : ''}${tally.failed ? `<br><b style="color:var(--red)">⚠️ ${tally.failed} נכשלו באפליקציה/בפוש</b> – הפרטים ב"נשלח לאחרונה".` : ''}<br>נרשם ביומן של כל נמען.</div>`;
   m2.doc = m2Blank();
@@ -19526,7 +19528,10 @@ function m2SubscribeHist() {
 // ובמייל (mailDelivery/mailOpenedAt/mailClickedAt – ה-webhook כותב לשורה לפי התג msg_<id>).
 // קריאת הפריטים: getDoc לכל מי שהפריט נכתב אצלו, בחבילות של 25 – רק כשפותחים את הסטטיסטיקה.
 async function m2LoadRows(id, force) {
-  if (m2.rows[id] && !force) return;
+  // §706 — במטמון עד 2 דקות (כל טעינה = קריאה לתיבה של כל נמען); אחרי זה פתיחה טוענת מחדש
+  if (m2.rows[id] && !force && Date.now() - (m2.rowsAt[id] || 0) < 120000) return;
+  if (m2.rowsBusy[id]) return;
+  m2.rowsBusy[id] = true; m2RenderHist();
   try {
     // §526 — תבנית (tpl_<id>): רק 30 הימים האחרונים – שורה לכל שליחה, נכתבת בידי הוורקר
     const coll = collection(db, 'messages', id, 'recipients');
@@ -19541,8 +19546,9 @@ async function m2LoadRows(id, force) {
         } catch (e) { /* פריט שלא נקרא – נשאר בלי */ }
       }));
     }
-    m2.rows[id] = rows;
+    m2.rows[id] = rows; m2.rowsAt[id] = Date.now();
   } catch (e) { console.error(e); m2.rows[id] = []; m2.rowsErr = e.message; }
+  m2.rowsBusy[id] = false;
   m2RenderHist(); m2TplRenderStats();
 }
 const M2_MAIL_BAD = { bounced: 'חזר – הכתובת לא קיימת', bounced_soft: 'חזר זמנית (תיבה מלאה/שרת)', blocked: 'נחסם', spam: 'סומן כספאם', invalid: 'כתובת לא תקינה', error: 'שגיאה' };
@@ -19624,7 +19630,7 @@ function m2StatsHtml(h) {
   return `<div class="m2-stats">
     <div class="m2-ssum">נשלח ל-<b>${n}</b> · <b>${eng}</b> פתחו לפחות בערוץ אחד (${pct(eng, n)}%) · <b>${notEng.length}</b> לא פתחו בשום ערוץ
       ${notEng.length && !h.tpl ? `<br><button class="m2-link" onclick="m2AgainNotOpened('${h.id}')">↩ הודעה חדשה רק למי שלא פתח (${notEng.length})</button>` : ''}
-      · <button class="m2-link" onclick="m2RefreshStats('${h.id}')">רענון</button></div>
+      · ${m2.rowsBusy[h.id] ? '<span class="dim">⏳ מרענן…</span>' : `<button class="m2-link" onclick="m2RefreshStats('${h.id}')">רענון</button>`}${m2.rowsAt[h.id] ? ` <span class="dim">(נכון ל-${new Date(m2.rowsAt[h.id]).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })})</span>` : ''}</div>
     ${parts.join('')}
     <div class="m2-scht">מי קיבל מה</div>
     <div class="m2-hfr" style="margin-bottom:6px">${F.map(([k, l]) => `<button class="${flt === k ? 'on' : ''}" onclick="m2StatsFlt('${k}')">${l}</button>`).join('')}</div>
@@ -23014,7 +23020,7 @@ let dcUsageImport = null, dcTrackersImport = null, dcEngageImport = null;
 function dcUsageEnsure() {
   if (window.YZU) { window.YZU.load(); return; }
   if (dcUsageImport) return;
-  dcUsageImport = import('./admin-usage.js?v=704').then((m) => {
+  dcUsageImport = import('./admin-usage.js?v=705').then((m) => {
     m.init({
       db, fs: { collection, getDocs, query, where, orderBy, limit, doc, getDoc },
       fans: () => MOCK_FANS, biz: () => MOCK_BUSINESSES, pushInfo: memberPushInfo, esc,
@@ -23090,9 +23096,9 @@ function renderMainInner() {
         : (window.YZE ? window.YZE.html() + `<div class="dc-back" style="margin-top:12px"><a onclick="dcHubSet('engageOld')">המסך הקודם של "מעורבות" (כולל "הקליקים שלנו במונה") ↗</a></div>` : '<div class="placeholder-note">טוען…</div>');
     wrap.innerHTML = dcHubTabsHtml() + body;
     dcUsageEnsure();   // המעקבים והמעורבות נשענים על הנתונים של "אפליקציה ושימוש" (היום, החברים)
-    if (dcHub === 'trackers' && !window.YZT && !dcTrackersImport) dcTrackersImport = import('./admin-trackers.js?v=704').then((m) => { window.YZT = m; renderMain(); }).catch((e) => { console.error(e); dcTrackersImport = null; });
+    if (dcHub === 'trackers' && !window.YZT && !dcTrackersImport) dcTrackersImport = import('./admin-trackers.js?v=705').then((m) => { window.YZT = m; renderMain(); }).catch((e) => { console.error(e); dcTrackersImport = null; });
     if (dcHub === 'engage') {
-      if (!window.YZE && !dcEngageImport) dcEngageImport = import('./admin-engage.js?v=704').then((m) => { window.YZE = m; renderMain(); }).catch((e) => { console.error(e); dcEngageImport = null; });
+      if (!window.YZE && !dcEngageImport) dcEngageImport = import('./admin-engage.js?v=705').then((m) => { window.YZE = m; renderMain(); }).catch((e) => { console.error(e); dcEngageImport = null; });
       else if (window.YZE && ready) window.YZE.load();
     }
     return;
