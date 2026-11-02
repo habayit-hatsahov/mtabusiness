@@ -3347,6 +3347,11 @@ window.toggleSvc = function (el) {
   svcSync();
   refreshPreviews(null, 'meta');
 };
+// עובר עכשיו ל"נותן שירות" (לא היה קודם) ואין תשובה – לא שמורה ולא בטיוטה
+function svcAnswerMissing(changes) {
+  const types = changes.bizTypes || biz.bizTypes || [];
+  return types.includes('pro') && !(biz.bizTypes || []).includes('pro') && !(changes.serviceModes || biz.serviceModes || []).length;
+}
 function svcSelected() { return SVC_ANSWER.map(a => a[0]).filter(k => document.querySelector('#editSvcWrap .svc-pill.selected[data-svc="' + k + '"]')); }
 // מה מוצג בעריכה: השאלה – לנותן שירות; האזורים – כשסימן "אני מגיע ללקוח" (או עוד לא ענה – כמו קודם)
 function svcSync() {
@@ -5274,6 +5279,13 @@ window.submitAllChanges = async function() {
   const merged = sanitizeForFirestore({ ...(biz.pendingChanges || {}), ...draftChanges }, '', dropped);
   if (dropped.length) console.warn('submitAllChanges: dropped values', dropped);
 
+  // §710 – לא שולחים לאישור "נותן שירות" חדש בלי התשובה (סוג העסק והשאלה יושבים בשני כרטיסים)
+  if (svcAnswerMissing(merged)) {
+    showToast('בחרתם "נותן שירות" – ענו איפה אתם נותנים את השירות, ואז שלחו');
+    window.svcEdit();
+    return false;
+  }
+
   // תמונה שלא הועלתה היא לא "פרט חסר" — זה בדיוק מה שבעל-העסק התכוון לשלוח. עוצרים ואומרים
   // לו מה לעשות, במקום לשלוח בשקט בקשה בלי התמונות (שזה מה שקרה בפועל, §219).
   const missingImages = dropped.filter(d => d.includes('תמונה שלא הועלתה')).length;
@@ -5528,10 +5540,10 @@ window.saveBizDetails = function() {
   const bizTypes = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p =>p.dataset.type);
   const isProNow = bizTypes.includes('pro');
   const isPhysicalNow = bizTypes.includes('physical');
-  // §710 – "איפה אתם נותנים את השירות?". מי שכבר ענה (או שהמנהל קבע) חייב להשאיר תשובה; מי שעוד
-  // לא ענה ולא סימן כלום – לא נחסם בשמירת שדות אחרים.
+  // §710 – "איפה אתם נותנים את השירות?". חובה למי שבוחר עכשיו "נותן שירות" ולמי שכבר ענה (או שהמנהל קבע);
+  // נותן שירות ותיק שעוד לא ענה ולא סימן כלום – לא נחסם בשמירת שדות אחרים.
   const svcModes = isProNow ? svcSelected() : [];
-  if (isProNow && !svcModes.length && (biz.serviceModes || []).length) { showToast('סמנו איפה אתם נותנים את השירות'); return; }
+  if (isProNow && !svcModes.length && ((biz.serviceModes || []).length || !(biz.bizTypes || []).includes('pro'))) { showToast('סמנו איפה אתם נותנים את השירות'); return; }
   const regionsNow = [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p =>p.textContent.trim());
   if (svcModes.includes('toClient') && !regionsNow.length) { showToast('סמנו לאיזה אזורים אתם מגיעים'); return; }
   // ⚠️ §710 – הסניפים נשמרים גם ל"הלקוח מגיע אליי", לא רק לחנות: קודם לכן כל שמירה של נותן שירות
@@ -5722,6 +5734,11 @@ window.saveCatHours = function() {
     tagSuggestion: document.getElementById('editTagSuggestion').value.trim(),
     alsoCategorySuggestion: alsoCategorySuggestionToSave,
   });
+  // §710 – בחר עכשיו "נותן שירות": השאלה בכרטיס "פרטים ויצירת קשר" היא שלב חובה – לוקחים אותו אליה
+  if (svcAnswerMissing({ ...(biz.pendingChanges || {}), ...draftChanges })) {
+    showToast('בחרתם "נותן שירות" – ענו איפה אתם נותנים את השירות');
+    setTimeout(window.svcEdit, 120);
+  }
 };
 
 // saveDigital בוטל (2026-08-05) — website/instagram/facebook נשמרים כעת דרך saveBizDetails().

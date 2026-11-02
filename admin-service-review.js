@@ -220,14 +220,12 @@ function answerHtml(b) {
       <span class="svr-err">${pr.join(' · ')}</span>
     </div>`;
 }
-// בכרטיס העסק ("טיפול מהיר", לפני שאלות הסקשנים): ענו – שורה + "לשנות"; לא ענו – השאלה המלאה
+// בכרטיס העסק ("טיפול מהיר") – רק לעסק קיים שעוד לא נענה. רמי: "לא רוצה שזה ישב בטיפול מהיר, רק לעסקים שכבר
+// קיימים; עסקים חדשים – שלב חובה בפנים". מי שנענה (בהרשמה או כאן) – רואים ומשנים בשלב 2 של הכרטיס.
 export function panelHtml(b) {
+  if (isDone(b)) return '';
   const addr = (b.branches || []).map((x) => x && [x.city, x.address].filter(Boolean).join(' ')).filter(Boolean);
   const addrLine = `<b>כתובת:</b> ${addr.length ? '📍 ' + esc(addr.join(' | ')) : '<span class="svr-noaddr">לא מילא כתובת</span>'}`;
-  if (isDone(b) && !S.editing[b.id]) {
-    return `${STYLE}<div class="sc-q"><div class="sc-q-t">איך מקבלים את השירות<i>${b.serviceSetBy === 'owner' ? 'בעל העסק ענה' : 'נקבע אצלך'}</i></div>
-      <div class="sc-q-a"><b style="font-size:13px">${esc(lineOf(b.serviceModes, b.regions))}</b> <button class="svr-redo" onclick="svrEdit('${b.id}')">לשנות</button></div></div>`;
-  }
   return `${STYLE}<div class="svr-biz svr-panel" data-id="${b.id}">
     <div class="svr-q" style="margin-top:0">איך מקבלים את השירות? <span class="svr-conf ${sug(b).conf}" style="margin-right:6px">${CONF[sug(b).conf]}</span></div>
     <div class="svr-now">${addrLine}</div>

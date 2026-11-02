@@ -6228,9 +6228,9 @@ function bizQuestionRow(b, q) {
 function secQuestionsBodyHtml(b) {
   const prio = secPrio(b);
   return `
+        ${serviceReviewPanelHtml(b)}
         ${secPlacementHtml(b, "secSetPlacementFor('" + b.id + "','")}
         ${SEC_QUESTIONS.map(q => bizQuestionRow(b, q)).join("")}
-        ${serviceReviewPanelHtml(b)}
         <div class="sc-q">
           <div class="sc-q-t">עדיפות חשיפה<i>${SEC_PRIO_EFFECT[prio][1]}</i></div>
           <div class="sc-q-a">${SEC_PRIO_EFFECT.map((p, v) =>
@@ -11016,23 +11016,24 @@ function collectBranchRowsAdmin(bizId) {
   })).filter(br => br.city || br.address);
 }
 
+const editSvcModes = (id) => ['toClient', 'atMine', 'remote'].filter(k => document.getElementById('edit_svc_' + k + '_' + id)?.checked);   // §710
 window.saveBizSec2 = async function(id) {
   const b = findBiz(id);
-const editSvcModes = (id) => ['toClient', 'atMine', 'remote'].filter(k => document.getElementById('edit_svc_' + k + '_' + id)?.checked);   // §710
   if (!b) return;
   const types = [];
   if (document.getElementById('edit_type_physical_'+id).checked) types.push('physical');
   if (document.getElementById('edit_type_online_'+id).checked) types.push('online');
   if (document.getElementById('edit_type_pro_'+id).checked) types.push('pro');
-  // שדות type-conditional (ר' business-dashboard.html שלב 2) — נקראים תמיד, אבל רק אם הסוג המתאים מסומן
-  // כך שאם המנהל מסמן/מבטל checkbox בלי לגעת בשדה עצמו, הערך לא "נדבק" לסוג שכבר לא רלוונטי
-  // §710 – התשובה נשמרת כמו במסך המעבר. מי שעוד לא נענה ולא סומן לו כלום – לא נחסם בשמירת שדות אחרים.
+  // §710 – חובה כשבוחרים עכשיו "נותן שירות", וכשכבר נענה (אי אפשר לרוקן). עסק קיים שעוד לא נענה – לא נחסם
+  // בשמירת שדות אחרים; הוא ב"טיפול מהיר" ובמסך המעבר.
   const svcModes = types.includes('pro') ? editSvcModes(id) : [];
   const svcRegions = Array.from(document.querySelectorAll('.edit-proregion-'+id+':checked')).map(el => el.value);
-  if (types.includes('pro') && !svcModes.length && (b.serviceModes || []).length) { alert('לסמן איפה הוא נותן את השירות'); return; }
+  if (types.includes('pro') && !svcModes.length && ((b.serviceModes || []).length || !(b.bizTypes || []).includes('pro'))) { alert('נותן שירות – לסמן איפה הוא נותן את השירות'); return; }
   if (svcModes.includes('toClient') && !svcRegions.length) { alert('"אני מגיע ללקוח" – לסמן לפחות אזור אחד'); return; }
   if (svcModes.includes('atMine') && !collectBranchRowsAdmin(id).some(x => x.city && x.address)) { alert('"הלקוח מגיע אליי" – למלא עיר וכתובת'); return; }
   const svcChanged = svcModes.length && JSON.stringify(svcModes) !== JSON.stringify(b.serviceModes || []);
+  // שדות type-conditional (ר' business-dashboard.html שלב 2) — נקראים תמיד, אבל רק אם הסוג המתאים מסומן
+  // כך שאם המנהל מסמן/מבטל checkbox בלי לגעת בשדה עצמו, הערך לא "נדבק" לסוג שכבר לא רלוונטי
   const desc = document.getElementById('edit_desc_'+id).value.trim();
   // hoursEditors[id] נוצר ב-mountAdminHoursEditor כשהשלב נפתח. נפילה-לאחור למחרוזת הקיימת
   // ולא למחרוזת ריקה — אחרת פתיחת השלב בלי hours.js הייתה **מוחקת** לעסק את השעות בשמירה.
@@ -23459,7 +23460,7 @@ function renderMainInner() {
 }
 // §710 – המודול נטען בכניסה הראשונה: למסך המעבר, או לכרטיס עסק של נותן שירות (serviceReviewPanelHtml)
 function serviceReviewEnsure() {
-    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7107').then((m) => {
+    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7108').then((m) => {
       m.init({
         biz: () => MOCK_BUSINESSES, esc,
         // noAsk – בלי חלון "לסל" (§705ה); noBasket – לא נכנס לסיכום לבעל העסק: יש לו כרטיס צהוב והודעה משלנו
