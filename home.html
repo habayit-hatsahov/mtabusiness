@@ -874,7 +874,7 @@
     .biz-card-tags.has-where .biz-card-tag { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .biz-card-tags.has-where .biz-card-tag + .biz-card-tag { flex-shrink: 0; }
     .biz-where { margin-inline-start: auto; flex-shrink: 0; max-width: 62%; display: inline-flex; align-items: center; gap: 3px;
-      font-size: 12px; font-weight: 700; color: var(--ink-2); white-space: nowrap; line-height: 1; }
+      font-size: 12px; font-weight: 600; color: #6E737B; white-space: nowrap; line-height: 1; }
     .biz-where > svg { width: 14px; height: 14px; flex-shrink: 0; }
     .biz-where-t { overflow: hidden; text-overflow: ellipsis; }
     .biz-where-more { display: inline-flex; gap: 2px; margin-inline-start: 3px; }
@@ -2488,8 +2488,7 @@ SVC_SVG.store = SVC_SVG.atMine;
 const _svcPlus = (a) => a.length ? a[0] + (a.length > 1 ? ' +' + (a.length - 1) : '') : '';
 function wayShort(biz, k) {
   if (k === 'atMine' || k === 'store') return _svcPlus(biz.cities || []) || SVC_TXT[k];
-  if (k === 'toClient') return SVC_TXT.toClient + ((biz.regions || []).length ? ' · ' + _svcPlus(biz.regions) : '');
-  return SVC_TXT[k];
+  return SVC_TXT[k];   // §715 – "עד אליך" בחוץ בלי אזור; האזורים בכרטיס בפנים
 }
 function wayFull(biz, k) {
   if (k === 'store') return SVC_TXT.store + ((biz.cities || []).length ? ' – ' + biz.cities.join(', ') : '');   // §714
@@ -2498,8 +2497,11 @@ function wayFull(biz, k) {
   return SVC_TXT[k];
 }
 function whereHtml(biz) {
-  const w = bizWays(biz);
+  // §715 – serviceHide: מה שהמנהל הסתיר מהכרטיס בחוץ. בפנים (renderSheetMeta) תמיד הכול
+  const w = bizWays(biz).filter(k => !(biz.serviceHide || []).includes(k));
   if (!w.length) return '';
+  // §715 – 3 דרכים ומעלה: רק סמלים, בלי טקסט
+  if (w.length >= 3) return `<span class="biz-where" title="${w.map(k => SVC_TXT[k]).join(' · ')}"><span class="biz-where-more">${w.map(k => `<i>${SVC_SVG[k]}</i>`).join('')}</span></span>`;
   const more = w.slice(1).map(k => `<i>${SVC_SVG[k]}</i>`).join('');
   return `<span class="biz-where" title="${w.map(k => SVC_TXT[k]).join(' · ')}">${SVC_SVG[w[0]]}<span class="biz-where-t">${wayShort(biz, w[0])}</span>${more ? `<span class="biz-where-more">${more}</span>` : ''}</span>`;
 }
@@ -2668,7 +2670,7 @@ function _rotate(arr, offset) {
 // סדר — זה קורה כמעט בכל עדכון חי (למשל לייק על עסק אחר, קליק, עריכה של עסק לא-קשור).
 let _lastRenderedOrder = {};
 // §714 – not only ids and order: a card drawn from the saved cache got the service answers later and was never redrawn
-function _idsKey(list) { return list.map(b => b.id + (b.serviceModes || []).join('+') + '|' + (b.regions || []).length + '|' + (b.servicePlace || '')).join(','); }
+function _idsKey(list) { return list.map(b => b.id + (b.serviceModes || []).join('+') + '|' + (b.regions || []).length + '|' + (b.servicePlace || '') + '|' + (b.serviceHide || []).join('+')).join(','); }
 // גובה-ריק זהה בדיוק לגובה כרטיס אמיתי (215px, ר' .biz-card) — כדי שמעבר בין "אין תוכן" ל"יש
 // תוכן" (למשל הלייק הראשון-אי-פעם) לא ישנה את גובה השורה בכלל, ולא ידרוש שום פיצוי-גלילה.
 function _emptyRowHtml(text) {
@@ -5346,6 +5348,7 @@ function _hbRenderBusinesses() {
       // §710 – רק לנותן שירות שנענה (בהרשמה / בדשבורד / במסך המעבר). servicePlace – מיקום השורה שהמנהל קבע ('' = אוטומטי)
       serviceModes: bizTypes.includes('pro') && Array.isArray(b.serviceModes) ? b.serviceModes : [],
       servicePlace: b.servicePlace || '',
+      serviceHide:  Array.isArray(b.serviceHide) ? b.serviceHide : [],   // §715
       isPhysical:   bizTypes.includes('physical'),
       isPro:        bizTypes.includes('pro'),
       profession:   b.profession || '',

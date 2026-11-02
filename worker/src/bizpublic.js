@@ -24,7 +24,7 @@ export const PUBLIC_FIELDS = [
   'kosher',   // §643 – כשר/לא כשר (מנהל או הרשמה)
   // §710 – "איך מקבלים את השירות": התשובה (toClient/atMine/remote – רק נותן שירות שנענה) ומיקום השורה בכרטיס
   // שהמנהל קבע ידנית ('tags' / 'deal'; ריק = אוטומטי). serviceSetBy/serviceOwnerAckAt/serviceMsgAt – פנימיים, לא כאן.
-  'serviceModes', 'servicePlace',
+  'serviceModes', 'servicePlace', 'serviceHide',
 ];
 
 // additionalDiscounts – בלי `code`; במקומו hasCode (home.html מחשב לפיו את אופני המימוש).
