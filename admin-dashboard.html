@@ -10742,6 +10742,7 @@ async function saveSectionUpdates(id, updates, opts) {
     if (b) {
       Object.assign(b, updates, pendingPatch);
       Object.assign(b, hydrateBiz(id, b));
+      await opOfferCloseAsks(b, Object.keys(updates).filter(k => !qjEq(beforeVals[k], updates[k])));   // §712
     }
     // 16 קריאות ל-saveSectionUpdates בקובץ (סעיפים 1-5, סימון-הערה-כטופלה, עריכת-תגית-מוצעת ועוד) —
     // מקום אחד מרכזי לרשום ביומן "מה נערך", בלי לגעת בכל קריאה בנפרד. ר' §1 במפרט.
@@ -15619,8 +15620,33 @@ function withChangeDecision(b, field, decision, extra) {
 window.approveChangeField = async function(id, field, valueOverride) {
   const b = findBiz(id);
   if (!b || !b.pendingChanges || !(field in b.pendingChanges)) return;
-  await applyChangeFields(b, [field], 'approved', valueOverride !== undefined ? { [field]: valueOverride } : null);
+  // §712 – ✅ מהריבוע של השלב סוגר את הבקשה שלנו כמו ✅ ב"מה פתוח" (opApprove), כשזה השדה האחרון שנשאר בשורה.
+  // רמי, הבוצ'ר הכשר: "שלב 3 עדיין בסגול נדרש תיקון למרות שאישרתי".
+  const row = bizOpenRows(b).find(r => r.items.some(it => it.field === field));
+  const left = row ? row.items.filter(it => it.field !== field && it.field in b.pendingChanges) : [];
+  await applyChangeFields(b, [field], 'approved', valueOverride !== undefined ? { [field]: valueOverride } : null, null, row && !left.length ? row.asks : null);
 };
+// §712 – אילו בקשות שלנו שפתוחות נוגעות לשדות שהמנהל שינה עכשיו בעצמו (בלי שורות שעוד מחכה בהן שינוי של בעל העסק)
+window.opAsksForFields = function(b, changed) {
+  return bizOpenRows(b).filter(r => {
+    const g = OP_GROUPS.find(x => x.k === r.k);
+    const fields = g ? (g.k === 'deal' ? [...g.fields, 'discountText', 'aiShortTitle'] : g.fields) : [];
+    return r.asks.length && !r.items.length && fields.some(f => changed.includes(f));
+  }).flatMap(r => r.asks);
+};
+// §712 – שמירה ידנית של שדה שביקשנו עליו: שואלים. לא סוגרים לבד – אולי שינית משהו קטן והבקשה עדיין עומדת, ובעל העסק רואה אותה.
+async function opOfferCloseAsks(b, changed) {
+  const asks = window.opAsksForFields(b, changed);
+  if (!asks.length) return;
+  if (!confirm('ביקשנו ממנו:\n' + asks.map(x => '• ' + x.text).join('\n') + '\n\nתיקנת את זה בעצמך – לסגור את הבקשה? (היא תיעלם גם אצלו)')) return;
+  try {
+    const patch = opCloseAsksPatch(b, asks);
+    await updateDoc(doc(db, 'businesses', b.id), patch);
+    Object.assign(b, patch, patch.approvedAt ? { approvedAt: new Date() } : {});
+    Object.assign(b, hydrateBiz(b.id, b));
+    await logActivity('businesses', b.id, { type: 'fixRound', title: patch.inReview === false ? '✔️ בקשת התיקון נסגרה – תיקנו בעצמנו' : '✔️ נסגרה נקודה – תיקנו בעצמנו', detail: asks.map(x => x.text).join(' · ') });
+  } catch (e) { console.error(e); alert('סגירת הבקשה נכשלה: ' + e.message); }
+}
 window.rejectChangeField = async function(id, field) {
   const b = findBiz(id);
   if (!b || !b.pendingChanges || !(field in b.pendingChanges)) return;

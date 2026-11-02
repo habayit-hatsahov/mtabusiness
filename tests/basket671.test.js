@@ -32,6 +32,7 @@ function build(biz, opts = {}) {
     window: {}, db: {}, document: { getElementById: getEl },
     bizStaged: opts.staged || {}, QJ_DECIDED: opts.decided || {},
     findBiz: (id) => (id === biz.id ? biz : null),
+    bizOpenRows: () => opts.rows || [],   // §712
     doc: (_db, coll, id) => `${coll}/${id}`,
     setDoc: async (ref, data) => { writes.push(['setDoc', ref, data]); },
     updateDoc: async (ref, u) => { writes.push(['updateDoc', ref, u]); },
@@ -194,6 +195,20 @@ const bizW = (writes) => writes.filter(w => w[0] === 'updateDoc' && w[1].startsW
     await t.w.bsGo();
     const u = bizW(t.writes)[0][2];
     ok(u.inReview === true && u.fixHidden === false && !('status' in u) && u.inReviewAt === 'TS', 'ממתין → צריך לתקן: נשאר pending, inReviewAt חדש');
+  }
+
+  console.log('\n— §712: ✅ מהריבוע סוגר את הבקשה שלנו רק כשזה השדה האחרון בשורה —');
+  {
+    const ask = { key: 'cover', text: 'תמונה ראשית' };
+    const b = { id: 'b1', status: 'pending', inReview: true, inReviewReasons: ['cover'], inReviewOther: '', pendingChanges: { coverPhoto: 'n', phone: '05' } };
+    let t = build(b, { rows: [{ k: 'cover', items: [{ field: 'coverPhoto' }], asks: [ask] }] });
+    await t.w.approveChangeField('b1', 'coverPhoto');
+    ok(bizW(t.writes)[0][2].inReview === false, 'שדה אחרון בשורה – הבקשה נסגרת');
+    const b2 = { ...b, pendingChanges: { discountTextFull: 'a', discountCode: 'b' } };
+    t = build(b2, { rows: [{ k: 'deal', items: [{ field: 'discountTextFull' }, { field: 'discountCode' }], asks: [ask] }] });
+    await t.w.approveChangeField('b1', 'discountTextFull');
+    const u = bizW(t.writes)[0][2];
+    ok(!('inReview' in u) && !('inReviewReasons' in u), 'נשאר עוד שדה בשורה – הבקשה נשארת');
   }
 
   console.log(`\n${pass} עברו, ${fail} נכשלו`);
