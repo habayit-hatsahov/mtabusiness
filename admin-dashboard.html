@@ -14902,6 +14902,16 @@ function opValHtml(b, f, v, isNew) {
   const t = typeof v === 'string' && !isNew && OP_HYDRATED.has(f) ? v : fmtDiffVal(f, v);
   return t === '–' || t === '' ? '<span class="op-empty">ריק</span>' : esc(f === 'additionalDiscounts' && Array.isArray(v) ? v.map(x => x && x.text).filter(Boolean).join('\n') || t : t);
 }
+// §716 – "כתבו לנו" גם ב"מה פתוח": העסק נכנס ל"בקשות מבעלי עסקים" בגלל ההערה, וכאן לא ראו אותה (רמי על גולפיט: "אני נכנס ולא רואה איזה שינוי הגיש")
+function opNoteRowHtml(b) {
+  return `<div class="op-row his"><div class="op-top"><span class="op-field">💬 כתב לנו</span><span class="op-who">הערה חופשית – לא שינוי בכרטיס</span><span class="op-hint" style="margin:0">${b.noteAt ? 'כתב ' + fmtDateTime(b.noteAt) : ''}</span></div>
+    <div class="op-ask" style="background:var(--nav-bg);white-space:pre-line">${esc(b.note)}</div>
+    <div class="op-acts"><button type="button" class="qj-btn primary" onclick="opNoteDone('${b.id}')">✓ סימון כטופל</button><button type="button" class="qj-btn" onclick="openBizNoteReply('${b.id}')">💬 לענות לו</button><span class="op-hint" style="margin:0">סימון כטופל לא שולח לו הודעה.</span></div>
+  </div>`;
+}
+window.opNoteDone = function (id) {
+  saveSectionUpdates(id, { noteHandled: true, noteHandledAt: serverTimestamp(), noteOwnerAckAt: null }, { noAsk: true, noBasket: true });
+};
 function opRowHtml(b, r) {
   if (r.check) {
     const body = r.check === 'verif'
@@ -14957,7 +14967,8 @@ function bizWaitBannerHtml(b) {
   const dec = QJ_DECIDED[b.id] || [];
   const pending = b.status === 'pending';
   const revd = BIZ_REVIEW_SECTIONS.filter(n => b.reviewedSections && b.reviewedSections[n]).length;
-  if (!inFix && !asked.length && !dec.length && !bsDrafts[b.id] && !(pending && !b.fixHidden)) return '';   // §705ג – עסק ממתין: תמיד (גם "✓ אין שום דבר פתוח – לאשר")
+  const hasNote = bizHasUnhandledNote(b);   // §716
+  if (!inFix && !hasNote && !asked.length && !dec.length && !bsDrafts[b.id] && !(pending && !b.fixHidden)) return '';   // §705ג – עסק ממתין: תמיד (גם "✓ אין שום דבר פתוח – לאשר")
   const by = {};   // שלב → [שורות]
   const add = (n, kind, tag, text, di) => (by[n] = by[n] || []).push({ kind, tag, text, di });
   if (false) {   // §689 – מה שנשלח מוצג פעם אחת, ממוספר, בראש הפס (sentBox)
@@ -15002,10 +15013,10 @@ function bizWaitBannerHtml(b) {
   const oldRound = b.inReviewAt && toJsDate(b.inReviewAt) < new Date('2026-10-31T00:00:00+02:00');
   const sentMsg = !inFix ? '' : lastSum ? `<details class="sum-msg"><summary>📨 מה שלחנו לו · ${fmtDateTime(toJsDate(lastSum.createdAt))} · "${esc(lastSum.summary.msgTitle || '')}"</summary><div class="sum-round-msg">${esc(lastSum.summary.msgText || '')}</div></details>`
     : oldRound ? `<div class="mtile-sub" style="margin-top:6px">📨 ההודעה עצמה – נשלחה ${fmtDateTime(toJsDate(b.inReviewAt))}, לפני שהתחלנו לשמור סבבים (31.10) – ביומן</div>` : '';
-  const sentBox = rows.length ? `<div class="op-box">
-      <div class="op-h">📋 מה פתוח בעסק הזה <span class="op-count">${rows.length}</span></div>
-      <div class="op-legend">${legend}</div>
-      ${rows.map(r => opRowHtml(b, r)).join('')}
+  const sentBox = rows.length || hasNote ? `<div class="op-box">
+      <div class="op-h">📋 מה פתוח בעסק הזה <span class="op-count">${rows.length + (hasNote ? 1 : 0)}</span></div>
+      <div class="op-legend">${legend}${hasNote ? '<span><b>💬 1</b> כתב לנו</span>' : ''}</div>
+      ${rows.map(r => opRowHtml(b, r)).join('')}${hasNote ? opNoteRowHtml(b) : ''}
       ${inFix ? `<div class="op-acts"><button type="button" class="qj-btn" onclick="bizSentAdd('${b.id}')">+ לבקש עוד משהו</button><button type="button" class="qj-btn" onclick="bizFixCancel('${b.id}')">↩️ לבטל את בקשת התיקון</button><span class="op-hint" style="margin:0">מה שביקשנו מופיע אצלו ${pending && !b.fixHidden ? 'במסך הכניסה' : 'בראש דף הבית'} ובדשבורד, עד שנסגר כאן.</span></div>` : ''}
       ${fixed ? `<div class="sum-sent-fixed">🔁 ${esc(b.ownerFirst || 'בעל העסק')} סימן שתיקן ${fmtDateTime(fixed)} – מחכה לבדיקה שלך</div>` : ''}
       ${sentMsg}
