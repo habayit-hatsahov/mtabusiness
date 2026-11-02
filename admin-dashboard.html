@@ -5395,7 +5395,7 @@ function bizAnchorLocationsHtml(b) {
 
 // שדות שאין ב-admin-businesses.html היום (region/clicks/likes) לא מוצגים בשורה — נשארים במוק
 // כי הם רלוונטיים ל"מרכז נתונים" (שם הם כבר קיימים היום, ר' הצעה שנשלחה בצ'אט), לא לרשימה עצמה.
-const BIZ_TYPE_LABELS_MOCK = { physical: '🏪 חנות פיזית', online: '🌐 אונליין', pro: '🔧 בעל מקצוע / נותן שירות' };
+const BIZ_TYPE_LABELS_MOCK = { physical: '🏪 חנות פיזית', online: '🌐 אונליין', pro: '🔧 נותן שירות' };
 const RELATION_LABELS_MOCK = { '': 'העסק שלו – לא רלוונטי', spouse: 'בן/בת זוג', parent: 'הורה', sibling: 'אח/ות', child: 'ילד/ה', other: 'אחר' };
 
 let bizSearch = '';
@@ -6230,6 +6230,7 @@ function secQuestionsBodyHtml(b) {
   return `
         ${secPlacementHtml(b, "secSetPlacementFor('" + b.id + "','")}
         ${SEC_QUESTIONS.map(q => bizQuestionRow(b, q)).join("")}
+        ${serviceReviewPanelHtml(b)}
         <div class="sc-q">
           <div class="sc-q-t">עדיפות חשיפה<i>${SEC_PRIO_EFFECT[prio][1]}</i></div>
           <div class="sc-q-a">${SEC_PRIO_EFFECT.map((p, v) =>
@@ -9963,20 +9964,28 @@ function bizFullDetailHtml(id, opts) {
                 <label class="biz-type-card ${types.includes('pro')?'on':''}">
                   <input type="checkbox" id="edit_type_pro_${b.id}" ${types.includes('pro')?'checked':''} onchange="onEditBizTypeChange('${b.id}')">
                   <div class="bt-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 1 5.4-5.4l-2.5 2.5"></path></svg></div>
-                  <div class="bt-name">בעל מקצוע / נותן שירות</div>
-                  <div class="bt-desc">אתם מגיעים ללקוח</div>
+                  <div class="bt-name">נותן שירות</div>
+                  <div class="bt-desc">בעל מקצוע, טיפול, הפקה, ייעוץ</div>
                 </label>
               </div>
             </div>
             <div class="step-field full"><div class="step-field-h">תיאור העסק</div><textarea id="edit_desc_${b.id}" rows="3" placeholder="תיאור קצר לעסק...">${b.descriptionText||''}</textarea></div>
           </div>
-          <div id="edit_typePhysicalFields_${b.id}" style="display:${types.includes('physical')?'block':'none'};margin-top:14px">
-            <div class="step-field-h">סניפים</div>
+          <div id="edit_typePhysicalFields_${b.id}" style="display:${types.includes('physical') || (types.includes('pro') && (b.serviceModes||[]).includes('atMine'))?'block':'none'};margin-top:14px">
+            <div class="step-field-h" id="edit_branchesTitle_${b.id}">${types.includes('physical') ? 'סניפים' : 'הכתובת שהלקוחות מגיעים אליה'}</div>
             <div id="editBranchesList_${b.id}">${adminBranchRowsHtml(b.id, (b.branches && b.branches.length) ? b.branches : [{ city: branch.city, address: branch.address }])}</div>
             <button type="button" class="act-btn tiny" onclick="addBranchRow('${b.id}')" style="margin-top:4px">+ הוסף סניף</button>
           </div>
           <div id="edit_typeProFields_${b.id}" style="display:${types.includes('pro')?'block':'none'};margin-top:14px">
-            <div class="step-field full"><div class="step-field-h">אזורי פעילות</div><div class="edit-check-row" id="edit_proRegions_${b.id}">${proRegionsChecks}</div></div>
+            <!-- §710 – רמי: "אני לוחץ על נותן שירות, רק פותח לי אזורים". אותה שאלה כמו בהרשמה ובאזור של בעל העסק -->
+            <div class="step-field full"><div class="step-field-h">איפה הוא נותן את השירות? (אפשר כמה)</div>
+              <div class="biz-type-grid">${[['toClient','אני מגיע ללקוח','לבית, למשרד, לאירוע'],['atMine','הלקוח מגיע אליי','סטודיו, קליניקה, משרד'],['remote','מרחוק','טלפון, זום, משלוח']].map(([k,h,s]) => `
+                <label class="biz-type-card ${(b.serviceModes||[]).includes(k)?'on':''}">
+                  <input type="checkbox" id="edit_svc_${k}_${b.id}" ${(b.serviceModes||[]).includes(k)?'checked':''} onchange="onEditBizTypeChange('${b.id}')">
+                  <div class="bt-name">${h}</div><div class="bt-desc">${s}</div><div class="bt-desc" style="margin-top:4px">ללקוחות: <b>${SERVICE_MODE_LABELS[k]}</b></div>
+                </label>`).join('')}</div>
+            </div>
+            <div class="step-field full" id="edit_svcRegions_${b.id}" style="display:${(b.serviceModes||[]).includes('toClient') || !(b.serviceModes||[]).length ? 'block' : 'none'};margin-top:10px"><div class="step-field-h">לאיזה אזורים הוא מגיע?</div><div class="edit-check-row" id="edit_proRegions_${b.id}">${proRegionsChecks}</div></div>
           </div>
           <div class="step-form-grid" style="margin-top:14px">
             ${stepFieldHtml('phone', 'טלפון עסק', `<input type="text" class="${stepChangedField('phone')?'changed-val':''}" id="edit_phone_${b.id}" value="${b.phone||''}">`)}
@@ -11009,6 +11018,7 @@ function collectBranchRowsAdmin(bizId) {
 
 window.saveBizSec2 = async function(id) {
   const b = findBiz(id);
+const editSvcModes = (id) => ['toClient', 'atMine', 'remote'].filter(k => document.getElementById('edit_svc_' + k + '_' + id)?.checked);   // §710
   if (!b) return;
   const types = [];
   if (document.getElementById('edit_type_physical_'+id).checked) types.push('physical');
@@ -11016,6 +11026,13 @@ window.saveBizSec2 = async function(id) {
   if (document.getElementById('edit_type_pro_'+id).checked) types.push('pro');
   // שדות type-conditional (ר' business-dashboard.html שלב 2) — נקראים תמיד, אבל רק אם הסוג המתאים מסומן
   // כך שאם המנהל מסמן/מבטל checkbox בלי לגעת בשדה עצמו, הערך לא "נדבק" לסוג שכבר לא רלוונטי
+  // §710 – התשובה נשמרת כמו במסך המעבר. מי שעוד לא נענה ולא סומן לו כלום – לא נחסם בשמירת שדות אחרים.
+  const svcModes = types.includes('pro') ? editSvcModes(id) : [];
+  const svcRegions = Array.from(document.querySelectorAll('.edit-proregion-'+id+':checked')).map(el => el.value);
+  if (types.includes('pro') && !svcModes.length && (b.serviceModes || []).length) { alert('לסמן איפה הוא נותן את השירות'); return; }
+  if (svcModes.includes('toClient') && !svcRegions.length) { alert('"אני מגיע ללקוח" – לסמן לפחות אזור אחד'); return; }
+  if (svcModes.includes('atMine') && !collectBranchRowsAdmin(id).some(x => x.city && x.address)) { alert('"הלקוח מגיע אליי" – למלא עיר וכתובת'); return; }
+  const svcChanged = svcModes.length && JSON.stringify(svcModes) !== JSON.stringify(b.serviceModes || []);
   const desc = document.getElementById('edit_desc_'+id).value.trim();
   // hoursEditors[id] נוצר ב-mountAdminHoursEditor כשהשלב נפתח. נפילה-לאחור למחרוזת הקיימת
   // ולא למחרוזת ריקה — אחרת פתיחת השלב בלי hours.js הייתה **מוחקת** לעסק את השעות בשמירה.
@@ -11023,8 +11040,10 @@ window.saveBizSec2 = async function(id) {
   const updates = {
     name: document.getElementById('edit_name_'+id).value.trim() || b.name,
     bizTypes: types,
-    branches: types.includes('physical') ? collectBranchRowsAdmin(id) : [],
-    regions: types.includes('pro') ? Array.from(document.querySelectorAll('.edit-proregion-'+id+':checked')).map(el => el.value) : [],
+    // ⚠️ §710 – גם ל"הלקוח מגיע אליי": קודם כל שמירה של מי שאינו חנות מחקה לו את הכתובת
+    branches: types.includes('physical') || svcModes.includes('atMine') ? collectBranchRowsAdmin(id) : [],
+    regions: types.includes('pro') && (svcModes.includes('toClient') || !svcModes.length) ? svcRegions : [],
+    ...(svcChanged ? { serviceModes: svcModes, serviceSetBy: 'admin', serviceSetAt: new Date().toISOString() } : {}),
     phone: document.getElementById('edit_phone_'+id).value.trim(),
     whatsapp: document.getElementById('edit_whatsapp_'+id).value.trim(),
     serviceEmail: document.getElementById('edit_serviceEmail_'+id).value.trim(),
@@ -11206,7 +11225,18 @@ window.onEditBizTypeChange = function(id) {
   const isPro      = proCb.checked;
   const physicalEl = document.getElementById('edit_typePhysicalFields_'+id);
   const proEl      = document.getElementById('edit_typeProFields_'+id);
-  if (physicalEl) physicalEl.style.display = isPhysical ? 'block' : 'none';
+  // §710 – הריבועים של "איפה הוא נותן את השירות": האזורים ל"אני מגיע ללקוח" (או כשעוד לא נענה), הכתובת גם ל"הלקוח מגיע אליי"
+  const svcModes = editSvcModes(id);
+  ['toClient', 'atMine', 'remote'].forEach(k => {
+    const c = document.getElementById('edit_svc_' + k + '_' + id);
+    c?.closest('.biz-type-card')?.classList.toggle('on', c.checked);
+  });
+  const atMine = isPro && svcModes.includes('atMine');
+  const regionsEl = document.getElementById('edit_svcRegions_'+id);
+  if (regionsEl) regionsEl.style.display = svcModes.includes('toClient') || !svcModes.length ? 'block' : 'none';
+  const branchesTitle = document.getElementById('edit_branchesTitle_'+id);
+  if (branchesTitle) branchesTitle.textContent = isPhysical ? 'סניפים' : 'הכתובת שהלקוחות מגיעים אליה';
+  if (physicalEl) physicalEl.style.display = isPhysical || atMine ? 'block' : 'none';
   if (proEl) proEl.style.display = isPro ? 'block' : 'none';
   // 🐛 באג-אמת שנמצא (2026-08-08, המשתמש: "בוחר עוד סוג עסק וזה משתנה אבל לא מופיע"): ה-checkbox
   // עצמו מוסתר לגמרי (`.biz-type-card input { display:none }`, ר' CSS) — הסימון הוויזואלי היחיד
@@ -11417,7 +11447,7 @@ function bizFilterBarHtml(opts) {
           <option value="all">כל סוגי העסק</option>
           <option value="physical" ${bizTypeFilter==='physical'?'selected':''}>🏪 חנות פיזית</option>
           <option value="online" ${bizTypeFilter==='online'?'selected':''}>🌐 אונליין</option>
-          <option value="pro" ${bizTypeFilter==='pro'?'selected':''}>🔧 בעל מקצוע / נותן שירות</option>
+          <option value="pro" ${bizTypeFilter==='pro'?'selected':''}>🔧 נותן שירות</option>
         </select>
         <select class="filter-select" onchange="setBizReviewFilter(this.value)">
           <option value="all">כל מצבי הסקירה</option>
@@ -13685,7 +13715,7 @@ function dealTilesHtml(b) {
 // ══ §688 — אריחים בשלבים 1–2 (רמי: "תמשיך לאריחים בשלבים 1 ו-2") ════════════════════════════════
 // אריח לכל קבוצת שדות, עם מה שיש עכשיו. בקשת תיקון על השלב (🚩 – חובה לכתוב מה) מופיעה בפס מעל האריחים,
 // כי היא על השלב ולא על שדה אחד; בקשת עדכון מבעל העסק – באריח של השדה, "עכשיו" מול "מה ששלח", עם ✅/❌.
-const BIZ_TYPE_LABELS = { physical: '🏪 חנות פיזית', online: '🌐 אונליין', pro: '🔧 בעל מקצוע / נותן שירות' };
+const BIZ_TYPE_LABELS = { physical: '🏪 חנות פיזית', online: '🌐 אונליין', pro: '🔧 נותן שירות' };
 function stepTilesHtml(b, n) {
   const fk = STEP_FIX_KEY[n];
   const reqHas = (QJ_DECIDED[b.id] || []).some(d => d.decision === 'fix' && d.key === fk);
@@ -13729,7 +13759,7 @@ function stepTilesHtml(b, n) {
       // §710 – מה נותן השירות ענה (בהרשמה / בדשבורד) או מה שאתה קבעת במסך המעבר
       + ((b.bizTypes || []).includes('pro') ? line('איך מקבלים:', (b.serviceModes || []).length
           ? (b.serviceModes || []).map(k => chip(esc(SERVICE_MODE_LABELS[k] || k))).join(' ') + ` <span style="font-size:11.5px;color:var(--text-muted)">${b.serviceSetBy === 'owner' ? 'בעל העסק ענה' : 'נקבע במסך המעבר'}</span>`
-          : chip('⚠️ עוד לא נקבע – במסך "איך מקבלים את השירות"', true)) : '')
+          : chip('⚠️ עוד לא נקבע – למעלה ב"טיפול מהיר"', true)) : '')
       // §710 – איפה השורה יושבת בכרטיס בחוץ (תצוגה בלבד): אוטומטי / ליד התגית / ליד ההטבה
       + (((b.bizTypes || []).some(t => t === 'physical' || t === 'online') || (b.serviceModes || []).length) ? line('בכרטיס בחוץ:',
           [['', 'אוטומטי'], ['tags', 'ליד התגית'], ['deal', 'ליד ההטבה']].map(([v, t]) =>
@@ -19281,7 +19311,7 @@ function m2Filters() {
     { sec: 'העסק' }, M2_STATUS,
     { k: 'cat', t: 'קטגוריה', opts: CATEGORIES.map((c) => [c.key, c.label]), test: (p, v) => p.catKey === v },
     { k: 'tag', t: 'תגית', dyn: true, test: (p, v) => (p.tags || []).includes(v) },
-    { k: 'types', t: 'סוג העסק', opts: [['physical', '🏪 חנות פיזית'], ['online', '🌐 אונליין'], ['pro', '🔧 בעל מקצוע']], test: (p, v) => (p.bizTypes || []).includes(v) },
+    { k: 'types', t: 'סוג העסק', opts: [['physical', '🏪 חנות פיזית'], ['online', '🌐 אונליין'], ['pro', '🔧 נותן שירות']], test: (p, v) => (p.bizTypes || []).includes(v) },
     { k: 'disc', t: 'איך מממשים הטבה', opts: [['physical', 'בחנות'], ['sale', 'בשירות'], ['online', 'אונליין']], test: (p, v) => (p.discountTypes || []).includes(v) },
     { k: 'region', t: 'אזור (בעלי מקצוע)', opts: ['כל הארץ', 'גוש דן', 'ירושלים והסביבה', 'השפלה', 'השרון', 'חיפה והצפון', 'הדרום'].map((r) => [r, r]), test: (p, v) => (p.regions || []).includes(v) },
     { k: 'city', t: 'עיר (חנויות)', opts: cities.map((c) => [c, c]), test: (p, v) => (p.branches || []).some((x) => x && (x.city || '').trim() === v) },
@@ -23422,7 +23452,14 @@ function renderMainInner() {
       return;
     }
     wrap.innerHTML = '<div class="placeholder-note">טוען…</div>';
-    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7105').then((m) => {
+    serviceReviewEnsure();
+    return;
+  }
+  renderMainInnerRest(wrap);
+}
+// §710 – המודול נטען בכניסה הראשונה: למסך המעבר, או לכרטיס עסק של נותן שירות (serviceReviewPanelHtml)
+function serviceReviewEnsure() {
+    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7107').then((m) => {
       m.init({
         biz: () => MOCK_BUSINESSES, esc,
         // noAsk – בלי חלון "לסל" (§705ה); noBasket – לא נכנס לסיכום לבעל העסק: יש לו כרטיס צהוב והודעה משלנו
@@ -23433,13 +23470,21 @@ function renderMainInner() {
           m2.trk = { ...SERVICE_MSG_TRK };
           m2.doc = { ...m2Blank(), ch: { app: false, push: false, mail: true, wa: false }, mail: { subject: SERVICE_MSG.subject, body: SERVICE_MSG.body, personal: false } };
           selectTab(BROADCAST_KEY);
-        },        rerender: () => { if (activeTab === SERVICE_KEY) renderMain(); renderSidebar(); },
+        },
+        rerender: () => { if (activeTab === SERVICE_KEY) renderMain(); else renderMainPreserveScroll(); renderSidebar(); },
       });
       window.YZS = m;
-      renderMain();
-    }).catch((e) => { console.error(e); serviceReviewImport = null; wrap.innerHTML = '<div class="placeholder-note">טעינת המסך נכשלה – רענן ונסה שוב</div>'; });
-    return;
-  }
+      renderMainPreserveScroll();
+    }).catch((e) => { console.error(e); serviceReviewImport = null; if (activeTab === SERVICE_KEY) document.getElementById('tabContent').innerHTML = '<div class="placeholder-note">טעינת המסך נכשלה – רענן ונסה שוב</div>'; });
+}
+// §710 – השאלה בכרטיס העסק (רמי: "אני עובר על עסק ממתין ולא רואה את זה"). רק לנותן שירות.
+function serviceReviewPanelHtml(b) {
+  if (!(b.bizTypes || []).includes('pro')) return '';
+  if (window.YZS) return window.YZS.panelHtml(b);
+  serviceReviewEnsure();
+  return '';
+}
+function renderMainInnerRest(wrap) {
   // §699 — מרכז הנתונים: לשוניות. "אפליקציה ושימוש" חי ב-admin-usage.js (נטען בכניסה הראשונה),
   // "מעקבים" – בבנייה, "מעורבות" – בינתיים המסך הקודם של מרכז הנתונים, עד שייבנה מחדש.
   // §702 — "מעורבות" חדש (admin-engage.js). המסך הקודם (engageOld) נשאר נגיש מכפתור – בשביל "הקליקים שלנו במונה".

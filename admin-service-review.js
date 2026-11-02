@@ -23,7 +23,7 @@ export const LABEL = { toClient: '🚗 עד אליך', atMine: '📍 מגיעי�
 const REGIONS = ['כל הארץ', 'גוש דן', 'ירושלים והסביבה', 'השפלה', 'השרון', 'חיפה והצפון', 'הדרום'];
 const CONF = { n: 'אין הצעה', u: 'לא ברור', l: 'סביר', s: 'בטוח' };
 const ORDER = { n: 0, u: 1, l: 2, s: 3 };
-const TYPE_HE = { physical: 'חנות', online: 'אונליין', pro: 'בעל מקצוע' };
+const TYPE_HE = { physical: 'חנות', online: 'אונליין', pro: 'נותן שירות' };
 
 const S = { filter: 'todo', draft: {}, editing: {}, busy: null };
 
@@ -191,10 +191,16 @@ function cardHtml(b) {
         : `<span class="svr-conf ${sg.conf}">${CONF[sg.conf]}</span>`}
     </div>`;
   if (done) return `<div class="svr-biz done" data-id="${b.id}">${head}</div>`;
-  const d = draft(b), pr = problems(b, d);
   return `
   <div class="svr-biz" data-id="${b.id}">${head}
     <div class="svr-desc" onclick="this.classList.toggle('open')">${esc(b.desc) || '<i>אין תיאור</i>'}</div>
+    ${answerHtml(b)}
+  </div>`;
+}
+// השאלה עצמה – אחת, למסך המעבר ולכרטיס העסק
+function answerHtml(b) {
+  const sg = sug(b), d = draft(b), pr = problems(b, d);
+  return `
     <div class="svr-why"><b>ההצעה שלי:</b> ${sg.modes.length ? esc(sg.modes.map((m) => LABEL[m]).join(' + ')) + ' – ' + esc(sg.why) : 'אין הצעה (עסק שנרשם אחרי 1.11) – תבחר לפי התיאור'}</div>
     <div class="svr-q">איפה הוא נותן את השירות? <span>(אפשר כמה)</span></div>
     <div class="svr-modes">${MODES.map(([k, h, s]) => `
@@ -212,7 +218,20 @@ function cardHtml(b) {
       <button class="svr-ok" onclick="svrSave('${b.id}')"${pr.length || S.busy === b.id ? ' disabled' : ''}>${S.busy === b.id ? 'שומר…' : 'אישור'}</button>
       ${S.editing[b.id] ? `<button class="svr-cancel" onclick="svrCancel('${b.id}')">ביטול</button>` : ''}
       <span class="svr-err">${pr.join(' · ')}</span>
-    </div>
+    </div>`;
+}
+// בכרטיס העסק ("טיפול מהיר", לפני שאלות הסקשנים): ענו – שורה + "לשנות"; לא ענו – השאלה המלאה
+export function panelHtml(b) {
+  const addr = (b.branches || []).map((x) => x && [x.city, x.address].filter(Boolean).join(' ')).filter(Boolean);
+  const addrLine = `<b>כתובת:</b> ${addr.length ? '📍 ' + esc(addr.join(' | ')) : '<span class="svr-noaddr">לא מילא כתובת</span>'}`;
+  if (isDone(b) && !S.editing[b.id]) {
+    return `${STYLE}<div class="sc-q"><div class="sc-q-t">איך מקבלים את השירות<i>${b.serviceSetBy === 'owner' ? 'בעל העסק ענה' : 'נקבע אצלך'}</i></div>
+      <div class="sc-q-a"><b style="font-size:13px">${esc(lineOf(b.serviceModes, b.regions))}</b> <button class="svr-redo" onclick="svrEdit('${b.id}')">לשנות</button></div></div>`;
+  }
+  return `${STYLE}<div class="svr-biz svr-panel" data-id="${b.id}">
+    <div class="svr-q" style="margin-top:0">איך מקבלים את השירות? <span class="svr-conf ${sug(b).conf}" style="margin-right:6px">${CONF[sug(b).conf]}</span></div>
+    <div class="svr-now">${addrLine}</div>
+    ${answerHtml(b)}
   </div>`;
 }
 
@@ -230,7 +249,7 @@ export function html() {
   const btn = (k, t) => `<button class="${f === k ? 'on' : ''}" onclick="svrFilter('${k}')">${t}${cnt[k] ? ` <span class="svr-n">${cnt[k]}</span>` : ''}</button>`;
   return `${STYLE}<div class="svr">
     <h2>איך מקבלים את השירות – מעבר על נותני השירות</h2>
-    <p class="svr-sub">כל עסק שסימן "בעל מקצוע". לכל אחד: התיאור שכתב, ההצעה שלי (עם הציטוט שעליו נשענתי), ואותה שאלה כמו בטופס – מסומנת מראש. משנים אם צריך ולוחצים "אישור" – נשמר בעסק מיד ונרשם ביומן שלו. הלא ברורים ראשונים.<br>
+    <p class="svr-sub">כל נותן שירות. לכל אחד: התיאור שכתב, ההצעה שלי (עם הציטוט שעליו נשענתי), ואותה שאלה כמו בטופס – מסומנת מראש. משנים אם צריך ולוחצים "אישור" – נשמר בעסק מיד ונרשם ביומן שלו. הלא ברורים ראשונים.<br>
     עדיין לא מוצג באתר – זה יעלה כשכולם יעודכנו (שלב 5). הכרטיס הצהוב לבעל העסק וההודעה – בשלבים 2–3.</p>
     <div class="svr-top">
       <div class="svr-prog"><i style="width:${pct}%"></i></div>
