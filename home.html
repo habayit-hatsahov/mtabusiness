@@ -2468,7 +2468,7 @@ function likeBadge(biz) {
 // המילון (service-terms-demo.html): 📍 מגיעים אליו · 🚗 עד אליך · 💻 מרחוק · 🌐 אונליין – אותן מילים ואייקונים
 // בכל מקום. חנות ואונליין – מההתחלה (מסוג העסק); נותן שירות – **רק כשנענה** (serviceModes), אחרת לא משתנה כלום
 // (רמי: "עד שבעל העסק או אני לא עונים – אל תציג שום שינוי"). בחוץ: אחת עם טקסט והשאר אייקונים, בסדר הקבוע.
-const SVC_TXT = { atMine: 'מגיעים אליו', toClient: 'עד אליך', remote: 'מרחוק', online: 'אונליין' };
+const SVC_TXT = { store: 'חנות פיזית', atMine: 'מגיעים אליו', toClient: 'עד אליך', remote: 'מרחוק', online: 'אונליין' };
 const SVC_SVG = {
   atMine:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
   toClient: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16V8a1 1 0 0 1 1-1h10v9"/><path d="M14 10h4l3 3.5V16h-7"/><circle cx="7.5" cy="17" r="2"/><circle cx="17.5" cy="17" r="2"/></svg>',
@@ -2477,20 +2477,22 @@ const SVC_SVG = {
 };
 function bizWays(biz) {
   const m = biz.serviceModes || [], w = [];
-  if (biz.isPhysical || m.includes('atMine')) w.push('atMine');
+  // §714 – store: real shop. atMine: only a service provider without a shop
+  if (biz.isPhysical) w.push('store'); else if (m.includes('atMine')) w.push('atMine');
   if (m.includes('toClient')) w.push('toClient');
   if (m.includes('remote')) w.push('remote');
   if (biz.online) w.push('online');
   return w;
 }
+SVC_SVG.store = SVC_SVG.atMine;
 const _svcPlus = (a) => a.length ? a[0] + (a.length > 1 ? ' +' + (a.length - 1) : '') : '';
 function wayShort(biz, k) {
-  if (k === 'atMine') return _svcPlus(biz.cities || []) || SVC_TXT.atMine;
+  if (k === 'atMine' || k === 'store') return _svcPlus(biz.cities || []) || SVC_TXT[k];
   if (k === 'toClient') return SVC_TXT.toClient + ((biz.regions || []).length ? ' · ' + _svcPlus(biz.regions) : '');
   return SVC_TXT[k];
 }
 function wayFull(biz, k) {
-  if (k === 'atMine') return SVC_TXT.atMine + ((biz.cities || []).length ? ' · ' + biz.cities.join(', ') : '');
+  if (k === 'atMine' || k === 'store') return SVC_TXT[k] + ((biz.cities || []).length ? ' · ' + biz.cities.join(', ') : '');
   if (k === 'toClient') return SVC_TXT.toClient + ((biz.regions || []).length ? ' · ' + biz.regions.join(', ') : '');
   return SVC_TXT[k];
 }
@@ -2664,7 +2666,8 @@ function _rotate(arr, offset) {
 // מיקום גלילה בתוך שורה / להבהב) כשה-snapshot מ-Firestore חוזר עם אותה קבוצת עסקים באותו
 // סדר — זה קורה כמעט בכל עדכון חי (למשל לייק על עסק אחר, קליק, עריכה של עסק לא-קשור).
 let _lastRenderedOrder = {};
-function _idsKey(list) { return list.map(b => b.id).join(','); }
+// §714 – not only ids and order: a card drawn from the saved cache got the service answers later and was never redrawn
+function _idsKey(list) { return list.map(b => b.id + (b.serviceModes || []).join('+') + '|' + (b.regions || []).length + '|' + (b.servicePlace || '')).join(','); }
 // גובה-ריק זהה בדיוק לגובה כרטיס אמיתי (215px, ר' .biz-card) — כדי שמעבר בין "אין תוכן" ל"יש
 // תוכן" (למשל הלייק הראשון-אי-פעם) לא ישנה את גובה השורה בכלל, ולא ידרוש שום פיצוי-גלילה.
 function _emptyRowHtml(text) {
@@ -3533,6 +3536,7 @@ function renderSheetMeta(b) {
   const ways = bizWays(b);
   const SVC_DETAIL = {
     atMine:   () => (b.cities || []).length ? ((b.cities.length > 1 ? b.cities.length + ' סניפים: ' : '') + b.cities.join(' · ')) : 'הכתובת בפרטים למטה',
+    store:    () => (b.cities || []).length ? ((b.cities.length > 1 ? b.cities.length + ' סניפים: ' : '') + b.cities.join(' · ')) : 'הכתובת בפרטים למטה',
     toClient: () => 'הוא מגיע אליך – לבית, למשרד או לאירוע' + ((b.regions || []).length ? ' · באזור: ' + b.regions.join(', ') : ''),
     remote:   () => 'בטלפון, בזום או במשלוח – לא צריך להגיע',
     online:   () => 'קונים באתר – הקישור בפרטים למטה',
