@@ -58,7 +58,7 @@ function build(biz, opts = {}) {
     bizReviewedCount: () => 5, BIZ_REVIEW_SECTIONS: [1, 2, 3, 4, 5],
     confirmSuspectEmail: () => true, confirm: () => true,
     waLink: (p, m) => 'https://wa.me/' + p + '?text=' + encodeURIComponent(m), applyBizTpl: (t, n) => t.replace('{name}', n || ''), bizDashUrl: (t) => 'https://x/bd?token=' + t,
-    bumpWaNudge: () => {}, setTimeout: (f) => f(),
+    bumpWaNudge: () => {}, setTimeout: (f) => f(), pendingLiveValue: (o, k) => o[k],
     _bn: null,
   };
   const body = `${QJ}\n${WAIT}\nfunction bizStagedOf(id) { return bizStaged[id] || {}; }\n${STAGE}\n${SUM}\n${ROUTES}

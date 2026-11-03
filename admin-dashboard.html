@@ -3663,12 +3663,14 @@ function hydrateBiz(id, raw) {
     discountFullText: (raw.pendingChanges && 'discountTextFull' in raw.pendingChanges) ? raw.pendingChanges.discountTextFull : (raw.discountTextFull || ''),
     // אותו תיקון (2) גם כאן — הטבה 2/3 חייבות להעדיף בקשה-ממתינה על פני המצב הישן, מאותה סיבה בדיוק
     additionalDiscounts: (raw.pendingChanges && 'additionalDiscounts' in raw.pendingChanges) ? raw.pendingChanges.additionalDiscounts : (raw.additionalDiscounts || []),
+    // §711 – הערך החי, להשוואה מול הבקשה (pendingLiveValue). hydrateBiz רץ גם על עסק שכבר עבר הידרציה – ואז החי כבר כאן
+    _liveAdditionalDiscounts: (raw.pendingChanges && 'additionalDiscounts' in raw.pendingChanges && '_liveAdditionalDiscounts' in raw) ? raw._liveAdditionalDiscounts : (raw.additionalDiscounts || []),
     // דיף שינויים ממתינים — נבנה מהערך הישן על המסמך מול הערך המוצע ב-pendingChanges (אמיתי, לא מוק).
     // מכיל *רק* את השדות שבעל-העסק הגיש בפועל (realPendingChangeKeys) — שדה-נגזר או ערך זהה-לקיים
     // אינו "בקשה", ולכן גם null כשאין אף שינוי אמיתי: זה מה שמוריד את העסק מ"בקשות מבעלי עסקים"
     // (classifyAction/hasPendingChange) במקום להשאיר שם רשומה בלי שום דבר להכריע בו.
     pendingChangeDiff: realPending.length ? Object.fromEntries(
-      realPending.map(k => [k, { old: fmtDiffVal(k, raw[k]), new: fmtDiffVal(k, raw.pendingChanges[k]) }])
+      realPending.map(k => [k, { old: fmtDiffVal(k, pendingLiveValue(raw, k)), new: fmtDiffVal(k, raw.pendingChanges[k]) }])
     ) : null,
     changeSubmittedAt: toJsDate(raw.pendingChangesAt),
     isNew: !!raw.isNew,
@@ -15643,10 +15645,15 @@ const DIFF_FIELD_EXCLUDE = new Set([
 // שני אלה אינם בקשה, ולכן הם לא נספרים ולא מוצגים בשום מקום — לא בשיפוט-מהיר, לא בסיווג
 // "בקשה מבעל העסק" (classifyAction) ולא בסינון "שינויים" (hasPendingChange).
 // מקבל מסמך גולמי או עסק מ-hydrateBiz — שניהם מחזיקים את הערך החי ב-o[k] ואת המבוקש ב-pendingChanges.
+// §711 – חריג אחד: hydrateBiz שם ב-additionalDiscounts את הערך המבוקש, והערך החי ב-_liveAdditionalDiscounts.
+// השוואה מול o[k] הייתה משווה את הבקשה לעצמה, ו"הטבה נוספת" נמחקה עם ההכרעה בשדה האחרון שלידה (הבוצ׳ר הכשר).
+function pendingLiveValue(o, k) {
+  return k === 'additionalDiscounts' && '_liveAdditionalDiscounts' in o ? o._liveAdditionalDiscounts : o[k];
+}
 function realPendingChangeKeys(o) {
   const p = o && o.pendingChanges;
   if (!p) return [];
-  return Object.keys(p).filter(k => !DIFF_FIELD_EXCLUDE.has(k) && fmtDiffVal(k, o[k]) !== fmtDiffVal(k, p[k]));
+  return Object.keys(p).filter(k => !DIFF_FIELD_EXCLUDE.has(k) && fmtDiffVal(k, pendingLiveValue(o, k)) !== fmtDiffVal(k, p[k]));
 }
 // מפת pendingChanges לכתיבה חזרה — או null אם *לא נשארה בה אף בקשה אמיתית*. כיוון שהשאריות
 // הטכניות כבר לא מוצגות, אין דרך בממשק להכריע בהן; להשאיר אותן ב-DB = להשאיר את העסק
@@ -15795,11 +15802,12 @@ async function applyChangeFields(b, fields, decision, overrides, extra, closeAsk
       const edited = overrides && f in overrides && String(newVal) !== String(pending[f]);
       updates[f] = newVal;
       (PENDING_COMPANION_FIELDS[f] || []).forEach(c => { if (c in pending) { if (!(c in updates)) updates[c] = pending[c]; delete pending[c]; } });
-      logs.push({ type: 'changeDecision', title: `אושר שינוי: ${L}`, detail: `${L}: "${av(f, b[f])}" → "${av(f, newVal)}"`, field: f, before: b[f] ?? null, after: newVal });
+      const liveVal = pendingLiveValue(b, f);
+      logs.push({ type: 'changeDecision', title: `אושר שינוי: ${L}`, detail: `${L}: "${av(f, liveVal)}" → "${av(f, newVal)}"`, field: f, before: liveVal ?? null, after: newVal });
       noteItems.push(qjItem(L + (edited ? ' (עם תיקון קטן שלנו)' : ''), 'approved'));
     } else {
       (PENDING_COMPANION_FIELDS[f] || []).forEach(c => delete pending[c]);
-      logs.push({ type: 'changeDecision', title: `נדחה שינוי: ${L}`, detail: `הבקשה לשנות ${L} ל"${av(f, pending[f])}" נדחתה`, field: f, before: b[f] ?? null, after: null });
+      logs.push({ type: 'changeDecision', title: `נדחה שינוי: ${L}`, detail: `הבקשה לשנות ${L} ל"${av(f, pending[f])}" נדחתה`, field: f, before: pendingLiveValue(b, f) ?? null, after: null });
       noteItems.push(qjItem(L, 'rejected'));
     }
     delete pending[f];
