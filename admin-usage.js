@@ -6,6 +6,7 @@
 // מקורות (בלי לטעון ~52,000 אירועים כמו המסך הישן):
 //   • usageDaily/{יום}   – סיכום יומי מהוורקר (usage-agg.js), יום שהסתיים = מסמך אחד.
 //   • אירועי היום        – נטענים חי (8 סוגים, היום בלבד) ומסוכמים באותה פונקציה בדיוק.
+//                          §717 – כך גם יום שהסתיים ועוד אין לו סיכום (הוורקר רץ רק ב-05:17).
 //   • רשומות חברים ועסקים – מה שמרכז הניהול כבר מחזיק בזיכרון (בלי קריאות נוספות).
 // הדמו המאושר: app-usage-demo.html (§640ח–§640י).
 import { aggregateUsageDay, USAGE_TYPES, FAN_STEPS, BIZ_STEPS } from './usage-agg.js?v=705';
@@ -63,6 +64,9 @@ const SRC = {
 };
 
 // ── טעינה ──────────────────────────────────────────────────────────────────────────────────
+// §717 – אילו ימים לחשב חי מהאירועים: היום, וכל יום מ-3 האחרונים שאין לו סיכום (כמו FILL_BACK_DAYS בוורקר).
+const liveKeys = (days, today, from) => { const out = [today]; for (let i = 1; i <= 3; i++) { const k = addDays(today, -i); if (k >= from && !days[k]) out.push(k); } return out; };
+const liveNote = keys => { const past = keys.filter(k => k !== D.today); return past.length ? ` · ${past.map(short).join(', ')} חושב עכשיו מהאירועים (הסיכום הלילי רץ ב-05:17)` : ''; };
 export function init(ctx) { C = ctx; }
 export function isLoaded() { return !!D; }
 export async function load(force) {
@@ -74,19 +78,23 @@ export async function load(force) {
     const days = {};
     snap.docs.forEach(d => { days[d.id] = d.data(); });
     const today = ilDayKey(new Date());
-    // היום החי – 8 סוגים, היום בלבד (האינדקס הקיים: type + createdAt יורד)
-    const [start] = ilDayRange(today);
-    const evs = [], capped = [];
-    await Promise.all(USAGE_TYPES.map(async ty => {
-      const q = fs.query(fs.collection(db, 'events'), fs.where('type', '==', ty), fs.where('createdAt', '>=', start), fs.orderBy('createdAt', 'desc'), fs.limit(10000));   // 10,000 = התקרה של Firestore לשאילתה
-      const s = await fs.getDocs(q);
-      if (s.docs.length >= 10000) capped.push(ty);   // יום חריג כמו יום ההשקה – המספרים של היום חלקיים, ונאמר על המסך
-      s.docs.forEach(x => { const e = x.data(); evs.push({ type: e.type, path: e.path, blockId: e.blockId, memberId: e.memberId, sessionId: e.sessionId, device: e.device, channel: e.channel }); });
-    }));
+    // היום החי – 8 סוגים (האינדקס הקיים: type + createdAt יורד)
+    // §717 – יום שהסתיים ועוד אין לו סיכום (הוורקר רץ ב-05:17) מחושב כאן באותה דרך. עד עכשיו בין חצות ל-05:17 "אתמול" הוצג כאפסים.
     const admins = (C.fans() || []).filter(m => m.isAdmin === true).map(m => m.id);
-    days[today] = aggregateUsageDay(evs, admins);
-    // יום שהסתיים ועוד אין לו סיכום (הוורקר רץ ב-05:17) – אתמול לפני הריצה: נשאר חסר ונאמר על המסך
-    D = { days, today, loadedAt: new Date(), todayEvents: evs.length, capped };
+    const live = liveKeys(days, today, MEASURE_FROM), capped = [];
+    let todayEvents = 0;
+    await Promise.all(live.map(async key => {
+      const [start, end] = ilDayRange(key), evs = [];
+      await Promise.all(USAGE_TYPES.map(async ty => {
+        const q = fs.query(fs.collection(db, 'events'), fs.where('type', '==', ty), fs.where('createdAt', '>=', start), fs.where('createdAt', '<', end), fs.orderBy('createdAt', 'desc'), fs.limit(10000));   // 10,000 = התקרה של Firestore לשאילתה
+        const s = await fs.getDocs(q);
+        if (s.docs.length >= 10000 && !capped.includes(key)) capped.push(key);   // יום חריג כמו יום ההשקה – המספרים של אותו יום חלקיים, ונאמר על המסך
+        s.docs.forEach(x => { const e = x.data(); evs.push({ type: e.type, path: e.path, blockId: e.blockId, memberId: e.memberId, sessionId: e.sessionId, device: e.device, channel: e.channel }); });
+      }));
+      days[key] = aggregateUsageDay(evs, admins);
+      if (key === today) todayEvents = evs.length;
+    }));
+    D = { days, today, loadedAt: new Date(), todayEvents, capped, live };
     if (!S.from) { S.from = LAUNCH; S.to = today; }
     if (!S.rq.from) { S.rq.from = addDays(today, -6); S.rq.to = today; }
   } catch (e) { console.error(e); loadErr = e.message || String(e); }
@@ -201,7 +209,7 @@ export function html() {
   const head = `<div class="yzu-top"><div class="yzu-pbar"><b>תקופה:</b>${[['today', 'היום'], ['yest', 'אתמול'], ['7', '7 ימים'], ['30', '30 ימים'], ['launch', 'מאז ההשקה'], ['all', 'הכול'], ['custom', 'בחירת תאריכים']].map(([k, l]) => `<button class="${S.per === k ? 'on' : ''}" onclick="yzuSet('per','${k}')" ${k === 'all' ? 'title="מאז ומתמיד – מההרשמה הראשונה. הורדות, כניסות וחזרות נמדדים מ-11.10"' : ''}>${l}</button>`).join('')}
       ${S.per === 'custom' ? `<span>מ-<input type="date" value="${S.from}" min="${MEASURE_FROM}" max="${D.today}" onchange="yzuSet('from',this.value)"> עד <input type="date" value="${S.to}" min="${MEASURE_FROM}" max="${D.today}" onchange="yzuSet('to',this.value)"></span>` : ''}</div>
     <div class="yzu-tools"><button class="yzu-btn ${S.table ? 'on' : ''}" onclick="yzuSet('table')">${S.table ? '◧ חזרה לתצוגה הרגילה' : '▦ תצוגת טבלה'}</button><button class="yzu-btn" onclick="yzuReload()" title="טוען מחדש את אירועי היום">↻ רענון</button>
-      <span class="yzu-note">נטען ${D.loadedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}${p.missing.length ? ` · ⚠️ חסר סיכום ל-${p.missing.map(short).join(', ')}` : ''}${D.capped.length ? ' · ⚠️ היום עבר 10,000 אירועים מאותו סוג – המספרים של היום חלקיים' : ''}</span></div></div>`;
+      <span class="yzu-note">נטען ${D.loadedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}${p.missing.length ? ` · ⚠️ חסר סיכום ל-${p.missing.map(short).join(', ')}` : ''}${liveNote(D.live)}${D.capped.length ? ` · ⚠️ ${D.capped.map(short).join(', ')} עבר 10,000 אירועים מאותו סוג – המספרים של אותו יום חלקיים` : ''}</span></div></div>`;
   if (S.table) return `<div class="yzu">${css()}${head}${tableView(p)}</div>`;
   return `<div class="yzu">${css()}<div class="yzu-ov">${overview()}</div>${head}<div class="yzu-day">${dayPanel(p)}</div>
     <div class="yzu-tiles">${TILES.map(([id, nm, u]) => `<button class="yzu-tile${S.tile === id ? ' on' : ''}" onclick="yzuSet('tile','${id}')"><div class="nm"><span>${nm}${inf(SRC[SRCKEY[id] || id])}</span><i>${u}</i></div>${tileBig(id, p)}</button>`).join('')}</div>
@@ -559,5 +567,5 @@ function css() {
 // ── שיתוף עם לשונית "מעקבים" (admin-trackers.js) – אותם נתונים טעונים, בלי קריאות נוספות ──────────
 export const shared = {
   get C() { return C; }, get D() { return D; }, base: () => base(),
-  dk, addDays, dayList, dayDiff, short, f, pc, W, inf, hb, esc, css, LAUNCH, MEASURE_FROM,
+  dk, addDays, dayList, dayDiff, short, f, pc, W, inf, hb, esc, css, LAUNCH, MEASURE_FROM, liveKeys, liveNote,
 };

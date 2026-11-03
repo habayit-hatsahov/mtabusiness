@@ -4,10 +4,11 @@
 //   • engageDaily/{יום}  – סיכום יומי מהוורקר (engage-agg.js): פתיחות, לבבות, פניות, קישורים, מימוש,
 //                          קרוסלות, שיתופים, ולכל עסק – כולל חשיפות מ-statsDaily (imp).
 //   • היום               – אירועי היום (7 סוגים) + statsDaily של היום לכל עסק, חי.
+//                          §717 – כך גם יום שהסתיים ועוד אין לו סיכום (הוורקר רץ רק ב-05:17).
 //   • מסירת הודעות       – messages/*/recipients, נטען רק כשפותחים את האריח (לפי התקופה).
 // העיצוב, בחירת התקופה ו"!" – מ-admin-usage.js (shared), כמו בשתי הלשוניות האחרות.
 import { aggregateEngageDay, ENGAGE_TYPES } from './engage-agg.js?v=705';
-import { shared as U } from './admin-usage.js?v=705';
+import { shared as U } from './admin-usage.js?v=717';
 
 const LAUNCH = '2026-10-26', SHARE_FROM = '2026-11-01', BENVIEW_FROM = '2026-11-01';
 let E = null, loading = false, err = '';
@@ -16,7 +17,7 @@ const MSG = { key: '', data: null, loading: false, err: '' };
 
 const f = n => U.f(n), pc = (a, b) => U.pc(a, b), inf = t => U.inf(t);
 const SRC = {
-  imp: 'כמה פעמים כרטיס של עסק הופיע על המסך (חשיפה). נספר בדף הבית לכל עסק ולכל יום. בלי מנהלים, ובלי בעל העסק בכרטיס של עצמו. ⚠️ היום של החשיפות לפי שעון UTC – הפרש של 2–3 שעות בקצה היום.',
+  imp: 'כמה פעמים כרטיס של עסק הופיע על המסך (חשיפה). נספר בדף הבית לכל עסק ולכל יום. כל אוהד נספר פעם אחת לעסק בכל כניסה, ורק אם הכרטיס נשאר על המסך שנייה. בלי מנהלים, ובלי בעל העסק בכרטיס של עצמו. ⚠️ החשיפות נספרות לפי שעון UTC: "יום" של חשיפות מתחיל ב-02:00 בלילה (בקיץ 03:00), ולכן בשעות הראשונות של היום כאן עדיין 0.',
   open: 'כל פעם שאוהד פותח כרטיס של עסק – מהרשימה, מהחיפוש או מהקרוסלה. "אוהדים" = כמה אנשים שונים.',
   heart: 'כל לחיצה על לב בתקופה. המספר שעל העסק הוא הסך הכולל מאז ומעולם; כאן – רק מה שנלחץ בתקופה.',
   contact: 'לחיצה על וואטסאפ או על מספר הטלפון בכרטיס העסק או בחלון "איך מממשים". נספרות גם ב"פניות" שבעל העסק רואה.',
@@ -40,19 +41,23 @@ export async function load(force) {
   try {
     const snap = await fs.getDocs(fs.collection(db, 'engageDaily'));
     const days = {}; snap.docs.forEach(d => { days[d.id] = d.data(); });
-    const today = U.D.today, [start] = (await import('./platform-agg.js?v=587b')).ilDayRange(today);
-    const evs = [];
-    await Promise.all(ENGAGE_TYPES.map(async ty => {
-      const s = await fs.getDocs(fs.query(fs.collection(db, 'events'), fs.where('type', '==', ty), fs.where('createdAt', '>=', start), fs.orderBy('createdAt', 'desc'), fs.limit(10000)));
-      s.docs.forEach(x => { const e = x.data(); evs.push({ type: e.type, blockId: e.blockId, memberId: e.memberId, sessionId: e.sessionId, channel: e.channel, bizId: e.bizId }); });
-    }));
+    const today = U.D.today, { ilDayRange } = await import('./platform-agg.js?v=587b');
     const admins = (C.fans() || []).filter(m => m.isAdmin === true).map(m => m.id);
-    const agg = aggregateEngageDay(evs, admins);
-    // חשיפות היום – statsDaily של היום (תאריך UTC) לכל עסק
-    const utc = new Date().toISOString().slice(0, 10), imp = {}; let impTotal = 0;
-    await Promise.all((C.biz() || []).map(async b => { try { const d = await fs.getDoc(fs.doc(db, 'businesses', b.id, 'statsDaily', utc)); const v = d.exists() ? Number(d.data().imp) || 0 : 0; if (v) { imp[b.id] = v; impTotal += v; } } catch (e) { /* בלי חשיפות לעסק הזה */ } }));
-    days[today] = { ...agg, imp, impTotal };
-    E = { days, loadedAt: new Date() };
+    // §717 – יום שהסתיים ועוד אין לו סיכום (הוורקר רץ ב-05:17) מחושב כאן באותה דרך, כמו ב"אפליקציה ושימוש"
+    const live = U.liveKeys(days, today, LAUNCH);
+    await Promise.all(live.map(async key => {
+      const [start, end] = ilDayRange(key), evs = [];
+      await Promise.all(ENGAGE_TYPES.map(async ty => {
+        const s = await fs.getDocs(fs.query(fs.collection(db, 'events'), fs.where('type', '==', ty), fs.where('createdAt', '>=', start), fs.where('createdAt', '<', end), fs.orderBy('createdAt', 'desc'), fs.limit(10000)));
+        s.docs.forEach(x => { const e = x.data(); evs.push({ type: e.type, blockId: e.blockId, memberId: e.memberId, sessionId: e.sessionId, channel: e.channel, bizId: e.bizId }); });
+      }));
+      // חשיפות – statsDaily לכל עסק, לפי תאריך היום (כמו engagedaily.js בוורקר).
+      // §717 – היה "התאריך של עכשיו ב-UTC": בין חצות ל-02:00 זה עדיין התאריך של אתמול, ו"היום" הציג את חשיפות אתמול (1,042 ב-01:30).
+      const imp = {}; let impTotal = 0;
+      await Promise.all((C.biz() || []).map(async b => { try { const d = await fs.getDoc(fs.doc(db, 'businesses', b.id, 'statsDaily', key)); const v = d.exists() ? Number(d.data().imp) || 0 : 0; if (v) { imp[b.id] = v; impTotal += v; } } catch (e) { /* בלי חשיפות לעסק הזה */ } }));
+      days[key] = { ...aggregateEngageDay(evs, admins), imp, impTotal };
+    }));
+    E = { days, loadedAt: new Date(), live };
     if (!S.from) { S.from = LAUNCH; S.to = today; }
   } catch (e) { console.error(e); err = e.message || String(e); }
   finally { loading = false; C.rerender(); }
@@ -102,7 +107,7 @@ export function html() {
   const head = `<div class="yzu-top"><div class="yzu-pbar"><b>תקופה:</b>${[['today', 'היום'], ['yest', 'אתמול'], ['7', '7 ימים'], ['30', '30 ימים'], ['launch', 'מאז ההשקה'], ['all', 'הכול'], ['custom', 'בחירת תאריכים']].map(([k, l]) => `<button class="${S.per === k ? 'on' : ''}" onclick="yzeSet('per','${k}')" ${k === 'all' ? 'title="מאז ומתמיד – נתוני המעורבות נמדדים מ-26.10"' : ''}>${l}</button>`).join('')}
       ${S.per === 'custom' ? `<span>מ-<input type="date" value="${S.from}" min="${LAUNCH}" max="${today}" onchange="yzeSet('from',this.value)"> עד <input type="date" value="${S.to}" min="${LAUNCH}" max="${today}" onchange="yzeSet('to',this.value)"></span>` : ''}</div>
     <div class="yzu-tools"><button class="yzu-btn ${S.table ? 'on' : ''}" onclick="yzeSet('table')">${S.table ? '◧ חזרה לתצוגה הרגילה' : '▦ תצוגת טבלה'}</button><button class="yzu-btn" onclick="yzeReload()">↻ רענון</button>
-      <span class="yzu-note">נטען ${E.loadedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })} · נמדד מ-26.10${T.missing.length ? ` · ⚠️ חסר סיכום ל-${T.missing.map(U.short).join(', ')}` : ''}</span></div></div>`;
+      <span class="yzu-note">נטען ${E.loadedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })} · נמדד מ-26.10${U.liveNote(E.live)}${T.missing.length ? ` · ⚠️ חסר סיכום ל-${T.missing.map(U.short).join(', ')}` : ''}</span></div></div>`;
   if (S.table) return `<div class="yzu">${U.css()}${css()}${head}${tableView(R, T)}</div>`;
   const n = T.n, kp = (k, l, v, sub, hl) => `<div class="kp${hl ? ' hl' : ''}"><small>${l}${inf(SRC[k])}</small><b>${v}</b><div class="dt">${sub || '&nbsp;'}</div></div>`;
   const shareOk = R[1] >= SHARE_FROM;
