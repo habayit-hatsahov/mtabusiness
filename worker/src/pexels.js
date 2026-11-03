@@ -36,7 +36,7 @@ const TAG_TO_QUERY = {
   'משקפיים ואביזרי אופנה': 'eyewear glasses store',
   'מספרות וטיפוח': 'hair salon barber',
   'מרפאות ורופאים': 'medical clinic doctor',
-  'רפואה משלימה וטיפול קנאביס': 'alternative medicine wellness therapy',
+  'עיסוי ורפואה משלימה': 'massage therapy wellness',
   'קעקועים': 'tattoo studio',
   'חנויות ספורט ובריכות': 'sports store swimming pool',
   'גלישה': 'surfing surf shop board',
