@@ -13791,6 +13791,8 @@ function mediaRealViewHtml(b) {
 // כמו אריחי התמונות (§678/§680): מה יש עכשיו, ובכל אריח "🚩 לבקש לתקן" (סיבת "פרטי ההטבה" – אותה בקשה כמו
 // בכותרת השלב) ו"✏️ לשנות בעצמי" (פותח את הטופס וגולל לשדה). מצב: 🚩 בסל / ✏️ נשלח / בעל העסק ביקש לעדכן.
 const DEAL_FIELDS_1 = ['discountText', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountStacking', 'hasDiscount'];
+// §718 – רמי: "תוריד גם את הכפילות מהאריחים". האריח מסמן שיש בקשה; ההשוואה וה-✅/❌ – רק ב"מה פתוח בעסק הזה"
+const OP_TILE_NOTE = '<div class="mtile-note ok">🔁 מה ששלח והאישור – למעלה, ב"מה פתוח בעסק הזה"</div>';
 function dealTileFix(b, fields, withRequest) {
   const basket = withRequest ? (QJ_DECIDED[b.id] || []).find(d => d.decision === 'fix' && d.key === 'deal') || null : null;
   const inFix = bizInFix(b), keys = inFix ? bizWaitKeys(b) : [];
@@ -13801,9 +13803,11 @@ function dealTileFix(b, fields, withRequest) {
 }
 function dealTileStateHtml(b, t) {
   const parts = [];
+  const inOp = it => MOCK_BUSINESSES.includes(b) && it.field in (b.pendingChanges || {});   // §718 – רק ב"מה פתוח"
+  if (t.pend.some(inOp)) parts.push(OP_TILE_NOTE);
   if (t.basket) parts.push(`<div class="mtile-note">🚩 <b>ביקשנו לתקן – בסל, עוד לא נשלח</b>${t.basket.note ? ': ' + esc(t.basket.note) : ''}</div>`);
   if (t.sent) parts.push(`<div class="mtile-note">✏️ <b>ביקשנו לתקן${t.sent.at ? ' · ' + fmtDate(t.sent.at) : ''}:</b> ${esc(t.sent.lines.join(' · ') || 'פרטי ההטבה')}${t.sent.fixedAt ? `<br>🔁 סימן שתיקן ${fmtDateTime(t.sent.fixedAt)}` : ''}</div>`);
-  t.pend.forEach(it => {
+  t.pend.filter(it => !inOp(it)).forEach(it => {
     const v = x => { const a = toRedeemArr(x); return Array.isArray(x) || it.field === 'discountRedeemMode' ? (a.map(m => REDEEM_MODE_LABELS_MOCK[m] || m).join(' · ') || '–') : (x == null || x === '' ? '–' : typeof x === 'object' ? JSON.stringify(x).slice(0, 160) : String(x)); };
     parts.push(`<div class="mtile-note ok">🔁 <b>בעל העסק ביקש לעדכן – ${esc(it.label)}:</b><div class="mtile-cmp"><div><div class="mtile-sub">עכשיו</div>${esc(v(it.old !== undefined ? it.old : b[it.field]))}</div><div><div class="mtile-sub">מה ששלח</div>${esc(v((b.pendingChanges || {})[it.field]))}</div></div>
       <div class="mtile-acts" style="padding-top:6px"><button type="button" class="act-btn approve tiny" onclick="event.stopPropagation();approveChangeField('${b.id}','${it.field}')">✅ לאשר</button><button type="button" class="act-btn reject tiny" onclick="event.stopPropagation();rejectChangeField('${b.id}','${it.field}')">❌ לא לאשר</button></div></div>`);
@@ -13932,7 +13936,8 @@ function bizTileFixHtml(b, k) {
   const parts = [];
   if (t.basket) parts.push(`<div class="mtile-note">🚩 <b>ביקשנו – בסל, עוד לא נשלח</b>${t.basket.note ? ': ' + esc(t.basket.note) : ''}</div>`);
   if (t.sent) parts.push(`<div class="mtile-note">✏️ <b>ביקשנו ממנו${t.sent.at ? ' ' + fmtDate(t.sent.at) : ''}:</b> ${esc(t.sent.lines.join(' · ') || 'לתקן')}${t.sent.fixedAt ? `<br>🔁 סימן שתיקן ${fmtDateTime(t.sent.fixedAt)}` : ''}</div>`);
-  if (t.pend) {
+  if (t.pend && MOCK_BUSINESSES.includes(b)) parts.push(OP_TILE_NOTE);   // §718
+  else if (t.pend) {
     const cell = (url, lbl) => `<div class="mtile-cmp-c"><div class="mtile-sub">${lbl}</div>${url ? `<div class="${k === 'logo' ? 'mtile-logo' : 'mtile-cover'}">${mediaThumbHtml(url, k + '.jpg', 'width:100%;height:100%', b.name, k === 'logo' ? 'contain' : 'cover')}</div>` : '<div class="mtile-empty">אין</div>'}</div>`;
     const cmp = k === 'gallery'
       ? `<div class="mtile-sub">היה ${(b.photos || []).length} תמונות · שלח ${(Array.isArray(t.pend.val) ? t.pend.val : []).length}</div>`
@@ -14863,6 +14868,8 @@ const OP_GROUPS = [
   { k: 'deal', label: '🎁 ההטבה', reason: 'deal', step: 4, fields: ['hasDiscount', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountStacking'], words: /הטבה|הנחה|קופון/ },
   { k: 'deals2', label: '🎁 הטבות נוספות', step: 4, fields: ['additionalDiscounts'] },
   { k: 'desc', label: '📝 תיאור', reason: 'desc', step: 2, fields: ['desc'], words: /תיאור/ },
+  // §718 – רמי על לה ורה: מה שביקשתי למעלה ומה ששלח למטה. לכל שדה אישור משלו (perField) – טלפון ואינסטגרם הם לא "דבר אחד"
+  { k: 'contact', label: '📞 פרטים ויצירת קשר', step: 2, perField: true, fields: ['phone', 'whatsapp', 'serviceEmail', 'hours', 'website', 'instagram', 'facebook', 'branches', 'regions'], words: /פרטים ויצירת קשר|אינסטגרם|פייסבוק|טלפון|וואטסאפ|שעות|כתובת|סניף|(^|\s)ה?אתר(\s|$)/ },
   { k: 'owner', label: '🎫 אימות בעל העסק', reason: 'owner', step: 1, fields: ['ownerFirst', 'ownerLast', 'ownerPhone', 'ownerEmail', 'ownerRelation', 'fanInstagram', 'note'] },
 ];
 const OP_STEP_LBL = { 3: 'שלב 1 · העסק', 2: 'שלב 2 · פרטים', 4: 'שלב 3 · הטבות', 5: 'שלב 4 · תמונות', 1: '🎫 בעל העסק' };
@@ -14881,7 +14888,13 @@ function bizOpenRows(b) {
     rows.push({ k: g.k, label: g.label, step: g.step, items, asks });
   });
   pend.filter(it => !used.has(it)).forEach(it => rows.push({ k: 'f_' + it.field, label: it.label, step: it.section, items: [it], asks: [] }));
-  sent.filter(x => !used.has(x)).forEach((x, i) => rows.push({ k: 'a_' + i, label: '✏️ ביקשנו', step: 0, items: [], asks: [x] }));
+  // §718 – בקשה שנכתבה על שלב שלם ("תמונות – …") נכנסת לשורה הראשונה באותו שלב שבה הוא שלח משהו
+  sent.filter(x => !used.has(x)).forEach((x, i) => {
+    const n = Object.keys(QJ_STEP_NAMES).find(s => String(x.text).startsWith(QJ_STEP_NAMES[s].split(' · ').pop() + ' – '));   // "העסק · קטגוריה ותגיות": bizSentItems מפצל על " · "
+    const row = n && rows.find(r => r.step === +n && r.items.length && !r.asks.length);
+    if (row) row.asks.push(x);
+    else rows.push({ k: 'a_' + i, label: '✏️ ביקשנו', step: 0, items: [], asks: [x] });
+  });
   // §705ג – עסק ממתין: מה שחייב להיבדק לפני האישור – אימות בעל העסק, וכשרות לעסק אוכל (אחרת מיד אחרי האישור הוא
   // קופץ ל"כרטיס חסר באינדקס" – ננו קוקטייל בר, 1.11). ראשונים ברשימה.
   if (b.status === 'pending' && !b.fixHidden) {
@@ -14893,6 +14906,8 @@ function bizOpenRows(b) {
 }
 function opValHtml(b, f, v, isNew) {
   const P = b.pendingChanges || {};
+  // §718 – כמו שהיה ב"שיפוט מהיר" (§240): התמונה המלאה, באותו חיתוך של הכרטיס, עם המידות – בתמונונת אי אפשר לשפוט
+  if (f === 'coverPhoto' && v) return `<div class="qj-cover-cell"><div class="op-img media-thumb-wrap" onclick="openImageLightbox('${esc(v)}','coverPhoto.jpg')"><img src="${esc(bizImageViewUrl(v))}" alt="" onload="qjStampDims(this)" onerror="markBizImageBroken(this)" style="width:100%;height:100%;object-fit:cover;object-position:${esc(b.coverPhotoPosition || '50% 50%')};display:block"></div><div class="qj-cover-dims"></div></div>`;
   if (f === 'coverPhoto' || f === 'logo') {
     const thumb = isNew ? P[f + 'Thumb'] : b[f + 'Thumb'];
     return v ? `<div class="op-img${f === 'logo' ? ' logo' : ''}">${mediaThumbHtml(thumb || v, f + '.jpg', 'width:100%;height:100%', b.name, f === 'logo' ? 'contain' : undefined)}</div>` : '<span class="op-empty">אין תמונה</span>';
@@ -14908,7 +14923,7 @@ function opValHtml(b, f, v, isNew) {
 function opNoteRowHtml(b) {
   return `<div class="op-row his"><div class="op-top"><span class="op-field">💬 כתב לנו</span><span class="op-who">הערה חופשית – לא שינוי בכרטיס</span><span class="op-hint" style="margin:0">${b.noteAt ? 'כתב ' + fmtDateTime(b.noteAt) : ''}</span></div>
     <div class="op-ask" style="background:var(--nav-bg);white-space:pre-line">${esc(b.note)}</div>
-    <div class="op-acts"><button type="button" class="qj-btn primary" onclick="opNoteDone('${b.id}')">✓ סימון כטופל</button><button type="button" class="qj-btn" onclick="openBizNoteReply('${b.id}')">💬 לענות לו</button><span class="op-hint" style="margin:0">סימון כטופל לא שולח לו הודעה.</span></div>
+    <div class="op-acts"><button type="button" class="qj-btn primary" onclick="opNoteDone('${b.id}')">✓ סימון כטופל</button><button type="button" class="qj-btn" onclick="openBizNoteReply('${b.id}')">💬 לענות לו</button>${b.ownerPhone ? `<button type="button" class="qj-btn link" onclick="sendBizWA('${b.id}','${b.ownerPhone}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מענה בוואטסאפ</button>` : ''}${b.ownerEmail ? `<button type="button" class="qj-btn link" onclick="sendBizMail('${b.id}','${b.ownerEmail}','${escJsAttr(b.ownerFirst)}','${escJsAttr(b.name)}','${b.accessToken||''}')">מענה במייל</button>` : ''}<span class="op-hint" style="margin:0">סימון כטופל לא שולח לו הודעה.</span></div>
   </div>`;
 }
 window.opNoteDone = function (id) {
@@ -14933,15 +14948,24 @@ function opRowHtml(b, r) {
       <div class="op-hint">${type === 'linked' ? '✅ על מה שהוא שלח סוגר גם את הבקשה הזו – גם אצלו.' : bizFixedAt(b) ? 'הוא סימן "תיקנתי", אבל לא שלח שינוי בשדה הזה.' : 'עוד לא שלח כלום. זה מופיע אצלו ברשימת "מה חסר".'}</div></div>` : '';
   // בהטבה – "הטבה פעילה: לא → כן" מיותר כשרואים את ההטבה עצמה
   const shown = r.k === 'deal' && r.items.length > 1 ? r.items.filter(it => it.field !== 'hasDiscount') : r.items;
+  const perField = writable.length > 1 && OP_GROUPS.some(g => g.k === r.k && g.perField);
   const cmp = shown.map(it => {
     if (!(it.field in P)) return `<div class="op-ask" style="background:#ECFDF3">${esc(it.label)}: ${esc(it.detail || '')}<div class="op-hint">ההחלטה בשלב – "${OP_STEP_LBL[r.step] || 'לשלב'}" למעלה.</div></div>`;
     const now = OP_HYDRATED.has(it.field) ? it.old : b[it.field];
-    return `${shown.length > 1 ? `<div class="op-sub">${esc(it.label)}</div>` : ''}<div class="op-cmp"><div class="op-side"><div class="op-lbl">היום בכרטיס</div>${opValHtml(b, it.field, now, false)}</div><div class="op-arrow">←</div><div class="op-side new"><div class="op-lbl">החדש ששלח</div>${opValHtml(b, it.field, P[it.field], true)}</div></div>`;
+    // §718 – מה שהיה רק ב"שיפוט מהיר" (§655): המילים שהשתנו מסומנות, ו"עריכה לפני אישור" לשדה שהערך שלו טקסט פשוט
+    const editId = `qjEdit_${b.id}_${it.field}`, val = P[it.field];
+    const canEdit = typeof val === 'string' && it.new === val && !IMAGE_DIFF_FIELDS.has(it.field);
+    const [oldHtml, newHtml] = canEdit ? qjTextDiffHtml(it.old, it.new) : [];
+    const oldSide = canEdit ? (it.old === '–' ? '<span class="op-empty">ריק</span>' : `<div class="qj-diff-text">${oldHtml}</div>`) : opValHtml(b, it.field, now, false);
+    const newSide = canEdit ? `<div class="qj-diff-text" id="${editId}_view">${newHtml}</div><textarea id="${editId}" class="qj-textarea" rows="${Math.min(10, Math.max(2, val.split('\n').length + Math.ceil(val.length / 70)))}" style="display:none">${esc(val)}</textarea>` : opValHtml(b, it.field, val, true);
+    const fieldActs = perField ? `<button type="button" class="act-btn approve" onclick="qjApproveText('${b.id}','${it.field}')">✅ לאשר – נשמר מיד</button><button type="button" class="act-btn reject" onclick="rejectChangeField('${b.id}','${it.field}')">❌ לא לאשר</button>` : '';
+    const editBtn = canEdit ? `<button type="button" class="qj-btn" onclick="qjOpenEdit('${editId}')">✏️ עריכה לפני אישור</button>` : '';
+    return `${shown.length > 1 ? `<div class="op-sub">${esc(it.label)}</div>` : ''}<div class="op-cmp"><div class="op-side"><div class="op-lbl">היום בכרטיס</div>${oldSide}</div><div class="op-arrow">←</div><div class="op-side new"><div class="op-lbl">החדש ששלח</div>${newSide}</div></div>${fieldActs || editBtn ? `<div class="op-acts">${fieldActs}${editBtn}</div>` : ''}`;
   }).join('');
   // §687ב – אישור ההטבה בלי כותרת בכרטיס חסום; את הכותרת אנחנו קובעים – כאן, בשורה
   const needTitle = r.k === 'deal' && writable.length && bizMissingCardTitle({ ...b, ...Object.fromEntries(writable.map(it => [it.field, P[it.field]])), ...('discountText' in P ? { discountText: P.discountText } : {}) });
   const title = needTitle ? `<div class="op-title">כותרת ההטבה בכרטיס – <b>חובה, אתה מגדיר</b><input id="opTitle_${b.id}" maxlength="60" placeholder="למשל: 150 גרם גרעינים מתנה ב-5 בירות"></div>` : '';
-  const acts = writable.length ? `<div class="op-acts"><button type="button" class="act-btn approve" onclick="opApprove('${b.id}','${r.k}')">✅ לאשר – נשמר מיד</button><button type="button" class="act-btn reject" onclick="opReject('${b.id}','${r.k}')">❌ לא לאשר</button><span class="op-err" id="opErr_${b.id}_${r.k}"></span></div>` : '';
+  const acts = writable.length && !perField ? `<div class="op-acts"><button type="button" class="act-btn approve" onclick="opApprove('${b.id}','${r.k}')">✅ לאשר – נשמר מיד</button><button type="button" class="act-btn reject" onclick="opReject('${b.id}','${r.k}')">❌ לא לאשר</button><span class="op-err" id="opErr_${b.id}_${r.k}"></span></div>` : '';
   return `<div class="op-row ${type}"><div class="op-top"><span class="op-field">${esc(r.label)}</span><span class="op-who">${who}</span>${stepBtn}<span class="op-when">${when}</span></div>${ask}${cmp}${title}${acts}</div>`;
 }
 window.opApprove = async function(id, k) {
@@ -14955,7 +14979,9 @@ window.opApprove = async function(id, k) {
     if (!t) { const e = document.getElementById('opErr_' + id + '_' + k); if (e) e.textContent = '⛔ חסרה כותרת ההטבה בכרטיס'; ti.focus(); return; }
     extra = { discountText: t.slice(0, 60) };
   }
-  await applyChangeFields(b, fields, 'approved', null, extra, r.asks, r.label);
+  const edited = {};   // §718 – "עריכה לפני אישור" פתוחה: הטקסט מהתיבה
+  fields.forEach(f => { const ta = document.getElementById(`qjEdit_${id}_${f}`); if (ta && ta.style.display !== 'none') edited[f] = ta.value; });
+  await applyChangeFields(b, fields, 'approved', Object.keys(edited).length ? edited : null, extra, r.asks, r.label);
 };
 window.opReject = async function(id, k) {
   const b = findBiz(id), r = b && bizOpenRows(b).find(x => x.k === k);
@@ -16453,8 +16479,12 @@ window.qjApproveText = function(id, field) {
   return approveChangeField(id, field, ta && ta.style.display !== 'none' ? ta.value : undefined);
 };
 function quickJudgmentHtml(b) {
-  const items = bizPendingChangeItems(b);
-  const hasNote = bizHasUnhandledNote(b);
+  // §718 – רמי: "מתחת לשאלות על הסקשנים מופיע גם הבקשות שלו, זה מופיע פעמיים". מה שיש לו ✅/❌ ב"מה פתוח" – רק שם
+  // (גם "כתב לנו", §716). כאן נשארות הצעות התיוג וההערה על הקטגוריה – שם אין להן פעולה – וסימון ישן מהסל של §671.
+  const inOpBox = MOCK_BUSINESSES.includes(b);
+  const allItems = bizPendingChangeItems(b);
+  const items = inOpBox ? allItems.filter(it => !(it.field in (b.pendingChanges || {})) || bizStagedEntry(b, it.field)) : allItems;
+  const hasNote = !inOpBox && bizHasUnhandledNote(b);
   const showApproveApp = b.status === 'pending'; // אישור/דחיית העסק כולו — עבר לכאן מ-statusActions, לפי מבנה המוקאפ
   // §147 — בעבר: return '' כשאין כלום ממתין, כך שהכרטיס כולו (כולל הכותרת "שיפוט מהיר") נעלם לגמרי.
   // ב-handoff הכותרת תמיד מוצגת (גם עם 0 פריטים) — המשתמש: "אין שיפוט מהיר" כשבחר עסק בלי בקשות
@@ -16671,8 +16701,8 @@ function quickJudgmentHtml(b) {
   // כמו "פיצ'ר קיים" (המשתמש: "אין שיפוט מהיר"). עכשיו תמיד גלוי — כולל ה-hint שמסביר מה זה, בדיוק
   // כמו ב-handoff ("1 כרטיס עסק.dc.html" qjHint) — גם כשאין מה לשפוט.
   const hint = !hasBody
-    ? 'אין בקשות ממתינות כרגע'
-    : (isOpen ? 'כל בקשה ניתנת לעריכה כאן לפני אישור, או לקפיצה לשלב שממנו היא באה' : 'סגור – לחצו כדי לפרוס את כל הבקשות');
+    ? (allItems.length || bizHasUnhandledNote(b) ? 'הבקשות שלו למעלה, ב"מה פתוח בעסק הזה"' : 'אין בקשות ממתינות כרגע')
+    : (isOpen ? 'מה שעוד מחכה לך מעבר ל"מה פתוח בעסק הזה" שלמעלה' : 'סגור – לחצו כדי לפרוס');
   return `
     <div class="qj-card">
       <div class="qj-header">
