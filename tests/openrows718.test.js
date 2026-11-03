@@ -89,7 +89,7 @@ const RENDER_CODE = [
   cut('function bizSentItems(b) {', '// §689 – לאיזה שדה'),
   cut('const OP_GROUPS = [', 'function opValHtml('),
   cut('function opValHtml(', '// §716 – '),
-  cut('function opRowHtml(b, r) {', 'window.opApprove = async'),
+  cut('function opTagReqActsHtml(b, f) {', 'window.opApprove = async'),
   cut('function qjTextDiffHtml(oldStr, newStr) {', 'window.qjOpenEdit ='),
   cut('function quickJudgmentHtml(b) {', '// ── "טופל מבחוץ"'),
   cut('const OP_TILE_NOTE', 'function dealTilesHtml('),
@@ -129,7 +129,17 @@ console.log('\n— הרינדור: בלי כפילות, ובלי לאבד יכו
 
   const TAG = { field: 'tagSecondSuggestion', label: 'תגית שנייה', section: 3, display: 1, detail: 'x' };
   const t = render({ ...LAVERA(), tagSecondSuggestion: 'פיצה' }, [IG, TAG]);
-  ok(t.qj.includes('approveTagSecondSuggestion'), 'הצעת תגית – שם אין לה פעולה ב"מה פתוח" – נשארת ב"שיפוט מהיר"');
+  ok(t.op.includes(`approveTagSecondSuggestion('b')`) && t.op.includes(`rejectTagSecondSuggestion('b')`), '§721: הצעת תגית שנייה – הפעולות האמיתיות ב"מה פתוח"');
+  ok(!t.qj.includes('approveTagSecondSuggestion'), '§721: ולא שוב ב"שיפוט מהיר"');
+  const TS = { field: 'tagSuggestion', label: 'תגית חדשה', section: 3, display: 1, detail: 'הציע/ה: "עיסוי רפואי"' };
+  const ts = render({ ...LAVERA(), pendingChanges: null, pendingChangeDiff: null, inReviewReasons: [], inReviewOther: '', tagSuggestion: 'עיסוי רפואי' }, [TS]);
+  ok(ts.op.includes(`qjApproveTagFlow('b','new')`) && ts.op.includes(`qjApproveTagFlow('b','map')`) && ts.op.includes(`rejectTagSuggestion('b')`), '§721: תגית חדשה – אישור, מיפוי ודחייה אמיתיים');
+  ok(!ts.op.includes('approveChangeField') && !ts.op.includes('opApprove('), '§721: בלי ✅/❌ של בקשת שינוי');
+  ok(ts.dealTile.includes('מה פתוח בעסק הזה') && !ts.dealTile.includes('approveChangeField'), '§721: באריח – הפניה, בלי כפתורים שלא עושים כלום');
+  const ACN = { field: 'alsoCategoryNote', label: 'הערה', section: 3, display: 1, detail: 'x' };
+  ok(render(LAVERA(), [ACN]).op.includes(`clearAlsoCategoryNote('b')`), '§721: הערה על קטגוריה – סימון כטופל');
+  const noOpBox = render({ ...LAVERA(), tagSecondSuggestion: 'פיצה' }, [TAG], false);
+  ok(noOpBox.qj.includes('approveTagSecondSuggestion'), '§721: עסק שלא מוצג לו "מה פתוח" – נשאר ב"שיפוט מהיר"');
 
   const fallback = render(LAVERA(), [IG, FB], false);
   ok(fallback.qj.includes('qjEdit_b_instagram'), 'עסק שלא מוצג לו "מה פתוח" – השורות נשארות, לא נעלמות');
@@ -150,9 +160,6 @@ console.log('\n— הרינדור: בלי כפילות, ובלי לאבד יכו
   ok(noOp.dealTile.includes(`approveChangeField('b','instagram')`), 'עסק שלא מוצג לו "מה פתוח" – באריח נשארים הכפתורים');
   const m2 = render(cov, [COV], false);
   ok(m2.mediaTile.includes(`approveChangeField('b','coverPhoto')`), 'וגם באריח התמונה');
-  const TAG2 = { field: 'tagSuggestion', label: 'תגית', section: 3, display: 1, detail: 'x' };
-  const tg = render(LAVERA(), [TAG2]);
-  ok(!tg.dealTile.includes('מה פתוח בעסק הזה'), 'שדה שאין לו ✅/❌ ב"מה פתוח" לא מופנה לשם');
   if (process.env.DUMP)fs.writeFileSync(process.env.DUMP, render(LAVERA(), [IG, FB]).op);
 }
 

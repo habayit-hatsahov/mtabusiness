@@ -13803,7 +13803,7 @@ function dealTileFix(b, fields, withRequest) {
 }
 function dealTileStateHtml(b, t) {
   const parts = [];
-  const inOp = it => MOCK_BUSINESSES.includes(b) && it.field in (b.pendingChanges || {});   // §718 – רק ב"מה פתוח"
+  const inOp = () => MOCK_BUSINESSES.includes(b);   // §718 – רק ב"מה פתוח"; §721 – גם הצעות תיוג
   if (t.pend.some(inOp)) parts.push(OP_TILE_NOTE);
   if (t.basket) parts.push(`<div class="mtile-note">🚩 <b>ביקשנו לתקן – בסל, עוד לא נשלח</b>${t.basket.note ? ': ' + esc(t.basket.note) : ''}</div>`);
   if (t.sent) parts.push(`<div class="mtile-note">✏️ <b>ביקשנו לתקן${t.sent.at ? ' · ' + fmtDate(t.sent.at) : ''}:</b> ${esc(t.sent.lines.join(' · ') || 'פרטי ההטבה')}${t.sent.fixedAt ? `<br>🔁 סימן שתיקן ${fmtDateTime(t.sent.fixedAt)}` : ''}</div>`);
@@ -14929,6 +14929,15 @@ function opNoteRowHtml(b) {
 window.opNoteDone = function (id) {
   saveSectionUpdates(id, { noteHandled: true, noteHandledAt: serverTimestamp(), noteOwnerAckAt: null }, { noAsk: true, noBasket: true });
 };
+// §721 – הצעות תיוג לא יושבות ב-pendingChanges, ולכן ✅/❌ הרגילים לא עושים עליהן כלום (עיסוי מעולם אחר). כאן הפעולות האמיתיות שלהן
+function opTagReqActsHtml(b, f) {
+  const btn = (cls, fn, txt, arg) => `<button type="button" class="${cls}" onclick="${fn}('${b.id}'${arg ? `,'${arg}'` : ''})">${txt}</button>`;
+  if (f === 'tagSuggestion') return btn('act-btn approve', 'qjApproveTagFlow', '✅ אישור כתגית', 'new') + btn('qj-btn', 'qjApproveTagFlow', '🔗 מיפוי לתגית קיימת', 'map') + btn('act-btn reject', 'rejectTagSuggestion', '❌ דחייה');
+  if (f === 'tagSecondSuggestion') return btn('act-btn approve', 'approveTagSecondSuggestion', '✅ אישור') + btn('act-btn reject', 'rejectTagSecondSuggestion', '❌ דחייה');
+  if (f === 'alsoCategorySuggestion') return btn('act-btn approve', 'approveAlsoCatSuggestion', '✅ אישור') + btn('act-btn reject', 'rejectAlsoCatSuggestion', '❌ דחייה');
+  if (f === 'alsoCategoryNote') return btn('qj-btn primary', 'clearAlsoCategoryNote', '✓ סימון כטופל');
+  return '';
+}
 function opRowHtml(b, r) {
   if (r.check) {
     const body = r.check === 'verif'
@@ -14950,7 +14959,7 @@ function opRowHtml(b, r) {
   const shown = r.k === 'deal' && r.items.length > 1 ? r.items.filter(it => it.field !== 'hasDiscount') : r.items;
   const perField = writable.length > 1 && OP_GROUPS.some(g => g.k === r.k && g.perField);
   const cmp = shown.map(it => {
-    if (!(it.field in P)) return `<div class="op-ask" style="background:#ECFDF3">${esc(it.label)}: ${esc(it.detail || '')}<div class="op-hint">ההחלטה בשלב – "${OP_STEP_LBL[r.step] || 'לשלב'}" למעלה.</div></div>`;
+    if (!(it.field in P)) return `<div class="op-ask" style="background:#ECFDF3">${esc(it.detail || it.label)}</div><div class="op-acts">${opTagReqActsHtml(b, it.field)}</div>`;
     const now = OP_HYDRATED.has(it.field) ? it.old : b[it.field];
     // §718 – מה שהיה רק ב"שיפוט מהיר" (§655): המילים שהשתנו מסומנות, ו"עריכה לפני אישור" לשדה שהערך שלו טקסט פשוט
     const editId = `qjEdit_${b.id}_${it.field}`, val = P[it.field];
@@ -16480,10 +16489,10 @@ window.qjApproveText = function(id, field) {
 };
 function quickJudgmentHtml(b) {
   // §718 – רמי: "מתחת לשאלות על הסקשנים מופיע גם הבקשות שלו, זה מופיע פעמיים". מה שיש לו ✅/❌ ב"מה פתוח" – רק שם
-  // (גם "כתב לנו", §716). כאן נשארות הצעות התיוג וההערה על הקטגוריה – שם אין להן פעולה – וסימון ישן מהסל של §671.
+  // (גם "כתב לנו", §716, ומ-§721 גם הצעות התיוג). כאן נשאר רק סימון ישן מהסל של §671.
   const inOpBox = MOCK_BUSINESSES.includes(b);
   const allItems = bizPendingChangeItems(b);
-  const items = inOpBox ? allItems.filter(it => !(it.field in (b.pendingChanges || {})) || bizStagedEntry(b, it.field)) : allItems;
+  const items = inOpBox ? allItems.filter(it => bizStagedEntry(b, it.field)) : allItems;
   const hasNote = !inOpBox && bizHasUnhandledNote(b);
   const showApproveApp = b.status === 'pending'; // אישור/דחיית העסק כולו — עבר לכאן מ-statusActions, לפי מבנה המוקאפ
   // §147 — בעבר: return '' כשאין כלום ממתין, כך שהכרטיס כולו (כולל הכותרת "שיפוט מהיר") נעלם לגמרי.
