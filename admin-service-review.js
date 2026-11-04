@@ -153,7 +153,8 @@ function problems(b, d) {
   return p;
 }
 // שלב 3 – הודעה למי שאישרת ועוד לא קיבל עליה מייל (או שקיבל, ואחר כך שינית)
-const msgDue = (b) => isDone(b) && b.serviceSetBy === 'admin' && (!b.serviceMsgAt || (b.serviceSetAt && b.serviceMsgAt < b.serviceSetAt));
+// §724 – רק עסק מאושר (הממתין עוד לא באוויר) שבעל העסק עוד לא אישר את מה שרשום אצלו
+const msgDue = (b) => isDone(b) && b.serviceSetBy === 'admin' && b.status === 'approved' && !b.serviceOwnerAckAt && (!b.serviceMsgAt || (b.serviceSetAt && b.serviceMsgAt < b.serviceSetAt));
 // שלב 2 – מה בעל העסק עשה עם הכרטיס הצהוב (business-dashboard.html) + שלב 3 – ההודעה
 function ownerState(b) {
   if (b.serviceSetBy !== 'admin') return '';
