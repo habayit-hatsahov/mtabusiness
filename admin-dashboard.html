@@ -9649,7 +9649,7 @@ function bizFullDetailHtml(id, opts) {
   const typeLabels = types.map(t => BIZ_TYPE_LABELS_MOCK[t]).filter(Boolean).join(' · ') || '–';
   const allDiscounts = [{ text: b.discountFullText, redeemMode: b.discountRedeemMode }].concat(b.additionalDiscounts || []);
   const branchesHtml = (b.branches && b.branches.length)
-    ? b.branches.map(br => `${br.city} – ${br.address}`).join('<br>')
+    ? b.branches.map(br => [br.city, br.address].filter(Boolean).join(' – ')).join('<br>')
     : 'אין סניפים נוספים';
   // flagChips/statusActions הוזזו ל-bizDecisionPanelHtml (§148, 2026-08-04) — נמחקו מכאן, לא בשימוש יותר בהקשר הזה.
 
@@ -10094,7 +10094,7 @@ function bizFullDetailHtml(id, opts) {
             <div class="step-field full"><div class="step-field-h">תיאור העסק</div><textarea id="edit_desc_${b.id}" rows="3" placeholder="תיאור קצר לעסק...">${b.descriptionText||''}</textarea></div>
           </div>
           <div id="edit_typePhysicalFields_${b.id}" style="display:${types.includes('physical') || (types.includes('pro') && (b.serviceModes||[]).includes('atMine'))?'block':'none'};margin-top:14px">
-            <div class="step-field-h" id="edit_branchesTitle_${b.id}">${types.includes('physical') ? 'סניפים' : 'הכתובת שהלקוחות מגיעים אליה'}</div>
+            <div class="step-field-h" id="edit_branchesTitle_${b.id}">${types.includes('physical') ? 'סניפים' : 'איפה הלקוחות מגיעים אליו? (מספיקה עיר)'}</div>
             <div id="editBranchesList_${b.id}">${adminBranchRowsHtml(b.id, (b.branches && b.branches.length) ? b.branches : [{ city: branch.city, address: branch.address }])}</div>
             <button type="button" class="act-btn tiny" onclick="addBranchRow('${b.id}')" style="margin-top:4px">+ הוסף סניף</button>
           </div>
@@ -11112,7 +11112,7 @@ function adminBranchRowHtml(bizId, city, address, idx) {
     <div class="branch-row" data-branch-idx="${idx}" style="border:1px solid var(--border);border-radius:11px;padding:12px;margin-bottom:8px;position:relative;background:var(--card-bg2);">
       ${idx > 0 ? `<button type="button" onclick="removeBranchRow('${bizId}',${idx})" style="position:absolute;top:8px;left:8px;background:none;border:none;font-size:15px;cursor:pointer;color:var(--text-muted);">✕</button>` : ''}
       <div style="font-size:11.5px;font-weight:700;color:var(--text-sm);margin-bottom:8px;">סניף ${idx + 1}</div>
-      <div class="edit-subrow"><input type="text" class="branch-city" value="${esc(city)}" placeholder="עיר"><input type="text" class="branch-address" value="${esc(address)}" placeholder="כתובת מלאה"></div>
+      <div class="edit-subrow"><input type="text" class="branch-city" value="${esc(city)}" placeholder="עיר"><input type="text" class="branch-address" value="${esc(address)}" placeholder="כתובת (לא חובה)"></div>
     </div>`;
 }
 function adminBranchRowsHtml(bizId, branches) {
@@ -11153,7 +11153,7 @@ window.saveBizSec2 = async function(id) {
   const svcRegions = Array.from(document.querySelectorAll('.edit-proregion-'+id+':checked')).map(el => el.value);
   if (types.includes('pro') && !svcModes.length && ((b.serviceModes || []).length || !(b.bizTypes || []).includes('pro'))) { alert('נותן שירות – לסמן איפה הוא נותן את השירות'); return; }
   if (svcModes.includes('toClient') && !svcRegions.length) { alert('"אני מגיע ללקוח" – לסמן לפחות אזור אחד'); return; }
-  if (svcModes.includes('atMine') && !collectBranchRowsAdmin(id).some(x => x.city && x.address)) { alert('"הלקוח מגיע אליי" – למלא עיר וכתובת'); return; }
+  if (svcModes.includes('atMine') && !collectBranchRowsAdmin(id).some(x => x.city)) { alert('"הלקוח מגיע אליי" – למלא לפחות עיר'); return; }   // §723
   const svcChanged = svcModes.length && JSON.stringify(svcModes) !== JSON.stringify(b.serviceModes || []);
   // שדות type-conditional (ר' business-dashboard.html שלב 2) — נקראים תמיד, אבל רק אם הסוג המתאים מסומן
   // כך שאם המנהל מסמן/מבטל checkbox בלי לגעת בשדה עצמו, הערך לא "נדבק" לסוג שכבר לא רלוונטי
@@ -11359,7 +11359,7 @@ window.onEditBizTypeChange = function(id) {
   const regionsEl = document.getElementById('edit_svcRegions_'+id);
   if (regionsEl) regionsEl.style.display = svcModes.includes('toClient') || !svcModes.length ? 'block' : 'none';
   const branchesTitle = document.getElementById('edit_branchesTitle_'+id);
-  if (branchesTitle) branchesTitle.textContent = isPhysical ? 'סניפים' : 'הכתובת שהלקוחות מגיעים אליה';
+  if (branchesTitle) branchesTitle.textContent = isPhysical ? 'סניפים' : 'איפה הלקוחות מגיעים אליו? (מספיקה עיר)';
   if (physicalEl) physicalEl.style.display = isPhysical || atMine ? 'block' : 'none';
   if (proEl) proEl.style.display = isPro ? 'block' : 'none';
   // 🐛 באג-אמת שנמצא (2026-08-08, המשתמש: "בוחר עוד סוג עסק וזה משתנה אבל לא מופיע"): ה-checkbox
@@ -16440,7 +16440,7 @@ function qjStructuredPreviewHtml(field, val) {
     return `<span class="qj-value-text">${esc(arr.map(d => d && d.text).filter(Boolean).join(' | '))}</span>`;
   }
   if (field === 'branches') {
-    return `<span class="qj-value-text">${esc(arr.map(br => `${br.city||''} – ${br.address||''}`).join(' · '))}</span>`;
+    return `<span class="qj-value-text">${esc(arr.map(br => [br.city, br.address].filter(Boolean).join(' – ')).join(' · '))}</span>`;
   }
   if (field === 'bizTypes') {
     return `<span class="qj-value-text">${esc(arr.map(t => BIZ_TYPE_LABELS_MOCK[t] || t).join(', '))}</span>`;
@@ -23661,7 +23661,7 @@ function renderMainInner() {
 }
 // §710 – המודול נטען בכניסה הראשונה: למסך המעבר, או לכרטיס עסק של נותן שירות (serviceReviewPanelHtml)
 function serviceReviewEnsure() {
-    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=7108').then((m) => {
+    if (!serviceReviewImport) serviceReviewImport = import('./admin-service-review.js?v=723').then((m) => {
       m.init({
         biz: () => MOCK_BUSINESSES, esc,
         // noAsk – בלי חלון "לסל" (§705ה); noBasket – לא נכנס לסיכום לבעל העסק: יש לו כרטיס צהוב והודעה משלנו

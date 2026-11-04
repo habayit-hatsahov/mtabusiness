@@ -149,7 +149,7 @@ function problems(b, d) {
   const p = [];
   if (!d.modes.length) p.push('לבחור לפחות תשובה אחת');
   if (d.modes.includes('toClient') && !d.regions.length) p.push('"אני מגיע ללקוח" – חסר אזור');
-  if (d.modes.includes('atMine') && !cities(b).length && !(d.city.trim() && d.address.trim())) p.push('"הלקוח מגיע אליי" – חסרים עיר וכתובת');
+  if (d.modes.includes('atMine') && !cities(b).length && !d.city.trim()) p.push('"הלקוח מגיע אליי" – חסרה עיר');
   return p;
 }
 // שלב 3 – הודעה למי שאישרת ועוד לא קיבל עליה מייל (או שקיבל, ואחר כך שינית)
@@ -210,9 +210,9 @@ function answerHtml(b) {
       `<span class="${d.regions.includes(r) ? 'on' : ''}" onclick="svrReg('${b.id}','${r}')">${r}</span>`).join('')}</div></div>` : ''}
     ${d.modes.includes('atMine') ? (cities(b).length
       ? `<div class="svr-sf"><label>כתובת</label><div class="svr-has">מהסניפים שלו: ${esc((b.branches || []).map((x) => [x.city, x.address].filter(Boolean).join(' ')).join(' | '))}</div></div>`
-      : `<div class="svr-sf"><label>כתובת <span>(אין לו סניף – תיכנס כסניף 1)</span></label><div class="svr-addr">
+      : `<div class="svr-sf"><label>עיר <span>(מספיקה עיר; תיכנס כסניף 1)</span></label><div class="svr-addr">
           <input id="svrIn_c_${b.id}" placeholder="עיר" value="${esc(d.city)}" oninput="svrAddr('${b.id}','city',this.value)">
-          <input id="svrIn_a_${b.id}" placeholder="רחוב ומספר" value="${esc(d.address)}" oninput="svrAddr('${b.id}','address',this.value)"></div></div>`) : ''}
+          <input id="svrIn_a_${b.id}" placeholder="רחוב ומספר (לא חובה)" value="${esc(d.address)}" oninput="svrAddr('${b.id}','address',this.value)"></div></div>`) : ''}
     ${(b.bizTypes || []).includes('physical') ? '<div class="svr-store">ℹ️ סימן גם "חנות" – הסניפים שלו נשארים כמו שהם. אם הוא לא באמת חנות, משנים בכרטיס העסק.</div>' : ''}
     <div class="svr-act">
       <button class="svr-ok" onclick="svrSave('${b.id}')"${pr.length || S.busy === b.id ? ' disabled' : ''}>${S.busy === b.id ? 'שומר…' : 'אישור'}</button>

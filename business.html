@@ -528,6 +528,9 @@
       border-radius: var(--r-field); padding: 14px; margin-bottom: 10px;
       position: relative;
     }
+    .addr-opt { display: none; font-weight: 400; color: var(--text-sm); }
+    #wrap-branches.city-only .addr-req { display: none; }
+    #wrap-branches.city-only .addr-opt { display: inline; }
     .branch-header { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
     .btn-add-branch {
       background: none; border: 1.5px dashed var(--input-border);
@@ -1104,7 +1107,7 @@
                 <input type="text" class="branch-city" placeholder="תל אביב" />
               </div>
               <div class="form-group">
-                <label>כתובת מלאה <span class="req">*</span></label>
+                <label>כתובת מלאה <span class="req addr-req">*</span><span class="addr-opt">(לא חובה)</span></label>
                 <input type="text" class="branch-address" placeholder="רחוב הרצל 1" />
               </div>
             </div>
@@ -2933,11 +2936,13 @@
 
     if (selectedBizTypes.has('physical') || (selectedBizTypes.has('pro') && selectedSvcModes.has('atMine'))) {   // §710
       const branches = getBranches();
-      const branchesOk = branches.length > 0 && branches.every(b => b.city.length >= 2 && b.address.length >= 5);
+      // §723 – חנות: עיר וכתובת. "הלקוח מגיע אליי" בלי חנות: מספיקה עיר.
+      const needAddress = selectedBizTypes.has('physical');
+      const branchesOk = branches.length > 0 && branches.every(b => b.city.length >= 2 && (!needAddress || b.address.length >= 5));
       const errEl = document.getElementById('err-branches');
       errEl.style.display = branchesOk ? 'none' : 'block';
       if (!branchesOk) {
-        document.querySelectorAll('#branchesList .branch-city, #branchesList .branch-address').forEach(inp => {
+        document.querySelectorAll(needAddress ? '#branchesList .branch-city, #branchesList .branch-address' : '#branchesList .branch-city').forEach(inp => {
           if (inp.value.trim().length < 2) inp.classList.add('error');
         });
       }
@@ -3848,7 +3853,9 @@
     const svcAtMine   = hasPro && selectedSvcModes.has('atMine');
     document.getElementById('wrap-svcModes').style.display   = hasPro ? 'block' : 'none';
     document.getElementById('wrap-branches').style.display   = hasPhysical || svcAtMine ? 'block' : 'none';
-    document.getElementById('branchesTitle').textContent     = hasPhysical ? 'סניפים' : 'הכתובת שהלקוחות מגיעים אליה';
+    document.getElementById('branchesTitle').textContent     = hasPhysical ? 'סניפים' : 'איפה הלקוחות מגיעים אליכם?';
+    document.getElementById('wrap-branches').classList.toggle('city-only', !hasPhysical);   // §723
+    document.getElementById('err-branches').textContent      = hasPhysical ? 'נא למלא עיר וכתובת לכל סניף' : 'נא למלא עיר';
     // §251 — האתר עצמו תמיד מוצג (בכרטיס "נוכחות דיגיטלית"); רק סימון-החובה מותנה באונליין.
     document.getElementById('bizWebsite-req').style.display = hasOnline ? 'inline' : 'none';
     document.getElementById('digitalOptHint').style.display = hasOnline ? 'none' : '';
@@ -3948,7 +3955,7 @@
           <input type="text" class="branch-city" placeholder="תל אביב" />
         </div>
         <div class="form-group">
-          <label>כתובת מלאה <span class="req">*</span></label>
+          <label>כתובת מלאה <span class="req addr-req">*</span><span class="addr-opt">(לא חובה)</span></label>
           <input type="text" class="branch-address" placeholder="רחוב הרצל 1" />
         </div>
       </div>`;
@@ -4652,8 +4659,8 @@
     html += '</div>';
 
     html += '<div class="summary-section"><div class="summary-section-title">2 · פרטים ויצירת קשר <button type="button" class="summary-edit-link" onclick="showStep(2)">עריכה</button></div>';
-    if (selectedBizTypes.has('physical')) {
-      getBranches().forEach((b, i) => { html += sr(`סניף ${i+1}`, `${b.city} – ${b.address}`); });
+    if (selectedBizTypes.has('physical') || (selectedBizTypes.has('pro') && selectedSvcModes.has('atMine'))) {
+      getBranches().forEach((b, i) => { html += sr(`סניף ${i+1}`, [b.city, b.address].filter(Boolean).join(' – ')); });
     }
     const regions = [...document.querySelectorAll('#regionGrid .region-chip.selected')].map(c => c.textContent.trim());
     if (regions.length) html += sr('אזורי פעילות', regions.join(', '));
