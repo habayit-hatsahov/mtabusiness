@@ -2225,7 +2225,7 @@ let discEditOn = false;
 let discStacking = '';   // §726 — כפל מבצעים לכל הטבה: 'yes' | 'no' | ''
 // §726 – התשובה על כפל מבצעים נכנסת לסוף נוסח ההטבה. בעריכה חוזרת התוספת יורדת מהשדה (stripStack) ונבנית מחדש.
 const STACK_SUFFIX = { yes: 'כולל כפל מבצעים', no: 'לא כולל כפל מבצעים' };
-function stripStack(t) { return String(t || '').replace(/\s*·\s*(לא\s+)?כולל כפל מבצעים\s*$/, '').trim(); }
+function stripStack(t) { return String(t || '').replace(/(\s*·\s*|\s*\n\s*)(לא\s+)?כולל כפל מבצעים\s*$/, '').trim(); }
 function withStack(t, v) {
   t = stripStack(t);
   if (!t || !STACK_SUFFIX[v] || /כפל\s*מבצע/.test(t)) return t;
@@ -5325,6 +5325,7 @@ window.toggleSecEdit = function(key) {
   if (view) view.classList.toggle('hidden-when-edit', opening);
   if (opening) refreshPreviews();
   if (opening && key === 'bizdetails') { try { _secBaseline.bizdetails = bizDetailsPayload(); } catch (e) { console.warn('bizdetails baseline', e); } }   // §730 – בלי צילום: נשלח הכול, כמו קודם
+  if (opening && key === 'discount') { try { _secBaseline.discount = discountPayload(); } catch (e) { console.warn('discount baseline', e); } }   // §731
   // סוגרים את עריכת המדיה בלי לשמור מאפסים את התצוגה לנתונים שכן נשמרו, כדי לא להשאיר תצוגה מקדימה של קובץ שלא הועלה בפועל
   else if (key === 'media') { initMediaForm(committedState()); refreshPreviews(); }
 };
@@ -5357,6 +5358,7 @@ const LEGACY_ARRAY_FIELDS = new Set(['discountRedeemMode', 'discountTypes']);
 function normForCompare(v, key) {
   if (key && LEGACY_ARRAY_FIELDS.has(key)) v = toRedeemArr(v);
   if (key === 'noTagFits' && v === false) return null;   // §730 – לא סומן = לא קיים ברשומה; אחרת "העסק" בלי שינוי שלח noTagFits
+  if ((key === 'wantsBusinessOfWeek' || key === 'wantsBenefitOfWeek') && v === false) return null;   // §731 – אותו דבר בהטבה
   if (v === undefined || v === null) return null;
   if (Array.isArray(v)) {
     const filtered = v.filter(item =>{
@@ -5726,7 +5728,9 @@ window.saveBizDetails = function() {
 // מוחק) ושעות ברירת מחדל (עסק בלי שעות). השורש: הטופס מחשב ערכים שלא שמורים כך ברשומה. עכשיו נשלח רק מה שבעל העסק
 // שינה בטופס עצמו – מול צילום הטופס ברגע הפתיחה. שדות שהולכים יחד נשלחים יחד.
 const _secBaseline = {};
-const TOUCH_GROUPS = [['branches', 'city', 'address'], ['hoursMode', 'hoursDays', 'hoursOther', 'hours'], ['serviceModes', 'regions']];
+const TOUCH_GROUPS = [['branches', 'city', 'address'], ['hoursMode', 'hoursDays', 'hoursOther', 'hours'], ['serviceModes', 'regions'],
+  // §731 – ההטבה: תיאור שנערך הולך עם הכותרת (שמתאפסת); מקום מימוש הולך עם הקוד ועם "איך מממשים" בכרטיס
+  ['discountBuilder', 'discountText'], ['discountRedeemMode', 'discountTypes', 'discountCode']];
 function onlyTouched(sec, payload) {
   const base = _secBaseline[sec];
   if (!base) return payload;
@@ -6152,13 +6156,11 @@ function collectAdditionalBenefits() {
 
 
 window.saveDiscount = async function() {
-  const bizTypes = committedState().bizTypes || [];
   // קוד קופון נשמר רק כשמקום המימוש שנבחר בפועל הוא "אונליין" — אחרת מנוקה, כדי לא להשאיר קוד ישן/לא-רלוונטי
   // שיכול "לבלבל" תצוגות אחרות (הקוד כבר לא קובע את מקום המימוש, מקום המימוש קובע אם הקוד רלוונטי)
   const discountCode = (discEditOn && discRedeemMode.includes('online'))
     ? document.getElementById('editDiscountCode').value.trim() : '';
   const excludes = discEditOn ? excludesValue() : '';
-  const fullText = discEditOn ? composeBenefit(computeDiscBuilderText(), excludes, discStacking, '') : '';
   // §638ב — "באתר" לבד בלי קוד = לאוהד אין כרטיס מימוש (home.html: hasOnline דורש קוד)
   if (discEditOn && discRedeemMode.length && discRedeemMode.every(m => m === 'online') && !discountCode) {
     const err = document.getElementById('editCodeErr');
@@ -6183,14 +6185,25 @@ window.saveDiscount = async function() {
     return;
   }
 
+  // §731 – נשלח רק מה שבעל העסק שינה בטופס, מול הצילום בפתיחת השלב (כמו §730)
+  stageChanges(onlyTouched('discount', discountPayload()));
+};
+
+// §731 – מה שטופס ההטבה אומר עכשיו (בלי בדיקות) – גם לשמירה וגם לצילום בפתיחה
+function discountPayload() {
+  const bizTypes = committedState().bizTypes || [];
+  const discountCode = (discEditOn && discRedeemMode.includes('online'))
+    ? document.getElementById('editDiscountCode').value.trim() : '';
+  const excludes = discEditOn ? excludesValue() : '';
+  const fullText = discEditOn ? composeBenefit(computeDiscBuilderText(), excludes, discStacking, '') : '';
   // §614 – בלי AI. כשתיאור ההטבה הראשית השתנה, הכותרת הקצרה לכרטיס מתאפסת ורמי כותב אותה ידנית
   // במרכז הניהול לפני האישור. שמירה שלא נגעה בתיאור (הטבה נוספת, מקום מימוש) משאירה את הכותרת הקיימת.
   const cur = committedState();
   const prevFullText = cur.discountTextFull || cur.discountText || '';
-  // §726 – תוספת כפל המבצעים לבדה לא מאפסת את הכותרת שכבר נכתבה
-  const shortText = (!discEditOn || stripBenefit(fullText, excludes) !== stripBenefit(prevFullText, cur.discountExcludes)) ? '' : (cur.discountText || '');
-
-  stageChanges({
+  // §726 – תוספת כפל המבצעים / "מה לא כלול" לבדה לא מאפסת את הכותרת. §731 – גם לא נקודה בסוף הנוסח השמור.
+  const bare = (t, ex) => stripBenefit(t, ex).replace(/[.\s]+$/, '').trim();
+  const shortText = (!discEditOn || bare(fullText, excludes) !== bare(prevFullText, cur.discountExcludes)) ? '' : (cur.discountText || '');
+  return {
     hasDiscount: discEditOn,
     discountText: shortText,
     discountTextFull: fullText,
@@ -6204,8 +6217,8 @@ window.saveDiscount = async function() {
     additionalDiscounts: discEditOn ? collectAdditionalBenefits() : [],
     wantsBusinessOfWeek: document.getElementById('editWowQ').classList.contains('checked'),
     wantsBenefitOfWeek: document.getElementById('editWobQ').classList.contains('checked'),
-  });
-};
+  };
+}
 
 // ── MEDIA: LOGO ──
 window.previewLogo = function(input) {
