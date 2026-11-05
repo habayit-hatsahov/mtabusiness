@@ -1476,6 +1476,7 @@ button { font-family: inherit; }
 .rp-retry .rr-note b { display: block; font-size: 12.5px; margin-bottom: 2px; }
 .rp-retry .rr-hint { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; line-height: 1.5; }
 .reg-pending .rp-retry .rp-btn-send { display: flex; margin-top: 16px; }
+.reg-pending .rp-retry .rr-reply-btn { display: flex; margin-top: 8px; background: #fff; color: #0A2A66; border: 1.5px solid #0A2A66; }   /* §735 */
 /* §664 — בעל עסק ממתין: "העסק שלך אצלנו", ואם חסרות תמונות חובה – העלאה מכאן */
 #bizPendingBlock[data-state="missing"] .rp-badge { background: #FFF1E0; border-color: #FFD2A8; color: #C2570C; }
 #bizPendingBlock[data-state="missing"] .rp-dot, #bizPendingBlock[data-state="sent"] .rp-dot { display: none; }
@@ -2197,6 +2198,8 @@ html.yz-app .lm-reg-wrap { display: block; }
     <!-- §628 — "האימות לא עבר": רק למי שרמי אפשר לו תיקון (retryAllowed). שניהם חובה. -->
     <div class="rp-retry" id="rpRetry">
       <div class="rr-note" id="rrNote" hidden><b>הודעה מהצוות</b><span id="rrNoteText"></span></div>
+      <div class="rr-hint" id="rrAsked" hidden style="margin:-6px 0 10px"></div>   <!-- §735 – מתי ביקשנו -->
+
       <label class="rr-label" for="rrPhoto">תמונה ביציע שרואים בה אותך <span class="req">*</span></label>
       <input type="file" id="rrPhoto" accept="image/*">
       <div class="rr-hint">תמונה שלך ביציע, או שלך עם חולצה/צעיף של מכבי. צילום של המגרש או הקהל בלי הפנים שלך לא יאושר.</div>
@@ -2206,6 +2209,14 @@ html.yz-app .lm-reg-wrap { display: block; }
       <div class="rr-hint">הפרופיל צריך להיות של אותו אדם שבתמונה – כדי שנוכל לזהות ולאמת אותך.</div>
       <div class="rr-msg" id="rrMsg"></div>
       <button class="lp-btn lp-btn-yellow rp-btn rp-btn-send" id="rrSend" type="button" onclick="window.yzRetrySubmit()">שליחה לבדיקה</button>
+      <!-- §735 – תגובה בכתב בלי תמונה ("אין לי אינסטגרם…") → /reg-reply. מה שכבר כתב – עם תאריך. -->
+      <div class="rr-reply" style="margin-top:16px;border-top:1px solid #EAE3C8;padding-top:12px">
+        <label class="rr-label" for="rrReply">אין לך תמונה או פרופיל? רוצה לכתוב לנו משהו?</label>
+        <div id="rrReplies"></div>
+        <textarea id="rrReply" class="rr-input" maxlength="1000" style="min-height:76px;resize:vertical;width:100%;box-sizing:border-box;font:inherit" placeholder="כתבו לנו כאן – ונחזור אליכם"></textarea>
+        <div class="rr-msg" id="rrReplyMsg"></div>
+        <button class="lp-btn rp-btn rr-reply-btn" id="rrReplyBtn" type="button" onclick="window.yzRegReplySend()">שליחת ההודעה לצוות</button>
+      </div>
     </div>
     <button class="lp-btn lp-btn-yellow rp-btn rp-btn-in" id="rpEnterBtn" type="button">כניסה לכל העסקים וההטבות</button>
     <button class="lp-btn lp-btn-yellow rp-btn rp-btn-help" type="button" onclick="openLoginModal(); window.openLoginHelp && window.openLoginHelp()">פנייה לצוות</button>
@@ -2811,6 +2822,55 @@ window.yzRegSkip = function () {
     } finally {
       busy = false; btn.disabled = false; btn.textContent = 'שליחה לבדיקה';
     }
+  };
+})();
+
+// ── §735 — "צריך לתקן" של אוהד: מתי ביקשנו, ותגובה בכתב בלי תמונה (/reg-reply) ─────────────────
+// רמי: "תן לו אופציה לכתוב לי שאני יראה מה הוא כתב, להגיב גם בכתב". הנתונים (askedAt, replies) מגיעים מ-/reg-status.
+(function () {
+  const fmt = (v) => { const d = v ? new Date(v) : null; return d && !isNaN(d) ? d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : ''; };
+  window.yzRegReplyRender = function () {
+    const x = window._yzRegExtra || {};
+    const asked = document.getElementById('rrAsked');
+    if (asked) { asked.textContent = x.askedAt ? 'ביקשנו ב-' + fmt(x.askedAt) : ''; asked.hidden = !x.askedAt; }
+    const box = document.getElementById('rrReplies');
+    if (!box) return;
+    box.innerHTML = '';
+    (x.replies || []).forEach((r) => {
+      const d = document.createElement('div');
+      d.className = 'rr-note';
+      d.style.background = '#fff';
+      const b = document.createElement('b'); b.textContent = 'כתבת לנו ' + fmt(r.at) + ':';
+      const s = document.createElement('span'); s.textContent = String(r.text || '');   // textContent בלבד
+      d.append(b, s); box.appendChild(d);
+    });
+  };
+  let busy = false;
+  window.yzRegReplySend = async function () {
+    if (busy) return;
+    const reg = window.yzRegGet && window.yzRegGet();
+    const ta = document.getElementById('rrReply'), btn = document.getElementById('rrReplyBtn'), m = document.getElementById('rrReplyMsg');
+    const say = (t, ok) => { m.textContent = t || ''; m.style.color = ok ? '#027A48' : ''; m.classList.toggle('on', !!t); };
+    const text = (ta.value || '').trim();
+    if (!text) { say('כתבו משהו לפני השליחה.'); return; }
+    if (!reg || typeof window.hbApiFetch !== 'function') { say('משהו השתבש. סגרו ופתחו את האפליקציה ונסו שוב.'); return; }
+    busy = true; btn.disabled = true; btn.textContent = 'שולח…'; say('');
+    try {
+      const r = await window.hbApiFetch('/reg-reply', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: reg.memberId, ticket: reg.ticket, text }) });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) throw new Error(j.error || r.status);
+      const x = window._yzRegExtra = window._yzRegExtra || { replies: [] };
+      x.replies = (x.replies || []).concat([{ text: text.slice(0, 1000), at: j.at || new Date().toISOString() }]).slice(-3);
+      ta.value = '';
+      window.yzRegReplyRender();
+      say('✓ ההודעה הגיעה אלינו – נחזור אליך.', true);
+      window.logEvent && window.logEvent('formStep', { blockId: 'regReply', channel: 'ok' });
+    } catch (e) {
+      console.warn('reg-reply failed:', e);
+      say(/not_allowed/.test(String(e && e.message)) ? 'אי אפשר לשלוח מכאן כרגע. אפשר לפנות לצוות.' : 'השליחה לא הצליחה. בדקו את החיבור ונסו שוב.');
+      window.logEvent && window.logEvent('formError', { blockId: 'regReply', channel: String(e && e.message || '').slice(0, 50) });
+    } finally { busy = false; btn.disabled = false; btn.textContent = 'שליחת ההודעה לצוות'; }
   };
 })();
 
@@ -3992,6 +4052,7 @@ async function yzRegCheck() {
       const last = data.status === 'pending' && reg.last === 'fixed' ? 'fixed' : data.status;
       const note = data.status === 'retry' && typeof data.note === 'string' ? data.note.slice(0, 400) : '';   // §635
       try { localStorage.setItem('yz_reg', JSON.stringify({ ...reg, name, last, note })); } catch (e) {}
+      if (data.status === 'retry') { window._yzRegExtra = { askedAt: data.askedAt || null, replies: Array.isArray(data.replies) ? data.replies : [] }; window.yzRegReplyRender && window.yzRegReplyRender(); }   // §735
       // לא לדרוס טופס שהאוהד באמצע מילוי שלו (חזרה לאפליקציה מבחירת תמונה מפעילה visibilitychange)
       if (!(last === 'retry' && document.getElementById('pendingRegBlock').dataset.state === 'retry')) window.yzRegShow(last, name, note);
       else { document.getElementById('rrNoteText').textContent = note; document.getElementById('rrNote').hidden = !note; }

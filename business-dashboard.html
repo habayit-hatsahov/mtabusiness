@@ -3090,6 +3090,7 @@ function renderFixBanner() {
   el.innerHTML = `<div style="background:#F4F0FD;border:1.5px solid #D9CCF7;border-radius:16px;padding:14px 16px;margin:12px 0">
     <div style="display:inline-block;background:#E9E1FB;color:#6941C6;font-weight:800;font-size:12px;border-radius:999px;padding:2px 10px">${sent ? '🔁 נשלח לבדיקה' : '✏️ צריך לתקן'}</div>
     <div style="font-weight:800;font-size:16.5px;color:#0A2A66;margin-top:6px">${sent ? 'קיבלנו את התיקון – נבדוק ונעדכן אותך' : 'נשאר עוד צעד קטן – כדי שהכרטיס יהיה מושלם חסר לנו:'}</div>
+    ${fixDate(biz.inReviewAt) ? `<div style="font-size:12.5px;color:#6B7A9B;margin-top:3px">ביקשנו ב-${fixDate(biz.inReviewAt).toLocaleDateString('he-IL')} בשעה ${fixDate(biz.inReviewAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</div>` : ''}   <!-- §735 -->
     ${sent ? '' : `<ul style="margin:6px 0 0;padding-inline-start:20px;font-size:14px;color:#33466f">${one || items}</ul>`}
     ${unsent}
     ${hidden ? '<div style="margin-top:8px;font-size:13px;color:#B42318">העסק מוסתר מהאתר עד התיקון.</div>'
@@ -3098,8 +3099,47 @@ function renderFixBanner() {
     ${biz.status === 'approved' ? `<button type="button" id="fixDeclineBtn" onclick="fixDecline()" style="margin-top:10px;margin-inline-end:8px;border:1px solid #C9D2E6;border-radius:12px;padding:10px 16px;font:inherit;font-weight:700;font-size:14px;background:#fff;color:#33466f;cursor:pointer">לא מעוניין לתקן</button>` : ''}   <!-- §696 -->
     <button type="button" id="fixDoneBtn" onclick="fixDone()" style="margin-top:10px;border:none;border-radius:12px;padding:11px 18px;font:inherit;font-weight:800;font-size:14.5px;background:#FFD400;color:#0A2A66;cursor:pointer">✅ סיימתי לתקן</button>
     <div id="fixDoneMsg" style="margin-top:8px;font-size:13.5px"></div>`}
+    ${fixReplyHtml()}
   </div>`;
 }
+// §735 – רמי: "תן לו אופציה לכתוב לי שאני יראה מה הוא כתב, להגיב גם בכתב". תגובה חופשית על בקשת התיקון →
+// /biz-fix-reply (נשמר על העסק ב-fixReplies + התראה לרמי). לא מסמן "תיקנתי". מה שכבר כתב – מוצג עם תאריך.
+let fixReplyDraft = '';
+function fixReplyHtml() {
+  const live = document.getElementById('fixReplyText');
+  if (live) fixReplyDraft = live.value;   // renderBizView בונה מחדש – לא לאבד טקסט שהוקלד
+  const mine = (Array.isArray(biz.fixReplies) ? biz.fixReplies : []).filter(r => r && r.text).slice(-3);
+  const when = r => { const d = fixDate(r.at); return d ? d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : ''; };
+  return `<div style="margin-top:12px;border-top:1px solid #D9CCF7;padding-top:10px">
+    <div style="font-weight:800;font-size:14px;color:#0A2A66">רוצים לענות לנו? יש שאלה על מה שביקשנו?</div>
+    ${mine.map(r => `<div style="margin-top:6px;background:#fff;border:1px solid #E4DBF9;border-radius:10px;padding:8px 10px;font-size:13.5px;color:#33466f;white-space:pre-line"><span style="color:#6B7A9B;font-size:12px">כתבת לנו ${when(r)}:</span>\n${esc(r.text)}</div>`).join('')}
+    <textarea id="fixReplyText" maxlength="1000" placeholder="כתבו לנו כאן – למשל מה לא ברור, או למה אי אפשר לתקן" style="width:100%;box-sizing:border-box;margin-top:8px;min-height:70px;border:1px solid #C9D2E6;border-radius:12px;padding:10px;font:inherit;font-size:14px;resize:vertical">${esc(fixReplyDraft)}</textarea>
+    <button type="button" id="fixReplyBtn" onclick="fixReplySend()" style="margin-top:6px;border:1px solid #6941C6;border-radius:12px;padding:9px 16px;font:inherit;font-weight:700;font-size:14px;background:#fff;color:#6941C6;cursor:pointer">שליחת התגובה</button>
+    <div id="fixReplyMsg" style="margin-top:6px;font-size:13px"></div>
+  </div>`;
+}
+window.fixReplySend = async function() {
+  const ta = document.getElementById('fixReplyText'), btn = document.getElementById('fixReplyBtn'), msg = document.getElementById('fixReplyMsg');
+  const text = (ta && ta.value || '').trim();
+  if (!text) { msg.style.color = '#B42318'; msg.textContent = 'כתבו משהו לפני השליחה.'; return; }
+  const t = token || sessionStorage.getItem('hb_lastBizToken') || '';
+  if (!t) { msg.style.color = '#B42318'; msg.textContent = 'לא הצלחנו לשלוח מכאן – כתבו לנו ב"הודעות".'; return; }
+  btn.disabled = true; btn.textContent = '⏳ שולחים…'; msg.textContent = '';
+  try {
+    const resp = await hbApiFetch('/biz-fix-reply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bizId, token: t, text }) });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'failed');
+    biz.fixReplies = (Array.isArray(biz.fixReplies) ? biz.fixReplies : []).concat([{ text: text.slice(0, 1000), at: new Date(data.at || Date.now()) }]);
+    fixReplyDraft = ''; ta.value = '';
+    renderFixBanner();
+    const m2 = document.getElementById('fixReplyMsg');
+    if (m2) { m2.style.color = '#027A48'; m2.textContent = '✓ התגובה הגיעה אלינו – נחזור אליך.'; }
+  } catch (e) {
+    console.error('fixReplySend failed', e);
+    btn.disabled = false; btn.textContent = 'שליחת התגובה';
+    msg.style.color = '#B42318'; msg.textContent = 'לא נשלח – בדקו את החיבור ונסו שוב.';
+  }
+};
 // §696 – עסק מאושר שנשאר באתר: "לא מעוניין לתקן" – הפס נעלם, ורמי מקבל התראה
 window.fixDecline = async function() {
   const btn = document.getElementById('fixDeclineBtn'), msg = document.getElementById('fixDoneMsg');

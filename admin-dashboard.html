@@ -12058,7 +12058,14 @@ function fanFullDetailHtml(id, opts) {
     fanQjRows.push(`
       <div class="qj-row" style="background:#EEF2FF">
         <div class="qj-row-label"><div class="qj-row-step">הזדמנות פתוחה</div><div class="qj-row-name">✉️ ההודעה שהשארת</div></div>
-        <div class="qj-row-value"><span class="qj-value-text"><b>${esc(f.retryNote)}</b></span></div>
+        <div class="qj-row-value"><span class="qj-value-text"><b>${esc(f.retryNote)}</b></span>${f.rejectedAt ? `<div style="font-size:12.5px;margin-top:3px;opacity:.75">נשלח ${fmtDateTime(toJsDate(f.rejectedAt))}</div>` : ''}</div>
+      </div>`);
+  }
+  if (Array.isArray(f.fixReplies) && f.fixReplies.length) {   // §735 – מה האוהד כתב לנו ממסך "האימות לא עבר"
+    fanQjRows.push(`
+      <div class="qj-row" style="background:#F0F9FF">
+        <div class="qj-row-label"><div class="qj-row-step">תגובה בכתב</div><div class="qj-row-name">💬 האוהד כתב לנו</div></div>
+        <div class="qj-row-value">${fixRepliesHtml(f.fixReplies, null, 'האוהד')}</div>
       </div>`);
   }
   { const hist = fanRejectHistory(f);   // §647 — נשאר גם אחרי תיקון ואישור
@@ -13370,11 +13377,11 @@ function unifiedIssueList() {
 
   helpReqOpenList().forEach(x => out.push({
     kind: 'help', at: x.at, urgent: true,
-    who: (x.name || 'ללא שם') + ' · ' + x.contact,
-    title: HELP_SOURCE_LABELS[x.source] || x.source || 'פנייה',
+    who: (x.name || 'ללא שם') + ' · ' + x.contacts.join(' · '),
+    title: (HELP_SOURCE_LABELS[x.source] || x.source || 'פנייה') + (x.count > 1 ? ` · ${x.count} פניות` : ''),   // §735 – אדם אחד = שורה אחת
     // ⚠️ טקסט חופשי מכתיבה אנונימית — מוברח ברינדור (ר' firestore.rules §303).
     meta: x.message, entity: null,
-    markJs: 'markHelpReqHandled(' + [q1(x.id), q1(escJsAttr(x.name || ''))].join(',') + ')',
+    markJs: 'markHelpReqHandled(' + [q1(x.ids), q1(escJsAttr(x.name || ''))].join(',') + ')',
   }));
 
   // §472 — "כתבו לנו" מאוהד. השולח מזוהה, ולכן יש לשורה ישות (כרטיס האוהד).
@@ -13565,7 +13572,7 @@ function taskCenterCountLabel() {
   // §355 — "מתוך" נספר על **הפתוחים**, כי הרשימה מציגה רק אותם. ספירה מול הרשימה המלאה
   // הייתה מציגה "מציג 3 מתוך 11" ונקראת כאילו סינון מסתיר 8 שורות, במקום שהן טופלו.
   if (regIssuesActive()) return `מציג ${regIssueFilteredList().length} מתוך ${regIssueOpenList().length}`;
-  if (helpReqsActive()) return `מציג ${helpReqFilteredList().length} מתוך ${helpReqList().length}`;
+  if (helpReqsActive()) return `מציג ${helpReqFilteredList().length} מתוך ${helpReqGroupList().length}`;
   if (fanMsgActive()) return `מציג ${fanMsgFilteredList().length} מתוך ${fanMsgList().length}`;
   if (convActive()) return `מציג ${convFilteredList().length} מתוך ${convList().length}`;
   if (loginIssuesActive()) return `מציג ${loginIssueFilteredList().length} מתוך ${loginFailOpenList().length}`;
@@ -15054,6 +15061,16 @@ window.opReject = async function(id, k) {
   if (!r) return;
   await applyChangeFields(b, r.items.map(it => it.field).filter(f => f in (b.pendingChanges || {})), 'rejected', null, null, null, r.label);
 };
+// §735 – מה בעל העסק / האוהד כתב לנו בתגובה ל"צריך לתקן" (/biz-fix-reply, /reg-reply) – עם תאריך וכמה ימים עברו.
+// רק תגובות מהסבב הנוכחי (אחרי since = inReviewAt / rejectedAt); ישנות יותר – ביומן.
+function fixRepliesHtml(list, since, who) {
+  const s = since ? toJsDate(since) : null;
+  const rs = (Array.isArray(list) ? list : []).filter(r => r && r.text).map(r => ({ text: r.text, at: toJsDate(r.at) }))
+    .filter(r => !s || !r.at || r.at >= s).slice(-5);
+  if (!rs.length) return '';
+  return `<div class="op-box" style="background:#F0F9FF;border-color:#B9E0F7"><div class="op-h">💬 ${esc(who)} הגיב לנו <span class="op-count">${rs.length}</span></div>
+    ${rs.map(r => `<div style="margin-top:6px;font-size:13.5px;white-space:pre-line"><b style="font-size:12.5px;color:var(--text-muted)">${r.at ? esc(fmtDateTime(r.at)) + ' · ' + esc(typeof helpDaysAgo === 'function' ? helpDaysAgo(r.at) : '') : ''}</b>\n${esc(r.text)}</div>`).join('')}</div>`;
+}
 function bizWaitBannerHtml(b) {
   if (!b || !MOCK_BUSINESSES.includes(b)) return '';
   const inFix = bizInFix(b), fixed = bizFixedAt(b);
@@ -15115,6 +15132,9 @@ function bizWaitBannerHtml(b) {
       ${fixed ? `<div class="sum-sent-fixed">🔁 ${esc(b.ownerFirst || 'בעל העסק')} סימן שתיקן ${fmtDateTime(fixed)} – מחכה לבדיקה שלך</div>` : ''}
       ${sentMsg}
     </div>`
+    // §735 – להו תכשיטים (LAO): "צריך לתקן" בלי אף נקודה (inReview נשאר מסבב 28.10, לפני ש-§671 ניקה אותו באישור) –
+    // לא הייתה שום שורה ב"מה פתוח", ולכן גם לא כפתור הביטול, ורמי לא הצליח להוריד את "צריך לתקן"
+    : inFix ? `<div class="op-clear"><b>✏️ מסומן "צריך לתקן" – בלי שום נקודה</b><span class="op-hint" style="margin:0;flex:1">אין רשימה של מה לתקן, אבל העסק עדיין מסומן${b.inReviewAt ? ' מאז ' + fmtDateTime(toJsDate(b.inReviewAt)) : ''}.</span><button type="button" class="qj-btn primary" onclick="bizFixCancel('${b.id}')">↩️ לבטל את "צריך לתקן"</button><button type="button" class="qj-btn" onclick="bizSentAdd('${b.id}')">+ לבקש משהו</button></div>`
     : `<div class="op-clear"><b>✓ אין שום דבר פתוח</b><span class="op-hint" style="margin:0;flex:1">כל מה שביקשת וכל מה שהוא שלח – טופל.</span><button type="button" class="qj-btn primary" onclick="bsOpen('${b.id}'${pending ? ',\'approve\'' : ''})">🧺 סיכום ושליחה</button></div>`;   // §705ד – רמי: "במקום הירוק תחליף לסיכום ושליחה" (ממתין – "אישור העסק" מסומן מראש)
   const general = group('✉️', 'עוד בהודעה – לא שייך לשלב מסוים', by[0] || [], '', 'הודעות ועדכונים כלליים שייכנסו להודעה לבעל העסק – למשל תגית או קטגוריה שאושרו, או הודעה מוכנה');
   const sentWa = inFix ? (b.waNudgeCount ? ` · וואטסאפ נשלח ${b.waNudgeCount === 1 ? 'פעם אחת' : b.waNudgeCount + ' פעמים'}${b.waNudgeAt ? ', אחרון ' + fmtDateTime(b.waNudgeAt) : ''}` : ' · עוד לא נשלח וואטסאפ') : '';
@@ -15135,7 +15155,7 @@ function bizWaitBannerHtml(b) {
   return `
     <div class="sum-box">
       <div class="sum-top"><div style="flex:1;min-width:220px"><div style="font-weight:900;font-size:15px">📋 מצב הכרטיס</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">${head}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap">${btns}</div></div>
-      ${progress}${sentBox}${Object.keys(by).length ? '<div class="op-h" style="margin-top:12px">🧺 בסל להודעה <span class="op-hint" style="margin:0;font-weight:400">– כבר שמור בכרטיס; נכנס להודעה ב"סיכום ושליחה" (לא חובה)</span></div>' : ''}${steps}${ownerRow}${general}
+      ${progress}${fixRepliesHtml(b.fixReplies, b.inReviewAt, 'בעל העסק')}${sentBox}${Object.keys(by).length ? '<div class="op-h" style="margin-top:12px">🧺 בסל להודעה <span class="op-hint" style="margin:0;font-weight:400">– כבר שמור בכרטיס; נכנס להודעה ב"סיכום ושליחה" (לא חובה)</span></div>' : ''}${steps}${ownerRow}${general}
     </div>`;
 }
 function waitEl() {
@@ -21752,40 +21772,101 @@ function helpReqList() {
     return h || ((b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
   });
 }
-function helpReqOpenList() { return helpReqList().filter(x => x.status !== 'handled'); }
+// §735 – רמי: "יש המון פניות שהן כפולות, תאחד אותן ואל תספור אותן ככמה פניות". אדם אחד = שורה אחת:
+// אותו טלפון/מייל (מנורמל – 054-…, +972…) או אותו שם מלא. ב-36 פתוחות (6.11) – 6 אנשים כתבו 2–3 פעמים.
+// השורה: מה כתב (טקסט זהה – פעם אחת עם ×N), מתי (תאריך + ימים), וואטסאפ ו"טיפלתי" צמודים לשם.
+function _helpContactKey(c) {
+  const s = String(c || '').trim().toLowerCase();
+  if (s.includes('@')) return s;
+  const d = s.replace(/\D/g, '').replace(/^972/, '0');
+  return d.length >= 9 ? d : '';
+}
+function _helpPhone(c) { const d = _helpContactKey(c); return /^0\d{8,9}$/.test(d) ? d : ''; }
+function _helpNameKey(n) { const s = String(n || '').trim().replace(/\s+/g, ' ').toLowerCase(); return s.length >= 5 && s.includes(' ') ? s : ''; }
+function helpReqGroups(list) {
+  const parent = list.map((_, i) => i);
+  const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
+  const seen = {};
+  list.forEach((x, i) => [_helpContactKey(x.contact) && 'c:' + _helpContactKey(x.contact), _helpNameKey(x.name) && 'n:' + _helpNameKey(x.name)]
+    .filter(Boolean).forEach(k => { if (k in seen) parent[find(i)] = find(seen[k]); else seen[k] = i; }));
+  const by = {};
+  list.forEach((x, i) => (by[find(i)] = by[find(i)] || []).push(x));
+  return Object.values(by).map(items => {
+    items.sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
+    const open = items.filter(x => x.status !== 'handled');
+    const last = items[0], first = items[items.length - 1];
+    const phone = items.map(x => _helpPhone(x.contact)).find(Boolean) || '';
+    const contacts = [...new Set(items.map(x => String(x.contact || '').trim()).filter(Boolean))];
+    return { ...last, items, open, count: items.length, phone, contacts,
+      ids: (open.length ? open : items).map(x => x.id).join(','),
+      status: open.length ? 'new' : 'handled', firstAt: first.at,
+      name: (items.find(x => x.name) || last).name };
+  });
+}
+function helpReqGroupList() { return helpReqGroups(helpReqList()).sort(_byOpenThenNew); }
+function helpReqOpenList() { return helpReqGroupList().filter(x => x.status !== 'handled'); }
 function helpReqFilteredList() {
   const q = taskSearchQ.trim();
-  if (!q) return helpReqList();
-  return helpReqList().filter(x => `${x.name} ${x.contact} ${x.message}`.includes(q));
+  if (!q) return helpReqGroupList();
+  return helpReqGroupList().filter(g => g.items.some(x => `${x.name} ${x.contact} ${x.message}`.includes(q)));
 }
+// "כתב ב-26.10.2026 · לפני 11 ימים" – תמיד בימים (רמי: "כמה ימים עברו"), לא "שבועות"
+function helpDaysAgo(d) {
+  if (!d) return '';
+  const a = new Date(d); a.setHours(0, 0, 0, 0);
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const n = Math.round((t - a) / 86400000);
+  return n <= 0 ? 'היום' : n === 1 ? 'אתמול' : `לפני ${n} ימים`;
+}
+function helpWhen(d) { return d ? `${d.toLocaleDateString('he-IL')} ${d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })} · ${helpDaysAgo(d)}` : ''; }
 
+// §735 – id יכול להיות כמה מזהים מופרדים בפסיק (כל הפניות הפתוחות של אותו אדם)
 window.markHelpReqHandled = async function(id, name) {
-  const note = prompt(`סימון הפנייה של "${name || 'ללא שם'}" כטופלה.\n\nמה נעשה? (אופציונלי)`, '');
+  const ids = String(id || '').split(',').filter(Boolean);
+  const note = prompt(`סימון ${ids.length > 1 ? ids.length + ' הפניות' : 'הפנייה'} של "${name || 'ללא שם'}" כטופלה.\n\nמה נעשה? (אופציונלי)`, '');
   if (note === null) return;
   try {
-    await updateDoc(doc(db, 'helpRequests', id), {
+    await Promise.all(ids.map(i => updateDoc(doc(db, 'helpRequests', i), {
       status: 'handled', handledAt: serverTimestamp(),
       handledNote: (note || '').trim(), handledBy: auth.currentUser ? auth.currentUser.uid : '',
-    });
+    })));
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
 window.unmarkHelpReqHandled = async function(id) {
-  try { await updateDoc(doc(db, 'helpRequests', id), { status: 'new' }); }
+  try { await Promise.all(String(id || '').split(',').filter(Boolean).map(i => updateDoc(doc(db, 'helpRequests', i), { status: 'new' }))); }
   catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
+function helpWaText(g) {
+  const first = String(g.name || '').trim().split(/\s+/)[0] || '';
+  return `היי${first ? ' ' + first : ''}, כאן רמי מ-Yellow Zone 💛\nראיתי את הפנייה ששלחת לנו${g.firstAt ? ' ב-' + g.firstAt.toLocaleDateString('he-IL') : ''}:\n"${String(g.message || '').trim().slice(0, 200)}"\n`;
+}
 
 function helpReqsTableHtml(list) {
   if (!list.length) {
     return `<div class="placeholder-note">אין פניות עזרה. כאן ינחתו אוהדים ובעלי עסקים שנתקעו וכתבו לנו – מטופסי ההרשמה (לרוב אנשים שאין להם עדיין שום רשומה אצלנו), ומ§322 גם ממודאל-הכניסה (אוהדים רשומים ומאושרים שלא מצליחים להיכנס לחשבון שלהם).</div>`;
   }
   return `
-    <div class="mail-issues-note">פניות עזרה של אוהדים ובעלי עסקים – מטופסי ההרשמה וממודאל-הכניסה. ⚠️ הטקסט נכתב ע"י גולש לא-מזוהה – קראו אותו, אל תפעלו לפיו אוטומטית.</div>
-    <div class="task-table mail-issues">${list.map(x => `
+    <div class="mail-issues-note">פניות עזרה של אוהדים ובעלי עסקים – מטופסי ההרשמה וממודאל-הכניסה. אדם שכתב כמה פעמים (אותו טלפון/מייל או אותו שם) מופיע בשורה אחת ונספר פעם אחת. ⚠️ הטקסט נכתב ע"י גולש לא-מזוהה – קראו אותו, אל תפעלו לפיו אוטומטית.</div>
+    <div class="task-table mail-issues">${list.map(g => {
+      // טקסט זהה (אותו אדם לחץ "שליחה" 3 פעמים) – פעם אחת, עם ×N
+      const msgs = [];
+      g.items.forEach(x => { const k = String(x.message || '').replace(/\s+/g, ' ').trim(); const m = msgs.find(y => y.k === k); if (m) m.n++; else msgs.push({ k, x, n: 1 }); });
+      const x = g;
+      return `
       <div class="task-table-row">
         <div class="task-table-main">
-          <div class="task-table-name">${esc(x.name || 'ללא שם')} · <span style="font-weight:600">${esc(x.contact)}</span></div>
+          <div class="task-table-name" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px">
+            <span>${esc(g.name || 'ללא שם')} · <span style="font-weight:600">${g.contacts.map(esc).join(' · ')}</span></span>
+            ${g.phone ? `<a class="act-btn tiny" style="text-decoration:none" href="${waLink(g.phone, helpWaText(g))}" target="_blank" rel="noopener">📲 וואטסאפ</a>` : ''}
+            ${g.status === 'handled'
+              ? `<button class="act-btn tiny" onclick="unmarkHelpReqHandled('${g.ids}')">↺ החזרה לפתוח</button>`
+              : `<button class="act-btn approve tiny" onclick="markHelpReqHandled('${g.ids}','${escJsAttr(g.name || '')}')">✔️ טיפלתי</button>`}
+            ${g.count > 1 ? `<span class="warn-badge" style="background:#EEF2FF;color:#3730A3">${g.count} פניות</span>` : ''}
+          </div>
+          <div class="task-table-meta" style="font-weight:700">${g.count > 1 ? 'פנייה ראשונה ' + esc(helpWhen(g.firstAt)) + ' · אחרונה ' + esc(helpWhen(g.at)) : 'כתב ' + esc(helpWhen(g.at))}</div>
           <!-- ⚠️ esc על message – טקסט חופשי מכתיבה אנונימית. ר' firestore.rules §303. -->
-          <div class="task-table-meta" style="white-space:pre-line">${esc(x.message)}</div>
+          ${msgs.map(m => `<div class="task-table-meta" style="white-space:pre-line">${msgs.length > 1 || m.n > 1 ? `<b>${esc(m.x.at ? m.x.at.toLocaleDateString('he-IL') : '')}${m.n > 1 ? ' · ×' + m.n : ''}:</b> ` : ''}${esc(m.x.message)}</div>`).join('')}
+          ${g.status === 'handled' && g.handledNote ? `<div class="task-table-meta" style="opacity:.75">טופל: ${esc(g.handledNote)}</div>` : ''}
           <div class="task-table-meta" style="opacity:.75">${
             [HELP_SOURCE_LABELS[x.source] || x.source,
              x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
@@ -21804,13 +21885,9 @@ function helpReqsTableHtml(list) {
         </div>
         <div class="task-table-badges"><span class="${x.status === 'handled' ? 'treat-badge' : 'warn-badge'}">${x.status === 'handled' ? '✔️ טופל' : 'ממתין לתשובה'}</span></div>
         <div class="mi-addr"></div>
-        <div class="task-table-wait">${x.at ? agoLabel(x.at) : '–'}</div>
-        <div class="mi-actions">
-          ${x.status === 'handled'
-            ? `<button class="act-btn tiny" onclick="unmarkHelpReqHandled('${x.id}')">↺ החזרה לפתוח</button>`
-            : `<button class="act-btn approve tiny" onclick="markHelpReqHandled('${x.id}','${escJsAttr(x.name || '')}')">✔️ טיפלתי</button>`}
-        </div>
-      </div>`).join('')}</div>`;
+        <div class="task-table-wait">${x.at ? helpDaysAgo(x.at) : '–'}</div>
+        <div class="mi-actions"></div>
+      </div>`; }).join('')}</div>`;
 }
 // ══ §472 — "כתבו לנו — אוהדים" ═════════════════════════════════════════════════════════
 // הודעה שאוהד מחובר שלח מגיליון "צור קשר" (fan-message.js). בניגוד לפניות העזרה, השולח

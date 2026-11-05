@@ -14,6 +14,7 @@
 import { getGoogleAccessToken, mintFirebaseCustomToken } from './jwt.js';
 import { firestoreGetDoc, firestorePatch } from './firestore.js';
 import { loginMethodOf } from './regmethod.js';
+import { alertAdmins } from './bizfix.js';   // §735
 
 const MEMBER_ID_RE = /^[A-Za-z0-9]{20}$/;
 const TICKET_RE = /^[A-Za-z0-9_-]{40,64}$/;
@@ -54,7 +55,9 @@ export async function handleRegStatus({ memberId, ticket, v } = {}, env) {
   // §628 – דחייה עם הזדמנות שנייה: הכרטיס מציג טופס תיקון (handleRegRetry למטה)
   // ⚠️ רק לדף שמכיר את המצב (v>=2). דף ישן מהמטמון מקבל 'rejected' – לא מצב שהוא לא יודע לצייר.
   // §635 – הודעה של רמי למה לא עבר (רשות), מוצגת מעל טופס התיקון
-  if (f.status === 'rejected' && f.retryAllowed === true && Number(v) >= 2) return { status: 'retry', firstName, note: typeof f.retryNote === 'string' ? f.retryNote.slice(0, 400) : '' };
+  // §735 – askedAt: מתי ביקשנו (rejectedAt); replies: מה הוא כבר כתב לנו (3 האחרונות) – כדי שיראה שזה הגיע
+  if (f.status === 'rejected' && f.retryAllowed === true && Number(v) >= 2) return { status: 'retry', firstName, note: typeof f.retryNote === 'string' ? f.retryNote.slice(0, 400) : '',
+    askedAt: f.rejectedAt || null, replies: (Array.isArray(f.fixReplies) ? f.fixReplies : []).filter((r) => r && typeof r.text === 'string').slice(-3).map((r) => ({ text: r.text.slice(0, 1000), at: r.at || null })) };
   if (f.status === 'rejected') return { status: 'rejected', firstName };
   return { status: 'pending', firstName };
 }
@@ -66,6 +69,31 @@ export async function handleRegStatus({ memberId, ticket, v } = {}, env) {
 // 🔑 אותה הוכחת-מכשיר של §612 (ticket ↔ regTicketHash). פעם אחת בלבד: retryAllowed נסגר.
 const PROOF_URL_PREFIX = 'https://firebasestorage.googleapis.com/v0/b/';
 const PROFILE_HOSTS = { instagram: /^(www\.)?instagram\.com$/, facebook: /^(www\.|m\.)?facebook\.com$/ };
+
+// §735 – רמי: "תן לו אופציה לכתוב לי… להגיב גם בכתב". אוהד ב"צריך לתקן" (rejected + retryAllowed) כותב תגובה בלי
+// לשלוח תמונה (למשל "אין לי אינסטגרם"). אותה הוכחת-מכשיר (ticket). לא משנה סטטוס ולא סוגר את retryAllowed. התראה לרמי.
+export async function handleRegReply({ memberId, ticket, text } = {}, env) {
+  if (typeof memberId !== 'string' || !MEMBER_ID_RE.test(memberId)) return { error: 'invalid' };
+  if (typeof ticket !== 'string' || !TICKET_RE.test(ticket)) return { error: 'invalid' };
+  const t = typeof text === 'string' ? text.trim().slice(0, 1000) : '';
+  if (!t) return { error: 'empty' };
+  const accessToken = await getGoogleAccessToken(env);
+  const m = await firestoreGetDoc(env, accessToken, `members/${memberId}`);
+  if (!m) return { error: 'gone' };
+  const f = m.fields || {};
+  if (!f.regTicketHash || !sameHex(f.regTicketHash, await sha256Hex(ticket))) return { error: 'invalid' };
+  if (f.status !== 'rejected' || f.retryAllowed !== true) return { error: 'not_allowed' };
+  const now = new Date();
+  const prev = Array.isArray(f.fixReplies) ? f.fixReplies.filter((r) => r && typeof r.text === 'string').map((r) => ({ text: r.text, at: new Date(r.at) })) : [];
+  await firestorePatch(env, accessToken, `members/${memberId}`, { fixReplies: prev.concat([{ text: t, at: now }]).slice(-20), fixReplyAt: now });
+  const name = [f.firstName, f.lastName].filter((x) => typeof x === 'string' && x).join(' ') || 'אוהד';
+  await alertAdmins(env, accessToken, {
+    title: `💬 ${name} הגיב על "האימות לא עבר"`,
+    line: t.slice(0, 120),
+    rows: [['מה קרה', 'אוהד ב"צריך לתקן" כתב תגובה'], ['מה כתב', t], ['שם', name], ['טלפון', typeof f.phone === 'string' ? f.phone : ''], ['מזהה חבר', memberId]],
+  });
+  return { ok: true, at: now.toISOString() };
+}
 
 export async function handleRegRetry({ memberId, ticket, photoUrl, net, profileUrl } = {}, env) {
   if (typeof memberId !== 'string' || !MEMBER_ID_RE.test(memberId)) return { error: 'invalid' };

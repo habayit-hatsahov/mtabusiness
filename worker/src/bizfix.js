@@ -105,6 +105,39 @@ export async function handleBizFixDecline({ bizId, token } = {}, env) {
   return { ok: true };
 }
 
+// §735 – רמי: "כאשר אני שולח צריך לתקן… תן לו אופציה לכתוב לי… כי לפעמים אני רושם לו דברים, ואני לא מבין למה אני לא
+// מקבל תגובה". תגובה בכתב מהפס "צריך לתקן" (דשבורד העסק). הזיהוי – טוקן העסק בלבד (כמו /biz-fix-done). נשמרת על העסק
+// (fixReplies – 20 האחרונות, fixReplyAt) ולא מסמנת "תיקנתי": תגובה היא לא תיקון. רשומה ביומן + התראה לרמי.
+export async function handleBizFixReply({ bizId, token, text } = {}, env) {
+  if (typeof bizId !== 'string' || !BIZ_ID_RE.test(bizId)) return { error: 'invalid' };
+  if (typeof token !== 'string' || token.length < 16 || token.length > 200) return { error: 'invalid' };
+  const t = typeof text === 'string' ? text.trim().slice(0, 1000) : '';
+  if (!t) return { error: 'empty' };
+  const accessToken = await getGoogleAccessToken(env);
+  if ((await bizIdFromToken(env, accessToken, token)) !== bizId) return { error: 'invalid' };
+  const b = await firestoreGetDoc(env, accessToken, `businesses/${bizId}`);
+  if (!b) return { error: 'gone' };
+  const f = b.fields || {};
+  if (!inFix(f)) return { error: 'notInFix' };
+  const now = new Date();
+  const prev = Array.isArray(f.fixReplies) ? f.fixReplies.filter((r) => r && typeof r.text === 'string').map((r) => ({ text: r.text, at: new Date(r.at) })) : [];   // timestampValue חוזר כמחרוזת
+  const replies = prev.concat([{ text: t, at: now }]).slice(-20);
+  await firestorePatch(env, accessToken, `businesses/${bizId}`, { fixReplies: replies, fixReplyAt: now });
+  try {
+    await firestoreCreateDoc(env, accessToken, `businesses/${bizId}/activity`, {
+      type: 'fixReply', title: '💬 בעל העסק הגיב על בקשת התיקון', detail: t.slice(0, 500), field: 'fixReplies', before: null, after: null,
+      source: 'owner', actorName: str(f, 'ownerFirst'), createdAt: now,
+    });
+  } catch (e) { console.error('fixReply activity failed', e); }
+  const name = str(f, 'name') || 'עסק';
+  await alertAdmins(env, accessToken, {
+    title: `💬 ${name} הגיב על "צריך לתקן"`,
+    line: `${str(f, 'ownerFirst') || 'בעל העסק'}: ${t.slice(0, 120)}`,
+    rows: [['מה קרה', 'בעל העסק כתב תגובה לבקשת התיקון'], ['מה כתב', t], ['שם העסק', name], ['בעל העסק', str(f, 'ownerFirst')], ['מזהה עסק', bizId]],
+  });
+  return { ok: true, at: now.toISOString() };
+}
+
 // מ-/upload-biz-media: העלאה לעסק ב"צריך לתקן" היא תיקון
 export async function markFixFromUpload(env, accessToken, bizId, uploadedFields) {
   const b = await firestoreGetDoc(env, accessToken, `businesses/${bizId}`);
