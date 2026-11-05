@@ -2234,14 +2234,22 @@ function withStack(t, v) {
 // §726 – "מה לא כלול" (discountExcludes: טקסט, או 'none' = אין החרגות) נכנס לנוסח לפני כפל המבצעים.
 function normEx(x) { return x && x !== 'none' ? String(x).trim().replace(/^לא\s+כולל\s*/, '').replace(/[.\s]+$/, '') : ''; }
 function stripBenefit(t, ex) {
+  const e = normEx(ex);
+  t = String(t || '').trim();
+  const both = ' · לא כולל ' + e + ' וכפל מבצעים';
+  if (e && t.endsWith(both)) return t.slice(0, -both.length).trim();
   t = stripStack(t);
-  const s = ' · לא כולל ' + normEx(ex);
-  return normEx(ex) && t.endsWith(s) ? t.slice(0, -s.length).trim() : t;
+  const s = ' · לא כולל ' + e;
+  return e && t.endsWith(s) ? t.slice(0, -s.length).trim() : t;
 }
+// §726ב – רמי: "לא כולל" פעם אחת. יש החרגה ואין כפל מבצעים → "· לא כולל X וכפל מבצעים"
 function composeBenefit(t, ex, st, prevEx) {
   t = stripBenefit(t, prevEx === undefined ? ex : prevEx);
   const e = normEx(ex);
-  if (t && e && !t.includes(e)) t = t.replace(/[.\s]+$/, '') + ' · לא כולל ' + e;
+  if (t && e && !t.includes(e)) {
+    t = t.replace(/[.\s]+$/, '') + ' · לא כולל ' + e;
+    if (st === 'no' && !/כפל\s*מבצע/.test(t)) return t + ' וכפל מבצעים';
+  }
   return withStack(t, st);
 }
 // §726 – רמי: השאלה רק לאוכל, ספורט, אופנה ומתנות. הדוגמאות כתובות בתוך השדה; לחיצה רק על "אין החרגות".
@@ -3691,7 +3699,7 @@ function renderBizDetailsCard(w) {
         <!-- §723 – מתחת לשאלה, ורק למי שזה רלוונטי: קודם השדה הוצג לכולם ונזרק בשמירה למי שלא חנות ולא "הלקוח מגיע אליי" -->
         <div class="form-group" id="editBranchesWrap" style="display:${types.includes('physical') || (isPro && svcModesW.includes('atMine')) ? 'block' : 'none'}">
           <label class="form-label" id="editBranchesTitle">סניפים</label>
-          <div id="svcCityHint" class="svc-hint" style="display:none;margin:-2px 0 8px">מספיקה עיר. כתובת מדויקת תופיע בכרטיס רק אם תכתבו אותה.</div>
+          <div id="svcCityHint" class="svc-hint" style="display:none;margin:-2px 0 8px">לא חייבים כתובת מדויקת – מספיקה עיר. הכתובת תופיע בכרטיס רק אם תכתבו אותה.</div>
           <div id="editBranchesList">${branchRowsHtml(w.branches && w.branches.length ? w.branches : [{ city: w.city || '', address: w.address || '' }])}</div>
           <button type="button" class="btn-add-branch-like" onclick="addBranchRow()" style="margin-top:8px;width:100%;padding:10px;border-radius:11px;border:1.5px dashed var(--yellow);background:transparent;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">+ הוסף סניף</button>
         </div>

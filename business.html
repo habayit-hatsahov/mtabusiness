@@ -1113,6 +1113,7 @@
       <!-- סניפים — לפיזי -->
       <div id="wrap-branches" style="display:none;">
         <div class="section-subtitle"><span id="branchesTitle">סניפים</span> <span class="req">*</span></div>
+        <div id="branchesCityHint" style="display:none;font-size:12.5px;color:var(--text-muted);margin:-4px 0 10px;">לא חייבים כתובת מדויקת – מספיקה עיר. הכתובת תופיע בכרטיס רק אם תכתבו אותה.</div>
         <div id="branchesList">
           <div class="branch-item" data-branch="1">
             <div class="branch-header">סניף 1</div>
@@ -3873,6 +3874,7 @@
     document.getElementById('wrap-branches').style.display   = hasPhysical || svcAtMine ? 'block' : 'none';
     document.getElementById('branchesTitle').textContent     = hasPhysical ? 'סניפים' : 'איפה הלקוחות מגיעים אליכם?';
     document.getElementById('wrap-branches').classList.toggle('city-only', !hasPhysical);   // §723
+    document.getElementById('branchesCityHint').style.display = hasPhysical ? 'none' : 'block';   // §726ב – רמי: לכתוב שלא חייבים
     document.getElementById('err-branches').textContent      = hasPhysical ? 'נא למלא עיר וכתובת לכל סניף' : 'נא למלא עיר';
     // §251 — האתר עצמו תמיד מוצג (בכרטיס "נוכחות דיגיטלית"); רק סימון-החובה מותנה באונליין.
     document.getElementById('bizWebsite-req').style.display = hasOnline ? 'inline' : 'none';
@@ -4273,14 +4275,22 @@
   // §726 – "מה לא כלול" (discountExcludes: טקסט, או 'none' = אין החרגות) נכנס לנוסח לפני כפל המבצעים.
   function normEx(x) { return x && x !== 'none' ? String(x).trim().replace(/^לא\s+כולל\s*/, '').replace(/[.\s]+$/, '') : ''; }
   function stripBenefit(t, ex) {
+    const e = normEx(ex);
+    t = String(t || '').trim();
+    const both = ' · לא כולל ' + e + ' וכפל מבצעים';
+    if (e && t.endsWith(both)) return t.slice(0, -both.length).trim();
     t = stripStack(t);
-    const s = ' · לא כולל ' + normEx(ex);
-    return normEx(ex) && t.endsWith(s) ? t.slice(0, -s.length).trim() : t;
+    const s = ' · לא כולל ' + e;
+    return e && t.endsWith(s) ? t.slice(0, -s.length).trim() : t;
   }
+  // §726ב – רמי: "לא כולל" פעם אחת. יש החרגה ואין כפל מבצעים → "· לא כולל X וכפל מבצעים"
   function composeBenefit(t, ex, st, prevEx) {
     t = stripBenefit(t, prevEx === undefined ? ex : prevEx);
     const e = normEx(ex);
-    if (t && e && !t.includes(e)) t = t.replace(/[.\s]+$/, '') + ' · לא כולל ' + e;
+    if (t && e && !t.includes(e)) {
+      t = t.replace(/[.\s]+$/, '') + ' · לא כולל ' + e;
+      if (st === 'no' && !/כפל\s*מבצע/.test(t)) return t + ' וכפל מבצעים';
+    }
     return withStack(t, st);
   }
   // §726 – רמי: השאלה רק לאוכל, ספורט, אופנה ומתנות. הדוגמאות כתובות בתוך השדה; לחיצה רק על "אין החרגות".
