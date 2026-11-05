@@ -3532,6 +3532,8 @@ function fmtDiffVal(k, v) {
   }
   if (k === 'bizTypes') return (v || []).length ? v.map(t => BIZ_TYPE_LABELS_MOCK[t] || t).join(', ') : '–';
   if (k === 'serviceModes') return (v || []).length ? v.map(t => SERVICE_MODE_LABELS[t] || t).join(' + ') : '–';   // §710
+  if (k === 'discountExcludes') return v === 'none' ? 'אין החרגות' : (v || '–');   // §726
+  if (k === 'discountCodeConfirmedAt') return v ? 'בעל העסק אישר' : '–';
   if (k === 'discountStacking') return v === 'yes' ? 'כולל כפל מבצעים' : v === 'no' ? 'לא כולל כפל מבצעים' : '–';   // §597
   if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoCategorySuggestion' || k === 'alsoUnderCategory') {
     return v ? ((CATEGORIES.find(c => c.key === v) || {}).label || v) : '–';
@@ -9670,13 +9672,7 @@ function bizFullDetailHtml(id, opts) {
     <div class="edit-coupon-wrap" id="editCouponWrap-${suffix}-${b.id}" style="display:${checkedOnline?'block':'none'};margin-top:8px">
       <label style="font-size:12px;color:var(--text-sm,#9aa4b5);display:block;margin-bottom:4px">קוד קופון <span style="font-weight:400">(מה שבעל העסק הזין)</span></label>
       <input type="text" id="edit_coupon_${suffix}_${b.id}" value="${esc(code||'')}" style="text-transform:uppercase;letter-spacing:1px" placeholder="לדוג׳: MACCABI10">
-      ${suffix === '1' ? `<!-- §597 – כפל מבצעים (נשאל בהרשמה ובדשבורד העסק) -->
-      <label style="font-size:12px;color:var(--text-sm,#9aa4b5);display:block;margin:8px 0 4px">הקוד כולל כפל מבצעים?</label>
-      <select id="edit_stacking_${b.id}">
-        <option value=""${!b.discountStacking ? ' selected' : ''}>לא נענה</option>
-        <option value="yes"${b.discountStacking === 'yes' ? ' selected' : ''}>כן, כולל כפל מבצעים</option>
-        <option value="no"${b.discountStacking === 'no' ? ' selected' : ''}>לא כולל</option>
-      </select>` : ''}
+
     </div>`;
   const d2 = (b.additionalDiscounts && b.additionalDiscounts[0]) || { text:'', redeemMode:[], code:'' };
   const d3 = (b.additionalDiscounts && b.additionalDiscounts[1]) || { text:'', redeemMode:[], code:'' };
@@ -10129,13 +10125,13 @@ function bizFullDetailHtml(id, opts) {
         <div class="step-row">
           <div class="step-num${step4Changes.length ? ' active' : ''}">3</div>
           <div class="step-body" onclick="toggleBizSecEdit('${b.id}',4)" style="cursor:pointer">
-            <div class="step-name-row"><div class="step-name">הטבות</div>${step4Changes.length ? `<span class="treat-badge">${step4Changes.length} שינויים מבוקשים</span>` : ''}${b.wantsBusinessOfWeek ? `<span class="treat-badge">🏆 ביקשו עסק השבוע</span>` : ''}${b.wantsBenefitOfWeek ? `<span class="treat-badge">🎁 ביקשו הטבת השבוע</span>` : ''}</div>
+            <div class="step-name-row"><div class="step-name">הטבות</div>${step4Changes.length ? `<span class="treat-badge">${step4Changes.length} שינויים מבוקשים</span>` : ''}${b.wantsBusinessOfWeek ? `<span class="treat-badge">🏆 ביקשו עסק השבוע</span>` : ''}${b.wantsBenefitOfWeek ? `<span class="treat-badge">🎁 ביקשו הטבה בלעדית משתנה</span>` : ''}</div>
             <div class="step-sub">${esc(step4Sub)}</div>
           </div>
           ${stepHeadHtml(b, 4)}
         </div>
         ${stackNoteHtml(b)}
-        ${(b.wantsBusinessOfWeek || b.wantsBenefitOfWeek) ? `<div style="padding:0 24px 14px;font-size:12.5px;color:var(--text-sm);line-height:1.6;">${b.wantsBusinessOfWeek ? 'הביעו עניין ב<strong>עסק השבוע</strong> (סקירה + באנר בדף הבית). ' : ''}${b.wantsBenefitOfWeek ? 'הביעו עניין ב<strong>הטבת השבוע</strong> (הטבה חד-פעמית). ' : ''}שיבוץ בפועל מתבצע ממסך "עסק השבוע" בסרגל הצד.</div>` : ''}
+        ${(b.wantsBusinessOfWeek || b.wantsBenefitOfWeek) ? `<div style="padding:0 24px 14px;font-size:12.5px;color:var(--text-sm);line-height:1.6;">${b.wantsBusinessOfWeek ? 'הביעו עניין ב<strong>עסק השבוע</strong> (סקירה + באנר בדף הבית). ' : ''}${b.wantsBenefitOfWeek ? 'הביעו עניין ב<strong>הטבה בלעדית משתנה</strong> (הטבה חד-פעמית). ' : ''}שיבוץ בפועל מתבצע ממסך "עסק השבוע" בסרגל הצד.</div>` : ''}
         <div class="deal-tiles-wrap" style="padding:0 24px 18px">${dealTilesHtml(b)}</div>   <!-- §687 -->
         <!-- בעבר מוצג רק אם כבר יש discountFullText/בקשה-ממתינה, ואז הוחלף ל-hasDiscount בלבד. אבל
              נמצא בפועל (עיצוב שיער קובי / חבילות תקשורת לבית, 2026-08-08): עסק יכול להיות עם
@@ -10160,7 +10156,7 @@ function bizFullDetailHtml(id, opts) {
               // לצמיתות — בעוד שהכותרת שורדת (היא מגיעה מ-b.aiShortTitle ולא מה-DOM). ר' §273.
               + `<textarea id="edit_discount_${b.id}" rows="3" placeholder="פרטי ההטבה לחברי המועדון...">${esc(b.discountFullText||'')}</textarea>`
             , true)}
-            <div class="step-field full"><div class="step-field-h">מקום מימוש – הטבה 1 (ניתן לבחור כמה)</div><div>${redeemChecks('1', b.discountRedeemMode)}</div>${couponWrap('1', b.discountCode, toRedeemArr(b.discountRedeemMode).includes('online'))}</div>
+            <div class="step-field full"><div class="step-field-h">מקום מימוש – הטבה 1 (ניתן לבחור כמה)</div><div>${redeemChecks('1', b.discountRedeemMode)}</div>${stackSelectHtml(b)}${couponWrap('1', b.discountCode, toRedeemArr(b.discountRedeemMode).includes('online'))}</div>
           </div>
           <details class="edit-optional" ${(b.additionalDiscounts && b.additionalDiscounts[0]) ? 'open' : ''} style="margin-top:14px">
             <summary>+ הוסף עוד הטבה (הטבה 2)</summary>
@@ -10527,7 +10523,7 @@ window.saveStepReviewed = async function(id, n, noMark) {
 window.markStepReviewed = async function(id, n) {
   const b = findBiz(id), blk0 = document.getElementById('stepBlock' + n + '_' + id);
   if (!b) return;
-  if (n === 4 && stackNeedsMention(b) && !confirm('הקוד של העסק כולל כפל מבצעים, ונוסח ההטבה לא מזכיר את זה.\nלסמן "נסקר" בכל זאת?')) return;
+  if (n === 4 && stackNeedsMention(b) && !confirm('ההטבה כוללת כפל מבצעים, והכותרת הקצרה בכרטיס לא מזכירה את זה.\nלסמן "נסקר" בכל זאת?')) return;
   const top0 = blk0 ? blk0.getBoundingClientRect().top : null;
   await saveSectionUpdates(id, { reviewedSections: { ...(b.reviewedSections || {}), [n]: true } });
   stepKeepAnchor(document.getElementById('stepBlock' + n + '_' + id), top0);
@@ -10591,23 +10587,63 @@ window.reopenBizSecEdit = function(id, n) {
 // ── §598 — כפל מבצעים בשלב ההטבות ─────────────────────────────────────────────────────────
 // רמי מוסיף ידנית לנוסח ההטבה "כולל כפל מבצעים" כשבעל העסק ענה כן. התזכורת מוצגת בשלב, ו"נסקר"
 // על שלב ההטבות שואל לפני סימון כשהקוד כולל כפל מבצעים והנוסח לא מזכיר את זה.
-function stackMentioned(b) { return /כפל\s*מבצע/.test(`${b.discountFullText || ''} ${b.discountText || ''}`); }
-function stackNeedsMention(b) { return !!b.discountCode && b.discountStacking === 'yes' && !stackMentioned(b); }
+// §726 – התשובה על כפל מבצעים נכנסת לסוף נוסח ההטבה. בעריכה חוזרת התוספת יורדת מהשדה (stripStack) ונבנית מחדש.
+const STACK_SUFFIX = { yes: 'כולל כפל מבצעים', no: 'לא כולל כפל מבצעים' };
+function stripStack(t) { return String(t || '').replace(/\s*·\s*(לא\s+)?כולל כפל מבצעים\s*$/, '').trim(); }
+function withStack(t, v) {
+  t = stripStack(t);
+  if (!t || !STACK_SUFFIX[v] || /כפל\s*מבצע/.test(t)) return t;
+  return t.replace(/[.\s]+$/, '') + ' · ' + STACK_SUFFIX[v];
+}
+// §726 – "מה לא כלול" (discountExcludes: טקסט, או 'none' = אין החרגות) נכנס לנוסח לפני כפל המבצעים.
+function normEx(x) { return x && x !== 'none' ? String(x).trim().replace(/^לא\s+כולל\s*/, '').replace(/[.\s]+$/, '') : ''; }
+function stripBenefit(t, ex) {
+  t = stripStack(t);
+  const s = ' · לא כולל ' + normEx(ex);
+  return normEx(ex) && t.endsWith(s) ? t.slice(0, -s.length).trim() : t;
+}
+function composeBenefit(t, ex, st, prevEx) {
+  t = stripBenefit(t, prevEx === undefined ? ex : prevEx);
+  const e = normEx(ex);
+  if (t && e && !t.includes(e)) t = t.replace(/[.\s]+$/, '') + ' · לא כולל ' + e;
+  return withStack(t, st);
+}
+// §726 – בנוסח המלא זה נכנס אוטומטית; את הכותרת הקצרה בכרטיס רמי כותב, ולכן התזכורת היא עליה.
+function stackMentioned(b) { return /כפל\s*מבצע/.test(b.discountText || ''); }
+function stackNeedsMention(b) { return b.discountStacking === 'yes' && !stackMentioned(b); }
+// §726 – בעל העסק ענה דבר אחד וכתב בעצמו אחר: הטקסט שלו נשאר, ואתה מכריע
+function stackConflict(b) {
+  const t = b.discountFullText || '', no = /(לא\s+כולל|בלי|ללא)\s+כפל\s*מבצע/.test(t), yes = !no && /כולל\s+כפל\s*מבצע/.test(t);
+  return (b.discountStacking === 'yes' && no) || (b.discountStacking === 'no' && yes);
+}
+function stackSelectHtml(b) {
+  const ex = b.discountExcludes || '';
+  return `<label style="font-size:12px;color:var(--text-sm,#9aa4b5);display:block;margin:8px 0 4px">מה לא כלול בהטבה?</label>
+      <input type="text" id="edit_excludes_${b.id}" maxlength="120" value="${esc(ex === 'none' ? '' : ex)}" placeholder="${ex ? '' : 'בעל העסק עוד לא ענה'}" style="margin-bottom:4px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:400;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="edit_noExcludes_${b.id}" style="width:auto" ${ex === 'none' ? 'checked' : ''}>אין החרגות – על הכול</label>
+      <label style="font-size:12px;color:var(--text-sm,#9aa4b5);display:block;margin:8px 0 4px">ההטבה כוללת כפל מבצעים?</label>
+      <select id="edit_stacking_${b.id}" style="margin-bottom:6px">
+        <option value=""${!b.discountStacking ? ' selected' : ''}>לא נענה</option>
+        <option value="yes"${b.discountStacking === 'yes' ? ' selected' : ''}>כן, כולל כפל מבצעים</option>
+        <option value="no"${b.discountStacking === 'no' ? ' selected' : ''}>לא כולל</option>
+      </select>`;
+}
 function stackNoteHtml(b) {
-  if (!b.discountCode) return '';
   const box = (bg, bd, html) => `<div style="margin:0 24px 14px;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.6;background:${bg};border:1px solid ${bd}">${html}</div>`;
+  if (stackConflict(b)) return box('#FEF3F2', '#FECDCA', '⚠️ <b>סתירה בכפל מבצעים:</b> בעל העסק ענה "' + (b.discountStacking === 'yes' ? 'כולל' : 'לא כולל') + '", אבל בנוסח שכתב כתוב אחרת. לתקן ב"עריכה" בשלב הזה.');
   if (b.discountStacking === 'yes') return stackMentioned(b)
-    ? box('#ECFDF3', '#ABEFC6', '✓ הקוד <b>כולל כפל מבצעים</b> – וזה מצוין בנוסח ההטבה.')
-    : box('#FFF4E5', '#F5C27A', '⚠️ <b>הקוד כולל כפל מבצעים</b> – לבדוק שנוסח ההטבה מציין את זה (למשל "כולל כפל מבצעים"). לעריכה: "עריכה" בשלב הזה.');
-  if (b.discountStacking === 'no') return box('#F2F4F7', '#D0D5DD', 'הקוד <b>לא כולל</b> כפל מבצעים.');
-  return box('#F2F4F7', '#D0D5DD', '⏳ בעל העסק עוד לא ענה אם הקוד כולל כפל מבצעים (מחכה לו משימה באזור העסק).');
+    ? box('#ECFDF3', '#ABEFC6', '✓ ההטבה <b>כוללת כפל מבצעים</b> – וזה מצוין גם בכותרת בכרטיס.')
+    : box('#FFF4E5', '#F5C27A', '⚠️ ההטבה <b>כוללת כפל מבצעים</b>. בנוסח המלא זה נכנס לבד – לבדוק אם להוסיף גם לכותרת הקצרה בכרטיס.');
+  if (b.discountStacking === 'no') return box('#F2F4F7', '#D0D5DD', 'ההטבה <b>לא כוללת</b> כפל מבצעים.');
+  if (b.discountCode) return box('#F2F4F7', '#D0D5DD', '⏳ בעל העסק עוד לא ענה אם ההטבה כוללת כפל מבצעים (מחכה לו משימה באזור העסק).');
+  return '';
 }
 
 window.toggleSecReviewed = async function(id, n, checked) {
   const b = findBiz(id);
   if (!b) return;
   if (n === 4 && checked && stackNeedsMention(b) &&
-      !confirm('הקוד של העסק כולל כפל מבצעים, ונוסח ההטבה לא מזכיר את זה.\nלסמן "נסקר" בכל זאת?')) {
+      !confirm('ההטבה כוללת כפל מבצעים, והכותרת הקצרה בכרטיס לא מזכירה את זה.\nלסמן "נסקר" בכל זאת?')) {
     document.querySelectorAll(`input[onchange*="toggleSecReviewed('${id}',4"]`).forEach(el => { el.checked = false; });
     return;
   }
@@ -10832,7 +10868,7 @@ async function saveSectionUpdates(id, updates, opts) {
   if (b && _stepReview && _stepReview.id === id) {   // §660 — "שמירה ונסקר"
     const n = _stepReview.n;
     const after = { ...b, ...updates, discountFullText: updates.discountTextFull ?? b.discountFullText };
-    const mark = !(n === 4 && stackNeedsMention(after) && !confirm('הקוד של העסק כולל כפל מבצעים, ונוסח ההטבה לא מזכיר את זה.\nלסמן "נסקר" בכל זאת? (ביטול = לשמור בלי "נסקר")'));
+    const mark = !(n === 4 && stackNeedsMention(after) && !confirm('ההטבה כוללת כפל מבצעים, והכותרת הקצרה בכרטיס לא מזכירה את זה.\nלסמן "נסקר" בכל זאת? (ביטול = לשמור בלי "נסקר")'));
     if (mark) updates = { ...updates, reviewedSections: { ...(b.reviewedSections || {}), [n]: true } };
   }
   const beforeVals = {};
@@ -11240,13 +11276,16 @@ window.saveBizSec4 = async function(id) {
   const additionalDiscounts = [];
   if (disc2Text) additionalDiscounts.push({ text: disc2Text, redeemMode: checkedRedeem('2'), code: couponFor('2') });
   if (disc3Text) additionalDiscounts.push({ text: disc3Text, redeemMode: checkedRedeem('3'), code: couponFor('3') });
+  const excludesNow = document.getElementById('edit_noExcludes_'+id)?.checked ? 'none' : (document.getElementById('edit_excludes_'+id)?.value.trim() || '');   // §726
   const updates = {
     hasDiscount,
     discountText: hasDiscount ? discountText : '',
-    discountTextFull: hasDiscount ? discountFullText : '',
+    // §726 – "מה לא כלול" וכפל המבצעים נכנסים לסוף הנוסח
+    discountTextFull: hasDiscount ? composeBenefit(discountFullText, excludesNow, document.getElementById('edit_stacking_'+id)?.value || b.discountStacking || '', b.discountExcludes || '') : '',
+    discountExcludes: hasDiscount ? excludesNow : '',
     discountRedeemMode: hasDiscount ? redeem1 : [],
     discountCode: hasDiscount ? couponFor('1') : '',
-    discountStacking: (hasDiscount && couponFor('1')) ? (document.getElementById('edit_stacking_'+id)?.value || '') : '',   // §597
+    discountStacking: hasDiscount ? (document.getElementById('edit_stacking_'+id)?.value || '') : '',   // §726
     additionalDiscounts: hasDiscount ? additionalDiscounts : [],
   };
   return await saveSectionUpdates(id, updates);
@@ -13788,7 +13827,7 @@ function mediaRealViewHtml(b) {
 // ══ §687 — אריחי ההטבות (רמי: "תמשיך לשלב 4 – אריחים במקום שורות… מתחיל בהטבות") ═══════════════════
 // כמו אריחי התמונות (§678/§680): מה יש עכשיו, ובכל אריח "🚩 לבקש לתקן" (סיבת "פרטי ההטבה" – אותה בקשה כמו
 // בכותרת השלב) ו"✏️ לשנות בעצמי" (פותח את הטופס וגולל לשדה). מצב: 🚩 בסל / ✏️ נשלח / בעל העסק ביקש לעדכן.
-const DEAL_FIELDS_1 = ['discountText', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountStacking', 'hasDiscount'];
+const DEAL_FIELDS_1 = ['discountText', 'discountTextFull', 'discountExcludes', 'discountRedeemMode', 'discountCode', 'discountCodeConfirmedAt', 'discountStacking', 'hasDiscount'];
 // §718 – רמי: "תוריד גם את הכפילות מהאריחים". האריח מסמן שיש בקשה; ההשוואה וה-✅/❌ – רק ב"מה פתוח בעסק הזה"
 const OP_TILE_NOTE = '<div class="mtile-note ok">🔁 מה ששלח והאישור – למעלה, ב"מה פתוח בעסק הזה"</div>';
 function dealTileFix(b, fields, withRequest) {
@@ -13820,7 +13859,7 @@ function dealTilesHtml(b) {
   const tile = (t, title, body, anchor) => `<div class="mtile clickable${t.any ? ' fixreq' : ''}" onclick="if(!event.target.closest('button,a,input,.media-thumb-wrap'))dealTileEdit('${b.id}','${anchor}')" title="לחיצה פותחת לעריכה"><div class="mtile-h">${badge(t)}${title}</div>${body}${dealTileStateHtml(b, t)}${acts(anchor)}</div>`;
   const redeem = (m, code, stacking) => {
     const a = toRedeemArr(m);
-    return `<div class="deal-meta">${a.length ? a.map(x => `<span class="deal-chip">${esc(REDEEM_MODE_LABELS_MOCK[x] || x)}</span>`).join('') : '<span class="deal-chip warn">⚠️ לא נבחר מקום מימוש</span>'}${a.includes('online') ? (code ? `<span class="deal-chip">קוד: <b dir="ltr">${esc(code)}</b></span>` : '<span class="deal-chip warn">⚠️ אין קוד קופון</span>') : ''}${stacking === undefined || !a.includes('online') ? '' : `<span class="deal-chip">${stacking === 'yes' ? 'כולל כפל מבצעים' : stacking === 'no' ? 'בלי כפל מבצעים' : 'כפל מבצעים – לא נענה'}</span>`}</div>`;
+    return `<div class="deal-meta">${a.length ? a.map(x => `<span class="deal-chip">${esc(REDEEM_MODE_LABELS_MOCK[x] || x)}</span>`).join('') : '<span class="deal-chip warn">⚠️ לא נבחר מקום מימוש</span>'}${a.includes('online') ? (code ? `<span class="deal-chip">קוד: <b dir="ltr">${esc(code)}</b></span>` : '<span class="deal-chip warn">⚠️ אין קוד קופון</span>') : ''}${stacking === undefined || (!stacking && !a.includes('online')) ? '' : `<span class="deal-chip">${stacking === 'yes' ? 'כולל כפל מבצעים' : stacking === 'no' ? 'בלי כפל מבצעים' : 'כפל מבצעים – לא נענה'}</span>`}</div>`;
   };
   const txt = t => t ? `<div class="deal-txt">${esc(t)}</div>` : '<div class="mtile-empty">⚠️ ריק</div>';
   if (!hasDeal) return `<div class="mtile-grid">${tile(dealTileFix(b, DEAL_FIELDS_1, true), 'הטבה', '<div class="mtile-empty">⚠️ אין הטבה לעסק</div>', 'edit_discount_' + b.id)}</div>`;
@@ -13833,7 +13872,7 @@ function dealTilesHtml(b) {
     ? `<div class="mtile-sub">הכותרת בכרטיס:</div><div class="deal-title" style="margin-bottom:8px">${esc(title)}</div>`
     : `<div class="deal-notitle">⛔ חסרה כותרת בכרטיס – חובה לפני אישור <button type="button" class="act-btn approve tiny" onclick="event.stopPropagation();dealTileEdit('${b.id}','aiTitle_${b.id}')">✏️ להגדיר כותרת</button></div>`;
   return `<div class="mtile-grid">
-    ${tile(t1, 'הטבה 1 – ראשית', titleHtml + txt(b.discountFullText || b.discountText) + redeem(b.discountRedeemMode, b.discountCode, b.discountStacking || ''), 'edit_discount_' + b.id)}
+    ${tile(t1, 'הטבה 1 – ראשית', titleHtml + txt(b.discountFullText || b.discountText) + (b.discountExcludes ? `<div class="deal-meta"><span class="deal-chip">${b.discountExcludes === 'none' ? 'אין החרגות' : 'לא כולל: ' + esc(b.discountExcludes)}</span></div>` : ['food', 'sport', 'fashion', 'gifts'].includes(b.catKey || b.categoryPrimary || b.cat) ? '<div class="deal-meta"><span class="deal-chip">מה לא כלול – לא נענה</span></div>' : '') + redeem(b.discountRedeemMode, b.discountCode, b.discountStacking || '') + (b.discountCode && b.discountCodeConfirmedAt ? `<div class="deal-meta"><span class="deal-chip">✓ בעל העסק אישר שהקוד פעיל</span></div>` : ''), 'edit_discount_' + b.id)}
     ${d2 && d2.text ? tile(tExtra, 'הטבה 2', txt(d2.text) + redeem(d2.redeemMode, d2.code), 'edit_disc2_text_' + b.id) : ''}
     ${d3 && d3.text ? tile(tExtra, 'הטבה 3', txt(d3.text) + redeem(d3.redeemMode, d3.code), 'edit_disc3_text_' + b.id) : ''}
   </div>`;
@@ -14863,7 +14902,7 @@ const OP_GROUPS = [
   { k: 'cover', label: '🖼️ תמונה ראשית', reason: 'cover', step: 5, fields: ['coverPhoto'], words: /תמונה ראשית|תמונה מייצגת/ },
   { k: 'logo', label: '🏷️ לוגו', reason: 'logo', step: 5, fields: ['logo'], words: /לוגו/ },
   { k: 'gallery', label: '📷 גלריה', step: 5, fields: ['photos'], words: /גלרי/ },
-  { k: 'deal', label: '🎁 ההטבה', reason: 'deal', step: 4, fields: ['hasDiscount', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountStacking'], words: /הטבה|הנחה|קופון/ },
+  { k: 'deal', label: '🎁 ההטבה', reason: 'deal', step: 4, fields: ['hasDiscount', 'discountTextFull', 'discountExcludes', 'discountRedeemMode', 'discountCode', 'discountCodeConfirmedAt', 'discountStacking'], words: /הטבה|הנחה|קופון/ },
   { k: 'deals2', label: '🎁 הטבות נוספות', step: 4, fields: ['additionalDiscounts'] },
   { k: 'desc', label: '📝 תיאור', reason: 'desc', step: 2, fields: ['desc'], words: /תיאור/ },
   // §718 – רמי על לה ורה: מה שביקשתי למעלה ומה ששלח למטה. לכל שדה אישור משלו (perField) – טלפון ואינסטגרם הם לא "דבר אחד"
@@ -15617,10 +15656,10 @@ const DIFF_FIELD_LABELS_MOCK = {
   categoryPrimary: 'קטגוריה ראשית', cat: 'קטגוריה ראשית', categorySecondary: 'קטגוריות משניות',
   tags: 'תגיות', tagSecondSuggestion: 'בקשת העסק לתגית שנייה', noTagFits: 'אין תגית מתאימה', tagSuggestion: 'הצעת תגית', alsoUnderCategory: 'מופיע גם תחת', alsoCategorySuggestion: 'בקשת העסק למופיע גם תחת', alsoCategoryNote: 'הערת העסק לגבי קטגוריה נוספת',
   hours: 'שעות פעילות', website: 'אתר', instagram: 'אינסטגרם', facebook: 'פייסבוק',
-  discountText: 'כותרת ההטבה בכרטיס', discountTextFull: 'הטבה', discountCode: 'קוד קופון', discountStacking: 'כפל מבצעים', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש', discountRedeemMode: 'מקום מימוש ההטבה', discountBuilder: 'הגדרות ההטבה',
+  discountText: 'כותרת ההטבה בכרטיס', discountTextFull: 'הטבה', discountCode: 'קוד קופון', discountStacking: 'כפל מבצעים', discountExcludes: 'מה לא כלול', discountCodeConfirmedAt: 'אישור שהקוד פעיל', discountType: 'סוג מימוש', discountTypes: 'איפה ניתן לממש', discountRedeemMode: 'מקום מימוש ההטבה', discountBuilder: 'הגדרות ההטבה',
   hasDiscount: 'הטבה פעילה', additionalDiscounts: 'הטבות נוספות', coverPhoto: 'תמונה מייצגת', coverPhotoThumb: 'תמונה מייצגת (תמונה ממוזערת)', logo: 'לוגו', logoThumb: 'לוגו (תמונה ממוזערת)', photos: 'גלריית תמונות',
   coverPhotoPosition: 'מיקום התמונה על הכרטיס', coverPhotoZoom: 'גודל התמונה על הכרטיס', coverPhotoBg: 'צבע שוליים בכרטיס', logoFit: 'תג הלוגו בכרטיס',
-  wantsBusinessOfWeek: 'עסק השבוע', wantsBenefitOfWeek: 'הטבת השבוע',
+  wantsBusinessOfWeek: 'עסק השבוע', wantsBenefitOfWeek: 'הטבה בלעדית משתנה',
 };
 // כל קבוצת-שדות מוגדרת עם שני מספרים נפרדים בכוונה, כי הם משרתים שני צרכים שונים לגמרי:
 // - domId: מספר ה-DOM הפנימי של סעיף-העריכה בכרטיס-הביקורת המלא למטה (secEdit{n}_id/stepBlock{n}_id,
@@ -15639,7 +15678,7 @@ const DIFF_FIELD_LABELS_MOCK = {
 const DIFF_GROUPS = [
   { domId: 3, display: 1, name: 'העסק', fields: ['bizTypes', 'name', 'categoryPrimary', 'cat', 'categorySecondary', 'tags', 'tagSecondSuggestion', 'noTagFits', 'tagSuggestion', 'alsoUnderCategory', 'alsoCategorySuggestion', 'alsoCategoryNote'] },
   { domId: 2, display: 2, name: 'פרטים ויצירת קשר', fields: ['desc', 'branches', 'city', 'address', 'regions', 'phone', 'whatsapp', 'serviceEmail', 'hours', 'website', 'instagram', 'facebook'] },
-  { domId: 4, display: 3, name: 'ההטבות', fields: ['hasDiscount', 'discountText', 'discountTextFull', 'discountRedeemMode', 'discountCode', 'discountStacking', 'discountType', 'discountTypes', 'discountBuilder', 'additionalDiscounts', 'wantsBusinessOfWeek', 'wantsBenefitOfWeek'] },
+  { domId: 4, display: 3, name: 'ההטבות', fields: ['hasDiscount', 'discountText', 'discountTextFull', 'discountExcludes', 'discountRedeemMode', 'discountCode', 'discountCodeConfirmedAt', 'discountStacking', 'discountType', 'discountTypes', 'discountBuilder', 'additionalDiscounts', 'wantsBusinessOfWeek', 'wantsBenefitOfWeek'] },
   { domId: 5, display: 4, name: 'תמונות', fields: ['coverPhoto', 'coverPhotoThumb', 'logo', 'logoThumb', 'photos'] },
   { domId: 1, display: 5, name: 'אימות בעל העסק', fields: ['ownerFirst', 'ownerLast', 'ownerPhone', 'ownerEmail', 'ownerRelation', 'fanInstagram', 'note'] },
 ];
@@ -15825,7 +15864,7 @@ window.rejectChangeField = async function(id, field) {
 // extra – שדות שאנחנו קובעים יחד עם האישור (כותרת ההטבה, §687ב); closeAsks – פריטי bizSentItems שנסגרים.
 // groupLabel – שורה של כמה שדות ("ההטבה") נכנסת לסל כפריט אחד
 async function applyChangeFields(b, fields, decision, overrides, extra, closeAsks, groupLabel) {
-  const av = (f, v) => f === 'discountRedeemMode' || f === 'discountTypes' || f === 'discountStacking' || f === 'serviceModes' ? fmtDiffVal(f, v) : fmtActivityVal(v);
+  const av = (f, v) => f === 'discountRedeemMode' || f === 'discountTypes' || f === 'discountStacking' || f === 'discountExcludes' || f === 'discountCodeConfirmedAt' || f === 'serviceModes' ? fmtDiffVal(f, v) : fmtActivityVal(v);
   const pending = { ...(b.pendingChanges || {}) }, updates = { ...(extra || {}) }, logs = [], noteItems = [];
   fields = fields.filter(f => f in pending);
   if (!fields.length) return false;
@@ -16948,7 +16987,7 @@ function qjDecidedText(decided) {
 // (saveSectionUpdates) נכנסת לרשימה בשקט – רק מה שבאמת השתנה, רק שדות שבעל העסק רואה, ערך קצר בטקסט.
 // אותו שדה פעמיים = רק האחרונה. ⚠️ saveSectionUpdates שולח את כל שדות השלב (גם מה שלא נגעו בו) – לכן ההשוואה.
 const QJ_EDIT_FIELDS = ['name', 'categoryPrimary', 'tags', 'alsoUnderCategory', 'desc', 'branches', 'city', 'address', 'regions', 'phone', 'whatsapp', 'serviceEmail', 'hours',
-  'website', 'instagram', 'facebook', 'hasDiscount', 'discountText', 'discountTextFull', 'discountRedeemMode', 'discountTypes', 'discountCode', 'discountStacking', 'additionalDiscounts',
+  'website', 'instagram', 'facebook', 'hasDiscount', 'discountText', 'discountTextFull', 'discountRedeemMode', 'discountTypes', 'discountCode', 'discountStacking', 'discountExcludes', 'discountCodeConfirmedAt', 'additionalDiscounts',
   'wantsBusinessOfWeek', 'wantsBenefitOfWeek', 'coverPhoto', 'logo', 'photos', 'coverPhotoPosition', 'coverPhotoZoom', 'coverPhotoBg', 'logoFit'];
 const QJ_EDIT_LOOK = ['coverPhotoPosition', 'coverPhotoZoom', 'coverPhotoBg', 'logoFit'];   // שורה אחת: "איך התמונה מופיעה בכרטיס"
 const QJ_EDIT_VALUE = new Set(['name', 'categoryPrimary', 'tags', 'alsoUnderCategory', 'city', 'address', 'regions', 'phone', 'whatsapp', 'serviceEmail', 'website', 'instagram', 'facebook',
@@ -18359,7 +18398,7 @@ function weeklyDerivedStatus(w, track) {
   return w.contactStatus; // pending | contacted | declined
 }
 const WEEKLY_STATUS_LABELS = { pending: 'ממתין לשיחה', contacted: 'דיברנו, מוכן', declined: 'הוסר מהרשימה', scheduled: 'נקבע תור', done: 'היה כבר' };
-const WEEKLY_TRACK_LABELS = { business: '🏆 עסק השבוע', benefit: '🎁 הטבת השבוע' };
+const WEEKLY_TRACK_LABELS = { business: '🏆 עסק השבוע', benefit: '🎁 הטבה בלעדית משתנה' };
 
 // ── חלק 1: על האוויר עכשיו ──────────────────────────────────────────────
 function weeklyLiveCardHtml(track) {
@@ -18547,8 +18586,8 @@ window.saveWeeklySchedule = async function(id) {
 };
 
 // ── חלק 3: מי הביע עניין ────────────────────────────────────────────────
-const DEFAULT_WEEKLY_FOLLOWUP_SUBJECT = 'נחזור אליכם בקרוב – עסק השבוע / הטבת השבוע 💛';
-const DEFAULT_WEEKLY_FOLLOWUP_MAIL = 'שלום {name},\n\nתודה שסימנתם עניין ב"{business}" עבור עסק השבוע / הטבת השבוע ב-Yellow Zone!\n\nנחזור אליכם בקרוב לתאם שיחה קצרה ולסגור פרטים ותאריך.\n\nבאהבה,\nצוות Yellow Zone';
+const DEFAULT_WEEKLY_FOLLOWUP_SUBJECT = 'נחזור אליכם בקרוב – עסק השבוע / הטבה בלעדית משתנה 💛';
+const DEFAULT_WEEKLY_FOLLOWUP_MAIL = 'שלום {name},\n\nתודה שסימנתם עניין ב"{business}" עבור עסק השבוע / הטבה בלעדית משתנה ב-Yellow Zone!\n\nנחזור אליכם בקרוב לתאם שיחה קצרה ולסגור פרטים ותאריך.\n\nבאהבה,\nצוות Yellow Zone';
 
 window.markWeeklyContacted = async function(id) {
   const w = weeklyInterestMerged().find(x => x.id === id);
@@ -18699,7 +18738,7 @@ function weeklyInterestListMergedHtml() {
     <div class="filter-toolbar-row biz-class-pills" style="margin-bottom:10px">
       ${chip('all','הכל')}
       ${chip('business','🏆 עסק השבוע')}
-      ${chip('benefit','🎁 הטבת השבוע')}
+      ${chip('benefit','🎁 הטבה בלעדית משתנה')}
       ${chip('pending','ממתין לשיחה')}
       ${chip('contacted','דיברנו, מוכן')}
       ${chip('declined','הוסר')}
@@ -18744,7 +18783,7 @@ function weeklyHeaderHtml() {
   return `
     <div class="msg-content-head">
       <div style="flex:1;min-width:230px">
-        <div class="msg-crumb"><a onclick="selectTab('${HOME_KEY}')">← מרכז המשימות</a><span>/</span><span>עסק השבוע · הטבת השבוע</span></div>
+        <div class="msg-crumb"><a onclick="selectTab('${HOME_KEY}')">← מרכז המשימות</a><span>/</span><span>עסק השבוע · הטבה בלעדית משתנה</span></div>
         <div class="msg-page-title">${title}</div>
       </div>
       <div class="msg-kpis">
@@ -18811,7 +18850,7 @@ function weeklyHowToHtml() {
       <div class="wk-howto-steps">
         <div class="wk-howto-step"><b>1</b><span>בטופס ההרשמה יש שתי שאלות כן/לא בלבד – בלי תוכן ובלי התחייבות.</span></div>
         <div class="wk-howto-step"><b>2</b><span>מי שסימן מופיע ב"מי הביע עניין". הצוות מתקשר, מסמן "דיברנו" ורושם מה נסגר בשיחה.</span></div>
-        <div class="wk-howto-step"><b>3</b><span>שיבוץ לשבוע פותח לעסק את הסקשן שלו – עסק השבוע ו/או הטבת השבוע, לפי מה שסומן.</span></div>
+        <div class="wk-howto-step"><b>3</b><span>שיבוץ לשבוע פותח לעסק את הסקשן שלו – עסק השבוע ו/או הטבה בלעדית משתנה, לפי מה שסומן.</span></div>
         <div class="wk-howto-step"><b>4</b><span>אישור הצוות מעלה את השבוע לדף הבית, והוא מתחלף אוטומטית ביום שני.</span></div>
       </div>
       <div class="wk-howto-note">שני המסלולים נפרדים לגמרי בנתונים – אפשר שבוע עם עסק השבוע בלי הטבה, או הטבה בלי סקירה.</div>
@@ -18825,7 +18864,7 @@ function weeklySuggestHtml() {
       <div class="hearts-side-note-body">אפשר לשבץ גם עסק שלא סימן בטופס – יופיע בבורר הבחירה עם התווית "(לא ביקש/ה)" כשמוסיפים שבוע חדש.</div>
       <div style="margin-top:11px;display:flex;gap:6px;flex-wrap:wrap">
         <button class="act-btn tiny" onclick="startAddWeeklySchedule('business')">+ ל🏆 עסק השבוע</button>
-        <button class="act-btn tiny" onclick="startAddWeeklySchedule('benefit')">+ ל🎁 הטבת השבוע</button>
+        <button class="act-btn tiny" onclick="startAddWeeklySchedule('benefit')">+ ל🎁 הטבה בלעדית משתנה</button>
       </div>
     </div>`;
 }
@@ -18855,7 +18894,7 @@ function weeklyPicksHtml() {
         ${weeklyScheduleBlockHtml('business', false)}
       </div>
       <div>
-        <div class="wk-track-label">🎁 הטבת השבוע <button class="act-btn approve tiny" onclick="startAddWeeklySchedule('benefit')">+ הוספת שבוע</button></div>
+        <div class="wk-track-label">🎁 הטבה בלעדית משתנה <button class="act-btn approve tiny" onclick="startAddWeeklySchedule('benefit')">+ הוספת שבוע</button></div>
         ${weeklyAddFormHtml('benefit')}
         ${weeklyScheduleBlockHtml('benefit', false)}
       </div>
@@ -18864,7 +18903,7 @@ function weeklyPicksHtml() {
     <div class="section-h2-row" style="margin-top:16px"><div class="section-h2" style="font-size:14px">📜 היסטוריה – מי היה מתי, מה עשינו</div></div>
     <div class="wk-two-col">
       <div><div class="wk-track-label">🏆 עסק השבוע</div>${weeklyScheduleBlockHtml('business', true)}</div>
-      <div><div class="wk-track-label">🎁 הטבת השבוע</div>${weeklyScheduleBlockHtml('benefit', true)}</div>
+      <div><div class="wk-track-label">🎁 הטבה בלעדית משתנה</div>${weeklyScheduleBlockHtml('benefit', true)}</div>
     </div>
 
     <div class="section-h2-row" style="margin-top:16px"><div class="section-h2" style="font-size:14px">🙋 מי הביע עניין</div></div>

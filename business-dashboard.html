@@ -51,7 +51,7 @@
   <script src="phone-check.js"></script>
   <script src="hours.js"></script>
   <script src="social-links.js"></script>
-  <script src="biz-guides.js?v=607"></script>
+  <script src="biz-guides.js?v=726"></script>
   <script src="biz-stats.js"></script><!-- §508 — "השבוע אצלך": הנתונים השבועיים לבעל העסק --><!-- §507 — המדריכים לבעל העסק (חשיפה + אישור הטבה) -->
   <!-- §486 — מדידת שימוש. signup-source.js חייב לפני usage-track.js (os/surface). -->
   <script src="signup-source.js"></script>
@@ -1073,6 +1073,14 @@
     .disc-type-chip.disabled { opacity: .35; cursor: not-allowed; }
     .disc-fields { display: none; margin-top: 12px; }
     .disc-fields.visible { display: block; }
+    /* §726 – שלב ההטבה: הפרטים של "מה קורה אחר כך" נפתחים רק כשמסמנים; הטבה נוספת היא קישור */
+    .weekly-q:not(.checked) .weekly-q-final.then { display: none; }
+    .add-benefit-btn { width: auto; border: none; background: none; padding: 8px 2px; margin-top: 4px; text-decoration: underline; text-underline-offset: 3px; justify-content: flex-start; }
+    .add-benefit-btn:hover { background: none; }
+    .ex-none { min-height: 38px; display: inline-flex; align-items: center; margin-top: 6px; }
+    .code-confirm { display: flex; align-items: flex-start; gap: 8px; margin-top: 9px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; }
+    .code-confirm input { width: 18px; height: 18px; flex: none; margin-top: 1px; accent-color: #0A2A66; }
+    .stack-prev { font-size: 12px; line-height: 1.5; color: var(--text); margin-top: 8px; }
     .char-count { font-size: 10px; color: var(--accent); text-align: left; margin-top: 4px; }
     .char-count.warn { color: var(--accent); }
     .disc-redeem-note {
@@ -2214,7 +2222,36 @@ function birthOptionsHtml(kind, cur) {
 }
 let weeklySchedule = []; // שיבוץ עסק-השבוע/הטבת-השבוע ששייך לעסק הזה (weekly_schedule, ר' loadBusiness)
 let discEditOn = false;
-let discStacking = '';   // §597 — כפל מבצעים לקוד הקופון: 'yes' | 'no' | ''
+let discStacking = '';   // §726 — כפל מבצעים לכל הטבה: 'yes' | 'no' | ''
+// §726 – התשובה על כפל מבצעים נכנסת לסוף נוסח ההטבה. בעריכה חוזרת התוספת יורדת מהשדה (stripStack) ונבנית מחדש.
+const STACK_SUFFIX = { yes: 'כולל כפל מבצעים', no: 'לא כולל כפל מבצעים' };
+function stripStack(t) { return String(t || '').replace(/\s*·\s*(לא\s+)?כולל כפל מבצעים\s*$/, '').trim(); }
+function withStack(t, v) {
+  t = stripStack(t);
+  if (!t || !STACK_SUFFIX[v] || /כפל\s*מבצע/.test(t)) return t;
+  return t.replace(/[.\s]+$/, '') + ' · ' + STACK_SUFFIX[v];
+}
+// §726 – "מה לא כלול" (discountExcludes: טקסט, או 'none' = אין החרגות) נכנס לנוסח לפני כפל המבצעים.
+function normEx(x) { return x && x !== 'none' ? String(x).trim().replace(/^לא\s+כולל\s*/, '').replace(/[.\s]+$/, '') : ''; }
+function stripBenefit(t, ex) {
+  t = stripStack(t);
+  const s = ' · לא כולל ' + normEx(ex);
+  return normEx(ex) && t.endsWith(s) ? t.slice(0, -s.length).trim() : t;
+}
+function composeBenefit(t, ex, st, prevEx) {
+  t = stripBenefit(t, prevEx === undefined ? ex : prevEx);
+  const e = normEx(ex);
+  if (t && e && !t.includes(e)) t = t.replace(/[.\s]+$/, '') + ' · לא כולל ' + e;
+  return withStack(t, st);
+}
+// §726 – רמי: השאלה רק לאוכל, ספורט, אופנה ומתנות. הדוגמאות כתובות בתוך השדה; לחיצה רק על "אין החרגות".
+const EX_CHIPS = {
+  food: ['ימי שישי', 'אלכוהול', 'סיגריות', 'עסקיות', 'משלוחים'],
+  sport: ['מוצרים במבצע', 'מנויים', 'מותגים מסוימים', 'ציוד חשמלי'],
+  fashion: ['מוצרים במבצע', 'קולקציה חדשה', 'מותגים מסוימים', 'בשמים וקוסמטיקה'],
+  gifts: ['מוצרים במבצע', 'הזמנות מיוחדות', 'משלוח'],
+};
+function exPlaceholder(cat) { return EX_CHIPS[cat] ? 'למשל: ' + EX_CHIPS[cat].join(', ') : ''; }
 let discRedeemMode = []; // בחירה מרובה — יכול להיות גם "בחנות" וגם "באתר" בו-זמנית
 let redeemMode2 = [], redeemMode3 = []; // הטבות נוספות (עד 3 סה"כ)
 let benefitCount = 1;
@@ -2238,7 +2275,7 @@ const FIELD_GROUPS = {
   owner: ['ownerFirst','ownerLast','ownerPhone','ownerEmail'],
   cathours: ['bizTypes','name','categoryPrimary','cat','tags','tagSecondSuggestion','noTagFits','tagSuggestion','alsoCategorySuggestion'],
   bizdetails: ['desc','branches','city','address','phone','whatsapp','serviceEmail','regions','hours','website','instagram','facebook'],
-  discount: ['hasDiscount','discountText','discountTextFull','discountCode','discountStacking','discountTypes','discountRedeemMode','discountBuilder','additionalDiscounts','wantsBusinessOfWeek','wantsBenefitOfWeek'],
+  discount: ['hasDiscount','discountText','discountTextFull','discountCode','discountStacking','discountExcludes','discountCodeConfirmedAt','discountTypes','discountRedeemMode','discountBuilder','additionalDiscounts','wantsBusinessOfWeek','wantsBenefitOfWeek'],
   media: ['coverPhoto','coverPhotoThumb','logo','logoThumb','photos'],
 };
 
@@ -2335,8 +2372,8 @@ const FIELD_LABELS = {
   regions:'אזורי פעילות', serviceModes:'איך מקבלים את השירות',
   phone:'טלפון עסק', whatsapp:'WhatsApp', serviceEmail:'מייל שירות',
   categoryPrimary:'קטגוריה ראשית', cat:'קטגוריה ראשית', tags:'תגיות', tagSecondSuggestion:'הצעת תגית שנייה', noTagFits:'אין תגית מתאימה', tagSuggestion:'הצעת תגית', alsoCategorySuggestion:'הצעה למופיע גם תחת', alsoCategoryNote:'הערה לגבי קטגוריה נוספת', hours:'שעות פעילות',
-  hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTextFull:'תיאור ההטבה', discountCode:'קוד קופון', discountStacking:'כפל מבצעים', discountTypes:'איפה ניתן לממש', discountRedeemMode:'מקום מימוש', additionalDiscounts:'הטבות נוספות',
-  wantsBusinessOfWeek:'עסק השבוע', wantsBenefitOfWeek:'הטבת השבוע',
+  hasDiscount:'הטבה פעילה', discountText:'פרטי הטבה', discountTextFull:'תיאור ההטבה', discountCode:'קוד קופון', discountStacking:'כפל מבצעים', discountExcludes:'מה לא כלול', discountCodeConfirmedAt:'אישור שהקוד פעיל', discountTypes:'איפה ניתן לממש', discountRedeemMode:'מקום מימוש', additionalDiscounts:'הטבות נוספות',
+  wantsBusinessOfWeek:'עסק השבוע', wantsBenefitOfWeek:'הטבה בלעדית משתנה',
   website:'אתר', instagram:'אינסטגרם', facebook:'פייסבוק',
   coverPhoto:'תמונה מייצגת', coverPhotoThumb:'תמונה מייצגת (ממוזערת)', logo:'לוגו', logoThumb:'לוגו (ממוזער)', photos:'גלריית תמונות',
 };
@@ -2360,6 +2397,8 @@ function fmtFieldVal(k, v) {
   if (k === 'categoryPrimary' || k === 'cat' || k === 'alsoCategorySuggestion') return v ? (CAT_LABELS_PLAIN[mapCatKey(v)] || v) : '–';
   if (k === 'tags') return (v || []).join(', ') || '–';
   if (k === 'regions') return (v || []).join(', ') || '–';
+  if (k === 'discountExcludes') return v === 'none' ? 'אין החרגות' : (v || '–');   // §726
+  if (k === 'discountCodeConfirmedAt') return v ? 'בעל העסק אישר' : '–';
   if (k === 'serviceModes') return (v || []).map(t => SVC_LABEL[t] || t).join(' + ') || '–';   // §710
   if (k === 'branches') return (v || []).map(b =>[b.city, b.address].filter(Boolean).join(' · ')).filter(Boolean).join(' | ') || '–';
   if (k === 'photos') return v && v.length ? `${v.length} תמונות` : '–';
@@ -3815,23 +3854,24 @@ function renderCatHoursCard(w) {
 function weeklyQuestionsHtml(wow, wob, wowStatus, wobStatus, interactive) {
   const wowAttrs = interactive ? ` id="editWowQ" onclick="toggleWeeklyPill('wow')"` : ` onclick="jumpToSection('discount')"`;
   const wobAttrs = interactive ? ` id="editWobQ" onclick="toggleWeeklyPill('wob')"` : ` onclick="jumpToSection('discount')"`;
-  const wowFinal = interactive ? 'אם תסמנו: ניצור איתכם קשר, נראיין אתכם ונסגור תמונות ותאריך.' : wowStatus;
-  const wobFinal = interactive ? 'אם תסמנו: ניצור איתכם קשר ונגדיר יחד את ההטבה והשבוע שבו היא תרוץ.' : wobStatus;
+  const wowFinal = interactive ? 'ניצור איתכם קשר, נראיין אתכם ונסגור תמונות ותאריך.' : wowStatus;
+  const finalCls = interactive ? 'weekly-q-final then' : 'weekly-q-final';
+  const wobFinal = interactive ? 'ניצור איתכם קשר ונגדיר יחד את ההטבה והמועד.' : wobStatus;
   return `
     <div class="weekly-frame">
       <div class="weekly-frame-title">
-        <span class="weekly-frame-title-text">שתי הזדמנויות לחשיפה מיוחדת</span>
+        <span class="weekly-frame-title-text">רוצים חשיפה מיוחדת?</span>
       </div>
-      <div class="weekly-intro">הבעת עניין בלבד. אין מה למלא או להתחייב עכשיו – מי שמסמן, ניצור איתו קשר ונסגור את הפרטים יחד בשיחה. אפשר לוותר בכל שלב מכאן.</div>
+      <div class="weekly-intro">רק הבעת עניין. אין מה למלא או להתחייב עכשיו.</div>
 
       <div class="weekly-q${wow ? ' checked' : ''}"${wowAttrs}>
         <div class="weekly-q-row">
           <div class="weekly-q-box"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#0A2A66" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
           <div style="min-width:0;">
             <div class="weekly-q-title">רוצים להיות עסק השבוע?</div>
-            <div class="weekly-q-desc">כל שבוע אנחנו בוחרים עסק אחד, עושים עליו סקירה – מי אתם, מה הסיפור, למה כדאי – ומעלים אותו לראש דף הבית עם פוסט בעמוד שלנו והודעה לכל האוהדים.</div>
-            <div class="weekly-q-highlight">מוצג בראש דף הבית, מעל כל שאר העסקים – המקום הראשון שכל אוהד רואה כשהוא נכנס.</div>
-            <div class="weekly-q-final">${wowFinal}</div>
+            <div class="weekly-q-desc">פעמיים בחודש אנחנו בוחרים עסק אחד, ל-15 יום: סקירה עליכם, פוסט בעמוד שלנו והודעה לכל האוהדים.</div>
+            <div class="weekly-q-highlight">מוצג בראש דף הבית, מעל כל שאר העסקים.</div>
+            <div class="${finalCls}">${wowFinal}</div>
           </div>
         </div>
       </div>
@@ -3840,16 +3880,16 @@ function weeklyQuestionsHtml(wow, wob, wowStatus, wobStatus, interactive) {
         <div class="weekly-q-row">
           <div class="weekly-q-box"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#0A2A66" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
           <div style="min-width:0;">
-            <div class="weekly-q-title">רוצים לתת את הטבת השבוע?</div>
-            <div class="weekly-q-desc">הטבה חד-פעמית וגדולה משמעותית מההטבה הקבועה שלכם, שרצה שבוע אחד בלבד. ככל שההטבה שווה יותר, כך יותר אוהדים פועלים באותו שבוע.</div>
-            <div class="weekly-q-highlight">מוצגת בבאנר נפרד בראש דף הבית, לפני כל שאר ההטבות באינדקס.</div>
-            <div class="weekly-q-final">${wobFinal}</div>
+            <div class="weekly-q-title">רוצים לתת את ההטבה הבלעדית המשתנה?</div>
+            <div class="weekly-q-desc">פעמיים בחודש אנחנו בוחרים הטבה אחת, ל-15 יום: חד-פעמית, וגדולה משמעותית מההטבה הקבועה.</div>
+            <div class="weekly-q-highlight">מוצגת בבאנר בראש דף הבית, לפני כל שאר ההטבות.</div>
+            <div class="${finalCls}">${wobFinal}</div>
           </div>
         </div>
       </div>
       ${interactive ? `
       <div class="weekly-followup${(wow || wob) ? ' show' : ''}" id="editWeeklyFollowup">
-        <strong>מה קורה אחרי השליחה:</strong> נכנסים לרשימת ההמתנה. הצוות פונה אליכם בטלפון או במייל שמסרתם, לפי סדר התור ולפי הקטגוריה. אין תאריך מובטח, ואפשר לוותר בכל שלב מכאן.
+        נכנסים לרשימת ההמתנה. הצוות יפנה אליכם בטלפון או במייל, לפי התור והקטגוריה. אין תאריך מובטח, ואפשר לוותר בכל שלב מכאן.
       </div>` : ''}
     </div>`;
 }
@@ -3878,7 +3918,7 @@ function renderDiscountCard(w) {
   // אבל **טופס העריכה** חייב להיבנות מ-w (חי+ממתין+טיוטה), כמו כל שאר השדות בו. תיאור ההטבה
   // ושאלות עסק/הטבת השבוע בטופס נבנו מ-biz: אחרי "שמירת השלב" הטקסט חזר למקור, ושמירה נוספת
   // הייתה כותבת את המקור לטיוטה ומוחקת את השינוי.
-  const liveCardRow = rowHtml('מוצג כרגע בכרטיס באינדקס', biz.hasDiscount ? biz.discountText : 'אין הטבה');
+  const liveCardRow = rowHtml('מוצג כרגע בכרטיס', biz.hasDiscount ? biz.discountText : 'אין הטבה');
   const liveDTypes = biz.hasDiscount ? computeDiscountTypes(biz.bizTypes, toRedeemArr(biz.discountRedeemMode)) : [];
   const liveExtra = biz.additionalDiscounts || [];
 
@@ -3899,77 +3939,84 @@ function renderDiscountCard(w) {
         ${cardTitle(3, 'ההטבות', 'discount')}
         <button class="sec-edit-btn" onclick="toggleSecEdit('discount')">ערוך</button>
       </div>
-      <div class="card-guide">כרטיסים עם הטבה ברורה מקבלים הרבה יותר פניות – זו הסיבה המרכזית שאוהדים בוחרים דווקא בכם. יש לכם יותר מהטבה אחת? אפשר להוסיף עד שתיים נוספות, והן מוצגות בגיליון הפנימי של העסק.</div>
       <div class="info-rows" id="secView-discount">
         ${liveCardRow}
-        ${biz.hasDiscount ? rowHtml('תיאור ההטבה', biz.discountTextFull || biz.discountText) : ''}
-        ${biz.hasDiscount ? rowHtml('איפה ניתן לממש', liveDTypes.map(t =>DISCOUNT_TYPE_LABELS_PLAIN[t]).join(', ')) : ''}
+        ${biz.hasDiscount ? rowHtml('מה ההטבה', biz.discountTextFull || biz.discountText) : ''}
+        ${biz.hasDiscount && biz.discountExcludes ? rowHtml('מה לא כלול', biz.discountExcludes === 'none' ? 'אין החרגות' : biz.discountExcludes) : ''}
+        ${biz.hasDiscount ? rowHtml('איפה מממשים', liveDTypes.map(t =>DISCOUNT_TYPE_LABELS_PLAIN[t]).join(', ')) : ''}
         ${liveExtra[0]?.text ? benefitRowHtml('הטבה 2', liveExtra[0].text) : ''}
         ${liveExtra[1]?.text ? benefitRowHtml('הטבה 3', liveExtra[1].text) : ''}
         ${weeklyQuestionsHtml(wow, wob, wowStatus, wobStatus, false)}
       </div>
       <div class="sec-edit-form" id="secEdit-discount">
         <div class="discount-toggle-row">
-          <span class="form-label" style="margin:0">יש הטבה לחברים?</span>
+          <span class="form-label" style="margin:0">אני מציע הטבה לחברים</span>
           <div class="toggle-pill${discEditOn ? ' on' : ''}" id="editDiscToggle" onclick="toggleDiscountField()"></div>
         </div>
         <div id="editDiscFields" style="display:${discEditOn ? 'block' : 'none'}">
-          <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:12px;line-height:1.6;">כמה רעיונות להטבה (לא בחירה, רק השראה): <strong>אחוז הנחה</strong>· <strong>מתנה/חינם</strong>· <strong>קנה וקבל</strong>· <strong>משלוח חינם</strong>· <strong>מחיר מיוחד</strong><br/>לדוגמה: "10% הנחה על כל הקנייה" / "קנה 1 קבל 1" / "משלוח חינם מעל 150 ₪"</div>
-          <div class="card-guide" style="font-weight:700;color:var(--accent);margin-bottom:8px;">זו ההטבה הראשית – ממנה אנחנו גוזרים תיאור קצר שיוצג על כרטיס העסק שלכם</div>
           <div class="form-group">
-            <label class="form-label">תיאור ההטבה – ספרו לנו עליה בהרחבה <span style="font-weight:400;color:var(--text-muted);">(עד 300 תווים)</span></label>
-            <textarea class="form-input" id="editDiscOtherText" rows="4" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול, לא כולל ימי שישי-שבת. בתוקף עד סוף העונה, לא ניתן לשלב עם מבצעים אחרים." maxlength="300" oninput="onDiscBuilderInput()">${esc(w.discountTextFull || w.discountText)}</textarea>
-            <div style="font-size:12px;color:var(--text-muted);margin-top:6px;margin-bottom:8px;">אפשר לפרט תנאים, תוקף וסייגים – מהתיאור הזה הצוות שלנו ינסח כותרת קצרה שתוצג על הכרטיס החיצוני שלכם, לאחר אישור מנהל.</div>
-            <div class="char-count" id="editDiscOtherCount">0 / 300</div>
+            <label class="form-label">מה ההטבה? <span style="color:#B54708;">*</span></label>
+            <textarea class="form-input" id="editDiscOtherText" rows="3" placeholder="לדוגמה: 15% הנחה על כל התפריט · מתנה עם כל קנייה · קנה 1 וקבל 1 · משלוח חינם · מחיר מיוחד לחברים" maxlength="300" oninput="onDiscBuilderInput()">${esc(stripBenefit(w.discountTextFull || w.discountText, w.discountExcludes))}</textarea>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:5px;">אפשר לפרט תנאים, תוקף וסייגים. מזה ננסח כותרת קצרה לכרטיס, אחרי אישור.</div>
+            <div class="char-count" id="editDiscOtherCount" style="display:none">0 / 300</div>
           </div>
 
+          <!-- §726 – שאלה ישירה, חובה -->
+          ${EX_CHIPS[mapCatKey(w.categoryPrimary || w.cat)] ? `<div class="form-group" id="editExcludesWrap">
+            <label class="form-label">מה לא כלול בהטבה? <span style="color:#B54708;">*</span></label>
+            <input type="text" class="form-input" id="editDiscExcludes" maxlength="120" value="${esc(w.discountExcludes === 'none' ? '' : (w.discountExcludes || ''))}" placeholder="${esc(exPlaceholder(mapCatKey(w.categoryPrimary || w.cat)))}" oninput="onExcludesInput()" ${w.discountExcludes === 'none' ? 'disabled style="opacity:.45"' : ''} />
+            <div class="disc-type-chip ex-none${w.discountExcludes === 'none' ? ' selected' : ''}" id="editNoExcludes" onclick="toggleNoExcludes()">אין החרגות – על הכול</div>
+            <div id="editExcludesErr" style="display:none;font-size:12.5px;font-weight:600;color:#B54708;margin-top:6px;">נא לכתוב מה לא כלול, או לסמן שאין החרגות</div>
+          </div>` : ''}
+
           <div class="form-group">
-            <label class="form-label">איפה ניתן לממש את ההטבה? <span style="color:#B54708;">*</span></label>
+            <label class="form-label">איפה מממשים? <span style="color:#B54708;">*</span></label>
             <div class="disc-type-chip-wrap" id="editRedeemModeGrid"></div>
           </div>
           <div class="form-group" id="editOnlineCodeWrap" style="display:none;">
-            <label class="form-label">קוד קופון <span style="font-weight:400;color:var(--text-muted);">(האוהדים יזינו אותו באתר שלכם למימוש)</span></label>
+            <label class="form-label">קוד קופון</label>
             <input type="text" class="form-input" id="editDiscountCode" value="${esc(w.discountCode)}" placeholder="לדוג׳: MACCABI10" style="letter-spacing:1px;text-transform:uppercase;" oninput="onDiscBuilderInput();var e=document.getElementById('editCodeErr');if(e)e.style.display='none'" />
             <div id="editCouponRuleNote" style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.55;"></div>
+            <label class="code-confirm" id="editCodeConfirmWrap" style="display:none"><input type="checkbox" id="editCodeConfirm" onchange="document.getElementById('editCodeConfirmErr').style.display='none'" /><span>בדקתי שהקוד פעיל ועובד באתר (באחריות בעל העסק)</span></label>
+            <div id="editCodeConfirmErr" style="display:none;font-size:12.5px;font-weight:600;color:#B54708;margin-top:6px;">נא לאשר שהקוד פעיל</div>
             <div id="editCodeErr" style="display:none;font-size:12.5px;font-weight:600;color:#B54708;margin-top:6px;">נא להזין קוד קופון – בלי קוד ובלי דרך מימוש נוספת, לאוהד אין איך לממש את ההטבה</div>
-            <!-- §597 – כפל מבצעים: חובה כשיש קוד -->
-            <div id="editStackWrap" style="display:none;margin-top:12px;">
-              <label class="form-label">הקוד כולל כפל מבצעים? <span style="color:#B54708;">*</span> <span style="font-weight:400;color:var(--text-muted);">(אפשר לממש אותו גם על מוצר שכבר במבצע באתר)</span></label>
-              <div class="disc-type-chip-wrap" id="editStackGrid">
-                <div class="disc-type-chip${discStacking === 'yes' ? ' selected' : ''}" data-v="yes" onclick="selectStacking('yes')">כן, כולל כפל מבצעים</div>
-                <div class="disc-type-chip${discStacking === 'no' ? ' selected' : ''}" data-v="no" onclick="selectStacking('no')">לא, לא כולל</div>
-              </div>
-              <div id="editStackErr" style="display:none;color:#B42318;font-size:12px;margin-top:6px;">נא לענות אם הקוד כולל כפל מבצעים</div>
+          </div>
+          <!-- §726 – כפל מבצעים: חובה לכל הטבה -->
+          <div class="form-group" id="editStackWrap">
+            <label class="form-label">ההטבה כוללת כפל מבצעים? <span style="color:#B54708;">*</span></label>
+            <div style="font-size:12px;color:var(--text-muted);margin:-2px 0 7px;">כלומר, אפשר לממש אותה גם על מוצר שכבר במבצע.</div>
+            <div class="disc-type-chip-wrap" id="editStackGrid">
+              <div class="disc-type-chip${discStacking === 'yes' ? ' selected' : ''}" data-v="yes" onclick="selectStacking('yes')">כן, כולל</div>
+              <div class="disc-type-chip${discStacking === 'no' ? ' selected' : ''}" data-v="no" onclick="selectStacking('no')">לא כולל</div>
             </div>
+            <div class="stack-prev" id="editStackPrev"></div>
+            <div id="editStackErr" style="display:none;color:#B42318;font-size:12px;margin-top:6px;">נא לענות אם ההטבה כוללת כפל מבצעים</div>
           </div>
 
-          <div class="disc-redeem-note" id="editDiscRedeemNote"></div>
-
-          <div class="card-guide" style="margin-top:10px;"><strong style="color:var(--accent);">יש לכם יותר מהטבה אחת?</strong>למשל הטבה גם באתר וגם בחנות הפיזית, או 30% הנחה על חולצות ו-50% הנחה על משקפיים – מומלץ להוסיף! עד 2 הטבות נוספות, מוצגות בגיליון הפנימי של העסק.</div>
-          <button type="button" class="add-benefit-btn" id="addBenefitBtn" onclick="addBenefit()" style="display:${benefitCount === 1 ? 'block' : 'none'}">+ הוסף עוד הטבה (עד 2 נוספות)</button>
+          <button type="button" class="add-benefit-btn" id="addBenefitBtn" onclick="addBenefit()" style="display:${benefitCount === 1 ? 'block' : 'none'}">+ הוספת הטבה נוספת</button>
 
           <div id="benefitWrap2" style="display:${benefitCount >= 2 ? 'block' : 'none'};margin-top:14px;">
-            <div class="form-divider">הטבה 2</div>
-            <div class="form-group"><label class="form-label">תיאור ההטבה <span style="font-weight:400;color:var(--text-muted);">(עד 150 תווים)</span></label><textarea class="form-input" id="editDiscOtherText2" rows="2" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול" maxlength="150" oninput="onDiscBuilderInputN(2)">${esc(extra[0]?.text || '')}</textarea><div class="char-count" id="editDiscOtherCount2">0 / 150</div></div>
-            <div class="form-group"><label class="form-label">איפה ניתן לממש את ההטבה?</label><div class="disc-type-chip-wrap" id="editRedeemModeGrid2"></div></div>
+            <div class="form-divider">הטבה נוספת <span style="font-weight:400">(מוצגת בעמוד העסק בלבד)</span></div>
+            <div class="form-group"><label class="form-label">מה ההטבה? <span style="font-weight:400;color:var(--text-muted);">(עד 150 תווים)</span></label><textarea class="form-input" id="editDiscOtherText2" rows="2" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול" maxlength="150" oninput="onDiscBuilderInputN(2)">${esc(extra[0]?.text || '')}</textarea><div class="char-count" id="editDiscOtherCount2">0 / 150</div></div>
+            <div class="form-group"><label class="form-label">איפה מממשים?</label><div class="disc-type-chip-wrap" id="editRedeemModeGrid2"></div></div>
             <div class="form-group" id="editOnlineCodeWrap2" style="display:none;">
-              <label class="form-label">קוד קופון <span style="font-weight:400;color:var(--text-muted);">(האוהדים יזינו אותו באתר שלכם למימוש)</span></label>
+              <label class="form-label">קוד קופון</label>
               <input type="text" class="form-input" id="editDiscountCode2" value="${esc(extra[0]?.code || '')}" placeholder="לדוג׳: MACCABI10" style="letter-spacing:1px;text-transform:uppercase;" oninput="onDiscBuilderInputN(2)" />
             </div>
-            <div class="remove-benefit-link" onclick="removeBenefit(2)">הסר הטבה זו</div>
+            <div class="remove-benefit-link" onclick="removeBenefit(2)">הסרת הטבה זו</div>
             <div class="benefit-add-separator" style="display:${benefitCount === 2 ? 'block' : 'none'}"></div>
-            <button type="button" class="add-benefit-btn" id="addBenefitBtn2" onclick="addBenefit()" style="display:${benefitCount === 2 ? 'block' : 'none'};margin-top:0;">+ הוסף עוד הטבה (הטבה שלישית)</button>
+            <button type="button" class="add-benefit-btn" id="addBenefitBtn2" onclick="addBenefit()" style="display:${benefitCount === 2 ? 'block' : 'none'};margin-top:0;">+ הוספת הטבה נוספת</button>
           </div>
 
           <div id="benefitWrap3" style="display:${benefitCount >= 3 ? 'block' : 'none'};margin-top:14px;">
-            <div class="form-divider">הטבה 3</div>
-            <div class="form-group"><label class="form-label">תיאור ההטבה <span style="font-weight:400;color:var(--text-muted);">(עד 150 תווים)</span></label><textarea class="form-input" id="editDiscOtherText3" rows="2" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול" maxlength="150" oninput="onDiscBuilderInputN(3)">${esc(extra[1]?.text || '')}</textarea><div class="char-count" id="editDiscOtherCount3">0 / 150</div></div>
-            <div class="form-group"><label class="form-label">איפה ניתן לממש את ההטבה?</label><div class="disc-type-chip-wrap" id="editRedeemModeGrid3"></div></div>
+            <div class="form-divider">הטבה נוספת <span style="font-weight:400">(מוצגת בעמוד העסק בלבד)</span></div>
+            <div class="form-group"><label class="form-label">מה ההטבה? <span style="font-weight:400;color:var(--text-muted);">(עד 150 תווים)</span></label><textarea class="form-input" id="editDiscOtherText3" rows="2" placeholder="לדוגמה: 20% הנחה על כל התפריט, כולל אלכוהול" maxlength="150" oninput="onDiscBuilderInputN(3)">${esc(extra[1]?.text || '')}</textarea><div class="char-count" id="editDiscOtherCount3">0 / 150</div></div>
+            <div class="form-group"><label class="form-label">איפה מממשים?</label><div class="disc-type-chip-wrap" id="editRedeemModeGrid3"></div></div>
             <div class="form-group" id="editOnlineCodeWrap3" style="display:none;">
-              <label class="form-label">קוד קופון <span style="font-weight:400;color:var(--text-muted);">(האוהדים יזינו אותו באתר שלכם למימוש)</span></label>
+              <label class="form-label">קוד קופון</label>
               <input type="text" class="form-input" id="editDiscountCode3" value="${esc(extra[1]?.code || '')}" placeholder="לדוג׳: MACCABI10" style="letter-spacing:1px;text-transform:uppercase;" oninput="onDiscBuilderInputN(3)" />
             </div>
-            <div class="remove-benefit-link" onclick="removeBenefit(3)">הסר הטבה זו</div>
+            <div class="remove-benefit-link" onclick="removeBenefit(3)">הסרת הטבה זו</div>
           </div>
         </div>
 
@@ -5454,7 +5501,8 @@ function renderStackTask(w) {
 window.answerStackTask = async function(v) {
   const hadOtherDrafts = Object.keys(draftChanges).length > 0;
   discStacking = v;
-  stageChanges({ discountStacking: v });
+  const curT = committedState();
+  stageChanges({ discountStacking: v, discountTextFull: composeBenefit(curT.discountTextFull || curT.discountText, curT.discountExcludes, v) });   // §726
   if (!hadOtherDrafts) await submitAllChanges();
 };
 
@@ -5881,9 +5929,9 @@ function renderRedeemModeGrid() {
   ].filter(o => !onlyOnline || o.key === 'online');
   if (onlyOnline) discRedeemMode = ['online'];
   const note = document.getElementById('editCouponRuleNote');
-  if (note) note.innerHTML = onlyOnline
-    ? 'עסק שמוכר <b>רק אונליין</b> – ההטבה ממומשת בקוד קופון בלבד, ולכן הקוד חובה.'
-    : 'יש לכם גם חנות או מימוש במעמד המכירה? אז קוד הקופון לא חובה – אפשר לסמן גם את הדרך הנוספת.';
+  const onlySite = discRedeemMode.length > 0 && discRedeemMode.every(m => m === 'online');
+  if (note) note.textContent = 'האוהדים יזינו אותו באתר שלכם. ' + (onlyOnline ? 'עסק שמוכר רק אונליין – הקוד חובה.'
+    : onlySite ? 'כשמממשים רק באתר הקוד חובה. אין קוד? סמנו גם דרך מימוש נוספת.' : 'לא חובה, כי סימנתם גם דרך מימוש נוספת.');
   grid.innerHTML = opts.map(o =>
     `<div class="disc-type-chip${discRedeemMode.includes(o.key) ? ' selected' : ''}" onclick="selectRedeemMode('${o.key}')">${o.label}</div>`
   ).join('');
@@ -5893,13 +5941,38 @@ function renderRedeemModeGrid() {
 }
 
 // §597 — שאלת כפל המבצעים מוצגת רק כשנבחר "באתר" ויש קוד
-function stackingNeeded() {
-  return discRedeemMode.includes('online') && !!document.getElementById('editDiscountCode')?.value.trim();
+// השאלה מוצגת רק ל-4 הקטגוריות. עסק אחר שומר את מה שכבר רשום אצלו (אם המנהל מילא)
+function excludesValue() {
+  if (!document.getElementById('editExcludesWrap')) return committedState().discountExcludes || '';
+  if (document.getElementById('editNoExcludes')?.classList.contains('selected')) return 'none';
+  return document.getElementById('editDiscExcludes')?.value.trim() || '';
+}
+window.onExcludesInput = function() {
+  if (excludesValue()) { const e = document.getElementById('editExcludesErr'); if (e) e.style.display = 'none'; }
+  renderStacking();
+  refreshPreviews(null, 'discount');
+};
+window.toggleNoExcludes = function() {
+  const chip = document.getElementById('editNoExcludes'), inp = document.getElementById('editDiscExcludes');
+  const on = chip.classList.toggle('selected');
+  if (on) inp.value = '';
+  inp.disabled = on;
+  inp.style.opacity = on ? '.45' : '';
+  window.onExcludesInput();
+};
+// §726 – האישור נדרש על קוד חדש או שעוד לא אושר; קוד שכבר אושר ולא השתנה לא נשאל שוב
+function codeNeedsConfirm(code) {
+  const cur = committedState();
+  return !!code && (code !== (biz.discountCode || '') || !cur.discountCodeConfirmedAt);
 }
 function renderStacking() {
-  const wrap = document.getElementById('editStackWrap');
-  if (wrap) wrap.style.display = stackingNeeded() ? 'block' : 'none';
+  const liveCode = discRedeemMode.includes('online') ? (document.getElementById('editDiscountCode')?.value.trim() || '') : '';
+  const ccw = document.getElementById('editCodeConfirmWrap');
+  if (ccw) ccw.style.display = codeNeedsConfirm(liveCode) ? 'flex' : 'none';
   document.querySelectorAll('#editStackGrid .disc-type-chip').forEach(c => c.classList.toggle('selected', c.dataset.v === discStacking));
+  const prev = document.getElementById('editStackPrev');
+  const text = computeDiscBuilderText();
+  if (prev) prev.innerHTML = text && (discStacking || normEx(excludesValue())) ? '<b>כך זה יופיע:</b> ' + esc(composeBenefit(text, excludesValue(), discStacking, '')) : '';
 }
 window.selectStacking = function(v) {
   discStacking = v;
@@ -5918,7 +5991,7 @@ window.selectRedeemMode = function(key) {
 function updateDiscOtherCount() {
   const t = document.getElementById('editDiscOtherText')?.value || '';
   const cnt = document.getElementById('editDiscOtherCount');
-  if (cnt) { cnt.textContent = `${t.length} / 300`; cnt.className = 'char-count' + (t.length >270 ? ' warn' : ''); }
+  if (cnt) { cnt.textContent = `${t.length} / 300`; cnt.className = 'char-count' + (t.length >270 ? ' warn' : ''); cnt.style.display = t.length >= 200 ? 'block' : 'none'; }
 }
 
 function computeDiscBuilderText() {
@@ -6052,15 +6125,27 @@ window.saveDiscount = async function() {
   // שיכול "לבלבל" תצוגות אחרות (הקוד כבר לא קובע את מקום המימוש, מקום המימוש קובע אם הקוד רלוונטי)
   const discountCode = (discEditOn && discRedeemMode.includes('online'))
     ? document.getElementById('editDiscountCode').value.trim() : '';
-  const fullText = discEditOn ? computeDiscBuilderText() : '';
+  const excludes = discEditOn ? excludesValue() : '';
+  const fullText = discEditOn ? composeBenefit(computeDiscBuilderText(), excludes, discStacking, '') : '';
   // §638ב — "באתר" לבד בלי קוד = לאוהד אין כרטיס מימוש (home.html: hasOnline דורש קוד)
   if (discEditOn && discRedeemMode.length && discRedeemMode.every(m => m === 'online') && !discountCode) {
     const err = document.getElementById('editCodeErr');
     if (err) { err.style.display = 'block'; err.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     return;
   }
-  // §597 — קוד קופון בלי תשובה על כפל מבצעים לא נשמר
-  if (discountCode && !discStacking) {
+  // §726 — "מה לא כלול" ואישור הקוד הם חובה
+  if (discEditOn && document.getElementById('editExcludesWrap') && !excludes) {
+    const err = document.getElementById('editExcludesErr');
+    if (err) { err.style.display = 'block'; err.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    return;
+  }
+  if (discEditOn && codeNeedsConfirm(discountCode) && !document.getElementById('editCodeConfirm')?.checked) {
+    const err = document.getElementById('editCodeConfirmErr');
+    if (err) { err.style.display = 'block'; err.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    return;
+  }
+  // §726 — הטבה בלי תשובה על כפל מבצעים לא נשמרת
+  if (discEditOn && !discStacking) {
     const err = document.getElementById('editStackErr');
     if (err) { err.style.display = 'block'; err.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     return;
@@ -6070,14 +6155,17 @@ window.saveDiscount = async function() {
   // במרכז הניהול לפני האישור. שמירה שלא נגעה בתיאור (הטבה נוספת, מקום מימוש) משאירה את הכותרת הקיימת.
   const cur = committedState();
   const prevFullText = cur.discountTextFull || cur.discountText || '';
-  const shortText = (!discEditOn || fullText !== prevFullText) ? '' : (cur.discountText || '');
+  // §726 – תוספת כפל המבצעים לבדה לא מאפסת את הכותרת שכבר נכתבה
+  const shortText = (!discEditOn || stripBenefit(fullText, excludes) !== stripBenefit(prevFullText, cur.discountExcludes)) ? '' : (cur.discountText || '');
 
   stageChanges({
     hasDiscount: discEditOn,
     discountText: shortText,
     discountTextFull: fullText,
     discountCode,
-    discountStacking: discountCode ? discStacking : '',   // §597
+    discountStacking: discEditOn ? discStacking : '',   // §726
+    discountExcludes: excludes,
+    discountCodeConfirmedAt: !discountCode ? '' : codeNeedsConfirm(discountCode) ? new Date().toISOString() : (cur.discountCodeConfirmedAt || ''),
     discountRedeemMode: discEditOn ? discRedeemMode : '',
     discountTypes: discEditOn ? computeDiscountTypes(bizTypes, discRedeemMode) : [],
     discountBuilder: discEditOn ? discBuilderSnapshot() : null,
