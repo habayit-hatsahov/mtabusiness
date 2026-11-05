@@ -49,6 +49,8 @@
   </style>
   <script src="categories.js?v=7071"></script>
   <script src="phone-check.js"></script>
+  <script src="email-domain-check.js"></script>   <!-- §732 – מייל בעל העסק -->
+
   <script src="hours.js"></script>
   <script src="social-links.js"></script>
   <script src="biz-guides.js?v=726"></script>
@@ -2911,7 +2913,7 @@ function showDashboard() {
   try {
     window.YZBizGuides && window.YZBizGuides.render(document.getElementById('bizGuides'), {
       name: biz.name || '', benefit: biz.discountTextFull || biz.discountText || '',   // כמו כרטיס העסק (home.html)
-      // §729 – עד עכשיו discountTypes ישב בתוך ההערה שמעל, ולכן כל עסק ראה את שלוש הדרכים. כמו בכרטיס העסק: discountTypes, ואם ריק – לפי מקום המימוש
+      // §729 – שלוש הדרכים לכולם היו החלטה של רמי (§473כב/כג); עכשיו כל עסק רואה את שלו. כמו בכרטיס העסק: discountTypes, ואם ריק – לפי מקום המימוש
       discountTypes: (biz.discountTypes && biz.discountTypes.length) ? biz.discountTypes : computeDiscountTypes(biz.bizTypes, biz.discountRedeemMode),
       onShare: () => biz.status === 'approved' ? shareMyBiz('hero') : showToast('השיתוף יפעל אחרי שהעסק יאושר'),
     });
@@ -3976,7 +3978,7 @@ function renderDiscountCard(w) {
 
           <!-- §726 – שאלה ישירה, חובה -->
           ${EX_CHIPS[mapCatKey(w.categoryPrimary || w.cat)] ? `<div class="form-group" id="editExcludesWrap">
-            <label class="form-label">מה לא כלול בהטבה? <span style="color:#B54708;">*</span></label>
+            <label class="form-label">מה לא כלול בהטבה? ${(biz.hasDiscount && (biz.discountTextFull || biz.discountText)) ? '' : '<span style="color:#B54708;">*</span>'}</label>
             <input type="text" class="form-input" id="editDiscExcludes" maxlength="120" value="${esc(w.discountExcludes === 'none' ? '' : (w.discountExcludes || ''))}" placeholder="${esc(exPlaceholder(mapCatKey(w.categoryPrimary || w.cat)))}" oninput="onExcludesInput()" ${w.discountExcludes === 'none' ? 'disabled style="opacity:.45"' : ''} />
             <div class="disc-type-chip ex-none${w.discountExcludes === 'none' ? ' selected' : ''}" id="editNoExcludes" onclick="toggleNoExcludes()">אין החרגות – על הכול</div>
             <div id="editExcludesErr" style="display:none;font-size:12.5px;font-weight:600;color:#B54708;margin-top:6px;">נא לכתוב מה לא כלול, או לסמן שאין החרגות</div>
@@ -5364,7 +5366,8 @@ function deepEqual(a, b) {
 const LEGACY_ARRAY_FIELDS = new Set(['discountRedeemMode', 'discountTypes']);
 function normForCompare(v, key) {
   if (key && LEGACY_ARRAY_FIELDS.has(key)) v = toRedeemArr(v);
-  if (key === 'noTagFits' && v === false) return null;   // §730 – לא סומן = לא קיים ברשומה; אחרת "העסק" בלי שינוי שלח noTagFits
+  if (key === 'noTagFits' && v === false) return null;
+  if (key === 'ownerPhone' && typeof v === 'string') return v.replace(/\D/g, '') || null;   // §732 – "050-…" מול "050…" זה אותו מספר   // §730 – לא סומן = לא קיים ברשומה; אחרת "העסק" בלי שינוי שלח noTagFits
   if ((key === 'wantsBusinessOfWeek' || key === 'wantsBenefitOfWeek') && v === false) return null;   // §731 – אותו דבר בהטבה
   if (v === undefined || v === null) return null;
   if (Array.isArray(v)) {
@@ -5575,6 +5578,19 @@ async function saveOwnerBirthDate() {
 // נשלחה בקשה" — התאריך כן נשמר (נבדק ברשומה), המסך אמר שלא. עכשיו: ממתינים, ואז מציירים.
 // תאריך לא תקין / כשל → הטופס נשאר פתוח (ההודעה כבר הוצגה) — לא מציירים מעליו.
 window.saveOwner = async function() {
+  // §732 – בבדיקה על עסקים אמיתיים השלב הזה שלח בלי שום בדיקה: טלפון "05012", מייל "abc@gmail" ושם ריק (אישור היה מוחק
+  // את שם בעל העסק). אותן בדיקות כמו בטלפון של העסק (phone-check.js) ובמייל של ההרשמה (email-domain-check.js), fail-open.
+  const bad = (id, msg) => { showToast(msg); document.getElementById(id)?.focus(); return true; };
+  const fv = id => document.getElementById(id).value.trim();
+  if (!fv('editOwnerFirst') && bad('editOwnerFirst', 'נא למלא שם פרטי')) return;
+  if (!fv('editOwnerLast') && bad('editOwnerLast', 'נא למלא שם משפחה')) return;
+  const ph = fv('editOwnerPhone');
+  if (!ph && bad('editOwnerPhone', 'נא למלא טלפון')) return;
+  if (typeof window.isValidILPhone === 'function' && !window.isValidILPhone(ph) && bad('editOwnerPhone', 'מספר הטלפון לא תקין – נא לבדוק את מספר הספרות')) return;
+  const em = fv('editOwnerEmail').toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) && bad('editOwnerEmail', 'כתובת המייל לא תקינה')) return;
+  const typo = typeof window.checkEmailDomain === 'function' ? window.checkEmailDomain(em) : null;
+  if (typo && bad('editOwnerEmail', `בדקו את כתובת המייל – אולי ${typo.suggested}?`)) return;
   const updates = {
     ownerFirst: document.getElementById('editOwnerFirst').value.trim(),
     ownerLast: document.getElementById('editOwnerLast').value.trim(),
@@ -6175,7 +6191,10 @@ window.saveDiscount = async function() {
     return;
   }
   // §726 — "מה לא כלול" ואישור הקוד הם חובה
-  if (discEditOn && document.getElementById('editExcludesWrap') && !excludes) {
+  // §732 – רמי: "לא צריך שיענו על זה, ההטבות תקפות" – חובה רק להטבה חדשה. לעסק שכבר יש לו הטבה שמורה זה רשות
+  // (עד עכשיו 0 מ-145 עסקים מאושרים ענו, וכל שמירה של שלב ההטבה נחסמה עד שיענו)
+  const hadBenefit = !!(biz.hasDiscount && (biz.discountTextFull || biz.discountText));
+  if (discEditOn && document.getElementById('editExcludesWrap') && !excludes && !hadBenefit) {
     const err = document.getElementById('editExcludesErr');
     if (err) { err.style.display = 'block'; err.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     return;
