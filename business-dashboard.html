@@ -1695,17 +1695,17 @@
                פעולה. ר' ההערה ב-CSS (.unsent-banner) ובתוך renderBizView. -->
           <div id="unsentBanner" style="display:none">
             <div class="unsent-banner">
-              <div class="unsent-banner-title">⚠️ טרם נשלח לאישור – שמור אצלך בלבד</div>
-              <div class="unsent-banner-sub">שמרתם את השינויים האלה, אבל הם עדיין <b>לא</b> הגיעו אלינו ולא יופיעו בכרטיס שלכם. כדי לשלוח – כפתור השליחה בסיכום שבתחתית העמוד.</div>
+              <div class="unsent-banner-title">⚠️ לא הגיע אלינו – שמור רק במכשיר הזה</div>
+              <div class="unsent-banner-sub">שמרתם את השינויים האלה, אבל הם עדיין <b>לא</b> הגיעו אלינו (למשל כי השליחה נכשלה).</div>
               <div class="unsent-banner-rows" id="unsentBannerRows"></div>
-              <button class="unsent-banner-btn" onclick="jumpToSubmitCard()">לסיכום ולשליחה לאישור מנהל ↓</button>
+              <button class="unsent-banner-btn" onclick="submitFromCard()">שליחה אלינו עכשיו</button>
             </div>
           </div>
 
           <div id="pendingBanner" style="display:none">
             <div class="pending-banner">
-              <div class="pending-banner-title">✓ נשלח – ממתין לאישור מנהל</div>
-              <div class="pending-banner-sub">השינויים האלה כבר אצל הצוות שלנו לבדיקה. אפשר להמשיך לערוך בינתיים – כל שינוי נוסף יתווסף לאותה בקשה וישלח מחדש לבדיקה.</div>
+              <div class="pending-banner-title">📨 אצלנו בבדיקה</div>
+              <div class="pending-banner-sub">השינויים האלה כבר אצל הצוות שלנו לבדיקה. אפשר להמשיך לערוך בינתיים – כל שמירה מתווספת לאותה בקשה. שינוי שהתחרטתם עליו – "ביטול השינוי" לידו.</div>
               <div class="pending-banner-rows" id="pendingBannerRows"></div>
             </div>
           </div>
@@ -1940,7 +1940,7 @@
   </div>
   <div class="draft-submit-actions">
     <button class="btn-discard-draft" onclick="discardAllChanges()">ביטול</button>
-    <button class="btn-submit-draft" id="draftSubmitBtn" onclick="jumpToSubmitCard()">לסיכום ולשליחה ↓</button>
+    <button class="btn-submit-draft" id="draftSubmitBtn" onclick="submitFromCard()">שליחה אלינו עכשיו</button>
   </div>
 </div>
 
@@ -2937,7 +2937,7 @@ function renderBizView(flashZone) {
   // "יש לך שינויים שממתינים לאישור מנהל". התוצאה בפועל: מי ששמר שלב בלבד קרא שהשינוי כבר
   // ממתין לאישור — וזה מה שגרם לבעלי עסקים לחשוב שהגישו כשלא הגישו (פידבק אמיתי). עכשיו
   // שני באנרים נפרדים לגמרי, ואף אחד מהם לא מציג את המצב של השני.
-  const sentRows = buildChangeRows(biz.pendingChanges || {});
+  const sentRows = buildChangeRows(biz.pendingChanges || {}, true);   // §728 – עם "ביטול השינוי" לכל שורה
   document.getElementById('pendingBanner').style.display = sentRows ? 'block' : 'none';
   document.getElementById('pendingBannerRows').innerHTML = sentRows;
   const unsentRows = buildChangeRows(draftChanges);
@@ -2980,9 +2980,9 @@ function renderBizView(flashZone) {
   draftBar.classList.toggle('show', draftCount >0);
   if (draftCount >0) {
     document.getElementById('draftBarTitle').textContent = draftCount === 1
-      ? 'שינוי אחד נשמר – טרם נשלח לאישור'
-      : draftCount + ' שינויים נשמרו – טרם נשלחו לאישור';
-    document.getElementById('draftSubmitBtn').textContent = biz.pendingChanges ? 'לסיכום ולעדכון הבקשה ↓' : 'לסיכום ולשליחה ↓';
+      ? 'שינוי אחד ששמרת לא הגיע אלינו'
+      : draftCount + ' שינויים ששמרת לא הגיעו אלינו';
+    document.getElementById('draftSubmitBtn').textContent = 'שליחה אלינו עכשיו';   // §728
   }
   renderSubmitCard(w);
   renderWriteUsCard(biz);
@@ -2996,7 +2996,7 @@ function renderBizView(flashZone) {
   refreshPreviews(null, flashZone);
 }
 
-// ══ §672 — "צריך לתקן": מה רמי ביקש, ו"✅ תיקנתי – שליחה לבדיקה" ═══════════════════════════════
+// ══ §672 — "צריך לתקן": מה רמי ביקש, ו"✅ סיימתי לתקן" ═══════════════════════════════
 // רמי (29.10): "צריך לתקן ← הוא שולח תיקון ← חוזר לממתין עם 🔁 תוקן". מרכז הניהול כותב inReview +
 // inReviewReasons/inReviewOther (§653/§671); כאן בעל העסק רואה מה חסר ומתקן בדשבורד עצמו. כל שמירה כאן
 // היא בקשה (pendingChanges) שמגיעה לרמי לסל; הכפתור כותב fixSubmittedAt דרך הוורקר (/biz-fix-done) –
@@ -3033,9 +3033,9 @@ function renderFixBanner() {
     ${unsent}
     ${hidden ? '<div style="margin-top:8px;font-size:13px;color:#B42318">העסק מוסתר מהאתר עד התיקון.</div>'
       : `<div style="margin-top:8px;font-size:13px;color:#33466f">${biz.status === 'approved' ? 'העסק שלך באתר – אפשר לתקן בזמן שהוא מוצג.' : 'העסק עוד לא באתר – נעלה אותו אחרי שנבדוק את התיקון.'}</div>`}   <!-- §675 -->
-    ${sent ? '' : `<div style="margin-top:8px;font-size:13px;color:#6B7A9B">מתקנים כאן בדשבורד ושומרים. כשסיימתם – הכפתור שולח לנו את הכול:</div>
+    ${sent ? '' : `<div style="margin-top:8px;font-size:13px;color:#6B7A9B">מתקנים בשלבים למטה – כל שמירה מגיעה אלינו מיד. כשסיימתם:</div>
     ${biz.status === 'approved' ? `<button type="button" id="fixDeclineBtn" onclick="fixDecline()" style="margin-top:10px;margin-inline-end:8px;border:1px solid #C9D2E6;border-radius:12px;padding:10px 16px;font:inherit;font-weight:700;font-size:14px;background:#fff;color:#33466f;cursor:pointer">לא מעוניין לתקן</button>` : ''}   <!-- §696 -->
-    <button type="button" id="fixDoneBtn" onclick="fixDone()" style="margin-top:10px;border:none;border-radius:12px;padding:11px 18px;font:inherit;font-weight:800;font-size:14.5px;background:#FFD400;color:#0A2A66;cursor:pointer">✅ תיקנתי – שליחה לבדיקה</button>
+    <button type="button" id="fixDoneBtn" onclick="fixDone()" style="margin-top:10px;border:none;border-radius:12px;padding:11px 18px;font:inherit;font-weight:800;font-size:14.5px;background:#FFD400;color:#0A2A66;cursor:pointer">✅ סיימתי לתקן</button>
     <div id="fixDoneMsg" style="margin-top:8px;font-size:13.5px"></div>`}
   </div>`;
 }
@@ -3067,7 +3067,7 @@ window.fixDone = async function() {
   btn.disabled = true; btn.textContent = '⏳ שולחים…'; msg.textContent = '';
   if (hasDraft) {
     if (!(await submitAllChanges())) {   // ההודעה למה – בטוסט של submitAllChanges
-      btn.disabled = false; btn.textContent = '✅ תיקנתי – שליחה לבדיקה';
+      btn.disabled = false; btn.textContent = '✅ סיימתי לתקן';
       msg.style.color = '#B42318'; msg.textContent = 'השינויים לא נשלחו – נסו שוב.';
       return;
     }
@@ -3076,7 +3076,7 @@ window.fixDone = async function() {
   }
   const t = token || sessionStorage.getItem('hb_lastBizToken') || '';
   if (!t) {
-    btn.disabled = false; btn.textContent = '✅ תיקנתי – שליחה לבדיקה';
+    btn.disabled = false; btn.textContent = '✅ סיימתי לתקן';
     msg.textContent = hasDraft ? 'השינויים הגיעו אלינו ✓' : 'כתבו לנו ב"הודעות" שתיקנתם – ונבדוק.';
     return;
   }
@@ -3088,7 +3088,7 @@ window.fixDone = async function() {
     renderFixBanner();
   } catch (e) {
     console.error('fixDone failed', e);
-    btn.disabled = false; btn.textContent = '✅ תיקנתי – שליחה לבדיקה';
+    btn.disabled = false; btn.textContent = '✅ סיימתי לתקן';
     msg.style.color = '#B42318'; msg.textContent = 'לא נשלח – בדקו את החיבור ונסו שוב.';
   }
 };
@@ -3571,7 +3571,7 @@ function renderOwnerCard(w) {
         </div>
         <div class="sec-edit-actions">
           <button class="btn-cancel-sec" onclick="toggleSecEdit('owner')">ביטול</button>
-          <button class="btn-save-sec" onclick="saveOwner()">שמירת השלב</button>
+          <button class="btn-save-sec" onclick="saveOwner()">שמירה ושליחה אלינו</button>
         </div>
       </div>
     </div>`;
@@ -3692,7 +3692,7 @@ function renderBizDetailsCard(w) {
         </div>
         <div class="sec-edit-actions">
           <button class="btn-cancel-sec" onclick="toggleSecEdit('bizdetails')">ביטול</button>
-          <button class="btn-save-sec" onclick="saveBizDetails()">שמירת השלב</button>
+          <button class="btn-save-sec" onclick="saveBizDetails()">שמירה ושליחה אלינו</button>
         </div>
       </div>
     </div>`;
@@ -3796,7 +3796,7 @@ function renderCatHoursCard(w) {
         </div>
         <div class="sec-edit-actions">
           <button class="btn-cancel-sec" onclick="toggleSecEdit('cathours')">ביטול</button>
-          <button class="btn-save-sec" onclick="saveCatHours()">שמירת השלב</button>
+          <button class="btn-save-sec" onclick="saveCatHours()">שמירה ושליחה אלינו</button>
         </div>
       </div>
     </div>`;
@@ -3970,7 +3970,7 @@ function renderDiscountCard(w) {
 
         <div class="sec-edit-actions">
           <button class="btn-cancel-sec" onclick="toggleSecEdit('discount')">ביטול</button>
-          <button class="btn-save-sec" onclick="saveDiscount()">שמירת השלב</button>
+          <button class="btn-save-sec" onclick="saveDiscount()">שמירה ושליחה אלינו</button>
         </div>
       </div>
     </div>`;
@@ -4018,7 +4018,7 @@ function renderMediaCard(w) {
         ${cardTitle(4, 'תמונות', 'media')}
         <button class="sec-edit-btn" onclick="toggleSecEdit('media')">ערוך</button>
       </div>
-      ${mediaUnsent ? `<div class="mx-unsent"><span>✓ התמונות נשמרו אצלכם. נשאר לשלוח אותן לאישור.</span><button type="button" onclick="jumpToSubmitCard()">לשליחה</button></div>` : ''}
+      ${mediaUnsent ? `<div class="mx-unsent"><span>התמונות שמורות רק במכשיר הזה – עוד לא הגיעו אלינו.</span><button type="button" onclick="submitFromCard()">שליחה</button></div>` : ''}
       <div class="sec-edit-form media-form locked" id="secEdit-media">
         <div class="mx-block">
           <div class="mx-h">התמונה המייצגת</div>
@@ -4079,7 +4079,7 @@ function renderMediaCard(w) {
         </div>
         <div class="sec-edit-actions">
           <button class="btn-cancel-sec" onclick="toggleSecEdit('media')">ביטול</button>
-          <button class="btn-save-sec" onclick="saveMedia()">שמירת התמונות</button>
+          <button class="btn-save-sec" onclick="saveMedia()">שמירת התמונות ושליחה</button>
         </div>
       </div>
     </div>`;
@@ -4852,8 +4852,8 @@ function renderPreviewApprovalNote(state) {
   if (!el || !biz) return;
   if (!state || state === 'live') { el.classList.remove('show'); el.innerHTML = ''; return; }
   const MSG = {
-    picked:  'כך התמונה שבחרת תיראה לאוהדים. היא <b>עדיין לא נשמרה ולא אושרה</b> – לחצ/י "שמירת השלב", ואז שלח/י לאישור מכרטיס הסיכום בתחתית העמוד.',
-    draft:   'כך התמונה החדשה תיראה לאוהדים. היא <b>נשמרה אצלך אבל עדיין לא נשלחה אלינו</b> – ולכן היא עדיין לא באפליקציה. לשליחה: כרטיס הסיכום בתחתית העמוד.',
+    picked:  'כך התמונה שבחרת תיראה לאוהדים. היא <b>עדיין לא נשמרה ולא אושרה</b> – לחצ/י "שמירת התמונות ושליחה".',
+    draft:   'כך התמונה החדשה תיראה לאוהדים. היא <b>נשמרה אצלך אבל עדיין לא נשלחה אלינו</b> – ולכן היא עדיין לא באפליקציה. לשליחה: "שליחה אלינו עכשיו".',
     pending: 'כך התמונה החדשה תיראה לאוהדים. היא <b>נשלחה וממתינה לאישור מנהל</b> – עד שתאושר, באפליקציה עדיין מוצגת התמונה הקודמת.',
   };
   el.innerHTML = MSG[state] || MSG.picked;
@@ -4952,7 +4952,7 @@ window.switchView = function(view) {
 // גם לסקירה-לפני-שליחה (renderSubmitCard) וגם לבאנר המרוכז למעלה (pendingBanner ב-renderBizView).
 // isEmptyVal: בסקירה מציגים רק מה שבאמת נבחר/השתנה — לא כל מפתח שנכנס ל-draftChanges (למשל
 // noTagFits:false שחוזר להיות false בלי שינוי אמיתי, בגלל undefined!=="false" ב-stageChanges).
-function buildChangeRows(changes) {
+function buildChangeRows(changes, withdraw) {
   const isEmptyVal = x =>x === false || x === '' || x == null || (Array.isArray(x) && x.length === 0);
   return Object.entries(changes)
     .filter(([k, v]) =>!isEmptyVal(v) && !CONFIRM_ROW_EXCLUDE.has(k))
@@ -4965,13 +4965,14 @@ function buildChangeRows(changes) {
     // דיווח: טלפון-עסק הראה את אותו מספר משני הצדדים). "ישן" חייב תמיד להיות הערך-החי-והמאושר
     // בפועל (biz[k]) — לא ערך-ממתין-אחר, גם אם קיים.
     const oldVal = biz[k];
+    const wd = f => withdraw ? `<button type="button" onclick="withdrawPending('${f}')" style="display:block;margin-top:6px;border:none;background:none;color:#B42318;font:inherit;font-size:12.5px;text-decoration:underline;cursor:pointer;padding:0">ביטול השינוי</button>` : '';   // §728
     // נבחר חדש (לא היה כלום קודם) — בלי חץ-שינוי מבלבל, רק הערך החדש
     if (isEmptyVal(oldVal)) {
       return `<div class="confirm-row">
         <span class="confirm-field">${esc(label)}</span>
         <div class="confirm-values">
           <span class="confirm-new">${esc(fmtFieldVal(k, v))}</span>
-        </div>
+        </div>${wd(k)}
       </div>`;
     }
     return `<div class="confirm-row">
@@ -4980,7 +4981,7 @@ function buildChangeRows(changes) {
         <span class="confirm-old">${esc(fmtFieldVal(k, oldVal))}</span>
         <span class="confirm-arrow">→</span>
         <span class="confirm-new">${esc(fmtFieldVal(k, v))}</span>
-      </div>
+      </div>${wd(k)}
     </div>`;
   }).join('');
 }
@@ -5005,11 +5006,7 @@ function renderSubmitCard(w) {
         <div class="submit-card-sub">מנהל הצוות בוחן כעת את הבקשה ויאשר אותה בהקדם. השינויים יופיעו בכרטיס שלכם רק לאחר האישור – עד אז אפשר להמשיך לערוך, וכל שינוי נוסף יתווסף לאותה בקשה.</div>`;
       return;
     }
-    el.className = 'submit-card';
-    el.innerHTML = `
-      <div class="submit-card-title">סיכום ושליחה</div>
-      <div class="submit-card-empty">אין כרגע שינויים שממתינים לשליחה.<br>
-        כל שינוי שתשמרו בשלבים למעלה נשמר <b>אצלכם בלבד</b>, מופיע כאן, ונשלח לאישור מנהל רק בלחיצה על כפתור השליחה שיופיע כאן.</div>`;
+    el.className = ''; el.innerHTML = '';   // §728 – אין טיוטה: אין מה לשלוח
     return;
   }
 
@@ -5018,7 +5015,7 @@ function renderSubmitCard(w) {
   el.className = 'submit-card active';
   el.innerHTML = `
     <div class="submit-card-title">סיכום ושליחה</div>
-    <div class="submit-card-sub">אלה השינויים ששמרתם וטרם נשלחו. הם <b>לא</b> יופיעו בכרטיס שלכם ולא יגיעו אלינו עד הלחיצה על "שליחה לאישור מנהל".</div>
+    <div class="submit-card-sub">אלה שינויים ששמרתם ועוד <b>לא</b> הגיעו אלינו (השליחה נכשלה, או שנשמרו לפני העדכון). הם יגיעו אלינו בלחיצה על "שליחה לאישור מנהל".</div>
     <div class="completeness-wrap" style="margin:14px 0 4px;">
       <div class="completeness-header">
         <span class="completeness-title">שלמות הכרטיס לאחר העדכון</span>
@@ -5060,8 +5057,26 @@ window.submitFromCard = async function() {
   submitCardSent = true;
   const success = await submitAllChanges();
   if (!success) { submitCardSent = false; renderSubmitCard(); return; }
-  const el = document.getElementById('submitCard');
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  submitCardSent = false; renderSubmitCard();   // §728 – נשלח: הטוסט אומר, ו"אצלנו בבדיקה" למעלה מראה
+};
+// §728 – "ביטול השינוי" ב"אצלנו בבדיקה": השדה יורד מהבקשה. בלי pendingChangesAt – שלא תצא לרמי התראה על ביטול.
+const PENDING_PAIRS = { coverPhoto: ['coverPhotoThumb'], logo: ['logoThumb'], categoryPrimary: ['cat'], hours: ['hoursMode', 'hoursDays', 'hoursOther'] };
+window.withdrawPending = async function(k) {
+  const P = { ...(biz.pendingChanges || {}) };
+  if (!(k in P)) return;
+  if (!confirm('לבטל את השינוי ב"' + (FIELD_LABELS[k] || k) + '"? הוא לא יגיע לבדיקה.')) return;
+  [k, ...(PENDING_PAIRS[k] || [])].forEach(f => { delete P[f]; });
+  const next = Object.keys(P).some(f => !CONFIRM_ROW_EXCLUDE.has(f)) ? P : null;
+  try {
+    await withBizAuth(() => updateDoc(doc(bizDb, 'businesses', bizId), { pendingChanges: next }));
+    biz.pendingChanges = next;
+    showToast('השינוי בוטל');
+    renderBizView();
+  } catch (e) {
+    console.error('withdrawPending failed', e);
+    reportBizWriteError('withdrawPending', e, k);
+    showToast(bizWriteErrorMsg(e));
+  }
 };
 
 // ── "כתבו לנו" — הודעה חופשית לצוות מתוך הדשבורד (2026-08-21) ─────────────────────────────
@@ -5288,10 +5303,11 @@ function stageChanges(updates, flashZone, noChangeMsg) {
     return;
   }
   Object.assign(draftChanges, realChanges);
-  saveDraftChanges();
+  saveDraftChanges();   // רשת ביטחון: שליחה שנכשלה נשארת כאן, עם "לא הגיע אלינו" וכפתור שליחה
   submitCardSent = false;
-  showToast('נשמר אצלך – עדיין לא נשלח. לשליחה: הסיכום בתחתית העמוד');
+  showToast('שולח אלינו…');
   renderBizView(flashZone);
+  return window.submitAllChanges({ fromSave: true });   // §728 – שמירה = נשלח אלינו
 }
 
 // ── ניקוי מטען לפני כתיבה ל-Firestore (§219) ────────────────────────────────────────────────
@@ -5330,14 +5346,24 @@ function sanitizeForFirestore(value, path, dropped) {
   return value;
 }
 
-window.submitAllChanges = async function() {
+// §728 – "שמירה = נשלח": כל שמירה קוראת לכאן. שליחה אחת בכל רגע – שמירה שנכנסת באמצע נשלחת מיד אחריה, ומהטיוטה
+// יורד רק מה שנשלח בפועל (עד §728 draftChanges = {} מחק גם שמירה שנכנסה בזמן השליחה).
+let _submitP = null;
+window.submitAllChanges = function(opts) {
+  if (_submitP) return _submitP.then(() => Object.keys(draftChanges).length ? window.submitAllChanges(opts) : true);
+  _submitP = submitAllChangesOnce(opts || {}).finally(() => { _submitP = null; });
+  return _submitP.then(ok => ok && Object.keys(draftChanges).length ? window.submitAllChanges(opts) : ok);
+};
+async function submitAllChangesOnce(opts) {
   if (!Object.keys(draftChanges).length) return false;
+  const snap = { ...draftChanges };
   const dropped = [];
-  const merged = sanitizeForFirestore({ ...(biz.pendingChanges || {}), ...draftChanges }, '', dropped);
+  const merged = sanitizeForFirestore({ ...(biz.pendingChanges || {}), ...snap }, '', dropped);
   if (dropped.length) console.warn('submitAllChanges: dropped values', dropped);
 
   // §710 – לא שולחים לאישור "נותן שירות" חדש בלי התשובה (סוג העסק והשאלה יושבים בשני כרטיסים)
   if (svcAnswerMissing(merged)) {
+    if (opts.fromSave) return false;   // §728 – saveBizDetails שואל בעצמו; הטיוטה נשארת עד התשובה
     showToast('בחרתם "נותן שירות" – ענו איפה אתם נותנים את השירות, ואז שלחו');
     window.svcEdit();
     return false;
@@ -5366,9 +5392,9 @@ window.submitAllChanges = async function() {
       pendingChangesAt: serverTimestamp()
     }));
     biz.pendingChanges = merged;
-    draftChanges = {};
+    Object.keys(snap).forEach(k => { if (draftChanges[k] === snap[k]) delete draftChanges[k]; });   // §728
     saveDraftChanges();
-    showToast(' הבקשה התקבלה!');
+    showToast('✓ נשלח אלינו – נבדוק ונעדכן');
     renderBizView();
     return true;
   } catch(e) {
