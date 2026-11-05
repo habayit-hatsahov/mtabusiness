@@ -5316,6 +5316,7 @@ window.toggleSecEdit = function(key) {
   if (key === 'media') { edit.classList.toggle('locked', !opening); syncMediaEditingFlag(); }
   if (view) view.classList.toggle('hidden-when-edit', opening);
   if (opening) refreshPreviews();
+  if (opening && key === 'bizdetails') { try { _secBaseline.bizdetails = bizDetailsPayload(); } catch (e) { console.warn('bizdetails baseline', e); } }   // §730 – בלי צילום: נשלח הכול, כמו קודם
   // סוגרים את עריכת המדיה בלי לשמור מאפסים את התצוגה לנתונים שכן נשמרו, כדי לא להשאיר תצוגה מקדימה של קובץ שלא הועלה בפועל
   else if (key === 'media') { initMediaForm(committedState()); refreshPreviews(); }
 };
@@ -5347,6 +5348,7 @@ function deepEqual(a, b) {
 const LEGACY_ARRAY_FIELDS = new Set(['discountRedeemMode', 'discountTypes']);
 function normForCompare(v, key) {
   if (key && LEGACY_ARRAY_FIELDS.has(key)) v = toRedeemArr(v);
+  if (key === 'noTagFits' && v === false) return null;   // §730 – לא סומן = לא קיים ברשומה; אחרת "העסק" בלי שינוי שלח noTagFits
   if (v === undefined || v === null) return null;
   if (Array.isArray(v)) {
     const filtered = v.filter(item =>{
@@ -5709,7 +5711,29 @@ window.saveBizDetails = function() {
   //    שאינו חנות שלחה branches: [] – ומחקה כתובת שנקבעה במסך המעבר במרכז הניהול.
   const branches = (isPhysicalNow || svcModes.includes('atMine')) ? collectBranchRows() : [];
   if (svcModes.includes('atMine') && !branches.some(x => x.city)) { showToast('"הלקוח מגיע אליי" – כתבו באיזו עיר'); return; }   // §723 – מספיקה עיר
-  stageChanges({
+  stageChanges(onlyTouched('bizdetails', bizDetailsPayload()));   // §730
+};
+// §730 – רמי: "תבדוק על עסק אמיתי אם שמירת פרטי העסק שולחת עיר וכתובת שלא השתנו". על עסקים אמיתיים, שמירה בלי שום
+// שינוי שלחה: city/address (סניף בלי עיר למעלה – 151 מ-157), regions: [] (נותן שירות "מרחוק" עם "כל הארץ" – אישור היה
+// מוחק) ושעות ברירת מחדל (עסק בלי שעות). השורש: הטופס מחשב ערכים שלא שמורים כך ברשומה. עכשיו נשלח רק מה שבעל העסק
+// שינה בטופס עצמו – מול צילום הטופס ברגע הפתיחה. שדות שהולכים יחד נשלחים יחד.
+const _secBaseline = {};
+const TOUCH_GROUPS = [['branches', 'city', 'address'], ['hoursMode', 'hoursDays', 'hoursOther', 'hours'], ['serviceModes', 'regions']];
+function onlyTouched(sec, payload) {
+  const base = _secBaseline[sec];
+  if (!base) return payload;
+  const keep = new Set(Object.keys(payload).filter(k => !deepEqual(normForCompare(payload[k], k), normForCompare(base[k], k))));
+  TOUCH_GROUPS.forEach(g => { if (g.some(k => keep.has(k))) g.forEach(k => { if (k in payload) keep.add(k); }); });
+  return Object.fromEntries(Object.entries(payload).filter(([k]) => keep.has(k)));
+}
+// מה שהטופס של "פרטים ויצירת קשר" אומר עכשיו (בלי בדיקות) – גם לשמירה וגם לצילום בפתיחה
+function bizDetailsPayload() {
+  const bizTypes = [...document.querySelectorAll('#editBizTypeGrid .region-pill.selected')].map(p =>p.dataset.type);
+  const isProNow = bizTypes.includes('pro');
+  const svcModes = isProNow ? svcSelected() : [];
+  const regionsNow = [...document.querySelectorAll('#editRegionGrid .region-pill.selected')].map(p =>p.textContent.trim());
+  const branches = (bizTypes.includes('physical') || svcModes.includes('atMine')) ? collectBranchRows() : [];
+  return {
     ...(svcModes.length ? { serviceModes: svcModes } : {}),
     desc: document.getElementById('editDesc').value.trim(),
     branches,
@@ -5725,8 +5749,8 @@ window.saveBizDetails = function() {
     website: document.getElementById('editWebsite').value.trim(),
     instagram: document.getElementById('editInstagram').value.trim(),
     facebook: document.getElementById('editFacebook').value.trim(),
-  });
-};
+  };
+}
 
 // ── קטגוריה (בחירה יחידה) + תגיות (עד MAX_TAGS) ──
 function renderCatGrid() {
