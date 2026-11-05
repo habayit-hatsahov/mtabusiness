@@ -2371,7 +2371,9 @@ function computeDiscountTypes(bizTypes, redeemMode) {
 }
 
 // תאימות לאחור: עסקים ישנים שנשמרו לפני שהמימוש הפך לבחירה מרובה — discountRedeemMode היה מחרוזת יחידה
-function toRedeemArr(x) { return Array.isArray(x) ? x : (x ? [x] : []); }
+// §731א – תמיד עותק: selectRedeemMode עושה push/splice על המערך, וכשזה היה המערך של הרשומה עצמה (biz)
+// הלחיצה שינתה את הרשומה בזיכרון, והשמירה ראתה "אין שינוי" (מקום מימוש לבד לא נשלח מאז 11.8)
+function toRedeemArr(x) { return Array.isArray(x) ? [...x] : (x ? [x] : []); }
 
 const REGION_LIST = ['כל הארץ','גוש דן','ירושלים והסביבה','השפלה','השרון','חיפה והצפון','הדרום'];
 const RELATION_LABELS = { '':'העסק שלי', spouse:'בן/בת זוג', parent:'הורה', sibling:'אח/ות', child:'ילד/ה', other:'אחר' };
@@ -5327,8 +5329,10 @@ window.toggleSecEdit = function(key) {
   if (key === 'media') { edit.classList.toggle('locked', !opening); syncMediaEditingFlag(); }
   if (view) view.classList.toggle('hidden-when-edit', opening);
   if (opening) refreshPreviews();
-  if (opening && key === 'bizdetails') { try { _secBaseline.bizdetails = bizDetailsPayload(); } catch (e) { console.warn('bizdetails baseline', e); } }   // §730 – בלי צילום: נשלח הכול, כמו קודם
-  if (opening && key === 'discount') { try { _secBaseline.discount = discountPayload(); } catch (e) { console.warn('discount baseline', e); } }   // §731
+  if (opening && key === 'bizdetails') { try { _secBaseline.bizdetails = structuredClone(bizDetailsPayload()); } catch (e) { console.warn('bizdetails baseline', e); } }   // §730 – בלי צילום: נשלח הכול, כמו קודם
+  if (opening && key === 'discount') { try { _secBaseline.discount = structuredClone(discountPayload());   /* §731א – עותק: discountRedeemMode/discountTypes הם המערך שהלחיצות משנות */ } catch (e) { console.warn('discount baseline', e); } }   // §731
+  // §731א – ביטול בלי שמירה מחזיר את הטופס למה שנשמר. אחרת לחיצה שבוטלה נשארת בטופס, נכנסת לצילום בפתיחה הבאה, ולא נשלחת
+  if (!opening && key === 'discount') renderBizView();
   // סוגרים את עריכת המדיה בלי לשמור מאפסים את התצוגה לנתונים שכן נשמרו, כדי לא להשאיר תצוגה מקדימה של קובץ שלא הועלה בפועל
   else if (key === 'media') { initMediaForm(committedState()); refreshPreviews(); }
 };

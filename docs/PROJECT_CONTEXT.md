@@ -28596,3 +28596,9 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - **אומת על 5 העסקים:** שמירה בלי שינוי – לא נשלח כלום. כשעונים רק על החובה נשלחים רק discountExcludes/discountStacking/discountTextFull (ב-Happiness גם discountCodeConfirmedAt). הכותרת נשארת (סרטוני AI, שחר גייזר), ואין discountTypes/discountBuilder/wants. בציקן סטיישן סימון "עסק השבוע" שולח רק את השדה הזה. שינוי בנוסח ההטבה – הכותרת מתאפסת, כמו ש-§614 קובע.
 - **ממצא חדש (קיים מ-11.8.2026, `6a9fd560`):** `discRedeemMode = toRedeemArr(w.discountRedeemMode)` מחזיר את **אותו מערך** של רשומת העסק בזיכרון, ו-`selectRedeemMode` עושה push/splice עליו. לכן לחיצה על מקום מימוש משנה את הרשומה בזיכרון. ההשוואה ב-`stageChanges` רואה "אין שינוי", ושינוי שהוא רק מקום מימוש לא נשלח ("לא נמצא שינוי לשמירה"). אומת בחממה: physical → physical+sale לא נשלח. כנראה אותו דבר ב-`selectRedeemModeN` (הטבות נוספות). התיקון: עותק (`[...toRedeemArr(...)]`). הועבר לשיחת ההטבה.
 
+
+- **✅ תוקן (sw v554), שלוש נקודות באותה משפחה – מערך משותף שהלחיצות משנות:**
+  1. `toRedeemArr` מחזיר תמיד עותק (`[...x]`) – מתקן את `discRedeemMode` וגם את `redeemMode2/3` (הטבות נוספות).
+  2. **נמצא בבדיקה, אחרי (1) זה עדיין לא נשלח:** הצילום בפתיחה (`_secBaseline.discount`) החזיק את אותו `discRedeemMode`, ולכן הלחיצה שינתה גם את הצילום ו-`onlyTouched` ראה "אין שינוי". עכשיו `structuredClone(discountPayload())` – וגם `structuredClone(bizDetailsPayload())` ב"פרטים ויצירת קשר" (§730), מאותה סיבה.
+  3. ביטול בלי שמירה (`toggleSecEdit` בסגירת 'discount') קורא ל-`renderBizView()` – הטופס חוזר למה שנשמר. קודם לחיצה שבוטלה נשארה בטופס, נכנסה לצילום בפתיחה הבאה ולא נשלחה.
+- **נבדק על חממה (קריאה בלבד, `updateDoc` מדומה, בלי טיוטה ישנה):** לחיצה על "במעמד המכירה" + ביטול → התצוגה "בחנות הפיזית" והטופס בפתיחה הבאה "בחנות" בלבד; לחיצה + שמירה → נשלח `discountRedeemMode` [physical, sale] (`discountTypes` לא נשלח – השמור כבר physical+sale); שמירה נוספת בלי שינוי → כלום. "פרטים ויצירת קשר" בלי שינוי → כלום.
