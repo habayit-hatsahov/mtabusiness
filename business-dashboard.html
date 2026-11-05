@@ -492,6 +492,11 @@
     .completeness-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 4px; }
     .completeness-title { font-size: 16px; font-weight: 700; color: var(--text); }
     .completeness-pct { font-size: 30px; font-weight: 800; color: var(--text); line-height: 1; }
+    /* §729 – מקופל: רק הכותרת והאחוז, לחיצה פותחת */
+    .completeness-wrap.folded .completeness-sub, .completeness-wrap.folded .completeness-track, .completeness-wrap.folded .completeness-checklist { display: none; }
+    .completeness-wrap.folded { padding: 12px 20px; }
+    .completeness-wrap.folded .completeness-header { margin-bottom: 0; cursor: pointer; }
+    .completeness-wrap.folded .completeness-title::after { content: ' – מה עוד אפשר להוסיף ›'; font-weight: 400; font-size: 13px; color: var(--text-sm); }
     .completeness-sub { font-size: 12.5px; color: var(--text-sm); line-height: 1.5; margin-bottom: 10px; }
     .completeness-track {
       height: 10px; background: var(--card-bg2); border-radius: 999px; overflow: hidden; margin-top: 12px;
@@ -1720,12 +1725,12 @@
           <!-- מומלץ מחשב — רק במסכי מובייל, מעל מד השלמות כדי שתהיה ההערה הראשונה שרואים -->
           <div class="desktop-tip-banner">
             <div class="desktop-tip-banner-title">העריכה מותאמת למחשב – לא לטלפון</div>
-            <div class="desktop-tip-banner-sub">מסך גדול ומקלדת מלאה נדרשים למילוי נוח ומדויק של הפרטים. מומלץ להיכנס ולערוך רק מהמחשב, לפני שליחה לאישור מנהל.</div>
+            <div class="desktop-tip-banner-sub">מסך גדול ומקלדת מלאה נדרשים למילוי נוח ומדויק של הפרטים. מומלץ להיכנס ולערוך מהמחשב.</div>
           </div>
 
           <!-- מד שלמות — רשימת פעולות ספציפית עם ניקוד, לוחצים וקופצים ישר לעריכה -->
           <div class="completeness-wrap" id="completenessWrap">
-            <div class="completeness-header">
+            <div class="completeness-header" onclick="toggleCompleteness()">
               <span class="completeness-title">שלמות הכרטיס</span>
               <span class="completeness-pct" id="completenessPct">0%</span>
             </div>
@@ -1736,7 +1741,7 @@
             <div class="completeness-checklist" id="completenessChecklist"></div>
           </div>
 
-          <div class="steps-label">מלא/י את הפרטים לפי השלבים. שמירה בשלב שומרת אצלכם בלבד – <b>אף שינוי לא נשלח אלינו עד שתלחצו "שליחה לאישור מנהל" בסיכום שבתחתית העמוד</b>. עקוב/י אחרי הדמו לצד – הוא מתעדכן ומסמן בדיוק מה השתנה.</div>
+          <div class="steps-label">מלא/י את הפרטים לפי השלבים. <b>כל שמירה בשלב מגיעה אלינו לבדיקה</b>, ובכרטיס היא תופיע אחרי שנאשר. עקוב/י אחרי הדמו לצד – הוא מתעדכן ומסמן בדיוק מה השתנה.</div>
           <div id="bizInfoCards"></div>
 
           <!-- סיכום ושליחה — קבוע בתחתית העריכה, לא דף נפרד (2026-08-21). ר' renderSubmitCard. -->
@@ -1936,7 +1941,7 @@
 <div class="draft-submit-bar" id="draftBar">
   <div>
     <div class="draft-bar-title" id="draftBarTitle"></div>
-    <div class="draft-bar-sub">השינויים שמורים אצלכם בלבד ולא הגיעו אלינו – צריך לשלוח אותם לאישור מנהל.</div>
+    <div class="draft-bar-sub">השינויים שמורים רק במכשיר הזה – לחצו לשליחה.</div>
   </div>
   <div class="draft-submit-actions">
     <button class="btn-discard-draft" onclick="discardAllChanges()">ביטול</button>
@@ -2853,7 +2858,9 @@ function showDashboard() {
   // §507 — המדריכים. השיתוף עובד רק לעסק מאושר (כמו כפתור השיתוף שבראש הדשבורד).
   try {
     window.YZBizGuides && window.YZBizGuides.render(document.getElementById('bizGuides'), {
-      name: biz.name || '', benefit: biz.discountTextFull || biz.discountText || '',   // כמו כרטיס העסק (home.html) discountTypes: biz.discountTypes || [],
+      name: biz.name || '', benefit: biz.discountTextFull || biz.discountText || '',   // כמו כרטיס העסק (home.html)
+      // §729 – עד עכשיו discountTypes ישב בתוך ההערה שמעל, ולכן כל עסק ראה את שלוש הדרכים. כמו בכרטיס העסק: discountTypes, ואם ריק – לפי מקום המימוש
+      discountTypes: (biz.discountTypes && biz.discountTypes.length) ? biz.discountTypes : computeDiscountTypes(biz.bizTypes, biz.discountRedeemMode),
       onShare: () => biz.status === 'approved' ? shareMyBiz('hero') : showToast('השיתוף יפעל אחרי שהעסק יאושר'),
     });
   } catch (e) { console.error('biz guides render failed:', e); }
@@ -3500,7 +3507,7 @@ function cardTitle(step, text) {
   // הכתום למעלה ואת הסיכום למטה: שלושתם אומרים את אותו דבר, כדי שלא יהיה מצב שבו בעל-העסק
   // חושב שסיים אחרי "שמור".
   const unsent = Object.keys(draftChanges).some(k =>FIELD_TO_STEP[k] === step);
-  return `<div class="info-card-title-wrap"><span class="info-card-title">${text}</span>${unsent ? '<span class="step-unsent-flag">נשמר · טרם נשלח</span>' : ''}<span class="step-num-badge">${step}</span></div>`;
+  return `<div class="info-card-title-wrap"><span class="info-card-title">${text}</span>${unsent ? '<span class="step-unsent-flag">לא הגיע אלינו</span>' : ''}<span class="step-num-badge">${step}</span></div>`;
 }
 function tipHtml(field) {
   return TIPS[field] ? `<div class="field-tip">${TIPS[field].trim()}</div>` : '';
@@ -4334,7 +4341,26 @@ function computeCompleteness(w) {
   return { pct, items };
 }
 
+// §729 – רמי (יהב מטבחים): "העסק החליט שלא להוסיף… לפחות תקפל את זה שלא יציק בעין". בפעם הראשונה פתוח; בכניסה
+// שאחריה (6 שעות ומעלה) מקופל לשורה אחת עם האחוז, ולחיצה פותחת. נשמר במכשיר, כמו שאר ההעדפות של הכרטיס הזה.
+let completenessUserOpen = false;
+function completenessFolded(pct) {
+  if (pct >= 100 || completenessUserOpen) return false;
+  try {
+    const k = '_hb_completenessSeenAt_' + bizId, seen = +localStorage.getItem(k) || 0;
+    if (!seen) { localStorage.setItem(k, String(Date.now())); return false; }
+    return Date.now() - seen > 6 * 60 * 60 * 1000;
+  } catch (e) { return false; }
+}
+window.toggleCompleteness = function() {
+  const w = document.getElementById('completenessWrap');
+  if (!w || !w.classList.contains('folded')) return;
+  completenessUserOpen = true;
+  w.classList.remove('folded');
+};
 function paintCompleteness(pct, items) {
+  const wrapEl = document.getElementById('completenessWrap');
+  if (wrapEl) wrapEl.classList.toggle('folded', completenessFolded(pct));
   const pctEl = document.getElementById('completenessPct');
   const fillEl = document.getElementById('completenessFill');
   const listEl = document.getElementById('completenessChecklist');

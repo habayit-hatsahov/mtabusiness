@@ -120,14 +120,14 @@
     var name = opts.name || 'העסק שלכם';
     var mine = (opts.discountTypes || []).map(function (t) { return TYPE_TO_M[t]; }).filter(Boolean);
     var all = ['store', 'service', 'online'];
-    // §473כב/כג — שלוש הדרכים תמיד; הפעילות קודם, עם "אצלכם"
-    var ordered = all.filter(function (m) { return mine.indexOf(m) >= 0; })
-      .concat(all.filter(function (m) { return mine.indexOf(m) < 0; }));
-    var methods = ordered.map(function (m) {
-      var isMine = mine.indexOf(m) >= 0;
-      return '<div class="bg-m' + (isMine ? ' mine' : '') + '"><div class="bg-mh"><span>' + METHOD[m].t + '</span>' +
-        (isMine ? '<span class="bg-tag">אצלכם</span>' : '') + '</div><div class="bg-ms">' + METHOD[m].sub + '</div>' + METHOD[m].body + '</div>';
+    // §729 – רמי: "שיהיה לכל בעל עסק לפי העסק שלו ולא שיופיע כל הדרכים, אם אין לו חנות שלא יופיע". רק הדרכים שלו;
+    // בלי דרך ידועה (עסק ישן בלי מקום מימוש) – כמו קודם, כל השלוש.
+    var shown = mine.length ? all.filter(function (m) { return mine.indexOf(m) >= 0; }) : all;
+    var methods = shown.map(function (m) {
+      return '<div class="bg-m' + (mine.length ? ' mine' : '') + '"><div class="bg-mh"><span>' + METHOD[m].t + '</span></div><div class="bg-ms">' + METHOD[m].sub + '</div>' + METHOD[m].body + '</div>';
     }).join('');
+    var NM = { store: 'בחנות', service: 'במעמד המכירה / השירות', online: 'באתר' }, nm = shown.map(function (m) { return NM[m]; });
+    var subT = 'מה בודקים ' + (nm.length > 1 ? nm.slice(0, -1).join(', ') + ' ו' + nm[nm.length - 1] : nm[0]) + ' – וקובץ להדפסה';
     var q = new URLSearchParams({ name: name, benefit: opts.benefit || '', m: (mine.length ? mine : ['store']).join(',') });
 
     host.innerHTML =
@@ -143,7 +143,7 @@
           '<div class="bg-cta-x">שלחו את העסק לחברים מהיציע ולקבוצות האוהדים. כל כניסה וכל לב מקדמים אתכם.</div>' +
           '<button type="button" class="bg-btn" data-bg-share="1">' + SHARE_SVG + ' שתפו את העסק שלכם</button></div>' +
       '</div></details>' +
-      '<details class="bg-card"><summary><span>🧾 איך מאשרים הטבה לאוהד<small>מה בודקים בחנות, במעמד המכירה / השירות ובאתר – וקובץ להדפסה</small></span></summary><div class="bg-body">' +
+      '<details class="bg-card"><summary><span>🧾 איך מאשרים הטבה לאוהד<small>' + subT + '</small></span></summary><div class="bg-body">' +
         '<p class="bg-p">האוהד מציג את ההטבה <b>מתוך הכרטיס של העסק שלכם</b> באפליקציה: תעודת חבר, ומתחתיה פס כחול עם <b>שם העסק ושעון חי</b>.</p>' +
         methods +
         '<div class="bg-h">ככה זה נראה אצל האוהד</div>' + exampleHtml(name) +
