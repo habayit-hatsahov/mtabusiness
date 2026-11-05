@@ -2986,6 +2986,7 @@ function renderBizView(flashZone) {
   }
   renderSubmitCard(w);
   renderWriteUsCard(biz);
+  renderFixBanner();   // §727 – שורת "עוד לא הגיע אלינו" מתעדכנת אחרי כל שמירה ושליחה
 
   renderCompleteness(w);
   // ⚠️ 2026-08-12 — היה refreshPreviews(w, flashZone) עם w הממוזג (biz+pendingChanges+draftChanges) —
@@ -3022,13 +3023,17 @@ function renderFixBanner() {
   // §675ד – סיבה אחת + הערה = אותו תיקון, שורה אחת
   const one = keys.length === 1 && other && !other.includes(' · ') ? `<li style="margin:6px 0;white-space:pre-line"><b>${FIX_TEXTS[keys[0]][0]}</b> – ${esc(other)}${FIX_TEXTS[keys[0]][2] ? ` <span style="color:#6B7A9B;font-size:12.5px">(בשלב "${FIX_TEXTS[keys[0]][2]}")</span>` : ''}</li>` : '';
   const hidden = biz.status === 'pending' && biz.fixHidden === true;
+  // §727 – שמר אחרי "תיקנתי" (טעם המים: 4 תמונות, 26 דקות אחרי הלחיצה): הטיוטה רק במכשיר שלו, ואצלנו לא רואים כלום
+  const draftN = Object.keys(draftChanges).length;
+  const unsent = sent && draftN ? `<div style="margin-top:10px;background:#FFF8D6;border:1px solid #F2E199;border-radius:12px;padding:10px 12px;font-size:14px;color:#0A2A66"><b>${draftN === 1 ? 'שינוי אחד ששמרת עוד לא הגיע אלינו' : draftN + ' שינויים ששמרת עוד לא הגיעו אלינו'}</b><br><button type="button" onclick="submitFromCard()" style="margin-top:8px;border:none;border-radius:12px;padding:10px 16px;font:inherit;font-weight:800;font-size:14px;background:#FFD400;color:#0A2A66;cursor:pointer">שליחה אלינו לבדיקה</button></div>` : '';
   el.innerHTML = `<div style="background:#F4F0FD;border:1.5px solid #D9CCF7;border-radius:16px;padding:14px 16px;margin:12px 0">
     <div style="display:inline-block;background:#E9E1FB;color:#6941C6;font-weight:800;font-size:12px;border-radius:999px;padding:2px 10px">${sent ? '🔁 נשלח לבדיקה' : '✏️ צריך לתקן'}</div>
     <div style="font-weight:800;font-size:16.5px;color:#0A2A66;margin-top:6px">${sent ? 'קיבלנו את התיקון – נבדוק ונעדכן אותך' : 'נשאר עוד צעד קטן – כדי שהכרטיס יהיה מושלם חסר לנו:'}</div>
     ${sent ? '' : `<ul style="margin:6px 0 0;padding-inline-start:20px;font-size:14px;color:#33466f">${one || items}</ul>`}
+    ${unsent}
     ${hidden ? '<div style="margin-top:8px;font-size:13px;color:#B42318">העסק מוסתר מהאתר עד התיקון.</div>'
       : `<div style="margin-top:8px;font-size:13px;color:#33466f">${biz.status === 'approved' ? 'העסק שלך באתר – אפשר לתקן בזמן שהוא מוצג.' : 'העסק עוד לא באתר – נעלה אותו אחרי שנבדוק את התיקון.'}</div>`}   <!-- §675 -->
-    ${sent ? '' : `<div style="margin-top:8px;font-size:13px;color:#6B7A9B">מתקנים כאן בדשבורד – כל שמירה מגיעה אלינו. כשסיימתם:</div>
+    ${sent ? '' : `<div style="margin-top:8px;font-size:13px;color:#6B7A9B">מתקנים כאן בדשבורד ושומרים. כשסיימתם – הכפתור שולח לנו את הכול:</div>
     ${biz.status === 'approved' ? `<button type="button" id="fixDeclineBtn" onclick="fixDecline()" style="margin-top:10px;margin-inline-end:8px;border:1px solid #C9D2E6;border-radius:12px;padding:10px 16px;font:inherit;font-weight:700;font-size:14px;background:#fff;color:#33466f;cursor:pointer">לא מעוניין לתקן</button>` : ''}   <!-- §696 -->
     <button type="button" id="fixDoneBtn" onclick="fixDone()" style="margin-top:10px;border:none;border-radius:12px;padding:11px 18px;font:inherit;font-weight:800;font-size:14.5px;background:#FFD400;color:#0A2A66;cursor:pointer">✅ תיקנתי – שליחה לבדיקה</button>
     <div id="fixDoneMsg" style="margin-top:8px;font-size:13.5px"></div>`}
@@ -3053,11 +3058,28 @@ window.fixDecline = async function() {
     if (msg) msg.textContent = 'לא הצלחנו לשמור – נסו שוב, או כתבו לנו ב"הודעות".';
   }
 };
+// §727 – "תיקנתי" לא שלח את מה שנשמר: שמירה היא טיוטה ב-localStorage, והכפתור כתב רק fixSubmittedAt. אצל רמי "🔁 תוקן" בלי שום
+// בקשה. עכשיו הטיוטה נשלחת קודם (נכשלה – לא מסמנים "תיקנתי"), ובלי שום שינוי שואלים לפני שמסמנים.
 window.fixDone = async function() {
-  const btn = document.getElementById('fixDoneBtn'), msg = document.getElementById('fixDoneMsg');
-  const t = token || sessionStorage.getItem('hb_lastBizToken') || '';
-  if (!t) { msg.textContent = 'כתבו לנו ב"הודעות" שתיקנתם – ונבדוק.'; return; }
+  let btn = document.getElementById('fixDoneBtn'), msg = document.getElementById('fixDoneMsg');
+  const hasDraft = Object.keys(draftChanges).length > 0;
+  if (!hasDraft && !biz.pendingChanges && !confirm('עדיין לא שמרתם כאן שום שינוי, אז לא יגיע אלינו שום דבר חדש.\nלסמן בכל זאת שתיקנתם?')) return;
   btn.disabled = true; btn.textContent = '⏳ שולחים…'; msg.textContent = '';
+  if (hasDraft) {
+    if (!(await submitAllChanges())) {   // ההודעה למה – בטוסט של submitAllChanges
+      btn.disabled = false; btn.textContent = '✅ תיקנתי – שליחה לבדיקה';
+      msg.style.color = '#B42318'; msg.textContent = 'השינויים לא נשלחו – נסו שוב.';
+      return;
+    }
+    btn = document.getElementById('fixDoneBtn'); msg = document.getElementById('fixDoneMsg');   // renderBizView בנה את הפס מחדש
+    btn.disabled = true; btn.textContent = '⏳ שולחים…';
+  }
+  const t = token || sessionStorage.getItem('hb_lastBizToken') || '';
+  if (!t) {
+    btn.disabled = false; btn.textContent = '✅ תיקנתי – שליחה לבדיקה';
+    msg.textContent = hasDraft ? 'השינויים הגיעו אלינו ✓' : 'כתבו לנו ב"הודעות" שתיקנתם – ונבדוק.';
+    return;
+  }
   try {
     const resp = await hbApiFetch('/biz-fix-done', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bizId, token: t }) });
     const data = await resp.json();
