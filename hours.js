@@ -279,8 +279,24 @@
     return { mode: 'other', days: defaultDays(), other: legacy, seeded: 'other' };
   }
 
+  // §734 – רמי: "שלא יהיה מלא". עם opts.blank, עסק בלי שעות שמורות מתחיל בלי שעות ולא עם 09:00-18:00
+  // (44 מ-157 עסקים נשמרו עם ברירת המחדל כי לא נגעו). כל יום פתוח, בלי שעה; מכבים את הימים הסגורים.
+  function blankDays() {
+    return DAY_NAMES.map(function () { return { closed: false, open: '', close: '' }; });
+  }
+  // 'empty' – לא נבחרה אף שעה · 'complete' – לכל יום פתוח יש פתיחה וסגירה (ויש יום פתוח) · 'partial' – באמצע
+  function status(m) {
+    if (m.mode === 'other') return String(m.other || '').trim() ? 'complete' : 'empty';
+    var any = m.days.some(function (d) { return d.open || d.close; });
+    if (!any) return 'empty';
+    var open = m.days.filter(function (d) { return !d.closed; });
+    var full = open.length && open.every(function (d) { return d.open && d.close; });
+    return full ? 'complete' : 'partial';
+  }
+
   // המטען לשמירה. hours הישן מסונכרן תמיד — ר' ההערה בראש הקובץ.
   function toPayload(m) {
+    if (status(m) === 'empty') return { hoursMode: '', hoursDays: null, hoursOther: '', hours: '' };   // §734 – בלי שעות
     if (m.mode === 'other') {
       var o = String(m.other || '').trim();
       return { hoursMode: 'other', hoursOther: o, hoursDays: null, hours: o };
@@ -364,6 +380,10 @@
     // מתחת ל-380px (iPhone SE וכל מסך צר) שלוש העמודות לא נכנסות בשורה אחת. במקום לכווץ
     // את הבוררים עד לאי-שימושיות, שם-היום עולה לשורה נפרדת מעל.
     '@media (max-width:380px){.hbh-row{flex-wrap:wrap}.hbh-day{width:100%;margin-bottom:4px}.hbh-act{width:56px}}',
+    // §734 – "פותח"/"סוגר" ליד הבוררים לקחו מקום, ובטלפון שעת הסגירה נחתכה ("2|0:00" בדשבורד). עד 440px שם היום
+    // עולה לשורה משלו, והבוררים לא יורדים מתחת לרוחב שבו "00:00" נקרא שלם.
+    '@media (max-width:440px){.hbh-row{flex-wrap:wrap}.hbh-day{width:100%;margin-bottom:4px}.hbh-act{width:56px}}',
+    '.hbh-times select{min-width:74px}',
   ].join('');
 
   function injectCss() {
@@ -374,8 +394,13 @@
     (document.head || document.documentElement).appendChild(st);
   }
 
-  function timeSelect(val, onChange) {
+  function timeSelect(val, onChange, ph) {
     var sel = document.createElement('select');
+    if (!val) {   // §734 – עוד לא נבחרה שעה
+      var p0 = document.createElement('option');
+      p0.value = ''; p0.textContent = ph || 'בחרו'; p0.selected = true;
+      sel.appendChild(p0);
+    }
     // ערך שנשמר ולא נופל על חצי-שעה (למשל 09:30 מהמרה, או 06:45 שהמנהל הזין ידנית)
     // מתווסף כאופציה משלו — אחרת הבורר היה "מתקן" אותו בשקט לערך אחר בשמירה הבאה.
     var list = TIMES.indexOf(val) === -1 && TIME_RX.test(val)
@@ -433,10 +458,13 @@
       var cl = document.createElement('span'); cl.className = 'hbh-closed'; cl.textContent = 'סגור';
       times.appendChild(cl);
     } else {
-      times.appendChild(timeSelect(d.open, onOpen));
-      var sp = document.createElement('span'); sp.className = 'hbh-sep'; sp.textContent = '–';
+      // §734 – רמי: "אני לא יודע מה התחלה ומה סיום". במקום "[ ] – [ ]": "פותח [ ] סוגר [ ]"
+      var l1 = document.createElement('span'); l1.className = 'hbh-sep'; l1.textContent = 'פותח';
+      times.appendChild(l1);
+      times.appendChild(timeSelect(d.open, onOpen, 'שעה'));
+      var sp = document.createElement('span'); sp.className = 'hbh-sep'; sp.textContent = 'סוגר';
       times.appendChild(sp);
-      times.appendChild(timeSelect(d.close, onClose));
+      times.appendChild(timeSelect(d.close, onClose, 'שעה'));
     }
     row.appendChild(times);
     if (extraEl) row.appendChild(extraEl);
@@ -453,6 +481,7 @@
     var box = typeof container === 'string' ? document.getElementById(container) : container;
     if (!box) return null;
     var m = seed(biz);
+    if (opts.blank && m.seeded === 'empty') { m.days = blankDays(); m.seeded = 'blank'; }   // §734
     // נפתח ב"יום-יום" כשחמשת ימי החול **אינם** אחידים — אחרת השורה המקובצת (שמציגה תמיד
     // את ראשון) הייתה מסתירה את ההבדל. קורה בפועל: "סרף אין" אחרי המרה, וכל עסק שסוגר
     // יום חול אחד. הצורה המקובצת נשארת ברירת-המחדל למקרה הנפוץ.
@@ -504,7 +533,7 @@
       hint.className = 'hbh-hint';
       hint.textContent = m.mode === 'other'
         ? 'לעסקים שהשעות שלהם לא נכנסות לטבלה – כתבו במילים שלכם, ואנחנו נסדר את זה.'
-        : 'יום שכבוי = סגור. שישי ושבת נפרדים כי כמעט לכל עסק הם שונים.';
+        : 'בחרו שעת פתיחה ושעת סגירה. יום שכבוי = סגור. שישי ושבת נפרדים כי כמעט לכל עסק הם שונים.';
       box.appendChild(hint);
 
       if (m.mode === 'other') {
@@ -560,6 +589,7 @@
     render();
     return {
       getValue: function () { return toPayload(m); },
+      getStatus: function () { return status(m); },   // §734
       getModel: function () { return m; },
       seeded: m.seeded,
       setValue: function (b) { m = seed(b); split = false; render(); },
@@ -574,6 +604,6 @@
     groupDays: groupDays, daysToPlain: daysToPlain, daysToHtml: daysToHtml,
     read: read, hasHours: hasHours, toHtml: toHtml, toPlain: toPlain,
     convert: convert, parsedToDays: parsedToDays,
-    seed: seed, toPayload: toPayload, mountEditor: mountEditor,
+    seed: seed, toPayload: toPayload, mountEditor: mountEditor, status: status,
   };
 })();

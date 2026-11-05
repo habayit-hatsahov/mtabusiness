@@ -27,7 +27,7 @@
   <script src="categories.js?v=7071"></script>
   <script src="email-domain-check.js"></script>
   <script src="phone-check.js"></script>
-  <script src="hours.js"></script>
+  <script src="hours.js?v=734"></script>   <!-- §734 -->
   <!-- §386 — גוגל בהרשמה. אותו מודול משותף בדיוק כמו ב-fan-register.html.
        ⚠️ בלי defer, כמו שאר הקבצים כאן: הקריאה ל-init יושבת בסקריפט-מודול בתחתית העמוד,
        ואי-ודאות בסדר-הריצה היא בדיוק §310/§312. -->
@@ -1179,13 +1179,14 @@
       <div class="divider"></div>
 
       <!-- שעות פעילות -->
-      <div class="section-subtitle">שעות פעילות <span style="font-weight:400;color:var(--text-muted);font-size:12px">(אופציונלי)</span></div>
+      <div class="section-subtitle">שעות פעילות <span style="font-weight:400;color:var(--text-muted);font-size:12px">(חובה לחנות פיזית, לאחרים – רשות)</span></div>
 
       <div class="form-group">
         <label>שעות פעילות</label>
         <!-- הרכיב נבנה ב-initHoursEditor (hours.js) אחרי טעינת הדף. עד 2026-08-20 (§230)
              זה היה input טקסט חופשי יחיד, ומשם הגיעו 11 פורמטים שונים ל-37 העסקים. -->
         <div id="bizHoursBox"></div>
+        <div class="field-error" id="err-hours"></div>   <!-- §734 -->
       </div>
       </div>
 
@@ -2965,6 +2966,15 @@
     // §251 — יוצא-דופן אחד: לעסק אונליין האתר הוא ה"כתובת" שלו (מקביל לסניף אצל פיזי
     // ולאזורי-פעילות אצל בעל-מקצוע), ולכן הוא חובה. זו הדרישה שישבה עד כה על שדה
     // "אתר החנות" הנפרד (bizWebsiteStep2) שבוטל.
+    // §734 – רמי: "לחנות תחייב שעות, לבעל מקצוע ואונליין לא חייב". מה שהתחילו למלא – חייב להיות שלם
+    if (hoursEditor && hoursEditor.getStatus) {
+      const hs = hoursEditor.getStatus(), needHours = selectedBizTypes.has('physical');
+      const hErr = document.getElementById('err-hours');
+      const hMsg = hs === 'partial' ? 'חסרה שעת פתיחה או סגירה ביום פתוח (יום סגור – מכבים אותו)'
+        : (needHours && hs !== 'complete') ? 'לחנות פיזית – נא לבחור שעות פעילות' : '';
+      if (hErr) { hErr.textContent = hMsg; hErr.style.display = hMsg ? 'block' : 'none'; }
+      if (hMsg) ok = false;
+    }
     const websiteRequired = selectedBizTypes.has('online');
     [['bizWebsite', 'website'], ['bizInstagram', 'instagram'], ['bizFacebook', 'facebook']]
       .forEach(([id, kind]) => {
@@ -4821,7 +4831,8 @@
       if (seedFrom && seedFrom.hours) document.getElementById('bizHours').value = seedFrom.hours;
       return;
     }
-    hoursEditor = HB_HOURS.mountEditor(box, seedFrom || {});
+    // §734 – בלי שעות ממולאות מראש: מי שלא בוחר נשמר בלי שעות, ובכרטיס אין שורת שעות
+    hoursEditor = HB_HOURS.mountEditor(box, seedFrom || {}, { blank: true, onChange: () => { const e = document.getElementById('err-hours'); if (e) e.style.display = 'none'; } });
   }
 
   // המטען שנשמר/מוצג. הנפילה-לאחור קוראת מה-input שinitHoursEditor בנה במצב הזה.
