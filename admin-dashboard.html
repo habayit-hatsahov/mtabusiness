@@ -10600,19 +10600,22 @@ function normEx(x) { return x && x !== 'none' ? String(x).trim().replace(/^לא\
 function stripBenefit(t, ex) {
   const e = normEx(ex);
   t = String(t || '').trim();
-  const both = ' · לא כולל ' + e + ' וכפל מבצעים';
-  if (e && t.endsWith(both)) return t.slice(0, -both.length).trim();
+  // §726ג – "ולא כולל כפל מבצעים"; גם הנוסח של §726ב ("וכפל מבצעים") שנשמר בינתיים
+  for (const tail of [' ולא כולל כפל מבצעים', ' וכפל מבצעים']) {
+    const both = ' · לא כולל ' + e + tail;
+    if (e && t.endsWith(both)) return t.slice(0, -both.length).trim();
+  }
   t = stripStack(t);
   const s = ' · לא כולל ' + e;
   return e && t.endsWith(s) ? t.slice(0, -s.length).trim() : t;
 }
-// §726ב – רמי: "לא כולל" פעם אחת. יש החרגה ואין כפל מבצעים → "· לא כולל X וכפל מבצעים"
+// §726ב/ג – רמי: יש החרגה ואין כפל מבצעים → "· לא כולל X ולא כולל כפל מבצעים" (בלי נקודה נוספת באמצע)
 function composeBenefit(t, ex, st, prevEx) {
   t = stripBenefit(t, prevEx === undefined ? ex : prevEx);
   const e = normEx(ex);
   if (t && e && !t.includes(e)) {
     t = t.replace(/[.\s]+$/, '') + ' · לא כולל ' + e;
-    if (st === 'no' && !/כפל\s*מבצע/.test(t)) return t + ' וכפל מבצעים';
+    if (st === 'no' && !/כפל\s*מבצע/.test(t)) return t + ' ולא כולל כפל מבצעים';
   }
   return withStack(t, st);
 }
@@ -10625,18 +10628,25 @@ function stackConflict(b) {
   return (b.discountStacking === 'yes' && no) || (b.discountStacking === 'no' && yes);
 }
 function stackSelectHtml(b) {
-  const ex = b.discountExcludes || '';
+  // §726ג – בעל העסק ענה בבקשה שעוד ממתינה: מציגים את התשובה שלו ולא "לא נענה"
+  const P = b.pendingChanges || {};
+  const ex = b.discountExcludes || P.discountExcludes || '';
+  const st = b.discountStacking || P.discountStacking || '';
+  const fromReq = (!b.discountExcludes && P.discountExcludes) || (!b.discountStacking && P.discountStacking);
   return `<label style="font-size:12px;color:var(--text-sm,#9aa4b5);display:block;margin:8px 0 4px">מה לא כלול בהטבה?</label>
       <input type="text" id="edit_excludes_${b.id}" maxlength="120" value="${esc(ex === 'none' ? '' : ex)}" placeholder="${ex ? '' : 'בעל העסק עוד לא ענה'}" style="margin-bottom:4px">
       <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:400;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="edit_noExcludes_${b.id}" style="width:auto" ${ex === 'none' ? 'checked' : ''}>אין החרגות – על הכול</label>
       <label style="font-size:12px;color:var(--text-sm,#9aa4b5);display:block;margin:8px 0 4px">ההטבה כוללת כפל מבצעים?</label>
       <select id="edit_stacking_${b.id}" style="margin-bottom:6px">
-        <option value=""${!b.discountStacking ? ' selected' : ''}>לא נענה</option>
-        <option value="yes"${b.discountStacking === 'yes' ? ' selected' : ''}>כן, כולל כפל מבצעים</option>
-        <option value="no"${b.discountStacking === 'no' ? ' selected' : ''}>לא כולל</option>
-      </select>`;
+        <option value=""${!st ? ' selected' : ''}>לא נענה</option>
+        <option value="yes"${st === 'yes' ? ' selected' : ''}>כן, כולל כפל מבצעים</option>
+        <option value="no"${st === 'no' ? ' selected' : ''}>לא כולל</option>
+      </select>${fromReq ? '<div style="font-size:11.5px;color:var(--text-sm,#9aa4b5);margin:-2px 0 6px">מתוך הבקשה של בעל העסק שממתינה לאישור</div>' : ''}`;
 }
 function stackNoteHtml(b) {
+  // §726ג – תשובה ונוסח שממתינים בבקשה נחשבים, כדי שלא ייכתב "עוד לא ענה" על מי שענה
+  const P = b.pendingChanges || {};
+  b = { ...b, discountStacking: b.discountStacking || P.discountStacking, discountFullText: P.discountTextFull || b.discountFullText };
   const box = (bg, bd, html) => `<div style="margin:0 24px 14px;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.6;background:${bg};border:1px solid ${bd}">${html}</div>`;
   if (stackConflict(b)) return box('#FEF3F2', '#FECDCA', '⚠️ <b>סתירה בכפל מבצעים:</b> בעל העסק ענה "' + (b.discountStacking === 'yes' ? 'כולל' : 'לא כולל') + '", אבל בנוסח שכתב כתוב אחרת. לתקן ב"עריכה" בשלב הזה.');
   if (b.discountStacking === 'yes') return stackMentioned(b)
