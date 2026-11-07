@@ -4746,7 +4746,7 @@ function sidebarTaskCounts() {
     // §568 — רמי (20.10): *"יש 4 עסקים ממתינים, ורשום בצד שרק 1"*. המונה ספר רק `requests`
     // (בקשה מבעל העסק), ועסק שממתין לאישור נספר בו רק אם במקרה השאיר גם הערה. עכשיו: כל עסק
     // שממתין לאישור **או** שיש לו בקשה פתוחה – כל עסק פעם אחת, כמו מונה האוהדים שסופר ממתינים.
-    biz: MOCK_BUSINESSES.filter(b => (b.status === 'pending' && !bizWaitingOwner(b)) || classifyAction(b, 'business').treatments.length > 0).length,   // §675ה
+    biz: MOCK_BUSINESSES.filter(b => (b.status === 'pending' && !bizWaitingOwner(b)) || bizTaskClass(b).treatments.length > 0).length,   // §675ה · §736ב
     fans: fanClassCounts().pending,
     tags: tagQueueSortedFiltered().length,
     hearts: heartsClassCounts().expiringWeek,
@@ -13230,17 +13230,27 @@ function issueKindCounts() {
 }
 
 // כל עסק/אוהד עם primary פעיל (לא "מאושר · אין פעולה") — מבוסס classifyAction בלבד, לא בדיקה נפרדת
+// §736ב – הסיווג של עסק ברשימת המשימות. עסק שמחכה לתיקון (bizWaitingOwner) נשאר רק בגלל מה שבעל העסק עשה אחרי שביקשנו:
+// בקשת שינוי (details), "כתבו לנו" שנכתב אחרי inReviewAt, או תגובה בכתב על בקשת התיקון (§735, fixReplyAt) – ואז תחת
+// "בקשות מבעלי עסקים". תגית/קטגוריה/הערה מההרשמה כבר נסקרו כשביקשת לתקן – לא משימה עד שהוא מתקן.
+function bizTaskClass(b) {
+  const c = classifyAction(b, 'business');
+  if (!bizWaitingOwner(b)) return c;
+  const asked = toJsDate(b.inReviewAt);
+  const after = v => { const d = toJsDate(v); return !!d && (!asked || d > asked); };
+  const t = c.treatments.filter(x => x === 'details' || (x === 'note' && after(b.noteAt)));
+  if (after(b.fixReplyAt)) t.push('fixReply');
+  return { ...c, treatments: t, primary: t.length && c.primary === 'עסק ממתין לאישור' ? 'בקשה מבעל העסק' : c.primary };
+}
 function unifiedTaskItems() {
   // §675ה – רמי: "עסק ממתין שעוד לא תיקן – שלא ייספר במשימות עד שתיקן". התור אצלו, לא אצלך: יורד מהמשימות
   // (כמו §427 – כאן ולא ב-classifyAction, כדי שהתווית בכרטיס תמשיך לומר את האמת) עד ש"🔁 תוקן" או בקשת שינוי.
   // §736 – לולה פרינט: "בצריך לתקן ומופיע לי בעסקים ממתינים לאישור". הסינון למטה הוריד רק עסק בלי שום דבר פתוח, ולולה
   // השאירה "כתבו לנו" בהרשמה – אז נשארה כ"עסק ממתין לאישור". עכשיו: עסק שמחכה לתיקון לא נמצא ב"ממתינים לאישור"; מה שפתוח
   // ממנו (כתבו לנו / בקשה / תגית) – תחת "בקשות מבעלי עסקים". רק ברשימת המשימות; התווית בכרטיס נשארת (§427).
-  const biz = MOCK_BUSINESSES.map(b => {
-    let c = classifyAction(b, 'business');
-    if (bizWaitingOwner(b) && c.treatments.length && c.primary === 'עסק ממתין לאישור') c = { ...c, primary: 'בקשה מבעל העסק' };
-    return { kind:'biz', id:b.id, entity:b, c };
-  })
+  // §736ב – רמי: "הוא עדיין מופיע" – ברשימה הראשית (בלי קובייה) לולה נשארה כ"בקשה" בגלל ה"כתבו לנו" מ-2.11, שנכתב
+  // **לפני** בקשת התיקון. עכשיו נשאר רק מה שבעל העסק עשה **אחרי** שביקשנו (bizTaskClass).
+  const biz = MOCK_BUSINESSES.map(b => ({ kind:'biz', id:b.id, entity:b, c: bizTaskClass(b) }))
     .filter(x => x.c.primary !== 'מאושר · אין פעולה' && !(bizWaitingOwner(x.entity) && !x.c.treatments.length));
   // §427 — 🔑 **הסינון כאן ולא ב-classifyAction, בכוונה.** classifyAction מזין גם את
   // תג-הסיווג בשורת האוהד ובכרטיס-הזהות שלו; שינוי שם היה כותב "מאושר · אין פעולה"
@@ -17908,7 +17918,7 @@ function bizHasUnhandledNote(b) {
 }
 // תוויות תצוגה לכל סוג "טיפול" ממתין — המפתחות ('details'/'tag'/'category'/'note') זהים בכוונה
 // ל-CHANGES_TYPE_OPTIONS הקיים, כדי שסינון-לפי-סוג ותצוגה ישתמשו באותם מפתחות בדיוק.
-const TREATMENT_LABELS = { details: 'שינוי פרטים', tag: 'בקשת תגית', category: 'בקשת קטגוריה', note: 'כתבו לנו' };
+const TREATMENT_LABELS = { details: 'שינוי פרטים', tag: 'בקשת תגית', category: 'בקשת קטגוריה', note: 'כתבו לנו', fixReply: '💬 הגיב על צריך לתקן' };   // §736ב – fixReply רק ברשימת המשימות (bizTaskClass)
 
 // באדג' "טיפול נדרש" — מקור-אמת יחיד ל-5 המקומות שמציגים אותו (§235): שורת עסק, כרטיס-זהות
 // של עסק, שורת אוהד, כרטיס-זהות של אוהד, ושורת מרכז-המשימות. עד עכשיו כל אחד מהם בנה את אותו
