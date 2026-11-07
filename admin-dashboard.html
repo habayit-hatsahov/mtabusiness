@@ -10900,9 +10900,19 @@ async function saveSectionUpdates(id, updates, opts) {
   // ברשימת "בקשות מבעלי עסקים" בלי שום פריט להכריע בו.
   const leftoverPending = b && b.pendingChanges ? { ...b.pendingChanges } : null;
   const pendingPatch = {};
+  // §737 – עיסוי מעולם אחר (7.11): רמי שינה את התמונה המייצגת, והתמונה שבעל העסק ביקש (ממתינה מ-6.11) נמחקה בשקט.
+  // רמי: "תשאיר את הבקשות למרות אם החלטתי לשנות בעצמי… על השינויים והבקשות שלו חייב להגיב". בקשה גלויה של בעל העסק
+  // **נשארת** ב"מה פתוח" עד ✅/❌ – בלי חלון. נמחקים רק: שדות טכניים מוסתרים (DIFF_FIELD_EXCLUDE – "גולדה", 16.8), ושדה
+  // שרמי שמר בדיוק לערך שבעל העסק ביקש (= כבר מה שהוא רצה). Thumb הולך עם השדה שלו (coverPhotoThumb עם coverPhoto).
+  const keepAsk = k => !DIFF_FIELD_EXCLUDE.has(k) && !!DIFF_FIELD_LABELS_MOCK[k] && !/Thumb$/.test(k) && !qjEq(updates[k], leftoverPending[k]);
   if (leftoverPending) {
     let touched = false;
-    Object.keys(updates).forEach(k => { if (k in leftoverPending) { delete leftoverPending[k]; touched = true; } });
+    Object.keys(updates).forEach(k => {
+      if (!(k in leftoverPending)) return;
+      const base = /Thumb$/.test(k) ? k.replace(/Thumb$/, '') : null;
+      if (base ? (base in leftoverPending && (!(base in updates) || keepAsk(base))) : keepAsk(k)) return;   // §737 – נשאר
+      delete leftoverPending[k]; touched = true;
+    });
     if (touched) {
       // prunedPending — אם נשארו רק שאריות טכניות (לא מוצגות בשום מקום) הבקשה נסגרת כאן
       const kept = prunedPending({ ...b, ...updates }, leftoverPending);
