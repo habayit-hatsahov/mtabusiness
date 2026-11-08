@@ -9,7 +9,7 @@
 import { shared as U } from './admin-usage.js?v=717';
 
 // §744 – pk/from/to = התקופה של "לפי ימים" (היום · אתמול · 7 · 14 · מאז הצילום · תאריכים)
-const S = { snap: '2026-10-28', cur: 1, knows: false, wa: null, pk: '7', from: '', to: '', waEdit: false };
+const S = { snap: '2026-10-28', cur: 1, knows: false, wa: null, pk: '7', from: '', to: '', waEdit: false, wk: true };
 const TRK = [[1, 'אושרו ולא נכנסו', 'חברים'], [2, 'הורידו ולא נרשמו', 'מכשירים'], [3, 'בעלי עסק בלי האפליקציה', 'חברים'], [4, 'ותיקים שלא חזרו', 'חברים'], [5, 'נכנסו פעם אחת', 'חברים'], [6, 'עסק ממתין', 'עסקים']];
 // מה נחשב "יצאו מהקבוצה" בכל מעקב – הכותרת של העמודה ב"לפי ימים"
 const OUT_LBL = { 1: 'נכנסו', 2: 'נרשמו / נכנסו', 3: 'פתחו את האפליקציה', 4: 'חזרו', 5: 'חזרו ליום שני', 6: 'אושרו' };
@@ -418,6 +418,48 @@ function daysHtml(id, t, P) {
     ${effs ? `<div class="yzt-eff">${effs}</div>` : '<div class="yzu-note">בתקופה הזו לא יצאה הודעה שהגיעה לקבוצה.</div>'}</div>`;
 }
 
+// ══ §745 — "השבוע": לוח של שבוע הפניות לפלחים (§741) – מה עושים בכל יום, באיזה מעקב, ואם כבר נשלח ══
+// הסטטוס מחושב ממה שכבר נשלח מהכפתורים (אותו "כבר קיבלו" של לוח הפנייה) – לא מסמנים ידנית.
+const WEEK = { from: '2026-11-09', to: '2026-11-15', days: [
+  { d: '2026-11-09', t: 'נכנסו פעם אחת ולא חזרו', id: 5, steps: ['now', 'mail'], how: 'שני הכפתורים: קודם פוש + באפליקציה, אחר כך מייל למי שאין פוש. נשלח לכל מי שבקבוצה היום ולא נראה 3+ ימים – יותר מ"נשארו" בכרטיס, שסופר רק את מי שהיה בקבוצה ביום הצילום (28.10)' },
+  { d: '2026-11-10', t: 'אושרו ולא נכנסו אף פעם', id: 1, steps: ['d7'], how: 'מייל "אושרת – והעסקים מחכים" (עם הקוד)' },
+  { d: '2026-11-11', t: 'ותיקים שלא חזרו', id: 4, steps: ['now'], how: 'מייל "מאז שנרשמת – התמלאה בעסקים" (עם הקוד)' },
+  { d: '2026-11-12', t: 'בעלי עסק בלי האפליקציה', id: 3, steps: ['wa', 'mail'], how: 'וואטסאפ – כפתור בכל שורה ברשימה (אתה לוחץ "שלח" בוואטסאפ), ואחר כך מייל משלים לכולם' },
+  { d: '2026-11-13', t: 'לא שולחים – מודדים', measure: [5, 1], how: 'במעקב 5 ובמעקב 1: "לפי ימים" → "האם ההודעה עבדה?"' },
+  { d: '2026-11-15', t: 'סיכום + גל שני', measure: [5, 1, 4, 3], how: 'עוברים על כל ארבעת המעקבים ומחליטים יחד למי שולחים שוב' }] };
+const DOW_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+const dowOf = k => DOW_HE[new Date(k + 'T12:00:00Z').getUTCDay()];
+function weekHtml() {
+  const today = U.D.today;
+  if (today > U.addDays(WEEK.to, 2)) return '';
+  if (S.wk === false) return `<div class="yzt-wk closed"><button class="yzu-btn" onclick="yztSet('wk',true)">▸ השבוע: מה עושים בכל יום (${U.short(WEEK.from)}–${U.short(WEEK.to)})</button></div>`;
+  const rows = WEEK.days.map(w => {
+    const isToday = w.d === today, past = w.d < today;
+    if (w.measure) {
+      return `<tr class="${isToday ? 'today' : ''}"><td><b>${dowOf(w.d)} ${U.short(w.d)}</b>${isToday ? '<div class="yzt-now">היום</div>' : ''}</td><td><b>${w.t}</b><div class="yzu-note">${w.how}</div></td>
+        <td>${w.measure.map(id => `<button class="yzu-btn" onclick="yztWeekGo(${id})">מעקב ${id}</button>`).join(' ')}</td><td><span class="yzu-note">${past ? '–' : 'אין מה לשלוח'}</span></td></tr>`;
+    }
+    const t = tracker(w.id), st = w.steps.map(k => { const i = (t.plan || []).findIndex(p => p.k === k), p = t.plan[i]; return p && { k, i, p, s: stageSplit(w.id, p) }; }).filter(Boolean);
+    const sentOf = x => x.s.got > 0 && x.s.last && U.dk(x.s.last) >= WEEK.from;
+    const done = st.length && st.every(sentOf);
+    const btns = st.map(x => {
+      if (x.p.wa) return `<button class="yzu-btn" onclick="yztWeekGo(${w.id},true)">💬 לרשימת הוואטסאפ (${U.f(x.s.due.length)})</button>`;
+      return x.s.due.length ? `<button class="yzu-btn on" onclick="yztWeekSend(${w.id},'${x.k}')">לשלוח: ${(docFor(w.id, x.k) || {}).ch && docFor(w.id, x.k).ch.push ? 'פוש + באפליקציה' : 'מייל'} ל-${U.f(x.s.due.length)}</button>` : '';
+    }).join(' ');
+    const stat = st.map(x => sentOf(x) ? `<div class="yzt-got">✓ ${x.p.w.replace('עכשיו · ', '')}: ${U.f(x.s.got)} · ${x.s.last.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}</div>` : '').join('');
+    const measureOn = st.filter(sentOf).map(x => U.short(U.addDays(U.dk(x.s.last), 3)))[0];
+    const badge = done ? `<span class="yzt-ok">✓ נשלח</span>${measureOn ? `<div class="yzu-note">למדוד ב-${measureOn} (72 שעות)</div>` : ''}`
+      : stat ? '<span class="yzt-part">חלקית</span>' : past ? '<span class="yzt-late">⚠️ לא נשלח</span>' : isToday ? '<span class="yzt-now">היום</span>' : '<span class="yzu-note">מתוכנן</span>';
+    return `<tr class="${isToday ? 'today' : ''}${done ? ' done' : ''}"><td><b>${dowOf(w.d)} ${U.short(w.d)}</b></td><td><b>${w.t}</b> <span class="yzu-note">· מעקב ${w.id}</span><div class="yzu-note">${w.how}</div>${stat}</td>
+      <td>${done ? `<button class="yzu-btn" onclick="yztWeekGo(${w.id})">למעקב ${w.id}</button>` : btns || `<button class="yzu-btn" onclick="yztWeekGo(${w.id})">למעקב ${w.id}</button>`}</td><td>${badge}</td></tr>`;
+  }).join('');
+  return `<div class="yzt-wk"><div class="hd"><h3>📅 השבוע: מה עושים בכל יום</h3><span class="yzu-note">${U.short(WEEK.from)}–${U.short(WEEK.to)} · הסטטוס מתעדכן לבד ממה שנשלח מהכפתורים${GOT.map ? '' : ' · טוען…'}</span><button class="yzu-btn" onclick="yztSet('wk',false)">▾ לקפל</button></div>
+    <div class="yzu-tw"><table><tr><th>יום</th><th>מה</th><th>מה לוחצים</th><th>סטטוס</th></tr>${rows}</table></div>
+    <p class="yzu-note">"לשלוח" פותח את מרכז ההודעות עם הנמענים והנוסח המוכן – בודקים, משנים אם צריך, ושולחים שם. בראש מרכז ההודעות צריך להופיע "📌 מגיע מהמעקבים"; בלעדיו השליחה לא תיספר כאן.</p></div>`;
+}
+window.yztWeekGo = (id, list) => { S.cur = id; U.C.rerender(); setTimeout(() => { const el = document.querySelector(list ? '.yzt-waed' : '.yzu-det'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); };
+window.yztWeekSend = (id, k) => { S.cur = id; const i = (tracker(id).plan || []).findIndex(p => p.k === k); if (i >= 0) window.yztSend(i); };
+
 // §744 – בכרטיס: כמה יצאו בתקופה + חץ, וכמה הודעות
 function tilePer(id, P) {
   const c = cmp(id, P), n = msgsFor(id).filter(m => m.d >= P.from && m.d <= P.to).length;
@@ -460,6 +502,7 @@ export function html() {
   return `<div class="yzu">${U.css()}${css()}
     <div class="yzt-src"><b>מקור מספרים אחד:</b> מעקבי חברים – מרשומת החבר וימי הכניסה שלו (מי שהגיע לדף הבית). "הורידו ולא נרשמו" – לפי טלפון. <b>צילום</b> = מי שהיה בקבוצה בתחילת יום הצילום; "מאז" = מתוכם, מי שיצא מהקבוצה.
       <span style="white-space:nowrap">יום הצילום: <input type="date" value="${S.snap}" min="${U.addDays(U.LAUNCH, 1)}" max="${today}" onchange="yztSet('snap',this.value)"></span></div>
+    ${weekHtml()}
     ${perBar(P)}
     <div class="yzu-tiles">${tiles}</div>
     <div class="yzu-det"><h2>${S.cur}. ${TRK.find(r => r[0] === S.cur)[1]}</h2><p class="yzu-def">${t.def}</p>
@@ -529,6 +572,9 @@ function css() {
   .yzt-days tr.sent td{background:#EEF3FB}.yzt-tag{display:inline-block;border-radius:8px;padding:1px 7px;font-size:12px;margin:1px 0;background:#DCE7F8;color:var(--yzu-blue)}
   .yzt-eff{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px}.yzt-ef{border:1px solid var(--yzu-line);border-radius:12px;padding:9px 11px;background:#FCFCFA;font-size:13px}.yzt-ef b.t{display:block;margin-bottom:3px}
   .yzt-ef .row{display:flex;justify-content:space-between;border-top:1px dashed var(--yzu-line);padding:4px 0}
+  .yzt-wk{border:2px solid var(--yzu-acc);background:#FFFDF3;border-radius:14px;padding:10px 12px;margin-bottom:12px}.yzt-wk.closed{border-width:1px;padding:6px 10px}.yzt-wk .hd{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}.yzt-wk h3{margin:0;font-size:16px}.yzt-wk .hd .yzu-btn{margin-inline-start:auto}
+  .yzt-wk tr.today td{background:#FFF4C2}.yzt-wk tr.done td{opacity:.75}.yzt-wk td .yzu-btn{margin:2px 0}
+  .yzt-now{display:inline-block;background:var(--yzu-acc);border-radius:6px;padding:1px 7px;font-weight:800;font-size:12px}.yzt-ok{color:var(--yzu-ok);font-weight:800}.yzt-late{color:var(--yzu-bad);font-weight:700}.yzt-part{color:#B45309;font-weight:700}
   .yzt-waed{border:1px solid #BFE3CC;background:#F3FBF6;border-radius:10px;padding:9px 11px;margin-bottom:10px}.yzt-waed .hd{display:flex;gap:8px;align-items:center;margin-bottom:6px}.yzt-waed .hd .yzu-btn{margin-inline-start:auto}
   .yzt-waed .pv{white-space:pre-line;font-size:13px;background:#DCF8C6;border-radius:10px;padding:7px 10px;line-height:1.6}
   .yzt-waed textarea{width:100%;font:inherit;font-size:13.5px;line-height:1.6;border:1px solid var(--yzu-line);border-radius:8px;padding:7px 9px;box-sizing:border-box}.yzt-waed .bt{display:flex;gap:6px;margin-top:6px}
