@@ -321,8 +321,12 @@ export default {
         .catch((e) => console.error('bizRequestAlerts failed', String(e))));
     }
     // §517ב — העתק ציבורי של העסקים (bizPublic) + קודים לחברים (bizCodes). כשל כאן לא נוגע במיילים.
-    // §649 – כל דקה רק המאושרים; פעם בחצי שעה (ובהפעלה בלי זמן מתוזמן) השוואה מלאה מול ההעתקים
-    const full = !(event && event.scheduledTime) || new Date(event.scheduledTime).getUTCMinutes() % 30 === 0;
+    // §649 – רק המאושרים; פעם בחצי שעה (ובהפעלה בלי זמן מתוזמן) השוואה מלאה מול ההעתקים.
+    // §738 – כל 5 דקות ולא כל דקה: הבדיקה קוראת את כל העסקים המאושרים (146 ב-8.11) גם בלי שום שינוי,
+    //    וזה היה כחצי מקריאות Firestore ביום (~9,300 בשעה גם בלילה). עסק שאושר/נערך מגיע לדף הבית תוך ≤5 דק'.
+    const minute = (event && event.scheduledTime) ? new Date(event.scheduledTime).getUTCMinutes() : null;
+    if (minute !== null && minute % 5 !== 0) return;
+    const full = minute === null || minute % 30 === 0;
     ctx.waitUntil(getGoogleAccessToken(env).then((t) => syncBizPublic(env, t, { full }))
       .then((r) => { if (r.wrote || r.removed) console.log('bizPublic sync', JSON.stringify(r)); })
       .catch((e) => console.error('bizPublic sync failed', String(e))));
