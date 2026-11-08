@@ -20943,6 +20943,14 @@ function mailIssueHandledKeyOf(entity) {
   return h && h.key ? h.key : '';
 }
 
+// §746 – "נמסר ולא נפתח" רק למי שבאמת אולי לא קיבל: מי שכבר נכנס לאפליקציה (lastSeenAt), או שיש לו
+//    דרך כניסה בלי הקוד (Google / Apple), כבר לא צריך את המייל. ב-8.11: 1,818 שורות "נמסר ולא נפתח",
+//    1,461 מהם כבר נכנסו ו-1,017 עם Google/Apple – נשארו ~181. "נפתח" נמדד בפיקסל שחוסמים, ולכן אי-פתיחה
+//    לבדה אינה ראיה. ⚠️ חל רק על "נמסר ולא נפתח" – חזר/נחסם/נכשל/כתובת שגויה מוצגים תמיד.
+function fanGotInAnyway(f) {
+  if (!f) return false;
+  return !!(f.lastSeenAt || f.googleEmail || f.appleSub || f.signupMethod === 'google' || f.signupMethod === 'apple');
+}
 function mailIssueList() {
   const out = [];
   const now = Date.now();
@@ -20991,7 +20999,7 @@ function mailIssueList() {
       add('biz', b.id, b.name, b.ownerEmail, 2, 'יצא באיחור',
         `המייל נכנס לתור ויצא בפועל רק ${lateLabel(mailLateMinutes(b.ownerEmailQueuedAt, b.ownerEmailSentAt))} אחר כך. ה-cron רץ כל דקה – עיכוב כזה אומר שהסריקה נתקעה או דילגה, כדאי לבדוק שהעסק אכן קיבל.`,
         b.ownerEmailSentAt, true);
-    } else if (approved && mailUnopenedTooLong(b.ownerEmailStatus, b.ownerEmailDelivery, b.ownerEmailOpenedAt, b.ownerEmailClickedAt, b.ownerEmailSentAt, now)) {
+    } else if (approved && !fanGotInAnyway(b.ownerMemberId ? findFan(b.ownerMemberId) : null) && mailUnopenedTooLong(b.ownerEmailStatus, b.ownerEmailDelivery, b.ownerEmailOpenedAt, b.ownerEmailClickedAt, b.ownerEmailSentAt, now)) {
       add('biz', b.id, b.name, b.ownerEmail, 3, 'נמסר ולא נפתח', MAIL_UNOPENED_DETAIL(b.ownerEmailSentAt), b.ownerEmailSentAt, true);
     } else if (!approved && (hit || malformed)) {
       add('biz', b.id, b.name, b.ownerEmail, 3, 'כתובת שגויה – לפני אישור',
@@ -21032,7 +21040,7 @@ function mailIssueList() {
       add('fan', f.id, f.name, f.email, 2, 'יצא באיחור',
         `קוד הכניסה נכנס לתור ויצא בפועל רק ${lateLabel(mailLateMinutes(fanQueuedAt(f), f.loginCodeEmailSentAt))} אחר כך. ה-cron רץ כל דקה – כדאי לבדוק שהמייל אכן התקבל.`,
         f.loginCodeEmailSentAt, codeOrUnknown());
-    } else if (approved && mailUnopenedTooLong(f.loginCodeEmailStatus, f.loginCodeEmailDelivery, f.loginCodeEmailOpenedAt, f.loginCodeEmailClickedAt, f.loginCodeEmailSentAt, now)) {
+    } else if (approved && !fanGotInAnyway(f) && mailUnopenedTooLong(f.loginCodeEmailStatus, f.loginCodeEmailDelivery, f.loginCodeEmailOpenedAt, f.loginCodeEmailClickedAt, f.loginCodeEmailSentAt, now)) {
       add('fan', f.id, f.name, f.email, 3, 'נמסר ולא נפתח', MAIL_UNOPENED_DETAIL(f.loginCodeEmailSentAt), f.loginCodeEmailSentAt, codeOrUnknown());
     } else if (!approved && (hit || malformed)) {
       add('fan', f.id, f.name, f.email, 3, 'כתובת שגויה – לפני אישור',
@@ -24161,7 +24169,7 @@ function renderMainInnerRest(wrap) {
         : (window.YZE ? window.YZE.html() + `<div class="dc-back" style="margin-top:12px"><a onclick="dcHubSet('engageOld')">המסך הקודם של "מעורבות" (כולל "הקליקים שלנו במונה") ↗</a></div>` : '<div class="placeholder-note">טוען…</div>');
     wrap.innerHTML = dcHubTabsHtml() + body;
     dcUsageEnsure();   // המעקבים והמעורבות נשענים על הנתונים של "אפליקציה ושימוש" (היום, החברים)
-    if (dcHub === 'trackers' && !window.YZT && !dcTrackersImport) dcTrackersImport = import('./admin-trackers.js?v=745').then((m) => { window.YZT = m; renderMain(); }).catch((e) => { console.error(e); dcTrackersImport = null; });
+    if (dcHub === 'trackers' && !window.YZT && !dcTrackersImport) dcTrackersImport = import('./admin-trackers.js?v=746').then((m) => { window.YZT = m; renderMain(); }).catch((e) => { console.error(e); dcTrackersImport = null; });
     if (dcHub === 'engage') {
       if (!window.YZE && !dcEngageImport) dcEngageImport = import('./admin-engage.js?v=717').then((m) => { window.YZE = m; renderMain(); }).catch((e) => { console.error(e); dcEngageImport = null; });
       else if (window.YZE && ready) window.YZE.load();

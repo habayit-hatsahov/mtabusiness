@@ -371,9 +371,10 @@ function cmp(id, P) {
   const now = a.reduce((t, x) => t + x.out, 0), bef = b.reduce((t, x) => t + x.out, 0);
   if (!b.length) return { now, html: dt('n', 'אין ימים לפני התקופה להשוואה (הנתונים מיום הצילום)'), short: dt('n', '–') };
   if (a.length === 1 && b.length === 1) { const d = now - bef; return { now, html: d ? dt(d > 0 ? 'g' : 'r', `${d > 0 ? '▲' : '▼'} ${U.f(Math.abs(d))} מהיום הקודם (${U.f(bef)})`) : dt('n', '= כמו היום הקודם'), short: d ? dt(d > 0 ? 'g' : 'r', `${d > 0 ? '▲' : '▼'} ${U.f(Math.abs(d))}`) + ' ' + dt('n', `מול ${U.f(bef)}`) : dt('n', '= כמו אתמול') }; }
-  const av = now / a.length, bv = bef / b.length, pct = bv ? Math.round((av - bv) / bv * 100) : 0, part = b.length < a.length ? ` · לפני כן יש רק ${b.length} ימים` : '';
-  return { now, html: pct ? dt(pct > 0 ? 'g' : 'r', `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}% בממוצע ליום`) + `<div class="yzt-dt n">${av.toFixed(1)} ליום מול ${bv.toFixed(1)} בתקופה הקודמת${part}</div>` : dt('n', '= כמו התקופה הקודמת'),
-    short: pct ? dt(pct > 0 ? 'g' : 'r', `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}%`) + ' ' + dt('n', 'ליום מול קודם') : dt('n', '= כמו קודם') };
+  // §746 – רמי: בכמות, לא באחוזים. כמה יצאו בתקופה מול כמה יצאו בתקופה הקודמת באותו אורך
+  const d = now - bef, part = b.length < a.length ? ` · בתקופה הקודמת יש נתונים רק על ${b.length} ימים` : '';
+  return { now, html: d ? dt(d > 0 ? 'g' : 'r', `${d > 0 ? '▲' : '▼'} ${U.f(Math.abs(d))} מהתקופה הקודמת`) + `<div class="yzt-dt n">${U.f(now)} עכשיו מול ${U.f(bef)} ב-${b.length} הימים שלפני${part}</div>` : dt('n', '= כמו התקופה הקודמת'),
+    short: d ? dt(d > 0 ? 'g' : 'r', `${d > 0 ? '▲' : '▼'} ${U.f(Math.abs(d))}`) + ' ' + dt('n', `מול ${U.f(bef)} בתקופה הקודמת`) : dt('n', '= כמו קודם') };
 }
 function effect(id, m) {
   const s = series(id).filter(x => !x.part), i = s.findIndex(x => x.d === m.d);
@@ -383,7 +384,7 @@ function effect(id, m) {
   return `<div class="yzt-ef"><b class="t">📨 ${U.short(m.d)} · ${U.esc(m.title)}</b><div class="yzu-note">${m.chs}</div>
     <div class="row"><span>ביום ההודעה יצאו</span><b>${U.f(s[i].out)}</b></div>
     <div class="row"><span>ממוצע ליום – ${bef.length} ימים לפני</span><b>${bef.length ? avB.toFixed(1) : '–'}</b></div>
-    <div class="row"><span>ממוצע ליום – ${aft.length} ימים מההודעה</span><b>${avA.toFixed(1)} ${avB ? dt(pct > 0 ? 'g' : pct < 0 ? 'r' : 'n', `${pct > 0 ? '▲' : pct < 0 ? '▼' : ''} ${Math.abs(pct)}%`) : ''}</b></div>
+    <div class="row"><span>ממוצע ליום – ${aft.length} ימים מההודעה</span><b>${avA.toFixed(1)} ${bef.length ? dt(avA > avB ? 'g' : avA < avB ? 'r' : 'n', `${avA > avB ? '▲' : avA < avB ? '▼' : '='} ${Math.abs(avA - avB).toFixed(1)} ליום`) : ''}</b></div>
     ${aft.length < 3 ? '<div class="yzu-note">עוד לא עברו 3 ימים – המספר יתעדכן.</div>' : ''}</div>`;
 }
 function perBar(P) {
@@ -473,7 +474,7 @@ export function html() {
   const tiles = TRK.map(([id, nm, unit]) => {
     const r = tracker(id), st = r.start.length, done = st - r.left.length;
     return `<button class="yzu-tile${S.cur === id ? ' on' : ''}" onclick="yztSet('cur',${id})"><div class="nm"><span>${id}. ${nm}</span><i>${unit}</i></div>
-      <div class="big">${f(r.left.length)} <small>נשארו מתוך ${f(st)}</small></div><div class="yzt-prog"><i style="width:${U.W(done, st)}%"></i></div><div class="pct">${U.pc(done, st)} ${r.sinceLbl || 'התחברו מאז'} ${U.short(S.snap)}</div>${tilePer(id, P)}</button>`;
+      <div class="big">${f(r.left.length)} <small>נשארו מתוך ${f(st)}</small></div><div class="yzt-prog"><i style="width:${U.W(done, st)}%"></i></div><div class="pct">${f(done)} ${r.sinceLbl || 'התחברו מאז'} ${U.short(S.snap)}</div>${tilePer(id, P)}</button>`;
   }).join('');
   const k = (cls, l, n, sub) => `<div class="yzt-k ${cls}"><small>${l}</small><b>${f(n)}</b><div class="sub">${sub || '&nbsp;'}</div></div>`;
   const charts = (t.charts || []).map(c => { const mx = Math.max(1, ...c.rows.map(r => r[1])); return `<div class="yzu-box"><h3>${c.t}</h3>${c.rows.map(([l, n, cls]) => U.hb(l, n, mx, cls || '')).join('')}</div>`; }).join('');
