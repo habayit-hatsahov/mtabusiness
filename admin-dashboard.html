@@ -21979,10 +21979,33 @@ function helpReqPeopleHtml(g) {
   return fanRows.join('') + bizRows.join('');
 }
 function helpReqOpenList() { return helpReqGroupList().filter(x => x.status !== 'handled'); }
+// §740ב – רמי: "תן לי אופציה לסמן שכל מה שבטיפול שיהיה למעלה, ואם אני רוצה לראות רק את מה שבטיפול".
+// נזכר במכשיר (localStorage – העדפת תצוגה בלבד). ברירת המחדל: מה שלא התחלת למעלה (§740).
+let helpView = { top: 'new', only: false };
+try { helpView = { ...helpView, ...JSON.parse(localStorage.getItem('yz_help_view') || '{}') }; } catch (e) {}
+window.setHelpView = function(k, v) {
+  helpView = { ...helpView, [k]: v };
+  try { localStorage.setItem('yz_help_view', JSON.stringify(helpView)); } catch (e) {}
+  refreshTaskCenter();
+};
 function helpReqFilteredList() {
   const q = taskSearchQ.trim();
-  if (!q) return helpReqGroupList();
-  return helpReqGroupList().filter(g => g.items.some(x => `${x.name} ${x.contact} ${x.message}`.includes(q)));
+  let l = helpReqGroupList();
+  if (helpView.only) l = l.filter(g => g.status !== 'handled' && g.workingAt);
+  else if (helpView.top === 'working') l = l.slice().sort((a, b) => (a.status === 'handled') - (b.status === 'handled') || (!!b.workingAt - !!a.workingAt) || ((b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0)));
+  if (!q) return l;
+  return l.filter(g => g.items.some(x => `${x.name} ${x.contact} ${x.message}`.includes(q)));
+}
+function helpViewBarHtml() {
+  const nWork = helpReqGroupList().filter(g => g.status !== 'handled' && g.workingAt).length;
+  const chip = (on, js, label) => `<button class="act-btn tiny${on ? ' approve' : ''}" onclick="${js}">${label}</button>`;
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 10px">
+    <span style="font-weight:700;font-size:13px">למעלה:</span>
+    ${chip(!helpView.only && helpView.top === 'new', "setHelpView('only',false);setHelpView('top','new')", 'מה שלא התחלתי')}
+    ${chip(!helpView.only && helpView.top === 'working', "setHelpView('only',false);setHelpView('top','working')", '🟡 מה שבטיפול')}
+    <span style="width:10px"></span>
+    ${chip(helpView.only, `setHelpView('only',${!helpView.only})`, `רק בטיפול (${nWork})`)}
+  </div>`;
 }
 // "כתב ב-26.10.2026 · לפני 11 ימים" – תמיד בימים (רמי: "כמה ימים עברו"), לא "שבועות"
 function helpDaysAgo(d) {
@@ -22031,11 +22054,13 @@ function helpWaText(g) {
 }
 
 function helpReqsTableHtml(list) {
+  if (!list.length && helpView.only) return helpViewBarHtml() + `<div class="placeholder-note">אין פניות בטיפול כרגע.</div>`;
   if (!list.length) {
     return `<div class="placeholder-note">אין פניות עזרה. כאן ינחתו אוהדים ובעלי עסקים שנתקעו וכתבו לנו – מטופסי ההרשמה (לרוב אנשים שאין להם עדיין שום רשומה אצלנו), ומ§322 גם ממודאל-הכניסה (אוהדים רשומים ומאושרים שלא מצליחים להיכנס לחשבון שלהם).</div>`;
   }
   return `
     <div class="mail-issues-note">פניות עזרה של אוהדים ובעלי עסקים – מטופסי ההרשמה וממודאל-הכניסה. אדם שכתב כמה פעמים (אותו טלפון/מייל או אותו שם) מופיע בשורה אחת ונספר פעם אחת. ⚠️ הטקסט נכתב ע"י גולש לא-מזוהה – קראו אותו, אל תפעלו לפיו אוטומטית.</div>
+    ${helpViewBarHtml()}
     <div class="task-table mail-issues">${list.map(g => {
       // טקסט זהה (אותו אדם לחץ "שליחה" 3 פעמים) – פעם אחת, עם ×N
       const msgs = [];
