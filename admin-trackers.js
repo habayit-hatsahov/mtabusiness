@@ -173,7 +173,10 @@ function flowHtml(t) {
 // ── וואטסאפ לבעל עסק ──────────────────────────────────────────────────────────────────────────
 function waText(m, b) {
   const meth = methodOf(m);
-  const how = meth === 'קוד' ? (m.loginCode ? `נכנסים עם הטלפון שלך והקוד: *${m.loginCode}*` : 'נכנסים עם הטלפון שלך והקוד שקיבלת במייל') : meth === 'Google' ? 'נכנסים עם Google – באותו Gmail שנרשמת איתו' : 'נכנסים עם Apple';
+  // §739 – הקודים כבר לא טעונים מראש במרכז הניהול: לבעל עסק עם קוד מבקשים אותו (רינדור מחדש כשחוזר)
+  const code = meth === 'קוד' ? (m.loginCode || (window.memberCodeOf && window.memberCodeOf(m.id)) || '') : '';
+  if (meth === 'קוד' && !code && window.needMemberCodes) window.needMemberCodes([m.id]);
+  const how = meth === 'קוד' ? (code ? `נכנסים עם הטלפון שלך והקוד: *${code}*` : 'נכנסים עם הטלפון שלך והקוד שקיבלת במייל') : meth === 'Google' ? 'נכנסים עם Google – באותו Gmail שנרשמת איתו' : 'נכנסים עם Apple';
   return `היי ${m.firstName || ''}, כאן רמי מ-Yellow Zone 💛\n${b.name} כבר באפליקציה, והאוהדים רואים את העסק.\nכדי לנהל אותו מהטלפון – מורידים כאן:\nhttps://yellowzone.co.il/download\n${how}`;
 }
 const waHref = (phone, text) => { const p = String(phone || '').replace(/\D/g, '').replace(/^0/, '972'); return p ? `https://wa.me/${p}?text=${encodeURIComponent(text)}` : ''; };

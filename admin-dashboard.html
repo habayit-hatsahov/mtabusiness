@@ -2755,8 +2755,74 @@ let BIZ_TOKENS = {};   // businessId → accessToken
 let BIZ_PROOFS = {};
 // §248 — memberId → loginCode. אותו דפוס בדיוק כמו BIZ_TOKENS: הקוד מוזרם בחזרה אל f.loginCode
 // ב-hydrateFan, כדי שכל מקום קיים שקורא f.loginCode (צ'יפ, וואטסאפ, מייל, מונים) ימשיך לעבוד
-// בלי שינוי. ר' ההערה ליד ה-onSnapshot בתחתית הקובץ.
+// בלי שינוי.
+// §739 – 💸 כבר לא onSnapshot על כל memberCodes (2,612 קריאות בכל פתיחה/רענון של מרכז הניהול).
+//    הקוד נטען רק למי שמוצג: כרטיס, שורה ב"תקלות מייל", בעל עסק ב"מוכנות", וואטסאפ/מייל בלחיצה.
+//    כל האוסף נטען פעם אחת רק כשמרכז ההודעות שולח/מציג וואטסאפ עם קוד (ensureMemberCodes).
+//    🔑 מפתח קיים ב-MEMBER_CODES = "ידוע" (גם '' = אין לו קוד). מפתח חסר = עוד לא נקרא – **לא** "אין קוד":
+//    מי שמחליט לפי "אין קוד" (התרעה, מונה) חייב לבדוק memberCodeKnown קודם, אחרת זו אזעקת-שווא לכולם.
 let MEMBER_CODES = {};
+let _memberCodesAll = false, _memberCodesAllP = null;
+const _memberCodeQueue = new Set();
+let _memberCodeFlushT = null;
+const memberCodeKnown = (id) => Object.prototype.hasOwnProperty.call(MEMBER_CODES, id);
+function _applyMemberCodes(ids) {
+  const set = ids ? new Set(ids) : null;
+  MOCK_FANS = MOCK_FANS.map(f => (!set || set.has(f.id)) ? { ...f, loginCode: MEMBER_CODES[f.id] || '' } : f);
+  if (_fanLoaded) queueRenderAllPreserveScroll();
+}
+// מבקש קוד לחברים שעוד לא נקראו; קריאה אחת לכל חבר, מאוחדות לסבב אחד ואז רינדור אחד.
+function needMemberCodes(ids) {
+  let added = false;
+  for (const id of ids) if (id && !memberCodeKnown(id) && !_memberCodeQueue.has(id)) { _memberCodeQueue.add(id); added = true; }
+  if (added && !_memberCodeFlushT) _memberCodeFlushT = setTimeout(_flushMemberCodes, 0);
+}
+const needMemberCode = (id) => needMemberCodes([id]);
+async function _flushMemberCodes() {
+  _memberCodeFlushT = null;
+  const ids = [..._memberCodeQueue]; _memberCodeQueue.clear();
+  if (!ids.length) return;
+  const got = await Promise.all(ids.map(id => getDoc(doc(db, 'memberCodes', id))
+    .then(s => [id, s.exists() ? (s.data().loginCode || '') : ''])
+    .catch(e => { console.error('שגיאה בטעינת קוד כניסה:', id, e); return null; })));   // כשל = נשאר "לא ידוע", לא "אין קוד"
+  const ok = got.filter(Boolean);
+  ok.forEach(([id, c]) => { MEMBER_CODES[id] = c; });
+  if (ok.length) _applyMemberCodes(ok.map(x => x[0]));
+}
+// לחיצה (שליחה חוזרת, וואטסאפ): מחכה לקוד של חבר אחד. זורק בכשל – כדי לא לשלוח/להחליט כאילו אין קוד.
+async function ensureMemberCode(id) {
+  if (!id) return '';
+  if (memberCodeKnown(id)) return MEMBER_CODES[id] || '';
+  const s = await getDoc(doc(db, 'memberCodes', id));
+  MEMBER_CODES[id] = s.exists() ? (s.data().loginCode || '') : '';
+  _applyMemberCodes([id]);
+  return MEMBER_CODES[id];
+}
+// כל האוסף, פעם אחת בטעינת הדף – רק למרכז ההודעות (וואטסאפ עם קוד לכמה נמענים).
+function ensureMemberCodes() {
+  if (_memberCodesAll) return Promise.resolve();
+  if (!_memberCodesAllP) _memberCodesAllP = getDocs(collection(db, 'memberCodes')).then(snap => {
+    snap.docs.forEach(d => { MEMBER_CODES[d.id] = d.data().loginCode || ''; });
+    MOCK_FANS.forEach(f => { if (!memberCodeKnown(f.id)) MEMBER_CODES[f.id] = ''; });   // אין מסמך = אין קוד
+    _memberCodesAll = true;
+    _applyMemberCodes(null);
+  }).catch(e => { _memberCodesAllP = null; throw e; });
+  return _memberCodesAllP;
+}
+// לפני שליחה חוזרת / מכתב פתיחה: הקוד חייב להיות ידוע. false = הקריאה נכשלה וכבר הוצגה הודעה.
+async function codeBeforeSend(memberId) {
+  if (!memberId) return true;
+  try { await ensureMemberCode(memberId); return true; }
+  catch (e) { console.error('שגיאה בטעינת קוד כניסה:', e); alert('לא הצלחתי לקרוא את קוד הכניסה – נסו שוב.'); return false; }
+}
+// קוד שנכתב מכאן (אישור, הנפקה) – מעדכן מקומית, כי אין יותר מאזין שיחזיר אותו.
+function noteMemberCode(id, code) {
+  if (!id) return;
+  MEMBER_CODES[id] = code || '';
+  if (MOCK_FANS.some(f => f.id === id)) _applyMemberCodes([id]);
+}
+window.needMemberCodes = needMemberCodes;   // admin-trackers.js (וואטסאפ לבעלי עסקים עם הקוד)
+window.memberCodeOf = (id) => MEMBER_CODES[id] || '';
 
 let MOCK_BUSINESSES = [];
 let MOCK_FANS = [];
@@ -6122,15 +6188,29 @@ window.sendBizMail = function(id, email, ownerName, businessName, accessToken) {
   window.open(gmailComposeLink(email, subjectRaw, bodyRaw), '_blank');
   logActivity('businesses', id, { type: 'email', title: 'נשלח מייל ידני לבעל העסק', detail: `אל ${email} · נושא: "${subjectRaw}"`, field: 'channel', before: null, after: 'email' });
 };
+// §739 – הקוד כבר לא טעון מראש לכל האוהדים. אם השורה צוירה לפני שהקוד נקרא – החלון נפתח מיד
+// (בתוך הלחיצה, אחרת הדפדפן חוסם), והכתובת עם הקוד נכנסת אליו כשהקריאה חוזרת. כשל = לא שולחים בלי הקוד.
+function openWithFanCode(id, code, makeUrl) {
+  const f = findFan(id);
+  if (code || !f || f.status !== 'approved' || memberCodeKnown(id)) { window.open(makeUrl(code || MEMBER_CODES[id] || ''), '_blank'); return; }
+  const w = window.open('', '_blank');
+  ensureMemberCode(id).then(c => {
+    const u = makeUrl(c);
+    if (w && !w.closed) w.location.href = u; else window.open(u, '_blank');
+  }).catch(e => {
+    console.error('שגיאה בטעינת קוד כניסה:', e);
+    if (w && !w.closed) w.close();
+    alert('לא הצלחתי לקרוא את קוד הכניסה – נסו שוב.');
+  });
+}
 window.sendFanWA = function(id, phone, name, code) {
-  window.open(waLink(phone, applyFanTplLocal(getTpl('fan_wa', DEFAULT_FAN_WA), name, code)), '_blank');
+  openWithFanCode(id, code, c => waLink(phone, applyFanTplLocal(getTpl('fan_wa', DEFAULT_FAN_WA), name, c)));
   logActivity('members', id, { type: 'email', title: 'נשלחה הודעת WhatsApp ידנית', detail: `לטלפון ${phone}`, field: 'channel', before: null, after: 'whatsapp' });
   bumpWaNudge('members', id);   // §415
 };
 window.sendFanMail = function(id, email, name, code) {
   const subjectRaw = getTpl('fan_mailSubject', DEFAULT_FAN_MAIL_SUBJECT);
-  const bodyRaw = applyFanTplLocal(getTpl('fan_mail', DEFAULT_FAN_MAIL), name, code);
-  window.open(gmailComposeLink(email, subjectRaw, bodyRaw), '_blank');
+  openWithFanCode(id, code, c => gmailComposeLink(email, subjectRaw, applyFanTplLocal(getTpl('fan_mail', DEFAULT_FAN_MAIL), name, c)));
   logActivity('members', id, { type: 'email', title: 'נשלח מייל ידני', detail: `אל ${email} · נושא: "${subjectRaw}"`, field: 'channel', before: null, after: 'email' });
 };
 
@@ -8443,6 +8523,8 @@ function bizOwnerLoginReadiness() {
     if (!b.ownerMemberId) reason = 'noLink';
     else if (!m) reason = 'missingMember';
     else if (m.status !== 'approved') reason = 'notApproved';
+    // §739 – קוד לא ידוע ≠ אין קוד: נקרא (רק לבעלי עסק בלי Google – מעטים) ונספר אחרי שחזר
+    else if (!m.googleEmail && !memberCodeKnown(m.id)) needMemberCode(m.id);
     else if (!m.loginCode && !m.googleEmail) reason = 'noCredential';
     if (reason) notReady.push({ name: b.name || '(ללא שם)', owner: m ? m.name : (b.ownerEmail || ''), reason });
   }
@@ -12044,6 +12126,7 @@ function fanPrevRejected(f) {
 function fanFullDetailHtml(id, opts) {
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return `<div class="placeholder-note">אוהד לא נמצא</div>`;
+  if (f.status === 'approved') needMemberCode(f.id);   // §739 – הקוד נקרא רק כשהכרטיס נפתח
   // §661 — רשת ביטחון: כל נתיב שעוד מגיע לכאן עם בעל עסק (בחירה שנשארה, קישור ישן) מקבל הפניה, לא כרטיס אוהד
   { const ob = ownerBizOf(f); if (ob) return `<div class="placeholder-note">${esc(f.name)} הוא בעל עסק – אין לו כרטיס אוהד. כל מה שקשור אליו (גם כחבר מועדון) נמצא בכרטיס העסק.<br><button class="act-btn approve" style="margin-top:10px" onclick="openBizFromFan('${esc(ob.id)}')">🏪 לכרטיס של ${esc(ob.name || 'העסק')}</button></div>`; }
   const o = Object.assign({ backFn: 'fanBackToList' }, opts || {});
@@ -14466,6 +14549,7 @@ async function generateLoginCode() {
 // §248 — כתיבת קוד כניסה לאוסף הנפרד. כל מקום שמנפיק קוד חייב לעבור דרך כאן.
 async function saveLoginCode(memberId, code) {
   await setDoc(doc(db, 'memberCodes', memberId), { loginCode: code });
+  noteMemberCode(memberId, code);   // §739
 }
 // זהה בדיוק ל-admin-members.html allocateMemberNumber
 async function allocateMemberNumber() {
@@ -14609,6 +14693,7 @@ function bizOwnerTabNeedsLook(b) {
 }
 function ownerMemberCardHtml(b) {
   const f = ownerFanOfBiz(b);
+  if (f && f.status === 'approved') needMemberCode(f.id);   // §739
   if (!f) return `<div class="dcard identity-card"><div class="identity-top"><div style="flex:1"><div class="identity-name" style="font-size:16px">👤 בעל העסק כחבר מועדון</div><div class="identity-dates">אין רשומת חבר מקושרת לעסק – בעל העסק לא יוכל להיכנס לאפליקציה כחבר.</div></div></div></div>`;
   const stBadge = f.status === 'approved' ? `<span class="class-badge lg neutral">חבר מאושר${f.memberNumber ? ' · #' + esc(String(f.memberNumber)) : ''}</span>`
     : f.status === 'rejected' ? `<span class="class-badge lg">✗ נדחה${f.rejectedAt ? ' · ' + fmtDate(f.rejectedAt) : ''}</span>`
@@ -14642,17 +14727,19 @@ window.alignOwnerToBiz = async function(bizId) {
   if (!confirm(`${mm.btn.replace(/^\S+\s/, '')} – ${f.name}?`)) return;
   try {
     const batch = writeBatch(db);
+    let codeNote = null;
     if (mm.to === 'approved') {
       const upd = await prepareLinkedMemberApproval(b);
       if (!upd) throw new Error('לא נמצאה רשומת החבר');
       batch.update(upd.ref, upd.updates);
-      if (upd.codeDoc) batch.set(upd.codeDoc.ref, upd.codeDoc.data);
+      if (upd.codeDoc) { batch.set(upd.codeDoc.ref, upd.codeDoc.data); codeNote = upd.codeDoc; }
     } else {
       const own = ownerCascadeUpdate(b, mm.to);
       if (!own) return;
       batch.update(own.ref, own.updates);
     }
     await batch.commit();
+    if (codeNote) noteMemberCode(codeNote.ref.id, codeNote.data.loginCode);   // §739
     logActivity('members', f.id, { type: 'status', title: 'יושר לפי העסק', detail: `"${f.name}" – ${b.name || ''}`, field: 'status', before: f.status, after: mm.to });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
@@ -14683,6 +14770,7 @@ async function approveBizWithMemberBatch(b) {
   if (memberUpd) batch.update(memberUpd.ref, memberUpd.updates);
   if (memberUpd && memberUpd.codeDoc) batch.set(memberUpd.codeDoc.ref, memberUpd.codeDoc.data);   // §248
   await batch.commit();
+  if (memberUpd && memberUpd.codeDoc) noteMemberCode(memberUpd.codeDoc.ref.id, memberUpd.codeDoc.data.loginCode);   // §739
 }
 
 // §661 — 🔴 חסימה בכתיבה, לא רק בתצוגה. §427 הסתיר את בעלי העסק מהרשימה ובכל זאת 22 אושרו
@@ -19988,6 +20076,8 @@ function m2RenderPv() {
   const T = m2T();
   if (T && T.site) { m2TplRenderSitePv(T); return; }
   const d = m2.doc;
+  // §739 – תצוגת הוואטסאפ מציגה את הקוד של הנמען: כשהערוץ דלוק, כל הקודים נטענים פעם אחת ואז מציירים שוב
+  if (!T && d.ch && d.ch.wa && !_memberCodesAll) ensureMemberCodes().then(() => m2RenderPv()).catch(e => console.error('שגיאה בטעינת קודי כניסה:', e));
   const tabs = [['app', '🔔 אפליקציה'], ['push', '📲 פוש'], ['mail', '✉️ מייל'], ['wa', '💬 וואטסאפ'], ['card', '🗂️ בכרטיס']].filter(([k]) => !T || (k !== 'wa' && k !== 'card'));
   const any = M2_CH_KEYS.some((k) => d.ch[k]);
   const ok = (k) => k === 'card' ? any : d.ch[k];
@@ -20076,6 +20166,12 @@ window.m2DoSend = async function () {
   m2.confirmOpen = false;
   m2$('m2Confirm').classList.remove('open');
   if (m2CanSend()) return;
+  // §739 – הוואטסאפ נבנה כאן עם הקוד של כל נמען; הקודים כבר לא טעונים מראש. **לפני** m2Counts –
+  //    הוא מחזיק את אובייקטי האוהדים, ו-ensureMemberCodes מחליף אותם בעותקים עם הקוד.
+  if (m2.doc && m2.doc.ch && m2.doc.ch.wa) {
+    try { await ensureMemberCodes(); }
+    catch (e) { console.error('שגיאה בטעינת קודי כניסה:', e); alert('לא הצלחתי לקרוא את קודי הכניסה – ההודעה לא נשלחה. נסו שוב.'); return; }
+  }
   const d = JSON.parse(JSON.stringify(m2.doc)), c = m2Counts(), recips = c.r, block = m2Block();
   const svcMsg = !!(m2.trk && m2.trk.id === SERVICE_MSG_TRK.id);   // §710 – נשלח ממסך "איך מקבלים את השירות"
   const msgRef = doc(collection(db, 'messages')), msgId = msgRef.id;
@@ -20813,26 +20909,31 @@ function mailIssueList() {
     // החנות של אותו בעל-עסק כבר מופיעה ברשימה עם אותה כתובת בדיוק — לא לספור פעמיים
     if (curOwnerBiz && bizWithIssue.has(curOwnerBiz.id)) continue;
     const approved = f.status === 'approved';
+    // §739 – הקודים כבר לא טעונים מראש. "שליחה חוזרת" (canResend) מוצגת לפי אישור בלבד כשהקוד לא ידוע –
+    //    בלי קריאה: ב"נמסר ולא נפתח" יש ~1,800 מאושרים (8.11), וקריאה לכל אחד הייתה יקרה מהמאזין הישן.
+    //    requeueFanEmail קורא את הקוד בלחיצה ועוצר אם אין. "תקוע בתור" (מעט אנשים) כן קורא את הקוד.
+    const codeOrUnknown = () => memberCodeKnown(f.id) ? !!f.loginCode : true;
+    const hasCode = () => { if (!memberCodeKnown(f.id)) needMemberCode(f.id); return !!f.loginCode; };
     const hit = emailDomainHit(f.email);
     const malformed = f.email && !MAIL_RX.test(f.email);
     if (approved && f.loginCodeEmailStatus === 'failed') {
-      add('fan', f.id, f.name, f.email, 1, 'שליחה נכשלה', f.loginCodeEmailError ? String(f.loginCodeEmailError).slice(0, 160) : 'Brevo החזיר שגיאה', f.loginCodeEmailSentAt, !!f.loginCode);
+      add('fan', f.id, f.name, f.email, 1, 'שליחה נכשלה', f.loginCodeEmailError ? String(f.loginCodeEmailError).slice(0, 160) : 'Brevo החזיר שגיאה', f.loginCodeEmailSentAt, codeOrUnknown());
     } else if (approved && mailDeliveryFailed(f.loginCodeEmailDelivery)) {
-      add('fan', f.id, f.name, f.email, 1, MAIL_DELIVERY_BADGES[f.loginCodeEmailDelivery] || 'המייל לא נמסר', `Brevo דיווח: ${MAIL_DELIVERY_LABELS[f.loginCodeEmailDelivery].txt}${f.loginCodeEmailDeliveryReason ? ' · ' + String(f.loginCodeEmailDeliveryReason).slice(0, 120) : ''}`, f.loginCodeEmailDeliveryAt || f.loginCodeEmailSentAt, !!f.loginCode);
+      add('fan', f.id, f.name, f.email, 1, MAIL_DELIVERY_BADGES[f.loginCodeEmailDelivery] || 'המייל לא נמסר', `Brevo דיווח: ${MAIL_DELIVERY_LABELS[f.loginCodeEmailDelivery].txt}${f.loginCodeEmailDeliveryReason ? ' · ' + String(f.loginCodeEmailDeliveryReason).slice(0, 120) : ''}`, f.loginCodeEmailDeliveryAt || f.loginCodeEmailSentAt, codeOrUnknown());
     } else if (approved && (hit || malformed)) {
       add('fan', f.id, f.name, f.email, 1, 'נשלח לכתובת שגויה',
         hit ? `הדומיין "${hit.domain}" לא קיים כשירות מייל – כנראה ${hit.suggested}. קוד הכניסה סומן "נשלח" ולא הגיע.` : 'הכתובת לא בנויה כמו כתובת מייל תקינה.',
-        f.loginCodeEmailSentAt, !!f.loginCode);
+        f.loginCodeEmailSentAt, codeOrUnknown());
     } else if (approved && !f.email) {
       add('fan', f.id, f.name, '', 2, 'אין כתובת מייל', 'האוהד מאושר אבל אין למי לשלוח את קוד הכניסה.', f.approvedAt, false);
-    } else if (approved && f.loginCode && f.loginCodeEmailStatus !== 'sent' && f.approvedAt && (now - f.approvedAt.getTime()) > MAIL_STUCK_MINUTES * 60000) {
+    } else if (approved && f.loginCodeEmailStatus !== 'sent' && f.approvedAt && (now - f.approvedAt.getTime()) > MAIL_STUCK_MINUTES * 60000 && hasCode()) {
       add('fan', f.id, f.name, f.email, 2, 'תקוע בתור', `אושר ${agoLabel(f.approvedAt)} וקוד הכניסה עדיין לא יצא.`, f.approvedAt, true);
     } else if (approved && mailLateMinutes(fanQueuedAt(f), f.loginCodeEmailSentAt)) {
       add('fan', f.id, f.name, f.email, 2, 'יצא באיחור',
         `קוד הכניסה נכנס לתור ויצא בפועל רק ${lateLabel(mailLateMinutes(fanQueuedAt(f), f.loginCodeEmailSentAt))} אחר כך. ה-cron רץ כל דקה – כדאי לבדוק שהמייל אכן התקבל.`,
-        f.loginCodeEmailSentAt, !!f.loginCode);
+        f.loginCodeEmailSentAt, codeOrUnknown());
     } else if (approved && mailUnopenedTooLong(f.loginCodeEmailStatus, f.loginCodeEmailDelivery, f.loginCodeEmailOpenedAt, f.loginCodeEmailClickedAt, f.loginCodeEmailSentAt, now)) {
-      add('fan', f.id, f.name, f.email, 3, 'נמסר ולא נפתח', MAIL_UNOPENED_DETAIL(f.loginCodeEmailSentAt), f.loginCodeEmailSentAt, !!f.loginCode);
+      add('fan', f.id, f.name, f.email, 3, 'נמסר ולא נפתח', MAIL_UNOPENED_DETAIL(f.loginCodeEmailSentAt), f.loginCodeEmailSentAt, codeOrUnknown());
     } else if (!approved && (hit || malformed)) {
       add('fan', f.id, f.name, f.email, 3, 'כתובת שגויה – לפני אישור',
         hit ? `כנראה ${hit.suggested}. אם תאשר ככה, קוד הכניסה "יישלח" ולא יגיע.` : 'הכתובת לא בנויה כמו כתובת מייל תקינה – לתקן לפני האישור.',
@@ -22784,6 +22885,7 @@ window.requeueBizEmail = async function(id) {
   // מחזירה ל-pending רק את מסמך העסק, וה-Worker — שרואה שמסמך החבר כבר 'sent' — נופל למייל
   // הקצר. זה קרה לכמה בעלי עסקים, ובנוסף דרס את welcomeEmailKind ל-'bizOnly' כך שהם הוצגו
   // כאן בטעות כ"קיבלו את המייל הלא-נכון". לכן: כשיש חבר מאושר עם קוד כניסה — תמיד המאוחד.
+  if (!(await codeBeforeSend(b.ownerMemberId))) return;   // §739
   const owner = b.ownerMemberId ? findFan(b.ownerMemberId) : null;
   if (owner && owner.status === 'approved' && owner.loginCode) return window.requeueWelcomeEmail(id);
 
@@ -22805,6 +22907,7 @@ window.requeueWelcomeEmail = async function(id) {
   if (!b) return;
   if (b.status !== 'approved') { alert('אפשר לשלוח רק לעסק מאושר.'); return; }
   if (!b.ownerEmail) { alert('אין כתובת מייל לעסק הזה.'); return; }
+  if (!(await codeBeforeSend(b.ownerMemberId))) return;   // §739
   const f = b.ownerMemberId ? findFan(b.ownerMemberId) : null;
   if (!f || f.status !== 'approved') { alert('אין רשומת חבר מאושרת מאחורי העסק – למכתב המאוחד צריך גם קוד כניסה. אפשר לשלוח "שליחה חוזרת" רגילה במקום.'); return; }
   if (!f.loginCode) { alert('לבעל העסק אין עדיין קוד כניסה – צריך לאשר אותו כאוהד קודם.'); return; }
@@ -22831,6 +22934,7 @@ window.requeueWelcomeEmail = async function(id) {
 };
 
 window.requeueFanEmail = async function(id) {
+  if (!(await codeBeforeSend(id))) return;   // §739
   const f = MOCK_FANS.find(x => x.id === id);
   if (!f) return;
   if (f.status !== 'approved') { alert('אפשר לשלוח שוב רק לאוהד מאושר.'); return; }
@@ -23628,6 +23732,7 @@ window.restoreDeletedRecord = async function(logId) {
   try {
     const res = await restoreDeleted(db, logId, CURRENT_ADMIN);
     if (!res.ok) { alert(RESTORE_FAIL_MSG[res.reason] || 'השחזור לא בוצע.'); return; }
+    if (entry.collectionName === 'members') delete MEMBER_CODES[entry.docId];   // §739 – הקוד שחזר ייקרא מחדש בהצגה הבאה
     // §579 — מה חזר יחד עם הרשומה (SIDE_DOCS ב-deletion-log.js)
     const SIDE_NAME = { memberCodes: 'קוד הכניסה', bizTokens: 'קישור הדשבורד', bizProofs: 'תמונת האימות' };
     const back = (res.sideRestored || []).map(k => SIDE_NAME[k] || k);
@@ -23861,7 +23966,7 @@ function renderMainInnerRest(wrap) {
         : (window.YZE ? window.YZE.html() + `<div class="dc-back" style="margin-top:12px"><a onclick="dcHubSet('engageOld')">המסך הקודם של "מעורבות" (כולל "הקליקים שלנו במונה") ↗</a></div>` : '<div class="placeholder-note">טוען…</div>');
     wrap.innerHTML = dcHubTabsHtml() + body;
     dcUsageEnsure();   // המעקבים והמעורבות נשענים על הנתונים של "אפליקציה ושימוש" (היום, החברים)
-    if (dcHub === 'trackers' && !window.YZT && !dcTrackersImport) dcTrackersImport = import('./admin-trackers.js?v=717').then((m) => { window.YZT = m; renderMain(); }).catch((e) => { console.error(e); dcTrackersImport = null; });
+    if (dcHub === 'trackers' && !window.YZT && !dcTrackersImport) dcTrackersImport = import('./admin-trackers.js?v=739').then((m) => { window.YZT = m; renderMain(); }).catch((e) => { console.error(e); dcTrackersImport = null; });
     if (dcHub === 'engage') {
       if (!window.YZE && !dcEngageImport) dcEngageImport = import('./admin-engage.js?v=717').then((m) => { window.YZE = m; renderMain(); }).catch((e) => { console.error(e); dcEngageImport = null; });
       else if (window.YZE && ready) window.YZE.load();
@@ -26132,15 +26237,8 @@ onSnapshot(collection(db, 'businesses'), snapshot => {
   if (_fanLoaded) queueRenderAllPreserveScroll(); else maybeInitialRender();
 }, err => console.error('שגיאה בטעינת עסקים מ-Firestore:', err));
 
-// §248 — נטען לפני/במקביל לחברים. אם הוא מגיע אחרי, ה-map מעודכן והחברים מוזרמים מחדש דרך
-// hydrateFan, כדי שהצ'יפ "קוד כניסה" לא יישאר ריק בטעינה הראשונה. זהה ל-onSnapshot של bizTokens.
-onSnapshot(collection(db, 'memberCodes'), snapshot => {
-  MEMBER_CODES = Object.fromEntries(snapshot.docs.map(d => [d.id, d.data().loginCode || '']));
-  if (_fanLoaded) {
-    MOCK_FANS = MOCK_FANS.map(f => ({ ...f, loginCode: MEMBER_CODES[f.id] || '' }));
-    queueRenderAllPreserveScroll();
-  }
-}, err => console.error('שגיאה בטעינת קודי כניסה:', err));
+// §739 – אין כאן יותר מאזין ל-memberCodes: הקודים נטענים לפי צורך (needMemberCodes/ensureMemberCode,
+// ר' ליד MEMBER_CODES למעלה). hydrateFan עדיין מזרים את מה שכבר ידוע אל f.loginCode.
 
 onSnapshot(collection(db, 'members'), snapshot => {
   MOCK_FANS = snapshot.docs.map(d => hydrateFan(d.id, d.data()));
