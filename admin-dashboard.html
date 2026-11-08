@@ -7373,22 +7373,68 @@ function hbEvRow(docSnap) {
            referrer: e.referrer || null, channel: e.channel || null, bizId: e.bizId || null,
            phone: e.phone || null, email: e.email || null };
 }
+// §743 – 💸 מטמון בדפדפן (IndexedDB). אריחי התקלות בדף הבית קראו בכל פתיחה את כל אירועי 30 הימים
+//    (~5,400 ב-8.11, וגדל עם כל כניסה). אירוע לא משתנה ולא נמחק מהלקוח (firestore.rules:
+//    update/delete false), ולכן שומרים את מה שנקרא ומביאים רק מה שנוצר מאז האחרון שבמטמון
+//    (חפיפה של 15 דק' למקרה של חותמת שרת שהגיעה באיחור; כפילות לפי id). פעם בשבוע – טעינה מלאה
+//    (תופס מחיקה ידנית מהקונסול). שאילתת loginResend (כל הזמנים, ~180) נשארה כמו שהיא – בלי אינדקס
+//    blockId+createdAt אי אפשר לסנן אותה לפי זמן. ⚠️ במטמון יש טלפון/מייל מהאירועים – רק במחשב של מנהל,
+//    לפי ה-uid שלו. כשל במטמון = טעינה מלאה כמו קודם, אף פעם לא נתונים חסרים.
+const ISSUE_CACHE_V = 1, ISSUE_CACHE_FULL_DAYS = 7, ISSUE_CACHE_OVERLAP_MS = 15 * 60000;
+function issueIdb(mode, fn) {
+  return new Promise((res, rej) => {
+    let req;
+    try { req = indexedDB.open('yz-admin-cache', 1); } catch (e) { rej(e); return; }
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onerror = () => rej(req.error);
+    req.onsuccess = () => {
+      const idb = req.result;
+      try {
+        const tx = idb.transaction('kv', mode), r = fn(tx.objectStore('kv'));
+        tx.oncomplete = () => { idb.close(); res(r ? r.result : undefined); };
+        tx.onerror = tx.onabort = () => { idb.close(); rej(tx.error); };
+      } catch (e) { idb.close(); rej(e); }
+    };
+  });
+}
+const issueCacheKey = () => 'issueEvents:' + ((auth.currentUser && auth.currentUser.uid) || '');
+async function issueCacheGet() {
+  try {
+    const v = await issueIdb('readonly', s => s.get(issueCacheKey()));
+    return v && v.v === ISSUE_CACHE_V && Array.isArray(v.rows) ? v : null;
+  } catch (e) { console.warn('issue cache read failed', e); return null; }
+}
+async function issueCachePut(rows, fullAt) {
+  try { await issueIdb('readwrite', s => s.put({ v: ISSUE_CACHE_V, fullAt, rows: rows.map(r => ({ ...r, at: r.at.getTime() })) }, issueCacheKey())); }
+  catch (e) { console.warn('issue cache write failed', e); }
+}
+let issueLoadInfo = null;   // { mode: 'full'|'delta', cached, fetched } – לבדיקה בקונסול (window.issueLoadInfo)
 async function loadIssueEvents() {
   if (issueEvents || issueEventsError || issueLoading) return;
   issueLoading = true;
   try {
     const since = new Date(Date.now() - PLATFORM_WINDOW_DAYS * 864e5);
+    const cached = await issueCacheGet();
+    const useCache = !!(cached && cached.rows.length && typeof cached.fullAt === 'number' && (Date.now() - cached.fullAt) < ISSUE_CACHE_FULL_DAYS * 864e5);
+    const old = useCache ? cached.rows.map(r => ({ ...r, at: new Date(r.at) })).filter(r => r.at >= since) : [];
+    let lastAt = 0;
+    for (const r of old) if (r.at.getTime() > lastAt) lastAt = r.at.getTime();
+    const from = old.length ? new Date(Math.max(since.getTime(), lastAt - ISSUE_CACHE_OVERLAP_MS)) : since;
     const [a, b] = await statsWithTimeout(Promise.all([
       getDocs(query(collection(db, 'events'), where('type', 'in', ISSUE_EVENT_TYPES),
-        where('createdAt', '>=', since), orderBy('createdAt', 'desc'), limit(ISSUE_EVENT_LIMIT))),
+        where('createdAt', '>=', from), orderBy('createdAt', 'desc'), limit(ISSUE_EVENT_LIMIT))),
       getDocs(query(collection(db, 'events'), where('blockId', '==', 'loginResend'), limit(2000))),
     ]), 60000);
-    const rows = [];
-    a.forEach(d => { const r = hbEvRow(d); if (r) rows.push(r); });
-    b.forEach(d => { const r = hbEvRow(d); if (r && r.at >= since) rows.push(r); });
+    const byId = new Map();
+    old.forEach(r => byId.set(r.id, r));
+    a.forEach(d => { const r = hbEvRow(d); if (r) byId.set(r.id, r); });
+    b.forEach(d => { const r = hbEvRow(d); if (r && r.at >= since) byId.set(r.id, r); });
+    const rows = [...byId.values()];
     rows.sort((x, y) => y.at - x.at);
     issueEvents = rows;
+    issueLoadInfo = window.issueLoadInfo = { mode: old.length ? 'delta' : 'full', cached: old.length, fetched: a.size + b.size, total: rows.length, from: from.toISOString() };
     if (a.size >= ISSUE_EVENT_LIMIT) console.warn('loadIssueEvents: הגיע לתקרה', ISSUE_EVENT_LIMIT);
+    issueCachePut(rows, old.length ? cached.fullAt : Date.now());
   } catch (err) {
     console.error('loadIssueEvents failed:', err);
     issueEventsError = statsErrLabel(err);
