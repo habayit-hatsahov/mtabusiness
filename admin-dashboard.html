@@ -13488,7 +13488,7 @@ function unifiedIssueList() {
   helpReqOpenList().forEach(x => out.push({
     kind: 'help', at: x.at, urgent: true,
     who: (x.name || 'ללא שם') + ' · ' + x.contacts.join(' · '),
-    title: (HELP_SOURCE_LABELS[x.source] || x.source || 'פנייה') + (x.count > 1 ? ` · ${x.count} פניות` : ''),   // §735 – אדם אחד = שורה אחת
+    title: (x.workingAt ? '🟡 בטיפול · ' : '') + (HELP_SOURCE_LABELS[x.source] || x.source || 'פנייה') + (x.count > 1 ? ` · ${x.count} פניות` : ''),   // §735 – אדם אחד = שורה אחת; §740 – בטיפול
     // ⚠️ טקסט חופשי מכתיבה אנונימית — מוברח ברינדור (ר' firestore.rules §303).
     meta: x.message, entity: null,
     markJs: 'markHelpReqHandled(' + [q1(x.ids), q1(escJsAttr(x.name || ''))].join(',') + ')',
@@ -21925,13 +21925,59 @@ function helpReqGroups(list) {
     const last = items[0], first = items[items.length - 1];
     const phone = items.map(x => _helpPhone(x.contact)).find(Boolean) || '';
     const contacts = [...new Set(items.map(x => String(x.contact || '').trim()).filter(Boolean))];
+    // §740 – "התחלתי לטפל": workingAt על כל פנייה פתוחה. פנייה חדשה שנכתבה אחרי הסימון (בלי workingAt)
+    // מחזירה את האדם ל"ממתין" עם "כתב שוב" – כדי שלא ייבלע בתוך "בטיפול".
+    const wk = open.filter(x => x.workingAt).sort((a, b) => _helpTs(b.workingAt) - _helpTs(a.workingAt));
+    const working = open.length && wk.length === open.length ? wk[0] : null;
+    const wroteAgain = !working && wk.length > 0;
     return { ...last, items, open, count: items.length, phone, contacts,
       ids: (open.length ? open : items).map(x => x.id).join(','),
       status: open.length ? 'new' : 'handled', firstAt: first.at,
+      workingAt: working ? _helpDate(working.workingAt) : null, workingNote: working ? (working.workingNote || '') : '', wroteAgain,
       name: (items.find(x => x.name) || last).name };
   });
 }
-function helpReqGroupList() { return helpReqGroups(helpReqList()).sort(_byOpenThenNew); }
+function _helpDate(v) { return v && v.toDate ? v.toDate() : v instanceof Date ? v : null; }
+function _helpTs(v) { const d = _helpDate(v); return d ? d.getTime() : 0; }
+// §740 – פתוחות שלא התחלת קודם, אחריהן "בטיפול", ובסוף מה שטופל
+function _helpRank(g) { return g.status === 'handled' ? 2 : g.workingAt ? 1 : 0; }
+function _byHelpStage(a, b) { return (_helpRank(a) - _helpRank(b)) || ((b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0)); }
+function helpReqGroupList() { return helpReqGroups(helpReqList()).sort(_byHelpStage); }
+// §740 – רמי: "שאני אדע מה הסטטוס של מי שפנה". הפנייה עצמה לא מזוהה (נכתבה בלי חשבון), אז מחפשים את
+// האדם ברשומות לפי memberId, טלפון (9 ספרות אחרונות) או מייל – אוהדים, ועסקים לפי טלפון/מייל הבעלים.
+function helpReqPeople(g) {
+  const dig = v => String(v || '').replace(/\D/g, '').slice(-9);
+  const em = v => String(v || '').trim().toLowerCase();
+  const ids = new Set(g.items.map(x => x.memberId).filter(Boolean));
+  const P = new Set(g.items.map(x => dig(x.contact)).filter(p => p.length === 9));
+  const E = new Set(g.items.map(x => em(x.contact)).filter(e => e.includes('@')));
+  const fans = (MOCK_FANS || []).filter(f => ids.has(f.id) || (dig(f.phone).length === 9 && P.has(dig(f.phone)))
+    || (em(f.email) && E.has(em(f.email))) || (em(f.googleEmail) && E.has(em(f.googleEmail))));
+  const biz = new Map();
+  fans.forEach(f => { const b = fanLinkedBiz(f); if (b) biz.set(b.id, b); });
+  (MOCK_BUSINESSES || []).forEach(b => {
+    if ([b.ownerPhone, b.phone].some(p => dig(p).length === 9 && P.has(dig(p))) || [b.ownerEmail, b.email].some(e => em(e) && E.has(em(e)))) biz.set(b.id, b);
+  });
+  return { fans, biz: [...biz.values()] };
+}
+// מה קרה אצלו אחרי שכתב – כדי לדעת אם עוד צריך לחזור אליו
+function _helpSince(d, g) { return d && g.at && d > g.at ? ` <span style="font-weight:400">(${esc(d.toLocaleDateString('he-IL'))} – אחרי שפנה)</span>` : ''; }
+function helpReqPeopleHtml(g) {
+  const { fans, biz } = helpReqPeople(g);
+  if (!fans.length && !biz.length) return `<div class="task-table-meta" style="font-weight:700;color:#9A3412">❓ לא נמצא אצלנו – אין רשומה עם הטלפון/המייל האלה (כנראה לא השלים הרשמה)</div>`;
+  const fanRows = fans.map(f => {
+    const st = fanStatusLabel(f);
+    const when = f.status === 'approved' ? toJsDate(f.approvedAt) : f.status === 'rejected' ? toJsDate(f.rejectedAt) : null;
+    return `<div class="task-table-meta" style="font-weight:700">👤 ${f.memberNumber ? '#' + esc(String(f.memberNumber).padStart(5, '0')) + ' · ' : ''}${esc(f.name || '')} · ${st}${_helpSince(when, g)}
+      <button class="act-btn tiny" onclick="openFanFullCard('${esc(f.id)}')">לכרטיס</button></div>`;
+  });
+  const bizRows = biz.map(b => {
+    const st = b.status === 'rejected' ? '⛔ נדחה' : bizFixLabel(b) || (bizShownStatus(b) === 'approved' ? '✅ מאושר' : '⏳ ממתין');
+    return `<div class="task-table-meta" style="font-weight:700">🏪 ${esc(b.name || 'עסק')} · ${st}${_helpSince(b.status === 'approved' ? toJsDate(b.approvedAt) : null, g)}
+      <button class="act-btn tiny" onclick="openBizFromFan('${esc(b.id)}')">לעסק</button></div>`;
+  });
+  return fanRows.join('') + bizRows.join('');
+}
 function helpReqOpenList() { return helpReqGroupList().filter(x => x.status !== 'handled'); }
 function helpReqFilteredList() {
   const q = taskSearchQ.trim();
@@ -21964,6 +22010,21 @@ window.unmarkHelpReqHandled = async function(id) {
   try { await Promise.all(String(id || '').split(',').filter(Boolean).map(i => updateDoc(doc(db, 'helpRequests', i), { status: 'new' }))); }
   catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
+// §740 – "התחלתי לטפל": שלב ביניים, הפנייה נשארת פתוחה. status לא משתנה – כל הספירות והרשימות נשארות כמו שהן.
+window.markHelpReqWorking = async function(id, name) {
+  const ids = String(id || '').split(',').filter(Boolean);
+  const note = prompt(`"${name || 'ללא שם'}" – התחלת לטפל.\n\nמה עשית / מה מחכה? (אופציונלי, למשל: "שלחתי וואטסאפ, מחכה לתשובה")`, '');
+  if (note === null) return;
+  try {
+    await Promise.all(ids.map(i => updateDoc(doc(db, 'helpRequests', i), {
+      workingAt: serverTimestamp(), workingNote: (note || '').trim(), workingBy: auth.currentUser ? auth.currentUser.uid : '',
+    })));
+  } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+window.unmarkHelpReqWorking = async function(id) {
+  try { await Promise.all(String(id || '').split(',').filter(Boolean).map(i => updateDoc(doc(db, 'helpRequests', i), { workingAt: null, workingNote: '' }))); }
+  catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
 function helpWaText(g) {
   const first = String(g.name || '').trim().split(/\s+/)[0] || '';
   return `היי${first ? ' ' + first : ''}, כאן רמי מ-Yellow Zone 💛\nראיתי את הפנייה ששלחת לנו${g.firstAt ? ' ב-' + g.firstAt.toLocaleDateString('he-IL') : ''}:\n"${String(g.message || '').trim().slice(0, 200)}"\n`;
@@ -21988,10 +22049,16 @@ function helpReqsTableHtml(list) {
             ${g.phone ? `<a class="act-btn tiny" style="text-decoration:none" href="${waLink(g.phone, helpWaText(g))}" target="_blank" rel="noopener">📲 וואטסאפ</a>` : ''}
             ${g.status === 'handled'
               ? `<button class="act-btn tiny" onclick="unmarkHelpReqHandled('${g.ids}')">↺ החזרה לפתוח</button>`
-              : `<button class="act-btn approve tiny" onclick="markHelpReqHandled('${g.ids}','${escJsAttr(g.name || '')}')">✔️ טיפלתי</button>`}
+              : (g.workingAt
+                  ? `<button class="act-btn tiny" onclick="unmarkHelpReqWorking('${g.ids}')">↺ עוד לא התחלתי</button>`
+                  : `<button class="act-btn tiny" style="background:#FEF3C7;color:#92400E" onclick="markHelpReqWorking('${g.ids}','${escJsAttr(g.name || '')}')">🟡 התחלתי לטפל</button>`)
+                + `<button class="act-btn approve tiny" onclick="markHelpReqHandled('${g.ids}','${escJsAttr(g.name || '')}')">✔️ טיפלתי</button>`}
             ${g.count > 1 ? `<span class="warn-badge" style="background:#EEF2FF;color:#3730A3">${g.count} פניות</span>` : ''}
           </div>
           <div class="task-table-meta" style="font-weight:700">${g.count > 1 ? 'פנייה ראשונה ' + esc(helpWhen(g.firstAt)) + ' · אחרונה ' + esc(helpWhen(g.at)) : 'כתב ' + esc(helpWhen(g.at))}</div>
+          ${g.status !== 'handled' && g.workingAt ? `<div class="task-table-meta" style="font-weight:700;color:#92400E">🟡 התחלת לטפל ${esc(helpWhen(g.workingAt))}${g.workingNote ? ' – ' + esc(g.workingNote) : ''}</div>` : ''}
+          ${g.status !== 'handled' && g.wroteAgain ? `<div class="task-table-meta" style="font-weight:700;color:#C2410C">✉️ כתב שוב אחרי שהתחלת לטפל</div>` : ''}
+          ${helpReqPeopleHtml(g)}
           <!-- ⚠️ esc על message – טקסט חופשי מכתיבה אנונימית. ר' firestore.rules §303. -->
           ${msgs.map(m => `<div class="task-table-meta" style="white-space:pre-line">${msgs.length > 1 || m.n > 1 ? `<b>${esc(m.x.at ? m.x.at.toLocaleDateString('he-IL') : '')}${m.n > 1 ? ' · ×' + m.n : ''}:</b> ` : ''}${esc(m.x.message)}</div>`).join('')}
           ${g.status === 'handled' && g.handledNote ? `<div class="task-table-meta" style="opacity:.75">טופל: ${esc(g.handledNote)}</div>` : ''}
@@ -22011,7 +22078,7 @@ function helpReqsTableHtml(list) {
             ].filter(Boolean).map(esc).join(' · ')
           }</div>
         </div>
-        <div class="task-table-badges"><span class="${x.status === 'handled' ? 'treat-badge' : 'warn-badge'}">${x.status === 'handled' ? '✔️ טופל' : 'ממתין לתשובה'}</span></div>
+        <div class="task-table-badges"><span class="${x.status === 'handled' ? 'treat-badge' : 'warn-badge'}"${x.status !== 'handled' && x.workingAt ? ' style="background:#FEF3C7;color:#92400E"' : ''}>${x.status === 'handled' ? '✔️ טופל' : x.workingAt ? '🟡 בטיפול' : 'ממתין לתשובה'}</span></div>
         <div class="mi-addr"></div>
         <div class="task-table-wait">${x.at ? helpDaysAgo(x.at) : '–'}</div>
         <div class="mi-actions"></div>
