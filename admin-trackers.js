@@ -37,6 +37,21 @@ const DOCS = {
 רמי`, personal: true } },
   '1|*': { ch: { app: false, push: false, mail: true, wa: false },
     mail: { subject: '{name}, אושרת ל-Yellow Zone 💛', body: `היי {name},\n\nאושרת ל-Yellow Zone 🎉 והעסקים של האוהדים כבר מחכים לך.\n\n${MAIL_FANS_BIZ}\n\nהגיע הזמן להתחיל לקנות כחול צהוב 💛💙\n\nפותחים את Yellow Zone בטלפון שנרשמת ממנו. לא נכנס לבד? זה הקוד שלך:\n{code}\n\n{link}\n\nרמי, Yellow Zone 💛`, personal: true } },
+  // §752ד – תזכורת 'יום 7': קצרה ושונה מהמייל הראשון ('1|*' משמש את יום 2 ויום 14)
+  '1|d7': { ch: { app: false, push: false, mail: true, wa: false },
+    mail: { subject: '{name}, משהו לא עבד בכניסה?', body: `היי {name},
+שמתי לב שעוד לא נכנסת ל-Yellow Zone מאז שאושרת.
+
+אם משהו נתקע – הכי פשוט: פותחים את Yellow Zone בטלפון שנרשמת ממנו. לא נכנס לבד? נכנסים עם מספר הטלפון והקוד שלך:
+{code}
+
+אין לך את האפליקציה?
+
+{link}
+
+ואם עדיין לא מסתדר – עונים למייל הזה ואני אעזור.
+
+רמי`, personal: true } },
   '4|now': { ch: { app: false, push: false, mail: true, wa: false },
     mail: { subject: '{name}, מאז שנרשמת – Yellow Zone התמלאה בעסקים של אוהדים', body: `היי {name},\n\nנרשמת ל-Yellow Zone עוד לפני ההשקה – ומאז הרבה השתנה.\n\n${MAIL_FANS_BIZ}\n\nמתחילים לקנות כחול צהוב 💛💙\n\nמורידים את האפליקציה ונכנסים עם מספר הטלפון והקוד שלך:\n{code}\n\n{link}\n\nרמי, Yellow Zone 💛`, personal: true } },
   // לעסק {link} = ניהול העסק – לכן קישור ההורדה כתוב קבוע (מהמחשב הם נכנסים מהקישור באזור האישי)
