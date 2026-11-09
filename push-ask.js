@@ -98,7 +98,9 @@
       '</span>' +
       (opts && opts.biz
         ? '<span><b>לקבל התראות</b> – ככה תדעו מיד על עדכונים לעסק, תשובות מהצוות והזמנה לערב ההשקה. מומלץ להשאיר מסומן.</span>'
-        : '<span>לקבל התראות כשהצוות עונה לי ועל עדכונים חשובים</span>');
+        // §757 – הנוסח מבטיח את מה שבאמת נשלח: פוש ברגע האישור (תבנית login, מרכז ההודעות)
+        : '<span><b>לקבל התראה ברגע שההרשמה שלי מאושרת</b>' +
+          '<span style="display:block;font-size:12.5px;opacity:.75;margin-top:2px">וגם כשהצוות עונה לי. ההתראה מגיעה רק על דברים שקשורים אליך.</span></span>');
     beforeEl.parentNode.insertBefore(row, beforeEl);
     const cb = row.querySelector('#yzPushOpt'), box = row.querySelector('.yz-pushopt-box');
     const paint = () => { box.textContent = cb.checked ? '✓' : ''; box.style.background = cb.checked ? '#0A2A66' : 'transparent'; box.style.color = '#fff'; };
@@ -108,15 +110,33 @@
 
   // אחרי שהבקשה נקלטה. רק אם התיבה הוצגה **ומסומנת**. הטוקן נשמר במכשיר (אין עדיין זהות),
   // ו-home.html כותב אותו לרשומה בכניסה הראשונה (flushPushStash).
-  async function afterSubmit(host) {
+  // §757 – opts.apiFetch (fan-register): הטוקן נכתב **מיד** על הרשומה הממתינה דרך /reg-push, באותה
+  // הוכחת-מכשיר של §612 (yz_reg = { memberId, ticket }, נשמר לפני afterSubmit). בלי זה הטוקן היה מגיע
+  // לרשומה רק בכניסה הראשונה – אחרי האישור – והפוש "ההרשמה אושרה" לא היה מוצא לאן לשלוח.
+  // כשל כאן לא מפריע: הפיקדון נשאר, ו-flushPushStash כותב אותו בכניסה הראשונה כמו קודם.
+  async function attachPending(apiFetch, r) {
+    try {
+      if (typeof apiFetch !== 'function' || !r || !r.ok) return false;
+      const reg = JSON.parse(localStorage.getItem('yz_reg') || 'null');
+      if (!reg || !reg.memberId || !reg.ticket) return false;
+      const resp = await apiFetch('/reg-push', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: reg.memberId, ticket: reg.ticket, installId: r.installId, token: r.token, platform: r.platform }) });
+      const j = await resp.json().catch(() => ({}));
+      return !!(j && j.ok);
+    } catch (e) { console.warn('reg-push failed (stash kept):', e); return false; }
+  }
+
+  async function afterSubmit(host, opts) {
     const cb = document.getElementById('yzPushOpt');
     if (!cb || !cb.checked || !host) return;
+    const fan = !!(opts && opts.apiFetch);
     let text;
     try {
       const r = await window.YZNativePush.registerAndStash();
-      text = r.ok ? '✓ התראות הופעלו.'
+      if (fan) await attachPending(opts.apiFetch, r);
+      text = r.ok ? (fan ? '✓ מעולה! נשלח לך התראה ברגע שההרשמה תאושר.' : '✓ התראות הופעלו.')
         : (r.reason === 'denied' || r.reason === 'declined')
-          ? 'בסדר, בלי התראות.'
+          ? (fan ? 'בסדר, בלי התראות. נעדכן אותך במייל כשההרשמה תאושר.' : 'בסדר, בלי התראות.')
           : 'לא הצלחנו להפעיל התראות עכשיו. אפשר להפעיל אחרי הכניסה, מהתפריט.';
     } catch (e) {
       console.error('push opt-in failed:', e);

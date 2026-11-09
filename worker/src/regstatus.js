@@ -130,3 +130,34 @@ export async function handleRegRetry({ memberId, ticket, photoUrl, net, profileU
   });
   return { ok: true, status: 'pending' };
 }
+
+// ══ §757 – טוקן פוש על רשומה ממתינה: הפוש "ההרשמה אושרה" צריך לדעת לאן לשלוח ═══════════════════
+// עד כאן הטוקן מההרשמה נשמר רק במכשיר (registerAndStash) ונכתב לרשומה בכניסה הראשונה (flushPushStash
+// ב-home.html) – כלומר **אחרי** האישור. ברגע האישור לא היה לאן לשלוח, והפוש של התבנית `login` יצא
+// noToken. כאן הוא נכתב מיד, באותה הוכחת-מכשיר של §612 (ticket ↔ regTicketHash).
+// 🔑 אותו מבנה בדיוק כמו flushPushStash: מפתח = מזהה-התקנה, { token, platform, updatedAt }. הכניסה
+//   הראשונה תכתוב את אותו מפתח שוב – בלי כפילות.
+// ⚠️ לא לרשומה שנדחתה (אין מה לבשר לה), ולא יותר מ-5 התקנות לרשומה (בלם ספאם על אותו מפתח).
+const INSTALL_RE = /^[A-Za-z0-9]{4,40}$/;
+const FCM_TOKEN_RE = /^[A-Za-z0-9:_-]{20,4096}$/;
+const MAX_INSTALLS = 5;
+export async function handleRegPush({ memberId, ticket, installId, token, platform } = {}, env) {
+  if (typeof memberId !== 'string' || !MEMBER_ID_RE.test(memberId)) return { error: 'invalid' };
+  if (typeof ticket !== 'string' || !TICKET_RE.test(ticket)) return { error: 'invalid' };
+  if (typeof installId !== 'string' || !INSTALL_RE.test(installId)) return { error: 'invalid' };
+  if (typeof token !== 'string' || !FCM_TOKEN_RE.test(token)) return { error: 'invalid' };
+  const plat = platform === 'ios' || platform === 'android' ? platform : 'unknown';
+
+  const accessToken = await getGoogleAccessToken(env);
+  const m = await firestoreGetDoc(env, accessToken, `members/${memberId}`);
+  if (!m) return { status: 'gone' };
+  const f = m.fields || {};
+  if (!f.regTicketHash || !sameHex(f.regTicketHash, await sha256Hex(ticket))) return { error: 'invalid' };
+  if (f.status === 'rejected') return { ok: false, reason: 'rejected' };
+
+  const tokens = (f.nativePushTokens && typeof f.nativePushTokens === 'object') ? { ...f.nativePushTokens } : {};
+  if (!tokens[installId] && Object.keys(tokens).length >= MAX_INSTALLS) return { ok: false, reason: 'too_many' };
+  tokens[installId] = { token, platform: plat, updatedAt: new Date().toISOString() };
+  await firestorePatch(env, accessToken, `members/${memberId}`, { nativePushTokens: tokens });
+  return { ok: true };
+}

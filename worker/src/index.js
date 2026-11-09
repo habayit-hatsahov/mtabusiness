@@ -9,7 +9,7 @@ import { firestoreRunQuery, firestoreGetDoc, firestorePatch, firestoreBatchCreat
 import { normalizePhoneDigits, phoneCandidates } from './phone.js';
 import { isRateLimited, recordAttempt, overIpQuota } from './ratelimit.js';
 import { wrapEnvKv } from './safekv.js';
-import { handleRegStatus, handleRegRetry, handleRegReply } from './regstatus.js';
+import { handleRegStatus, handleRegRetry, handleRegReply, handleRegPush } from './regstatus.js';
 import { handleBizRegStatus } from './bizregstatus.js';
 import { handleBizFixDone, handleBizFixDecline, handleBizFixReply, runBizRequestAlerts } from './bizfix.js';   // §672 · §696
 import { isStrongMatch, describeRegistration } from './regmethod.js';
@@ -114,6 +114,11 @@ export default {
       if (request.method === 'POST' && url.pathname === '/reg-status') {
         if (memQuota('regstatus', clientIp(request, env), 60, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
         return json(await handleRegStatus(await request.json(), env), env, request);
+      }
+      // §757 – טוקן הפוש של מי שנרשם עכשיו, על הרשומה הממתינה (כדי שהפוש "ההרשמה אושרה" יגיע)
+      if (request.method === 'POST' && url.pathname === '/reg-push') {
+        if (memQuota('regpush', clientIp(request, env), 10, 15 * 60)) return json({ error: 'too_many_attempts' }, env, request, 429);
+        return json(await handleRegPush(await request.json(), env), env, request);
       }
       // §664 — בעל עסק ממתין: מצב העסק ומה חסר בו (תמונות), לפי טוקן העסק שנשמר במכשיר שנרשם.
       if (request.method === 'POST' && url.pathname === '/biz-reg-status') {
