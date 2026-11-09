@@ -584,6 +584,8 @@ const looksLikeImageUrl = (u) => typeof u === 'string' && /^https:\/\//.test(u);
         id: d.id, name: b.name || '', discount: b.discountText || '',
         img: looksLikeImageUrl(b.coverPhotoThumb) ? b.coverPhotoThumb : (looksLikeImageUrl(b.coverPhoto) ? b.coverPhoto : (looksLikeImageUrl(b.logoThumb) ? b.logoThumb : '')),
         pos: b.coverPhotoPosition || '',
+        // §755ב — המקור המלא, להקטנה בוורקר (ר' lpBg). img נשאר הכתובת הישירה – הנפילה-לאחור
+        full: looksLikeImageUrl(b.coverPhoto) ? b.coverPhoto : '',
         cat: (Array.isArray(b.tags) && b.tags[0]) || '',
         isFeatured: !!(b.isFeatured && (!b.featuredUntil || new Date() < new Date(b.featuredUntil))),
         approvedMs: b.approvedAt && b.approvedAt.toMillis ? b.approvedAt.toMillis() : 0,
@@ -615,10 +617,41 @@ const looksLikeImageUrl = (u) => typeof u === 'string' && /^https:\/\//.test(u);
   }
 })();
 
+// ── §755ב — תמונות הכרטיסים דרך /view-image?w= של הוורקר, כמו home.html (§753, ההסבר המלא שם) ─────
+// עד היום: ה-thumb הישיר מ-Firebase (400px, JPEG, ממוצע 52KB ועד 174KB). עכשיו: המקור המלא מוקטן
+// בוורקר לרוחב הכרטיס (44% מהמסך במובייל, רבע שורה בדסקטופ, עד 2×) – WebP, קטן יותר וחד יותר.
+// כאן זה background-image, שאין לו onerror – לכן Image() מקביל לאותה כתובת (הדפדפן מוריד פעם אחת):
+// שגיאה → הכרטיס עובר לכתובת הישירה; ואם אף תמונה מהוורקר לא הגיעה תוך 6 שנ' (כתובת תקועה –
+// api.yellowzone.co.il לא נגישה מכל רשת, §359/§373) → כל הכרטיסים עוברים לישירה.
+const LP_IMG_PROXY = 'https://api.yellowzone.co.il/view-image';
+const LP_IMG_BUCKET = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
+let lpImgOk = false, lpImgOff = false, lpImgTimer = 0;
+const lpPending = [];
+const lpSetBg = (el, url) => { el.style.backgroundImage = 'url("' + url.replace(/"/g, '%22') + '")'; };
+function lpBg(el, b) {
+  if (lpImgOff || !b.full || !b.full.startsWith(LP_IMG_BUCKET)) { lpSetBg(el, b.img); return; }
+  const cssW = window.innerWidth <= 760 ? window.innerWidth * 0.44 : Math.min(window.innerWidth, 1200) / 4;
+  const px = cssW * Math.min(window.devicePixelRatio || 1, 2);
+  const w = [240, 480, 640, 800].find(x => x >= px) || 800;
+  const url = LP_IMG_PROXY + '?url=' + encodeURIComponent(b.full) + '&w=' + w;
+  const entry = { el, direct: b.img, done: false };
+  lpPending.push(entry);
+  const probe = new Image();
+  probe.onload = () => { entry.done = true; lpImgOk = true; };
+  probe.onerror = () => { entry.done = true; lpSetBg(el, b.img); };
+  probe.src = url;
+  lpSetBg(el, url);
+  if (!lpImgTimer) lpImgTimer = setTimeout(() => {
+    if (lpImgOk) return;
+    lpImgOff = true;
+    lpPending.forEach(p => { if (!p.done) lpSetBg(p.el, p.direct); });
+  }, 6000);
+}
+
 function lpCard(b, isNew) {
       const card = document.createElement('div'); card.className = 'mock';
       const im = document.createElement('div'); im.className = 'mock-img';
-      if (b.img) { im.style.backgroundImage = 'url("' + b.img.replace(/"/g, '%22') + '")'; if (b.pos) im.style.backgroundPosition = b.pos; }
+      if (b.img) { lpBg(im, b); if (b.pos) im.style.backgroundPosition = b.pos; }
       const t = document.createElement('div'); t.className = 'mock-t';
       if (isNew && Date.now() - b.approvedMs < 30 * 864e5) { const nw = document.createElement('span'); nw.className = 'lp-new'; nw.textContent = 'חדש'; t.append(nw); }
       const n = document.createElement('b'); n.textContent = b.name;
