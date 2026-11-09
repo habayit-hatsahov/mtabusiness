@@ -413,7 +413,7 @@ function daysHtml(id, t, P) {
   const effs = ms.filter(m => m.d >= P.from && m.d <= P.to).map(m => effect(id, m)).join('');
   return `<div class="yzu-box yzt-days"><h3>כמה בקבוצה – יום אחרי יום</h3>
     <div class="yzt-kp">
-      <div class="k sel${met === 'group' ? ' on' : ''}" onclick="yztSet('met','group')"><small>${ps.before ? `היו ב-${U.short(ps.before.d)}` : 'בהשקה'}</small><b>${U.f(ps.startN)}</b></div>
+      <div class="k"><small>${ps.before ? `היו ב-${U.short(ps.before.d)}` : 'בהשקה'}</small><b>${U.f(ps.startN)}</b></div>
       <div class="k sel${met === 'group' ? ' on' : ''}" onclick="yztSet('met','group')"><small>בקבוצה עכשיו${ps.end.d !== U.D.today ? ` (${U.short(ps.end.d)})` : ''}</small><b>${U.f(ps.end.group)}</b>${ps.before ? chg(ps.end.group - ps.startN, ' בתקופה') : ''}</div>
       <div class="k good sel${met === 'out' ? ' on' : ''}" onclick="yztSet('met','out')"><small>✓ ${lbl} בתקופה – השיפור</small><b>${U.f(ps.out)}</b><div class="yzt-dt n">יצאו מהקבוצה לכיוון הטוב</div></div>
       <div class="k sel${met === 'inn' ? ' on' : ''}" onclick="yztSet('met','inn')"><small>+ הצטרפו לקבוצה בתקופה</small><b>${U.f(ps.inn)}</b><div class="yzt-dt n">חדשים שנכנסו לקבוצה${nMs ? ` · 📨 ${nMs} הודעות` : ''}</div></div></div>
