@@ -90,19 +90,21 @@ function tracker(id) {
     const since = start.filter(m => onOrAfter(x.memDays[m.id], snap)), left = start.filter(m => m.status === 'approved' && !x.memDays[m.id]);
     const out = x.fans.filter(m => !x.isVet(m) && m.status === 'approved' && m.approvedAt && dkOf(m.approvedAt) >= snap && !x.memDays[m.id]);
     const age = m => U.dayDiff(dkOf(m.approvedAt), U.D.today);
+    const reach = left.concat(out);   // §752 – לוח הפנייה: הצילום + מי שאושר מאז
     const fan = m => !(m.isBusinessOwner || m.linkedBusinessId);   // בעלי עסק – במעקב 3 / 6, ולא מופיעים ברשימת האוהדים של מרכז ההודעות
     return { start, since, left, outside: out, people: true,
       def: 'אוהדים שנרשמו מההשקה, אושרו לפני יום הצילום, ולא נכנסו אף פעם אחרי האישור (לא הגיעו לדף הבית).',
       sinceSub: `${since.filter(pushOn).length} מהם כבר עם פוש`,
       leftSub: `פוש ${left.filter(pushOn).length} · מייל ${left.filter(m => m.email).length}`,
-      extra: out.length ? `מחוץ לצילום: <b>${U.f(out.length)}</b> שאושרו מיום הצילום ועוד לא נכנסו – ייכנסו לצילום הבא.` : '',
+      extra: out.length ? `מחוץ לצילום: <b>${U.f(out.length)}</b> שאושרו מיום הצילום ועוד לא נכנסו – גם הם בלוח הפנייה, כשמגיעים לשלב.` : '',
       charts: [{ t: 'כמה זמן עבר מהאישור (מי שנשאר)', rows: [['יום אחד', left.filter(m => age(m) <= 1).length], ['יומיים', left.filter(m => age(m) === 2).length], ['3–6 ימים', left.filter(m => age(m) >= 3 && age(m) <= 6).length, 'hot'], ['7 ימים ויותר', left.filter(m => age(m) >= 7).length, 'hot']] },
         { t: 'באיזו דרך נרשמו (מי שנשאר)', rows: Object.entries(by(left, methodOf)).sort((a, b) => b[1] - a[1]) },
         { t: 'אפשר להגיע אליהם ב-', rows: [['מייל', left.filter(m => m.email).length], ['↳ מייל מוסתר של Apple (כמעט לא נפתח)', left.filter(m => /privaterelay/i.test(m.email || '')).length], ['פוש', left.filter(pushOn).length]] }],
+      // §752 – לוח הפנייה כולל גם מי שאושר אחרי יום הצילום (out): הוא באותו מצב, ובלעדיו 71 אוהדים לא קיבלו את 'יום 7' ב-10.11
       plan: [
-        { k: 'd2', w: 'יום 2', what: 'מייל "אושרת – פותחים את Yellow Zone ונכנסים לבד"; למי שהחליף טלפון – הדרך והקוד', ids: left.filter(m => fan(m) && age(m) >= 2) },
-        { k: 'd7', w: 'יום 7', what: 'תזכורת במייל', ids: left.filter(m => fan(m) && age(m) >= 7) },
-        { k: 'd14', w: 'יום 14', what: 'מייל אחרון עם הטבות השבוע, ואז "רדום"', ids: left.filter(m => fan(m) && age(m) >= 14) }],
+        { k: 'd2', w: 'יום 2', what: 'מייל "אושרת – פותחים את Yellow Zone ונכנסים לבד"; למי שהחליף טלפון – הדרך והקוד', ids: reach.filter(m => fan(m) && age(m) >= 2) },
+        { k: 'd7', w: 'יום 7', what: 'תזכורת במייל', ids: reach.filter(m => fan(m) && age(m) >= 7) },
+        { k: 'd14', w: 'יום 14', what: 'מייל אחרון עם הטבות השבוע, ואז "רדום"', ids: reach.filter(m => fan(m) && age(m) >= 14) }],
       flow: 'f1', methods: by(left, methodOf) };
   }
   if (id === 2) {
@@ -440,7 +442,7 @@ function daysHtml(id, t, P) {
 // הסטטוס מחושב ממה שכבר נשלח מהכפתורים (אותו "כבר קיבלו" של לוח הפנייה) – לא מסמנים ידנית.
 const WEEK = { from: '2026-11-09', to: '2026-11-15', days: [
   { d: '2026-11-09', t: 'נכנסו פעם אחת ולא חזרו', id: 5, steps: ['now', 'mail'], how: 'שני הכפתורים: קודם פוש + באפליקציה, אחר כך מייל למי שאין פוש.' },
-  { d: '2026-11-10', t: 'אושרו ולא נכנסו אף פעם', id: 1, steps: ['d7'], how: 'מייל "אושרת ל-Yellow Zone 💛" (עם הקוד) · ל-247 אוהדים' },
+  { d: '2026-11-10', t: 'אושרו ולא נכנסו אף פעם', id: 1, steps: ['d7'], how: 'מייל "אושרת ל-Yellow Zone 💛" (עם הקוד) · ל-318 אוהדים' },
   { d: '2026-11-11', t: 'ותיקים שלא חזרו', id: 4, steps: ['now'], how: 'מייל "מאז שנרשמת – התמלאה בעסקים" (עם הקוד)' },
   { d: '2026-11-12', t: 'בעלי עסק בלי האפליקציה', id: 3, steps: ['wa', 'mail'], how: 'וואטסאפ – כפתור בכל שורה ברשימה (אתה לוחץ "שלח" בוואטסאפ), ואחר כך מייל משלים לכולם' },
   { d: '2026-11-13', t: 'לא שולחים – מודדים', measure: [5, 1], how: 'במעקב 5 ובמעקב 1: "לפי ימים" → "האם ההודעה עבדה?"' },
@@ -528,7 +530,7 @@ export function html() {
       ${daysHtml(S.cur, t, P)}
       ${t.extra ? `<div class="yzt-extra">${t.extra}</div>` : ''}
       <details class="yzt-snap"><summary>מתקדם: קבוצה קבועה מיום צילום (${U.short(S.snap)})</summary>
-        <p class="yzu-note">כאן סופרים רק את מי שהיה בקבוצה ביום הצילום, ולא מוסיפים חדשים – כמה מהם כבר יצאו. משמש את לוח הפנייה של מעקבים 1, 3 ו-4. יום הצילום: <input type="date" value="${S.snap}" min="${U.addDays(U.LAUNCH, 1)}" max="${today}" onchange="yztSet('snap',this.value)"></p>
+        <p class="yzu-note">כאן סופרים רק את מי שהיה בקבוצה ביום הצילום, ולא מוסיפים חדשים – כמה מהם כבר יצאו. משמש את לוח הפנייה של מעקבים 3 ו-4. במעקב 1 לוח הפנייה כולל גם מי שאושר אחרי יום הצילום. יום הצילום: <input type="date" value="${S.snap}" min="${U.addDays(U.LAUNCH, 1)}" max="${today}" onchange="yztSet('snap',this.value)"></p>
         <div class="yzt-three">${k('start', 'היו ביום הצילום', t.start.length, t.startSub || `צילום ${U.short(S.snap)}`)}${k('since', t.sinceLbl || 'התחברו מאז', t.since.length, t.sinceSub)}${k('left', 'מתוכם עדיין בקבוצה', t.left.length, t.leftSub)}</div></details>
       ${flowHtml(t)}
       ${legacyHtml()}
