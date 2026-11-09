@@ -687,6 +687,10 @@
       border-radius: 8px; font-size: 12.5px; font-weight: 600; color: #1e40af;
     }
     .field-warn.show { display: block; }
+    /* §756 — הסבר קבוע מתחת לשדה + המסגרת של הנייד האישי של בעל העסק */
+    .field-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
+    .owner-phone-box { background: var(--acc-soft); border: 1px solid var(--acc-line); border-radius: 12px; padding: 12px; }
+    .owner-phone-box label { color: var(--text); font-size: 13px; }
     .field-warn-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
     .field-warn-actions button {
       font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
@@ -842,6 +846,43 @@
       setTimeout(function () { el.remove(); }, 560);
     }, 350);
   });
+</script>
+<script>
+  // ── §756 — הנייד האישי של בעל העסק: אזהרה רכה כשהוא זהה לטלפון העסק ─────────────────────
+  // לא חוסם. "כן, זה הנייד שלי" זוכר את המספר שאושר ולא שואל עליו שוב. האזנה ב-document
+  // (delegation) כדי שלא תהיה תלות בסדר הטעינה מול השדות.
+  (function () {
+    var confirmedFor = null;
+    function norm(v) {
+      if (typeof window.normalizeILPhone === 'function') return window.normalizeILPhone(v);
+      var d = String(v || '').replace(/\D/g, '');
+      if (d.indexOf('972') === 0 && d.length > 9) d = '0' + d.slice(3);
+      return d;
+    }
+    function warnEl() { return document.getElementById('warn-ownerPhone'); }
+    function check() {
+      var own = document.getElementById('ownerPhone'), biz = document.getElementById('bizPhone'), w = warnEl();
+      if (!own || !w) return;
+      var o = norm(own.value), b = biz ? norm(biz.value) : '';
+      w.classList.toggle('show', !!o && !!b && o === b && o !== confirmedFor);
+    }
+    document.addEventListener('focusout', function (e) {
+      var id = e.target && e.target.id;
+      var own = document.getElementById('ownerPhone');
+      if (id === 'ownerPhone' || (id === 'bizPhone' && own && own.value)) check();
+    });
+    document.addEventListener('input', function (e) {
+      if (e.target && e.target.id === 'ownerPhone' && warnEl()) warnEl().classList.remove('show');
+    });
+    window.ownerPhoneKeep = function () {
+      confirmedFor = norm(document.getElementById('ownerPhone').value);
+      warnEl().classList.remove('show');
+    };
+    window.ownerPhoneChange = function () {
+      var own = document.getElementById('ownerPhone');
+      own.value = ''; warnEl().classList.remove('show'); own.focus();
+    };
+  })();
 </script>
 
 <a class="back-to-site" id="backToSiteLink" href="home.html" title="חזרה" aria-label="חזרה">‹</a>
@@ -1156,6 +1197,7 @@
       <div class="form-group" id="wrap-bizPhone">
         <label for="bizPhone">טלפון העסק <span class="opt" id="bizPhone-opt" style="display:none;">(אופציונלי לעסק אונליין בלבד)</span><span class="req" id="bizPhone-req">*</span></label>
         <input type="tel" id="bizPhone" placeholder="03-0000000" inputmode="tel" />
+        <div class="field-hint">המספר שלקוחות יראו בכרטיס העסק ויתקשרו אליו.</div><!-- §756 -->
         <div class="field-error" id="err-bizPhone">נא להזין מספר טלפון תקין</div>
       </div>
       </div>
@@ -1493,18 +1535,27 @@
         <div class="field-error" id="err-ownerBirthDate">נא לבחור תאריך לידה תקין</div>
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label for="ownerPhone">טלפון <span class="req">*</span></label>
-          <input type="tel" id="ownerPhone" placeholder="050-0000000" inputmode="tel" />
-          <div class="field-error" id="err-ownerPhone">מספר לא תקין</div>
+      <!-- §756 — הנייד האישי בשורה משלו ובמסגרת צהובה רכה: 103/164 עסקים (9.11) הזינו כאן את טלפון
+           העסק, והצוות לא הצליח להשיג את בעל העסק. אזהרה רכה (לא חוסמת) כשהמספר זהה לטלפון העסק –
+           אצל 102 מתוך ה-103 זה נייד, ולרבים זה באמת הנייד שלהם. -->
+      <div class="form-group owner-phone-box">
+        <label for="ownerPhone">הנייד האישי שלך (לא של העסק) <span class="req">*</span></label>
+        <input type="tel" id="ownerPhone" placeholder="050-0000000" inputmode="tel" autocomplete="tel" />
+        <div class="field-hint">לכאן צוות Yellow Zone יתקשר אליך לגבי ההרשמה וההטבות. המספר לא מופיע בכרטיס העסק.</div>
+        <div class="field-error" id="err-ownerPhone">מספר לא תקין</div>
+        <div class="field-warn" id="warn-ownerPhone">
+          זה אותו מספר כמו טלפון העסק. אם עונה בו מישהו אחר (עובד, מוקד, קו של החנות) – כדאי לכתוב כאן את הנייד שלך, כדי שנוכל להשיג אותך ישירות.
+          <div class="field-warn-actions">
+            <button type="button" onclick="ownerPhoneKeep()">כן, זה הנייד שלי</button>
+            <button type="button" class="ghost" onclick="ownerPhoneChange()">אכתוב מספר אחר</button>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="ownerEmail">אימייל <span class="req">*</span></label>
-          <input type="email" id="ownerEmail" placeholder="you@gmail.com" inputmode="email" />
-          <div class="field-error" id="err-ownerEmail">מייל לא תקין</div>
-          <div class="field-warn" id="warn-ownerEmail"></div>
-        </div>
+      </div>
+      <div class="form-group">
+        <label for="ownerEmail">אימייל <span class="req">*</span></label>
+        <input type="email" id="ownerEmail" placeholder="you@gmail.com" inputmode="email" />
+        <div class="field-error" id="err-ownerEmail">מייל לא תקין</div>
+        <div class="field-warn" id="warn-ownerEmail"></div>
       </div>
 
       <div class="form-group">
