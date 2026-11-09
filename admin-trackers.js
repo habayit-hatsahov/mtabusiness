@@ -398,12 +398,12 @@ window.yztPer = (k, from, to) => {
 };
 function daysHtml(id, t, P) {
   const lbl = OUT_LBL[id], all = series(id), ps = perSum(id, P), s = ps.a, ms = msgsFor(id), by = {}; ms.forEach(m => (by[m.d] || (by[m.d] = [])).push(m));
-  const nMs = ms.filter(m => m.d >= P.from && m.d <= P.to).length, met = S.met || 'group';
-  const from14 = U.addDays(P.to, -13), cs = all.filter(x => x.d >= (P.from < from14 ? P.from : from14) && x.d <= P.to && (met === 'group' || x.d > U.LAUNCH));
-  const val = x => x[met], vals = cs.map(val);
-  const sc = met === 'group' ? hScale(vals, 8, 130) : (v => Math.round(4 + v / Math.max(1, ...vals) * 126));
-  const MET = { group: 'כמה בקבוצה בסוף כל יום (הגובה לפי הטווח, לא מאפס)', out: `כמה ${lbl} בכל יום – השיפור`, inn: 'כמה הצטרפו לקבוצה בכל יום' };
-  const chart = `<div class="yzt-chart ${met}">${cs.map(x => { const m = by[x.d], dim = x.d < P.from; return `<div class="col${m ? ' sent' : ''}${dim ? ' dim' : ''}">${m ? `<span class="pin" title="${U.esc(m.map(z => z.title).join(' | '))}">📨</span>` : ''}<div class="v">${U.f(val(x))}</div><div class="bar${x.part ? ' part' : ''}" style="height:${sc(val(x))}px"></div></div>`; }).join('')}</div>
+  const nMs = ms.filter(m => m.d >= P.from && m.d <= P.to).length, met = S.met || 'group', gm = met === 'start' ? 'group' : met;
+  const from14 = U.addDays(P.to, -13), cs = all.filter(x => x.d >= (P.from < from14 ? P.from : from14) && x.d <= P.to && (gm === 'group' || x.d > U.LAUNCH));
+  const val = x => x[gm], vals = cs.map(val);
+  const sc = gm === 'group' ? hScale(vals, 8, 130) : (v => Math.round(4 + v / Math.max(1, ...vals) * 126));
+  const MET = { start: `כמה בקבוצה בסוף כל יום – ${ps.before ? U.short(ps.before.d) : 'ההשקה'} ("היו") מסומן`, group: 'כמה בקבוצה בסוף כל יום (הגובה לפי הטווח, לא מאפס)', out: `כמה ${lbl} בכל יום – השיפור`, inn: 'כמה הצטרפו לקבוצה בכל יום' };
+  const chart = `<div class="yzt-chart ${gm}">${cs.map(x => { const m = by[x.d], dim = x.d < P.from, mk = met === 'start' && ps.before && x.d === ps.before.d; return `<div class="col${m ? ' sent' : ''}${dim && !mk ? ' dim' : ''}${mk ? ' mk' : ''}">${m ? `<span class="pin" title="${U.esc(m.map(z => z.title).join(' | '))}">📨</span>` : ''}<div class="v">${U.f(val(x))}</div><div class="bar${x.part ? ' part' : ''}" style="height:${sc(val(x))}px"></div></div>`; }).join('')}</div>
     <div class="yzt-xl">${cs.map(x => `<span class="${x.d < P.from ? 'dim' : ''}">${U.short(x.d)}</span>`).join('')}</div>`;
   const rows = [...s].reverse().map(x => { const m = by[x.d] || [], i = all.findIndex(z => z.d === x.d), pv = i > 0 ? all[i - 1] : null;
     return `<tr class="${m.length ? 'sent' : ''}"><td>${U.short(x.d)}${x.part ? ' <span class="yzu-note">(היום, עוד לא נגמר)</span>' : ''}${x.d === U.LAUNCH ? ' <span class="yzu-note">(ההשקה)</span>' : ''}</td>
@@ -413,7 +413,7 @@ function daysHtml(id, t, P) {
   const effs = ms.filter(m => m.d >= P.from && m.d <= P.to).map(m => effect(id, m)).join('');
   return `<div class="yzu-box yzt-days"><h3>כמה בקבוצה – יום אחרי יום</h3>
     <div class="yzt-kp">
-      <div class="k"><small>${ps.before ? `היו ב-${U.short(ps.before.d)}` : 'בהשקה'}</small><b>${U.f(ps.startN)}</b></div>
+      <div class="k sel${met === 'start' ? ' on' : ''}" onclick="yztSet('met','start')"><small>${ps.before ? `היו ב-${U.short(ps.before.d)}` : 'בהשקה'}</small><b>${U.f(ps.startN)}</b></div>
       <div class="k sel${met === 'group' ? ' on' : ''}" onclick="yztSet('met','group')"><small>בקבוצה עכשיו${ps.end.d !== U.D.today ? ` (${U.short(ps.end.d)})` : ''}</small><b>${U.f(ps.end.group)}</b>${ps.before ? chg(ps.end.group - ps.startN, ' בתקופה') : ''}</div>
       <div class="k good sel${met === 'out' ? ' on' : ''}" onclick="yztSet('met','out')"><small>✓ ${lbl} בתקופה – השיפור</small><b>${U.f(ps.out)}</b><div class="yzt-dt n">יצאו מהקבוצה לכיוון הטוב</div></div>
       <div class="k sel${met === 'inn' ? ' on' : ''}" onclick="yztSet('met','inn')"><small>+ הצטרפו לקבוצה בתקופה</small><b>${U.f(ps.inn)}</b><div class="yzt-dt n">חדשים שנכנסו לקבוצה${nMs ? ` · 📨 ${nMs} הודעות` : ''}</div></div></div>
@@ -587,7 +587,7 @@ function css() {
   .yzt-now{display:inline-block;background:var(--yzu-acc);border-radius:6px;padding:1px 7px;font-weight:800;font-size:12px}.yzt-ok{color:var(--yzu-ok);font-weight:800}.yzt-late{color:var(--yzu-bad);font-weight:700}.yzt-part{color:#B45309;font-weight:700}
   .yzt-spark{display:flex;align-items:flex-end;gap:2px;height:28px;margin:6px 0 2px}.yzt-spark i{flex:1;background:#C9D6EA;border-radius:2px 2px 0 0;min-width:2px}.yzt-spark i.m{background:var(--yzu-blue)}
   .yzt-kp .k.sel{cursor:pointer}.yzt-kp .k.sel:hover{border-color:var(--yzu-blue)}.yzt-kp .k.on{box-shadow:0 0 0 2px var(--yzu-blue) inset}
-  .yzt-chart .col.dim{opacity:.35}.yzt-xl span.dim{opacity:.45}.yzt-chart.inn .bar{background:var(--yzu-blue)}
+  .yzt-chart .col.mk .bar{background:var(--yzu-blue)}.yzt-chart .col.dim{opacity:.35}.yzt-xl span.dim{opacity:.45}.yzt-chart.inn .bar{background:var(--yzu-blue)}
   .yzt-kp .k.good{border-color:#BFE3CC;background:var(--yzu-ok-soft)}
   .yzt-snap{border:1px dashed var(--yzu-line);border-radius:10px;padding:7px 10px;margin:10px 0;font-size:13px}.yzt-snap summary{cursor:pointer;color:var(--yzu-blue)}.yzt-snap .yzt-three{margin-top:8px}
   .yzt-waed{border:1px solid #BFE3CC;background:#F3FBF6;border-radius:10px;padding:9px 11px;margin-bottom:10px}.yzt-waed .hd{display:flex;gap:8px;align-items:center;margin-bottom:6px}.yzt-waed .hd .yzu-btn{margin-inline-start:auto}
