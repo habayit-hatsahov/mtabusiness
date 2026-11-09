@@ -20943,10 +20943,11 @@ function mailIssueHandledKeyOf(entity) {
   return h && h.key ? h.key : '';
 }
 
-// §746 – "נמסר ולא נפתח" רק למי שבאמת אולי לא קיבל: מי שכבר נכנס לאפליקציה (lastSeenAt), או שיש לו
+// §747 (נכנס בקומיט d020d70 של סשן מקביל) – "נמסר ולא נפתח" ו"יצא באיחור" רק למי שבאמת אולי לא קיבל: מי שכבר נכנס לאפליקציה (lastSeenAt), או שיש לו
 //    דרך כניסה בלי הקוד (Google / Apple), כבר לא צריך את המייל. ב-8.11: 1,818 שורות "נמסר ולא נפתח",
 //    1,461 מהם כבר נכנסו ו-1,017 עם Google/Apple – נשארו ~181. "נפתח" נמדד בפיקסל שחוסמים, ולכן אי-פתיחה
-//    לבדה אינה ראיה. ⚠️ חל רק על "נמסר ולא נפתח" – חזר/נחסם/נכשל/כתובת שגויה מוצגים תמיד.
+//    לבדה אינה ראיה. "יצא באיחור": 594, כמעט כולם מתור ההשקה 26–27.10; 554 מהם כבר נכנסו.
+//    ⚠️ חל רק על שני אלה – חזר/נחסם/נכשל/כתובת שגויה/תקוע בתור מוצגים תמיד.
 function fanGotInAnyway(f) {
   if (!f) return false;
   return !!(f.lastSeenAt || f.googleEmail || f.appleSub || f.signupMethod === 'google' || f.signupMethod === 'apple');
@@ -20995,7 +20996,7 @@ function mailIssueList() {
       add('biz', b.id, b.name, b.ownerEmail, 2, 'קיבל את המייל הלא-נכון',
         `יצא מייל-העסק הקצר בלבד, בלי מכתב הפתיחה המאוחד (קוד כניסה + מה לעשות עכשיו) שכל שאר בעלי העסקים מקבלים. "שליחה חוזרת" רגילה תשלח שוב את אותו מייל קצר – הכפתור כאן שולח את מכתב הפתיחה המלא.`,
         b.ownerEmailSentAt, false, 'welcome');
-    } else if (approved && mailLateMinutes(b.ownerEmailQueuedAt, b.ownerEmailSentAt)) {
+    } else if (approved && !fanGotInAnyway(b.ownerMemberId ? findFan(b.ownerMemberId) : null) && mailLateMinutes(b.ownerEmailQueuedAt, b.ownerEmailSentAt)) {
       add('biz', b.id, b.name, b.ownerEmail, 2, 'יצא באיחור',
         `המייל נכנס לתור ויצא בפועל רק ${lateLabel(mailLateMinutes(b.ownerEmailQueuedAt, b.ownerEmailSentAt))} אחר כך. ה-cron רץ כל דקה – עיכוב כזה אומר שהסריקה נתקעה או דילגה, כדאי לבדוק שהעסק אכן קיבל.`,
         b.ownerEmailSentAt, true);
@@ -21036,7 +21037,7 @@ function mailIssueList() {
       add('fan', f.id, f.name, '', 2, 'אין כתובת מייל', 'האוהד מאושר אבל אין למי לשלוח את קוד הכניסה.', f.approvedAt, false);
     } else if (approved && f.loginCodeEmailStatus !== 'sent' && f.approvedAt && (now - f.approvedAt.getTime()) > MAIL_STUCK_MINUTES * 60000 && hasCode()) {
       add('fan', f.id, f.name, f.email, 2, 'תקוע בתור', `אושר ${agoLabel(f.approvedAt)} וקוד הכניסה עדיין לא יצא.`, f.approvedAt, true);
-    } else if (approved && mailLateMinutes(fanQueuedAt(f), f.loginCodeEmailSentAt)) {
+    } else if (approved && !fanGotInAnyway(f) && mailLateMinutes(fanQueuedAt(f), f.loginCodeEmailSentAt)) {
       add('fan', f.id, f.name, f.email, 2, 'יצא באיחור',
         `קוד הכניסה נכנס לתור ויצא בפועל רק ${lateLabel(mailLateMinutes(fanQueuedAt(f), f.loginCodeEmailSentAt))} אחר כך. ה-cron רץ כל דקה – כדאי לבדוק שהמייל אכן התקבל.`,
         f.loginCodeEmailSentAt, codeOrUnknown());
