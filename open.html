@@ -258,7 +258,18 @@
     // תמונת השער — אותה לוגיקה כמו bizCardImage ב-home.html: מיקום-מיקוד, ומצב "כל התמונה" (zoom)
     // עם מילוי שוליים (צבע שהמנהל בחר, או רקע מטושטש מאותה תמונה).
     var cover = document.getElementById('cover');
-    var src = b.coverPhotoThumb || b.coverPhoto;
+    var direct = b.coverPhotoThumb || b.coverPhoto;
+    // §755 — דרך /view-image?w= של הוורקר, מוקטן לרוחב התצוגה (כמו home.html, §753 – ההסבר המלא שם):
+    // השער המקורי שוקל עד 833KB. בלי שדרוג thumb→מלא (התמונה מהוורקר כבר חדה). נפילה-לאחור: שגיאה,
+    // או 6 שנ' בלי תמונה → הכתובת הישירה (api.yellowzone.co.il לא נגישה מכל רשת, §359/§373).
+    var BUCKET = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
+    var viaProxy = !!(b.coverPhoto && b.coverPhoto.indexOf(BUCKET) === 0);
+    function proxyUrl(px) {
+      var w = [240, 480, 640, 800, 960, 1280].filter(function (s) { return s >= px; })[0] || 1280;
+      return 'https://api.yellowzone.co.il/view-image?url=' + encodeURIComponent(b.coverPhoto) + '&w=' + w;
+    }
+    var coverCssW = Math.min(window.innerWidth - 32, 420);
+    var src = viaProxy ? proxyUrl(coverCssW * Math.min(window.devicePixelRatio || 1, 2)) : direct;
     if (src) {
       var zoom = parseFloat(b.coverPhotoZoom);
       var fitted = zoom > 0;
@@ -270,8 +281,9 @@
           cover.appendChild(fill);
         } else {
           var bg = document.createElement('img');
-          bg.className = 'bg'; bg.alt = ''; bg.setAttribute('aria-hidden', 'true'); bg.src = src;
-          bg.onerror = function () { bg.remove(); };
+          bg.className = 'bg'; bg.alt = ''; bg.setAttribute('aria-hidden', 'true');
+          bg.src = viaProxy ? proxyUrl(240) : src;   // מטושטש ב-30px ממילא
+          bg.onerror = function () { if (viaProxy && bg.src !== direct) bg.src = direct; else bg.remove(); };
           cover.appendChild(bg);
         }
       }
@@ -285,12 +297,22 @@
         img.style.objectPosition = pos;
       }
       // thumb → הקובץ המלא כשהוא מוכן (כמו upgradeCardCover); כשל → שם העסק על רקע כחול
-      if (b.coverPhotoThumb && b.coverPhoto && b.coverPhoto !== b.coverPhotoThumb) {
+      var onDirect = !viaProxy;
+      function toDirect() {
+        if (onDirect) return false;
+        onDirect = true; img.src = direct;
+        var bgEl = cover.querySelector('img.bg');
+        if (bgEl && !(bgEl.complete && bgEl.naturalWidth)) bgEl.src = direct;
+        return true;
+      }
+      if (viaProxy) {
+        setTimeout(function () { if (!(img.complete && img.naturalWidth)) toDirect(); }, 6000);
+      } else if (b.coverPhotoThumb && b.coverPhoto && b.coverPhoto !== b.coverPhotoThumb) {
         var full = new Image();
         full.onload = function () { img.src = b.coverPhoto; };
         full.src = b.coverPhoto;
       }
-      img.onerror = function () { cover.innerHTML = ''; nameOnly(); };
+      img.onerror = function () { if (toDirect()) return; cover.innerHTML = ''; nameOnly(); };
       cover.appendChild(img);
     } else {
       nameOnly();

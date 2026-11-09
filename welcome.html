@@ -5088,10 +5088,53 @@ window.upgradeCardCover = function (img) {
   pre.src = full;
 };
 window.cardCoverFailed = function (img) {
+  if (window.yzImgUseDirect(img)) return;   // §755 — הוורקר נכשל: קודם הכתובת הישירה
   const full = img.dataset.full;
   if (full) { delete img.dataset.full; img.src = full; return; }
   img.remove();
 };
+
+// ── §755 — תמונות הכרטיסים דרך /view-image?w= של הוורקר, כמו home.html (§753, ההסבר המלא שם) ──────
+// בקצרה: הקבצים המקוריים ב-Firebase כבדים פי 10–500 ממה שכרטיס צריך (לוגו עד 1.8MB לתג של 58px),
+// והכרטיס הוריד גם thumb וגם את המלא. כאן: הקובץ המלא מוקטן בוורקר לגודל התצוגה, ו-data-direct
+// (הכתובת הישירה, רשת אחרת – §359/§373) כנפילה-לאחור.
+// ⚠️ ההבדל מ-home.html: כאן `loading="lazy"` נייטיב, והרצועה לרוב מתחת לקו המסך – אז אי אפשר לבדוק
+// "האם הגיעה תמונה תוך 6 שנ'" (אולי פשוט עוד לא התחילה). במקום זה בדיקה אחת של הכתובת: תמונה קטנה
+// אחת מהוורקר נטענת מיד; שגיאה או 6 שנ' בלי תשובה → כל הכרטיסים עוברים לכתובת הישירה.
+const YZ_IMG_PROXY = 'https://api.yellowzone.co.il/view-image';
+const YZ_IMG_BUCKET = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
+const yzImgSize = px => [120, 180, 240, 480, 640, 800, 960, 1280].find(s => s >= px) || 1280;
+let yzImgProxyOff = false;
+const yzImgProxyUrl = (url, px) => (!yzImgProxyOff && url && url.startsWith(YZ_IMG_BUCKET))
+  ? YZ_IMG_PROXY + '?url=' + encodeURIComponent(url) + '&w=' + yzImgSize(px) : '';
+window.yzImgUseDirect = function (img) {
+  const d = img.dataset.direct;
+  if (!d) return false;
+  delete img.dataset.direct;
+  img.src = d;
+  return true;
+};
+// מחזיר את מאפייני ה-src: דרך הוורקר (עם data-direct), או – בלי וורקר – כמו קודם (upgradeFn = שדרוג thumb→מלא)
+function yzImgAttrs(full, thumb, px, upgradeFn) {
+  const proxied = yzImgProxyUrl(full, px);
+  if (proxied) return `src="${proxied}" data-direct="${thumb || full}"${thumb ? ` data-full="${full}"` : ''}`;
+  return `src="${thumb || full}"${thumb && upgradeFn ? ` data-full="${full}" onload="${upgradeFn}(this)"` : ''}`;
+}
+function yzImgProbe(container) {
+  const first = container.querySelector('img[data-direct]');
+  if (!first) return;
+  let settled = false;
+  const fallBack = () => {
+    if (settled) return; settled = true;
+    yzImgProxyOff = true;
+    container.querySelectorAll('img[data-direct]').forEach(window.yzImgUseDirect);
+  };
+  const probe = new Image();
+  const timer = setTimeout(fallBack, 6000);
+  probe.onload = () => { settled = true; clearTimeout(timer); };
+  probe.onerror = () => { clearTimeout(timer); fallBack(); };
+  probe.src = first.getAttribute('src');
+}
 
 function previewCardHtml(biz) {
   // זהה בדיוק לשער ב-home.html (bizCardImage) — "יש תמונה" נקבע לפי השדה הראשי בלבד
@@ -5117,11 +5160,13 @@ function previewCardHtml(biz) {
   const fillBg = !fitted ? ''
     : (biz.coverPhotoBg
       ? `<span class="biz-card-cover-fill" style="background:${biz.coverPhotoBg}"></span>`
-      : `<img src="${cover}" alt="" aria-hidden="true" class="biz-card-cover-bg" loading="lazy" onerror="this.remove()"/>`);
-  // טעינה דו-שלבית לתמונת השער — זהה ל-upgradeCardCover ב-home.html, ר' ההסבר המלא שם
-  const coverUpgrade = coverThumb ? ` data-full="${coverFull}" onload="upgradeCardCover(this)"` : '';
+      : `<img ${yzImgAttrs(coverFull, coverThumb, 240)} alt="" aria-hidden="true" class="biz-card-cover-bg" loading="lazy" onerror="if(!yzImgUseDirect(this))this.remove()"/>`);
+  // §755 — הכרטיס כאן 238px; השער עד 2×, הלוגו (58px) עד 3× – כמו home.html
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const coverPx = 238 * Math.min(dpr, 2) * (fitted ? Math.max(1, zoom) : 1);
+  const logoThumb = hasLogo && looksLikeImageUrl(biz.logoThumb) ? biz.logoThumb : '';
   const imgHtml = hasCover
-    ? `${fillBg}<img src="${cover}" alt="${biz.name}" class="biz-card-cover-img${fitted ? ' fitted' : ''}"${coverStyle}${coverUpgrade} loading="lazy" onerror="cardCoverFailed(this)"/>${hasLogo ? `<div class="biz-card-logo-badge${biz.logoFit === 'contain' ? ' fit' : ''}"><img src="${logo}" alt="" loading="lazy" onerror="this.parentElement.remove()"/></div>` : ''}`
+    ? `${fillBg}<img ${yzImgAttrs(coverFull, coverThumb, coverPx, 'upgradeCardCover')} alt="${biz.name}" class="biz-card-cover-img${fitted ? ' fitted' : ''}"${coverStyle} loading="lazy" onerror="cardCoverFailed(this)"/>${hasLogo ? `<div class="biz-card-logo-badge${biz.logoFit === 'contain' ? ' fit' : ''}"><img ${yzImgAttrs(logo, logoThumb, 58 * dpr)} alt="" loading="lazy" onerror="if(!yzImgUseDirect(this))this.parentElement.remove()"/></div>` : ''}`
     : `<div class="biz-logo">${biz.name}</div>`;
   const likeCount = (biz.likedBy || []).length;
   return `
@@ -5244,6 +5289,7 @@ try {
   const wrap = document.getElementById('previewCardsScroll');
   if (ordered.length) {
     wrap.innerHTML = ordered.map(previewCardHtml).join('');
+    yzImgProbe(wrap);   // §755
   } else {
     wrap.innerHTML = '<div style="padding:20px;color:var(--ink-3);font-size:13px">עדיין אין עסקים מאושרים להצגה</div>';
   }
