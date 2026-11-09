@@ -5671,7 +5671,7 @@ function bizClassCounts() {
     all: MOCK_BUSINESSES.filter(b => !bizOnlyFix || bizInFix(b)).length,
     pending: MOCK_BUSINESSES.filter(b => bizClassMatch(b, 'pending') && (!bizOnlyFix || bizInFix(b))).length,
     fix: MOCK_BUSINESSES.filter(bizInFix).length,   // §675
-    requests: MOCK_BUSINESSES.filter(b => classifyAction(b, 'business').treatments.length > 0 && (!bizOnlyFix || bizInFix(b))).length,
+    requests: MOCK_BUSINESSES.filter(b => classifyNoNote(b).treatments.length > 0 && (!bizOnlyFix || bizInFix(b))).length,   // §750
     approved: MOCK_BUSINESSES.filter(b => bizShownStatus(b) === 'approved' && (!bizOnlyFix || bizInFix(b))).length,
     rejected: MOCK_BUSINESSES.filter(b => b.status === 'rejected').length,
     // §232 — עסקים עם אתר/פייסבוק/אינסטגרם שאינו כתובת אמיתית. הפיל מוצג רק כשיש כאלה,
@@ -5730,7 +5730,7 @@ function bizClassMatch(b, pill) {
     : pill === 'rejected' ? b.status === 'rejected'
     : pill === 'brokenLinks' ? brokenLinksFor(b).length > 0
     : pill === 'hoursOther' ? hoursIssues(b).length > 0
-    : classifyAction(b, 'business').treatments.length > 0;
+    : classifyNoNote(b).treatments.length > 0;   // §750
 }
 function bizFilteredList() {
   const q = bizSearch.trim();
@@ -11508,6 +11508,15 @@ window.onEditCatChange = function(id) {
   editSelectedTags = [];
   editSecondTagOpen = false;
   rerenderEditTagsArea(id);
+  // §750 – "קטגוריה נוספת" נבנתה פעם אחת לפי הראשית השמורה, כך שבהחלפת ראשית (דיגיטל → מתנות)
+  // הקטגוריה הקודמת נשארה חסרה ברשימה. עכשיו הרשימה נבנית מחדש לפי הראשית שנבחרה כרגע.
+  const sel = document.getElementById('edit_alsoCat_' + id);
+  const primary = (document.getElementById('edit_cat_' + id) || {}).value || '';
+  if (sel) {
+    const cur = sel.value === primary ? '' : sel.value;
+    sel.innerHTML = '<option value="">– ללא –</option>' + CATEGORIES.filter(c => c.key !== primary)
+      .map(c => `<option value="${c.key}" ${cur===c.key?'selected':''}>${c.icon} ${c.label}</option>`).join('');
+  }
 };
 
 // ── אימות "אוהד מכבי" של בעל העסק בטופס עריכה — מציג רק את קבוצת השדות של הנתיב שנבחר בפועל ──
@@ -13323,7 +13332,7 @@ let selectedTaskKey = null;     // "biz:ID" / "fan:ID" — הכרטיס הפתו
 // §356 — איזה סוג-תקלה מוצג בתוך קוביית "תקלות ופניות". 'all' = הרשימה המאוחדת, שהיא
 // **ברירת המחדל בכוונה**: הבקשה של המשתמש הייתה לראות מיד שיש מה לבדוק, ורשימה שמתחילה
 // על סוג מסוים היא בדיוק החזרה למצב שבו צריך לעבור סוג-סוג.
-let taskIssueKind = 'all';      // 'all' | 'mail' | 'reg' | 'login' | 'help' | 'fanMsg' | 'conv' | 'bizErrors' | 'selfDelete'
+let taskIssueKind = 'all';      // 'all' | 'mail' | 'reg' | 'login' | 'help' | 'fanMsg' | 'bizMsg' | 'conv' | 'bizErrors' | 'selfDelete'
 
 const TASK_CLASS_TILES = [
   { key: 'pendingBiz', primary: 'עסק ממתין לאישור', label: 'עסקים ממתינים לאישור' },
@@ -13377,6 +13386,10 @@ function selfDeleteList() {
     })
     .sort((a, b) => (b.at ? b.at.getTime() : 0) - (a.at ? a.at.getTime() : 0));
 }
+// §750 — "כתבו לנו" של עסקים (כל סטטוס) שעוד לא סומן כטופל
+function bizMsgOpenList() {
+  return MOCK_BUSINESSES.filter(bizHasUnhandledNote).map(b => ({ b, at: toJsDate(b.noteAt) }));
+}
 function selfDeleteOpenList() { return selfDeleteList().filter(x => !x.handled); }
 
 const ISSUE_KINDS = [
@@ -13391,6 +13404,7 @@ const ISSUE_KINDS = [
   // §501 — שיחות עם הצוות. ממתינה = המילה האחרונה של האדם.
   { key: 'conv',      label: 'שיחות',         open: () => convPendingList(),       urgent: l => l.length },
   { key: 'fanMsg',    label: 'כתבו לנו – אוהדים', open: () => fanMsgOpenList(),   urgent: l => l.length },
+  { key: 'bizMsg',    label: 'כתבו לנו – עסקים',  open: () => bizMsgOpenList(),   urgent: l => l.length },   // §750
   { key: 'bizErrors', label: 'דשבורד עסק',    open: () => bizWriteErrorList(),     urgent: l => l.length },
   // ⚠️ `urgent: 0` — עזיבה אינה תקלה שלנו ואי אפשר "לתקן" אותה, ולכן היא לא צריכה לצבוע
   // את המונה באדום לצד כשלים שכן דורשים פעולה. היא כן חייבת להיראות, וזה מה שהיא מקבלת.
@@ -13412,12 +13426,15 @@ function issueKindCounts() {
 // §736ב – הסיווג של עסק ברשימת המשימות. עסק שמחכה לתיקון (bizWaitingOwner) נשאר רק בגלל מה שבעל העסק עשה אחרי שביקשנו:
 // בקשת שינוי (details), "כתבו לנו" שנכתב אחרי inReviewAt, או תגובה בכתב על בקשת התיקון (§735, fixReplyAt) – ואז תחת
 // "בקשות מבעלי עסקים". תגית/קטגוריה/הערה מההרשמה כבר נסקרו כשביקשת לתקן – לא משימה עד שהוא מתקן.
+// §750 – רמי: "כל הכתבו לנו עסקים שים לי בתקלות ופניות, ושלא יהיה בבקשות מבעלי עסקים" (UseAI, מאושר, נתקע שם בגלל הערה מ-26.10).
+// "כתבו לנו" של עסק עבר לשבב "כתבו לנו – עסקים" בתקלות ופניות (bizMsgOpenList). כאן הסיווג מתעלם ממנו; התווית בכרטיס נשארת.
+function classifyNoNote(b) { return classifyAction(b.note && !b.noteHandled ? { ...b, noteHandled: true } : b, 'business'); }
 function bizTaskClass(b) {
-  const c = classifyAction(b, 'business');
+  const c = classifyNoNote(b);
   if (!bizWaitingOwner(b)) return c;
   const asked = toJsDate(b.inReviewAt);
   const after = v => { const d = toJsDate(v); return !!d && (!asked || d > asked); };
-  const t = c.treatments.filter(x => x === 'details' || (x === 'note' && after(b.noteAt)));
+  const t = c.treatments.filter(x => x === 'details');   // §750 – "כתבו לנו" עבר לתקלות ופניות
   if (after(b.fixReplyAt)) t.push('fixReply');
   return { ...c, treatments: t, primary: t.length && c.primary === 'עסק ממתין לאישור' ? 'בקשה מבעל העסק' : c.primary };
 }
@@ -13590,6 +13607,16 @@ function unifiedIssueList() {
     markJs: 'markHelpReqHandled(' + [q1(x.id), q1(escJsAttr(x.who || ''))].join(',') + ')',
   }));
 
+  // §750 — "כתבו לנו" מעסק (שדה note על מסמך העסק, לא helpRequests). "טיפלתי" = opNoteDone, כמו "✓ סימון כטופל" ב"מה פתוח".
+  bizMsgOpenList().forEach(({ b, at }) => out.push({
+    kind: 'bizMsg', at, urgent: true,
+    who: b.name + (b.ownerFirst ? ' · ' + [b.ownerFirst, b.ownerLast].filter(Boolean).join(' ') : ''),
+    title: 'בעל העסק כתב לנו' + (b.status === 'pending' ? ' · העסק ממתין לאישור' : ''),
+    meta: [b.note, [b.ownerPhone, b.ownerEmail].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
+    entity: { kind: 'biz', id: b.id },
+    markJs: 'opNoteDone(' + q1(escJsAttr(b.id)) + ')',
+  }));
+
   // §501 — שיחה שממתינה לתשובה. הכפתור פותח את השיחה (התשובה היא ה"טיפלתי").
   convPendingList().forEach(x => out.push({
     kind: 'conv', at: x.at, urgent: true,
@@ -13641,7 +13668,7 @@ function unifiedIssueFilteredList() {
   if (q) list = list.filter(x => (x.who + ' ' + x.title + ' ' + x.meta).includes(q));
   return list;
 }
-const ISSUE_KIND_LABELS = { mail: 'מייל', reg: 'הרשמה', login: 'כניסה', help: 'פניית עזרה', fanMsg: 'כתבו לנו', conv: 'שיחה', bizErrors: 'דשבורד עסק', selfDelete: 'מחק חשבון' };
+const ISSUE_KIND_LABELS = { mail: 'מייל', reg: 'הרשמה', login: 'כניסה', help: 'פניית עזרה', fanMsg: 'כתבו לנו', bizMsg: 'כתבו לנו – עסק', conv: 'שיחה', bizErrors: 'דשבורד עסק', selfDelete: 'מחק חשבון' };
 // ── §363 — שורות הרשימה המאוחדת, בפונקציה נפרדת ─────────────────────────────────────
 // הופרד מ-unifiedIssuesTableHtml כדי שאפשר יהיה להציג שורות **יחד עם** אזהרת-טעינה,
 // במקום לבחור בין השתיים. מצב טעינה-חלקית הוא מצב אמיתי: תקלות המייל והפניות זמינות
@@ -13693,6 +13720,7 @@ function unifiedIssuesTableHtml(list) {
       '<div style="margin-top:8px"><button class="act-btn tiny" onclick="retryIssueEvents()">נסה שוב</button></div></div>' +
       (list.length ? unifiedIssueRowsHtml(list) : '');
   }
+  if (!list.length && taskIssueKind === 'bizMsg') return '<div class="placeholder-note">אין הודעות פתוחות מבעלי עסקים. כאן ינחת כל "כתבו לנו" שבעל עסק כתב בהרשמה או בדשבורד.</div>';   // §750
   if (!list.length && taskIssueKind === 'selfDelete') {
     return '<div class="placeholder-note">' + (delPending ? 'יומן המחיקות נטען…'
       : 'אף אוהד לא מחק את החשבון שלו (מחיקות שבוצעו מכאן לא נספרות).') + '</div>';
@@ -13762,6 +13790,7 @@ function taskCenterTableHtml() {
 }
 function taskCenterCountLabel() {
   if (issuesActive() && taskIssueKind === 'all') return `מציג ${unifiedIssueFilteredList().length} מתוך ${unifiedIssueList().length}`;
+  if (issuesActive() && taskIssueKind === 'bizMsg') return `מציג ${unifiedIssueFilteredList().length} מתוך ${bizMsgOpenList().length}`;   // §750
   if (issuesActive() && taskIssueKind === 'selfDelete') return `מציג ${unifiedIssueFilteredList().length} מתוך ${selfDeleteOpenList().length}`;
   if (mailIssuesActive()) return `מציג ${mailFilteredList().length} מתוך ${mailIssueList().length}`;
   if (bizErrorsActive()) return `מציג ${bizErrorFilteredList().length} מתוך ${bizWriteErrorList().length}`;
@@ -13819,7 +13848,7 @@ function taskTilesHtml() {
     <div class="class-tiles" id="taskTilesWrap">
       ${tile(TASK_CLASS_TILES[0], countOf('עסק ממתין לאישור'), `<div class="class-tile-sub">${oldestPendingBiz ? `הוותיק ביותר ממתין ${agoLabel(taskWaitDate(oldestPendingBiz))}` : 'אין ממתינים כרגע'}</div>`)}
       ${tile(TASK_CLASS_TILES[1], countOf('אוהד ממתין לאישור'), `<div class="class-tile-sub">${flaggedFans ? `⚠️ ${flaggedFans} עם דגל בדיקה` : ''}</div>`)}
-      ${tile(TASK_CLASS_TILES[2], requestsItems.length, `<div class="class-tile-chips"><span class="treat-badge">שינוי פרטים ${tCount('details')}</span><span class="treat-badge">תגית ${tCount('tag')}</span><span class="treat-badge">קטגוריה ${tCount('category')}</span><span class="treat-badge">כתבו לנו ${tCount('note')}</span></div>`)}
+      ${tile(TASK_CLASS_TILES[2], requestsItems.length, `<div class="class-tile-chips"><span class="treat-badge">שינוי פרטים ${tCount('details')}</span><span class="treat-badge">תגית ${tCount('tag')}</span><span class="treat-badge">קטגוריה ${tCount('category')}</span></div>`)}
       ${tile(TASK_CLASS_TILES[3], countOf('כרטיס חסר באינדקס'), `<div class="class-tile-chips"><span class="warn-badge">חסרים פרטים בכרטיס</span>${(() => { const a = MOCK_BUSINESSES.filter(b => b.status === 'approved' && kosherMissing(b)).length, p = MOCK_BUSINESSES.filter(b => b.status === 'pending' && kosherMissing(b)).length; return (a || p) ? `<span class="warn-badge">🍽️ כשרות ${a}${p ? ` + ${p} ממתינים` : ''}</span>` : ''; })()}</div><div class="class-tile-sub">שדה שלא חובה על העסק? "✔️ טופל" בשורה מוריד אותו מכאן</div>`)}
       ${(() => {
         // ── §356 — קובייה אחת במקום חמש ──────────────────────────────────────────────
