@@ -494,6 +494,9 @@
     .success-state p  { color: var(--text-muted); font-size: 14px; line-height: 1.5; margin-top: 8px; }
     .success-state .sb-p { display: block; }
     .success-state .sb-p + .sb-p { margin-top: 9px; }
+    /* §760 — "ההרשמה שמורה בטלפון": אותו מבנה כמו מסך ההצלחה, אבל **לא** מסך ההצלחה (§292 – הצלחה = סופית) */
+    .queued-state .success-icon { animation: none; box-shadow: none; }
+    .queued-state .q-status { margin-top: 14px; font-size: 13px; color: var(--text-muted); min-height: 20px; }
 
     /* §341 — הערה רכה: מיידעת ולא עוצרת. מכוונת להיקרא כשונה מ-.field-error — בלי אדום,
        בלי מסגרת, בלי shakeX. אם היא תיראה כמו שגיאה, הנרשם יחשוב שהוא חסום. */
@@ -566,6 +569,7 @@
     }
     footer a { color: var(--text); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
   </style>
+  <script src="reg-queue.js?v=760"></script><!-- §760 הרשמה שנשמרת בטלפון בלי קליטה -->
   <script src="native-push.js?v=576"></script><script src="push-ask.js?v=757"></script><!-- §502 בקשת התראות במסך ההצלחה -->
   <script src="app-links.js?v=591" defer></script><!-- §499 קישור לעסק → כרטיס העסק באפליקציה; "הוסיפו עסק" לא יוצא לדפדפן -->
 </head>
@@ -1059,6 +1063,14 @@
       <div class="success-icon"><img src="images/yellowzone-mark-square.png" alt="Yellow Zone" /></div>
       <h3 id="successTitle">הבקשה התקבלה!</h3>
       <p id="successBody"></p>
+    </div>
+
+    <!-- §760 — אין קליטה בשליחה: ההרשמה שמורה בטלפון (reg-queue.js) ונשלחת לבד. כשנשלחה – עוברים למסך ההצלחה. -->
+    <div class="success-state queued-state" id="queuedState">
+      <div class="success-icon"><img src="images/yellowzone-mark-square.png" alt="Yellow Zone" /></div>
+      <h3>ההרשמה שמורה בטלפון</h3>
+      <p>ברגע שתחזור קליטה – היא תישלח לבד.<br/>אפשר לסגור את האפליקציה: נשלח גם כשתפתחו אותה שוב.</p>
+      <div class="q-status" id="queuedStatus" aria-live="polite"></div>
     </div>
 
   </div>
@@ -2101,6 +2113,133 @@
     submitBtn.innerHTML = 'שלח בקשת הצטרפות';
   }
 
+  // ══ §760 — אין קליטה? ההרשמה נשמרת בטלפון ונשלחת לבד (reg-queue.js) ══════════════════════
+  // נכנסים לכאן רק כשברור שהרשת היא הבעיה: הדפדפן מדווח offline, בדיקת הכפילות לא הגיעה לשום
+  // כתובת, או ששתי דרכי השליחה (Firestore + וורקר) לא אישרו עד התקרה. כל דחייה אמיתית
+  // (permission-denied, "כבר רשום") נשארת בדיוק כמו קודם.
+  // 🔑 ההרשמה נשמרת עם אותו memberId – ושליחה מאוחרת לא יכולה ליצור כפולה (ר' reg-queue.js).
+  const queuedEl = document.getElementById('queuedState');
+  const queuedStatusEl = document.getElementById('queuedStatus');
+  let queuedTimer = null, queuedLive = false;
+  const PROOF_INPUT = { passScreenshot: 'passFile', purchaseEmail: 'emailFile' };
+  function currentProofFile() {
+    const isSub = document.getElementById('isSubscriber').value;
+    const id = isSub === 'no' ? 'fansPhoto' : PROOF_INPUT[document.getElementById('verifyRoute').value];
+    return id ? (document.getElementById(id)?.files?.[0] || null) : null;
+  }
+
+  async function queueRegistration(data, reason, proofFile) {
+    if (!window.YZRegQueue) return false;
+    try {
+      const reg = await regTicketP;
+      const payload = {};
+      // serverTimestamp() אינו JSON — הוורקר קובע את הזמנים בעצמו (כמו runWorker ב-submitMember)
+      for (const [k, v] of Object.entries(data)) if (k !== 'submittedAt' && k !== 'reviewFlagAt') payload[k] = v;
+      if (reg) payload.regTicketHash = reg.hash;
+      // ההעלאה שרצה מאז בחירת הקובץ כבר הסתיימה? לוקחים את הכתובת שלה ולא שומרים קובץ.
+      if (!payload.photoProofUrl && proofFile && proofUpload && proofUpload.file === proofFile && proofUpload.done) {
+        try { payload.photoProofUrl = await proofUpload.promise; } catch (e) {}
+      }
+      let proof = null, proofType = '';
+      if (!payload.photoProofUrl && proofFile) {
+        try {
+          const f = await compressProofToFile(proofFile);   // עובד בלי רשת
+          if (f.size <= PROOF_MAX_BYTES) { proof = await f.arrayBuffer(); proofType = f.type || 'image/jpeg'; }
+        } catch (e) { console.error('§760 דחיסת התמונה לתור נכשלה', e); }
+      }
+      await window.YZRegQueue.save({
+        memberId: memberRef.id, data: payload, proof, proofType,
+        ticket: reg ? reg.ticket : null, name: (data.firstName || '').slice(0, 40),
+      });
+    } catch (e) {
+      console.error('§760 שמירת ההרשמה בטלפון נכשלה', e);
+      return false;
+    }
+    saveRegDraft();   // נשארת עד שההרשמה נשלחת (reg-queue מוחק אותה), ונשארת גם אם פג תוקף התור
+    logEvent('formStep', { blockId: 'fanRegister', channel: ('queued:' + reason).slice(0, 50), memberId: memberRef.id });
+    resetSubmitBtn();
+    showQueued();
+    return true;
+  }
+
+  function showQueued() {
+    setSubmitStatus('');
+    form.style.display = 'none';
+    success.style.display = 'none';
+    queuedEl.style.display = 'block';
+    try { queuedEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+    if (queuedLive) return;
+    queuedLive = true;
+    queuedTick();
+    window.addEventListener('online', queuedTick);
+    document.addEventListener('visibilitychange', onQueuedVisible);
+  }
+  function onQueuedVisible() { if (document.visibilityState === 'visible') queuedTick(); }
+
+  async function queuedTick() {
+    if (!queuedLive) return;
+    clearTimeout(queuedTimer);
+    queuedStatusEl.textContent = 'מנסים לשלוח…';
+    const res = await window.YZRegQueue.flush({ log: logEvent });
+    if (!queuedLive) return;
+    if (res.status === 'sent') return finishQueued(res.rec);
+    if (res.status === 'dup' || res.status === 'failed' || res.status === 'expired') return leaveQueued(res);
+    // 'none' = דף אחר (welcome) כבר שלח בינתיים → אין מה לעשות כאן מלבד הצלחה
+    if (res.status === 'none') return finishQueued(null);
+    queuedStatusEl.textContent = 'עדיין אין קליטה – ננסה שוב בעוד רגע.';
+    queuedTimer = setTimeout(queuedTick, 15000);
+  }
+
+  function stopQueued() {
+    queuedLive = false;
+    clearTimeout(queuedTimer);
+    window.removeEventListener('online', queuedTick);
+    document.removeEventListener('visibilitychange', onQueuedVisible);
+    queuedEl.style.display = 'none';
+  }
+
+  // נשלחה → אותו סוף כמו שליחה רגילה (§292: מסך הצלחה סופי, אחרי קישור Google/Apple)
+  async function finishQueued(rec) {
+    stopQueued();
+    if (rec) {
+      try { await window.hbGoogleSignup?.attach(hbApiFetch, rec.memberId); } catch (e) {}
+      try { await window.hbAppleSignup?.attach(hbApiFetch, rec.memberId); } catch (e) {}
+    }
+    form.style.display = 'none';
+    success.style.display = 'block';
+    try { window.YZPushAsk && window.YZPushAsk.afterSubmit(success, { apiFetch: hbApiFetch }); } catch (e) {}
+    const vm = rec && rec.data.verifyMethod;
+    if (rec && (vm === 'standsPhoto' || vm === 'passScreenshot' || vm === 'purchaseEmail') && !rec.data.photoProofUrl) {
+      helpLastError = 'queue-proof';
+      const note = document.createElement('div');
+      note.className = 'proof-fail-note';
+      note.innerHTML =
+        '<div class="proof-fail-title">התמונה לא עלתה – אבל הבקשה שלך נקלטה</div>' +
+        '<div class="proof-fail-body">כדי שנוכל לאמת אותך נצטרך את התמונה. השאירו לנו פרטים ונשלים אותה מולכם – אין צורך למלא את הטופס שוב.</div>' +
+        '<button type="button" class="proof-fail-btn" onclick="openHelp(\'photoFail\')">השאירו לנו פרטים</button>';
+      success.appendChild(note);
+    }
+  }
+
+  // לא נשלחה ולא תישלח (כבר רשום / נדחתה / פג תוקף) → חזרה לטופס עם הסבר
+  function leaveQueued(res) {
+    stopQueued();
+    form.style.display = '';
+    if (res.status === 'dup') {
+      showAlreadyRegistered(true);
+      setSubmitStatus('ההרשמה לא נשלחה – נראה שכבר נרשמת עם הטלפון או המייל האלה.', 'err');
+    } else {
+      helpLastError = 'queue-' + (res.error || res.status);
+      setSubmitStatus('ההרשמה שנשמרה בטלפון לא נקלטה. הפרטים שמילאת כאן – אפשר לשלוח שוב.', 'err');
+      showHelpCta(statusEl, 'submitFail', 'לא הצליח? ספרו לנו מה קרה');
+    }
+    try { statusEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+  }
+
+  // פתיחה חוזרת של הטופס כשיש הרשמה שמורה → ישר למסך "שמורה בטלפון" (ולא טופס שאפשר לשלוח שוב
+  // עם מזהה חדש – שתי רשומות, אם שתיהן נשלחות לפני שהוורקר רואה את הראשונה).
+  if (window.YZRegQueue) window.YZRegQueue.get().then((rec) => { if (rec && rec.memberId) showQueued(); });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     setSubmitStatus('');
@@ -2224,6 +2363,7 @@
     // **לפני** addDoc: מרגע שהכתיבה נכנסה לתור-המקומי של Firestore היא תסונכרן בהמשך בכל מקרה,
     // ולחיצה חוזרת אחריה כבר יוצרת רשומה כפולה. הטיוטה נשמרת כדי שהטופס לא ילך לאיבוד.
     if (navigator.onLine === false) {
+      if (await queueRegistration(data, 'offline', currentProofFile())) return;   // §760
       resetSubmitBtn();
       saveRegDraft();
       // §284 — נרשם גם כשאין רשת: האירוע יסונכרן כשהחיבור יחזור, וכך "ניסה ולא הצליח"
@@ -2245,6 +2385,9 @@
     const dedup = (warmed && warmed.ok)
       ? warmed
       : await findExistingMemberId(data.phone, data.email, data.firstName, data.lastName);
+    // §760 — הבדיקה לא הגיעה לאף כתובת (8 שנ') = כנראה אין קליטה. במקום לחכות עוד דקה וחצי
+    // לתמונה ולשליחה – שומרים בטלפון; אם הרשת דווקא כן עובדת, התור שולח תוך שניות ועובר להצלחה.
+    if (dedup.ok === false && await queueRegistration(data, 'dedupNet', currentProofFile())) return;
     if (dedup.registered) {
       resetSubmitBtn();
       showAlreadyRegistered(true);
@@ -2272,7 +2415,6 @@
     // לבדוק ארבעה שדות כדי להציג תמונה אחת.
     // §344 — 'standsPhoto' נשאר במפה: הוא ה-verifyMethod של כל **לא-מנוי**, ואצלו הקובץ
     // מגיע מ-'fansPhoto' (ר' proofInputId בשורה הבאה). המסלול נעלם מהבורר של המנויים בלבד.
-    const PROOF_INPUT = { passScreenshot: 'passFile', purchaseEmail: 'emailFile' };
     const proofInputId = isSub === 'no' ? 'fansPhoto' : PROOF_INPUT[routeVal];
     const proofFile = proofInputId ? document.getElementById(proofInputId)?.files[0] : null;
     let proofError = null;
@@ -2368,6 +2510,9 @@
     } catch (err) {
       console.error('Firebase error:', err);
       clearTimeout(slowTimer);
+      // §760 — אף דרך שליחה לא אישרה (stuck) או Firestore לא זמין → רשת. שומרים בטלפון עם התמונה.
+      if ((err?.code === 'stuck' || err?.code === 'unavailable') &&
+          await queueRegistration(data, 'submit:' + err.code, proofError ? proofFile : null)) return;
       resetSubmitBtn();
       saveRegDraft();
       // ── §284 — "ניסה להירשם ונכשל" ────────────────────────────────────────────────────────
