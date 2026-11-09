@@ -25,12 +25,12 @@ const DOCS = {
   '5|mail': { ch: { app: false, push: false, mail: true, wa: false },
     mail: { subject: '{name}, צריכים משהו? כמעט 150 עסקים של אוהדים מחכים לך', body: `היי {name},\n\nצריכים חשמלאי, מסעדה, DJ לאירוע או מתנה? לפני שמחפשים בגוגל – בודקים ב-Yellow Zone.\n\nבעלי מקצוע, אוכל, אירועים ומתנות – ${BIZ_N} עסקים של אוהדים כבר כאן, כל אחד עם הטבה רק לחברים.\n\nהם פרגנו לקבוצה כל השנים. עכשיו התור שלנו להחזיר באהבה 💛\n\n{link}` } },
   '1|*': { ch: { app: false, push: false, mail: true, wa: false },
-    mail: { subject: '{name}, אושרת – והעסקים של האוהדים כבר מחכים לך', body: `היי {name},\n\nאושרת ל-Yellow Zone 🎉 והעסקים של האוהדים כבר מחכים לך.\n\n${MAIL_FANS_BIZ}\n\nהגיע הזמן להתחיל לקנות כחול צהוב 💛💙\n\nפותחים את Yellow Zone בטלפון שנרשמת ממנו. לא נכנס לבד? זה הקוד שלך:\n{code}\n\n{link}` } },
+    mail: { subject: '{name}, אושרת – והעסקים של האוהדים כבר מחכים לך', body: `היי {name},\n\nאושרת ל-Yellow Zone 🎉 והעסקים של האוהדים כבר מחכים לך.\n\n${MAIL_FANS_BIZ}\n\nהגיע הזמן להתחיל לקנות כחול צהוב 💛💙\n\nפותחים את Yellow Zone בטלפון שנרשמת ממנו. לא נכנס לבד? זה הקוד שלך:\n{code}\n\n{link}\n\nרמי, Yellow Zone 💛`, personal: true } },
   '4|now': { ch: { app: false, push: false, mail: true, wa: false },
-    mail: { subject: '{name}, מאז שנרשמת – Yellow Zone התמלאה בעסקים של אוהדים', body: `היי {name},\n\nנרשמת ל-Yellow Zone עוד לפני ההשקה – ומאז הרבה השתנה.\n\n${MAIL_FANS_BIZ}\n\nמתחילים לקנות כחול צהוב 💛💙\n\nמורידים את האפליקציה ונכנסים עם מספר הטלפון והקוד שלך:\n{code}\n\n{link}` } },
+    mail: { subject: '{name}, מאז שנרשמת – Yellow Zone התמלאה בעסקים של אוהדים', body: `היי {name},\n\nנרשמת ל-Yellow Zone עוד לפני ההשקה – ומאז הרבה השתנה.\n\n${MAIL_FANS_BIZ}\n\nמתחילים לקנות כחול צהוב 💛💙\n\nמורידים את האפליקציה ונכנסים עם מספר הטלפון והקוד שלך:\n{code}\n\n{link}\n\nרמי, Yellow Zone 💛`, personal: true } },
   // לעסק {link} = ניהול העסק – לכן קישור ההורדה כתוב קבוע (מהמחשב הם נכנסים מהקישור באזור האישי)
   '3|mail': { ch: { app: false, push: false, mail: true, wa: false },
-    mail: { subject: '{business} – באפליקציה מחכים לך עדכונים', body: 'היי {name},\n\nהאוהדים כבר רואים את {business} באפליקציה של Yellow Zone.\n\nבאפליקציה מחכים לך עדכונים שיביאו לעסק יותר חשיפה ויותר עסקאות.\n\nמורידים את האפליקציה ונכנסים כמו שנרשמת:\nhttps://yellowzone.co.il/download' } },
+    mail: { subject: '{business} – באפליקציה מחכים לך עדכונים', body: 'היי {name},\n\nהאוהדים כבר רואים את {business} באפליקציה של Yellow Zone.\n\nבאפליקציה מחכים לך עדכונים שיביאו לעסק יותר חשיפה ויותר עסקאות.\n\nמורידים את האפליקציה ונכנסים כמו שנרשמת:\nhttps://yellowzone.co.il/download\n\nרמי, Yellow Zone 💛', personal: true } },
 };
 const docFor = (id, k) => DOCS[id + '|' + k] || DOCS[id + '|*'] || null;
 // הוואטסאפ במעקב 3 – נערך במסך ונשמר ב-settings/trackerTexts.wa3. {how} = הדרך שלו להיכנס (והקוד, אם הוא עם קוד)
@@ -141,7 +141,7 @@ function tracker(id) {
     const due = fans.filter(m => { const d = daysOf(m); return d.length === 1 && d[0] <= old3; });
     const ago = m => U.dayDiff(daysOf(m)[0], U.D.today);
     return { start, since, left, people: true, sinceLbl: 'חזרו מאז',
-      def: 'אוהדים מאושרים (בלי בעלי עסק) שעד יום הצילום נכנסו ביום אחד בלבד – ותיקים נספרים מההשקה. "חזרו" = נכנסו ביום נוסף מאז.',
+      def: 'אוהדים מאושרים (בלי בעלי עסק) שנכנסו לאפליקציה ביום אחד בלבד – ותיקים נספרים מההשקה. מי שנכנס ביום נוסף "חזר" ויוצא מהקבוצה; מי שנכנס בפעם הראשונה מצטרף אליה.',
       sinceSub: `${since.filter(pushOn).length} מהם עם פוש`,
       leftSub: `פוש ${left.filter(pushOn).length} · מייל בלבד ${left.filter(m => !pushOn(m) && m.email).length} · ${left.filter(x.isVet).length} ותיקים`,
       extra: `לשליחה עכשיו: <b>${U.f(due.length)}</b> – כל מי שבקבוצה היום (גם מי שהצטרף אליה אחרי יום הצילום) ולא נראה 3 ימים ומעלה.`,
@@ -287,46 +287,44 @@ function stageSplit(trId, p) {
   return { due, got: p.ids.length - due.length, last: [...g.values()].reduce((a, d) => (!a || (d && d > a) ? d : a), null) };
 }
 
-// ══ §744 — "לפי ימים": כמה יצאו מהקבוצה בכל יום, חץ מול אתמול, סינון תקופה, 📨 על ימי שליחה ═════
-// series(id) = לכל יום מיום הצילום עד היום: left = כמה מקבוצת הצילום עדיין בה בסוף היום, group = מי
-// בקבוצה באותו יום (כולל מי שהצטרף אחרי הצילום). out = left של אתמול פחות left של היום.
-// אותן הגדרות כמו tracker(id) – לכן "נשארו" בסוף התקופה = "נשארו" בכרטיס.
+// ══ §748 — "כמה בקבוצה בכל יום" (רמי: "אני רוצה לראות תזוזה ומגמה… כמה היינו ומה השיפור") ═══════════
+// series(id) = לכל יום מההשקה עד היום: group = כמה בקבוצה בסוף היום, out = כמה יצאו ממנה באותו יום
+// (נכנסו / חזרו / נרשמו – השיפור), inn = כמה הצטרפו אליה (חדשים שנכנסו לקבוצה). group(היום) − group(אתמול) = inn − out.
+// מגדירים לכל מעקב מי בקבוצה ביום d (inG), ומשווים יום ליום – לכן המספרים זזים כל יום.
 let SER = {}, SERkey = '';
 function series(id) {
-  const x = U.base(), h = hist(), snap = S.snap, L = U.LAUNCH, today = U.D.today, C = U.C;
-  const key = U.D.loadedAt.getTime() + ':' + x.fans.length + ':' + snap + ':' + (C.biz() || []).length;
+  const x = U.base(), h = hist(), L = U.LAUNCH, today = U.D.today, C = U.C;
+  const key = U.D.loadedAt.getTime() + ':' + x.fans.length + ':' + (C.biz() || []).length;
   if (SERkey !== key) { SER = {}; SERkey = key; }
   if (SER[id]) return SER[id];
-  const days = []; for (let d = snap; d <= today; d = U.addDays(d, 1)) days.push(d);
+  const days = []; for (let d = L; d <= today; d = U.addDays(d, 1)) days.push(d);
   const arr = set => set ? [...set].sort() : [];
   const md = new Map(); const mdOf = m => { let a = md.get(m.id); if (!a) md.set(m.id, a = arr(x.memDays[m.id])); return a; };
-  const any = (a, from, to) => a.some(k => k >= from && k <= to);
+  const firstIn = (a, from) => a.find(k => k >= from) || '';   // היום הראשון מ-from שבו נכנס
   const dkOf = d => d ? U.dk(d) : '';
-  const t = tracker(id);
-  let rows;
-  if (id === 1) {
-    const grp = x.fans.filter(m => !x.isVet(m) && m.status === 'approved' && m.approvedAt && dkOf(m.approvedAt) >= L);
-    rows = days.map(d => [d, t.start.filter(m => m.status === 'approved' && !any(mdOf(m), snap, d)).length, grp.filter(m => dkOf(m.approvedAt) <= d && !any(mdOf(m), '0', d)).length]);
-  } else if (id === 2) {
-    const all = Object.keys(x.devFirst).filter(dv => x.devFirst[dv] >= L);
-    rows = days.map(d => [d, t.start.filter(dv => !(h.devLink[dv] && h.devLink[dv] <= d)).length, all.filter(dv => x.devFirst[dv] <= d && !(h.devLink[dv] && h.devLink[dv] <= d)).length]);
-  } else if (id === 3) {
-    const ad = m => arr(h.appDays[m.id]), all = [...t.owners.keys()].map(i => x.byId.get(i)).filter(Boolean);
-    rows = days.map(d => [d, t.start.filter(m => !any(ad(m), snap, d)).length, all.filter(m => !any(ad(m), '0', d)).length]);
-  } else if (id === 4) {
-    const vets = x.fans.filter(m => m.status === 'approved' && x.isVet(m));
-    rows = days.map(d => [d, t.start.filter(m => !any(mdOf(m), snap, d)).length, vets.filter(m => !any(mdOf(m), L, d)).length]);
-  } else if (id === 5) {
-    const fans = x.fans.filter(m => m.status === 'approved' && !(m.isBusinessOwner || m.linkedBusinessId));
-    const dd = m => mdOf(m).filter(k => k >= (x.isVet(m) ? L : U.MEASURE_FROM));
-    rows = days.map(d => [d, t.start.filter(m => !any(dd(m), snap, d)).length, fans.filter(m => dd(m).filter(k => k <= d).length === 1).length]);
-  } else {
-    const B = (C.biz() || []).filter(b => b.registeredAtKnown);
-    const apBy = (b, d) => b.status === 'approved' && b.approvedAt && dkOf(b.approvedAt) <= d;
-    rows = days.map(d => [d, t.start.filter(b => !apBy(b, d)).length, B.filter(b => dkOf(b.registeredAt) <= d && (b.status === 'pending' || (b.status === 'approved' && b.approvedAt && dkOf(b.approvedAt) > d))).length]);
-  }
-  let prev = t.start.length;
-  return (SER[id] = rows.map(([d, left, group]) => { const out = prev - left; prev = left; return { d, left, group, out, part: d === today }; }));
+  const owner = m => !!(m.isBusinessOwner || m.linkedBusinessId);
+  // לכל ישות: [מתי נכנסה לקבוצה, מתי יצאה ממנה ('' = עדיין בה)] – בקבוצה ביום d אם from <= d ו-(אין to או to > d)
+  let span = [];
+  if (id === 1) span = x.fans.filter(m => !x.isVet(m) && m.status === 'approved' && m.approvedAt && dkOf(m.approvedAt) >= L)
+    .map(m => [dkOf(m.approvedAt), firstIn(mdOf(m), '0')]);
+  else if (id === 2) span = Object.keys(x.devFirst).filter(dv => x.devFirst[dv] >= L).map(dv => [x.devFirst[dv], h.devLink[dv] || '']);
+  else if (id === 3) {
+    const own = new Map(); (C.biz() || []).forEach(b => { if (b.ownerMemberId && b.status === 'approved' && x.byId.has(b.ownerMemberId) && !own.has(b.ownerMemberId)) own.set(b.ownerMemberId, b); });
+    span = [...own].map(([mid, b]) => [b.approvedAt && dkOf(b.approvedAt) > L ? dkOf(b.approvedAt) : L, firstIn(arr(h.appDays[mid]), '0')]);
+  } else if (id === 4) span = x.fans.filter(m => m.status === 'approved' && x.isVet(m)).map(m => [L, firstIn(mdOf(m), L)]);
+  else if (id === 5) span = x.fans.filter(m => m.status === 'approved' && !owner(m)).map(m => { const a = mdOf(m).filter(k => k >= (x.isVet(m) ? L : U.MEASURE_FROM)); return a.length ? [a[0], a[1] || ''] : null; }).filter(Boolean);
+  else span = (C.biz() || []).filter(b => b.registeredAtKnown && (b.status === 'pending' || (b.status === 'approved' && b.approvedAt))).map(b => [dkOf(b.registeredAt) < L ? L : dkOf(b.registeredAt), b.status === 'approved' ? dkOf(b.approvedAt) : '']);
+  // מי שיצא באותו יום שנכנס (למשל נרשם ונכנס באותו יום) – לא היה בקבוצה בסוף אף יום
+  span = span.filter(([a, b]) => a && (!b || b > a));
+  const inG = ([a, b], d) => a <= d && (!b || b > d);
+  let prev = null;
+  return (SER[id] = days.map(d => {
+    const group = span.filter(s => inG(s, d)).length;
+    const out = prev ? span.filter(s => s[1] === d && s[0] < d).length : 0;
+    const inn = prev ? span.filter(s => s[0] === d).length : group;
+    prev = d;
+    return { d, group, out, inn, part: d === today };
+  }));
 }
 
 // ── 📨 הודעות שיצאו מיום הצילום: מתויגת-מעקב → המעקב שלה; כללית לכל האוהדים → 1,3,4,5; לעסקים → 3,6 ──
@@ -336,7 +334,7 @@ async function loadMsgs() {
   if (MS.loading) return;
   MS.loading = true; MS.err = ''; MS.snap = S.snap;
   try {
-    const { db, fs } = U.C, from = new Date(U.addDays(S.snap, -1) + 'T00:00:00+02:00');
+    const { db, fs } = U.C, from = new Date(U.addDays(U.LAUNCH, -1) + 'T00:00:00+02:00');
     const s = await fs.getDocs(fs.query(fs.collection(db, 'messages'), fs.where('sentAt', '>=', from), fs.orderBy('sentAt', 'asc')));
     MS.list = s.docs.map(x2 => { const m = x2.data(), at = m.sentAt && m.sentAt.toDate ? m.sentAt.toDate() : null; return at && { d: U.dk(at), title: m.title || '', who: m.who, kind: m.kind, total: m.total || 0, ch: m.ch || {}, mailScope: m.mailScope, tracker: m.tracker || null }; }).filter(Boolean);
   } catch (e) { console.error(e); MS.err = e.message || String(e); MS.list = []; }
@@ -349,49 +347,49 @@ function msgTo(m) {
   return m.who === 'fans' ? { to: [1, 3, 4, 5] } : { to: [3, 6] };
 }
 const CH_L = { push: 'פוש', app: 'באפליקציה', mail: 'מייל', wa: 'וואטסאפ' };
-const msgsFor = id => (MS.list || []).map(m => ({ ...m, ...msgTo(m) })).filter(m => m.to.includes(id) && m.d >= S.snap)
+const msgsFor = id => (MS.list || []).map(m => ({ ...m, ...msgTo(m) })).filter(m => m.to.includes(id) && m.d >= U.LAUNCH)
   .map(m => ({ ...m, chs: Object.keys(CH_L).filter(k => m.ch[k]).map(k => CH_L[k]).join(' · ') + ` · ${U.f(m.total)} נמענים${m.tag && m.tracker.label ? ' · ' + m.tracker.label : m.tag ? '' : ' · הודעה כללית'}` }));
 
-// ── התקופה ──────────────────────────────────────────────────────────────────────────────────
-const PRESETS = [['today', 'היום'], ['yday', 'אתמול'], ['7', '7 ימים'], ['14', '14 ימים'], ['all', 'מאז הצילום'], ['custom', 'תאריכים']];
+// ── התקופה (§748: מההשקה, לא מיום הצילום) ─────────────────────────────────────────────────────
+const PRESETS = [['today', 'היום'], ['yday', 'אתמול'], ['7', '7 ימים'], ['14', '14 ימים'], ['all', 'מאז ההשקה'], ['custom', 'תאריכים']];
 function per() {
-  const T = U.D.today, k = S.pk;
+  const T = U.D.today, k = S.pk, L = U.LAUNCH;
   if (k !== 'custom' || !S.from) {
     if (k === 'today') S.from = S.to = T; else if (k === 'yday') S.from = S.to = U.addDays(T, -1);
-    else if (k === '14') { S.from = U.addDays(T, -13); S.to = T; } else if (k === 'all') { S.from = S.snap; S.to = T; } else { S.from = U.addDays(T, -6); S.to = T; }
+    else if (k === '14') { S.from = U.addDays(T, -13); S.to = T; } else if (k === 'all') { S.from = L; S.to = T; } else { S.from = U.addDays(T, -6); S.to = T; }
   }
-  if (S.from < S.snap) S.from = S.snap; if (S.to > T) S.to = T; if (S.to < S.from) S.to = S.from;
-  const n = U.dayDiff(S.from, S.to) + 1;
-  return { from: S.from, to: S.to, n, pa: U.addDays(S.from, -n), pb: U.addDays(S.from, -1) };
+  if (S.from < L) S.from = L; if (S.to > T) S.to = T; if (S.to < S.from) S.to = S.from;
+  return { from: S.from, to: S.to, n: U.dayDiff(S.from, S.to) + 1 };
 }
 const dt = (cls, txt) => `<span class="yzt-dt ${cls}">${txt}</span>`;
-// יום אחד – מול היום הקודם; כמה ימים – ממוצע ליום מול התקופה הקודמת באותו אורך (רק ימים שיש עליהם נתונים)
-function cmp(id, P) {
-  const s = series(id), a = s.filter(x => x.d >= P.from && x.d <= P.to), b = s.filter(x => x.d >= P.pa && x.d <= P.pb);
-  const now = a.reduce((t, x) => t + x.out, 0), bef = b.reduce((t, x) => t + x.out, 0);
-  if (!b.length) return { now, html: dt('n', 'אין ימים לפני התקופה להשוואה (הנתונים מיום הצילום)'), short: dt('n', '–') };
-  if (a.length === 1 && b.length === 1) { const d = now - bef; return { now, html: d ? dt(d > 0 ? 'g' : 'r', `${d > 0 ? '▲' : '▼'} ${U.f(Math.abs(d))} מהיום הקודם (${U.f(bef)})`) : dt('n', '= כמו היום הקודם'), short: d ? dt(d > 0 ? 'g' : 'r', `${d > 0 ? '▲' : '▼'} ${U.f(Math.abs(d))}`) + ' ' + dt('n', `מול ${U.f(bef)}`) : dt('n', '= כמו אתמול') }; }
-  // §746 – רמי: בכמות, לא באחוזים. כמה יצאו בתקופה מול כמה יצאו בתקופה הקודמת באותו אורך
-  const d = now - bef, part = b.length < a.length ? ` · בתקופה הקודמת יש נתונים רק על ${b.length} ימים` : '';
-  return { now, html: d ? dt(d > 0 ? 'g' : 'r', `${d > 0 ? '▲' : '▼'} ${U.f(Math.abs(d))} מהתקופה הקודמת`) + `<div class="yzt-dt n">${U.f(now)} עכשיו מול ${U.f(bef)} ב-${b.length} הימים שלפני${part}</div>` : dt('n', '= כמו התקופה הקודמת'),
-    short: d ? dt(d > 0 ? 'g' : 'r', `${d > 0 ? '▲' : '▼'} ${U.f(Math.abs(d))}`) + ' ' + dt('n', `מול ${U.f(bef)} בתקופה הקודמת`) : dt('n', '= כמו קודם') };
+// §748 – גובה לפי הטווח של התקופה (לא מאפס), כדי שתזוזה קטנה תיראה. lo..hi → min..max פיקסלים
+const hScale = (vals, min, max) => { const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo) * 0.25 || 1; return v => Math.round(min + (v - (lo - pad)) / (hi - lo + pad) * (max - min)); };
+// בקבוצה: ירידה = טוב (ירוק), עלייה = רע (אדום)
+const chg = (d, tail) => d ? dt(d < 0 ? 'g' : 'r', `${d < 0 ? '▼' : '▲'} ${U.f(Math.abs(d))}${tail || ''}`) : dt('n', `= ללא שינוי${tail || ''}`);
+// כמה היו בתחילת התקופה (סוף היום שלפני), כמה בסוף, ומה קרה בדרך
+function perSum(id, P) {
+  const s = series(id), a = s.filter(x => x.d >= P.from && x.d <= P.to), i0 = s.findIndex(x => x.d === P.from);
+  // תקופה שמתחילה ביום ההשקה – אין יום לפני; מתחילים מסוף יום ההשקה (העמודות עדיין מציגות אותו)
+  const before = i0 > 0 ? s[i0 - 1] : (a.length > 1 ? a[0] : null), end = a[a.length - 1] || s[s.length - 1];
+  const run = before === a[0] ? a.slice(1) : a;
+  return { a, before, end, startN: before ? before.group : 0, out: run.reduce((t, x) => t + x.out, 0), inn: run.reduce((t, x) => t + x.inn, 0) };
 }
 function effect(id, m) {
   const s = series(id).filter(x => !x.part), i = s.findIndex(x => x.d === m.d);
-  if (i < 0) return `<div class="yzt-ef"><b class="t">📨 ${U.short(m.d)} · ${U.esc(m.title)}</b><div class="yzu-note">${m.chs}</div><div class="yzu-note">נשלחה היום – המספרים יופיעו מחר.</div></div>`;
+  if (i < 0) return `<div class="yzt-ef"><b class="t">📨 ${U.short(m.d)} · ${U.esc(m.title)}</b><div class="yzu-note">${m.chs}</div><div class="yzu-note">נשלחה היום – המספרים יופיעו מחר בבוקר.</div></div>`;
   const sum = a => a.reduce((x2, y) => x2 + y.out, 0), bef = s.slice(Math.max(0, i - 3), i), aft = s.slice(i, i + 3);
-  const avB = bef.length ? sum(bef) / bef.length : 0, avA = aft.length ? sum(aft) / aft.length : 0, pct = avB ? Math.round((avA - avB) / avB * 100) : 0;
+  const avB = bef.length ? sum(bef) / bef.length : 0, avA = aft.length ? sum(aft) / aft.length : 0;
   return `<div class="yzt-ef"><b class="t">📨 ${U.short(m.d)} · ${U.esc(m.title)}</b><div class="yzu-note">${m.chs}</div>
-    <div class="row"><span>ביום ההודעה יצאו</span><b>${U.f(s[i].out)}</b></div>
+    <div class="row"><span>${OUT_LBL[id]} ביום ההודעה</span><b>${U.f(s[i].out)}</b></div>
     <div class="row"><span>ממוצע ליום – ${bef.length} ימים לפני</span><b>${bef.length ? avB.toFixed(1) : '–'}</b></div>
     <div class="row"><span>ממוצע ליום – ${aft.length} ימים מההודעה</span><b>${avA.toFixed(1)} ${bef.length ? dt(avA > avB ? 'g' : avA < avB ? 'r' : 'n', `${avA > avB ? '▲' : avA < avB ? '▼' : '='} ${Math.abs(avA - avB).toFixed(1)} ליום`) : ''}</b></div>
     ${aft.length < 3 ? '<div class="yzu-note">עוד לא עברו 3 ימים – המספר יתעדכן.</div>' : ''}</div>`;
 }
 function perBar(P) {
   return `<div class="yzt-per"><b>תקופה:</b>${PRESETS.map(([k, l]) => `<button class="yzt-pb${S.pk === k ? ' on' : ''}" onclick="yztPer('${k}')">${l}</button>`).join('')}
-    <span>מ- <input type="date" value="${P.from}" min="${S.snap}" max="${U.D.today}" onchange="yztPer('custom',this.value,null)"></span>
-    <span>עד <input type="date" value="${P.to}" min="${S.snap}" max="${U.D.today}" onchange="yztPer('custom',null,this.value)"></span>
-    <span class="rng">${U.short(P.from)}${P.from !== P.to ? '–' + U.short(P.to) : ''} · ${P.n} ימים · הנתונים מיום הצילום (${U.short(S.snap)})</span></div>`;
+    <span>מ- <input type="date" value="${P.from}" min="${U.LAUNCH}" max="${U.D.today}" onchange="yztPer('custom',this.value,null)"></span>
+    <span>עד <input type="date" value="${P.to}" min="${U.LAUNCH}" max="${U.D.today}" onchange="yztPer('custom',null,this.value)"></span>
+    <span class="rng">${U.short(P.from)}${P.from !== P.to ? '–' + U.short(P.to) : ''} · ${P.n} ימים · הנתונים מההשקה (${U.short(U.LAUNCH)})</span></div>`;
 }
 window.yztPer = (k, from, to) => {
   if (k !== 'custom') { S.pk = k; S.from = ''; }
@@ -399,30 +397,34 @@ window.yztPer = (k, from, to) => {
   U.C.rerender();
 };
 function daysHtml(id, t, P) {
-  const lbl = OUT_LBL[id], all = series(id), s = all.filter(x => x.d >= P.from && x.d <= P.to), last = s[s.length - 1] || all[all.length - 1];
-  const c = cmp(id, P), ms = msgsFor(id), by = {}; ms.forEach(m => (by[m.d] || (by[m.d] = [])).push(m));
-  const mx = Math.max(1, ...s.map(x => x.out));
-  const chart = `<div class="yzt-chart">${s.map(x => { const m = by[x.d]; return `<div class="col${m ? ' sent' : ''}">${m ? `<span class="pin" title="${U.esc(m.map(z => z.title).join(' | '))}">📨</span>` : ''}<div class="v">${U.f(x.out)}</div><div class="bar${x.part ? ' part' : ''}" style="height:${Math.round(Math.max(0, x.out) / mx * 130)}px"></div></div>`; }).join('')}</div>
+  const lbl = OUT_LBL[id], all = series(id), ps = perSum(id, P), s = ps.a, ms = msgsFor(id), by = {}; ms.forEach(m => (by[m.d] || (by[m.d] = [])).push(m));
+  const sc = hScale(s.map(x => x.group), 8, 130), nMs = ms.filter(m => m.d >= P.from && m.d <= P.to).length;
+  const chart = `<div class="yzt-chart">${s.map(x => { const m = by[x.d]; return `<div class="col${m ? ' sent' : ''}">${m ? `<span class="pin" title="${U.esc(m.map(z => z.title).join(' | '))}">📨</span>` : ''}<div class="v">${U.f(x.group)}</div><div class="bar${x.part ? ' part' : ''}" style="height:${sc(x.group)}px"></div></div>`; }).join('')}</div>
     <div class="yzt-xl">${s.map(x => `<span>${U.short(x.d)}</span>`).join('')}</div>`;
-  const rows = [...s].reverse().map(x => { const m = by[x.d] || [], i = all.findIndex(z => z.d === x.d), pv = i > 0 ? all[i - 1] : null, d = pv ? x.out - pv.out : null;
-    return `<tr class="${m.length ? 'sent' : ''}"><td>${U.short(x.d)}${x.part ? ' <span class="yzu-note">(היום, חלקי)</span>' : ''}${x.d === S.snap ? ' <span class="yzu-note">(יום הצילום)</span>' : ''}</td>
-      <td class="n"><b>${U.f(x.out)}</b></td><td class="n">${d == null ? dt('n', '–') : d ? dt(d > 0 ? 'g' : 'r', `${d > 0 ? '▲' : '▼'} ${U.f(Math.abs(d))}`) : dt('n', '=')}</td>
-      <td class="n">${U.f(x.left)}</td><td class="n">${U.f(x.group)}</td><td>${m.map(z => `<span class="yzt-tag">📨 ${U.esc(z.title)} · ${z.chs}</span>`).join('<br>') || '<span class="yzu-note">–</span>'}</td></tr>`; }).join('');
+  const rows = [...s].reverse().map(x => { const m = by[x.d] || [], i = all.findIndex(z => z.d === x.d), pv = i > 0 ? all[i - 1] : null;
+    return `<tr class="${m.length ? 'sent' : ''}"><td>${U.short(x.d)}${x.part ? ' <span class="yzu-note">(היום, עוד לא נגמר)</span>' : ''}${x.d === U.LAUNCH ? ' <span class="yzu-note">(ההשקה)</span>' : ''}</td>
+      <td class="n"><b>${U.f(x.group)}</b></td><td class="n">${pv ? chg(x.group - pv.group) : dt('n', '–')}</td>
+      <td class="n">${pv ? `<b class="yzt-got">${U.f(x.out)}</b>` : '–'}</td><td class="n">${pv ? U.f(x.inn) : '–'}</td>
+      <td>${m.map(z => `<span class="yzt-tag">📨 ${U.esc(z.title)} · ${z.chs}</span>`).join('<br>') || '<span class="yzu-note">–</span>'}</td></tr>`; }).join('');
   const effs = ms.filter(m => m.d >= P.from && m.d <= P.to).map(m => effect(id, m)).join('');
-  return `<div class="yzu-box yzt-days"><h3>לפי ימים</h3>
-    <div class="yzt-kp"><div class="k"><small>${lbl} בתקופה</small><b>${U.f(c.now)}</b>${c.html}</div><div class="k"><small>נשארו בסוף התקופה (${U.short(last.d)})</small><b>${U.f(last.left)}</b></div><div class="k"><small>${lbl} מאז הצילום</small><b>${U.f(t.start.length - last.left)}</b></div><div class="k"><small>📨 הודעות בתקופה</small><b>${ms.filter(m => m.d >= P.from && m.d <= P.to).length}</b></div></div>
-    <div class="yzu-note" style="margin:4px 0 2px">עמודה = כמה ${lbl} באותו יום · 📨 = יצאה הודעה שהגיעה לקבוצה (מסגרת כחולה) · פסים = היום, עוד לא נגמר${MS.loading ? ' · טוען הודעות…' : ''}${MS.err ? ` · ⚠️ טעינת ההודעות נכשלה: ${U.esc(MS.err)}` : ''}</div>
+  return `<div class="yzu-box yzt-days"><h3>כמה בקבוצה – יום אחרי יום</h3>
+    <div class="yzt-kp">
+      <div class="k"><small>${ps.before ? `היו ב-${U.short(ps.before.d)}` : 'בהשקה'}</small><b>${U.f(ps.startN)}</b></div>
+      <div class="k"><small>בקבוצה עכשיו${ps.end.d !== U.D.today ? ` (${U.short(ps.end.d)})` : ''}</small><b>${U.f(ps.end.group)}</b>${ps.before ? chg(ps.end.group - ps.startN, ' בתקופה') : ''}</div>
+      <div class="k good"><small>✓ ${lbl} בתקופה – השיפור</small><b>${U.f(ps.out)}</b><div class="yzt-dt n">יצאו מהקבוצה לכיוון הטוב</div></div>
+      <div class="k"><small>+ הצטרפו לקבוצה בתקופה</small><b>${U.f(ps.inn)}</b><div class="yzt-dt n">חדשים שנכנסו לקבוצה${nMs ? ` · 📨 ${nMs} הודעות` : ''}</div></div></div>
+    <div class="yzu-note" style="margin:4px 0 2px">עמודה = כמה בקבוצה בסוף כל יום (הגובה לפי הטווח של התקופה, לא מאפס – כדי לראות תזוזה) · ירידה = טוב · 📨 = יצאה הודעה שהגיעה לקבוצה (מסגרת כחולה) · פסים = היום, עוד לא נגמר${MS.loading ? ' · טוען הודעות…' : ''}${MS.err ? ` · ⚠️ טעינת ההודעות נכשלה: ${U.esc(MS.err)}` : ''}</div>
     ${chart}
-    <div class="yzu-tw" style="margin-top:10px"><table><tr><th>יום</th><th class="n">${lbl}</th><th class="n">מול היום הקודם</th><th class="n">נשארו מהצילום</th><th class="n">בקבוצה באותו יום</th><th>הודעות שיצאו</th></tr>${rows}</table></div>
-    <p class="yzu-note">החץ: <span class="yzt-dt g">▲ ירוק</span> = יותר ${lbl} מהיום הקודם (טוב), <span class="yzt-dt r">▼ אדום</span> = פחות. "בקבוצה באותו יום" כולל גם מי שהצטרף אחרי יום הצילום.</p>
-    <h3 style="margin-top:12px">האם ההודעה עבדה?</h3><p class="yzu-note" style="margin:0 0 8px">לכל הודעה בתקופה: כמה ${lbl} ביום ההודעה וב-3 הימים אחריה, מול 3 הימים שלפניה. גם בלי הודעה המספר יורד עם הזמן – זה מראה אם הייתה קפיצה.</p>
+    <div class="yzu-tw" style="margin-top:10px"><table><tr><th>יום</th><th class="n">בקבוצה</th><th class="n">שינוי מאתמול</th><th class="n">✓ ${lbl}</th><th class="n">+ הצטרפו</th><th>הודעות שיצאו</th></tr>${rows}</table></div>
+    <p class="yzu-note"><span class="yzt-dt g">▼ ירוק</span> = הקבוצה קטנה (טוב), <span class="yzt-dt r">▲ אדום</span> = גדלה. השינוי מאתמול = מי שהצטרפו פחות מי ש${lbl}. קבוצה יכולה לגדול גם כשהרבה ${lbl} – אם הצטרפו אליה עוד יותר.</p>
+    <h3 style="margin-top:12px">האם ההודעה עבדה?</h3><p class="yzu-note" style="margin:0 0 8px">לכל הודעה בתקופה: כמה ${lbl} ביום ההודעה וב-3 הימים אחריה, מול 3 הימים שלפניה. הנתונים של יום נסגרים בבוקר שלמחרת.</p>
     ${effs ? `<div class="yzt-eff">${effs}</div>` : '<div class="yzu-note">בתקופה הזו לא יצאה הודעה שהגיעה לקבוצה.</div>'}</div>`;
 }
 
 // ══ §745 — "השבוע": לוח של שבוע הפניות לפלחים (§741) – מה עושים בכל יום, באיזה מעקב, ואם כבר נשלח ══
 // הסטטוס מחושב ממה שכבר נשלח מהכפתורים (אותו "כבר קיבלו" של לוח הפנייה) – לא מסמנים ידנית.
 const WEEK = { from: '2026-11-09', to: '2026-11-15', days: [
-  { d: '2026-11-09', t: 'נכנסו פעם אחת ולא חזרו', id: 5, steps: ['now', 'mail'], how: 'שני הכפתורים: קודם פוש + באפליקציה, אחר כך מייל למי שאין פוש. נשלח לכל מי שבקבוצה היום ולא נראה 3+ ימים – יותר מ"נשארו" בכרטיס, שסופר רק את מי שהיה בקבוצה ביום הצילום (28.10)' },
+  { d: '2026-11-09', t: 'נכנסו פעם אחת ולא חזרו', id: 5, steps: ['now', 'mail'], how: 'שני הכפתורים: קודם פוש + באפליקציה, אחר כך מייל למי שאין פוש.' },
   { d: '2026-11-10', t: 'אושרו ולא נכנסו אף פעם', id: 1, steps: ['d7'], how: 'מייל "אושרת – והעסקים מחכים" (עם הקוד)' },
   { d: '2026-11-11', t: 'ותיקים שלא חזרו', id: 4, steps: ['now'], how: 'מייל "מאז שנרשמת – התמלאה בעסקים" (עם הקוד)' },
   { d: '2026-11-12', t: 'בעלי עסק בלי האפליקציה', id: 3, steps: ['wa', 'mail'], how: 'וואטסאפ – כפתור בכל שורה ברשימה (אתה לוחץ "שלח" בוואטסאפ), ואחר כך מייל משלים לכולם' },
@@ -461,20 +463,22 @@ function weekHtml() {
 window.yztWeekGo = (id, list) => { S.cur = id; U.C.rerender(); setTimeout(() => { const el = document.querySelector(list ? '.yzt-waed' : '.yzu-det'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); };
 window.yztWeekSend = (id, k) => { S.cur = id; const i = (tracker(id).plan || []).findIndex(p => p.k === k); if (i >= 0) window.yztSend(i); };
 
-// §744 – בכרטיס: כמה יצאו בתקופה + חץ, וכמה הודעות
+// §748 – בכרטיס: כמה בקבוצה עכשיו, מגמה קטנה לפי ימים, וכמה היו בתחילת התקופה
 function tilePer(id, P) {
-  const c = cmp(id, P), n = msgsFor(id).filter(m => m.d >= P.from && m.d <= P.to).length;
-  return `<div class="yzt-tp">בתקופה: <b>${U.f(c.now)}</b> ${OUT_LBL[id]} · ${c.short}<div class="ms">${n ? `📨 ${n} הודעות בתקופה` : '📨 אין הודעות בתקופה'}</div></div>`;
+  const ps = perSum(id, P), sc = hScale(ps.a.map(x => x.group), 3, 28), ms = msgsFor(id), n = ms.filter(m => m.d >= P.from && m.d <= P.to).length;
+  const spark = ps.a.length > 1 ? `<div class="yzt-spark">${ps.a.map(x => `<i class="${ms.some(m => m.d === x.d) ? 'm' : ''}" style="height:${sc(x.group)}px" title="${U.short(x.d)}: ${U.f(x.group)}"></i>`).join('')}</div>` : '';
+  return `${spark}<div class="yzt-tp">${ps.before ? `ב-${U.short(ps.before.d)} היו <b>${U.f(ps.startN)}</b> · ${chg(ps.end.group - ps.startN)}` : 'מההשקה'}
+    <div>✓ ${U.f(ps.out)} ${OUT_LBL[id]} · + ${U.f(ps.inn)} הצטרפו</div><div class="ms">${n ? `📨 ${n} הודעות בתקופה` : '📨 אין הודעות בתקופה'}</div></div>`;
 }
 export function html() {
   if (!U.D) return '<div class="placeholder-note">טוען…</div>';
   if (!GOT.map && !GOT.loading && !GOT.err) loadGot();
-  if (!MS.loading && (!MS.list || MS.snap !== S.snap)) loadMsgs();
+  if (!MS.loading && !MS.list) loadMsgs();
   const t = tracker(S.cur), f = U.f, today = U.D.today, P = per();
   const tiles = TRK.map(([id, nm, unit]) => {
-    const r = tracker(id), st = r.start.length, done = st - r.left.length;
+    const now = series(id), cur = now[now.length - 1];
     return `<button class="yzu-tile${S.cur === id ? ' on' : ''}" onclick="yztSet('cur',${id})"><div class="nm"><span>${id}. ${nm}</span><i>${unit}</i></div>
-      <div class="big">${f(r.left.length)} <small>נשארו מתוך ${f(st)}</small></div><div class="yzt-prog"><i style="width:${U.W(done, st)}%"></i></div><div class="pct">${f(done)} ${r.sinceLbl || 'התחברו מאז'} ${U.short(S.snap)}</div>${tilePer(id, P)}</button>`;
+      <div class="big">${f(cur.group)} <small>בקבוצה עכשיו</small></div>${tilePer(id, P)}</button>`;
   }).join('');
   const k = (cls, l, n, sub) => `<div class="yzt-k ${cls}"><small>${l}</small><b>${f(n)}</b><div class="sub">${sub || '&nbsp;'}</div></div>`;
   const charts = (t.charts || []).map(c => { const mx = Math.max(1, ...c.rows.map(r => r[1])); return `<div class="yzu-box"><h3>${c.t}</h3>${c.rows.map(([l, n, cls]) => U.hb(l, n, mx, cls || '')).join('')}</div>`; }).join('');
@@ -501,15 +505,16 @@ export function html() {
       <td>${WA[m.id] || m.waNudgeAt ? `<span class="yzt-got">✓ ${(WA[m.id] || m.waNudgeAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}</span>${m.waNudgeCount > 1 ? ` <span class="yzu-note">(${m.waNudgeCount} פעמים)</span>` : ''}` : '–'}</td></tr>`; }).join('')}</table></div>
     <p class="yzu-note">ההודעה כוללת את הדרך שלו – ולמי שנכנס עם קוד, גם את הקוד. נפתחת בוואטסאפ שלך, עם הנוסח מוכן; שולחים משם. הלחיצה נרשמת ("נשלח"), ומי שכבר קיבל מיום הצילום יוצא מ"ממתינים".</p></div>` : '';
   return `<div class="yzu">${U.css()}${css()}
-    <div class="yzt-src"><b>מקור מספרים אחד:</b> מעקבי חברים – מרשומת החבר וימי הכניסה שלו (מי שהגיע לדף הבית). "הורידו ולא נרשמו" – לפי טלפון. <b>צילום</b> = מי שהיה בקבוצה בתחילת יום הצילום; "מאז" = מתוכם, מי שיצא מהקבוצה.
-      <span style="white-space:nowrap">יום הצילום: <input type="date" value="${S.snap}" min="${U.addDays(U.LAUNCH, 1)}" max="${today}" onchange="yztSet('snap',this.value)"></span></div>
+    <div class="yzt-src"><b>איך לקרוא:</b> המספר הגדול בכל כרטיס = <b>כמה בקבוצה עכשיו</b>, והעמודות הקטנות = איך זה זז בכל יום בתקופה. <span class="yzt-dt g">▼ ירוק</span> = הקבוצה קטנה – טוב. "✓" = כמה יצאו ממנה לכיוון הטוב (נכנסו / חזרו / נרשמו), "+" = כמה חדשים הצטרפו אליה. מקור: רשומות החברים וימי הכניסה (מי שהגיע לדף הבית), מההשקה.</div>
     ${weekHtml()}
     ${perBar(P)}
     <div class="yzu-tiles">${tiles}</div>
     <div class="yzu-det"><h2>${S.cur}. ${TRK.find(r => r[0] === S.cur)[1]}</h2><p class="yzu-def">${t.def}</p>
-      <div class="yzt-three">${k('start', 'בהתחלה', t.start.length, t.startSub || `צילום ${U.short(S.snap)}`)}${k('since', t.sinceLbl || 'התחברו מאז', t.since.length, t.sinceSub)}${k('left', 'נשארו', t.left.length, t.leftSub)}</div>
-      ${t.extra ? `<div class="yzt-extra">${t.extra}</div>` : ''}
       ${daysHtml(S.cur, t, P)}
+      ${t.extra ? `<div class="yzt-extra">${t.extra}</div>` : ''}
+      <details class="yzt-snap"><summary>מתקדם: קבוצה קבועה מיום צילום (${U.short(S.snap)})</summary>
+        <p class="yzu-note">כאן סופרים רק את מי שהיה בקבוצה ביום הצילום, ולא מוסיפים חדשים – כמה מהם כבר יצאו. משמש את לוח הפנייה של מעקבים 1, 3 ו-4. יום הצילום: <input type="date" value="${S.snap}" min="${U.addDays(U.LAUNCH, 1)}" max="${today}" onchange="yztSet('snap',this.value)"></p>
+        <div class="yzt-three">${k('start', 'היו ביום הצילום', t.start.length, t.startSub || `צילום ${U.short(S.snap)}`)}${k('since', t.sinceLbl || 'התחברו מאז', t.since.length, t.sinceSub)}${k('left', 'מתוכם עדיין בקבוצה', t.left.length, t.leftSub)}</div></details>
       ${flowHtml(t)}
       ${legacyHtml()}
       <div class="yzu-cols"><div>${charts}</div><div>${plan}</div></div>${list}</div></div>`;
@@ -576,6 +581,9 @@ function css() {
   .yzt-wk{border:2px solid var(--yzu-acc);background:#FFFDF3;border-radius:14px;padding:10px 12px;margin-bottom:12px}.yzt-wk.closed{border-width:1px;padding:6px 10px}.yzt-wk .hd{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}.yzt-wk h3{margin:0;font-size:16px}.yzt-wk .hd .yzu-btn{margin-inline-start:auto}
   .yzt-wk tr.today td{background:#FFF4C2}.yzt-wk tr.done td{opacity:.75}.yzt-wk td .yzu-btn{margin:2px 0}
   .yzt-now{display:inline-block;background:var(--yzu-acc);border-radius:6px;padding:1px 7px;font-weight:800;font-size:12px}.yzt-ok{color:var(--yzu-ok);font-weight:800}.yzt-late{color:var(--yzu-bad);font-weight:700}.yzt-part{color:#B45309;font-weight:700}
+  .yzt-spark{display:flex;align-items:flex-end;gap:2px;height:28px;margin:6px 0 2px}.yzt-spark i{flex:1;background:#C9D6EA;border-radius:2px 2px 0 0;min-width:2px}.yzt-spark i.m{background:var(--yzu-blue)}
+  .yzt-kp .k.good{border-color:#BFE3CC;background:var(--yzu-ok-soft)}
+  .yzt-snap{border:1px dashed var(--yzu-line);border-radius:10px;padding:7px 10px;margin:10px 0;font-size:13px}.yzt-snap summary{cursor:pointer;color:var(--yzu-blue)}.yzt-snap .yzt-three{margin-top:8px}
   .yzt-waed{border:1px solid #BFE3CC;background:#F3FBF6;border-radius:10px;padding:9px 11px;margin-bottom:10px}.yzt-waed .hd{display:flex;gap:8px;align-items:center;margin-bottom:6px}.yzt-waed .hd .yzu-btn{margin-inline-start:auto}
   .yzt-waed .pv{white-space:pre-line;font-size:13px;background:#DCF8C6;border-radius:10px;padding:7px 10px;line-height:1.6}
   .yzt-waed textarea{width:100%;font:inherit;font-size:13.5px;line-height:1.6;border:1px solid var(--yzu-line);border-radius:8px;padding:7px 9px;box-sizing:border-box}.yzt-waed .bt{display:flex;gap:6px;margin-top:6px}
