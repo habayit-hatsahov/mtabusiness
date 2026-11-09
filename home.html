@@ -2296,27 +2296,86 @@ function bizHasPhoto(biz) {
 // race ב-observer הפנימי של הדפדפן, לפעמים תמונה נשארת לא-נטענת לצמיתות בלי שגיאה. observer יחיד קבוע
 // (לא נוצר מחדש בכל רינדור) + data-src ידני פותרים את זה: כל <img data-src> חדש נצפה מחדש בכל
 // renderSections() ומוערך גיאומטרית באותו רגע — לא מסתמך על מצב-פנימי-של-הדפדפן שנשבר בין רינדורים.
+// ── §753 — תמונות הכרטיסים דרך /view-image?w= של הוורקר ─────────────────────────────────
+// דווח בסרטון מאוהד (9.11): "התמונות עולות ממש לאט". בשורה "חדש אצלנו" הכרטיס עלה לבן והתמלא רק
+// אחרי שנייה-שתיים. נמדד על 149 העסקים: הכרטיס הוריד את הקבצים ישר מ-Firebase – לוגו עד 1.8MB
+// (דפוס קשת 1,091KB, אצל אדרי 1,846KB) לתג של 58px, ל-50 מתוך 85 הלוגואים אין thumb בכלל, וכל
+// כרטיס הוריד **פעמיים** (thumb ואז הקובץ המלא לחדות, ממוצע 187KB ועד 833KB).
+// עכשיו: הקובץ המלא דרך הוורקר, מוקטן לגודל-התצוגה בפועל (רוחב-כרטיס × DPR, מעוגל לאחת המידות
+// הקבועות כדי שכל המכשירים יחלקו את אותו מטמון ב-edge). נמדד: 1,091KB→2KB, 1,846KB→9KB,
+// 833KB→77KB; מהמטמון 0.12–0.28 שנ' מול 1–1.6 שנ' ישירות. וחד – ההקטנה היא מהמקור, לא מה-thumb.
+// 🔑 api.yellowzone.co.il אינה נגישה מכל רשת (§359/§373) — לכן לכל תמונה יש data-direct (הכתובת
+// הישירה ל-Firebase, רשת אחרת): שגיאה → עוברת אליה מיד; אף תמונה מהוורקר לא הגיעה תוך 6 שנ' →
+// עוברת אליה, ומשם עד סוף הביקור כל הכרטיסים נטענים ישירות (_hbImgProxyOff).
+const HB_IMG_PROXY = 'https://api.yellowzone.co.il/view-image';
+const HB_IMG_BUCKET = 'https://firebasestorage.googleapis.com/v0/b/habayit-hatsahov.firebasestorage.app/o/';
+const HB_IMG_SIZES = [120, 180, 240, 480, 640, 800, 960, 1280];
+let _hbImgProxyOff = false;
+function hbImgSize(px) { return HB_IMG_SIZES.find(s => s >= px) || 1280; }
+function hbImgProxyUrl(url, px) {
+  if (_hbImgProxyOff || !url || !url.startsWith(HB_IMG_BUCKET)) return '';
+  return HB_IMG_PROXY + '?url=' + encodeURIComponent(url) + '&w=' + hbImgSize(px);
+}
+function hbImgUseDirect(img) {
+  const d = img.dataset.direct;
+  if (!d) return false;
+  delete img.dataset.direct;
+  img.src = d;
+  return true;
+}
+// שומר-הזמן בודק את **הכתובת**, לא את התמונה: ברשת איטית תמונה תקינה יכולה לחכות בתור יותר מ-6 שנ'
+// (נמדד בסימולציית 4G איטי – השומר הראשון העביר הכול לישיר, הכבד פי 3, בלי שום תקלה). לכן מספיקה
+// תמונה אחת שהגיעה מהוורקר כדי לבטל את המעבר; רק כשאף אחת לא הגיעה תוך 6 שנ' – הכתובת תקועה.
+let _hbImgProxyOk = false;
+function hbImgArm(img) {
+  if (!img.dataset.direct || img.dataset.armed) return;
+  img.dataset.armed = '1';
+  if (img.complete && img.naturalWidth) { _hbImgProxyOk = true; return; }
+  img.addEventListener('load', () => { if (img.src.startsWith(HB_IMG_PROXY)) _hbImgProxyOk = true; }, { once: true });
+  setTimeout(() => {
+    if (_hbImgProxyOk || !img.isConnected || !img.dataset.direct || (img.complete && img.naturalWidth)) return;
+    _hbImgProxyOff = true;
+    hbImgUseDirect(img);
+  }, 6000);
+}
+function hbImgLoad(img) {
+  if (!img.dataset.src) return;
+  if (_hbImgProxyOff && img.dataset.direct) { delete img.dataset.src; hbImgUseDirect(img); return; }
+  img.src = img.dataset.src;
+  delete img.dataset.src;
+  hbImgArm(img);
+}
+
 const _imgLazyObserver = new IntersectionObserver(entries => {
   entries.forEach(entry => {
     if (!entry.isIntersecting) return;
     const img = entry.target;
     _imgLazyObserver.unobserve(img);
-    if (img.dataset.src) { img.src = img.dataset.src; delete img.dataset.src; }
+    hbImgLoad(img);
+    // §753 — 🔑 בשורת גלילה-הצידה ה-observer **לא רואה** כרטיס שמחוץ לשורה: החישוב חותך לפי
+    // ה-overflow של .cards-scroll, ו-rootMargin חל רק על המסך עצמו (לכן ה-4000px שהיו כאן לא
+    // הקדימו כלום). כרטיס התחיל להיטען רק ברגע שהוחלק פנימה – וזה הלבן בסרטון. מקדימים: כשכרטיס
+    // בשורה נראה, נטענים גם 3 הכרטיסים שאחריו – בעדיפות נמוכה, כדי לא לגזול רוחב-פס ממה שעל המסך.
+    const card = img.closest('.biz-card');
+    if (card && card.parentElement?.classList.contains('cards-scroll')) {
+      let next = card.nextElementSibling;
+      for (let i = 0; i < 3 && next; i++, next = next.nextElementSibling) {
+        next.querySelectorAll('img[data-src]').forEach(n => { _imgLazyObserver.unobserve(n); n.fetchPriority = 'low'; hbImgLoad(n); });
+      }
+    }
   });
-// שוליים אופקיים גדולים בכוונה — כרטיס בתוך שורת גלילה-הצידה (.cards-scroll) יכול לשבת רחוק
-// מהמסך לרוחב (מספר עסקים בשורה) בלי שהמשתמש יגלול לשם אף פעם, ואז התמונה שלו לא נטענת
-// לצמיתות (נראה כאילו "אין תמונה" בדף הבית, למרות שהיא כן קיימת ומוצגת כשנכנסים לקטגוריה/סקשן
-// עצמו, שם התצוגה אנכית ונגללת בטבעיות). שוליים אנכיים נשארים צנועים כרגיל.
-}, { rootMargin: '200px 4000px' });
+}, { rootMargin: '300px 0px' });
 
 function observeLazyImages(container) {
   container?.querySelectorAll('img[data-src]').forEach(img => _imgLazyObserver.observe(img));
+  // תמונות שקיבלו src מיד (הסקשן הראשון, eager) – גם להן שומר-זמן מול כתובת תקועה
+  container?.querySelectorAll('img[data-direct]:not([data-src])').forEach(hbImgArm);
 }
 
 // ── תמונת כרטיס — תמונת אווירה גדולה + לוגו קטן כ-badge בפינה (אם קיימים שני השדות) ──
-// eager=true (רק לסקשן הראשון שנראה בכניסה, "מומלצים") — src ישיר, בלי lazy, כי הוא תמיד גלוי ומעט פריטים.
+// eager=true – src ישיר בלי lazy. §753: אף סקשן כבר לא מבקש eager (גם "נבחרים" עבר ל-observer, ר׳ renderSections).
 // כל שאר הסקשנים — data-src, נטען רק כשבאמת מתקרב למסך (ר' observeLazyImages, שנקרא ע"י renderSections).
-function bizCardImage(biz, eager) {
+function bizCardImage(biz, eager, wide) {
   const hasCover = looksLikeImageUrl(biz.coverPhoto);
   const hasLogo  = looksLikeImageUrl(biz.logo);
   // מעדיף את גרסת ה-thumbnail הקטנה (אם קיימת — עסקים שנשמרו/נערכו אחרי 2026-07-14) על פני התמונה
@@ -2342,9 +2401,24 @@ function bizCardImage(biz, eager) {
   // שהוא מוכן — החדות הסופית נשמרת בדיוק כפי שהייתה, בלי חלון-לבן באמצע.
   const logoThumb = hasLogo && looksLikeImageUrl(biz.logoThumb) ? biz.logoThumb : '';
   const srcAttr = url => eager ? `src="${url}"` : `data-src="${url}"`;
+  // §753 — דרך הוורקר: הקובץ המלא מוקטן ל-px (ר' HB_IMG_PROXY למעלה), data-direct = הנפילה-לאחור
+  // הישירה (thumb אם יש), ו-data-full נשאר כשלב הבא אם גם ה-thumb הישיר נכשל. **בלי** onload-upgrade
+  // כאן – התמונה מהוורקר כבר חדה, ושדרוג היה מוריד שוב את הקובץ המלא (בדיוק ההורדה הכפולה שתוקנה).
+  // כשאין וורקר (_hbImgProxyOff, או כתובת שאינה מה-bucket) – הטעינה הדו-שלבית הישנה, כמו שהייתה.
+  const imgAttrs = (full, thumb, px, upgradeFn) => {
+    const proxied = hbImgProxyUrl(full, px);
+    if (proxied) return `${srcAttr(proxied)} data-direct="${thumb || full}"${thumb ? ` data-full="${full}"` : ''}`;
+    return `${srcAttr(thumb || full)}${thumb && upgradeFn ? ` data-full="${full}" onload="${upgradeFn}(this)"` : ''}`;
+  };
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  // תמונת השער עד 2× (נמדד: ב-4G איטי המסך הראשון נטען מהר יותר, וההבדל בחדות בכרטיס של 260px זניח);
+  // הלוגו נשאר עד 3× – הוא זעיר ממילא (2–9KB) ושם הטקסט הקטן הוא מה שנראה מטושטש.
+  const coverDpr = Math.min(dpr, 2);
+  // רוחב-הכרטיס בפועל: 260 בשורה במובייל, 294 בדסקטופ, ורוחב-מסך מלא ב"כל העסקים"/"רואה הכל" במובייל
+  const cardW = wide && window.innerWidth <= 760 ? window.innerWidth : (window.innerWidth > 760 ? 294 : 260);
   if (cover) {
     const badge = logo
-      ? `<div class="biz-card-logo-badge${biz.logoFit === 'contain' ? ' fit' : ''}"><img ${srcAttr(logoThumb || logo)}${logoThumb ? ` data-full="${logo}" onload="upgradeCardLogo(this)"` : ''} alt="${biz.name} – לוגו" decoding="async" onerror="cardLogoFailed(this)" /></div>`
+      ? `<div class="biz-card-logo-badge${biz.logoFit === 'contain' ? ' fit' : ''}"><img ${imgAttrs(logo, logoThumb, 58 * dpr, 'upgradeCardLogo')} alt="${biz.name} – לוגו" decoding="async" onerror="cardLogoFailed(this)" /></div>`
       : '';
     // מיקום-מיקוד נבחר ע"י מנהל באדמין (coverPhotoPosition, "X% Y%") — נגרר על תמונה-4:3 זהה
     // לכרטיס הזה בדיוק, ר' PROJECT_CONTEXT.md §184. ברירת-מחדל 50% 50% = התנהגות-object-position הרגילה.
@@ -2360,10 +2434,11 @@ function bizCardImage(biz, eager) {
     const fillBg = !fitted ? ''
       : (biz.coverPhotoBg
         ? `<span class="biz-card-cover-fill" style="background:${biz.coverPhotoBg}"></span>`
-        : `<img ${srcAttr(cover)} alt="" aria-hidden="true" class="biz-card-cover-bg" decoding="async" onerror="this.remove()" />`);
+        : `<img ${imgAttrs(coverFull, coverThumb, 240)} alt="" aria-hidden="true" class="biz-card-cover-bg" decoding="async" onerror="if(!hbImgUseDirect(this))this.remove()" />`);
     // ── טעינה דו-שלבית לתמונת השער (2026-08-19) — ר' ההסבר המלא ב-upgradeCardCover למטה ──────
-    const coverUpgrade = coverThumb ? ` data-full="${coverFull}" onload="upgradeCardCover(this)"` : '';
-    return `${fillBg}<img ${srcAttr(cover)} alt="${biz.name}" class="biz-card-cover-img${fitted ? ' fitted' : ''}"${imgStyle}${coverUpgrade} decoding="async" onerror="cardCoverFailed(this)" />${badge}`;
+    // §753 — רק כשאין וורקר; דרכו התמונה מגיעה כבר בגודל המתאים (בקירוב: × הזום, עד 1280)
+    const coverPx = cardW * coverDpr * (fitted ? Math.max(1, zoom) : 1);
+    return `${fillBg}<img ${imgAttrs(coverFull, coverThumb, coverPx, 'upgradeCardCover')} alt="${biz.name}" class="biz-card-cover-img${fitted ? ' fitted' : ''}"${imgStyle} decoding="async" onerror="cardCoverFailed(this)" />${badge}`;
   }
   return bizLogo({ ...biz, logo });
 }
@@ -2371,6 +2446,7 @@ function bizCardImage(biz, eager) {
 // כשל בטעינת תג-הלוגו: אם נכשל דווקא ה-thumb (שלב א’) — עוד יש קובץ-מלא לנסות, ולא נכון
 // למחוק את התג בגללו. רק כשגם הקובץ שנשאר נכשל התג יורד, בדיוק כמו קודם.
 window.cardLogoFailed = function (img) {
+  if (hbImgUseDirect(img)) return;   // §753 — הוורקר נכשל: קודם הכתובת הישירה
   const full = img.dataset.full;
   if (full) { delete img.dataset.full; img.src = full; return; }
   img.parentElement?.remove();
@@ -2409,6 +2485,7 @@ window.upgradeCardCover = function (img) {
 // כשל בטעינת תמונת השער: אם נכשל דווקא ה-thumb (שלב א') — הקובץ המלא עוד לא נוסה, ולא נכון
 // למחוק את התמונה בגללו. רק כשגם הקובץ שנשאר נכשל היא יורדת, בדיוק כמו קודם.
 window.cardCoverFailed = function (img) {
+  if (hbImgUseDirect(img)) return;   // §753 — הוורקר נכשל: קודם הכתובת הישירה
   const full = img.dataset.full;
   if (full) { delete img.dataset.full; img.src = full; return; }
   img.remove();
@@ -2544,7 +2621,7 @@ let _fitWhereResize = 0;
 window.addEventListener('resize', () => { clearTimeout(_fitWhereResize); _fitWhereResize = setTimeout(() => scheduleFitWhere(true), 200); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => scheduleFitWhere(true));
 
-function buildCard(biz, showNewBadge, eager) {
+function buildCard(biz, showNewBadge, eager, wide) {   // §753 – wide: כרטיס ברוחב-מסך במובייל (לגודל התמונה)
   const newTag   = (showNewBadge && newBadgeFor(biz)) ? `<div class="biz-badge">חדש</div>` : '';
   const tags    = (biz.tags || []).slice(0,2);
   const extraCount = (biz.additionalDiscounts || []).filter(d => d && d.text).length;
@@ -2558,7 +2635,7 @@ function buildCard(biz, showNewBadge, eager) {
   return `
     <div class="biz-card" data-id="${biz.id}"${wPlace ? ` data-wplace="${wPlace}"` : ''} onclick="openBiz('${biz.id}')">
       <div class="biz-card-img">
-        ${bizCardImage(biz, eager)}
+        ${bizCardImage(biz, eager, wide)}
         ${newTag}
         ${likeBadge(biz)}
       </div>
@@ -2843,7 +2920,9 @@ function renderSections() {
 
   const featured = _arranged.featured;
   _dailySectionOrder.featured = featured;
-  _writeSectionIfChanged('featured', 'featuredBizScroll', featured, b => buildCard(b, false, true), _emptyRowHtml('בקרוב...'));
+  // §753 – גם 'נבחרים' דרך ה-observer (לא eager): eager הוריד את כל הכרטיסים בשורה בבת אחת ותפס את רוחב-הפס
+  // של מה שעל המסך (נמדד ב-4G איטי: 12.5 → 7.9 שנ' עד שהמסך הראשון מלא). הנראים נטענים מיד ממילא, ו-3 שאחריהם מוקדמים.
+  _writeSectionIfChanged('featured', 'featuredBizScroll', featured, b => buildCard(b), _emptyRowHtml('בקרוב...'));
 
   const newBiz = _arranged.new;
   _dailySectionOrder.new = newBiz;
@@ -2868,7 +2947,7 @@ function renderSections() {
 
   const everyone = _arranged.everyone;
   _dailySectionOrder.everyone = everyone;
-  _writeSectionIfChanged('everyone', 'allBizGrid', everyone, b => buildCard(b));
+  _writeSectionIfChanged('everyone', 'allBizGrid', everyone, b => buildCard(b, false, false, true));
 
   // עדכון "חי" של תג-הלב (מסומן/לא + מספר) על כרטיסים שכבר קיימים ב-DOM, כולל בסקשנים שדולגו
   // למעלה כי סדר-ה-id שלהם לא השתנה — כדי שלייק עדיין ישתקף מיד בכל מקום שהעסק מופיע.
@@ -3047,7 +3126,7 @@ function renderCatFeedContent(cat) {
     document.getElementById('catFeedGrid').innerHTML =
       '<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>אין עסקים בקטגוריה זו עדיין</p></div>';
   } else {
-    _patchGrid(document.getElementById('catFeedGrid'), filtered, b => buildCard(b, cat === 'new'));   // §641ז
+    _patchGrid(document.getElementById('catFeedGrid'), filtered, b => buildCard(b, cat === 'new', false, true));   // §641ז
   }
 }
 
@@ -3295,7 +3374,7 @@ function runSearch(val) {
   mainFeedEl.style.display = 'none';
   document.getElementById('catFeed').style.display = 'block';
   document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${words.length ? 'תוצאות חיפוש' : scope ? scope.title + ' · סינון' : 'תוצאות הסינון'}${sfOn ? ` · ${results.length}` : ''}</div>`;
-  if (results.length) _patchGrid(document.getElementById('catFeedGrid'), results, b => buildCard(b));   // §641ז
+  if (results.length) _patchGrid(document.getElementById('catFeedGrid'), results, b => buildCard(b, false, false, true));   // §641ז
   else document.getElementById('catFeedGrid').innerHTML = `<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>לא נמצאו תוצאות${sfOn ? ' בסינון הזה' : ''}</p>${sfOn ? '<button type="button" class="sf-empty-clear" onclick="sfClear()">ניקוי הסינון</button>' : ''}</div>`;
 }
 
