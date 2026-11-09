@@ -1918,11 +1918,12 @@ export async function tplDeliver(env, accessToken, templates, { id, rowId, t, me
   try {
     const { A, P } = mail === 'sent' ? tplExtras(templates, id) : { A: null, P: null };
     const mf = (member && member.fields) || {};
+    // §757 – {name}/{business} מוחלפים גם בפוש (עד כאן רק בפריט באפליקציה – פוש עם {name} היה יוצא כמו שהוא)
+    const v = { name: mf.firstName || '', business: biz ? (biz.fields.name || '') : '' };
     if (A) {
       row.app = 'none';
       // רק לרשומת חבר מאושרת (ובעסק – גם העסק מאושר), כמו handleSendMessage
       if (member && mf.status === 'approved' && (!biz || biz.fields.status === 'approved')) {
-        const v = { name: mf.firstName || '', business: biz ? (biz.fields.name || '') : '' };
         try {
           await firestorePatch(env, accessToken, `members/${member.id}/inbox/${msgId}`, {
             kind: 'update', block: biz ? 'myBiz' : 'personal',
@@ -1940,7 +1941,7 @@ export async function tplDeliver(env, accessToken, templates, { id, rowId, t, me
         const tokens = mf.nativePushTokens || {};
         if (!Object.keys(tokens).length) row.push = 'noToken';
         else {
-          const res = await sendFcmToMember(env, accessToken, tokens, { title: P.title, body: P.body, data: { link: `/profile.html?tab=msgs&item=${msgId}` } });
+          const res = await sendFcmToMember(env, accessToken, tokens, { title: tplFill(P.title, v).trim().slice(0, 60), body: tplFill(P.body, v).trim().slice(0, 160), data: { link: `/profile.html?tab=msgs&item=${msgId}` } });
           row.push = res.sent ? 'sent' : 'failed';
           row.pushDevices = res.sent || 0;
           if (res.deadKeys && res.deadKeys.length) {

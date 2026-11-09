@@ -93,7 +93,7 @@ console.log('\nApp+Push דלוקים בכל התבניות');
 const on = (title, text) => ({ on: true, title, text, link: 'https://yellowzone.co.il/home.html' });
 const pon = (title, body) => ({ on: true, title, body });
 reset({
-  loginApp: on('ברוך הבא {name}', 'שלום {name}, אושרת!'), loginPush: pon('פוש לוגין', 'שורה'),
+  loginApp: on('ברוך הבא {name}', 'שלום {name}, אושרת!'), loginPush: pon('{name}, ההרשמה אושרה!', 'שלום {name}'),
   resendApp: on('לא אמור', 'לצאת'), resendPush: pon('לא', 'לא'),
   combinedApp: on('{business} אושר', 'היי {name}, {business} באינדקס'), combinedPush: pon('העסק שלך אושר', 'לחצו לפרטים'),
   bizApp: on('{business} אושר', 'היי {name}'), bizPush: pon('העסק אושר', 'פרטים'),
@@ -102,6 +102,7 @@ await sweep();
 const inbox = (mid, id) => db[`members/${mid}/inbox/tpl_${id}`];
 check('login: פריט אצל האוהד, personal, משתנים הוחלפו', inbox('fanA', 'login') && inbox('fanA', 'login').block === 'personal' && inbox('fanA', 'login').title === 'ברוך הבא איל' && inbox('fanA', 'login').link === '/home.html', inbox('fanA', 'login'));
 check('login: פוש (§526ב) למי שיש לו טוקן, עם קישור לפריט', fcm.some((x) => x.token === 'tokA' && x.data && x.data.link === '/profile.html?tab=msgs&item=tpl_login') && row('login', 'fanA').push === 'sent' && inbox('fanA', 'login').pushed === true);
+check('§757 login: {name} מוחלף בפוש (כותרת+גוף)', fcm.some((x) => x.token === 'tokA' && x.notification && x.notification.title === 'איל, ההרשמה אושרה!' && x.notification.body === 'שלום איל'), fcm.filter((x) => x.token === 'tokA'));
 check('resend: אין פריט ואין פוש (שכח קוד = לא מחובר) גם כשהוגדר', !inbox('fanR', 'resend') && row('resend', 'fanR').app === null);
 check('combined: פריט myBiz עם העסק', inbox('own1', 'combined') && inbox('own1', 'combined').block === 'myBiz' && inbox('own1', 'combined').bizId === 'biz1' && inbox('own1', 'combined').title === 'פלאפל הזהב אושר');
 check('combined: פוש לבעלים עם קישור לפריט', fcm.some((x) => x.token === 'tokO' && x.data && x.data.link === '/profile.html?tab=msgs&item=tpl_combined'), fcm);
