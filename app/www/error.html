@@ -22,6 +22,8 @@
     background: #FFD400; color: #0f1524; border: 0; border-radius: 12px;
     padding: 14px 34px; width: 100%;
   }
+  button:disabled { opacity: .75; cursor: default; }
+  .note { min-height: 22px; margin-top: 14px; font-size: 14px; color: #b9c2d6; }
 </style>
 </head>
 <body>
@@ -30,23 +32,69 @@
     <h1>מתחברים…</h1>
     <!-- מסך זה מוגש מתוך האפליקציה עצמה (server.errorPath), ולכן הוא היחיד שנראה
          כשהאתר לא נטען בכלל. בלעדיו המשתמש רואה מסך לבן ריק בלי שום הסבר. -->
-    <p>נראה שהחיבור עוד לא מוכן. ננסה שוב לבד – רגע אחד.</p>
-    <button onclick="yzRetry()">לנסות עכשיו</button>
+    <p>נראה שאין כרגע קליטה. ברגע שהחיבור יחזור – נמשיך לבד.</p>
+    <button id="yzBtn" onclick="yzRetry(true)">לנסות עכשיו</button>
+    <div id="yzNote" class="note" aria-live="polite"></div>
   </div>
   <!-- §525 — 🐛 "נסו שוב" היה location.reload(), כלומר טעינה מחדש **של המסך הזה** (קובץ מתוך האפליקציה) ולא
-       של האתר – ולכן רק יציאה וכניסה עזרו (רמי, 14.10). עכשיו: חזרה לאתר, וגם ניסיון אוטומטי (2/4/8 שנ'…)
-       ומיד כשהרשת חוזרת. §525ב — הכותרת "מתחברים…" כמו דף ההמתנה של ה-SW: באנדרואיד **זה המסך היחיד** שמופיע בלי רשת,
-       כי Capacitor מביא את ה-HTML בעצמו (WebViewLocalServer.handleProxyRequest) לפני שה-SW רואה את הבקשה. ⚠️ הקובץ ארוז באפליקציה – נכנס לתוקף רק בבנייה הבאה (Android 1.3 / iOS 1.0.1). -->
+       של האתר – ולכן רק יציאה וכניסה עזרו (רמי, 14.10). §525ב — באנדרואיד **זה המסך היחיד** שמופיע בלי רשת,
+       כי Capacitor מביא את ה-HTML בעצמו לפני שה-SW רואה את הבקשה; באייפון אין SW בכלל.
+       §758 — 🐛 ריצוד במשחק (רמי, 9.11, אייפון, אין קליטה באצטדיון): כל 2 שנ' עברנו לאתר, כי navigator.onLine
+       באייפון הוא true גם בלי קליטה (יש "4G", אין נתונים). הניווט נכשל → Capacitor טוען את המסך הזה מחדש → הבהוב,
+       שוב ושוב. עכשיו: **לא עוזבים את המסך לפני שבדיקה קטנה מוכיחה שהאתר עונה** (תמונה של 801 בתים, עם גבול-זמן),
+       והמרווח בין בדיקות גדל (3→5→8→12→15 שנ'). "לנסות עכשיו" בודק קודם ואומר "עדיין אין קליטה" במקום להבהב.
+       ⚠️ הקובץ ארוז באפליקציה – נכנס לתוקף רק בבנייה הבאה (npx cap copy). -->
   <script>
     // §559 — תמונת הפתיחה של האפליקציה יורדת, כדי שההודעה הזו תיראה (אחרת היא מחכה לרשת-הביטחון של 8 שנ')
     try { window.Capacitor.nativePromise('YZSplash', 'hide', {}).catch(function () {}); } catch (e) {}
-    function yzRetry() { location.href = 'https://yellowzone.co.il/'; }
-    (function () {
-      var d = 2000;
-      function tick() { setTimeout(function () { if (navigator.onLine !== false) yzRetry(); else { d = Math.min(d * 2, 15000); tick(); } }, d); }
-      window.addEventListener('online', yzRetry);
-      tick();
-    })();
+    var YZ_SITE = 'https://yellowzone.co.il/';
+    var yzBusy = false, yzLeaving = false, yzTimer = null;
+    var yzWaits = [3000, 5000, 8000, 12000, 15000], yzN = 0;
+    // ניווט שעבר את הבדיקה ובכל זאת נכשל (רשת שמהבהבת) מחזיר לכאן – ממשיכים מאותו מרווח ולא מ-3 שנ'
+    try {
+      var st = JSON.parse(sessionStorage.getItem('yzErrRetry') || 'null');
+      if (st && Date.now() - st.t < 120000) yzN = Math.min(st.n + 1, yzWaits.length - 1);
+    } catch (e) {}
+    function yzNote(t) { document.getElementById('yzNote').textContent = t || ''; }
+    // בדיקה שהאתר באמת עונה: תמונה קטנה מהאתר (לא fetch – בלי CORS; ותמונה לא מיורטת ע"י Capacitor באנדרואיד)
+    function yzProbe(ms, cb) {
+      var done = false, img = new Image();
+      function end(ok) { if (done) return; done = true; img.onload = img.onerror = null; cb(ok); }
+      var t = setTimeout(function () { end(false); }, ms);
+      img.onload = function () { clearTimeout(t); end(true); };
+      img.onerror = function () { clearTimeout(t); end(false); };
+      img.src = YZ_SITE + 'icons/favicon-32.png?yzp=' + Date.now();
+    }
+    function yzGo() {
+      yzLeaving = true;
+      try { sessionStorage.setItem('yzErrRetry', JSON.stringify({ n: yzN, t: Date.now() })); } catch (e) {}
+      document.getElementById('yzBtn').textContent = 'מתחברים…';
+      location.href = YZ_SITE;
+    }
+    function yzRetry(manual) {
+      if (yzBusy || yzLeaving) return;
+      yzBusy = true;
+      clearTimeout(yzTimer);
+      var btn = document.getElementById('yzBtn');
+      if (manual) { btn.textContent = 'בודקים…'; btn.disabled = true; yzNote(''); }
+      yzProbe(manual ? 6000 : 8000, function (ok) {
+        yzBusy = false;
+        if (ok) { yzGo(); return; }
+        btn.disabled = false; btn.textContent = 'לנסות עכשיו';
+        if (manual) yzNote('עדיין אין קליטה. נמשיך לנסות לבד.');
+        yzSchedule();
+      });
+    }
+    function yzSchedule() {
+      clearTimeout(yzTimer);
+      var d = yzWaits[Math.min(yzN, yzWaits.length - 1)];
+      yzN++;
+      yzTimer = setTimeout(function () { yzRetry(false); }, d);
+    }
+    // הרשת חזרה / חזרו לאפליקציה מהרקע → בודקים מיד (ולא עוזבים בלי בדיקה)
+    window.addEventListener('online', function () { yzRetry(false); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) yzRetry(false); });
+    yzSchedule();
   </script>
 </body>
 </html>
