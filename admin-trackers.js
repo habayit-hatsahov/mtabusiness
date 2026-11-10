@@ -22,6 +22,12 @@ const DOCS = {
   '5|now': { ch: { app: true, push: true, mail: false, wa: false },
     push: { title: 'כל בעלי העסקים שצריך – במקום אחד 💛', body: `${BIZ_N} עסקים של אוהדים כבר ב-Yellow Zone – בעלי מקצוע, אוכל, אירועים ומתנות, עם הטבות רק לחברים 💛` },
     app: { title: 'כל מה שצריך – אצל האוהדים', text: `צריכים בעל מקצוע, מסעדה, DJ לאירוע או מתנה?\nלפני שמחפשים בגוגל – בודקים ב-Yellow Zone.\nבעלי מקצוע, אוכל, אירועים ומתנות – ${BIZ_N} עסקים של אוהדים כבר כאן, כל אחד עם הטבה רק לחברים.\nהם פרגנו לקבוצה כל השנים – עכשיו התור שלנו להחזיר באהבה 💛`, link: '' } },
+  // §763 – גל שני (15.11) רק למי שקיבל את הפוש של 9.11 ולא חזר: פותחים בצורך, לא בהצהרה. בפוש אין {name}
+  '5|w2': { ch: { app: true, push: true, mail: false, wa: false },
+    push: { title: 'צריכים חשמלאי, מסעדה או צלם לאירוע? 💛', body: `לפני שמחפשים בגוגל – בודקים מי מהאוהדים כבר ב-Yellow Zone. ${BIZ_N} עסקים, כל אחד עם הטבה רק לחברים.` },
+    app: { title: 'לפני שמחפשים בגוגל', text: `צריכים חשמלאי, מסעדה, צלם לאירוע או מתנה?
+שווה לבדוק קודם ב-Yellow Zone – ${BIZ_N} עסקים של אוהדים כבר כאן, כל אחד עם הטבה רק לחברים.
+הם פרגנו לקבוצה כל השנים – עכשיו התור שלנו להחזיר באהבה 💛`, link: '' } },
   '5|mail': { ch: { app: false, push: false, mail: true, wa: false },   // §752 – מכתב אישי (ב-9.11 יצא ממותג ונחת ב'קידומי מכירות')
     mail: { subject: '{name}, לפני שמחפשים בגוגל', body: `היי {name},
 כאן רמי מ-Yellow Zone.
@@ -61,15 +67,25 @@ const DOCS = {
 const docFor = (id, k) => DOCS[id + '|' + k] || DOCS[id + '|*'] || null;
 // הוואטסאפ במעקב 3 – נערך במסך ונשמר ב-settings/trackerTexts.wa3. {how} = הדרך שלו להיכנס (והקוד, אם הוא עם קוד)
 const WA_DEFAULT = 'היי {name}, כאן רמי מ-Yellow Zone 💛\n{business} כבר באפליקציה, והאוהדים רואים את העסק.\nבאפליקציה מחכים לך עדכונים שיביאו לעסק יותר חשיפה ויותר עסקאות – מורידים כאן:\nhttps://yellowzone.co.il/download\n{how}';
-const TXT = { wa3: null, loaded: false, loading: false, saving: false, err: '' };
+// §764 – וואטסאפ אישי במעקב 1 (אושרו ולא נכנסו): המייל של 10.11 נפתח ב-117 ונלחץ ב-9 – רמי: "חייב פתרון אחר".
+// {how} = "פותחים בטלפון שנרשמת ממנו" + הטלפון והקוד שלו. מבקשים לענות – כדי שנדע מה נתקע.
+const WA1_DEFAULT = `היי {name}, כאן רמי מ-Yellow Zone 💛
+ההרשמה שלך אושרה, ו${BIZ_N} עסקים של אוהדים כבר מחכים לך באפליקציה – כל אחד עם הטבה רק לחברים.
+ראיתי שעוד לא נכנסת – משהו נתקע?
+{how}
+אין לך את האפליקציה? https://yellowzone.co.il/download
+לא מסתדר? פשוט עונים לי כאן ואני אעזור 🙏`;
+const WA_DEF = { wa3: WA_DEFAULT, wa1: WA1_DEFAULT };
+const TXT = { wa3: null, wa1: null, loaded: false, loading: false, saving: false, err: '' };
 async function loadTexts() {
   if (TXT.loading || TXT.loaded) return;
   TXT.loading = true;
-  try { const { db, fs } = U.C, s = await fs.getDoc(fs.doc(db, 'settings', 'trackerTexts')); TXT.wa3 = (s.exists() && s.data().wa3) || null; }
+  try { const { db, fs } = U.C, s = await fs.getDoc(fs.doc(db, 'settings', 'trackerTexts')), d = s.exists() ? s.data() : {}; TXT.wa3 = d.wa3 || null; TXT.wa1 = d.wa1 || null; }
   catch (e) { console.error(e); TXT.err = e.message || String(e); }
   finally { TXT.loading = false; TXT.loaded = true; U.C.rerender(); }
 }
-const waTpl = () => TXT.wa3 || WA_DEFAULT;
+const waKeyOf = id => id === 1 ? 'wa1' : 'wa3';
+const waTpl = (key = waKeyOf(S.cur)) => TXT[key] || WA_DEF[key];
 const methodOf = m => m.signupMethod === 'apple' ? 'Apple' : m.signupMethod === 'google' ? 'Google' : (m.googleEmail ? 'Google' : 'קוד');
 const by = (a, fn) => { const o = {}; a.forEach(x => { const k = fn(x); o[k] = (o[k] || 0) + 1; }); return o; };
 
@@ -107,7 +123,10 @@ function tracker(id) {
     const age = m => U.dayDiff(dkOf(m.approvedAt), U.D.today);
     const reach = left.concat(out);   // §752 – לוח הפנייה: הצילום + מי שאושר מאז
     const fan = m => !(m.isBusinessOwner || m.linkedBusinessId);   // בעלי עסק – במעקב 3 / 6, ולא מופיעים ברשימת האוהדים של מרכז ההודעות
-    return { start, since, left, outside: out, people: true,
+    // §764 – רשימת הוואטסאפ: כל אוהד שאושר לפני יומיים ומעלה ועדיין לא נכנס. מי שפתח את המייל – ראשון
+    const opened = GOT.open1 || new Set();
+    const waList = reach.filter(m => fan(m) && age(m) >= 2).sort((a, b) => (opened.has(b.id) - opened.has(a.id)) || (age(b) - age(a)));
+    return { start, since, left, outside: out, people: true, list: waList, opened,
       def: 'אוהדים שנרשמו מההשקה, אושרו לפני יום הצילום, ולא נכנסו אף פעם אחרי האישור (לא הגיעו לדף הבית).',
       sinceSub: `${since.filter(pushOn).length} מהם כבר עם פוש`,
       leftSub: `פוש ${left.filter(pushOn).length} · מייל ${left.filter(m => m.email).length}`,
@@ -117,6 +136,7 @@ function tracker(id) {
         { t: 'אפשר להגיע אליהם ב-', rows: [['מייל', left.filter(m => m.email).length], ['↳ מייל מוסתר של Apple (כמעט לא נפתח)', left.filter(m => /privaterelay/i.test(m.email || '')).length], ['פוש', left.filter(pushOn).length]] }],
       // §752 – לוח הפנייה כולל גם מי שאושר אחרי יום הצילום (out): הוא באותו מצב, ובלעדיו 71 אוהדים לא קיבלו את 'יום 7' ב-10.11
       plan: [
+        { k: 'wa', w: '12.11 · וואטסאפ', what: 'וואטסאפ אישי ממך – הכפתור בכל שורה ברשימה למטה. מי שפתח את המייל ולא נכנס – ראשון', ids: waList, wa: true },
         { k: 'd2', w: 'יום 2', what: 'מייל "אושרת – פותחים את Yellow Zone ונכנסים לבד"; למי שהחליף טלפון – הדרך והקוד', ids: reach.filter(m => fan(m) && age(m) >= 2) },
         { k: 'd7', w: 'יום 7', what: 'תזכורת במייל', ids: reach.filter(m => fan(m) && age(m) >= 7) },
         { k: 'd14', w: 'יום 14', what: 'מייל אחרון עם הטבות השבוע, ואז "רדום"', ids: reach.filter(m => fan(m) && age(m) >= 14) }],
@@ -177,7 +197,9 @@ function tracker(id) {
         { t: 'אפשר להגיע אליהם ב- (לשליחה)', rows: [['פוש', due.filter(pushOn).length], ['מייל בלבד (אין פוש)', due.filter(m => !pushOn(m) && m.email).length]] }],
       plan: [
         { k: 'now', w: 'עכשיו · פוש', what: 'פוש + הודעה באפליקציה – למי שיש פוש', ids: due.filter(pushOn) },
-        { k: 'mail', w: 'עכשיו · מייל', what: 'מייל – למי שאין לו פוש (אף אחד לא מקבל פעמיים)', ids: due.filter(m => !pushOn(m) && m.email) }] };
+        { k: 'mail', w: 'עכשיו · מייל', what: 'מייל – למי שאין לו פוש (אף אחד לא מקבל פעמיים)', ids: due.filter(m => !pushOn(m) && m.email) },
+        // §763 – גל שני: רק מי שקיבל את הפוש הראשון ועדיין בקבוצה (לא חזר). מי שהצטרף לקבוצה אחר כך – בשלב "עכשיו · פוש"
+        { k: 'w2', w: '15.11 · גל שני · פוש', what: 'פוש בנוסח חדש ("צריכים חשמלאי, מסעדה או צלם לאירוע?") – רק למי שקיבל את הפוש הראשון ולא חזר', ids: due.filter(pushOn).filter(m => gotOf(5, 'now').has(m.id)) }] };
   }
   if (id === 4) {
     const vets = x.fans.filter(m => m.status === 'approved' && x.isVet(m));
@@ -267,7 +289,14 @@ function waText(m, b) {
   if (meth === 'קוד' && !code && window.needMemberCodes) window.needMemberCodes([m.id]);
   const how = meth === 'קוד' ? (code ? `נכנסים עם הטלפון שלך והקוד: *${code}*` : 'נכנסים עם הטלפון שלך והקוד שקיבלת במייל') : meth === 'Google' ? 'נכנסים עם Google – באותו Gmail שנרשמת איתו' : 'נכנסים עם Apple';
   // §744 – הנוסח נערך במסך (settings/trackerTexts.wa3); השם, העסק והדרך נכנסים לבד
-  return waTpl().replace(/\{name\}/g, m.firstName || '').replace(/\{business\}/g, b.name || '').replace(/\{how\}/g, how);
+  return waTpl('wa3').replace(/\{name\}/g, m.firstName || '').replace(/\{business\}/g, b.name || '').replace(/\{how\}/g, how);
+}
+// §764 – לאוהד במעקב 1: באותו טלפון נכנסים לבד (§612); מטלפון אחר – טלפון + קוד עובד לכל אחד (גם Google / Apple)
+function waText1(m) {
+  const code = m.loginCode || (window.memberCodeOf && window.memberCodeOf(m.id)) || '';
+  if (!code && window.needMemberCodes) window.needMemberCodes([m.id]);
+  const how = `פותחים את Yellow Zone בטלפון שנרשמת ממנו – נכנסים לבד. מטלפון אחר: נכנסים עם מספר הטלפון שלך והקוד${code ? `: *${code}*` : ' שקיבלת במייל'}`;
+  return waTpl('wa1').replace(/\{name\}/g, m.firstName || '').replace(/\{how\}/g, how);
 }
 // §744 – עריכת הנוסח: נשמר לכולם (settings/trackerTexts), ומהלחיצה הבאה הכפתור שולח אותו
 window.yztWaSave = async (reset) => {
@@ -275,7 +304,8 @@ window.yztWaSave = async (reset) => {
   if (!reset && !v) return;
   if (!reset && !v.includes('{how}') && !confirm('בנוסח אין {how} – השורה עם הדרך להיכנס והקוד לא תופיע. לשמור בכל זאת?')) return;
   TXT.saving = true; TXT.err = ''; U.C.rerender();
-  try { const { db, fs } = U.C; await fs.setDoc(fs.doc(db, 'settings', 'trackerTexts'), { wa3: v || null, wa3At: new Date() }, { merge: true }); TXT.wa3 = v || null; S.waEdit = false; S.waDraft = null; }
+  const key = waKeyOf(S.cur);
+  try { const { db, fs } = U.C; await fs.setDoc(fs.doc(db, 'settings', 'trackerTexts'), { [key]: v || null, [key + 'At']: new Date() }, { merge: true }); TXT[key] = v || null; S.waEdit = false; S.waDraft = null; }
   catch (e) { console.error(e); TXT.err = e.message || String(e); }
   finally { TXT.saving = false; U.C.rerender(); }
 };
@@ -289,16 +319,16 @@ const GOT = { map: null, loading: false, err: '' };
 async function loadGot() {
   if (GOT.loading) return;
   GOT.loading = true; GOT.err = '';
-  const { db, fs } = U.C, map = {};
+  const { db, fs } = U.C, map = {}, open1 = new Set();
   try {
     const ms = await fs.getDocs(fs.query(fs.collection(db, 'messages'), fs.where('tracker.id', 'in', [1, 3, 4, 5, 6])));
     await Promise.all(ms.docs.map(async m => {
       const md = m.data(), tr = md.tracker || {}, key = tr.id + '|' + tr.stage, at = md.sentAt && md.sentAt.toDate ? md.sentAt.toDate() : null;
       const rs = await fs.getDocs(fs.collection(db, 'messages', m.id, 'recipients'));
       const g = map[key] || (map[key] = new Map());
-      rs.docs.forEach(r => { const prev = g.get(r.id); if (!prev || (at && at > prev)) g.set(r.id, at); });
+      rs.docs.forEach(r => { const prev = g.get(r.id); if (!prev || (at && at > prev)) g.set(r.id, at); if (+tr.id === 1 && r.data().mailOpenedAt) open1.add(r.id); });   // §764 – פתחו מייל של מעקב 1
     }));
-    GOT.map = map;
+    GOT.map = map; GOT.open1 = open1;
   } catch (e) { console.error(e); GOT.err = e.message || String(e); GOT.map = {}; }
   finally { GOT.loading = false; U.C.rerender(); }
 }
@@ -460,8 +490,10 @@ const WEEK = { from: '2026-11-09', to: '2026-11-15', days: [
   { d: '2026-11-10', t: 'אושרו ולא נכנסו אף פעם', id: 1, steps: ['d2'], how: 'מייל "אושרת ל-Yellow Zone 💛" (עם הקוד) · שלב "יום 2" (הראשון) · ל-331 אוהדים' },
   { d: '2026-11-11', t: 'ותיקים שלא חזרו', id: 4, steps: ['now'], how: 'מייל "מאז שנרשמת – התמלאה בעסקים" (עם הקוד)' },
   { d: '2026-11-12', t: 'בעלי עסק בלי האפליקציה', id: 3, steps: ['wa', 'mail'], how: 'וואטסאפ – כפתור בכל שורה ברשימה (אתה לוחץ "שלח" בוואטסאפ), ואחר כך מייל משלים לכולם' },
+  { d: '2026-11-12', t: 'אושרו ולא נכנסו – וואטסאפ אישי', id: 1, steps: ['wa'], how: 'המייל של 10.11 נפתח ב-117 ונלחץ ב-9 – עכשיו וואטסאפ ממך: כפתור בכל שורה, קודם מי שפתח את המייל ("רק מי שפתח")' },   // §764
   { d: '2026-11-13', t: 'לא שולחים – מודדים', measure: [5, 1], how: 'במעקב 5 ובמעקב 1: "לפי ימים" → "האם ההודעה עבדה?"' },
   { d: '2026-11-15', t: 'תזכורת: אושרו ועדיין לא נכנסו', id: 1, steps: ['d7'], how: 'מייל "{name}, משהו לא עבד בכניסה?" (עם הקוד) · שלב "יום 7" – 5 ימים אחרי "יום 2", רק למי שעדיין לא נכנס (המספר על הכפתור)' },   // §752ה
+  { d: '2026-11-15', t: 'גל שני: נכנסו פעם אחת ולא חזרו', id: 5, steps: ['w2'], how: 'פוש + באפליקציה בנוסח חדש "צריכים חשמלאי, מסעדה או צלם לאירוע? 💛" · רק למי שקיבל את הפוש של 9.11 ולא חזר (בשעות הערב – רוב הכניסות הגיעו תוך שעה)' },   // §763
   { d: '2026-11-15', t: 'סיכום + גל שני', measure: [5, 1, 4, 3], how: 'עוברים על כל ארבעת המעקבים ומחליטים יחד למי שולחים שוב' }] };
 const DOW_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 const dowOf = k => DOW_HE[new Date(k + 'T12:00:00Z').getUTCDay()];
@@ -526,11 +558,11 @@ export function html() {
   const waBox = t.list ? `<div class="yzt-waed"><div class="hd"><b>💬 נוסח הוואטסאפ</b>${TXT.wa3 ? '<span class="yzu-note">נוסח שערכת</span>' : '<span class="yzu-note">הנוסח המוכן</span>'}
       ${S.waEdit ? '' : `<button class="yzu-btn" onclick="yztSet('waEdit',true)">✏️ לערוך</button>`}</div>
     ${S.waEdit ? `<textarea id="yztWaTxt" rows="7" dir="rtl" oninput="yztWaDraft(this.value)">${U.esc(S.waDraft != null ? S.waDraft : waTpl())}</textarea>
-      <div class="yzu-note">{name} = השם הפרטי · {business} = שם העסק · {how} = הדרך שלו להיכנס, ולמי שעם קוד – גם הקוד. נשמר לכל מי שנכנס למרכז הניהול.</div>
+      <div class="yzu-note">${S.cur === 1 ? '{name} = השם הפרטי · {how} = "פותחים בטלפון שנרשמת ממנו – נכנסים לבד. מטלפון אחר: הטלפון והקוד" עם הקוד שלו' : '{name} = השם הפרטי · {business} = שם העסק · {how} = הדרך שלו להיכנס, ולמי שעם קוד – גם הקוד'}. נשמר לכל מי שנכנס למרכז הניהול.</div>
       <div class="bt"><button class="yzu-btn on" ${TXT.saving ? 'disabled' : ''} onclick="yztWaSave()">${TXT.saving ? 'שומר…' : 'לשמור'}</button><button class="yzu-btn" onclick="yztSet('waEdit',false)">ביטול</button>${TXT.wa3 ? '<button class="yzu-btn" onclick="yztWaSave(true)">לחזור לנוסח המוכן</button>' : ''}</div>`
       : `<div class="pv">${U.esc(waTpl())}</div>`}
     ${TXT.err ? `<div class="yzu-note" style="color:var(--yzu-bad)">⚠️ ${U.esc(TXT.err)}</div>` : ''}</div>` : '';
-  const list = t.list ? `<div class="yzu-box"><h3>הרשימה – ${f(t.list.length)} שנשארו</h3>${waBox}<div class="yzu-tw"><table>
+  const list = t.list && S.cur === 1 ? list1Html(t, waBox) : t.list ? `<div class="yzu-box"><h3>הרשימה – ${f(t.list.length)} שנשארו</h3>${waBox}<div class="yzu-tw"><table>
     <tr><th>עסק</th><th>בעלים</th><th>טלפון</th><th>נכנס עם</th><th>כניסה אחרונה</th><th>וואטסאפ</th><th>נשלח</th></tr>
     ${t.list.map(m => { const b = t.owners.get(m.id), ph = m.phone || b.ownerPhone || ''; const href = waHref(ph, waText(m, b));
       return `<tr><td>${U.esc(b.name)}</td><td>${U.esc(m.name || '')}</td><td>${U.esc(ph)}</td><td>${methodOf(m)}</td><td>${m.lastSeenAt ? U.esc(m.lastSeenAt.toLocaleDateString('he-IL')) : 'אף פעם'}</td>
@@ -553,6 +585,23 @@ export function html() {
       <div class="yzu-cols"><div>${charts}</div><div>${plan}</div></div>${list}</div></div>`;
 }
 
+// §764 – רשימת הוואטסאפ של מעקב 1: מי שפתח את המייל ולא נכנס – ראשון; סינון "רק מי שפתח"; מי שכבר קיבל – בסוף
+function list1Html(t, waBox) {
+  const f = U.f, op = t.opened, sentAt = m => WA[m.id] || (m.waNudgeAt && U.dk(m.waNudgeAt) >= S.snap ? m.waNudgeAt : null);
+  const all = t.list, nOpen = all.filter(m => op.has(m.id)).length, nSent = all.filter(sentAt).length;
+  const rows = (S.waOpen ? all.filter(m => op.has(m.id)) : all).slice().sort((a, b) => (!!sentAt(a) - !!sentAt(b)));
+  const age = m => m.approvedAt ? U.dayDiff(U.dk(m.approvedAt), U.D.today) : '';
+  return `<div class="yzu-box"><h3>💬 וואטסאפ – ${f(all.length)} שאושרו ועדיין לא נכנסו</h3>${waBox}
+    <div class="yzt-per" style="margin:0 0 8px"><button class="yzt-pb${S.waOpen ? '' : ' on'}" onclick="yztSet('waOpen',false)">כולם (${f(all.length)})</button><button class="yzt-pb${S.waOpen ? ' on' : ''}" onclick="yztSet('waOpen',true)">רק מי שפתח את המייל (${f(nOpen)})</button>
+      <span class="rng">נשלחו ${f(nSent)} · נשארו ${f(all.length - nSent)}${GOT.map ? '' : ' · טוען מי פתח…'}</span></div>
+    <div class="yzu-tw"><table><tr><th>שם</th><th>טלפון</th><th>נרשם עם</th><th>אושר לפני</th><th>המייל</th><th>וואטסאפ</th><th>נשלח</th></tr>
+    ${rows.map(m => { const href = waHref(m.phone, waText1(m)), s = sentAt(m);
+      return `<tr${s ? ' style="opacity:.55"' : ''}><td>${U.esc(m.name || '')}</td><td>${U.esc(m.phone || '')}</td><td>${methodOf(m)}</td><td>${age(m)} ימים</td>
+      <td>${op.has(m.id) ? '<b class="yzt-got">פתח</b>' : '<span class="yzu-note">לא פתח</span>'}</td>
+      <td>${href ? `<a class="yzt-wa" href="${href}" target="_blank" rel="noopener" onclick="yztWa('${m.id}')">וואטסאפ</a>` : '–'}</td>
+      <td>${s ? `<span class="yzt-got">✓ ${s.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}</span>` : '–'}</td></tr>`; }).join('')}</table></div>
+    <p class="yzu-note">לחיצה על "וואטסאפ" פותחת את הוואטסאפ שלך עם ההודעה מוכנה, כולל הקוד שלו – שולחים משם. הלחיצה נרשמת ("נשלח"), והשורה יורדת לסוף הרשימה. מי שנכנס לאפליקציה יוצא מהרשימה לבד.</p></div>`;
+}
 window.yztSet = (k, v) => { if (k === 'knows') S.knows = !S.knows; else S[k] = v; if (k === 'waEdit') S.waDraft = null; U.C.rerender(); };
 // טיוטת הוואטסאפ נשמרת בזיכרון – רינדור מחדש (נתונים חיים) לא מוחק את מה שהוקלד
 window.yztWaDraft = (v) => { S.waDraft = v; };
