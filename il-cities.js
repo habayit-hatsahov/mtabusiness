@@ -55,7 +55,11 @@
   function canonCity(name) {
     // 'סניף תל אביב' – עסק שכתב את המילה "סניף" בשדה העיר (נמצא בבדיקה מול הנתונים החיים)
     var s = String(name || '').trim().replace(/\s+/g, ' ').replace(/^סניף\s+/, '');
-    return ALIASES[s] || s;
+    if (ALIASES[s] || CITY_REGION[s]) return ALIASES[s] || s;
+    // §762 – כתיבים עם מקף: "תל-אביב" / "תל אביב - יפו" (נמצאו אצל עסקים אמיתיים, 10.11) · "קריית" ↔ "קרית"
+    var tries = [s.replace(/\s*-\s*/g, '-'), s.replace(/\s*-\s*/g, ' '), s.replace(/^קריית /, 'קרית ')];
+    for (var i = 0; i < tries.length; i++) if (ALIASES[tries[i]] || CITY_REGION[tries[i]]) return ALIASES[tries[i]] || tries[i];
+    return s;
   }
   // §761 – מרכז כל ישוב [lat, lng] ל"לידי" בחיפוש (העיר הקרובה + מרחק לעיר של העסק). מקור: OpenStreetMap (חיפוש חד-פעמי,
   //   10.11.2026); ישובים ביו"ש שהחיפוש מיקם ברחוב באותו שם – תוקנו ידנית. ישוב חדש ברשימה = להוסיף לו שורה כאן.

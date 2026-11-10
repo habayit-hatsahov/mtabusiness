@@ -1777,6 +1777,15 @@
 </header>
 <!-- §761 — הסינון נפתח כאן, בתוך הדף מתחת להדר (דוחף את התוכן למטה) – לא גיליון שמכסה. מצויר ע"י sfRender -->
 <div class="sf-panel" id="sfPanel"></div>
+<!-- §762 — מפת העסקים: רק מתוך החיפוש (קיצור "מפה"). מצויר ע"י sfMapRefresh. בעלי מקצוע שמגיעים אליך – ברצועה מתחת למפה. -->
+<div class="sf-map" id="sfMapWrap">
+  <div class="sf-map-box">
+    <div id="sfMap"></div>
+    <div class="sf-map-count" id="sfMapCount"></div>
+    <div class="sf-map-card" id="sfMapCard"></div>
+  </div>
+  <div class="sf-map-pros" id="sfMapPros"></div>
+</div>
 
 <!-- ══ HERO / SEARCH ══ -->
 <div class="hero">
@@ -1832,7 +1841,8 @@
      המיידי למטה שמשתמש ב-window.CATEGORIES, אבל אין שום סיבה שיעכב את מה שמעל (המסך הצהוב). -->
 <script src="categories.js?v=7071"></script>
 <script src="hours.js"></script>
-<script src="il-cities.js?v=761"></script><!-- §645 — ישובים לפי אזור (סינון "אזור או עיר") -->
+<script src="il-cities.js?v=762"></script>
+<script src="maps-config.js?v=762"></script><!-- §762 — מפתח Google Maps (מוגבל לדומיין) --><!-- §645 — ישובים לפי אזור (סינון "אזור או עיר") -->
 <script src="social-links.js"></script>
 <script src="sections-policy.js?v=662"></script>
 <div class="cats-section">
@@ -3032,6 +3042,9 @@ function refreshOpenFeed() {
 }
 
 function filterCat(cat, el) {
+  // §762ג – רמי: "חיפשתי קרוב אליי ואז בחרתי קטגוריה – שלא ימחק את החיפוש". במצב חיפוש לחיצה על קטגוריה
+  // מצמצמת את התוצאות (טקסט + לידי + סינון נשארים) במקום לצאת מהחיפוש.
+  if (window.sfSearchCat && window.sfSearchCat(cat, el)) return;
   document.documentElement.classList.remove('sf-results');   // §761
   const _sug = document.getElementById('sfCitySug'); if (_sug) _sug.innerHTML = '';
   // כל ניווט מפורש (קטגוריה / חזרה לדף הבית) יוצא ממצב-חיפוש ומנקה את התיבה — אחרת נשאר
@@ -3169,12 +3182,16 @@ function catFeedList(cat) {
   else {
     filtered = businesses.filter(b => mapCatKey(b.cat) === cat || (b.alsoUnderCategory && mapCatKey(b.alsoUnderCategory) === cat));
     filtered = applyAnchors(boostNew(arrangeCategory(filtered, cat), 'cat_' + cat), 'cat_' + cat);   // §662
+    // §762 – רמי: "בקטגוריה של אוכל זה לא משתנה לפי הערים שקרובות אליי". "לידי" פעיל → הכי קרוב קודם (לפי הסניף
+    // האמיתי), אחריו מי שמגיע אליך / כל הארץ – בסדר הרגיל של הקטגוריה (מיון יציב). ⚠️ גובר על העיגונים (§662) כל עוד לידי פעיל.
+    const nearCat = window.sfNearOn && window.sfNearOn() && window.sfPlaceKey;
+    if (nearCat) filtered = filtered.map((b, i) => ({ b, i, k: window.sfPlaceKey(b) })).sort((x, y) => (x.k - y.k) || (x.i - y.i)).map(x => x.b);
     // אייקון תואם לעיגול-הקטגוריה למעלה (PNG החדש), לא האימוג'י הטקסטואלי הישן של catIcon().
     const catObj = CATEGORIES.find(c => c.key === cat);
     const catIconImg = catObj
       ? `<img src="images/categories/${window.catIconFile(catObj, 'navy')}" alt="" style="width:22px;height:22px;vertical-align:-5px;margin-inline-end:6px">`
       : '';
-    title = catIconImg + catLabel(cat);
+    title = catIconImg + catLabel(cat) + (nearCat ? ` <span class="sf-near-note">· לפי קרבה אליך (${window.sfEsc(window.sfNearCity())}) <button type="button" onclick="sfNearClear()">ביטול</button></span>` : '');
     plain = catLabel(cat);
   }
   return { list: filtered, title, plain: plain || title };
@@ -3336,6 +3353,7 @@ window.sfScope = function () {
 function runSearch(val) {
   const sfOn = !!(window.sfActive && window.sfActive());   // §645
   const nearOn = !!(window.sfNearOn && window.sfNearOn());   // §761
+  if (window.sfMapRefresh) window.sfMapRefresh();   // §762 – מצב מפה: הנקודות מתעדכנות עם הטקסט/הסינון
   if (sfOn && !_sfScopeCat && _currentCatFeedKey) _sfScopeCat = _currentCatFeedKey;   // §662
   if (!val.trim() && !sfOn) {
     _searchQuery = '';
@@ -3413,7 +3431,8 @@ function runSearch(val) {
   // §761 – עיר שמופיעה בטקסט ("פיצה רחובות") → הצעה לסנן לפי העיר (כולל מי שמגיע אליה), והטקסט נשאר רק "פיצה"
   const cityHit = words.length && window.sfCityInText ? window.sfCityInText(val) : null;
   const citySug = cityHit ? `<button type="button" class="sf-citysug" data-city="${window.sfEsc(cityHit)}" onclick="sfPickCity(this.dataset.city)">📍 כל העסקים ב${window.sfEsc(cityHit)} <small>· כולל מי שמגיע אליה</small></button>` : '';
-  const nearTxt = nearOn && window.sfNearLabel ? ' · ' + window.sfEsc(window.sfNearLabel()) : '';
+  const nearTxt = (window.sfCatLabel && window.sfCatLabel() ? ' · ' + window.sfEsc(window.sfCatLabel()) : '') +   // §762ג
+    (nearOn && window.sfNearLabel ? ' · ' + window.sfEsc(window.sfNearLabel()) : '');
   document.getElementById('sfCitySug').innerHTML = citySug;
   document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${words.length ? 'תוצאות חיפוש' : scope ? scope.title + ' · סינון' : 'תוצאות הסינון'}${sfOn ? ` · ${results.length}` : ''}${nearTxt}</div>`;
   if (results.length) _patchGrid(document.getElementById('catFeedGrid'), results, b => buildCard(b, false, false, true));   // §641ז
@@ -4799,6 +4818,9 @@ document.addEventListener('DOMContentLoaded', () => {
   .sf-seg { display: inline-flex; border: 1.5px solid #E3E7EF; border-radius: 10px; overflow: hidden; }
   .sf-seg button { border: 0; background: #fff; padding: 5px 10px; font-family: 'Rubik', sans-serif; font-size: 12.5px; font-weight: 600; color: #0A2A66; cursor: pointer; }
   .sf-seg button.on { background: #0A2A66; color: #fff; }
+  .sf-found { color: #0A2A66; font-weight: 600; margin-inline-end: 4px; }
+  .sf-near-note { font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+  .sf-near-note button { border: 0; background: none; padding: 0; font: inherit; color: #0A2A66; text-decoration: underline; cursor: pointer; }
   .sf-lnk { margin-inline-start: auto; border: 0; background: none; padding: 0; font-family: 'Rubik', sans-serif; font-size: 12.5px; font-weight: 700; color: #0A2A66; text-decoration: underline; cursor: pointer; }
   .sf-panel { display: none; background: #fff; color: #0A2A66; border-bottom: 1px solid var(--surface-line, #E7E7E0); padding: 2px 16px 12px; }
   .sf-panel.open { display: block; animation: sfDown .16s ease; }
@@ -4810,23 +4832,79 @@ document.addEventListener('DOMContentLoaded', () => {
     font-family: 'Rubik', sans-serif; font-size: 14px; font-weight: 700; color: #0A2A66; cursor: pointer; }
   .sf-citysug small { font-weight: 400; color: var(--ink-3); }
   /* תוצאות חיפוש/סינון – ישר מתחת להדר (ר' runSearch) */
-  html.sf-results .hero, html.sf-results .cats-section, html.sf-results #wkRoot,
+  /* §762ג – שורת הקטגוריות נשארת מעל התוצאות (בחירה בה מצמצמת את החיפוש, sfSearchCat) */
+  html.sf-results .hero, html.sf-results #wkRoot,
   html.sf-results #bizFixCard, html.sf-results #appleLinkCard, html.sf-results #pushCard { display: none !important; }
+
+  /* ══ §762 — מפת העסקים (מתוך החיפוש) ══ */
+  .sf-map { display: none; background: #fff; }
+  html.sf-map-on .sf-map { display: block; }
+  html.sf-map-on .hero, html.sf-map-on .cats-section, html.sf-map-on #wkRoot, html.sf-map-on #mainFeed, html.sf-map-on #catFeed,
+  html.sf-map-on #bizFixCard, html.sf-map-on #appleLinkCard, html.sf-map-on #pushCard { display: none !important; }
+  .sf-map-box { position: relative; }
+  #sfMap { height: calc(100dvh - 210px); min-height: 340px; max-height: 760px; background: #E9EEF5; }
+  .sf-map-count { position: absolute; top: 10px; right: 10px; z-index: 2; background: #fff; color: #0A2A66; border-radius: 999px; padding: 6px 12px;
+    font-size: 12.5px; font-weight: 700; box-shadow: 0 2px 8px rgba(10,42,102,.18); pointer-events: none; }
+  .sf-map-count:empty { display: none; }
+  .sf-map-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; color: #0A2A66; font-size: 14px; line-height: 1.6; }
+  .sf-map-card { position: absolute; left: 10px; right: 10px; bottom: 12px; z-index: 3; display: none; gap: 10px; align-items: center; background: #fff; border-radius: 14px; padding: 8px;
+    box-shadow: 0 6px 20px rgba(10,42,102,.25); cursor: pointer; max-width: 520px; margin: 0 auto; }
+  .sf-map-card.show { display: flex; }
+  .sf-map-card img { flex: none; width: 66px; height: 66px; border-radius: 10px; object-fit: cover; background: #F2F2EC; }
+  .sf-map-card .b { flex: 1; min-width: 0; }
+  .sf-map-card .n { font-weight: 800; font-size: 15px; color: #0A2A66; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sf-map-card .m { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+  .sf-map-card .ap { font-size: 11.5px; color: #B54708; margin-top: 2px; }
+  .sf-map-card .d { display: inline-block; margin-top: 5px; background: var(--yellow); color: #0A2A66; border-radius: 6px; padding: 2px 7px; font-size: 12px; font-weight: 800; }
+  .sf-map-card .x { position: absolute; top: 4px; left: 6px; border: 0; background: none; font-size: 15px; color: #0A2A66; cursor: pointer; padding: 4px; }
+  .sf-map-pros { padding: 12px 16px 16px; border-top: 1px solid var(--surface-line, #E7E7E0); }
+  .sf-map-pros:empty { display: none; }
+  .sf-map-pros h3 { font-size: 15px; font-weight: 800; color: #0A2A66; margin: 0 0 2px; }
+  .sf-map-pros p { font-size: 12px; color: var(--ink-3); margin: 0 0 10px; }
+  .sf-map-pros .row { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+  .sf-map-pros .row::-webkit-scrollbar { display: none; }
+  .sf-map-pros .biz-card { flex: none; width: 240px; min-width: 240px; max-width: 240px; }
 </style>
 <script>
 (function () {
   var PIN = '<svg class="sf-pin" width="14" height="14" viewBox="0 0 24 24"><path d="M12 22s7-6.6 7-12a7 7 0 0 0-14 0c0 5.4 7 12 7 12z" fill="#FFD400" stroke="#0A2A66" stroke-width="2"/><circle cx="12" cy="10" r="2.6" fill="#0A2A66"/></svg>';
   var REGIONS = ['גוש דן', 'השרון', 'השפלה', 'ירושלים והסביבה', 'חיפה והצפון', 'הדרום'];
   // §761 – near: {city, lat, lng} מהמיקום של המכשיר ("לידי"); radius בק"מ (0 = רק בעיר). near / city / region – אחד בכל פעם
-  var S = { region: [], city: '', kosher: '', sat: '', now: false, coupon: false, comes: false, near: null, radius: 10 };
+  var S = { region: [], city: '', kosher: '', sat: '', now: false, coupon: false, comes: false, near: null, radius: 10, cat: '' };   // §762ג cat – קטגוריה בתוך החיפוש
   var nearState = '';   // '' | 'loading' | הודעת שגיאה
   var panelOpen = false;
+  var mapOn = false;   // §762
   var esc = function (x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   window.sfEsc = esc;
   var C = function () { return window.YZ_CITIES || null; };
 
-  window.sfActive = function () { return !!(S.region.length || S.city || S.kosher || S.sat || S.now || S.coupon || S.comes || S.near); };
+  // §762 – "לידי" נשאר לכל הביקור (לא מתאפס ביציאה מהחיפוש): מסדר גם את הקטגוריות לפי קרבה. כמסנן הוא חל
+  // רק בתוך מצב החיפוש – מחוץ לו דף הבית נשאר דף הבית.
+  function searching() { var n = document.querySelector('.top-nav'); return !!(n && n.classList.contains('searching')); }
+  window.sfActive = function () { return !!(S.region.length || S.city || S.kosher || S.sat || S.now || S.coupon || S.comes || ((S.near || S.cat) && searching())); };
   window.sfNearOn = function () { return !!S.near; };
+  window.sfNearCity = function () { return S.near ? S.near.city : ''; };
+  function saveNear() {
+    try { if (S.near) sessionStorage.setItem('hb_near', JSON.stringify({ city: S.near.city, lat: S.near.lat, lng: S.near.lng, r: S.radius, at: Date.now() }));
+      else sessionStorage.removeItem('hb_near'); } catch (e) {}
+  }
+  try {   // שחזור באותה לשונית (עד 3 שעות) – בלי לבקש מיקום שוב
+    var sv = JSON.parse(sessionStorage.getItem('hb_near') || 'null');
+    if (sv && sv.city && typeof sv.lat === 'number' && Date.now() - sv.at < 3 * 3600e3) { S.near = { city: sv.city, lat: sv.lat, lng: sv.lng }; S.radius = sv.r == null ? 10 : sv.r; }
+  } catch (e) {}
+  // §762 – נקודות אמיתיות לחישוב המרחק: branchGeo (הוורקר, דרך bizPublic) → biz-geo.json → מרכז העיר
+  var geoSeed = null, geoSeedP = null;
+  function loadGeoSeed() {
+    if (geoSeed || geoSeedP) return;
+    geoSeedP = fetch('biz-geo.json?v=762').then(function (r) { return r.json(); }).then(function (j) {
+      geoSeed = j || {};
+      if (!S.near) return;
+      if (searching()) apply();
+      else if (typeof _currentCatFeedKey !== 'undefined' && _currentCatFeedKey && typeof renderCatFeedContent === 'function') renderCatFeedContent(_currentCatFeedKey);
+    }).catch(function () { geoSeedP = null; });
+  }
+  window.sfGeoSeed = function () { return geoSeed; };
+  if (S.near) loadGeoSeed();
   function activeCount() { return S.region.length + (S.city ? 1 : 0) + (S.kosher ? 1 : 0) + (S.sat ? 1 : 0) + (S.now ? 1 : 0) + (S.coupon ? 1 : 0) + (S.comes ? 1 : 0); }
 
   // ── מה כל עסק "מכסה" ──
@@ -4848,19 +4926,34 @@ document.addEventListener('DOMContentLoaded', () => {
     var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a[0] * t) * Math.cos(b[0] * t) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
     return 2 * R * Math.asin(Math.sqrt(h));
   }
-  // המרחק מהמכשיר לעיר הקרובה של העסק (Infinity – אין עיר מוכרת / מגיע אליך / כל הארץ)
+  // §762 – הנקודות של העסק: כל סניף בכתובת האמיתית שלו (branchGeo / biz-geo.json), אחרת מרכז העיר שלו
+  function bizPoints(b) {
+    var Y = C(), pts = [];
+    var src = (Array.isArray(b.branchGeo) && b.branchGeo.length) ? b.branchGeo : (geoSeed && geoSeed[b.id]) || null;
+    (b.branches || []).forEach(function (br) {
+      if (!br) return;
+      var a = String(br.address || '').trim(), c = String(br.city || '').trim();
+      var hit = src && src.find(function (x) { return x && x.a === a && x.c === c; });
+      if (hit) pts.push([hit.lat, hit.lng]);
+      else { var p = Y && Y.coordOf && Y.coordOf(c); if (p) pts.push(p); }
+    });
+    if (!pts.length && Y && Y.coordOf) bizCities(b).forEach(function (c) { var p = Y.coordOf(c); if (p) pts.push(p); });
+    return pts;
+  }
+  // המרחק מהמכשיר לסניף הקרוב של העסק (Infinity – אין מיקום / מגיע אליך / כל הארץ)
   function nearDist(b) {
-    var Y = C(); if (!S.near || !Y || !Y.coordOf) return Infinity;
+    if (!S.near) return Infinity;
     var best = Infinity;
-    bizCities(b).forEach(function (c) { var p = Y.coordOf(c); if (p) best = Math.min(best, km([S.near.lat, S.near.lng], p)); });
+    bizPoints(b).forEach(function (p) { best = Math.min(best, km([S.near.lat, S.near.lng], p)); });
     return best;
   }
   window.sfNearDist = nearDist;
-  // מפתח מיון לפי מקום (קטן = קודם): לידי – המרחק בק"מ (מעוגל); עיר – 0 בעיר. מגיע אליך – 1000, כל הארץ – 2000
+  // מפתח מיון לפי מקום (קטן = קודם): לידי – המרחק המדויק בק"מ (§762: היה מעוגל, ו-2.1 ק"מ קדם ל-1.8); עיר – 0 בעיר.
+  // מגיע אליך – 1000, כל הארץ – 2000
   window.sfPlaceKey = function (b) {
     if (!S.near && !S.city) return 0;
     var Y = C();
-    if (S.near) { var d = nearDist(b); if (d !== Infinity) return Math.round(d); }
+    if (S.near) { var d = nearDist(b); if (d !== Infinity) return Math.min(d, 999); }
     else if (bizCities(b).some(function (c) { return (Y ? Y.canonCity(c) : c) === S.city; })) return 0;
     return nationwide(b) ? 2000 : 1000;
   };
@@ -4902,6 +4995,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   function satState(b) { var days = daysOf(b); if (!days || !days[6]) return ''; return days[6].closed ? 'closed' : 'open'; }
   window.sfMatch = function (b) {
+    if (S.cat && searching() && !(mapCatKey(b.cat) === S.cat || (b.alsoUnderCategory && mapCatKey(b.alsoUnderCategory) === S.cat))) return false;   // §762ג
     if (!matchPlace(b)) return false;
     if (S.kosher === 'yes' && b.kosher !== true) return false;
     if (S.kosher === 'no' && b.kosher !== false) return false;
@@ -4950,7 +5044,10 @@ document.addEventListener('DOMContentLoaded', () => {
     var q = function (cls, onclick, label) { return '<button type="button" class="sf-q' + cls + '" onclick="' + onclick + '">' + label + '</button>'; };
     var loc = nearState === 'loading' ? q(' dark', '', '<span class="sf-spin"></span>מאתר מיקום…')
       : q(' dark' + (S.near ? ' on' : ''), 'sfNear()', PIN + ' ' + (S.near ? 'לידך · ' + esc(S.near.city) : 'לידי'));
+    // §762 – "מפה" ⇄ "רשימה"
+    var MAPI = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>';
     return loc +
+      q(' dark' + (mapOn ? ' on' : ''), 'sfToggleMap()', MAPI + (mapOn ? ' רשימה' : ' מפה')) +
       q(panelOpen ? ' panel-open' : n ? ' on' : '', panelOpen ? 'sfClose()' : 'sfOpen()', 'סינון' + (n ? ' <span class="n">' + n + '</span>' : '') + (panelOpen ? ' ▴' : ' ▾')) +
       q(S.now ? ' on' : '', "sfToggle('now')", '🟡 פתוח עכשיו') +
       q(S.kosher === 'yes' ? ' on' : '', "sfSet('kosher','yes')", 'כשר');
@@ -4958,7 +5055,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function nearRowHtml() {
     if (nearState && nearState !== 'loading') return '<span>' + esc(nearState) + '</span><button type="button" class="sf-lnk" onclick="sfNearMsgOff()">סגירה</button>';
     if (!S.near) return '';
-    return 'כמה רחוק: <span class="sf-seg">' + [[0, 'רק ב' + S.near.city], [10, '10 ק״מ'], [25, '25 ק״מ']].map(function (o) {
+    // §762 – רמי: "אחרי שזה מאתר מיקום – לרשום את העיר שמצא"
+    return '<span class="sf-found">📍 מצאנו אותך ב<b>' + esc(S.near.city) + '</b></span><span class="sf-seg">' + [[0, 'רק ב' + S.near.city], [10, '10 ק״מ'], [25, '25 ק״מ']].map(function (o) {
       return '<button type="button" class="' + (S.radius === o[0] ? 'on' : '') + '" onclick="sfRadius(' + o[0] + ')">' + esc(o[1]) + '</button>';
     }).join('') + '</span><button type="button" class="sf-lnk" onclick="sfNearOff()">ביטול</button>';
   }
@@ -5066,7 +5164,37 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   window.sfClear = function () { S.region = []; S.city = ''; S.kosher = ''; S.sat = ''; S.now = false; S.coupon = false; S.comes = false; apply(); };
   // ניווט מפורש (קטגוריה/דף הבית) / "ביטול" – מנקה בלי לרנדר תוצאות. §761 – גם את "לידי"
-  window.sfReset = function () { S.region = []; S.city = ''; S.kosher = ''; S.sat = ''; S.now = false; S.coupon = false; S.comes = false; S.near = null; nearState = ''; window.sfRender(); };
+  // §762 – "לידי" לא מתאפס כאן (נשאר לכל הביקור, מסדר את הקטגוריות); מכבים אותו רק בקיצור עצמו / "ביטול" שבשורת המיקום
+  window.sfReset = function () { S.region = []; S.city = ''; S.kosher = ''; S.sat = ''; S.now = false; S.coupon = false; S.comes = false; S.cat = ''; nearState = ''; setMap(false); window.sfRender(); };
+  // §762ג – קטגוריה בתוך מצב החיפוש: מצמצמת (לחיצה שנייה / "הכל" – מבטלת). מחוץ לחיפוש – false, והניווט הרגיל ממשיך.
+  window.sfSearchCat = function (cat, el) {
+    if (!searching()) return false;
+    var known = cat === 'all' || (window.CATEGORIES || []).some(function (c) { return c.key === cat; });
+    if (!known) return false;   // "העסקים שאהבתי" וסקשנים – ניווט רגיל
+    S.cat = (cat === 'all' || S.cat === cat) ? '' : cat;
+    document.querySelectorAll('.cat-item').forEach(function (c) { c.classList.remove('active'); });
+    var on = S.cat ? el : document.querySelector('.cat-item');
+    if (on) on.classList.add('active');
+    apply();
+    return true;
+  };
+  window.sfCatLabel = function () { return S.cat && typeof catLabel === 'function' ? catLabel(S.cat) : ''; };
+  // §762 – מצב מפה (בתוך מצב החיפוש). הציור עצמו – sfMapRefresh בסקריפט המפה למטה.
+  function setMap(on) { mapOn = !!on; document.documentElement.classList.toggle('sf-map-on', mapOn); }
+  window.sfMapOn = function () { return mapOn; };
+  window.sfToggleMap = function () {
+    var nav = document.querySelector('.top-nav'); if (nav) nav.classList.add('searching');
+    setMap(!mapOn); panelOpen = false;
+    var a = document.activeElement; if (a && a.id === 'searchInputDesktop') a.blur();
+    window.sfRender();
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    if (mapOn && window.sfMapRefresh) window.sfMapRefresh(true);
+    try { if (mapOn) window.logEvent && window.logEvent('search', { blockId: 'map', channel: 'open' }); } catch (e) {}
+  };
+  // לסקריפט המפה: מצב המיקום/העיר, מי "מגיע אליך", והעיר הקרובה לנקודה
+  window.sfPlaceState = function () { return { near: S.near, city: S.city, radius: S.radius, region: S.region.slice() }; };
+  window.sfComesToClient = function (b) { return comesToClient(b); };
+  window.sfNearestCity = function (lat, lng) { return nearestCity(lat, lng); };
   // §761 – "סינון" פותח/סוגר את הפאנל שבתוך הדף. נכנס גם למצב חיפוש (הקיצורים בהדר), בלי להקפיץ מקלדת.
   window.sfOpen = function (focus) {
     if (focus === 'search') { if (window.openNavSearch) window.openNavSearch(); return; }
@@ -5102,6 +5230,7 @@ document.addEventListener('DOMContentLoaded', () => {
       nearState = '';
       S.near = { city: c, lat: p.coords.latitude, lng: p.coords.longitude };
       S.city = ''; S.region = [];
+      saveNear(); loadGeoSeed();
       apply();
       try { window.logEvent && window.logEvent('search', { blockId: 'near', channel: c.slice(0, 50) }); } catch (e) {}
     }, function (err) {
@@ -5109,9 +5238,14 @@ document.addEventListener('DOMContentLoaded', () => {
       fail(err && err.code === 1 ? 'אין הרשאה למיקום – אפשר לכתוב שם של עיר בתיבה' : 'לא הצלחנו לקבל מיקום – אפשר לכתוב שם של עיר בתיבה');
     }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
   };
-  window.sfNearOff = function () { S.near = null; nearState = ''; apply(); };
+  window.sfNearOff = function () { S.near = null; nearState = ''; saveNear(); apply(); };
+  // מחוץ לחיפוש (כותרת הקטגוריה): מכבה בלי לצאת מהקטגוריה
+  window.sfNearClear = function () {
+    S.near = null; nearState = ''; saveNear(); window.sfRender();
+    if (typeof _currentCatFeedKey !== 'undefined' && _currentCatFeedKey && typeof renderCatFeedContent === 'function') renderCatFeedContent(_currentCatFeedKey);
+  };
   window.sfNearMsgOff = function () { nearState = ''; window.sfRender(); };
-  window.sfRadius = function (r) { S.radius = r; apply(); };
+  window.sfRadius = function (r) { S.radius = r; saveNear(); apply(); };
   // §761 – עיר בתוך הטקסט: שם מלא ("פיצה רחובות") או התחלה של המילה האחרונה, 3 אותיות ומעלה ("פיצה רחו")
   window.sfCityInText = function (t) {
     var Y = C(); if (!Y || typeof normalizeSearchText !== 'function') return null;
@@ -5136,6 +5270,202 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   window.addEventListener('popstate', window.sfClose);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.sfRender); else window.sfRender();
+})();
+</script>
+
+<script>
+// ══ §762 — מפת העסקים (מתוך החיפוש בלבד – רמי: "החיפוש וכל הלפי מיקום רק דרך פה") ═══════════════════
+// • נקודה = סניף אמיתי: biz-geo.json (כתובת כל סניף → lat/lng, Google Geocoding, 10.11). כתובת שהשתנתה / עסק חדש
+//   שעוד לא הומר → מרכז העיר, מסומן "משוער" (לא ממירים מהדפדפן של האוהד – תקרת 330 ביום משותפת לכולם).
+// • מי מקבל נקודה: חנות (isPhysical) ובעל מקצוע שסימן atMine ("מגיעים אליו"). מי שרק מגיע ללקוח (toClient) – בלי נקודה,
+//   ברצועה "בעלי מקצוע שמגיעים ל<אזור>" מתחת למפה, לפי האזור שבמרכז המפה. אונליין בלבד – לא במפה.
+// • Google Maps נטען רק בלחיצה הראשונה על "מפה", ונוצר פעם אחת לטעינת דף (= טעינת מפה אחת לחיוב; תקרה 330 ביום).
+// • הסיכה: הצהוב שלנו עם ה-Z (מתוך yellowzone-mark-square.png, משורטט כ-SVG).
+(function () {
+  var map = null, markers = [], meMarker = null, loadP = null, geo = null, geoP = null, selId = null, lastFitKey = null, rT = null, prosKey = '';
+  var cluster = null, clusterP = null;   // קיבוץ סיכות קרובות לעיגול עם מספר (MarkerClusterer של גוגל); נכשל → סיכות רגילות
+  var esc = function (x) { return window.sfEsc ? window.sfEsc(x) : String(x == null ? '' : x); };
+  var Z = '<path d="M394 181H1058L790 470 570 686H708L674 898H22L367 567H214Z" fill="#0A2A66"/>' +
+    '<path d="M429 242H918L831 328 389 327Z" fill="#FFD400"/>' +
+    '<path d="M348 415H757L421 749 638 751 622 837H183L548 500H308Z" fill="#fff"/>';
+  function pinUrl(sel) {
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">' +
+      '<path d="M20 48C20 48 37 31 37 19A17 17 0 0 0 3 19C3 31 20 48 20 48Z" fill="#FFD400" stroke="' + (sel ? '#E11D48' : '#0A2A66') + '" stroke-width="' + (sel ? 3 : 2.5) + '"/>' +
+      '<g transform="translate(8.9 7.9) scale(0.0205)">' + Z + '</g></svg>';
+    return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+  }
+  function icon(sel) {
+    var w = sel ? 52 : 38, h = sel ? 65 : 47.5;
+    return { url: pinUrl(sel), scaledSize: new google.maps.Size(w, h), anchor: new google.maps.Point(w / 2, h - 1) };
+  }
+  function clusterUrl(n) {
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="20" fill="#FFD400" stroke="#0A2A66" stroke-width="3"/>' +
+      '<text x="23" y="28.5" text-anchor="middle" font-family="Rubik,Arial,sans-serif" font-size="16" font-weight="800" fill="#0A2A66">' + n + '</text></svg>';
+    return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+  }
+  function loadCluster() {
+    if (window.markerClusterer) return Promise.resolve(true);
+    if (clusterP) return clusterP;
+    clusterP = new Promise(function (ok) {
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/@googlemaps/markerclusterer@2.5.3/dist/index.min.js';
+      s.onload = function () { ok(!!window.markerClusterer); }; s.onerror = function () { ok(false); };
+      document.head.appendChild(s);
+      setTimeout(function () { ok(!!window.markerClusterer); }, 8000);
+    });
+    return clusterP;
+  }
+  function el(id) { return document.getElementById(id); }
+  function msg(t) {
+    var box = el('sfMap'); if (!box) return;
+    box.innerHTML = '<div class="sf-map-msg">' + t + '</div>'; map = null; markers = []; meMarker = null;
+  }
+  function loadGM() {
+    if (window.google && google.maps && google.maps.Map) return Promise.resolve();
+    if (loadP) return loadP;
+    loadP = new Promise(function (ok, bad) {
+      if (!window.YZ_MAPS_KEY) { bad(new Error('no key')); return; }
+      var done = false;
+      window.__yzGmReady = function () { done = true; ok(); };
+      window.gm_authFailure = function () { msg('המפה לא זמינה כרגע. אפשר לחזור לרשימה.'); };
+      var s = document.createElement('script');
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(window.YZ_MAPS_KEY) + '&callback=__yzGmReady&language=he&region=IL&loading=async';
+      s.async = true;
+      s.onerror = function () { if (!done) { loadP = null; bad(new Error('load')); } };
+      document.head.appendChild(s);
+      setTimeout(function () { if (!done) { loadP = null; bad(new Error('timeout')); } }, 15000);   // גבול-זמן לרשת
+    });
+    return loadP;
+  }
+  function loadGeo() {
+    if (geo) return Promise.resolve(geo);
+    if (geoP) return geoP;
+    geoP = fetch('biz-geo.json?v=762').then(function (r) { return r.json(); })
+      .then(function (j) { geo = j || {}; return geo; })
+      .catch(function () { geoP = null; geo = {}; return geo; });   // בלי הקובץ – כולם במרכז העיר (משוער)
+    return geoP;
+  }
+  function placed(b) { return !!(b.isPhysical || (b.serviceModes || []).indexOf('atMine') !== -1); }
+  function pointsOf(b) {
+    // §762ב – קודם branchGeo מהעסק עצמו (מתעדכן אוטומטית בוורקר), אחר כך biz-geo.json, ובסוף מרכז העיר
+    var Y = window.YZ_CITIES, g = (b.branchGeo && b.branchGeo.length) ? b.branchGeo : ((geo && geo[b.id]) || []);
+    return (b.branches || []).filter(function (br) { return br && (br.city || br.address); }).map(function (br) {
+      var a = String(br.address || '').trim(), c = String(br.city || '').trim();
+      var hit = g.find(function (x) { return x.a === a && x.c === c; });
+      if (hit) return { lat: hit.lat, lng: hit.lng, ap: hit.ap || '', city: c, addr: a };
+      var cc = Y && Y.coordOf(c);
+      return cc ? { lat: cc[0], lng: cc[1], ap: 'city', city: c, addr: a } : null;
+    }).filter(Boolean);
+  }
+  function currentList() {
+    var q = (typeof _searchQuery !== 'undefined' && _searchQuery) ? _searchQuery : '';
+    var sfOn = !!(window.sfActive && window.sfActive());
+    var all = typeof businesses !== 'undefined' ? businesses : [];
+    return all.filter(function (b) { return (!sfOn || window.sfMatch(b)) && (!q.trim() || window.sfTextMatch(b, q)); });
+  }
+  function km(a, b) {
+    var R = 6371, t = Math.PI / 180, dLat = (b[0] - a[0]) * t, dLng = (b[1] - a[1]) * t;
+    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a[0] * t) * Math.cos(b[0] * t) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function closeCard() {
+    selId = null; el('sfMapCard').classList.remove('show');
+    markers.forEach(function (m) { m.setIcon(icon(false)); m.setZIndex(1); });
+  }
+  window.sfMapCloseCard = closeCard;
+  function select(o) {
+    selId = o.b.id;
+    markers.forEach(function (m) { var s = m._o.b.id === selId; m.setIcon(icon(s)); m.setZIndex(s ? 1000 : 1); });
+    var st = window.sfPlaceState ? window.sfPlaceState() : {};
+    var d = st.near ? km([st.near.lat, st.near.lng], [o.p.lat, o.p.lng]) : null;
+    var img = o.b.coverPhoto || o.b.logo || '';
+    var n = (o.b.branches || []).length;
+    var card = el('sfMapCard');
+    card.innerHTML = '<button type="button" class="x" onclick="event.stopPropagation();sfMapCloseCard()" aria-label="סגירה">✕</button>' +
+      (img ? '<img src="' + esc(img) + '" alt="" loading="lazy">' : '') +
+      '<div class="b"><div class="n">' + esc(o.b.name) + '</div>' +
+      '<div class="m">' + esc([o.p.addr, o.p.city].filter(Boolean).join(', ')) + (d != null ? ' · <b>' + (d < 1 ? Math.round(d * 1000) + ' מ׳' : d.toFixed(1) + ' ק״מ') + '</b>' : '') + (n > 1 ? ' · ' + n + ' סניפים' : '') + '</div>' +
+      (o.p.ap ? '<div class="ap">המיקום משוער – ' + (o.p.ap === 'city' ? 'לפי העיר' : 'לפי הרחוב') + '</div>' : '') +
+      (o.b.discount ? '<span class="d">' + esc(o.b.discount) + '</span>' : '') + '</div>';
+    card.onclick = function () { if (typeof openBiz === 'function') openBiz(o.b.id); };
+    card.classList.add('show');
+    try { window.logEvent && window.logEvent('search', { blockId: 'map', channel: 'pin' }); } catch (e) {}
+  }
+  function fit(pins) {
+    var st = window.sfPlaceState ? window.sfPlaceState() : {};
+    if (st.near) { map.setCenter({ lat: st.near.lat, lng: st.near.lng }); map.setZoom(st.radius === 0 ? 13 : st.radius === 10 ? 12 : 11); return; }
+    if (!pins.length) {
+      var cc = st.city && window.YZ_CITIES && window.YZ_CITIES.coordOf(st.city);
+      map.setCenter(cc ? { lat: cc[0], lng: cc[1] } : { lat: 31.95, lng: 34.85 }); map.setZoom(cc ? 13 : 9); return;
+    }
+    var bnd = new google.maps.LatLngBounds();
+    pins.forEach(function (o) { bnd.extend({ lat: o.p.lat, lng: o.p.lng }); });
+    map.fitBounds(bnd, 48);
+    google.maps.event.addListenerOnce(map, 'idle', function () { if (map.getZoom() > 15) map.setZoom(15); });
+  }
+  // בעלי מקצוע שמגיעים אליך – לפי האזור שבמרכז המפה (מתעדכן בגרירה)
+  function renderPros() {
+    var box = el('sfMapPros'); if (!box || !map) return;
+    var c = map.getCenter(), city = c && window.sfNearestCity ? window.sfNearestCity(c.lat(), c.lng()) : null;
+    var region = city && window.YZ_CITIES ? window.YZ_CITIES.regionOf(city) : null;
+    if (!region) { if (prosKey) { box.innerHTML = ''; prosKey = ''; } return; }
+    var comes = currentList().filter(function (b) { return !placed(b) && window.sfComesToClient && window.sfComesToClient(b); });
+    var local = comes.filter(function (b) { return (b.regions || []).indexOf(region) !== -1; });
+    var key = region + '|' + local.map(function (b) { return b.id; }).join(',');
+    if (key === prosKey) return;
+    prosKey = key;
+    box.innerHTML = '<h3>בעלי מקצוע שמגיעים ל' + esc(region) + ' (' + local.length + ')</h3>' +
+      '<p>אין להם חנות – הם מגיעים אליך, ולכן הם לא נקודה במפה. הרשימה מתחלפת לפי האזור שרואים במפה.</p>' +
+      (local.length ? '<div class="row">' + local.slice(0, 20).map(function (b) { return buildCard(b, false, true, false); }).join('') + '</div>' : '<p>אין כרגע בעלי מקצוע שמגיעים לאזור הזה.</p>');
+  }
+  function draw(forceFit) {
+    Promise.all([loadGM(), loadGeo(), loadCluster()]).then(function () {
+      if (!window.sfMapOn || !window.sfMapOn()) return;
+      var box = el('sfMap');
+      if (!map) {
+        box.innerHTML = '';
+        map = new google.maps.Map(box, { center: { lat: 31.95, lng: 34.85 }, zoom: 9, mapTypeControl: false, streetViewControl: false,
+          fullscreenControl: false, clickableIcons: false, gestureHandling: 'greedy' });
+        map.addListener('idle', renderPros);
+        map.addListener('click', closeCard);
+        forceFit = true;
+      }
+      var pins = [];
+      currentList().forEach(function (b) { if (placed(b)) pointsOf(b).forEach(function (p) { pins.push({ b: b, p: p }); }); });
+      if (cluster) cluster.clearMarkers();
+      markers.forEach(function (m) { m.setMap(null); }); markers = [];
+      var useCluster = !!window.markerClusterer;
+      if (selId && !pins.some(function (o) { return o.b.id === selId; })) { selId = null; el('sfMapCard').classList.remove('show'); }
+      pins.forEach(function (o) {
+        var s = o.b.id === selId;
+        var m = new google.maps.Marker({ map: useCluster ? null : map, position: { lat: o.p.lat, lng: o.p.lng }, icon: icon(s), title: o.b.name, zIndex: s ? 1000 : 1, optimized: true });
+        m._o = o; m.addListener('click', function () { select(o); });
+        markers.push(m);
+      });
+      if (useCluster) {
+        if (!cluster) cluster = new markerClusterer.MarkerClusterer({ map: map, markers: [], renderer: { render: function (c) {
+          return new google.maps.Marker({ position: c.position, zIndex: 500 + c.count,
+            icon: { url: clusterUrl(c.count), scaledSize: new google.maps.Size(46, 46), anchor: new google.maps.Point(23, 23) } });
+        } } });
+        cluster.addMarkers(markers);
+      }
+      var nBiz = {}; pins.forEach(function (o) { nBiz[o.b.id] = 1; });
+      var nb = Object.keys(nBiz).length;
+      el('sfMapCount').textContent = nb === 1 ? 'עסק אחד במפה' : nb ? nb + ' עסקים במפה' : 'אין עסקים במפה בחיפוש הזה';
+      var st = window.sfPlaceState ? window.sfPlaceState() : {};
+      if (meMarker) { meMarker.setMap(null); meMarker = null; }
+      if (st.near) meMarker = new google.maps.Marker({ map: map, position: { lat: st.near.lat, lng: st.near.lng }, clickable: false, zIndex: 2000,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2F80ED', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 } });
+      var q = (typeof _searchQuery !== 'undefined' && _searchQuery) || '';
+      var fitKey = JSON.stringify(st) + '|' + q + '|' + pins.length;
+      if (forceFit || fitKey !== lastFitKey) { lastFitKey = fitKey; fit(pins); }
+      renderPros();
+    }).catch(function () { msg('המפה לא נטענה כרגע (אין חיבור?). אפשר לחזור לרשימה ולנסות שוב.'); });
+  }
+  window.sfMapRefresh = function (forceFit) {
+    if (!window.sfMapOn || !window.sfMapOn()) return;
+    clearTimeout(rT); rT = setTimeout(function () { draw(forceFit); }, forceFit ? 0 : 150);
+  };
 })();
 </script>
 
@@ -5605,6 +5935,7 @@ function _hbRenderBusinesses() {
       coverPhotoBg: b.coverPhotoBg || '',
       photos:       b.photos || [],
       branches:     b.branches || [],
+      branchGeo:    Array.isArray(b.branchGeo) ? b.branchGeo : [],   // §762ב – נקודה לכל סניף (הוורקר, bizgeo.js)
       hours:        b.hours || '',
       hoursMode:    b.hoursMode || '',
       hoursDays:    b.hoursDays || null,

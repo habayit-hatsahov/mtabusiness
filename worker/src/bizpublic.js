@@ -25,6 +25,7 @@ export const PUBLIC_FIELDS = [
   // §710 – "איך מקבלים את השירות": התשובה (toClient/atMine/remote – רק נותן שירות שנענה) ומיקום השורה בכרטיס
   // שהמנהל קבע ידנית ('tags' / 'deal'; ריק = אוטומטי). serviceSetBy/serviceOwnerAckAt/serviceMsgAt – פנימיים, לא כאן.
   'serviceModes', 'servicePlace', 'serviceHide',
+  'branchGeo',   // §762ב – נקודה לכל סניף ({c,a,lat,lng,ap?}) למפה ול"לידי" – כותב: bizgeo.js (פעם בשעה)
 ];
 
 // additionalDiscounts – בלי `code`; במקומו hasCode (home.html מחשב לפיו את אופני המימוש).

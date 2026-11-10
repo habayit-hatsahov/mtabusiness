@@ -35,6 +35,7 @@ import { handleBizRegFailed } from './bizregfail.js';
 import { APPCHECK_PATHS, sampleAppCheck } from './appcheck.js';
 import { runStoreDownloadsSync } from './storedl.js';
 import { runPlatformDaily } from './platformdaily.js';   // §587
+import { runBizGeo } from './bizgeo.js';   // §762ב
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -330,6 +331,12 @@ export default {
     // §738 – כל 5 דקות ולא כל דקה: הבדיקה קוראת את כל העסקים המאושרים (146 ב-8.11) גם בלי שום שינוי,
     //    וזה היה כחצי מקריאות Firestore ביום (~9,300 בשעה גם בלילה). עסק שאושר/נערך מגיע לדף הבית תוך ≤5 דק'.
     const minute = (event && event.scheduledTime) ? new Date(event.scheduledTime).getUTCMinutes() : null;
+    // §762ב – נקודות המפה: עסק חדש / כתובת שהשתנתה → Geocoding → branchGeo. פעם בשעה (דקה 41 – לא על 5/30 של bizPublic).
+    if (minute === 41) {
+      ctx.waitUntil(getGoogleAccessToken(env).then((t) => runBizGeo(env, t))
+        .then((r) => { if (r.wrote || r.geocoded || r.pending || r.skipped) console.log('bizGeo', JSON.stringify(r)); })
+        .catch((e) => console.error('bizGeo failed', String(e))));
+    }
     if (minute !== null && minute % 5 !== 0) return;
     const full = minute === null || minute % 30 === 0;
     ctx.waitUntil(getGoogleAccessToken(env).then((t) => syncBizPublic(env, t, { full }))
