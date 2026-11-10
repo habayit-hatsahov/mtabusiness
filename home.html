@@ -1746,8 +1746,10 @@
         <span class="hbg-line"></span><span class="hbg-line"></span><span class="hbg-line"></span>
       </div>
       <!-- §710ח — רמי: "החיפוש והסינון מלכלכים את דף הבית – ליד הבורגר". במובייל הזכוכית תמיד גלויה ופותחת את
-           גיליון החיפוש והסינון (sfOpen('search')); המספר עליה = כמה סינונים פעילים. (§415: הייתה רק אחרי ה-hero.) -->
-      <button type="button" class="nav-search-toggle" id="navSearchToggle" onclick="sfOpen('search')" aria-label="חיפוש וסינון" title="חיפוש וסינון">
+           גיליון החיפוש והסינון (sfOpen('search')); המספר עליה = כמה סינונים פעילים. (§415: הייתה רק אחרי ה-hero.)
+           §761 — רמי: "לא רוצה שלוחצים על החיפוש ולא רואים את דף הבית". הזכוכית הופכת את ההדר עצמו לתיבת חיפוש
+           (openNavSearch), בלי גיליון ובלי שכבה; התוצאות מתחלפות מתחת תוך כדי הקלדה. -->
+      <button type="button" class="nav-search-toggle" id="navSearchToggle" onclick="openNavSearch()" aria-label="חיפוש וסינון" title="חיפוש וסינון">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
         <span class="nav-sf-badge" id="navSfBadge" style="display:none"></span>
       </button>
@@ -1759,16 +1761,22 @@
     </div>
     <div class="nav-search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-      <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInputDesktop" oninput="handleSearch(this.value)" onkeydown="if(event.key==='Escape'){clearSearch();closeNavSearch();}" onblur="navSearchBlur();_hbSearchSettle()"/>
+      <input type="text" placeholder="חפש עסק, קטגוריה, שירות..." id="searchInputDesktop" oninput="handleSearch(this.value)" onkeydown="if(event.key==='Escape')closeSearchMode();if(event.key==='Enter')this.blur();" onfocus="navSearchFocus()" onblur="_hbSearchSettle()" enterkeyhint="search" autocomplete="off"/>
       <button type="button" class="search-clear" id="searchClearDesktop" onclick="clearSearch()" aria-label="ניקוי החיפוש" title="ניקוי החיפוש">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
     </div>
+    <button type="button" class="nav-search-cancel" onclick="closeSearchMode()">ביטול</button>
     <div class="nav-logo" onclick="showHome(); window.scrollTo({top:0,behavior:'smooth'})">
       <img src="images/yellowzone-logo-horizontal.png" alt="Yellow Zone"/>
     </div>
   </div>
+  <!-- §761 — קיצורי החיפוש (לידי · סינון · פתוח עכשיו · כשר) + "כמה רחוק". רק במצב חיפוש. מצויר ע"י sfRender -->
+  <div class="sf-chips2" id="sfChips"></div>
+  <div class="sf-near" id="sfNear"></div>
 </header>
+<!-- §761 — הסינון נפתח כאן, בתוך הדף מתחת להדר (דוחף את התוכן למטה) – לא גיליון שמכסה. מצויר ע"י sfRender -->
+<div class="sf-panel" id="sfPanel"></div>
 
 <!-- ══ HERO / SEARCH ══ -->
 <div class="hero">
@@ -1824,7 +1832,7 @@
      המיידי למטה שמשתמש ב-window.CATEGORIES, אבל אין שום סיבה שיעכב את מה שמעל (המסך הצהוב). -->
 <script src="categories.js?v=7071"></script>
 <script src="hours.js"></script>
-<script src="il-cities.js?v=645"></script><!-- §645 — ישובים לפי אזור (סינון "אזור או עיר") -->
+<script src="il-cities.js?v=761"></script><!-- §645 — ישובים לפי אזור (סינון "אזור או עיר") -->
 <script src="social-links.js"></script>
 <script src="sections-policy.js?v=662"></script>
 <div class="cats-section">
@@ -1959,6 +1967,7 @@ getDoc(doc(db, 'homeCarousel', 'current')).then(s => { if (s.exists()) { WK.appl
 <!-- ══ CATEGORY FILTER VIEW ══ -->
 <div id="catFeed" style="display:none;">
   <div class="section" style="padding-top:16px;">
+    <div id="sfCitySug"></div><!-- §761 – "כל העסקים ב-X" כשכתבו שם של עיר (runSearch) -->
     <div class="section-header">
       <div id="catFeedTitle"></div>
       <a class="see-all" onclick="showHome()">‹ חזרה לדף הבית</a>
@@ -3023,6 +3032,8 @@ function refreshOpenFeed() {
 }
 
 function filterCat(cat, el) {
+  document.documentElement.classList.remove('sf-results');   // §761
+  const _sug = document.getElementById('sfCitySug'); if (_sug) _sug.innerHTML = '';
   // כל ניווט מפורש (קטגוריה / חזרה לדף הבית) יוצא ממצב-חיפוש ומנקה את התיבה — אחרת נשאר
   // טקסט בתיבה בזמן שמוצג משהו אחר לגמרי, והתו הבא שמוקלד מצטרף אליו.
   if (_searchQuery) { _searchQuery = ''; syncSearchInputs(''); }
@@ -3257,17 +3268,30 @@ function syncSearchInputs(val) {
 // לא סקופ המודול) — אותו כלל של כל שאר הקובץ.
 // ⚠️ **הסגירה היא על blur-כשריק בלבד**: סגירה על כל blur הייתה מכווצת את התיבה מתחת לאצבע
 // של מי שגלל את התוצאות תוך כדי חיפוש, ואיתה גם את הטקסט שהוא הקליד.
+// §761 — מצב חיפוש = .top-nav.searching: התיבה בהדר + שורת הקיצורים (sfChips). **לא נסגר ב-blur** (נגיעה בקיצור,
+// גלילה בתוצאות, סגירת המקלדת) – רק "ביטול" / Escape (closeSearchMode). בדסקטופ התיבה תמיד בהדר, והפוקוס בה פותח את הקיצורים.
 window.openNavSearch = function () {
   document.querySelector('.top-nav')?.classList.add('searching');
+  if (window.sfRender) window.sfRender();
   const el = document.getElementById('searchInputDesktop');
-  if (el) { el.focus(); el.select(); }
+  if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (e) {} }
+};
+window.navSearchFocus = function () {
+  const nav = document.querySelector('.top-nav');
+  if (nav && !nav.classList.contains('searching')) { nav.classList.add('searching'); if (window.sfRender) window.sfRender(); }
 };
 window.closeNavSearch = function () {
   document.querySelector('.top-nav')?.classList.remove('searching');
 };
-window.navSearchBlur = function () {
-  const el = document.getElementById('searchInputDesktop');
-  if (el && !el.value.trim()) closeNavSearch();
+window.navSearchBlur = function () {};   // §761 – כבר לא סוגרים ב-blur (נשאר כי קוד ישן עשוי לקרוא לה)
+// "ביטול": מנקה טקסט, סינון ומיקום, סוגר את הפאנל וחוזר לדף הבית – בדיוק למקום שבו היה
+window.closeSearchMode = function () {
+  clearTimeout(_searchDebounce);
+  if (window.sfReset) window.sfReset();
+  if (window.sfClose) window.sfClose();
+  closeNavSearch();
+  document.getElementById('searchInputDesktop')?.blur();
+  runSearch('');
 };
 
 // מתי הכפתור בכלל מופיע: ברגע שתיבת-החיפוש של ה-hero יצאה מתחת להדר. IntersectionObserver
@@ -3281,10 +3305,8 @@ window.navSearchBlur = function () {
   if (!bar || !nav || !('IntersectionObserver' in window)) return;
   new IntersectionObserver(([e]) => {
     nav.classList.toggle('past-hero', !e.isIntersecting);
-    // גלילה חזרה לראש הדף מחזירה את תיבת ה-hero — ואז אין שום סיבה שהתיבה שבהדר תישאר
-    // פתוחה מעליה. ⚠️ רק כשהיא ריקה: לא סוגרים חיפוש פעיל בגלל גלילה.
-    if (e.isIntersecting) navSearchBlur();
-  }, { rootMargin: '-64px 0px 0px 0px', threshold: 0 }).observe(bar);
+    // §761 – כבר לא סוגרים את מצב החיפוש בגלילה לראש הדף (תיבת ה-hero מוסתרת מאז §710ח)
+  },{ rootMargin: '-64px 0px 0px 0px', threshold: 0 }).observe(bar);
 })();
 
 // ✕ / Escape — ניקוי בלחיצה אחת: מרוקן את שתי התיבות, חוזר לדף הבית, ומשאיר את הפוקוס
@@ -3313,6 +3335,7 @@ window.sfScope = function () {
 
 function runSearch(val) {
   const sfOn = !!(window.sfActive && window.sfActive());   // §645
+  const nearOn = !!(window.sfNearOn && window.sfNearOn());   // §761
   if (sfOn && !_sfScopeCat && _currentCatFeedKey) _sfScopeCat = _currentCatFeedKey;   // §662
   if (!val.trim() && !sfOn) {
     _searchQuery = '';
@@ -3321,6 +3344,8 @@ function runSearch(val) {
       const k = _sfScopeCat;
       _sfScopeCat = null;
       _currentCatFeedKey = k;
+      document.documentElement.classList.remove('sf-results');   // §761
+      document.getElementById('sfCitySug').innerHTML = '';
       renderCatFeedContent(k);
       return;
     }
@@ -3362,7 +3387,14 @@ function runSearch(val) {
     .filter(Boolean)
     .filter(x => !sfOn || window.sfMatch(x.b))   // §645
     // בלי טקסט (סינון בלבד) – לפי פופולריות; עם טקסט – לפי ההתאמה; בתוך קטגוריה (§662) – הסדר שלה
-    .sort((a, b) => scope ? 0 : words.length ? b.score - a.score : (b.b.clicks || 0) - (a.b.clicks || 0))
+    // §761 – "לידי" / עיר: קודם מי שנמצא שם (לפי המרחק), אחריו מי שמגיע אליך, ובסוף כל הארץ / אונליין;
+    // בתוך כל קבוצה – הסדר הרגיל
+    .sort((a, b) => {
+      if (scope) return 0;
+      const pk = window.sfPlaceKey ? window.sfPlaceKey(a.b) - window.sfPlaceKey(b.b) : 0;
+      if (pk) return pk;
+      return words.length ? b.score - a.score : (b.b.clicks || 0) - (a.b.clicks || 0);
+    })
     .map(x => x.b);
   _searchCount = results.length;   // §707 – למדידת החיפוש
 
@@ -3373,9 +3405,17 @@ function runSearch(val) {
     _homeScrollY = window.scrollY;
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }
+  // §761 – התוצאות עולות ישר מתחת לתיבה (כמו בדמו): הברכה, הקטגוריות והקרוסלה יורדים כל עוד יש תוצאות,
+  // וחוזרים ברגע שהטקסט/הסינון מתרוקן או ב"ביטול" (filterCat מסיר את המחלקה).
+  document.documentElement.classList.add('sf-results');
   mainFeedEl.style.display = 'none';
   document.getElementById('catFeed').style.display = 'block';
-  document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${words.length ? 'תוצאות חיפוש' : scope ? scope.title + ' · סינון' : 'תוצאות הסינון'}${sfOn ? ` · ${results.length}` : ''}</div>`;
+  // §761 – עיר שמופיעה בטקסט ("פיצה רחובות") → הצעה לסנן לפי העיר (כולל מי שמגיע אליה), והטקסט נשאר רק "פיצה"
+  const cityHit = words.length && window.sfCityInText ? window.sfCityInText(val) : null;
+  const citySug = cityHit ? `<button type="button" class="sf-citysug" data-city="${window.sfEsc(cityHit)}" onclick="sfPickCity(this.dataset.city)">📍 כל העסקים ב${window.sfEsc(cityHit)} <small>· כולל מי שמגיע אליה</small></button>` : '';
+  const nearTxt = nearOn && window.sfNearLabel ? ' · ' + window.sfEsc(window.sfNearLabel()) : '';
+  document.getElementById('sfCitySug').innerHTML = citySug;
+  document.getElementById('catFeedTitle').innerHTML = `<div class="section-title">${words.length ? 'תוצאות חיפוש' : scope ? scope.title + ' · סינון' : 'תוצאות הסינון'}${sfOn ? ` · ${results.length}` : ''}${nearTxt}</div>`;
   if (results.length) _patchGrid(document.getElementById('catFeedGrid'), results, b => buildCard(b, false, false, true));   // §641ז
   else document.getElementById('catFeedGrid').innerHTML = `<div class="empty-cat" style="grid-column:1/-1"><div class="icon">🔍</div><p>לא נמצאו תוצאות${sfOn ? ' בסינון הזה' : ''}</p>${sfOn ? '<button type="button" class="sf-empty-clear" onclick="sfClear()">ניקוי הסינון</button>' : ''}</div>`;
 }
@@ -4740,18 +4780,53 @@ document.addEventListener('DOMContentLoaded', () => {
   .sf-btn.y { background: var(--yellow); color: #0A2A66; flex: 2; }
   .sf-btn.g { background: #F4F5F8; color: #0A2A66; }
   .sf-empty-clear { display: inline-block; margin-top: 8px; background: none; border: 0; color: #0A2A66; font-weight: 800; text-decoration: underline; cursor: pointer; font-family: 'Rubik', sans-serif; }
+
+  /* ══ §761 — חיפוש חי בהדר + סינון בתוך הדף (הדמו: search-live-demo.html) ══════════════════════
+     רמי: "לא אוהב שלוחצים על החיפוש ולא רואים את דף הבית ושהתוצאות לא משתנות בהתאם לכיתוב" + "איך הסינון נפתח?
+     לא רוצה גיליון שמכסה את הדף". הגיליון (sf-sheet) הוסר; הקיצורים בתוך ההדר, הסינון פאנל רגיל מתחתיו. */
+  .nav-search-cancel { display: none; flex: none; border: 0; background: none; padding: 0 2px; font-family: 'Rubik', sans-serif; font-size: 15px; font-weight: 700; color: var(--ink); cursor: pointer; }
+  .top-nav.searching .nav-search-cancel { display: block; }
+  .sf-chips2, .sf-near { display: none; }
+  .top-nav.searching .sf-chips2 { display: flex; gap: 7px; overflow-x: auto; margin: 8px -16px 0; padding: 0 16px 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .sf-chips2::-webkit-scrollbar { display: none; }
+  .sf-chips2 .sf-q { padding: 6px 11px; }
+  .sf-q.dark { border-color: #0A2A66; font-weight: 800; }
+  .sf-q.dark.on { border-color: var(--yellow); }
+  .sf-q.panel-open { background: #0A2A66; border-color: #0A2A66; color: #fff; }
+  .sf-spin { width: 12px; height: 12px; border: 2px solid rgba(10,42,102,.25); border-top-color: #0A2A66; border-radius: 50%; animation: sfSpin .7s linear infinite; flex: none; }
+  @keyframes sfSpin { to { transform: rotate(360deg); } }
+  .top-nav.searching .sf-near:not(:empty) { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 0 1px; font-size: 12.5px; color: var(--ink-3); }
+  .sf-seg { display: inline-flex; border: 1.5px solid #E3E7EF; border-radius: 10px; overflow: hidden; }
+  .sf-seg button { border: 0; background: #fff; padding: 5px 10px; font-family: 'Rubik', sans-serif; font-size: 12.5px; font-weight: 600; color: #0A2A66; cursor: pointer; }
+  .sf-seg button.on { background: #0A2A66; color: #fff; }
+  .sf-lnk { margin-inline-start: auto; border: 0; background: none; padding: 0; font-family: 'Rubik', sans-serif; font-size: 12.5px; font-weight: 700; color: #0A2A66; text-decoration: underline; cursor: pointer; }
+  .sf-panel { display: none; background: #fff; color: #0A2A66; border-bottom: 1px solid var(--surface-line, #E7E7E0); padding: 2px 16px 12px; }
+  .sf-panel.open { display: block; animation: sfDown .16s ease; }
+  @keyframes sfDown { from { opacity: 0; transform: translateY(-6px); } }
+  .sf-panel .sf-grp { margin-top: 12px; }
+  .sf-panel .sf-actions { position: static; padding: 12px 0 0; margin-top: 12px; }
+  @media (min-width: 640px) { .sf-panel { padding-inline: max(16px, calc((100% - 640px) / 2)); } }
+  .sf-citysug { display: flex; align-items: center; gap: 6px; width: 100%; text-align: right; background: #fff; border: 1.5px dashed #0A2A66; border-radius: 12px; padding: 11px 12px; margin: 0 0 12px;
+    font-family: 'Rubik', sans-serif; font-size: 14px; font-weight: 700; color: #0A2A66; cursor: pointer; }
+  .sf-citysug small { font-weight: 400; color: var(--ink-3); }
+  /* תוצאות חיפוש/סינון – ישר מתחת להדר (ר' runSearch) */
+  html.sf-results .hero, html.sf-results .cats-section, html.sf-results #wkRoot,
+  html.sf-results #bizFixCard, html.sf-results #appleLinkCard, html.sf-results #pushCard { display: none !important; }
 </style>
-<div class="sf-ov" id="sfOv" onclick="sfClose()"></div>
-<div class="sf-sheet" id="sfSheet" role="dialog" aria-modal="true" aria-label="סינון"></div>
 <script>
 (function () {
   var PIN = '<svg class="sf-pin" width="14" height="14" viewBox="0 0 24 24"><path d="M12 22s7-6.6 7-12a7 7 0 0 0-14 0c0 5.4 7 12 7 12z" fill="#FFD400" stroke="#0A2A66" stroke-width="2"/><circle cx="12" cy="10" r="2.6" fill="#0A2A66"/></svg>';
   var REGIONS = ['גוש דן', 'השרון', 'השפלה', 'ירושלים והסביבה', 'חיפה והצפון', 'הדרום'];
-  var S = { region: [], city: '', kosher: '', sat: '', now: false, coupon: false, comes: false };
+  // §761 – near: {city, lat, lng} מהמיקום של המכשיר ("לידי"); radius בק"מ (0 = רק בעיר). near / city / region – אחד בכל פעם
+  var S = { region: [], city: '', kosher: '', sat: '', now: false, coupon: false, comes: false, near: null, radius: 10 };
+  var nearState = '';   // '' | 'loading' | הודעת שגיאה
+  var panelOpen = false;
   var esc = function (x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  window.sfEsc = esc;
   var C = function () { return window.YZ_CITIES || null; };
 
-  window.sfActive = function () { return !!(S.region.length || S.city || S.kosher || S.sat || S.now || S.coupon || S.comes); };
+  window.sfActive = function () { return !!(S.region.length || S.city || S.kosher || S.sat || S.now || S.coupon || S.comes || S.near); };
+  window.sfNearOn = function () { return !!S.near; };
   function activeCount() { return S.region.length + (S.city ? 1 : 0) + (S.kosher ? 1 : 0) + (S.sat ? 1 : 0) + (S.now ? 1 : 0) + (S.coupon ? 1 : 0) + (S.comes ? 1 : 0); }
 
   // ── מה כל עסק "מכסה" ──
@@ -4764,17 +4839,50 @@ document.addEventListener('DOMContentLoaded', () => {
     return out;
   }
   function nationwide(b) { return onlineOnly(b) || (b.regions || []).indexOf('כל הארץ') !== -1; }
+  // §761 – רמי: "יש בעלי מקצוע שמגיעים אליהם – תשים לב מי סימן". "מגיע אליך" רק למי שסימן toClient;
+  // מי שסימן רק atMine (מגיעים אליו) נמדד לפי הערים/הכתובת שלו, כמו חנות. מי שעוד לא נענה – כמו קודם (isPro).
+  function comesToClient(b) { return (b.serviceModes || []).length ? b.serviceModes.indexOf('toClient') !== -1 : !!b.isPro; }
+  function bizCities(b) { return (b.cities || []).concat(b.city ? [b.city] : []); }
+  function km(a, b) {
+    var R = 6371, t = Math.PI / 180, dLat = (b[0] - a[0]) * t, dLng = (b[1] - a[1]) * t;
+    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a[0] * t) * Math.cos(b[0] * t) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  // המרחק מהמכשיר לעיר הקרובה של העסק (Infinity – אין עיר מוכרת / מגיע אליך / כל הארץ)
+  function nearDist(b) {
+    var Y = C(); if (!S.near || !Y || !Y.coordOf) return Infinity;
+    var best = Infinity;
+    bizCities(b).forEach(function (c) { var p = Y.coordOf(c); if (p) best = Math.min(best, km([S.near.lat, S.near.lng], p)); });
+    return best;
+  }
+  window.sfNearDist = nearDist;
+  // מפתח מיון לפי מקום (קטן = קודם): לידי – המרחק בק"מ (מעוגל); עיר – 0 בעיר. מגיע אליך – 1000, כל הארץ – 2000
+  window.sfPlaceKey = function (b) {
+    if (!S.near && !S.city) return 0;
+    var Y = C();
+    if (S.near) { var d = nearDist(b); if (d !== Infinity) return Math.round(d); }
+    else if (bizCities(b).some(function (c) { return (Y ? Y.canonCity(c) : c) === S.city; })) return 0;
+    return nationwide(b) ? 2000 : 1000;
+  };
   function matchPlace(b) {
-    if (!S.region.length && !S.city) return true;
+    if (!S.region.length && !S.city && !S.near) return true;
     if (nationwide(b)) return true;
     var regs = bizRegions(b);
+    var Y = C();
+    if (S.near) {
+      var inside = S.radius === 0
+        ? bizCities(b).some(function (c) { return (Y ? Y.canonCity(c) : c) === S.near.city; })
+        : nearDist(b) <= S.radius;
+      if (inside) return true;
+      var nr = Y && Y.regionOf(S.near.city);
+      return !!(nr && comesToClient(b) && (b.regions || []).indexOf(nr) !== -1);
+    }
     if (S.city) {
-      var Y = C();
-      var inCity = (b.cities || []).concat(b.city ? [b.city] : []).some(function (c) { return Y ? Y.canonCity(c) === S.city : c === S.city; });
+      var inCity = bizCities(b).some(function (c) { return Y ? Y.canonCity(c) === S.city : c === S.city; });
       if (inCity) return true;
       // נותן שירות שמגיע לאזור של העיר
       var r = Y && Y.regionOf(S.city);
-      return !!(r && b.isPro && (b.regions || []).indexOf(r) !== -1);
+      return !!(r && comesToClient(b) && (b.regions || []).indexOf(r) !== -1);
     }
     return S.region.some(function (r) { return regs[r]; });
   }
@@ -4817,20 +4925,12 @@ document.addEventListener('DOMContentLoaded', () => {
       q(S.sat === 'open', "sfSet('sat','open')", 'פתוח בשבת') +
       q(S.coupon, "sfToggle('coupon')", '🌐 קוד קופון');
   }
-  function sheetHtml() {
+  // §761 – תוכן הסינון: פאנל בתוך הדף (#sfPanel) מתחת להדר, לא גיליון. התיבה עצמה בהדר.
+  function panelHtml() {
     var chip = function (on, onclick, label) { return '<button type="button" class="sf-chip' + (on ? ' on' : '') + '" onclick="' + onclick + '">' + label + '</button>'; };
     var Y = C();
     var sc = noText() && window.sfScope ? window.sfScope() : null;   // §662
-    // §710ח – ראש הגיליון (נשאר למעלה בגלילה): ידית משיכה + תיבת החיפוש, ואז "סינון"
-    var q = typeof _searchQuery !== 'undefined' ? (_searchQuery || '') : '';
-    return '<div class="sf-top"><div class="sf-drag" id="sfDrag"><div class="howto-grab"></div></div>' +
-      '<div class="sf-search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
-        '<input type="search" id="sfSearchIn" placeholder="חפש עסק, קטגוריה, שירות..." autocomplete="off" enterkeyhint="search" value="' + esc(q) + '"' +
-        ' oninput="handleSearch(this.value);sfLabelSoon()" onkeydown="if(event.key===\'Enter\'){this.blur();sfClose();}" onblur="_hbSearchSettle()">' +
-        '<button type="button" class="search-clear' + (q ? ' show' : '') + '" id="sfSearchClear" onclick="sfSearchClear()" aria-label="ניקוי החיפוש">' +
-        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div></div>' +
-      '<h2>סינון</h2>' +
-      (sc ? '<div class="sf-gh" style="margin:2px 0 0">בתוך: ' + esc(sc.plain) + '</div>' : '') +
+    return (sc ? '<div class="sf-gh" style="margin:10px 0 0">בתוך: ' + esc(sc.plain) + '</div>' : '') +
       '<div class="sf-grp" id="sfPlace"><div class="sf-gl">אזור או עיר</div><div class="sf-chips">' +
         REGIONS.map(function (r) { return chip(S.region.indexOf(r) !== -1, "sfRegion('" + r + "')", r); }).join('') + '</div>' +
         '<div class="sf-gh" style="margin-top:10px">או כתבו שם של עיר:</div>' +
@@ -4841,6 +4941,26 @@ document.addEventListener('DOMContentLoaded', () => {
       '<div class="sf-grp"><div class="sf-gl">שבת</div><div class="sf-gh">לפי שעות הפעילות שהעסק הזין</div><div class="sf-chips">' + chip(S.sat === 'open', "sfSet('sat','open')", 'פתוח בשבת') + chip(S.sat === 'closed', "sfSet('sat','closed')", 'סגור בשבת') + '</div></div>' +
       '<div class="sf-grp"><div class="sf-gl">עוד</div><div class="sf-chips">' + chip(S.now, "sfToggle('now')", '🟡 פתוח עכשיו') + chip(S.coupon, "sfToggle('coupon')", '🌐 קוד קופון / קנייה באתר') + chip(S.comes, "sfToggle('comes')", 'מגיעים אליי') + '</div></div>' +
       '<div class="sf-actions"><button type="button" class="sf-btn g" onclick="sfClear()">ניקוי</button><button type="button" class="sf-btn y" onclick="sfClose()">' + resultsLabel() + '</button></div>';
+  }
+  // §761 – שורת הקיצורים בהדר (מצב חיפוש): לידי · סינון · פתוח עכשיו · כשר
+  function nearLabel() { return S.near ? (S.radius === 0 ? 'ב' + S.near.city : 'עד ' + S.radius + ' ק״מ ממך') : ''; }
+  window.sfNearLabel = nearLabel;
+  function chipsHtml() {
+    var n = activeCount();
+    var q = function (cls, onclick, label) { return '<button type="button" class="sf-q' + cls + '" onclick="' + onclick + '">' + label + '</button>'; };
+    var loc = nearState === 'loading' ? q(' dark', '', '<span class="sf-spin"></span>מאתר מיקום…')
+      : q(' dark' + (S.near ? ' on' : ''), 'sfNear()', PIN + ' ' + (S.near ? 'לידך · ' + esc(S.near.city) : 'לידי'));
+    return loc +
+      q(panelOpen ? ' panel-open' : n ? ' on' : '', panelOpen ? 'sfClose()' : 'sfOpen()', 'סינון' + (n ? ' <span class="n">' + n + '</span>' : '') + (panelOpen ? ' ▴' : ' ▾')) +
+      q(S.now ? ' on' : '', "sfToggle('now')", '🟡 פתוח עכשיו') +
+      q(S.kosher === 'yes' ? ' on' : '', "sfSet('kosher','yes')", 'כשר');
+  }
+  function nearRowHtml() {
+    if (nearState && nearState !== 'loading') return '<span>' + esc(nearState) + '</span><button type="button" class="sf-lnk" onclick="sfNearMsgOff()">סגירה</button>';
+    if (!S.near) return '';
+    return 'כמה רחוק: <span class="sf-seg">' + [[0, 'רק ב' + S.near.city], [10, '10 ק״מ'], [25, '25 ק״מ']].map(function (o) {
+      return '<button type="button" class="' + (S.radius === o[0] ? 'on' : '') + '" onclick="sfRadius(' + o[0] + ')">' + esc(o[1]) + '</button>';
+    }).join('') + '</span><button type="button" class="sf-lnk" onclick="sfNearOff()">ביטול</button>';
   }
   function noText() { return !(typeof _searchQuery !== 'undefined' && _searchQuery); }
   function resultsLabel() {
@@ -4882,45 +5002,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // §710ח – המספר על הזכוכית (מובייל) ועל "סינון" בהדר (דסקטופ)
     var nb = document.getElementById('navSfBadge'); if (nb) { nb.textContent = cnt || ''; nb.style.display = cnt ? '' : 'none'; }
     var nf = document.getElementById('navFilterN'); if (nf) nf.textContent = cnt ? String(cnt) : '';
-    var sh = document.getElementById('sfSheet');
-    if (sh && sh.classList.contains('open')) {
-      // ציור מחדש – בלי לאבד הקלדה שבאמצע בתיבת החיפוש
-      var a = document.activeElement, keepQ = a && a.id === 'sfSearchIn' ? [a.selectionStart, a.selectionEnd] : null;
-      var keepY = sh.scrollTop; sh.innerHTML = sheetHtml(); sh.scrollTop = keepY;
-      if (keepQ) { var si = document.getElementById('sfSearchIn'); if (si) { si.focus(); try { si.setSelectionRange(keepQ[0], keepQ[1]); } catch (e) {} } }
+    // §761 – קיצורים + "כמה רחוק" בהדר, והפאנל מתחתיו
+    var ch = document.getElementById('sfChips'); if (ch) ch.innerHTML = chipsHtml();
+    var nr = document.getElementById('sfNear'); if (nr) nr.innerHTML = nearRowHtml();
+    var pn = document.getElementById('sfPanel');
+    if (pn) {
+      pn.classList.toggle('open', panelOpen);
+      if (panelOpen) {
+        // ציור מחדש – בלי לאבד הקלדה שבאמצע בתיבת העיר
+        var a = document.activeElement, keepC = a && a.id === 'sfCityIn' ? a.value : null;
+        pn.innerHTML = panelHtml();
+        if (keepC != null) { var ci = document.getElementById('sfCityIn'); if (ci) { ci.value = keepC; ci.focus(); window.sfSuggest(); } }
+      } else pn.innerHTML = '';
     }
   };
-  // §710ח – "הצגת N עסקים" מתעדכן תוך כדי הקלדה (החיפוש עצמו רץ אחרי 120ms – handleSearch)
+  // "הצגת N עסקים" מתעדכן תוך כדי הקלדה בתיבה שבהדר (החיפוש עצמו רץ אחרי 120ms – handleSearch)
   var labelT = null;
   window.sfLabelSoon = function () {
     clearTimeout(labelT);
-    labelT = setTimeout(function () { var y = document.querySelector('#sfSheet .sf-btn.y'); if (y) y.textContent = resultsLabel(); }, 200);
+    labelT = setTimeout(function () { var y = document.querySelector('#sfPanel .sf-btn.y'); if (y) y.textContent = resultsLabel(); }, 200);
   };
-  window.sfSearchClear = function () {
-    if (typeof clearSearch === 'function') clearSearch();
-    var si = document.getElementById('sfSearchIn'); if (si) { si.value = ''; si.focus(); }
-    window.sfLabelSoon();
-  };
-  // §710ח – משיכה של הידית למטה סוגרת (נגיעה ברקע הכהה סוגרת כבר – sfOv)
-  (function dragToClose() {
-    var sh = document.getElementById('sfSheet'), y0 = null, dy = 0;
-    if (!sh) return;
-    sh.addEventListener('pointerdown', function (e) {
-      if (!e.target.closest('#sfDrag')) return;
-      y0 = e.clientY; dy = 0; sh.style.transition = 'none';
-      try { e.target.setPointerCapture(e.pointerId); } catch (x) {}
-    });
-    sh.addEventListener('pointermove', function (e) {
-      if (y0 == null) return;
-      dy = Math.max(0, e.clientY - y0); sh.style.transform = 'translateY(' + dy + 'px)';
-    });
-    var end = function () {
-      if (y0 == null) return;
-      y0 = null; sh.style.transition = ''; sh.style.transform = '';
-      if (dy > 90) window.sfClose();
-    };
-    sh.addEventListener('pointerup', end); sh.addEventListener('pointercancel', end);
-  })();
+  window.sfSearchClear = function () { if (typeof clearSearch === 'function') clearSearch(); window.sfLabelSoon(); };
   function apply() {
     dismissed = false;   // §645ה – שינוי סינון מחזיר את השורה
     window.sfRender();
@@ -4953,8 +5055,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   window.sfToggle = function (k) { S[k] = !S[k]; apply(); };
   window.sfSet = function (k, v) { S[k] = S[k] === v ? '' : v; apply(); };
-  window.sfRegion = function (r) { var i = S.region.indexOf(r); if (i === -1) S.region.push(r); else S.region.splice(i, 1); S.city = ''; apply(); };
-  window.sfCity = function (c) { S.city = c || ''; if (S.city) S.region = []; apply(); };
+  window.sfRegion = function (r) { var i = S.region.indexOf(r); if (i === -1) S.region.push(r); else S.region.splice(i, 1); S.city = ''; S.near = null; apply(); };
+  window.sfCity = function (c) { S.city = c || ''; if (S.city) { S.region = []; S.near = null; } apply(); };
   window.sfSuggest = function () {
     var v = (document.getElementById('sfCityIn').value || '').trim(), box = document.getElementById('sfSugg'), Y = C();
     if (!v || !Y) { box.innerHTML = ''; return; }
@@ -4963,21 +5065,74 @@ document.addEventListener('DOMContentLoaded', () => {
       : '<button type="button" disabled><small>לא נמצאה עיר – אפשר לבחור את האזור למעלה</small></button>';
   };
   window.sfClear = function () { S.region = []; S.city = ''; S.kosher = ''; S.sat = ''; S.now = false; S.coupon = false; S.comes = false; apply(); };
-  // ניווט מפורש (קטגוריה/דף הבית) – מנקה בלי לרנדר תוצאות
-  window.sfReset = function () { S.region = []; S.city = ''; S.kosher = ''; S.sat = ''; S.now = false; S.coupon = false; S.comes = false; window.sfRender(); };
+  // ניווט מפורש (קטגוריה/דף הבית) / "ביטול" – מנקה בלי לרנדר תוצאות. §761 – גם את "לידי"
+  window.sfReset = function () { S.region = []; S.city = ''; S.kosher = ''; S.sat = ''; S.now = false; S.coupon = false; S.comes = false; S.near = null; nearState = ''; window.sfRender(); };
+  // §761 – "סינון" פותח/סוגר את הפאנל שבתוך הדף. נכנס גם למצב חיפוש (הקיצורים בהדר), בלי להקפיץ מקלדת.
   window.sfOpen = function (focus) {
-    var sh = document.getElementById('sfSheet');
-    sh.innerHTML = sheetHtml(); sh.scrollTop = 0;
-    document.getElementById('sfOv').classList.add('open'); sh.classList.add('open');
-    document.documentElement.classList.add('sf-locked');   // §710י – הדף מאחור לא נגלל
-    if (focus === 'place') setTimeout(function () { var el = document.getElementById('sfPlace'); if (el) el.scrollIntoView({ block: 'start' }); }, 30);
-    // §710ח – מהזכוכית: ישר להקלדה (הסמן בסוף מה שכבר נכתב)
-    if (focus === 'search') setTimeout(function () { var si = document.getElementById('sfSearchIn'); if (si) { si.focus(); var n = si.value.length; try { si.setSelectionRange(n, n); } catch (e) {} } }, 280);
+    if (focus === 'search') { if (window.openNavSearch) window.openNavSearch(); return; }
+    var nav = document.querySelector('.top-nav'); if (nav) nav.classList.add('searching');
+    var a = document.activeElement; if (a && a.id === 'searchInputDesktop') a.blur();
+    panelOpen = true;
+    window.sfRender();
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });   // הפאנל בראש הדף, מתחת להדר
+    if (focus === 'place') setTimeout(function () { var el = document.getElementById('sfCityIn'); if (el) el.focus(); }, 30);
   };
-  window.sfClose = function () {
-    document.documentElement.classList.remove('sf-locked');   // §710י
-    document.getElementById('sfOv').classList.remove('open');
-    document.getElementById('sfSheet').classList.remove('open');
+  window.sfClose = function () { if (!panelOpen) return; panelOpen = false; window.sfRender(); };
+
+  // ── §761 "לידי" – מיקום המכשיר → העיר הקרובה (מחושב במכשיר; שום דבר לא נשלח) ──
+  function nearestCity(lat, lng) {
+    var Y = C(); if (!Y || !Y.COORDS) return null;
+    var best = null, bd = Infinity;
+    Object.keys(Y.COORDS).forEach(function (c) { var d = km([lat, lng], Y.COORDS[c]); if (d < bd) { bd = d; best = c; } });
+    return bd <= 20 ? best : null;
+  }
+  window.sfNear = function () {
+    if (S.near) { window.sfNearOff(); return; }
+    if (nearState === 'loading') return;
+    var fail = function (msg) { nearState = msg; window.sfRender(); };
+    if (!navigator.geolocation) { fail('המכשיר לא נותן מיקום – אפשר לכתוב שם של עיר בתיבה'); return; }
+    nearState = 'loading'; window.sfRender();
+    var done = false;
+    // ⏱ גבול-זמן משלנו: יש מכשירים שלא קוראים לאף אחת מהפונקציות כשההרשאה חסומה ברמת האפליקציה
+    var guard = setTimeout(function () { if (!done) { done = true; fail('לא הצלחנו לקבל מיקום – אפשר לכתוב שם של עיר בתיבה'); } }, 12000);
+    navigator.geolocation.getCurrentPosition(function (p) {
+      if (done) return; done = true; clearTimeout(guard);
+      var c = nearestCity(p.coords.latitude, p.coords.longitude);
+      if (!c) { fail('לא מצאנו עיר מוכרת לידך – אפשר לכתוב שם של עיר בתיבה'); return; }
+      nearState = '';
+      S.near = { city: c, lat: p.coords.latitude, lng: p.coords.longitude };
+      S.city = ''; S.region = [];
+      apply();
+      try { window.logEvent && window.logEvent('search', { blockId: 'near', channel: c.slice(0, 50) }); } catch (e) {}
+    }, function (err) {
+      if (done) return; done = true; clearTimeout(guard);
+      fail(err && err.code === 1 ? 'אין הרשאה למיקום – אפשר לכתוב שם של עיר בתיבה' : 'לא הצלחנו לקבל מיקום – אפשר לכתוב שם של עיר בתיבה');
+    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
+  };
+  window.sfNearOff = function () { S.near = null; nearState = ''; apply(); };
+  window.sfNearMsgOff = function () { nearState = ''; window.sfRender(); };
+  window.sfRadius = function (r) { S.radius = r; apply(); };
+  // §761 – עיר בתוך הטקסט: שם מלא ("פיצה רחובות") או התחלה של המילה האחרונה, 3 אותיות ומעלה ("פיצה רחו")
+  window.sfCityInText = function (t) {
+    var Y = C(); if (!Y || typeof normalizeSearchText !== 'function') return null;
+    var n = normalizeSearchText(t); if (n.length < 2) return null;
+    var names = Object.keys(Y.CITY_REGION).concat(Object.keys(Y.ALIASES || {}));
+    var padded = ' ' + n + ' ', last = n.split(' ').pop();
+    var hit = names.find(function (c) { var cn = normalizeSearchText(c); return cn && padded.indexOf(' ' + cn + ' ') !== -1; }) ||
+      (last.length >= 3 ? names.find(function (c) { return normalizeSearchText(c).indexOf(last) === 0; }) : null);
+    return hit ? Y.canonCity(hit) : null;
+  };
+  // לחיצה על "כל העסקים ב-X": העיר הופכת לסינון, ומהטקסט נשארת רק המילה שחיפשו
+  window.sfPickCity = function (c) {
+    var Y = C(); if (!c) return;
+    var cw = normalizeSearchText(c).split(' ');
+    var aliasN = Object.keys((Y && Y.ALIASES) || {}).map(normalizeSearchText);
+    var rest = normalizeSearchText(_searchQuery || '').split(' ').filter(function (w) {
+      return w && !cw.some(function (x) { return x.indexOf(w) === 0; }) && aliasN.indexOf(w) === -1;
+    }).join(' ');
+    S.city = c; S.region = []; S.near = null; nearState = '';
+    _searchQuery = rest; syncSearchInputs(rest);
+    apply();
   };
   window.addEventListener('popstate', window.sfClose);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.sfRender); else window.sfRender();
