@@ -4885,6 +4885,13 @@ document.addEventListener('DOMContentLoaded', () => {
   function searching() { var n = document.querySelector('.top-nav'); return !!(n && n.classList.contains('searching')); }
   window.sfActive = function () { return !!(S.region.length || S.city || S.kosher || S.sat || S.now || S.coupon || S.comes || ((S.near || S.cat) && searching())); };
   window.sfNearOn = function () { return !!S.near; };
+  // §762ה – אפליקציה בלי הרשאת מיקום (לפני YZGeo/1) – "לידי" לא מוצג בכלל
+  function geoOk() {
+    var ua = navigator.userAgent || '';
+    var inApp = !!window.Capacitor || /YellowZoneApp/i.test(ua);
+    return !inApp || /YZGeo\/\d/.test(ua);
+  }
+  window.sfGeoOk = geoOk;
   window.sfNearCity = function () { return S.near ? S.near.city : ''; };
   function saveNear() {
     try { if (S.near) sessionStorage.setItem('hb_near', JSON.stringify({ city: S.near.city, lat: S.near.lat, lng: S.near.lng, r: S.radius, at: Date.now() }));
@@ -5044,7 +5051,10 @@ document.addEventListener('DOMContentLoaded', () => {
   function chipsHtml() {
     var n = activeCount();
     var q = function (cls, onclick, label) { return '<button type="button" class="sf-q' + cls + '" onclick="' + onclick + '">' + label + '</button>'; };
-    var loc = nearState === 'loading' ? q(' dark', '', '<span class="sf-spin"></span>מאתר מיקום…')
+    // §762ה – רמי: "שלא יראו משהו שלא עובד". באפליקציה "לידי" מוצג רק בגרסה עם הרשאת מיקום (YZGeo/1 ב-UA:
+    // אנדרואיד 1.4 / iOS 1.0.2). גרסה ישנה – בלי הכפתור; נדלק לבד כשמעדכנים. באתר – תמיד.
+    var loc = !geoOk() ? ''
+      : nearState === 'loading' ? q(' dark', '', '<span class="sf-spin"></span>מאתר מיקום…')
       : q(' dark' + (S.near ? ' on' : ''), 'sfNear()', PIN + ' ' + (S.near ? 'לידך · ' + esc(S.near.city) : 'לידי'));
     // §762 – "מפה" ⇄ "רשימה"
     var MAPI = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>';
