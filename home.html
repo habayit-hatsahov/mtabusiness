@@ -3041,10 +3041,12 @@ function refreshOpenFeed() {
   else if (_currentCatFeedKey) renderCatFeedContent(_currentCatFeedKey);
 }
 
-function filterCat(cat, el) {
+function filterCat(cat, el, internal) {
   // §762ג – רמי: "חיפשתי קרוב אליי ואז בחרתי קטגוריה – שלא ימחק את החיפוש". במצב חיפוש לחיצה על קטגוריה
   // מצמצמת את התוצאות (טקסט + לידי + סינון נשארים) במקום לצאת מהחיפוש.
-  if (window.sfSearchCat && window.sfSearchCat(cat, el)) return;
+  // 🔴 §762ד – רק לחיצה של המשתמש. קריאה פנימית (runSearch / showHome, internal=true) עוברת ישר: בלי זה
+  //    runSearch('') → filterCat('all') → sfSearchCat → apply → runSearch('') … לולאה אינסופית (נתפס בבדיקה, 10.11).
+  if (!internal && window.sfSearchCat && window.sfSearchCat(cat, el)) return;
   document.documentElement.classList.remove('sf-results');   // §761
   const _sug = document.getElementById('sfCitySug'); if (_sug) _sug.innerHTML = '';
   // כל ניווט מפורש (קטגוריה / חזרה לדף הבית) יוצא ממצב-חיפוש ומנקה את התיבה — אחרת נשאר
@@ -3367,7 +3369,7 @@ function runSearch(val) {
       renderCatFeedContent(k);
       return;
     }
-    filterCat('all', document.querySelector('.cat-item'));
+    filterCat('all', document.querySelector('.cat-item'), true);   // §762ד – פנימי
     return;
   }
   _searchQuery = val.trim() ? val : '';
@@ -3634,7 +3636,7 @@ function copyContactEmail(event) {
 }
 
 function showHome() {
-  filterCat('all', document.querySelector('.cat-item'));
+  filterCat('all', document.querySelector('.cat-item'), true);   // §762ד – פנימי (לא "הכל" בתוך חיפוש)
 }
 
 // ── BIZ SHEET ─────────────────────────────────────────────────────────────────
@@ -5053,7 +5055,8 @@ document.addEventListener('DOMContentLoaded', () => {
       q(S.kosher === 'yes' ? ' on' : '', "sfSet('kosher','yes')", 'כשר');
   }
   function nearRowHtml() {
-    if (nearState && nearState !== 'loading') return '<span>' + esc(nearState) + '</span><button type="button" class="sf-lnk" onclick="sfNearMsgOff()">סגירה</button>';
+    // §762ד – בהודעת כשל: "בחירת עיר" (פותח את הסינון על שדה העיר) · "סגירה"
+    if (nearState && nearState !== 'loading') return '<span>' + esc(nearState) + '</span><button type="button" class="sf-lnk" onclick="sfNearMsgOff();sfOpen(\'place\')">בחירת עיר</button><button type="button" class="sf-lnk" style="margin-inline-start:10px" onclick="sfNearMsgOff()">סגירה</button>';
     if (!S.near) return '';
     // §762 – רמי: "אחרי שזה מאתר מיקום – לרשום את העיר שמצא"
     return '<span class="sf-found">📍 מצאנו אותך ב<b>' + esc(S.near.city) + '</b></span><span class="sf-seg">' + [[0, 'רק ב' + S.near.city], [10, '10 ק״מ'], [25, '25 ק״מ']].map(function (o) {
@@ -5217,26 +5220,41 @@ document.addEventListener('DOMContentLoaded', () => {
   window.sfNear = function () {
     if (S.near) { window.sfNearOff(); return; }
     if (nearState === 'loading') return;
-    var fail = function (msg) { nearState = msg; window.sfRender(); };
-    if (!navigator.geolocation) { fail('המכשיר לא נותן מיקום – אפשר לכתוב שם של עיר בתיבה'); return; }
+    // §762ד – רמי: "לחצתי לידי וזה לא הצליח למצוא את המיקום". מדידת הסיבה (search/near, channel fail:<סיבה>:<איפה>),
+    // ניסיון שני מדויק כשהראשון לא הספיק (timeout / unavailable), וכפתור "בחירת עיר" בהודעה.
+    var inApp = !!window.Capacitor || /YellowZoneApp/i.test(navigator.userAgent || '');
+    var where = (inApp ? 'app' : 'web') + ':' + (/iPhone|iPad|iPod/i.test(navigator.userAgent || '') ? 'ios' : /Android/i.test(navigator.userAgent || '') ? 'android' : 'desktop');
+    var fail = function (msg, why) {
+      nearState = msg; window.sfRender();
+      try { window.logEvent && window.logEvent('search', { blockId: 'near', channel: ('fail:' + why + ':' + where).slice(0, 50) }); } catch (e) {}
+    };
+    var denyMsg = inApp ? 'האפליקציה לא קיבלה הרשאה למיקום. אפשר לבחור עיר במקום.' : 'אין הרשאה למיקום בדפדפן. אפשר לאשר בהגדרות הדפדפן, או לבחור עיר.';
+    var failMsg = 'לא הצלחנו לקבל מיקום כרגע. אפשר לנסות שוב, או לבחור עיר.';
+    if (!navigator.geolocation) { fail('המכשיר לא נותן מיקום. אפשר לבחור עיר במקום.', 'nogeo'); return; }
     nearState = 'loading'; window.sfRender();
-    var done = false;
+    var done = false, tries = 0;
     // ⏱ גבול-זמן משלנו: יש מכשירים שלא קוראים לאף אחת מהפונקציות כשההרשאה חסומה ברמת האפליקציה
-    var guard = setTimeout(function () { if (!done) { done = true; fail('לא הצלחנו לקבל מיקום – אפשר לכתוב שם של עיר בתיבה'); } }, 12000);
-    navigator.geolocation.getCurrentPosition(function (p) {
+    var guard = setTimeout(function () { if (!done) { done = true; fail(failMsg, 'guard'); } }, 25000);
+    var ok = function (p) {
       if (done) return; done = true; clearTimeout(guard);
       var c = nearestCity(p.coords.latitude, p.coords.longitude);
-      if (!c) { fail('לא מצאנו עיר מוכרת לידך – אפשר לכתוב שם של עיר בתיבה'); return; }
+      if (!c) { fail('לא מצאנו עיר מוכרת לידך. אפשר לבחור עיר.', 'nocity'); return; }
       nearState = '';
       S.near = { city: c, lat: p.coords.latitude, lng: p.coords.longitude };
       S.city = ''; S.region = [];
       saveNear(); loadGeoSeed();
       apply();
       try { window.logEvent && window.logEvent('search', { blockId: 'near', channel: c.slice(0, 50) }); } catch (e) {}
-    }, function (err) {
-      if (done) return; done = true; clearTimeout(guard);
-      fail(err && err.code === 1 ? 'אין הרשאה למיקום – אפשר לכתוב שם של עיר בתיבה' : 'לא הצלחנו לקבל מיקום – אפשר לכתוב שם של עיר בתיבה');
-    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
+    };
+    var bad = function (err) {
+      if (done) return;
+      var code = err && err.code;
+      // 2 = לא זמין, 3 = לא הספיק: עוד ניסיון אחד עם GPS (enableHighAccuracy), בלי מטמון
+      if (code !== 1 && tries < 1) { tries++; navigator.geolocation.getCurrentPosition(ok, bad, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }); return; }
+      done = true; clearTimeout(guard);
+      fail(code === 1 ? denyMsg : failMsg, code === 1 ? 'denied' : code === 2 ? 'unavailable' : code === 3 ? 'timeout' : 'err');
+    };
+    navigator.geolocation.getCurrentPosition(ok, bad, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
   };
   window.sfNearOff = function () { S.near = null; nearState = ''; saveNear(); apply(); };
   // מחוץ לחיפוש (כותרת הקטגוריה): מכבה בלי לצאת מהקטגוריה
