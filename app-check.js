@@ -56,6 +56,8 @@ function wrapFetchOnce() {
 
 export function attachAppCheck(app, { measure = false } = {}) {
   if (typeof location === 'undefined' || !LIVE_HOST.test(location.hostname)) return null;
+  // §767 – מכשיר ש-App Check נתקע אצלו פעם (ר' AC_SKIP_KEY) – לא נטען שוב, ורק נמדד כ-skip
+  if (acSkipped()) { if (measure) measureOnce(null); return null; }
   let ac = null;
   try {
     hideBadge();
@@ -80,8 +82,34 @@ function measureOnce(ac) {
     sessionStorage.setItem('yz_ac_measured', '1');
   } catch (e) { return; }
   const t0 = Date.now();
+  if (!ac) { sendAcEvent('skip', t0); return; }   // §767
   const bucket = (ms) => ms < 500 ? '<0.5s' : ms < 1500 ? '<1.5s' : ms < 4000 ? '<4s' : '4s+';
-  const send = (result) => {
+  const send = (result) => sendAcEvent(result, t0);
+  // תקרה: אם אין תשובה תוך 15 שנ' – נרשם כ"timeout" (זה בדיוק מה שהיה נחסם באכיפה)
+  // §767 – ומסומן במכשיר: מהפתיחה הבאה App Check לא נטען, כדי שהכניסה והנתונים לא ימתינו לו
+  let done = false;
+  const timer = setTimeout(() => {
+    if (done) return;
+    done = true;
+    try { localStorage.setItem(AC_SKIP_KEY, String(Date.now())); } catch (e) {}
+    send('timeout');
+  }, 15000);
+  getToken(ac, false).then(
+    (r) => { if (done) return; done = true; clearTimeout(timer); send((r && r.token ? 'ok:' : 'empty:') + bucket(Date.now() - t0)); },
+    (e) => { if (done) return; done = true; clearTimeout(timer); send('err:' + String((e && (e.code || e.name)) || 'x').replace(/^appCheck\//, '').slice(0, 24)); },
+  );
+}
+
+// ── §767 — מכשיר ש-App Check **נתקע** אצלו (timeout, לא שגיאה) – מפסיקים לטעון אותו שם ─────────────
+// נמדד (28.10–11.11): כשהטוקן נכשל מהר (err) הכול עובד – 22/22 סשנים באנדרואיד הגיעו ל-Firestore; כשהוא
+// נתקע (timeout) – רק 7/42. Firestore ו-Auth ממתינים לטוקן לפני כל בקשה, ולכן אצלם גם הכניסה נתקעת
+// ("נכנסים…" / "הכניסה מתעכבת") וגם הנתונים לא נטענים. מקרה 11.11: אוהד מאושר באנדרואיד – timeout בכל
+// פתיחה, גם אחרי ניקוי נתונים וכיבוי VPN. האכיפה כבויה, כך שבלי App Check לא נחסם כלום.
+// ⚠️ לפני אכיפה: המכשירים האלה ייחסמו – לספור אותם קודם (אירוע appCheck עם תוצאה skip).
+const AC_SKIP_KEY = 'yz_ac_skip';
+function acSkipped() { try { return !!localStorage.getItem(AC_SKIP_KEY); } catch (e) { return false; } }
+
+function sendAcEvent(result, t0) {
     try {
       const ua = navigator.userAgent || '';
       const inApp = !!window.Capacitor || /YellowZoneApp/i.test(ua);
@@ -98,12 +126,4 @@ function measureOnce(ac) {
         }),
       }).catch(() => {});
     } catch (e) {}
-  };
-  // תקרה: אם אין תשובה תוך 15 שנ' – נרשם כ"timeout" (זה בדיוק מה שהיה נחסם באכיפה)
-  let done = false;
-  const timer = setTimeout(() => { if (!done) { done = true; send('timeout'); } }, 15000);
-  getToken(ac, false).then(
-    (r) => { if (done) return; done = true; clearTimeout(timer); send((r && r.token ? 'ok:' : 'empty:') + bucket(Date.now() - t0)); },
-    (e) => { if (done) return; done = true; clearTimeout(timer); send('err:' + String((e && (e.code || e.name)) || 'x').replace(/^appCheck\//, '').slice(0, 24)); },
-  );
 }
