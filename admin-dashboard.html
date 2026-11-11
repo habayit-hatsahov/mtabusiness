@@ -21594,6 +21594,37 @@ window.unmarkLoginIssueHandled = async function(key) {
     await setDoc(doc(db, 'settings', 'handledLoginIssues'), { [key]: deleteField() }, { merge: true });
   } catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
 };
+// ── §770 — "בטיפול" + וואטסאפ בתקלות כניסה (כמו בפניות עזרה, §740) ─────────────────────────────
+// רמי: "תן לי אופציה כמו הפניות עזרה, לפנות בוואטסאפ לסמן שזה בתהליך".
+// 🔑 לפי **אדם** ולא לפי שורה: מי שנתקע שוב מוסיף אירוע חדש (מפתח חדש), והסימון חייב להישאר עליו.
+// settings/workingLoginIssues: { [who]: { at, by } }. who = 'mem:<id>' / 'ph:<9 ספרות>' / 'em:<מייל>'.
+let workingLoginIssues = {};
+function loginIssueWho(x) {
+  return x.fan ? 'mem:' + x.fan.id : x.phone && hbPhoneKey(x.phone) ? 'ph:' + hbPhoneKey(x.phone) : x.email ? 'em:' + String(x.email).toLowerCase() : 'k:' + x.key;
+}
+function loginIssueWorking(x) {
+  const w = workingLoginIssues[loginIssueWho(x)];
+  return w && w.at ? { at: new Date(w.at), again: !!(x.at && x.at.getTime() > new Date(w.at).getTime() + 60000) } : null;
+}
+window.markLoginIssueWorking = async function(who) {
+  try { await setDoc(doc(db, 'settings', 'workingLoginIssues'), { [who]: { at: new Date().toISOString(), by: auth.currentUser ? auth.currentUser.uid : '' } }, { merge: true }); }
+  catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+window.unmarkLoginIssueWorking = async function(who) {
+  try { await setDoc(doc(db, 'settings', 'workingLoginIssues'), { [who]: deleteField() }, { merge: true }); }
+  catch (e) { console.error(e); alert('שגיאה: ' + e.message); }
+};
+// לחיצה על וואטסאפ = התחלת טיפול (אם עוד לא סומן). הקישור עצמו נפתח מה-href, לא מכאן.
+window.loginIssueWaClick = function(who) { if (!workingLoginIssues[who]) window.markLoginIssueWorking(who); };
+function loginIssueWaText(x) {
+  const f = x.fan, first = f ? String(f.firstName || f.name || '').trim().split(/\s+/)[0] : '';
+  const code = f ? (MEMBER_CODES[f.id] || f.loginCode || '') : '';
+  const stuck = hbLoginFailBase(x.reason) === 'stuck' || hbLoginFailBase(x.reason) === 'authTimeout';
+  const how = code ? `נכנסים עם מספר הטלפון שלך והקוד: *${code}*` : 'נכנסים עם מספר הטלפון שלך והקוד שקיבלת במייל';
+  return `היי${first ? ' ' + first : ''}, כאן רמי מ-Yellow Zone 💛\n` + (stuck
+    ? `ראיתי שניסית להיכנס לאפליקציה וזה לא עבד – תיקנו משהו שאמור לעזור:\n1. אם יש VPN דלוק – לכבות.\n2. לפתוח את Yellow Zone, לחכות כ-20 שניות ולסגור לגמרי. לעשות את זה פעמיים.\n3. בפעם השלישית: ${how}\nלא הסתדר? פשוט עונים לי כאן 🙏`
+    : `ראיתי שניסית להיכנס ל-Yellow Zone וזה לא הסתדר.\n${how}\nלא הסתדר? פשוט עונים לי כאן ואני אעזור 🙏`);
+}
 
 // ── §563 — "מה קרה בסוף" גם בכשלי ההרשמה (בקשת רמי, 20.10) ─────────────────────────────
 // *"כמו שרשמת לי בבעיות כניסה שאחרי זה נכנס, גם פה תרשום לי מה קרה בסוף. כי אם זה נפתר אין
@@ -22913,6 +22944,11 @@ function loginIssueFilteredList() {
   // את המספר שלו, ורואים מיד אם ומתי הוא נכשל.
   // §407 — המייל נכלל בחיפוש: אוהד כותב "ניסיתי להיכנס", מדביקים את הכתובת שלו, ורואים מיד.
   if (q) list = list.filter(x => `${x.label} ${x.reason} ${x.sessionId} ${x.env} ${x.phone || ''} ${x.email || ''} ${x.fan ? x.fan.name : ''}`.includes(q));
+  // §770 – כמו בפניות עזרה: מה שעוד לא התחלת – למעלה; "בטיפול" – אחריהם (ומי שנתקע שוב אחרי שהתחלת – חוזר למעלה)
+  const rank = x => { const w = loginIssueWorking(x); return w && !w.again ? 1 : 0; };
+  list = list.map((x, i) => [x, i]).sort((a, b) => (rank(a[0]) - rank(b[0])) || (a[1] - b[1])).map(p => p[0]);
+  // הקוד של כל חבר בשורות – לנוסח הוואטסאפ (נטען בקבוצה, ואז רינדור מחדש)
+  needMemberCodes(list.slice(0, 200).filter(x => x.fan).map(x => x.fan.id));
   return list;
 }
 function loginIssuesTableHtml(list) {
@@ -22976,6 +23012,7 @@ function loginIssuesTableHtml(list) {
           // §407 — ⚠️ אמירה מפורשת שהוא **אינו** רשום: בלעדיה מייל בשורה נקרא כמו כל זיהוי
           // אחר, והמנהל מחפש רשומה שלא קיימת. זה גם מה שהופך את השורה לפעולה: להזמין אותו.
           }${x.email && !x.fan && !x.phone ? ' · ⚠️ המייל הזה אינו רשום אצלנו – שווה להזמין אותו' : ''}</div>
+          ${(() => { const w = loginIssueWorking(x); return w ? `<div class="task-table-meta" style="font-weight:700;color:#92400E">🟡 התחלת לטפל ${esc(agoTimeLabel(w.at))}</div>${w.again ? `<div class="task-table-meta" style="font-weight:700;color:#C2410C">🔁 נתקע שוב אחרי שהתחלת לטפל</div>` : ''}` : ''; })()}
           <div class="task-table-meta" style="opacity:.75">${
             [x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
              // §338 — הסביבה קודמת לסשן: בכשל 'timeout'/'moduleTimeout' זו השורה שאומרת
@@ -22988,13 +23025,18 @@ function loginIssuesTableHtml(list) {
         </div>
         <!-- §402 – שני תגים, ובסדר הזה: מה קרה **במערכת**, ואז מה קרה **לאדם**. השני הוא
              זה שקובע אם מרימים טלפון, ולכן הוא לא מוסתר בשורת-המטא הקטנה שמתחת. -->
-        <div class="task-table-badges"><span class="${HB_LOGIN_CAT[x.cat].needs ? 'warn-badge' : 'treat-badge'}">${esc(HB_LOGIN_CAT[x.cat].label)}</span>${hbOutcomeBadge(x.outcome)}</div>
+        <div class="task-table-badges"><span class="${HB_LOGIN_CAT[x.cat].needs ? 'warn-badge' : 'treat-badge'}">${esc(HB_LOGIN_CAT[x.cat].label)}</span>${hbOutcomeBadge(x.outcome)}${
+          loginIssueWorking(x) ? `<span class="warn-badge" style="background:#FEF3C7;color:#92400E">🟡 בטיפול</span>` : ''}</div>
         <div class="mi-addr"></div>
         <!-- §355 – חתימת-זמן ולא "היום": כל הכשלים של היום-ואתמול נראו כאן שורה זהה, ודווקא
              בהם צריך להצליב מול שעת-פריסה או מול שיחה עם האוהד. -->
         <div class="task-table-wait">${agoTimeLabel(x.at)}</div>
         <div class="mi-actions">
           ${x.fan ? `<button class="act-btn tiny" onclick="selectTask2('fan','${x.fan.id}')">פתיחת ${esc(x.fan.name)}</button>` : ''}
+          ${(() => { const who = loginIssueWho(x), ph = x.phone || (x.fan && x.fan.phone) || '', w = loginIssueWorking(x);
+            return (ph ? `<a class="act-btn tiny" style="text-decoration:none" href="${waLink(ph, loginIssueWaText(x))}" target="_blank" rel="noopener" onclick="loginIssueWaClick('${escJsAttr(who)}')">📲 וואטסאפ</a>` : '')
+              + (w ? `<button class="act-btn tiny" onclick="unmarkLoginIssueWorking('${escJsAttr(who)}')">↺ עוד לא התחלתי</button>`
+                   : `<button class="act-btn tiny" style="background:#FEF3C7;color:#92400E" onclick="markLoginIssueWorking('${escJsAttr(who)}')">🟡 התחלתי לטפל</button>`); })()}
           <button class="act-btn approve tiny" onclick="markLoginIssueHandled('${esc((x.keys || [x.key]).join(','))}','${escJsAttr((x.fan ? x.fan.name + ' · ' : '') + (x.phone || x.email || x.label))}')">✔️ טיפלתי</button>
         </div>
       </div>`).join('')}
@@ -26612,6 +26654,11 @@ onSnapshot(query(collection(db, 'conversations'), orderBy('lastAt', 'desc'), lim
 
 // §355 — סימוני "טיפלתי" של תקלות כניסה. onSnapshot מאותה סיבה כמו למטה: הסימון מוריד
 // שורה מהמסך, וסימון שלא מתרענן היה נראה כאילו הכפתור לא עשה כלום.
+// §770 – "בטיפול" של תקלות כניסה (לפי אדם). onSnapshot – הכפתור משנה את השורה מיד.
+onSnapshot(doc(db, 'settings', 'workingLoginIssues'), snap => {
+  workingLoginIssues = snap.exists() ? (snap.data() || {}) : {};
+  refreshTaskCenter();
+}, err => console.error('שגיאה בטעינת "בטיפול" של תקלות כניסה:', err));
 onSnapshot(doc(db, 'settings', 'handledLoginIssues'), snap => {
   handledLoginIssues = snap.exists() ? (snap.data() || {}) : {};
   if (issuesActive() || handledActive()) refreshTaskCenter();
