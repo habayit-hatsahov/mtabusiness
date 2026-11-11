@@ -610,16 +610,18 @@ function list1Html(t, waBox) {
   const all = t.list, nOpen = all.filter(m => op.has(m.id)).length, nSent = all.filter(sentAt).length;
   const rows = (S.waOpen ? all.filter(m => op.has(m.id)) : all).slice().sort((a, b) => (!!sentAt(a) - !!sentAt(b)));
   const age = m => m.approvedAt ? U.dayDiff(U.dk(m.approvedAt), U.D.today) : '';
-  return `${stuckHtml(t, sentAt)}<div class="yzu-box"><h3>💬 וואטסאפ – ${f(all.length)} שאושרו ועדיין לא נכנסו</h3>${waBox}
+  // §772 – התקועים מטופלים רק ב"תקלות כניסה": כאן שורת ספירה, וברשימה – בלי כפתור וואטסאפ (שלא יישלח פעמיים)
+  const stuck = stuckOf(), stuckIds = new Set(stuck.map(r => r.m.id));
+  return `${stuckHtml(stuck)}<div class="yzu-box"><h3>💬 וואטסאפ – ${f(all.length)} שאושרו ועדיין לא נכנסו</h3>${waBox}
     <div class="yzt-per" style="margin:0 0 8px"><button class="yzt-pb${S.waOpen ? '' : ' on'}" onclick="yztSet('waOpen',false)">כולם (${f(all.length)})</button><button class="yzt-pb${S.waOpen ? ' on' : ''}" onclick="yztSet('waOpen',true)">רק מי שפתח את המייל (${f(nOpen)})</button>
       <span class="rng">נשלחו ${f(nSent)} · נשארו ${f(all.length - nSent)}${GOT.map ? '' : ' · טוען מי פתח…'}</span></div>
     <div class="yzu-tw"><table><tr><th>שם</th><th>טלפון</th><th>נרשם עם</th><th>אושר לפני</th><th>המייל</th><th>וואטסאפ</th><th>נשלח</th></tr>
     ${rows.map(m => { const href = waHref(m.phone, waText1(m)), s = sentAt(m);
       return `<tr${s ? ' style="opacity:.55"' : ''}><td>${U.esc(m.name || '')}</td><td>${U.esc(m.phone || '')}</td><td>${methodOf(m)}</td><td>${age(m)} ימים</td>
       <td>${op.has(m.id) ? '<b class="yzt-got">פתח</b>' : '<span class="yzu-note">לא פתח</span>'}</td>
-      <td>${href ? `<a class="yzt-wa" href="${href}" target="_blank" rel="noopener" onclick="yztWa('${m.id}')">וואטסאפ</a>` : '–'}</td>
+      <td>${stuckIds.has(m.id) ? '<span class="yzt-stuck-tag">🆘 בתקלות כניסה</span>' : href ? `<a class="yzt-wa" href="${href}" target="_blank" rel="noopener" onclick="yztWa('${m.id}')">וואטסאפ</a>` : '–'}</td>
       <td>${s ? `<span class="yzt-got">✓ ${s.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}</span>` : '–'}</td></tr>`; }).join('')}</table></div>
-    <p class="yzu-note">לחיצה על "וואטסאפ" פותחת את הוואטסאפ שלך עם ההודעה מוכנה, כולל הקוד שלו – שולחים משם. הלחיצה נרשמת ("נשלח"), והשורה יורדת לסוף הרשימה. מי שנכנס לאפליקציה יוצא מהרשימה לבד.</p></div>`;
+    <p class="yzu-note">"🆘 בתקלות כניסה" = ניסה ולא הצליח – מטפלים בו משם (וואטסאפ, "בטיפול", "טיפלתי"), לא מכאן. לחיצה על "וואטסאפ" פותחת את הוואטסאפ שלך עם ההודעה מוכנה, כולל הקוד שלו – שולחים משם. הלחיצה נרשמת ("נשלח"), והשורה יורדת לסוף הרשימה. מי שנכנס לאפליקציה יוצא מהרשימה לבד.</p></div>`;
 }
 // §768 – "תקועים": הטלפון שנרשם ממנו (usageDaily.submits) חזר לאפליקציה **אחרי** יום האישור, והוא עדיין לא נכנס.
 // בטלפון הזה הכניסה אמורה להיות לבד (§612) – כלומר הוא ניסה ומשהו חסם. ב-11.11: 26 כאלה (21 iOS), רובם בלי פנייה.
@@ -638,21 +640,11 @@ function stuckOf() {
     return { m, n: days.length, last, tok };
   }).filter(Boolean).sort((a, b) => (a.last < b.last ? 1 : a.last > b.last ? -1 : b.n - a.n));
 }
-function stuckHtml(t, sentAt) {
-  const rows = stuckOf(), f = U.f;
+// §772 – רמי: "תוריד את זה מ-1, אני אטפל בזה מתקלות כניסה". הטבלה (§768–§769) הוחלפה בשורת ספירה –
+// הטיפול (וואטסאפ / בטיפול / טיפלתי) רק ב"תקלות ופניות ← כניסה", כדי שאף אחד לא יקבל שתי הודעות.
+function stuckHtml(rows) {
   if (!rows.length) return '';
-  const nSent = rows.filter(r => sentAt(r.m)).length;
-  const sorted = rows.slice().sort((a, b) => !!sentAt(a.m) - !!sentAt(b.m));
-  return `<div class="yzu-box yzt-stuck"><h3>🆘 תקועים – ${f(rows.length)} ניסו ולא הצליחו להיכנס</h3>
-    <p class="yzu-note" style="margin:0 0 8px">הטלפון שממנו נרשמו חזר לאפליקציה <b>אחרי</b> האישור – ובטלפון הזה הכניסה אמורה להיות לבד. כלומר הם ניסו ומשהו חסם. לפנות אליהם קודם. נשלחו ${f(nSent)} · נשארו ${f(rows.length - nSent)}.</p>
-    <div class="yzu-tw"><table><tr><th>שם</th><th>טלפון</th><th>מכשיר</th><th>אושר לפני</th><th>מה ראינו</th><th>אחרון</th><th>וואטסאפ</th><th>נשלח</th></tr>
-    ${sorted.map(({ m, n, last, tok }) => { const href = waHref(m.phone, waText1(m)), s = sentAt(m);
-      const seen = [n ? `חזר ${f(n)} ${n === 1 ? 'יום' : 'ימים'} אחרי האישור` : '', tok ? `קיבל מפתח כניסה ${tok.toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })} ולא הגיע` : ''].filter(Boolean).join(' · ');
-      return `<tr${s ? ' style="opacity:.55"' : ''}><td>${U.esc(m.name || '')}</td><td>${U.esc(m.phone || '')}</td><td>${m.signupOs === 'ios' ? 'אייפון' : m.signupOs === 'android' ? 'אנדרואיד' : '–'}</td>
-      <td>${m.approvedAt ? U.dayDiff(U.dk(m.approvedAt), U.D.today) + ' ימים' : '–'}</td><td>${seen}</td><td>${U.short(last)}</td>
-      <td>${href ? `<a class="yzt-wa" href="${href}" target="_blank" rel="noopener" onclick="yztWa('${m.id}')">וואטסאפ</a>` : '–'}</td>
-      <td>${s ? `<span class="yzt-got">✓ ${s.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}</span>` : '–'}</td></tr>`; }).join('')}</table></div>
-    <p class="yzu-note">אותו נוסח וואטסאפ של הרשימה למטה (עם הקוד שלו). מי שנכנס יוצא מכאן לבד. כל כניסה שנתקעת מעכשיו מופיעה כאן וגם ב"תקלות כניסה" – השרת בודק כל 10 דקות.</p></div>`;
+  return `<div class="yzt-stuck-line">🆘 <b>${U.f(rows.length)} תקועים</b> – אושרו, ניסו להיכנס ולא הצליחו. מטפלים בהם ב<b>"תקלות ופניות ← כניסה"</b> (וואטסאפ, "בטיפול", "טיפלתי"). מי שנכנס יורד מהספירה לבד.</div>`;
 }
 window.yztSet = (k, v) => { if (k === 'knows') S.knows = !S.knows; else S[k] = v; if (k === 'waEdit') S.waDraft = null; U.C.rerender(); };
 // טיוטת הוואטסאפ נשמרת בזיכרון – רינדור מחדש (נתונים חיים) לא מוחק את מה שהוקלד
@@ -723,7 +715,8 @@ function css() {
   .yzt-waed{border:1px solid #BFE3CC;background:#F3FBF6;border-radius:10px;padding:9px 11px;margin-bottom:10px}.yzt-waed .hd{display:flex;gap:8px;align-items:center;margin-bottom:6px}.yzt-waed .hd .yzu-btn{margin-inline-start:auto}
   .yzt-waed .pv{white-space:pre-line;font-size:13px;background:#DCF8C6;border-radius:10px;padding:7px 10px;line-height:1.6}
   .yzt-waed textarea{width:100%;font:inherit;font-size:13.5px;line-height:1.6;border:1px solid var(--yzu-line);border-radius:8px;padding:7px 9px;box-sizing:border-box}.yzt-waed .bt{display:flex;gap:6px;margin-top:6px}
-  .yzt-stuck{border:2px solid #F5C7C2;background:#FFFAF9}.yzt-stuck h3{color:var(--yzu-bad)}
+  .yzt-stuck-line{border:1.5px solid #F5C7C2;background:#FFFAF9;border-radius:12px;padding:9px 12px;font-size:13.5px;line-height:1.6;margin-bottom:12px;color:#7A271A}
+  .yzt-stuck-tag{font-size:12px;font-weight:700;color:var(--yzu-bad);white-space:nowrap}
   .yzt-got{color:var(--yzu-ok);font-weight:700}.yzt-wa{font-size:12px;font-weight:700;background:#1FA855;color:#fff;border-radius:8px;padding:5px 9px;text-decoration:none;white-space:nowrap}
   </style>`;
 }
