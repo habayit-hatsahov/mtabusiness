@@ -36,6 +36,7 @@ import { APPCHECK_PATHS, sampleAppCheck } from './appcheck.js';
 import { runStoreDownloadsSync } from './storedl.js';
 import { runPlatformDaily } from './platformdaily.js';   // §587
 import { runBizGeo } from './bizgeo.js';   // §762ב
+import { noteMemberToken, runStuckLogins } from './stucklogin.js';   // §769
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -337,6 +338,12 @@ export default {
         .then((r) => { if (r.wrote || r.geocoded || r.pending || r.skipped) console.log('bizGeo', JSON.stringify(r)); })
         .catch((e) => console.error('bizGeo failed', String(e))));
     }
+    // §769 – "תקועים": קיבל מפתח כניסה לפני 10 דק'+ ולא הגיע לדף הבית → שורה ב"תקלות כניסה". כל 10 דק' (דקה 3, 13, …).
+    if (minute !== null && minute % 10 === 3) {
+      ctx.waitUntil(getGoogleAccessToken(env).then((t) => runStuckLogins(env, t))
+        .then((r) => { if (r.wrote) console.log('stuckLogins', JSON.stringify(r)); })
+        .catch((e) => console.error('stuckLogins failed', String(e))));
+    }
     if (minute !== null && minute % 5 !== 0) return;
     const full = minute === null || minute % 30 === 0;
     ctx.waitUntil(getGoogleAccessToken(env).then((t) => syncBizPublic(env, t, { full }))
@@ -370,6 +377,7 @@ async function handleMemberLogin({ phone, code }, request, env) {
       uid: match.id,
       claims: { role: 'member', isBusinessOwner: match.fields.isBusinessOwner === true },
     });
+    await noteMemberToken(env, match.id, 'code', accessToken);   // §769
     return { customToken };
   }
 
@@ -434,6 +442,7 @@ async function handleGoogleLogin({ idToken }, request, env) {
     uid: member.id,
     claims: { role: 'member', isBusinessOwner: member.fields.isBusinessOwner === true },
   });
+  await noteMemberToken(env, member.id, 'oauth', accessToken);   // §769 – Google / Apple
   return { customToken };
 }
 
@@ -604,6 +613,7 @@ async function handleGoogleAttach({ idToken, memberId }, request, env) {
   // אין לה עדיין קוד-כניסה, והיא מקבלת כאן `{ ok: true }` בלבד — בדיוק כמו קודם. שער
   // האישור אינו נעקף, הוא רק לא נשאל פעמיים.
   const canEnter = me.fields.status === 'approved';
+  if (canEnter) await noteMemberToken(env, memberId, 'attach');   // §769
   return canEnter
     ? { ok: true, customToken: await mintFirebaseCustomToken(env, {
         uid: memberId,
@@ -692,6 +702,7 @@ async function handleAppleLogin({ idToken }, request, env) {
     uid: member.id,
     claims: { role: 'member', isBusinessOwner: member.fields.isBusinessOwner === true },
   });
+  await noteMemberToken(env, member.id, 'oauth', accessToken);   // §769 – Google / Apple
   return { customToken };
 }
 
@@ -773,6 +784,7 @@ async function handleAppleAttach({ idToken, memberId, ticket }, request, env) {
   // בתיבה שעל הרשומה, כלומר בדיוק מה שנדרש כדי לקבל קוד-כניסה ולהיכנס איתו. רשומה
   // `pending` מקבלת `{ ok: true }` בלבד — שער האישור אינו נעקף.
   const canEnter = me.fields.status === 'approved';
+  if (canEnter) await noteMemberToken(env, memberId, 'attach');   // §769
   return canEnter
     ? { ok: true, customToken: await mintFirebaseCustomToken(env, {
         uid: memberId,

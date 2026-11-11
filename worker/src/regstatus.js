@@ -15,6 +15,7 @@ import { getGoogleAccessToken, mintFirebaseCustomToken } from './jwt.js';
 import { firestoreGetDoc, firestorePatch, firestoreCreateDoc } from './firestore.js';
 import { loginMethodOf } from './regmethod.js';
 import { alertAdmins } from './bizfix.js';   // §735
+import { noteMemberToken } from './stucklogin.js';   // §769
 
 const MEMBER_ID_RE = /^[A-Za-z0-9]{20}$/;
 const TICKET_RE = /^[A-Za-z0-9_-]{40,64}$/;
@@ -49,6 +50,7 @@ export async function handleRegStatus({ memberId, ticket, v } = {}, env) {
       uid: memberId,
       claims: { role: 'member', isBusinessOwner: f.isBusinessOwner === true },
     });
+    await noteMemberToken(env, memberId, 'regTicket', accessToken);   // §769
     // §668 — method: איך הוא נכנס בפעם הבאה (welcome זוכר ומסמן בחלון הכניסה)
     return { status: 'approved', customToken, firstName, method: loginMethodOf(f) };
   }

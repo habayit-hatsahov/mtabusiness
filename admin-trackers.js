@@ -624,29 +624,35 @@ function list1Html(t, waBox) {
 // §768 – "תקועים": הטלפון שנרשם ממנו (usageDaily.submits) חזר לאפליקציה **אחרי** יום האישור, והוא עדיין לא נכנס.
 // בטלפון הזה הכניסה אמורה להיות לבד (§612) – כלומר הוא ניסה ומשהו חסם. ב-11.11: 26 כאלה (21 iOS), רובם בלי פנייה.
 // ⚠️ לא נתפסים כאן: טלפון שגם ההרשמה ממנו לא הגיעה למדידה (חסימה מלאה של Google, §766–§767) – אין לו submits.
-function stuckOf(t) {
-  const x = U.base();
-  return t.list.map(m => {
-    const d = x.subByMem[m.id];
-    if (!d || !m.approvedAt) return null;
-    const ap = U.dk(m.approvedAt), days = [...(x.devDays[d] || [])].filter(k => k > ap).sort();
-    return days.length ? { m, n: days.length, last: days[days.length - 1] } : null;
-  }).filter(Boolean).sort((a, b) => (b.n - a.n) || (a.last < b.last ? 1 : -1));
+// §769 – הבסיס: **כל** מאושר שלא נכנס אף פעם (גם ותיקים ובעלי עסק – לא רק קבוצת מעקב 1), ושני סימנים:
+//   (א) הטלפון שנרשם ממנו חזר אחרי האישור (usageDaily) · (ב) השרת הנפיק לו מפתח כניסה לפני 10 דק'+ ולא הגיע
+//   לדף הבית מאז (tokenAt, stucklogin.js) – זה תופס גם את מי שגם ההרשמה ממנו לא נמדדה.
+function stuckOf() {
+  const x = U.base(), now = Date.now();
+  return x.fans.filter(m => m.status === 'approved' && m.isAdmin !== true && !x.memDays[m.id]).map(m => {
+    const d = x.subByMem[m.id], ap = m.approvedAt ? U.dk(m.approvedAt) : '';
+    const days = d && ap ? [...(x.devDays[d] || [])].filter(k => k > ap).sort() : [];
+    const tok = m.tokenAt instanceof Date && now - m.tokenAt.getTime() >= 10 * 60e3 && (!m.lastSeenAt || m.lastSeenAt < m.tokenAt) ? m.tokenAt : null;
+    if (!days.length && !tok) return null;
+    const last = [days[days.length - 1] || '', tok ? U.dk(tok) : ''].sort().pop();
+    return { m, n: days.length, last, tok };
+  }).filter(Boolean).sort((a, b) => (a.last < b.last ? 1 : a.last > b.last ? -1 : b.n - a.n));
 }
 function stuckHtml(t, sentAt) {
-  const rows = stuckOf(t), f = U.f;
+  const rows = stuckOf(), f = U.f;
   if (!rows.length) return '';
   const nSent = rows.filter(r => sentAt(r.m)).length;
   const sorted = rows.slice().sort((a, b) => !!sentAt(a.m) - !!sentAt(b.m));
   return `<div class="yzu-box yzt-stuck"><h3>🆘 תקועים – ${f(rows.length)} ניסו ולא הצליחו להיכנס</h3>
     <p class="yzu-note" style="margin:0 0 8px">הטלפון שממנו נרשמו חזר לאפליקציה <b>אחרי</b> האישור – ובטלפון הזה הכניסה אמורה להיות לבד. כלומר הם ניסו ומשהו חסם. לפנות אליהם קודם. נשלחו ${f(nSent)} · נשארו ${f(rows.length - nSent)}.</p>
-    <div class="yzu-tw"><table><tr><th>שם</th><th>טלפון</th><th>מכשיר</th><th>אושר לפני</th><th>חזר אחרי האישור</th><th>אחרון</th><th>וואטסאפ</th><th>נשלח</th></tr>
-    ${sorted.map(({ m, n, last }) => { const href = waHref(m.phone, waText1(m)), s = sentAt(m);
+    <div class="yzu-tw"><table><tr><th>שם</th><th>טלפון</th><th>מכשיר</th><th>אושר לפני</th><th>מה ראינו</th><th>אחרון</th><th>וואטסאפ</th><th>נשלח</th></tr>
+    ${sorted.map(({ m, n, last, tok }) => { const href = waHref(m.phone, waText1(m)), s = sentAt(m);
+      const seen = [n ? `חזר ${f(n)} ${n === 1 ? 'יום' : 'ימים'} אחרי האישור` : '', tok ? `קיבל מפתח כניסה ${tok.toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })} ולא הגיע` : ''].filter(Boolean).join(' · ');
       return `<tr${s ? ' style="opacity:.55"' : ''}><td>${U.esc(m.name || '')}</td><td>${U.esc(m.phone || '')}</td><td>${m.signupOs === 'ios' ? 'אייפון' : m.signupOs === 'android' ? 'אנדרואיד' : '–'}</td>
-      <td>${m.approvedAt ? U.dayDiff(U.dk(m.approvedAt), U.D.today) + ' ימים' : '–'}</td><td><b>${f(n)}</b> ${n === 1 ? 'יום' : 'ימים'}</td><td>${U.short(last)}</td>
+      <td>${m.approvedAt ? U.dayDiff(U.dk(m.approvedAt), U.D.today) + ' ימים' : '–'}</td><td>${seen}</td><td>${U.short(last)}</td>
       <td>${href ? `<a class="yzt-wa" href="${href}" target="_blank" rel="noopener" onclick="yztWa('${m.id}')">וואטסאפ</a>` : '–'}</td>
       <td>${s ? `<span class="yzt-got">✓ ${s.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}</span>` : '–'}</td></tr>`; }).join('')}</table></div>
-    <p class="yzu-note">אותו נוסח וואטסאפ של הרשימה למטה (עם הקוד שלו). מי שנכנס יוצא מכאן לבד. לא מופיעים כאן טלפונים שגם ההרשמה מהם לא נמדדה (חסימה מלאה של Google) – אותם מאתרים ידנית.</p></div>`;
+    <p class="yzu-note">אותו נוסח וואטסאפ של הרשימה למטה (עם הקוד שלו). מי שנכנס יוצא מכאן לבד. כל כניסה שנתקעת מעכשיו מופיעה כאן וגם ב"תקלות כניסה" – השרת בודק כל 10 דקות.</p></div>`;
 }
 window.yztSet = (k, v) => { if (k === 'knows') S.knows = !S.knows; else S[k] = v; if (k === 'waEdit') S.waDraft = null; U.C.rerender(); };
 // טיוטת הוואטסאפ נשמרת בזיכרון – רינדור מחדש (נתונים חיים) לא מוחק את מה שהוקלד
