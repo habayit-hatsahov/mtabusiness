@@ -6,7 +6,7 @@
 // (2) runStuckLogins – בכל 10 דק' (מה-cron): מי שקיבל מפתח לפני 10 דק'+ ולא הגיע לדף הבית מאז
 //     (`lastSeenAt` – נכתב ע"י home.html) → אירוע `loginFail` אחד עם channel 'stuck' ב-events, עם memberId
 //     וטלפון. הוא נכנס לבד ל"תקלות כניסה" במרכז הניהול ("תקלה שלנו"), וכשהחבר ייכנס – אותו מסך כבר
-//     מסמן "✅ נכנס בסוף" (כל אירוע עם memberId אחרי זמן הכשל). createdAt = זמן המפתח, לא זמן הבדיקה.
+//     מסמן "✅ נכנס בסוף" (כל אירוע עם memberId אחרי זמן הכשל). createdAt = זמן הכתיבה (ר' למטה).
 // 🔑 למה בשרת ולא בדף: אצל מי שנתקע באמת (§766–§767) שום דבר מהמכשיר לא מגיע ל-Firestore – גם לא loginFail.
 // ⚠️ פעם אחת לכל מפתח: `stuckFor` = ה-tokenAt שכבר דווח. ניסיון חדש (מפתח חדש) שנתקע – שורה חדשה.
 import { getGoogleAccessToken } from './jwt.js';
@@ -41,7 +41,9 @@ export async function runStuckLogins(env, accessToken, now = Date.now()) {
       path: '/welcome.html', referrer: null, device: 'mobile',
       blockId: ('via:' + (f.tokenVia || '?')).slice(0, 50), channel: 'stuck',
       ...(typeof f.phone === 'string' && f.phone ? { phone: f.phone.slice(0, 20) } : {}),
-      createdAt: new Date(tok),
+      // ⚠️ זמן הכתיבה ולא זמן המפתח: מרכז הניהול טוען את האירועים בהשלמה (delta) רק מ'האחרון שכבר יש לו פחות 15 דק'',
+      // ואירוע עם זמן בעבר לא נשלף לעולם (נתפס חי, 11.11). 'נכנס בסוף' לא נפגע: נכתב רק למי שלא הגיע לדף הבית מאז המפתח.
+      createdAt: new Date(now),
     });
     await firestorePatch(env, accessToken, `members/${id}`, { stuckFor: f.tokenAt });
     wrote++;

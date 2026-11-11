@@ -40,7 +40,7 @@ let r = await runStuckLogins(env, 'tok', NOW);
 const ev = (id) => created.find(c => c.fields.memberId === id);
 check('נתקע (מפתח לפני 30 דק\', בלי דף הבית) → אירוע', !!ev('stuck'), created);
 const e = ev('stuck') ? ev('stuck').fields : {};
-check('האירוע: loginFail / stuck / טלפון / via / createdAt = זמן המפתח', e.type === 'loginFail' && e.channel === 'stuck' && e.phone === '0501111111' && e.blockId === 'via:regTicket' && e.createdAt === members.stuck.tokenAt && created.find(c => c.fields.memberId === 'stuck').path === 'events', e);
+check('האירוע: loginFail / stuck / טלפון / via / createdAt = זמן הכתיבה', e.type === 'loginFail' && e.channel === 'stuck' && e.phone === '0501111111' && e.blockId === 'via:regTicket' && e.createdAt === new Date(NOW).toISOString() && created.find(c => c.fields.memberId === 'stuck').path === 'events', e);
 check('נכנס אחרי המפתח → בלי אירוע', !ev('entered'));
 check('מפתח לפני 5 דק\' → עוד לא', !ev('fresh'));
 check('נכנס בעבר אבל לא אחרי המפתח הזה → אירוע', !!ev('oldSeen'));
@@ -52,7 +52,7 @@ r = await runStuckLogins(env, 'tok', NOW + 60e3);
 check('ריצה שנייה – לא מדווח שוב על אותו מפתח', created.length === 0 && r.wrote === 0, created);
 members.stuck.tokenAt = new Date(NOW + 2 * 60e3).toISOString();
 r = await runStuckLogins(env, 'tok', NOW + 15 * 60e3);
-check('מפתח חדש שנתקע שוב → שורה חדשה (וה"טרי" מקודם – עכשיו 20 דקות → גם הוא)', created.length === 2 && created.some(c => c.fields.memberId === 'stuck' && c.fields.createdAt === members.stuck.tokenAt) && created.some(c => c.fields.memberId === 'fresh'), created);
+check('מפתח חדש שנתקע שוב → שורה חדשה (וה"טרי" מקודם – עכשיו 20 דקות → גם הוא)', created.length === 2 && created.some(c => c.fields.memberId === 'stuck' && c.fields.createdAt === new Date(NOW + 15 * 60e3).toISOString()) && created.some(c => c.fields.memberId === 'fresh'), created);
 
 console.log('noteMemberToken');
 patches = [];
