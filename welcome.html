@@ -1477,6 +1477,14 @@ button { font-family: inherit; }
 .rp-retry .rr-hint { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; line-height: 1.5; }
 .reg-pending .rp-retry .rp-btn-send { display: flex; margin-top: 16px; }
 .reg-pending .rp-retry .rr-reply-btn { display: flex; margin-top: 8px; background: #fff; color: #0A2A66; border: 1.5px solid #0A2A66; }   /* §735 */
+/* §766 – מאושר שהכניסה שלו נתקעה: "כתבו לנו" בתוך הכרטיס, נשלח דרך הוורקר (/reg-reply) */
+.reg-pending .rp-stuck { display: none; margin-top: 16px; border-top: 1px solid #EAE3C8; padding-top: 12px; }
+.reg-pending[data-state="approved"].is-stuck .rp-stuck { display: block; }
+.rp-stuck label { display: block; font-size: 13.5px; font-weight: 800; color: var(--ink); margin: 0 0 6px; }
+.rp-stuck textarea { width: 100%; min-height: 76px; resize: vertical; box-sizing: border-box; padding: 10px 14px; border-radius: 11px; border: 1.5px solid #E4E4DC; background: #F2F2EC; font: inherit; font-size: 15px; color: var(--ink); }
+.rp-stuck .rs-msg { font-size: 13px; line-height: 1.6; margin-top: 8px; color: #B4351C; display: none; }
+.rp-stuck .rs-msg.on { display: block; }
+.reg-pending .rp-stuck .rp-btn { display: flex; margin-top: 8px; background: #fff; color: #0A2A66; border: 1.5px solid #0A2A66; }
 /* §664 — בעל עסק ממתין: "העסק שלך אצלנו", ואם חסרות תמונות חובה – העלאה מכאן */
 #bizPendingBlock[data-state="missing"] .rp-badge { background: #FFF1E0; border-color: #FFD2A8; color: #C2570C; }
 #bizPendingBlock[data-state="missing"] .rp-dot, #bizPendingBlock[data-state="sent"] .rp-dot { display: none; }
@@ -2219,6 +2227,13 @@ html.yz-app .lm-reg-wrap { display: block; }
       </div>
     </div>
     <button class="lp-btn lp-btn-yellow rp-btn rp-btn-in" id="rpEnterBtn" type="button">כניסה לכל העסקים וההטבות</button>
+    <!-- §766 – מופיע רק כשהכניסה נתקעה (is-stuck). דרך הוורקר: מהמכשיר הזה כתיבה ישירה ל-Firestore כנראה חסומה -->
+    <div class="rp-stuck" id="rpStuck">
+      <label for="rpStuckText">עדיין לא נכנסתם? כתבו לנו ונכניס אתכם</label>
+      <textarea id="rpStuckText" maxlength="1000" placeholder="מה קורה אצלכם? למשל: נשאר על &quot;נכנסים…&quot;"></textarea>
+      <div class="rs-msg" id="rpStuckMsg"></div>
+      <button class="lp-btn rp-btn" id="rpStuckBtn" type="button" onclick="window.yzRegStuckSend()">שליחה לצוות</button>
+    </div>
     <button class="lp-btn lp-btn-yellow rp-btn rp-btn-help" type="button" onclick="openLoginModal(); window.openLoginHelp && window.openLoginHelp()">פנייה לצוות</button>
     <div class="rp-links"><span id="rpNotMe"></span><button type="button" onclick="window.yzRegSkip()">כניסה עם חשבון אחר</button></div>
   </div>
@@ -2822,6 +2837,34 @@ window.yzRegSkip = function () {
     } finally {
       busy = false; btn.disabled = false; btn.textContent = 'שליחה לבדיקה';
     }
+  };
+})();
+
+// ── §766 — מאושר שהכניסה שלו נתקעה: "כתבו לנו" מהכרטיס, דרך הוורקר (/reg-reply מקבל גם approved) ──────
+// הוורקר פותח פנייה ב-helpRequests (source loginFail, errCode authTimeout) עם השם והטלפון מהרשומה, ומתריע לרמי.
+(function () {
+  let busy = false;
+  window.yzRegStuckSend = async function () {
+    if (busy) return;
+    const reg = window.yzRegGet && window.yzRegGet();
+    const ta = document.getElementById('rpStuckText'), btn = document.getElementById('rpStuckBtn'), m = document.getElementById('rpStuckMsg');
+    const say = (t, ok) => { m.textContent = t || ''; m.style.color = ok ? '#027A48' : ''; m.classList.toggle('on', !!t); };
+    const text = (ta.value || '').trim();
+    if (!text) { say('כתבו משהו לפני השליחה.'); return; }
+    if (!reg || typeof window.hbApiFetch !== 'function') { say('לא הצלחנו לשלוח. אפשר לכתוב לנו ישירות: yellowzonemta@gmail.com'); return; }
+    busy = true; btn.disabled = true; btn.textContent = 'שולח…'; say('');
+    try {
+      const r = await window.hbApiFetch('/reg-reply', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: reg.memberId, ticket: reg.ticket, text }) });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) throw new Error(j.error || String(r.status));
+      ta.value = ''; ta.hidden = true; btn.hidden = true;
+      say('✓ קיבלנו – נחזור אליכם בהקדם בטלפון שנרשמתם איתו.', true);
+      window.logEvent && window.logEvent('formStep', { blockId: 'regPending', channel: 'stuckSent' });
+    } catch (e) {
+      console.warn('reg stuck reply failed:', e);
+      say('לא הצלחנו לשלוח. אפשר לכתוב לנו ישירות: yellowzonemta@gmail.com');
+    } finally { busy = false; btn.disabled = false; btn.textContent = 'שליחה לצוות'; }
   };
 })();
 
@@ -4076,6 +4119,8 @@ async function yzRegCheck() {
         a.done(await heroWithTimeout(a.settled, HERO_HARD_ABORT_MS));
       } catch (authErr) {
         a.settled.then(a.done, a.giveUp);
+        document.getElementById('pendingRegBlock').classList.add('is-stuck');   // §766 – "כתבו לנו"
+        window.logEvent && window.logEvent('formStep', { blockId: 'regPending', channel: 'stuck' });
         document.getElementById('rpText').textContent = 'הכניסה מתעכבת. יש לכם VPN או חוסם פרסומות דלוק? כבו אותו לרגע ולחצו על הכפתור כדי לנסות שוב. אחרי שנכנסתם אפשר להדליק בחזרה.';
       }
     }

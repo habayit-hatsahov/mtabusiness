@@ -12,7 +12,7 @@
 // ⚠️ מונה הקצב בזיכרון (memQuota) ולא ב-KV: הבדיקה רצה בכל פתיחת אפליקציה של כל ממתין,
 // ותקרת הכתיבות החינמית של KV היא 1,000 ביום (§611).
 import { getGoogleAccessToken, mintFirebaseCustomToken } from './jwt.js';
-import { firestoreGetDoc, firestorePatch } from './firestore.js';
+import { firestoreGetDoc, firestorePatch, firestoreCreateDoc } from './firestore.js';
 import { loginMethodOf } from './regmethod.js';
 import { alertAdmins } from './bizfix.js';   // §735
 
@@ -82,11 +82,28 @@ export async function handleRegReply({ memberId, ticket, text } = {}, env) {
   if (!m) return { error: 'gone' };
   const f = m.fields || {};
   if (!f.regTicketHash || !sameHex(f.regTicketHash, await sha256Hex(ticket))) return { error: 'invalid' };
+  const name = [f.firstName, f.lastName].filter((x) => typeof x === 'string' && x).join(' ') || 'אוהד';
+  const phone = typeof f.phone === 'string' ? f.phone : '';
+  // §766 – מאושר שהכניסה שלו נתקעה ("הכניסה מתעכבת" – בד"כ VPN / חוסם שחוסם את Google). הכרטיס כותב דרכנו,
+  // כי מהמכשיר הזה כתיבה ישירה ל-helpRequests לא תגיע. נוחת בפניות העזרה (source loginFail, errCode authTimeout).
+  if (f.status === 'approved') {
+    const now = new Date();
+    await firestoreCreateDoc(env, accessToken, 'helpRequests', {
+      name: name.slice(0, 80), contact: (phone || (typeof f.email === 'string' ? f.email : '')).slice(0, 120) || 'לא ידוע',
+      message: t, source: 'loginFail', device: 'mobile', errCode: 'authTimeout', lastField: null,
+      path: '/welcome.html', sessionId: null, memberId, status: 'new', createdAt: now,
+    });
+    await alertAdmins(env, accessToken, {
+      title: `🆘 ${name} מאושר ולא מצליח להיכנס`,
+      line: t.slice(0, 120),
+      rows: [['מה קרה', 'כרטיס "אושרתם" – הכניסה נתקעה (בד"כ VPN / חוסם פרסומות)'], ['מה כתב', t], ['שם', name], ['טלפון', phone], ['מזהה חבר', memberId]],
+    });
+    return { ok: true, at: now.toISOString() };
+  }
   if (f.status !== 'rejected' || f.retryAllowed !== true) return { error: 'not_allowed' };
   const now = new Date();
   const prev = Array.isArray(f.fixReplies) ? f.fixReplies.filter((r) => r && typeof r.text === 'string').map((r) => ({ text: r.text, at: new Date(r.at) })) : [];
   await firestorePatch(env, accessToken, `members/${memberId}`, { fixReplies: prev.concat([{ text: t, at: now }]).slice(-20), fixReplyAt: now });
-  const name = [f.firstName, f.lastName].filter((x) => typeof x === 'string' && x).join(' ') || 'אוהד';
   await alertAdmins(env, accessToken, {
     title: `💬 ${name} הגיב על "האימות לא עבר"`,
     line: t.slice(0, 120),
