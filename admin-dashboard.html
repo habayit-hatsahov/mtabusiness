@@ -21616,6 +21616,39 @@ window.unmarkLoginIssueWorking = async function(who) {
 };
 // לחיצה על וואטסאפ = התחלת טיפול (אם עוד לא סומן). הקישור עצמו נפתח מה-href, לא מכאן.
 window.loginIssueWaClick = function(who) { if (!workingLoginIssues[who]) window.markLoginIssueWorking(who); };
+// ── §773 — "💡 איך לטפל" בכל שורת תקלת כניסה ──────────────────────────────────────────────────
+// רמי: "תן לי ליד כל אחד מהם איך לטפל מולו… שיכוון אותי". צעדים קצרים לפי סוג התקלה (base + קטגוריה + via).
+// הסדר בכל רשימה: מה עושים עכשיו → מה בודקים אם לא עבד → מתי לפנות לפיתוח.
+function loginIssueGuide(x) {
+  const p = hbLoginFailParts(x.reason), base = p.base, via = String(x.env || '').replace(/^via:/, '');
+  const WA = 'לוחצים 📲 וואטסאפ – ההודעה המוכנה כבר כוללת את הצעדים והקוד שלו.';
+  const DEV = 'עדיין תקוע אחרי כל זה? שולחים לפיתוח את השם – רואים שם מה הטלפון שלו שולח ואיפה זה נעצר.';
+  const DONE = 'כשהוא נכנס, השורה מתעדכנת לבד ל"✅ נכנס בסוף" – ואז לוחצים "✔️ טיפלתי".';
+  if (x.cat === 'in') return ['הוא כבר נכנס בסוף – אין מה לעשות.', 'לוחצים "✔️ טיפלתי" כדי לנקות את השורה.'];
+  if (x.cat === 'pending') return ['הרשומה שלו עוד לא מאושרת (ממתינה / נדחתה) – זו לא תקלת כניסה.', 'לפתוח את הכרטיס שלו ("פתיחת…") ולהחליט: לאשר, או לבקש תיקון.', 'אחרי אישור הוא נכנס לבד מהטלפון שנרשם ממנו.'];
+  if (x.cat === 'notReg') return ['המספר / המייל הזה לא רשום אצלנו.', 'כנראה נרשם עם טלפון אחר, או שעוד לא נרשם בכלל – לשאול אותו בוואטסאפ.', 'לא נרשם? לשלוח לו את קישור ההורדה ולבקש שיירשם מהאפליקציה.'];
+  if (x.cat === 'closed') return ['הוא סגר בעצמו את חלון Google / Apple – לרוב לא תקלה.', 'אם חוזר על עצמו: לכתוב לו שאפשר להיכנס עם הטלפון והקוד במקום.', DONE];
+  if (x.cat === 'apple') return ['Apple הסתירה את המייל שלו (כתובת privaterelay), ולכן לא זיהינו אותו.', 'לכתוב לו להיכנס עם הטלפון והקוד – זה עובד תמיד.', 'אחרי שנכנס, אפשר לחבר את Apple מהאזור האישי.'];
+  if (x.cat === 'otherMail') return [`רשום אצלנו, אבל ניסה עם חשבון ${p.apple ? 'Apple' : 'Google'} אחר${x.fan && x.fan.email ? ' (הרשומה עם ' + x.fan.email + ')' : ''}.`, 'לכתוב לו: להיכנס עם החשבון שאיתו נרשם – או עם הטלפון והקוד.', DONE];
+  if (x.cat === 'resend') return ['ביקש שנשלח לו את הקוד למייל – ואולי המייל לא הגיע.', 'הכי מהיר: 📲 וואטסאפ – הקוד שלו כבר בתוך ההודעה.', DONE];
+  if (x.cat === 'badCode') return ['הקליד קוד או טלפון לא נכונים – הוא רשום, רק לא מדויק.', 'לבדוק שהוא מקליד את הטלפון שאיתו נרשם' + (x.fan && x.fan.phone ? ' (' + x.fan.phone + ')' : '') + '.', WA, DONE];
+  if (base === 'stuck' && via === 'existing') return ['חבר שכבר היה בפנים, נותק (טלפון חדש / עדכון / ניקוי), ונתקע במסך הכניסה.', WA, 'לרוב מספיק הטלפון + הקוד. אם לא – לנסות את צעדי ה-VPN שבהודעה.', DONE];
+  if (base === 'stuck' || base === 'authTimeout' || base === 'authError' || base === 'lateAuthTimeout' || base === 'lateAuthError') return [
+    'השרת אישר אותו – הטלפון שלו לא מצליח להשלים את הכניסה (כמו איתמר).', WA,
+    'מבקשים צילום מסך. מפתח 🔑 ליד ה-Wi-Fi למעלה = VPN דלוק → שיכבה.',
+    'הצעד שעבד: לפתוח, לחכות 20 שנ\', לסגור לגמרי – פעמיים; בפעם השלישית נכנס.',
+    'לא עבד? רשת אחרת (Wi-Fi ↔ 4G), ולשאול איזה דגם טלפון.', DEV, DONE];
+  if (base === 'tried' && via === 'help') return ['כתב לנו פנייה ועדיין לא נכנס – גם אם הפנייה סומנה "טופל".', 'לקרוא מה כתב ב"פניות עזרה", ולשאול אם זה עדיין קורה.', WA, DONE];
+  if (base === 'tried') return ['לחץ על הקישור במייל אחרי האישור – וכנראה לא התקין או לא ידע איך להיכנס.', WA + ' (יש בה גם קישור הורדה).', 'אומר שהקוד לא עובד? לוודא שזה הטלפון שאיתו נרשם.', DONE];
+  if (['timeout', 'fetchTimeout', 'moduleTimeout', 'fetchHardAbort', 'error', 'lateError'].includes(base)) return ['הבקשה לא הגיעה אלינו בכלל – בעיית רשת אצלו (או אצלנו, אם יש הרבה כאלה באותה שעה).', 'לכתוב לו לנסות רשת אחרת (Wi-Fi ↔ 4G) ולסגור ולפתוח את האפליקציה.', 'הרבה שורות כאלה באותה שעה? זו תקלה אצלנו – לפנות לפיתוח מיד.', DONE];
+  if (base === 'resendTimeout' || base === 'resendError') return ['ביקש קוד למייל והשליחה נכשלה אצלנו.', 'לשלוח לו את הקוד ב📲 וואטסאפ (כבר בתוך ההודעה).', DONE];
+  if (['email_mismatch', 'already_attached', 'member_not_found', 'google_already_linked', 'google_ambiguous'].includes(base)) return ['סתירה בחיבור Google / Apple לרשומה (למשל שתי רשומות, או חשבון שכבר מחובר לאחר).', 'לפתוח את הכרטיס שלו ולבדוק כפילות / מייל.', 'בינתיים: שייכנס עם הטלפון והקוד.', DEV];
+  if (p.google || p.apple || base === 'native' || base === 'sdk') return [`חלון ${p.apple ? 'Apple' : 'Google'} נכשל בטלפון שלו.`, 'לכתוב לו להיכנס עם הטלפון והקוד במקום.', 'קורה להרבה אנשים באותו יום? לפנות לפיתוח.', DONE];
+  return ['סוג תקלה לא מוכר.', WA, DEV];
+}
+function loginIssueGuideHtml(x) {
+  return `<details class="lg-guide" style="margin:6px 0 2px;background:#F0F7FF;border:1px solid #CFE0F5;border-radius:10px;padding:5px 10px;font-size:12.5px;line-height:1.6"><summary style="cursor:pointer;font-weight:700;color:#0A2A66">💡 איך לטפל</summary><ol style="margin:6px 0 2px;padding-inline-start:18px">${loginIssueGuide(x).map(s => `<li>${esc(s)}</li>`).join('')}</ol></details>`;
+}
 function loginIssueWaText(x) {
   const f = x.fan, first = f ? String(f.firstName || f.name || '').trim().split(/\s+/)[0] : '';
   const code = f ? (MEMBER_CODES[f.id] || f.loginCode || '') : '';
@@ -23015,6 +23048,7 @@ function loginIssuesTableHtml(list) {
           // אחר, והמנהל מחפש רשומה שלא קיימת. זה גם מה שהופך את השורה לפעולה: להזמין אותו.
           }${x.email && !x.fan && !x.phone ? ' · ⚠️ המייל הזה אינו רשום אצלנו – שווה להזמין אותו' : ''}</div>
           ${(() => { const w = loginIssueWorking(x); return w ? `<div class="task-table-meta" style="font-weight:700;color:#92400E">🟡 התחלת לטפל ${esc(agoTimeLabel(w.at))}</div>${w.again ? `<div class="task-table-meta" style="font-weight:700;color:#C2410C">🔁 נתקע שוב אחרי שהתחלת לטפל</div>` : ''}` : ''; })()}
+          ${loginIssueGuideHtml(x)}
           <div class="task-table-meta" style="opacity:.75">${
             [x.device === 'mobile' ? 'מובייל' : 'דסקטופ',
              // §338 — הסביבה קודמת לסשן: בכשל 'timeout'/'moduleTimeout' זו השורה שאומרת
