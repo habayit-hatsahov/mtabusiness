@@ -13,10 +13,20 @@
 //      הטקסט הישן — כלומר עסק שלא הומר עדיין מוצג נכון מהרגע הזה.
 //
 // המודל (מה שנשמר ב-Firestore על מסמך העסק):
-//   hoursMode : 'fixed' | 'other'   — שני מצבים בלבד. "פתוח תמיד"/"לפי תיאום" נדחו
-//                                     במפורש; מי שלא נכנס לטבלה כותב ב"אחר", והמנהל מנסח.
+//   hoursMode : 'fixed'                                  — טבלת ימים ושעות
+//               'whatsapp:all' | 'whatsapp:noSat' | 'whatsapp:noFriSat'   — זמין בווטסאפ
+//               'always:all'   | 'always:noSat'      — זמין 24 שעות (24/7, 24/6)
+//               'appointment'                        — בתיאום מראש
+//               'other'                              — טקסט חופשי ישן: **לקריאה בלבד** (§773)
+//     §773 (11.11) – רמי: "צריך להפסיק עם הטקסט החופשי ולתת אופציה של זמין בווטסאפ, ולפי מה
+//     שבעלי העסקים רשמו". האפשרויות נגזרו מ-28 הטקסטים החופשיים הקיימים. זה מחליף את ההחלטה
+//     ב-§229 ("פתוח תמיד"/"לפי תיאום" נדחו). הימים יושבים **בתוך** hoursMode ולא בשדה נפרד
+//     בכוונה: hoursMode כבר עובר בכל מקום (bizPublic בוורקר, home.html, pendingChanges,
+//     TOUCH_GROUPS) – שדה חדש היה צריך חיבור בשמונה מקומות, וכל אחד שנשכח היה מאבד את הימים.
+//     גרסה ישנה של הקוד (אפליקציה במטמון) לא מכירה את המצבים החדשים ונופלת ל-hours – שמכיל
+//     את אותו נוסח בדיוק.
 //   hoursDays : [{closed,open,close}] × 7, אינדקס 0=ראשון … 6=שבת   (רק ב-'fixed')
-//   hoursOther: מחרוזת חופשית שעוברת אישור מנהל                     (רק ב-'other')
+//   hoursOther: מחרוזת חופשית ישנה                                  (רק ב-'other')
 //   hours     : המחרוזת הישנה — **נשמרת תמיד**, ומסונכרנת לטקסט של המבנה בכל שמירה.
 //               כך כל מסך שעדיין קורא רק את hours (מיילים, admin-businesses.html הישן,
 //               כל מקום שנשכח) ממשיך להציג את האמת ולא ערך מיושן.
@@ -132,10 +142,30 @@
     }).join(' · ');
   }
 
+  // ── §773 – אפשרויות סגורות במקום טקסט חופשי ───────────────────────────────────
+  var PRESET_AVAIL = { whatsapp: ['all', 'noSat', 'noFriSat'], always: ['all', 'noSat'] };
+  var AVAIL_TXT = { all: 'כל השבוע', noSat: 'חוץ משבת', noFriSat: 'חוץ משישי ושבת' };
+  // 'whatsapp:noSat' → {kind:'whatsapp', avail:'noSat'} · ערך לא מוכר → null
+  function parsePreset(mode) {
+    var p = String(mode || '').split(':'), k = p[0], a = p[1] || '';
+    if (k === 'appointment' && !a) return { kind: 'appointment', avail: '' };
+    if (PRESET_AVAIL[k] && PRESET_AVAIL[k].indexOf(a) >= 0) return { kind: k, avail: a };
+    return null;
+  }
+  function presetMode(kind, avail) { return kind === 'appointment' ? 'appointment' : kind + ':' + avail; }
+  function presetText(kind, avail) {
+    if (kind === 'whatsapp') return 'זמין בווטסאפ · ' + AVAIL_TXT[avail];
+    if (kind === 'always') return avail === 'all' ? 'זמין 24/7' : 'זמין 24 שעות · חוץ משבת';
+    if (kind === 'appointment') return 'בתיאום מראש';
+    return '';
+  }
+
   // ── מה יש לעסק הזה בפועל ─────────────────────────────────────────────────────
-  // מחזיר {kind:'fixed'|'other'|'legacy'|'none', days, text}
+  // מחזיר {kind:'fixed'|'preset'|'other'|'legacy'|'none', days, text}
   function read(biz) {
     biz = biz || {};
+    var pr = parsePreset(biz.hoursMode);
+    if (pr) return { kind: 'preset', days: null, text: presetText(pr.kind, pr.avail), preset: pr };
     if (biz.hoursMode === 'fixed') {
       var days = normalizeDays(biz.hoursDays);
       if (days) return { kind: 'fixed', days: days, text: daysToPlain(days) };
@@ -263,6 +293,8 @@
   // יימחק מידע אמיתי שבעל-העסק כתב.
   function seed(biz) {
     biz = biz || {};
+    var pr = parsePreset(biz.hoursMode);
+    if (pr) return { mode: pr.kind, avail: pr.avail, days: blankDays(), other: '', seeded: 'stored' };
     if (biz.hoursMode === 'fixed') {
       var d = normalizeDays(biz.hoursDays);
       if (d) return { mode: 'fixed', days: d, other: '', seeded: 'stored' };
@@ -281,11 +313,13 @@
 
   // §734 – רמי: "שלא יהיה מלא". עם opts.blank, עסק בלי שעות שמורות מתחיל בלי שעות ולא עם 09:00-18:00
   // (44 מ-157 עסקים נשמרו עם ברירת המחדל כי לא נגעו). כל יום פתוח, בלי שעה; מכבים את הימים הסגורים.
+  function isPresetKind(k) { return k === 'whatsapp' || k === 'always' || k === 'appointment'; }
   function blankDays() {
     return DAY_NAMES.map(function () { return { closed: false, open: '', close: '' }; });
   }
   // 'empty' – לא נבחרה אף שעה · 'complete' – לכל יום פתוח יש פתיחה וסגירה (ויש יום פתוח) · 'partial' – באמצע
   function status(m) {
+    if (isPresetKind(m.mode)) return 'complete';   // §773 – בחירה אחת = שלם
     if (m.mode === 'other') return String(m.other || '').trim() ? 'complete' : 'empty';
     var any = m.days.some(function (d) { return d.open || d.close; });
     if (!any) return 'empty';
@@ -297,6 +331,10 @@
   // המטען לשמירה. hours הישן מסונכרן תמיד — ר' ההערה בראש הקובץ.
   function toPayload(m) {
     if (status(m) === 'empty') return { hoursMode: '', hoursDays: null, hoursOther: '', hours: '' };   // §734 – בלי שעות
+    if (isPresetKind(m.mode)) {
+      var av = m.mode === 'appointment' ? '' : (PRESET_AVAIL[m.mode].indexOf(m.avail) >= 0 ? m.avail : 'all');
+      return { hoursMode: presetMode(m.mode, av), hoursDays: null, hoursOther: '', hours: presetText(m.mode, av) };
+    }
     if (m.mode === 'other') {
       var o = String(m.other || '').trim();
       return { hoursMode: 'other', hoursOther: o, hoursDays: null, hours: o };
@@ -338,9 +376,14 @@
     // תמיד על אותו משתנה שיורש מאב, ולכן דף כהה (admin) לא היה יכול להתאים את הרכיב.
     // נמדד בדפדפן, לא הושער.
     '.hbh{font-family:inherit;color:var(--hbh-text,#0A2A66)}',
-    '.hbh-modes{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}',
-    '.hbh-mode{flex:1;min-width:120px;padding:11px 12px;border-radius:11px;border:1.5px solid var(--hbh-border,#E7E7E0);',
-    'background:var(--hbh-bg,#fff);font-family:inherit;font-size:12.5px;font-weight:700;color:var(--hbh-muted,#6B7A9B);cursor:pointer;transition:all .12s}',
+    '.hbh-modes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}',
+    '.hbh-mode{min-height:48px;padding:9px 12px;border-radius:11px;border:1.5px solid var(--hbh-border,#E7E7E0);text-align:right;',
+    'background:var(--hbh-bg,#fff);font-family:inherit;font-size:13px;font-weight:700;color:var(--hbh-muted,#6B7A9B);cursor:pointer;transition:all .12s}',
+    '.hbh-mode small{display:block;font-size:11px;font-weight:500;opacity:.85}',
+    '.hbh-chips{display:flex;flex-wrap:wrap;gap:6px}',
+    '.hbh-chip{min-height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--hbh-border,#E7E7E0);background:var(--hbh-bg,#fff);',
+    'font-family:inherit;font-size:13px;font-weight:600;color:var(--hbh-text,#0A2A66);cursor:pointer}',
+    '.hbh-chip.sel{background:var(--hbh-chip-on,#FFD400);border-color:var(--hbh-chip-on,#FFD400);color:#0A2A66;font-weight:800}',
     '.hbh-mode:hover{border-color:var(--hbh-accent,#0A2A66)}',
     '.hbh-mode.sel{border-color:var(--hbh-accent,#0A2A66);background:color-mix(in srgb,var(--hbh-accent,#0A2A66) 6%,transparent);color:var(--hbh-accent,#0A2A66)}',
     '.hbh-hint{font-size:11.5px;color:var(--hbh-muted,#6B7A9B);line-height:1.55;margin-bottom:12px}',
@@ -482,6 +525,7 @@
     if (!box) return null;
     var m = seed(biz);
     if (opts.blank && m.seeded === 'empty') { m.days = blankDays(); m.seeded = 'blank'; }   // §734
+    if (m.mode === 'other') m.days = blankDays();   // §773 – מעבר מטקסט ישן לטבלה לא ממלא 09:00-18:00 מומצא
     // נפתח ב"יום-יום" כשחמשת ימי החול **אינם** אחידים — אחרת השורה המקובצת (שמציגה תמיד
     // את ראשון) הייתה מסתירה את ההבדל. קורה בפועל: "סרף אין" אחרי המרה, וכל עסק שסוגר
     // יום חול אחד. הצורה המקובצת נשארת ברירת-המחדל למקרה הנפוץ.
@@ -517,43 +561,59 @@
     function render() {
       box.innerHTML = '';
 
+      // §773 – ארבע אפשרויות סגורות; אין יותר "אחר – אני אכתוב בעצמי"
       var modes = document.createElement('div');
       modes.className = 'hbh-modes';
-      [['fixed', 'שעות קבועות'], ['other', 'אחר – אני אכתוב בעצמי']].forEach(function (p) {
+      [['fixed', 'שעות קבועות', 'ימים ושעות פתיחה'], ['whatsapp', 'זמין בווטסאפ', 'פונים אליי בהודעה'],
+       ['always', 'זמין 24 שעות', 'כולל לילות'], ['appointment', 'בתיאום מראש', 'קובעים מועד מראש']].forEach(function (p) {
         var b = document.createElement('button');
         b.type = 'button';
         b.className = 'hbh-mode' + (m.mode === p[0] ? ' sel' : '');
-        b.textContent = p[1];
-        b.onclick = function () { if (m.mode === p[0]) return; m.mode = p[0]; render(); fire(); };
+        b.innerHTML = esc(p[1]) + '<small>' + esc(p[2]) + '</small>';
+        b.onclick = function () {
+          if (m.mode === p[0]) return;
+          m.mode = p[0];
+          if (PRESET_AVAIL[p[0]] && PRESET_AVAIL[p[0]].indexOf(m.avail) < 0) m.avail = 'all';
+          render(); fire();
+        };
         modes.appendChild(b);
       });
       box.appendChild(modes);
 
-      var hint = document.createElement('div');
-      hint.className = 'hbh-hint';
-      hint.textContent = m.mode === 'other'
-        ? 'לעסקים שהשעות שלהם לא נכנסות לטבלה – כתבו במילים שלכם, ואנחנו נסדר את זה.'
-        : 'בחרו שעת פתיחה ושעת סגירה. יום שכבוי = סגור. שישי ושבת נפרדים כי כמעט לכל עסק הם שונים.';
-      box.appendChild(hint);
-
+      // טקסט חופשי ישן – מוצג כמו שהוא, לא נערך. נשמר עד שבוחרים אפשרות (אין שינוי שקט).
       if (m.mode === 'other') {
-        var wrap = document.createElement('div');
-        wrap.className = 'hbh-other';
-        var ta = document.createElement('textarea');
-        ta.placeholder = 'לדוגמה: זמין תמיד בוואטסאפ · פתוח 24 שעות חוץ משבת · לפי תיאום מראש';
-        ta.value = m.other || '';
-        ta.oninput = function () { m.other = ta.value; fire(); };
-        wrap.appendChild(ta);
-        if (opts.approvalNote !== false) {
-          var note = document.createElement('div');
-          note.className = 'hbh-note';
-          note.innerHTML = '<span>⏳</span><span><b>מה שתכתבו כאן עובר אישור של הצוות</b> לפני שהוא מוצג באתר – ' +
-            'כדי שנוכל לנסח את זה אחיד ולוודא שהוא ברור ללקוחות.</span>';
-          wrap.appendChild(note);
-        }
-        box.appendChild(wrap);
+        var was = document.createElement('div');
+        was.className = 'hbh-note';
+        was.innerHTML = '<span>✏️</span><span>רשום כרגע: <b>״' + esc(m.other) + '״</b><br>' +
+          'בחרו אחת מהאפשרויות למעלה – כך זה יוצג ברור ובאותה צורה לכל העסקים.</span>';
+        box.appendChild(was);
         return;
       }
+
+      if (PRESET_AVAIL[m.mode]) {
+        var sl = document.createElement('div');
+        sl.className = 'hbh-hint';
+        sl.textContent = 'באילו ימים?';
+        box.appendChild(sl);
+        var chips = document.createElement('div');
+        chips.className = 'hbh-chips';
+        PRESET_AVAIL[m.mode].forEach(function (a) {
+          var c = document.createElement('button');
+          c.type = 'button';
+          c.className = 'hbh-chip' + (m.avail === a ? ' sel' : '');
+          c.textContent = AVAIL_TXT[a];
+          c.onclick = function () { m.avail = a; render(); fire(); };
+          chips.appendChild(c);
+        });
+        box.appendChild(chips);
+        return;
+      }
+      if (m.mode === 'appointment') return;
+
+      var hint = document.createElement('div');
+      hint.className = 'hbh-hint';
+      hint.textContent = 'בחרו שעת פתיחה ושעת סגירה. יום שכבוי = סגור. שישי ושבת נפרדים כי כמעט לכל עסק הם שונים.';
+      box.appendChild(hint);
 
       if (!split) {
         var wd = m.days[0];
@@ -605,5 +665,6 @@
     read: read, hasHours: hasHours, toHtml: toHtml, toPlain: toPlain,
     convert: convert, parsedToDays: parsedToDays,
     seed: seed, toPayload: toPayload, mountEditor: mountEditor, status: status,
+    parsePreset: parsePreset, presetText: presetText,   // §773
   };
 })();
