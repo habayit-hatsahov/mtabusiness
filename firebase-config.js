@@ -1,6 +1,6 @@
 // ── Firebase Configuration — Yellow Zone ──
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-import { attachAppCheck } from "./app-check.js";   // §519 — App Check (שלב מדידה, בלי אכיפה)
+import { attachAppCheck } from "./app-check.js?v=767";   // §519 — App Check (שלב מדידה, בלי אכיפה)
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import { getAuth }       from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
