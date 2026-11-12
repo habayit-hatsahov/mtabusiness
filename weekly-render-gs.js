@@ -488,7 +488,6 @@
       (inf.logo ? '<img class="wk-logo" src="' + esc(inf.logo) + '" alt="">' : '<div class="wk-logo wk-logo-l">' + esc(x.name.charAt(0)) + '</div>') +
       '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>' : '';
     return hero + '<div class="wk-in">' +
-      (b.explain ? '<div class="wk-rot"><b>' + esc(b.explainTitle || '') + '</b><p>' + esc(tok(b.explain, t)) + '</p></div>' : '') +
       '<div class="wk-timer"><div class="row"><span>' + leftHtml(t) + '</span><span>עד ' + t.end + '</span></div><div class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></div></div>' +
       (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
       (gifts ? '<div class="wk-price">' + gifts + '</div>' : '') +
@@ -501,7 +500,8 @@
         '<div class="wk-cp-box" id="wkCouponBox">' + couponBoxInner(b, ctx) + '</div></div>' +
       (b.shop ? shopHtml(b) : '') +
       (b.how ? '<div class="wk-rot navy"><b>' + esc(b.howTitle || '') + '</b>' + paraHtml(tok(b.how, t)) + '</div>' : '') +
-      cycHtml(t) + '</div>';
+      // (רמי, 12.11) ההסבר על ההטבה המתחלפת – לא בקובייה למעלה אלא משפט קצר מתחת למד
+      cycHtml(t).slice(0, -6) + (b.cycNote ? '<p class="wk-cyc-note">' + esc(tok(b.cycNote, t)) + '</p>' : '') + '</div></div>';
   }
   // §775 – "חנות קטנה": לשוניות לפי קטגוריה + שורה נגללת של כרטיסי חולצה (תמונה, שם, מחיר) – כל כרטיס לדף המוצר באתר.
   // הנתונים מ-window.GS_PRODUCTS (בדמו: תמונת מצב מה-Store API הציבורי של האתר)
@@ -927,6 +927,7 @@
     '.wk-cp-guest p{margin:10px 0}',
     '.wk-gift{flex-direction:row;justify-content:center;gap:10px;padding:14px}.wk-gift b{margin:0;font-size:20px}',
     '.wk-promo{background:#fff;border:1.5px solid #0A2A66}',
+    '.wk-cyc-note{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:#3A4C7A}',
     '.wk-worth{margin-top:10px;border-radius:10px;overflow:hidden;border:1px solid #E7E7E0}',
     '.wk-worth .h,.wk-worth .r{display:grid;grid-template-columns:1.1fr .8fr 1.3fr;align-items:center;gap:6px;padding:8px 10px}',
     '.wk-worth .h{background:#F4F4EF;font-size:12px;font-weight:800;color:#6B7A9B}',
