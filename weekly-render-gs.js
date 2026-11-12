@@ -400,7 +400,7 @@
         (b.img ? '<img class="wk-ben-img" src="' + esc(b.img) + '" alt="">' : '') +
         '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span>' + (b.titleBottom ? '' : '<div class="t">' + esc(b.slideTitle) + '</div>') +
         // §775 (רמי, 12.11) "בוא נפרגן להם" – הלוגו של העסק בתיבה בחוץ
-        blogo(b, 22, '') +
+        blogo(b, 28, '') +
         (b.slideHint || b.hint ? '<div class="wk-hint">' + esc(String(b.slideHint || b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
         // עם השור – העיגול מכסה את הראש, אז הספירה עוברת לתווית קטנה בפינה עם עיגול זעיר
         (b.img || b.photo ? '<div class="wk-days" style="--p:' + (100 - t.pct).toFixed(1) + '"><i></i>' + (t.left === 1 ? 'יום אחרון!' : 'עוד ' + t.left + ' ימים') + '</div>' : ring) + price +
