@@ -53,11 +53,11 @@ export async function handleBenefitSales(body, env) {
 }
 
 // ══ §775 — "החנות" בגיליון ההטבה: מוצרים מה-Store API הציבורי של האתר (בלי מפתח) ═══════════════════
-// GET /benefit-shop?site=glory → { tabs, products:[{n,p,w,img,url,c}] }. רק במלאי, בלי OUTLET, רק בקטגוריות
-// שבלשוניות. נשמר במטמון של קלאודפלייר 6 שעות – האתר שלו לא נקרא בכל פתיחה של הגיליון.
+// GET /benefit-shop?site=glory → { tabs, products:[{n,p,w,img,url,c}] }. רק במלאי (אאוטלט – בלשונית משלו), רק בקטגוריות
+// שבלשוניות. נשמר ב-KV ומתרענן כל 6 שעות – האתר שלו לא נקרא בכל פתיחה של הגיליון.
 // מידע ציבורי (אותו דבר שבאתר שלו), ולכן Access-Control-Allow-Origin: *.
 const SHOP = {
-  glory: { base: 'https://glory-street.com', tabs: [['הכי נמכרים החודש', 'הכי נמכרים'], ['חולצות שחקני כדורגל', 'כדורגל'], ['חולצות שחקני כדורסל', 'כדורסל'], ['חולצות UFC ואיגרוף', 'UFC ואיגרוף'], ['חולצות היפ הופ', 'היפ הופ'], ['חולצות אייקוניות', 'אייקוניות']], skip: ['OUTLET'] },
+  glory: { base: 'https://glory-street.com', tabs: [['הכי נמכרים החודש', 'הכי נמכרים'], ['חולצות שחקני כדורגל', 'כדורגל'], ['חולצות שחקני כדורסל', 'כדורסל'], ['חולצות UFC ואיגרוף', 'UFC ואיגרוף'], ['חולצות היפ הופ', 'היפ הופ'], ['חולצות אייקוניות', 'אייקוניות'], ['OUTLET', 'אאוטלט']], solo: ['OUTLET'] },
 };
 const SHOP_TTL = 6 * 3600;
 const dec = s => String(s || '').replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#039;/g, "'");
@@ -76,26 +76,47 @@ async function buildShop(cfg) {
   for (const p of all) {
     if (!p.is_in_stock || !p.images || !p.images[0]) continue;
     const cn = (p.categories || []).map(c => dec(c.name));
-    if (cfg.skip.some(x => cn.includes(x))) continue;
-    const c = cfg.tabs.filter(t => cn.includes(t[0])).map(t => t[1]);
+    // §775 (רמי, 13.11) אאוטלט – לשונית אחרונה; מוצר אאוטלט מופיע רק בה (לא גם בכדורגל וכו', כי המחיר והמידות שונים)
+    const solo = (cfg.solo || []).find(x => cn.includes(x));
+    const c = solo ? cfg.tabs.filter(t => t[0] === solo).map(t => t[1]) : cfg.tabs.filter(t => cn.includes(t[0])).map(t => t[1]);
     if (!c.length) continue;
     const pr = p.prices || {}, div = Math.pow(10, pr.currency_minor_unit || 0);
-    products.push({ n: dec(p.name).replace(/\s*–\s*חולצת גרפיקס$/, ''), p: Number(pr.price) / div, w: Number(pr.regular_price) / div, img: p.images[0].thumbnail || p.images[0].src, url: p.permalink, c });
+    products.push({ n: dec(p.name).replace(/\s*–\s*חולצת גרפיקס$/, '').replace(/\s*–\s*מחיר OUTLET$/i, ''), p: Number(pr.price) / div, w: Number(pr.regular_price) / div, img: p.images[0].thumbnail || p.images[0].src, url: p.permalink, c });
   }
   return { tabs: cfg.tabs.map(t => t[1]), products, at: new Date().toISOString() };
 }
 
-export async function handleBenefitShop(url, ctx) {
-  const cfg = SHOP[url.searchParams.get('site')];
+// ⚡ (13.11) בנייה מהאתר שלו לוקחת ~12 שנ' (4 עמודים של 100), יותר מגבול 8 השנ' בגיליון. לכן הרשימה נשמרת ב-KV
+//    (גלובלי – לא לפי מרכז נתונים כמו caches.default): בקשה תמיד מקבלת מה ששמור מיד, ורשימה בת יותר מ-6 שעות
+//    מתרעננת ברקע. בנוסף הוורקר מרענן פעם בשעה מה-cron (refreshBenefitShops) – כך שמשתמש כמעט אף פעם לא מחכה.
+//    כתיבות KV: עד ~4 ביום לאתר (התקרה החינמית 1,000).
+const kvKey = id => 'benefitShop:' + id;
+async function refreshShop(env, id) {
+  const body = JSON.stringify(await buildShop(SHOP[id]));
+  await env.RATE_LIMIT_KV.put(kvKey(id), JSON.stringify({ t: Date.now(), body }));
+  return body;
+}
+export async function refreshBenefitShops(env, force) {
+  const out = {};
+  for (const id of Object.keys(SHOP)) {
+    const c = await env.RATE_LIMIT_KV.get(kvKey(id), 'json');
+    if (!force && c && Date.now() - c.t < SHOP_TTL * 1000) { out[id] = 'fresh'; continue; }
+    try { await refreshShop(env, id); out[id] = 'refreshed'; } catch (e) { out[id] = 'failed: ' + String(e.message || e).slice(0, 40); }
+  }
+  return out;
+}
+
+export async function handleBenefitShop(url, ctx, env) {
+  const id = url.searchParams.get('site'), cfg = SHOP[id];
   const H = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=1800' };
   if (!cfg) return new Response(JSON.stringify({ error: 'unknown_site' }), { status: 404, headers: H });
-  const cache = caches.default, key = new Request('https://cache.yellowzone.local/benefit-shop/' + url.searchParams.get('site'));
-  const hit = await cache.match(key);
-  if (hit) return new Response(hit.body, { headers: H });
   try {
-    const body = JSON.stringify(await buildShop(cfg));
-    ctx.waitUntil(cache.put(key, new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + SHOP_TTL } })));
-    return new Response(body, { headers: H });
+    const c = await env.RATE_LIMIT_KV.get(kvKey(id), 'json');
+    if (c && c.body) {
+      if (Date.now() - c.t > SHOP_TTL * 1000) ctx.waitUntil(refreshShop(env, id).catch(e => console.error('benefitShop refresh failed', String(e))));
+      return new Response(c.body, { headers: H });
+    }
+    return new Response(await refreshShop(env, id), { headers: H });
   } catch (e) {
     console.error('benefitShop failed', String(e));
     return new Response(JSON.stringify({ error: 'store_unavailable' }), { status: 502, headers: H });

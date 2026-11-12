@@ -597,7 +597,7 @@
     var tabs = shopTabs(), cur = shop.tab || tabs[0] || '';
     shopLoad(b);
     // עוד אין מוצרים: בזמן הטעינה "טוען…", ואם נכשל – בלי הסקשן (שאר הגיליון עובד)
-    if (!shopList().length) return '<div class="wk-sec wk-shop" id="wkShop">' + (shop.failed ? '' : '<h3>' + esc(b.shop.title || 'מהחנות') + '</h3><p class="wk-p">טוען…</p>') + '</div>';
+    if (!shopList().length) return '<div class="wk-sec wk-shop" id="wkShop">' + (!shop.loading ? '' : '<h3>' + esc(b.shop.title || 'מהחנות') + '</h3><p class="wk-p">טוען…</p>') + '</div>';
     return '<div class="wk-sec wk-shop" id="wkShop"><h3>' + esc(b.shop.title || 'מהחנות') + '</h3>' +
       (tabs.length ? '<div class="wk-gs-tabs">' + tabs.map(function (t) { return '<button type="button" class="' + (t === cur ? 'on' : '') + '" onclick="WK.shopTab(this.textContent)">' + esc(t) + '</button>'; }).join('') + '</div>' : '') +
       '<div class="wk-prow" id="wkShopRow">' + shopCards(b) + '</div></div>';

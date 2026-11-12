@@ -37,7 +37,7 @@ import { runStoreDownloadsSync } from './storedl.js';
 import { runPlatformDaily } from './platformdaily.js';   // §587
 import { runBizGeo } from './bizgeo.js';   // §762ב
 import { noteMemberToken, runStuckLogins } from './stucklogin.js';   // §769
-import { handleBenefitSales, handleBenefitShop } from './benefitsales.js';   // §775
+import { handleBenefitSales, handleBenefitShop, refreshBenefitShops } from './benefitsales.js';   // §775
 import { runScheduledJobs } from './schedule.js';   // §775
 
 const SITE_BASE = 'https://yellowzone.co.il/';
@@ -289,7 +289,7 @@ export default {
       // ⚠️ אין כאן שום סוד ואין תופעות-לוואי, ולכן אין מגבלת-קצב: קריאה חוזרת עולה כלום
       // ואינה נוגעת ב-`recordAttempt`.
       // §775 — החולצות של העסק לגיליון ההטבה בקרוסלה (ציבורי, במטמון 6 שעות)
-      if (request.method === 'GET' && url.pathname === '/benefit-shop') return handleBenefitShop(url, ctx);
+      if (request.method === 'GET' && url.pathname === '/benefit-shop') return handleBenefitShop(url, ctx, env);
       if (request.method === 'GET' && url.pathname === '/ping') {
         return json({ ok: true }, env, request);
       }
@@ -341,6 +341,8 @@ export default {
     //    וזה היה כחצי מקריאות Firestore ביום (~9,300 בשעה גם בלילה). עסק שאושר/נערך מגיע לדף הבית תוך ≤5 דק'.
     const minute = (event && event.scheduledTime) ? new Date(event.scheduledTime).getUTCMinutes() : null;
     // §762ב – נקודות המפה: עסק חדש / כתובת שהשתנתה → Geocoding → branchGeo. פעם בשעה (דקה 41 – לא על 5/30 של bizPublic).
+    // §775 – רשימת החולצות של ההטבה (KV): רענון אם בת יותר מ-6 שעות. פעם בשעה.
+    if (minute === 41) ctx.waitUntil(refreshBenefitShops(env).then((r) => { if (Object.values(r).some(v => v !== 'fresh')) console.log('benefitShops', JSON.stringify(r)); }).catch((e) => console.error('benefitShops failed', String(e))));
     if (minute === 41) {
       ctx.waitUntil(getGoogleAccessToken(env).then((t) => runBizGeo(env, t))
         .then((r) => { if (r.wrote || r.geocoded || r.pending || r.skipped) console.log('bizGeo', JSON.stringify(r)); })
