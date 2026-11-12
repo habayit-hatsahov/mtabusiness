@@ -388,8 +388,8 @@
       var lo = pr[0], hi = pr[pr.length - 1], range = pr.length > 1 && hi.n > lo.n;
       var ring = '<div class="wk-ring" style="--p:' + (100 - t.pct).toFixed(1) + '"><span class="cap">' + (t.left === 1 ? 'יום אחרון!' : 'מתחלפת בעוד') + '</span>' +
         '<span class="dial"><b>' + t.left + '</b><small>' + (t.left === 1 ? 'יום' : 'ימים') + '</small></span></div>';
-      // §775 (רמי, 12.11) titleBottom: הכותרת ("50 ₪ מתנה") יורדת למטה, ו-slidePrice ("ללא הגבלה…") מעליה
-      var price = b.titleBottom ? '<div class="wk-pbot">' + (b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : '') + '<div class="t">' + esc(b.slideTitle) + '</div></div>' :
+      // §775 (רמי, 12.11) titleBottom: הכותרת ("50 ₪ מתנה") יורדת למטה, ו-slidePrice ("ללא הגבלה…") מתחתיה
+      var price = b.titleBottom ? '<div class="wk-pbot"><div class="t">' + esc(b.slideTitle) + '</div>' + (b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : '') + '</div>' :
         b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : !lo ? '' : '<div class="wk-pfrom"><div><b>' + (range ? '<bdi dir="ltr">' + lo.n + '–' + hi.n + '</bdi>&nbsp;' + esc(String(hi.p.price).replace(/^[\d.,\s]+/, '')) : esc(lo.p.price)) + '</b>' +
         '<span>' + (range && !isNaN(lo.s) && !isNaN(hi.s) ? lo.s + ' עד ' + hi.s + ' ' + esc(String(hi.p.size).replace(/^[\d.\s]+/, '')) : esc(lo.p.size)) +
         (b.sizeExtra ? ' ' + esc(b.sizeExtra) : '') + '</span></div></div>';
@@ -945,7 +945,7 @@
     '.wk-blogo img{display:block;max-width:none}.wk-blogo .cr{display:block;overflow:hidden}',
     '.wk-blogo.big{margin:0;padding:7px 10px;border-radius:12px}',
     '.wk-wide-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}',
-    '.wk-pbot{position:relative;z-index:1;margin-inline-end:116px}.wk-pbot .wk-pline{margin:0!important;font-size:13px!important;font-weight:800;opacity:.85}.wk-s-ben .wk-pbot .t{margin-top:2px;font-size:24px;white-space:nowrap}',
+    '.wk-pbot{position:relative;z-index:1;margin-inline-end:116px}.wk-pbot .wk-pline{margin:0!important;font-size:13px!important;font-weight:800;opacity:.85}.wk-s-ben .wk-pbot .t{margin:0 0 2px;font-size:24px;white-space:nowrap}',
     '.wk-cyc-note{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:#3A4C7A}',
     '.wk-worth{margin-top:10px;border-radius:10px;overflow:hidden;border:1px solid #E7E7E0}',
     '.wk-worth .h,.wk-worth .r{display:grid;grid-template-columns:1.1fr .8fr 1.3fr;align-items:center;gap:6px;padding:8px 10px}',
