@@ -397,6 +397,8 @@
         (b.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(b.photo) + '" alt=""' + photoStyle(Object.assign({}, b, b.slidePhoto || {})) + '></span>' : '') +
         (b.img ? '<img class="wk-ben-img" src="' + esc(b.img) + '" alt="">' : '') +
         '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.slideTitle) + '</div>' +
+        // §775 (רמי, 12.11) "בוא נפרגן להם" – הלוגו של העסק בתיבה בחוץ
+        blogo(b, 22, '') +
         (b.slideHint || b.hint ? '<div class="wk-hint">' + esc(String(b.slideHint || b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
         // עם השור – העיגול מכסה את הראש, אז הספירה עוברת לתווית קטנה בפינה עם עיגול זעיר
         (b.img || b.photo ? '<div class="wk-days" style="--p:' + (100 - t.pct).toFixed(1) + '"><i></i>' + (t.left === 1 ? 'יום אחרון!' : 'עוד ' + t.left + ' ימים') + '</div>' : ring) + price +
@@ -480,7 +482,8 @@
     var t = ctx.t, c = b.coupon, x = (b.biz || [])[0] || {}, inf = bizInfo(x);
     var hero = b.heroWide
       ? '<div class="wk-hero ben wk-hero-wide">' + closeBtn('ben', ctx) + '<img class="wk-wide-img" src="' + esc(b.heroWide) + '" alt="">' +
-        '<div class="wk-wide-txt"><span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span><div class="t">' + esc(b.title) + '</div>' +
+        '<div class="wk-wide-txt"><span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span>' +
+        blogo(b, 38, ' big') + '<div class="t">' + esc(b.title) + '</div>' +
         (b.hint ? '<div class="tag">' + esc(b.hint) + '</div>' : '') + '</div></div>'
       : '<div class="wk-hero ben">' + closeBtn('ben', ctx) + '<span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.title) + '</div></div>';
     var gifts = (b.gifts || []).map(function (g) { return '<div class="wk-pc wk-gift"><span>' + (/^[+\-]/.test(g.big) ? '<bdi dir="ltr">' + esc(g.big) + '</bdi>' : esc(g.big)) + '</span><b>' + esc(g.line) + '</b>' + (g.sub ? '<small>' + esc(g.sub) + '</small>' : '') + '</div>'; }).join('');
@@ -540,6 +543,15 @@
   }
   function couponReset() { coupon.state = ''; coupon.copied = false; couponPaint(); }
 
+  // §775 הלוגו של העסק – brandLogoCrop = [מלמעלה, מלמטה, רוחב המקור] בפיקסלים של התמונה המקורית: לוגו ריבועי
+  // עם שוליים לבנים (Glory: 512×512, הכיתוב בשורות 195–307) נחתך לגובה הכיתוב בלבד, בלי קובץ חדש
+  function blogo(b, h, cls) {
+    if (!b.brandLogo) return '';
+    var c = b.brandLogoCrop, img;
+    if (c) { var k = h / (c[1] - c[0]); img = '<span class="cr" style="height:' + h + 'px;width:' + Math.round(c[2] * k) + 'px"><img src="' + esc(b.brandLogo) + '" alt="" style="width:' + Math.round(c[2] * k) + 'px;height:auto;margin-top:' + Math.round(-c[0] * k) + 'px"></span>'; }
+    else img = '<img src="' + esc(b.brandLogo) + '" alt="" style="height:' + h + 'px">';
+    return '<span class="wk-blogo' + cls + '">' + img + '</span>';
+  }
   function closeBtn(kind, ctx) { return ctx.preview ? '' : '<button type="button" class="wk-close" onclick="WK.close(\'' + kind + '\')" aria-label="סגירה">' + X + '</button>'; }
 
   function sheetInner(kind, d, ctx) {
@@ -927,6 +939,9 @@
     '.wk-cp-guest p{margin:10px 0}',
     '.wk-gift{flex-direction:row;justify-content:center;gap:10px;padding:14px}.wk-gift b{margin:0;font-size:20px}',
     '.wk-promo{background:#fff;border:1.5px solid #0A2A66}',
+    '.wk-blogo{display:inline-flex;align-items:center;background:#fff;border-radius:10px;padding:4px 8px;margin-top:6px;box-shadow:0 1px 4px rgba(10,42,102,.15)}',
+    '.wk-blogo img{display:block;max-width:none}.wk-blogo .cr{display:block;overflow:hidden}',
+    '.wk-blogo.big{margin-top:10px;padding:8px 12px;border-radius:12px}',
     '.wk-cyc-note{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:#3A4C7A}',
     '.wk-worth{margin-top:10px;border-radius:10px;overflow:hidden;border:1px solid #E7E7E0}',
     '.wk-worth .h,.wk-worth .r{display:grid;grid-template-columns:1.1fr .8fr 1.3fr;align-items:center;gap:6px;padding:8px 10px}',
