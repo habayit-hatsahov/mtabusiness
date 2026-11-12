@@ -397,7 +397,7 @@
         (b.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(b.photo) + '" alt=""' + photoStyle(Object.assign({}, b, b.slidePhoto || {})) + '></span>' : '') +
         (b.img ? '<img class="wk-ben-img" src="' + esc(b.img) + '" alt="">' : '') +
         '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.slideTitle) + '</div>' +
-        (b.hint ? '<div class="wk-hint">' + esc(String(b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
+        (b.slideHint || b.hint ? '<div class="wk-hint">' + esc(String(b.slideHint || b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
         // עם השור – העיגול מכסה את הראש, אז הספירה עוברת לתווית קטנה בפינה עם עיגול זעיר
         (b.img || b.photo ? '<div class="wk-days" style="--p:' + (100 - t.pct).toFixed(1) + '"><i></i>' + (t.left === 1 ? 'יום אחרון!' : 'עוד ' + t.left + ' ימים') + '</div>' : ring) + price +
         (b.more ? '<span class="wk-more">' + esc(b.more) + GO + '</span>' : '<span class="wk-go">' + GO + '</span>') + '</div>';
@@ -492,10 +492,42 @@
       '<div class="wk-timer"><div class="row"><span>' + leftHtml(t) + '</span><span>עד ' + t.end + '</span></div><div class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></div></div>' +
       (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
       (gifts ? '<div class="wk-price">' + gifts + '</div>' : '') +
+      (b.promo ? '<div class="wk-rot wk-promo"><b>' + esc(b.promo.title || '') + '</b>' + paraHtml(b.promo.text || '') +
+        // §775 "כמה שווה לקנות": כמות · מחיר באתר · מה משלמים · לחולצה
+        ((b.promo.rows || []).length ? '<div class="wk-worth"><div class="h"><span>קונים</span><span>במקום</span><span>משלמים</span></div>' + b.promo.rows.map(function (r) {
+          return '<div class="r"><span>' + esc(r.q) + '</span><s>' + esc(r.was) + '</s><b>' + esc(r.now) + (r.per ? '<small>' + esc(r.per) + '</small>' : '') + '</b></div>'; }).join('') + '</div>' : '') +
+        (b.promo.foot ? '<p class="wk-worth-ft">' + esc(b.promo.foot) + '</p>' : '') + '</div>' : '') +
       '<div class="wk-sec wk-cp"><h3>' + esc(b.whereTitle || 'איפה מממשים') + '</h3>' + row +
         '<div class="wk-cp-box" id="wkCouponBox">' + couponBoxInner(b, ctx) + '</div></div>' +
+      (b.shop ? shopHtml(b) : '') +
       (b.how ? '<div class="wk-rot navy"><b>' + esc(b.howTitle || '') + '</b>' + paraHtml(tok(b.how, t)) + '</div>' : '') +
       cycHtml(t) + '</div>';
+  }
+  // §775 – "חנות קטנה": לשוניות לפי קטגוריה + שורה נגללת של כרטיסי חולצה (תמונה, שם, מחיר) – כל כרטיס לדף המוצר באתר.
+  // הנתונים מ-window.GS_PRODUCTS (בדמו: תמונת מצב מה-Store API הציבורי של האתר)
+  var shop = { tab: '' };
+  function shopCards(b) {
+    var all = window.GS_PRODUCTS || [], tab = shop.tab || (window.GS_TABS || [])[0] || '';
+    var list = all.filter(function (p) { return !tab || p.c.indexOf(tab) >= 0; }), max = b.shop.max || 16;
+    var cards = list.slice(0, max).map(function (p) {
+      return '<a class="wk-pr" href="' + esc(p.url) + '" target="_blank" rel="noopener" onclick="WK.track(\'ben\',\'product\')">' +
+        '<span class="im"><img src="' + esc(p.img) + '" alt="" loading="lazy"></span><span class="nm">' + esc(p.n) + '</span>' +
+        '<span class="pp"><b>' + p.p + ' ₪</b>' + (p.w > p.p ? '<s>' + p.w + ' ₪</s>' : '') + '</span></a>';
+    }).join('');
+    var more = '<a class="wk-pr wk-pr-more" href="' + esc(b.shop.url || b.coupon.url) + '" target="_blank" rel="noopener"><span>' + (list.length > max ? 'עוד ' + (list.length - max) + ' חולצות' : 'לכל החנות') + '</span><small>באתר Glory Street</small></a>';
+    return cards + more;
+  }
+  function shopHtml(b) {
+    var tabs = window.GS_TABS || [], cur = shop.tab || tabs[0] || '';
+    return '<div class="wk-sec wk-shop"><h3>' + esc(b.shop.title || 'מהחנות') + '</h3>' +
+      (tabs.length ? '<div class="wk-gs-tabs">' + tabs.map(function (t) { return '<button type="button" class="' + (t === cur ? 'on' : '') + '" onclick="WK.shopTab(this.textContent)">' + esc(t) + '</button>'; }).join('') + '</div>' : '') +
+      '<div class="wk-prow" id="wkShopRow">' + shopCards(b) + '</div></div>';
+  }
+  function shopTab(t) {
+    shop.tab = t; var row = document.getElementById('wkShopRow'); if (!row || !state.d) return;
+    row.innerHTML = shopCards(state.d.ben); row.scrollLeft = 0;
+    var ch = row.parentNode.querySelectorAll('.wk-gs-tabs button'); for (var i = 0; i < ch.length; i++) ch[i].classList.toggle('on', ch[i].textContent === t);
+    track('ben', 'shopTab');
   }
   // מצב הקוד בגיליון: '' (כפתור) / 'shown' / 'guest'. WK_DEMO_MEMBER=false בדמו = אורח
   var coupon = { state: '', copied: false };
@@ -893,6 +925,25 @@
     '.wk-cp-site{background:#0A2A66;color:#FFD400}',
     '.wk-cp-guest{background:#FFF7DB;border:1px solid #FFE9A3;border-radius:14px;padding:4px 14px 14px;text-align:center}',
     '.wk-cp-guest p{margin:10px 0}',
+    '.wk-gift{flex-direction:row;justify-content:center;gap:10px;padding:14px}.wk-gift b{margin:0;font-size:20px}',
+    '.wk-promo{background:#fff;border:1.5px solid #0A2A66}',
+    '.wk-worth{margin-top:10px;border-radius:10px;overflow:hidden;border:1px solid #E7E7E0}',
+    '.wk-worth .h,.wk-worth .r{display:grid;grid-template-columns:1.1fr .8fr 1.3fr;align-items:center;gap:6px;padding:8px 10px}',
+    '.wk-worth .h{background:#F4F4EF;font-size:12px;font-weight:800;color:#6B7A9B}',
+    '.wk-worth .r{border-top:1px solid #EEE;font-size:14px;color:#0A2A66;font-weight:700}',
+    '.wk-worth .r s{color:#98A2B3;font-weight:500}',
+    '.wk-worth .r b{font-size:17px;font-weight:900}.wk-worth .r b small{display:block;font-size:11.5px;font-weight:700;color:#3A4C7A}',
+    '.wk-worth-ft{margin:8px 0 0!important;font-size:12px!important;color:#6B7A9B!important}',
+    '.wk-gs-tabs{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -18px 10px;padding:0 18px}.wk-gs-tabs::-webkit-scrollbar{display:none}',
+    '.wk-gs-tabs button{flex:none;border:1px solid #D5D9E2;background:#fff;color:#0A2A66;border-radius:999px;padding:7px 13px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer}',
+    '.wk-gs-tabs button.on{background:#0A2A66;border-color:#0A2A66;color:#FFD400}',
+    '.wk-prow{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;margin:0 -18px;padding:0 18px 4px}.wk-prow::-webkit-scrollbar{display:none}',
+    '.wk-pr{flex:0 0 138px;scroll-snap-align:start;display:flex;flex-direction:column;text-decoration:none;color:#0A2A66;background:#fff;border:1px solid #E7E7E0;border-radius:14px;overflow:hidden}',
+    '.wk-pr .im{display:block;aspect-ratio:1;background:#F4F4EF}.wk-pr img{width:100%;height:100%;object-fit:cover;display:block}',
+    '.wk-pr .nm{font-size:13px;font-weight:700;line-height:1.3;padding:8px 9px 2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:34px}',
+    '.wk-pr .pp{padding:2px 9px 10px;display:flex;gap:6px;align-items:baseline}.wk-pr .pp b{font-size:15px}.wk-pr .pp s{font-size:12px;color:#98A2B3}',
+    '.wk-pr-more{align-items:center;justify-content:center;text-align:center;background:#0A2A66;color:#FFD400;border-color:#0A2A66;padding:12px}',
+    '.wk-pr-more span{font-size:16px;font-weight:800}.wk-pr-more small{font-size:12px;color:#fff;opacity:.85;margin-top:4px}',
     '.wk-rows{display:flex;flex-direction:column;gap:8px}',
     '.wk-row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E7E7E0;border-radius:13px;padding:9px 11px;cursor:pointer;color:#0A2A66}',
     '.wk-logo{width:42px;height:42px;flex:none;border-radius:12px;border:1px solid #E7E7E0;background:#fff;object-fit:contain;padding:3px;box-sizing:border-box}',
@@ -1084,7 +1135,7 @@
     slideHtml: slideHtml, sheetInner: sheetInner, injectCss: injectCss,
     mount: mount, step: step, tok: tok, track: track, setUsDir: setUsDir, usDir: function () { return state.d && state.d.usDir; }, open: open, close: close, biz: biz, act: doAct,
     // §625 – הלב: likeKey() = מזהה העסק, setLike(key, count, mine) מ-home.html, onLike(fn) – fn(bizId) מבצע את הלחיצה
-    coupon: couponReveal, couponCopy: couponCopy, couponReset: couponReset,
+    coupon: couponReveal, couponCopy: couponCopy, couponReset: couponReset, shopTab: shopTab,
     like: likeClick, likeKey: function () { return like.key; }, setLike: setLike, onLike: function (fn) { like.handler = fn; }
   };
 })();
