@@ -311,12 +311,12 @@ function benSales(b) {
   if (b.start > t) return (SALES[b.id] = { data: { ok: true, found: true, totals: { orders: 0, revenue: 0, items: 0, avg: 0, discount: 0 }, days: [], notYet: true } });
   SALES[b.id] = { loading: true };
   U.C.api('/admin-benefit-sales', { site: b.coupon.site, code: b.coupon.code, from: b.start, to: z })
-    .then(r => { SALES[b.id] = r && r.ok ? { data: r } : { err: (r && r.error) || 'שגיאה' }; })
+    .then(r => { SALES[b.id] = r && r.ok && r.found ? { data: r } : { err: r && r.ok ? 'not_found' : (r && r.error) || 'שגיאה' }; })
     .catch(e => { SALES[b.id] = { err: e.message || String(e) }; })
     .finally(() => U.C.rerender());
   return SALES[b.id];
 }
-const BEN_ERR = { no_key: 'המפתח של WooCommerce עוד לא נשמר בוורקר', not_admin: 'אין הרשאת מנהל', unknown_site: 'האתר לא מוגדר בוורקר' };
+const BEN_ERR = { no_key: 'המפתח של WooCommerce עוד לא נשמר בוורקר', not_admin: 'אין הרשאת מנהל', unknown_site: 'האתר לא מוגדר בוורקר', not_found: 'הקוד לא נמצא באתר של העסק' };
 function benHtml() {
   const b = benCur(), st = benStatus(b), { a, z, T } = benSum(b), c = T.car.ben || {};
   const viewOk = a >= BENVIEW_FROM;
