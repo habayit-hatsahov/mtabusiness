@@ -533,9 +533,13 @@
         (b.hint ? '<div class="tag">' + esc(b.hint) + '</div>' : '') + '</div></div>'
       : '<div class="wk-hero ben">' + closeBtn('ben', ctx) + '<span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.title) + '</div></div>';
     var gifts = (b.gifts || []).map(function (g) { return '<div class="wk-pc wk-gift"><span>' + (/^[+\-]/.test(g.big) ? '<bdi dir="ltr">' + esc(g.big) + '</bdi>' : esc(g.big)) + '</span><b>' + esc(g.line) + '</b>' + (g.sub ? '<small>' + esc(g.sub) + '</small>' : '') + '</div>'; }).join('');
-    var row = x.name ? '<div class="wk-row"' + (inf.id ? act(ctx, "WK.biz('" + inf.id + "')") : '') + '>' +
-      (inf.logo ? '<img class="wk-logo" src="' + esc(inf.logo) + '" alt="">' : '<div class="wk-logo wk-logo-l">' + esc(x.name.charAt(0)) + '</div>') +
-      '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>' : '';
+    // §775 (רמי, 13.11) השורה של העסק = "כניסה לאתר" עם הכתובת – ישר לאתר (בלי כפתור כרטיס ובלי כפתור אתר כפול)
+    var host = c.url ? String(c.url).replace(/^https?:\/\/(www\.)?/, '').replace(/\/+$/, '') : '';
+    var logo = inf.logo ? '<img class="wk-logo" src="' + esc(inf.logo) + '" alt="">' : x.name ? '<div class="wk-logo wk-logo-l">' + esc(x.name.charAt(0)) + '</div>' : '';
+    var row = c.url ? '<a class="wk-row wk-row-site" href="' + esc(c.url) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : ' onclick="WK.track(\'ben\',\'siteBtn\')"') + '>' + logo +
+        '<div class="wk-row-main"><div class="wk-row-name">כניסה לאתר</div><div class="wk-row-sub" dir="ltr">' + esc(host) + '</div></div>' + GO + '</a>'
+      : x.name ? '<div class="wk-row"' + (inf.id ? act(ctx, "WK.biz('" + inf.id + "')") : '') + '>' + logo +
+        '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>' : '';
     return hero + '<div class="wk-in">' +
       '<div class="wk-timer"><div class="row"><span>' + leftHtml(t) + '</span><span>עד ' + t.end + '</span></div><div class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></div></div>' +
       (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
@@ -547,8 +551,6 @@
           return '<div class="r"><span>' + esc(r.q) + '</span><s>' + esc(r.was) + '</s><b>' + esc(r.now) + (r.per ? '<small>' + esc(r.per) + '</small>' : '') + '</b></div>'; }).join('') + '</div>' : '') +
         (b.promo.foot ? '<p class="wk-worth-ft">' + esc(b.promo.foot) + '</p>' : '') + '</div>' : '') +
       '<div class="wk-sec wk-cp"><h3>' + esc(b.whereTitle || 'איפה מממשים') + '</h3>' + row +
-        (x.name ? '<div class="wk-cp-links">' + (inf.id ? '<button type="button" class="wk-cp-card"' + act(ctx, "WK.biz('" + inf.id + "')") + '>לכרטיס העסק</button>' : '') +
-          (c.url ? '<a class="wk-cp-site" href="' + esc(c.url) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : ' onclick="WK.track(\'ben\',\'siteBtn\')"') + '>לאתר ' + esc(x.name) + '</a>' : '') + '</div>' : '') +
         '<div class="wk-cp-box" id="wkCouponBox">' + couponBoxInner(b, ctx) + '</div></div>' +
       (b.shop ? shopHtml(b) : '') +
       (b.how ? '<div class="wk-rot navy"><b>' + esc(b.howTitle || '') + '</b>' + paraHtml(tok(b.how, t)) + '</div>' : '') +
@@ -1008,10 +1010,8 @@
     '.wk-gift b{font-size:14px;color:#0A2A66;margin-top:4px}',
     '.wk-gift small{font-size:12px;color:#6B7A9B;margin-top:3px;line-height:1.35}',
     '.wk-cp .wk-row{margin-bottom:8px}',
-    '.wk-cp-links{display:flex;gap:8px;margin-bottom:10px}',
-    '.wk-cp-links .wk-cp-card,.wk-cp-links .wk-cp-site{flex:1;display:flex;align-items:center;justify-content:center;border-radius:12px;padding:12px 8px;font:inherit;font-size:15px;font-weight:800;text-decoration:none;cursor:pointer}',
-    '.wk-cp-links .wk-cp-card{background:#fff;color:#0A2A66;border:1.5px solid #0A2A66}',
     '.wk-ben-heart{margin-top:-4px}',
+    '.wk-row-site{text-decoration:none;margin-bottom:10px}.wk-row-site .wk-row-sub{text-align:right;font-weight:700;color:#0A2A66;opacity:.75}',
     '.wk-cp-btn{width:100%;border:0;border-radius:14px;padding:15px;background:#0A2A66;color:#FFD400;font:inherit;font-size:17px;font-weight:800;cursor:pointer}',
     '.wk-cp-code{background:#FFF7DB;border:2px dashed #0A2A66;border-radius:14px;padding:14px;text-align:center;color:#0A2A66}',
     '.wk-cp-code small{display:block;font-size:12px;font-weight:800;color:#6B7A9B}',

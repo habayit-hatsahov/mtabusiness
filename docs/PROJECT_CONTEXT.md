@@ -29054,7 +29054,7 @@ apple_login_modal 77/77 · login_flip ✅ · כל הסקריפטים הקלאס�
 - **`weekly-render.js?v=775`** (home.html + admin-carousel.html) = מה שהיה בדמו (`weekly-render-gs.js` נמחק; שני הדמואים טוענים עכשיו את הקובץ האמיתי). נבדק: הקרוסלה של היום (המסמך החי) מצוירת **זהה תו-בתו** לגרסה הקודמת בכל 6 התיבות.
   - **הקוד לא במסמך הציבורי:** `couponCode()` = `window._hbCodes[bizId].discountCode` (bizCodes – חברים בלבד, home.html); אורח (בלי `hb_memberId` / `demo_`) → "להתחברות"; קודים שעוד לא נטענו → "רגע, הקוד נטען…" וניסיון חוזר אחרי 2 שנ׳. אירועים: `coupon` / `couponGuest` / `couponWait`.
   - **החנות:** `GET /benefit-shop?site=glory` מהוורקר (מנסה api.yellowzone.co.il ואז web.app/api, 8 שנ׳ לכל אחד); כשל → הסקשן נעלם. בדמואים – `window.GS_PRODUCTS`.
-  - **כפתורים** מתחת לשורת העסק: "לכרטיס העסק" (`WK.biz`) + "לאתר Glory Street" (אירוע `siteBtn`).
+  - **(13.11, רמי: "לכרטיס העסק תוריד… שלא יהיה כפילות")** בלי כפתורים: שורת העסק עצמה = "כניסה לאתר" + הכתובת (glory-street.com, נגזרת מ-`coupon.url`) ומובילה לאתר (אירוע `siteBtn`). בהטבה בלי `coupon.url` – השורה פותחת את כרטיס העסק כמו קודם. `weekly-render.js?v=775b`, sw v623.
   - **לב לעסק** מתחת לתיאור: אותו לב של העסק (likedBy) – מצב נפרד `blike` (`WK.benLikeKey` / `WK.setBenLike` / `WK.benLike`), home.html `syncWkLike` מסנכרן גם אותו. רק בהטבה עם קוד שבאוויר. "תנו לב ל-Glory Street – הם נותנים לנו הטבה, בואו נפרגן בחזרה". אירוע `like`/`unlike` על `ben`.
   - **קישור ישיר:** `https://yellowzone.co.il/home.html?wk=ben` פותח את הגיליון (פעם אחת, רק כשההטבה באוויר; עובד לכל תיבה – `?wk=fan` וכו').
 - **וורקר `src/schedule.js`** (כל 5 דק׳, `runScheduledJobs`; Firestore נקרא רק בחלון של משימה):
