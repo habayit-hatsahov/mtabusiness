@@ -51,3 +51,53 @@ export async function handleBenefitSales(body, env) {
     return { error: String(e.message || e).slice(0, 60) };
   }
 }
+
+// ══ §775 — "החנות" בגיליון ההטבה: מוצרים מה-Store API הציבורי של האתר (בלי מפתח) ═══════════════════
+// GET /benefit-shop?site=glory → { tabs, products:[{n,p,w,img,url,c}] }. רק במלאי, בלי OUTLET, רק בקטגוריות
+// שבלשוניות. נשמר במטמון של קלאודפלייר 6 שעות – האתר שלו לא נקרא בכל פתיחה של הגיליון.
+// מידע ציבורי (אותו דבר שבאתר שלו), ולכן Access-Control-Allow-Origin: *.
+const SHOP = {
+  glory: { base: 'https://glory-street.com', tabs: [['הכי נמכרים החודש', 'הכי נמכרים'], ['חולצות שחקני כדורגל', 'כדורגל'], ['חולצות שחקני כדורסל', 'כדורסל'], ['חולצות UFC ואיגרוף', 'UFC ואיגרוף'], ['חולצות היפ הופ', 'היפ הופ'], ['חולצות אייקוניות', 'אייקוניות']], skip: ['OUTLET'] },
+};
+const SHOP_TTL = 6 * 3600;
+const dec = s => String(s || '').replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#039;/g, "'");
+
+async function buildShop(cfg) {
+  const all = [];
+  for (let page = 1; page <= 5; page++) {
+    const r = await fetch(`${cfg.base}/wp-json/wc/store/v1/products?per_page=100&page=${page}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!r.ok) throw new Error('store_' + r.status);
+    const a = await r.json();
+    if (!Array.isArray(a) || !a.length) break;
+    all.push(...a);
+    if (a.length < 100) break;
+  }
+  const products = [];
+  for (const p of all) {
+    if (!p.is_in_stock || !p.images || !p.images[0]) continue;
+    const cn = (p.categories || []).map(c => dec(c.name));
+    if (cfg.skip.some(x => cn.includes(x))) continue;
+    const c = cfg.tabs.filter(t => cn.includes(t[0])).map(t => t[1]);
+    if (!c.length) continue;
+    const pr = p.prices || {}, div = Math.pow(10, pr.currency_minor_unit || 0);
+    products.push({ n: dec(p.name).replace(/\s*–\s*חולצת גרפיקס$/, ''), p: Number(pr.price) / div, w: Number(pr.regular_price) / div, img: p.images[0].thumbnail || p.images[0].src, url: p.permalink, c });
+  }
+  return { tabs: cfg.tabs.map(t => t[1]), products, at: new Date().toISOString() };
+}
+
+export async function handleBenefitShop(url, ctx) {
+  const cfg = SHOP[url.searchParams.get('site')];
+  const H = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=1800' };
+  if (!cfg) return new Response(JSON.stringify({ error: 'unknown_site' }), { status: 404, headers: H });
+  const cache = caches.default, key = new Request('https://cache.yellowzone.local/benefit-shop/' + url.searchParams.get('site'));
+  const hit = await cache.match(key);
+  if (hit) return new Response(hit.body, { headers: H });
+  try {
+    const body = JSON.stringify(await buildShop(cfg));
+    ctx.waitUntil(cache.put(key, new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + SHOP_TTL } })));
+    return new Response(body, { headers: H });
+  } catch (e) {
+    console.error('benefitShop failed', String(e));
+    return new Response(JSON.stringify({ error: 'store_unavailable' }), { status: 502, headers: H });
+  }
+}

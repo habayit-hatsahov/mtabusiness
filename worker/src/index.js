@@ -37,7 +37,8 @@ import { runStoreDownloadsSync } from './storedl.js';
 import { runPlatformDaily } from './platformdaily.js';   // §587
 import { runBizGeo } from './bizgeo.js';   // §762ב
 import { noteMemberToken, runStuckLogins } from './stucklogin.js';   // §769
-import { handleBenefitSales } from './benefitsales.js';   // §775
+import { handleBenefitSales, handleBenefitShop } from './benefitsales.js';   // §775
+import { runScheduledJobs } from './schedule.js';   // §775
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -287,6 +288,8 @@ export default {
       // שהראשית חסומה אצלו (§359/§374) לא ישלם 3.5 שניות בזמן הכניסה עצמה.
       // ⚠️ אין כאן שום סוד ואין תופעות-לוואי, ולכן אין מגבלת-קצב: קריאה חוזרת עולה כלום
       // ואינה נוגעת ב-`recordAttempt`.
+      // §775 — החולצות של העסק לגיליון ההטבה בקרוסלה (ציבורי, במטמון 6 שעות)
+      if (request.method === 'GET' && url.pathname === '/benefit-shop') return handleBenefitShop(url, ctx);
       if (request.method === 'GET' && url.pathname === '/ping') {
         return json({ ok: true }, env, request);
       }
@@ -350,6 +353,9 @@ export default {
         .catch((e) => console.error('stuckLogins failed', String(e))));
     }
     if (minute !== null && minute % 5 !== 0) return;
+    // §775 – משימות חד-פעמיות בתאריך (החלפת ההטבה בקרוסלה + ההטבה בכרטיס העסק). כל 5 דק'; קריאה ל-Firestore רק בחלון של המשימה.
+    ctx.waitUntil(runScheduledJobs(env).then((r) => { if (r.ran.length) console.log('scheduledJobs', JSON.stringify(r)); })
+      .catch((e) => console.error('scheduledJobs failed', String(e))));
     const full = minute === null || minute % 30 === 0;
     ctx.waitUntil(getGoogleAccessToken(env).then((t) => syncBizPublic(env, t, { full }))
       .then((r) => { if (r.wrote || r.removed) console.log('bizPublic sync', JSON.stringify(r)); })

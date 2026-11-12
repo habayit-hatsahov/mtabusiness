@@ -251,8 +251,10 @@
     return s && e ? { start: s, next: new Date(e.getFullYear(), e.getMonth(), e.getDate() + 1), last: e } : null;
   }
   // באוויר = יש תאריכים והיום בתוכם. אחרת התיבה מציגה את "בקרוב" (soon) – אין מצב ריק
-  function isLive(it, now) { var p = span(it); now = now || new Date(); return !!p && now >= p.start && now < p.next; }
-  function ctxFor(d, now) { now = now || new Date(); return { t: timing(now, isLive(d.ben, now) ? d.ben : d.fan) }; }
+  // דמו Glory Street – WK_DEMO_NOW קובע את "היום" (ההטבה עולה רק ב-16.11)
+  function nowD() { return window.WK_DEMO_NOW ? new Date(window.WK_DEMO_NOW) : new Date(); }
+  function isLive(it, now) { var p = span(it); now = now || nowD(); return !!p && now >= p.start && now < p.next; }
+  function ctxFor(d, now) { now = now || nowD(); return { t: timing(now, isLive(d.ben, now) ? d.ben : d.fan) }; }
 
   // ── תקופה = חצי חודש: 1–15 / 16–סוף החודש ──────────────────────────────────────────────
   function period(dt) {
@@ -307,9 +309,9 @@
     [].forEach.call(document.querySelectorAll('[data-wk-like-count]'), function (el) { el.innerHTML = likeHeroInner(); });
     [].forEach.call(document.querySelectorAll('[data-wk-like-nudge]'), function (el) { el.innerHTML = likeNudgeInner(first); });
   }
-  function likeBurst(btn) {
+  function likeBurst(btn, mine) {
     btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
-    if (!like.mine) return;
+    if (!(mine == null ? like.mine : mine)) return;
     for (var i = 0; i < 7; i++) {
       var s = document.createElement('span'), a = (Math.PI * 2 * i) / 7;
       s.className = 'wk-burst'; s.textContent = '💛';
@@ -319,6 +321,37 @@
     }
   }
   // לחיצה: home.html (toggleLike) מעדכן מיד את הלב של העסק וקורא ל-setLike; כשל – הוא מחזיר ומודיע.
+  // §775 – לב לעסק של ההטבה (בהטבה עם קוד): אותו לב של העסק כמו בכרטיס (likedBy / effectiveLikes, home.html).
+  // מצב נפרד מהלב של "האוהד שמאחורי העסק", כי שניהם יכולים להיות בגיליונות פתוחים באותו זמן.
+  var blike = { key: '', count: null, mine: false };
+  function benLikeKey(d) { var b = d && d.ben, id = b && b.coupon && ((b.biz || [])[0] || {}).id; return id && isLive(b) ? id : ''; }
+  function benLikeNudge(name) {
+    var n = blike.count || 0, L = /^[A-Za-z0-9]/.test(name) ? "ל-" : "ל";
+    if (blike.mine) return '<b>פירגנת ' + L + esc(name) + ' 💛</b> ' + (n > 1 ? 'יחד איתך ' + n + ' אוהדים.' : 'היית הראשון!');
+    if (blike.count == null || !n) return '<b>תנו לב ' + L + esc(name) + '</b> – הם נותנים לנו הטבה, בואו נפרגן בחזרה.';
+    return '<b>' + (n === 1 ? 'אוהד אחד' : n + ' אוהדים') + '</b> כבר ' + (n === 1 ? 'פירגן' : 'פירגנו') + ' ' + L + esc(name) + '. תנו גם אתם לב ונפרגן בחזרה.';
+  }
+  function benLikeBtn(ctx, label) {
+    return '<button type="button" class="wk-heart-mini' + (blike.mine ? ' liked' : '') + '" data-wk-blike aria-pressed="' + blike.mine + '" aria-label="' + esc(label) + '"' + act(ctx, 'WK.benLike(this)') + '>' + HEART + '</button>';
+  }
+  function paintBenLike() {
+    var d = state.d, nm = d && ((d.ben.biz || [])[0] || {}).name || '';
+    [].forEach.call(document.querySelectorAll('[data-wk-blike]'), function (b) { b.classList.toggle('liked', blike.mine); b.setAttribute('aria-pressed', String(blike.mine)); });
+    [].forEach.call(document.querySelectorAll('[data-wk-blike-nudge]'), function (el) { el.innerHTML = benLikeNudge(nm); });
+  }
+  function benLikeClick(btn) {
+    if (!blike.key) return;
+    if (typeof like.handler !== 'function') { alert('הלב עוד נטען – נסו שוב בעוד רגע'); return; }
+    var was = blike.mine;
+    like.handler(blike.key);
+    if (blike.mine !== was) { likeBurst(btn, blike.mine); track('ben', blike.mine ? 'like' : 'unlike', blike.key); }
+  }
+  function setBenLike(key, count, mine) {
+    if (key !== blike.key) return;
+    if (count != null) blike.count = Math.max(0, Number(count) || 0);
+    if (mine != null) blike.mine = !!mine;
+    paintBenLike();
+  }
   function likeClick(btn) {
     if (!like.key) return;
     if (typeof like.handler !== 'function') { alert('הלב עוד נטען – נסו שוב בעוד רגע'); return; }
@@ -386,7 +419,9 @@
       var lo = pr[0], hi = pr[pr.length - 1], range = pr.length > 1 && hi.n > lo.n;
       var ring = '<div class="wk-ring" style="--p:' + (100 - t.pct).toFixed(1) + '"><span class="cap">' + (t.left === 1 ? 'יום אחרון!' : 'מתחלפת בעוד') + '</span>' +
         '<span class="dial"><b>' + t.left + '</b><small>' + (t.left === 1 ? 'יום' : 'ימים') + '</small></span></div>';
-      var price = b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : !lo ? '' : '<div class="wk-pfrom"><div><b>' + (range ? '<bdi dir="ltr">' + lo.n + '–' + hi.n + '</bdi>&nbsp;' + esc(String(hi.p.price).replace(/^[\d.,\s]+/, '')) : esc(lo.p.price)) + '</b>' +
+      // §775 (רמי, 12.11) titleBottom: הכותרת ("50 ₪ מתנה") יורדת למטה, ו-slidePrice ("ללא הגבלה…") מתחתיה
+      var price = b.titleBottom ? '<div class="wk-pbot"><div class="t">' + esc(b.slideTitle) + '</div>' + (b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : '') + '</div>' :
+        b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : !lo ? '' : '<div class="wk-pfrom"><div><b>' + (range ? '<bdi dir="ltr">' + lo.n + '–' + hi.n + '</bdi>&nbsp;' + esc(String(hi.p.price).replace(/^[\d.,\s]+/, '')) : esc(lo.p.price)) + '</b>' +
         '<span>' + (range && !isNaN(lo.s) && !isNaN(hi.s) ? lo.s + ' עד ' + hi.s + ' ' + esc(String(hi.p.size).replace(/^[\d.\s]+/, '')) : esc(lo.p.size)) +
         (b.sizeExtra ? ' ' + esc(b.sizeExtra) : '') + '</span></div></div>';
       // (רמי, 24.10) השור עם סמל מכבי על הזרוע – משמאל למטה; החץ הופך ל"לפרטים"
@@ -394,8 +429,10 @@
         (b.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(b.bg) + '" alt=""></span>' : '') +
         (b.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(b.photo) + '" alt=""' + photoStyle(Object.assign({}, b, b.slidePhoto || {})) + '></span>' : '') +
         (b.img ? '<img class="wk-ben-img" src="' + esc(b.img) + '" alt="">' : '') +
-        '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.slideTitle) + '</div>' +
-        (b.hint ? '<div class="wk-hint">' + esc(String(b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
+        '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span>' + (b.titleBottom ? '' : '<div class="t">' + esc(b.slideTitle) + '</div>') +
+        // §775 (רמי, 12.11) "בוא נפרגן להם" – הלוגו של העסק בתיבה בחוץ
+        blogo(b, 28, '') +
+        (b.slideHint || b.hint ? '<div class="wk-hint">' + esc(String(b.slideHint || b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
         // עם השור – העיגול מכסה את הראש, אז הספירה עוברת לתווית קטנה בפינה עם עיגול זעיר
         (b.img || b.photo ? '<div class="wk-days" style="--p:' + (100 - t.pct).toFixed(1) + '"><i></i>' + (t.left === 1 ? 'יום אחרון!' : 'עוד ' + t.left + ' ימים') + '</div>' : ring) + price +
         (b.more ? '<span class="wk-more">' + esc(b.more) + GO + '</span>' : '<span class="wk-go">' + GO + '</span>') + '</div>';
@@ -458,10 +495,150 @@
     }).join('') + '</div></div>';
   }
 
+  // ── דמו Glory Street: הטבה של חנות אונליין אחת עם קוד קופון (ben.coupon) ──────────────────────
+  // בלי טבלת גדלים ובלי רשימת עסקים: תמונה רחבה בראש, "50 ₪ מתנה + 10%", העסק, כפתור לקוד, איך זה עובד, מד התקופה
+  function cycHtml(t) {
+    return '<div class="wk-cyc"><div class="lb"><span><b>ההטבה הנוכחית</b>' + dm(t.p.start) + ' – ' + t.end + '</span><span><b>הטבה חדשה</b>מ-' + t.next + '</span></div>' +
+      '<div class="tr"><span class="cur"><i style="width:' + t.pct.toFixed(1) + '%"></i><em style="inset-inline-start:' + t.pct.toFixed(1) + '%"></em></span><span class="nx"></span></div>' +
+      '<div class="ft">' + (t.left === 1 ? 'יום אחרון להטבה הזו' : 'עוד ' + t.left + ' ימים להטבה הזו') + '</div></div>';
+  }
+  // §775 – באוויר הקוד לא נמצא במסמך הקרוסלה (הוא ציבורי): נקרא מ-window._hbCodes (bizCodes – חברים בלבד, home.html).
+  // c.code – רק בדמואים. אורח (בלי חבר / demo_) → "להתחברות"; חבר שהקודים שלו עוד לא נטענו → "רגע…" וניסיון חוזר.
+  function couponCode(b) {
+    var c = b.coupon || {}, id = ((b.biz || [])[0] || {}).id, m = window._hbCodes && id && window._hbCodes[id];
+    return c.code || (m && m.discountCode) || '';
+  }
+  function isGuest() {
+    if (window.WK_DEMO_MEMBER === false) return true;
+    if (window.WK_DEMO_MEMBER === true) return false;
+    var m = ''; try { m = localStorage.getItem('hb_memberId') || ''; } catch (e) {}
+    return !m || /^demo_/.test(m);
+  }
+  function couponBoxInner(b, ctx) {
+    var c = b.coupon, st = coupon.state;
+    if (st === 'shown') return '<div class="wk-cp-code"><small>הקוד שלך</small><b dir="ltr">' + esc(coupon.code || couponCode(b)) + '</b>' +
+      '<div class="wk-cp-btns"><button type="button" class="wk-cp-copy" onclick="WK.couponCopy()">' + (coupon.copied ? 'הועתק ✓' : 'העתקת הקוד') + '</button>' +
+      '<a class="wk-cp-site" href="' + esc(c.url) + '" target="_blank" rel="noopener" onclick="WK.track(\'ben\',\'site\')">' + esc(c.siteLabel || 'לאתר') + '</a></div>' +
+      (c.note ? '<p>' + esc(c.note) + '</p>' : '') + '</div>';
+    if (st === 'wait') return '<div class="wk-cp-guest"><p>רגע, הקוד נטען…</p></div>';
+    if (st === 'guest') return '<div class="wk-cp-guest"><p>' + esc(c.guestLine || 'הקוד לחברי Yellow Zone בלבד') + '</p><a class="wk-cp-site" href="welcome.html">להתחברות / הרשמה</a></div>';
+    return '<button type="button" class="wk-cp-btn"' + (ctx.preview ? ' tabindex="-1"' : ' onclick="WK.coupon()"') + '>' + esc(c.btn || 'לקבלת קוד הקופון') + '</button>';
+  }
+  function couponSheet(b, ctx) {
+    var t = ctx.t, c = b.coupon, x = (b.biz || [])[0] || {}, inf = bizInfo(x);
+    var hero = b.heroWide
+      ? '<div class="wk-hero ben wk-hero-wide">' + closeBtn('ben', ctx) + '<img class="wk-wide-img" src="' + esc(b.heroWide) + '" alt="">' +
+        '<div class="wk-wide-txt"><div class="wk-wide-row"><span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span>' +
+        blogo(b, 30, ' big') + '</div><div class="t">' + esc(b.title) + '</div>' +
+        (b.hint ? '<div class="tag">' + esc(b.hint) + '</div>' : '') + '</div></div>'
+      : '<div class="wk-hero ben">' + closeBtn('ben', ctx) + '<span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.title) + '</div></div>';
+    var gifts = (b.gifts || []).map(function (g) { return '<div class="wk-pc wk-gift"><span>' + (/^[+\-]/.test(g.big) ? '<bdi dir="ltr">' + esc(g.big) + '</bdi>' : esc(g.big)) + '</span><b>' + esc(g.line) + '</b>' + (g.sub ? '<small>' + esc(g.sub) + '</small>' : '') + '</div>'; }).join('');
+    var row = x.name ? '<div class="wk-row"' + (inf.id ? act(ctx, "WK.biz('" + inf.id + "')") : '') + '>' +
+      (inf.logo ? '<img class="wk-logo" src="' + esc(inf.logo) + '" alt="">' : '<div class="wk-logo wk-logo-l">' + esc(x.name.charAt(0)) + '</div>') +
+      '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>' : '';
+    return hero + '<div class="wk-in">' +
+      '<div class="wk-timer"><div class="row"><span>' + leftHtml(t) + '</span><span>עד ' + t.end + '</span></div><div class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></div></div>' +
+      (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
+      (inf.id && b.heart !== false ? '<div class="wk-nudge wk-ben-heart">' + benLikeBtn(ctx, 'לפרגן ל' + x.name) + '<div data-wk-blike-nudge>' + benLikeNudge(x.name) + '</div></div>' : '') +
+      (gifts ? '<div class="wk-price">' + gifts + '</div>' : '') +
+      (b.promo ? '<div class="wk-rot wk-promo"><b>' + esc(b.promo.title || '') + '</b>' + paraHtml(b.promo.text || '') +
+        // §775 "כמה שווה לקנות": כמות · מחיר באתר · מה משלמים · לחולצה
+        ((b.promo.rows || []).length ? '<div class="wk-worth"><div class="h"><span>קונים</span><span>במקום</span><span>משלמים</span></div>' + b.promo.rows.map(function (r) {
+          return '<div class="r"><span>' + esc(r.q) + '</span><s>' + esc(r.was) + '</s><b>' + esc(r.now) + (r.per ? '<small>' + esc(r.per) + '</small>' : '') + '</b></div>'; }).join('') + '</div>' : '') +
+        (b.promo.foot ? '<p class="wk-worth-ft">' + esc(b.promo.foot) + '</p>' : '') + '</div>' : '') +
+      '<div class="wk-sec wk-cp"><h3>' + esc(b.whereTitle || 'איפה מממשים') + '</h3>' + row +
+        (x.name ? '<div class="wk-cp-links">' + (inf.id ? '<button type="button" class="wk-cp-card"' + act(ctx, "WK.biz('" + inf.id + "')") + '>לכרטיס העסק</button>' : '') +
+          (c.url ? '<a class="wk-cp-site" href="' + esc(c.url) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : ' onclick="WK.track(\'ben\',\'siteBtn\')"') + '>לאתר ' + esc(x.name) + '</a>' : '') + '</div>' : '') +
+        '<div class="wk-cp-box" id="wkCouponBox">' + couponBoxInner(b, ctx) + '</div></div>' +
+      (b.shop ? shopHtml(b) : '') +
+      (b.how ? '<div class="wk-rot navy"><b>' + esc(b.howTitle || '') + '</b>' + paraHtml(tok(b.how, t)) + '</div>' : '') +
+      // (רמי, 12.11) ההסבר על ההטבה המתחלפת – לא בקובייה למעלה אלא משפט קצר מתחת למד
+      cycHtml(t).slice(0, -6) + (b.cycNote ? '<p class="wk-cyc-note">' + esc(tok(b.cycNote, t)) + '</p>' : '') + '</div></div>';
+  }
+  // §775 – "חנות קטנה": לשוניות לפי קטגוריה + שורה נגללת של כרטיסי חולצה (תמונה, שם, מחיר) – כל כרטיס לדף המוצר באתר.
+  // הנתונים מ-window.GS_PRODUCTS (בדמו: תמונת מצב מה-Store API הציבורי של האתר)
+  var shop = { tab: '', data: null, loading: false, failed: false };
+  var API_HOSTS = ['https://api.yellowzone.co.il', 'https://habayit-hatsahov.web.app/api'];
+  function shopLoad(b) {
+    if (shop.data || shop.loading || shop.failed || window.GS_PRODUCTS || !b.shop || !b.shop.site) return;
+    if (typeof fetch !== 'function') { shop.failed = true; return; }
+    shop.loading = true;
+    var i = 0, next = function () {
+      if (i >= API_HOSTS.length) { shop.loading = false; shop.failed = true; shopRepaint(); return; }
+      var ac = typeof AbortController === 'function' ? new AbortController() : null, tm = setTimeout(function () { if (ac) ac.abort(); }, 8000);
+      fetch(API_HOSTS[i++] + '/benefit-shop?site=' + encodeURIComponent(b.shop.site), ac ? { signal: ac.signal } : {})
+        .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+        .then(function (j) { clearTimeout(tm); if (!j || !j.products || !j.products.length) throw new Error('empty'); shop.data = j; shop.loading = false; shopRepaint(); })
+        .catch(function () { clearTimeout(tm); next(); });
+    };
+    next();
+  }
+  function shopRepaint() {
+    var el = document.getElementById('wkShop'); if (!el || !state.d) return;
+    var tmp = document.createElement('div'); tmp.innerHTML = shopHtml(state.d.ben);
+    el.parentNode.replaceChild(tmp.firstChild, el);
+  }
+  function shopList() { return (shop.data && shop.data.products) || window.GS_PRODUCTS || []; }
+  function shopTabs() { return (shop.data && shop.data.tabs) || window.GS_TABS || []; }
+  function shopCards(b) {
+    var all = shopList(), tab = shop.tab || shopTabs()[0] || '';
+    var list = all.filter(function (p) { return !tab || p.c.indexOf(tab) >= 0; }), max = b.shop.max || 16;
+    var cards = list.slice(0, max).map(function (p) {
+      return '<a class="wk-pr" href="' + esc(p.url) + '" target="_blank" rel="noopener" onclick="WK.track(\'ben\',\'p:' + esc(tab) + '\')">' +   // §775 – הקטגוריה נכנסת לערוץ (מרכז הנתונים: "מה עניין בחנות")
+        '<span class="im"><img src="' + esc(p.img) + '" alt="" loading="lazy"></span><span class="nm">' + esc(p.n) + '</span>' +
+        '<span class="pp"><b>' + p.p + ' ₪</b>' + (p.w > p.p ? '<s>' + p.w + ' ₪</s>' : '') + '</span></a>';
+    }).join('');
+    var more = '<a class="wk-pr wk-pr-more" href="' + esc(b.shop.url || b.coupon.url) + '" target="_blank" rel="noopener"><span>' + (list.length > max ? 'עוד ' + (list.length - max) + ' חולצות' : 'לכל החנות') + '</span><small>באתר Glory Street</small></a>';
+    return cards + more;
+  }
+  function shopHtml(b) {
+    var tabs = shopTabs(), cur = shop.tab || tabs[0] || '';
+    shopLoad(b);
+    // עוד אין מוצרים: בזמן הטעינה "טוען…", ואם נכשל – בלי הסקשן (שאר הגיליון עובד)
+    if (!shopList().length) return '<div class="wk-sec wk-shop" id="wkShop">' + (shop.failed ? '' : '<h3>' + esc(b.shop.title || 'מהחנות') + '</h3><p class="wk-p">טוען…</p>') + '</div>';
+    return '<div class="wk-sec wk-shop" id="wkShop"><h3>' + esc(b.shop.title || 'מהחנות') + '</h3>' +
+      (tabs.length ? '<div class="wk-gs-tabs">' + tabs.map(function (t) { return '<button type="button" class="' + (t === cur ? 'on' : '') + '" onclick="WK.shopTab(this.textContent)">' + esc(t) + '</button>'; }).join('') + '</div>' : '') +
+      '<div class="wk-prow" id="wkShopRow">' + shopCards(b) + '</div></div>';
+  }
+  function shopTab(t) {
+    shop.tab = t; var row = document.getElementById('wkShopRow'); if (!row || !state.d) return;
+    row.innerHTML = shopCards(state.d.ben); row.scrollLeft = 0;
+    var ch = row.parentNode.querySelectorAll('.wk-gs-tabs button'); for (var i = 0; i < ch.length; i++) ch[i].classList.toggle('on', ch[i].textContent === t);
+    track('ben', 'shopTab');
+  }
+  // מצב הקוד בגיליון: '' (כפתור) / 'shown' / 'guest'. WK_DEMO_MEMBER=false בדמו = אורח
+  var coupon = { state: '', copied: false };
+  function couponPaint() { var el = document.getElementById('wkCouponBox'); if (el && state.d) el.innerHTML = couponBoxInner(state.d.ben, {}); }
+  function couponReveal(again) {
+    var b = state.d && state.d.ben; if (!b) return;
+    var code = couponCode(b);
+    coupon.copied = false; coupon.code = code;
+    coupon.state = isGuest() ? 'guest' : code ? 'shown' : again ? 'guest' : 'wait';
+    if (!again || coupon.state === 'shown') track('ben', coupon.state === 'guest' ? 'couponGuest' : coupon.state === 'shown' ? 'coupon' : 'couponWait');
+    couponPaint();
+    if (coupon.state === 'wait') setTimeout(function () { couponReveal(true); }, 2000);
+  }
+  function couponCopy() {
+    var code = coupon.code || (state.d && couponCode(state.d.ben)); if (!code) return;
+    var done = function () { coupon.copied = true; couponPaint(); track('ben', 'copy'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(done, done); else done();
+  }
+  function couponReset() { coupon.state = ''; coupon.copied = false; couponPaint(); }
+
+  // §775 הלוגו של העסק – brandLogoCrop = [מלמעלה, מלמטה, רוחב המקור, משמאל?, מימין?]; brandLogoClear = בלי הרקע הלבן, הכיתוב בשחור (הלוגו מהאתר שלו שקוף עם כיתוב בהיר) בפיקסלים של התמונה המקורית: לוגו ריבועי
+  // עם שוליים לבנים (Glory: 512×512, הכיתוב בשורות 195–307) נחתך לגובה הכיתוב בלבד, בלי קובץ חדש
+  function blogo(b, h, cls) {
+    if (!b.brandLogo) return '';
+    var c = b.brandLogoCrop, img;
+    if (c) { var k = h / (c[1] - c[0]), l = c[3] || 0, r = c[4] || c[2]; img = '<span class="cr" style="height:' + h + 'px;width:' + Math.round((r - l) * k) + 'px"><img src="' + esc(b.brandLogo) + '" alt="" style="width:' + Math.round(c[2] * k) + 'px;height:auto;position:absolute;top:' + Math.round(-c[0] * k) + 'px;left:' + Math.round(-l * k) + 'px"></span>'; }
+    else img = '<img src="' + esc(b.brandLogo) + '" alt="" style="height:' + h + 'px">';
+    return '<span class="wk-blogo' + cls + (b.brandLogoClear ? ' clear' : '') + '">' + img + '</span>';
+  }
   function closeBtn(kind, ctx) { return ctx.preview ? '' : '<button type="button" class="wk-close" onclick="WK.close(\'' + kind + '\')" aria-label="סגירה">' + X + '</button>'; }
 
   function sheetInner(kind, d, ctx) {
     var t = ctx.t;
+    if (kind === 'ben' && d.ben.coupon) return couponSheet(d.ben, ctx);
     if (kind === 'ben') {
       var b = d.ben;
       // (רמי, 24.10) בלי עיגול-הדמיית-הגודל ליד כל מחיר – גודל ומחיר בלבד
@@ -821,6 +998,57 @@
     '.wk-pc b{font-size:15px;color:#6B7A9B;font-weight:800;margin-top:6px}',
     '.wk-pc s{font-size:13px;color:#98A2B3;margin-top:2px}',
     '.wk-pc span{font-size:28px;font-weight:800;color:#0A2A66;line-height:1.1}',
+    // דמו Glory Street – ראש רחב (תמונת שלושת השוורים), מתנה + 10%, קופסת הקוד
+    '.wk-hero.wk-hero-wide{padding:0;min-height:0;display:block;background:#FED102}',
+    '.wk-wide-img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:cover}',
+    '.wk-wide-txt{padding:12px 18px 18px;display:flex;flex-direction:column;align-items:flex-start}',
+    '.wk-wide-txt .wk-badge{background:#0A2A66;color:#FFD400}',
+    '.wk-wide-txt .t{margin-top:8px}',
+    '.wk-gift span{font-size:30px}',
+    '.wk-gift b{font-size:14px;color:#0A2A66;margin-top:4px}',
+    '.wk-gift small{font-size:12px;color:#6B7A9B;margin-top:3px;line-height:1.35}',
+    '.wk-cp .wk-row{margin-bottom:8px}',
+    '.wk-cp-links{display:flex;gap:8px;margin-bottom:10px}',
+    '.wk-cp-links .wk-cp-card,.wk-cp-links .wk-cp-site{flex:1;display:flex;align-items:center;justify-content:center;border-radius:12px;padding:12px 8px;font:inherit;font-size:15px;font-weight:800;text-decoration:none;cursor:pointer}',
+    '.wk-cp-links .wk-cp-card{background:#fff;color:#0A2A66;border:1.5px solid #0A2A66}',
+    '.wk-ben-heart{margin-top:-4px}',
+    '.wk-cp-btn{width:100%;border:0;border-radius:14px;padding:15px;background:#0A2A66;color:#FFD400;font:inherit;font-size:17px;font-weight:800;cursor:pointer}',
+    '.wk-cp-code{background:#FFF7DB;border:2px dashed #0A2A66;border-radius:14px;padding:14px;text-align:center;color:#0A2A66}',
+    '.wk-cp-code small{display:block;font-size:12px;font-weight:800;color:#6B7A9B}',
+    '.wk-cp-code > b{display:block;font-size:34px;font-weight:900;letter-spacing:.08em;margin:2px 0 10px}',
+    '.wk-cp-code p,.wk-cp-guest p{margin:10px 0 0;font-size:13px;line-height:1.5;color:#3A4C7A}',
+    '.wk-cp-btns{display:flex;gap:8px}',
+    '.wk-cp-copy,.wk-cp-site{flex:1;display:flex;align-items:center;justify-content:center;border:0;border-radius:12px;padding:12px 8px;font:inherit;font-size:15px;font-weight:800;text-decoration:none;cursor:pointer}',
+    '.wk-cp-copy{background:#fff;color:#0A2A66;border:1.5px solid #0A2A66}',
+    '.wk-cp-site{background:#0A2A66;color:#FFD400}',
+    '.wk-cp-guest{background:#FFF7DB;border:1px solid #FFE9A3;border-radius:14px;padding:4px 14px 14px;text-align:center}',
+    '.wk-cp-guest p{margin:10px 0}',
+    '.wk-gift{flex-direction:row;justify-content:center;gap:10px;padding:14px}.wk-gift b{margin:0;font-size:20px}',
+    '.wk-promo{background:#fff;border:1.5px solid #0A2A66}',
+    '.wk-blogo{display:inline-flex;align-items:center;background:#fff;border-radius:10px;padding:4px 8px;margin-top:6px;box-shadow:0 1px 4px rgba(10,42,102,.15)}',
+    '.wk-blogo img{display:block;max-width:none}.wk-blogo .cr{display:block;overflow:hidden;position:relative}',
+    '.wk-blogo.clear{background:none;box-shadow:none;padding:0}.wk-blogo.clear img{filter:brightness(0)}',
+    '.wk-blogo.big{margin:0;padding:7px 10px;border-radius:12px}',
+    '.wk-wide-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}',
+    '.wk-pbot{position:relative;z-index:1;margin-inline-end:116px}.wk-pbot .wk-pline{margin:0!important;font-size:13px!important;font-weight:800;opacity:.85}.wk-s-ben .wk-pbot .t{margin:0 0 2px;font-size:24px;white-space:nowrap}',
+    '.wk-cyc-note{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:#3A4C7A}',
+    '.wk-worth{margin-top:10px;border-radius:10px;overflow:hidden;border:1px solid #E7E7E0}',
+    '.wk-worth .h,.wk-worth .r{display:grid;grid-template-columns:1.1fr .8fr 1.3fr;align-items:center;gap:6px;padding:8px 10px}',
+    '.wk-worth .h{background:#F4F4EF;font-size:12px;font-weight:800;color:#6B7A9B}',
+    '.wk-worth .r{border-top:1px solid #EEE;font-size:14px;color:#0A2A66;font-weight:700}',
+    '.wk-worth .r s{color:#98A2B3;font-weight:500}',
+    '.wk-worth .r b{font-size:17px;font-weight:900}.wk-worth .r b small{display:block;font-size:11.5px;font-weight:700;color:#3A4C7A}',
+    '.wk-worth-ft{margin:8px 0 0!important;font-size:12px!important;color:#6B7A9B!important}',
+    '.wk-gs-tabs{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -18px 10px;padding:0 18px}.wk-gs-tabs::-webkit-scrollbar{display:none}',
+    '.wk-gs-tabs button{flex:none;border:1px solid #D5D9E2;background:#fff;color:#0A2A66;border-radius:999px;padding:7px 13px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer}',
+    '.wk-gs-tabs button.on{background:#0A2A66;border-color:#0A2A66;color:#FFD400}',
+    '.wk-prow{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;margin:0 -18px;padding:0 18px 4px}.wk-prow::-webkit-scrollbar{display:none}',
+    '.wk-pr{flex:0 0 138px;scroll-snap-align:start;display:flex;flex-direction:column;text-decoration:none;color:#0A2A66;background:#fff;border:1px solid #E7E7E0;border-radius:14px;overflow:hidden}',
+    '.wk-pr .im{display:block;aspect-ratio:1;background:#F4F4EF}.wk-pr img{width:100%;height:100%;object-fit:cover;display:block}',
+    '.wk-pr .nm{font-size:13px;font-weight:700;line-height:1.3;padding:8px 9px 2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:34px}',
+    '.wk-pr .pp{padding:2px 9px 10px;display:flex;gap:6px;align-items:baseline}.wk-pr .pp b{font-size:15px}.wk-pr .pp s{font-size:12px;color:#98A2B3}',
+    '.wk-pr-more{align-items:center;justify-content:center;text-align:center;background:#0A2A66;color:#FFD400;border-color:#0A2A66;padding:12px}',
+    '.wk-pr-more span{font-size:16px;font-weight:800}.wk-pr-more small{font-size:12px;color:#fff;opacity:.85;margin-top:4px}',
     '.wk-rows{display:flex;flex-direction:column;gap:8px}',
     '.wk-row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E7E7E0;border-radius:13px;padding:9px 11px;cursor:pointer;color:#0A2A66}',
     '.wk-logo{width:42px;height:42px;flex:none;border-radius:12px;border:1px solid #E7E7E0;background:#fff;object-fit:contain;padding:3px;box-sizing:border-box}',
@@ -913,6 +1141,8 @@
     injectCss();
     state.root = root;
     var d = state.d = data || load(), ctx = ctxFor(d);
+    var kb = benLikeKey(d);
+    if (kb !== blike.key) { blike.key = kb; blike.count = null; blike.mine = false; }
     var k2 = likeKey(d);
     if (k2 !== like.key) { like.key = k2; like.count = null; like.mine = false; }
     root.innerHTML = '<section class="wk" aria-label="הטבה בלעדית, האוהד שמאחורי העסק, Yellow Zone"><div class="wk-track" id="wkTrack">' +
@@ -925,6 +1155,12 @@
       var el = document.createElement('div'); el.className = 'wk-sheet'; el.id = 'wkSheet-' + k; el.setAttribute('aria-hidden', 'true');
       el.innerHTML = sheetInner(k, d, ctx); document.body.appendChild(el);
     });
+    // §775 – קישור ישיר: ?wk=ben (או ?wk=fan / us …) פותח את הגיליון אחרי הציור הראשון
+    if (!state.deep) {
+      state.deep = true;
+      var mk = /[?&#]wk=([a-z]+)/.exec(location.search + location.hash);
+      if (mk && order(d).indexOf(mk[1]) >= 0 && (mk[1] !== 'ben' || isLive(d.ben))) setTimeout(function () { open(mk[1]); }, 350);
+    }
     var tr = document.getElementById('wkTrack'), dots = document.getElementById('wkDots').children;
     order(d).forEach(function (k, i) { if (tr.children[i]) tr.children[i].setAttribute('data-k', k); });
     watchViews(tr);
@@ -1012,6 +1248,8 @@
     slideHtml: slideHtml, sheetInner: sheetInner, injectCss: injectCss,
     mount: mount, step: step, tok: tok, track: track, setUsDir: setUsDir, usDir: function () { return state.d && state.d.usDir; }, open: open, close: close, biz: biz, act: doAct,
     // §625 – הלב: likeKey() = מזהה העסק, setLike(key, count, mine) מ-home.html, onLike(fn) – fn(bizId) מבצע את הלחיצה
+    coupon: couponReveal, couponCopy: couponCopy, couponReset: couponReset, shopTab: shopTab,
+    benLike: benLikeClick, benLikeKey: function () { return blike.key; }, setBenLike: setBenLike,
     like: likeClick, likeKey: function () { return like.key; }, setLike: setLike, onLike: function (fn) { like.handler = fn; }
   };
 })();
