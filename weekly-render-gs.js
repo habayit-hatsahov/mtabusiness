@@ -388,7 +388,9 @@
       var lo = pr[0], hi = pr[pr.length - 1], range = pr.length > 1 && hi.n > lo.n;
       var ring = '<div class="wk-ring" style="--p:' + (100 - t.pct).toFixed(1) + '"><span class="cap">' + (t.left === 1 ? 'יום אחרון!' : 'מתחלפת בעוד') + '</span>' +
         '<span class="dial"><b>' + t.left + '</b><small>' + (t.left === 1 ? 'יום' : 'ימים') + '</small></span></div>';
-      var price = b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : !lo ? '' : '<div class="wk-pfrom"><div><b>' + (range ? '<bdi dir="ltr">' + lo.n + '–' + hi.n + '</bdi>&nbsp;' + esc(String(hi.p.price).replace(/^[\d.,\s]+/, '')) : esc(lo.p.price)) + '</b>' +
+      // §775 (רמי, 12.11) titleBottom: הכותרת ("50 ₪ מתנה") יורדת למטה, ו-slidePrice ("ללא הגבלה…") מעליה
+      var price = b.titleBottom ? '<div class="wk-pbot">' + (b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : '') + '<div class="t">' + esc(b.slideTitle) + '</div></div>' :
+        b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : !lo ? '' : '<div class="wk-pfrom"><div><b>' + (range ? '<bdi dir="ltr">' + lo.n + '–' + hi.n + '</bdi>&nbsp;' + esc(String(hi.p.price).replace(/^[\d.,\s]+/, '')) : esc(lo.p.price)) + '</b>' +
         '<span>' + (range && !isNaN(lo.s) && !isNaN(hi.s) ? lo.s + ' עד ' + hi.s + ' ' + esc(String(hi.p.size).replace(/^[\d.\s]+/, '')) : esc(lo.p.size)) +
         (b.sizeExtra ? ' ' + esc(b.sizeExtra) : '') + '</span></div></div>';
       // (רמי, 24.10) השור עם סמל מכבי על הזרוע – משמאל למטה; החץ הופך ל"לפרטים"
@@ -396,7 +398,7 @@
         (b.bg ? '<span class="wk-bgwrap"><img class="wk-bgmark" src="' + esc(b.bg) + '" alt=""></span>' : '') +
         (b.photo ? '<span class="wk-bgwrap"><img class="wk-photo" src="' + esc(b.photo) + '" alt=""' + photoStyle(Object.assign({}, b, b.slidePhoto || {})) + '></span>' : '') +
         (b.img ? '<img class="wk-ben-img" src="' + esc(b.img) + '" alt="">' : '') +
-        '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.slideTitle) + '</div>' +
+        '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span>' + (b.titleBottom ? '' : '<div class="t">' + esc(b.slideTitle) + '</div>') +
         // §775 (רמי, 12.11) "בוא נפרגן להם" – הלוגו של העסק בתיבה בחוץ
         blogo(b, 22, '') +
         (b.slideHint || b.hint ? '<div class="wk-hint">' + esc(String(b.slideHint || b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
@@ -482,8 +484,8 @@
     var t = ctx.t, c = b.coupon, x = (b.biz || [])[0] || {}, inf = bizInfo(x);
     var hero = b.heroWide
       ? '<div class="wk-hero ben wk-hero-wide">' + closeBtn('ben', ctx) + '<img class="wk-wide-img" src="' + esc(b.heroWide) + '" alt="">' +
-        '<div class="wk-wide-txt"><span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span>' +
-        blogo(b, 38, ' big') + '<div class="t">' + esc(b.title) + '</div>' +
+        '<div class="wk-wide-txt"><div class="wk-wide-row"><span class="wk-badge">' + esc(b.badge) + (b.tag2 ? ' · ' + esc(b.tag2) : '') + '</span>' +
+        blogo(b, 30, ' big') + '</div><div class="t">' + esc(b.title) + '</div>' +
         (b.hint ? '<div class="tag">' + esc(b.hint) + '</div>' : '') + '</div></div>'
       : '<div class="wk-hero ben">' + closeBtn('ben', ctx) + '<span class="wk-badge">' + esc(b.badge) + '</span><div class="t">' + esc(b.title) + '</div></div>';
     var gifts = (b.gifts || []).map(function (g) { return '<div class="wk-pc wk-gift"><span>' + (/^[+\-]/.test(g.big) ? '<bdi dir="ltr">' + esc(g.big) + '</bdi>' : esc(g.big)) + '</span><b>' + esc(g.line) + '</b>' + (g.sub ? '<small>' + esc(g.sub) + '</small>' : '') + '</div>'; }).join('');
@@ -941,7 +943,9 @@
     '.wk-promo{background:#fff;border:1.5px solid #0A2A66}',
     '.wk-blogo{display:inline-flex;align-items:center;background:#fff;border-radius:10px;padding:4px 8px;margin-top:6px;box-shadow:0 1px 4px rgba(10,42,102,.15)}',
     '.wk-blogo img{display:block;max-width:none}.wk-blogo .cr{display:block;overflow:hidden}',
-    '.wk-blogo.big{margin-top:10px;padding:8px 12px;border-radius:12px}',
+    '.wk-blogo.big{margin:0;padding:7px 10px;border-radius:12px}',
+    '.wk-wide-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}',
+    '.wk-pbot{position:relative;z-index:1;margin-inline-end:116px}.wk-pbot .wk-pline{margin:0!important;font-size:13px!important;font-weight:800;opacity:.85}.wk-s-ben .wk-pbot .t{margin-top:2px;font-size:24px;white-space:nowrap}',
     '.wk-cyc-note{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:#3A4C7A}',
     '.wk-worth{margin-top:10px;border-radius:10px;overflow:hidden;border:1px solid #E7E7E0}',
     '.wk-worth .h,.wk-worth .r{display:grid;grid-template-columns:1.1fr .8fr 1.3fr;align-items:center;gap:6px;padding:8px 10px}',
