@@ -515,7 +515,7 @@
     var all = window.GS_PRODUCTS || [], tab = shop.tab || (window.GS_TABS || [])[0] || '';
     var list = all.filter(function (p) { return !tab || p.c.indexOf(tab) >= 0; }), max = b.shop.max || 16;
     var cards = list.slice(0, max).map(function (p) {
-      return '<a class="wk-pr" href="' + esc(p.url) + '" target="_blank" rel="noopener" onclick="WK.track(\'ben\',\'product\')">' +
+      return '<a class="wk-pr" href="' + esc(p.url) + '" target="_blank" rel="noopener" onclick="WK.track(\'ben\',\'p:' + esc(tab) + '\')">' +   // §775 – הקטגוריה נכנסת לערוץ (מרכז הנתונים: "מה עניין בחנות")
         '<span class="im"><img src="' + esc(p.img) + '" alt="" loading="lazy"></span><span class="nm">' + esc(p.n) + '</span>' +
         '<span class="pp"><b>' + p.p + ' ₪</b>' + (p.w > p.p ? '<s>' + p.w + ' ₪</s>' : '') + '</span></a>';
     }).join('');

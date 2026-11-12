@@ -11,6 +11,15 @@ import { aggregateEngageDay, ENGAGE_TYPES } from './engage-agg.js?v=705';
 import { shared as U } from './admin-usage.js?v=717';
 
 const LAUNCH = '2026-10-26', SHARE_FROM = '2026-11-01', BENVIEW_FROM = '2026-11-01';
+// §775 – ההטבות הבלעדיות (היסטוריה + הנוכחית + הבאה). מסמך הקרוסלה (homeCarousel/current) שומר רק את ההטבה של עכשיו,
+// ולכן ההיסטוריה כאן. הטבה חדשה = שורה חדשה למעלה. coupon.site – אתר שמוגדר בוורקר (benefitsales.js), עם מפתח Read.
+const BENEFITS = [
+  { id: 'glory-2611', title: '50 ₪ מתנה ב-Glory Street', sub: 'חנות אונליין · קוד MTA50 · ללא הגבלה, כולל כפל מבצעים', start: '2026-11-16', end: '2026-12-01',
+    biz: ['UN1zkEcAjbDaXKl3XYmV'], coupon: { site: 'glory', code: 'MTA50', gift: 50 } },
+  { id: 'tattoo-2610', title: 'קעקוע של מכבי – מבצע השקה', sub: '5 מקעקעים · 400–800 ₪ · 20% הנחה על תוספות', start: '2026-10-25', end: '2026-11-15',
+    biz: ['a1QIIkYOZBGdWKpLTkKe', '20rLIqD5Pym3Tt3h3kXZ', 'AmOjD8WcCP3Zw5SvdDHh', 'VLGLZPgme3rNgsG72z57', 'NdnAHxqCeXY3qcWpAq7l'] },
+];
+const SALES = {};   // id → { loading, data, err } – מכירות בקוד מהוורקר, פעם אחת לכל טעינה של הדף (↻ רענון – מחדש)
 let E = null, loading = false, err = '';
 const S = { per: 'launch', from: '', to: '', tile: 'trend', table: false, trK: 'open', sort: 'o', q: '' };
 const MSG = { key: '', data: null, loading: false, err: '' };
@@ -28,6 +37,7 @@ const SRC = {
   biz: 'אותן לחיצות, מקובצות לפי עסק, יחד עם החשיפות שלו. "% פתיחה" = פתיחות ÷ חשיפות באותה תקופה.',
   msg: 'לכל הודעה נשמר מה יצא לכל נמען: באפליקציה, בפוש ובמייל. שירות המיילים (Brevo) מחזיר לנו אם המייל נמסר, חזר, נפתח או נלחץ.',
   trend: 'אותם מקורות – לפי יום.',
+  ben: 'לכל הטבה בלעדית – בתאריכים שלה, בלי קשר לתקופה שנבחרה למעלה: מה קרה בתיבה בקרוסלה (ראו, פתחו, קראו, לחצו על עסק, לקחו קוד, עברו לאתר), מה עשו בכרטיסים של העסקים שבה, ובהטבה עם קוד – כמה קנו בקוד באתר של העסק (WooCommerce, סיכומים בלבד, בלי פרטי לקוחות).',
   find: 'מה אוהדים מקלידים בחיפוש (ואם נמצא משהו), אילו סינונים מפעילים, ואילו קטגוריות וסקשנים פותחים בדף הבית. חיפוש נספר פעם אחת כשמפסיקים להקליד.',
 };
 
@@ -95,8 +105,8 @@ function sum(a, b) {
 
 // ── תצוגה ──────────────────────────────────────────────────────────────────────────────────
 const TILES = [['trend', 'לאורך זמן', 'לפי יום'], ['biz', 'עסקים', 'טבלה'], ['card', 'מה עושים בכרטיס העסק', 'פעולות'], ['redeem', 'הטבות ומימוש', 'פעולות'],
-  ['car', 'קרוסלות', '6 תיבות'], ['share', 'שיתופים', 'מ-1.11'], ['msg', 'מסירת הודעות', 'מייל · פוש · אפליקציה'], ['find', 'חיפוש וקטגוריות', 'מה מחפשים']];
-const SRCK = { trend: 'trend', biz: 'biz', card: 'contact', redeem: 'redeem', car: 'car', share: 'share', msg: 'msg', find: 'find' };
+  ['ben', 'הטבות בלעדיות', 'לפי הטבה'], ['car', 'קרוסלות', '6 תיבות'], ['share', 'שיתופים', 'מ-1.11'], ['msg', 'מסירת הודעות', 'מייל · פוש · אפליקציה'], ['find', 'חיפוש וקטגוריות', 'מה מחפשים']];
+const SRCK = { ben: 'ben', trend: 'trend', biz: 'biz', card: 'contact', redeem: 'redeem', car: 'car', share: 'share', msg: 'msg', find: 'find' };
 const bizName = id => { const b = (U.C.biz() || []).find(x => x.id === id); return b ? b.name : '(עסק שנמחק)'; };
 const catName = id => { const b = (U.C.biz() || []).find(x => x.id === id); const c = b && (window.CATEGORIES || []).find(x => x.key === b.catKey); return c ? c.label : ''; };
 
@@ -133,6 +143,7 @@ function big(id, T, R) {
   if (id === 'biz') { const ids = Object.keys(T.biz).filter(k => (T.biz[k].o || 0) > 0); return s(f(ids.length), `מ-${f((U.C.biz() || []).filter(b => b.status === 'approved').length)} נפתחו`, 'מי מקבל תשומת לב, ומה עושים בו'); }
   if (id === 'card') { const act = (n.wa || 0) + (n.phone || 0); return s(pc(act, n.open || 0), 'פנו לעסק', `${f(act)} פניות מ-${f(n.open || 0)} פתיחות`); }
   if (id === 'redeem') return s(f(n.rOpen || 0), 'פתחו "איך מממשים"', `${f(n.rCopy || 0)} העתיקו קוד`);
+  if (id === 'ben') { const b = benCur(), c = benSum(b).T.car.ben || {}; return s(f(c.open || 0), 'פתחו', U.esc(b.title)); }
   if (id === 'car') return s(f(Object.values(T.carBiz).reduce((a, b) => a + b, 0)), 'לחיצות על עסק', 'מתוך הקרוסלה');
   if (id === 'share') return R[1] >= SHARE_FROM ? s(f(n.share || 0), 'שיתופים', 'עסק · עסק שלי · הזמנת חברים') : s('–', '', 'נמדד מ-1.11');
   if (id === 'msg') return s('↗', 'מייל · פוש', 'נמסר / נפתח / נלחץ');
@@ -143,6 +154,7 @@ const cbar = (vals, labels, mx) => `<div class="yzu-cbar" style="gap:${vals.leng
   <div class="yzu-cdays" style="gap:${vals.length > 21 ? 2 : 8}px">${labels.map((l, i) => `<span>${vals.length <= 21 || i % 5 === 0 ? l : ''}</span>`).join('')}</div>`;
 
 const DET = {
+  ben: () => benHtml(),
   trend: (T, R) => {
     const M = { open: 'פתיחות כרטיס עסק', imp: 'חשיפות', heart: 'לבבות', wa: 'וואטסאפ', link: 'קישורים', rOpen: '"איך מממשים"', rCopy: 'העתקת קוד', car: 'פתיחות קרוסלה', share: 'שיתופים' };
     const v = T.perDay.map(d => d[S.trK] || 0), labels = T.perDay.map(d => U.short(d.k));
@@ -278,5 +290,99 @@ function tableView(R, T) {
 
 window.yzeSet = (k, v) => { if (k === 'table') S.table = !S.table; else if (k === 'sort') S.sort = v; else S[k] = v; U.C.rerender(); };
 window.yzeQ = (v) => { S.q = v; clearTimeout(window.__yzeQT); window.__yzeQT = setTimeout(() => { U.C.rerender(); const i = document.querySelector('.yzu-chips input[type=text]'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } }, 350); };
-window.yzeReload = () => { E = null; MSG.key = ''; load(true); U.C.rerender(); };
-function css() { return `<style>.yze-sort{cursor:pointer;color:inherit;text-decoration:none}.yze-sort.on{color:var(--yzu-ink);font-weight:800;text-decoration:underline}</style>`; }
+window.yzeReload = () => { E = null; MSG.key = ''; for (const k in SALES) delete SALES[k]; load(true); U.C.rerender(); };
+// ── §775 הטבות בלעדיות: לכל הטבה – הקרוסלה, העסקים שבה, ומכירות בקוד (WooCommerce) ─────────────────
+// בתאריכים של ההטבה עצמה (לא לפי "תקופה" שלמעלה). רמי: "תחבר לי את זה עם הנתונים על הקרוסלה ביחד על
+// הכרטיס של ההטבה" + "תתן היסטוריה של הטבה קודמת … את כל הנתונים של הקרוסלה שם".
+const benStatus = b => { const t = U.D.today; return t < b.start ? 'soon' : t > b.end ? 'past' : 'live'; };
+function benCur() {
+  const pick = BENEFITS.find(b => b.id === S.ben);
+  return pick || BENEFITS.find(b => benStatus(b) === 'live') || BENEFITS.find(b => benStatus(b) === 'past') || BENEFITS[0];
+}
+function benSum(b) {
+  const t = U.D.today, a = b.start < LAUNCH ? LAUNCH : b.start, z = b.end > t ? t : b.end;
+  return { a, z, T: a <= z ? sum(a, z) : sum(t, U.addDays(t, -1)) };   // עוד לא התחילה – סיכום ריק
+}
+function benSales(b) {
+  if (!b.coupon || !U.C.api) return null;
+  const st = SALES[b.id];
+  if (st) return st;
+  const t = U.D.today, z = b.end > t ? t : b.end;
+  if (b.start > t) return (SALES[b.id] = { data: { ok: true, found: true, totals: { orders: 0, revenue: 0, items: 0, avg: 0, discount: 0 }, days: [], notYet: true } });
+  SALES[b.id] = { loading: true };
+  U.C.api('/admin-benefit-sales', { site: b.coupon.site, code: b.coupon.code, from: b.start, to: z })
+    .then(r => { SALES[b.id] = r && r.ok ? { data: r } : { err: (r && r.error) || 'שגיאה' }; })
+    .catch(e => { SALES[b.id] = { err: e.message || String(e) }; })
+    .finally(() => U.C.rerender());
+  return SALES[b.id];
+}
+const BEN_ERR = { no_key: 'המפתח של WooCommerce עוד לא נשמר בוורקר', not_admin: 'אין הרשאת מנהל', unknown_site: 'האתר לא מוגדר בוורקר' };
+function benHtml() {
+  const b = benCur(), st = benStatus(b), { a, z, T } = benSum(b), c = T.car.ben || {};
+  const viewOk = a >= BENVIEW_FROM;
+  const prod = Object.entries(c).filter(([k]) => k.startsWith('p:')).map(([k, v]) => [k.slice(2) || 'ללא קטגוריה', v]).sort((x, y) => y[1] - x[1]);
+  const prodN = prod.reduce((s2, x) => s2 + x[1], 0) + (c.product || 0);
+  const S2 = benSales(b), W = S2 && S2.data && S2.data.totals;
+  const pill = { live: `<span class="yze-pill live">באוויר · עד ${U.short(b.end)}</span>`, past: '<span class="yze-pill">הסתיימה</span>', soon: `<span class="yze-pill">עולה ב-${U.short(b.start)}</span>` }[st];
+  const chips = BENEFITS.map(x => `<button class="${x.id === b.id ? 'on' : ''}" onclick="yzeSet('ben','${x.id}')">${U.esc(x.title)} · ${U.short(x.start)}–${U.short(x.end)}</button>`).join('');
+  // המשפך: מהתיבה ועד הקנייה. שלב בלי נתונים בהטבה הזו (למשל "לקחו קוד" בהטבת הקעקועים) – לא מוצג
+  const steps = [
+    ['ראו את התיבה', viewOk ? c.view || 0 : null, viewOk ? 'בדף הבית' : '"ראו" נמדד נכון רק מ-1.11'],
+    ['פתחו את ההטבה', c.open || 0, 'לחצו על התיבה'],
+    ['קראו עד הסוף', c.readEnd || 0, ''],
+    ...(b.coupon ? [['לקחו קוד', c.coupon || 0, 'לחצו "לקבלת קוד הקופון"'], ['העתיקו את הקוד', c.copy || 0, ''], ['עברו לאתר', (c.site || 0) + prodN, 'מ"לאתר" או מחולצה בחנות']]
+      : [['לחצו על עסק', c.bizClick || 0, 'מתוך הרשימה בהטבה']]),
+  ];
+  if (b.coupon) steps.push(['קנו בקוד ' + b.coupon.code, W ? W.orders : null, 'הזמנות באתר של העסק', 1]);
+  const mx = Math.max(1, ...steps.map(x => x[1] || 0));
+  const fun = steps.map((x, i) => {
+    // אחוז: "פתחו" מתוך "ראו"; השלבים בתוך ההטבה – מתוך מי שפתחו; הקנייה – מתוך מי שלקחו קוד
+    const base = i === 1 ? steps[0][1] : x[3] ? (steps.find(y => y[0] === 'לקחו קוד') || [])[1] : i > 1 ? steps[1][1] : null;
+    const baseL = i === 1 ? 'ממי שראו' : x[3] ? 'ממי שלקחו קוד' : 'ממי שפתחו';
+    return `<div class="yze-fs${x[3] ? ' wc' : ''}"><div class="l">${x[0]}<span class="src">${x[3] ? 'WooCommerce' : 'אפליקציה'}</span>${x[2] ? `<small>${x[2]}</small>` : ''}</div>
+      <div class="yzu-tr"><i class="${x[3] ? 'ok' : ''}" style="width:${x[1] == null ? 0 : U.W(x[1], mx)}%"></i></div>
+      <div class="v">${x[1] == null ? '–' : f(x[1])}<small>${i && x[1] != null && base ? pc(x[1], base) + ' ' + baseL : '&nbsp;'}</small></div></div>`;
+  }).join('');
+  // מכירות
+  let sales = '';
+  if (b.coupon) {
+    const err = S2 && S2.err, ld = !S2 || S2.loading;
+    const k = (l, v, sub, hl) => `<div class="kp${hl ? ' hl' : ''}"><small>${l}</small><b>${v}</b><div class="dt">${sub || '&nbsp;'}</div></div>`;
+    sales = err ? `<div class="yzu-how">⚠️ המכירות לא נטענו: ${U.esc(BEN_ERR[err] || err)}</div>`
+      : ld ? '<p class="yzu-note">טוען את המכירות מהאתר של העסק…</p>'
+      : `<div class="yzu-kpis" style="grid-template-columns:repeat(4,1fr)">${k('הזמנות בקוד', f(W.orders), c.coupon ? pc(W.orders, c.coupon) + ' ממי שלקחו קוד' : (S2.data.notYet ? 'ההטבה עוד לא עלתה' : ''), 1)}
+          ${k('מכירות לעסק', f(Math.round(W.revenue)) + ' ₪', 'אחרי ההנחות', 1)}${k('פריטים', f(W.items), W.orders ? (W.items / W.orders).toFixed(1) + ' להזמנה' : '')}
+          ${k('ממוצע להזמנה', f(Math.round(W.avg)) + ' ₪', W.discount ? 'הנחה שניתנה: ' + f(Math.round(W.discount)) + ' ₪' : '')}</div>
+        ${W.orders && W.discount ? `<p class="yzu-note">על כל 1 ₪ הנחה – ${(W.revenue / W.discount).toFixed(1)} ₪ מכירות לעסק.</p>` : ''}
+        ${S2.data.coupon ? `<p class="yzu-note">הקוד באתר: ${f(S2.data.coupon.usage)} שימושים מאז ומעולם${S2.data.coupon.expires ? ' · פג ב-' + U.short(String(S2.data.coupon.expires).slice(0, 10)) : ' · ⚠️ בלי תאריך תפוגה'}${S2.data.coupon.individual ? ' · ⚠️ לא מצטבר עם קודים אחרים' : ''}.</p>` : ''}`;
+  }
+  // העסקים שבהטבה – מה קרה בכרטיסים שלהם בתאריכי ההטבה
+  const rows = b.biz.map(id => { const r = T.biz[id] || {}; return { id, car: T.carBiz['ben|' + id] || 0, imp: T.impBiz[id] || 0, o: r.o || 0, c2: (r.wa || 0) + (r.ph || 0), l: r.l || 0, r: r.r || 0, c: r.c || 0, h: r.h || 0 }; })
+    .sort((x, y) => (y.car - x.car) || (y.o - x.o));
+  const bizT = `<div class="yzu-box yzu-tw"><h3>${b.biz.length > 1 ? 'העסקים בהטבה' : 'העסק'} – בתאריכי ההטבה</h3><table><tr><th>עסק</th><th class="n">מהקרוסלה</th><th class="n">חשיפות</th><th class="n">פתיחות כרטיס</th><th class="n">וואטסאפ / חיוג</th><th class="n">קישורים</th><th class="n">"איך מממשים"</th><th class="n">העתיקו קוד</th><th class="n">לבבות</th></tr>
+    ${rows.map(r => `<tr><td><b>${U.esc(bizName(r.id))}</b></td><td class="n"><b>${f(r.car)}</b></td><td class="n">${f(r.imp)}</td><td class="n">${f(r.o)}</td><td class="n">${f(r.c2)}</td><td class="n">${f(r.l)}</td><td class="n">${f(r.r)}</td><td class="n">${f(r.c)}</td><td class="n">${f(r.h)}</td></tr>`).join('')}</table>
+    <p class="yzu-note">"מהקרוסלה" = לחיצות על העסק מתוך ההטבה. שאר העמודות – מכל מקום באפליקציה, באותם ימים.</p></div>`;
+  // כל שאר הפעולות שנמדדו בתיבה (לייק, שיתוף, לשוניות בחנות וכו')
+  const KN = { view: 1, open: 1, readEnd: 1, bizClick: 1, coupon: 1, copy: 1, site: 1, product: 1 };
+  const NM = { shopTab: 'החליפו לשונית בחנות', like: 'לב', shareFan: 'שיתפו', bizSignup: 'הרשמת עסק' };
+  const other = Object.entries(c).filter(([k2]) => !KN[k2] && !k2.startsWith('p:'));
+  const prodBox = b.coupon ? `<div class="yzu-box"><h3>מה עניין בחנות – ${f(prodN)} לחיצות על מוצרים</h3>${prod.length ? prod.map(([nm, v]) => U.hb(U.esc(nm), v, prod[0][1])).join('') : '<p class="yzu-note">אין עדיין</p>'}
+      ${other.length ? `<p class="yzu-note">${other.map(([k2, v]) => `${U.esc(NM[k2] || k2)}: ${f(v)}`).join(' · ')}</p>` : ''}</div>` : (other.length ? `<div class="yzu-box"><h3>עוד פעולות בתיבה</h3><p class="yzu-note">${other.map(([k2, v]) => `${U.esc(NM[k2] || k2)}: ${f(v)}`).join(' · ')}</p></div>` : '');
+  // לפי יום
+  const wDay = {}; ((S2 && S2.data && S2.data.days) || []).forEach(x => { wDay[x.d] = x; });
+  const days = a <= z ? U.dayList(a, z) : [];
+  const dayT = days.length ? `<div class="yzu-box yzu-tw"><h3>לפי יום</h3><table><tr><th>יום</th>${viewOk ? '<th class="n">ראו</th>' : ''}<th class="n">פתחו</th>${b.coupon ? '<th class="n">לקחו קוד</th><th class="n">עברו לאתר</th><th class="n">הזמנות</th><th class="n">מכירות</th>' : '<th class="n">לחצו על עסק</th>'}</tr>
+    ${days.slice().reverse().map(k2 => { const d = E.days[k2], cb = (d && d.car && d.car.ben) || {}, w = wDay[k2] || {};
+      const site = (cb.site || 0) + Object.entries(cb).filter(([q]) => q.startsWith('p:') || q === 'product').reduce((s2, [, v]) => s2 + v, 0);
+      return `<tr><td>${U.short(k2)}${d ? '' : ' ⚠️'}</td>${viewOk ? `<td class="n">${f(cb.view || 0)}</td>` : ''}<td class="n">${f(cb.open || 0)}</td>${b.coupon ? `<td class="n">${f(cb.coupon || 0)}</td><td class="n">${f(site)}</td><td class="n"><b>${f(w.o || 0)}</b></td><td class="n">${f(Math.round(w.r || 0))} ₪</td>` : `<td class="n">${f(cb.bizClick || 0)}</td>`}</tr>`; }).join('')}</table></div>` : '';
+  return `<h2>הטבות בלעדיות</h2><p class="yzu-def">כל הטבה בתאריכים שלה – בלי קשר לתקופה שנבחרה למעלה. כל פעולה בתיבה נספרת פעם אחת לביקור, בלי מנהלים.</p>
+    <div class="yzu-pbar yze-bens">${chips}</div>
+    <div class="yze-bhead"><b>${U.esc(b.title)}</b> ${pill}<div class="yzu-note">${U.esc(b.sub || '')} · ${U.short(b.start)}–${U.short(b.end)}${st === 'live' ? ` · נכון ל-${U.short(z)}` : ''}</div></div>
+    ${sales}
+    <div class="yzu-box"><h3>מהתיבה ועד ${b.coupon ? 'הקנייה' : 'העסק'}</h3><div class="yze-fun">${fun}</div>
+      ${b.coupon ? '<p class="yzu-note">"קנו בקוד" = כל ההזמנות עם הקוד באתר של העסק – גם של מי שקיבל את הקוד מחבר ולא דרך האפליקציה.</p>' : ''}</div>
+    <div class="yzu-cols">${prodBox || ''}${b.coupon ? '' : ''}</div>
+    ${bizT}${dayT}`;
+}
+
+function css() { return `<style>.yze-sort{cursor:pointer;color:inherit;text-decoration:none}.yze-sort.on{color:var(--yzu-ink);font-weight:800;text-decoration:underline}.yze-bens{flex-wrap:wrap;margin-bottom:10px}.yze-bhead{margin-bottom:12px}.yze-bhead > b{font-size:17px}.yze-pill{display:inline-block;margin-inline-start:6px;background:var(--yzu-acc-soft);border:1px solid var(--yzu-acc-line);border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700}.yze-pill.live{background:var(--yzu-ok-soft);border-color:#BFE5CC;color:var(--yzu-ok)}.yze-fun{display:flex;flex-direction:column;gap:7px}.yze-fs{display:grid;grid-template-columns:220px 1fr 120px;gap:12px;align-items:center;border:1px solid var(--yzu-line);border-radius:12px;padding:8px 12px;background:#fff}.yze-fs .l{font-weight:700;font-size:13.5px}.yze-fs .l small{display:block;font-weight:500;color:var(--yzu-muted);font-size:11.5px}.yze-fs .src{font-size:10.5px;font-weight:800;border-radius:6px;padding:1px 6px;margin-inline-start:6px;background:var(--yzu-gray);color:var(--yzu-muted)}.yze-fs.wc{border-color:var(--yzu-acc);background:var(--yzu-acc-soft)}.yze-fs.wc .src{background:#EDE7F6;color:#5B3E96}.yze-fs .v{text-align:left;font-weight:900;font-size:16px}.yze-fs .v small{display:block;font-weight:600;font-size:11px;color:var(--yzu-muted)}@media (max-width:720px){.yze-fs{grid-template-columns:1fr}}</style>`; }

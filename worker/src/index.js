@@ -37,6 +37,7 @@ import { runStoreDownloadsSync } from './storedl.js';
 import { runPlatformDaily } from './platformdaily.js';   // §587
 import { runBizGeo } from './bizgeo.js';   // §762ב
 import { noteMemberToken, runStuckLogins } from './stucklogin.js';   // §769
+import { handleBenefitSales } from './benefitsales.js';   // §775
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -241,6 +242,10 @@ export default {
       // §460ח — ביטול הרשאת Apple אחרי מחיקה ע"י מנהל. מאומת כמנהל.
       if (request.method === 'POST' && url.pathname === '/admin-apple-revoke') {
         return json(await handleAdminAppleRevoke(await request.json(), env), env, request);
+      }
+      // §775 — מכירות בקוד קופון של הטבה בלעדית (WooCommerce של העסק), סיכומים בלבד. מאומת כמנהל.
+      if (request.method === 'POST' && url.pathname === '/admin-benefit-sales') {
+        return json(await handleBenefitSales(await request.json(), env), env, request);
       }
       // §556 — "רענון עכשיו" במסך "הורדות לפי מקור". מאומת כמנהל.
       if (request.method === 'POST' && url.pathname === '/admin-store-sync') {
