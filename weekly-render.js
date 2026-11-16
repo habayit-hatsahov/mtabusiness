@@ -440,8 +440,9 @@
     if (kind === 'fan') {
       var f = d.fan, cover = f.cover || (KNOWN[f.biz] || {}).cover || '';
       return '<div class="wk-slide wk-s-fan"' + o + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' +
-        '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span>' + (f.cadence ? '<span class="wk-cad">' + esc(tok(f.cadence, t)) + '</span>' : '') + '</div>' +
-        (f.owner ? '<div class="who">' + esc(f.owner) + (f.showFan && f.fanTag ? ' · ' + esc(f.fanTag) : '') + '</div>' : '') +
+        // §776 (רמי, 16.11) "2 בחודש" עבר לתמונה הפנימית; בחוץ – slideTag ליד השם ("עופר נדב – שער 13")
+        '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span></div>' +
+        (f.owner ? '<div class="who">' + esc(f.owner) + (f.slideTag ? ' – ' + esc(f.slideTag) : f.showFan && f.fanTag ? ' · ' + esc(f.fanTag) : '') + '</div>' : '') +
         '<div class="t">' + esc(f.biz || 'בחרו עסק') + '</div>' +
         (f.slideLine ? '<div class="s">' + esc(f.slideLine) + '</div>' : '') +
         '<span class="wk-go">' + GO + '</span></div>';
@@ -711,12 +712,12 @@
       var hasLike = !!(likeKey(d) || ctx.preview), first = firstName(d);
       return '<div class="wk-hero' + (f.heroImg ? ' fan-photo' : '') + (hasLike ? ' has-like' : '') + '"' + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' + closeBtn(kind, ctx) +
         (hasLike ? '<div class="wk-hero-like">' + likeBtn('wk-heart', ctx, 'לפרגן ל' + first) + '<div class="wk-like-count" data-wk-like-count>' + likeHeroInner() + '</div></div>' : '') +
-        '<span class="wk-badge">האוהד שמאחורי העסק</span><div class="t">' + esc(f.biz || 'בחרו עסק') + '</div>' +
+        '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span>' + (f.cadence ? '<span class="wk-cad">' + esc(tok(f.cadence, t)) + '</span>' : '') + '</div><div class="t">' + esc(f.biz || 'בחרו עסק') + '</div>' +
         // §776 (רמי, 16.11: "את התגיות… תשים מתחת ל'מאמא שושה' בתמונה הפנימית")
         (chips.length ? '<div class="wk-chips wk-chips-hero">' + chips.map(function (c) { return '<span>' + esc(c) + '</span>'; }).join('') + '</div>' : '') + '</div>' +
         '<div class="wk-in wk-in-fan">' +
         (f.owner ? '<div class="wk-owner"><div class="wk-avatar">' + esc(f.owner.charAt(0)) + '</div><div><div class="wk-owner-name">' + esc(f.owner) + '</div>' +
-          '<div class="wk-owner-role">בעל העסק' + (f.showFan && f.fanTag ? ' <span class="wk-fan">✓ ' + esc(f.fanTag) + '</span>' : '') + '</div></div></div>' : '') +
+          '<div class="wk-owner-role">בעל העסק' + (f.showFan && f.fanTag ? ' <span class="wk-fan">✓ ' + esc(f.fanTag) + '</span>' : '') + (f.showFan && f.fanTag2 ? ' <span class="wk-fan">' + esc(f.fanTag2) + '</span>' : '') + '</div></div></div>' : '') +
         (hasLike ? '<div class="wk-nudge">' + likeBtn('wk-heart-mini', ctx, 'לפרגן ל' + first) + '<div data-wk-like-nudge>' + likeNudgeInner(first) + '</div></div>' : '') +
         '<div class="wk-lead">' + (f.title ? '<b>' + esc(f.title) + '</b>' : '') + fill(f.text, 'טקסט על האוהד ועל העסק') + '</div>' +
         (story && f.sections && f.sections.length ? (f.quote ? '<div class="wk-quote">"' + esc(f.quote) + '"</div>' : '') +
