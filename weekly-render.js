@@ -525,6 +525,15 @@
     if (st === 'guest') return '<div class="wk-cp-guest"><p>' + esc(c.guestLine || 'הקוד לחברי Yellow Zone בלבד') + '</p><a class="wk-cp-site" href="welcome.html">להתחברות / הרשמה</a></div>';
     return '<button type="button" class="wk-cp-btn"' + (ctx.preview ? ' tabindex="-1"' : ' onclick="WK.coupon()"') + '>' + esc(c.btn || 'לקבלת קוד הקופון') + '</button>';
   }
+  // §776 (רמי, 16.11: "תוסיף כניסה לאינסטגרם של העסק" + "את הסמל… בצהוב כחול") – שורת אינסטגרם משותפת להטבה ולאוהד
+  function igRowHtml(url, ctx, kind) {
+    var ig = url ? String(url) : '';
+    if (!ig) return '';
+    var h = ig.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[\/?].*$/, '');
+    return '<a class="wk-row wk-row-site wk-row-ig" href="' + esc(ig) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : ' onclick="WK.track(\'' + kind + '\',\'instagram\')"') + '>' +
+      '<div class="wk-logo wk-ig"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FFD400" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#FFD400" stroke="none"/></svg></div>' +
+      '<div class="wk-row-main"><div class="wk-row-name">אינסטגרם</div><div class="wk-row-sub" dir="ltr">@' + esc(h) + '</div></div>' + GO + '</a>';
+  }
   function couponSheet(b, ctx) {
     var t = ctx.t, c = b.coupon, x = (b.biz || [])[0] || {}, inf = bizInfo(x);
     var hero = b.heroWide
@@ -541,11 +550,7 @@
         '<div class="wk-row-main"><div class="wk-row-name">כניסה לאתר</div><div class="wk-row-sub" dir="ltr">' + esc(host) + '</div></div>' + GO + '</a>'
       : x.name ? '<div class="wk-row"' + (inf.id ? act(ctx, "WK.biz('" + inf.id + "')") : '') + '>' + logo +
         '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>' : '';
-    // §776 (רמי, 16.11: "בהטבה הבלעדית, תוסיף כניסה לאינסטגרם של העסק") – coupon.instagram
-    var ig = c.instagram ? String(c.instagram) : '', igH = ig.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[\/?].*$/, '');
-    var igRow = ig ? '<a class="wk-row wk-row-site wk-row-ig" href="' + esc(ig) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : ' onclick="WK.track(\'ben\',\'instagram\')"') + '>' +
-        '<div class="wk-logo wk-ig"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#fff" stroke="none"/></svg></div>' +
-        '<div class="wk-row-main"><div class="wk-row-name">אינסטגרם</div><div class="wk-row-sub" dir="ltr">@' + esc(igH) + '</div></div>' + GO + '</a>' : '';
+    var igRow = igRowHtml(c.instagram, ctx, 'ben');
     return hero + '<div class="wk-in">' +
       '<div class="wk-timer"><div class="row"><span>' + leftHtml(t) + '</span><span>עד ' + t.end + '</span></div><div class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></div></div>' +
       (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
@@ -728,6 +733,7 @@
           '<div class="wk-sec"><h3>איך הגיע לעסק</h3><p>' + fill(f.how, 'איך נפתח העסק ומה הקשר ליציע – ימולא אחרי השיחה') + '</p></div>' +
           '<div class="wk-sec"><h3>למה Yellow Zone</h3><p>' + fill(f.why, 'במילים שלו: למה חשוב שאוהדים יקנו מאוהדים') + '</p></div>' : '') +
         // §776 (רמי, 15.11: "את המד תשים הכי למטה מתחת לכרטיס העסק") – הכפתור בזרימה (לא צף) ואחריו המד
+        igRowHtml(f.instagram, ctx, 'fan') +
         '<div class="wk-bar-btn wk-flow"><button type="button"' + (bizId ? act(ctx, "WK.biz('" + bizId + "')") : '') + '>לכרטיס העסק וההטבה</button></div>' +
         cycHtml(t, true).slice(0, -6) + (f.cadenceNote ? '<p class="wk-cyc-note">' + (f.explainTitle ? '<b>' + esc(f.explainTitle) + '</b> ' : '') + esc(tok(f.cadenceNote, t)) + '</p>' : '') + '</div>' +
         '</div>';
@@ -1061,7 +1067,8 @@
     '.wk-sep-imgs img{display:block;width:132px;height:96px;object-fit:cover;border-radius:10px}',
     '.wk-sep-imgs figcaption{font-size:11.5px;font-weight:700;margin-top:4px;opacity:.9}',
     '.wk-row-ig{margin-top:8px}',
-    '.wk-logo.wk-ig{display:flex;align-items:center;justify-content:center;background:linear-gradient(45deg,#F9A825,#E1306C 55%,#833AB4);border:0}',
+    '.wk-logo.wk-ig{display:flex;align-items:center;justify-content:center;background:#0A2A66;border:0}',
+    '.wk-cp-box + .wk-row-site{margin-top:12px}',
     '.wk-hl{background:#FFD400;border-radius:16px;overflow:hidden;padding:0;color:#0A2A66;box-shadow:0 6px 18px rgba(10,42,102,.14)}',
     '.wk-hl img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}',
     '.wk-hl-in{padding:12px 14px 14px}',
