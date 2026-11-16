@@ -432,6 +432,8 @@
         '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span>' + (b.titleBottom ? '' : '<div class="t">' + esc(b.slideTitle) + '</div>') +
         // §775 (רמי, 12.11) "בוא נפרגן להם" – הלוגו של העסק בתיבה בחוץ
         blogo(b, 28, '') +
+        // §776 (רמי, 16.11: "מתחת ללוגו… סטייל רחוב בהשראת אגדות… שיבינו מה זה") – brandLine
+        (b.brandLine ? '<div class="wk-brand-line">' + esc(b.brandLine) + '</div>' : '') +
         (b.slideHint || b.hint ? '<div class="wk-hint">' + esc(String(b.slideHint || b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
         // עם השור – העיגול מכסה את הראש, אז הספירה עוברת לתווית קטנה בפינה עם עיגול זעיר
         (b.img || b.photo ? '<div class="wk-days" style="--p:' + (100 - t.pct).toFixed(1) + '"><i></i>' + (t.left === 1 ? 'יום אחרון!' : 'עוד ' + t.left + ' ימים') + '</div>' : ring) + price +
@@ -1054,6 +1056,7 @@
     '.wk-blogo{display:inline-flex;align-items:center;background:#fff;border-radius:10px;padding:4px 8px;margin-top:6px;box-shadow:0 1px 4px rgba(10,42,102,.15)}',
     '.wk-blogo img{display:block;max-width:none}.wk-blogo .cr{display:block;overflow:hidden;position:relative}',
     '.wk-blogo.clear{background:none;box-shadow:none;padding:0}.wk-blogo.clear img{filter:brightness(0)}',
+    '.wk-brand-line{font-size:15px;font-weight:800;line-height:1.2;margin-top:6px;color:inherit}',
     '.wk-blogo.big{margin:0;padding:7px 10px;border-radius:12px}',
     '.wk-wide-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}',
     '.wk-pbot{position:relative;z-index:1;margin-inline-end:116px}.wk-pbot .wk-pline{margin:0!important;font-size:13px!important;font-weight:800;opacity:.85}.wk-s-ben .wk-pbot .t{margin:0 0 2px;font-size:24px;white-space:nowrap}',
