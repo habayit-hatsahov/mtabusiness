@@ -541,6 +541,11 @@
         '<div class="wk-row-main"><div class="wk-row-name">כניסה לאתר</div><div class="wk-row-sub" dir="ltr">' + esc(host) + '</div></div>' + GO + '</a>'
       : x.name ? '<div class="wk-row"' + (inf.id ? act(ctx, "WK.biz('" + inf.id + "')") : '') + '>' + logo +
         '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>' : '';
+    // §776 (רמי, 16.11: "בהטבה הבלעדית, תוסיף כניסה לאינסטגרם של העסק") – coupon.instagram
+    var ig = c.instagram ? String(c.instagram) : '', igH = ig.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[\/?].*$/, '');
+    var igRow = ig ? '<a class="wk-row wk-row-site wk-row-ig" href="' + esc(ig) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : ' onclick="WK.track(\'ben\',\'instagram\')"') + '>' +
+        '<div class="wk-logo wk-ig"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#fff" stroke="none"/></svg></div>' +
+        '<div class="wk-row-main"><div class="wk-row-name">אינסטגרם</div><div class="wk-row-sub" dir="ltr">@' + esc(igH) + '</div></div>' + GO + '</a>' : '';
     return hero + '<div class="wk-in">' +
       '<div class="wk-timer"><div class="row"><span>' + leftHtml(t) + '</span><span>עד ' + t.end + '</span></div><div class="bar"><i style="width:' + t.pct.toFixed(1) + '%"></i></div></div>' +
       (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
@@ -548,7 +553,7 @@
       (gifts ? '<div class="wk-price">' + gifts + '</div>' : '') +
       // §776 (רמי, 16.11) הקופון מתחת ל-50 ₪, מתחתיו הכניסה לאתר, ואז המבצעים באתר
       '<div class="wk-sec wk-cp"><h3>' + esc(b.whereTitle || 'איפה מממשים') + '</h3>' +
-        '<div class="wk-cp-box" id="wkCouponBox">' + couponBoxInner(b, ctx) + '</div>' + row + '</div>' +
+        '<div class="wk-cp-box" id="wkCouponBox">' + couponBoxInner(b, ctx) + '</div>' + row + igRow + '</div>' +
       (b.promo ? '<div class="wk-rot wk-promo"><b>' + esc(b.promo.title || '') + '</b>' + paraHtml(b.promo.text || '') +
         // §775 "כמה שווה לקנות": כמות · מחיר באתר · מה משלמים · לחולצה
         ((b.promo.rows || []).length ? '<div class="wk-worth"><div class="h"><span>קונים</span><span>במקום</span><span>משלמים</span></div>' + b.promo.rows.map(function (r) {
@@ -1055,6 +1060,8 @@
     '.wk-sep-imgs figure{margin:0;flex:0 0 132px}',
     '.wk-sep-imgs img{display:block;width:132px;height:96px;object-fit:cover;border-radius:10px}',
     '.wk-sep-imgs figcaption{font-size:11.5px;font-weight:700;margin-top:4px;opacity:.9}',
+    '.wk-row-ig{margin-top:8px}',
+    '.wk-logo.wk-ig{display:flex;align-items:center;justify-content:center;background:linear-gradient(45deg,#F9A825,#E1306C 55%,#833AB4);border:0}',
     '.wk-hl{background:#FFD400;border-radius:16px;overflow:hidden;padding:0;color:#0A2A66;box-shadow:0 6px 18px rgba(10,42,102,.14)}',
     '.wk-hl img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}',
     '.wk-hl-in{padding:12px 14px 14px}',
