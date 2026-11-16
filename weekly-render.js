@@ -497,10 +497,11 @@
 
   // ── דמו Glory Street: הטבה של חנות אונליין אחת עם קוד קופון (ben.coupon) ──────────────────────
   // בלי טבלת גדלים ובלי רשימת עסקים: תמונה רחבה בראש, "50 ₪ מתנה + 10%", העסק, כפתור לקוד, איך זה עובד, מד התקופה
-  function cycHtml(t) {
-    return '<div class="wk-cyc"><div class="lb"><span><b>ההטבה הנוכחית</b>' + dm(t.p.start) + ' – ' + t.end + '</span><span><b>הטבה חדשה</b>מ-' + t.next + '</span></div>' +
+  // §776 – fan=true: אותו מד ל"האוהד שמאחורי העסק" (רמי, 15.11: "2 אוהדים עם עסק בכל חודש – תעביר למטה כמו בהטבה")
+  function cycHtml(t, fan) {
+    return '<div class="wk-cyc"><div class="lb"><span><b>' + (fan ? 'הסיפור הנוכחי' : 'ההטבה הנוכחית') + '</b>' + dm(t.p.start) + ' – ' + t.end + '</span><span><b>' + (fan ? 'אוהד חדש' : 'הטבה חדשה') + '</b>מ-' + t.next + '</span></div>' +
       '<div class="tr"><span class="cur"><i style="width:' + t.pct.toFixed(1) + '%"></i><em style="inset-inline-start:' + t.pct.toFixed(1) + '%"></em></span><span class="nx"></span></div>' +
-      '<div class="ft">' + (t.left === 1 ? 'יום אחרון להטבה הזו' : 'עוד ' + t.left + ' ימים להטבה הזו') + '</div></div>';
+      '<div class="ft">' + (t.left === 1 ? 'יום אחרון ' + (fan ? 'לסיפור הזה' : 'להטבה הזו') : 'עוד ' + t.left + ' ימים ' + (fan ? 'לסיפור הזה' : 'להטבה הזו')) + '</div></div>';
   }
   // §775 – באוויר הקוד לא נמצא במסמך הקרוסלה (הוא ציבורי): נקרא מ-window._hbCodes (bizCodes – חברים בלבד, home.html).
   // c.code – רק בדמואים. אורח (בלי חבר / demo_) → "להתחברות"; חבר שהקודים שלו עוד לא נטענו → "רגע…" וניסיון חוזר.
@@ -545,13 +546,14 @@
       (b.intro ? '<p class="wk-p">' + esc(b.intro) + '</p>' : '') +
       (inf.id && b.heart !== false ? '<div class="wk-nudge wk-ben-heart">' + benLikeBtn(ctx, 'לפרגן ל' + x.name) + '<div data-wk-blike-nudge>' + benLikeNudge(x.name) + '</div></div>' : '') +
       (gifts ? '<div class="wk-price">' + gifts + '</div>' : '') +
+      // §776 (רמי, 16.11) הקופון מתחת ל-50 ₪, מתחתיו הכניסה לאתר, ואז המבצעים באתר
+      '<div class="wk-sec wk-cp"><h3>' + esc(b.whereTitle || 'איפה מממשים') + '</h3>' +
+        '<div class="wk-cp-box" id="wkCouponBox">' + couponBoxInner(b, ctx) + '</div>' + row + '</div>' +
       (b.promo ? '<div class="wk-rot wk-promo"><b>' + esc(b.promo.title || '') + '</b>' + paraHtml(b.promo.text || '') +
         // §775 "כמה שווה לקנות": כמות · מחיר באתר · מה משלמים · לחולצה
         ((b.promo.rows || []).length ? '<div class="wk-worth"><div class="h"><span>קונים</span><span>במקום</span><span>משלמים</span></div>' + b.promo.rows.map(function (r) {
           return '<div class="r"><span>' + esc(r.q) + '</span><s>' + esc(r.was) + '</s><b>' + esc(r.now) + (r.per ? '<small>' + esc(r.per) + '</small>' : '') + '</b></div>'; }).join('') + '</div>' : '') +
         (b.promo.foot ? '<p class="wk-worth-ft">' + esc(b.promo.foot) + '</p>' : '') + '</div>' : '') +
-      '<div class="wk-sec wk-cp"><h3>' + esc(b.whereTitle || 'איפה מממשים') + '</h3>' + row +
-        '<div class="wk-cp-box" id="wkCouponBox">' + couponBoxInner(b, ctx) + '</div></div>' +
       (b.shop ? shopHtml(b) : '') +
       (b.how ? '<div class="wk-rot navy"><b>' + esc(b.howTitle || '') + '</b>' + paraHtml(tok(b.how, t)) + '</div>' : '') +
       // (רמי, 12.11) ההסבר על ההטבה המתחלפת – לא בקובייה למעלה אלא משפט קצר מתחת למד
@@ -692,28 +694,38 @@
     }
     if (kind === 'fan') {
       // §610 – תמונת בעל העסק (heroImg) בראש הגיליון; בלעדיה – תמונת השער של העסק
+      // §776 (רמי, 16.11: "בתמונה הפנימית תוריד את הזמנים") – בלי "עד X · 2 בחודש" על התמונה; התאריכים במד למטה
       var f = d.fan, cover = f.heroImg || f.cover || (KNOWN[f.biz] || {}).cover || '', story = f.hasStory;
       var chips = String(f.chips || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
       var bizId = f.bizId || (KNOWN[f.biz] || {}).id || '';
       var hasLike = !!(likeKey(d) || ctx.preview), first = firstName(d);
       return '<div class="wk-hero' + (f.heroImg ? ' fan-photo' : '') + (hasLike ? ' has-like' : '') + '"' + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' + closeBtn(kind, ctx) +
         (hasLike ? '<div class="wk-hero-like">' + likeBtn('wk-heart', ctx, 'לפרגן ל' + first) + '<div class="wk-like-count" data-wk-like-count>' + likeHeroInner() + '</div></div>' : '') +
-        '<span class="wk-badge">האוהד שמאחורי העסק</span><div class="who">עד ' + t.end + (f.cadence ? ' · ' + esc(tok(f.cadence, t)) : '') + '</div><div class="t">' + esc(f.biz || 'בחרו עסק') + '</div></div>' +
-        '<div class="wk-in">' +
-        (f.cadenceNote ? '<div class="wk-rot navy"><b>' + esc(f.explainTitle || '') + '</b><p>' + esc(tok(f.cadenceNote, t)) + '</p></div>' : '') +
+        '<span class="wk-badge">האוהד שמאחורי העסק</span><div class="t">' + esc(f.biz || 'בחרו עסק') + '</div>' +
+        // §776 (רמי, 16.11: "את התגיות… תשים מתחת ל'מאמא שושה' בתמונה הפנימית")
+        (chips.length ? '<div class="wk-chips wk-chips-hero">' + chips.map(function (c) { return '<span>' + esc(c) + '</span>'; }).join('') + '</div>' : '') + '</div>' +
+        '<div class="wk-in wk-in-fan">' +
         (f.owner ? '<div class="wk-owner"><div class="wk-avatar">' + esc(f.owner.charAt(0)) + '</div><div><div class="wk-owner-name">' + esc(f.owner) + '</div>' +
           '<div class="wk-owner-role">בעל העסק' + (f.showFan && f.fanTag ? ' <span class="wk-fan">✓ ' + esc(f.fanTag) + '</span>' : '') + '</div></div></div>' : '') +
         (hasLike ? '<div class="wk-nudge">' + likeBtn('wk-heart-mini', ctx, 'לפרגן ל' + first) + '<div data-wk-like-nudge>' + likeNudgeInner(first) + '</div></div>' : '') +
         '<div class="wk-lead">' + (f.title ? '<b>' + esc(f.title) + '</b>' : '') + fill(f.text, 'טקסט על האוהד ועל העסק') + '</div>' +
-        (chips.length ? '<div class="wk-chips">' + chips.map(function (c) { return '<span>' + esc(c) + '</span>'; }).join('') + '</div>' : '') +
         (story && f.sections && f.sections.length ? (f.quote ? '<div class="wk-quote">"' + esc(f.quote) + '"</div>' : '') +
-          f.sections.filter(function (x) { return x.h || x.p; }).map(function (x) { return '<div class="wk-sec">' + (x.h ? '<h3>' + esc(x.h) + '</h3>' : '') + paraHtml(x.p) + '</div>'; }).join('') : '') +
+          f.sections.filter(function (x) { return x.h || x.p || x.big || x.sep; }).map(function (x) {
+            // §776 (רמי, 16.11: "תייצר הפרדה… ככה זה פשוט מלא טקסט") – sep: קו מפריד עם כותרת + שורת תמונות נגללת
+            if (x.sep) return '<div class="wk-sep">' + (x.logo ? '<img class="wk-sep-logo" src="' + esc(x.logo) + '" alt="">' : '') + '<div class="wk-sep-h"><i></i><span>' + esc(x.sep) + '</span><i></i></div>' + (x.sub ? '<p class="wk-sep-sub">' + esc(x.sub) + '</p>' : '') +
+              ((x.imgs || []).length ? '<div class="wk-sep-imgs">' + x.imgs.map(function (m) { return '<figure><img src="' + esc(m.src || m) + '" alt="" loading="lazy">' + (m.cap ? '<figcaption>' + esc(m.cap) + '</figcaption>' : '') + '</figure>'; }).join('') + '</div>' : '') + '</div>';
+            // §776 (רמי, 15.11: "את ההטבה תדגיש… שיהיה יותר שווה") – hl: קופסה צהובה עם big/sub ותמונה
+            if (x.hl) return '<div class="wk-sec wk-hl">' + (x.img ? '<img src="' + esc(x.img) + '" alt="" loading="lazy">' : '') + '<div class="wk-hl-in">' + (x.h ? '<span class="wk-hl-tag">' + esc(x.h) + '</span>' : '') +
+              (x.big ? '<div class="wk-hl-big">' + esc(x.big) + '</div>' : '') + (x.sub ? '<div class="wk-hl-sub">' + esc(x.sub) + '</div>' : '') + paraHtml(x.p) + '</div></div>';
+            return '<div class="wk-sec">' + (x.h ? '<h3>' + esc(x.h) + '</h3>' : '') + paraHtml(x.p) + '</div>'; }).join('') : '') +
         (story && !(f.sections && f.sections.length) ? '<div class="wk-quote">"' + fill(f.quote, 'משפט אחד שלו – מה מכבי בשבילו') + '"</div>' +
           '<div class="wk-sec"><h3>ביציע</h3><p>' + fill(f.stand, 'ממתי במגרש, איפה יושב, עם מי, רגע שלא יישכח – ימולא אחרי השיחה') + '</p></div>' +
           '<div class="wk-sec"><h3>איך הגיע לעסק</h3><p>' + fill(f.how, 'איך נפתח העסק ומה הקשר ליציע – ימולא אחרי השיחה') + '</p></div>' +
           '<div class="wk-sec"><h3>למה Yellow Zone</h3><p>' + fill(f.why, 'במילים שלו: למה חשוב שאוהדים יקנו מאוהדים') + '</p></div>' : '') +
-                '</div>' +
-        '<div class="wk-bar-btn"><button type="button"' + (bizId ? act(ctx, "WK.biz('" + bizId + "')") : '') + '>לכרטיס העסק וההטבה</button></div>';
+        // §776 (רמי, 15.11: "את המד תשים הכי למטה מתחת לכרטיס העסק") – הכפתור בזרימה (לא צף) ואחריו המד
+        '<div class="wk-bar-btn wk-flow"><button type="button"' + (bizId ? act(ctx, "WK.biz('" + bizId + "')") : '') + '>לכרטיס העסק וההטבה</button></div>' +
+        cycHtml(t, true).slice(0, -6) + (f.cadenceNote ? '<p class="wk-cyc-note">' + (f.explainTitle ? '<b>' + esc(f.explainTitle) + '</b> ' : '') + esc(tok(f.cadenceNote, t)) + '</p>' : '') + '</div>' +
+        '</div>';
     }
     var p = d.pages[kind];
     var secs = p.steps
@@ -952,6 +964,8 @@
     '.wk-lead{font-size:16px;line-height:1.65;white-space:pre-line}',
     '.wk-lead b{display:block;font-size:19px;color:#0A2A66;margin-bottom:4px}',
     '.wk-chips{display:flex;flex-wrap:wrap;gap:6px}',
+    '.wk-chips-hero{margin-top:8px;position:relative}',
+    '.wk-chips.wk-chips-hero span{background:rgba(255,255,255,.92)}',
     '.wk-chips span{font-size:12px;font-weight:700;color:#0A2A66;background:#F2F2EC;border-radius:999px;padding:4px 10px}',
     '.wk-quote{font-size:20px;font-weight:800;line-height:1.4;color:#0A2A66;padding-right:14px;border-right:4px solid #FFD400}',
     '.wk-strip h3{font-size:13px;font-weight:800;letter-spacing:.04em;color:#6B7A9B;margin:0 0 8px}',
@@ -1031,6 +1045,23 @@
     '.wk-blogo.big{margin:0;padding:7px 10px;border-radius:12px}',
     '.wk-wide-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}',
     '.wk-pbot{position:relative;z-index:1;margin-inline-end:116px}.wk-pbot .wk-pline{margin:0!important;font-size:13px!important;font-weight:800;opacity:.85}.wk-s-ben .wk-pbot .t{margin:0 0 2px;font-size:24px;white-space:nowrap}',
+    '.wk-sep{margin:8px -18px 0;padding:16px 18px 18px;background:#0A2A66;color:#fff}',
+    '.wk-sep-logo{display:block;width:76px;height:76px;object-fit:contain;background:#fff;border-radius:16px;margin:0 auto 12px;box-shadow:0 4px 14px rgba(0,0,0,.25)}',
+    '.wk-sep-h{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:800;color:#FFD400;white-space:nowrap}',
+    '.wk-sep-h i{flex:1;height:2px;background:rgba(255,212,0,.45);border-radius:2px}',
+    '.wk-sep-sub{margin:6px 0 0;text-align:center;font-size:13px;opacity:.85}',
+    '.wk-sep-imgs{display:flex;gap:8px;overflow-x:auto;margin:12px -18px 0;padding:0 18px;scrollbar-width:none;-webkit-overflow-scrolling:touch}',
+    '.wk-sep-imgs::-webkit-scrollbar{display:none}',
+    '.wk-sep-imgs figure{margin:0;flex:0 0 132px}',
+    '.wk-sep-imgs img{display:block;width:132px;height:96px;object-fit:cover;border-radius:10px}',
+    '.wk-sep-imgs figcaption{font-size:11.5px;font-weight:700;margin-top:4px;opacity:.9}',
+    '.wk-hl{background:#FFD400;border-radius:16px;overflow:hidden;padding:0;color:#0A2A66;box-shadow:0 6px 18px rgba(10,42,102,.14)}',
+    '.wk-hl img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}',
+    '.wk-hl-in{padding:12px 14px 14px}',
+    '.wk-hl-tag{display:inline-block;background:#0A2A66;color:#FFD400;font-size:12px;font-weight:800;border-radius:999px;padding:3px 10px}',
+    '.wk-hl-big{font-size:26px;font-weight:900;letter-spacing:-.02em;line-height:1.1;margin-top:8px}',
+    '.wk-hl-sub{font-size:15px;font-weight:700;margin-top:2px}',
+    '.wk-hl p{margin:8px 0 0;font-size:13.5px;line-height:1.5;color:#0A2A66}',
     '.wk-cyc-note{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:#3A4C7A}',
     '.wk-worth{margin-top:10px;border-radius:10px;overflow:hidden;border:1px solid #E7E7E0}',
     '.wk-worth .h,.wk-worth .r{display:grid;grid-template-columns:1.1fr .8fr 1.3fr;align-items:center;gap:6px;padding:8px 10px}',
@@ -1073,6 +1104,8 @@
     '.wk-ctas .wk-cta + .wk-cta{background:#FFD400;color:#0A2A66}',
     '.wk-bar-btn{position:fixed;bottom:0;left:0;right:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to top,#fff 70%,rgba(255,255,255,0));z-index:3}',
     '.wk-inline .wk-bar-btn{position:sticky}',
+    '.wk-bar-btn.wk-flow{position:static;padding:0;background:none}',
+    '.wk-in.wk-in-fan{padding-bottom:calc(28px + env(safe-area-inset-bottom))}',
     '.wk-bar-btn button{width:100%;max-width:640px;display:block;margin:0 auto;height:50px;border:0;border-radius:13px;background:#FFD400;color:#0A2A66;font:800 16px Rubik,sans-serif}'
   ].join('\n');
   function injectCss() {
