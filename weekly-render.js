@@ -431,7 +431,7 @@
         (b.img ? '<img class="wk-ben-img" src="' + esc(b.img) + '" alt="">' : '') +
         '<div class="wk-ben-top"><span class="wk-badge">' + esc(b.badge) + '</span>' + (b.titleBottom ? '' : '<div class="t">' + esc(b.slideTitle) + '</div>') +
         // §775 (רמי, 12.11) "בוא נפרגן להם" – הלוגו של העסק בתיבה בחוץ
-        blogo(b, 28, '') +
+        blogo(b, Number(b.brandLogoH) || 28, '') +   // §776 brandLogoH – גובה הלוגו בתיבה בחוץ (רמי, 16.11: "להגדיל את הלוגו")
         // §776 (רמי, 16.11: "מתחת ללוגו… סטייל רחוב בהשראת אגדות… שיבינו מה זה") – brandLine
         (b.brandLine ? '<div class="wk-brand-line">' + esc(b.brandLine) + '</div>' : '') +
         (b.slideHint || b.hint ? '<div class="wk-hint">' + esc(String(b.slideHint || b.hint).split('{n}').join(b.biz.length)) + '</div>' : '') + '</div>' +
