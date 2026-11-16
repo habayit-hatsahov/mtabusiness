@@ -441,7 +441,8 @@
     }
     if (kind === 'fan') {
       var f = d.fan, cover = f.cover || (KNOWN[f.biz] || {}).cover || '';
-      return '<div class="wk-slide wk-s-fan"' + o + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')"' : '') + '>' +
+      // §776 (רמי, 16.11: "שהראש לא ייחתך בכרטיס החיצוני") – coverPos (למשל "center top"): חיתוך רק מלמטה
+      return '<div class="wk-slide wk-s-fan"' + o + (cover ? ' style="background-image:url(\'' + esc(cover) + '\')' + (f.coverPos ? ';background-position:' + esc(f.coverPos) : '') + '"' : '') + '>' +
         // §776 (רמי, 16.11) "2 בחודש" עבר לתמונה הפנימית; בחוץ – slideTag ליד השם ("עופר נדב – שער 13")
         '<div class="wk-fan-top"><span class="wk-badge">האוהד שמאחורי העסק</span></div>' +
         (f.owner ? '<div class="who">' + esc(f.owner) + (f.slideTag ? ' – ' + esc(f.slideTag) : f.showFan && f.fanTag ? ' · ' + esc(f.fanTag) : '') + '</div>' : '') +
@@ -1056,6 +1057,7 @@
     '.wk-blogo{display:inline-flex;align-items:center;background:#fff;border-radius:10px;padding:4px 8px;margin-top:6px;box-shadow:0 1px 4px rgba(10,42,102,.15)}',
     '.wk-blogo img{display:block;max-width:none}.wk-blogo .cr{display:block;overflow:hidden;position:relative}',
     '.wk-blogo.clear{background:none;box-shadow:none;padding:0}.wk-blogo.clear img{filter:brightness(0)}',
+    '.wk-pline{white-space:pre-line}',
     '.wk-brand-line{font-size:15px;font-weight:800;line-height:1.2;margin-top:6px;color:inherit}',
     '.wk-blogo.big{margin:0;padding:7px 10px;border-radius:12px}',
     '.wk-wide-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}',
