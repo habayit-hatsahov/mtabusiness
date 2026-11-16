@@ -293,7 +293,8 @@
   }
   function likeNudgeInner(first) {
     var n = like.count || 0;
-    if (like.mine) return '<b>פירגנת ל' + esc(first) + ' 💛</b> ' + (n > 1 ? 'יחד איתך ' + n + ' אוהדים.' : 'היית הראשון!');
+    // §776 (רמי, 16.11: "פרגנת לעופר ולעסק שלו")
+    if (like.mine) return '<b>פירגנת ל' + esc(first) + ' ולעסק שלו 💛</b> ' + (n > 1 ? 'יחד איתך ' + n + ' אוהדים.' : 'היית הראשון!');
     if (like.count == null) return 'תנו לב ל' + esc(first) + ' ונפרגן לעסק ביחד.';
     return n ? '<b>' + (n === 1 ? 'אוהד אחד' : n + ' אוהדים') + '</b> כבר ' + (n === 1 ? 'פירגן' : 'פירגנו') + ' ל' + esc(first) + '. תנו גם אתם לב ונפרגן לעסק ביחד.'
       : '<b>היו הראשונים לפרגן ל' + esc(first) + '</b> – לב אחד אומר לו שהקהילה מאחוריו.';
@@ -420,7 +421,7 @@
       var ring = '<div class="wk-ring" style="--p:' + (100 - t.pct).toFixed(1) + '"><span class="cap">' + (t.left === 1 ? 'יום אחרון!' : 'מתחלפת בעוד') + '</span>' +
         '<span class="dial"><b>' + t.left + '</b><small>' + (t.left === 1 ? 'יום' : 'ימים') + '</small></span></div>';
       // §775 (רמי, 12.11) titleBottom: הכותרת ("50 ₪ מתנה") יורדת למטה, ו-slidePrice ("ללא הגבלה…") מתחתיה
-      var price = b.titleBottom ? '<div class="wk-pbot"><div class="t">' + esc(b.slideTitle) + '</div>' + (b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : '') + '</div>' :
+      var price = b.titleBottom ? '<div class="wk-pbot"><div class="t">' + esc(b.slideTitle) + '</div>' + (b.slidePrice ? '<div class="wk-pline"' + (b.slidePriceOneLine ? ' style="white-space:nowrap;font-size:11.5px!important"' : '') + '>' + esc(b.slidePrice) + '</div>' : '') + '</div>' :   // §776 slidePriceOneLine (רמי, 16.11: "באותה השורה")
         b.slidePrice ? '<div class="wk-pline">' + esc(b.slidePrice) + '</div>' : !lo ? '' : '<div class="wk-pfrom"><div><b>' + (range ? '<bdi dir="ltr">' + lo.n + '–' + hi.n + '</bdi>&nbsp;' + esc(String(hi.p.price).replace(/^[\d.,\s]+/, '')) : esc(lo.p.price)) + '</b>' +
         '<span>' + (range && !isNaN(lo.s) && !isNaN(hi.s) ? lo.s + ' עד ' + hi.s + ' ' + esc(String(hi.p.size).replace(/^[\d.\s]+/, '')) : esc(lo.p.size)) +
         (b.sizeExtra ? ' ' + esc(b.sizeExtra) : '') + '</span></div></div>';
