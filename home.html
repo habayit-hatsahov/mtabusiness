@@ -3194,7 +3194,7 @@ function catFeedList(cat) {
     const catIconImg = catObj
       ? `<img src="images/categories/${window.catIconFile(catObj, 'navy')}" alt="" style="width:22px;height:22px;vertical-align:-5px;margin-inline-end:6px">`
       : '';
-    title = catIconImg + catLabel(cat) + (nearCat ? ` <span class="sf-near-note">· לפי קרבה אליך (${window.sfEsc(window.sfNearCity())}) <button type="button" onclick="sfNearClear()">ביטול</button></span>` : '');
+    title = catIconImg + catLabel(cat) + (nearCat ? ` <span class="sf-near-note">· לפי קרבה אליך${window.sfNearCity() ? ' (' + window.sfEsc(window.sfNearCity()) + ')' : ''} <button type="button" onclick="sfNearClear()">ביטול</button></span>` : '');
     plain = catLabel(cat);
   }
   return { list: filtered, title, plain: plain || title };
@@ -4853,6 +4853,7 @@ document.addEventListener('DOMContentLoaded', () => {
   .sf-map-cats button { flex: none; display: inline-flex; align-items: center; gap: 4px; border: 1.5px solid #0A2A66; background: #fff; color: #0A2A66; border-radius: 999px;
     padding: 6px 12px; font-family: 'Rubik', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
   .sf-map-cats button.on { background: #0A2A66; color: #fff; }
+  .sf-map-cats button img { width: 18px; height: 18px; object-fit: contain; }   /* §779 – האייקונים של הקטגוריות (catIconFile), לא האימוג'י */
   .sf-map-box { position: relative; }
   #sfMap { height: calc(100dvh - 210px); min-height: 340px; max-height: 760px; background: #E9EEF5; }
   .sf-map-count { position: absolute; top: 10px; right: 10px; z-index: 2; background: #fff; color: #0A2A66; border-radius: 999px; padding: 6px 12px;
@@ -4909,7 +4910,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   try {   // שחזור באותה לשונית (עד 3 שעות) – בלי לבקש מיקום שוב
     var sv = JSON.parse(sessionStorage.getItem('hb_near') || 'null');
-    if (sv && sv.city && typeof sv.lat === 'number' && Date.now() - sv.at < 3 * 3600e3) { S.near = { city: sv.city, lat: sv.lat, lng: sv.lng }; S.radius = sv.r == null ? 10 : sv.r; }
+    if (sv && typeof sv.lat === 'number' && Date.now() - sv.at < 3 * 3600e3) { S.near = { city: sv.city || '', lat: sv.lat, lng: sv.lng }; S.radius = sv.r == null ? 10 : sv.r; }
   } catch (e) {}
   // §762 – נקודות אמיתיות לחישוב המרחק: branchGeo (הוורקר, דרך bizPublic) → biz-geo.json → מרכז העיר
   var geoSeed = null, geoSeedP = null;
@@ -5065,7 +5066,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // אנדרואיד 1.4 / iOS 1.0.2). גרסה ישנה – בלי הכפתור; נדלק לבד כשמעדכנים. באתר – תמיד.
     var loc = !geoOk() ? ''
       : nearState === 'loading' ? q(' dark', '', '<span class="sf-spin"></span>מאתר מיקום…')
-      : q(' dark' + (S.near ? ' on' : ''), 'sfNear()', PIN + ' ' + (S.near ? 'לידך · ' + esc(S.near.city) : 'לידי'));
+      : q(' dark' + (S.near ? ' on' : ''), 'sfNear()', PIN + ' ' + (S.near ? 'לידך' + (S.near.city ? ' · ' + esc(S.near.city) : '') : 'לידי'));
     // §762 – "מפה" ⇄ "רשימה"
     var MAPI = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>';
     return loc +
@@ -5079,7 +5080,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (nearState && nearState !== 'loading') return '<span>' + esc(nearState) + '</span><button type="button" class="sf-lnk" onclick="sfNearMsgOff();sfOpen(\'place\')">בחירת עיר</button><button type="button" class="sf-lnk" style="margin-inline-start:10px" onclick="sfNearMsgOff()">סגירה</button>';
     if (!S.near) return '';
     // §762 – רמי: "אחרי שזה מאתר מיקום – לרשום את העיר שמצא"
-    return '<span class="sf-found">📍 מצאנו אותך ב<b>' + esc(S.near.city) + '</b></span><span class="sf-seg">' + [[0, 'רק ב' + S.near.city], [10, '10 ק״מ'], [25, '25 ק״מ']].map(function (o) {
+    var segs = S.near.city ? [[0, 'רק ב' + S.near.city], [10, '10 ק״מ'], [25, '25 ק״מ']] : [[10, '10 ק״מ'], [25, '25 ק״מ'], [50, '50 ק״מ']];   // §779 – בלי עיר
+    return '<span class="sf-found">' + (S.near.city ? '📍 מצאנו אותך ב<b>' + esc(S.near.city) + '</b>' : '📍 מצאנו את המיקום שלך') + '</span><span class="sf-seg">' + segs.map(function (o) {
       return '<button type="button" class="' + (S.radius === o[0] ? 'on' : '') + '" onclick="sfRadius(' + o[0] + ')">' + esc(o[1]) + '</button>';
     }).join('') + '</span><button type="button" class="sf-lnk" onclick="sfNearOff()">ביטול</button>';
   }
@@ -5264,13 +5266,15 @@ document.addEventListener('DOMContentLoaded', () => {
     var ok = function (p) {
       if (done) return; done = true; clearTimeout(guard);
       var c = nearestCity(p.coords.latitude, p.coords.longitude);
-      if (!c) { fail('לא מצאנו עיר מוכרת לידך. אפשר לבחור עיר.', 'nocity'); return; }
+      // §779 – רמי: "שלידי יעבוד בכל זאת". המיקום התקבל אבל אין עיר מוכרת עד 20 ק"מ (היה fail:nocity) →
+      // לידי לפי הנקודה עצמה, בלי שם עיר; "רק בעיר" לא זמין, והרדיוס לפחות 25 ק"מ.
       nearState = '';
-      S.near = { city: c, lat: p.coords.latitude, lng: p.coords.longitude };
+      S.near = { city: c || '', lat: p.coords.latitude, lng: p.coords.longitude };
+      if (!c && S.radius < 25) S.radius = 25;
       S.city = ''; S.region = [];
       saveNear(); loadGeoSeed();
       apply();
-      try { window.logEvent && window.logEvent('search', { blockId: 'near', channel: c.slice(0, 50) }); } catch (e) {}
+      try { window.logEvent && window.logEvent('search', { blockId: 'near', channel: (c || 'nocity-ok').slice(0, 50) }); } catch (e) {}
     };
     var bad = function (err) {
       if (done) return;
@@ -5470,12 +5474,12 @@ document.addEventListener('DOMContentLoaded', () => {
     var cur = window.sfCatKey ? window.sfCatKey() : '';
     var cats = window.CATEGORIES || [];
     box.innerHTML = '<button type="button" class="' + (cur ? '' : 'on') + '" onclick="sfMapCat(\'all\')">הכל</button>' +
-      cats.map(function (c) { return '<button type="button" class="' + (cur === c.key ? 'on' : '') + '" onclick="sfMapCat(\'' + c.key + '\')">' + esc(c.icon || '') + ' ' + esc(c.label) + '</button>'; }).join('');
+      cats.map(function (c) { return '<button type="button" class="' + (cur === c.key ? 'on' : '') + '" onclick="sfMapCat(\'' + c.key + '\')">' + (window.catIconFile ? '<img src="images/categories/' + window.catIconFile(c, cur === c.key ? 'yellow' : 'navy') + '" alt="">' : '') + esc(c.label) + '</button>'; }).join('');
     var on = box.querySelector('.on'); if (on && on.scrollIntoView && cur) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
   function fit(pins, placeOnly) {
     var st = window.sfPlaceState ? window.sfPlaceState() : {};
-    if (st.near) { map.setCenter({ lat: st.near.lat, lng: st.near.lng }); map.setZoom(st.radius === 0 ? 13 : st.radius === 10 ? 12 : 11); return; }
+    if (st.near) { map.setCenter({ lat: st.near.lat, lng: st.near.lng }); map.setZoom(st.radius === 0 ? 13 : st.radius === 10 ? 12 : st.radius >= 50 ? 10 : 11); return; }
     // §778 – בלי עיר/אזור: על המיקום שלך, ואם אין – תל אביב (לא כל הארץ)
     if (!st.city && !(st.region || []).length) {
       if (!placeOnly) { map.setCenter(meLoc || TLV); map.setZoom(13); return; }
