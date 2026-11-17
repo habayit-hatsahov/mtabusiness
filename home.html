@@ -1779,6 +1779,7 @@
 <div class="sf-panel" id="sfPanel"></div>
 <!-- §762 — מפת העסקים: רק מתוך החיפוש (קיצור "מפה"). מצויר ע"י sfMapRefresh. בעלי מקצוע שמגיעים אליך – ברצועה מתחת למפה. -->
 <div class="sf-map" id="sfMapWrap">
+  <div class="sf-map-cats" id="sfMapCats"></div>
   <div class="sf-map-box">
     <div id="sfMap"></div>
     <div class="sf-map-count" id="sfMapCount"></div>
@@ -4846,6 +4847,12 @@ document.addEventListener('DOMContentLoaded', () => {
   html.sf-map-on .sf-map { display: block; }
   html.sf-map-on .hero, html.sf-map-on .cats-section, html.sf-map-on #wkRoot, html.sf-map-on #mainFeed, html.sf-map-on #catFeed,
   html.sf-map-on #bizFixCard, html.sf-map-on #appleLinkCard, html.sf-map-on #pushCard { display: none !important; }
+  /* §778 – קטגוריה מתוך המפה (רמי: "כשהוא במפה כבר – רק לראות קטגוריה מסוימת") */
+  .sf-map-cats { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 8px 12px; background: #fff; border-bottom: 1px solid var(--surface-line, #E7E7E0); }
+  .sf-map-cats::-webkit-scrollbar { display: none; }
+  .sf-map-cats button { flex: none; display: inline-flex; align-items: center; gap: 4px; border: 1.5px solid #0A2A66; background: #fff; color: #0A2A66; border-radius: 999px;
+    padding: 6px 12px; font-family: 'Rubik', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  .sf-map-cats button.on { background: #0A2A66; color: #fff; }
   .sf-map-box { position: relative; }
   #sfMap { height: calc(100dvh - 210px); min-height: 340px; max-height: 760px; background: #E9EEF5; }
   .sf-map-count { position: absolute; top: 10px; right: 10px; z-index: 2; background: #fff; color: #0A2A66; border-radius: 999px; padding: 6px 12px;
@@ -5195,6 +5202,12 @@ document.addEventListener('DOMContentLoaded', () => {
     return true;
   };
   window.sfCatLabel = function () { return S.cat && typeof catLabel === 'function' ? catLabel(S.cat) : ''; };
+  // §778 – הקטגוריה הנבחרת (לשורת הקטגוריות שמעל המפה), ובחירה ממנה = אותה בחירה כמו בשורה העגולה
+  window.sfCatKey = function () { return S.cat; };
+  window.sfMapCat = function (cat) {
+    var el = cat === 'all' ? document.querySelector('.cat-item') : document.querySelector('.cat-item[onclick*="\'' + cat + '\'"]');
+    window.sfSearchCat(cat, el);
+  };
   // §762 – מצב מפה (בתוך מצב החיפוש). הציור עצמו – sfMapRefresh בסקריפט המפה למטה.
   function setMap(on) { mapOn = !!on; document.documentElement.classList.toggle('sf-map-on', mapOn); }
   window.sfMapOn = function () { return mapOn; };
@@ -5313,15 +5326,20 @@ document.addEventListener('DOMContentLoaded', () => {
 // • Google Maps נטען רק בלחיצה הראשונה על "מפה", ונוצר פעם אחת לטעינת דף (= טעינת מפה אחת לחיוב; תקרה 330 ביום).
 // • הסיכה: הצהוב שלנו עם ה-Z (מתוך yellowzone-mark-square.png, משורטט כ-SVG).
 (function () {
-  var map = null, markers = [], meMarker = null, loadP = null, geo = null, geoP = null, selId = null, lastFitKey = null, rT = null, prosKey = '';
+  var map = null, markers = [], meMarker = null, loadP = null, geo = null, geoP = null, selId = null, lastFitKey = null, lastPlaceKey = null, rT = null, prosKey = '';
+  // §778 – המפה נפתחת על המיקום של המשתמש (נקודה כחולה; רק למרכוז ולמרחק – לא מסנן כמו "לידי"), ובלי מיקום – על תל אביב
+  var meLoc = null, meAsked = false, TLV = { lat: 32.0809, lng: 34.7806 };
   var cluster = null, clusterP = null;   // קיבוץ סיכות קרובות לעיגול עם מספר (MarkerClusterer של גוגל); נכשל → סיכות רגילות
   var esc = function (x) { return window.sfEsc ? window.sfEsc(x) : String(x == null ? '' : x); };
   var Z = '<path d="M394 181H1058L790 470 570 686H708L674 898H22L367 567H214Z" fill="#0A2A66"/>' +
     '<path d="M429 242H918L831 328 389 327Z" fill="#FFD400"/>' +
     '<path d="M348 415H757L421 749 638 751 622 837H183L548 500H308Z" fill="#fff"/>';
   function pinUrl(sel) {
-    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">' +
-      '<path d="M20 48C20 48 37 31 37 19A17 17 0 0 0 3 19C3 31 20 48 20 48Z" fill="#FFD400" stroke="' + (sel ? '#E11D48' : '#0A2A66') + '" stroke-width="' + (sel ? 3 : 2.5) + '"/>' +
+    // §778 – נבחרת: מסגרת לבנה (רמי: "במקום אדום"), עם קו כחול דק מבחוץ כדי שהלבן ייראה על רקע המפה הבהיר
+    var P = 'M20 48C20 48 37 31 37 19A17 17 0 0 0 3 19C3 31 20 48 20 48Z';
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="' + (sel ? '-1.5 -1.5 43 53' : '0 0 40 50') + '">' +
+      (sel ? '<path d="' + P + '" fill="none" stroke="#0A2A66" stroke-width="6.5" stroke-linejoin="round"/>' : '') +
+      '<path d="' + P + '" fill="#FFD400" stroke="' + (sel ? '#fff' : '#0A2A66') + '" stroke-width="' + (sel ? 3.5 : 2.5) + '" stroke-linejoin="round"/>' +
       '<g transform="translate(8.9 7.9) scale(0.0205)">' + Z + '</g></svg>';
     return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
   }
@@ -5407,8 +5425,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function select(o) {
     selId = o.b.id;
     markers.forEach(function (m) { var s = m._o.b.id === selId; m.setIcon(icon(s)); m.setZIndex(s ? 1000 : 1); });
-    var st = window.sfPlaceState ? window.sfPlaceState() : {};
-    var d = st.near ? km([st.near.lat, st.near.lng], [o.p.lat, o.p.lng]) : null;
+    var me = myPos();
+    var d = me ? km([me.lat, me.lng], [o.p.lat, o.p.lng]) : null;
     var img = o.b.coverPhoto || o.b.logo || '';
     var n = (o.b.branches || []).length;
     var card = el('sfMapCard');
@@ -5422,9 +5440,49 @@ document.addEventListener('DOMContentLoaded', () => {
     card.classList.add('show');
     try { window.logEvent && window.logEvent('search', { blockId: 'map', channel: 'pin' }); } catch (e) {}
   }
-  function fit(pins) {
+  function myPos() {
+    var st = window.sfPlaceState ? window.sfPlaceState() : {};
+    return st.near ? { lat: st.near.lat, lng: st.near.lng } : meLoc;
+  }
+  // §778 – בפתיחת המפה: מבקשים מיקום (פעם אחת לביקור). באפליקציה ישנה בלי הרשאת מיקום (sfGeoOk) – לא מבקשים.
+  function askMe() {
+    if (meAsked || meLoc) return; meAsked = true;
+    if (!navigator.geolocation || (window.sfGeoOk && !window.sfGeoOk())) return;
+    try {
+      navigator.geolocation.getCurrentPosition(function (p) {
+        meLoc = { lat: p.coords.latitude, lng: p.coords.longitude };
+        var st = window.sfPlaceState ? window.sfPlaceState() : {};
+        if (map && !st.near && !st.city && !(st.region || []).length) { map.setCenter(meLoc); map.setZoom(13); }
+        drawMe();
+      }, function () {}, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
+    } catch (e) {}
+  }
+  function drawMe() {
+    if (!map) return;
+    if (meMarker) { meMarker.setMap(null); meMarker = null; }
+    var me = myPos(); if (!me) return;
+    meMarker = new google.maps.Marker({ map: map, position: me, clickable: false, zIndex: 2000,
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2F80ED', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 } });
+  }
+  // §778 – שורת קטגוריות מעל המפה: בחירה מצמצמת את הסיכות (S.cat, כמו §762ג), לחיצה שנייה / "הכל" מבטלת
+  function renderCats() {
+    var box = el('sfMapCats'); if (!box) return;
+    var cur = window.sfCatKey ? window.sfCatKey() : '';
+    var cats = window.CATEGORIES || [];
+    box.innerHTML = '<button type="button" class="' + (cur ? '' : 'on') + '" onclick="sfMapCat(\'all\')">הכל</button>' +
+      cats.map(function (c) { return '<button type="button" class="' + (cur === c.key ? 'on' : '') + '" onclick="sfMapCat(\'' + c.key + '\')">' + esc(c.icon || '') + ' ' + esc(c.label) + '</button>'; }).join('');
+    var on = box.querySelector('.on'); if (on && on.scrollIntoView && cur) on.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+  function fit(pins, placeOnly) {
     var st = window.sfPlaceState ? window.sfPlaceState() : {};
     if (st.near) { map.setCenter({ lat: st.near.lat, lng: st.near.lng }); map.setZoom(st.radius === 0 ? 13 : st.radius === 10 ? 12 : 11); return; }
+    // §778 – בלי עיר/אזור: על המיקום שלך, ואם אין – תל אביב (לא כל הארץ)
+    if (!st.city && !(st.region || []).length) {
+      if (!placeOnly) { map.setCenter(meLoc || TLV); map.setZoom(13); return; }
+      // שינוי טקסט/קטגוריה: לא מזיזים את המפה – אלא אם אין אף סיכה בתצוגה
+      var b = map.getBounds();
+      if (!pins.length || (b && pins.some(function (o) { return b.contains({ lat: o.p.lat, lng: o.p.lng }); }))) return;
+    }
     if (!pins.length) {
       var cc = st.city && window.YZ_CITIES && window.YZ_CITIES.coordOf(st.city);
       map.setCenter(cc ? { lat: cc[0], lng: cc[1] } : { lat: 31.95, lng: 34.85 }); map.setZoom(cc ? 13 : 9); return;
@@ -5484,12 +5542,15 @@ document.addEventListener('DOMContentLoaded', () => {
       var nb = Object.keys(nBiz).length;
       el('sfMapCount').textContent = nb === 1 ? 'עסק אחד במפה' : nb ? nb + ' עסקים במפה' : 'אין עסקים במפה בחיפוש הזה';
       var st = window.sfPlaceState ? window.sfPlaceState() : {};
-      if (meMarker) { meMarker.setMap(null); meMarker = null; }
-      if (st.near) meMarker = new google.maps.Marker({ map: map, position: { lat: st.near.lat, lng: st.near.lng }, clickable: false, zIndex: 2000,
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2F80ED', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 } });
+      drawMe();
+      renderCats();
+      // §778 – שינוי מקום (לידי / עיר / אזור) או פתיחה → מרכוז מלא; שינוי טקסט / קטגוריה → המפה נשארת במקום
+      var placeKey = JSON.stringify(st);
       var q = (typeof _searchQuery !== 'undefined' && _searchQuery) || '';
-      var fitKey = JSON.stringify(st) + '|' + q + '|' + pins.length;
-      if (forceFit || fitKey !== lastFitKey) { lastFitKey = fitKey; fit(pins); }
+      var fitKey = placeKey + '|' + q + '|' + pins.length;
+      if (forceFit || placeKey !== lastPlaceKey) { lastPlaceKey = placeKey; lastFitKey = fitKey; fit(pins, false); }
+      else if (fitKey !== lastFitKey) { lastFitKey = fitKey; fit(pins, true); }
+      if (forceFit) askMe();
       renderPros();
     }).catch(function () { msg('המפה לא נטענה כרגע (אין חיבור?). אפשר לחזור לרשימה ולנסות שוב.'); });
   }

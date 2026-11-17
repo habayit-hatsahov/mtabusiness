@@ -576,7 +576,7 @@
 // §776ו — v630 (weekly-render.js?v=776f: brandLogoH – גובה הלוגו בתיבת ההטבה).
 // §776ז — v631 (weekly-render.js?v=776g: coverPos בתיבת האוהד; ירידת שורה ב-slidePrice).
 // §776ט — v632 (weekly-render.js?v=776h: slidePriceOneLine; "פירגנת ל-X ולעסק שלו").
-const CACHE_NAME = 'yz-shell-v633';
+const CACHE_NAME = 'yz-shell-v634';
 // §471 — מטמון התמונות הסטטיות שלנו (images/, icons/ — לוגו, אייקוני קטגוריות). **בכוונה לא
 // מתחלף עם CACHE_NAME:** לפני כן כל באמפ מחק גם אותן, וה-activate (skipWaiting+claim) קרה
 // באמצע טעינת הדף — כל התמונות ירדו מחדש בבת אחת, ומה שנכשל באותו רגע הוצג כסימן-שאלה עד
