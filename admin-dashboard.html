@@ -22792,6 +22792,11 @@ function hbLoginOutcome(fail) {
   const dev = idx.sessDev.get(fail.sessionId);
   const inDev = dev ? (idx.byDev.get(dev) || []).find(x => x.t > t) : null;
   if (inDev) return { kind: 'dev', secs: Math.round((inDev.t - t) / 1000), memberId: inDev.m };
+  // §779 – רמי: "תסדר שמי שנכנס יירד מהרשימה לבד". אצל תקועים (stuck/tried) הפעולות מהמכשיר
+  // לרוב לא מגיעות ל-events, ולכן שלוש ההצלבות למעלה לא רואות את הכניסה. `lastSeenAt` על הרשומה
+  // (נכתב בכל טעינת דף הבית, §367) כן – ב-17.11 נמצאו כך 9 אנשים שנכנסו ונשארו ברשימה.
+  const seen = fail.fan && fail.fan.lastSeenAt instanceof Date ? fail.fan.lastSeenAt.getTime() : 0;
+  if (seen > t) return { kind: 'seen', secs: Math.round((seen - t) / 1000), memberId: fail.fan.id };
   if (Date.now() - t < HB_OUTCOME_GRACE_MS) return { kind: 'fresh' };
   return { kind: 'none', weak: !fail.fan };
 }
@@ -22808,6 +22813,7 @@ function hbOutcomeText(o) {
   if (o.kind === 'sess')    return `✅ נכנס אחרי ${hbDurLabel(o.secs)}`;
   if (o.kind === 'mem')     return `✅ נכנס – מסשן אחר, ${hbDurLabel(o.secs)}`;
   if (o.kind === 'dev')     return `✅ נכנס – מאותו מכשיר, אחרי ${hbDurLabel(o.secs)}`;
+  if (o.kind === 'seen')    return '✅ נכנס – נראה בדף הבית מאז';   // lastSeenAt = הביקור האחרון, לא הראשון – בלי משך
   if (o.kind === 'fresh')   return '⏳ טרם – הכשל ממש עכשיו';
   if (o.kind === 'unknown') return '';
   // ⚠️ שני ניסוחים שונים, וזו לא קוסמטיקה: על שורה בלי טלפון יש רק ההצלבה לפי סשן,
@@ -22817,7 +22823,7 @@ function hbOutcomeText(o) {
 function hbOutcomeBadge(o) {
   const t = hbOutcomeText(o);
   if (!t) return '';
-  const cls = (o.kind === 'sess' || o.kind === 'mem' || o.kind === 'dev') ? 'treat-badge' : (o.kind === 'none' && !o.weak) ? 'miss-badge' : 'warn-badge';
+  const cls = (o.kind === 'sess' || o.kind === 'mem' || o.kind === 'dev' || o.kind === 'seen') ? 'treat-badge' : (o.kind === 'none' && !o.weak) ? 'miss-badge' : 'warn-badge';
   return `<span class="${cls}">${t}</span>`;
 }
 
@@ -22929,7 +22935,7 @@ const HB_LOGIN_CATS = [
 const HB_LOGIN_CAT = Object.fromEntries(HB_LOGIN_CATS.map(c => [c.key, c]));
 function hbLoginCat(x) {
   const k = x.outcome && x.outcome.kind;
-  if (k === 'sess' || k === 'mem' || k === 'dev') return 'in';
+  if (k === 'sess' || k === 'mem' || k === 'dev' || k === 'seen') return 'in';
   if (x.reason === 'resendAsk') return x.fan ? 'resend' : 'notReg';
   // רשומה שעדיין לא אושרה (או נדחתה) – זה ההסבר לכשל, מה שלא יהיה הערוץ. התור הוא באישור.
   if (x.fan && x.fan.status && x.fan.status !== 'approved') return 'pending';
