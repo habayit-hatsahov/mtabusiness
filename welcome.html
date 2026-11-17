@@ -4073,19 +4073,51 @@ function heroRunAuth(customToken, onDone) {
 // 🔑 fail-open: רשת/שרת שלא עונים משאירים את הכרטיס כמו שהוא, ו"כניסה עם חשבון אחר" תמיד שם.
 const YZ_REG_MIN_SHOW_MS = 1500;   // "ברוכים הבאים" נשאר על המסך רגע לפני המעבר
 let _yzRegBusy = false;
+// §783 – רמי: "תוסיף מדידה". 22 מאושרים פתחו את האפליקציה מהטלפון שנרשמו ממנו, הדף והנתונים נטענו – ולא
+// נכנסו לבד, ואין שום אירוע שאומר למה. כאן נרשם פעם אחת לסשן **אם המכשיר זוכר את ההרשמה** (yz_reg)
+// ומה חסם אותה, ואם כן – מה ענה /reg-status. formStep, blockId 'regDiag|d_…' (המכשיר – כדי להצליב מול
+// usageDaily.submits ולדעת מי זה גם בלי memberId). ⚠️ blockId/channel ≤50 (firestore.rules) – אחרת כל האירוע נמחק.
+const _yzRegDiagSent = new Set();
+function yzRegDiag(ch) {
+  const k = ch.startsWith('res:') ? 'res' : 'state';
+  if (_yzRegDiagSent.has(k)) return;
+  _yzRegDiagSent.add(k);
+  let dev = '';
+  try { dev = localStorage.getItem('yz_dev') || ''; } catch (e) {}
+  const blockId = /^d_[a-z0-9]{12}$/.test(dev) ? 'regDiag|' + dev : 'regDiag';
+  try { window.logEvent && window.logEvent('formStep', { blockId, channel: String(ch).slice(0, 50) }); } catch (e) {}
+}
+// מצב המכשיר בפתיחה: has = זוכר וייבדק מול השרת · none = אין yz_reg · broken = yz_reg פגום ·
+// hasMember / skip / guest = יש yz_reg אבל yzRegGet מחזיר null בגלל hb_memberId / "כניסה עם חשבון אחר" / מצב אורח.
+function yzRegDiagState() {
+  if (auth.currentUser) return 'authed';
+  let raw = null;
+  try { raw = localStorage.getItem('yz_reg'); } catch (e) { return 'noStorage'; }
+  if (!raw) return localStorage.getItem('hb_memberId') ? 'none:hasMember' : 'none';
+  let r = null;
+  try { r = JSON.parse(raw); } catch (e) {}
+  if (!r || typeof r.memberId !== 'string' || typeof r.ticket !== 'string') return 'broken';
+  if (window._hbForceGuest) return 'guest';
+  if (localStorage.getItem('hb_memberId')) return 'hasMember';
+  try { if (sessionStorage.getItem('yz_reg_skip')) return 'skip'; } catch (e) {}
+  return 'has:' + (r.last || 'pending');
+}
 async function yzRegCheck() {
+  yzRegDiag(yzRegDiagState());
   const reg = window.yzRegGet();
   if (!reg || _yzRegBusy) return;
   if (auth.currentUser) return;   // מחובר – שער ה-auth כבר מפנה לבית
   _yzRegBusy = true;
   try {
-    let data = null;
+    let data = null, why = 'noData';
     try {
       const r = await heroWithTimeout(hbApiFetch('/reg-status', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memberId: reg.memberId, ticket: reg.ticket, v: 2 }) }), 12000);   // §628 – v:2 מכיר את 'retry'
+      if (!r.ok) why = 'http' + r.status;
       data = await r.json().catch(() => null);
-    } catch (e) { console.warn('reg-status failed:', e); }
-    if (!data) return;
+    } catch (e) { console.warn('reg-status failed:', e); why = /timeout/i.test(String(e && e.message)) ? 'timeout' : 'netError'; }
+    if (!data) { yzRegDiag('res:' + why); return; }
+    yzRegDiag('res:' + (data.error || data.status || 'unknown') + (data.status === 'approved' && !data.customToken ? ':noToken' : ''));
     const name = data.firstName || reg.name || '';
     if (data.error === 'invalid' || data.status === 'gone') {
       try { localStorage.removeItem('yz_reg'); } catch (e) {}
