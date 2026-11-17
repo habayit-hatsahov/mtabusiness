@@ -668,6 +668,12 @@
     .see-all svg { flex: none; }
     /* §781 – "‹ חזרה לדף הבית" נשבר לשתי שורות באפליקציה כשהכותרת ארוכה (תוצאות · קטגוריה · מרחק): הכפתור לא נשבר, הכותרת כן */
     #catFeed .section-header { gap: 10px; }
+    /* §782 – פס "לידי" בראש דף הבית */
+    .home-near { display: none; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 12px 16px 0; padding: 9px 12px; border-radius: 12px;
+      background: var(--acc-soft, #FFF6CC); border: 1px solid var(--acc-line, #E8D27A); color: #0A2A66; font-size: 13px; line-height: 1.4; }
+    .home-near.on { display: flex; }
+    .home-near .t { flex: 1; min-width: 0; }
+    .home-near button { border: 0; background: none; padding: 2px 0; font-family: 'Rubik', sans-serif; font-size: 12.5px; font-weight: 700; color: #0A2A66; text-decoration: underline; cursor: pointer; white-space: nowrap; }
     #catFeed .see-all { flex: none; white-space: nowrap; }
     #catFeedTitle { flex: 1; min-width: 0; }
     .section-actions { display: flex; align-items: center; gap: 8px; }
@@ -1892,6 +1898,7 @@ getDoc(doc(db, 'homeCarousel', 'current')).then(s => { if (s.exists()) { WK.appl
 
 <!-- ══ MAIN FEED ══ -->
 <div id="mainFeed">
+  <div id="homeNearBar" class="home-near"></div><!-- §782 – "לידי" בדף הבית: מסודר לפי קרבה · עדכון מיקום · ביטול -->
 
   <div class="section" id="featuredSection">
     <div class="section-header">
@@ -2943,6 +2950,14 @@ function renderSections() {
   [..._sectionPlan]
     .sort((a, b) => (a.subset.length - b.subset.length) || (a.i - b.i))
     .forEach(p => { _arranged[p.key] = arrangeSection(p.subset, p.key); });
+
+  // §782 – רמי: "לידי" לא יוצא מדף הבית – הסקשנים (נבחרים / חדשים / הטבות / כל העסקים) מסודרים לפי קרבה אליך.
+  //   מיון יציב: הכי קרוב קודם, אחר כך מגיע אליך, ובסוף כל הארץ – ובתוך כל קבוצה הסדר הרגיל (סבב / עיגונים).
+  //   פופולריים / הכי אהובים / קניה אונליין – לא נוגעים (דירוג אמיתי / אין להם מקום).
+  const _nearSort = (list) => (window.sfNearOn && window.sfNearOn() && window.sfPlaceKey)
+    ? list.map((b, i) => [b, i, window.sfPlaceKey(b)]).sort((x, y) => (x[2] - y[2]) || (x[1] - y[1])).map(x => x[0]) : list;
+  ['featured', 'new', 'deals', 'everyone'].forEach(k => { if (_arranged[k]) _arranged[k] = _nearSort(_arranged[k]); });
+  if (window.renderHomeNear) window.renderHomeNear();
 
   const featured = _arranged.featured;
   _dailySectionOrder.featured = featured;
@@ -5252,8 +5267,23 @@ document.addEventListener('DOMContentLoaded', () => {
     Object.keys(NP).forEach(function (c) { NP[c].forEach(function (pt) { var d = km([lat, lng], pt); if (d < bd) { bd = d; best = c; } }); });
     return bd <= 20 ? best : null;
   }
-  window.sfNear = function () {
-    if (S.near) { window.sfNearOff(); return; }
+  // §782 – רמי: "כל פעם שאני לוחץ לידי זה שואל מחדש – שישאל פעם אחת". המיקום האחרון נשמר במכשיר (localStorage hb_loc,
+  //   לא נשלח לשום מקום) ומשמש בלחיצות הבאות ובמפה בלי לשאול שוב. "עדכון מיקום" בפס שבדף הבית – שואל מחדש.
+  function loadLoc() { try { var v = JSON.parse(localStorage.getItem('hb_loc') || 'null'); return v && typeof v.lat === 'number' && typeof v.lng === 'number' ? v : null; } catch (e) { return null; } }
+  function saveLoc(lat, lng) { try { localStorage.setItem('hb_loc', JSON.stringify({ lat: lat, lng: lng, at: Date.now() })); } catch (e) {} }
+  window.sfLoadLoc = loadLoc; window.sfSaveLoc = saveLoc;
+  function otherFilters() { return !!(S.region.length || S.city || S.kosher || S.sat || S.now || S.coupon || S.comes || S.cat); }
+  // §782 – אחרי הדלקה/כיבוי של לידי: הסקשנים בדף הבית מסתדרים מחדש + הפס שבראשו
+  function refreshHome() { if (typeof renderSections === 'function') renderSections(); else if (window.renderHomeNear) window.renderHomeNear(); }
+  window.renderHomeNear = function () {
+    var bar = document.getElementById('homeNearBar'); if (!bar) return;
+    if (!S.near) { bar.classList.remove('on'); bar.innerHTML = ''; return; }
+    bar.innerHTML = '<span class="t">📍 העסקים מסודרים לפי קרבה אליך' + (S.near.city ? ' · <b>' + esc(S.near.city) + '</b>' : '') + '</span>' +
+      '<button type="button" onclick="sfNear(true)">עדכון מיקום</button><button type="button" onclick="sfNearOff()">ביטול</button>';
+    bar.classList.add('on');
+  };
+  window.sfNear = function (fresh) {
+    if (S.near && !fresh) { window.sfNearOff(); return; }
     if (nearState === 'loading') return;
     // §762ד – רמי: "לחצתי לידי וזה לא הצליח למצוא את המיקום". מדידת הסיבה (search/near, channel fail:<סיבה>:<איפה>),
     // ניסיון שני מדויק כשהראשון לא הספיק (timeout / unavailable), וכפתור "בחירת עיר" בהודעה.
@@ -5270,7 +5300,7 @@ document.addEventListener('DOMContentLoaded', () => {
     var done = false, tries = 0;
     // ⏱ גבול-זמן משלנו: יש מכשירים שלא קוראים לאף אחת מהפונקציות כשההרשאה חסומה ברמת האפליקציה
     var guard = setTimeout(function () { if (!done) { done = true; fail(failMsg, 'guard'); } }, 25000);
-    var ok = function (p) {
+    var ok = function (p, fromStore) {
       if (done) return; done = true; clearTimeout(guard);
       var c = nearestCity(p.coords.latitude, p.coords.longitude);
       // §780 – רמי: "שלידי יעבוד בכל זאת". המיקום התקבל אבל אין עיר מוכרת עד 20 ק"מ (היה fail:nocity) →
@@ -5280,8 +5310,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!c && S.radius < 25) S.radius = 25;
       S.city = ''; S.region = [];
       saveNear(); loadGeoSeed();
-      apply();
-      try { window.logEvent && window.logEvent('search', { blockId: 'near', channel: (c || 'nocity-ok').slice(0, 50) }); } catch (e) {}
+      if (!fromStore) saveLoc(p.coords.latitude, p.coords.longitude);
+      // §782 – רמי: "לידי לא יוצא מדף הבית". בלי טקסט / סינון / מפה → חזרה לדף הבית, מסודר לפי קרבה (+ פס למעלה).
+      //   עם טקסט / סינון / מפה – כמו קודם: מסנן את התוצאות / ממרכז את המפה.
+      if (!mapOn && noText() && !otherFilters() && typeof window.closeSearchMode === 'function') { window.sfRender(); window.closeSearchMode(); refreshHome(); }
+      else { apply(); refreshHome(); }
+      try { window.logEvent && window.logEvent('search', { blockId: 'near', channel: ((c || 'nocity-ok') + (fromStore ? ':saved' : '')).slice(0, 50) }); } catch (e) {}
     };
     var bad = function (err) {
       if (done) return;
@@ -5291,12 +5325,14 @@ document.addEventListener('DOMContentLoaded', () => {
       done = true; clearTimeout(guard);
       fail(code === 1 ? denyMsg : failMsg, code === 1 ? 'denied' : code === 2 ? 'unavailable' : code === 3 ? 'timeout' : 'err');
     };
+    var saved = !fresh && loadLoc();   // §782 – כבר נתן מיקום פעם → בלי לשאול שוב
+    if (saved) { ok({ coords: { latitude: saved.lat, longitude: saved.lng } }, true); return; }
     navigator.geolocation.getCurrentPosition(ok, bad, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
   };
-  window.sfNearOff = function () { S.near = null; nearState = ''; saveNear(); apply(); };
+  window.sfNearOff = function () { S.near = null; nearState = ''; saveNear(); apply(); refreshHome(); };
   // מחוץ לחיפוש (כותרת הקטגוריה): מכבה בלי לצאת מהקטגוריה
   window.sfNearClear = function () {
-    S.near = null; nearState = ''; saveNear(); window.sfRender();
+    S.near = null; nearState = ''; saveNear(); window.sfRender(); refreshHome();
     if (typeof _currentCatFeedKey !== 'undefined' && _currentCatFeedKey && typeof renderCatFeedContent === 'function') renderCatFeedContent(_currentCatFeedKey);
   };
   window.sfNearMsgOff = function () { nearState = ''; window.sfRender(); };
@@ -5458,10 +5494,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // §778 – בפתיחת המפה: מבקשים מיקום (פעם אחת לביקור). באפליקציה ישנה בלי הרשאת מיקום (sfGeoOk) – לא מבקשים.
   function askMe() {
     if (meAsked || meLoc) return; meAsked = true;
+    var sv = window.sfLoadLoc && window.sfLoadLoc();   // §782 – מיקום שכבר ניתן – בלי לשאול שוב
+    if (sv) { meLoc = { lat: sv.lat, lng: sv.lng }; var st0 = window.sfPlaceState ? window.sfPlaceState() : {};
+      if (map && !st0.near && !st0.city && !(st0.region || []).length) { map.setCenter(meLoc); map.setZoom(13); } drawMe(); return; }
     if (!navigator.geolocation || (window.sfGeoOk && !window.sfGeoOk())) return;
     try {
       navigator.geolocation.getCurrentPosition(function (p) {
         meLoc = { lat: p.coords.latitude, lng: p.coords.longitude };
+        if (window.sfSaveLoc) window.sfSaveLoc(meLoc.lat, meLoc.lng);
         var st = window.sfPlaceState ? window.sfPlaceState() : {};
         if (map && !st.near && !st.city && !(st.region || []).length) { map.setCenter(meLoc); map.setZoom(13); }
         drawMe();
