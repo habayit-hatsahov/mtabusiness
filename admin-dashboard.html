@@ -3658,6 +3658,7 @@ function hydrateBiz(id, raw) {
     waNudgeCount: Number(raw.waNudgeCount) || 0,
     waNudgeAt: toJsDate(raw.waNudgeAt),
     inReviewAt: toJsDate(raw.inReviewAt),   // §653 – מוצג בפס "למה ממתינים"
+    fixAskedAt: toJsDate(raw.fixAskedAt),   // §777 – השליחה האחרונה של "צריך לתקן" (bizTaskClass)
     pendingChangesAt: toJsDate(raw.pendingChangesAt),
     hasCoverPhoto: !!raw.coverPhoto,
     hasLogo: !!raw.logo,
@@ -13439,7 +13440,9 @@ function bizTaskClass(b) {
   const asked = toJsDate(b.inReviewAt);
   const after = v => { const d = toJsDate(v); return !!d && (!asked || d > asked); };
   const t = c.treatments.filter(x => x === 'details');   // §750 – "כתבו לנו" עבר לתקלות ופניות
-  if (after(b.fixReplyAt)) t.push('fixReply');
+  // §777 – תגובה בכתב נחשבת רק אם נכתבה אחרי השליחה האחרונה (fixAskedAt); שלחת לו סבב חדש – התור שוב אצלו.
+  const lastAsk = toJsDate(b.fixAskedAt);
+  if (after(b.fixReplyAt) && !(lastAsk && toJsDate(b.fixReplyAt) <= lastAsk)) t.push('fixReply');
   return { ...c, treatments: t, primary: t.length && c.primary === 'עסק ממתין לאישור' ? 'בקשה מבעל העסק' : c.primary };
 }
 function unifiedTaskItems() {
@@ -18040,10 +18043,12 @@ window.bsGo = async function() {
       } else if (fix) {
         const hide = out === 'fixHide' || (out === 'fix' && !!b.fixHidden);
         const reasons = o.reasons.concat(other ? ['other'] : []);
-        const upd = { inReview: true, inReviewReasons: reasons, inReviewOther: other, fixHidden: hide, fixSubmittedAt: null, ...(bizInFix(b) ? {} : { inReviewAt: serverTimestamp() }) };
+        // §777 – מגני השם: "שלחתי לו מה צריך לתקן והוא עדיין בבקשות". inReviewAt נשאר מהסבב הראשון (בכוונה – "מאז"),
+        // ולכן תגובה שלו מלפני השליחה החדשה נשארה "אחרי שביקשנו". fixAskedAt = השליחה האחרונה, בכל סבב.
+        const upd = { inReview: true, inReviewReasons: reasons, inReviewOther: other, fixHidden: hide, fixSubmittedAt: null, fixAskedAt: serverTimestamp(), ...(bizInFix(b) ? {} : { inReviewAt: serverTimestamp() }) };
         if (b.status === 'approved' && hide) Object.assign(upd, { status: 'pending', approvedAt: null });
         await updateDoc(doc(db, 'businesses', b.id), upd);
-        Object.assign(b, upd, 'inReviewAt' in upd ? { inReviewAt: new Date() } : {});
+        Object.assign(b, upd, { fixAskedAt: new Date() }, 'inReviewAt' in upd ? { inReviewAt: new Date() } : {});
         logActivity('businesses', b.id, { type: 'fixRound', title: BS_OUT[out][0], detail: 'ביקשנו: ' + bizWaitLabels(b).join(' · '),
           field: 'status', before, after: b.status, fixRound: { reasons, other, hidden: hide, title, text: text.slice(0, 1500) } });
       } else if (out === 'reject') {
