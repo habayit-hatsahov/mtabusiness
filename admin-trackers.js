@@ -85,7 +85,15 @@ ${MAIL_FANS_BIZ}
 };
 const docFor = (id, k) => DOCS[id + '|' + k] || DOCS[id + '|*'] || null;
 // הוואטסאפ במעקב 3 – נערך במסך ונשמר ב-settings/trackerTexts.wa3. {how} = הדרך שלו להיכנס (והקוד, אם הוא עם קוד)
-const WA_DEFAULT = 'היי {name}, כאן רמי מ-Yellow Zone 💛\n{business} כבר באפליקציה, והאוהדים רואים את העסק.\nבאפליקציה מחכים לך עדכונים שיביאו לעסק יותר חשיפה ויותר עסקאות – מורידים כאן:\nhttps://yellowzone.co.il/download\n{how}';
+// §787 – רמי: "השינוי מתחיל בהם, הם לקוחות ושיזמינו", בלי אימוג'ים, ומספר אמיתי במקום "עדכונים שמחכים לך".
+// {views} = שורת החשיפות והפתיחות של העסק מאז ההשקה (engageDaily); עסק עם פחות מ-20 חשיפות – השורה יורדת.
+const WA_DEFAULT = `היי {name}, כאן רמי מ-Yellow Zone.
+{business} כבר באפליקציה. {views}
+עכשיו, כשהאפליקציה באוויר, השינוי מתחיל בכם – בעלי העסקים. אתם לא רק עסק באפליקציה, אתם גם לקוחות: צריכים בעל מקצוע, מסעדה, מתנה או צלם? מזמינים מהעסקים של האוהדים, וככה כולנו מחזירים אחד לשני.
+מורידים כאן:
+https://yellowzone.co.il/download
+{how}
+משהו לא מסתדר? פשוט עונים לי כאן ואני אעזור.`;
 // §764 – וואטסאפ אישי במעקב 1 (אושרו ולא נכנסו): המייל של 10.11 נפתח ב-117 ונלחץ ב-9 – רמי: "חייב פתרון אחר".
 // {how} = "פותחים בטלפון שנרשמת ממנו" + הטלפון והקוד שלו. מבקשים לענות – כדי שנדע מה נתקע.
 const WA1_DEFAULT = `היי {name}, כאן רמי מ-Yellow Zone 💛
@@ -102,6 +110,25 @@ async function loadTexts() {
   try { const { db, fs } = U.C, s = await fs.getDoc(fs.doc(db, 'settings', 'trackerTexts')), d = s.exists() ? s.data() : {}; TXT.wa3 = d.wa3 || null; TXT.wa1 = d.wa1 || null; }
   catch (e) { console.error(e); TXT.err = e.message || String(e); }
   finally { TXT.loading = false; TXT.loaded = true; U.C.rerender(); }
+}
+// §787 – חשיפות (imp) ופתיחות כרטיס (biz.o) לכל עסק – סכום הסיכומים היומיים מההשקה. נטען פעם אחת כשמעקב 3 פתוח.
+const VIEWS = { map: null, loading: false, err: '' };
+async function loadViews() {
+  if (VIEWS.loading || VIEWS.map) return;
+  VIEWS.loading = true;
+  try {
+    const { db, fs } = U.C, snap = await fs.getDocs(fs.collection(db, 'engageDaily')), out = {};
+    const add = (id, k, n) => { (out[id] || (out[id] = { imp: 0, o: 0 }))[k] += Number(n) || 0; };
+    snap.docs.forEach(d => { const e = d.data() || {}; if ((e.day || d.id) < U.LAUNCH) return;
+      Object.entries(e.imp || {}).forEach(([id, n]) => add(id, 'imp', n));
+      Object.entries(e.biz || {}).forEach(([id, v]) => add(id, 'o', v && v.o)); });
+    VIEWS.map = out;
+  } catch (e) { console.error(e); VIEWS.err = e.message || String(e); VIEWS.map = {}; }
+  finally { VIEWS.loading = false; U.C.rerender(); }
+}
+function viewsLine(bizId) {
+  const v = (VIEWS.map || {})[bizId]; if (!v || v.imp < 20) return '';
+  return `מאז שהאפליקציה עלתה (26.10) העסק שלך הוצג לאוהדים ${U.f(v.imp)} פעמים${v.o >= 3 ? `, ו-${U.f(v.o)} פעמים נכנסו לכרטיס העסק` : ''}.`;
 }
 const waKeyOf = id => id === 1 ? 'wa1' : 'wa3';
 const waTpl = (key = waKeyOf(S.cur)) => TXT[key] || WA_DEF[key];
@@ -308,7 +335,7 @@ function waText(m, b) {
   if (meth === 'קוד' && !code && window.needMemberCodes) window.needMemberCodes([m.id]);
   const how = meth === 'קוד' ? (code ? `נכנסים עם הטלפון שלך והקוד: *${code}*` : 'נכנסים עם הטלפון שלך והקוד שקיבלת במייל') : meth === 'Google' ? 'נכנסים עם Google – באותו Gmail שנרשמת איתו' : 'נכנסים עם Apple';
   // §744 – הנוסח נערך במסך (settings/trackerTexts.wa3); השם, העסק והדרך נכנסים לבד
-  return waTpl('wa3').replace(/\{name\}/g, m.firstName || '').replace(/\{business\}/g, b.name || '').replace(/\{how\}/g, how);
+  return waTpl('wa3').replace(/\{name\}/g, m.firstName || '').replace(/\{business\}/g, b.name || '').replace(/\{views\}/g, viewsLine(b.id)).replace(/\{how\}/g, how).replace(/ +\n/g, '\n');
 }
 // §764 – לאוהד במעקב 1: באותו טלפון נכנסים לבד (§612); מטלפון אחר – טלפון + קוד עובד לכל אחד (גם Google / Apple)
 function waText1(m) {
@@ -574,10 +601,11 @@ export function html() {
       <td>${p.wa ? '<span class="yzu-note">ברשימה למטה</span>' : s.due.length ? `<button class="yzu-btn on" onclick="yztSend(${i})">לשלוח ל-${f(s.due.length)}</button>` : '<span class="yzu-note">אין למי</span>'}</td></tr>`; }).join('')}</table>
     <p class="yzu-note">"לשלוח" פותח את מרכז ההודעות עם מי שעוד לא קיבל כבר מסומן, ועם הנוסח המוכן של השלב (אם יש) – עורכים שם ושולחים. כשהשליחה יוצאת משם – היא נרשמת כאן, ואותם אנשים לא יופיעו שוב באותו שלב.${GOT.err ? ` ⚠️ טעינת "מי קיבל" נכשלה: ${U.esc(GOT.err)}` : ''}</p></div>`;
   if (t.list && !TXT.loaded) loadTexts();
+  if (t.list && S.cur === 3 && !VIEWS.map) loadViews();
   const waBox = t.list ? `<div class="yzt-waed"><div class="hd"><b>💬 נוסח הוואטסאפ</b>${TXT.wa3 ? '<span class="yzu-note">נוסח שערכת</span>' : '<span class="yzu-note">הנוסח המוכן</span>'}
       ${S.waEdit ? '' : `<button class="yzu-btn" onclick="yztSet('waEdit',true)">✏️ לערוך</button>`}</div>
     ${S.waEdit ? `<textarea id="yztWaTxt" rows="7" dir="rtl" oninput="yztWaDraft(this.value)">${U.esc(S.waDraft != null ? S.waDraft : waTpl())}</textarea>
-      <div class="yzu-note">${S.cur === 1 ? '{name} = השם הפרטי · {how} = "פותחים בטלפון שנרשמת ממנו – נכנסים לבד. מטלפון אחר: הטלפון והקוד" עם הקוד שלו' : '{name} = השם הפרטי · {business} = שם העסק · {how} = הדרך שלו להיכנס, ולמי שעם קוד – גם הקוד'}. נשמר לכל מי שנכנס למרכז הניהול.</div>
+      <div class="yzu-note">${S.cur === 1 ? '{name} = השם הפרטי · {how} = "פותחים בטלפון שנרשמת ממנו – נכנסים לבד. מטלפון אחר: הטלפון והקוד" עם הקוד שלו' : '{name} = השם הפרטי · {business} = שם העסק · {views} = "הוצג לאוהדים X פעמים, ו-Y פעמים נכנסו לכרטיס" מאז ההשקה (פחות מ-20 חשיפות – יורד) · {how} = הדרך שלו להיכנס, ולמי שעם קוד – גם הקוד'}. נשמר לכל מי שנכנס למרכז הניהול.</div>
       <div class="bt"><button class="yzu-btn on" ${TXT.saving ? 'disabled' : ''} onclick="yztWaSave()">${TXT.saving ? 'שומר…' : 'לשמור'}</button><button class="yzu-btn" onclick="yztSet('waEdit',false)">ביטול</button>${TXT.wa3 ? '<button class="yzu-btn" onclick="yztWaSave(true)">לחזור לנוסח המוכן</button>' : ''}</div>`
       : `<div class="pv">${U.esc(waTpl())}</div>`}
     ${TXT.err ? `<div class="yzu-note" style="color:var(--yzu-bad)">⚠️ ${U.esc(TXT.err)}</div>` : ''}</div>` : '';
