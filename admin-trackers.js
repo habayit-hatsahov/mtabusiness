@@ -58,6 +58,44 @@ const DOCS = {
 ואם עדיין לא מסתדר – עונים למייל הזה ואני אעזור.
 
 רמי`, personal: true } },
+  // §788 – 'יום 14' במעקב 1: המייל האחרון, עם סיבה להיכנס – 50 ₪ מתנה ב-Glory Street (עד 1.12)
+  '1|d14': { ch: { app: false, push: false, mail: true, wa: false },
+    mail: { subject: '{name}, 50 ₪ מתנה מחכים לך ב-Yellow Zone', body: `היי {name},
+אושרת ל-Yellow Zone לפני שבועיים, ועוד לא נכנסת – אז הנה סיבה טובה:
+עד 1.12 חברי Yellow Zone מקבלים 50 ₪ מתנה ב-Glory Street.
+
+ולא רק שם – ${MAIL_FANS_BIZ}
+
+פותחים את Yellow Zone בטלפון שנרשמת ממנו. לא נכנס לבד? נכנסים עם מספר הטלפון והקוד שלך:
+{code}
+
+אין לך את האפליקציה?
+
+{link}
+
+זה המייל האחרון שלי בנושא. אם משהו לא עובד – עונים לי ואני אעזור.
+
+רמי`, personal: true } },
+  // §788 – גל שני לוותיקים: רובם הכירו את האתר (נרשמו לפני האפליקציה) – אומרים במפורש שהכול עבר לאפליקציה
+  '4|w2': { ch: { app: false, push: false, mail: true, wa: false },
+    mail: { subject: '{name}, Yellow Zone עברה לאפליקציה', body: `היי {name},
+כאן רמי מ-Yellow Zone.
+
+נרשמת אלינו עוד לפני שהייתה אפליקציה – ומאז הכול עבר אליה. האתר כבר לא משמש לכניסה של אוהדים.
+
+כדי להיכנס: מורידים את האפליקציה ונכנסים עם מספר הטלפון והקוד שלך:
+
+{code}
+
+להורדת האפליקציה – לוחצים כאן:
+
+{link}
+
+ועכשיו גם 50 ₪ מתנה ב-Glory Street לחברים, עד 1.12.
+
+משהו לא עובד? עונים למייל הזה ואני אעזור.
+
+רמי`, personal: true } },
   // §765 – "הקהילה כבר בפנים – בלעדיך". מכתב אישי: {link} יוצא כקישור טקסט (§560), לכן שורת "לוחצים כאן" מעליו
   '4|now': { ch: { app: false, push: false, mail: true, wa: false },
     mail: { subject: '{name}, הקהילה כבר בפנים – חסר רק אותך', body: `היי {name},
@@ -182,7 +220,7 @@ function tracker(id) {
         { t: 'אפשר להגיע אליהם ב-', rows: [['מייל', left.filter(m => m.email).length], ['↳ מייל מוסתר של Apple (כמעט לא נפתח)', left.filter(m => /privaterelay/i.test(m.email || '')).length], ['פוש', left.filter(pushOn).length]] }],
       // §752 – לוח הפנייה כולל גם מי שאושר אחרי יום הצילום (out): הוא באותו מצב, ובלעדיו 71 אוהדים לא קיבלו את 'יום 7' ב-10.11
       plan: [
-        { k: 'wa', w: '12.11 · וואטסאפ', what: 'וואטסאפ אישי ממך – הכפתור בכל שורה ברשימה למטה. מי שפתח את המייל ולא נכנס – ראשון', ids: waList, wa: true },
+        // §788 – שלב הוואטסאפ (§764) הוסר: וואטסאפ המוני לאוהדים חוסם את המספר של רמי. לאוהדים – רק מייל ופוש
         { k: 'd2', w: 'יום 2', what: 'מייל "אושרת – פותחים את Yellow Zone ונכנסים לבד"; למי שהחליף טלפון – הדרך והקוד', ids: reach.filter(m => fan(m) && age(m) >= 2) },
         { k: 'd7', w: 'יום 7', what: 'תזכורת במייל', ids: reach.filter(m => fan(m) && age(m) >= 7) },
         { k: 'd14', w: 'יום 14', what: 'מייל אחרון עם הטבות השבוע, ואז "רדום"', ids: reach.filter(m => fan(m) && age(m) >= 14) }],
@@ -258,7 +296,9 @@ function tracker(id) {
       leftSub: `פוש ${left.filter(pushOn).length} · מייל ${left.filter(m => m.email).length} · ${left.filter(m => !m.lastSeenAt).length} לא נכנסו אף פעם`,
       extra: `${U.f(left.filter(owner).length)} מהנשארים הם בעלי עסק – הם בטיפול במעקב 3 או 6, ולא יקבלו פעמיים.`,
       charts: [{ t: 'באיזו דרך נכנסים (מי שנשאר)', rows: Object.entries(by(left, methodOf)).sort((a, b) => b[1] - a[1]) }, { t: 'מי נשאר', rows: [['אוהדים', left.filter(m => !owner(m)).length], ['בעלי עסק', left.filter(owner).length]] }],
-      plan: [{ k: 'now', w: 'עכשיו', what: 'מייל אישי עם הדרך והקוד של כל אחד', ids: left.filter(m => !owner(m)) }],
+      plan: [{ k: 'now', w: 'עכשיו', what: 'מייל אישי עם הדרך והקוד של כל אחד', ids: left.filter(m => !owner(m)) },
+        // §788 – גל שני: רק מי שקיבל את המייל של 11.11 ועדיין לא חזר
+        { k: 'w2', w: 'גל שני · מייל', what: 'מייל "Yellow Zone עברה לאפליקציה" – האתר כבר לא לכניסה, הקוד שלו, ו-50 ₪ ב-Glory', ids: left.filter(m => !owner(m) && gotOf(4, 'now').has(m.id)) }],
       flow: 'f4', methods: by(left, methodOf) };
   }
   // 6 – עסק ממתין
@@ -531,16 +571,18 @@ function daysHtml(id, t, P) {
 
 // ══ §745 — "השבוע": לוח של שבוע הפניות לפלחים (§741) – מה עושים בכל יום, באיזה מעקב, ואם כבר נשלח ══
 // הסטטוס מחושב ממה שכבר נשלח מהכפתורים (אותו "כבר קיבלו" של לוח הפנייה) – לא מסמנים ידנית.
-const WEEK = { from: '2026-11-09', to: '2026-11-15', days: [
-  { d: '2026-11-09', t: 'נכנסו פעם אחת ולא חזרו', id: 5, steps: ['now', 'mail'], how: 'שני הכפתורים: קודם פוש + באפליקציה, אחר כך מייל למי שאין פוש.' },
-  { d: '2026-11-10', t: 'אושרו ולא נכנסו אף פעם', id: 1, steps: ['d2'], how: 'מייל "אושרת ל-Yellow Zone 💛" (עם הקוד) · שלב "יום 2" (הראשון) · ל-331 אוהדים' },
-  { d: '2026-11-11', t: 'ותיקים שלא חזרו', id: 4, steps: ['now'], how: 'מייל "מאז שנרשמת – התמלאה בעסקים" (עם הקוד)' },
-  { d: '2026-11-12', t: 'בעלי עסק בלי האפליקציה', id: 3, steps: ['wa', 'mail'], how: 'וואטסאפ – כפתור בכל שורה ברשימה (אתה לוחץ "שלח" בוואטסאפ), ואחר כך מייל משלים לכולם' },
-  { d: '2026-11-12', t: 'אושרו ולא נכנסו – וואטסאפ אישי', id: 1, steps: ['wa'], how: 'המייל של 10.11 נפתח ב-117 ונלחץ ב-9 – עכשיו וואטסאפ ממך: כפתור בכל שורה, קודם מי שפתח את המייל ("רק מי שפתח")' },   // §764
-  { d: '2026-11-13', t: 'לא שולחים – מודדים', measure: [5, 1], how: 'במעקב 5 ובמעקב 1: "לפי ימים" → "האם ההודעה עבדה?"' },
-  { d: '2026-11-15', t: 'תזכורת: אושרו ועדיין לא נכנסו', id: 1, steps: ['d7'], how: 'מייל "{name}, משהו לא עבד בכניסה?" (עם הקוד) · שלב "יום 7" – 5 ימים אחרי "יום 2", רק למי שעדיין לא נכנס (המספר על הכפתור)' },   // §752ה
-  { d: '2026-11-15', t: 'גל שני: נכנסו פעם אחת ולא חזרו', id: 5, steps: ['w2'], how: 'פוש + באפליקציה בנוסח חדש "צריכים חשמלאי, מסעדה או צלם לאירוע? 💛" · רק למי שקיבל את הפוש של 9.11 ולא חזר (בשעות הערב – רוב הכניסות הגיעו תוך שעה)' },   // §763
-  { d: '2026-11-15', t: 'סיכום + גל שני', measure: [5, 1, 4, 3], how: 'עוברים על כל ארבעת המעקבים ומחליטים יחד למי שולחים שוב' }] };
+// §788 – התוכנית לשבוע 19–26.11, לכל מעקב: מה עושים ולמי. לאוהדים רק מייל ופוש (וואטסאפ המוני חוסם את המספר);
+// וואטסאפ – רק לבעלי עסק (מעקב 3). מעקב 2 – אין ערוץ (רק כרטיס ההמשך באפליקציה).
+const WEEK = { from: '2026-11-19', to: '2026-11-26', days: [
+  { d: '2026-11-19', t: 'בעלי עסק בלי האפליקציה – וואטסאפ', id: 3, steps: ['wa'], how: 'הנוסח החדש: "השינוי מתחיל בכם, אתם גם לקוחות" + כמה פעמים העסק הוצג לאוהדים. כפתור בכל שורה – אתה לוחץ "שלח" בוואטסאפ' },
+  { d: '2026-11-19', t: 'אושרו ולא נכנסו – תזכורת במייל', id: 1, steps: ['d7'], how: 'מייל "{name}, משהו לא עבד בכניסה?" עם הקוד – למי שאושר לפני 7+ ימים ועוד לא נכנס. בלי וואטסאפ' },
+  { d: '2026-11-20', t: 'לא שולחים – מודדים את פוש Glory', measure: [5], how: 'הפוש של 18.11 (50 ₪ ב-Glory) הגיע לכל מעקב 5: כמה חזרו ליום שני. מי שחזר יוצא מהקבוצה ולא יקבל את הגל השני' },
+  { d: '2026-11-22', t: 'נכנסו פעם אחת ולא חזרו – גל שני', id: 5, steps: ['w2', 'now', 'mail'], how: 'גל שני בפוש למי שלא חזר גם אחרי Glory · ומי שהצטרף לקבוצה מאז 9.11: פוש למי שיש, מייל למי שאין. בערב – רוב הכניסות מגיעות תוך שעה' },
+  { d: '2026-11-22', t: 'בעלי עסק בלי האפליקציה – מייל משלים', id: 3, steps: ['mail'], how: 'רק מי שעדיין לא נכנס אחרי הוואטסאפ של 19.11 (מי שנכנס כבר יצא מהקבוצה)' },
+  { d: '2026-11-23', t: 'עסקים שממתינים לאישור', id: 6, steps: ['now'], how: '"העסק שלך עוד ממתין – חסר X" לבעלים שכבר מאושרים כאוהדים · ובמקביל: לעבור על העסקים הממתינים במרכז הניהול' },
+  { d: '2026-11-24', t: 'ותיקים שלא חזרו – גל שני', id: 4, steps: ['w2'], how: 'מייל "Yellow Zone עברה לאפליקציה" – רובם הכירו את האתר, שכבר לא משמש לכניסה. עם הקוד ו-50 ₪ ב-Glory. רק מי שקיבל את המייל של 11.11 ולא חזר' },
+  { d: '2026-11-26', t: 'אושרו ולא נכנסו – מייל אחרון', id: 1, steps: ['d14'], how: 'מייל "50 ₪ מתנה מחכים לך" (Glory עד 1.12) עם הקוד – למי שאושר לפני 14+ ימים. אחריו – לא שולחים יותר' },
+  { d: '2026-11-26', t: 'סיכום השבוע', measure: [1, 3, 4, 5, 6], how: 'בכל מעקב: "לפי ימים" ← "האם ההודעה עבדה?". מעקב 2 (הורידו ולא נרשמו) – אין למי לשלוח, רק לעקוב' }] };
 const DOW_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 const dowOf = k => DOW_HE[new Date(k + 'T12:00:00Z').getUTCDay()];
 function weekHtml() {
@@ -567,9 +609,9 @@ function weekHtml() {
     return `<tr class="${isToday ? 'today' : ''}${done ? ' done' : ''}"><td><b>${dowOf(w.d)} ${U.short(w.d)}</b></td><td><b>${w.t}</b> <span class="yzu-note">· מעקב ${w.id}</span><div class="yzu-note">${w.how}</div>${stat}</td>
       <td>${done ? `<button class="yzu-btn" onclick="yztWeekGo(${w.id})">למעקב ${w.id}</button>` : btns || `<button class="yzu-btn" onclick="yztWeekGo(${w.id})">למעקב ${w.id}</button>`}</td><td>${badge}</td></tr>`;
   }).join('');
-  return `<div class="yzt-wk"><div class="hd"><h3>📅 השבוע: מה עושים בכל יום</h3><span class="yzu-note">${U.short(WEEK.from)}–${U.short(WEEK.to)} · הסטטוס מתעדכן לבד ממה שנשלח מהכפתורים${GOT.map ? '' : ' · טוען…'}</span><button class="yzu-btn" onclick="yztSet('wk',false)">▾ לקפל</button></div>
+  return `<div class="yzt-wk"><div class="hd"><h3>📅 התוכנית: מה עושים בכל מעקב ולמי</h3><span class="yzu-note">${U.short(WEEK.from)}–${U.short(WEEK.to)} · הסטטוס מתעדכן לבד ממה שנשלח מהכפתורים${GOT.map ? '' : ' · טוען…'}</span><button class="yzu-btn" onclick="yztSet('wk',false)">▾ לקפל</button></div>
     <div class="yzu-tw"><table><tr><th>יום</th><th>מה</th><th>מה לוחצים</th><th>סטטוס</th></tr>${rows}</table></div>
-    <p class="yzu-note">"לשלוח" פותח את מרכז ההודעות עם הנמענים והנוסח המוכן – בודקים, משנים אם צריך, ושולחים שם. בראש מרכז ההודעות צריך להופיע "📌 מגיע מהמעקבים"; בלעדיו השליחה לא תיספר כאן.</p></div>`;
+    <p class="yzu-note"><b>לאוהדים – רק פוש ומייל. וואטסאפ – רק לבעלי עסק.</b> "לשלוח" פותח את מרכז ההודעות עם הנמענים והנוסח המוכן – בודקים, משנים אם צריך, ושולחים שם. בראש מרכז ההודעות צריך להופיע "📌 מגיע מהמעקבים"; בלעדיו השליחה לא תיספר כאן.</p></div>`;
 }
 window.yztWeekGo = (id, list) => { S.cur = id; U.C.rerender(); setTimeout(() => { const el = document.querySelector(list ? '.yzt-waed' : '.yzu-det'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); };
 window.yztWeekSend = (id, k) => { S.cur = id; const i = (tracker(id).plan || []).findIndex(p => p.k === k); if (i >= 0) window.yztSend(i); };
@@ -609,7 +651,7 @@ export function html() {
       <div class="bt"><button class="yzu-btn on" ${TXT.saving ? 'disabled' : ''} onclick="yztWaSave()">${TXT.saving ? 'שומר…' : 'לשמור'}</button><button class="yzu-btn" onclick="yztSet('waEdit',false)">ביטול</button>${TXT.wa3 ? '<button class="yzu-btn" onclick="yztWaSave(true)">לחזור לנוסח המוכן</button>' : ''}</div>`
       : `<div class="pv">${U.esc(waTpl())}</div>`}
     ${TXT.err ? `<div class="yzu-note" style="color:var(--yzu-bad)">⚠️ ${U.esc(TXT.err)}</div>` : ''}</div>` : '';
-  const list = t.list && S.cur === 1 ? list1Html(t, waBox) : t.list ? `<div class="yzu-box"><h3>הרשימה – ${f(t.list.length)} שנשארו</h3>${waBox}<div class="yzu-tw"><table>
+  const list = t.list && S.cur === 1 ? stuckHtml(stuckOf()) : t.list ? `<div class="yzu-box"><h3>הרשימה – ${f(t.list.length)} שנשארו</h3>${waBox}<div class="yzu-tw"><table>
     <tr><th>עסק</th><th>בעלים</th><th>טלפון</th><th>נכנס עם</th><th>כניסה אחרונה</th><th>וואטסאפ</th><th>נשלח</th></tr>
     ${t.list.map(m => { const b = t.owners.get(m.id), ph = m.phone || b.ownerPhone || ''; const href = waHref(ph, waText(m, b));
       return `<tr><td>${U.esc(b.name)}</td><td>${U.esc(m.name || '')}</td><td>${U.esc(ph)}</td><td>${methodOf(m)}</td><td>${m.lastSeenAt ? U.esc(m.lastSeenAt.toLocaleDateString('he-IL')) : 'אף פעם'}</td>
