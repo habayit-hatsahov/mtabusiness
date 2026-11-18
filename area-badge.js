@@ -2,7 +2,7 @@
 // מספר אחד = עדכונים שלא נקראו (members/{id}/inbox, readAt==null) + שיחות עם תשובה חדשה
 // (conversations: lastFrom=='admin' ו-memberReadAt < lastAt). שלושה מקומות נגזרים ממנו — כדי שלא
 // יסתרו זה את זה, וכשהכל נקרא שלושתם נעלמים יחד:
-//   1. "N חדשים" לבן בפריט "האזור שלי" בתפריט הצד.
+//   1. "N הודעות חדשות" (§785; אחת = "הודעה חדשה") לבן בפריט "האזור שלי" בתפריט הצד.
 //   2. נקודה צהובה על כפתור התפריט (☰) — בלי זה מי שלא פותח את התפריט לא יודע שיש בו משהו.
 //   3. פעמון בפס העליון עם המספר, שמוביל ל"עדכונים".
 // סקריפט קלאסי (כמו fan-message.js): ה-SDK נטען דינמית, באותה גרסה בדיוק כמו firebase-config.js.
@@ -59,11 +59,11 @@
   function set(n) {
     n = Math.max(0, n | 0);
     var cs = document.querySelectorAll('.yz-menu-count');
-    for (var i = 0; i < cs.length; i++) { cs[i].hidden = !n; cs[i].textContent = n === 1 ? 'חדש אחד' : n + ' חדשים'; }
+    for (var i = 0; i < cs.length; i++) { cs[i].hidden = !n; cs[i].textContent = n === 1 ? 'הודעה חדשה' : n + ' הודעות חדשות'; }   // §785 – היה "חדש אחד" / "N חדשים"
     var d = document.querySelector('.yz-hbg-dot'); if (d) d.hidden = !n;
     var b = document.querySelector('.yz-bell-n'); if (b) { b.hidden = !n; b.textContent = n > 99 ? '99+' : String(n); }
     var bell = document.getElementById('yzBell');
-    if (bell) bell.setAttribute('aria-label', n ? 'עדכונים – ' + n + ' חדשים' : 'עדכונים');
+    if (bell) bell.setAttribute('aria-label', n ? 'עדכונים – ' + (n === 1 ? 'הודעה חדשה' : n + ' הודעות חדשות') : 'עדכונים');
   }
 
   async function load() {
