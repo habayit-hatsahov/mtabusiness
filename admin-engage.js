@@ -330,7 +330,7 @@ function benHtml() {
     ['ראו את התיבה', viewOk ? c.view || 0 : null, viewOk ? 'בדף הבית' : '"ראו" נמדד נכון רק מ-1.11'],
     ['פתחו את ההטבה', c.open || 0, 'לחצו על התיבה'],
     ['קראו עד הסוף', c.readEnd || 0, ''],
-    ...(b.coupon ? [['לקחו קוד', c.coupon || 0, 'לחצו "לקבלת קוד הקופון"'], ['העתיקו את הקוד', c.copy || 0, ''], ['עברו לאתר', (c.site || 0) + prodN, 'מ"לאתר" או מחולצה בחנות']]
+    ...(b.coupon ? [['לקחו קוד', c.coupon || 0, 'לחצו "לקבלת קוד הקופון"'], ['העתיקו את הקוד', c.copy || 0, ''], ['עברו לאתר', (c.site || 0) + (c.siteBtn || 0) + prodN, 'מ"לאתר", משורת האתר או מחולצה בחנות']]
       : [['לחצו על עסק', c.bizClick || 0, 'מתוך הרשימה בהטבה']]),
   ];
   if (b.coupon) steps.push(['קנו בקוד ' + b.coupon.code, W ? W.orders : null, 'הזמנות באתר של העסק', 1]);
@@ -363,7 +363,7 @@ function benHtml() {
     ${rows.map(r => `<tr><td><b>${U.esc(bizName(r.id))}</b></td><td class="n"><b>${f(r.car)}</b></td><td class="n">${f(r.imp)}</td><td class="n">${f(r.o)}</td><td class="n">${f(r.c2)}</td><td class="n">${f(r.l)}</td><td class="n">${f(r.r)}</td><td class="n">${f(r.c)}</td><td class="n">${f(r.h)}</td></tr>`).join('')}</table>
     <p class="yzu-note">"מהקרוסלה" = לחיצות על העסק מתוך ההטבה. שאר העמודות – מכל מקום באפליקציה, באותם ימים.</p></div>`;
   // כל שאר הפעולות שנמדדו בתיבה (לייק, שיתוף, לשוניות בחנות וכו')
-  const KN = { view: 1, open: 1, readEnd: 1, bizClick: 1, coupon: 1, copy: 1, site: 1, product: 1 };
+  const KN = { view: 1, open: 1, readEnd: 1, bizClick: 1, coupon: 1, copy: 1, site: 1, siteBtn: 1, product: 1 };   // §784 – siteBtn = שורת האתר מתחת לקוד (§776)
   const NM = { shopTab: 'החליפו לשונית בחנות', like: 'לב', shareFan: 'שיתפו', bizSignup: 'הרשמת עסק' };
   const other = Object.entries(c).filter(([k2]) => !KN[k2] && !k2.startsWith('p:'));
   const prodBox = b.coupon ? `<div class="yzu-box"><h3>מה עניין בחנות – ${f(prodN)} לחיצות על מוצרים</h3>${prod.length ? prod.map(([nm, v]) => U.hb(U.esc(nm), v, prod[0][1])).join('') : '<p class="yzu-note">אין עדיין</p>'}
@@ -373,7 +373,7 @@ function benHtml() {
   const days = a <= z ? U.dayList(a, z) : [];
   const dayT = days.length ? `<div class="yzu-box yzu-tw"><h3>לפי יום</h3><table><tr><th>יום</th>${viewOk ? '<th class="n">ראו</th>' : ''}<th class="n">פתחו</th>${b.coupon ? '<th class="n">לקחו קוד</th><th class="n">עברו לאתר</th><th class="n">הזמנות</th><th class="n">מכירות</th>' : '<th class="n">לחצו על עסק</th>'}</tr>
     ${days.slice().reverse().map(k2 => { const d = E.days[k2], cb = (d && d.car && d.car.ben) || {}, w = wDay[k2] || {};
-      const site = (cb.site || 0) + Object.entries(cb).filter(([q]) => q.startsWith('p:') || q === 'product').reduce((s2, [, v]) => s2 + v, 0);
+      const site = (cb.site || 0) + (cb.siteBtn || 0) + Object.entries(cb).filter(([q]) => q.startsWith('p:') || q === 'product').reduce((s2, [, v]) => s2 + v, 0);
       return `<tr><td>${U.short(k2)}${d ? '' : ' ⚠️'}</td>${viewOk ? `<td class="n">${f(cb.view || 0)}</td>` : ''}<td class="n">${f(cb.open || 0)}</td>${b.coupon ? `<td class="n">${f(cb.coupon || 0)}</td><td class="n">${f(site)}</td><td class="n"><b>${f(w.o || 0)}</b></td><td class="n">${f(Math.round(w.r || 0))} ₪</td>` : `<td class="n">${f(cb.bizClick || 0)}</td>`}</tr>`; }).join('')}</table></div>` : '';
   return `<h2>הטבות בלעדיות</h2><p class="yzu-def">כל הטבה בתאריכים שלה – בלי קשר לתקופה שנבחרה למעלה. כל פעולה בתיבה נספרת פעם אחת לביקור, בלי מנהלים.</p>
     <div class="yzu-pbar yze-bens">${chips}</div>
