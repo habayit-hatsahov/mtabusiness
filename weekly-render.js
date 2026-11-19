@@ -524,7 +524,7 @@
     var c = b.coupon, st = coupon.state;
     if (st === 'shown') return '<div class="wk-cp-code"><small>הקוד שלך</small><b dir="ltr">' + esc(coupon.code || couponCode(b)) + '</b>' +
       '<div class="wk-cp-btns"><button type="button" class="wk-cp-copy" onclick="WK.couponCopy()">' + (coupon.copied ? 'הועתק ✓' : 'העתקת הקוד') + '</button>' +
-      '<a class="wk-cp-site" href="' + esc(c.url) + '" target="_blank" rel="noopener" onclick="WK.track(\'ben\',\'site\')">' + esc(c.siteLabel || 'לאתר') + '</a></div>' +
+      '<a class="wk-cp-site" href="' + esc(c.url) + '" target="_blank" rel="noopener" onclick="return WK.siteGo(event,this,\'site\')">' + esc(c.siteLabel || 'לאתר') + '</a></div>' +
       (c.note ? '<p>' + esc(c.note) + '</p>' : '') + '</div>';
     if (st === 'wait') return '<div class="wk-cp-guest"><p>רגע, הקוד נטען…</p></div>';
     if (st === 'guest') return '<div class="wk-cp-guest"><p>' + esc(c.guestLine || 'הקוד לחברי Yellow Zone בלבד') + '</p><a class="wk-cp-site" href="welcome.html">להתחברות / הרשמה</a></div>';
@@ -551,8 +551,8 @@
     // §775 (רמי, 13.11) השורה של העסק = "כניסה לאתר" עם הכתובת – ישר לאתר (בלי כפתור כרטיס ובלי כפתור אתר כפול)
     var host = c.url ? String(c.url).replace(/^https?:\/\/(www\.)?/, '').replace(/\/+$/, '') : '';
     var logo = inf.logo ? '<img class="wk-logo" src="' + esc(inf.logo) + '" alt="">' : x.name ? '<div class="wk-logo wk-logo-l">' + esc(x.name.charAt(0)) + '</div>' : '';
-    var row = c.url ? '<a class="wk-row wk-row-site" href="' + esc(c.url) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : ' onclick="WK.track(\'ben\',\'siteBtn\')"') + '>' + logo +
-        '<div class="wk-row-main"><div class="wk-row-name">כניסה לאתר</div><div class="wk-row-sub" dir="ltr">' + esc(host) + '</div></div>' + GO + '</a>'
+    var row = c.url ? '<a class="wk-row wk-row-site" href="' + esc(c.url) + '" target="_blank" rel="noopener"' + (ctx.preview ? ' tabindex="-1" style="pointer-events:none"' : ' onclick="return WK.siteGo(event,this,\'siteBtn\')"') + '>' + logo +
+        '<div class="wk-row-main"><div class="wk-row-name">כניסה לאתר</div><div class="wk-row-sub" dir="ltr">' + esc(host) + '</div>' + siteHint(b, ctx) + '</div>' + GO + '</a>'
       : x.name ? '<div class="wk-row"' + (inf.id ? act(ctx, "WK.biz('" + inf.id + "')") : '') + '>' + logo +
         '<div class="wk-row-main"><div class="wk-row-name">' + esc(x.name) + '</div>' + (inf.area ? '<div class="wk-row-sub">' + esc(inf.area) + '</div>' : '') + '</div>' + GO + '</div>' : '';
     var igRow = igRowHtml(c.instagram, ctx, 'ben');
@@ -603,11 +603,11 @@
     var all = shopList(), tab = shop.tab || shopTabs()[0] || '';
     var list = all.filter(function (p) { return !tab || p.c.indexOf(tab) >= 0; }), max = b.shop.max || 16;
     var cards = list.slice(0, max).map(function (p) {
-      return '<a class="wk-pr" href="' + esc(p.url) + '" target="_blank" rel="noopener" onclick="WK.track(\'ben\',\'p:' + esc(tab) + '\')">' +   // §775 – הקטגוריה נכנסת לערוץ (מרכז הנתונים: "מה עניין בחנות")
+      return '<a class="wk-pr" href="' + esc(p.url) + '" target="_blank" rel="noopener" onclick="return WK.siteGo(event,this,\'p:' + esc(tab) + '\')">' +   // §775 – הקטגוריה נכנסת לערוץ (מרכז הנתונים: "מה עניין בחנות")
         '<span class="im"><img src="' + esc(p.img) + '" alt="" loading="lazy"></span><span class="nm">' + esc(p.n) + '</span>' +
         '<span class="pp"><b>' + p.p + ' ₪</b>' + (p.w > p.p ? '<s>' + p.w + ' ₪</s>' : '') + '</span></a>';
     }).join('');
-    var more = '<a class="wk-pr wk-pr-more" href="' + esc(b.shop.url || b.coupon.url) + '" target="_blank" rel="noopener"><span>' + (list.length > max ? 'עוד ' + (list.length - max) + ' חולצות' : 'לכל החנות') + '</span><small>באתר Glory Street</small></a>';
+    var more = '<a class="wk-pr wk-pr-more" href="' + esc(b.shop.url || b.coupon.url) + '" target="_blank" rel="noopener" onclick="return WK.siteGo(event,this,\'product\')"><span>' + (list.length > max ? 'עוד ' + (list.length - max) + ' חולצות' : 'לכל החנות') + '</span><small>באתר Glory Street</small></a>';
     return cards + more;
   }
   function shopHtml(b) {
@@ -643,6 +643,51 @@
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(done, done); else done();
   }
   function couponReset() { coupon.state = ''; coupon.copied = false; couponPaint(); }
+  // §790 (רמי, 19.11: "כן, לשלב" – דמו §789) – 51 עברו לאתר ורק 18 לקחו קוד. כל קישור לאתר בהטבה (שורת האתר,
+  // "לאתר", חולצה, "לכל החנות") מעתיק קודם את הקוד ומראה חלון "הקוד הועתק" עם כפתור שפותח את האתר.
+  // הפתיחה היא לחיצה על <a target=_blank> אמיתי (אותו מסלול שעובד היום באפליקציה) – לא window.open מושהה.
+  // אורח / חבר שהקוד שלו עוד לא נטען – הקישור עובד בדיוק כמו קודם. ערוץ חדש במדידה: siteCopy.
+  function siteHint(b, ctx) {
+    if (ctx.preview || isGuest()) return '';
+    var code = couponCode(b);
+    return code ? '<div class="wk-sc-sub">הקוד <b dir="ltr">' + esc(code) + '</b> מועתק לבד</div>' : '';
+  }
+  function copyText(code) {
+    var legacy = function () {
+      var t = document.createElement('textarea'); t.value = code; t.setAttribute('readonly', '');
+      // 16px – אחרת אייפון (ומובייל בכלל) עושה זום כשהתיבה מקבלת פוקוס
+      t.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0';
+      document.body.appendChild(t); t.select(); try { t.setSelectionRange(0, code.length); } catch (e) {}
+      try { document.execCommand('copy'); } catch (e) {}
+      t.blur(); document.body.removeChild(t);
+    };
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(code).catch(legacy); return; } } catch (e) {}
+    legacy();
+  }
+  var scEl = null;
+  function siteSheet(code, href, isProduct) {
+    if (!scEl) {
+      scEl = document.createElement('div'); scEl.className = 'wk-sc-ov';
+      scEl.addEventListener('click', function (e) { if (e.target === scEl || e.target.closest('.wk-sc-go, .wk-sc-x')) setTimeout(function () { scEl.classList.remove('on'); }, 0); });
+      document.body.appendChild(scEl);
+    }
+    scEl.innerHTML = '<div class="wk-sc-card" role="dialog"><button type="button" class="wk-sc-x" aria-label="סגירה">×</button>' +
+      '<div class="ok">✓ הקוד הועתק</div><div class="code" dir="ltr">' + esc(code) + '</div>' +
+      '<p>בקופה באתר מדביקים אותו בשדה "קוד קופון"<br>ו-50 ₪ יורדים מהסכום.</p>' +
+      '<a class="wk-sc-go" href="' + esc(href) + '" target="_blank" rel="noopener">' + (isProduct ? 'לעמוד החולצה' : 'לאתר Glory Street') + '</a></div>';
+    scEl.classList.add('on');
+  }
+  function siteGo(ev, el, ch) {
+    track('ben', ch);
+    var b = state.d && state.d.ben, code = b && !isGuest() ? couponCode(b) : '';
+    if (!code) return true;   // כמו קודם – הקישור נפתח
+    if (ev && ev.preventDefault) ev.preventDefault();
+    copyText(code);
+    coupon.state = 'shown'; coupon.code = code; coupon.copied = true; couponPaint();
+    track('ben', 'siteCopy');
+    siteSheet(code, el.getAttribute('href'), /\bwk-pr\b/.test(el.className) && !/wk-pr-more/.test(el.className));
+    return false;
+  }
 
   // §775 הלוגו של העסק – brandLogoCrop = [מלמעלה, מלמטה, רוחב המקור, משמאל?, מימין?]; brandLogoClear = בלי הרקע הלבן, הכיתוב בשחור (הלוגו מהאתר שלו שקוף עם כיתוב בהיר) בפיקסלים של התמונה המקורית: לוגו ריבועי
   // עם שוליים לבנים (Glory: 512×512, הכיתוב בשורות 195–307) נחתך לגובה הכיתוב בלבד, בלי קובץ חדש
@@ -1076,6 +1121,12 @@
     '.wk-row-ig{margin-top:8px}',
     '.wk-logo.wk-ig{display:flex;align-items:center;justify-content:center;background:#0A2A66;border:0}',
     '.wk-cp-box + .wk-row-site{margin-top:12px}',
+    '.wk-sc-sub{margin-top:3px;font-size:12px;font-weight:700;color:#0A2A66;text-align:right}.wk-sc-sub b{background:#FFD400;border-radius:6px;padding:1px 7px;font-weight:900;letter-spacing:.5px}',
+    '.wk-sc-ov{position:fixed;inset:0;z-index:100000;background:rgba(10,42,102,.55);display:none;align-items:flex-end;justify-content:center}.wk-sc-ov.on{display:flex}',
+    '.wk-sc-card{position:relative;width:100%;max-width:480px;background:#fff;border-radius:20px 20px 0 0;padding:22px 20px calc(24px + env(safe-area-inset-bottom));text-align:center;font-family:Rubik,sans-serif;color:#0A2A66;box-shadow:0 -10px 30px rgba(0,0,0,.2)}',
+    '.wk-sc-card .ok{font-size:15px;font-weight:800;color:#1E7A3C}.wk-sc-card .code{display:inline-block;margin:10px 0 6px;font-size:34px;font-weight:900;letter-spacing:2px;background:#FFD400;border-radius:12px;padding:4px 22px}',
+    '.wk-sc-card p{margin:6px 0 0;font-size:14px;line-height:1.55;color:#3A4C7A}.wk-sc-go{display:block;margin-top:16px;background:#0A2A66;color:#fff!important;border-radius:14px;padding:14px;font-weight:800;font-size:16px;text-decoration:none}',
+    '.wk-sc-x{position:absolute;top:8px;inset-inline-start:10px;border:0;background:none;font-size:26px;line-height:1;color:#8A97B5;cursor:pointer;padding:6px}',
     '.wk-hl{background:#FFD400;border-radius:16px;overflow:hidden;padding:0;color:#0A2A66;box-shadow:0 6px 18px rgba(10,42,102,.14)}',
     '.wk-hl img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}',
     '.wk-hl-in{padding:12px 14px 14px}',
@@ -1302,7 +1353,7 @@
     slideHtml: slideHtml, sheetInner: sheetInner, injectCss: injectCss,
     mount: mount, step: step, tok: tok, track: track, setUsDir: setUsDir, usDir: function () { return state.d && state.d.usDir; }, open: open, close: close, biz: biz, act: doAct,
     // §625 – הלב: likeKey() = מזהה העסק, setLike(key, count, mine) מ-home.html, onLike(fn) – fn(bizId) מבצע את הלחיצה
-    coupon: couponReveal, couponCopy: couponCopy, couponReset: couponReset, shopTab: shopTab,
+    coupon: couponReveal, couponCopy: couponCopy, couponReset: couponReset, shopTab: shopTab, siteGo: siteGo,
     benLike: benLikeClick, benLikeKey: function () { return blike.key; }, setBenLike: setBenLike,
     like: likeClick, likeKey: function () { return like.key; }, setLike: setLike, onLike: function (fn) { like.handler = fn; }
   };

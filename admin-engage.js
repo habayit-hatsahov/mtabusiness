@@ -364,7 +364,7 @@ function benHtml() {
     <p class="yzu-note">"מהקרוסלה" = לחיצות על העסק מתוך ההטבה. שאר העמודות – מכל מקום באפליקציה, באותם ימים.</p></div>`;
   // כל שאר הפעולות שנמדדו בתיבה (לייק, שיתוף, לשוניות בחנות וכו')
   const KN = { view: 1, open: 1, readEnd: 1, bizClick: 1, coupon: 1, copy: 1, site: 1, siteBtn: 1, product: 1 };   // §784 – siteBtn = שורת האתר מתחת לקוד (§776)
-  const NM = { shopTab: 'החליפו לשונית בחנות', like: 'לב', shareFan: 'שיתפו', bizSignup: 'הרשמת עסק' };
+  const NM = { siteCopy: 'עברו לאתר עם הקוד מועתק (מ-19.11)', shopTab: 'החליפו לשונית בחנות', like: 'לב', shareFan: 'שיתפו', bizSignup: 'הרשמת עסק' };
   const other = Object.entries(c).filter(([k2]) => !KN[k2] && !k2.startsWith('p:'));
   const prodBox = b.coupon ? `<div class="yzu-box"><h3>מה עניין בחנות – ${f(prodN)} לחיצות על מוצרים</h3>${prod.length ? prod.map(([nm, v]) => U.hb(U.esc(nm), v, prod[0][1])).join('') : '<p class="yzu-note">אין עדיין</p>'}
       ${other.length ? `<p class="yzu-note">${other.map(([k2, v]) => `${U.esc(NM[k2] || k2)}: ${f(v)}`).join(' · ')}</p>` : ''}</div>` : (other.length ? `<div class="yzu-box"><h3>עוד פעולות בתיבה</h3><p class="yzu-note">${other.map(([k2, v]) => `${U.esc(NM[k2] || k2)}: ${f(v)}`).join(' · ')}</p></div>` : '');
