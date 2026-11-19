@@ -170,12 +170,12 @@ function viewsLine(bizId) {
 }
 const waKeyOf = id => id === 1 ? 'wa1' : 'wa3';
 const waTpl = (key = waKeyOf(S.cur)) => TXT[key] || WA_DEF[key];
-// §792 – "מה רואים" במעקב 3: נכנס מהאתר (לא מהחנות) / חשבון נוסף באותו שם שנכנס
+// §792 – "מה רואים" במעקב 3: נכנס מהאתר (לא מהחנות) / חשבון נוסף (אותו טלפון או מייל, §794) שנכנס
 const seen3 = (t, m) => {
   const out = [], d = k => U.short(k);
   if (t.web && t.web.get(m.id)) out.push('<span class="yzt-warn">נכנס מהאתר / קיצור דרך – בלי פוש</span> <span class="yzu-note">(אחרון ' + d(t.web.get(m.id)) + ')</span>');
   const o = t.dup && t.dup.get(m.id);
-  if (o) out.push('<span class="yzt-warn">🔴 חשבון נוסף באותו שם נכנס' + (o.app ? ' מהאפליקציה' : '') + '</span> <span class="yzu-note">(' + U.esc(o.f.email || o.f.phone || o.f.id) + ' · ' + d(o.d) + ') – לא מחובר לעסק</span>');
+  if (o) out.push('<span class="yzt-warn">🔴 חשבון נוסף עם אותו טלפון / מייל נכנס' + (o.app ? ' מהאפליקציה' : '') + '</span> <span class="yzu-note">(' + U.esc(o.f.email || o.f.phone || o.f.id) + ' · ' + d(o.d) + ') – לא מחובר לעסק</span>');
   return out.join('<br>') || '–';
 };
 const methodOf = m => m.signupMethod === 'apple' ? 'Apple' : m.signupMethod === 'google' ? 'Google' : (m.googleEmail ? 'Google' : 'קוד');
@@ -258,14 +258,18 @@ function tracker(id) {
     const since = start.filter(m => onOrAfter(h.appDays[m.id], snap)), left = start.filter(m => !h.appDays[m.id]);
     // §792 (רמי, 19.11: צ'ומפי / מתן כהן / ירין אדלר "יש לו את האפליקציה") – שני סימונים בשורה, בלי לשנות מי בקבוצה:
     // web = החשבון של העסק נכנס מההשקה, אבל לא מהאפליקציה מהחנות (אתר / קיצור דרך במסך הבית – בלי פוש).
-    // dup = חשבון חבר אחר באותו שם מלא נכנס מההשקה (מתן כהן נרשם שוב כאוהד ב-18.11 עם מייל אחר).
+    // dup = חשבון חבר אחר **עם אותו טלפון או אותו מייל** (של החבר או של העסק) שנכנס מההשקה.
+    // §794 – קודם זה היה לפי שם מלא, וסימן בטעות את מתן כהן: ה"חשבון הנוסף" היה מתן כהן אחר (בן 15, טלפון ומייל אחרים) – "הוא לא נכנס היום בכלל".
     const lastDay = set => set ? [...set].filter(k => k >= L).sort().pop() || '' : '';
-    const nm = m => String(m.name || '').replace(/\s+/g, ' ').trim();
-    const byName = new Map(); x.fans.forEach(f => { if (f.status !== 'approved' || !nm(f)) return; const k = nm(f); (byName.get(k) || byName.set(k, []).get(k)).push(f); });
+    const ph = v => { const d = String(v || '').replace(/\D/g, ''); return d.length >= 9 ? 'p' + d.slice(-9) : ''; };
+    const ml = v => { const e = String(v || '').trim().toLowerCase(); return /@/.test(e) ? 'e' + e : ''; };
+    const keysOf = (m, b) => [ph(m.phone), ml(m.email), ml(m.googleEmail), b ? ph(b.ownerPhone) : '', b ? ml(b.ownerEmail) : ''].filter(Boolean);
+    const byKey = new Map(); x.fans.forEach(f => { if (f.status !== 'approved') return; keysOf(f).forEach(k => (byKey.get(k) || byKey.set(k, new Set()).get(k)).add(f)); });
     const web = new Map(), dup = new Map();
     left.forEach(m => {
       const w = lastDay(x.memDays[m.id]); if (w) web.set(m.id, w);
-      const o = (byName.get(nm(m)) || []).filter(f => f.id !== m.id).map(f => ({ f, d: lastDay(h.appDays[f.id]) || lastDay(x.memDays[f.id]), app: !!lastDay(h.appDays[f.id]) })).filter(z => z.d).sort((a, b) => a.d < b.d ? 1 : -1)[0];
+      const cand = new Set(); keysOf(m, owners.get(m.id)).forEach(k => (byKey.get(k) || []).forEach(f => cand.add(f)));
+      const o = [...cand].filter(f => f.id !== m.id).map(f => ({ f, d: lastDay(h.appDays[f.id]) || lastDay(x.memDays[f.id]), app: !!lastDay(h.appDays[f.id]) })).filter(z => z.d).sort((a, b) => a.d < b.d ? 1 : -1)[0];
       if (o) dup.set(m.id, o);
     });
     return { start, since, left, people: true, total: all.length, owners, web, dup,
