@@ -672,7 +672,24 @@
     copyText(code);
     coupon.state = 'shown'; coupon.code = code; coupon.copied = true; couponPaint();
     track('ben', 'siteCopy');
+    copiedToast(code);
+    // §793 (רמי, 19.11: "עובר ישירות ולא אומר שהקוד הועתק") – באפליקציה: ההודעה על המסך שנייה וחצי, ואז האתר.
+    // מעבר לכתובת חיצונית באפליקציה (Capacitor, בלי allowNavigation) נפתח תמיד בדפדפן של הטלפון – גם בלי לחיצה,
+    // ולכן location.href מושהה בטוח שם. בדפדפן רגיל – הקישור נפתח מיד בלשונית חדשה, וההודעה מחכה כשחוזרים.
+    var href = el && el.getAttribute('href');
+    if (href && /YellowZoneApp/.test(navigator.userAgent || '')) {
+      if (ev && ev.preventDefault) ev.preventDefault();
+      setTimeout(function () { location.href = href; }, 1500);
+      return false;
+    }
     return true;
+  }
+  var ctEl = null;
+  function copiedToast(code) {
+    if (!ctEl) { ctEl = document.createElement('div'); ctEl.className = 'wk-ct'; document.body.appendChild(ctEl); }
+    ctEl.innerHTML = '<b>✓ הקוד הועתק</b><span class="c" dir="ltr">' + esc(code) + '</span><small>בקופה באתר מדביקים אותו בשדה "קוד קופון"</small>';
+    ctEl.classList.remove('on'); void ctEl.offsetWidth; ctEl.classList.add('on');
+    clearTimeout(ctEl._t); ctEl._t = setTimeout(function () { ctEl.classList.remove('on'); }, 4000);
   }
 
   // §775 הלוגו של העסק – brandLogoCrop = [מלמעלה, מלמטה, רוחב המקור, משמאל?, מימין?]; brandLogoClear = בלי הרקע הלבן, הכיתוב בשחור (הלוגו מהאתר שלו שקוף עם כיתוב בהיר) בפיקסלים של התמונה המקורית: לוגו ריבועי
@@ -1107,6 +1124,8 @@
     '.wk-row-ig{margin-top:8px}',
     '.wk-logo.wk-ig{display:flex;align-items:center;justify-content:center;background:#0A2A66;border:0}',
     '.wk-cp-box + .wk-row-site{margin-top:12px}',
+    '.wk-ct{position:fixed;left:50%;top:42%;z-index:100000;transform:translate(-50%,-50%) scale(.9);opacity:0;pointer-events:none;background:#0A2A66;color:#fff;border-radius:18px;padding:18px 22px;text-align:center;font-family:Rubik,sans-serif;box-shadow:0 12px 30px rgba(0,0,0,.3);min-width:230px}',
+    '.wk-ct.on{opacity:1;transform:translate(-50%,-50%) scale(1)}.wk-ct b{display:block;font-size:17px;font-weight:800;color:#7CE0A0}.wk-ct .c{display:inline-block;margin:8px 0 6px;font-size:28px;font-weight:900;letter-spacing:2px;background:#FFD400;color:#0A2A66;border-radius:10px;padding:2px 16px}.wk-ct small{display:block;font-size:13px;opacity:.9}',
     '.wk-sc-sub{margin-top:3px;font-size:12px;font-weight:700;color:#0A2A66;text-align:right}.wk-sc-sub b{background:#FFD400;border-radius:6px;padding:1px 7px;font-weight:900;letter-spacing:.5px}',
     '.wk-hl{background:#FFD400;border-radius:16px;overflow:hidden;padding:0;color:#0A2A66;box-shadow:0 6px 18px rgba(10,42,102,.14)}',
     '.wk-hl img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}',
