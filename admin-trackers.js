@@ -170,6 +170,14 @@ function viewsLine(bizId) {
 }
 const waKeyOf = id => id === 1 ? 'wa1' : 'wa3';
 const waTpl = (key = waKeyOf(S.cur)) => TXT[key] || WA_DEF[key];
+// §792 – "מה רואים" במעקב 3: נכנס מהאתר (לא מהחנות) / חשבון נוסף באותו שם שנכנס
+const seen3 = (t, m) => {
+  const out = [], d = k => U.short(k);
+  if (t.web && t.web.get(m.id)) out.push('<span class="yzt-warn">נכנס מהאתר / קיצור דרך – בלי פוש</span> <span class="yzu-note">(אחרון ' + d(t.web.get(m.id)) + ')</span>');
+  const o = t.dup && t.dup.get(m.id);
+  if (o) out.push('<span class="yzt-warn">🔴 חשבון נוסף באותו שם נכנס' + (o.app ? ' מהאפליקציה' : '') + '</span> <span class="yzu-note">(' + U.esc(o.f.email || o.f.phone || o.f.id) + ' · ' + d(o.d) + ') – לא מחובר לעסק</span>');
+  return out.join('<br>') || '–';
+};
 const methodOf = m => m.signupMethod === 'apple' ? 'Apple' : m.signupMethod === 'google' ? 'Google' : (m.googleEmail ? 'Google' : 'קוד');
 const by = (a, fn) => { const o = {}; a.forEach(x => { const k = fn(x); o[k] = (o[k] || 0) + 1; }); return o; };
 
@@ -248,11 +256,23 @@ function tracker(id) {
     const all = [...owners.keys()].map(id2 => fanById.get(id2));
     const start = all.filter(m => !before(h.appDays[m.id], snap));
     const since = start.filter(m => onOrAfter(h.appDays[m.id], snap)), left = start.filter(m => !h.appDays[m.id]);
-    return { start, since, left, people: true, total: all.length, owners,
+    // §792 (רמי, 19.11: צ'ומפי / מתן כהן / ירין אדלר "יש לו את האפליקציה") – שני סימונים בשורה, בלי לשנות מי בקבוצה:
+    // web = החשבון של העסק נכנס מההשקה, אבל לא מהאפליקציה מהחנות (אתר / קיצור דרך במסך הבית – בלי פוש).
+    // dup = חשבון חבר אחר באותו שם מלא נכנס מההשקה (מתן כהן נרשם שוב כאוהד ב-18.11 עם מייל אחר).
+    const lastDay = set => set ? [...set].filter(k => k >= L).sort().pop() || '' : '';
+    const nm = m => String(m.name || '').replace(/\s+/g, ' ').trim();
+    const byName = new Map(); x.fans.forEach(f => { if (f.status !== 'approved' || !nm(f)) return; const k = nm(f); (byName.get(k) || byName.set(k, []).get(k)).push(f); });
+    const web = new Map(), dup = new Map();
+    left.forEach(m => {
+      const w = lastDay(x.memDays[m.id]); if (w) web.set(m.id, w);
+      const o = (byName.get(nm(m)) || []).filter(f => f.id !== m.id).map(f => ({ f, d: lastDay(h.appDays[f.id]) || lastDay(x.memDays[f.id]), app: !!lastDay(h.appDays[f.id]) })).filter(z => z.d).sort((a, b) => a.d < b.d ? 1 : -1)[0];
+      if (o) dup.set(m.id, o);
+    });
+    return { start, since, left, people: true, total: all.length, owners, web, dup,
       def: 'בעל עסק שהעסק שלו מאושר, ולא פתח את האפליקציה עד יום הצילום. "מאז" = פתח מאז.',
       startSub: `מתוך ${U.f(all.length)} בעלי עסק מאושרים`,
       sinceSub: `${since.filter(pushOn).length} מהם עם פוש`,
-      leftSub: `${left.filter(m => x.isVet(m)).length} ותיקים · ${left.filter(m => !x.isVet(m)).length} חדשים · ${left.filter(m => !m.lastSeenAt).length} לא נכנסו אף פעם`,
+      leftSub: `${left.filter(m => x.isVet(m)).length} ותיקים · ${left.filter(m => !x.isVet(m)).length} חדשים · ${left.filter(m => !m.lastSeenAt).length} לא נכנסו אף פעם` + (web.size ? ` · ${web.size} נכנסים מהאתר` : '') + (dup.size ? ` · ${dup.size} עם חשבון נוסף` : ''),
       charts: [{ t: 'באיזו דרך נכנסים (מי שנשאר)', rows: Object.entries(by(left, methodOf)).sort((a, b) => b[1] - a[1]) }],
       list: left, flow: 'f3', methods: by(left, methodOf),
       plan: [{ k: 'wa', w: 'עכשיו · וואטסאפ', what: 'וואטסאפ אישי לכל אחד – הכפתור בכל שורה ברשימה', ids: left, wa: true },
@@ -652,9 +672,9 @@ export function html() {
       : `<div class="pv">${U.esc(waTpl())}</div>`}
     ${TXT.err ? `<div class="yzu-note" style="color:var(--yzu-bad)">⚠️ ${U.esc(TXT.err)}</div>` : ''}</div>` : '';
   const list = t.list && S.cur === 1 ? stuckHtml(stuckOf()) : t.list ? `<div class="yzu-box"><h3>הרשימה – ${f(t.list.length)} שנשארו</h3>${waBox}<div class="yzu-tw"><table>
-    <tr><th>עסק</th><th>בעלים</th><th>טלפון</th><th>נכנס עם</th><th>כניסה אחרונה</th><th>וואטסאפ</th><th>נשלח</th></tr>
+    <tr><th>עסק</th><th>בעלים</th><th>טלפון</th><th>נכנס עם</th><th>כניסה אחרונה</th><th>מה רואים</th><th>וואטסאפ</th><th>נשלח</th></tr>
     ${t.list.map(m => { const b = t.owners.get(m.id), ph = m.phone || b.ownerPhone || ''; const href = waHref(ph, waText(m, b));
-      return `<tr><td>${U.esc(b.name)}</td><td>${U.esc(m.name || '')}</td><td>${U.esc(ph)}</td><td>${methodOf(m)}</td><td>${m.lastSeenAt ? U.esc(m.lastSeenAt.toLocaleDateString('he-IL')) : 'אף פעם'}</td>
+      return `<tr><td>${U.esc(b.name)}</td><td>${U.esc(m.name || '')}</td><td>${U.esc(ph)}</td><td>${methodOf(m)}</td><td>${m.lastSeenAt ? U.esc(m.lastSeenAt.toLocaleDateString('he-IL')) : 'אף פעם'}</td><td>${seen3(t, m)}</td>
       <td>${href ? `<a class="yzt-wa" href="${href}" target="_blank" rel="noopener" onclick="yztWa('${m.id}')">וואטסאפ</a>` : '–'}</td>
       <td>${WA[m.id] || m.waNudgeAt ? `<span class="yzt-got">✓ ${(WA[m.id] || m.waNudgeAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}</span>${m.waNudgeCount > 1 ? ` <span class="yzu-note">(${m.waNudgeCount} פעמים)</span>` : ''}` : '–'}</td></tr>`; }).join('')}</table></div>
     <p class="yzu-note">ההודעה כוללת את הדרך שלו – ולמי שנכנס עם קוד, גם את הקוד. נפתחת בוואטסאפ שלך, עם הנוסח מוכן; שולחים משם. הלחיצה נרשמת ("נשלח"), ומי שכבר קיבל מיום הצילום יוצא מ"ממתינים".</p></div>` : '';
@@ -743,7 +763,7 @@ const WA = {};
 window.yztWa = (id) => { WA[id] = new Date(); if (U.C.waNudge) U.C.waNudge(id); setTimeout(() => U.C.rerender(), 50); };
 
 function css() {
-  return `<style>
+  return `<style>.yzt-warn{font-weight:700;color:#B45309}
   .yzt-src{background:var(--yzu-acc-soft);border:1px solid var(--yzu-acc-line);border-radius:12px;padding:9px 12px;font-size:13px;line-height:1.7;margin-bottom:12px}
   .yzt-prog{height:7px;background:var(--yzu-gray);border-radius:4px;overflow:hidden;margin:6px 0 4px}.yzt-prog i{display:block;height:100%;background:var(--yzu-ok)}
   .yzt-three{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}@media(max-width:700px){.yzt-three{grid-template-columns:1fr}}
