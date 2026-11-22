@@ -7,7 +7,7 @@
 // ⚠️ רק אתרים מהרשימה כאן: הוורקר לא שולח את המפתח לכתובת שמגיעה מהבקשה.
 import { verifyAdminIdToken } from './jwt.js';
 
-const SITES = {
+export const SITES = {   // §796 – מיוצא: admin-shops מסמן עסק שכבר מחובר כאן (Glory) כ"מחובר"
   glory: { base: 'https://glory-street.com', key: 'GS_WC_KEY', secret: 'GS_WC_SECRET' },
 };
 const TIMEOUT_MS = 15000;

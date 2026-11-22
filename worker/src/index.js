@@ -39,6 +39,7 @@ import { runBizGeo } from './bizgeo.js';   // §762ב
 import { noteMemberToken, runStuckLogins } from './stucklogin.js';   // §769
 import { handleBenefitSales, handleBenefitShop, refreshBenefitShops } from './benefitsales.js';   // §775
 import { runScheduledJobs } from './schedule.js';   // §775
+import { handleOnlineShops } from './onlineshops.js';   // §796
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -247,6 +248,10 @@ export default {
       // §775 — מכירות בקוד קופון של הטבה בלעדית (WooCommerce של העסק), סיכומים בלבד. מאומת כמנהל.
       if (request.method === 'POST' && url.pathname === '/admin-benefit-sales') {
         return json(await handleBenefitSales(await request.json(), env), env, request);
+      }
+      // §796 — עסקים אונליין: סריקת החנות + פרטי אינטגרציה לקופון (admin-shops.html). מאומת כמנהל.
+      if (request.method === 'POST' && url.pathname === '/admin-shops') {
+        return json(await handleOnlineShops(await request.json(), env), env, request);
       }
       // §556 — "רענון עכשיו" במסך "הורדות לפי מקור". מאומת כמנהל.
       if (request.method === 'POST' && url.pathname === '/admin-store-sync') {
