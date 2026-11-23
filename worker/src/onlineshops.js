@@ -14,6 +14,7 @@
 import { verifyAdminIdToken, getGoogleAccessToken } from './jwt.js';
 import { firestoreListDocs, firestoreGetDoc, firestorePatch, firestoreDeleteDoc, firestoreRunQuery } from './firestore.js';
 import { SITES } from './benefitsales.js';
+import { testWix } from './wixapp.js';   // §797
 
 const T = 15000;
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', 'Accept-Language': 'he,en' };
@@ -98,7 +99,7 @@ async function scanSite(website) {
 }
 
 // ── בדיקת חיבור: המפתח עובד? כמה פעמים נוצל הקוד? (ספירה בלבד) ──────────────────────────────────────
-async function testKey(k, code) {
+async function testKey(k, code, env) {
   const at = new Date().toISOString();
   try {
     if (k.platform === 'woocommerce') {
@@ -141,6 +142,8 @@ async function testKey(k, code) {
       const n = j.data && j.data.codeDiscountNodeByCode;
       return n ? { ok: true, keyOk: true, found: true, usage: +((n.codeDiscount || {}).asyncUsageCount) || 0, at } : { ok: true, keyOk: true, found: false, at };
     }
+    // §797 – Wix: מחובר דרך אפליקציית Yellow Zone (instanceId מה-webhook), לא מפתח שהוזן ידנית
+    if ((k.platform === 'wix' || k.platform === 'wixstore') && k.creds && k.creds.instanceId) return testWix(env, k, code);
     return { ok: null, note: 'נשמר בלבד – לפלטפורמה הזאת עוד אין בדיקה אוטומטית', at };
   } catch (e) { return { ok: false, err: err(e), at }; }
 }
@@ -379,7 +382,7 @@ export async function handleShopOwner(body, env) {
       if (pc.error) return { error: pc.error };
       const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
       const k = { platform: 'woocommerce', base: s.base, creds: pc.creds, savedAt: new Date(), savedBy: 'owner-link' };
-      const test = await testKey(k, (bd && bd.fields.discountCode) || '');
+      const test = await testKey(k, (bd && bd.fields.discountCode) || '', env);
       if (test.ok !== true) return { error: test.err || 'החיבור לא הצליח – בדקו שהעתקתם את שני הקודים במלואם ושההרשאה היא "קריאה"' };
       await firestorePatch(env, at, 'shopKeys/' + biz, k);
       const f = { key: { platform: 'woocommerce', hint: pc.hint, savedAt: new Date(), partial: false }, test, updatedAt: new Date(), updatedBy: 'owner-link' };
@@ -514,7 +517,7 @@ export async function handleOnlineShops(body, env) {
     const base = (cur && cur.fields.base) || (siteUrl(biz.website) && new URL(siteUrl(biz.website)).origin);
     if (!base && platform !== 'shopify') return { error: 'קודם לסרוק את האתר' };
     const k = { platform, base, creds: p.creds, savedAt: new Date(), savedBy: by };
-    const test = p.partial ? { ok: null, note: 'נשמרה רק כתובת החנות – ממתין ל-Client ID ו-Client secret', at: new Date().toISOString() } : await testKey(k, biz.discountCode || '');
+    const test = p.partial ? { ok: null, note: 'נשמרה רק כתובת החנות – ממתין ל-Client ID ו-Client secret', at: new Date().toISOString() } : await testKey(k, biz.discountCode || '', env);
     await firestorePatch(env, at, 'shopKeys/' + bizId, k);
     const key = { platform, hint: p.hint, savedAt: new Date(), partial: !!p.partial };
     const f = { key, test, updatedAt: new Date(), updatedBy: by };
@@ -525,7 +528,7 @@ export async function handleOnlineShops(body, env) {
   if (action === 'test') {
     const kd = await firestoreGetDoc(env, at, 'shopKeys/' + bizId);
     if (!kd) return { error: 'no_key' };
-    const test = await testKey(kd.fields, biz.discountCode || '');
+    const test = await testKey(kd.fields, biz.discountCode || '', env);
     await firestorePatch(env, at, path, { test });
     return { ok: true, test };
   }
