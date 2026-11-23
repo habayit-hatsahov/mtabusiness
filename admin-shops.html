@@ -188,6 +188,8 @@ const isShop = r => { const s = shopOf(r); if (s.isShop === true || s.isShop ===
 const codeOnline = r => !!r.code && r.redeem.includes('online');
 // §796טז – "לטיפול" נשאר עד שבעל העסק מילא את הקישור (ownerSetAt; השמירה בקישור מחייבת חיבור אתר). אין הוצאה ידנית.
 const inFocus = r => !!(shopOf(r).focus && !shopOf(r).ownerSetAt);
+// §796יז – "הושלם – מחכה לאישור": בעל העסק מילא את הקישור ועוד לא סימנת "מאושר לעלות". לקבוצה הרגילה רק אחרי האישור.
+const inDone = r => !!(shopOf(r).ownerSetAt && !shopOf(r).showProducts);
 const groupOf = r => !r.shop || !r.shop.scannedAt ? 'unscanned' : !isShop(r) ? 'rest' : codeOnline(r) ? 'g1' : 'g2';
 const hasKey = r => r.legacyKey || !!(shopOf(r).key);
 const waPhone = p => { let d = String(p || '').replace(/\D/g, ''); if (d.startsWith('0')) d = '972' + d.slice(1); return d.length >= 11 ? d : ''; };
@@ -374,16 +376,17 @@ function render() {
   const q = Q.trim().toLowerCase();
   const vis = ROWS.filter(r => passF(r)).filter(r => !q || r.name.toLowerCase().includes(q) || String(r.website).toLowerCase().includes(q));
   const by = { g1: [], g2: [], rest: [], unscanned: [] };
-  const focus = vis.filter(inFocus);
-  vis.filter(r => !inFocus(r)).forEach(r => by[groupOf(r)].push(r));
+  const focus = vis.filter(inFocus), done = vis.filter(inDone);
+  vis.filter(r => !inFocus(r) && !inDone(r)).forEach(r => by[groupOf(r)].push(r));
   const sortG = a => a.sort((x, y) => (hasKey(y) - hasKey(x)) || ((shopOf(y).products || 0) - (shopOf(x).products || 0)));
   sortG(by.g1); sortG(by.g2);
   const all = { g1: ROWS.filter(r => groupOf(r) === 'g1'), g2: ROWS.filter(r => groupOf(r) === 'g2') };
   $('kpis').innerHTML = [[all.g1.length, 'קבוצה 1'], [all.g2.length, 'קבוצה 2'], [all.g1.filter(hasKey).length, 'עם פרטי אינטגרציה'],
-    [ROWS.filter(inFocus).length, 'לטיפול'], [ROWS.filter(r => shopOf(r).showProducts).length, 'מאושרים לעלות'], [ROWS.filter(r => groupOf(r) === 'unscanned').length, 'לא נסרקו']]
+    [ROWS.filter(inFocus).length, 'לטיפול'], [ROWS.filter(inDone).length, 'הושלם – לאישור'], [ROWS.filter(r => shopOf(r).showProducts).length, 'מאושרים לעלות'], [ROWS.filter(r => groupOf(r) === 'unscanned').length, 'לא נסרקו']]
     .map(([n, l]) => `<div class="kpi"><b>${n}</b><span>${l}</span></div>`).join('');
   let h = '';
-  if (focus.length) h += `<div class="grp" style="border-color:var(--cta);box-shadow:0 0 0 2px #FFE9A3"><div class="grp-h" style="background:#FFF8D6"><h2>📞 לטיפול <span class="cnt">${focus.length}</span></h2><div class="why">העסקים שסימנת לטיפול. כל עסק נשאר כאן <b>עד שבעל העסק ממלא את הקישור</b> (מחבר את האתר ושומר את הבחירה) – ואז עובר לבד לקבוצה שלו.</div></div>${focus.map(r => rowHtml(r, groupOf(r) === 'g2' ? 'g2' : 'g1')).join('')}</div>`;
+  if (focus.length) h += `<div class="grp" style="border-color:var(--cta);box-shadow:0 0 0 2px #FFE9A3"><div class="grp-h" style="background:#FFF8D6"><h2>📞 לטיפול <span class="cnt">${focus.length}</span></h2><div class="why">העסקים שסימנת לטיפול. כל עסק נשאר כאן <b>עד שבעל העסק ממלא את הקישור</b> (מחבר את האתר ושומר את הבחירה) – ואז עובר ל"הושלם – מחכה לאישור שלך".</div></div>${focus.map(r => rowHtml(r, groupOf(r) === 'g2' ? 'g2' : 'g1')).join('')}</div>`;
+  if (done.length) h += `<div class="grp" style="border-color:#ABEFC6"><div class="grp-h" style="background:var(--green-bg)"><h2>✓ הושלם – מחכה לאישור שלך <span class="cnt">${done.length}</span></h2><div class="why">בעל העסק מילא את הקישור – לא צריך לטפל בו יותר. נשאר רק לבדוק ("👀 תצוגה") ולסמן <b>"מאושר לעלות לכרטיס"</b> – ואז הוא עובר לקבוצה הרגילה.</div></div>${done.map(r => rowHtml(r, groupOf(r) === 'g2' ? 'g2' : 'g1')).join('')}</div>`;
   if (by.unscanned.length) h += `<div class="grp"><div class="grp-h"><h2>לא נסרקו עדיין <span class="cnt">${by.unscanned.length}</span></h2><div class="why">לחיצה על "סריקת האתרים" למעלה בודקת כל אתר: איזו פלטפורמה, כמה מוצרים, כמה במבצע. עד שהסריקה לא רצה, לא ידוע מי חנות.</div></div>${by.unscanned.map(restRow).join('')}</div>`;
   for (const g of ['g1', 'g2']) {
     const G = GROUPS[g];
