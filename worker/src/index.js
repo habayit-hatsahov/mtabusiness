@@ -39,7 +39,7 @@ import { runBizGeo } from './bizgeo.js';   // §762ב
 import { noteMemberToken, runStuckLogins } from './stucklogin.js';   // §769
 import { handleBenefitSales, handleBenefitShop, refreshBenefitShops } from './benefitsales.js';   // §775
 import { runScheduledJobs } from './schedule.js';   // §775
-import { handleOnlineShops } from './onlineshops.js';   // §796
+import { handleOnlineShops, handleBizShop } from './onlineshops.js';   // §796
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -295,6 +295,7 @@ export default {
       // ואינה נוגעת ב-`recordAttempt`.
       // §775 — החולצות של העסק לגיליון ההטבה בקרוסלה (ציבורי, במטמון 6 שעות)
       if (request.method === 'GET' && url.pathname === '/benefit-shop') return handleBenefitShop(url, ctx, env);
+      if (request.method === 'GET' && url.pathname === '/biz-shop') return handleBizShop(url, env);   // §796ד
       if (request.method === 'GET' && url.pathname === '/ping') {
         return json({ ok: true }, env, request);
       }

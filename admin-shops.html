@@ -247,6 +247,8 @@ function rowHtml(r, g) {
       <label class="chk${s.showProducts ? ' on' : ''}"><input type="checkbox" data-a="show" data-id="${id}"${s.showProducts ? ' checked' : ''}> מאושר לעלות לכרטיס</label>
       <button data-a="msg" data-id="${id}">💬 הודעה לבעל העסק</button>
       ${g === 'g1' ? `<button data-a="key" data-id="${id}">🔑 הזנת פרטי אינטגרציה</button>` : ''}
+      ${s.platform === 'woocommerce' && s.open ? `<button data-a="shop" data-id="${id}">🛍️ מה מוצג בכרטיס${s.shopMode === 'manual' ? ' · ידני' : ''}${(s.pinned || []).length ? ' · ⭐' + s.pinned.length : ''}</button>
+      <a class="btn" href="biz-shop-demo.html?biz=${id}" target="_blank" rel="noopener">👀 תצוגה</a>` : ''}
       <button data-a="note" data-id="${id}">📝 הערה${s.note ? ' •' : ''}</button>
       <button data-a="rescan" data-id="${id}">↻ סריקה</button>
       <button data-a="notshop" data-id="${id}" title="להוציא מהרשימה">לא חנות</button>
@@ -258,10 +260,52 @@ function rowHtml(r, g) {
       <span style="font-size:12px;color:var(--muted)">הוואטסאפ נפתח אצלך – השליחה בלחיצה שלך. אחרי שליחה לסמן "נשלחה הודעה".</span></div>
     </div>
     <div class="panel${o === 'key' ? ' open' : ''}" id="pk_${id}">${g === 'g1' ? keyForm(r) : ''}</div>
+    <div class="panel${o === 'shop' ? ' open' : ''}" id="ps_${id}">${o === 'shop' ? shopPanel(r) : ''}</div>
     <div class="panel${o === 'note' ? ' open' : ''}" id="pn_${id}"><h4>📝 הערה פנימית</h4><textarea id="note_${id}" rows="3">${esc(s.note || '')}</textarea>
       <div class="r-ctl"><button class="pri" data-a="saveNote" data-id="${id}">שמירה</button></div></div>
   </div>`;
 }
+// ── §796ד – "מה מוצג בכרטיס": אוטומטי / 5 קטגוריות ידניות + עד 12 מוצרים ראשונים ──
+const SH = {};
+function shState(r) {
+  if (!SH[r.id]) { const s = shopOf(r); SH[r.id] = { mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: (s.shopCats || []).slice(), pinned: (s.pinned || []).slice(), all: null, err: '', q: '', res: null }; }
+  return SH[r.id];
+}
+function shopPanel(r) {
+  const S = shState(r), id = r.id;
+  const catList = S.all == null ? '<div class="res info">טוען את הקטגוריות מהאתר…</div>'
+    : S.all.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">${S.all.map(c => { const n = S.cats.findIndex(x => x.id === c.id);
+        return `<label class="pill${n >= 0 ? ' ok' : ''}" style="cursor:pointer;padding:5px 10px"><input type="checkbox" data-a="shcat" data-id="${id}" data-c="${c.id}" data-n="${esc(c.n)}"${n >= 0 ? ' checked' : ''} style="display:none">${n >= 0 ? `<b>${n + 1}.</b> ` : ''}${esc(c.n)} <span style="opacity:.6">(${fmt(c.c)})</span></label>`; }).join('')}</div>
+        <div class="hint">לחיצה מסמנת – הסדר כמו סדר הלחיצות (1 = הלשונית הראשונה). עד 5.</div>` : '<div class="res bad">לא נמצאו קטגוריות באתר</div>';
+  return `<h4>🛍️ מה מוצג בכרטיס העסק</h4>
+    <div class="hint">אוטומטי: "הכי נמכרים" + 3 הקטגוריות שהכי נמכרות + מבצעים/אאוטלט אם יש. 12 מוצרים בכל לשונית, הנמכרים קודם (לפי מונה המכירות של WooCommerce). מוצרים ש"⭐ ראשונים" כאן ומוצרים שבעל העסק סימן בכוכב באתר – בלשונית "מומלצים" ראשונה.</div>
+    <div class="r-ctl" style="margin-top:0">
+      <label class="chk${S.mode === 'auto' ? ' on' : ''}"><input type="radio" name="shm_${id}" data-a="shmode" data-id="${id}" value="auto"${S.mode === 'auto' ? ' checked' : ''}> אוטומטי</label>
+      <label class="chk${S.mode === 'manual' ? ' on' : ''}"><input type="radio" name="shm_${id}" data-a="shmode" data-id="${id}" value="manual"${S.mode === 'manual' ? ' checked' : ''}> 5 קטגוריות לבחירה</label>
+    </div>
+    ${S.mode === 'manual' ? `<div style="margin-top:10px"><b style="font-size:13px;color:var(--accent)">הקטגוריות (${S.cats.length}/5)</b>${catList}</div>` : ''}
+    <div style="margin-top:12px"><b style="font-size:13px;color:var(--accent)">⭐ מוצרים ראשונים (${S.pinned.length}/12)</b>
+      ${S.pinned.length ? `<div style="display:grid;gap:4px;margin:6px 0">${S.pinned.map((p, i) => `<div style="display:flex;gap:8px;align-items:center;font-size:13px">
+        <b style="width:18px">${i + 1}.</b>${p.img ? `<img src="${esc(p.img)}" style="width:32px;height:32px;object-fit:cover;border-radius:6px">` : ''}<span style="flex:1">${esc(p.n)}</span>
+        ${i ? `<button data-a="pinup" data-id="${id}" data-i="${i}" title="למעלה">↑</button>` : ''}<button class="del" data-a="unpin" data-id="${id}" data-i="${i}">✕</button></div>`).join('')}</div>` : '<div class="hint" style="margin:4px 0">אין – הלשונית "מומלצים" תציג רק את מה שבעל העסק סימן בכוכב באתר (אם סימן).</div>'}
+      ${S.pinned.length < 12 ? `<div class="r-ctl" style="margin-top:6px"><input id="shq_${id}" placeholder="חיפוש מוצר באתר…" value="${esc(S.q)}" style="flex:1;min-width:160px"><button data-a="shsearch" data-id="${id}">חיפוש</button></div>
+      ${S.res ? (S.res.length ? `<div style="display:grid;gap:4px;margin-top:6px">${S.res.map((p, i) => `<div style="display:flex;gap:8px;align-items:center;font-size:13px">
+        <img src="${esc(p.img)}" style="width:32px;height:32px;object-fit:cover;border-radius:6px"><span style="flex:1">${esc(p.n)} · ${fmt(p.p)} ₪</span>
+        ${S.pinned.some(x => x.id === p.id) ? '<span class="pill ok">נבחר</span>' : `<button data-a="pin" data-id="${id}" data-i="${i}">+ הוספה</button>`}</div>`).join('')}</div>` : '<div class="res info">לא נמצאו מוצרים</div>') : ''}` : ''}
+    </div>
+    ${S.err ? `<div class="res bad">${esc(S.err)}</div>` : ''}
+    <div class="r-ctl" style="margin-top:12px"><button class="pri" data-a="shsave" data-id="${id}">שמירה</button>
+      <a class="btn" href="biz-shop-demo.html?biz=${id}" target="_blank" rel="noopener">👀 תצוגה</a>
+      <span style="font-size:12px;color:var(--muted)">השמירה בונה מחדש את הכרטיס מיד (כמה שניות).</span></div>`;
+}
+function shRepaint(id) { const r = ROWS.find(x => x.id === id), el = $('ps_' + id); if (r && el) el.innerHTML = shopPanel(r); }
+async function shLoadCats(id) {
+  const S = SH[id]; if (S.all != null) return;
+  let res; try { res = await api({ action: 'cats', bizId: id }); } catch (e) { res = { error: e.message || String(e) }; }
+  if (res.ok) S.all = res.cats; else { S.all = []; S.err = 'טעינת הקטגוריות נכשלה: ' + (res.error || ''); }
+  shRepaint(id);
+}
+
 function restRow(r) {
   const s = shopOf(r);
   return `<div class="row"><div class="r-top"><span class="r-name">${esc(r.name)}</span>
@@ -314,6 +358,7 @@ $('scanAll').addEventListener('click', async () => {
   btn.disabled = false; render(); toast('הסריקה הסתיימה');
 });
 $('q').addEventListener('input', e => { Q = e.target.value; render(); });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id && e.target.id.startsWith('shq_')) { e.preventDefault(); const b = document.querySelector(`[data-a="shsearch"][data-id="${e.target.id.slice(4)}"]`); if (b) b.click(); } });
 // §796ב – הדוגמה של Glory: הקישור נכנס גם לנוסחי הוואטסאפ ({דוגמה})
 const DEMO_URL = 'https://yellowzone.co.il/biz-shop-demo.html';
 $('copyDemo').addEventListener('click', async () => { try { await navigator.clipboard.writeText(DEMO_URL); toast('הקישור לדוגמה הועתק'); } catch (e) { prompt('העתיקו את הקישור:', DEMO_URL); } });
@@ -322,19 +367,48 @@ document.addEventListener('change', async e => {
   const t = e.target, a = t.dataset && t.dataset.a, id = t.dataset && t.dataset.id;
   if (!a) return;
   if (a === 'stage') { const v = t.value; const r = await api({ action: 'set', bizId: id, stage: v }); if (r.ok) { patchRow(id, { stage: v }); toast('השלב עודכן'); } else toast('שגיאה: ' + r.error); }
+  if (a === 'shmode') { const S = SH[id]; S.mode = t.value; shRepaint(id); if (S.mode === 'manual') shLoadCats(id); return; }
+  if (a === 'shcat') {
+    const S = SH[id], c = +t.dataset.c, n = S.cats.findIndex(x => x.id === c);
+    if (n >= 0) S.cats.splice(n, 1); else if (S.cats.length < 5) S.cats.push({ id: c, n: t.dataset.n }); else toast('עד 5 קטגוריות');
+    return shRepaint(id);
+  }
   if (a === 'show') { const v = t.checked; const r = await api({ action: 'set', bizId: id, showProducts: v }); if (r.ok) { patchRow(id, { showProducts: v }); render(); toast(v ? 'מסומן: מאושר לעלות לכרטיס' : 'הסימון בוטל'); } else { t.checked = !v; toast('שגיאה: ' + r.error); } }
 });
 document.addEventListener('click', async e => {
   const b = e.target.closest('button[data-a]'); if (!b) return;
   const a = b.dataset.a, id = b.dataset.id, r = ROWS.find(x => x.id === id);
-  const toggle = p => { OPEN[id] = OPEN[id] === p ? '' : p; ['msg', 'key', 'note'].forEach(k => { const el = $(({ msg: 'pm_', key: 'pk_', note: 'pn_' })[k] + id); if (el) el.classList.toggle('open', OPEN[id] === k); }); };
+  const toggle = p => { OPEN[id] = OPEN[id] === p ? '' : p; ['msg', 'key', 'note', 'shop'].forEach(k => { const el = $(({ msg: 'pm_', key: 'pk_', note: 'pn_', shop: 'ps_' })[k] + id); if (el) el.classList.toggle('open', OPEN[id] === k); }); };
   if (a === 'msg' || a === 'key' || a === 'note') return toggle(a);
+  if (a === 'shop') { toggle('shop'); if (OPEN[id] === 'shop') { const S = shState(r); shRepaint(id); if (S.mode === 'manual') shLoadCats(id); } return; }
+  if (a === 'pin' || a === 'unpin' || a === 'pinup') {
+    const S = SH[id], i = +b.dataset.i;
+    if (a === 'pin' && S.res[i] && S.pinned.length < 12) S.pinned.push({ id: S.res[i].id, n: S.res[i].n, img: S.res[i].img });
+    if (a === 'unpin') S.pinned.splice(i, 1);
+    if (a === 'pinup' && i > 0) S.pinned.splice(i - 1, 0, S.pinned.splice(i, 1)[0]);
+    return shRepaint(id);
+  }
   if (a === 'copy') { try { await navigator.clipboard.writeText($('msg_' + id).value); toast('הנוסח הועתק'); } catch (er) { toast('ההעתקה נחסמה'); } return; }
   if (a === 'wa') { const ph = waPhone(r.phone); if (ph) window.open('https://wa.me/' + ph + '?text=' + encodeURIComponent($('msg_' + id).value), '_blank'); return; }
   b.disabled = true;
   try {
     if (a === 'rescan') { await scanOne(id); render(); toast('נסרק'); }
     else if (a === 'notshop' || a === 'isshop') { const v = a === 'isshop'; const res = await api({ action: 'set', bizId: id, isShop: v }); if (!res.ok) throw new Error(res.error); patchRow(id, { isShop: v }); render(); toast(v ? 'עבר לרשימת החנויות' : 'הוצא מהרשימה'); }
+    else if (a === 'shsearch') {
+      const S = SH[id]; S.q = ($('shq_' + id) || {}).value || ''; S.err = '';
+      const res = await api({ action: 'searchProducts', bizId: id, q: S.q });
+      if (res.ok) S.res = res.products; else S.err = res.error || 'נכשל';
+      shRepaint(id);
+    }
+    else if (a === 'shsave') {
+      const S = SH[id];
+      if (S.mode === 'manual' && !S.cats.length) { S.err = 'במצב ידני צריך לבחור לפחות קטגוריה אחת'; return shRepaint(id); }
+      S.err = '';
+      const res = await api({ action: 'set', bizId: id, shopMode: S.mode, shopCats: S.cats, pinned: S.pinned });
+      if (!res.ok) throw new Error(res.error);
+      patchRow(id, { shopMode: S.mode, shopCats: S.cats.slice(), pinned: S.pinned.slice() });
+      render(); toast(res.rebuild ? 'נשמר, אבל הבנייה נכשלה: ' + res.rebuild : 'נשמר – הכרטיס נבנה מחדש');
+    }
     else if (a === 'saveNote') { const v = $('note_' + id).value; const res = await api({ action: 'set', bizId: id, note: v }); if (!res.ok) throw new Error(res.error); patchRow(id, { note: v }); OPEN[id] = ''; render(); toast('ההערה נשמרה'); }
     else if (a === 'save') {
       const s = shopOf(r), kind = keyKind(s.platform), v = x => ($(x + id) || {}).value || '';

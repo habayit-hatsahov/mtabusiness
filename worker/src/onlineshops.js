@@ -171,6 +171,104 @@ function parseCreds(platform, c) {
   return { creds: { text }, hint: tail(text) };
 }
 
+// ══ §796ד — "מה יש באתר" לכל עסק WooCommerce: לשוניות + מוצרים (רמי, 23.11) ═══════════════════════════
+// עד 5 לשוניות קטגוריה, 12 מוצרים בכל אחת (+ "עוד N באתר"). ⭐ מומלצים ראשונה כשיש (מוצרים שנבחרו ידנית
+// ב-admin-shops + מוצרים שבעל העסק סימן בכוכב באתר). שני מצבים:
+//   • auto – "הכי נמכרים" + 3 הקטגוריות שהכי מופיעות בין 100 הנמכרים + קטגוריית מבצעים/אאוטלט אם יש.
+//   • manual – 5 הקטגוריות שבעל העסק ביקש, בסדר שלו (shopCats).
+// "הכי נמכרים" = orderby=popularity של WooCommerce עצמו (מונה המכירות של כל מוצר, מתחילת הדרך).
+// מידע ציבורי (Store API, בלי מפתח). נשמר ב-KV לכל עסק, מתרענן כל 6 שעות ומתבטל בשמירת הגדרות.
+const SHOP_MAX = 12, TABS_MAX = 5, BIZSHOP_TTL = 6 * 3600 * 1000;
+const JUNK_CAT = /^(upsell|uncategorized|ללא קטגוריה|כללי|all|הכל|כל המוצרים)$/i;
+const sapi = (base, q) => getJson(`${base}/wp-json/wc/store/v1/${q}`).then(x => x.j);
+const prodOut = p => {
+  const pr = p.prices || {}, div = Math.pow(10, pr.currency_minor_unit || 0);
+  return { id: p.id, n: dec(p.name), p: Number(pr.price) / div, w: Number(pr.regular_price) / div, img: (p.images && p.images[0] && (p.images[0].thumbnail || p.images[0].src)) || '', url: p.permalink };
+};
+const usable = p => p && p.is_in_stock !== false && p.images && p.images[0];
+async function wooTab(base, q) {
+  const a = await sapi(base, `products?per_page=30&orderby=popularity&order=desc&${q}`);
+  return (Array.isArray(a) ? a : []).filter(usable).slice(0, SHOP_MAX).map(prodOut);
+}
+export async function buildBizShop(shop) {
+  const base = shop.base;
+  const auto = !(shop.shopMode === 'manual' && (shop.shopCats || []).length);
+  const pinnedIds = (shop.pinned || []).map(x => x.id).filter(Number.isFinite).slice(0, SHOP_MAX);
+  const [catsR, topR, featR, pinR] = await Promise.all([
+    sapi(base, 'products/categories?per_page=100'),
+    auto ? sapi(base, 'products?per_page=100&orderby=popularity&order=desc') : null,
+    sapi(base, 'products?featured=true&per_page=30').catch(() => []),
+    pinnedIds.length ? sapi(base, `products?include=${pinnedIds.join(',')}&per_page=${pinnedIds.length}`).catch(() => []) : null,
+  ]);
+  const cats = catsR || [];
+  const total = shop.products || 0;
+  const cat = id => cats.find(c => c.id === id);
+  const tabs = [];
+  // ⭐ מומלצים: ידני (pinned, לפי הסדר שנבחר) ואחריו הכוכב של בעל העסק
+  let rec = [];
+  if (pinR) {
+    const by = Object.fromEntries((pinR || []).filter(usable).map(p => [p.id, prodOut(p)]));
+    rec = pinnedIds.map(id => by[id]).filter(Boolean);
+  }
+  for (const p of (featR || []).filter(usable)) if (rec.length < SHOP_MAX && !rec.some(r => r.id === p.id)) rec.push(prodOut(p));
+  if (rec.length) tabs.push({ t: 'מומלצים', star: true, products: rec, url: base });
+  let chosen;
+  if (!auto) {
+    chosen = shop.shopCats.map(c => cat(c.id)).filter(Boolean).slice(0, TABS_MAX);
+  } else {
+    const top = topR;
+    tabs.push({ t: 'הכי נמכרים', products: (top || []).filter(usable).slice(0, SHOP_MAX).map(prodOut), url: base, count: total });
+    const freq = {};
+    for (const p of top || []) for (const c of p.categories || []) freq[c.id] = (freq[c.id] || 0) + 1;
+    const ok = c => c && c.count >= 3 && !JUNK_CAT.test(dec(c.name).trim()) && !SALE_RX.test(dec(c.name)) && !(total && c.count > total * 0.8);
+    chosen = Object.keys(freq).map(Number).map(cat).filter(ok).sort((a, b) => freq[b.id] - freq[a.id] || b.count - a.count).slice(0, 3);
+    if (chosen.length < 3) chosen.push(...cats.filter(c => ok(c) && !chosen.includes(c)).sort((a, b) => b.count - a.count).slice(0, 3 - chosen.length));
+    const sale = cats.filter(c => c.count >= 3 && SALE_RX.test(dec(c.name)) && !JUNK_CAT.test(dec(c.name))).sort((a, b) => b.count - a.count)[0];
+    if (sale) chosen.push(Object.assign({}, sale, { sale: true }));
+  }
+  // במקביל (ברצף זה לקח ~15 שנ' מול האתרים – נמדד 23.11)
+  const lists = await Promise.all(chosen.map(c => wooTab(base, 'category=' + c.id).catch(() => [])));
+  chosen.forEach((c, i) => {
+    if (lists[i].length >= 3) tabs.push({ t: dec(c.name), products: lists[i], url: c.permalink || base, count: c.count, sale: !!c.sale || SALE_RX.test(dec(c.name)) });
+  });
+  const deal = tabs.find(t => t.sale);
+  return { base, total, mode: shop.shopMode === 'manual' ? 'manual' : 'auto', tabs, deal: deal ? { t: deal.t, count: deal.count } : null, at: new Date().toISOString() };
+}
+const bizShopKey = id => 'bizShop:' + id;
+async function bizShopFresh(env, at, id, force) {
+  if (!force) {
+    const c = await env.RATE_LIMIT_KV.get(bizShopKey(id), 'json');
+    if (c && c.body && Date.now() - c.t < BIZSHOP_TTL) return c.body;
+  }
+  let sd = await firestoreGetDoc(env, at, 'onlineShops/' + id);
+  // עסק שעוד לא נסרק (רמי לא הריץ "סריקת האתרים") – נסרק כאן פעם אחת, כדי שקישור הדוגמה לא ייצא ריק
+  if (!sd) {
+    const bd = await firestoreGetDoc(env, at, 'businesses/' + id);
+    if (!bd || bd.fields.status !== 'approved' || !bd.fields.website) throw new Error('not_open_woo');
+    const s = await scanSite(bd.fields.website);
+    const rec = { platform: s.platform, base: s.base || null, finalUrl: s.finalUrl || null, open: !!s.open, products: s.products ?? null, onSale: s.onSale ?? null,
+      allOnSale: !!s.allOnSale, more: !!s.more, saleCats: s.saleCats || [], scanErr: s.scanErr || null, scannedAt: new Date() };
+    await firestorePatch(env, at, 'onlineShops/' + id, rec);
+    sd = { fields: rec };
+  }
+  if (sd.fields.platform !== 'woocommerce' || !sd.fields.open || !sd.fields.base) throw new Error('not_open_woo');
+  const body = JSON.stringify(await buildBizShop(sd.fields));
+  await env.RATE_LIMIT_KV.put(bizShopKey(id), JSON.stringify({ t: Date.now(), body }));
+  return body;
+}
+// GET /biz-shop?biz=<id> – ציבורי (אותו מידע שבאתר של העסק). ל-biz-shop-demo.html ובהמשך לכרטיס העסק.
+export async function handleBizShop(url, env) {
+  const id = url.searchParams.get('biz') || '';
+  const H = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=600' };
+  if (!/^[A-Za-z0-9_-]{4,64}$/.test(id)) return new Response('{"error":"bad_biz"}', { status: 400, headers: H });
+  try {
+    return new Response(await bizShopFresh(env, await getGoogleAccessToken(env), id, false), { headers: H });
+  } catch (e) {
+    const m = err(e);
+    return new Response(JSON.stringify({ error: m === 'not_open_woo' ? m : 'shop_unavailable' }), { status: m === 'not_open_woo' ? 404 : 502, headers: H });
+  }
+}
+
 const pickBiz = (id, f) => ({
   id, name: f.name || '', website: f.website || '', status: f.status || '',
   code: f.discountCode || '', redeem: [].concat(f.discountRedeemMode || []), discountText: f.discountText || '',
@@ -210,10 +308,34 @@ export async function handleOnlineShops(body, env) {
     if ('isShop' in body) f.isShop = body.isShop === true ? true : body.isShop === false ? false : null;
     if ('showProducts' in body) f.showProducts = body.showProducts === true;
     if ('note' in body) f.note = String(body.note || '').slice(0, 1000);
+    // §796ד – מה מוצג בכרטיס: אוטומטי / 5 קטגוריות ידניות / מוצרים ראשונים
+    if ('shopMode' in body) f.shopMode = body.shopMode === 'manual' ? 'manual' : 'auto';
+    if ('shopCats' in body) f.shopCats = [].concat(body.shopCats || []).slice(0, TABS_MAX)
+      .map(c => ({ id: Math.trunc(+c.id), n: String(c.n || '').slice(0, 80) })).filter(c => c.id > 0);
+    if ('pinned' in body) f.pinned = [].concat(body.pinned || []).slice(0, SHOP_MAX)
+      .map(p => ({ id: Math.trunc(+p.id), n: String(p.n || '').slice(0, 120), img: String(p.img || '').slice(0, 400) })).filter(p => p.id > 0);
     if (!Object.keys(f).length) return { error: 'nothing' };
     f.updatedAt = new Date(); f.updatedBy = by;
     await firestorePatch(env, at, path, f);
+    if ('shopMode' in f || 'shopCats' in f || 'pinned' in f) {
+      try { await bizShopFresh(env, at, bizId, true); } catch (e) { return { ok: true, rebuild: err(e) }; }
+    }
     return { ok: true };
+  }
+  if (action === 'cats' || action === 'searchProducts') {
+    const sd = await firestoreGetDoc(env, at, path);
+    const base = sd && sd.fields.base;
+    if (!base || sd.fields.platform !== 'woocommerce') return { error: 'רק לחנות WooCommerce שנסרקה' };
+    try {
+      if (action === 'cats') {
+        const cs = await sapi(base, 'products/categories?per_page=100');
+        return { ok: true, cats: (cs || []).filter(c => c.count > 0 && !JUNK_CAT.test(dec(c.name).trim())).map(c => ({ id: c.id, n: dec(c.name), c: c.count, parent: c.parent || 0 })).sort((a, b) => b.c - a.c) };
+      }
+      const q = String(body.q || '').trim().slice(0, 60);
+      if (q.length < 2) return { ok: true, products: [] };
+      const a = await sapi(base, 'products?per_page=12&search=' + encodeURIComponent(q));
+      return { ok: true, products: (a || []).filter(usable).map(prodOut) };
+    } catch (e) { return { error: 'האתר לא ענה (' + err(e) + ')' }; }
   }
   if (action === 'saveKey') {
     const cur = await firestoreGetDoc(env, at, path);
