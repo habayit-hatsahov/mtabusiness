@@ -114,7 +114,8 @@ export async function testWix(env, k, code) {
     if (/_40[13]$/.test(m)) return { ok: false, keyOk: true, err: 'טוקן תקין, אבל אין הרשאה לקריאת הזמנות (Read Orders)', at };
     return { ok: false, keyOk: true, err: 'קריאת ההזמנות נכשלה (' + m.slice(0, 50) + ')', at };
   }
-  return { ok: true, keyOk: true, found: usage > 0, usage, sum: Math.round(sum), currency, scanned, at };
+  // found תמיד true: ב-Wix סופרים מתוך ההזמנות, אז 0 = "עוד לא נוצל", לא "הקוד לא קיים" (כך admin-shops מציג)
+  return { ok: true, keyOk: true, found: true, usage, sum: Math.round(sum), currency, scanned, at };
 }
 
 // ── POST /wix-webhook — Wix שולח JWT בגוף הבקשה (text) ─────────────────────────────────────────────
