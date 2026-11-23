@@ -233,6 +233,8 @@ export async function buildBizShop(shop) {
   chosen.forEach((c, i) => {
     if (lists[i].length >= 3) tabs.push({ t: dec(c.name), products: lists[i], url: c.permalink || base, count: c.count, sale: !!c.sale || SALE_RX.test(dec(c.name)) });
   });
+  // (23.11) רמי: "תוסיף עד 6" – סה"כ עד 6 לשוניות: ⭐ מומלצים + עד 5 (הכי נמכרים + 3 קטגוריות + מבצעים, או 5 ידניות)
+  if (tabs.length > 6) tabs.length = 6;
   const deal = tabs.find(t => t.sale);
   return { base, total, mode: shop.shopMode === 'manual' ? 'manual' : 'auto', tabs, deal: deal ? { t: deal.t, count: deal.count } : null, at: new Date().toISOString() };
 }
