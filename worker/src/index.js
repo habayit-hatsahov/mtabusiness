@@ -39,7 +39,7 @@ import { runBizGeo } from './bizgeo.js';   // §762ב
 import { noteMemberToken, runStuckLogins } from './stucklogin.js';   // §769
 import { handleBenefitSales, handleBenefitShop, refreshBenefitShops } from './benefitsales.js';   // §775
 import { runScheduledJobs } from './schedule.js';   // §775
-import { handleOnlineShops, handleBizShop, handleBizShopList, handleShopOwner } from './onlineshops.js';   // §796
+import { handleOnlineShops, handleBizShop, handleBizShopList, handleShopOwner, handleBizShopLink } from './onlineshops.js';   // §796
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -252,6 +252,19 @@ export default {
       // §796 — עסקים אונליין: סריקת החנות + פרטי אינטגרציה לקופון (admin-shops.html). מאומת כמנהל.
       if (request.method === 'POST' && url.pathname === '/admin-shops') {
         return json(await handleOnlineShops(await request.json(), env), env, request);
+      }
+      // §796ח — מהאזור האישי של העסק: הקישור החתום ל-shop-setup.html. אותו אימות בעלים כמו /biz-weekly-stats.
+      if (request.method === 'POST' && url.pathname === '/biz-shop-link') {
+        const ownerBizId = async ({ accessToken: bizToken, idToken, bizId: reqBizId }) => {
+          const at = await getGoogleAccessToken(env);
+          if (bizToken) return bizIdFromToken(env, at, bizToken);
+          if (!idToken || !reqBizId) return null;
+          let uid = null;
+          try { uid = await uidFromIdToken(env, idToken); } catch (e) { return null; }
+          const b = await firestoreGetDoc(env, at, `businesses/${encodeURIComponent(reqBizId)}`);
+          return b && b.fields.ownerMemberId === uid ? b.id : null;
+        };
+        return json(await handleBizShopLink(await request.json(), env, ownerBizId), env, request);
       }
       // §796ו — בעל העסק בוחר מה מוצג בכרטיס (shop-setup.html), מאומת בחתימת הקישור
       if (request.method === 'POST' && url.pathname === '/shop-owner') {

@@ -242,6 +242,16 @@ function rowHtml(r, g) {
       ${g === 'g1' ? keyPill(r) : ''}
     </div>
     <div class="r-facts">${facts(r)}</div>
+    ${r.setupUrl ? `<div class="r-ctl" style="background:#FFF8D6;border:1px solid #FFE9A3;border-radius:10px;padding:6px 8px">
+      <span style="font-size:12.5px;font-weight:800;color:var(--accent)">🔗 בחירת בעל העסק:</span>
+      ${s.ownerSetAt ? `<span class="pill ok">✓ בחר ${esc(new Date(s.ownerSetAt).toLocaleDateString('he-IL'))}${s.shopMode === 'manual' ? ' · 5 קטגוריות' : ' · אוטומטי'}${(s.pinned || []).length ? ' · ⭐' + s.pinned.length : ''}</span>` : '<span class="pill">עוד לא בחר</span>'}
+      <a class="r-site" href="${esc(r.setupUrl)}" target="_blank" rel="noopener" style="direction:ltr">${esc(r.setupUrl.replace('https://', '').slice(0, 46))}…</a>
+      <button data-a="slcopy" data-id="${id}">העתקת הקישור</button>
+      <button class="wa" data-a="slwa" data-id="${id}"${ph ? '' : ' disabled title="אין מספר טלפון בעסק"'}>הודעה בוואטסאפ</button>
+      <button data-a="slmsg" data-id="${id}">הנוסח</button>
+    </div>
+    <div class="panel${o === 'slmsg' ? ' open' : ''}" id="pl_${id}"><h4>💬 הודעה לבעל העסק – בחירת מה יוצג בכרטיס</h4><textarea class="msg" id="slt_${id}">${esc(setupMsg(r))}</textarea>
+      <div class="r-ctl"><button class="wa" data-a="slwa" data-id="${id}"${ph ? '' : ' disabled'}>פתיחה בוואטסאפ</button><button data-a="slcopymsg" data-id="${id}">העתקת הנוסח</button></div></div>` : ''}
     <div class="r-ctl">
       <select data-a="stage" data-id="${id}">${STAGES.map(([v, l]) => `<option value="${v}"${v === stage ? ' selected' : ''}>${l}</option>`).join('')}</select>
       <label class="chk${s.showProducts ? ' on' : ''}"><input type="checkbox" data-a="show" data-id="${id}"${s.showProducts ? ' checked' : ''}> מאושר לעלות לכרטיס</label>
@@ -265,10 +275,20 @@ function rowHtml(r, g) {
       <div class="r-ctl"><button class="pri" data-a="saveNote" data-id="${id}">שמירה</button></div></div>
   </div>`;
 }
+// §796ח – נוסח ההודעה עם הקישור לבחירה (רמי: "שלכל בעל עסק יהיה לי הודעה לשלוח לו לזה")
+const setupMsg = r => `היי ${r.owner ? r.owner.split(' ')[0] : r.name}, מדבר רמי מ-Yellow Zone 💛
+בכרטיס העסק שלכם באפליקציה יש עכשיו סקשן חדש – "מה יש באתר": המוצרים מהאתר שלכם, עם מחירים, ולחיצה מובילה ישר לדף המוצר אצלכם.
+ככה זה נראה: https://yellowzone.co.il/biz-shop-demo.html?biz=${r.id}
+
+כאן אתם בוחרים מה יופיע – אוטומטי לפי הכי נמכרים, או 5 קטגוריות שאתם בוחרים, ואילו מוצרים יופיעו ראשונים (2 דקות):
+${r.setupUrl}
+
+אפשר לשנות את זה בכל זמן, גם מהאזור האישי של העסק באפליקציה.`;
+
 // ── §796ד – "מה מוצג בכרטיס": אוטומטי / 5 קטגוריות ידניות + עד 12 מוצרים ראשונים ──
 const SH = {};
 function shState(r) {
-  if (!SH[r.id]) { const s = shopOf(r); SH[r.id] = { mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: (s.shopCats || []).slice(), pinned: (s.pinned || []).slice(), all: null, err: '', q: '', res: null }; }
+  if (!SH[r.id]) { const s = shopOf(r); SH[r.id] = { mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: (s.shopCats || []).slice(), pinned: (s.pinned || []).slice(), all: null, err: '', q: '', res: null, link: r.setupUrl || '' }; }
   return SH[r.id];
 }
 function shopPanel(r) {
@@ -278,7 +298,7 @@ function shopPanel(r) {
         return `<label class="pill${n >= 0 ? ' ok' : ''}" style="cursor:pointer;padding:5px 10px"><input type="checkbox" data-a="shcat" data-id="${id}" data-c="${c.id}" data-n="${esc(c.n)}"${n >= 0 ? ' checked' : ''} style="display:none">${n >= 0 ? `<b>${n + 1}.</b> ` : ''}${esc(c.n)} <span style="opacity:.6">(${fmt(c.c)})</span></label>`; }).join('')}</div>
         <div class="hint">לחיצה מסמנת – הסדר כמו סדר הלחיצות (1 = הלשונית הראשונה). עד 5.</div>` : '<div class="res bad">לא נמצאו קטגוריות באתר</div>';
   return `<h4>🛍️ מה מוצג בכרטיס העסק</h4>
-    <div class="hint">אוטומטי: "הכי נמכרים" + 3 הקטגוריות שהכי נמכרות + מבצעים/אאוטלט אם יש. 12 מוצרים בכל לשונית, הנמכרים קודם (לפי מונה המכירות של WooCommerce). מוצרים ש"⭐ ראשונים" כאן ומוצרים שבעל העסק סימן בכוכב באתר – בלשונית "מומלצים" ראשונה.</div>
+    <div class="hint">אוטומטי: "הכי נמכרים" + 3 הקטגוריות שהכי נמכרות + מבצעים/אאוטלט אם יש. 12 מוצרים בכל לשונית, הנמכרים קודם (לפי מונה המכירות של WooCommerce). המוצרים ב"⭐ מוצרים ראשונים" (כאן או בקישור של בעל העסק) – בלשונית "מומלצים" ראשונה.</div>
     <div class="r-ctl" style="margin-top:0">
       <label class="chk${S.mode === 'auto' ? ' on' : ''}"><input type="radio" name="shm_${id}" data-a="shmode" data-id="${id}" value="auto"${S.mode === 'auto' ? ' checked' : ''}> אוטומטי</label>
       <label class="chk${S.mode === 'manual' ? ' on' : ''}"><input type="radio" name="shm_${id}" data-a="shmode" data-id="${id}" value="manual"${S.mode === 'manual' ? ' checked' : ''}> 5 קטגוריות לבחירה</label>
@@ -287,7 +307,7 @@ function shopPanel(r) {
     <div style="margin-top:12px"><b style="font-size:13px;color:var(--accent)">⭐ מוצרים ראשונים (${S.pinned.length}/12)</b>
       ${S.pinned.length ? `<div style="display:grid;gap:4px;margin:6px 0">${S.pinned.map((p, i) => `<div style="display:flex;gap:8px;align-items:center;font-size:13px">
         <b style="width:18px">${i + 1}.</b>${p.img ? `<img src="${esc(p.img)}" style="width:32px;height:32px;object-fit:cover;border-radius:6px">` : ''}<span style="flex:1">${esc(p.n)}</span>
-        ${i ? `<button data-a="pinup" data-id="${id}" data-i="${i}" title="למעלה">↑</button>` : ''}<button class="del" data-a="unpin" data-id="${id}" data-i="${i}">✕</button></div>`).join('')}</div>` : '<div class="hint" style="margin:4px 0">אין – הלשונית "מומלצים" תציג רק את מה שבעל העסק סימן בכוכב באתר (אם סימן).</div>'}
+        ${i ? `<button data-a="pinup" data-id="${id}" data-i="${i}" title="למעלה">↑</button>` : ''}<button class="del" data-a="unpin" data-id="${id}" data-i="${i}">✕</button></div>`).join('')}</div>` : '<div class="hint" style="margin:4px 0">אין – בלי לשונית "מומלצים".</div>'}
       ${S.pinned.length < 12 ? `<div class="r-ctl" style="margin-top:6px"><input id="shq_${id}" placeholder="חיפוש מוצר באתר…" value="${esc(S.q)}" style="flex:1;min-width:160px"><button data-a="shsearch" data-id="${id}">חיפוש</button></div>
       ${S.res ? (S.res.length ? `<div style="display:grid;gap:4px;margin-top:6px">${S.res.map((p, i) => `<div style="display:flex;gap:8px;align-items:center;font-size:13px">
         <img src="${esc(p.img)}" style="width:32px;height:32px;object-fit:cover;border-radius:6px"><span style="flex:1">${esc(p.n)} · ${fmt(p.p)} ₪</span>
@@ -387,6 +407,9 @@ document.addEventListener('click', async e => {
   const a = b.dataset.a, id = b.dataset.id, r = ROWS.find(x => x.id === id);
   const toggle = p => { OPEN[id] = OPEN[id] === p ? '' : p; ['msg', 'key', 'note', 'shop'].forEach(k => { const el = $(({ msg: 'pm_', key: 'pk_', note: 'pn_', shop: 'ps_' })[k] + id); if (el) el.classList.toggle('open', OPEN[id] === k); }); };
   if (a === 'msg' || a === 'key' || a === 'note') return toggle(a);
+  if (a === 'slmsg') { OPEN[id] = OPEN[id] === 'slmsg' ? '' : 'slmsg'; const el = $('pl_' + id); if (el) el.classList.toggle('open', OPEN[id] === 'slmsg'); return; }
+  if (a === 'slcopy' || a === 'slcopymsg') { const v = a === 'slcopy' ? r.setupUrl : ($('slt_' + id) || {}).value || setupMsg(r); try { await navigator.clipboard.writeText(v); toast(a === 'slcopy' ? 'הקישור הועתק' : 'הנוסח הועתק'); } catch (er) { prompt('העתיקו:', v); } return; }
+  if (a === 'slwa') { const ph = waPhone(r.phone); if (ph) window.open('https://wa.me/' + ph + '?text=' + encodeURIComponent(($('slt_' + id) || {}).value || setupMsg(r)), '_blank'); return; }
   if (a === 'shop') { toggle('shop'); if (OPEN[id] === 'shop') { const S = shState(r); shRepaint(id); if (S.mode === 'manual') shLoadCats(id); } return; }
   if (a === 'pin' || a === 'unpin' || a === 'pinup') {
     const S = SH[id], i = +b.dataset.i;
@@ -407,7 +430,7 @@ document.addEventListener('click', async e => {
       if (a === 'olink' && S.link) { try { await navigator.clipboard.writeText(S.link); toast('הקישור הועתק'); } catch (er) { prompt('העתיקו:', S.link); } return; }
       const res = await api({ action: 'ownerLink', bizId: id, renew: a === 'olinknew' });
       if (!res.ok) throw new Error(res.error);
-      S.link = res.url; shRepaint(id); toast(a === 'olinknew' ? 'נוצר קישור חדש' : 'הקישור מוכן');
+      S.link = res.url; r.setupUrl = res.url; render(); toast(a === 'olinknew' ? 'נוצר קישור חדש – הקודם כבר לא עובד' : 'הקישור מוכן');
     }
     else if (a === 'olinkwa') {
       const S = SH[id], name = r.owner ? r.owner.split(' ')[0] : r.name;

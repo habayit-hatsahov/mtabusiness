@@ -1692,6 +1692,7 @@
     <!-- §507 — המדריכים: שתי קופסאות סגורות (biz-guides.js). גם במחשב וגם באפליקציה. -->
     <div id="bizFix" hidden style="padding:0 16px;max-width:1100px;margin:0 auto"></div><!-- §672 -->
     <div id="bizStats" style="padding:0 16px;max-width:1100px;margin:0 auto"></div><!-- §508 -->
+    <div id="bizShopCard" style="padding:0 16px;max-width:1100px;margin:0 auto"></div><!-- §796ח – "מה יש באתר" בכרטיס: שינוי קטגוריות ומוצרים -->
     <div id="bizGuides" style="padding:0 16px;max-width:1100px;margin:0 auto"></div>
 
     <div class="dash-split">
@@ -2933,6 +2934,31 @@ function showDashboard() {
       });
     }
   } catch (e) { console.error('biz stats render failed:', e); }
+  renderBizShopCard();   // §796ח
+}
+
+// ── §796ח — "מה יש באתר" בכרטיס העסק: בעל העסק משנה קטגוריות ומוצרים ראשונים ──────────────────────
+// רמי (23.11): "לאחר שכל אחד עונה וזה עולה צריך להופיע לו גם באזור האישי של העסק… לשנות את הקטגוריה ואת המוצרים".
+// מופיע רק לעסק שהסקשן כבר חי אצלו (showProducts). הוורקר מאמת בעלים (כמו /biz-weekly-stats) ומחזיר את הקישור החתום
+// ל-shop-setup.html. נפתח בלשונית/דפדפן חדש (באפליקציה: חזרה מדף חדש בתוך ה-WebView מחזירה ל"מתחברים…" – §606).
+async function renderBizShopCard() {
+  const el = document.getElementById('bizShopCard');
+  if (!el || !biz || biz.status !== 'approved' || authMode === 'demo') return;
+  try {
+    const body = token ? { accessToken: token }
+      : { idToken: sharedAuth.currentUser ? await sharedAuth.currentUser.getIdToken() : '', bizId: biz.id };
+    const r = await (await hbApiFetch('/biz-shop-link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    if (!r || !r.ok || !r.live || !r.url) return;
+    const esc2 = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const now = r.mode === 'manual' && r.cats.length ? 'הקטגוריות שבחרתם: ' + r.cats.map(esc2).join(' · ') : 'אוטומטי – הכי נמכרים והקטגוריות שהכי נמכרות אצלכם';
+    el.innerHTML = `<div style="background:#FFF7DB;border:1px solid #FFE9A3;border-radius:16px;padding:16px;margin:14px 0;font-family:inherit">
+      <div style="font-size:16px;font-weight:800;color:#0A2A66">🛍️ "מה יש באתר" בכרטיס שלכם</div>
+      <div style="font-size:13.5px;color:#3A4C7A;line-height:1.6;margin-top:4px">המוצרים מהאתר שלכם מופיעים בכרטיס העסק באפליקציה ומתעדכנים לבד.<br><b>עכשיו:</b> ${now}${r.pinned ? ` · ⭐ ${r.pinned} מוצרים ראשונים` : ''}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <a href="${esc2(r.url)}" target="_blank" rel="noopener" style="background:#0A2A66;color:#FFD400;text-decoration:none;font-weight:800;font-size:14px;border-radius:12px;padding:10px 14px">שינוי הקטגוריות והמוצרים</a>
+        <a href="biz-shop-demo.html?biz=${encodeURIComponent(biz.id)}" target="_blank" rel="noopener" style="background:#fff;color:#0A2A66;text-decoration:none;font-weight:800;font-size:14px;border-radius:12px;padding:10px 14px;border:1px solid #E4E4DC">👀 איך זה נראה</a>
+      </div></div>`;
+  } catch (e) { console.error('biz shop card failed:', e); }
 }
 
 // ── §506 — "עדכונים" ו"הודעות" בדשבורד במחשב (§473כו) ──────────────────────────────────────

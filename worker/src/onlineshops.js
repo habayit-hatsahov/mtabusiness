@@ -194,10 +194,9 @@ export async function buildBizShop(shop) {
   const base = shop.base;
   const auto = !(shop.shopMode === 'manual' && (shop.shopCats || []).length);
   const pinnedIds = (shop.pinned || []).map(x => x.id).filter(Number.isFinite).slice(0, SHOP_MAX);
-  const [catsR, topR, featR, pinR] = await Promise.all([
+  const [catsR, topR, pinR] = await Promise.all([
     sapi(base, 'products/categories?per_page=100'),
     auto ? sapi(base, 'products?per_page=100&orderby=popularity&order=desc') : null,
-    sapi(base, 'products?featured=true&per_page=30').catch(() => []),
     pinnedIds.length ? sapi(base, `products?include=${pinnedIds.join(',')}&per_page=${pinnedIds.length}`).catch(() => []) : null,
   ]);
   const cats = catsR || [];
@@ -210,7 +209,8 @@ export async function buildBizShop(shop) {
     const by = Object.fromEntries((pinR || []).filter(usable).map(p => [p.id, prodOut(p)]));
     rec = pinnedIds.map(id => by[id]).filter(Boolean);
   }
-  for (const p of (featR || []).filter(usable)) if (rec.length < SHOP_MAX && !rec.some(r => r.id === p.id)) rec.push(prodOut(p));
+  // (23.11) רמי: "אל תתן בכלל את האופציה של הכוכבים… שיבחר בלינק שאנחנו נשלח לו" – הכוכב באתר (featured) לא נקרא יותר.
+  //   "מומלצים" = רק מה שנבחר בקישור / באזור האישי / ב-admin.
   if (rec.length) tabs.push({ t: 'מומלצים', star: true, products: rec, url: base });
   let chosen;
   if (!auto) {
@@ -353,6 +353,18 @@ export async function handleShopOwner(body, env) {
   return { error: 'bad_action' };
 }
 
+// POST /biz-shop-link { accessToken } או { idToken, bizId } – מהאזור האישי של העסק (business-dashboard.html):
+// אותו אימות כמו /biz-weekly-stats, ומחזיר את הקישור החתום ל-shop-setup.html. רק לעסק שכבר "עלה לכרטיס" (showProducts).
+export async function handleBizShopLink(body, env, ownerBizId) {
+  const bizId = await ownerBizId(body);
+  if (!bizId) return { error: 'not_owner' };
+  const at = await getGoogleAccessToken(env);
+  const sd = await firestoreGetDoc(env, at, 'onlineShops/' + bizId);
+  if (!sd || !sd.fields.showProducts || sd.fields.platform !== 'woocommerce' || !sd.fields.open) return { ok: true, live: false };
+  return { ok: true, live: true, url: await setupUrl(env, bizId, sd.fields.linkVer || 1), mode: sd.fields.shopMode === 'manual' ? 'manual' : 'auto', pinned: (sd.fields.pinned || []).length, cats: (sd.fields.shopCats || []).map(c => c.n) };
+}
+const setupUrl = async (env, bizId, ver) => `https://yellowzone.co.il/shop-setup.html?biz=${bizId}&k=${await linkSig(env, bizId, ver)}`;
+
 const pickBiz = (id, f) => ({
   id, name: f.name || '', website: f.website || '', status: f.status || '',
   code: f.discountCode || '', redeem: [].concat(f.discountRedeemMode || []), discountText: f.discountText || '',
@@ -373,6 +385,8 @@ export async function handleOnlineShops(body, env) {
     const host = w => { const u = siteUrl(w); try { return u ? new URL(u).hostname.replace(/^www\./, '') : ''; } catch (e) { return ''; } };
     const rows = bs.filter(d => d.fields.status === 'approved' && String(d.fields.website || '').trim())
       .map(d => Object.assign(pickBiz(d.id, d.fields), { shop: shops[d.id] || null, legacyKey: legacy.includes(host(d.fields.website)) }));
+    // §796ח – הקישור לבעל העסק ליד כל חנות WooCommerce פתוחה (רמי: "את הלינק תוסיף לרשימה ליד כל עסק")
+    for (const r of rows) if (r.shop && r.shop.platform === 'woocommerce' && r.shop.open) r.setupUrl = await setupUrl(env, r.id, r.shop.linkVer || 1);
     return { ok: true, rows };
   }
   if (typeof bizId !== 'string' || !/^[A-Za-z0-9_-]{4,64}$/.test(bizId)) return { error: 'bad_biz' };
@@ -412,7 +426,7 @@ export async function handleOnlineShops(body, env) {
     let ver = sd.fields.linkVer || 1;
     if (body.renew) { ver += 1; await firestorePatch(env, at, path, { linkVer: ver }); }
     else if (!sd.fields.linkVer) await firestorePatch(env, at, path, { linkVer: 1 });
-    return { ok: true, url: `https://yellowzone.co.il/shop-setup.html?biz=${bizId}&k=${await linkSig(env, bizId, ver)}` };
+    return { ok: true, url: await setupUrl(env, bizId, ver) };
   }
   if (action === 'cats' || action === 'searchProducts') {
     const sd = await firestoreGetDoc(env, at, path);
