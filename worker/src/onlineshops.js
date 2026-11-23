@@ -171,72 +171,76 @@ function parseCreds(platform, c) {
   return { creds: { text }, hint: tail(text) };
 }
 
-// ══ §796ד — "מה יש באתר" לכל עסק WooCommerce: לשוניות + מוצרים (רמי, 23.11) ═══════════════════════════
-// עד 5 לשוניות קטגוריה, 12 מוצרים בכל אחת (+ "עוד N באתר"). ⭐ מומלצים ראשונה כשיש (מוצרים שנבחרו ידנית
-// ב-admin-shops + מוצרים שבעל העסק סימן בכוכב באתר). שני מצבים:
-//   • auto – "הכי נמכרים" + 3 הקטגוריות שהכי מופיעות בין 100 הנמכרים + קטגוריית מבצעים/אאוטלט אם יש.
-//   • manual – 5 הקטגוריות שבעל העסק ביקש, בסדר שלו (shopCats).
+// ══ §796ד/יב — "מה יש באתר" לכל עסק WooCommerce: לשוניות + מוצרים (רמי, 23.11) ═══════════════════════
+// עד 6 לשוניות קטגוריה, 12 מוצרים בכל אחת. (§796יב, רמי: "אל תחייב לשים מומלצים, שפשוט יהיה 6 קטגוריות"
+// + "הוא יכול לבחור בכל קטגוריה איזה מוצר ולא רק בראשונה?") – אין לשונית "מומלצים" נפרדת. שני מצבים:
+//   • auto – "הכי נמכרים" + 4 הקטגוריות שהכי מופיעות בין 100 הנמכרים + קטגוריית מבצעים/אאוטלט אם יש (אחרת 5).
+//   • manual – עד 6 הקטגוריות שבעל העסק בחר, בסדר שלו (shopCats).
+// בכל לשונית: המוצרים שנבחרו לה (tabPins[k], בסדר 1–12) ראשונים, ואחריהם הנמכרים ביותר עד 12.
+// מפתח לשונית: 'top' = הכי נמכרים, 'c<id>' = קטגוריה. מוצר שהוסר (hidden) לא מופיע באף לשונית, אלא אם נבחר במפורש.
 // "הכי נמכרים" = orderby=popularity של WooCommerce עצמו (מונה המכירות של כל מוצר, מתחילת הדרך).
 // מידע ציבורי (Store API, בלי מפתח). נשמר ב-KV לכל עסק, מתרענן כל 6 שעות ומתבטל בשמירת הגדרות.
-const SHOP_MAX = 12, TABS_MAX = 5, BIZSHOP_TTL = 6 * 3600 * 1000;
+const SHOP_MAX = 12, TABS_MAX = 6, BIZSHOP_TTL = 6 * 3600 * 1000;
 const JUNK_CAT = /^(upsell|uncategorized|ללא קטגוריה|כללי|all|הכל|כל המוצרים)$/i;
+const TABKEY_RX = /^(top|cd{1,12})$/;
 const sapi = (base, q) => getJson(`${base}/wp-json/wc/store/v1/${q}`).then(x => x.j);
 const prodOut = p => {
   const pr = p.prices || {}, div = Math.pow(10, pr.currency_minor_unit || 0);
   return { id: p.id, n: dec(p.name), p: Number(pr.price) / div, w: Number(pr.regular_price) / div, img: (p.images && p.images[0] && (p.images[0].thumbnail || p.images[0].src)) || '', url: p.permalink };
 };
 const usable = p => p && p.is_in_stock !== false && p.images && p.images[0];
-async function wooTab(base, q, hide) {
-  const a = await sapi(base, `products?per_page=30&orderby=popularity&order=desc&${q}`);
-  return (Array.isArray(a) ? a : []).filter(p => usable(p) && !(hide && hide.has(p.id))).slice(0, SHOP_MAX).map(prodOut);
+// מוצרים שנבחרו ללשוניות. תאימות: pinned הישן (רשימה אחת, §796ד–יא) = הבחירה של הלשונית הראשונה.
+function tabPinsOf(shop, firstKey) {
+  const tp = Object.assign({}, shop.tabPins || {});
+  if (!shop.tabPins && (shop.pinned || []).length && firstKey) tp[firstKey] = shop.pinned;
+  return tp;
 }
 export async function buildBizShop(shop) {
   const base = shop.base;
   const auto = !(shop.shopMode === 'manual' && (shop.shopCats || []).length);
-  const pinnedIds = (shop.pinned || []).map(x => x.id).filter(Number.isFinite).slice(0, SHOP_MAX);
-  // §796י – מוצרים שהוסרו ("✕ להסיר" בקישור / ב-admin) לא מופיעים באף לשונית; המוצר הבא תופס את מקומם. מוצר מוצמד גובר.
-  const hide = new Set((shop.hidden || []).map(x => x.id).filter(id => Number.isFinite(id) && !pinnedIds.includes(id)));
-  const [catsR, topR, pinR] = await Promise.all([
+  const [catsR, topR] = await Promise.all([
     sapi(base, 'products/categories?per_page=100'),
     auto ? sapi(base, 'products?per_page=100&orderby=popularity&order=desc') : null,
-    pinnedIds.length ? sapi(base, `products?include=${pinnedIds.join(',')}&per_page=${pinnedIds.length}`).catch(() => []) : null,
   ]);
   const cats = catsR || [];
   const total = shop.products || 0;
   const cat = id => cats.find(c => c.id === id);
-  const tabs = [];
-  // ⭐ מומלצים: ידני (pinned, לפי הסדר שנבחר) ואחריו הכוכב של בעל העסק
-  let rec = [];
-  if (pinR) {
-    const by = Object.fromEntries((pinR || []).filter(usable).map(p => [p.id, prodOut(p)]));
-    rec = pinnedIds.map(id => by[id]).filter(Boolean);
-  }
-  // (23.11) רמי: "אל תתן בכלל את האופציה של הכוכבים… שיבחר בלינק שאנחנו נשלח לו" – הכוכב באתר (featured) לא נקרא יותר.
-  //   "מומלצים" = רק מה שנבחר בקישור / באזור האישי / ב-admin.
-  if (rec.length) tabs.push({ t: 'מומלצים', star: true, products: rec, url: base });
-  let chosen;
+  const plan = [];   // { k, t, cat?, sale?, url, count }
   if (!auto) {
-    chosen = shop.shopCats.map(c => cat(c.id)).filter(Boolean).slice(0, TABS_MAX);
+    for (const c of shop.shopCats.map(x => cat(x.id)).filter(Boolean).slice(0, TABS_MAX)) plan.push({ k: 'c' + c.id, t: dec(c.name), cat: c, url: c.permalink || base, count: c.count, sale: SALE_RX.test(dec(c.name)) });
   } else {
-    const top = topR;
-    tabs.push({ t: 'הכי נמכרים', products: (top || []).filter(p => usable(p) && !hide.has(p.id)).slice(0, SHOP_MAX).map(prodOut), url: base, count: total });
+    plan.push({ k: 'top', t: 'הכי נמכרים', url: base, count: total });
     const freq = {};
-    for (const p of top || []) for (const c of p.categories || []) freq[c.id] = (freq[c.id] || 0) + 1;
-    const ok = c => c && c.count >= 3 && !JUNK_CAT.test(dec(c.name).trim()) && !SALE_RX.test(dec(c.name)) && !(total && c.count > total * 0.8);
-    chosen = Object.keys(freq).map(Number).map(cat).filter(ok).sort((a, b) => freq[b.id] - freq[a.id] || b.count - a.count).slice(0, 3);
-    if (chosen.length < 3) chosen.push(...cats.filter(c => ok(c) && !chosen.includes(c)).sort((a, b) => b.count - a.count).slice(0, 3 - chosen.length));
+    for (const p of topR || []) for (const c of p.categories || []) freq[c.id] = (freq[c.id] || 0) + 1;
+    // קטגוריה בשם "הכי נמכרים…" של האתר היא כפילות של הלשונית שלנו (נמדד ב-Glory: "הכי נמכרים החודש")
+    const ok = c => c && c.count >= 3 && !JUNK_CAT.test(dec(c.name).trim()) && !SALE_RX.test(dec(c.name)) && !/הכי נמכר|נמכרים ביותר|best ?sell/i.test(dec(c.name)) && !(total && c.count > total * 0.8);
     const sale = cats.filter(c => c.count >= 3 && SALE_RX.test(dec(c.name)) && !JUNK_CAT.test(dec(c.name))).sort((a, b) => b.count - a.count)[0];
-    if (sale) chosen.push(Object.assign({}, sale, { sale: true }));
+    const want = TABS_MAX - 1 - (sale ? 1 : 0);
+    const chosen = Object.keys(freq).map(Number).map(cat).filter(ok).sort((a, b) => freq[b.id] - freq[a.id] || b.count - a.count).slice(0, want);
+    if (chosen.length < want) chosen.push(...cats.filter(c => ok(c) && !chosen.includes(c)).sort((a, b) => b.count - a.count).slice(0, want - chosen.length));
+    for (const c of chosen) plan.push({ k: 'c' + c.id, t: dec(c.name), cat: c, url: c.permalink || base, count: c.count });
+    if (sale) plan.push({ k: 'c' + sale.id, t: dec(sale.name), cat: sale, url: sale.permalink || base, count: sale.count, sale: true });
   }
-  // במקביל (ברצף זה לקח ~15 שנ' מול האתרים – נמדד 23.11)
-  const lists = await Promise.all(chosen.map(c => wooTab(base, 'category=' + c.id, hide).catch(() => [])));
-  chosen.forEach((c, i) => {
-    if (lists[i].length >= 3) tabs.push({ t: dec(c.name), products: lists[i], url: c.permalink || base, count: c.count, sale: !!c.sale || SALE_RX.test(dec(c.name)) });
+  const tp = tabPinsOf(shop, plan[0] && plan[0].k);
+  const pinsFor = k => (tp[k] || []).map(x => x.id).filter(Number.isFinite).slice(0, SHOP_MAX);
+  const allPinned = [...new Set(plan.flatMap(x => pinsFor(x.k)))];
+  const hide = new Set((shop.hidden || []).map(x => x.id).filter(Number.isFinite));
+  // במקביל (ברצף זה לקח ~15 שנ' מול האתרים – נמדד 23.11): המוצרים שנבחרו (בקשה אחת) + כל קטגוריה
+  const [pinR, ...lists] = await Promise.all([
+    allPinned.length ? sapi(base, `products?include=${allPinned.slice(0, 100).join(',')}&per_page=${Math.min(100, allPinned.length)}`).catch(() => []) : null,
+    ...plan.map(x => x.cat ? sapi(base, `products?per_page=30&orderby=popularity&order=desc&category=${x.cat.id}`).catch(() => []) : Promise.resolve(topR || [])),
+  ]);
+  const byId = Object.fromEntries((pinR || []).filter(usable).map(p => [p.id, prodOut(p)]));
+  const tabs = [];
+  plan.forEach((x, i) => {
+    const pins = pinsFor(x.k).map(id => byId[id]).filter(Boolean);
+    const taken = new Set(pins.map(p => p.id));
+    const fill = (lists[i] || []).filter(p => usable(p) && !hide.has(p.id) && !taken.has(p.id)).map(prodOut);
+    const products = pins.concat(fill).slice(0, SHOP_MAX);
+    if (products.length >= 3) tabs.push({ k: x.k, t: x.t, products, pinned: pins.length, url: x.url, count: x.count, sale: !!x.sale });
   });
-  // (23.11) רמי: "תוסיף עד 6" – סה"כ עד 6 לשוניות: ⭐ מומלצים + עד 5 (הכי נמכרים + 3 קטגוריות + מבצעים, או 5 ידניות)
-  if (tabs.length > 6) tabs.length = 6;
   const deal = tabs.find(t => t.sale);
-  return { base, total, mode: shop.shopMode === 'manual' ? 'manual' : 'auto', tabs, deal: deal ? { t: deal.t, count: deal.count } : null, at: new Date().toISOString() };
+  return { base, total, mode: auto ? 'auto' : 'manual', tabs, deal: deal ? { t: deal.t, count: deal.count } : null, at: new Date().toISOString() };
 }
 const bizShopKey = id => 'bizShop:' + id;
 async function bizShopFresh(env, at, id, force) {
@@ -297,7 +301,7 @@ export async function handleBizShopList(request, env, ctx) {
 // ══ §796ו — קישור לבעל העסק: בוחר בעצמו אוטומטי / 5 קטגוריות + מוצרים ראשונים (רמי, 23.11) ══════════════
 // shop-setup.html?biz=<id>&k=<חתימה>. החתימה = HMAC-SHA256 של "<bizId>:<linkVer>" במפתח שנגזר מהמפתח הפרטי של
 // חשבון השירות (סוד קיים בוורקר – בלי סוד חדש). "קישור חדש" ב-admin מעלה את linkVer ← הקישור הקודם מפסיק לעבוד.
-// הקישור נותן רק את שלושת השדות האלה (shopMode / shopCats / pinned) – לא מפתחות, לא שלב, לא אישור לעלות.
+// הקישור נותן רק את השדות האלה (shopMode / shopCats / tabPins / hidden) – לא מפתחות, לא שלב, לא אישור לעלות.
 let _linkKey = null;
 async function linkKey(env) {
   if (_linkKey) return _linkKey;
@@ -318,6 +322,14 @@ function cleanShopFields(body) {
     .map(c => ({ id: Math.trunc(+c.id), n: String(c.n || '').slice(0, 80) })).filter(c => c.id > 0);
   if ('pinned' in body) f.pinned = [].concat(body.pinned || []).slice(0, SHOP_MAX)
     .map(p => ({ id: Math.trunc(+p.id), n: String(p.n || '').slice(0, 120), img: String(p.img || '').slice(0, 400) })).filter((p, i, a) => p.id > 0 && a.findIndex(x => x.id === p.id) === i);
+  if ('tabPins' in body) {
+    const tp = {}, src = body.tabPins && typeof body.tabPins === 'object' ? body.tabPins : {};
+    for (const k of Object.keys(src).filter(k => TABKEY_RX.test(k)).slice(0, 20)) {
+      const arr = [].concat(src[k] || []).slice(0, SHOP_MAX).map(p => ({ id: Math.trunc(+p.id), n: String(p.n || '').slice(0, 120), img: String(p.img || '').slice(0, 400) })).filter((p, i, a2) => p.id > 0 && a2.findIndex(x => x.id === p.id) === i);
+      if (arr.length) tp[k] = arr;
+    }
+    f.tabPins = tp; f.pinned = [];   // pinned הישן מתבטל ברגע שיש tabPins
+  }
   if ('hidden' in body) f.hidden = [].concat(body.hidden || []).slice(0, 200)
     .map(p => ({ id: Math.trunc(+p.id), n: String(p.n || '').slice(0, 120), img: String(p.img || '').slice(0, 400) })).filter((p, i, a) => p.id > 0 && a.findIndex(x => x.id === p.id) === i);
   return f;
@@ -334,7 +346,7 @@ async function siteSearch(base, q) {
 }
 // התצוגה הנוכחית (מה-KV או בנייה) – לרשימת "המוצרים שבכרטיס עכשיו" בדף הבחירה
 async function currentShop(env, at, id) {
-  try { const j = JSON.parse(await bizShopFresh(env, at, id, false)); return { tabs: (j.tabs || []).map(t => ({ t: t.t, star: !!t.star, products: t.products })) }; } catch (e) { return null; }
+  try { const j = JSON.parse(await bizShopFresh(env, at, id, false)); return { tabs: (j.tabs || []).map(t => ({ k: t.k, t: t.t, pinned: t.pinned || 0, products: t.products })) }; } catch (e) { return null; }
 }
 // POST /shop-owner { biz, k, action: 'get' | 'search' | 'save', ... } – ציבורי, מאומת בחתימה בלבד
 export async function handleShopOwner(body, env) {
@@ -348,7 +360,9 @@ export async function handleShopOwner(body, env) {
   try {
     if (action === 'get') {
       const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
-      return { ok: true, name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], pinned: s.pinned || [], hidden: s.hidden || [], allCats: await siteCats(s.base), shop: await currentShop(env, at, biz) };
+      const shop = await currentShop(env, at, biz);
+      const first = shop && shop.tabs[0] && shop.tabs[0].k;
+      return { ok: true, name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], tabPins: tabPinsOf(s, first), hidden: s.hidden || [], allCats: await siteCats(s.base), shop };
     }
     if (action === 'search') return { ok: true, products: await siteSearch(s.base, body.q) };
     if (action === 'save') {
@@ -369,9 +383,21 @@ export async function handleBizShopLink(body, env, ownerBizId) {
   const bizId = await ownerBizId(body);
   if (!bizId) return { error: 'not_owner' };
   const at = await getGoogleAccessToken(env);
-  const sd = await firestoreGetDoc(env, at, 'onlineShops/' + bizId);
-  if (!sd || !sd.fields.showProducts || sd.fields.platform !== 'woocommerce' || !sd.fields.open) return { ok: true, live: false };
-  return { ok: true, live: true, url: await setupUrl(env, bizId, sd.fields.linkVer || 1), mode: sd.fields.shopMode === 'manual' ? 'manual' : 'auto', pinned: (sd.fields.pinned || []).length, cats: (sd.fields.shopCats || []).map(c => c.n) };
+  let sd = await firestoreGetDoc(env, at, 'onlineShops/' + bizId);
+  // §796יב – עסק חדש (עוד לא נסרק): נסרק כאן, כדי שכל עסק עם חנות יקבל את הבחירה כבר אחרי ההרשמה, בלי פעולה של רמי
+  if (!sd) {
+    const bd = await firestoreGetDoc(env, at, 'businesses/' + bizId);
+    if (!bd || bd.fields.status !== 'approved' || !bd.fields.website) return { ok: true, shop: false };
+    const sc = await scanSite(bd.fields.website);
+    const rec = { platform: sc.platform, base: sc.base || null, finalUrl: sc.finalUrl || null, open: !!sc.open, products: sc.products ?? null, onSale: sc.onSale ?? null,
+      allOnSale: !!sc.allOnSale, more: !!sc.more, saleCats: sc.saleCats || [], scanErr: sc.scanErr || null, scannedAt: new Date() };
+    await firestorePatch(env, at, 'onlineShops/' + bizId, rec);
+    sd = { fields: rec };
+  }
+  const f = sd.fields;
+  if (f.platform !== 'woocommerce' || !f.open || f.isShop === false) return { ok: true, shop: false };
+  return { ok: true, shop: true, live: !!f.showProducts, filled: !!f.ownerSetAt, url: await setupUrl(env, bizId, f.linkVer || 1), mode: f.shopMode === 'manual' ? 'manual' : 'auto',
+    pinned: Object.values(f.tabPins || {}).reduce((n, x) => n + x.length, 0) || (f.pinned || []).length, cats: (f.shopCats || []).map(c => c.n) };
 }
 const setupUrl = async (env, bizId, ver) => `https://yellowzone.co.il/shop-setup.html?biz=${bizId}&k=${await linkSig(env, bizId, ver)}`;
 
@@ -423,10 +449,11 @@ export async function handleOnlineShops(body, env) {
     if ('pinned' in body) f.pinned = [].concat(body.pinned || []).slice(0, SHOP_MAX)
       .map(p => ({ id: Math.trunc(+p.id), n: String(p.n || '').slice(0, 120), img: String(p.img || '').slice(0, 400) })).filter(p => p.id > 0);
     if ('hidden' in body) f.hidden = cleanShopFields({ hidden: body.hidden }).hidden;
+    if ('tabPins' in body) Object.assign(f, cleanShopFields({ tabPins: body.tabPins }));
     if (!Object.keys(f).length) return { error: 'nothing' };
     f.updatedAt = new Date(); f.updatedBy = by;
     await firestorePatch(env, at, path, f);
-    if ('shopMode' in f || 'shopCats' in f || 'pinned' in f || 'hidden' in f) {
+    if ('shopMode' in f || 'shopCats' in f || 'pinned' in f || 'hidden' in f || 'tabPins' in f) {
       try { await bizShopFresh(env, at, bizId, true); } catch (e) { return { ok: true, rebuild: err(e) }; }
     }
     return { ok: true };

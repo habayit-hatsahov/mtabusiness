@@ -2948,14 +2948,21 @@ async function renderBizShopCard() {
     const body = token ? { accessToken: token }
       : { idToken: sharedAuth.currentUser ? await sharedAuth.currentUser.getIdToken() : '', bizId: biz.id };
     const r = await (await hbApiFetch('/biz-shop-link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
-    if (!r || !r.ok || !r.live || !r.url) return;
+    if (!r || !r.ok || !r.shop || !r.url) return;
+    // §796יב – שלושה מצבים: עוד לא בחרו (עסק חדש) / בחרו ומחכים לעלייה / חי בכרטיס
     const esc2 = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const now = r.mode === 'manual' && r.cats.length ? 'הקטגוריות שבחרתם: ' + r.cats.map(esc2).join(' · ') : 'אוטומטי – הכי נמכרים והקטגוריות שהכי נמכרות אצלכם';
+    const head = r.live ? '🛍️ "מה יש באתר" בכרטיס שלכם' : '🛍️ המוצרים מהאתר שלכם – בכרטיס העסק';
+    const text = r.live
+      ? 'המוצרים מהאתר שלכם מופיעים בכרטיס העסק באפליקציה ומתעדכנים לבד.<br><b>עכשיו:</b> ' + now + (r.pinned ? ' · ' + r.pinned + ' מוצרים שבחרתם' : '')
+      : r.filled
+        ? 'קיבלנו את הבחירה שלכם ✓ – נעלה אותה לכרטיס בקרוב. אפשר לשנות בכל זמן.<br><b>מה בחרתם:</b> ' + now + (r.pinned ? ' · ' + r.pinned + ' מוצרים שבחרתם' : '')
+        : 'יש לכם חנות באתר – אפשר להציג את המוצרים שלכם בכרטיס העסק באפליקציה: לשוניות לפי קטגוריות, מחירים, ולחיצה מובילה ישר לדף המוצר אצלכם. <b>בחרו מה יוצג (2 דקות).</b>';
     el.innerHTML = `<div style="background:#FFF7DB;border:1px solid #FFE9A3;border-radius:16px;padding:16px;margin:14px 0;font-family:inherit">
-      <div style="font-size:16px;font-weight:800;color:#0A2A66">🛍️ "מה יש באתר" בכרטיס שלכם</div>
-      <div style="font-size:13.5px;color:#3A4C7A;line-height:1.6;margin-top:4px">המוצרים מהאתר שלכם מופיעים בכרטיס העסק באפליקציה ומתעדכנים לבד.<br><b>עכשיו:</b> ${now}${r.pinned ? ` · ⭐ ${r.pinned} מוצרים ראשונים` : ''}</div>
+      <div style="font-size:16px;font-weight:800;color:#0A2A66">${head}</div>
+      <div style="font-size:13.5px;color:#3A4C7A;line-height:1.6;margin-top:4px">${text}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-        <a href="${esc2(r.url)}" target="_blank" rel="noopener" style="background:#0A2A66;color:#FFD400;text-decoration:none;font-weight:800;font-size:14px;border-radius:12px;padding:10px 14px">שינוי הקטגוריות והמוצרים</a>
+        <a href="${esc2(r.url)}" target="_blank" rel="noopener" style="background:#0A2A66;color:#FFD400;text-decoration:none;font-weight:800;font-size:14px;border-radius:12px;padding:10px 14px">${r.filled || r.live ? 'שינוי הקטגוריות והמוצרים' : 'לבחירה'}</a>
         <a href="biz-shop-demo.html?biz=${encodeURIComponent(biz.id)}" target="_blank" rel="noopener" style="background:#fff;color:#0A2A66;text-decoration:none;font-weight:800;font-size:14px;border-radius:12px;padding:10px 14px;border:1px solid #E4E4DC">👀 איך זה נראה</a>
       </div></div>`;
   } catch (e) { console.error('biz shop card failed:', e); }

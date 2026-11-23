@@ -244,7 +244,7 @@ function rowHtml(r, g) {
     <div class="r-facts">${facts(r)}</div>
     ${r.setupUrl ? `<div class="r-ctl" style="background:#FFF8D6;border:1px solid #FFE9A3;border-radius:10px;padding:6px 8px">
       <span style="font-size:12.5px;font-weight:800;color:var(--accent)">🔗 בחירת בעל העסק:</span>
-      ${s.ownerSetAt ? `<span class="pill ok">✓ בחר ${esc(new Date(s.ownerSetAt).toLocaleDateString('he-IL'))}${s.shopMode === 'manual' ? ' · 5 קטגוריות' : ' · אוטומטי'}${(s.pinned || []).length ? ' · ⭐' + s.pinned.length : ''}</span>` : '<span class="pill">עוד לא בחר</span>'}
+      ${s.ownerSetAt ? `<span class="pill ok">✓ בחר ${esc(new Date(s.ownerSetAt).toLocaleDateString('he-IL'))}${s.shopMode === 'manual' ? ' · 5 קטגוריות' : ' · אוטומטי'}${pinCount(s) ? ' · 📌' + pinCount(s) : ''}</span>` : '<span class="pill">עוד לא בחר</span>'}
       <a class="r-site" href="${esc(r.setupUrl)}" target="_blank" rel="noopener" style="direction:ltr">${esc(r.setupUrl.replace('https://', '').slice(0, 46))}…</a>
       <button data-a="slcopy" data-id="${id}">העתקת הקישור</button>
       <button class="wa" data-a="slwa" data-id="${id}"${ph ? '' : ' disabled title="אין מספר טלפון בעסק"'}>הודעה בוואטסאפ</button>
@@ -257,7 +257,7 @@ function rowHtml(r, g) {
       <label class="chk${s.showProducts ? ' on' : ''}"><input type="checkbox" data-a="show" data-id="${id}"${s.showProducts ? ' checked' : ''}> מאושר לעלות לכרטיס</label>
       <button data-a="msg" data-id="${id}">💬 הודעה לבעל העסק</button>
       ${g === 'g1' ? `<button data-a="key" data-id="${id}">🔑 הזנת פרטי אינטגרציה</button>` : ''}
-      ${s.platform === 'woocommerce' && s.open ? `<button data-a="shop" data-id="${id}">🛍️ מה מוצג בכרטיס${s.shopMode === 'manual' ? ' · ידני' : ''}${(s.pinned || []).length ? ' · ⭐' + s.pinned.length : ''}</button>
+      ${s.platform === 'woocommerce' && s.open ? `<button data-a="shop" data-id="${id}">🛍️ מה מוצג בכרטיס${s.shopMode === 'manual' ? ' · ידני' : ''}${pinCount(s) ? ' · 📌' + pinCount(s) : ''}</button>
       <a class="btn" href="biz-shop-demo.html?biz=${id}" target="_blank" rel="noopener">👀 תצוגה</a>` : ''}
       <button data-a="note" data-id="${id}">📝 הערה${s.note ? ' •' : ''}</button>
       <button data-a="rescan" data-id="${id}">↻ סריקה</button>
@@ -291,27 +291,27 @@ function shState(r) {
   if (!SH[r.id]) { const s = shopOf(r); SH[r.id] = { mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: (s.shopCats || []).slice(), pinned: (s.pinned || []).slice(), all: null, err: '', q: '', res: null, link: r.setupUrl || '' }; }
   return SH[r.id];
 }
+const pinCount = s => Object.values(s.tabPins || {}).reduce((a, x) => a + x.length, 0) || (s.pinned || []).length;
+function pinSummary(r) {
+  const s = shopOf(r), n = Object.values(s.tabPins || {}).reduce((a, x) => a + x.length, 0) || (s.pinned || []).length, h = (s.hidden || []).length;
+  return (n ? n + ' מוצרים קבועים' : 'אין מוצרים קבועים') + (h ? ' · ' + h + ' הוסרו' : '');
+}
 function shopPanel(r) {
   const S = shState(r), id = r.id;
   const catList = S.all == null ? '<div class="res info">טוען את הקטגוריות מהאתר…</div>'
     : S.all.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">${S.all.map(c => { const n = S.cats.findIndex(x => x.id === c.id);
         return `<label class="pill${n >= 0 ? ' ok' : ''}" style="cursor:pointer;padding:5px 10px"><input type="checkbox" data-a="shcat" data-id="${id}" data-c="${c.id}" data-n="${esc(c.n)}"${n >= 0 ? ' checked' : ''} style="display:none">${n >= 0 ? `<b>${n + 1}.</b> ` : ''}${esc(c.n)} <span style="opacity:.6">(${fmt(c.c)})</span></label>`; }).join('')}</div>
-        <div class="hint">לחיצה מסמנת – הסדר כמו סדר הלחיצות (1 = הלשונית הראשונה). עד 5.</div>` : '<div class="res bad">לא נמצאו קטגוריות באתר</div>';
+        <div class="hint">לחיצה מסמנת – הסדר כמו סדר הלחיצות (1 = הלשונית הראשונה). עד 6.</div>` : '<div class="res bad">לא נמצאו קטגוריות באתר</div>';
   return `<h4>🛍️ מה מוצג בכרטיס העסק</h4>
-    <div class="hint">עד 6 לשוניות: "⭐ מומלצים" (אם נבחרו מוצרים ראשונים) + עד 5 לשוניות קטגוריה. אוטומטי: "הכי נמכרים" + 3 הקטגוריות שהכי נמכרות + מבצעים/אאוטלט אם יש. 12 מוצרים בכל לשונית, הנמכרים קודם (לפי מונה המכירות של WooCommerce). המוצרים ב"⭐ מוצרים ראשונים" (כאן או בקישור של בעל העסק) – בלשונית "מומלצים" ראשונה.</div>
+    <div class="hint">עד 6 לשוניות קטגוריה, 12 מוצרים בכל אחת (הנמכרים קודם, לפי מונה המכירות של WooCommerce). אוטומטי: "הכי נמכרים" + 4 הקטגוריות שהכי נמכרות + מבצעים/אאוטלט אם יש. ידני: עד 6 קטגוריות לבחירה. <b>המוצרים בכל לשונית</b> (📌 קבועים במקום 1–12, ✕ הסרה) – בקישור של בעל העסק, שנפתח גם לך.</div>
     <div class="r-ctl" style="margin-top:0">
       <label class="chk${S.mode === 'auto' ? ' on' : ''}"><input type="radio" name="shm_${id}" data-a="shmode" data-id="${id}" value="auto"${S.mode === 'auto' ? ' checked' : ''}> אוטומטי</label>
-      <label class="chk${S.mode === 'manual' ? ' on' : ''}"><input type="radio" name="shm_${id}" data-a="shmode" data-id="${id}" value="manual"${S.mode === 'manual' ? ' checked' : ''}> 5 קטגוריות לבחירה</label>
+      <label class="chk${S.mode === 'manual' ? ' on' : ''}"><input type="radio" name="shm_${id}" data-a="shmode" data-id="${id}" value="manual"${S.mode === 'manual' ? ' checked' : ''}> עד 6 קטגוריות לבחירה</label>
     </div>
-    ${S.mode === 'manual' ? `<div style="margin-top:10px"><b style="font-size:13px;color:var(--accent)">הקטגוריות (${S.cats.length}/5)</b>${catList}</div>` : ''}
-    <div style="margin-top:12px"><b style="font-size:13px;color:var(--accent)">⭐ מוצרים ראשונים (${S.pinned.length}/12)</b>
-      ${S.pinned.length ? `<div style="display:grid;gap:4px;margin:6px 0">${S.pinned.map((p, i) => `<div style="display:flex;gap:8px;align-items:center;font-size:13px">
-        <b style="width:18px">${i + 1}.</b>${p.img ? `<img src="${esc(p.img)}" style="width:32px;height:32px;object-fit:cover;border-radius:6px">` : ''}<span style="flex:1">${esc(p.n)}</span>
-        <select data-a="pinpos" data-id="${id}" data-i="${i}" title="מיקום" style="font:inherit;font-weight:800;border:1px solid var(--border);border-radius:8px;padding:3px">${Array.from({ length: Math.min(12, S.pinned.length) }, (_, k) => `<option value="${k + 1}"${k === i ? ' selected' : ''}>${k + 1}</option>`).join('')}</select><button class="del" data-a="unpin" data-id="${id}" data-i="${i}">✕</button></div>`).join('')}</div>` : '<div class="hint" style="margin:4px 0">אין – בלי לשונית "מומלצים".</div>'}
-      ${S.pinned.length < 12 ? `<div class="r-ctl" style="margin-top:6px"><input id="shq_${id}" placeholder="חיפוש מוצר באתר…" value="${esc(S.q)}" style="flex:1;min-width:160px"><button data-a="shsearch" data-id="${id}">חיפוש</button></div>
-      ${S.res ? (S.res.length ? `<div style="display:grid;gap:4px;margin-top:6px">${S.res.map((p, i) => `<div style="display:flex;gap:8px;align-items:center;font-size:13px">
-        <img src="${esc(p.img)}" style="width:32px;height:32px;object-fit:cover;border-radius:6px"><span style="flex:1">${esc(p.n)} · ${fmt(p.p)} ₪</span>
-        ${S.pinned.some(x => x.id === p.id) ? '<span class="pill ok">נבחר</span>' : `<button data-a="pin" data-id="${id}" data-i="${i}">+ הוספה</button>`}</div>`).join('')}</div>` : '<div class="res info">לא נמצאו מוצרים</div>') : ''}` : ''}
+    ${S.mode === 'manual' ? `<div style="margin-top:10px"><b style="font-size:13px;color:var(--accent)">הקטגוריות (${S.cats.length}/6)</b>${catList}</div>` : ''}
+    <div style="margin-top:12px"><b style="font-size:13px;color:var(--accent)">📌 המוצרים בכל לשונית</b>
+      <div class="hint" style="margin:4px 0">${pinSummary(r)} · את הבחירה עושים בדף הבחירה (אותו קישור של בעל העסק):</div>
+      ${S.link ? `<a class="btn" href="${esc(S.link)}" target="_blank" rel="noopener">פתיחת דף הבחירה</a>` : '<span class="hint">צרו קישור למטה</span>'}
     </div>
     ${S.err ? `<div class="res bad">${esc(S.err)}</div>` : ''}
     <div class="r-ctl" style="margin-top:12px"><button class="pri" data-a="shsave" data-id="${id}">שמירה</button>
@@ -398,7 +398,7 @@ document.addEventListener('change', async e => {
   if (a === 'shmode') { const S = SH[id]; S.mode = t.value; shRepaint(id); if (S.mode === 'manual') shLoadCats(id); return; }
   if (a === 'shcat') {
     const S = SH[id], c = +t.dataset.c, n = S.cats.findIndex(x => x.id === c);
-    if (n >= 0) S.cats.splice(n, 1); else if (S.cats.length < 5) S.cats.push({ id: c, n: t.dataset.n }); else toast('עד 5 קטגוריות');
+    if (n >= 0) S.cats.splice(n, 1); else if (S.cats.length < 6) S.cats.push({ id: c, n: t.dataset.n }); else toast('עד 6 קטגוריות');
     return shRepaint(id);
   }
   if (a === 'show') { const v = t.checked; const r = await api({ action: 'set', bizId: id, showProducts: v }); if (r.ok) { patchRow(id, { showProducts: v }); render(); toast(v ? 'מסומן: מאושר לעלות לכרטיס' : 'הסימון בוטל'); } else { t.checked = !v; toast('שגיאה: ' + r.error); } }
@@ -448,9 +448,9 @@ document.addEventListener('click', async e => {
       const S = SH[id];
       if (S.mode === 'manual' && !S.cats.length) { S.err = 'במצב ידני צריך לבחור לפחות קטגוריה אחת'; return shRepaint(id); }
       S.err = '';
-      const res = await api({ action: 'set', bizId: id, shopMode: S.mode, shopCats: S.cats, pinned: S.pinned });
+      const res = await api({ action: 'set', bizId: id, shopMode: S.mode, shopCats: S.cats });   // §796יב – המוצרים בכל לשונית רק מדף הבחירה (לא לדרוס את מה שבעל העסק בחר)
       if (!res.ok) throw new Error(res.error);
-      patchRow(id, { shopMode: S.mode, shopCats: S.cats.slice(), pinned: S.pinned.slice() });
+      patchRow(id, { shopMode: S.mode, shopCats: S.cats.slice() });
       render(); toast(res.rebuild ? 'נשמר, אבל הבנייה נכשלה: ' + res.rebuild : 'נשמר – הכרטיס נבנה מחדש');
     }
     else if (a === 'saveNote') { const v = $('note_' + id).value; const res = await api({ action: 'set', bizId: id, note: v }); if (!res.ok) throw new Error(res.error); patchRow(id, { note: v }); OPEN[id] = ''; render(); toast('ההערה נשמרה'); }
@@ -478,6 +478,14 @@ onAuthStateChanged(auth, async u => {
     if (!res.ok) throw new Error(res.error || 'נכשל');
     ROWS = res.rows;
     render();
+    // §796יב – עסק חדש עם אתר (עוד לא נסרק) נסרק לבד בכניסה לדף – כך כל עסק חדש עם חנות מקבל קישור בחירה בלי לחיצה
+    const fresh = ROWS.filter(x => !x.shop || !x.shop.scannedAt);
+    if (fresh.length) {
+      $('scanState').textContent = 'סורק ' + fresh.length + ' עסקים חדשים…';
+      let done = 0; const q = fresh.slice();
+      const w = async () => { while (q.length) { const x = q.shift(); try { await scanOne(x.id); } catch (e) {} done++; $('scanState').textContent = done < fresh.length ? 'סורק עסקים חדשים ' + done + '/' + fresh.length : ''; } };
+      Promise.all([w(), w(), w()]).then(async () => { try { const r2 = await api({ action: 'list' }); if (r2.ok) { ROWS = r2.rows; render(); } } catch (e) { render(); } });
+    }
   } catch (e) { $('main').innerHTML = `<div class="boot">הטעינה נכשלה: ${esc(e.message || e)} – רעננו את הדף</div>`; }
 });
 </script>

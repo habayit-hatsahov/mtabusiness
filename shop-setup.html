@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Yellow Zone – מה יוצג בכרטיס שלכם</title>
-<!-- §796ו – בעל עסק אונליין בוחר בעצמו מה יוצג בכרטיס העסק ב-Yellow Zone: אוטומטי / 5 קטגוריות + מוצרים ראשונים.
+<!-- §796ו/יב – בעל עסק אונליין בוחר בעצמו מה יוצג בכרטיס העסק: אילו לשוניות (אוטומטי / עד 6 קטגוריות) ואילו מוצרים בכל לשונית.
      הקישור נוצר ב-admin-shops ("🔗 קישור לבעל העסק") וחתום – POST /shop-owner. בלי כניסה, בלי logEvent. -->
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -53,13 +53,20 @@
   .msg { font-size: 13.5px; margin-top: 8px; }
   .msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); }
   .boot { padding: 60px 0; text-align: center; color: var(--ink-3); font-size: 15px; line-height: 1.7; }
+  .step { display: inline-flex; width: 24px; height: 24px; border-radius: 50%; background: var(--acc); color: var(--ink); font-weight: 900; font-size: 13px; align-items: center; justify-content: center; margin-inline-end: 6px; }
+  .how { margin: 6px 0 10px; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
+  .how b { color: var(--ink); }
+  .sec { font-size: 14px; font-weight: 800; margin: 14px 0 4px; }
+  .pinb { border: 0; background: var(--acc); color: var(--ink); border-radius: 10px; font: inherit; font-weight: 800; font-size: 13px; padding: 7px 10px; cursor: pointer; white-space: nowrap; }
+  .pinned-tag { font-size: 12.5px; font-weight: 800; color: var(--ink); background: var(--acc-soft); border: 1px solid var(--acc-line); border-radius: 999px; padding: 3px 9px; white-space: nowrap; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <span class="yz">Yellow Zone</span>
   <h1 id="h1">מה יוצג בכרטיס העסק שלכם</h1>
-  <p class="lead" id="lead">בכרטיס שלכם באפליקציה יש סקשן "מה יש באתר" – המוצרים מהאתר שלכם, מתעדכנים לבד. כאן בוחרים מה יופיע בו.</p>
+  <p class="lead">בכרטיס העסק שלכם באפליקציה יש סקשן <b>"מה יש באתר"</b>: עד <b>6 לשוניות</b>, ובכל אחת עד <b>12 מוצרים</b> מהאתר שלכם – עם תמונה ומחיר, ולחיצה מובילה ישר לדף המוצר אצלכם. המוצרים מתעדכנים לבד מהאתר.<br>
+  כאן אתם קובעים מה יופיע. <b>לא חייבים לשנות כלום</b> – אם לא תבחרו, זה ייבחר אוטומטית לפי מה שהכי נמכר אצלכם.</p>
   <div id="app"><div class="boot">טוען…</div></div>
 </div>
 <div class="bar" id="bar" style="display:none"><div class="in">
@@ -68,11 +75,13 @@
 </div></div>
 
 <script>
+// §796יב – בעל עסק אונליין בוחר בעצמו (קישור חתום, POST /shop-owner): שלב 1 – אילו לשוניות (אוטומטי / עד 6 קטגוריות),
+// שלב 2 – בכל לשונית: 📌 מוצרים קבועים במקום 1–12, ✕ הסרת מוצר מכל הכרטיס, 🔍 הוספת מוצר. בלי כניסה, בלי logEvent.
 (function () {
   'use strict';
   var HOSTS = ['https://api.yellowzone.co.il', 'https://habayit-hatsahov.web.app/api', 'https://habayit-hatsahov-worker.yellowzone.workers.dev'];
   var P = new URLSearchParams(location.search), BIZ = P.get('biz') || '', K = P.get('k') || '';
-  var S = null, res = null, busy = false;
+  var S = null, res = null, busy = false, MAXT = 6, MAXP = 12;
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var fmt = function (n) { return Number(n || 0).toLocaleString('he-IL'); };
@@ -86,61 +95,82 @@
     };
     return go(0);
   }
+  function curTab() { var t = (S.shop && S.shop.tabs) || []; return t.filter(function (x) { return x.k === S.tab; })[0] || t[0] || null; }
+  function pins(k) { return S.tabPins[k] || (S.tabPins[k] = []); }
+  function isHid(id) { return S.hidden.some(function (x) { return x.id === id; }); }
   function render() {
-    var man = S.mode === 'manual';
-    var h = '<div class="card"><h2>1. לשוניות הקטגוריות</h2><div class="sub">בכרטיס יש עד 6 לשוניות: "⭐ מומלצים" (המוצרים שתבחרו בסעיף 2) ועוד עד 5 לשוניות קטגוריה. כאן בוחרים איך ייבחרו לשוניות הקטגוריה.</div>' +
-      '<label class="opt' + (!man ? ' on' : '') + '"><input type="radio" name="m" value="auto"' + (!man ? ' checked' : '') + '><div><b>אוטומטי (מומלץ)</b><span>"הכי נמכרים" + 3 הקטגוריות שהכי נמכרות אצלכם + מבצעים/אאוטלט אם יש. מתעדכן לבד לפי המכירות באתר.</span></div></label>' +
-      '<label class="opt' + (man ? ' on' : '') + '"><input type="radio" name="m" value="manual"' + (man ? ' checked' : '') + '><div><b>אני בוחר 5 קטגוריות</b><span>אתם בוחרים אילו קטגוריות מהאתר יופיעו ובאיזה סדר.</span></div></label></div>';
+    var man = S.mode === 'manual', h = '';
+    // ── שלב 1 ──
+    h += '<div class="card"><h2><span class="step">1</span>אילו לשוניות יופיעו?</h2>' +
+      '<label class="opt' + (!man ? ' on' : '') + '"><input type="radio" name="m" value="auto"' + (!man ? ' checked' : '') + '><div><b>אוטומטי (מומלץ)</b><span>אנחנו בוחרים בשבילכם: "הכי נמכרים" + 4 הקטגוריות שהכי נמכרות אצלכם + קטגוריית מבצעים/אאוטלט אם יש. מתעדכן לבד לפי המכירות באתר.</span></div></label>' +
+      '<label class="opt' + (man ? ' on' : '') + '"><input type="radio" name="m" value="manual"' + (man ? ' checked' : '') + '><div><b>אני בוחר עד 6 קטגוריות</b><span>אתם בוחרים אילו קטגוריות מהאתר יופיעו כלשוניות, ובאיזה סדר.</span></div></label>';
     if (man) {
-      h += '<div class="card"><h2>הקטגוריות <span class="count">(' + S.cats.length + '/5)</span></h2><div class="sub">לחצו לפי הסדר שתרצו – הראשונה שתלחצו תהיה הלשונית הראשונה.</div><div class="chips">' +
+      h += '<div class="sec">הקטגוריות שלכם <span class="count">(' + S.cats.length + '/6)</span></div><div class="sub">לחצו לפי הסדר שתרצו – הראשונה שתלחצו תהיה הלשונית הראשונה. לחיצה נוספת מבטלת.</div><div class="chips">' +
         S.allCats.map(function (c) { var n = S.cats.findIndex(function (x) { return x.id === c.id; });
-          return '<button type="button" class="chip' + (n >= 0 ? ' on' : '') + '" data-c="' + c.id + '">' + (n >= 0 ? (n + 1) + '. ' : '') + esc(c.n) + ' <small>(' + fmt(c.c) + ')</small></button>'; }).join('') + '</div></div>';
+          return '<button type="button" class="chip' + (n >= 0 ? ' on' : '') + '" data-c="' + c.id + '">' + (n >= 0 ? (n + 1) + '. ' : '') + esc(c.n) + ' <small>(' + fmt(c.c) + ')</small></button>'; }).join('') + '</div>';
     }
-    h += '<div class="card"><h2>2. ⭐ מוצרים שיופיעו ראשונים <span class="count">(' + S.pinned.length + '/12)</span></h2><div class="sub">לא חובה, ועובד גם עם "אוטומטי" וגם עם 5 קטגוריות. המוצרים שתבחרו יופיעו בלשונית "⭐ מומלצים" – הלשונית הראשונה בכרטיס, לפני לשוניות הקטגוריה.</div>' +
-      (S.pinned.length ? '<div class="sub" style="margin:2px 0 4px">המספר קובע איפה המוצר מוצג (1 = ראשון).</div><div>' + S.pinned.map(function (p, i) {
-        var opts = ''; for (var k = 1; k <= Math.min(12, S.pinned.length); k++) opts += '<option value="' + k + '"' + (k === i + 1 ? ' selected' : '') + '>' + k + '</option>';
-        return '<div class="item"><select class="pos" data-pos="' + i + '" aria-label="מיקום">' + opts + '</select>' + (p.img ? '<img src="' + esc(p.img) + '" alt="">' : '') + '<span class="t">' + esc(p.n) + '</span><button type="button" class="x" data-x="' + i + '" aria-label="הסרה מהראשונים">✕</button></div>'; }).join('') + '</div>' : '') +
-      (S.pinned.length < 12 ? '<div class="srch" style="margin-top:10px"><input id="q" placeholder="חיפוש מוצר מהאתר שלכם…" enterkeyhint="search"><button type="button" class="b" id="go">חיפוש</button></div>' +
-        (res ? (res.length ? '<div style="margin-top:6px">' + res.map(function (p, i) { var has = S.pinned.some(function (x) { return x.id === p.id; });
-          return '<div class="item"><img src="' + esc(p.img) + '" alt="" loading="lazy"><span class="t">' + esc(p.n) + '<small>' + fmt(p.p) + ' ₪</small></span>' + (has ? '<span class="count">✓ נבחר</span>' : '<button type="button" class="add" data-add="' + i + '">+ הוספה</button>') + '</div>'; }).join('') + '</div>' : '<div class="msg">לא נמצאו מוצרים</div>') : '') : '') + '</div>' +
-      currentCard() +
-      '<div class="tip">💡 אפשר לחזור לכאן ולשנות בכל זמן – גם מ<b>האזור האישי של העסק</b> באפליקציה.</div>' +
+    h += '</div>';
+    // ── שלב 2 ──
+    var T = curTab();
+    h += '<div class="card"><h2><span class="step">2</span>אילו מוצרים יופיעו בכל לשונית?</h2>' +
+      '<div class="sub">בכל לשונית מוצגים 12 מוצרים – אוטומטית, הנמכרים ביותר באותה קטגוריה. לא חייבים לגעת. אם רוצים:</div>' +
+      '<ul class="how"><li>📌 <b>לקבוע מוצר</b> – המוצר יופיע בלשונית במקום שתבחרו (1 = ראשון).</li>' +
+      '<li>✕ <b>להסיר מוצר</b> – המוצר לא יופיע בכרטיס בכלל, והמוצר הבא בתור ייכנס במקומו.</li>' +
+      '<li>🔍 <b>להוסיף מוצר שלא מופיע</b> – חיפוש לפי שם, והוא נקבע בלשונית.</li></ul>';
+    if (!T) h += '<div class="sub">המוצרים יופיעו כאן אחרי השמירה הראשונה.</div>';
+    else {
+      h += '<div class="sec">בחרו לשונית:</div><div class="chips" style="margin-bottom:6px">' + S.shop.tabs.map(function (t) {
+        var n = (S.tabPins[t.k] || []).length;
+        return '<button type="button" class="chip' + (t.k === T.k ? ' on' : '') + '" data-tab="' + esc(t.k) + '">' + esc(t.t) + (n ? ' · 📌' + n : '') + '</button>'; }).join('') + '</div>' +
+        (man ? '<div class="sub">שיניתם קטגוריות בשלב 1? לחצו "שמירה" – והלשוניות החדשות יופיעו כאן.</div>' : '');
+      var pl = pins(T.k);
+      h += '<div class="sec">📌 קבועים בלשונית "' + esc(T.t) + '" <span class="count">(' + pl.length + '/12)</span></div>';
+      h += pl.length ? pl.map(function (p, i) {
+        var o = ''; for (var k = 1; k <= Math.min(MAXP, pl.length); k++) o += '<option value="' + k + '"' + (k === i + 1 ? ' selected' : '') + '>' + k + '</option>';
+        return '<div class="item"><select class="pos" data-pos="' + i + '" aria-label="מקום בלשונית">' + o + '</select>' + (p.img ? '<img src="' + esc(p.img) + '" alt="">' : '') + '<span class="t">' + esc(p.n) + '</span><button type="button" class="x" data-unpin="' + i + '" aria-label="ביטול הקביעה">✕</button></div>';
+      }).join('') + '<div class="sub" style="margin-top:4px">המספר = המקום בלשונית. ✕ כאן רק מבטל את הקביעה (המוצר יכול עדיין להופיע לפי המכירות).</div>' : '<div class="sub">עוד לא קבעתם מוצרים בלשונית הזו – מוצגים הנמכרים ביותר.</div>';
+      h += '<div class="sec">מוצגים עכשיו בלשונית</div>' + T.products.map(function (p, i) {
+        var hid = isHid(p.id), pin = pl.some(function (x) { return x.id === p.id; });
+        return '<div class="item"' + (hid ? ' style="opacity:.45"' : '') + '><span class="n">' + (i + 1) + '</span><img src="' + esc(p.img) + '" alt="" loading="lazy"><span class="t">' + esc(p.n) + '<small>' + fmt(p.p) + ' ₪' + (hid ? ' · יוסר בשמירה' : '') + '</small></span>' +
+          (hid ? '<button type="button" class="b" data-unhide="' + p.id + '">החזרה</button>'
+            : (pin ? '<span class="pinned-tag">📌 קבוע</span>' : (pl.length < MAXP ? '<button type="button" class="pinb" data-pin="' + p.id + '">📌 לקבוע</button>' : '')) + '<button type="button" class="x" data-hide="' + p.id + '" aria-label="להסיר">✕</button>') + '</div>';
+      }).join('');
+      if (pl.length < MAXP) {
+        h += '<div class="sec">🔍 הוספת מוצר ללשונית</div><div class="srch"><input id="q" placeholder="שם המוצר…" enterkeyhint="search"><button type="button" class="b" id="go">חיפוש</button></div>' +
+          (res ? (res.length ? res.map(function (p, i) { var has = pl.some(function (x) { return x.id === p.id; });
+            return '<div class="item"><img src="' + esc(p.img) + '" alt="" loading="lazy"><span class="t">' + esc(p.n) + '<small>' + fmt(p.p) + ' ₪</small></span>' + (has ? '<span class="pinned-tag">📌 קבוע</span>' : '<button type="button" class="pinb" data-add="' + i + '">📌 לקבוע</button>') + '</div>'; }).join('') : '<div class="msg">לא נמצאו מוצרים</div>') : '');
+      }
+    }
+    if (S.hidden.length) h += '<div class="sec" style="margin-top:16px">הוסרו מהכרטיס (' + S.hidden.length + ')</div>' + S.hidden.map(function (p) {
+      return '<div class="item"><img src="' + esc(p.img) + '" alt="" loading="lazy"><span class="t">' + esc(p.n) + '</span><button type="button" class="b" data-unhide="' + p.id + '">החזרה</button></div>'; }).join('');
+    h += '</div>';
+    // ── שלב 3 ──
+    h += '<div class="tip"><span class="step">3</span><b>לוחצים "שמירה"</b> למטה – והכרטיס מתעדכן. כפתור "👀 איך זה נראה" מראה את התוצאה.<br>ותמיד אפשר לחזור ולשנות – מהקישור הזה או מ<b>האזור האישי של העסק</b> באפליקציה.</div>' +
       '<div class="msg" id="msg"></div>';
     $('app').innerHTML = h;
   }
-  // §796י – "המוצרים בכרטיס עכשיו": לכל לשונית 12 המוצרים שמוצגים, עם "⭐ ראשון" ו"✕ להסיר". מוסתרים – עם "החזרה".
-  function currentCard() {
-    if (!S.shop || !S.shop.tabs || !S.shop.tabs.length) return '';
-    var tabs = S.shop.tabs, cur = tabs.filter(function (t) { return t.t === S.tab; })[0] || tabs[0];
-    var isPin = function (id) { return S.pinned.some(function (x) { return x.id === id; }); }, isHid = function (id) { return S.hidden.some(function (x) { return x.id === id; }); };
-    return '<div class="card"><h2>המוצרים בכרטיס עכשיו</h2><div class="sub">לחצו על לשונית כדי לראות את המוצרים שבה. <b>✕ להסיר</b> – המוצר לא יופיע, והבא בתור ייכנס במקומו. <b>⭐ ראשון</b> – עובר ל"מוצרים שיופיעו ראשונים" למעלה. השינויים נכנסים בלחיצה על "שמירה".</div>' +
-      '<div class="chips" style="margin-bottom:8px">' + tabs.map(function (t) { return '<button type="button" class="chip' + (t.t === cur.t ? ' on' : '') + '" data-tab="' + esc(t.t) + '">' + (t.star ? '⭐ ' : '') + esc(t.t) + '</button>'; }).join('') + '</div>' +
-      cur.products.map(function (p, i) {
-        var hid = isHid(p.id), pin = isPin(p.id);
-        return '<div class="item"' + (hid ? ' style="opacity:.45"' : '') + '><span class="n">' + (i + 1) + '</span><img src="' + esc(p.img) + '" alt="" loading="lazy"><span class="t">' + esc(p.n) + '<small>' + fmt(p.p) + ' ₪' + (hid ? ' · יוסר בשמירה' : '') + '</small></span>' +
-          (hid ? '<button type="button" class="b" data-unhide="' + p.id + '">החזרה</button>'
-            : (pin ? '<span class="count">⭐ ראשון</span>' : (S.pinned.length < 12 ? '<button type="button" class="add" data-pin="' + p.id + '">⭐ ראשון</button>' : '')) + '<button type="button" class="x" data-hide="' + p.id + '" aria-label="להסיר">✕</button>') + '</div>';
-      }).join('') +
-      (S.hidden.length ? '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #E4E4DC"><b style="font-size:14px">הוסרו (' + S.hidden.length + ')</b>' + S.hidden.map(function (p) {
-        return '<div class="item"><img src="' + esc(p.img) + '" alt="" loading="lazy"><span class="t">' + esc(p.n) + '</span><button type="button" class="b" data-unhide="' + p.id + '">החזרה</button></div>'; }).join('') + '</div>' : '') + '</div>';
-  }
-  function findProd(id) { var out = null; (S.shop && S.shop.tabs || []).forEach(function (t) { t.products.forEach(function (p) { if (p.id === id) out = p; }); }); return out; }
+  function findProd(id) { var out = null; ((S.shop && S.shop.tabs) || []).forEach(function (t) { t.products.forEach(function (p) { if (p.id === id) out = p; }); }); (res || []).forEach(function (p) { if (p.id === id) out = p; }); return out; }
   function msg(t, ok) { var m = $('msg'); if (m) { m.textContent = t; m.className = 'msg ' + (ok ? 'ok' : 'bad'); } }
   document.addEventListener('change', function (e) {
-    if (e.target.name === 'm') { S.mode = e.target.value; render(); }
-    if (e.target.dataset && e.target.dataset.pos != null) { var from = +e.target.dataset.pos, to = +e.target.value - 1; S.pinned.splice(to, 0, S.pinned.splice(from, 1)[0]); render(); }
+    if (!S) return;
+    if (e.target.name === 'm') { S.mode = e.target.value; return render(); }
+    if (e.target.dataset && e.target.dataset.pos != null) { var pl = pins(curTab().k), from = +e.target.dataset.pos, to = +e.target.value - 1; pl.splice(to, 0, pl.splice(from, 1)[0]); render(); }
   });
   document.addEventListener('click', function (e) {
     var t = e.target.closest('button'); if (!t || !S) return;
-    if (t.dataset.c) { var c = +t.dataset.c, n = S.cats.findIndex(function (x) { return x.id === c; });
-      if (n >= 0) S.cats.splice(n, 1); else if (S.cats.length < 5) { var f = S.allCats.find(function (x) { return x.id === c; }); S.cats.push({ id: c, n: f.n }); } else return msg('אפשר עד 5 קטגוריות');
+    var T = curTab(), d = t.dataset;
+    if (d.c) { var c = +d.c, n = S.cats.findIndex(function (x) { return x.id === c; });
+      if (n >= 0) S.cats.splice(n, 1); else if (S.cats.length < MAXT) { var f = S.allCats.find(function (x) { return x.id === c; }); S.cats.push({ id: c, n: f.n }); } else return msg('אפשר עד 6 קטגוריות');
       return render(); }
-    if (t.dataset.x != null) { S.pinned.splice(+t.dataset.x, 1); return render(); }
-    if (t.dataset.tab != null) { S.tab = t.dataset.tab; return render(); }
-    if (t.dataset.hide) { var hp = findProd(+t.dataset.hide); if (hp && !S.hidden.some(function (x) { return x.id === hp.id; })) S.hidden.push({ id: hp.id, n: hp.n, img: hp.img }); S.pinned = S.pinned.filter(function (x) { return x.id !== +t.dataset.hide; }); return render(); }
-    if (t.dataset.unhide) { S.hidden = S.hidden.filter(function (x) { return x.id !== +t.dataset.unhide; }); return render(); }
-    if (t.dataset.pin) { var pp = findProd(+t.dataset.pin); if (pp && S.pinned.length < 12 && !S.pinned.some(function (x) { return x.id === pp.id; })) S.pinned.push({ id: pp.id, n: pp.n, img: pp.img }); return render(); }
-    if (t.dataset.add != null) { var p = res[+t.dataset.add]; if (p && S.pinned.length < 12) S.pinned.push({ id: p.id, n: p.n, img: p.img }); return render(); }
+    if (d.tab != null) { S.tab = d.tab; res = null; return render(); }
+    if (d.unpin != null) { pins(T.k).splice(+d.unpin, 1); return render(); }
+    if (d.pin || d.add != null) {
+      var p = d.pin ? findProd(+d.pin) : res[+d.add], pl = pins(T.k);
+      if (p && pl.length < MAXP && !pl.some(function (x) { return x.id === p.id; })) { pl.push({ id: p.id, n: p.n, img: p.img }); S.hidden = S.hidden.filter(function (x) { return x.id !== p.id; }); }
+      return render(); }
+    if (d.hide) { var hp = findProd(+d.hide); if (hp && !isHid(hp.id)) S.hidden.push({ id: hp.id, n: hp.n, img: hp.img });
+      Object.keys(S.tabPins).forEach(function (k) { S.tabPins[k] = S.tabPins[k].filter(function (x) { return x.id !== +d.hide; }); }); return render(); }
+    if (d.unhide) { S.hidden = S.hidden.filter(function (x) { return x.id !== +d.unhide; }); return render(); }
     if (t.id === 'go') search();
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.id === 'q') { e.preventDefault(); search(); } });
@@ -154,16 +184,17 @@
     if (busy || !S) return;
     if (S.mode === 'manual' && !S.cats.length) return msg('בחרו לפחות קטגוריה אחת, או "אוטומטי"');
     busy = true; $('save').disabled = true; $('save').textContent = 'שומר…';
-    api({ action: 'save', shopMode: S.mode, shopCats: S.cats, pinned: S.pinned, hidden: S.hidden }).then(function (r) {
+    var tp = {}; Object.keys(S.tabPins).forEach(function (k) { if (S.tabPins[k].length) tp[k] = S.tabPins[k]; });
+    api({ action: 'save', shopMode: S.mode, shopCats: S.cats, tabPins: tp, hidden: S.hidden }).then(function (r) {
       busy = false; $('save').disabled = false; $('save').textContent = 'שמירה';
-      if (r.ok && r.shop) { S.shop = r.shop; render(); }
-      if (r.ok) msg('✓ נשמר! הכרטיס שלכם עודכן. אפשר ללחוץ "איך זה נראה" לראות – ותמיד אפשר לחזור ולערוך מהאזור האישי של העסק.', true); else msg(r.error || 'השמירה נכשלה');
+      if (r.ok && r.shop) { S.shop = r.shop; res = null; render(); }
+      if (r.ok) msg('✓ נשמר! הכרטיס שלכם עודכן. לחצו "👀 איך זה נראה" לראות – ותמיד אפשר לחזור ולשנות.', true); else msg(r.error || 'השמירה נכשלה');
     }).catch(function (er) { busy = false; $('save').disabled = false; $('save').textContent = 'שמירה'; msg(er.message); });
   };
   if (!BIZ || !K) { $('app').innerHTML = '<div class="boot">הקישור לא שלם. בקשו מאיתנו קישור חדש 💛</div>'; return; }
   api({ action: 'get' }).then(function (r) {
     if (!r.ok) { $('app').innerHTML = '<div class="boot">' + (r.error === 'bad_link' ? 'הקישור לא תקף (אולי הוחלף בקישור חדש). בקשו מאיתנו קישור חדש 💛' : r.error === 'not_open_woo' ? 'לעסק הזה עוד אין חנות שאפשר להציג.' : esc(r.error || 'משהו השתבש')) + '</div>'; return; }
-    S = { mode: r.mode, cats: r.cats || [], pinned: r.pinned || [], hidden: r.hidden || [], allCats: r.allCats || [], shop: r.shop || null, tab: '' };
+    S = { mode: r.mode, cats: r.cats || [], tabPins: r.tabPins || {}, hidden: r.hidden || [], allCats: r.allCats || [], shop: r.shop || null, tab: '' };
     $('h1').textContent = 'מה יוצג בכרטיס של ' + r.name;
     $('pv').href = 'biz-shop-demo.html?biz=' + encodeURIComponent(BIZ);
     $('bar').style.display = '';
