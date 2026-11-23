@@ -93,6 +93,8 @@ async function scanSite(website) {
     out.platform = has('/product-page/') ? 'wixstore' : 'wix';
   } else if (has('konimbo')) out.platform = 'konimbo';
   else if (has('2all.co.il')) out.platform = '2all';
+  else if (has('eshopstoresframework')) out.platform = 'eshop';   // §796יח – מערכת ישראלית (Max Sport)
+  else if (/Firewall Alert|Access Denied|Attention Required/i.test(html.slice(0, 3000))) Object.assign(out, { platform: 'other', scanErr: 'האתר חוסם סריקה אוטומטית – לבחור מערכת ידנית' });
   else out.platform = 'other';
   if (out.products && out.onSale != null) out.allOnSale = out.onSale >= out.products * 0.9;
   return out;
@@ -446,7 +448,8 @@ export async function handleOnlineShops(body, env) {
     // עסק שכבר מחובר ב-benefitsales.js (סוד בוורקר, Glory) – מסומן legacyKey כדי שלא ייראה "בלי מפתח"
     const legacy = Object.values(SITES).filter(s => env[s.key] && env[s.secret]).map(s => new URL(s.base).hostname.replace(/^www\./, ''));
     const host = w => { const u = siteUrl(w); try { return u ? new URL(u).hostname.replace(/^www\./, '') : ''; } catch (e) { return ''; } };
-    const rows = bs.filter(d => d.fields.status === 'approved' && String(d.fields.website || '').trim())
+    // §796יח – גם עסקים שממתינים לאישור (רמי: "העסק שממתין מקס ספורט… תוסיף אותו לרשימה")
+    const rows = bs.filter(d => (d.fields.status === 'approved' || d.fields.status === 'pending') && String(d.fields.website || '').trim())
       .map(d => Object.assign(pickBiz(d.id, d.fields), { shop: shops[d.id] || null, legacyKey: legacy.includes(host(d.fields.website)) }));
     // §796ח – הקישור לבעל העסק ליד כל חנות WooCommerce פתוחה (רמי: "את הלינק תוסיף לרשימה ליד כל עסק")
     for (const r of rows) if (r.shop && r.shop.platform === 'woocommerce' && r.shop.open) r.setupUrl = await setupUrl(env, r.id, r.shop.linkVer || 1);
@@ -469,6 +472,7 @@ export async function handleOnlineShops(body, env) {
     if ('isShop' in body) f.isShop = body.isShop === true ? true : body.isShop === false ? false : null;
     if ('showProducts' in body) f.showProducts = body.showProducts === true;
     if ('note' in body) f.note = String(body.note || '').slice(0, 1000);
+    if ('platformManual' in body) f.platformManual = ['', 'woocommerce', 'shopify', 'magento', 'wix', 'konimbo', '2all', 'eshop', 'other'].includes(body.platformManual) ? (body.platformManual || null) : null;   // §796יח – כשהסריקה לא מזהה
     if ('focus' in body) f.focus = body.focus === true;   // §796טו – "📞 לטיפול" בראש הרשימה
     // §796ד – מה מוצג בכרטיס: אוטומטי / 5 קטגוריות ידניות / מוצרים ראשונים
     if ('shopMode' in body) f.shopMode = body.shopMode === 'manual' ? 'manual' : 'auto';

@@ -96,7 +96,7 @@
   </div>
   <div class="bar">
     <input type="search" id="q" placeholder="חיפוש עסק…">
-    <select id="fPlat" title="מערכת"><option value="">כל המערכות</option><option value="woocommerce">WooCommerce</option><option value="shopify">Shopify</option><option value="magento">Magento</option><option value="wix">Wix</option><option value="konimbo">קונימבו</option><option value="2all">2All</option><option value="other">אחר / לא חנות</option></select>
+    <select id="fPlat" title="מערכת"><option value="">כל המערכות</option><option value="woocommerce">WooCommerce</option><option value="shopify">Shopify</option><option value="magento">Magento</option><option value="wix">Wix</option><option value="konimbo">קונימבו</option><option value="2all">2All</option><option value="eshop">eShop (ישראלי)</option><option value="other">אחר / לא חנות</option></select>
     <select id="fCode" title="קוד קופון"><option value="">קוד: הכול</option><option value="online">יש קוד באתר</option><option value="any">יש קוד (כל מימוש)</option><option value="none">אין קוד</option></select>
     <select id="fState" title="מצב"><option value="">מצב: הכול</option><option value="connected">🔑 מחובר</option><option value="notconnected">🔑 לא מחובר</option><option value="filled">✓ בעל העסק בחר</option><option value="notfilled">עוד לא בחר</option><option value="live">עלה לכרטיס</option></select>
     <button class="dark" id="scanAll">סריקת האתרים</button>
@@ -136,9 +136,9 @@ const fmt = n => n == null ? '–' : Number(n).toLocaleString('he-IL');
 const $ = id => document.getElementById(id);
 const toast = t => { const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 2200); };
 
-const PLAT = { woocommerce: 'WooCommerce', shopify: 'Shopify', magento: 'Magento', wixstore: 'Wix (חנות)', wix: 'Wix', konimbo: 'קונימבו', '2all': '2All', wordpress: 'WordPress', social: 'רשת חברתית', other: 'אחר', down: 'לא נטען', none: 'אין כתובת' };
+const PLAT = { eshop: 'eShop (מערכת ישראלית)', woocommerce: 'WooCommerce', shopify: 'Shopify', magento: 'Magento', wixstore: 'Wix (חנות)', wix: 'Wix', konimbo: 'קונימבו', '2all': '2All', wordpress: 'WordPress', social: 'רשת חברתית', other: 'אחר', down: 'לא נטען', none: 'אין כתובת' };
 const STAGES = [['todo', 'לא פנינו'], ['sent', 'נשלחה הודעה'], ['got', 'התקבלו פרטים'], ['live', 'עלה לכרטיס'], ['no', 'לא מעוניין']];
-const SHOP_PLATS = ['woocommerce', 'shopify', 'magento', 'wixstore', 'konimbo', '2all'];
+const SHOP_PLATS = ['woocommerce', 'shopify', 'magento', 'wixstore', 'konimbo', '2all', 'eshop'];   // wix רגיל (אתר תדמית) – לא חנות, אלא אם נבחר ידנית
 // מה צריך מכל פלטפורמה – אותו טקסט בכותרת הקבוצה ובטופס
 const NEED = {
   woocommerce: 'מפתח קריאה: WooCommerce ← הגדרות ← מתקדם ← REST API ← הוספת מפתח, הרשאה "קריאה". שני קודים: ck_ ו-cs_.',
@@ -182,6 +182,8 @@ const MSG = {
 };
 MSG.magento = MSG.other;
 
+// §796יח – מערכת שנבחרה ידנית (platformManual) גוברת על מה שהסריקה מצאה
+const normRow = r => { if (r.shop && r.shop.platformManual) { r.shop.platformScan = r.shop.platformScan || r.shop.platform; r.shop.platform = r.shop.platformManual; if (r.shop.isShop == null && r.shop.platformManual !== 'other') r.shop.isShop = true; } return r; };
 let ROWS = [], OPEN = {}, Q = '', F = { plat: '', code: '', state: '' };   // §796יד – סינון לפי מערכת / קוד / מצב
 const shopOf = r => r.shop || {};
 const isShop = r => { const s = shopOf(r); if (s.isShop === true || s.isShop === false) return s.isShop; return SHOP_PLATS.includes(s.platform); };
@@ -246,7 +248,7 @@ function rowHtml(r, g) {
     <div class="r-top">
       <span class="r-name">${esc(r.name)}</span>
       <a class="r-site" href="${esc(s.finalUrl || r.website)}" target="_blank" rel="noopener">${esc((s.base || r.website).replace(/^https?:\/\/(www\.)?/, ''))}</a>
-      ${s.platform ? `<span class="pill plat">${esc(PLAT[s.platform] || s.platform)}</span>` : ''}
+      ${s.platform ? `<span class="pill plat">${esc(PLAT[s.platform] || s.platform)}</span>` : ''}${r.status === 'pending' ? '<span class="pill warn">⏳ ממתין לאישור</span>' : ''}
       ${g === 'g1' ? keyPill(r) : ''}
     </div>
     <div class="r-facts">${facts(r)}</div>
@@ -269,6 +271,7 @@ function rowHtml(r, g) {
       <a class="btn" href="biz-shop-demo.html?biz=${id}" target="_blank" rel="noopener">👀 תצוגה</a>` : ''}
       ${inFocus(r) ? '<span class="pill warn">📞 בטיפול – עד שימלא את הקישור</span>' : s.ownerSetAt ? '' : `<button data-a="focus" data-id="${id}">📞 לטיפול</button>`}
       <button data-a="note" data-id="${id}">📝 הערה${s.note ? ' •' : ''}</button>
+      <select data-a="platman" data-id="${id}" title="מערכת (כשהסריקה לא מזהה)" style="font:inherit;font-size:13px;border:1px solid var(--border);border-radius:10px;padding:6px 8px;background:#fff"><option value="">מערכת: לפי הסריקה</option>${['woocommerce', 'shopify', 'magento', 'wix', 'konimbo', '2all', 'eshop', 'other'].map(v => `<option value="${v}"${s.platformManual === v ? ' selected' : ''}>${esc(PLAT[v] || v)}</option>`).join('')}</select>
       <button data-a="rescan" data-id="${id}">↻ סריקה</button>
       <button data-a="notshop" data-id="${id}" title="להוציא מהרשימה">לא חנות</button>
     </div>
@@ -349,6 +352,7 @@ function restRow(r) {
     ${s.platform ? `<span class="pill">${esc(PLAT[s.platform] || s.platform)}</span>` : '<span class="pill warn">לא נסרק</span>'}
     ${s.scanErr ? `<span class="pill bad">${esc(s.scanErr)}</span>` : ''}
     <span style="flex:1"></span>
+    ${r.status === 'pending' ? '<span class="pill warn">⏳ ממתין לאישור</span>' : ''}<select data-a="platman" data-id="${r.id}" style="font:inherit;font-size:12.5px;border:1px solid var(--border);border-radius:9px;padding:4px 6px;background:#fff"><option value="">מערכת…</option>${['woocommerce', 'shopify', 'magento', 'wix', 'konimbo', '2all', 'eshop'].map(v => `<option value="${v}">${esc(PLAT[v] || v)}</option>`).join('')}</select>
     ${s.scannedAt ? `<button data-a="isshop" data-id="${r.id}">זו חנות אונליין ›</button>` : ''}<button data-a="rescan" data-id="${r.id}">↻ סריקה</button></div></div>`;
 }
 const GROUPS = {
@@ -357,7 +361,7 @@ const GROUPS = {
 };
 function platGroup(r) {
   const pl = shopOf(r).platform || '';
-  return pl === 'wixstore' || pl === 'wix' ? 'wix' : ['woocommerce', 'shopify', 'magento', 'konimbo', '2all'].includes(pl) ? pl : 'other';
+  return pl === 'wixstore' || pl === 'wix' ? 'wix' : ['woocommerce', 'shopify', 'magento', 'konimbo', '2all', 'eshop'].includes(pl) ? pl : 'other';
 }
 function passF(r) {
   const s = shopOf(r);
@@ -425,6 +429,12 @@ document.addEventListener('change', async e => {
   if (!a) return;
   if (a === 'stage') { const v = t.value; const r = await api({ action: 'set', bizId: id, stage: v }); if (r.ok) { patchRow(id, { stage: v }); toast('השלב עודכן'); } else toast('שגיאה: ' + r.error); }
   if (a === 'pinpos') { const S = SH[id], from = +t.dataset.i, to = +t.value - 1; S.pinned.splice(to, 0, S.pinned.splice(from, 1)[0]); return shRepaint(id); }
+  if (a === 'platman') {
+    const v = t.value, res = await api({ action: 'set', bizId: id, platformManual: v, isShop: v && v !== 'other' ? true : null });
+    if (!res.ok) { toast('שגיאה: ' + res.error); return; }
+    const row = ROWS.find(x => x.id === id); if (row) { row.shop = Object.assign({}, row.shop || {}, { platformManual: v || null, isShop: v && v !== 'other' ? true : null, scannedAt: (row.shop || {}).scannedAt || new Date().toISOString() }); if (!v && row.shop.platformScan) row.shop.platform = row.shop.platformScan; normRow(row); }
+    render(); toast(v ? 'המערכת נקבעה: ' + (PLAT[v] || v) : 'חזרה למערכת לפי הסריקה'); return;
+  }
   if (a === 'shmode') { const S = SH[id]; S.mode = t.value; shRepaint(id); if (S.mode === 'manual') shLoadCats(id); return; }
   if (a === 'shcat') {
     const S = SH[id], c = +t.dataset.c, n = S.cats.findIndex(x => x.id === c);
@@ -507,7 +517,7 @@ onAuthStateChanged(auth, async u => {
   try {
     const res = await api({ action: 'list' });
     if (!res.ok) throw new Error(res.error || 'נכשל');
-    ROWS = res.rows;
+    ROWS = res.rows.map(normRow);
     render();
     // §796יב – עסק חדש עם אתר (עוד לא נסרק) נסרק לבד בכניסה לדף – כך כל עסק חדש עם חנות מקבל קישור בחירה בלי לחיצה
     const fresh = ROWS.filter(x => !x.shop || !x.shop.scannedAt);
@@ -515,7 +525,7 @@ onAuthStateChanged(auth, async u => {
       $('scanState').textContent = 'סורק ' + fresh.length + ' עסקים חדשים…';
       let done = 0; const q = fresh.slice();
       const w = async () => { while (q.length) { const x = q.shift(); try { await scanOne(x.id); } catch (e) {} done++; $('scanState').textContent = done < fresh.length ? 'סורק עסקים חדשים ' + done + '/' + fresh.length : ''; } };
-      Promise.all([w(), w(), w()]).then(async () => { try { const r2 = await api({ action: 'list' }); if (r2.ok) { ROWS = r2.rows; render(); } } catch (e) { render(); } });
+      Promise.all([w(), w(), w()]).then(async () => { try { const r2 = await api({ action: 'list' }); if (r2.ok) { ROWS = r2.rows.map(normRow); render(); } } catch (e) { render(); } });
     }
   } catch (e) { $('main').innerHTML = `<div class="boot">הטעינה נכשלה: ${esc(e.message || e)} – רעננו את הדף</div>`; }
 });
