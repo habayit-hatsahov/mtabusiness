@@ -186,14 +186,16 @@ const prodOut = p => {
   return { id: p.id, n: dec(p.name), p: Number(pr.price) / div, w: Number(pr.regular_price) / div, img: (p.images && p.images[0] && (p.images[0].thumbnail || p.images[0].src)) || '', url: p.permalink };
 };
 const usable = p => p && p.is_in_stock !== false && p.images && p.images[0];
-async function wooTab(base, q) {
+async function wooTab(base, q, hide) {
   const a = await sapi(base, `products?per_page=30&orderby=popularity&order=desc&${q}`);
-  return (Array.isArray(a) ? a : []).filter(usable).slice(0, SHOP_MAX).map(prodOut);
+  return (Array.isArray(a) ? a : []).filter(p => usable(p) && !(hide && hide.has(p.id))).slice(0, SHOP_MAX).map(prodOut);
 }
 export async function buildBizShop(shop) {
   const base = shop.base;
   const auto = !(shop.shopMode === 'manual' && (shop.shopCats || []).length);
   const pinnedIds = (shop.pinned || []).map(x => x.id).filter(Number.isFinite).slice(0, SHOP_MAX);
+  // §796י – מוצרים שהוסרו ("✕ להסיר" בקישור / ב-admin) לא מופיעים באף לשונית; המוצר הבא תופס את מקומם. מוצר מוצמד גובר.
+  const hide = new Set((shop.hidden || []).map(x => x.id).filter(id => Number.isFinite(id) && !pinnedIds.includes(id)));
   const [catsR, topR, pinR] = await Promise.all([
     sapi(base, 'products/categories?per_page=100'),
     auto ? sapi(base, 'products?per_page=100&orderby=popularity&order=desc') : null,
@@ -217,7 +219,7 @@ export async function buildBizShop(shop) {
     chosen = shop.shopCats.map(c => cat(c.id)).filter(Boolean).slice(0, TABS_MAX);
   } else {
     const top = topR;
-    tabs.push({ t: 'הכי נמכרים', products: (top || []).filter(usable).slice(0, SHOP_MAX).map(prodOut), url: base, count: total });
+    tabs.push({ t: 'הכי נמכרים', products: (top || []).filter(p => usable(p) && !hide.has(p.id)).slice(0, SHOP_MAX).map(prodOut), url: base, count: total });
     const freq = {};
     for (const p of top || []) for (const c of p.categories || []) freq[c.id] = (freq[c.id] || 0) + 1;
     const ok = c => c && c.count >= 3 && !JUNK_CAT.test(dec(c.name).trim()) && !SALE_RX.test(dec(c.name)) && !(total && c.count > total * 0.8);
@@ -227,7 +229,7 @@ export async function buildBizShop(shop) {
     if (sale) chosen.push(Object.assign({}, sale, { sale: true }));
   }
   // במקביל (ברצף זה לקח ~15 שנ' מול האתרים – נמדד 23.11)
-  const lists = await Promise.all(chosen.map(c => wooTab(base, 'category=' + c.id).catch(() => [])));
+  const lists = await Promise.all(chosen.map(c => wooTab(base, 'category=' + c.id, hide).catch(() => [])));
   chosen.forEach((c, i) => {
     if (lists[i].length >= 3) tabs.push({ t: dec(c.name), products: lists[i], url: c.permalink || base, count: c.count, sale: !!c.sale || SALE_RX.test(dec(c.name)) });
   });
@@ -314,6 +316,8 @@ function cleanShopFields(body) {
     .map(c => ({ id: Math.trunc(+c.id), n: String(c.n || '').slice(0, 80) })).filter(c => c.id > 0);
   if ('pinned' in body) f.pinned = [].concat(body.pinned || []).slice(0, SHOP_MAX)
     .map(p => ({ id: Math.trunc(+p.id), n: String(p.n || '').slice(0, 120), img: String(p.img || '').slice(0, 400) })).filter((p, i, a) => p.id > 0 && a.findIndex(x => x.id === p.id) === i);
+  if ('hidden' in body) f.hidden = [].concat(body.hidden || []).slice(0, 200)
+    .map(p => ({ id: Math.trunc(+p.id), n: String(p.n || '').slice(0, 120), img: String(p.img || '').slice(0, 400) })).filter((p, i, a) => p.id > 0 && a.findIndex(x => x.id === p.id) === i);
   return f;
 }
 async function siteCats(base) {
@@ -325,6 +329,10 @@ async function siteSearch(base, q) {
   if (q.length < 2) return [];
   const a = await sapi(base, 'products?per_page=12&search=' + encodeURIComponent(q));
   return (a || []).filter(usable).map(prodOut);
+}
+// התצוגה הנוכחית (מה-KV או בנייה) – לרשימת "המוצרים שבכרטיס עכשיו" בדף הבחירה
+async function currentShop(env, at, id) {
+  try { const j = JSON.parse(await bizShopFresh(env, at, id, false)); return { tabs: (j.tabs || []).map(t => ({ t: t.t, star: !!t.star, products: t.products })) }; } catch (e) { return null; }
 }
 // POST /shop-owner { biz, k, action: 'get' | 'search' | 'save', ... } – ציבורי, מאומת בחתימה בלבד
 export async function handleShopOwner(body, env) {
@@ -338,7 +346,7 @@ export async function handleShopOwner(body, env) {
   try {
     if (action === 'get') {
       const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
-      return { ok: true, name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], pinned: s.pinned || [], allCats: await siteCats(s.base) };
+      return { ok: true, name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], pinned: s.pinned || [], hidden: s.hidden || [], allCats: await siteCats(s.base), shop: await currentShop(env, at, biz) };
     }
     if (action === 'search') return { ok: true, products: await siteSearch(s.base, body.q) };
     if (action === 'save') {
@@ -347,7 +355,7 @@ export async function handleShopOwner(body, env) {
       f.updatedAt = new Date(); f.updatedBy = 'owner-link'; f.ownerSetAt = new Date();
       await firestorePatch(env, at, 'onlineShops/' + biz, f);
       try { await bizShopFresh(env, at, biz, true); } catch (e) { return { ok: true, rebuild: err(e) }; }
-      return { ok: true };
+      return { ok: true, shop: await currentShop(env, at, biz) };
     }
   } catch (e) { return { error: 'האתר לא ענה (' + err(e) + ')' }; }
   return { error: 'bad_action' };
@@ -412,10 +420,11 @@ export async function handleOnlineShops(body, env) {
       .map(c => ({ id: Math.trunc(+c.id), n: String(c.n || '').slice(0, 80) })).filter(c => c.id > 0);
     if ('pinned' in body) f.pinned = [].concat(body.pinned || []).slice(0, SHOP_MAX)
       .map(p => ({ id: Math.trunc(+p.id), n: String(p.n || '').slice(0, 120), img: String(p.img || '').slice(0, 400) })).filter(p => p.id > 0);
+    if ('hidden' in body) f.hidden = cleanShopFields({ hidden: body.hidden }).hidden;
     if (!Object.keys(f).length) return { error: 'nothing' };
     f.updatedAt = new Date(); f.updatedBy = by;
     await firestorePatch(env, at, path, f);
-    if ('shopMode' in f || 'shopCats' in f || 'pinned' in f) {
+    if ('shopMode' in f || 'shopCats' in f || 'pinned' in f || 'hidden' in f) {
       try { await bizShopFresh(env, at, bizId, true); } catch (e) { return { ok: true, rebuild: err(e) }; }
     }
     return { ok: true };
