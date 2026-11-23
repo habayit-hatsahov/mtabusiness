@@ -242,7 +242,7 @@ export async function buildBizShop(shop) {
   const deal = tabs.find(t => t.sale);
   return { base, total, mode: auto ? 'auto' : 'manual', tabs, deal: deal ? { t: deal.t, count: deal.count } : null, at: new Date().toISOString() };
 }
-const bizShopKey = id => 'bizShop:' + id;
+const bizShopKey = id => 'bizShop2:' + id;   // §796יב – מפתח חדש: התצוגות הישנות (עם לשונית "מומלצים") לא נקראות יותר
 async function bizShopFresh(env, at, id, force) {
   if (!force) {
     const c = await env.RATE_LIMIT_KV.get(bizShopKey(id), 'json');
