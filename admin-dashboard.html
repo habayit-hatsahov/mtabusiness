@@ -24169,8 +24169,127 @@ window.dcHubSet = (k) => { dcHub = k; renderMain(); };
 function dcHubTabsHtml() {
   const t = (k, l, also) => `<button class="${dcHub === k || also ? 'on' : ''}" onclick="dcHubSet('${k}')">${l}</button>`;
   return `<style>.dc-hub{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 14px}.dc-hub h1{font-size:20px;margin:0 12px 0 0}.dc-hub button{font:inherit;font-size:14px;font-weight:600;border:1px solid var(--line,#E7E7E0);background:#fff;border-radius:999px;padding:7px 16px;cursor:pointer;color:#0A2A66}.dc-hub button.on{background:#0A2A66;color:#fff;border-color:#0A2A66}.dc-back{margin:0 0 10px}.dc-back a{cursor:pointer;color:#3E63B8;font-weight:600}</style>
-    <div class="dc-hub"><h1>מרכז הנתונים</h1>${t('usage', 'אפליקציה ושימוש')}${t('trackers', 'מעקבים')}${t('engage', 'מעורבות', dcHub === 'engageOld')}</div>`;
+    <div class="dc-hub"><h1>מרכז הנתונים</h1>${t('usage', 'אפליקציה ושימוש')}${t('trackers', 'מעקבים')}${t('engage', 'מעורבות', dcHub === 'engageOld')}
+      <span class="dc-exp"><button onclick="dcExport('xlsx')" title="הלשונית הפתוחה, כמו שהיא על המסך">⬇ אקסל</button><button onclick="dcExport('csv')" title="הלשונית הפתוחה, כמו שהיא על המסך">⬇ CSV</button><button onclick="dcExport('all')" title="שלוש הלשוניות, גיליון לכל אחת">⬇ הכול לאקסל</button></span></div>`;
 }
+// ── §798 — ייצוא מרכז הנתונים לאקסל / CSV (רמי, 24.11: "שיהיה אפשר לייצא כל סקשן"). קורא את מה שעל המסך,
+// כולל הטווח והבחירות הפתוחות – ולכן כל שינוי במסכים עצמם נכנס לייצוא בלי לגעת כאן.
+// חוק השורה: אלמנט שהטקסט שלו בשורה אחת = תא; אלמנט שכל הילדים שלו בשורה אחת = שורה עם תא לכל ילד; אחרת – יורדים פנימה.
+const DC_TAB_NAMES = { usage: 'אפליקציה ושימוש', trackers: 'מעקבים', engage: 'מעורבות', engageOld: 'מעורבות – המסך הקודם' };
+const XLSX_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+function dcCollectRows(root) {
+  const rows = [];
+  const hideCss = document.createElement('style');   // בלי כפתורים, אייקוני "!" והפניות "← לרשימה" בקובץ
+  hideCss.textContent = '.dc-hub,button,input,select,textarea,svg,canvas,.yzu-inf,.plat-row-go,.dc-back{display:none!important}';
+  document.head.appendChild(hideCss);
+  const txt = (el) => (el.innerText || '').replace(/[ \t ]+/g, ' ').trim();
+  const visible = (el) => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden'; };
+  const isHead = (el) => /^H[1-6]$/.test(el.tagName) || /(title|sect|head)\b/i.test(el.className && el.className.baseVal === undefined ? el.className : '');
+  const walk = (el) => {
+    if (!visible(el) || /^(STYLE|SCRIPT|TEMPLATE)$/.test(el.tagName)) return;
+    if (el.tagName === 'TABLE') {
+      if (rows.length && rows[rows.length - 1].length) rows.push([]);
+      for (const tr of el.rows) {
+        if (!visible(tr)) continue;
+        const r = [];
+        for (const c of tr.cells) { r.push(txt(c).replace(/\n+/g, ' · ')); for (let i = 1; i < (c.colSpan || 1); i++) r.push(''); }
+        if (r.some(Boolean)) rows.push(r);
+      }
+      rows.push([]);
+      return;
+    }
+    const t = txt(el);
+    if (!t) return;
+    const kids = [...el.children].filter(visible).filter((c) => txt(c));
+    const ownText = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+    if (!t.includes('\n') && !el.querySelector('table')) {
+      // שורה אחת: תא לכל ילד כשהם עומדים לבד (תווית + מספר), אחרת תא אחד
+      const sep = !ownText && kids.length >= 2 && getComputedStyle(el).display.includes('flex');
+      if (isHead(el) && rows.length && rows[rows.length - 1].length) rows.push([]);
+      rows.push(sep ? kids.map(txt) : [t]);
+      return;
+    }
+    if (!ownText && kids.length >= 2 && kids.length <= 12 && !el.querySelector('table') && kids.every((c) => !txt(c).includes('\n'))
+        && !kids.some((c) => [...c.querySelectorAll('*')].some((d) => getComputedStyle(d).display === 'block' && txt(d)))) {
+      rows.push(kids.map(txt));
+      return;
+    }
+    if (isHead(el) && rows.length && rows[rows.length - 1].length) rows.push([]);
+    for (const n of el.childNodes) {
+      if (n.nodeType === 1) walk(n);
+      else if (n.nodeType === 3 && n.textContent.trim()) rows.push([n.textContent.trim()]);
+    }
+  };
+  try { walk(root); } finally { hideCss.remove(); }
+  // בלי שורות ריקות כפולות
+  return rows.filter((r, i) => r.length || (i && rows[i - 1].length));
+}
+// "2,928" / "14%" / "‎-3" → מספר, כדי שאפשר יהיה לחשב באקסל. כל השאר נשאר טקסט.
+function dcCell(v) {
+  const s = String(v).replace(/[‎‏]/g, '').trim();
+  if (/^[-−]?\d{1,3}(,\d{3})*(\.\d+)?$|^[-−]?\d+(\.\d+)?$/.test(s)) return Number(s.replace(/,/g, '').replace('−', '-'));
+  if (/^[-−]?\d+(\.\d+)?%$/.test(s)) return { v: Number(s.replace('%', '').replace('−', '-')) / 100, t: 'n', z: '0%' };
+  return s;
+}
+function dcStamp() { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
+function dcHeadRows(k) { return [['Yellow Zone – מרכז הנתונים – ' + DC_TAB_NAMES[k]], ['יוצא ב-' + new Date().toLocaleString('he-IL')], []]; }
+function dcDownload(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+let xlsxLibP = null;
+function loadXlsxLib() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return xlsxLibP || (xlsxLibP = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = XLSX_LIB;
+    s.onload = () => res(window.XLSX); s.onerror = () => { xlsxLibP = null; rej(new Error('לא הצלחתי לטעון את ספריית האקסל')); };
+    document.head.appendChild(s);
+  }));
+}
+function dcSheet(X, rows) {
+  const ws = X.utils.aoa_to_sheet(rows.map((r) => r.map(dcCell)));
+  const w = [];
+  rows.forEach((r) => r.forEach((c, i) => { w[i] = Math.min(60, Math.max(w[i] || 8, String(c).length + 2)); }));
+  ws['!cols'] = w.map((wch) => ({ wch }));
+  return ws;
+}
+function dcBodyEl() { return document.getElementById('tabContent'); }
+const dcLoading = () => { const w = dcBodyEl(); return !w || /^\s*טוען…\s*$/.test(txtOfPlaceholder(w)); };
+function txtOfPlaceholder(w) { const p = w.querySelector('.placeholder-note'); return p && w.innerText.replace(/מרכז הנתונים|אפליקציה ושימוש|מעקבים|מעורבות|⬇ אקסל|⬇ CSV|⬇ הכול לאקסל/g, '').trim() === p.innerText.trim() ? p.innerText : ''; }
+window.dcExport = async function (mode) {
+  const btns = document.querySelectorAll('.dc-exp button');
+  btns.forEach((b) => { b.disabled = true; });
+  try {
+    if (mode === 'csv') {
+      const rows = dcHeadRows(dcHub).concat(dcCollectRows(dcBodyEl()));
+      const csv = '﻿' + rows.map((r) => r.map((c) => { const v = dcCell(c); return '"' + String(typeof v === 'object' ? c : v).replace(/"/g, '""') + '"'; }).join(',')).join('\r\n');
+      dcDownload(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `yellowzone-${DC_TAB_NAMES[dcHub]}-${dcStamp()}.csv`);
+      return;
+    }
+    const X = await loadXlsxLib();
+    const wb = X.utils.book_new();
+    wb.Workbook = { Views: [{ RTL: true }] };
+    if (mode === 'xlsx') {
+      X.utils.book_append_sheet(wb, dcSheet(X, dcHeadRows(dcHub).concat(dcCollectRows(dcBodyEl()))), DC_TAB_NAMES[dcHub].slice(0, 31));
+      X.writeFile(wb, `yellowzone-${DC_TAB_NAMES[dcHub]}-${dcStamp()}.xlsx`);
+      return;
+    }
+    // הכול: עוברים על שלוש הלשוניות, מחכים שכל אחת תיטען (עד 30 שנ'), וחוזרים ללשונית שהייתה פתוחה
+    const back = dcHub;
+    for (const k of ['usage', 'trackers', 'engage']) {
+      dcHub = k; renderMain();
+      for (let i = 0; i < 60 && (dcLoading() || (k !== 'usage' && !(k === 'trackers' ? window.YZT : window.YZE))); i++) await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 300));
+      const rows = dcLoading() ? [['הלשונית לא נטענה בזמן – נסו שוב']] : dcCollectRows(dcBodyEl());
+      X.utils.book_append_sheet(wb, dcSheet(X, dcHeadRows(k).concat(rows)), DC_TAB_NAMES[k]);
+    }
+    dcHub = back; renderMain();
+    X.writeFile(wb, `yellowzone-מרכז-הנתונים-${dcStamp()}.xlsx`);
+  } catch (e) { console.error(e); alert('הייצוא נכשל: ' + e.message); }
+  finally { document.querySelectorAll('.dc-exp button').forEach((b) => { b.disabled = false; }); }
+};
 // §701 — שני קטעים מפאנל הפלטפורמה הישן שעברו ללשונית "מעקבים" (אותו חישוב, עם הרשימה שמאחורי כל שורה)
 function legacyNotEnteredMailHtml() {
   const eb = fanEntryBreakdown();
