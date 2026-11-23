@@ -15,6 +15,7 @@ import { verifyAdminIdToken, getGoogleAccessToken } from './jwt.js';
 import { firestoreListDocs, firestoreGetDoc, firestorePatch, firestoreDeleteDoc, firestoreRunQuery } from './firestore.js';
 import { SITES } from './benefitsales.js';
 import { testWix } from './wixapp.js';   // §797
+import { buildShopifyShop, shopifyCats, shopifySearch } from './shopifyshop.js';   // §797ג
 
 const T = 15000;
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', 'Accept-Language': 'he,en' };
@@ -187,7 +188,11 @@ function parseCreds(platform, c) {
 // מידע ציבורי (Store API, בלי מפתח). נשמר ב-KV לכל עסק, מתרענן כל 6 שעות ומתבטל בשמירת הגדרות.
 const SHOP_MAX = 12, TABS_MAX = 6, BIZSHOP_TTL = 6 * 3600 * 1000;
 const JUNK_CAT = /^(upsell|uncategorized|ללא קטגוריה|כללי|all|הכל|כל המוצרים)$/i;
-const TABKEY_RX = /^(top|cd{1,12})$/;
+// (§797ג) היה /^(top|cd{1,12})$/ – בק-סלאש שנבלע ב-heredoc: tabPins של לשוניות קטגוריה נזרקו בשמירה. Shopify: מזהי collection של 12+ ספרות.
+const TABKEY_RX = /^(top|c\d{1,15})$/;
+// §797ג – חנות שאפשר להציג: WooCommerce פתוחה, או Shopify (נסרקה כפתוחה, או סומנה ידנית כ-Shopify). platformManual גובר.
+const platOf = f => (f && (f.platformManual || f.platform)) || '';
+const shopOk = f => !!(f && f.base && ((platOf(f) === 'woocommerce' && f.open) || (platOf(f) === 'shopify' && (f.open || f.platformManual === 'shopify'))));
 const sapi = (base, q) => getJson(`${base}/wp-json/wc/store/v1/${q}`).then(x => x.j);
 const prodOut = p => {
   const pr = p.prices || {}, div = Math.pow(10, pr.currency_minor_unit || 0);
@@ -201,6 +206,7 @@ function tabPinsOf(shop, firstKey) {
   return tp;
 }
 export async function buildBizShop(shop) {
+  if (platOf(shop) === 'shopify') return buildShopifyShop(shop, { SHOP_MAX, TABS_MAX, SALE_RX, tabPinsOf });   // §797ג
   const base = shop.base;
   const auto = !(shop.shopMode === 'manual' && (shop.shopCats || []).length);
   const [catsR, topR] = await Promise.all([
@@ -264,7 +270,7 @@ async function bizShopFresh(env, at, id, force) {
     await firestorePatch(env, at, 'onlineShops/' + id, rec);
     sd = { fields: rec };
   }
-  if (sd.fields.platform !== 'woocommerce' || !sd.fields.open || !sd.fields.base) throw new Error('not_open_woo');
+  if (!shopOk(sd.fields)) throw new Error('not_open_woo');
   const body = JSON.stringify(await buildBizShop(sd.fields));
   await env.RATE_LIMIT_KV.put(bizShopKey(id), JSON.stringify({ t: Date.now(), body }));
   return body;
@@ -293,7 +299,7 @@ export async function handleBizShopList(request, env, ctx) {
   try {
     const at = await getGoogleAccessToken(env);
     const rows = await firestoreRunQuery(env, at, 'onlineShops', 'showProducts', true, 300);
-    const ids = rows.filter(r => r.fields.platform === 'woocommerce' && r.fields.open).map(r => r.id);
+    const ids = rows.filter(r => shopOk(r.fields)).map(r => r.id);
     const res = new Response(JSON.stringify({ ids }), { headers: H });
     ctx.waitUntil(cache.put(key, res.clone()));
     return res;
@@ -339,11 +345,13 @@ function cleanShopFields(body) {
     .map(p => ({ id: Math.trunc(+p.id), n: String(p.n || '').slice(0, 120), img: String(p.img || '').slice(0, 400) })).filter((p, i, a) => p.id > 0 && a.findIndex(x => x.id === p.id) === i);
   return f;
 }
-async function siteCats(base) {
+async function siteCats(base, plat) {
+  if (plat === 'shopify') return shopifyCats(base);   // §797ג
   const cs = await sapi(base, 'products/categories?per_page=100');
   return (cs || []).filter(c => c.count > 0 && !JUNK_CAT.test(dec(c.name).trim())).map(c => ({ id: c.id, n: dec(c.name), c: c.count })).sort((a, b) => b.c - a.c);
 }
-async function siteSearch(base, q) {
+async function siteSearch(base, q, plat) {
+  if (plat === 'shopify') return shopifySearch(base, q);   // §797ג
   q = String(q || '').trim().slice(0, 60);
   if (q.length < 2) return [];
   const a = await sapi(base, 'products?per_page=12&search=' + encodeURIComponent(q));
@@ -369,25 +377,27 @@ export async function handleShopOwner(body, env) {
   const sd = await firestoreGetDoc(env, at, 'onlineShops/' + biz);
   if (!sd || !sameStr(k, await linkSig(env, biz, sd.fields.linkVer || 1))) return { error: 'bad_link' };
   const s = sd.fields;
-  if (s.platform !== 'woocommerce' || !s.open || !s.base) return { error: 'not_open_woo' };
+  if (!shopOk(s)) return { error: 'not_open_woo' };
+  const plat = platOf(s);
   try {
     if (action === 'get') {
       const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
       const shop = await currentShop(env, at, biz);
       const first = shop && shop.tabs[0] && shop.tabs[0].k;
-      return { ok: true, key: keyState(env, s), code: (bd && bd.fields.discountCode) || '', name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], tabPins: tabPinsOf(s, first), hidden: s.hidden || [], allCats: await siteCats(s.base), shop };
+      return { ok: true, key: keyState(env, s), code: (bd && bd.fields.discountCode) || '', name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], tabPins: tabPinsOf(s, first), hidden: s.hidden || [], allCats: await siteCats(s.base, plat), shop, platform: plat };
     }
-    if (action === 'search') return { ok: true, products: await siteSearch(s.base, body.q) };
+    if (action === 'search') return { ok: true, products: await siteSearch(s.base, body.q, plat) };
     // §796יג – בעל העסק מחבר את האתר בעצמו (מפתח קריאה של WooCommerce): נבדק מיד, ורק אם עבד – נשמר כמחובר
     if (action === 'saveKey') {
-      const pc = parseCreds('woocommerce', body.creds || {});
+      const pc = parseCreds(plat, body.creds || {});   // §797ג – Shopify: myshopify + Client ID + Client secret
       if (pc.error) return { error: pc.error };
+      if (pc.partial) return { error: 'צריך גם את ה-Client ID וגם את ה-Client secret' };
       const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
-      const k = { platform: 'woocommerce', base: s.base, creds: pc.creds, savedAt: new Date(), savedBy: 'owner-link' };
+      const k = { platform: plat, base: s.base, creds: pc.creds, savedAt: new Date(), savedBy: 'owner-link' };
       const test = await testKey(k, (bd && bd.fields.discountCode) || '', env);
-      if (test.ok !== true) return { error: test.err || 'החיבור לא הצליח – בדקו שהעתקתם את שני הקודים במלואם ושההרשאה היא "קריאה"' };
+      if (test.ok !== true) return { error: test.err || (plat === 'shopify' ? 'החיבור לא הצליח – בדקו את כתובת ה-myshopify ושהעתקתם את Client ID ו-Client secret במלואם' : 'החיבור לא הצליח – בדקו שהעתקתם את שני הקודים במלואם ושההרשאה היא "קריאה"') };
       await firestorePatch(env, at, 'shopKeys/' + biz, k);
-      const f = { key: { platform: 'woocommerce', hint: pc.hint, savedAt: new Date(), partial: false }, test, updatedAt: new Date(), updatedBy: 'owner-link' };
+      const f = { key: { platform: plat, hint: pc.hint, savedAt: new Date(), partial: false }, test, updatedAt: new Date(), updatedBy: 'owner-link' };
       if (!s.stage || s.stage === 'todo' || s.stage === 'sent') f.stage = 'got';
       await firestorePatch(env, at, 'onlineShops/' + biz, f);
       return { ok: true, key: { connected: true, hint: pc.hint, found: test.found } };
@@ -424,7 +434,7 @@ export async function handleBizShopLink(body, env, ownerBizId) {
     sd = { fields: rec };
   }
   const f = sd.fields;
-  if (f.platform !== 'woocommerce' || !f.open || f.isShop === false) return { ok: true, shop: false };
+  if (!shopOk(f) || f.isShop === false) return { ok: true, shop: false };
   return { ok: true, shop: true, live: !!f.showProducts, filled: !!f.ownerSetAt, url: await setupUrl(env, bizId, f.linkVer || 1), mode: f.shopMode === 'manual' ? 'manual' : 'auto',
     pinned: Object.values(f.tabPins || {}).reduce((n, x) => n + x.length, 0) || (f.pinned || []).length, cats: (f.shopCats || []).map(c => c.n) };
 }
@@ -452,7 +462,7 @@ export async function handleOnlineShops(body, env) {
     const rows = bs.filter(d => (d.fields.status === 'approved' || d.fields.status === 'pending') && String(d.fields.website || '').trim())
       .map(d => Object.assign(pickBiz(d.id, d.fields), { shop: shops[d.id] || null, legacyKey: legacy.includes(host(d.fields.website)) }));
     // §796ח – הקישור לבעל העסק ליד כל חנות WooCommerce פתוחה (רמי: "את הלינק תוסיף לרשימה ליד כל עסק")
-    for (const r of rows) if (r.shop && r.shop.platform === 'woocommerce' && r.shop.open) r.setupUrl = await setupUrl(env, r.id, r.shop.linkVer || 1);
+    for (const r of rows) if (shopOk(r.shop)) r.setupUrl = await setupUrl(env, r.id, r.shop.linkVer || 1);
     return { ok: true, rows };
   }
   if (typeof bizId !== 'string' || !/^[A-Za-z0-9_-]{4,64}$/.test(bizId)) return { error: 'bad_biz' };
@@ -492,7 +502,7 @@ export async function handleOnlineShops(body, env) {
   }
   if (action === 'ownerLink') {
     const sd = await firestoreGetDoc(env, at, path);
-    if (!sd || sd.fields.platform !== 'woocommerce' || !sd.fields.open) return { error: 'רק לחנות WooCommerce שנסרקה' };
+    if (!sd || !shopOk(sd.fields)) return { error: 'רק לחנות WooCommerce / Shopify שנסרקה' };
     let ver = sd.fields.linkVer || 1;
     if (body.renew) { ver += 1; await firestorePatch(env, at, path, { linkVer: ver }); }
     else if (!sd.fields.linkVer) await firestorePatch(env, at, path, { linkVer: 1 });
@@ -501,8 +511,9 @@ export async function handleOnlineShops(body, env) {
   if (action === 'cats' || action === 'searchProducts') {
     const sd = await firestoreGetDoc(env, at, path);
     const base = sd && sd.fields.base;
-    if (!base || sd.fields.platform !== 'woocommerce') return { error: 'רק לחנות WooCommerce שנסרקה' };
+    if (!base || !shopOk(sd.fields)) return { error: 'רק לחנות WooCommerce / Shopify שנסרקה' };
     try {
+      if (platOf(sd.fields) === 'shopify') return action === 'cats' ? { ok: true, cats: await shopifyCats(base) } : { ok: true, products: await shopifySearch(base, body.q) };   // §797ג
       if (action === 'cats') {
         const cs = await sapi(base, 'products/categories?per_page=100');
         return { ok: true, cats: (cs || []).filter(c => c.count > 0 && !JUNK_CAT.test(dec(c.name).trim())).map(c => ({ id: c.id, n: dec(c.name), c: c.count, parent: c.parent || 0 })).sort((a, b) => b.c - a.c) };
