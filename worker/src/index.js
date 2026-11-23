@@ -39,7 +39,7 @@ import { runBizGeo } from './bizgeo.js';   // §762ב
 import { noteMemberToken, runStuckLogins } from './stucklogin.js';   // §769
 import { handleBenefitSales, handleBenefitShop, refreshBenefitShops } from './benefitsales.js';   // §775
 import { runScheduledJobs } from './schedule.js';   // §775
-import { handleOnlineShops, handleBizShop } from './onlineshops.js';   // §796
+import { handleOnlineShops, handleBizShop, handleBizShopList, handleShopOwner } from './onlineshops.js';   // §796
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -253,6 +253,10 @@ export default {
       if (request.method === 'POST' && url.pathname === '/admin-shops') {
         return json(await handleOnlineShops(await request.json(), env), env, request);
       }
+      // §796ו — בעל העסק בוחר מה מוצג בכרטיס (shop-setup.html), מאומת בחתימת הקישור
+      if (request.method === 'POST' && url.pathname === '/shop-owner') {
+        return json(await handleShopOwner(await request.json(), env), env, request);
+      }
       // §556 — "רענון עכשיו" במסך "הורדות לפי מקור". מאומת כמנהל.
       if (request.method === 'POST' && url.pathname === '/admin-store-sync') {
         const { idToken } = await request.json();
@@ -296,6 +300,7 @@ export default {
       // §775 — החולצות של העסק לגיליון ההטבה בקרוסלה (ציבורי, במטמון 6 שעות)
       if (request.method === 'GET' && url.pathname === '/benefit-shop') return handleBenefitShop(url, ctx, env);
       if (request.method === 'GET' && url.pathname === '/biz-shop') return handleBizShop(url, env);   // §796ד
+      if (request.method === 'GET' && url.pathname === '/biz-shop-list') return handleBizShopList(request, env, ctx);   // §796ה
       if (request.method === 'GET' && url.pathname === '/ping') {
         return json({ ok: true }, env, request);
       }

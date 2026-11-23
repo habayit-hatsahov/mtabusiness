@@ -12,7 +12,7 @@
 //    חריג: Shopify – כתובת ה-myshopify.com שבעל העסק נותן, ורק בתבנית הזאת.
 // מה נקרא מהחנויות: רק ספירות (מוצרים, מבצעים, כמה פעמים נוצל הקוד). בלי פרטי לקוחות.
 import { verifyAdminIdToken, getGoogleAccessToken } from './jwt.js';
-import { firestoreListDocs, firestoreGetDoc, firestorePatch, firestoreDeleteDoc } from './firestore.js';
+import { firestoreListDocs, firestoreGetDoc, firestorePatch, firestoreDeleteDoc, firestoreRunQuery } from './firestore.js';
 import { SITES } from './benefitsales.js';
 
 const T = 15000;
@@ -269,6 +269,90 @@ export async function handleBizShop(url, env) {
   }
 }
 
+// GET /biz-shop-list → { ids:[...] } – העסקים שרמי סימן "מאושר לעלות לכרטיס" (showProducts) ושיש להם חנות WooCommerce פתוחה.
+// home.html קורא פעם אחת לטעינה, ורק לעסק ברשימה פונה ל-/biz-shop כשהכרטיס נפתח (לא בקשה על כל עסק).
+// Cache API של Cloudflare ל-10 דקות (בלי כתיבות KV – התקרה החינמית 1,000 ביום); סימון חדש עולה תוך ≤10 דק'.
+export async function handleBizShopList(request, env, ctx) {
+  const H = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=600' };
+  const cache = caches.default, key = new Request(new URL('/biz-shop-list', request.url).toString());
+  const hit = await cache.match(key);
+  if (hit) return hit;
+  try {
+    const at = await getGoogleAccessToken(env);
+    const rows = await firestoreRunQuery(env, at, 'onlineShops', 'showProducts', true, 300);
+    const ids = rows.filter(r => r.fields.platform === 'woocommerce' && r.fields.open).map(r => r.id);
+    const res = new Response(JSON.stringify({ ids }), { headers: H });
+    ctx.waitUntil(cache.put(key, res.clone()));
+    return res;
+  } catch (e) {
+    console.error('bizShopList failed', String(e));
+    return new Response('{"ids":[]}', { headers: Object.assign({}, H, { 'Cache-Control': 'no-store' }) });
+  }
+}
+
+// ══ §796ו — קישור לבעל העסק: בוחר בעצמו אוטומטי / 5 קטגוריות + מוצרים ראשונים (רמי, 23.11) ══════════════
+// shop-setup.html?biz=<id>&k=<חתימה>. החתימה = HMAC-SHA256 של "<bizId>:<linkVer>" במפתח שנגזר מהמפתח הפרטי של
+// חשבון השירות (סוד קיים בוורקר – בלי סוד חדש). "קישור חדש" ב-admin מעלה את linkVer ← הקישור הקודם מפסיק לעבוד.
+// הקישור נותן רק את שלושת השדות האלה (shopMode / shopCats / pinned) – לא מפתחות, לא שלב, לא אישור לעלות.
+let _linkKey = null;
+async function linkKey(env) {
+  if (_linkKey) return _linkKey;
+  const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  const raw = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sa.private_key + '|shop-owner-link-v1'));
+  _linkKey = await crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return _linkKey;
+}
+async function linkSig(env, bizId, ver) {
+  const s = await crypto.subtle.sign('HMAC', await linkKey(env), new TextEncoder().encode(bizId + ':' + (ver || 1)));
+  return btoa(String.fromCharCode(...new Uint8Array(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '').slice(0, 24);
+}
+const sameStr = (a, b) => { a = String(a || ''); b = String(b || ''); if (a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
+function cleanShopFields(body) {
+  const f = {};
+  if ('shopMode' in body) f.shopMode = body.shopMode === 'manual' ? 'manual' : 'auto';
+  if ('shopCats' in body) f.shopCats = [].concat(body.shopCats || []).slice(0, TABS_MAX)
+    .map(c => ({ id: Math.trunc(+c.id), n: String(c.n || '').slice(0, 80) })).filter(c => c.id > 0);
+  if ('pinned' in body) f.pinned = [].concat(body.pinned || []).slice(0, SHOP_MAX)
+    .map(p => ({ id: Math.trunc(+p.id), n: String(p.n || '').slice(0, 120), img: String(p.img || '').slice(0, 400) })).filter((p, i, a) => p.id > 0 && a.findIndex(x => x.id === p.id) === i);
+  return f;
+}
+async function siteCats(base) {
+  const cs = await sapi(base, 'products/categories?per_page=100');
+  return (cs || []).filter(c => c.count > 0 && !JUNK_CAT.test(dec(c.name).trim())).map(c => ({ id: c.id, n: dec(c.name), c: c.count })).sort((a, b) => b.c - a.c);
+}
+async function siteSearch(base, q) {
+  q = String(q || '').trim().slice(0, 60);
+  if (q.length < 2) return [];
+  const a = await sapi(base, 'products?per_page=12&search=' + encodeURIComponent(q));
+  return (a || []).filter(usable).map(prodOut);
+}
+// POST /shop-owner { biz, k, action: 'get' | 'search' | 'save', ... } – ציבורי, מאומת בחתימה בלבד
+export async function handleShopOwner(body, env) {
+  const { biz, k, action } = body || {};
+  if (typeof biz !== 'string' || !/^[A-Za-z0-9_-]{4,64}$/.test(biz) || typeof k !== 'string') return { error: 'bad_link' };
+  const at = await getGoogleAccessToken(env);
+  const sd = await firestoreGetDoc(env, at, 'onlineShops/' + biz);
+  if (!sd || !sameStr(k, await linkSig(env, biz, sd.fields.linkVer || 1))) return { error: 'bad_link' };
+  const s = sd.fields;
+  if (s.platform !== 'woocommerce' || !s.open || !s.base) return { error: 'not_open_woo' };
+  try {
+    if (action === 'get') {
+      const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
+      return { ok: true, name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], pinned: s.pinned || [], allCats: await siteCats(s.base) };
+    }
+    if (action === 'search') return { ok: true, products: await siteSearch(s.base, body.q) };
+    if (action === 'save') {
+      const f = cleanShopFields(body);
+      if (f.shopMode === 'manual' && !(f.shopCats || []).length) return { error: 'במצב ידני צריך לבחור לפחות קטגוריה אחת' };
+      f.updatedAt = new Date(); f.updatedBy = 'owner-link'; f.ownerSetAt = new Date();
+      await firestorePatch(env, at, 'onlineShops/' + biz, f);
+      try { await bizShopFresh(env, at, biz, true); } catch (e) { return { ok: true, rebuild: err(e) }; }
+      return { ok: true };
+    }
+  } catch (e) { return { error: 'האתר לא ענה (' + err(e) + ')' }; }
+  return { error: 'bad_action' };
+}
+
 const pickBiz = (id, f) => ({
   id, name: f.name || '', website: f.website || '', status: f.status || '',
   code: f.discountCode || '', redeem: [].concat(f.discountRedeemMode || []), discountText: f.discountText || '',
@@ -321,6 +405,14 @@ export async function handleOnlineShops(body, env) {
       try { await bizShopFresh(env, at, bizId, true); } catch (e) { return { ok: true, rebuild: err(e) }; }
     }
     return { ok: true };
+  }
+  if (action === 'ownerLink') {
+    const sd = await firestoreGetDoc(env, at, path);
+    if (!sd || sd.fields.platform !== 'woocommerce' || !sd.fields.open) return { error: 'רק לחנות WooCommerce שנסרקה' };
+    let ver = sd.fields.linkVer || 1;
+    if (body.renew) { ver += 1; await firestorePatch(env, at, path, { linkVer: ver }); }
+    else if (!sd.fields.linkVer) await firestorePatch(env, at, path, { linkVer: 1 });
+    return { ok: true, url: `https://yellowzone.co.il/shop-setup.html?biz=${bizId}&k=${await linkSig(env, bizId, ver)}` };
   }
   if (action === 'cats' || action === 'searchProducts') {
     const sd = await firestoreGetDoc(env, at, path);

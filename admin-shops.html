@@ -296,7 +296,14 @@ function shopPanel(r) {
     ${S.err ? `<div class="res bad">${esc(S.err)}</div>` : ''}
     <div class="r-ctl" style="margin-top:12px"><button class="pri" data-a="shsave" data-id="${id}">שמירה</button>
       <a class="btn" href="biz-shop-demo.html?biz=${id}" target="_blank" rel="noopener">👀 תצוגה</a>
-      <span style="font-size:12px;color:var(--muted)">השמירה בונה מחדש את הכרטיס מיד (כמה שניות).</span></div>`;
+      <span style="font-size:12px;color:var(--muted)">השמירה בונה מחדש את הכרטיס מיד (כמה שניות).</span></div>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border)">
+      <b style="font-size:13px;color:var(--accent)">🔗 שבעל העסק יבחר בעצמו</b>
+      <div class="hint" style="margin:4px 0 6px">קישור אישי לבעל העסק: בוחר אוטומטי / 5 קטגוריות ומוצרים ראשונים – בלי כניסה. רק את זה, לא שום דבר אחר.${shopOf(r).ownerSetAt ? ` <b>בעל העסק עדכן לאחרונה: ${esc(new Date(shopOf(r).ownerSetAt).toLocaleDateString('he-IL'))}</b>` : ''}</div>
+      ${S.link ? `<input class="ltr" readonly value="${esc(S.link)}" onclick="this.select()" style="margin-bottom:6px">` : ''}
+      <div class="r-ctl" style="margin-top:0"><button data-a="olink" data-id="${id}">${S.link ? 'העתקה' : 'יצירת קישור'}</button>
+      ${S.link ? `<button class="wa" data-a="olinkwa" data-id="${id}"${waPhone(r.phone) ? '' : ' disabled'}>שליחה בוואטסאפ</button><button class="del" data-a="olinknew" data-id="${id}" title="הקישור הקודם יפסיק לעבוד">קישור חדש</button>` : ''}</div>
+    </div>`;
 }
 function shRepaint(id) { const r = ROWS.find(x => x.id === id), el = $('ps_' + id); if (r && el) el.innerHTML = shopPanel(r); }
 async function shLoadCats(id) {
@@ -394,6 +401,19 @@ document.addEventListener('click', async e => {
   try {
     if (a === 'rescan') { await scanOne(id); render(); toast('נסרק'); }
     else if (a === 'notshop' || a === 'isshop') { const v = a === 'isshop'; const res = await api({ action: 'set', bizId: id, isShop: v }); if (!res.ok) throw new Error(res.error); patchRow(id, { isShop: v }); render(); toast(v ? 'עבר לרשימת החנויות' : 'הוצא מהרשימה'); }
+    else if (a === 'olink' || a === 'olinknew') {
+      const S = SH[id];
+      if (a === 'olinknew' && !confirm('ליצור קישור חדש? הקישור הקודם שנשלח לבעל העסק יפסיק לעבוד.')) return;
+      if (a === 'olink' && S.link) { try { await navigator.clipboard.writeText(S.link); toast('הקישור הועתק'); } catch (er) { prompt('העתיקו:', S.link); } return; }
+      const res = await api({ action: 'ownerLink', bizId: id, renew: a === 'olinknew' });
+      if (!res.ok) throw new Error(res.error);
+      S.link = res.url; shRepaint(id); toast(a === 'olinknew' ? 'נוצר קישור חדש' : 'הקישור מוכן');
+    }
+    else if (a === 'olinkwa') {
+      const S = SH[id], name = r.owner ? r.owner.split(' ')[0] : r.name;
+      const txt = `היי ${name}, מדבר רמי מ-Yellow Zone 💛\nבכרטיס העסק שלכם באפליקציה יש עכשיו "מה יש באתר" – המוצרים מהאתר שלכם.\nכאן אפשר לבחור בעצמכם מה יופיע: אוטומטי לפי הכי נמכרים, או 5 קטגוריות לבחירתכם, ואילו מוצרים יופיעו ראשונים:\n${S.link}`;
+      window.open('https://wa.me/' + waPhone(r.phone) + '?text=' + encodeURIComponent(txt), '_blank');
+    }
     else if (a === 'shsearch') {
       const S = SH[id]; S.q = ($('shq_' + id) || {}).value || ''; S.err = '';
       const res = await api({ action: 'searchProducts', bizId: id, q: S.q });

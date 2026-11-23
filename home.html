@@ -1201,6 +1201,32 @@
       border-radius: var(--r-card); padding: 12px 14px;
     }
     .sheet-benefit-secondary .sheet-benefit-text { font-size: 14px; }
+    /* ══ §796ה – "מה יש באתר": לשוניות + שורת מוצרים מהאתר של העסק (כמו biz-shop-demo.html שרמי אישר) ══ */
+    .sheet-shop { margin: 22px -20px 0; padding: 16px 20px 18px; background: linear-gradient(180deg, #FFFBEA 0%, var(--surface) 100%); border-top: 1px solid var(--acc-line); }
+    .sheet-shop h3 { margin: 0; font-size: 16.5px; font-weight: 800; color: var(--ink); }
+    .sheet-shop .ss-sub { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
+    .sheet-shop .ss-deal { margin-top: 12px; display: flex; gap: 10px; align-items: center; width: 100%; background: #FFF1EC; border: 1px solid #FBD3C4; border-radius: 14px; padding: 10px 12px; cursor: pointer; text-align: start; font: inherit; color: var(--ink); }
+    .sheet-shop .ss-deal .f { font-size: 22px; }
+    .sheet-shop .ss-deal b { display: block; font-size: 14.5px; color: #C4320A; }
+    .sheet-shop .ss-deal span span { font-size: 12.5px; color: var(--ink-2); }
+    .sheet-shop .ss-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 14px -20px 10px; padding: 0 20px; }
+    .sheet-shop .ss-tabs::-webkit-scrollbar { display: none; }
+    .sheet-shop .ss-tabs button { flex: none; border: 1px solid #D5D9E2; background: #fff; color: var(--ink); border-radius: 999px; padding: 7px 13px; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; }
+    .sheet-shop .ss-tabs button.on { background: var(--ink); border-color: var(--ink); color: var(--acc); }
+    .sheet-shop .ss-tabs button.hot { border-color: #FBD3C4; color: #C4320A; }
+    .sheet-shop .ss-tabs button.hot.on { background: #C4320A; border-color: #C4320A; color: #fff; }
+    .sheet-shop .ss-tabs button.star { border-color: #F5C400; }
+    .sheet-shop .ss-tabs button.star.on { background: var(--acc); border-color: var(--acc); color: var(--ink); }
+    .sheet-shop .ss-row { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin: 0 -20px; padding: 0 20px 4px; }
+    .sheet-shop .ss-row::-webkit-scrollbar { display: none; }
+    .sheet-shop .ss-pr { flex: 0 0 138px; scroll-snap-align: start; display: flex; flex-direction: column; text-decoration: none; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    .sheet-shop .ss-pr .im { display: block; aspect-ratio: 1; background: var(--field); }
+    .sheet-shop .ss-pr img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .sheet-shop .ss-pr .nm { font-size: 13px; font-weight: 700; line-height: 1.3; padding: 8px 9px 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 34px; }
+    .sheet-shop .ss-pr .pp { padding: 2px 9px 10px; display: flex; gap: 6px; align-items: baseline; }
+    .sheet-shop .ss-pr .pp b { font-size: 15px; } .sheet-shop .ss-pr .pp s { font-size: 12px; color: #98A2B3; }
+    .sheet-shop .ss-pr.more { align-items: center; justify-content: center; text-align: center; background: var(--ink); color: var(--acc); border-color: var(--ink); padding: 12px; }
+    .sheet-shop .ss-pr.more span { font-size: 16px; font-weight: 800; } .sheet-shop .ss-pr.more small { font-size: 12px; color: #fff; opacity: .85; margin-top: 4px; }
 
     /* ══ מימוש ההטבה — כרטיס לכל אופן-מימוש שהעסק תומך בו (פיזי/נותן-שירות + אונליין),
        מוצגים יחד ולא בבורר-מעבר. הצהוב מופיע פעם אחת בכל מצב: בכפתור כשסגור, או בתעודה/בקופון
@@ -3652,6 +3678,64 @@ let _openBizId = null;
 // פייסבוק, אתר, מייל, ניווט) – אירוע נפרד bizLink, כדי לא לנפח את "פניות".
 function _hbContact(ch) { window.logEvent && window.logEvent('bizContact', { bizId: _openBizId, channel: ch }); }
 function _hbLink(ch) { window.logEvent && window.logEvent('bizLink', { bizId: _openBizId, channel: ch }); }
+
+// ── §796ה – "מה יש באתר" בכרטיס העסק ─────────────────────────────────────────────────────────
+// רק עסקים שרמי סימן "מאושר לעלות לכרטיס" ב-admin-shops: הרשימה נטענת פעם אחת (/biz-shop-list),
+// והמוצרים (/biz-shop) רק כשנפתח כרטיס של עסק מהרשימה. כשל = הסקשן פשוט לא מופיע (לא שגיאה על המסך).
+// מדידה: bizLink עם channel 'shop' (מוצר) / 'shopMore' (לכל החנות) / 'shopTab:<לשונית>' – אותו אירוע כמו קישורי הכרטיס.
+const SS_HOSTS = ['https://api.yellowzone.co.il', 'https://habayit-hatsahov.web.app/api', 'https://habayit-hatsahov-worker.yellowzone.workers.dev'];
+const _ss = { ids: null, idsP: null, data: {}, cur: {} };
+function _ssGet(path, ms) {
+  const go = i => {
+    if (i >= SS_HOSTS.length) return Promise.reject(new Error('net'));
+    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), ms);
+    return fetch(SS_HOSTS[i] + path, { signal: ac.signal }).then(r => { clearTimeout(tm); return r.json(); }, () => { clearTimeout(tm); return go(i + 1); });
+  };
+  return go(0);
+}
+function _ssIds() {
+  if (!_ss.idsP) _ss.idsP = _ssGet('/biz-shop-list', 6000).then(j => { _ss.ids = (j && j.ids) || []; return _ss.ids; }).catch(() => { _ss.ids = []; return []; });
+  return _ss.idsP;
+}
+_ssIds();   // מוקדם, כדי שהרשימה תהיה מוכנה כשפותחים כרטיס
+const _ssEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const _ssFmt = n => Number(n || 0).toLocaleString('he-IL');
+function renderSheetShop(b) {
+  const el = document.getElementById('sheetShopSection');
+  if (!el) return;
+  el.innerHTML = '';
+  const id = b.id;
+  _ssIds().then(ids => {
+    if (!ids.includes(id)) return;
+    const have = _ss.data[id];
+    return (have ? Promise.resolve(have) : _ssGet('/biz-shop?biz=' + encodeURIComponent(id), 20000)).then(j => {
+      if (!j || !j.tabs || !j.tabs.length) return;
+      _ss.data[id] = j;
+      if (_openBizId !== id) return;   // בינתיים נפתח עסק אחר (#bizSheet ממוחזר)
+      _ss.cur[id] = _ss.cur[id] || j.tabs[0].t;
+      _ssPaint(b);
+    });
+  }).catch(() => {});
+}
+function _ssCards(b) {
+  const j = _ss.data[b.id], T = j.tabs.find(t => t.t === _ss.cur[b.id]) || j.tabs[0];
+  const cards = T.products.map((p, i) => `<a class="ss-pr" href="${_ssEsc(p.url)}" target="_blank" rel="noopener" onclick="_hbLink('shop')"><span class="im"><img src="${_ssEsc(p.img)}" alt=""${i < 6 ? '' : ' loading="lazy"'}></span><span class="nm">${_ssEsc(p.n)}</span><span class="pp"><b>${_ssFmt(p.p)} ₪</b>${p.w > p.p ? `<s>${_ssFmt(p.w)} ₪</s>` : ''}</span></a>`).join('');
+  const more = T.count > T.products.length ? 'עוד ' + _ssFmt(T.count - T.products.length) : 'לכל החנות';
+  return cards + `<a class="ss-pr more" href="${_ssEsc(T.url || j.base)}" target="_blank" rel="noopener" onclick="_hbLink('shopMore')"><span>${more}</span><small>באתר ${_ssEsc(b.name)}</small></a>`;
+}
+function _ssPaint(b) {
+  const el = document.getElementById('sheetShopSection'), j = _ss.data[b.id], d = j.deal, cur = _ss.cur[b.id];
+  el.innerHTML = `<div class="sheet-shop"><h3>מה יש באתר של ${_ssEsc(b.name)}</h3><div class="ss-sub">${_ssFmt(j.total)} מוצרים באתר · מתעדכן מהאתר</div>
+    ${d ? `<button type="button" class="ss-deal" data-t="${_ssEsc(d.t)}"><span class="f">🔥</span><span><b>${_ssEsc(d.t)} – ${_ssFmt(d.count)} פריטים</b><span>${b.discount ? 'ועוד ' + _ssEsc(b.discount) + ' בהטבה שלנו' : 'מבצעים באתר עכשיו'}</span></span></button>` : ''}
+    <div class="ss-tabs">${j.tabs.map(t => `<button type="button" data-t="${_ssEsc(t.t)}" class="${t.t === cur ? 'on' : ''}${t.sale ? ' hot' : ''}${t.star ? ' star' : ''}">${t.star ? '⭐ ' : ''}${_ssEsc(t.t)}</button>`).join('')}</div>
+    <div class="ss-row">${_ssCards(b)}</div></div>`;
+  el.querySelectorAll('[data-t]').forEach(btn => btn.onclick = () => {
+    const t = btn.getAttribute('data-t'); _ss.cur[b.id] = t; _hbLink(('shopTab:' + t).slice(0, 50));
+    el.querySelector('.ss-row').innerHTML = _ssCards(b); el.querySelector('.ss-row').scrollLeft = 0;
+    el.querySelectorAll('.ss-tabs button').forEach(x => x.classList.toggle('on', x.getAttribute('data-t') === t));
+    if (btn.classList.contains('ss-deal')) { const on = el.querySelector('.ss-tabs .on'); on && on.scrollIntoView({ inline: 'center', block: 'nearest' }); }
+  });
+}
 // ר' loadFirebaseData — האם כבר ניסינו לפתוח עסק מקישור-שיתוף (?biz=<id>) בטעינה הזו
 let _sharedBizOpened = false;
 // {name} של העסק המקושר למשתמש-בעל-עסק המחובר, אם יש (נקבע ב-initBizNavItem) — לכפתור
@@ -4071,6 +4155,7 @@ function openBiz(id) {
   document.getElementById('sheetDesc').textContent = b.desc || '';
 
   renderSheetMeta(b);
+  renderSheetShop(b);   // §796ה
 
   if (b.discount) {
     document.getElementById('sheetBenefitWrap').style.display = 'block';
@@ -5770,6 +5855,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="sheet-benefit-secondary-list" id="sheetBenefitSecondary"></div>
       </div>
       <div id="sheetCouponArea"></div>
+      <div id="sheetShopSection"></div>   <!-- §796ה – "מה יש באתר": רק לעסק שסומן "מאושר לעלות" ב-admin-shops -->
       <div id="sheetHowSection"></div>   <!-- §710 – "איך מקבלים את השירות", מתחת למימוש -->
       <div id="sheetGallerySection" style="display:none">
         <div class="sheet-section-label">גלריה</div>
