@@ -348,6 +348,14 @@ async function siteSearch(base, q) {
 async function currentShop(env, at, id) {
   try { const j = JSON.parse(await bizShopFresh(env, at, id, false)); return { tabs: (j.tabs || []).map(t => ({ k: t.k, t: t.t, pinned: t.pinned || 0, products: t.products })) }; } catch (e) { return null; }
 }
+// §796יג – האם האתר מחובר לספירת הקופון: מפתח שנבדק ועבד, או סוד ותיק בוורקר (Glory, SITES ב-benefitsales.js)
+function keyState(env, s) {
+  const host = u => { try { return new URL(u).hostname.replace(/^www./, ''); } catch (e) { return ''; } };
+  const legacy = s.base && Object.values(SITES).some(x => env[x.key] && env[x.secret] && host(x.base) === host(s.base));
+  if (legacy) return { connected: true, legacy: true };
+  if (s.key && !s.key.partial && (!s.test || s.test.ok !== false)) return { connected: true, hint: s.key.hint, found: s.test ? s.test.found : null };
+  return { connected: false, err: s.test && s.test.ok === false ? s.test.err : null };
+}
 // POST /shop-owner { biz, k, action: 'get' | 'search' | 'save', ... } – ציבורי, מאומת בחתימה בלבד
 export async function handleShopOwner(body, env) {
   const { biz, k, action } = body || {};
@@ -362,10 +370,26 @@ export async function handleShopOwner(body, env) {
       const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
       const shop = await currentShop(env, at, biz);
       const first = shop && shop.tabs[0] && shop.tabs[0].k;
-      return { ok: true, name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], tabPins: tabPinsOf(s, first), hidden: s.hidden || [], allCats: await siteCats(s.base), shop };
+      return { ok: true, key: keyState(env, s), code: (bd && bd.fields.discountCode) || '', name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], tabPins: tabPinsOf(s, first), hidden: s.hidden || [], allCats: await siteCats(s.base), shop };
     }
     if (action === 'search') return { ok: true, products: await siteSearch(s.base, body.q) };
+    // §796יג – בעל העסק מחבר את האתר בעצמו (מפתח קריאה של WooCommerce): נבדק מיד, ורק אם עבד – נשמר כמחובר
+    if (action === 'saveKey') {
+      const pc = parseCreds('woocommerce', body.creds || {});
+      if (pc.error) return { error: pc.error };
+      const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
+      const k = { platform: 'woocommerce', base: s.base, creds: pc.creds, savedAt: new Date(), savedBy: 'owner-link' };
+      const test = await testKey(k, (bd && bd.fields.discountCode) || '');
+      if (test.ok !== true) return { error: test.err || 'החיבור לא הצליח – בדקו שהעתקתם את שני הקודים במלואם ושההרשאה היא "קריאה"' };
+      await firestorePatch(env, at, 'shopKeys/' + biz, k);
+      const f = { key: { platform: 'woocommerce', hint: pc.hint, savedAt: new Date(), partial: false }, test, updatedAt: new Date(), updatedBy: 'owner-link' };
+      if (!s.stage || s.stage === 'todo' || s.stage === 'sent') f.stage = 'got';
+      await firestorePatch(env, at, 'onlineShops/' + biz, f);
+      return { ok: true, key: { connected: true, hint: pc.hint, found: test.found } };
+    }
     if (action === 'save') {
+      // (23.11) רמי: חיבור האתר הוא חובה בקישור – "זה מדרבן אותם"
+      if (!keyState(env, s).connected) return { error: 'קודם מחברים את האתר (שלב 1) – ואז שומרים' };
       const f = cleanShopFields(body);
       if (f.shopMode === 'manual' && !(f.shopCats || []).length) return { error: 'במצב ידני צריך לבחור לפחות קטגוריה אחת' };
       f.updatedAt = new Date(); f.updatedBy = 'owner-link'; f.ownerSetAt = new Date();
