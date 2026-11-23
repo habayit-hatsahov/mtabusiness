@@ -263,6 +263,7 @@ function rowHtml(r, g) {
       ${g === 'g1' ? `<button data-a="key" data-id="${id}">🔑 הזנת פרטי אינטגרציה</button>` : ''}
       ${s.platform === 'woocommerce' && s.open ? `<button data-a="shop" data-id="${id}">🛍️ מה מוצג בכרטיס${s.shopMode === 'manual' ? ' · ידני' : ''}${pinCount(s) ? ' · 📌' + pinCount(s) : ''}</button>
       <a class="btn" href="biz-shop-demo.html?biz=${id}" target="_blank" rel="noopener">👀 תצוגה</a>` : ''}
+      <button data-a="focus" data-id="${id}"${s.focus ? ' class="pri"' : ''}>${s.focus ? '📞 בטיפול ✓' : '📞 לטיפול'}</button>
       <button data-a="note" data-id="${id}">📝 הערה${s.note ? ' •' : ''}</button>
       <button data-a="rescan" data-id="${id}">↻ סריקה</button>
       <button data-a="notshop" data-id="${id}" title="להוציא מהרשימה">לא חנות</button>
@@ -371,14 +372,16 @@ function render() {
   const q = Q.trim().toLowerCase();
   const vis = ROWS.filter(r => passF(r)).filter(r => !q || r.name.toLowerCase().includes(q) || String(r.website).toLowerCase().includes(q));
   const by = { g1: [], g2: [], rest: [], unscanned: [] };
-  vis.forEach(r => by[groupOf(r)].push(r));
+  const focus = vis.filter(r => shopOf(r).focus);
+  vis.filter(r => !shopOf(r).focus).forEach(r => by[groupOf(r)].push(r));
   const sortG = a => a.sort((x, y) => (hasKey(y) - hasKey(x)) || ((shopOf(y).products || 0) - (shopOf(x).products || 0)));
   sortG(by.g1); sortG(by.g2);
   const all = { g1: ROWS.filter(r => groupOf(r) === 'g1'), g2: ROWS.filter(r => groupOf(r) === 'g2') };
   $('kpis').innerHTML = [[all.g1.length, 'קבוצה 1'], [all.g2.length, 'קבוצה 2'], [all.g1.filter(hasKey).length, 'עם פרטי אינטגרציה'],
-    [ROWS.filter(r => shopOf(r).showProducts).length, 'מאושרים לעלות'], [ROWS.filter(r => groupOf(r) === 'unscanned').length, 'לא נסרקו']]
+    [ROWS.filter(r => shopOf(r).focus).length, 'לטיפול'], [ROWS.filter(r => shopOf(r).showProducts).length, 'מאושרים לעלות'], [ROWS.filter(r => groupOf(r) === 'unscanned').length, 'לא נסרקו']]
     .map(([n, l]) => `<div class="kpi"><b>${n}</b><span>${l}</span></div>`).join('');
   let h = '';
+  if (focus.length) h += `<div class="grp" style="border-color:var(--cta);box-shadow:0 0 0 2px #FFE9A3"><div class="grp-h" style="background:#FFF8D6"><h2>📞 לטיפול <span class="cnt">${focus.length}</span></h2><div class="why">העסקים שסימנת לטיפול – למשל לשיחה מחר. אחרי השיחה: לעדכן את השלב, ולחיצה על "📞 בטיפול ✓" מחזירה את העסק לקבוצה שלו.</div></div>${focus.map(r => rowHtml(r, groupOf(r) === 'g2' ? 'g2' : 'g1')).join('')}</div>`;
   if (by.unscanned.length) h += `<div class="grp"><div class="grp-h"><h2>לא נסרקו עדיין <span class="cnt">${by.unscanned.length}</span></h2><div class="why">לחיצה על "סריקת האתרים" למעלה בודקת כל אתר: איזו פלטפורמה, כמה מוצרים, כמה במבצע. עד שהסריקה לא רצה, לא ידוע מי חנות.</div></div>${by.unscanned.map(restRow).join('')}</div>`;
   for (const g of ['g1', 'g2']) {
     const G = GROUPS[g];
@@ -475,6 +478,7 @@ document.addEventListener('click', async e => {
       patchRow(id, { shopMode: S.mode, shopCats: S.cats.slice() });
       render(); toast(res.rebuild ? 'נשמר, אבל הבנייה נכשלה: ' + res.rebuild : 'נשמר – הכרטיס נבנה מחדש');
     }
+    else if (a === 'focus') { const v = !shopOf(r).focus; const res = await api({ action: 'set', bizId: id, focus: v }); if (!res.ok) throw new Error(res.error); patchRow(id, { focus: v }); render(); toast(v ? 'נוסף ל"לטיפול" בראש הרשימה' : 'הוצא מ"לטיפול"'); }
     else if (a === 'saveNote') { const v = $('note_' + id).value; const res = await api({ action: 'set', bizId: id, note: v }); if (!res.ok) throw new Error(res.error); patchRow(id, { note: v }); OPEN[id] = ''; render(); toast('ההערה נשמרה'); }
     else if (a === 'save') {
       const s = shopOf(r), kind = keyKind(s.platform), v = x => ($(x + id) || {}).value || '';

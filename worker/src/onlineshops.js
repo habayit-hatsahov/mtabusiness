@@ -469,6 +469,7 @@ export async function handleOnlineShops(body, env) {
     if ('isShop' in body) f.isShop = body.isShop === true ? true : body.isShop === false ? false : null;
     if ('showProducts' in body) f.showProducts = body.showProducts === true;
     if ('note' in body) f.note = String(body.note || '').slice(0, 1000);
+    if ('focus' in body) f.focus = body.focus === true;   // §796טו – "📞 לטיפול" בראש הרשימה
     // §796ד – מה מוצג בכרטיס: אוטומטי / 5 קטגוריות ידניות / מוצרים ראשונים
     if ('shopMode' in body) f.shopMode = body.shopMode === 'manual' ? 'manual' : 'auto';
     if ('shopCats' in body) f.shopCats = [].concat(body.shopCats || []).slice(0, TABS_MAX)
