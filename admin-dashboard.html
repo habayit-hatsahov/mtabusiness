@@ -24168,7 +24168,7 @@ let dcHub = 'usage';
 window.dcHubSet = (k) => { dcHub = k; renderMain(); };
 function dcHubTabsHtml() {
   const t = (k, l, also) => `<button class="${dcHub === k || also ? 'on' : ''}" onclick="dcHubSet('${k}')">${l}</button>`;
-  return `<style>.dc-hub{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 14px}.dc-hub h1{font-size:20px;margin:0 12px 0 0}.dc-hub button{font:inherit;font-size:14px;font-weight:600;border:1px solid var(--line,#E7E7E0);background:#fff;border-radius:999px;padding:7px 16px;cursor:pointer;color:#0A2A66}.dc-hub button.on{background:#0A2A66;color:#fff;border-color:#0A2A66}.dc-back{margin:0 0 10px}.dc-back a{cursor:pointer;color:#3E63B8;font-weight:600}</style>
+  return `<style>.dc-hub{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 14px}.dc-hub h1{font-size:20px;margin:0 12px 0 0}.dc-hub button{font:inherit;font-size:14px;font-weight:600;border:1px solid var(--line,#E7E7E0);background:#fff;border-radius:999px;padding:7px 16px;cursor:pointer;color:#0A2A66}.dc-hub button.on{background:#0A2A66;color:#fff;border-color:#0A2A66}.dc-exp{display:flex;gap:6px;margin-inline-start:auto}.dc-hub .dc-exp button{font-size:13px;padding:6px 12px;background:#FFF7DB;border-color:#F2D46B}.dc-hub .dc-exp button:disabled{opacity:.5;cursor:wait}.dc-back{margin:0 0 10px}.dc-back a{cursor:pointer;color:#3E63B8;font-weight:600}</style>
     <div class="dc-hub"><h1>מרכז הנתונים</h1>${t('usage', 'אפליקציה ושימוש')}${t('trackers', 'מעקבים')}${t('engage', 'מעורבות', dcHub === 'engageOld')}
       <span class="dc-exp"><button onclick="dcExport('xlsx')" title="הלשונית הפתוחה, כמו שהיא על המסך">⬇ אקסל</button><button onclick="dcExport('csv')" title="הלשונית הפתוחה, כמו שהיא על המסך">⬇ CSV</button><button onclick="dcExport('all')" title="שלוש הלשוניות, גיליון לכל אחת">⬇ הכול לאקסל</button></span></div>`;
 }
@@ -24184,7 +24184,7 @@ function dcCollectRows(root) {
   document.head.appendChild(hideCss);
   const txt = (el) => (el.innerText || '').replace(/[ \t ]+/g, ' ').trim();
   const visible = (el) => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden'; };
-  const isHead = (el) => /^H[1-6]$/.test(el.tagName) || /(title|sect|head)\b/i.test(el.className && el.className.baseVal === undefined ? el.className : '');
+  const isHead = (el) => /^H[1-6]$/.test(el.tagName) || /(title|sect|head)\b/i.test(typeof el.className === 'string' ? el.className : '');
   const walk = (el) => {
     if (!visible(el) || /^(STYLE|SCRIPT|TEMPLATE)$/.test(el.tagName)) return;
     if (el.tagName === 'TABLE') {
@@ -24256,8 +24256,13 @@ function dcSheet(X, rows) {
   return ws;
 }
 function dcBodyEl() { return document.getElementById('tabContent'); }
-const dcLoading = () => { const w = dcBodyEl(); return !w || /^\s*טוען…\s*$/.test(txtOfPlaceholder(w)); };
-function txtOfPlaceholder(w) { const p = w.querySelector('.placeholder-note'); return p && w.innerText.replace(/מרכז הנתונים|אפליקציה ושימוש|מעקבים|מעורבות|⬇ אקסל|⬇ CSV|⬇ הכול לאקסל/g, '').trim() === p.innerText.trim() ? p.innerText : ''; }
+// כל לשונית כותבת "טוען…" משלה ("טוען נתונים…", "טוען את נתוני המעורבות…") – לכן: כל המסך מתחת לשורת הלשוניות הוא שורת טעינה קצרה
+const dcLoading = () => {
+  const w = dcBodyEl(); if (!w) return true;
+  const hub = w.querySelector('.dc-hub');
+  const rest = w.innerText.replace(hub ? hub.innerText : '', '').trim();
+  return rest.length < 80 && rest.startsWith('טוען');
+};
 window.dcExport = async function (mode) {
   const btns = document.querySelectorAll('.dc-exp button');
   btns.forEach((b) => { b.disabled = true; });
