@@ -3,7 +3,7 @@
 // ב-Wix מפתח API של בעל האתר לא מספיק לקריאת הזמנות (§796ג) – צריך אפליקציה שבעל העסק מתקין.
 // האפליקציה (Wix Studio ← Custom Apps, "Yellow Zone", self-managed, basic OAuth):
 //   App ID: 5cb9ea2a-7ed8-431b-a9d9-57cd81f72834 (ציבורי). הסוד – רק כסוד וורקר WIX_APP_SECRET.
-//   הרשאות: Read Orders (SCOPE.DC-STORES.READ-ORDERS), Read Products (v1 + v3). אין הרשאת קופונים לקריאה בלבד –
+//   הרשאות (גרסה 2.0, 24.11): Read Orders (SCOPE.DC-STORES.READ-ORDERS) + פרטי אתר בסיסיים. Read Products הוסר. אין הרשאת קופונים לקריאה בלבד –
 //   הקוד נבדק מתוך ההזמנות (appliedDiscounts[].coupon.code).
 //   קישור התקנה לבעלי עסקים: https://wix.to/n90asX2
 // הזרימה:
