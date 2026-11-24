@@ -162,9 +162,10 @@
     var T = curTab();
     h += '<div class="card"><h2><span class="step">3</span>אילו מוצרים יופיעו בכל לשונית?</h2>' +
       '<div class="sub">בכל לשונית מוצגים 12 מוצרים – אוטומטית, הנמכרים ביותר באותה קטגוריה. לא חייבים לגעת. אם רוצים:</div>' +
-      '<ul class="how"><li>📌 <b>לקבוע מוצר</b> – המוצר יופיע בלשונית במקום שתבחרו (1 = ראשון).</li>' +
-      '<li>✕ <b>להסיר מוצר</b> – המוצר לא יופיע בכרטיס בכלל, והמוצר הבא בתור ייכנס במקומו.</li>' +
-      '<li>🔍 <b>להוסיף מוצר שלא מופיע</b> – חיפוש לפי שם, והוא נקבע בלשונית.</li></ul>';
+      '<ul class="how"><li><b>המספר</b> ליד מוצר = המקום שלו בלשונית. בוחרים מספר אחר – והמוצר עובר לשם.</li>' +
+      '<li>📌 <b>לקבוע</b> – המוצר נשאר במקום שלו גם כשהמכירות משתנות (והמוצרים שמעליו נקבעים איתו, כדי שהמקום יחזיק). לחיצה על "📌 קבוע" מבטלת.</li>' +
+      '<li>✕ <b>להסיר</b> – המוצר לא יופיע בכרטיס, והבא בתור ייכנס במקומו.</li>' +
+      '<li>🔍 <b>להוסיף מוצר שלא מופיע</b> – חיפוש לפי שם, ובוחרים לו מקום.</li></ul>';
     if (!T) h += '<div class="sub">המוצרים יופיעו כאן אחרי השמירה הראשונה.</div>';
     else {
       h += '<div class="sec">בחרו לשונית:</div><div class="chips" style="margin-bottom:6px">' + S.shop.tabs.map(function (t) {
@@ -172,11 +173,7 @@
         return '<button type="button" class="chip' + (t.k === T.k ? ' on' : '') + '" data-tab="' + esc(t.k) + '">' + esc(t.t) + (n ? ' · 📌' + n : '') + '</button>'; }).join('') + '</div>' +
         (man ? '<div class="sub">שיניתם קטגוריות בשלב 1? לחצו "שמירה" – והלשוניות החדשות יופיעו כאן.</div>' : '');
       var pl = pins(T.k);
-      h += '<div class="sec">📌 קבועים בלשונית "' + esc(T.t) + '" <span class="count">(' + pl.length + '/12)</span></div>';
-      h += pl.length ? pl.map(function (p, i) {
-        var o = ''; for (var k = 1; k <= Math.min(MAXP, pl.length); k++) o += '<option value="' + k + '"' + (k === i + 1 ? ' selected' : '') + '>' + k + '</option>';
-        return '<div class="item"><select class="pos" data-pos="' + i + '" aria-label="מקום בלשונית">' + o + '</select>' + (p.img ? '<img src="' + esc(p.img) + '" alt="">' : '') + '<span class="t">' + esc(p.n) + '</span><button type="button" class="x" data-unpin="' + i + '" aria-label="ביטול הקביעה">✕</button></div>';
-      }).join('') + '<div class="sub" style="margin-top:4px">המספר = המקום בלשונית. ✕ כאן רק מבטל את הקביעה (המוצר יכול עדיין להופיע לפי המכירות).</div>' : '<div class="sub">עוד לא קבעתם מוצרים בלשונית הזו – מוצגים הנמכרים ביותר.</div>';
+      // §803 – רמי: "למה יש את 2 הרשימות פעמיים, תמזג". רשימת "קבועים" נפרדת בוטלה – רשימה אחת עם מקום, קביעה והסרה.
       // §800 – המספר ליד כל מוצר = בחירת מקום. בחירה קובעת את המוצר במקום הזה (והמוצרים שמעליו נקבעים כפי שהם מוצגים).
       var vw = viewOf(T);
       // §802 – רמי: "את ההוספת מוצר תשים מעל 'מוצגים עכשיו בלשונית' – זה כרגע נבלע למטה"
@@ -185,10 +182,11 @@
           (res ? (res.length ? res.map(function (p, i) { var has = pl.some(function (x) { return x.id === p.id; });
             return '<div class="item"><img src="' + esc(p.img) + '" alt="" loading="lazy"><span class="t">' + esc(p.n) + '<small>' + fmt(p.p) + ' ₪</small></span>' + (has ? '<span class="pinned-tag">📌 קבוע</span>' : '<select class="pos" data-addat="' + i + '" aria-label="לקבוע במקום" style="width:auto"><option value="">📌 לקבוע במקום…</option>' + posOpts(0, Math.min(MAXP, vw.length + 1)) + '</select>') + '</div>'; }).join('') : '<div class="msg">לא נמצאו מוצרים</div>') : '');
       }
-      h += '<div class="sec">מוצגים עכשיו בלשונית</div><div class="sub">רוצים לשנות סדר? בחרו מספר ליד המוצר – והוא יעבור למקום הזה. המוצרים שמעליו יישארו קבועים במקומם.</div>' + vw.map(function (p, i) {
+      h += '<div class="sec">המוצרים בלשונית "' + esc(T.t) + '"' + (pl.length ? ' <span class="count">(' + (pl.length === 1 ? 'קבוע אחד' : pl.length + ' קבועים') + ')</span>' : '') + '</div>' +
+        (pl.length ? '' : '<div class="sub">עוד לא קבעתם מוצרים – מוצגים הנמכרים ביותר.</div>') + vw.map(function (p, i) {
         var pin = i < pl.length;
         return '<div class="item"><select class="pos" data-place="' + p.id + '" aria-label="מקום בלשונית">' + posOpts(i + 1, vw.length) + '</select>' + (p.img ? '<img src="' + esc(p.img) + '" alt="" loading="lazy">' : '') + '<span class="t">' + esc(p.n) + (p.p != null ? '<small>' + fmt(p.p) + ' ₪</small>' : '') + '</span>' +
-          (pin ? '<span class="pinned-tag">📌 קבוע</span>' : (pl.length < MAXP ? '<button type="button" class="pinb" data-pin="' + p.id + '">📌 לקבוע</button>' : '')) + '<button type="button" class="x" data-hide="' + p.id + '" aria-label="להסיר">✕</button></div>';
+          (pin ? '<button type="button" class="pinned-tag" style="cursor:pointer;font-family:inherit" data-unpin="' + i + '" title="לחיצה מבטלת את הקביעה">📌 קבוע</button>' : (pl.length < MAXP ? '<button type="button" class="pinb" data-pin="' + p.id + '">📌 לקבוע</button>' : '')) + '<button type="button" class="x" data-hide="' + p.id + '" aria-label="להסיר מהכרטיס">✕</button></div>';
       }).join('');
     }
     if (S.hidden.length) h += '<div class="sec" style="margin-top:16px">הוסרו מהכרטיס (' + S.hidden.length + ')</div>' + S.hidden.map(function (p) {
@@ -285,8 +283,10 @@
       return render(); }
     if (d.tab != null) { S.tab = d.tab; res = null; return render(); }
     if (d.unpin != null) { pins(T.k).splice(+d.unpin, 1); return render(); }
-    if (d.pin || d.add != null) {
-      var p = d.pin ? findProd(+d.pin) : res[+d.add], pl = pins(T.k);
+    // §803 – "📌 לקבוע" ברשימה המאוחדת = נשאר במקום שבו הוא מוצג עכשיו (כמו בחירת אותו מספר)
+    if (d.pin) { var vw0 = viewOf(T), ix = vw0.findIndex(function (x) { return x.id === +d.pin; }); if (ix >= 0) placeAt(T, vw0[ix], ix + 1); return render(); }
+    if (d.add != null) {
+      var p = res[+d.add], pl = pins(T.k);
       if (p && pl.length < MAXP && !pl.some(function (x) { return x.id === p.id; })) { pl.push({ id: p.id, n: p.n, img: p.img }); S.hidden = S.hidden.filter(function (x) { return x.id !== p.id; }); }
       return render(); }
     if (d.hide) { var hp = findProd(+d.hide); if (hp && !isHid(hp.id)) S.hidden.push({ id: hp.id, n: hp.n, img: hp.img });
