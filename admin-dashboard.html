@@ -3660,6 +3660,8 @@ function hydrateBiz(id, raw) {
     inReviewAt: toJsDate(raw.inReviewAt),   // §653 – מוצג בפס "למה ממתינים"
     fixAskedAt: toJsDate(raw.fixAskedAt),   // §777 – השליחה האחרונה של "צריך לתקן" (bizTaskClass)
     pendingChangesAt: toJsDate(raw.pendingChangesAt),
+    shopOwnerChangeAt: toJsDate(raw.shopOwnerChangeAt),   // §802 – בעל העסק שמר "מה יש באתר" (בלי אישור, רק לידיעה)
+    shopOwnerChange: raw.shopOwnerChange || '',
     hasCoverPhoto: !!raw.coverPhoto,
     hasLogo: !!raw.logo,
     hasPhoto: !!(raw.coverPhoto || raw.logo),
@@ -4213,11 +4215,18 @@ function bizChangeTagHtml(b) {
   const at = b.changeSubmittedAt;
   return ` <span class="warn-badge" style="vertical-align:middle;background:#E8EEFF;color:#2747A8" title="${at ? 'נשלח ' + fmtDateTime(at) : 'בקשת שינוי מבעל העסק'}">✏️ ביקש שינוי${secs.length ? ' · ' + esc(secs.join(', ')) : ''}${at ? ' · ' + bizChangeWhen(at) : ''}</span>`;
 }
+// §802 – רמי: "אם הוא משנה – שאקבל את זה, בשינויים מבעל העסק". לידיעה בלבד (נכנס לתוקף מיד, אין ✅/❌).
+// מוצג 7 ימים מהשמירה האחרונה, עם השעה – כמו "✏️ ביקש שינוי".
+function bizShopChangeTagHtml(b) {
+  const at = b && b.shopOwnerChangeAt;
+  if (!at || Date.now() - at.getTime() > 7 * 86400000) return '';
+  return ` <span class="warn-badge" style="vertical-align:middle;background:#FFF4CC;color:#7A5A00" title="${esc((b.shopOwnerChange || '') + ' · ' + fmtDateTime(at))}">🛍️ שינה את "מה יש באתר" · ${esc(bizChangeWhen(at))}</span>`;
+}
 const NAME_TREATMENTS = ['details', 'tag', 'category', 'note'];
 function bizNameTagsHtml(b) {
   const c = classifyAction(b, 'business');
   const other = c.treatments.filter(t => t !== 'details').map(t => ' ' + treatBadgeHtml(t, b).replace('class="treat-badge"', 'class="treat-badge" style="vertical-align:middle"'));
-  return inquiryTagHtml(bizInquiries(b)) + bizChangeTagHtml(b) + other.join('') + bizNoteDraftTagHtml(b);
+  return inquiryTagHtml(bizInquiries(b)) + bizChangeTagHtml(b) + bizShopChangeTagHtml(b) + other.join('') + bizNoteDraftTagHtml(b);
 }
 function bizNoteDraftRowHtml(b) {
   const d = bizNoteDraft(b);
@@ -6107,6 +6116,42 @@ window.bizPinRemove = async function(id, pinId) {
   if (!pin || !confirm('להסיר את ההערה הקבועה?\n\n' + pin.text)) return;
   try { await bizPinWrite(id, { type: 'unpin', title: '📌 הערה קבועה הוסרה', detail: pin.text, before: pinId }); }
   catch (e) { alert('ההסרה נכשלה: ' + (e.message || e)); }
+};
+// §802 – "🛍️ אונליין" בכרטיס העסק: מערכת, מחובר לאינטגרציה או לא, עלה לכרטיס, וקישור הבחירה של בעל העסק.
+// onlineShops סגור ללקוח – נקרא דרך /admin-shops (action bizInfo). נטען פעם אחת לעסק (מטמון), כדי ש-rerender לא יחזור לשרת.
+const bizShopInfoCache = {};
+function bizShopInfoHtml(i) {
+  if (!i) return '<div class="id-dash-h">🛍️ אונליין – בודק…</div>';
+  if (i.err) return `<div class="id-dash-h">🛍️ אונליין – לא נטען (${esc(i.err)})</div>`;
+  if (!i.scanned || !i.isShop) return '';
+  const PL = { woocommerce: 'WooCommerce', shopify: 'Shopify', wix: 'Wix', magento: 'Magento', konimbo: 'Konimbo', '2all': '2all', eshop: 'eShop', other: 'אחר' };
+  const pills = [`מערכת: <b>${esc(PL[i.platform] || i.platform || 'לא זוהתה')}</b>`,
+    i.connected ? '<b style="color:#067647">✓ מחובר לאינטגרציה</b>' : '<b style="color:#B54708">✗ לא מחובר</b>',
+    i.live ? '✓ עלה לכרטיס' : 'עוד לא עלה לכרטיס'];
+  if (i.ownerSetAt) pills.push('בעל העסק בחר ' + esc(fmtDayMonth(new Date(i.ownerSetAt))));
+  return `<div class="id-dash-h">🛍️ אונליין</div><div style="font-size:12px;line-height:1.6">${pills.join(' · ')}</div>` +
+    (i.url ? `<div class="identity-actions-row" style="margin-top:4px"><button type="button" class="btn-id-dash" onclick="copyBizShopLink(this,'${esc(i.url)}')">📋 קישור הבחירה</button><a href="${esc(i.url)}" target="_blank" rel="noopener" class="btn-id-dash">פתיחה ↗</a></div>` : '');
+}
+function bizShopInfoSlot(b) {
+  if (!b || !String(b.website || '').trim()) return '';
+  const id = b.id, c = bizShopInfoCache[id];
+  if (c === undefined) {
+    bizShopInfoCache[id] = null;
+    (async () => {
+      try {
+        const idToken = await auth.currentUser.getIdToken();
+        const r = await (await hbApiFetch('/admin-shops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken, action: 'bizInfo', bizId: id }) })).json();
+        bizShopInfoCache[id] = r && r.ok ? r : { err: (r && r.error) || 'שגיאה' };
+      } catch (e) { bizShopInfoCache[id] = { err: e.message || 'שגיאה' }; }
+      document.querySelectorAll('[data-shopinfo="' + id + '"]').forEach(el => { const h = bizShopInfoHtml(bizShopInfoCache[id]); el.innerHTML = h; el.hidden = !h; });
+    })();
+  }
+  const h = bizShopInfoHtml(bizShopInfoCache[id]);
+  return `<div class="id-dash-link" data-shopinfo="${esc(id)}"${h ? '' : ' hidden'}>${h}</div>`;
+}
+window.copyBizShopLink = async function (btn, url) {
+  try { await navigator.clipboard.writeText(url); btn.textContent = '✓ הועתק'; } catch (e) { prompt('להעתקה:', url); }
+  setTimeout(() => { btn.textContent = '📋 קישור הבחירה'; }, 2500);
 };
 function bizDashUrl(accessToken) { return 'https://yellowzone.co.il/business-dashboard.html?token=' + accessToken; }
 window.copyBizDash = async function(btn, token) {   // §676
@@ -9957,6 +10002,7 @@ function bizFullDetailHtml(id, opts) {
         <div class="identity-actions">
           ${(idWaBtn || idMailBtn) ? `<div class="identity-actions-row">${idWaBtn}${idMailBtn}</div>` : ''}
           ${idDashBtn}
+          ${bizShopInfoSlot(b)}
           ${idAreaBtn}
           <button type="button" class="btn-id-dash" onclick="openBizNoteFree('${b.id}')">💬 הודעה לבעל העסק</button>
         </div>

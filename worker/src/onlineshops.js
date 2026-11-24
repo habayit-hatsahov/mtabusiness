@@ -13,9 +13,7 @@
 // מה נקרא מהחנויות: רק ספירות (מוצרים, מבצעים, כמה פעמים נוצל הקוד). בלי פרטי לקוחות.
 import { verifyAdminIdToken, getGoogleAccessToken } from './jwt.js';
 import { firestoreListDocs, firestoreGetDoc, firestorePatch, firestoreDeleteDoc, firestoreRunQuery } from './firestore.js';
-import { SITES } from './benefitsales.js';
-import { alertAdmins } from './bizfix.js';   // §801 – התראה כשבעל עסק שומר בחירה
-import { testWix } from './wixapp.js';   // §797
+import { SITES } from './benefitsales.js';import { testWix } from './wixapp.js';   // §797
 import { buildShopifyShop, shopifyCats, shopifySearch } from './shopifyshop.js';   // §797ג
 
 const T = 15000;
@@ -411,27 +409,15 @@ export async function handleShopOwner(body, env) {
       const f = cleanShopFields(body);
       if (f.shopMode === 'manual' && !(f.shopCats || []).length) return { error: 'במצב ידני צריך לבחור לפחות קטגוריה אחת' };
       f.updatedAt = new Date(); f.updatedBy = 'owner-link'; f.ownerSetAt = new Date();
-      // §801 – רמי: "לא רוצה לאשר, זו החלטה שלו – רק חשוב לי לדעת שהוא עושה את זה". התראת מנהל (מייל + פוש),
-      // לכל היותר פעם ב-15 דק' לעסק (שמירות ברצף = התראה אחת). כשל בהתראה לא מפיל את השמירה.
-      const lastAl = s.ownerAlertAt ? new Date(s.ownerAlertAt).getTime() : 0;
-      if (Date.now() - lastAl > 15 * 60 * 1000) f.ownerAlertAt = new Date();
+      // §801/§802 – רמי: "לא רוצה לאשר, זו החלטה שלו – רק חשוב לי לדעת… אבל בשינויים מבעל העסק".
+      // נכנס לתוקף מיד; על מסמך העסק נרשם shopOwnerChangeAt + תקציר → תגית "🛍️ שינה את 'מה יש באתר'" ליד השם במרכז הניהול.
+      // (במקום המייל+פוש של §801.) כשל ברישום לא מפיל את השמירה.
       await firestorePatch(env, at, 'onlineShops/' + biz, f);
-      if (f.ownerAlertAt) {
-        try {
-          const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
-          const name = (bd && bd.fields.name) || biz;
-          const pinsN = Object.values(f.tabPins || {}).reduce((n, x) => n + x.length, 0);
-          await alertAdmins(env, at, {
-            title: `🛍️ ${name} שינה את "מה יש באתר" בכרטיס`,
-            line: `${name} שמר בחירה חדשה של קטגוריות ומוצרים`,
-            rows: [['עסק', name],
-              ['לשוניות', f.shopMode === 'manual' ? 'ידני: ' + (f.shopCats || []).map(c => c.n).join(' · ') : 'אוטומטי'],
-              ['מוצרים קבועים', String(pinsN)],
-              ['הוסרו מהכרטיס', String((f.hidden || []).length)],
-              ['איך זה נראה', 'https://yellowzone.co.il/biz-shop-demo.html?biz=' + biz]],
-          });
-        } catch (e) { console.error('owner shop alert failed', e); }
-      }
+      try {
+        const pinsN = Object.values(f.tabPins || {}).reduce((n, x) => n + x.length, 0);
+        const sum = (f.shopMode === 'manual' ? 'ידני: ' + (f.shopCats || []).map(c => c.n).join(' · ') : 'אוטומטי') + ' · ' + pinsN + ' קבועים · ' + (f.hidden || []).length + ' הוסרו';
+        await firestorePatch(env, at, 'businesses/' + biz, { shopOwnerChangeAt: new Date(), shopOwnerChange: sum.slice(0, 300) });
+      } catch (e) { console.error('owner shop change mark failed', e); }
       try { await bizShopFresh(env, at, biz, true); } catch (e) { return { ok: true, rebuild: err(e) }; }
       return { ok: true, shop: await currentShop(env, at, biz) };
     }
@@ -522,6 +508,15 @@ export async function handleOnlineShops(body, env) {
       try { await bizShopFresh(env, at, bizId, true); } catch (e) { return { ok: true, rebuild: err(e) }; }
     }
     return { ok: true };
+  }
+  // §802 – רמי: "בכרטיס של העסק במרכז הניהול – לראות את הלינק, האם הוא מחובר באינטגרציה ולאיזו מערכת"
+  if (action === 'bizInfo') {
+    const sd = await firestoreGetDoc(env, at, path);
+    if (!sd) return { ok: true, scanned: false, website: !!String(biz.website || '').trim() };
+    const f = sd.fields, ok = shopOk(f);
+    return { ok: true, scanned: true, isShop: f.isShop !== false && (ok || !!platOf(f)), platform: platOf(f) || '', open: !!f.open,
+      connected: keyState(env, f).connected, live: !!f.showProducts, ownerSetAt: f.ownerSetAt || null,
+      url: ok ? await setupUrl(env, bizId, f.linkVer || 1) : '' };
   }
   if (action === 'ownerLink') {
     const sd = await firestoreGetDoc(env, at, path);
