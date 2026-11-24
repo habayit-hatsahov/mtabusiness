@@ -103,6 +103,23 @@
   function curTab() { var t = (S.shop && S.shop.tabs) || []; return t.filter(function (x) { return x.k === S.tab; })[0] || t[0] || null; }
   function pins(k) { return S.tabPins[k] || (S.tabPins[k] = []); }
   function isHid(id) { return S.hidden.some(function (x) { return x.id === id; }); }
+  // §800 – הסדר כפי שיוצג אחרי שמירה: הקבועים (לפי הסדר) ואחריהם הנמכרים שלא הוסרו
+  function viewOf(T) {
+    var pl = pins(T.k), ids = {}; pl.forEach(function (x) { ids[x.id] = 1; });
+    var head = pl.map(function (x) { var f = findProd(x.id); return f ? Object.assign({}, x, f) : x; });
+    return head.concat(T.products.filter(function (p) { return !ids[p.id] && !isHid(p.id); })).slice(0, MAXP);
+  }
+  function posOpts(sel, max) { var o = ''; for (var k = 1; k <= Math.min(MAXP, max); k++) o += '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + k + '</option>'; return o; }
+  // קובע את prod במקום N. קבועים קיימים נשארים; אם N נמוך מסוף הקבועים – המוצרים המוצגים מעליו נקבעים גם הם, כדי שהמקום יחזיק.
+  function placeAt(T, prod, N) {
+    if (!prod || !N) return;
+    var pl = pins(T.k), k = pl.filter(function (x) { return x.id !== prod.id; }).length;
+    if (k >= MAXP) return msg('אפשר לקבוע עד 12 מוצרים בלשונית');
+    var vw = viewOf(T).filter(function (x) { return x.id !== prod.id; });
+    vw.splice(N - 1, 0, prod);
+    S.tabPins[T.k] = vw.slice(0, Math.min(MAXP, Math.max(k + 1, N))).map(function (p) { return { id: p.id, n: p.n, img: p.img }; });
+    S.hidden = S.hidden.filter(function (x) { return x.id !== prod.id; });
+  }
   // §799 – התאמת קטגוריה לחיפוש: כל מילה בחיפוש צריכה להופיע (גם כחלק ממילה). סיומות ה/ת/ות/ים נחתכות – "בריכה" ← "בריכ" מוצא "בריכות".
   function catNorm(s) { return String(s || '').toLowerCase().replace(/[׳'"״\-_.,/()]+/g, ' ').replace(/\s+/g, ' ').trim(); }
   function catMatch(name, q) {
@@ -160,16 +177,17 @@
         var o = ''; for (var k = 1; k <= Math.min(MAXP, pl.length); k++) o += '<option value="' + k + '"' + (k === i + 1 ? ' selected' : '') + '>' + k + '</option>';
         return '<div class="item"><select class="pos" data-pos="' + i + '" aria-label="מקום בלשונית">' + o + '</select>' + (p.img ? '<img src="' + esc(p.img) + '" alt="">' : '') + '<span class="t">' + esc(p.n) + '</span><button type="button" class="x" data-unpin="' + i + '" aria-label="ביטול הקביעה">✕</button></div>';
       }).join('') + '<div class="sub" style="margin-top:4px">המספר = המקום בלשונית. ✕ כאן רק מבטל את הקביעה (המוצר יכול עדיין להופיע לפי המכירות).</div>' : '<div class="sub">עוד לא קבעתם מוצרים בלשונית הזו – מוצגים הנמכרים ביותר.</div>';
-      h += '<div class="sec">מוצגים עכשיו בלשונית</div>' + T.products.map(function (p, i) {
-        var hid = isHid(p.id), pin = pl.some(function (x) { return x.id === p.id; });
-        return '<div class="item"' + (hid ? ' style="opacity:.45"' : '') + '><span class="n">' + (i + 1) + '</span><img src="' + esc(p.img) + '" alt="" loading="lazy"><span class="t">' + esc(p.n) + '<small>' + fmt(p.p) + ' ₪' + (hid ? ' · יוסר בשמירה' : '') + '</small></span>' +
-          (hid ? '<button type="button" class="b" data-unhide="' + p.id + '">החזרה</button>'
-            : (pin ? '<span class="pinned-tag">📌 קבוע</span>' : (pl.length < MAXP ? '<button type="button" class="pinb" data-pin="' + p.id + '">📌 לקבוע</button>' : '')) + '<button type="button" class="x" data-hide="' + p.id + '" aria-label="להסיר">✕</button>') + '</div>';
+      // §800 – המספר ליד כל מוצר = בחירת מקום. בחירה קובעת את המוצר במקום הזה (והמוצרים שמעליו נקבעים כפי שהם מוצגים).
+      var vw = viewOf(T);
+      h += '<div class="sec">מוצגים עכשיו בלשונית</div><div class="sub">רוצים לשנות סדר? בחרו מספר ליד המוצר – והוא יעבור למקום הזה. המוצרים שמעליו יישארו קבועים במקומם.</div>' + vw.map(function (p, i) {
+        var pin = i < pl.length;
+        return '<div class="item"><select class="pos" data-place="' + p.id + '" aria-label="מקום בלשונית">' + posOpts(i + 1, vw.length) + '</select>' + (p.img ? '<img src="' + esc(p.img) + '" alt="" loading="lazy">' : '') + '<span class="t">' + esc(p.n) + (p.p != null ? '<small>' + fmt(p.p) + ' ₪</small>' : '') + '</span>' +
+          (pin ? '<span class="pinned-tag">📌 קבוע</span>' : (pl.length < MAXP ? '<button type="button" class="pinb" data-pin="' + p.id + '">📌 לקבוע</button>' : '')) + '<button type="button" class="x" data-hide="' + p.id + '" aria-label="להסיר">✕</button></div>';
       }).join('');
       if (pl.length < MAXP) {
         h += '<div class="sec">🔍 הוספת מוצר ללשונית</div><div class="srch"><input id="q" placeholder="שם המוצר…" enterkeyhint="search"><button type="button" class="b" id="go">חיפוש</button></div>' +
           (res ? (res.length ? res.map(function (p, i) { var has = pl.some(function (x) { return x.id === p.id; });
-            return '<div class="item"><img src="' + esc(p.img) + '" alt="" loading="lazy"><span class="t">' + esc(p.n) + '<small>' + fmt(p.p) + ' ₪</small></span>' + (has ? '<span class="pinned-tag">📌 קבוע</span>' : '<button type="button" class="pinb" data-add="' + i + '">📌 לקבוע</button>') + '</div>'; }).join('') : '<div class="msg">לא נמצאו מוצרים</div>') : '');
+            return '<div class="item"><img src="' + esc(p.img) + '" alt="" loading="lazy"><span class="t">' + esc(p.n) + '<small>' + fmt(p.p) + ' ₪</small></span>' + (has ? '<span class="pinned-tag">📌 קבוע</span>' : '<select class="pos" data-addat="' + i + '" aria-label="לקבוע במקום" style="width:auto"><option value="">📌 לקבוע במקום…</option>' + posOpts(0, Math.min(MAXP, vw.length + 1)) + '</select>') + '</div>'; }).join('') : '<div class="msg">לא נמצאו מוצרים</div>') : '');
       }
     }
     if (S.hidden.length) h += '<div class="sec" style="margin-top:16px">הוסרו מהכרטיס (' + S.hidden.length + ')</div>' + S.hidden.map(function (p) {
@@ -253,6 +271,8 @@
   document.addEventListener('change', function (e) {
     if (!S) return;
     if (e.target.name === 'm') { S.mode = e.target.value; return render(); }
+    if (e.target.dataset && e.target.dataset.place != null) { var T0 = curTab(), id0 = +e.target.dataset.place; placeAt(T0, viewOf(T0).filter(function (x) { return x.id === id0; })[0], +e.target.value); return render(); }
+    if (e.target.dataset && e.target.dataset.addat != null) { placeAt(curTab(), res && res[+e.target.dataset.addat], +e.target.value); return render(); }
     if (e.target.dataset && e.target.dataset.pos != null) { var pl = pins(curTab().k), from = +e.target.dataset.pos, to = +e.target.value - 1; pl.splice(to, 0, pl.splice(from, 1)[0]); render(); }
   });
   document.addEventListener('click', function (e) {
