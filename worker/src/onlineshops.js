@@ -14,6 +14,7 @@
 import { verifyAdminIdToken, getGoogleAccessToken } from './jwt.js';
 import { firestoreListDocs, firestoreGetDoc, firestorePatch, firestoreDeleteDoc, firestoreRunQuery } from './firestore.js';
 import { SITES } from './benefitsales.js';
+import { alertAdmins } from './bizfix.js';   // §801 – התראה כשבעל עסק שומר בחירה
 import { testWix } from './wixapp.js';   // §797
 import { buildShopifyShop, shopifyCats, shopifySearch } from './shopifyshop.js';   // §797ג
 
@@ -389,6 +390,8 @@ export async function handleShopOwner(body, env) {
     if (action === 'search') return { ok: true, products: await siteSearch(s.base, body.q, plat) };
     // §796יג – בעל העסק מחבר את האתר בעצמו (מפתח קריאה של WooCommerce): נבדק מיד, ורק אם עבד – נשמר כמחובר
     if (action === 'saveKey') {
+      // §801 – רמי: "תנעל את האפשרות לגעת בקודים". אתר שכבר מחובר – החיבור לא מוחלף מהקישור (רק דרכנו, ב-admin-shops).
+      if (keyState(env, s).connected) return { error: 'האתר כבר מחובר. לשינוי החיבור – כתבו לנו 💛' };
       const pc = parseCreds(plat, body.creds || {});   // §797ג – Shopify: myshopify + Client ID + Client secret
       if (pc.error) return { error: pc.error };
       if (pc.partial) return { error: 'צריך גם את ה-Client ID וגם את ה-Client secret' };
@@ -408,7 +411,27 @@ export async function handleShopOwner(body, env) {
       const f = cleanShopFields(body);
       if (f.shopMode === 'manual' && !(f.shopCats || []).length) return { error: 'במצב ידני צריך לבחור לפחות קטגוריה אחת' };
       f.updatedAt = new Date(); f.updatedBy = 'owner-link'; f.ownerSetAt = new Date();
+      // §801 – רמי: "לא רוצה לאשר, זו החלטה שלו – רק חשוב לי לדעת שהוא עושה את זה". התראת מנהל (מייל + פוש),
+      // לכל היותר פעם ב-15 דק' לעסק (שמירות ברצף = התראה אחת). כשל בהתראה לא מפיל את השמירה.
+      const lastAl = s.ownerAlertAt ? new Date(s.ownerAlertAt).getTime() : 0;
+      if (Date.now() - lastAl > 15 * 60 * 1000) f.ownerAlertAt = new Date();
       await firestorePatch(env, at, 'onlineShops/' + biz, f);
+      if (f.ownerAlertAt) {
+        try {
+          const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
+          const name = (bd && bd.fields.name) || biz;
+          const pinsN = Object.values(f.tabPins || {}).reduce((n, x) => n + x.length, 0);
+          await alertAdmins(env, at, {
+            title: `🛍️ ${name} שינה את "מה יש באתר" בכרטיס`,
+            line: `${name} שמר בחירה חדשה של קטגוריות ומוצרים`,
+            rows: [['עסק', name],
+              ['לשוניות', f.shopMode === 'manual' ? 'ידני: ' + (f.shopCats || []).map(c => c.n).join(' · ') : 'אוטומטי'],
+              ['מוצרים קבועים', String(pinsN)],
+              ['הוסרו מהכרטיס', String((f.hidden || []).length)],
+              ['איך זה נראה', 'https://yellowzone.co.il/biz-shop-demo.html?biz=' + biz]],
+          });
+        } catch (e) { console.error('owner shop alert failed', e); }
+      }
       try { await bizShopFresh(env, at, biz, true); } catch (e) { return { ok: true, rebuild: err(e) }; }
       return { ok: true, shop: await currentShop(env, at, biz) };
     }
