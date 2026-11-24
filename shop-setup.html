@@ -103,6 +103,26 @@
   function curTab() { var t = (S.shop && S.shop.tabs) || []; return t.filter(function (x) { return x.k === S.tab; })[0] || t[0] || null; }
   function pins(k) { return S.tabPins[k] || (S.tabPins[k] = []); }
   function isHid(id) { return S.hidden.some(function (x) { return x.id === id; }); }
+  // §799 – התאמת קטגוריה לחיפוש: כל מילה בחיפוש צריכה להופיע (גם כחלק ממילה). סיומות ה/ת/ות/ים נחתכות – "בריכה" ← "בריכ" מוצא "בריכות".
+  function catNorm(s) { return String(s || '').toLowerCase().replace(/[׳'"״\-_.,/()]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function catMatch(name, q) {
+    var words = catNorm(q).split(' ').filter(Boolean); if (!words.length) return true;
+    var n = catNorm(name);
+    return words.every(function (w) {
+      var v = [w];
+      if (w.length >= 4 && /(ות|ים)$/.test(w)) v.push(w.slice(0, -2));
+      if (w.length >= 3 && /[הת]$/.test(w)) v.push(w.slice(0, -1));
+      return v.some(function (x) { return n.indexOf(x) >= 0; });
+    });
+  }
+  function catFilter() {
+    var box = $('catChips'); if (!box) return; var shown = 0;
+    [].forEach.call(box.querySelectorAll('.chip'), function (b) {
+      var c = S.allCats.find(function (x) { return x.id === +b.dataset.c; });
+      var hit = catMatch(c && c.n, S.cq), ok = hit || b.classList.contains('on'); b.style.display = ok ? '' : 'none'; if (hit) shown++;
+    });
+    var none = $('cqNone'); if (none) none.style.display = shown ? 'none' : '';
+  }
   function render() {
     var man = S.mode === 'manual', h = '';
     // ── שלב 1 – חיבור האתר (חובה) ──
@@ -112,9 +132,13 @@
       '<label class="opt' + (!man ? ' on' : '') + '"><input type="radio" name="m" value="auto"' + (!man ? ' checked' : '') + '><div><b>אוטומטי (מומלץ)</b><span>אנחנו בוחרים בשבילכם: "הכי נמכרים" + 4 הקטגוריות שהכי נמכרות אצלכם + קטגוריית מבצעים/אאוטלט אם יש. מתעדכן לבד לפי המכירות באתר.</span></div></label>' +
       '<label class="opt' + (man ? ' on' : '') + '"><input type="radio" name="m" value="manual"' + (man ? ' checked' : '') + '><div><b>אני בוחר עד 6 קטגוריות</b><span>אתם בוחרים אילו קטגוריות מהאתר יופיעו כלשוניות, ובאיזה סדר.</span></div></label>';
     if (man) {
-      h += '<div class="sec">הקטגוריות שלכם <span class="count">(' + S.cats.length + '/6)</span></div><div class="sub">לחצו לפי הסדר שתרצו – הראשונה שתלחצו תהיה הלשונית הראשונה. לחיצה נוספת מבטלת.</div><div class="chips">' +
+      h += '<div class="sec">הקטגוריות שלכם <span class="count">(' + S.cats.length + '/6)</span></div><div class="sub">לחצו לפי הסדר שתרצו – הראשונה שתלחצו תהיה הלשונית הראשונה. לחיצה נוספת מבטלת.</div>' +
+        // §799 – חיפוש קטגוריה תוך כדי הקלדה (גם חצי מילה; "בריכה" מוצא גם "בריכות"). הנבחרות תמיד מוצגות.
+        (S.allCats.length > 8 ? '<div class="srch" style="margin-bottom:8px"><input id="cq" type="search" placeholder="🔍 חיפוש קטגוריה – למשל: בריכה" autocomplete="off" value="' + esc(S.cq || '') + '"></div>' : '') +
+        '<div class="chips" id="catChips">' +
         S.allCats.map(function (c) { var n = S.cats.findIndex(function (x) { return x.id === c.id; });
-          return '<button type="button" class="chip' + (n >= 0 ? ' on' : '') + '" data-c="' + c.id + '">' + (n >= 0 ? (n + 1) + '. ' : '') + esc(c.n) + ' <small>(' + fmt(c.c) + ')</small></button>'; }).join('') + '</div>';
+          return '<button type="button" class="chip' + (n >= 0 ? ' on' : '') + '" data-c="' + c.id + '"' + (n < 0 && !catMatch(c.n, S.cq) ? ' style="display:none"' : '') + '>' + (n >= 0 ? (n + 1) + '. ' : '') + esc(c.n) + ' <small>(' + fmt(c.c) + ')</small></button>'; }).join('') + '</div>' +
+        '<div class="sub" id="cqNone" style="display:none;margin-top:6px">לא נמצאה קטגוריה כזו – נסו מילה אחרת או חלק ממנה.</div>';
     }
     h += '</div>';
     // ── שלב 3 ──
@@ -155,6 +179,7 @@
     h += '<div class="tip"><span class="step">4</span><b>לוחצים "שמירה"</b> למטה – והכרטיס מתעדכן. כפתור "👀 איך זה נראה" מראה את התוצאה.<br>ותמיד אפשר לחזור ולשנות – מהקישור הזה או מ<b>האזור האישי של העסק</b> באפליקציה.</div>' +
       '<div class="msg" id="msg"></div>';
     $('app').innerHTML = h;
+    catFilter();
   }
   // §796יג – חיבור האתר: מפתח קריאה של WooCommerce (חובה כדי לשמור). רק ספירת רכישות בקוד – בלי פרטי לקוחות.
   // §797ג – Shopify: אפליקציה בחשבון של בעל העסק → Client ID + Client secret + כתובת ה-myshopify (נבדק מיד, נשמר רק אם עבד)
@@ -249,6 +274,8 @@
     if (t.id === 'conn') connect();
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.id === 'q') { e.preventDefault(); search(); } });
+  // §799 – סינון בלי render, כדי שהמקלדת לא תיסגר באמצע הקלדה
+  document.addEventListener('input', function (e) { if (S && e.target.id === 'cq') { S.cq = e.target.value; catFilter(); } });
   function search() {
     var q = ($('q') || {}).value || ''; if (q.trim().length < 2) return;
     var g = $('go'); g.disabled = true; g.textContent = 'מחפש…';
