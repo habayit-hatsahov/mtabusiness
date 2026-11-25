@@ -35,8 +35,17 @@ export async function legacyCouponTotals(siteId, code, env) {
   let list = [];
   try {
     const os = await wc(site, env, `/wp-json/wc-analytics/reports/orders?coupon_includes=${c.id}&after=2026-01-01T00:00:00&before=${tm}T00:00:00&per_page=100&orderby=date&order=desc`);
-    list = (Array.isArray(os) ? os : []).filter(o => !/refunded|cancelled|failed/.test(String(o.status || ''))).map(o => ({ at: String(o.date_created || o.date || ''), amount: num(o.net_total) }));
-  } catch (e) { /* רשימה לא חובה – הסיכום נשאר */ }
+    list = (Array.isArray(os) ? os : []).filter(o => !/refunded|cancelled|failed/.test(String(o.status || ''))).map(o => ({ id: o.order_id, at: String(o.date_created || o.date || ''), amount: num(o.net_total) }));
+    // §810 – רמי: "תמשוך מגלורי את השמות" (לניקוד לאוהד שרכש). רק שם החיוב בהזמנות עם הקוד; שאר פרטי החיוב
+    // (טלפון, מייל, כתובת) נזרקים כאן ולא יוצאים מהוורקר. בקשה אחת לכל ההזמנות.
+    const ids = list.map(x => x.id).filter(Boolean).slice(0, 100);
+    if (ids.length) {
+      const od = await wc(site, env, `/wp-json/wc/v3/orders?include=${ids.join(',')}&per_page=${ids.length}&_fields=id,billing`);
+      const nm = {}; (Array.isArray(od) ? od : []).forEach(o => { const b = o.billing || {}; nm[o.id] = [b.first_name, b.last_name].filter(Boolean).join(' ').trim().slice(0, 60); });
+      list.forEach(x => { x.customer = nm[x.id] || ''; });
+    }
+    list.forEach(x => { delete x.id; });
+  } catch (e) { list.forEach(x => { delete x.id; }); /* רשימה ושמות לא חובה – הסיכום נשאר */ }
   return { found: true, usage: num(c.usage_count), orders: num(t.orders_count), revenue: num(t.net_revenue), list };
 }
 
