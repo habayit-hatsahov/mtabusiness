@@ -342,19 +342,17 @@ function couponHtml() {
   if (!RED.data) return h2 + '<p class="yzu-note">בודק מול האתרים של העסקים…</p>';
   const rows = RED.data.rows || [];
   if (!rows.length) return h2 + '<p class="yzu-note">עוד אין חנויות מחוברות.</p>';
-  const dt = x => x ? U.esc(new Date(x).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' }) + ' ' + new Date(x).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })) : '–';
-  const all = rows.flatMap(r => (r.list || []).map(x => ({ at: x.at, amount: x.amount, name: r.name, code: r.code }))).sort((x, y) => String(y.at).localeCompare(String(x.at)));
-  const listBox = `<div class="yzu-box yzu-tw"><h3>כל המימושים – ${f(all.length)}</h3>${all.length ? `<table><tr><th>מתי</th><th>חנות</th><th>קוד</th><th class="n">סכום</th></tr>
-    ${all.slice(0, 200).map(x => `<tr><td>${dt(x.at)}</td><td><b>${U.esc(x.name)}</b></td><td dir="ltr" style="text-align:right">${U.esc(x.code || '–')}</td><td class="n"><b>${x.amount == null ? 'בלי סכום' : f(Math.round(x.amount)) + ' ₪'}</b></td></tr>`).join('')}</table>`
-      : '<p class="yzu-note">עוד אין מימושים ברשימה.</p>'}
-    <p class="yzu-note">ברשימה: חנויות שמחוברות במייל (כל התראה = מימוש), ו-Glory (מדוח ההזמנות באתר). בחנויות עם מפתח או אפליקציה האתר מחזיר רק כמה פעמים השתמשו בקוד – הן בטבלה למטה.</p></div>`;
-  const tr = rows.map(r => `<tr><td><b>${U.esc(r.name)}</b>${r.err ? `<div class="yzu-note">⚠️ ${U.esc(r.err)}</div>` : ''}${r.mailAddr ? `<div class="yzu-note" dir="ltr" style="text-align:right">${U.esc(r.mailAddr)}</div>` : ''}</td>
-    <td>${U.esc(PLAT_L[r.platform] || r.platform || '–')}</td><td>${CONN_L[r.conn] || r.conn}</td><td dir="ltr" style="text-align:right">${U.esc(r.code || '–')}</td>
-    <td class="n"><b>${r.orders == null ? '–' : f(r.orders)}</b></td><td class="n">${r.revenue == null ? '–' : f(Math.round(r.revenue)) + ' ₪'}${r.noAmount ? `<div class="yzu-note">${f(r.noAmount)} בלי סכום</div>` : ''}</td>
-    <td>${r.last ? dt(r.last) : '–'}</td></tr>`).join('');
-  const sumBox = `<div class="yzu-box yzu-tw"><h3>לפי חנות</h3><table><tr><th>חנות</th><th>מערכת</th><th>חיבור</th><th>קוד</th><th class="n">מימושים</th><th class="n">סכום</th><th>עדכון אחרון</th></tr>${tr}</table>
+  // §805ב – רמי: "אם יש כמה מאותו עסק – פשוט תציג כמה מימשו, גם אם יש 1. לא צריך את הקוד". טבלה אחת, שורה לכל חנות.
+  const dt = x => x ? U.esc(new Date(x).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })) : '–';
+  const lastOf = r => (r.list || []).map(x => x.at).filter(Boolean).sort().pop() || (r.conn === 'mail' ? r.last : null);
+  const tot = rows.reduce((a2, r) => a2 + (r.orders || 0), 0), totM = rows.reduce((a2, r) => a2 + (r.revenue || 0), 0);
+  const tr = rows.map(r => `<tr><td><b>${U.esc(r.name)}</b><div class="yzu-note">${U.esc(PLAT_L[r.platform] || r.platform || '')}${r.conn ? ' · ' + (CONN_L[r.conn] || r.conn) : ''}</div>${r.err ? `<div class="yzu-note">⚠️ ${U.esc(r.err)}</div>` : ''}</td>
+    <td class="n"><b>${r.orders == null ? '–' : f(r.orders)}</b></td>
+    <td class="n">${r.revenue == null ? '<span class="yzu-note">האתר לא מחזיר סכום</span>' : f(Math.round(r.revenue)) + ' ₪'}${r.noAmount ? `<div class="yzu-note">${f(r.noAmount)} בלי סכום</div>` : ''}</td>
+    <td>${dt(lastOf(r))}</td></tr>`).join('');
+  return h2 + `<div class="yzu-box yzu-tw"><h3>מימושים לפי חנות – ${f(tot)} מימושים · ${f(Math.round(totM))} ₪</h3>
+    <table><tr><th>חנות</th><th class="n">מימושים</th><th class="n">סכום</th><th>מימוש אחרון</th></tr>${tr}</table>
     <p class="yzu-note">מפתח ואפליקציה – נבדק עכשיו מול האתר. מייל – כל התראה שהגיעה לכתובת האישית של החנות = מימוש אחד.${RED.data.unmatched ? ` · ${f(RED.data.unmatched)} מיילים הגיעו לכתובת שלא שייכת לחנות.` : ''}</p></div>`;
-  return h2 + listBox + sumBox;
 }
 const BEN_ERR = { no_key: 'המפתח של WooCommerce עוד לא נשמר בוורקר', not_admin: 'אין הרשאת מנהל', unknown_site: 'האתר לא מוגדר בוורקר', not_found: 'הקוד לא נמצא באתר של העסק' };
 function benHtml() {
