@@ -41,6 +41,7 @@ import { handleBenefitSales, handleBenefitShop, refreshBenefitShops } from './be
 import { runScheduledJobs } from './schedule.js';   // §775
 import { handleOnlineShops, handleBizShop, handleBizShopList, handleShopOwner, handleBizShopLink } from './onlineshops.js';   // §796
 import { handleWixWebhook } from './wixapp.js';   // §797
+import { handleCouponEmail } from './couponmail.js';   // §804 – מימושי קופון במייל (Email Routing של in.yellowzone.co.il)
 
 const SITE_BASE = 'https://yellowzone.co.il/';
 
@@ -342,6 +343,12 @@ export default {
   // ⚠️ **ברירת המחדל היא התנהגות היום**: כל ערך שאינו הטריגר היומי מריץ את תור המיילים,
   // ולכן שינוי או הסרה של ה-cron החדש אינם יכולים לשתק את המיילים. הכיוון ההפוך
   // (ברירת מחדל = ניקוי) היה מריץ מחיקות כל דקה על ערך לא צפוי.
+  // §804 — מייל נכנס ל-<mailKey>@in.yellowzone.co.il (התראת הזמנה בקוד מחנות). כשל = לוג בלבד, לא דחייה לשולח.
+  async email(message, env, ctx) {
+    wrapEnvKv(env);
+    try { await handleCouponEmail(message, env); } catch (e) { console.error('couponmail failed', String(e)); }
+  },
+
   async scheduled(event, env, ctx) {
     wrapEnvKv(env);
     if (event && event.cron === PURGE_CRON) {

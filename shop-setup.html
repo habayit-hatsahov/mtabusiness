@@ -65,7 +65,7 @@
 <div class="wrap">
   <span class="yz">Yellow Zone</span>
   <h1 id="h1">מה יוצג בכרטיס העסק שלכם</h1>
-  <div class="card" style="background:var(--acc-soft);border-color:var(--acc-line)">
+  <div class="card" id="intro" style="background:var(--acc-soft);border-color:var(--acc-line)">
     <h2 style="font-size:17px">המוצרים מהאתר שלכם – בכרטיס העסק ב-Yellow Zone</h2>
     <div class="sub" style="color:var(--ink-2);font-size:14px;margin-bottom:8px">בכרטיס העסק שלכם באפליקציה יש סקשן <b>"מה יש באתר"</b>: עד 6 לשוניות לפי קטגוריות, בכל אחת עד 12 מוצרים עם תמונה ומחיר – ולחיצה מובילה את האוהד <b>ישר לדף המוצר אצלכם</b>. המוצרים מתעדכנים לבד מהאתר.</div>
     <ul class="how" style="margin:0 0 10px"><li>✓ אוהדים רואים מה אתם מוכרים עוד לפני שנכנסו לאתר</li><li>✓ המבצעים והאאוטלט שלכם מקבלים מקום בולט</li><li>✓ נראה לכם כמה רכישות נעשו בקוד הקופון של Yellow Zone</li></ul>
@@ -316,9 +316,35 @@
       if (r.ok) msg('✓ נשמר! הכרטיס שלכם עודכן. לחצו "👀 איך זה נראה" לראות – ותמיד אפשר לחזור ולשנות.', true); else msg(r.error || 'השמירה נכשלה');
     }).catch(function (er) { busy = false; $('save').disabled = false; $('save').textContent = 'שמירה'; msg(er.message); });
   };
+  // §804 – רמי: "תן לה אופציה למלא את הלינק – שתכניס לשם כל מה שצריך". חנות בלי חיבור API (MUGS ב-Wix):
+  // ההתראה שהחנות שולחת על הזמנה עם הקוד → הכתובת האישית שלנו → נספר במרכז הנתונים. כאן: הכתובת, איך מפנים, מה חייב להופיע, וסטטוס.
+  function mailPage(r) {
+    $('h1').textContent = 'ספירת הרכישות בקוד – ' + r.name;
+    var intro = $('intro'); if (intro) intro.style.display = 'none';   // הפתיחה על מוצרים ולשוניות לא רלוונטית במצב מייל
+    var got = r.mails > 0, A = esc(r.mailAddr);
+    $('app').innerHTML =
+      '<div class="card" style="border-color:' + (got ? '#ABEFC6' : 'var(--acc)') + '"><h2><span class="step">✓</span>' + (got ? 'ההתראות מגיעות אלינו' : 'מחכים להתראה הראשונה') + '</h2>' +
+        '<div class="sub">' + (got ? 'קיבלנו ' + r.mails + ' התראות על הזמנות עם הקוד' + (r.code ? ' <b dir="ltr">' + esc(r.code) + '</b>' : '') + (r.last ? ', האחרונה ב-' + esc(new Date(r.last).toLocaleDateString('he-IL')) : '') + '.' + (r.mails > r.withAmount ? ' <b>שימו לב:</b> ב-' + (r.mails - r.withAmount) + ' מהן לא מצאנו סכום – בדקו שהסכום מופיע בהתראה.' : '')
+          : 'אחרי ההפניה, ההזמנה הבאה עם הקוד תופיע כאן כ"התקבלה".') + '</div></div>' +
+      '<div class="card"><h2><span class="step">1</span>הכתובת שלכם אצלנו</h2>' +
+        '<div class="sub">לכתובת הזו מפנים את ההתראה שהחנות שולחת על הזמנה עם הקוד' + (r.code ? ' <b dir="ltr">' + esc(r.code) + '</b>' : '') + ':</div>' +
+        '<div class="srch" style="margin-top:8px"><input id="maddr" readonly dir="ltr" value="' + A + '" style="font-family:ui-monospace,Consolas,monospace"><button type="button" class="b" id="mcopy">העתקה</button></div></div>' +
+      '<div class="card"><h2><span class="step">2</span>מה עושים (2 דקות)</h2>' +
+        '<ul class="how"><li><b>1.</b> פותחים את האוטומציה שבניתם, שמתריעה על הזמנה עם הקוד.</li>' +
+        '<li><b>2.</b> בנמען של ההתראה מוסיפים את הכתובת שלמעלה (אפשר להשאיר גם את המייל שלכם).</li>' +
+        '<li><b>3.</b> מוודאים שבהתראה מופיעים <b>קוד הקופון</b> ו<b>סכום ההזמנה</b>.</li>' +
+        '<li><b>4.</b> שומרים – וזהו. מההזמנה הבאה, הכל נספר אצלנו לבד.</li></ul></div>' +
+      '<div class="card"><h2>🛡️ למה זה בטוח</h2><ul class="how" style="margin:0">' +
+        '<li>🔒 <b>אין לנו שום גישה לחנות שלכם</b> – לא להזמנות, לא למוצרים ולא לחשבון. מגיע אלינו רק מה שאתם בוחרים לשלוח בהתראה.</li>' +
+        '<li>🔒 <b>צריך רק את הקוד והסכום.</b> אל תוסיפו להתראה שם, טלפון, כתובת או מייל של הלקוח. אנחנו שומרים רק את מספר ההזמנות והסכום.</li>' +
+        '<li>🔒 <b>השליטה אצלכם:</b> מוחקים את הכתובת מהאוטומציה – וההתראות מפסיקות להגיע.</li></ul></div>' +
+      '<div class="tip">משהו לא ברור? כתבו לנו ונעשה את זה יחד 💛</div>';
+    $('mcopy').onclick = function () { var i = $('maddr'); try { navigator.clipboard.writeText(i.value); this.textContent = '✓ הועתק'; } catch (e) { i.select(); } };
+  }
   if (!BIZ || !K) { $('app').innerHTML = '<div class="boot">הקישור לא שלם. בקשו מאיתנו קישור חדש 💛</div>'; return; }
   api({ action: 'get' }).then(function (r) {
     if (!r.ok) { $('app').innerHTML = '<div class="boot">' + (r.error === 'bad_link' ? 'הקישור לא תקף (אולי הוחלף בקישור חדש). בקשו מאיתנו קישור חדש 💛' : r.error === 'not_open_woo' ? 'לעסק הזה עוד אין חנות שאפשר להציג.' : esc(r.error || 'משהו השתבש')) + '</div>'; return; }
+    if (r.mailMode) return mailPage(r);   // §804 – חנות שמחוברת במייל: רק הוראות ההפניה + סטטוס
     S = { platform: r.platform || 'woocommerce', key: r.key || {}, code: r.code || '', mode: r.mode, cats: r.cats || [], tabPins: r.tabPins || {}, hidden: r.hidden || [], allCats: r.allCats || [], shop: r.shop || null, tab: '' };
     $('h1').textContent = 'מה יוצג בכרטיס של ' + r.name;
     $('pv').href = 'biz-shop-demo.html?biz=' + encodeURIComponent(BIZ);

@@ -290,7 +290,7 @@ function tableView(R, T) {
 
 window.yzeSet = (k, v) => { if (k === 'table') S.table = !S.table; else if (k === 'sort') S.sort = v; else S[k] = v; U.C.rerender(); };
 window.yzeQ = (v) => { S.q = v; clearTimeout(window.__yzeQT); window.__yzeQT = setTimeout(() => { U.C.rerender(); const i = document.querySelector('.yzu-chips input[type=text]'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } }, 350); };
-window.yzeReload = () => { E = null; MSG.key = ''; for (const k in SALES) delete SALES[k]; load(true); U.C.rerender(); };
+window.yzeReload = () => { E = null; MSG.key = ''; RED.data = null; RED.err = ''; for (const k in SALES) delete SALES[k]; load(true); U.C.rerender(); };
 // ── §775 הטבות בלעדיות: לכל הטבה – הקרוסלה, העסקים שבה, ומכירות בקוד (WooCommerce) ─────────────────
 // בתאריכים של ההטבה עצמה (לא לפי "תקופה" שלמעלה). רמי: "תחבר לי את זה עם הנתונים על הקרוסלה ביחד על
 // הכרטיס של ההטבה" + "תתן היסטוריה של הטבה קודמת … את כל הנתונים של הקרוסלה שם".
@@ -315,6 +315,33 @@ function benSales(b) {
     .catch(e => { SALES[b.id] = { err: e.message || String(e) }; })
     .finally(() => U.C.rerender());
   return SALES[b.id];
+}
+// §804 – רמי: "תעשה לי שם מימוש קוד קופון לכל החנויות שאני מחבר… יש היום לגלורי – עדיף שורה".
+// שורה לכל חנות מחוברת: מפתח (WooCommerce/Shopify), אפליקציה (Wix), ותיק בוורקר (Glory), או מייל (couponMails).
+// "מאז ומעולם" – לא לפי התקופה. נטען פעם אחת לטעינה (↻ רענון – מחדש), כי מפתח ואפליקציה נבדקים חי מול האתר.
+const RED = { loading: false, data: null, err: '' };
+const CONN_L = { key: 'מפתח קריאה', app: 'אפליקציה', mail: 'מייל' };
+const PLAT_L = { woocommerce: 'WooCommerce', shopify: 'Shopify', wix: 'Wix', wixstore: 'Wix', magento: 'Magento' };
+function redHtml() {
+  if (!U.C.api) return '';
+  if (!RED.data && !RED.loading && !RED.err) {
+    RED.loading = true;
+    U.C.api('/admin-shops', { action: 'redemptions' })
+      .then(r => { if (r && r.ok) RED.data = r; else RED.err = (r && r.error) || 'שגיאה'; })
+      .catch(e => { RED.err = e.message || String(e); })
+      .finally(() => { RED.loading = false; U.C.rerender(); });
+  }
+  const head = `<div class="yzu-box yzu-tw"><h3>מימושי קוד קופון – כל החנויות המחוברות</h3>`;
+  if (RED.err) return head + `<div class="yzu-how">⚠️ לא נטען: ${U.esc(RED.err)}</div></div>`;
+  if (!RED.data) return head + '<p class="yzu-note">בודק מול האתרים של העסקים…</p></div>';
+  const rows = RED.data.rows || [];
+  if (!rows.length) return head + '<p class="yzu-note">עוד אין חנויות מחוברות.</p></div>';
+  const tr = rows.map(r => `<tr><td><b>${U.esc(r.name)}</b>${r.err ? `<div class="yzu-note">⚠️ ${U.esc(r.err)}</div>` : ''}${r.mailAddr ? `<div class="yzu-note" dir="ltr" style="text-align:right">${U.esc(r.mailAddr)}</div>` : ''}</td>
+    <td>${U.esc(PLAT_L[r.platform] || r.platform || '–')}</td><td>${CONN_L[r.conn] || r.conn}</td><td dir="ltr" style="text-align:right">${U.esc(r.code || '–')}</td>
+    <td class="n"><b>${r.orders == null ? '–' : f(r.orders)}</b></td><td class="n">${r.revenue == null ? '–' : f(Math.round(r.revenue)) + ' ₪'}${r.noAmount ? `<div class="yzu-note">${f(r.noAmount)} בלי סכום</div>` : ''}</td>
+    <td>${r.last ? U.esc(new Date(r.last).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })) : '–'}</td></tr>`).join('');
+  return head + `<table><tr><th>עסק</th><th>מערכת</th><th>חיבור</th><th>קוד</th><th class="n">הזמנות בקוד</th><th class="n">סכום</th><th>${rows.some(r => r.conn === 'mail') ? 'עדכון אחרון' : 'נבדק'}</th></tr>${tr}</table>
+    <p class="yzu-note">מאז ומעולם, לא לפי התקופה למעלה. מפתח ואפליקציה – נבדק עכשיו מול האתר (WooCommerce מחזיר מספר שימושים בלי סכום). מייל – כל התראה שהגיעה לכתובת האישית של העסק = הזמנה אחת.${RED.data.unmatched ? ` · ${f(RED.data.unmatched)} מיילים הגיעו לכתובת שלא שייכת לעסק.` : ''}</p></div>`;
 }
 const BEN_ERR = { no_key: 'המפתח של WooCommerce עוד לא נשמר בוורקר', not_admin: 'אין הרשאת מנהל', unknown_site: 'האתר לא מוגדר בוורקר', not_found: 'הקוד לא נמצא באתר של העסק' };
 function benHtml() {
@@ -375,7 +402,7 @@ function benHtml() {
     ${days.slice().reverse().map(k2 => { const d = E.days[k2], cb = (d && d.car && d.car.ben) || {}, w = wDay[k2] || {};
       const site = (cb.site || 0) + (cb.siteBtn || 0) + Object.entries(cb).filter(([q]) => q.startsWith('p:') || q === 'product').reduce((s2, [, v]) => s2 + v, 0);
       return `<tr><td>${U.short(k2)}${d ? '' : ' ⚠️'}</td>${viewOk ? `<td class="n">${f(cb.view || 0)}</td>` : ''}<td class="n">${f(cb.open || 0)}</td>${b.coupon ? `<td class="n">${f(cb.coupon || 0)}</td><td class="n">${f(site)}</td><td class="n"><b>${f(w.o || 0)}</b></td><td class="n">${f(Math.round(w.r || 0))} ₪</td>` : `<td class="n">${f(cb.bizClick || 0)}</td>`}</tr>`; }).join('')}</table></div>` : '';
-  return `<h2>הטבות בלעדיות</h2><p class="yzu-def">כל הטבה בתאריכים שלה – בלי קשר לתקופה שנבחרה למעלה. כל פעולה בתיבה נספרת פעם אחת לביקור, בלי מנהלים.</p>
+  return `<h2>הטבות בלעדיות</h2>${redHtml()}<p class="yzu-def">כל הטבה בתאריכים שלה – בלי קשר לתקופה שנבחרה למעלה. כל פעולה בתיבה נספרת פעם אחת לביקור, בלי מנהלים.</p>
     <div class="yzu-pbar yze-bens">${chips}</div>
     <div class="yze-bhead"><b>${U.esc(b.title)}</b> ${pill}<div class="yzu-note">${U.esc(b.sub || '')} · ${U.short(b.start)}–${U.short(b.end)}${st === 'live' ? ` · נכון ל-${U.short(z)}` : ''}</div></div>
     ${sales}

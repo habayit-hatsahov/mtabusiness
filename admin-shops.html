@@ -310,6 +310,7 @@ function rowHtml(r, g) {
       <a class="btn" href="biz-shop-demo.html?biz=${id}" target="_blank" rel="noopener">👀 תצוגה</a>` : ''}
       ${inFocus(r) ? '<span class="pill warn">📞 בטיפול – עד שימלא את הקישור</span>' : s.ownerSetAt ? '' : `<button data-a="focus" data-id="${id}">📞 לטיפול</button>`}
       <button data-a="note" data-id="${id}">📝 הערה${s.note ? ' •' : ''}</button>
+      <button data-a="mailconn" data-id="${id}" title="חנות בלי חיבור API: ההתראה על הזמנה בקוד מגיעה לכתובת אישית שלנו (§804)">📧 ${s.connMode === 'mail' ? 'מחובר במייל · ' + esc(s.mailKey || '') : 'חיבור במייל'}</button>
       <select data-a="platman" data-id="${id}" title="מערכת (כשהסריקה לא מזהה)" style="font:inherit;font-size:13px;border:1px solid var(--border);border-radius:10px;padding:6px 8px;background:#fff"><option value="">מערכת: לפי הסריקה</option>${['woocommerce', 'shopify', 'magento', 'wix', 'konimbo', '2all', 'eshop', 'other'].map(v => `<option value="${v}"${s.platformManual === v ? ' selected' : ''}>${esc(PLAT[v] || v)}</option>`).join('')}</select>
       <button data-a="rescan" data-id="${id}">↻ סריקה</button>
       <button data-a="notshop" data-id="${id}" title="להוציא מהרשימה">לא חנות</button>
@@ -487,6 +488,16 @@ document.addEventListener('click', async e => {
   const a = b.dataset.a, id = b.dataset.id, r = ROWS.find(x => x.id === id);
   const toggle = p => { OPEN[id] = OPEN[id] === p ? '' : p; ['msg', 'key', 'note', 'shop'].forEach(k => { const el = $(({ msg: 'pm_', key: 'pk_', note: 'pn_', shop: 'ps_' })[k] + id); if (el) el.classList.toggle('open', OPEN[id] === k); }); };
   if (a === 'msg' || a === 'key' || a === 'note') return toggle(a);
+  // §804 – חיבור במייל: כתובת אישית <mailKey>@in.yellowzone.co.il. ריק = ביטול החיבור במייל.
+  if (a === 'mailconn') {
+    const cur = (r.shop && r.shop.mailKey) || '';
+    const v = prompt('כתובת אישית לעסק (רק אותיות אנגליות קטנות, ספרות ומקף), ריק = ביטול. התוצאה: <כתובת>@in.yellowzone.co.il', cur || (r.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20));
+    if (v === null) return;
+    const mk = v.trim().toLowerCase();
+    const res = await api({ action: 'set', bizId: id, connMode: mk ? 'mail' : null, mailKey: mk });
+    if (!res.ok) { toast('שגיאה: ' + res.error); return; }
+    patchRow(id, { connMode: mk ? 'mail' : null, mailKey: mk || null }); render(); toast(mk ? 'מחובר במייל: ' + mk + '@in.yellowzone.co.il' : 'החיבור במייל בוטל'); return;
+  }
   if (a === 'slmsg') { OPEN[id] = OPEN[id] === 'slmsg' ? '' : 'slmsg'; const el = $('pl_' + id); if (el) el.classList.toggle('open', OPEN[id] === 'slmsg'); return; }
   if (a === 'slcopy' || a === 'slcopymsg') { const v = a === 'slcopy' ? r.setupUrl : ($('slt_' + id) || {}).value || setupMsg(r); try { await navigator.clipboard.writeText(v); toast(a === 'slcopy' ? 'הקישור הועתק' : 'הנוסח הועתק'); } catch (er) { prompt('העתיקו:', v); } return; }
   if (a === 'slwa') { const ph = waPhone(r.phone); if (ph) window.open('https://wa.me/' + ph + '?text=' + encodeURIComponent(($('slt_' + id) || {}).value || setupMsg(r)), '_blank'); return; }

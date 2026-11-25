@@ -13,7 +13,9 @@
 // מה נקרא מהחנויות: רק ספירות (מוצרים, מבצעים, כמה פעמים נוצל הקוד). בלי פרטי לקוחות.
 import { verifyAdminIdToken, getGoogleAccessToken } from './jwt.js';
 import { firestoreListDocs, firestoreGetDoc, firestorePatch, firestoreDeleteDoc, firestoreRunQuery } from './firestore.js';
-import { SITES } from './benefitsales.js';import { testWix } from './wixapp.js';   // §797
+import { SITES, legacyCouponTotals } from './benefitsales.js';
+import { testWix } from './wixapp.js';   // §797
+import { MAIL_DOMAIN } from './couponmail.js';   // §804
 import { buildShopifyShop, shopifyCats, shopifySearch } from './shopifyshop.js';   // §797ג
 
 const T = 15000;
@@ -191,6 +193,9 @@ const JUNK_CAT = /^(upsell|uncategorized|ללא קטגוריה|כללי|all|הכ
 const TABKEY_RX = /^(top|c\d{1,15})$/;
 // §797ג – חנות שאפשר להציג: WooCommerce פתוחה, או Shopify (נסרקה כפתוחה, או סומנה ידנית כ-Shopify). platformManual גובר.
 const platOf = f => (f && (f.platformManual || f.platform)) || '';
+// §804 – חיבור במייל: חנות בלי API (למשל Wix בלי האפליקציה) מפנה את התראת ההזמנה בקוד ל-<mailKey>@in.yellowzone.co.il
+const mailOk = f => !!(f && f.connMode === 'mail' && f.mailKey);
+const linkOk = f => shopOk(f) || mailOk(f);
 const shopOk = f => !!(f && f.base && ((platOf(f) === 'woocommerce' && f.open) || (platOf(f) === 'shopify' && (f.open || f.platformManual === 'shopify'))));
 const sapi = (base, q) => getJson(`${base}/wp-json/wc/store/v1/${q}`).then(x => x.j);
 const prodOut = p => {
@@ -365,6 +370,7 @@ function keyState(env, s) {
   const host = u => { try { return new URL(u).hostname.replace(/^www./, ''); } catch (e) { return ''; } };
   const legacy = s.base && Object.values(SITES).some(x => env[x.key] && env[x.secret] && host(x.base) === host(s.base));
   if (legacy) return { connected: true, legacy: true };
+  if (mailOk(s)) return { connected: true, mail: true };   // §804
   if (s.key && !s.key.partial && (!s.test || s.test.ok !== false)) return { connected: true, hint: s.key.hint, found: s.test ? s.test.found : null };
   return { connected: false, err: s.test && s.test.ok === false ? s.test.err : null };
 }
@@ -376,9 +382,18 @@ export async function handleShopOwner(body, env) {
   const sd = await firestoreGetDoc(env, at, 'onlineShops/' + biz);
   if (!sd || !sameStr(k, await linkSig(env, biz, sd.fields.linkVer || 1))) return { error: 'bad_link' };
   const s = sd.fields;
-  if (!shopOk(s)) return { error: 'not_open_woo' };
+  if (!linkOk(s)) return { error: 'not_open_woo' };
   const plat = platOf(s);
   try {
+    // §804 – מצב מייל: הדף מציג רק את הוראות ההפניה + כמה התראות כבר התקבלו (בלי לשוניות ומוצרים – אין קטלוג)
+    if (!shopOk(s)) {
+      if (action !== 'get') return { error: 'not_open_woo' };
+      const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
+      const mails = await firestoreRunQuery(env, at, 'couponMails', 'bizId', biz, 200).catch(() => []);
+      const last = mails.map(m => m.fields.at).filter(Boolean).sort().pop() || null;
+      return { ok: true, mailMode: true, mailAddr: s.mailKey + '@' + MAIL_DOMAIN, mails: mails.length, withAmount: mails.filter(m => m.fields.amount != null).length, last,
+        code: (bd && bd.fields.discountCode) || '', name: (bd && bd.fields.name) || '', platform: plat };
+    }
     if (action === 'get') {
       const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
       const shop = await currentShop(env, at, biz);
@@ -443,6 +458,7 @@ export async function handleBizShopLink(body, env, ownerBizId) {
     sd = { fields: rec };
   }
   const f = sd.fields;
+  if (mailOk(f) && !shopOk(f)) return { ok: true, shop: true, mailMode: true, url: await setupUrl(env, bizId, f.linkVer || 1) };   // §804
   if (!shopOk(f) || f.isShop === false) return { ok: true, shop: false };
   return { ok: true, shop: true, live: !!f.showProducts, filled: !!f.ownerSetAt, url: await setupUrl(env, bizId, f.linkVer || 1), mode: f.shopMode === 'manual' ? 'manual' : 'auto',
     pinned: Object.values(f.tabPins || {}).reduce((n, x) => n + x.length, 0) || (f.pinned || []).length, cats: (f.shopCats || []).map(c => c.n) };
@@ -471,8 +487,41 @@ export async function handleOnlineShops(body, env) {
     const rows = bs.filter(d => (d.fields.status === 'approved' || d.fields.status === 'pending') && String(d.fields.website || '').trim())
       .map(d => Object.assign(pickBiz(d.id, d.fields), { shop: shops[d.id] || null, legacyKey: legacy.includes(host(d.fields.website)) }));
     // §796ח – הקישור לבעל העסק ליד כל חנות WooCommerce פתוחה (רמי: "את הלינק תוסיף לרשימה ליד כל עסק")
-    for (const r of rows) if (shopOk(r.shop)) r.setupUrl = await setupUrl(env, r.id, r.shop.linkVer || 1);
+    for (const r of rows) if (linkOk(r.shop)) r.setupUrl = await setupUrl(env, r.id, r.shop.linkVer || 1);
     return { ok: true, rows };
+  }
+  // §804 – מרכז הנתונים: "מימושי קוד קופון" – שורה לכל חנות מחוברת (מפתח / אפליקציה / ותיק בוורקר / מייל).
+  // מפתח ואפליקציה – בדיקה חיה (testKey, כמו "בדיקה" ב-admin-shops); ותיק – benefitsales; מייל – סיכום couponMails.
+  if (action === 'redemptions') {
+    const [bs, ss, mails] = await Promise.all([firestoreListDocs(env, at, 'businesses'), firestoreListDocs(env, at, 'onlineShops'), firestoreListDocs(env, at, 'couponMails').catch(() => [])]);
+    const bizF = Object.fromEntries(bs.map(d => [d.id, d.fields]));
+    const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } };
+    const rows = await Promise.all(ss.filter(d => bizF[d.id] && keyState(env, d.fields).connected).map(async d => {
+      const f = d.fields, b = bizF[d.id], code = b.discountCode || '', ks = keyState(env, f);
+      const r = { id: d.id, name: b.name || '', platform: platOf(f) || '', code, conn: ks.mail ? 'mail' : ks.legacy ? 'key' : platOf(f) === 'wix' || platOf(f) === 'wixstore' ? 'app' : 'key', orders: null, revenue: null, last: null, err: '' };
+      try {
+        if (ks.mail) {
+          const m = mails.filter(x => x.fields.bizId === d.id);
+          r.orders = m.length; r.revenue = m.reduce((s2, x) => s2 + (Number(x.fields.amount) || 0), 0);
+          r.noAmount = m.filter(x => x.fields.amount == null).length;
+          r.last = m.map(x => x.fields.at).filter(Boolean).sort().pop() || null; r.mailAddr = f.mailKey + '@' + MAIL_DOMAIN;
+        } else if (ks.legacy) {
+          const sid = Object.keys(SITES).find(k => host(SITES[k].base) === host(f.base));
+          const t = await legacyCouponTotals(sid, code, env);
+          if (t && t.found) { r.orders = t.orders; r.revenue = t.revenue; r.usage = t.usage; } else r.err = 'הקוד לא נמצא באתר';
+          r.last = new Date().toISOString();
+        } else {
+          const kd = await firestoreGetDoc(env, at, 'shopKeys/' + d.id);
+          const t = kd ? await testKey(kd.fields, code, env) : null;
+          if (t && t.ok) { r.orders = t.usage ?? null; r.revenue = t.sum ?? null; if (t.found === false) r.err = 'הקוד לא נמצא באתר'; await firestorePatch(env, at, 'onlineShops/' + d.id, { test: t }); }
+          else r.err = (t && t.err) || 'אין מפתח שמור';
+          r.last = (t && t.at) || null;
+        }
+      } catch (e) { r.err = err(e); }
+      return r;
+    }));
+    rows.sort((x, y) => (y.orders || 0) - (x.orders || 0));
+    return { ok: true, rows, unmatched: mails.filter(x => !x.fields.bizId).length };
   }
   if (typeof bizId !== 'string' || !/^[A-Za-z0-9_-]{4,64}$/.test(bizId)) return { error: 'bad_biz' };
   const bd = await firestoreGetDoc(env, at, 'businesses/' + bizId);
@@ -492,7 +541,15 @@ export async function handleOnlineShops(body, env) {
     if ('showProducts' in body) f.showProducts = body.showProducts === true;
     if ('note' in body) f.note = String(body.note || '').slice(0, 1000);
     if ('platformManual' in body) f.platformManual = ['', 'woocommerce', 'shopify', 'magento', 'wix', 'konimbo', '2all', 'eshop', 'other'].includes(body.platformManual) ? (body.platformManual || null) : null;   // §796יח – כשהסריקה לא מזהה
-    if ('focus' in body) f.focus = body.focus === true;   // §796טו – "📞 לטיפול" בראש הרשימה
+    if ('focus' in body) f.focus = body.focus === true;
+    // §804 – חיבור במייל + הכתובת האישית (<mailKey>@in.yellowzone.co.il). mailKey ייחודי – נבדק מול שאר החנויות.
+    if ('connMode' in body) f.connMode = body.connMode === 'mail' ? 'mail' : null;
+    if ('mailKey' in body) {
+      const mk = String(body.mailKey || '').toLowerCase().trim();
+      if (mk && !/^[a-z0-9][a-z0-9-]{1,30}$/.test(mk)) return { error: 'mailKey: אותיות אנגליות קטנות, ספרות ומקף' };
+      if (mk) { const dup = await firestoreRunQuery(env, at, 'onlineShops', 'mailKey', mk, 2); if (dup.some(d => d.id !== bizId)) return { error: 'הכתובת תפוסה לעסק אחר' }; }
+      f.mailKey = mk || null;
+    }   // §796טו – "📞 לטיפול" בראש הרשימה
     // §796ד – מה מוצג בכרטיס: אוטומטי / 5 קטגוריות ידניות / מוצרים ראשונים
     if ('shopMode' in body) f.shopMode = body.shopMode === 'manual' ? 'manual' : 'auto';
     if ('shopCats' in body) f.shopCats = [].concat(body.shopCats || []).slice(0, TABS_MAX)
@@ -513,14 +570,15 @@ export async function handleOnlineShops(body, env) {
   if (action === 'bizInfo') {
     const sd = await firestoreGetDoc(env, at, path);
     if (!sd) return { ok: true, scanned: false, website: !!String(biz.website || '').trim() };
-    const f = sd.fields, ok = shopOk(f);
+    const f = sd.fields, ok = linkOk(f);
     return { ok: true, scanned: true, isShop: f.isShop !== false && (ok || !!platOf(f)), platform: platOf(f) || '', open: !!f.open,
+      mailMode: mailOk(f), mailAddr: mailOk(f) ? f.mailKey + '@' + MAIL_DOMAIN : '',
       connected: keyState(env, f).connected, live: !!f.showProducts, ownerSetAt: f.ownerSetAt || null,
       url: ok ? await setupUrl(env, bizId, f.linkVer || 1) : '' };
   }
   if (action === 'ownerLink') {
     const sd = await firestoreGetDoc(env, at, path);
-    if (!sd || !shopOk(sd.fields)) return { error: 'רק לחנות WooCommerce / Shopify שנסרקה' };
+    if (!sd || !linkOk(sd.fields)) return { error: 'רק לחנות WooCommerce / Shopify שנסרקה, או חנות שמחוברת במייל' };
     let ver = sd.fields.linkVer || 1;
     if (body.renew) { ver += 1; await firestorePatch(env, at, path, { linkVer: ver }); }
     else if (!sd.fields.linkVer) await firestorePatch(env, at, path, { linkVer: 1 });

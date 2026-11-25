@@ -21,6 +21,19 @@ async function wc(site, env, path) {
   return r.json();
 }
 
+// §804 – לטבלת "מימושי קוד קופון" במרכז הנתונים: אתר ותיק (Glory) – שימושים + הזמנות וסכום מתחילת 2026
+export async function legacyCouponTotals(siteId, code, env) {
+  const site = SITES[siteId];
+  if (!site || !env[site.key] || !env[site.secret] || !code) return null;
+  const cs = await wc(site, env, '/wp-json/wc/v3/coupons?code=' + encodeURIComponent(code.toLowerCase()));
+  const c = Array.isArray(cs) && cs[0];
+  if (!c) return { found: false };
+  const tm = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+  const st = await wc(site, env, `/wp-json/wc-analytics/reports/orders/stats?coupon_includes=${c.id}&after=2026-01-01T00:00:00&before=${tm}T00:00:00&interval=year`);
+  const t = (st && st.totals) || {};
+  return { found: true, usage: num(c.usage_count), orders: num(t.orders_count), revenue: num(t.net_revenue) };
+}
+
 export async function handleBenefitSales(body, env) {
   const { idToken, site: siteId, code, from, to } = body || {};
   try { await verifyAdminIdToken(env, idToken); } catch (e) { return { error: 'not_admin' }; }
