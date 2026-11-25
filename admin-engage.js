@@ -21,7 +21,7 @@ const BENEFITS = [
 ];
 const SALES = {};   // id → { loading, data, err } – מכירות בקוד מהוורקר, פעם אחת לכל טעינה של הדף (↻ רענון – מחדש)
 let E = null, loading = false, err = '';
-const S = { per: 'launch', from: '', to: '', tile: 'trend', table: false, trK: 'open', sort: 'o', q: '', cOpen: '' };
+const S = { per: 'launch', from: '', to: '', tile: 'trend', table: false, trK: 'open', sort: 'o', q: '', cOpen: '', pick: '', pickQ: null };
 const MSG = { key: '', data: null, loading: false, err: '' };
 
 const f = n => U.f(n), pc = (a, b) => U.pc(a, b), inf = t => U.inf(t);
@@ -296,7 +296,17 @@ function tableView(R, T) {
     ${T.perDay.slice().reverse().map(d => `<tr><td>${U.short(d.k)}</td><td class="n">${d.open === undefined ? '–' : `${f(d.open || 0)} / ${f(d.imp || 0)} / ${f(d.heart || 0)}`}</td></tr>`).join('')}</table></div>`;
 }
 
-window.yzeSet = (k, v) => { if (k === 'table') S.table = !S.table; else if (k === 'sort') S.sort = v; else S[k] = v; U.C.rerender(); };
+window.yzeSet = (k, v) => { if (k === 'table') S.table = !S.table; else if (k === 'sort') S.sort = v; else S[k] = v; if (k === 'pick') S.pickQ = null; U.C.rerender(); };
+// §812 – שיוך הקונה לאוהד (couponBuyers דרך /admin-shops setBuyer). מעדכן מקומית ומצייר מחדש, בלי לטעון מחדש מול האתרים.
+window.yzeBuyerQ = (v) => { S.pickQ = v; clearTimeout(window.__yzeBQ); window.__yzeBQ = setTimeout(() => { U.C.rerender(); const i = document.querySelector('.yze-ct input[type=text]'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } }, 300); };
+window.yzeBuyer = async (key, memberId) => {
+  try {
+    const r = await U.C.api('/admin-shops', { action: 'setBuyer', key, memberId });
+    if (!r || !r.ok) { alert('השיוך נכשל: ' + ((r && r.error) || '')); return; }
+    ((RED.data && RED.data.rows) || []).forEach(row => (row.list || []).forEach(x => { if (x.key === key) x.buyer = r.buyer || null; }));
+    S.pick = ''; S.pickQ = null; U.C.rerender();
+  } catch (e) { alert('השיוך נכשל: ' + (e.message || e)); }
+};
 window.yzeQ = (v) => { S.q = v; clearTimeout(window.__yzeQT); window.__yzeQT = setTimeout(() => { U.C.rerender(); const i = document.querySelector('.yzu-chips input[type=text]'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } }, 350); };
 window.yzeReload = () => { E = null; MSG.key = ''; RED.data = null; RED.err = ''; for (const k in SALES) delete SALES[k]; load(true); U.C.rerender(); };
 // ── §775 הטבות בלעדיות: לכל הטבה – הקרוסלה, העסקים שבה, ומכירות בקוד (WooCommerce) ─────────────────
@@ -347,20 +357,38 @@ function couponHtml() {
   if (!RED.data) return h2 + '<p class="yzu-note">בודק מול האתרים של העסקים…</p>';
   const rows = RED.data.rows || [];
   if (!rows.length) return h2 + '<p class="yzu-note">עוד אין חנויות מחוברות.</p>';
-  const dt = x => x ? U.esc(new Date(x).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: '2-digit' }) + ' ' + new Date(x).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })) : '–';
+  // §812 – רמי: "את השעה תזיז טיפה מהתאריך – צמוד מדי"
+  const dt = x => x ? U.esc(new Date(x).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: '2-digit' })) + '<span style="opacity:.6;margin-inline-start:10px">' + U.esc(new Date(x).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })) + '</span>' : '–';
   const short = n => U.esc(String(n || '').split(' - ')[0]);
   const amt = v => v == null ? '<span class="yzu-note">בלי סכום</span>' : f(Math.round(v * 100) / 100) + ' ₪';
   // §808 – רמי: "חשוב לי לדעת מי היוזרים שלי שרוכשים": שם הלקוח (כשהחנות שולחת) ↔ חבר רשום
-  const who = x => !x.customer ? '<span class="yzu-note">–</span>'
-    : U.esc(x.customer) + (x.member && x.member.id ? ` <span class="yze-pill live" title="${U.esc(x.member.name)}">✓ רשום</span>`
-      : x.member && x.member.many ? ` <span class="yze-pill" title="יש ${x.member.many} חברים בשם הזה">${x.member.many} חברים בשם הזה</span>`
-      : ' <span class="yze-pill">לא נמצא ברשומים</span>');
+  // §812 – רמי: "לראות את שם הקונה, עם קישור בלחיצה לכרטיס האוהד לאחר שאנחנו מאשרים שזה הוא, ואופציה להחליף…
+  // ואם לא מזהה – לבחור מישהו אחר". אושר (couponBuyers) → קישור לכרטיס + "החלפה". התאמה אוטומטית → "זה הוא? ✓ / אחר".
+  // בלי התאמה → "בחירת אוהד". הבחירה: חיפוש בשם מתוך רשימת האוהדים שכבר טעונה במרכז הניהול.
+  const btn = (lbl, js, on) => `<button class="yzu-btn${on ? ' on' : ''}" style="padding:2px 8px;font-size:12px;margin-inline-start:6px" onclick="event.stopPropagation();${js}">${lbl}</button>`;
+  const fanLink = b => `<a href="#" onclick="event.preventDefault();event.stopPropagation();window.openFanFullCard&&openFanFullCard('${U.esc(b.id)}')" style="font-weight:800;color:var(--yzu-ink,#0A2A66)">✓ ${U.esc(b.name || 'אוהד')}</a>`;
+  const picker = x => {
+    if (S.pick !== x.key) return '';
+    const q = (S.pickQ == null ? (x.customer || '') : S.pickQ).trim().toLowerCase();
+    const fans = (U.C.fans() || []).filter(m => m.name && m.name !== '–' && (!q || m.name.toLowerCase().includes(q) || q.split(/\s+/).every(w => m.name.toLowerCase().includes(w)))).slice(0, 8);
+    return `<div style="margin-top:6px" onclick="event.stopPropagation()"><input type="text" value="${U.esc(S.pickQ == null ? (x.customer || '') : S.pickQ)}" placeholder="שם האוהד…" oninput="yzeBuyerQ(this.value)" style="font:inherit;font-size:13px;padding:4px 8px;border:1px solid #D5D9E2;border-radius:8px;width:180px">${btn('ביטול', "yzeSet('pick','')")}
+      <div>${fans.length ? fans.map(m => btn(U.esc(m.name) + (m.status === 'approved' ? '' : ' · ' + U.esc(m.status || '')), `yzeBuyer('${U.esc(x.key)}','${U.esc(m.id)}')`)).join('') : '<span class="yzu-note">לא נמצא אוהד בשם הזה</span>'}</div></div>`;
+  };
+  const who = x => {
+    if (!x.key) return x.customer ? U.esc(x.customer) : '<span class="yzu-note">–</span>';
+    const nm = x.customer ? U.esc(x.customer) : '<span class="yzu-note">בלי שם</span>';
+    let h;
+    if (x.buyer) h = fanLink(x.buyer) + (x.customer && x.customer !== x.buyer.name ? ` <span class="yzu-note">(בהזמנה: ${U.esc(x.customer)})</span>` : '') + btn('החלפה', `yzeSet('pick','${U.esc(x.key)}')`);
+    else if (x.member && x.member.id) h = nm + ` <span class="yzu-note">זה ${U.esc(x.member.name)}?</span>` + btn('✓ זה הוא', `yzeBuyer('${U.esc(x.key)}','${U.esc(x.member.id)}')`, 1) + btn('אחר', `yzeSet('pick','${U.esc(x.key)}')`);
+    else h = nm + (x.member && x.member.many ? ` <span class="yzu-note">${x.member.many} אוהדים בשם הזה</span>` : x.customer ? ' <span class="yzu-note">לא נמצא ברשומים</span>' : '') + btn('בחירת אוהד', `yzeSet('pick','${U.esc(x.key)}')`);
+    return h + picker(x);
+  };
   // §808 – "למעלה – טבלה של כל רכישה לפי הזמן שלה: באיזה עסק, מה הסכום, שם הלקוח אם יש"
   const all = rows.flatMap(r => (r.list || []).map(x => Object.assign({ name: r.name }, x))).sort((x, y) => String(y.at).localeCompare(String(x.at)));
-  const allBox = `<div class="yzu-box yzu-tw"><h3>כל הרכישות – ${f(all.length)}</h3>${all.length ? `<table><tr><th>מתי</th><th>עסק</th><th class="n">סכום</th><th>לקוח</th></tr>
+  const allBox = `<style>.yze-ct td,.yze-ct th{padding-top:5px!important;padding-bottom:5px!important}</style><div class="yzu-box yzu-tw"><h3>כל הרכישות – ${f(all.length)}</h3>${all.length ? `<table class="yze-ct"><tr><th>מתי</th><th>עסק</th><th class="n">סכום</th><th>לקוח</th></tr>
     ${all.slice(0, 300).map(x => `<tr><td>${dt(x.at)}</td><td><b>${short(x.name)}</b></td><td class="n"><b>${amt(x.amount)}</b></td><td>${who(x)}</td></tr>`).join('')}</table>`
       : '<p class="yzu-note">עוד אין רכישות ברשימה.</p>'}
-    <p class="yzu-note">ברשימה: חנויות שמחוברות במייל (כל התראה = רכישה) ו-Glory (מדוח ההזמנות). חנויות עם מפתח או אפליקציה מחזירות רק כמה פעמים השתמשו בקוד – הן בטבלה למטה. שם הלקוח מופיע רק כשהחנות שולחת אותו, ו"✓ רשום" = יש חבר ב-Yellow Zone בדיוק באותו שם.</p></div>`;
+    <p class="yzu-note">ברשימה: חנויות שמחוברות במייל (כל התראה = רכישה) ו-Glory (מדוח ההזמנות). חנויות עם מפתח או אפליקציה מחזירות רק כמה פעמים השתמשו בקוד – הן בטבלה למטה. "זה הוא?" = יש אוהד בדיוק בשם שבהזמנה – מאשרים, או בוחרים אוהד אחר. אחרי אישור – לחיצה על השם פותחת את כרטיס האוהד.</p></div>`;
   // לפי חנות – לחיצה על שורה פותחת את הרכישות שלה לפי תאריך (§808)
   const lastOf = r => (r.list || []).map(x => x.at).filter(Boolean).sort().pop() || (r.conn === 'mail' ? r.last : null);
   const tot = rows.reduce((a2, r) => a2 + (r.orders || 0), 0), totM = rows.reduce((a2, r) => a2 + (r.revenue || 0), 0);
@@ -374,7 +402,7 @@ function couponHtml() {
     return head + sub;
   }).join('');
   const sumBox = `<div class="yzu-box yzu-tw"><h3>לפי חנות – ${f(tot)} מימושים · ${f(Math.round(totM))} ₪</h3>
-    <table><tr><th>חנות</th><th class="n">מימושים</th><th class="n">סכום</th><th>מימוש אחרון / לקוח</th></tr>${tr}</table>
+    <table class="yze-ct"><tr><th>חנות</th><th class="n">מימושים</th><th class="n">סכום</th><th>מימוש אחרון / לקוח</th></tr>${tr}</table>
     <p class="yzu-note">לחיצה על חנות פותחת את הרכישות שלה לפי תאריך. מפתח ואפליקציה – נבדק עכשיו מול האתר. מייל – כל התראה שהגיעה לכתובת האישית של החנות = מימוש אחד.${RED.data.unmatched ? ` · ${f(RED.data.unmatched)} מיילים הגיעו לכתובת שלא שייכת לחנות.` : ''}</p></div>`;
   return h2 + allBox + sumBox;
 }

@@ -44,8 +44,8 @@ export async function legacyCouponTotals(siteId, code, env) {
       const nm = {}; (Array.isArray(od) ? od : []).forEach(o => { const b = o.billing || {}; nm[o.id] = [b.first_name, b.last_name].filter(Boolean).join(' ').trim().slice(0, 60); });
       list.forEach(x => { x.customer = nm[x.id] || ''; });
     }
-    list.forEach(x => { delete x.id; });
-  } catch (e) { list.forEach(x => { delete x.id; }); /* רשימה ושמות לא חובה – הסיכום נשאר */ }
+    list.forEach(x => { x.key = 'wc:' + siteId + ':' + x.id; delete x.id; });   // §812 – מפתח יציב לשיוך הקונה לאוהד
+  } catch (e) { list.forEach(x => { if (x.id) x.key = 'wc:' + siteId + ':' + x.id; delete x.id; }); /* רשימה ושמות לא חובה – הסיכום נשאר */ }
   return { found: true, usage: num(c.usage_count), orders: num(t.orders_count), revenue: num(t.net_revenue), list };
 }
 

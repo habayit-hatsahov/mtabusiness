@@ -511,11 +511,11 @@ export async function handleOnlineShops(body, env) {
         if (ks.mail) {
           // §807 – אותה הזמנה (מספר הזמנה) שהגיעה פעמיים = מימוש אחד; תאריך = תאריך ההזמנה מההתראה, אחרת רגע ההגעה
           const seen = new Set(), m = mails.filter(x => x.fields.bizId === d.id).filter(x => { const no = x.fields.orderNo; if (!no) return true; if (seen.has(no)) return false; seen.add(no); return true; })
-            .map(x => ({ fields: Object.assign({}, x.fields, { at: x.fields.orderAt || x.fields.at }) }));
+            .map(x => ({ id: x.id, fields: Object.assign({}, x.fields, { at: x.fields.orderAt || x.fields.at }) }));
           r.orders = m.length; r.revenue = m.reduce((s2, x) => s2 + (Number(x.fields.amount) || 0), 0);
           r.noAmount = m.filter(x => x.fields.amount == null).length;
           r.last = m.map(x => x.fields.at).filter(Boolean).sort().pop() || null; r.mailAddr = f.mailKey + '@' + MAIL_DOMAIN;
-          r.list = m.map(x => ({ at: x.fields.at || '', amount: x.fields.amount == null ? null : Number(x.fields.amount), orderNo: x.fields.orderNo || '', customer: x.fields.customer || '' }));   // §805 / §808
+          r.list = m.map(x => ({ key: 'm:' + x.id, at: x.fields.at || '', amount: x.fields.amount == null ? null : Number(x.fields.amount), orderNo: x.fields.orderNo || '', customer: x.fields.customer || '' }));   // §805 / §808
         } else if (ks.legacy) {
           const sid = Object.keys(SITES).find(k => host(SITES[k].base) === host(f.base));
           const t = await legacyCouponTotals(sid, code, env);
@@ -550,7 +550,25 @@ export async function handleOnlineShops(body, env) {
         x.member = uniq.length === 1 ? uniq[0] : uniq.length > 1 ? { many: uniq.length } : null;
       }
     }
+    // §812 – שיוך שאושר ידנית (רמי: "לאחר שאנחנו מאשרים שזה הוא… אופציה להחליף… לבחור מישהו אחר"): couponBuyers/{key}
+    const buyers = await firestoreListDocs(env, at, 'couponBuyers').catch(() => []);
+    const bmap = Object.fromEntries(buyers.map(d => [d.id, d.fields]));
+    for (const r of rows) for (const x of r.list || []) { const bk = x.key && bmap[x.key.replace(/[/]/g, '_')]; if (bk && bk.memberId) x.buyer = { id: bk.memberId, name: bk.memberName || '' }; }
     return { ok: true, rows, unmatched: mails.filter(x => !x.fields.bizId).length };
+  }
+  // §812 – שיוך / החלפה / ביטול של הקונה לאוהד. key = 'm:<couponMail>' או 'wc:<site>:<order>'. memberId ריק = ביטול.
+  if (action === 'setBuyer') {
+    const key = String(body.key || '');
+    if (!/^(m:[A-Za-z0-9]{10,40}|wc:[a-z0-9_-]{1,30}:\d{1,12})$/.test(key)) return { error: 'bad_key' };
+    const docId = key.replace(/[/]/g, '_');
+    const mid = String(body.memberId || '');
+    if (!mid) { await firestoreDeleteDoc(env, at, 'couponBuyers/' + docId).catch(() => {}); return { ok: true, cleared: true }; }
+    if (!/^[A-Za-z0-9]{10,40}$/.test(mid)) return { error: 'bad_member' };
+    const md = await firestoreGetDoc(env, at, 'members/' + mid);
+    if (!md) return { error: 'האוהד לא נמצא' };
+    const memberName = ((md.fields.firstName || '') + ' ' + (md.fields.lastName || '')).trim();
+    await firestorePatch(env, at, 'couponBuyers/' + docId, { key, memberId: mid, memberName, by, at: new Date() });
+    return { ok: true, buyer: { id: mid, name: memberName } };
   }
   if (typeof bizId !== 'string' || !/^[A-Za-z0-9_-]{4,64}$/.test(bizId)) return { error: 'bad_biz' };
   const bd = await firestoreGetDoc(env, at, 'businesses/' + bizId);
