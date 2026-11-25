@@ -20,13 +20,17 @@ const strip = h => String(h || '').replace(/<style[\s\S]*?<\/style>/gi, ' ').rep
 const NUM = '(\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?)';
 const money = s => Number(String(s).replace(/,/g, ''));
 export function findAmount(text) {
-  const t = String(text || '');
+  // §806 – Wix מכניס תווי כיווניות נסתרים (U+200F) בין המספר ל-₪: "סכום ההזמנה: ‏88.20 ‏₪". בלי ניקוי – נלקח
+  // המספר הראשון בשורה, שהיה מספר ההזמנה (10019). לכן: מנקים, ובשורת הסיכום לוקחים את המספר *שאחרי* מילת הסכום.
+  const t = String(text || '').replace(/[‎‏‪-‮⁦-⁩ ]/g, ' ');
   const lines = t.split('\n');
-  const totalLine = /(סה["״']?כ|סך הכל|סך הכול|לתשלום|סכום ההזמנה|סכום|total|amount|grand total)/i;
+  const totalLine = /(סה["״']?כ|סך הכל|סך הכול|לתשלום|סכום ההזמנה|סכום|grand total|total|amount)/i;
   const cur = new RegExp(`(?:₪\\s*${NUM}|${NUM}\\s*(?:₪|ש["״]?ח|ils|nis))`, 'i');
   for (const ln of lines) {
-    if (!totalLine.test(ln)) continue;
-    const m = ln.match(cur) || ln.match(new RegExp(NUM));
+    const km = ln.match(totalLine);
+    if (!km) continue;
+    const after = ln.slice(km.index + km[0].length);
+    const m = after.match(cur) || after.match(new RegExp(NUM)) || ln.match(cur);
     if (m) { const v = money(m[1] || m[2] || m[0]); if (v > 0 && v < 100000) return v; }
   }
   const all = [...t.matchAll(new RegExp(cur.source, 'gi'))].map(m => money(m[1] || m[2])).filter(v => v > 0 && v < 100000);

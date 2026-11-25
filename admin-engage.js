@@ -144,7 +144,12 @@ function big(id, T, R) {
   if (id === 'biz') { const ids = Object.keys(T.biz).filter(k => (T.biz[k].o || 0) > 0); return s(f(ids.length), `מ-${f((U.C.biz() || []).filter(b => b.status === 'approved').length)} נפתחו`, 'מי מקבל תשומת לב, ומה עושים בו'); }
   if (id === 'card') { const act = (n.wa || 0) + (n.phone || 0); return s(pc(act, n.open || 0), 'פנו לעסק', `${f(act)} פניות מ-${f(n.open || 0)} פתיחות`); }
   if (id === 'redeem') return s(f(n.rOpen || 0), 'פתחו "איך מממשים"', `${f(n.rCopy || 0)} העתיקו קוד`);
-  if (id === 'coupon') { const rs = (RED.data && RED.data.rows) || [], o = rs.reduce((a, r) => a + (r.orders || 0), 0), m = rs.reduce((a, r) => a + (r.revenue || 0), 0); redLoad(); return RED.data ? s(f(o), 'מימושים', `${f(Math.round(m))} ₪ · ${f(rs.length)} חנויות`) : s('…', '', 'בודק מול האתרים'); }
+  if (id === 'coupon') { const rs = (RED.data && RED.data.rows) || [], o = rs.reduce((a, r) => a + (r.orders || 0), 0), m = rs.reduce((a, r) => a + (r.revenue || 0), 0); redLoad();
+    // §806 – רמי: "אני רואה בריבוע, אבל לא רואה את השם" – על הריבוע: איזו חנות מימשה אחרונה (או מי שמימשו)
+    const used = rs.filter(r => (r.orders || 0) > 0), lastAt = r => (r.list || []).map(x => x.at).filter(Boolean).sort().pop() || '';
+    const lastR = used.slice().sort((x, y) => lastAt(y).localeCompare(lastAt(x)))[0];
+    const who = used.length === 1 ? used[0].name : lastR ? 'אחרון: ' + lastR.name : '';
+    return RED.data ? s(f(o), 'מימושים', `${who ? U.esc(String(who).split(' - ')[0]) + ' · ' : ''}${f(Math.round(m))} ₪`) : s('…', '', 'בודק מול האתרים'); }
   if (id === 'ben') { const b = benCur(), c = benSum(b).T.car.ben || {}; return s(f(c.open || 0), 'פתחו', U.esc(b.title)); }
   if (id === 'car') return s(f(Object.values(T.carBiz).reduce((a, b) => a + b, 0)), 'לחיצות על עסק', 'מתוך הקרוסלה');
   if (id === 'share') return R[1] >= SHARE_FROM ? s(f(n.share || 0), 'שיתופים', 'עסק · עסק שלי · הזמנת חברים') : s('–', '', 'נמדד מ-1.11');
