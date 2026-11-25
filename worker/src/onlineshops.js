@@ -505,10 +505,11 @@ export async function handleOnlineShops(body, env) {
           r.orders = m.length; r.revenue = m.reduce((s2, x) => s2 + (Number(x.fields.amount) || 0), 0);
           r.noAmount = m.filter(x => x.fields.amount == null).length;
           r.last = m.map(x => x.fields.at).filter(Boolean).sort().pop() || null; r.mailAddr = f.mailKey + '@' + MAIL_DOMAIN;
+          r.list = m.map(x => ({ at: x.fields.at || '', amount: x.fields.amount == null ? null : Number(x.fields.amount) }));   // §805
         } else if (ks.legacy) {
           const sid = Object.keys(SITES).find(k => host(SITES[k].base) === host(f.base));
           const t = await legacyCouponTotals(sid, code, env);
-          if (t && t.found) { r.orders = t.orders; r.revenue = t.revenue; r.usage = t.usage; } else r.err = 'הקוד לא נמצא באתר';
+          if (t && t.found) { r.orders = t.orders; r.revenue = t.revenue; r.usage = t.usage; r.list = t.list || []; } else r.err = 'הקוד לא נמצא באתר';
           r.last = new Date().toISOString();
         } else {
           const kd = await firestoreGetDoc(env, at, 'shopKeys/' + d.id);

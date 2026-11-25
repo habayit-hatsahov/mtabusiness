@@ -31,7 +31,13 @@ export async function legacyCouponTotals(siteId, code, env) {
   const tm = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
   const st = await wc(site, env, `/wp-json/wc-analytics/reports/orders/stats?coupon_includes=${c.id}&after=2026-01-01T00:00:00&before=${tm}T00:00:00&interval=year`);
   const t = (st && st.totals) || {};
-  return { found: true, usage: num(c.usage_count), orders: num(t.orders_count), revenue: num(t.net_revenue) };
+  // §805 – רשימת המימושים עצמם (תאריך + סכום בלבד; שום פרט לקוח לא נשמר או מוחזר)
+  let list = [];
+  try {
+    const os = await wc(site, env, `/wp-json/wc-analytics/reports/orders?coupon_includes=${c.id}&after=2026-01-01T00:00:00&before=${tm}T00:00:00&per_page=100&orderby=date&order=desc`);
+    list = (Array.isArray(os) ? os : []).filter(o => !/refunded|cancelled|failed/.test(String(o.status || ''))).map(o => ({ at: String(o.date_created || o.date || ''), amount: num(o.net_total) }));
+  } catch (e) { /* רשימה לא חובה – הסיכום נשאר */ }
+  return { found: true, usage: num(c.usage_count), orders: num(t.orders_count), revenue: num(t.net_revenue), list };
 }
 
 export async function handleBenefitSales(body, env) {

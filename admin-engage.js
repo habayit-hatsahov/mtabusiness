@@ -37,6 +37,7 @@ const SRC = {
   biz: 'אותן לחיצות, מקובצות לפי עסק, יחד עם החשיפות שלו. "% פתיחה" = פתיחות ÷ חשיפות באותה תקופה.',
   msg: 'לכל הודעה נשמר מה יצא לכל נמען: באפליקציה, בפוש ובמייל. שירות המיילים (Brevo) מחזיר לנו אם המייל נמסר, חזר, נפתח או נלחץ.',
   trend: 'אותם מקורות – לפי יום.',
+  coupon: 'רכישות שנעשו בקוד הקופון של Yellow Zone בחנויות האונליין המחוברות – מאז ומעולם, לא לפי התקופה. מפתח ואפליקציה נבדקים חי מול האתר; חנות שמחוברת במייל – כל התראה שהגיעה לכתובת האישית שלה היא הזמנה אחת.',
   ben: 'לכל הטבה בלעדית – בתאריכים שלה, בלי קשר לתקופה שנבחרה למעלה: מה קרה בתיבה בקרוסלה (ראו, פתחו, קראו, לחצו על עסק, לקחו קוד, עברו לאתר), מה עשו בכרטיסים של העסקים שבה, ובהטבה עם קוד – כמה קנו בקוד באתר של העסק (WooCommerce, סיכומים בלבד, בלי פרטי לקוחות).',
   find: 'מה אוהדים מקלידים בחיפוש (ואם נמצא משהו), אילו סינונים מפעילים, ואילו קטגוריות וסקשנים פותחים בדף הבית. חיפוש נספר פעם אחת כשמפסיקים להקליד.',
 };
@@ -105,8 +106,8 @@ function sum(a, b) {
 
 // ── תצוגה ──────────────────────────────────────────────────────────────────────────────────
 const TILES = [['trend', 'לאורך זמן', 'לפי יום'], ['biz', 'עסקים', 'טבלה'], ['card', 'מה עושים בכרטיס העסק', 'פעולות'], ['redeem', 'הטבות ומימוש', 'פעולות'],
-  ['ben', 'הטבות בלעדיות', 'לפי הטבה'], ['car', 'קרוסלות', '6 תיבות'], ['share', 'שיתופים', 'מ-1.11'], ['msg', 'מסירת הודעות', 'מייל · פוש · אפליקציה'], ['find', 'חיפוש וקטגוריות', 'מה מחפשים']];
-const SRCK = { ben: 'ben', trend: 'trend', biz: 'biz', card: 'contact', redeem: 'redeem', car: 'car', share: 'share', msg: 'msg', find: 'find' };
+  ['ben', 'הטבות בלעדיות', 'לפי הטבה'], ['coupon', 'מימוש קוד קופון', 'חנויות אונליין'], ['car', 'קרוסלות', '6 תיבות'], ['share', 'שיתופים', 'מ-1.11'], ['msg', 'מסירת הודעות', 'מייל · פוש · אפליקציה'], ['find', 'חיפוש וקטגוריות', 'מה מחפשים']];
+const SRCK = { coupon: 'coupon', ben: 'ben', trend: 'trend', biz: 'biz', card: 'contact', redeem: 'redeem', car: 'car', share: 'share', msg: 'msg', find: 'find' };
 const bizName = id => { const b = (U.C.biz() || []).find(x => x.id === id); return b ? b.name : '(עסק שנמחק)'; };
 const catName = id => { const b = (U.C.biz() || []).find(x => x.id === id); const c = b && (window.CATEGORIES || []).find(x => x.key === b.catKey); return c ? c.label : ''; };
 
@@ -143,6 +144,7 @@ function big(id, T, R) {
   if (id === 'biz') { const ids = Object.keys(T.biz).filter(k => (T.biz[k].o || 0) > 0); return s(f(ids.length), `מ-${f((U.C.biz() || []).filter(b => b.status === 'approved').length)} נפתחו`, 'מי מקבל תשומת לב, ומה עושים בו'); }
   if (id === 'card') { const act = (n.wa || 0) + (n.phone || 0); return s(pc(act, n.open || 0), 'פנו לעסק', `${f(act)} פניות מ-${f(n.open || 0)} פתיחות`); }
   if (id === 'redeem') return s(f(n.rOpen || 0), 'פתחו "איך מממשים"', `${f(n.rCopy || 0)} העתיקו קוד`);
+  if (id === 'coupon') { const rs = (RED.data && RED.data.rows) || [], o = rs.reduce((a, r) => a + (r.orders || 0), 0), m = rs.reduce((a, r) => a + (r.revenue || 0), 0); redLoad(); return RED.data ? s(f(o), 'מימושים', `${f(Math.round(m))} ₪ · ${f(rs.length)} חנויות`) : s('…', '', 'בודק מול האתרים'); }
   if (id === 'ben') { const b = benCur(), c = benSum(b).T.car.ben || {}; return s(f(c.open || 0), 'פתחו', U.esc(b.title)); }
   if (id === 'car') return s(f(Object.values(T.carBiz).reduce((a, b) => a + b, 0)), 'לחיצות על עסק', 'מתוך הקרוסלה');
   if (id === 'share') return R[1] >= SHARE_FROM ? s(f(n.share || 0), 'שיתופים', 'עסק · עסק שלי · הזמנת חברים') : s('–', '', 'נמדד מ-1.11');
@@ -154,6 +156,7 @@ const cbar = (vals, labels, mx) => `<div class="yzu-cbar" style="gap:${vals.leng
   <div class="yzu-cdays" style="gap:${vals.length > 21 ? 2 : 8}px">${labels.map((l, i) => `<span>${vals.length <= 21 || i % 5 === 0 ? l : ''}</span>`).join('')}</div>`;
 
 const DET = {
+  coupon: () => couponHtml(),
   ben: () => benHtml(),
   trend: (T, R) => {
     const M = { open: 'פתיחות כרטיס עסק', imp: 'חשיפות', heart: 'לבבות', wa: 'וואטסאפ', link: 'קישורים', rOpen: '"איך מממשים"', rCopy: 'העתקת קוד', car: 'פתיחות קרוסלה', share: 'שיתופים' };
@@ -322,26 +325,36 @@ function benSales(b) {
 const RED = { loading: false, data: null, err: '' };
 const CONN_L = { key: 'מפתח קריאה', app: 'אפליקציה', mail: 'מייל' };
 const PLAT_L = { woocommerce: 'WooCommerce', shopify: 'Shopify', wix: 'Wix', wixstore: 'Wix', magento: 'Magento' };
-function redHtml() {
-  if (!U.C.api) return '';
-  if (!RED.data && !RED.loading && !RED.err) {
-    RED.loading = true;
-    U.C.api('/admin-shops', { action: 'redemptions' })
-      .then(r => { if (r && r.ok) RED.data = r; else RED.err = (r && r.error) || 'שגיאה'; })
-      .catch(e => { RED.err = e.message || String(e); })
-      .finally(() => { RED.loading = false; U.C.rerender(); });
-  }
-  const head = `<div class="yzu-box yzu-tw"><h3>מימושי קוד קופון – כל החנויות המחוברות</h3>`;
-  if (RED.err) return head + `<div class="yzu-how">⚠️ לא נטען: ${U.esc(RED.err)}</div></div>`;
-  if (!RED.data) return head + '<p class="yzu-note">בודק מול האתרים של העסקים…</p></div>';
+function redLoad() {
+  if (!U.C.api || RED.data || RED.loading || RED.err) return;
+  RED.loading = true;
+  U.C.api('/admin-shops', { action: 'redemptions' })
+    .then(r => { if (r && r.ok) RED.data = r; else RED.err = (r && r.error) || 'שגיאה'; })
+    .catch(e => { RED.err = e.message || String(e); })
+    .finally(() => { RED.loading = false; U.C.rerender(); });
+}
+// §805 – רמי: "בריבוע נפרד של מימוש קוד קופון – טבלה שבה רואים אם יש מימוש, מאיזו חנות ובאיזה סכום. לא עם ההטבה הבלעדית".
+// למעלה: כל מימוש בשורה (תאריך · חנות · סכום) – מחנויות במייל ומחנות עם דוח הזמנות (Glory). למטה: סיכום לכל חנות.
+function couponHtml() {
+  redLoad();
+  const h2 = '<h2>מימוש קוד קופון</h2><p class="yzu-def">רכישות בקוד הקופון של Yellow Zone בחנויות האונליין המחוברות. מאז ומעולם – בלי קשר לתקופה שנבחרה למעלה.</p>';
+  if (RED.err) return h2 + `<div class="yzu-how">⚠️ לא נטען: ${U.esc(RED.err)}</div>`;
+  if (!RED.data) return h2 + '<p class="yzu-note">בודק מול האתרים של העסקים…</p>';
   const rows = RED.data.rows || [];
-  if (!rows.length) return head + '<p class="yzu-note">עוד אין חנויות מחוברות.</p></div>';
+  if (!rows.length) return h2 + '<p class="yzu-note">עוד אין חנויות מחוברות.</p>';
+  const dt = x => x ? U.esc(new Date(x).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' }) + ' ' + new Date(x).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })) : '–';
+  const all = rows.flatMap(r => (r.list || []).map(x => ({ at: x.at, amount: x.amount, name: r.name, code: r.code }))).sort((x, y) => String(y.at).localeCompare(String(x.at)));
+  const listBox = `<div class="yzu-box yzu-tw"><h3>כל המימושים – ${f(all.length)}</h3>${all.length ? `<table><tr><th>מתי</th><th>חנות</th><th>קוד</th><th class="n">סכום</th></tr>
+    ${all.slice(0, 200).map(x => `<tr><td>${dt(x.at)}</td><td><b>${U.esc(x.name)}</b></td><td dir="ltr" style="text-align:right">${U.esc(x.code || '–')}</td><td class="n"><b>${x.amount == null ? 'בלי סכום' : f(Math.round(x.amount)) + ' ₪'}</b></td></tr>`).join('')}</table>`
+      : '<p class="yzu-note">עוד אין מימושים ברשימה.</p>'}
+    <p class="yzu-note">ברשימה: חנויות שמחוברות במייל (כל התראה = מימוש), ו-Glory (מדוח ההזמנות באתר). בחנויות עם מפתח או אפליקציה האתר מחזיר רק כמה פעמים השתמשו בקוד – הן בטבלה למטה.</p></div>`;
   const tr = rows.map(r => `<tr><td><b>${U.esc(r.name)}</b>${r.err ? `<div class="yzu-note">⚠️ ${U.esc(r.err)}</div>` : ''}${r.mailAddr ? `<div class="yzu-note" dir="ltr" style="text-align:right">${U.esc(r.mailAddr)}</div>` : ''}</td>
     <td>${U.esc(PLAT_L[r.platform] || r.platform || '–')}</td><td>${CONN_L[r.conn] || r.conn}</td><td dir="ltr" style="text-align:right">${U.esc(r.code || '–')}</td>
     <td class="n"><b>${r.orders == null ? '–' : f(r.orders)}</b></td><td class="n">${r.revenue == null ? '–' : f(Math.round(r.revenue)) + ' ₪'}${r.noAmount ? `<div class="yzu-note">${f(r.noAmount)} בלי סכום</div>` : ''}</td>
-    <td>${r.last ? U.esc(new Date(r.last).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })) : '–'}</td></tr>`).join('');
-  return head + `<table><tr><th>עסק</th><th>מערכת</th><th>חיבור</th><th>קוד</th><th class="n">הזמנות בקוד</th><th class="n">סכום</th><th>${rows.some(r => r.conn === 'mail') ? 'עדכון אחרון' : 'נבדק'}</th></tr>${tr}</table>
-    <p class="yzu-note">מאז ומעולם, לא לפי התקופה למעלה. מפתח ואפליקציה – נבדק עכשיו מול האתר (WooCommerce מחזיר מספר שימושים בלי סכום). מייל – כל התראה שהגיעה לכתובת האישית של העסק = הזמנה אחת.${RED.data.unmatched ? ` · ${f(RED.data.unmatched)} מיילים הגיעו לכתובת שלא שייכת לעסק.` : ''}</p></div>`;
+    <td>${r.last ? dt(r.last) : '–'}</td></tr>`).join('');
+  const sumBox = `<div class="yzu-box yzu-tw"><h3>לפי חנות</h3><table><tr><th>חנות</th><th>מערכת</th><th>חיבור</th><th>קוד</th><th class="n">מימושים</th><th class="n">סכום</th><th>עדכון אחרון</th></tr>${tr}</table>
+    <p class="yzu-note">מפתח ואפליקציה – נבדק עכשיו מול האתר. מייל – כל התראה שהגיעה לכתובת האישית של החנות = מימוש אחד.${RED.data.unmatched ? ` · ${f(RED.data.unmatched)} מיילים הגיעו לכתובת שלא שייכת לחנות.` : ''}</p></div>`;
+  return h2 + listBox + sumBox;
 }
 const BEN_ERR = { no_key: 'המפתח של WooCommerce עוד לא נשמר בוורקר', not_admin: 'אין הרשאת מנהל', unknown_site: 'האתר לא מוגדר בוורקר', not_found: 'הקוד לא נמצא באתר של העסק' };
 function benHtml() {
@@ -402,7 +415,7 @@ function benHtml() {
     ${days.slice().reverse().map(k2 => { const d = E.days[k2], cb = (d && d.car && d.car.ben) || {}, w = wDay[k2] || {};
       const site = (cb.site || 0) + (cb.siteBtn || 0) + Object.entries(cb).filter(([q]) => q.startsWith('p:') || q === 'product').reduce((s2, [, v]) => s2 + v, 0);
       return `<tr><td>${U.short(k2)}${d ? '' : ' ⚠️'}</td>${viewOk ? `<td class="n">${f(cb.view || 0)}</td>` : ''}<td class="n">${f(cb.open || 0)}</td>${b.coupon ? `<td class="n">${f(cb.coupon || 0)}</td><td class="n">${f(site)}</td><td class="n"><b>${f(w.o || 0)}</b></td><td class="n">${f(Math.round(w.r || 0))} ₪</td>` : `<td class="n">${f(cb.bizClick || 0)}</td>`}</tr>`; }).join('')}</table></div>` : '';
-  return `<h2>הטבות בלעדיות</h2>${redHtml()}<p class="yzu-def">כל הטבה בתאריכים שלה – בלי קשר לתקופה שנבחרה למעלה. כל פעולה בתיבה נספרת פעם אחת לביקור, בלי מנהלים.</p>
+  return `<h2>הטבות בלעדיות</h2><p class="yzu-def">כל הטבה בתאריכים שלה – בלי קשר לתקופה שנבחרה למעלה. כל פעולה בתיבה נספרת פעם אחת לביקור, בלי מנהלים.</p>
     <div class="yzu-pbar yze-bens">${chips}</div>
     <div class="yze-bhead"><b>${U.esc(b.title)}</b> ${pill}<div class="yzu-note">${U.esc(b.sub || '')} · ${U.short(b.start)}–${U.short(b.end)}${st === 'live' ? ` · נכון ל-${U.short(z)}` : ''}</div></div>
     ${sales}
