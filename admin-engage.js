@@ -358,7 +358,7 @@ function couponHtml() {
   // §808 – "למעלה – טבלה של כל רכישה לפי הזמן שלה: באיזה עסק, מה הסכום, שם הלקוח אם יש"
   const all = rows.flatMap(r => (r.list || []).map(x => Object.assign({ name: r.name }, x))).sort((x, y) => String(y.at).localeCompare(String(x.at)));
   const allBox = `<div class="yzu-box yzu-tw"><h3>כל הרכישות – ${f(all.length)}</h3>${all.length ? `<table><tr><th>מתי</th><th>עסק</th><th class="n">סכום</th><th>לקוח</th></tr>
-    ${all.slice(0, 300).map(x => `<tr><td>${dt(x.at)}</td><td><b>${short(x.name)}</b>${x.orderNo ? `<div class="yzu-note">הזמנה ${U.esc(x.orderNo)}</div>` : ''}</td><td class="n"><b>${amt(x.amount)}</b></td><td>${who(x)}</td></tr>`).join('')}</table>`
+    ${all.slice(0, 300).map(x => `<tr><td>${dt(x.at)}</td><td><b>${short(x.name)}</b></td><td class="n"><b>${amt(x.amount)}</b></td><td>${who(x)}</td></tr>`).join('')}</table>`
       : '<p class="yzu-note">עוד אין רכישות ברשימה.</p>'}
     <p class="yzu-note">ברשימה: חנויות שמחוברות במייל (כל התראה = רכישה) ו-Glory (מדוח ההזמנות). חנויות עם מפתח או אפליקציה מחזירות רק כמה פעמים השתמשו בקוד – הן בטבלה למטה. שם הלקוח מופיע רק כשהחנות שולחת אותו, ו"✓ רשום" = יש חבר ב-Yellow Zone בדיוק באותו שם.</p></div>`;
   // לפי חנות – לחיצה על שורה פותחת את הרכישות שלה לפי תאריך (§808)
@@ -370,7 +370,7 @@ function couponHtml() {
       <td class="n"><b>${r.orders == null ? '–' : f(r.orders)}</b></td>
       <td class="n">${r.revenue == null ? '<span class="yzu-note">האתר לא מחזיר סכום</span>' : f(Math.round(r.revenue)) + ' ₪'}${r.noAmount ? `<div class="yzu-note">${f(r.noAmount)} בלי סכום</div>` : ''}</td>
       <td>${dt(lastOf(r))}</td></tr>`;
-    const sub = open ? L.map(x => `<tr style="background:var(--yzu-soft,#FAFAF5)"><td style="padding-inline-start:22px">${dt(x.at)}${x.orderNo ? ` · הזמנה ${U.esc(x.orderNo)}` : ''}</td><td class="n">1</td><td class="n">${amt(x.amount)}</td><td>${who(x)}</td></tr>`).join('') : '';
+    const sub = open ? L.map(x => `<tr style="background:var(--yzu-soft,#FAFAF5)"><td style="padding-inline-start:22px">${dt(x.at)}</td><td class="n">1</td><td class="n">${amt(x.amount)}</td><td>${who(x)}</td></tr>`).join('') : '';
     return head + sub;
   }).join('');
   const sumBox = `<div class="yzu-box yzu-tw"><h3>לפי חנות – ${f(tot)} מימושים · ${f(Math.round(totM))} ₪</h3>
