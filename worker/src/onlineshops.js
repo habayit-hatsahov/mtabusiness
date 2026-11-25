@@ -507,7 +507,7 @@ export async function handleOnlineShops(body, env) {
           r.orders = m.length; r.revenue = m.reduce((s2, x) => s2 + (Number(x.fields.amount) || 0), 0);
           r.noAmount = m.filter(x => x.fields.amount == null).length;
           r.last = m.map(x => x.fields.at).filter(Boolean).sort().pop() || null; r.mailAddr = f.mailKey + '@' + MAIL_DOMAIN;
-          r.list = m.map(x => ({ at: x.fields.at || '', amount: x.fields.amount == null ? null : Number(x.fields.amount) }));   // §805
+          r.list = m.map(x => ({ at: x.fields.at || '', amount: x.fields.amount == null ? null : Number(x.fields.amount), orderNo: x.fields.orderNo || '', customer: x.fields.customer || '' }));   // §805 / §808
         } else if (ks.legacy) {
           const sid = Object.keys(SITES).find(k => host(SITES[k].base) === host(f.base));
           const t = await legacyCouponTotals(sid, code, env);
@@ -524,6 +524,24 @@ export async function handleOnlineShops(body, env) {
       return r;
     }));
     rows.sort((x, y) => (y.orders || 0) - (x.orders || 0));
+    // §808 – רמי: "חשוב לי לדעת מי היוזרים שלי שרוכשים". שם הלקוח (רק כשבעל העסק שולח אותו) ↔ שם פרטי + משפחה של חבר.
+    // התאמה מדויקת אחרי נרמול (רווחים, גרשיים, אותיות קטנות), גם בסדר הפוך. כמה חברים באותו שם = "כמה אפשרויות", לא מנחשים.
+    if (rows.some(r => (r.list || []).some(x => x.customer))) {
+      const mem = await firestoreListDocs(env, at, 'members', 20000).catch(() => []);
+      const nz = s => String(s || '').toLowerCase().replace(/[׳'"״`.\-]/g, '').replace(/\s+/g, ' ').trim();
+      const idx = {};
+      for (const m2 of mem) {
+        const fn = nz(m2.fields.firstName), ln = nz(m2.fields.lastName);
+        if (!fn || !ln) continue;
+        for (const k of [fn + ' ' + ln, ln + ' ' + fn]) (idx[k] = idx[k] || []).push({ id: m2.id, name: (m2.fields.firstName || '') + ' ' + (m2.fields.lastName || ''), status: m2.fields.status || '' });
+      }
+      for (const r of rows) for (const x of r.list || []) {
+        if (!x.customer) continue;
+        const hits = idx[nz(x.customer)] || [];
+        const uniq = [...new Map(hits.map(h => [h.id, h])).values()];
+        x.member = uniq.length === 1 ? uniq[0] : uniq.length > 1 ? { many: uniq.length } : null;
+      }
+    }
     return { ok: true, rows, unmatched: mails.filter(x => !x.fields.bizId).length };
   }
   if (typeof bizId !== 'string' || !/^[A-Za-z0-9_-]{4,64}$/.test(bizId)) return { error: 'bad_biz' };

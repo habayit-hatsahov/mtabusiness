@@ -63,6 +63,18 @@ export function findOrderNo(text) {
   return m ? m[1] : '';
 }
 
+// §808 – שם הלקוח, רק אם בעל העסק בחר לשלוח אותו (MUGS הוסיפה, וכתבה זאת במדיניות שלה). רק שם – לא טלפון/מייל/כתובת.
+// "שם הלקוח: ישראל ישראלי" / "שם מלא:" / "Customer:" / "Name:" – עד סוף השורה או עד השדה הבא (מספר/סכום/תאריך/טלפון…).
+export function findCustomer(text) {
+  const t = clean(text);
+  const m = t.match(/(?:שם הלקוח|שם הקונה|שם מלא|שם המזמין|customer name|customer|billing name)\s*[:：-]\s*([^\n]{2,80})/i);
+  if (!m) return '';
+  let v = m[1].split(/\s{3,}|\s(?=(?:מספר|סכום|תאריך|טלפון|נייד|מייל|אימייל|כתובת|order|total|date|phone|email)\b)/i)[0];
+  v = v.replace(/[<>"]/g, '').trim();
+  if (/\d{3,}|@/.test(v)) return '';   // מספר טלפון / מייל – לא שומרים
+  return v.slice(0, 60);
+}
+
 export async function handleCouponEmail(message, env) {
   const to = String(message.to || '').toLowerCase();
   const local = to.split('@')[0].split('+')[0];
@@ -82,13 +94,13 @@ export async function handleCouponEmail(message, env) {
   }
   const hay = (String(p.subject || '') + '\n' + text).toLowerCase();
   const codeFound = !!(code && hay.includes(code.toLowerCase()));
-  const amount = findAmount(text), orderAt = findOrderDate(text), orderNo = findOrderNo(text);
+  const amount = findAmount(text), orderAt = findOrderDate(text), orderNo = findOrderNo(text), customer = findCustomer(text);
   // §807 – פרטיות: הבטחנו לבעל העסק שלא נשמור פרטי לקוח. טקסט מהמייל נשמר רק כשהפענוח נכשל (בלי סכום),
   // כדי שנוכל לכוון את הפענוח – ורק 400 תווים. מייל שפוענח = רק המספרים.
   await firestoreCreateDoc(env, at, 'couponMails', {
     at: new Date(), to, from: String(message.from || '').slice(0, 200), subject: String(p.subject || '').slice(0, 300),
     bizId: bizId || '', mailKey: local.slice(0, 40), code, codeFound, amount: amount == null ? null : amount,
-    orderAt: orderAt || null, orderNo,
+    orderAt: orderAt || null, orderNo, customer,
     snippet: amount == null ? String(text || '').slice(0, 400) : '', messageId: String(p.messageId || '').slice(0, 300),
   });
   console.log('couponmail', JSON.stringify({ to, bizId, codeFound, amount }));

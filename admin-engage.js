@@ -21,7 +21,7 @@ const BENEFITS = [
 ];
 const SALES = {};   // id → { loading, data, err } – מכירות בקוד מהוורקר, פעם אחת לכל טעינה של הדף (↻ רענון – מחדש)
 let E = null, loading = false, err = '';
-const S = { per: 'launch', from: '', to: '', tile: 'trend', table: false, trK: 'open', sort: 'o', q: '' };
+const S = { per: 'launch', from: '', to: '', tile: 'trend', table: false, trK: 'open', sort: 'o', q: '', cOpen: '' };
 const MSG = { key: '', data: null, loading: false, err: '' };
 
 const f = n => U.f(n), pc = (a, b) => U.pc(a, b), inf = t => U.inf(t);
@@ -347,17 +347,36 @@ function couponHtml() {
   if (!RED.data) return h2 + '<p class="yzu-note">בודק מול האתרים של העסקים…</p>';
   const rows = RED.data.rows || [];
   if (!rows.length) return h2 + '<p class="yzu-note">עוד אין חנויות מחוברות.</p>';
-  // §805ב – רמי: "אם יש כמה מאותו עסק – פשוט תציג כמה מימשו, גם אם יש 1. לא צריך את הקוד". טבלה אחת, שורה לכל חנות.
-  const dt = x => x ? U.esc(new Date(x).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })) : '–';
+  const dt = x => x ? U.esc(new Date(x).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: '2-digit' }) + ' ' + new Date(x).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })) : '–';
+  const short = n => U.esc(String(n || '').split(' - ')[0]);
+  const amt = v => v == null ? '<span class="yzu-note">בלי סכום</span>' : f(Math.round(v * 100) / 100) + ' ₪';
+  // §808 – רמי: "חשוב לי לדעת מי היוזרים שלי שרוכשים": שם הלקוח (כשהחנות שולחת) ↔ חבר רשום
+  const who = x => !x.customer ? '<span class="yzu-note">–</span>'
+    : U.esc(x.customer) + (x.member && x.member.id ? ` <span class="yze-pill live" title="${U.esc(x.member.name)}">✓ רשום</span>`
+      : x.member && x.member.many ? ` <span class="yze-pill" title="יש ${x.member.many} חברים בשם הזה">${x.member.many} חברים בשם הזה</span>`
+      : ' <span class="yze-pill">לא נמצא ברשומים</span>');
+  // §808 – "למעלה – טבלה של כל רכישה לפי הזמן שלה: באיזה עסק, מה הסכום, שם הלקוח אם יש"
+  const all = rows.flatMap(r => (r.list || []).map(x => Object.assign({ name: r.name }, x))).sort((x, y) => String(y.at).localeCompare(String(x.at)));
+  const allBox = `<div class="yzu-box yzu-tw"><h3>כל הרכישות – ${f(all.length)}</h3>${all.length ? `<table><tr><th>מתי</th><th>עסק</th><th class="n">סכום</th><th>לקוח</th></tr>
+    ${all.slice(0, 300).map(x => `<tr><td>${dt(x.at)}</td><td><b>${short(x.name)}</b>${x.orderNo ? `<div class="yzu-note">הזמנה ${U.esc(x.orderNo)}</div>` : ''}</td><td class="n"><b>${amt(x.amount)}</b></td><td>${who(x)}</td></tr>`).join('')}</table>`
+      : '<p class="yzu-note">עוד אין רכישות ברשימה.</p>'}
+    <p class="yzu-note">ברשימה: חנויות שמחוברות במייל (כל התראה = רכישה) ו-Glory (מדוח ההזמנות). חנויות עם מפתח או אפליקציה מחזירות רק כמה פעמים השתמשו בקוד – הן בטבלה למטה. שם הלקוח מופיע רק כשהחנות שולחת אותו, ו"✓ רשום" = יש חבר ב-Yellow Zone בדיוק באותו שם.</p></div>`;
+  // לפי חנות – לחיצה על שורה פותחת את הרכישות שלה לפי תאריך (§808)
   const lastOf = r => (r.list || []).map(x => x.at).filter(Boolean).sort().pop() || (r.conn === 'mail' ? r.last : null);
   const tot = rows.reduce((a2, r) => a2 + (r.orders || 0), 0), totM = rows.reduce((a2, r) => a2 + (r.revenue || 0), 0);
-  const tr = rows.map(r => `<tr><td><b>${U.esc(r.name)}</b><div class="yzu-note">${U.esc(PLAT_L[r.platform] || r.platform || '')}${r.conn ? ' · ' + (CONN_L[r.conn] || r.conn) : ''}</div>${r.err ? `<div class="yzu-note">⚠️ ${U.esc(r.err)}</div>` : ''}</td>
-    <td class="n"><b>${r.orders == null ? '–' : f(r.orders)}</b></td>
-    <td class="n">${r.revenue == null ? '<span class="yzu-note">האתר לא מחזיר סכום</span>' : f(Math.round(r.revenue)) + ' ₪'}${r.noAmount ? `<div class="yzu-note">${f(r.noAmount)} בלי סכום</div>` : ''}</td>
-    <td>${dt(lastOf(r))}</td></tr>`).join('');
-  return h2 + `<div class="yzu-box yzu-tw"><h3>מימושים לפי חנות – ${f(tot)} מימושים · ${f(Math.round(totM))} ₪</h3>
-    <table><tr><th>חנות</th><th class="n">מימושים</th><th class="n">סכום</th><th>מימוש אחרון</th></tr>${tr}</table>
-    <p class="yzu-note">מפתח ואפליקציה – נבדק עכשיו מול האתר. מייל – כל התראה שהגיעה לכתובת האישית של החנות = מימוש אחד.${RED.data.unmatched ? ` · ${f(RED.data.unmatched)} מיילים הגיעו לכתובת שלא שייכת לחנות.` : ''}</p></div>`;
+  const tr = rows.map(r => {
+    const L = (r.list || []).slice().sort((x, y) => String(y.at).localeCompare(String(x.at))), open = S.cOpen === r.id && L.length;
+    const head = `<tr${L.length ? ` style="cursor:pointer" onclick="yzeSet('cOpen','${open ? '' : r.id}')"` : ''}><td>${L.length ? (open ? '▾ ' : '◂ ') : ''}<b>${U.esc(r.name)}</b><div class="yzu-note">${U.esc(PLAT_L[r.platform] || r.platform || '')}${r.conn ? ' · ' + (CONN_L[r.conn] || r.conn) : ''}</div>${r.err ? `<div class="yzu-note">⚠️ ${U.esc(r.err)}</div>` : ''}</td>
+      <td class="n"><b>${r.orders == null ? '–' : f(r.orders)}</b></td>
+      <td class="n">${r.revenue == null ? '<span class="yzu-note">האתר לא מחזיר סכום</span>' : f(Math.round(r.revenue)) + ' ₪'}${r.noAmount ? `<div class="yzu-note">${f(r.noAmount)} בלי סכום</div>` : ''}</td>
+      <td>${dt(lastOf(r))}</td></tr>`;
+    const sub = open ? L.map(x => `<tr style="background:var(--yzu-soft,#FAFAF5)"><td style="padding-inline-start:22px">${dt(x.at)}${x.orderNo ? ` · הזמנה ${U.esc(x.orderNo)}` : ''}</td><td class="n">1</td><td class="n">${amt(x.amount)}</td><td>${who(x)}</td></tr>`).join('') : '';
+    return head + sub;
+  }).join('');
+  const sumBox = `<div class="yzu-box yzu-tw"><h3>לפי חנות – ${f(tot)} מימושים · ${f(Math.round(totM))} ₪</h3>
+    <table><tr><th>חנות</th><th class="n">מימושים</th><th class="n">סכום</th><th>מימוש אחרון / לקוח</th></tr>${tr}</table>
+    <p class="yzu-note">לחיצה על חנות פותחת את הרכישות שלה לפי תאריך. מפתח ואפליקציה – נבדק עכשיו מול האתר. מייל – כל התראה שהגיעה לכתובת האישית של החנות = מימוש אחד.${RED.data.unmatched ? ` · ${f(RED.data.unmatched)} מיילים הגיעו לכתובת שלא שייכת לחנות.` : ''}</p></div>`;
+  return h2 + allBox + sumBox;
 }
 const BEN_ERR = { no_key: 'המפתח של WooCommerce עוד לא נשמר בוורקר', not_admin: 'אין הרשאת מנהל', unknown_site: 'האתר לא מוגדר בוורקר', not_found: 'הקוד לא נמצא באתר של העסק' };
 function benHtml() {
