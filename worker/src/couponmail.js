@@ -37,6 +37,32 @@ export function findAmount(text) {
   return all.length ? Math.max(...all) : null;
 }
 
+// §807 – תאריך ההזמנה מתוך ההתראה (קנייה ישנה ≠ רגע הגעת המייל) ומספר ההזמנה (התראה שנשלחה פעמיים = מימוש אחד).
+// Wix: "תאריך ההזמנה: 25 בנובמבר 2026 בשעה 13:39" · "מספר הזמנה: 10019". גם 25/11/2026 ו-2026-11-25.
+const HE_M = { 'ינואר': 1, 'פברואר': 2, 'מרץ': 3, 'מרס': 3, 'אפריל': 4, 'מאי': 5, 'יוני': 6, 'יולי': 7, 'אוגוסט': 8, 'ספטמבר': 9, 'אוקטובר': 10, 'נובמבר': 11, 'דצמבר': 12 };
+const clean = s => String(s || '').replace(/[‎‏‪-‮⁦-⁩ ]/g, ' ');
+export function findOrderDate(text) {
+  const t = clean(text);
+  let m = t.match(/(\d{1,2})\s*ב?(ינואר|פברואר|מרץ|מרס|אפריל|מאי|יוני|יולי|אוגוסט|ספטמבר|אוקטובר|נובמבר|דצמבר)\s*(\d{4})(?:\D{1,12}(\d{1,2}):(\d{2}))?/);
+  if (m) return ilDate(+m[3], HE_M[m[2]], +m[1], m[4], m[5]);
+  m = t.match(/(?:תאריך|date)[^\n\d]{0,20}(\d{1,2})[./](\d{1,2})[./](\d{4})(?:\D{1,12}(\d{1,2}):(\d{2}))?/i);
+  if (m) return ilDate(+m[3], +m[2], +m[1], m[4], m[5]);
+  m = t.match(/(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (m) return ilDate(+m[1], +m[2], +m[3], m[4], m[5]);
+  return null;
+}
+// שעון ישראל (+2 בחורף / +3 בקיץ, מספיק לדיוק של יום) → ISO
+function ilDate(y, mo, d, hh, mm) {
+  if (!y || !mo || !d || mo > 12 || d > 31) return null;
+  const off = mo >= 4 && mo <= 10 ? 3 : 2;
+  const dt = new Date(Date.UTC(y, mo - 1, d, (+hh || 12) - off, +mm || 0));
+  return isNaN(dt) ? null : dt;
+}
+export function findOrderNo(text) {
+  const m = clean(text).match(/(?:מספר הזמנה|הזמנה מס['׳]?|order\s*(?:no\.?|number|#))\s*[:#]?\s*#?(\d{3,12})/i);
+  return m ? m[1] : '';
+}
+
 export async function handleCouponEmail(message, env) {
   const to = String(message.to || '').toLowerCase();
   const local = to.split('@')[0].split('+')[0];
@@ -56,11 +82,14 @@ export async function handleCouponEmail(message, env) {
   }
   const hay = (String(p.subject || '') + '\n' + text).toLowerCase();
   const codeFound = !!(code && hay.includes(code.toLowerCase()));
-  const amount = findAmount(text);
+  const amount = findAmount(text), orderAt = findOrderDate(text), orderNo = findOrderNo(text);
+  // §807 – פרטיות: הבטחנו לבעל העסק שלא נשמור פרטי לקוח. טקסט מהמייל נשמר רק כשהפענוח נכשל (בלי סכום),
+  // כדי שנוכל לכוון את הפענוח – ורק 400 תווים. מייל שפוענח = רק המספרים.
   await firestoreCreateDoc(env, at, 'couponMails', {
     at: new Date(), to, from: String(message.from || '').slice(0, 200), subject: String(p.subject || '').slice(0, 300),
     bizId: bizId || '', mailKey: local.slice(0, 40), code, codeFound, amount: amount == null ? null : amount,
-    snippet: String(text || '').slice(0, 2000), messageId: String(p.messageId || '').slice(0, 300),
+    orderAt: orderAt || null, orderNo,
+    snippet: amount == null ? String(text || '').slice(0, 400) : '', messageId: String(p.messageId || '').slice(0, 300),
   });
   console.log('couponmail', JSON.stringify({ to, bizId, codeFound, amount }));
 }

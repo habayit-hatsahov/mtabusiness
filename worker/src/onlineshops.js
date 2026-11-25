@@ -501,7 +501,9 @@ export async function handleOnlineShops(body, env) {
       const r = { id: d.id, name: b.name || '', platform: platOf(f) || '', code, conn: ks.mail ? 'mail' : ks.legacy ? 'key' : platOf(f) === 'wix' || platOf(f) === 'wixstore' ? 'app' : 'key', orders: null, revenue: null, last: null, err: '' };
       try {
         if (ks.mail) {
-          const m = mails.filter(x => x.fields.bizId === d.id);
+          // §807 – אותה הזמנה (מספר הזמנה) שהגיעה פעמיים = מימוש אחד; תאריך = תאריך ההזמנה מההתראה, אחרת רגע ההגעה
+          const seen = new Set(), m = mails.filter(x => x.fields.bizId === d.id).filter(x => { const no = x.fields.orderNo; if (!no) return true; if (seen.has(no)) return false; seen.add(no); return true; })
+            .map(x => ({ fields: Object.assign({}, x.fields, { at: x.fields.orderAt || x.fields.at }) }));
           r.orders = m.length; r.revenue = m.reduce((s2, x) => s2 + (Number(x.fields.amount) || 0), 0);
           r.noAmount = m.filter(x => x.fields.amount == null).length;
           r.last = m.map(x => x.fields.at).filter(Boolean).sort().pop() || null; r.mailAddr = f.mailKey + '@' + MAIL_DOMAIN;
