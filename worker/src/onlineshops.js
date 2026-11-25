@@ -17,6 +17,7 @@ import { SITES, legacyCouponTotals } from './benefitsales.js';
 import { testWix } from './wixapp.js';   // §797
 import { MAIL_DOMAIN } from './couponmail.js';   // §804
 import { buildShopifyShop, shopifyCats, shopifySearch } from './shopifyshop.js';   // §797ג
+import { buildWixShop, wixCats, wixSearch } from './wixshop.js';   // §811
 
 const T = 15000;
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', 'Accept-Language': 'he,en' };
@@ -196,7 +197,8 @@ const platOf = f => (f && (f.platformManual || f.platform)) || '';
 // §804 – חיבור במייל: חנות בלי API (למשל Wix בלי האפליקציה) מפנה את התראת ההזמנה בקוד ל-<mailKey>@in.yellowzone.co.il
 const mailOk = f => !!(f && f.connMode === 'mail' && f.mailKey);
 const linkOk = f => shopOk(f) || mailOk(f);
-const shopOk = f => !!(f && f.base && ((platOf(f) === 'woocommerce' && f.open) || (platOf(f) === 'shopify' && (f.open || f.platformManual === 'shopify'))));
+const isWix = f => /^wix/.test(platOf(f));   // §811 – 'wix' / 'wixstore' (הסריקה) – קטלוג מדפים ציבוריים
+const shopOk = f => !!(f && f.base && ((platOf(f) === 'woocommerce' && f.open) || (platOf(f) === 'shopify' && (f.open || f.platformManual === 'shopify')) || (isWix(f) && f.isShop !== false)));
 const sapi = (base, q) => getJson(`${base}/wp-json/wc/store/v1/${q}`).then(x => x.j);
 const prodOut = p => {
   const pr = p.prices || {}, div = Math.pow(10, pr.currency_minor_unit || 0);
@@ -211,6 +213,7 @@ function tabPinsOf(shop, firstKey) {
 }
 export async function buildBizShop(shop) {
   if (platOf(shop) === 'shopify') return buildShopifyShop(shop, { SHOP_MAX, TABS_MAX, SALE_RX, tabPinsOf });   // §797ג
+  if (isWix(shop)) return buildWixShop(shop, { SHOP_MAX, TABS_MAX, SALE_RX, tabPinsOf });   // §811
   const base = shop.base;
   const auto = !(shop.shopMode === 'manual' && (shop.shopCats || []).length);
   const [catsR, topR] = await Promise.all([
@@ -351,11 +354,13 @@ function cleanShopFields(body) {
 }
 async function siteCats(base, plat) {
   if (plat === 'shopify') return shopifyCats(base);   // §797ג
+  if (/^wix/.test(plat)) return wixCats(base);   // §811
   const cs = await sapi(base, 'products/categories?per_page=100');
   return (cs || []).filter(c => c.count > 0 && !JUNK_CAT.test(dec(c.name).trim())).map(c => ({ id: c.id, n: dec(c.name), c: c.count })).sort((a, b) => b.c - a.c);
 }
 async function siteSearch(base, q, plat) {
   if (plat === 'shopify') return shopifySearch(base, q);   // §797ג
+  if (/^wix/.test(plat)) return wixSearch(base, q);   // §811
   q = String(q || '').trim().slice(0, 60);
   if (q.length < 2) return [];
   const a = await sapi(base, 'products?per_page=12&search=' + encodeURIComponent(q));
@@ -398,7 +403,10 @@ export async function handleShopOwner(body, env) {
       const bd = await firestoreGetDoc(env, at, 'businesses/' + biz);
       const shop = await currentShop(env, at, biz);
       const first = shop && shop.tabs[0] && shop.tabs[0].k;
-      return { ok: true, key: keyState(env, s), code: (bd && bd.fields.discountCode) || '', name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], tabPins: tabPinsOf(s, first), hidden: s.hidden || [], allCats: await siteCats(s.base, plat), shop, platform: plat };
+      // §811 – חנות שמחוברת במייל וגם מציגה מוצרים (MUGS): שלב 1 בדף = הכתובת + סטטוס ההתראות, במקום מפתח
+      let mail = null;
+      if (mailOk(s)) { const ms = await firestoreRunQuery(env, at, 'couponMails', 'bizId', biz, 200).catch(() => []); mail = { addr: s.mailKey + '@' + MAIL_DOMAIN, mails: ms.length, withAmount: ms.filter(m => m.fields.amount != null).length, last: ms.map(m => m.fields.at).filter(Boolean).sort().pop() || null }; }
+      return { ok: true, mail, key: keyState(env, s), code: (bd && bd.fields.discountCode) || '', name: (bd && bd.fields.name) || '', site: s.base, total: s.products || 0, mode: s.shopMode === 'manual' ? 'manual' : 'auto', cats: s.shopCats || [], tabPins: tabPinsOf(s, first), hidden: s.hidden || [], allCats: await siteCats(s.base, plat), shop, platform: plat };
     }
     if (action === 'search') return { ok: true, products: await siteSearch(s.base, body.q, plat) };
     // §796יג – בעל העסק מחבר את האתר בעצמו (מפתח קריאה של WooCommerce): נבדק מיד, ורק אם עבד – נשמר כמחובר
